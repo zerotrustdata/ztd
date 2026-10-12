@@ -5,10 +5,9 @@
 // run/campaign identity, suite, progress, outcomes, verifier state, and metrics.
 
 import { useEffect, useMemo } from 'react';
-import { type CellContext, type ColumnDef } from '@tanstack/react-table';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useStoreState } from '../state/store';
-import { DataTable } from '../components/DataTable';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { RoleLeadersPanel } from '../components/RoleLeadersPanel';
 import { ReleaseSelector } from '../components/ReleaseSelector';
 import { CURRENT_PLATFORM_RELEASE, matchesRelease, releaseLabel } from '../content/release';
@@ -77,13 +76,13 @@ export function EvaluationsView() {
     setParams(next);
   };
 
-  const columns = useMemo<ColumnDef<EvaluationSummary, unknown>[]>(
+  const columns = useMemo<DataTableColumn<EvaluationSummary>[]>(
     () => [
       {
         id: 'dataset',
         header: 'Dataset',
         accessorKey: 'dataset_id',
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) => (
+        cell: ({ row }) => (
           <code className="dataset-id" title={row.original.dataset_id}>
             {datasetLabel(row.original.dataset_id)}
           </code>
@@ -93,7 +92,7 @@ export function EvaluationsView() {
         id: 'run',
         header: 'Run',
         accessorKey: 'run_id',
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) => (
+        cell: ({ row }) => (
           <Link to={`/evaluations/${row.original.dataset_id}/${row.original.run_id}`}>
             {row.original.run_id}
           </Link>
@@ -105,7 +104,7 @@ export function EvaluationsView() {
       {
         id: 'progress',
         header: 'Progress',
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) => {
+        cell: ({ row }) => {
           const terminal = campaignTerminalProgress(row.original);
           return (
             <ProgressBar
@@ -120,7 +119,7 @@ export function EvaluationsView() {
       {
         id: 'outcomes',
         header: 'Outcomes',
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) => row.original.native_result ? row.original.native_result.summary_status : <OutcomeCounts outcomes={row.original.terminal_outcomes} />,
+        cell: ({ row }) => row.original.native_result ? row.original.native_result.summary_status : <OutcomeCounts outcomes={row.original.terminal_outcomes} />,
         enableSorting: false,
       },
       {
@@ -132,19 +131,19 @@ export function EvaluationsView() {
         id: 'started',
         header: 'Started',
         accessorFn: (row: EvaluationSummary) => row.started_at ?? '',
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) => (row.original.started_at ? formatTimestamp(row.original.started_at) : '—'),
+        cell: ({ row }) => (row.original.started_at ? formatTimestamp(row.original.started_at) : '—'),
       },
       {
         id: 'elapsed',
         header: 'Elapsed',
         accessorFn: (row: EvaluationSummary) => row.elapsed_seconds ?? 0,
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) => (row.original.elapsed_seconds ? formatDuration(row.original.elapsed_seconds) : '—'),
+        cell: ({ row }) => (row.original.elapsed_seconds ? formatDuration(row.original.elapsed_seconds) : '—'),
       },
       {
         id: 'pass_rate',
         header: 'Pass rate',
         accessorFn: (row: EvaluationSummary) => row.headline_metrics.pass_rate?.value ?? -1,
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) =>
+        cell: ({ row }) =>
           row.original.headline_metrics.pass_rate?.value !== undefined
             ? formatPercent(row.original.headline_metrics.pass_rate.value)
             : '—',
@@ -152,7 +151,7 @@ export function EvaluationsView() {
       {
         id: 'quality',
         header: 'Quality',
-        cell: ({ row }: CellContext<EvaluationSummary, unknown>) => <QualityBadge state={row.original.quality_state} />,
+        cell: ({ row }) => <QualityBadge state={row.original.quality_state} />,
         enableSorting: false,
       },
     ],

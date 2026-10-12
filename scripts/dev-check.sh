@@ -43,7 +43,7 @@ esac
 
 FAILED=0
 
-ztd_ui_title "Prerequisites ${ZTD_UI_DIM}(git, make, curl, go >= ${ZTD_GO_MIN}, node >= ${ZTD_NODE_MIN_MAJOR}, rg, bc, C compiler)${ZTD_UI_RESET}"
+ztd_ui_title "Prerequisites ${ZTD_UI_DIM}(git, make, curl, go >= ${ZTD_GO_MIN}, node (${ZTD_NODE_REQUIREMENT}), rg, bc, C compiler)${ZTD_UI_RESET}"
 ztd_collect_missing
 if [[ ${#MISSING[@]} -gt 0 ]]; then
     FAILED=1

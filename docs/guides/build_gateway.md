@@ -50,7 +50,7 @@ The reference implementation is the static `ztd` binary running in Gateway mode.
 
 - **Go 1.26.9+** — Required for building the reference Gateway. The root `go.mod` is authoritative; the Makefile selects the toolchain automatically.
 - **Make** — Required to run the root build targets.
-- **Node.js 22+ and npm** — Required only to rebuild Console or Evaluation Explorer embeds. A plain `make build` uses the committed embeds.
+- **Node.js 22.22.2+, 24.15+, or 26+ and npm** — Required only to rebuild Console or Evaluation Explorer embeds. A plain `make build` uses the committed embeds.
 
 Run the platform setup script to install prerequisites and compile `ztd`:
 - **Linux:** `bash scripts/linux-setup.sh --build-only`

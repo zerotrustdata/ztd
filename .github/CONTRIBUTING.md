@@ -39,7 +39,7 @@ Look for issues labeled `first-run`, `good-first-task`, and `docs`. Experienced 
 
 Choose the smallest environment that fits your work:
 
-- **Gateway only:** clone the repository, then run `make up`. A native build needs Go 1.26.9 and Make. Fresh clones use the committed frontend embeds; Node.js 22+ and npm are needed only to rebuild the Console or Evaluation Explorer. Ollama and model SDKs are not needed for this configuration.
+- **Gateway only:** clone the repository, then run `make up`. A native build needs Go 1.26.9 and Make. Fresh clones use the committed frontend embeds; Node.js 22.22.2+, 24.15+, or 26+ and npm are needed only to rebuild the Console or Evaluation Explorer. Ollama and model SDKs are not needed for this configuration.
 - **Gateway with every Operator capability:** run `make gw` to start the Gateway with its embedded Operator carrying the capabilities in `GW_CAPABILITIES` (default `data,inference,observer`). Set `MODEL_STORAGE_ROOT` to the local model store to add Provenance, and pass extra `./ztd gw start` flags such as `--inference-ollama-endpoint` through `GW_ARGS`. Run a separate outbound Operator in the foreground with `make operator OPERATOR_ARGS='...'`. Use `make status` and `make down` to inspect and stop the host stack.
 
 Linux and macOS contributors can install the complete development toolchain with their platform's setup script; use `--build-only` to skip the contributor toolchain while still building the binary. A direct `make build` on a fresh clone uses committed frontend embeds and does not require Node.js. See the [setup instructions](../docs/guides/getting_started.md#clone-the-repository).

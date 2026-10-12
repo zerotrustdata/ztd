@@ -45,7 +45,7 @@ On Windows, run `pwsh scripts/windows-setup.ps1 --build-only` and follow the nat
 
 ### What setup does
 
-The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22+. Rerunning setup reuses everything already installed.
+The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22.22.2+, 24.15+, or 26+. Rerunning setup reuses everything already installed.
 
 ### What `make quickstart` does
 

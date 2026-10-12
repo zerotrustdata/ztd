@@ -221,7 +221,7 @@ function loadRecords(recordsPath) {
     try {
       parsed = JSON.parse(line);
     } catch (err) {
-      throw new Error(`records file line ${index + 1}: invalid JSON: ${err.message}`);
+      throw new Error(`records file line ${index + 1}: invalid JSON: ${err.message}`, { cause: err });
     }
     if (typeof parsed.record_type !== 'string' || typeof parsed.record_bytes !== 'string') {
       throw new Error(`records file line ${index + 1}: missing record_type/record_bytes`);

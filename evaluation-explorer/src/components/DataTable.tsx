@@ -10,17 +10,35 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import {
   type ColumnDef,
+  type ColumnVisibilityState,
+  type RowData,
   type SortingState,
-  type VisibilityState,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  columnVisibilityFeature,
+  createSortedRowModel,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_text,
+  tableFeatures,
+  useTable,
 } from '@tanstack/react-table';
 
-export interface DataTableProps<T> {
+// Every DataTable registers exactly the features it renders: column
+// visibility toggles and client-side sorting. The sort registry holds the
+// built-ins that `sortFn: 'auto'` resolves for string columns; numeric
+// columns fall back to the basic comparator.
+const dataTableFeatures = tableFeatures({
+  columnVisibilityFeature,
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
+});
+
+/** Column definition accepted by DataTable, bound to its feature set. */
+export type DataTableColumn<T extends RowData> = ColumnDef<typeof dataTableFeatures, T>;
+
+export interface DataTableProps<T extends RowData> {
   data: T[];
-  columns: ColumnDef<T, unknown>[];
+  columns: DataTableColumn<T>[];
   empty?: ReactNode;
   pageSize?: number;
   caption?: string;
@@ -28,7 +46,7 @@ export interface DataTableProps<T> {
   enableColumnVisibility?: boolean;
 }
 
-export function DataTable<T>({
+export function DataTable<T extends RowData>({
   data,
   columns,
   empty,
@@ -38,17 +56,16 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
   const [showColumns, setShowColumns] = useState(false);
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
     state: { sorting, columnVisibility },
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   });
 
   const pageCount = Math.ceil(data.length / pageSize);
@@ -122,13 +139,13 @@ export function DataTable<T>({
                         onClick={header.column.getToggleSortingHandler()}
                         aria-label={`Sort by ${String(header.column.columnDef.header ?? header.id)}`}
                       >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        <table.FlexRender header={header} />
                         <span className="sort-indicator" aria-hidden="true">
                           {isSorted ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
                         </span>
                       </button>
                     ) : (
-                      flexRender(header.column.columnDef.header, header.getContext())
+                      <table.FlexRender header={header} />
                     )}
                   </th>
                 );
@@ -140,7 +157,9 @@ export function DataTable<T>({
           {pageRows.map((row) => (
             <tr key={row.id}>
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                <td key={cell.id}>
+                  <table.FlexRender cell={cell} />
+                </td>
               ))}
             </tr>
           ))}

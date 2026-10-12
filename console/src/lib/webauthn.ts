@@ -208,7 +208,7 @@ export async function registerEnrollmentPasskey(token: string): Promise<void> {
     if (!vr.success) throw new Error(vr.error || 'Enrollment failed.');
   } catch (err) {
     const msg = enrollmentErrorMessage(err);
-    if (msg) throw new Error(msg);
+    if (msg) throw new Error(msg, { cause: err });
     throw err;
   }
 }

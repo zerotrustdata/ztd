@@ -7,11 +7,10 @@
 // table and card views, and multi-select comparison.
 
 import { useEffect, useMemo } from 'react';
-import { type CellContext, type ColumnDef } from '@tanstack/react-table';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useUserPref, PREF } from '../state/dataset';
 import { modelComparisonId, resolveModelFromComparisonId, useStoreState } from '../state/store';
-import { DataTable } from '../components/DataTable';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { ModelComparisonPanel } from '../components/ModelComparisonPanel';
 import { ReleaseSelector } from '../components/ReleaseSelector';
 import { CURRENT_PLATFORM_RELEASE, matchesRelease } from '../content/release';
@@ -122,12 +121,12 @@ export function ModelsView() {
     });
   }, [models, filters, evaluatedFilter, effectiveQuality]);
 
-  const columns = useMemo<ColumnDef<ModelSummary, unknown>[]>(
+  const columns = useMemo<DataTableColumn<ModelSummary>[]>(
     () => [
       {
         id: 'select',
         header: 'Compare',
-        cell: ({ row }: CellContext<ModelSummary, unknown>) => (
+        cell: ({ row }) => (
           <input
             type="checkbox"
             aria-label={`Select ${row.original.display_name} for comparison`}
@@ -148,7 +147,7 @@ export function ModelsView() {
         id: 'dataset',
         header: 'Dataset',
         accessorKey: 'dataset_id',
-        cell: ({ row }: CellContext<ModelSummary, unknown>) => (
+        cell: ({ row }) => (
           <code className="dataset-id" title={row.original.dataset_id}>
             {datasetLabel(row.original.dataset_id)}
           </code>
@@ -158,7 +157,7 @@ export function ModelsView() {
         id: 'name',
         header: 'Model',
         accessorKey: 'display_name',
-        cell: ({ row }: CellContext<ModelSummary, unknown>) => (
+        cell: ({ row }) => (
           <Link
             to={`/models/${row.original.dataset_id}/${row.original.variant_id}?role=${row.original.role}`}
             className="model-link"
@@ -172,25 +171,25 @@ export function ModelsView() {
         id: 'served_tag',
         header: 'Served tag',
         accessorFn: (row: ModelSummary) => row.served_model_tag ?? '',
-        cell: ({ row }: CellContext<ModelSummary, unknown>) => row.original.served_model_tag ?? <UnavailableValue />,
+        cell: ({ row }) => row.original.served_model_tag ?? <UnavailableValue />,
       },
       {
         id: 'role',
         header: 'Role',
         accessorKey: 'role',
-        cell: ({ row }: CellContext<ModelSummary, unknown>) => roleLabel(row.original.role),
+        cell: ({ row }) => roleLabel(row.original.role),
       },
       {
         id: 'coverage',
         header: 'Coverage',
         accessorFn: (row: ModelSummary) => row.evaluation_coverage,
-        cell: ({ row }: CellContext<ModelSummary, unknown>) => formatPercent(row.original.evaluation_coverage),
+        cell: ({ row }) => formatPercent(row.original.evaluation_coverage),
       },
       {
         id: 'pass_rate',
         header: 'Pass rate',
         accessorFn: (row: ModelSummary) => row.pass_rate?.estimate ?? -1,
-        cell: ({ row }: CellContext<ModelSummary, unknown>) =>
+        cell: ({ row }) =>
           row.original.pass_rate ? (
             formatPercent(row.original.pass_rate.estimate)
           ) : (
@@ -201,7 +200,7 @@ export function ModelsView() {
         id: 'latency_p50',
         header: 'Latency p50',
         accessorFn: (row: ModelSummary) => row.latency_p50_ms?.value ?? Number.POSITIVE_INFINITY,
-        cell: ({ row }: CellContext<ModelSummary, unknown>) =>
+        cell: ({ row }) =>
           row.original.latency_p50_ms?.value !== undefined
             ? formatLatency(row.original.latency_p50_ms.value)
             : <UnavailableValue />,
@@ -210,7 +209,7 @@ export function ModelsView() {
         id: 'throughput_p50',
         header: 'Throughput p50',
         accessorFn: (row: ModelSummary) => row.output_throughput_p50?.value ?? -1,
-        cell: ({ row }: CellContext<ModelSummary, unknown>) =>
+        cell: ({ row }) =>
           row.original.output_throughput_p50?.value !== undefined
             ? formatThroughput(row.original.output_throughput_p50.value)
             : <UnavailableValue />,
@@ -219,7 +218,7 @@ export function ModelsView() {
         id: 'quality',
         header: 'Quality',
         accessorKey: 'quality_state',
-        cell: ({ row }: CellContext<ModelSummary, unknown>) => <QualityBadge state={row.original.quality_state} />,
+        cell: ({ row }) => <QualityBadge state={row.original.quality_state} />,
         enableSorting: false,
       },
     ],

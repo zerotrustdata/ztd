@@ -101,22 +101,26 @@ ztd_linux_install_go() {
     hash -r
 }
 
-# Installs the newest Node ${ZTD_NODE_MIN_MAJOR}.x LTS tarball from nodejs.org
+# Node.js release line installed when node is missing; its latest release must
+# satisfy ZTD_NODE_REQUIREMENT.
+ZTD_NODE_LTS_MAJOR=22
+
+# Installs the newest Node ${ZTD_NODE_LTS_MAJOR}.x LTS tarball from nodejs.org
 # into /usr/local/lib/nodejs and links node/npm/npx into /usr/local/bin.
-# Ubuntu's apt nodejs is older than the required major.
+# Ubuntu's apt nodejs is older than the supported lines.
 ztd_linux_install_node() {
     local nodearch sums tarball tmp want got dest
     case "$(uname -m)" in
         x86_64) nodearch="x64" ;;
         aarch64|arm64) nodearch="arm64" ;;
-        *) echo "  no official Node.js tarball flow for $(uname -m); install Node ${ZTD_NODE_MIN_MAJOR}+ from https://nodejs.org/"; return 1 ;;
+        *) echo "  no official Node.js tarball flow for $(uname -m); install Node.js ${ZTD_NODE_REQUIREMENT} from https://nodejs.org/"; return 1 ;;
     esac
-    local base="https://nodejs.org/dist/latest-v${ZTD_NODE_MIN_MAJOR}.x"
+    local base="https://nodejs.org/dist/latest-v${ZTD_NODE_LTS_MAJOR}.x"
     sums="$(curl -fsSL "${base}/SHASUMS256.txt")" || return 1
     tarball="$(echo "$sums" | awk -v arch="linux-${nodearch}.tar.gz" '$2 ~ arch"$" {print $2; exit}')"
     want="$(echo "$sums" | awk -v t="$tarball" '$2 == t {print $1}')"
     if [[ -z "$tarball" || -z "$want" ]]; then
-        echo "  could not find a Node ${ZTD_NODE_MIN_MAJOR}.x linux-${nodearch} tarball in ${base}/SHASUMS256.txt"
+        echo "  could not find a Node ${ZTD_NODE_LTS_MAJOR}.x linux-${nodearch} tarball in ${base}/SHASUMS256.txt"
         return 1
     fi
 
@@ -179,12 +183,12 @@ ztd_linux_install_missing() {
                 fi
                 ;;
             node)
-                echo "Node.js ${ZTD_NODE_MIN_MAJOR}+ is required (evaluation explorer, console, protocol/node)."
+                echo "Node.js ${ZTD_NODE_REQUIREMENT} is required (evaluation explorer, console, protocol/node)."
                 if ztd_linux_init_sudo && ztd_have curl &&
-                    ztd_setup_confirm "Download the official Node.js ${ZTD_NODE_MIN_MAJOR}.x LTS tarball to /usr/local/lib/nodejs now? [y/N] "; then
-                    ztd_linux_install_node || echo "  Node.js install failed; install Node ${ZTD_NODE_MIN_MAJOR}+ manually from https://nodejs.org/"
+                    ztd_setup_confirm "Download the official Node.js ${ZTD_NODE_LTS_MAJOR}.x LTS tarball to /usr/local/lib/nodejs now? [y/N] "; then
+                    ztd_linux_install_node || echo "  Node.js install failed; install Node.js ${ZTD_NODE_REQUIREMENT} manually from https://nodejs.org/"
                 else
-                    echo "  Install Node.js ${ZTD_NODE_MIN_MAJOR}+ from https://nodejs.org/ and rerun this script."
+                    echo "  Install Node.js ${ZTD_NODE_REQUIREMENT} from https://nodejs.org/ and rerun this script."
                 fi
                 ;;
         esac

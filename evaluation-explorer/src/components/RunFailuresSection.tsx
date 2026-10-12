@@ -4,9 +4,8 @@
 // Run-scoped terminal failures for evaluation detail pages.
 
 import { useMemo, useState } from 'react';
-import { type CellContext, type ColumnDef } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
-import { DataTable } from './DataTable';
+import { DataTable, type DataTableColumn } from './DataTable';
 import { EmptyState, QualityBadge, SectionHeading, formatTimestamp } from './shared';
 import type { AssignmentResult, TerminalStatus } from '../contract/types';
 import type { FeedConnectionState } from '../utils/feed-state';
@@ -31,13 +30,13 @@ export function RunFailuresSection({ assignments, connection }: RunFailuresSecti
       .sort((a, b) => (b.observed_at ?? '').localeCompare(a.observed_at ?? ''));
   }, [assignments, statusFilter]);
 
-  const columns = useMemo<ColumnDef<AssignmentResult, unknown>[]>(
+  const columns = useMemo<DataTableColumn<AssignmentResult>[]>(
     () => [
       {
         id: 'assignment',
         header: 'Assignment',
         accessorKey: 'assignment_id',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) => (
+        cell: ({ row }) => (
           <Link
             to={`/evaluations/${row.original.dataset_id}/${row.original.run_id}/assignments/${row.original.assignment_id}`}
           >
@@ -51,33 +50,33 @@ export function RunFailuresSection({ assignments, connection }: RunFailuresSecti
         id: 'role',
         header: 'Role',
         accessorKey: 'role',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) => roleLabel(row.original.role),
+        cell: ({ row }) => roleLabel(row.original.role),
       },
       {
         id: 'status',
         header: 'Failure class',
         accessorKey: 'terminal_status',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) => observationLabel(row.original.terminal_status),
+        cell: ({ row }) => observationLabel(row.original.terminal_status),
       },
       {
         id: 'category',
         header: 'Scenario category',
         accessorFn: (row: AssignmentResult) => row.scenario_category ?? '',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) =>
+        cell: ({ row }) =>
           row.original.scenario_category ? observationLabel(row.original.scenario_category) : '—',
       },
       {
         id: 'observed',
         header: 'Observed',
         accessorFn: (row: AssignmentResult) => row.observed_at ?? '',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) =>
+        cell: ({ row }) =>
           row.original.observed_at ? formatTimestamp(row.original.observed_at) : '—',
       },
       {
         id: 'quality',
         header: 'Quality',
         accessorKey: 'quality_state',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) => (
+        cell: ({ row }) => (
           <QualityBadge state={row.original.quality_state} />
         ),
       },

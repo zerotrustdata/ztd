@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 $Script:RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $Script:ExplorerDir = Join-Path $Script:RepoRoot "evaluation-explorer"
 $Script:ExplorerDist = Join-Path $Script:ExplorerDir "dist\index.html"
-$Script:NodeMinMajor = 22
+$Script:NodeRequirement = "22.22.2+, 24.15+, or 26+"
 $Script:AutoYes = $false
 $Script:BuildOnly = $false
 
@@ -135,29 +135,42 @@ function Test-Go {
     return $false
 }
 
+# Node.js lines the frontend toolchains accept. This mirrors the strictest
+# frontend engines range (jsdom: ^22.22.2 || ^24.15.0 || >=26.0.0); keep it in
+# step with console/package.json "engines".
+function Test-NodeVersionSupported {
+    param([Version]$Have)
+    switch ($Have.Major) {
+        22 { return $Have -ge [Version]"22.22.2" }
+        24 { return $Have -ge [Version]"24.15.0" }
+        default { return $Have.Major -ge 26 }
+    }
+}
+
 function Test-Node {
-    param([int]$NeedMajor)
     if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-        Write-Host "  node: missing (need >= $NeedMajor for evaluation-explorer and console builds)" -ForegroundColor Yellow
+        Write-Host "  node: missing (need $Script:NodeRequirement for evaluation-explorer and console builds)" -ForegroundColor Yellow
         return $false
     }
     if (-not (Get-Command npm, npm.cmd -ErrorAction SilentlyContinue)) {
         Write-Host "  npm: missing" -ForegroundColor Yellow
         return $false
     }
-    $have = Parse-MajorMinor (node --version)
-    $need = [Version]"$NeedMajor.0"
+    $have = $null
+    if ((node --version) -match '(\d+)\.(\d+)\.(\d+)') {
+        $have = [Version]"$($Matches[1]).$($Matches[2]).$($Matches[3])"
+    }
     if (-not $have) {
         Write-Host "  node: detected but version unknown" -ForegroundColor Yellow
         return $false
     }
-    if (Test-VersionAtLeast -Have $have -Need $need) {
+    if (Test-NodeVersionSupported -Have $have) {
         Write-Host "  node: detected (v$($have.ToString()))" -ForegroundColor Green
         $npmVer = (npm.cmd --version 2>$null)
         Write-Host "  npm: detected ($npmVer)" -ForegroundColor Green
         return $true
     }
-    Write-Host "  node: detected (v$($have.ToString())) but need >= $NeedMajor.0" -ForegroundColor Yellow
+    Write-Host "  node: detected (v$($have.ToString())) but need $Script:NodeRequirement" -ForegroundColor Yellow
     return $false
 }
 
@@ -516,7 +529,7 @@ if ($Script:BuildOnly) {
     $prereqsText = "git, make, curl, go >= $($goMin.ToString())"
 } else {
     $totalSteps = 6
-    $prereqsText = "git, make, curl, go >= $($goMin.ToString()), node >= $Script:NodeMinMajor, rg"
+    $prereqsText = "git, make, curl, go >= $($goMin.ToString()), node ($Script:NodeRequirement), rg"
 }
 
 Write-Host "`n[SETUP] ztd Windows dev environment setup`n" -ForegroundColor Cyan
@@ -529,7 +542,7 @@ if (-not (Test-Curl)) { $missing += "curl" }
 if (-not (Test-Go -Need $goMin)) { $missing += "go" }
 
 if (-not $Script:BuildOnly) {
-    if (-not (Test-Node -NeedMajor $Script:NodeMinMajor)) { $missing += "node" }
+    if (-not (Test-Node)) { $missing += "node" }
     if (-not (Test-Ripgrep)) { $missing += "rg" }
 }
 
@@ -546,7 +559,7 @@ if ($missing.Count -gt 0) {
     if (-not (Test-Curl)) { $missing += "curl" }
     if (-not (Test-Go -Need $goMin)) { $missing += "go" }
     if (-not $Script:BuildOnly) {
-        if (-not (Test-Node -NeedMajor $Script:NodeMinMajor)) { $missing += "node" }
+        if (-not (Test-Node)) { $missing += "node" }
         if (-not (Test-Ripgrep)) { $missing += "rg" }
     }
     if ($missing.Count -gt 0) {

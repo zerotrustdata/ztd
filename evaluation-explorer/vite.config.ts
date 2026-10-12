@@ -3,7 +3,7 @@
 
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { platformRelease } from './build-platform-release';
+import { platformRelease } from './build-platform-release.ts';
 
 export default defineConfig({
   define: { __ZTD_PLATFORM_RELEASE__: JSON.stringify(platformRelease) },
@@ -17,10 +17,13 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     target: 'es2022',
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-table'],
+        // Every node_modules module (react, react-dom, react-router-dom,
+        // @tanstack/react-table and their transitive dependencies) shares one
+        // vendor chunk whose hash stays stable across app-only changes.
+        codeSplitting: {
+          groups: [{ name: 'vendor', test: /[\\/]node_modules[\\/]/ }],
         },
       },
     },

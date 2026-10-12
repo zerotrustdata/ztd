@@ -15,7 +15,10 @@
 # (buf, protoc plugins, golangci-lint) is read from the root Makefile
 # so there is a single place to bump them (see ztd_make_var).
 
-ZTD_NODE_MIN_MAJOR=22
+# Node.js lines the frontend toolchains accept. This mirrors the strictest
+# frontend engines range (jsdom: ^22.22.2 || ^24.15.0 || >=26.0.0); keep it in
+# step with console/package.json "engines".
+ZTD_NODE_REQUIREMENT="22.22.2+, 24.15+, or 26+"
 ZTD_EXPLORER_DIR="evaluation-explorer"
 ZTD_EXPLORER_DIST="${ZTD_EXPLORER_DIR}/dist/index.html"
 ZTD_PATH_MARKER="# ztd: add repository root to PATH"
@@ -216,9 +219,19 @@ ztd_check_go() {
     return 1
 }
 
+# ztd_node_version_supported VERSION: true when VERSION is in a supported line.
+ztd_node_version_supported() {
+    local major="${1%%.*}"
+    case "$major" in
+        22) ztd_version_ge "$1" "22.22.2" ;;
+        24) ztd_version_ge "$1" "24.15.0" ;;
+        *) (( 10#$major >= 26 )) ;;
+    esac
+}
+
 ztd_check_node() {
     if ! ztd_have node; then
-        ztd_ui_fail "node: missing (need >= $ZTD_NODE_MIN_MAJOR for the evaluation-explorer and console builds)"
+        ztd_ui_fail "node: missing (need $ZTD_NODE_REQUIREMENT for the evaluation-explorer and console builds)"
         return 1
     fi
     if ! ztd_have npm; then
@@ -232,11 +245,11 @@ ztd_check_node() {
         ztd_ui_fail "node: detected but version unknown"
         return 1
     fi
-    if ztd_version_ge "$version" "${ZTD_NODE_MIN_MAJOR}.0"; then
+    if ztd_node_version_supported "$version"; then
         ztd_ui_ok "node $version, npm $(npm --version)"
         return 0
     fi
-    ztd_ui_fail "node: $version is older than ${ZTD_NODE_MIN_MAJOR}.0"
+    ztd_ui_fail "node: $version is not supported (need $ZTD_NODE_REQUIREMENT)"
     return 1
 }
 
@@ -579,7 +592,7 @@ ztd_setup_main() {
         ztd_ui_title "ztd ${platform} setup ${ZTD_UI_DIM}(build only)${ZTD_UI_RESET}"
     else
         total=6
-        prereqs="git, make, curl, go >= ${ZTD_GO_MIN}, node >= ${ZTD_NODE_MIN_MAJOR}, rg, bc, C compiler"
+        prereqs="git, make, curl, go >= ${ZTD_GO_MIN}, node (${ZTD_NODE_REQUIREMENT}), rg, bc, C compiler"
         ztd_ui_title "ztd ${platform} setup ${ZTD_UI_DIM}(contributor toolchain)${ZTD_UI_RESET}"
     fi
 

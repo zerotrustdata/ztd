@@ -23,21 +23,6 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   );
 }
 
-async function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.opacity = '0';
-  document.body.appendChild(ta);
-  ta.select();
-  document.execCommand('copy');
-  ta.remove();
-}
-
 export function CodeLine({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -47,7 +32,7 @@ export function CodeLine({ text }: { text: string }) {
         type="button"
         className="btn btn-sm"
         onClick={() => {
-          void copyText(text).then(() => {
+          void navigator.clipboard.writeText(text).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           });

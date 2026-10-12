@@ -70,7 +70,7 @@ make quickstart
 
 The setup script checks for Git, Make, curl, and Go 1.26.9, then builds `./ztd`. `make quickstart` starts a Gateway on localhost, signs in, and runs the first governed action. On Linux without a Secret Service keyring or ssh-agent, pass a provisioned master key with `QUICKSTART_ARGS='--master-key-file /abs/path/master.key'`. Rerunning it is safe.
 
-The Gateway-only track requires Git, Go 1.26.9, and Make. Fresh clones use the committed Console and Evaluation Explorer embeds. Node.js 22+ and npm are required only to rebuild those frontends. This track has no Ollama or model SDK requirement.
+The Gateway-only track requires Git, Go 1.26.9, and Make. Fresh clones use the committed Console and Evaluation Explorer embeds. Node.js 22.22.2+, 24.15+, or 26+ and npm are required only to rebuild those frontends. This track has no Ollama or model SDK requirement.
 
 For setup details, see the [Getting Started guide](docs/guides/getting_started.md#native-host-build).
 

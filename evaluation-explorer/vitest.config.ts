@@ -3,7 +3,7 @@
 
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import { platformRelease } from './build-platform-release';
+import { platformRelease } from './build-platform-release.ts';
 
 export default defineConfig({
   define: { __ZTD_PLATFORM_RELEASE__: JSON.stringify(platformRelease) },

@@ -51,7 +51,7 @@ This guide covers the owner-local observe frontend specifically and the audited 
 
 ## Prerequisites and workflow
 
-The builder output is a browser SPA. Use Node.js 22+ and the package manager required by the generated project.
+The builder output is a browser SPA. Use Node.js 22.22.2+, 24.15+, or 26+ and the package manager required by the generated project.
 
 1. Consume `contract-pack/builder-prompt.md`, `runtime-config.schema.json`, `observe.openapi.json`, `event-schemas.json`, `models.ts`, and `fixtures/` as builder inputs. Do not copy the adapter's transport implementation into generated presentation code.
 2. Generate a top-level SPA that imports the built `ztd-adapter` package.

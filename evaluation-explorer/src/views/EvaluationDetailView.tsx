@@ -8,12 +8,11 @@
 // summary, and public-safe methodology links.
 
 import { useMemo, useState } from 'react';
-import { type CellContext, type ColumnDef } from '@tanstack/react-table';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useActiveDatasetId } from '../state/dataset';
 import { CURRENT_PLATFORM_RELEASE, releaseLabel } from '../content/release';
 import { recordKey, useStoreState } from '../state/store';
-import { DataTable } from '../components/DataTable';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { RunFailuresSection } from '../components/RunFailuresSection';
 import {
   DetailRow,
@@ -76,13 +75,13 @@ export function EvaluationDetailView() {
     );
   }, [assignments, assignmentSearch]);
 
-  const assignmentColumns = useMemo<ColumnDef<AssignmentResult, unknown>[]>(
+  const assignmentColumns = useMemo<DataTableColumn<AssignmentResult>[]>(
     () => [
       {
         id: 'assignment',
         header: 'Assignment',
         accessorKey: 'assignment_id',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) => (
+        cell: ({ row }) => (
           <Link to={`/evaluations/${row.original.dataset_id}/${row.original.run_id}/assignments/${row.original.assignment_id}`}>
             {row.original.assignment_id}
           </Link>
@@ -94,7 +93,7 @@ export function EvaluationDetailView() {
         id: 'role',
         header: 'Role',
         accessorKey: 'role',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) => roleLabel(row.original.role),
+        cell: ({ row }) => roleLabel(row.original.role),
       },
       { id: 'rep', header: 'Rep', accessorKey: 'repetition' },
       { id: 'status', header: 'Status', accessorKey: 'terminal_status' },
@@ -102,7 +101,7 @@ export function EvaluationDetailView() {
         id: 'verification',
         header: 'Verification',
         accessorFn: (row: AssignmentResult) => row.verification_disposition ?? '',
-        cell: ({ row }: CellContext<AssignmentResult, unknown>) =>
+        cell: ({ row }) =>
           row.original.verification_disposition ?? '—',
       },
     ],

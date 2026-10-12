@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type SubmitEvent } from 'react';
 import {
   authenticatePasskey,
   registerBootstrapPasskey,
@@ -54,14 +54,14 @@ export function AuthScreen({ enrollmentToken, pendingReasons }: Props) {
 
   const supported = webAuthnAvailable();
 
-  const onSignIn = (e: FormEvent) => {
+  const onSignIn = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     const id = userId.trim();
     if (!id) return;
     void run(() => authenticatePasskey(id), 'Follow your browser prompt to sign in…');
   };
 
-  const onBootstrap = (e: FormEvent) => {
+  const onBootstrap = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     void run(() => registerBootstrapPasskey(displayName.trim()), 'Follow your browser prompt to create your passkey…');
   };
