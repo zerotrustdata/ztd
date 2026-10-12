@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "2.14.0",
-    "tsx": "^4.20.5",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3"
   },
   "scripts": {
