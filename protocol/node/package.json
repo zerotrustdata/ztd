@@ -10,7 +10,7 @@
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "2.16.0",
     "tsx": "^4.23.15",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
