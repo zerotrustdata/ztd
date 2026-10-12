@@ -28,7 +28,7 @@ jobs:
 
       - name: Preserve governed onboarding evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-onboarding-evidence
           path: |
@@ -57,7 +57,7 @@ jobs:
 
       - name: Preserve onboarding logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: onboarding-${{ matrix.distro }}
           path: ${{ runner.temp }}/onboarding/
@@ -213,7 +213,7 @@ jobs:
 
       - name: Preserve Operator lifecycle evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: operator-deployment-lifecycle
           path: ${{ runner.temp }}/ztd-deployment-lifecycle/out/
