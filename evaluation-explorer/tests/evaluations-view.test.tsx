@@ -1,0 +1,167 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Licensed under the Business Source License 1.1 — see LICENSE for details.
+
+import { beforeEach, describe, expect, it } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import type { EvaluationSummary, ModelSummary, SnapshotRecord } from '../src/contract/types';
+import { evalStore } from '../src/state/store';
+import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
+import { EvaluationsView } from '../src/views/EvaluationsView';
+
+function evaluation(
+  datasetId: string,
+  runId: string,
+  startedAt: string,
+): EvaluationSummary {
+  return {
+    schema_version: '1.3.0',
+    kind: 'evaluation_summary',
+    dataset_id: datasetId,
+    quality_state: 'live_in_progress',
+    observed_at: startedAt,
+    run_id: runId,
+    suite_id: 'eval-init-suite',
+    arm: 'platform',
+    evaluation_unit: 'model',
+    model_role_mapping: {},
+    lifecycle_state: 'running',
+    assignment_total: 75,
+    assignment_completed: 10,
+    assignment_failed: 0,
+    terminal_outcomes: { completed: 10, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+    started_at: startedAt,
+    verifier_state: 'not_applicable',
+    headline_metrics: {},
+  };
+}
+
+describe('EvaluationsView', () => {
+  beforeEach(() => {
+    evalStore.loadFixtures(
+      [
+        evaluation('ds-live-init-campaign-1789654273', 'init-campaign-1789654273', '2026-09-17T10:00:00Z'),
+        evaluation('ds-live-eval-init-qwen3-4b-1789657337', 'eval-init-qwen3-4b-1789657337', '2026-09-17T12:00:00Z'),
+      ] as unknown as SnapshotRecord[],
+      [],
+    );
+  });
+
+  it('shows only fully evaluated, verified role leaders and their ranking evidence', () => {
+    const model: ModelSummary = {
+      schema_version: '1.6.0', kind: 'model_summary', dataset_id: 'ds-leader',
+      observed_at: '2026-10-06T00:00:00Z', quality_state: 'exploratory_verified',
+      variant_id: 'leader', served_model_tag: 'qwen:4b', display_name: 'Qualified model',
+      role: 'assistant', inventory_only: false, evaluation_coverage: 1,
+      pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
+    };
+    evalStore.loadFixtures([
+      model,
+      { ...model, variant_id: 'unverified', display_name: 'Unverified model', role: 'primary', quality_state: 'exploratory_partial' },
+      { ...model, variant_id: 'partial', display_name: 'Partial model', role: 'lite', evaluation_coverage: 0.5 },
+      { ...evaluation('ds-leader', 'run-leader', '2026-10-06T00:00:00Z'),
+        evaluation_unit: 'model', lifecycle_state: 'completed', elapsed_seconds: 60 },
+    ] as SnapshotRecord[], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('link', { name: 'Qualified model' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Unverified model' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
+    expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
+    expect(panel.getByText('4B')).toBeInTheDocument();
+    expect(panel.getByRole('columnheader', { name: 'Eval time' })).toBeInTheDocument();
+  });
+
+  it('only lists quality filter options that exist in the current runs', () => {
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <EvaluationsView />
+      </MemoryRouter>,
+    );
+
+    const qualityFilter = screen.getByRole('combobox', { name: 'Filter by quality' });
+    const labels = Array.from(qualityFilter.querySelectorAll('option')).map((option) => option.textContent);
+    expect(labels).toEqual([
+      'All quality states',
+      'In progress · unverified',
+    ]);
+    expect(labels).not.toContain('Run-scoped verification passed');
+  });
+
+  it('shows running and failed runs alongside verified history by default', () => {
+    evalStore.loadFixtures([
+      evaluation('ds-running', 'run-running', '2026-10-06T12:00:00Z'),
+      { ...evaluation('ds-verified', 'run-verified', '2026-10-06T10:00:00Z'),
+        quality_state: 'exploratory_verified', lifecycle_state: 'completed', verifier_state: 'passed' },
+      { ...evaluation('ds-failed', 'run-failed', '2026-10-06T11:00:00Z'),
+        quality_state: 'terminal_failed', lifecycle_state: 'failed' },
+    ] as SnapshotRecord[], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
+
+    expect(screen.getByRole('combobox', { name: 'Filter by quality' })).toHaveValue('all');
+    for (const run of ['run-running', 'run-verified', 'run-failed']) {
+      expect(screen.getByRole('link', { name: run })).toBeInTheDocument();
+    }
+  });
+
+  it('honors an explicit verified-only history filter', () => {
+    evalStore.loadFixtures([
+      evaluation('ds-running', 'run-running', '2026-10-06T12:00:00Z'),
+      { ...evaluation('ds-verified', 'run-verified', '2026-10-06T10:00:00Z'),
+        quality_state: 'exploratory_verified', lifecycle_state: 'completed', verifier_state: 'passed' },
+    ] as SnapshotRecord[], []);
+    render(<MemoryRouter initialEntries={['/?release=all&quality=exploratory_verified']}><EvaluationsView /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: 'run-verified' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'run-running' })).not.toBeInTheDocument();
+  });
+
+  it('lists runs from every dataset without a dataset selector', () => {
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <EvaluationsView />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId('dataset-selector')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'init-campaign-1789654273' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'eval-init-qwen3-4b-1789657337' })).toBeInTheDocument();
+    expect(screen.getByTitle('ds-live-init-campaign-1789654273')).toBeInTheDocument();
+    expect(screen.getByTitle('ds-live-eval-init-qwen3-4b-1789657337')).toBeInTheDocument();
+  });
+
+  it('renders typed model headline coverage without system-only cards', () => {
+    const summary: EvaluationSummary = {
+      ...evaluation('ds-current', 'run-current', '2026-09-22T08:00:00Z'),
+      schema_version: '1.5.0',
+      lifecycle_state: 'completed',
+      assignment_completed: 3,
+      assignment_failed: 1,
+      terminal_outcomes: { completed: 3, model_failed: 1, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+      verifier_state: 'not_run',
+      headline_metrics: {
+        pass_rate: { value: 0.75, unit: 'ratio', observed_count: 4, eligible_count: 4, unavailable_count: 0 },
+        latency_p50_ms: { value: 640, unit: 'milliseconds', observed_count: 3, eligible_count: 4, unavailable_count: 1 },
+        output_throughput_p50_tokens_per_second: { unavailable_reason: 'incomplete_contributor_evidence', unit: 'tokens_per_second', observed_count: 0, eligible_count: 4, unavailable_count: 4 },
+      },
+    };
+    evalStore.loadFixtures([summary], []);
+
+    render(
+      <MemoryRouter initialEntries={['/evaluations/ds-current/run-current']}>
+        <Routes>
+          <Route path="/evaluations/:datasetId/:runId" element={<EvaluationDetailView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('metric-pass-rate')).toHaveTextContent('4 observed / 4 eligible');
+    expect(screen.getByTestId('metric-latency-p50')).toHaveTextContent('3 observed / 4 eligible');
+    expect(screen.getByTestId('metric-output-throughput-p50')).toHaveTextContent('0 observed / 4 eligible');
+    expect(screen.queryByTestId('metric-primary-invocation-share')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('metric-correlated-failure-rate')).not.toBeInTheDocument();
+    expect(screen.getByText(/heterogeneous routing and correlation metrics appear only for system evaluations/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Not yet verified')).toHaveLength(2);
+    expect(screen.queryByText('not_run')).not.toBeInTheDocument();
+  });
+});

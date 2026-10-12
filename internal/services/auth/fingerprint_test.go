@@ -1,0 +1,361 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package auth
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+func TestGenerateSystemFingerprint(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("generates valid fingerprint", func(t *testing.T) {
+		t.Parallel()
+		fingerprint, err := GenerateSystemFingerprint(logger)
+
+		require.NoError(t, err)
+		assert.NotNil(t, fingerprint)
+		assert.NotEmpty(t, fingerprint.Fingerprint)
+		assert.Len(t, fingerprint.Fingerprint, 64)
+		assert.Equal(t, runtime.GOOS, fingerprint.OS)
+		assert.Equal(t, runtime.GOARCH, fingerprint.Architecture)
+		assert.Equal(t, runtime.NumCPU(), fingerprint.CPUCount)
+	})
+
+	t.Run("fingerprint is stable across calls", func(t *testing.T) {
+		t.Parallel()
+		fp1, err1 := GenerateSystemFingerprint(logger)
+		require.NoError(t, err1)
+
+		fp2, err2 := GenerateSystemFingerprint(logger)
+		require.NoError(t, err2)
+
+		assert.Equal(t, fp1.Fingerprint, fp2.Fingerprint)
+		assert.Equal(t, fp1.OS, fp2.OS)
+		assert.Equal(t, fp1.Architecture, fp2.Architecture)
+		assert.Equal(t, fp1.CPUCount, fp2.CPUCount)
+	})
+
+	t.Run("includes machine ID when available", func(t *testing.T) {
+		t.Parallel()
+		fingerprint, err := GenerateSystemFingerprint(logger)
+
+		require.NoError(t, err)
+		assert.NotEmpty(t, fingerprint.MachineID)
+	})
+}
+
+func TestGetMachineID(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("returns machine ID for current OS", func(t *testing.T) {
+		t.Parallel()
+		machineID, err := getMachineID(logger)
+
+		switch runtime.GOOS {
+		case string(constants.PlatformLinux), string(constants.PlatformDarwin), string(constants.PlatformWindows):
+			require.NoError(t, err)
+			assert.NotEmpty(t, machineID)
+		default:
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unsupported operating system")
+		}
+	})
+
+	t.Run("handles each supported OS correctly", func(t *testing.T) {
+		t.Parallel()
+		machineID, err := getMachineID(logger)
+
+		switch runtime.GOOS {
+		case string(constants.PlatformLinux):
+			require.NoError(t, err)
+			assert.NotEmpty(t, machineID)
+			assert.NotContains(t, machineID, string(constants.PlatformDarwin))
+		case string(constants.PlatformDarwin):
+			require.NoError(t, err)
+			assert.NotEmpty(t, machineID)
+		case string(constants.PlatformWindows):
+			require.NoError(t, err)
+			assert.NotEmpty(t, machineID)
+		}
+	})
+}
+
+func TestGetLinuxMachineID(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("reads machine ID from standard locations", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS != string(constants.PlatformLinux) {
+			t.Skip("Linux only")
+		}
+		machineID, err := getLinuxMachineID(logger)
+		require.NoError(t, err)
+		assert.NotEmpty(t, machineID)
+	})
+
+	t.Run("handles missing machine ID files", func(t *testing.T) {
+		t.Parallel()
+		_, err := getLinuxMachineID(logger)
+
+		if err != nil {
+			assert.Contains(t, err.Error(), "could not read machine ID")
+		}
+	})
+}
+
+func TestFingerprintComponents(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("fingerprint changes with different system properties", func(t *testing.T) {
+		t.Parallel()
+		fp, err := GenerateSystemFingerprint(logger)
+		require.NoError(t, err)
+
+		assert.NotEmpty(t, fp.OS)
+		assert.NotEmpty(t, fp.Architecture)
+		assert.Positive(t, fp.CPUCount)
+		assert.NotEmpty(t, fp.Fingerprint)
+	})
+}
+
+func TestMachineIDWithTemporaryFile(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("reads from first available path", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS != string(constants.PlatformLinux) {
+			t.Skip("Linux only")
+		}
+		machineID, err := getLinuxMachineID(logger)
+		require.NoError(t, err)
+		assert.NotEmpty(t, machineID)
+	})
+}
+
+func TestFingerprintIncludesHostname(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("fingerprint incorporates hostname for container differentiation", func(t *testing.T) {
+		t.Parallel()
+		fp, err := GenerateSystemFingerprint(logger)
+		require.NoError(t, err)
+
+		hostname, err := os.Hostname()
+		require.NoError(t, err)
+		assert.NotEmpty(t, hostname, "hostname should be available")
+
+		assert.Len(t, fp.Fingerprint, 64)
+
+		machineID, _ := getMachineID(logger)
+		if machineID == "" {
+			machineID = "fallback"
+		}
+
+		componentsWithHostname := []string{
+			fmt.Sprintf("os:%s", runtime.GOOS),
+			fmt.Sprintf("arch:%s", runtime.GOARCH),
+			fmt.Sprintf("cpu_count:%d", runtime.NumCPU()),
+			fmt.Sprintf("machine_id:%s", machineID),
+			fmt.Sprintf("hostname:%s", hostname),
+		}
+		dataWith := strings.Join(componentsWithHostname, "|")
+		hashWith := sha256.Sum256([]byte(dataWith))
+		expectedFingerprint := hex.EncodeToString(hashWith[:])
+
+		assert.Equal(t, expectedFingerprint, fp.Fingerprint,
+			"fingerprint should match hash of components including hostname")
+	})
+}
+
+func TestFingerprintStability(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("multiple calls produce identical results", func(t *testing.T) {
+		t.Parallel()
+		var fingerprints []string
+
+		for i := 0; i < 5; i++ {
+			fp, err := GenerateSystemFingerprint(logger)
+			require.NoError(t, err)
+			fingerprints = append(fingerprints, fp.Fingerprint)
+		}
+
+		for i := 1; i < len(fingerprints); i++ {
+			assert.Equal(t, fingerprints[0], fingerprints[i],
+				"Fingerprint %d should match fingerprint 0", i)
+		}
+	})
+}
+
+func TestGetLinuxMachineIDFromCustomPath(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	t.Run("empty machine ID file is handled", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := testutil.TempDir(t)
+		emptyFile := filepath.Join(tmpDir, constants.TestEmptyMachineIDFilename)
+		err := os.WriteFile(emptyFile, []byte(""), 0644)
+		require.NoError(t, err)
+
+		_, err = getLinuxMachineID(logger)
+		if err != nil {
+			require.Error(t, err)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// getDarwinMachineID
+// ---------------------------------------------------------------------------
+
+func TestGetDarwinMachineID_PreferencesFileMissing_ReturnsFallback(t *testing.T) {
+	t.Parallel()
+	// On Linux (the test environment) the macOS plist path does not exist.
+	// getDarwinMachineID must handle the missing-file case and return a
+	// hostname-based fallback instead of erroring.
+	if runtime.GOOS == string(constants.PlatformDarwin) {
+		t.Skip("skipped on Darwin: file likely exists and takes the hash path")
+	}
+
+	id, err := getDarwinMachineID()
+	require.NoError(t, err, "getDarwinMachineID must not error when plist is missing")
+	assert.NotEmpty(t, id)
+	assert.True(t, strings.HasPrefix(id, "darwin-"), "fallback ID must have darwin- prefix, got: %s", id)
+}
+
+func TestGetDarwinMachineID_PreferencesFileExists_ReturnsHash(t *testing.T) {
+	t.Parallel()
+	if _, err := os.Stat("/Library/Preferences/SystemConfiguration/preferences.plist"); os.IsNotExist(err) {
+		t.Skip("skipping hash path test: macOS preferences plist does not exist in this environment")
+	}
+
+	id, err := getDarwinMachineID()
+	require.NoError(t, err)
+	assert.NotEmpty(t, id)
+	assert.Len(t, id, 32, "hash must be truncated to 32 hex chars")
+}
+
+func TestGetDarwinMachineID_FallbackContainsHostname(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == string(constants.PlatformDarwin) {
+		t.Skip("skipped on Darwin: plist file exists so fallback branch not taken")
+	}
+
+	hostname, err := os.Hostname()
+	require.NoError(t, err)
+
+	id, err := getDarwinMachineID()
+	require.NoError(t, err)
+	assert.Contains(t, id, hostname, "fallback ID must embed hostname")
+}
+
+func TestGetMachineIDWithPlatform_UnsupportedOS(t *testing.T) {
+	t.Parallel()
+
+	_, err := getMachineIDWithPlatform(testutil.NewTestLogger(), "solaris")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrFingerprintUnsupportedOS)
+	assert.Contains(t, err.Error(), "solaris")
+}
+
+func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+
+	baseFp, err := GenerateSystemFingerprint(logger)
+	require.NoError(t, err)
+
+	t.Run("differentiates by capabilities", func(t *testing.T) {
+		fpInference, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityInference}})
+		require.NoError(t, err)
+
+		fpData, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData}})
+		require.NoError(t, err)
+
+		fpProvenance, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}})
+		require.NoError(t, err)
+
+		fpObserver, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}})
+		require.NoError(t, err)
+
+		assert.NotEqual(t, baseFp.Fingerprint, fpInference.Fingerprint)
+		assert.NotEqual(t, fpInference.Fingerprint, fpData.Fingerprint)
+		assert.NotEqual(t, fpInference.Fingerprint, fpProvenance.Fingerprint)
+		assert.NotEqual(t, fpInference.Fingerprint, fpObserver.Fingerprint)
+		assert.NotEqual(t, fpData.Fingerprint, fpProvenance.Fingerprint)
+		assert.NotEqual(t, fpData.Fingerprint, fpObserver.Fingerprint)
+		assert.NotEqual(t, fpProvenance.Fingerprint, fpObserver.Fingerprint)
+	})
+
+	t.Run("differentiates by local dir", func(t *testing.T) {
+		fpDir1, err := GenerateOperatorFingerprint(logger, FingerprintOptions{LocalDir: "/var/run/op1"})
+		require.NoError(t, err)
+
+		fpDir2, err := GenerateOperatorFingerprint(logger, FingerprintOptions{LocalDir: "/var/run/op2"})
+		require.NoError(t, err)
+
+		assert.NotEqual(t, fpDir1.Fingerprint, fpDir2.Fingerprint)
+	})
+
+	t.Run("differentiates by account", func(t *testing.T) {
+		fpUser1, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Account: "alice"})
+		require.NoError(t, err)
+
+		fpUser2, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Account: "bob"})
+		require.NoError(t, err)
+
+		assert.NotEqual(t, fpUser1.Fingerprint, fpUser2.Fingerprint)
+	})
+
+	t.Run("differentiates by port", func(t *testing.T) {
+		fpPort1, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Port: 8443})
+		require.NoError(t, err)
+
+		fpPort2, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Port: 8444})
+		require.NoError(t, err)
+
+		assert.NotEqual(t, fpPort1.Fingerprint, fpPort2.Fingerprint)
+	})
+
+	t.Run("combines system info with local dir, account, port, and capabilities", func(t *testing.T) {
+		fpFull, err := GenerateOperatorFingerprint(logger, FingerprintOptions{
+			LocalDir:     "/data/ztd/operators/inference",
+			Account:      "service-inference",
+			Port:         9090,
+			Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityInference},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, filepath.Clean("/data/ztd/operators/inference"), fpFull.LocalDir)
+		assert.Equal(t, "service-inference", fpFull.Account)
+		assert.Equal(t, 9090, fpFull.Port)
+		assert.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityInference}, fpFull.Capabilities)
+		assert.Len(t, fpFull.Fingerprint, 64)
+	})
+}

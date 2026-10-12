@@ -1,0 +1,101 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package auth
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+func TestGenerateEnrollmentToken_Success(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	writeTestCLICert(t, fileSvc, cfg)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": "abc123"})
+	}
+	startTLSEnrollServer(t, cfg, handler)
+
+	r := newPasskeyRegistrar(fileSvc, cfg, PasskeyRegistrarOptions{Browser: func(string) error { return nil }})
+	mtlsClient, err := BuildMTLSClient(fileSvc, cfg, 0)
+	require.NoError(t, err)
+
+	token, err := r.generateEnrollmentToken(context.Background(), mtlsClient, "test-session")
+	require.NoError(t, err)
+	assert.Equal(t, "abc123", token)
+}
+
+func TestGenerateEnrollmentToken_NonCreatedStatusReturnsError(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	writeTestCLICert(t, fileSvc, cfg)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	startTLSEnrollServer(t, cfg, handler)
+
+	r := newPasskeyRegistrar(fileSvc, cfg, PasskeyRegistrarOptions{Browser: func(string) error { return nil }})
+	mtlsClient, err := BuildMTLSClient(fileSvc, cfg, 0)
+	require.NoError(t, err)
+
+	_, err = r.generateEnrollmentToken(context.Background(), mtlsClient, "test-session")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enrollment token generation failed")
+}
+
+func TestGenerateEnrollmentToken_EmptyTokenReturnsErrEnrollmentTokenGenerationFailed(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	writeTestCLICert(t, fileSvc, cfg)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": ""})
+	}
+	startTLSEnrollServer(t, cfg, handler)
+
+	r := newPasskeyRegistrar(fileSvc, cfg, PasskeyRegistrarOptions{Browser: func(string) error { return nil }})
+	mtlsClient, err := BuildMTLSClient(fileSvc, cfg, 0)
+	require.NoError(t, err)
+
+	_, err = r.generateEnrollmentToken(context.Background(), mtlsClient, "test-session")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenGenerationFailed)
+}
+
+func TestGenerateEnrollmentToken_InvalidJSONReturnsErrInvalidJSONResponse(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	writeTestCLICert(t, fileSvc, cfg)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("not json"))
+	}
+	startTLSEnrollServer(t, cfg, handler)
+
+	r := newPasskeyRegistrar(fileSvc, cfg, PasskeyRegistrarOptions{Browser: func(string) error { return nil }})
+	mtlsClient, err := BuildMTLSClient(fileSvc, cfg, 0)
+	require.NoError(t, err)
+
+	_, err = r.generateEnrollmentToken(context.Background(), mtlsClient, "test-session")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
+}

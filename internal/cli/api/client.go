@@ -1,0 +1,233 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package api
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/cli/sse"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+)
+
+type Client struct {
+	httpClient *http.Client
+	cfg        *config.Config
+	creds      *auth.Credentials
+	baseURL    string // Optional override for testing
+}
+
+const defaultClientTimeout = 5 * time.Second
+
+func NewClient(fileSvc fs.RuntimeFileService, cfg *config.Config) (*Client, error) {
+	return NewClientWithURL(fileSvc, cfg, "")
+}
+
+// NewClientWithTimeout creates a client with a custom request timeout. A zero
+// timeout uses the default CLI API timeout.
+func NewClientWithTimeout(fileSvc fs.RuntimeFileService, cfg *config.Config, timeout time.Duration) (*Client, error) {
+	return newClient(fileSvc, cfg, "", ClientOptions{Timeout: timeout})
+}
+
+// ClientOptions tunes a client for callers that issue many concurrent requests.
+// Zero values select the defaults used by NewClient.
+type ClientOptions struct {
+	// Timeout is the per-request timeout; zero uses the default CLI API timeout.
+	Timeout time.Duration
+	// MaxIdleConnsPerHost sizes the idle connection pool so a burst of
+	// concurrent requests reuses connections instead of repeating TLS
+	// handshakes; zero keeps the net/http default.
+	MaxIdleConnsPerHost int
+}
+
+// NewClientWithOptions creates a client with the given tuning.
+func NewClientWithOptions(fileSvc fs.RuntimeFileService, cfg *config.Config, opts ClientOptions) (*Client, error) {
+	return newClient(fileSvc, cfg, "", opts)
+}
+
+// NewClientWithURL creates a client with an optional base URL override for testing.
+// If baseURL is empty, it uses cfg.OperatorHTTPURL().
+func NewClientWithURL(fileSvc fs.RuntimeFileService, cfg *config.Config, baseURL string) (*Client, error) {
+	return newClient(fileSvc, cfg, baseURL, ClientOptions{})
+}
+
+func newClient(fileSvc fs.RuntimeFileService, cfg *config.Config, baseURL string, opts ClientOptions) (*Client, error) {
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = defaultClientTimeout
+	}
+	creds, err := auth.LoadCredentials(fileSvc, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrFailedToLoadCredentials, err)
+	}
+
+	if creds == nil {
+		return nil, constants.ErrNotAuthenticated
+	}
+
+	cert, err := auth.LoadCLICertificate(fileSvc, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	trustBundle, err := auth.ReadTrustBundle(fileSvc, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrFailedToReadTrustBundle, err)
+	}
+
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(trustBundle) {
+		return nil, constants.ErrFailedToParseTrustBundle
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caPool,
+		MinVersion:   tls.VersionTLS13,
+	}
+
+	transport := httpclient.NewIPv4Transport(tlsConfig)
+	// Custom TLS configuration otherwise disables HTTP/2 negotiation. Share
+	// connections across concurrent dispatches instead of bursting TCP dials.
+	transport.ForceAttemptHTTP2 = true
+	transport.MaxIdleConnsPerHost = opts.MaxIdleConnsPerHost
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
+
+	return &Client{
+		httpClient: httpClient,
+		cfg:        cfg,
+		creds:      creds,
+		baseURL:    baseURL,
+	}, nil
+}
+
+// StatusError is a Gateway response with an HTTP error status. It matches
+// constants.ErrHTTPStatusError with errors.Is; use errors.As (or
+// IsUnauthorized) to branch on the status code instead of the rendered text.
+type StatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("%s: status %d: %s", constants.ErrHTTPStatusError, e.StatusCode, e.Body)
+}
+
+// Is reports whether target is constants.ErrHTTPStatusError.
+func (e *StatusError) Is(target error) bool {
+	return target == constants.ErrHTTPStatusError
+}
+
+// IsUnauthorized reports whether err carries a Gateway 401: the CLI session
+// is expired or invalid and 'ztd auth refresh' is the recovery path.
+func IsUnauthorized(err error) bool {
+	var statusErr *StatusError
+	return errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusUnauthorized
+}
+
+func (c *Client) DoRequest(method, path string, body interface{}) ([]byte, error) {
+	return c.DoRequestContext(context.Background(), method, path, body)
+}
+
+func (c *Client) DoRequestContext(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrHTTPRequestMarshalFailed, err)
+		}
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+
+	baseURL := c.baseURL
+	if baseURL == "" {
+		baseURL = c.cfg.OperatorHTTPURL()
+	}
+	url := baseURL + path
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrHTTPRequestCreateFailed, err)
+	}
+
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	req.Header.Set(constants.HeaderOperatorSessionID, c.creds.OperatorSessionID)
+	req.Header.Set(constants.HeaderCLISessionID, c.creds.CLISessionID)
+	req.Header.Set(constants.HeaderUserID, c.creds.UserID)
+	req.Header.Set(constants.HeaderOperatorID, c.creds.OperatorID)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrHTTPRequestExecuteFailed, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrHTTPResponseReadFailed, err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
+	}
+
+	// Validate response is valid JSON
+	if !json.Valid(respBody) {
+		return nil, fmt.Errorf("%w: %s", constants.ErrInvalidJSONResponse, string(respBody))
+	}
+
+	return respBody, nil
+}
+
+func (c *Client) Get(path string) ([]byte, error) {
+	return c.DoRequest("GET", path, nil)
+}
+
+func (c *Client) Post(path string, body interface{}) ([]byte, error) {
+	return c.DoRequest("POST", path, body)
+}
+
+func (c *Client) Put(path string, body interface{}) ([]byte, error) {
+	return c.DoRequest("PUT", path, body)
+}
+
+func (c *Client) Delete(path string) ([]byte, error) {
+	return c.DoRequest("DELETE", path, nil)
+}
+
+// NewSSEClient uses the same mTLS identity and CLI session as API requests.
+// The caller must bound its lifetime with a context and await SetOnConnect
+// before starting work whose ephemeral events it needs to receive.
+func (c *Client) NewSSEClient() *sse.Client {
+	streamHTTP := *c.httpClient
+	streamHTTP.Timeout = 0
+	baseURL := c.baseURL
+	if baseURL == "" {
+		baseURL = c.cfg.OperatorHTTPURL()
+	}
+	stream := sse.NewClient(baseURL+constants.APIPaths.SSEStream+"?since_id=0", &streamHTTP)
+	stream.SetHeader(constants.HeaderCLISessionID, c.creds.CLISessionID)
+	return stream
+}

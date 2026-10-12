@@ -1,0 +1,720 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/timesvc"
+)
+
+// DocumentStoreService provides collection/ID-based document CRUD operations.
+type DocumentStoreService struct {
+	db     *sqliteutil.DB
+	logger *slog.Logger
+
+	// kv holds observed-tier Operator heartbeat telemetry, which is overlaid
+	// onto Operator documents on read (operator_heartbeat.go).
+	kv *KVStoreService
+
+	// statusObserver receives Operator status transitions. It is bound once
+	// during Gateway construction; an unbound store, as in unit tests, reports
+	// to no one.
+	statusObserver atomic.Pointer[OperatorStatusObserver]
+}
+
+// BindOperatorStatusObserver registers the observer told about every Operator
+// status transition the Gateway persists. It MUST be called once
+// during construction, before the Gateway serves. It rejects a nil
+// (constants.ErrOperatorStatusObserverNil) or second
+// (constants.ErrOperatorStatusObserverBound) binding.
+func (s *DocumentStoreService) BindOperatorStatusObserver(observer OperatorStatusObserver) error {
+	if observer == nil {
+		return constants.ErrOperatorStatusObserverNil
+	}
+	if !s.statusObserver.CompareAndSwap(nil, &observer) {
+		return constants.ErrOperatorStatusObserverBound
+	}
+	return nil
+}
+
+// NotifyOperatorStatusChanged reports a status transition that is already
+// persisted to the bound observer. Callers that change an Operator's status
+// call this after the write succeeds.
+func (s *DocumentStoreService) NotifyOperatorStatusChanged(ctx context.Context, t OperatorStatusTransition) {
+	if observer := s.statusObserver.Load(); observer != nil {
+		(*observer).OperatorStatusChanged(ctx, t)
+	}
+}
+
+// NotifyOperatorEnrolled reports a brand-new Operator document, persisted as
+// offline until its command subscription is established, to the bound observer. It satisfies pubsub.PlatformEnrollmentDocStore
+// with primitive args so the platform enrollment handlers (which must not
+// import this package) can announce an enrollment the same way
+// NotifyOperatorStatusChanged announces a later transition.
+func (s *DocumentStoreService) NotifyOperatorEnrolled(ctx context.Context, operatorID, userID, name string) {
+	s.NotifyOperatorStatusChanged(ctx, OperatorStatusTransition{
+		OperatorID: operatorID,
+		UserID:     userID,
+		Name:       name,
+		Status:     constants.OperatorStatusOffline,
+	})
+}
+
+// NewDocumentStoreService creates a new document store service.
+func NewDocumentStoreService(db *sqliteutil.DB, logger *slog.Logger) *DocumentStoreService {
+	return &DocumentStoreService{
+		db:     db,
+		logger: logger,
+		kv:     NewKVStoreService(db, logger),
+	}
+}
+
+const operatorSessionIdentityQuery = `SELECT id, data, created_at, updated_at FROM documents
+ WHERE collection = ? AND json_extract(data, '$.operator_session_id') = ? LIMIT 2`
+
+// FindOperatorsBySession reads identity bindings without reconciling heartbeat
+// liveness. Two matches are enough for the authentication owner to reject an
+// ambiguous binding; terminated identities remain visible for its checks.
+func (s *DocumentStoreService) FindOperatorsBySession(ctx context.Context, sessionID string) ([]*models.Document, error) {
+	collection := marshaler.CollectionName(constants.CollectionOperators)
+	docs, err := sqliteutil.MaterializeRows(ctx, s.db, operatorSessionIdentityQuery, []interface{}{collection, sessionID},
+		func(row *sql.Rows) (*models.Document, error) {
+			var id, data, createdAt, updatedAt string
+			if err := row.Scan(&id, &data, &createdAt, &updatedAt); err != nil {
+				return nil, fmt.Errorf("scan operator session binding: %w", err)
+			}
+			return scanDocument(collection, id, data, createdAt, updatedAt)
+		})
+	if err != nil {
+		return nil, fmt.Errorf("find operator session bindings: %w", err)
+	}
+	return docs, nil
+}
+
+// DocCollectionHasDocuments reports whether collection holds at least one
+// document without reading any document data. ctx bounds the read, including
+// its wait for a database connection.
+func (s *DocumentStoreService) DocCollectionHasDocuments(ctx context.Context, collection string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowWithRetry(ctx,
+		"SELECT EXISTS(SELECT 1 FROM documents WHERE collection = ?)", collection,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("gateway: document store: collection exists: %w", err)
+	}
+	return exists, nil
+}
+
+// DocGet retrieves a document by collection and id.
+// Returns a typed Document with native time.Time timestamps, or nil if not found.
+// An Operator document carries its derived heartbeat staleness
+// (deriveOperatorStaleness). ctx bounds the read, including its wait for a
+// database connection.
+func (s *DocumentStoreService) DocGet(ctx context.Context, collection, id string) (*models.Document, error) {
+	doc, err := s.docGet(ctx, collection, id)
+	if err != nil || doc == nil {
+		return doc, err
+	}
+	if err := deriveOperatorStaleness(time.Now().UTC(), doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+// docGet is DocGet with the stored status, as persisted.
+func (s *DocumentStoreService) docGet(ctx context.Context, collection, id string) (*models.Document, error) {
+	var dataJSON string
+	var createdAtStr, updatedAtStr string
+	err := s.db.QueryRowWithRetry(ctx,
+		"SELECT data, created_at, updated_at FROM documents WHERE collection = ? AND id = ?",
+		collection, id,
+	).Scan(&dataJSON, &createdAtStr, &updatedAtStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("gateway: document store: get: %w", err)
+	}
+	doc, err := scanDocument(collection, id, dataJSON, createdAtStr, updatedAtStr)
+	if err != nil {
+		return nil, err
+	}
+	s.overlayOperatorHeartbeats(ctx, doc)
+	return doc, nil
+}
+
+// DocCreate creates a document only if it does not already exist. data must be valid JSON.
+// Timestamps are managed by the service - created_at is set once on insert.
+func (s *DocumentStoreService) DocCreate(ctx context.Context, collection, id string, data json.RawMessage) error {
+	var userDoc map[string]json.RawMessage
+	if err := json.Unmarshal(data, &userDoc); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalDocument, err)
+	}
+	if userDoc == nil {
+		userDoc = make(map[string]json.RawMessage)
+	}
+	delete(userDoc, "id")
+	delete(userDoc, "created_at")
+	delete(userDoc, "updated_at")
+
+	dataJSON, err := json.Marshal(userDoc)
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
+	}
+
+	now := time.Now().UTC()
+	nowStr := timesvc.FormatTimestamp(now)
+
+	_, err = s.db.ExecWithRetry(ctx,
+		`INSERT INTO documents (collection, id, data, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		collection, id, string(dataJSON), nowStr, nowStr,
+	)
+	if err != nil && sqliteutil.IsUniqueConstraintError(err) {
+		return constants.ErrAlreadyExists
+	}
+	if err != nil {
+		return fmt.Errorf("gateway: document store: create: %w", err)
+	}
+	return nil
+}
+
+// DocSet creates or replaces a document. data must be valid JSON.
+// Timestamps are managed by the service - created_at is set once on insert and
+// never overwritten. updated_at is refreshed on every upsert.
+func (s *DocumentStoreService) DocSet(ctx context.Context, collection, id string, data json.RawMessage) error {
+	return s.DocSetWithTimestamps(ctx, collection, id, data, time.Time{}, time.Time{})
+}
+
+// DocSetWithTimestamps creates or replaces a document with custom timestamps.
+// This is a test-only hook for setting specific created_at/updated_at values.
+// For production use, call DocSet instead which auto-manages timestamps.
+// Zero-valued timestamps are replaced with time.Now().UTC().
+func (s *DocumentStoreService) DocSetWithTimestamps(ctx context.Context, collection, id string, data json.RawMessage, createdAt, updatedAt time.Time) error {
+	var userDoc map[string]json.RawMessage
+	if err := json.Unmarshal(data, &userDoc); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalDocument, err)
+	}
+	if userDoc == nil {
+		userDoc = make(map[string]json.RawMessage)
+	}
+	delete(userDoc, "id")
+	delete(userDoc, "created_at")
+	delete(userDoc, "updated_at")
+
+	dataJSON, err := json.Marshal(userDoc)
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
+	}
+
+	now := time.Now().UTC()
+	createdAtStr := timesvc.FormatTimestamp(now)
+	updatedAtStr := timesvc.FormatTimestamp(now)
+
+	if !createdAt.IsZero() {
+		createdAtStr = timesvc.FormatTimestamp(createdAt)
+	}
+	if !updatedAt.IsZero() {
+		updatedAtStr = timesvc.FormatTimestamp(updatedAt)
+	}
+
+	_, err = s.db.ExecWithRetry(ctx,
+		`INSERT INTO documents (collection, id, data, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(collection, id) DO UPDATE SET
+		   data = excluded.data,
+		   updated_at = excluded.updated_at`,
+		collection, id, string(dataJSON), createdAtStr, updatedAtStr,
+	)
+	if err != nil {
+		return fmt.Errorf("gateway: document store: set with timestamps: %w", err)
+	}
+	return nil
+}
+
+// DocUpdate merges fields into an existing document. fields must be valid JSON.
+// Returns the updated Document with native time.Time timestamps.
+func (s *DocumentStoreService) DocUpdate(ctx context.Context, collection, id string, fields json.RawMessage) (*models.Document, error) {
+	var existingJSON string
+	var createdAtStr, updatedAtStr string
+	err := s.db.QueryRowWithRetry(ctx,
+		"SELECT data, created_at, updated_at FROM documents WHERE collection = ? AND id = ?",
+		collection, id,
+	).Scan(&existingJSON, &createdAtStr, &updatedAtStr)
+	if err == sql.ErrNoRows {
+		return nil, constants.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(existingJSON), &doc); err != nil {
+		return nil, fmt.Errorf("gateway: document store: update: unmarshal existing: %w", err)
+	}
+
+	var incoming map[string]json.RawMessage
+	if err := json.Unmarshal(fields, &incoming); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalFields, err)
+	}
+
+	for k, v := range incoming {
+		if k == "id" || k == "created_at" || k == "updated_at" {
+			continue
+		}
+		var nullCheck interface{}
+		if err := json.Unmarshal(v, &nullCheck); err == nil && nullCheck == nil {
+			delete(doc, k)
+		} else {
+			doc[k] = v
+		}
+	}
+
+	dataJSON, err := json.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: document store: update: marshal: %w", err)
+	}
+
+	now := time.Now().UTC()
+	nowStr := timesvc.FormatTimestamp(now)
+
+	_, err = s.db.ExecWithRetry(ctx,
+		"UPDATE documents SET data = ?, updated_at = ? WHERE collection = ? AND id = ?",
+		string(dataJSON), nowStr, collection, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: document store: update: %w", err)
+	}
+
+	return scanDocument(collection, id, string(dataJSON), createdAtStr, nowStr)
+}
+
+type documentUpdateField struct {
+	Name  string
+	Value json.RawMessage
+}
+
+func decodeDocumentUpdateFields(data json.RawMessage) ([]documentUpdateField, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, fmt.Errorf("read object start: %w", err)
+	}
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
+		return nil, fmt.Errorf("expected JSON object")
+	}
+
+	var fields []documentUpdateField
+	for decoder.More() {
+		nameToken, err := decoder.Token()
+		if err != nil {
+			return nil, fmt.Errorf("read field name: %w", err)
+		}
+		name, ok := nameToken.(string)
+		if !ok || name == "" {
+			return nil, fmt.Errorf("field name is not a non-empty string")
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, fmt.Errorf("read field %q: %w", name, err)
+		}
+		fields = append(fields, documentUpdateField{Name: name, Value: value})
+	}
+	if _, err := decoder.Token(); err != nil {
+		return nil, fmt.Errorf("read object end: %w", err)
+	}
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("update object is empty")
+	}
+	return fields, nil
+}
+
+// DocConditionalUpdate atomically updates a typed JSON object only if the
+// existing data satisfies a JSON path condition. This prevents TOCTOU races by
+// performing the check and write in a single SQL statement.
+// Returns (true, nil) if the update was applied, (false, nil) if the condition
+// was not met or the document was not found.
+func (s *DocumentStoreService) DocConditionalUpdate(ctx context.Context, collection, id string, setFields json.RawMessage, conditionField string, conditionValue interface{}) (bool, error) {
+	updates, err := decodeDocumentUpdateFields(setFields)
+	if err != nil {
+		return false, fmt.Errorf("gateway: document store: conditional update: decode fields: %w", err)
+	}
+
+	now := time.Now().UTC()
+	nowStr := timesvc.FormatTimestamp(now)
+
+	dataExpr := "data"
+	args := []interface{}{}
+	for _, update := range updates {
+		dataExpr = "json_set(" + dataExpr + ", ?, json(?))"
+		args = append(args, "$."+update.Name, string(update.Value))
+	}
+
+	query := "UPDATE documents SET data = " + dataExpr + ", updated_at = ? WHERE collection = ? AND id = ? AND json_extract(data, ?) = ?"
+	args = append(args, nowStr, collection, id, "$."+conditionField, conditionValue)
+
+	result, err := s.db.ExecWithRetry(ctx, query, args...)
+	if err != nil {
+		return false, fmt.Errorf("gateway: document store: conditional update: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("gateway: document store: conditional update: rows affected: %w", err)
+	}
+	return n > 0, nil
+}
+
+// DocReplace creates or replaces a document. It satisfies the
+// governance.GovernedDocumentStore interface. Delegates to DocSet which
+// upserts with managed timestamps.
+func (s *DocumentStoreService) DocReplace(ctx context.Context, collection, id string, data json.RawMessage) error {
+	return s.DocSet(ctx, collection, id, data)
+}
+
+// DocMerge merges fields into an existing document, preserving untouched
+// fields. It satisfies the governance.GovernedDocumentStore interface.
+// Returns constants.ErrNotFound if the document does not exist. Null values
+// in fields remove the corresponding key from the document. Delegates to
+// DocUpdate and discards the returned Document.
+func (s *DocumentStoreService) DocMerge(ctx context.Context, collection, id string, fields json.RawMessage) error {
+	_, err := s.DocUpdate(ctx, collection, id, fields)
+	return err
+}
+
+// DocList returns all documents in a collection, ordered by id ascending.
+// Operator documents carry their derived heartbeat staleness
+// (deriveOperatorStaleness).
+func (s *DocumentStoreService) DocList(ctx context.Context, collection string) ([]*models.Document, error) {
+	docs, err := s.docList(ctx, collection)
+	if err != nil {
+		return nil, err
+	}
+	if err := deriveOperatorStaleness(time.Now().UTC(), docs...); err != nil {
+		return nil, err
+	}
+	return docs, nil
+}
+
+func (s *DocumentStoreService) docList(ctx context.Context, collection string) ([]*models.Document, error) {
+	type docRow struct {
+		docID        string
+		dataJSON     string
+		createdAtStr string
+		updatedAtStr string
+	}
+	rows, err := sqliteutil.MaterializeRows(ctx, s.db,
+		"SELECT id, data, created_at, updated_at FROM documents WHERE collection = ? ORDER BY id ASC",
+		[]interface{}{collection},
+		func(r *sql.Rows) (docRow, error) {
+			var row docRow
+			if err := r.Scan(&row.docID, &row.dataJSON, &row.createdAtStr, &row.updatedAtStr); err != nil {
+				return docRow{}, fmt.Errorf("gateway: document store: list: scan: %w", err)
+			}
+			return row, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: document store: list: %w", err)
+	}
+	results := make([]*models.Document, 0, len(rows))
+	for _, row := range rows {
+		doc, err := scanDocument(collection, row.docID, row.dataJSON, row.createdAtStr, row.updatedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("gateway: document store: list: %w", err)
+		}
+		results = append(results, doc)
+	}
+	s.overlayOperatorHeartbeats(ctx, results...)
+	return results, nil
+}
+
+// DocDelete removes a document, returning only an error. It satisfies the
+// governance.TransactionAuditStore and governance.GovernedDocumentStore
+// interfaces. A not-found result is not an error — the document is simply
+// already absent. Callers that need the deleted/not-found distinction should
+// use DocDeleteWithResult.
+func (s *DocumentStoreService) DocDelete(ctx context.Context, collection, id string) error {
+	_, err := s.DocDeleteWithResult(ctx, collection, id)
+	return err
+}
+
+// DocDeleteWithResult removes a document. Returns (true, nil) if deleted,
+// (false, nil) if not found.
+func (s *DocumentStoreService) DocDeleteWithResult(ctx context.Context, collection, id string) (bool, error) {
+	result, err := s.db.ExecWithRetry(ctx,
+		"DELETE FROM documents WHERE collection = ? AND id = ?",
+		collection, id,
+	)
+	if err != nil {
+		return false, fmt.Errorf("gateway: document store: delete: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("gateway: document store: delete: rows affected: %w", err)
+	}
+	return n > 0, nil
+}
+
+// DocDeleteNamespace removes all documents in a collection.
+// Returns the count of deleted documents.
+func (s *DocumentStoreService) DocDeleteNamespace(ctx context.Context, collection string) (int64, error) {
+	result, err := s.db.ExecWithRetry(ctx, "DELETE FROM documents WHERE collection = ?", collection)
+	if err != nil {
+		return 0, fmt.Errorf("gateway: document store: delete namespace: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("gateway: document store: delete namespace: rows affected: %w", err)
+	}
+	return n, nil
+}
+
+// GetField extracts a single field value from a document using dot notation.
+// This is used for JIT field resolution with governed access controls.
+func (s *DocumentStoreService) GetField(ctx context.Context, collection, id, fieldPath string) (mcp.FieldValue, error) {
+	// Use json_quote(json_extract(...)) so SQLite re-encodes the extracted value as
+	// valid JSON regardless of its native type (TEXT, INTEGER, REAL, NULL).
+	// json_extract alone returns SQL TEXT without quotes for JSON strings, which is
+	// not valid JSON. json_quote wraps strings in quotes and leaves numbers/booleans as-is.
+	// json_quote(NULL) returns the text 'null' (not SQL NULL), so we get valid JSON.
+	query := "SELECT json_quote(json_extract(data, ?)) FROM documents WHERE collection = ? AND id = ?"
+	jsonPath := "$." + fieldPath
+	args := []interface{}{jsonPath, collection, id}
+
+	// An Operator field is read from the document DocGet returns, so it
+	// carries the heartbeat overlay and the derived status.
+	if collection == marshaler.CollectionName(constants.CollectionOperators) {
+		doc, err := s.DocGet(ctx, collection, id)
+		if err != nil {
+			return mcp.FieldValue{}, err
+		}
+		if doc == nil {
+			return mcp.FieldValue{}, constants.ErrNotFound
+		}
+		data, err := json.Marshal(doc.Data)
+		if err != nil {
+			return mcp.FieldValue{}, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
+		}
+		query = "SELECT json_quote(json_extract(?, ?))"
+		args = []interface{}{string(data), jsonPath}
+	}
+
+	var encoded *string
+	err := s.db.QueryRowWithRetry(ctx, query, args...).Scan(&encoded)
+	if err == sql.ErrNoRows {
+		return mcp.FieldValue{}, constants.ErrNotFound
+	}
+	if err != nil {
+		return mcp.FieldValue{}, fmt.Errorf("%w: %w", constants.ErrDocumentStoreExtractField, err)
+	}
+	if encoded == nil {
+		return mcp.FieldValue{}, constants.ErrNotFound
+	}
+
+	var out interface{}
+	if err := json.Unmarshal([]byte(*encoded), &out); err != nil {
+		return mcp.FieldValue{}, fmt.Errorf("%w: %w", constants.ErrDocumentStoreDecodeField, err)
+	}
+
+	return mcp.ConvertToFieldValue(out), nil
+}
+
+// DocQuery returns documents matching field conditions.
+// Supported ops: ==, !=, <, >, <=, >=. orderBy is "field" or "field DESC". limit 0 means no limit.
+// Operator documents carry their derived heartbeat staleness
+// (deriveOperatorStaleness), and their == and != status filters and limit
+// apply to that derived status.
+func (s *DocumentStoreService) DocQuery(ctx context.Context, collection string, filters []models.DocFilter, orderBy string, limit int) ([]*models.Document, error) {
+	if collection != marshaler.CollectionName(constants.CollectionOperators) {
+		return s.docQuery(ctx, collection, filters, orderBy, limit)
+	}
+	sqlFilters, statusFilters := operatorStatusFilters(filters)
+	sqlLimit := limit
+	if len(statusFilters) > 0 {
+		// A derived status can drop rows SQL matched, so the limit applies
+		// after the status filters.
+		sqlLimit = 0
+	}
+	docs, err := s.docQuery(ctx, collection, sqlFilters, orderBy, sqlLimit)
+	if err != nil {
+		return nil, err
+	}
+	if err := deriveOperatorStaleness(time.Now().UTC(), docs...); err != nil {
+		return nil, err
+	}
+	if len(statusFilters) == 0 {
+		return docs, nil
+	}
+	matched := docs[:0]
+	for _, doc := range docs {
+		if matchesOperatorStatus(doc, statusFilters) {
+			matched = append(matched, doc)
+		}
+	}
+	if limit > 0 && len(matched) > limit {
+		matched = matched[:limit]
+	}
+	return matched, nil
+}
+
+// docQuery is DocQuery against the stored documents.
+func (s *DocumentStoreService) docQuery(ctx context.Context, collection string, filters []models.DocFilter, orderBy string, limit int) ([]*models.Document, error) {
+	var query strings.Builder
+	query.WriteString("SELECT id, data, created_at, updated_at FROM documents WHERE collection = ?")
+	args := []interface{}{collection}
+
+	for _, f := range filters {
+		if f.Field == "" || f.Op == "" {
+			continue
+		}
+
+		var sqlOp string
+		switch f.Op {
+		case "==", "=":
+			sqlOp = "="
+		case "!=", "<", ">", "<=", ">=":
+			sqlOp = f.Op
+		default:
+			continue
+		}
+
+		if err := sqliteutil.ValidateIdentifier(f.Field); err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreInvalidFilterField, err)
+		}
+
+		// Use parameter for path and literals for operators to satisfy CodeQL.
+		query.WriteString(" AND json_extract(data, ?) ")
+		switch sqlOp {
+		case "==", "=":
+			query.WriteString("=")
+		case "!=":
+			query.WriteString("!=")
+		case "<":
+			query.WriteString("<")
+		case ">":
+			query.WriteString(">")
+		case "<=":
+			query.WriteString("<=")
+		case ">=":
+			query.WriteString(">=")
+		}
+		query.WriteString(" ?")
+
+		var nativeVal interface{}
+		if err := json.Unmarshal(f.Value, &nativeVal); err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreInvalidFilterValue, err)
+		}
+		args = append(args, "$."+f.Field, nativeVal)
+	}
+
+	if orderBy != "" {
+		parts := strings.Fields(orderBy)
+		orderField := parts[0]
+		dir := "ASC"
+		if len(parts) > 1 && strings.EqualFold(parts[1], "DESC") {
+			dir = "DESC"
+		}
+
+		if err := sqliteutil.ValidateIdentifier(orderField); err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreInvalidOrderByField, err)
+		}
+
+		// Identifier is validated, dir is whitelisted to ASC/DESC.
+		// Use validated hardcoded branch to satisfy CodeQL sql-injection rule.
+		switch orderField {
+		case "created_at":
+			query.WriteString(" ORDER BY created_at")
+		case "updated_at":
+			query.WriteString(" ORDER BY updated_at")
+		default:
+			query.WriteString(" ORDER BY json_extract(data, ?)")
+			args = append(args, "$."+orderField)
+		}
+		if dir == "DESC" {
+			query.WriteString(" DESC")
+		} else {
+			query.WriteString(" ASC")
+		}
+		// Creation timestamps can match on a coarse host clock. SQLite's
+		// insertion order keeps the original owner first when that happens.
+		query.WriteString(", rowid ASC")
+	}
+
+	if limit > 0 {
+		query.WriteString(" LIMIT ?")
+		args = append(args, limit)
+	}
+
+	type docRow struct {
+		docID        string
+		dataJSON     string
+		createdAtStr string
+		updatedAtStr string
+	}
+
+	rows, err := sqliteutil.MaterializeRows(ctx, s.db, query.String(), args, func(r *sql.Rows) (docRow, error) {
+		var row docRow
+		if err := r.Scan(&row.docID, &row.dataJSON, &row.createdAtStr, &row.updatedAtStr); err != nil {
+			return docRow{}, fmt.Errorf("gateway: document store: query: scan: %w", err)
+		}
+		return row, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gateway: document store: query: %w", err)
+	}
+
+	results := make([]*models.Document, 0, len(rows))
+	for _, row := range rows {
+		doc, err := scanDocument(collection, row.docID, row.dataJSON, row.createdAtStr, row.updatedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("gateway: document store: query: %w", err)
+		}
+		results = append(results, doc)
+	}
+	s.overlayOperatorHeartbeats(ctx, results...)
+	return results, nil
+}
+
+// scanDocument converts raw database row data into a typed Document with native time.Time timestamps.
+func scanDocument(collection, id, dataJSON, createdAtStr, updatedAtStr string) (*models.Document, error) {
+	createdAt, err := timesvc.ParseTimestamp(createdAtStr)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreParseCreatedAt, err)
+	}
+	updatedAt, err := timesvc.ParseTimestamp(updatedAtStr)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreParseUpdatedAt, err)
+	}
+
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(dataJSON), &data); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
+	}
+
+	return &models.Document{
+		Collection: collection,
+		ID:         id,
+		Data:       data,
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+	}, nil
+}

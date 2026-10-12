@@ -1,0 +1,444 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
+	"github.com/zerotrustdata/ztd/internal/services/pubsub"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+)
+
+// providerBoundaryOperatorLister resolves operators for campaign gateway
+// infrastructure. Observer operators are enrolled under the gateway owner,
+// not the per-request app identity on inference dispatch.
+type providerBoundaryOperatorLister interface {
+	ListOperatorsForObservation(ctx context.Context) ([]*operatorv1.OperatorDocument, error)
+}
+
+type registrationOwnerOperatorLister struct {
+	reg     *RegistrationService
+	userSvc *UserService
+}
+
+func (l *registrationOwnerOperatorLister) ListOperatorsForObservation(ctx context.Context) ([]*operatorv1.OperatorDocument, error) {
+	if l.reg == nil || l.userSvc == nil {
+		return nil, constants.ErrServiceUnavailable
+	}
+	ownerID, err := l.userSvc.FirstUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID == "" {
+		return nil, constants.ErrNotFound
+	}
+	return l.reg.ListUserOperators(ctx, ownerID)
+}
+
+func (l *registrationOwnerOperatorLister) ListOperatorsForProvenance(ctx context.Context) ([]*operatorv1.OperatorDocument, error) {
+	if l.reg == nil || l.userSvc == nil {
+		return nil, constants.ErrServiceUnavailable
+	}
+	ownerID, err := l.userSvc.FirstUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID == "" {
+		return nil, constants.ErrNotFound
+	}
+	return l.reg.ListUserOperators(ctx, ownerID)
+}
+
+// ProviderBoundaryObservationCoordinator fans out BEGIN/FINALIZE observation
+// commands to the remote provider-boundary observer operator and ingests
+// completed windows on the campaign Gateway host.
+type ProviderBoundaryObservationCoordinator struct {
+	dispatch       *DispatchService
+	operatorLister providerBoundaryOperatorLister
+	pubsub         *GatewayWebSocketHandler
+	windows        provider_observer.WindowStore
+	logger         *slog.Logger
+
+	mu         sync.Mutex
+	unregister func()
+	observer   *providerBoundaryObserverTarget
+}
+
+type providerBoundaryObserverTarget struct {
+	OperatorID        string
+	OperatorSessionID string
+}
+
+// NewProviderBoundaryObservationCoordinator constructs the gateway-side
+// provider-boundary observation coordinator.
+func NewProviderBoundaryObservationCoordinator(
+	dispatch *DispatchService,
+	operatorLister providerBoundaryOperatorLister,
+	pubsubHandler *GatewayWebSocketHandler,
+	windows provider_observer.WindowStore,
+	logger *slog.Logger,
+) *ProviderBoundaryObservationCoordinator {
+	return &ProviderBoundaryObservationCoordinator{
+		dispatch:       dispatch,
+		operatorLister: operatorLister,
+		pubsub:         pubsubHandler,
+		windows:        windows,
+		logger:         logger,
+	}
+}
+
+// synchronizeObserverSubscription resolves the enrolled provider-boundary
+// observer for the gateway owner and subscribes to its results channel. When
+// the active observer session changes, any cached target is dropped and the
+// coordinator re-subscribes to the newly selected session.
+func (c *ProviderBoundaryObservationCoordinator) synchronizeObserverSubscription(ctx context.Context) error {
+	if c == nil || c.dispatch == nil || c.operatorLister == nil || c.pubsub == nil || c.windows == nil {
+		return constants.ErrServiceUnavailable
+	}
+	_ = ctx
+
+	operators, err := c.operatorLister.ListOperatorsForObservation(ctx)
+	if err != nil {
+		c.logger.Warn("Provider-boundary observation: list operators failed", "error", err)
+		return err
+	}
+	selected, err := selectProviderBoundaryObserverForGateway(operators)
+	if err != nil {
+		c.resetObserver()
+		switch {
+		case errors.Is(err, constants.ErrProviderBoundaryObserverNotFound):
+			c.logger.Warn("Provider-boundary observation: observer not found", "reason", "not found")
+		case errors.Is(err, constants.ErrProviderBoundaryObserverAmbiguous):
+			c.logger.Warn("Provider-boundary observation: observer ambiguous", "reason", "ambiguous")
+		default:
+			c.logger.Warn("Provider-boundary observation: observer selection failed", "error", err)
+		}
+		return err
+	}
+
+	c.mu.Lock()
+	cached := c.observer
+	c.mu.Unlock()
+
+	if cached != nil && cached.OperatorID == selected.OperatorID && cached.OperatorSessionID == selected.OperatorSessionID {
+		return nil
+	}
+
+	if cached != nil {
+		c.logger.Info("Provider-boundary observation: observer session changed; re-subscribing",
+			"prior_operator_session_id", cached.OperatorSessionID,
+			"operator_session_id", selected.OperatorSessionID)
+	}
+	c.resetObserver()
+
+	observer := &providerBoundaryObserverTarget{
+		OperatorID:        selected.OperatorID,
+		OperatorSessionID: selected.OperatorSessionID,
+	}
+
+	resultsChannel := pubsub.ResultsChannel(observer.OperatorID, observer.OperatorSessionID)
+	handler := func(_ string, data []byte) {
+		// Observer completions arrive asynchronously after inference dispatch
+		// returns; never tie durable ingest to the ephemeral dispatch context.
+		c.ingestResult(context.Background(), data)
+	}
+	unregister := c.pubsub.RegisterHandler(resultsChannel, handler)
+
+	c.mu.Lock()
+	c.observer = observer
+	c.unregister = unregister
+	c.mu.Unlock()
+
+	c.logger.Info("Provider-boundary observation coordinator subscribed",
+		"operator_id", observer.OperatorID,
+		"operator_session_id", observer.OperatorSessionID,
+		"results_channel", resultsChannel)
+	return nil
+}
+
+// selectProviderBoundaryObserverForGateway resolves the single observer the
+// campaign should use. Operators the Gateway reads as stale or offline are
+// already excluded by their status, so more than one match means more than one
+// live observer. When that happens the tie is broken by the inference node's
+// system fingerprint; if that fails too, the ambiguity error is returned so the
+// operator sees why selection failed instead of a misleading not-found.
+func selectProviderBoundaryObserverForGateway(operators []*operatorv1.OperatorDocument) (*operatorcapability.ProviderBoundaryObserverStatus, error) {
+	selected, err := operatorcapability.SelectProviderBoundaryObserver(operators, "")
+	if err == nil || !errors.Is(err, constants.ErrProviderBoundaryObserverAmbiguous) {
+		return selected, err
+	}
+
+	// The observer and inference node are hardware-bound Operator sessions.
+	// When there is one inference node, use the canonical system fingerprint
+	// to disambiguate multiple observer sessions on the owner account. Never
+	// choose by list order or recency.
+	inference := make([]*operatorv1.OperatorDocument, 0, len(operators))
+	for _, op := range operators {
+		if constants.OperatorStatus(op.Status) == constants.OperatorStatusActive &&
+			(constants.OperatorType(op.OperatorType) == constants.OperatorTypeRemote || constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded) &&
+			op.RuntimeConfig != nil &&
+			operatorcapability.GetOperatorCapabilities(op).Has(constants.OperatorCapabilityInference) &&
+			op.SystemFingerprint != "" {
+			inference = append(inference, op)
+		}
+	}
+	if len(inference) != 1 {
+		return nil, err
+	}
+	selected, err = operatorcapability.SelectProviderBoundaryObserverForHardware(
+		operators,
+		"",
+		inference[0].SystemFingerprint,
+	)
+	if err != nil {
+		// No observer shares the inference node's hardware; that is a failed
+		// tiebreak, not an absent observer.
+		return nil, fmt.Errorf("%w: no observer matches the inference node fingerprint", constants.ErrProviderBoundaryObserverAmbiguous)
+	}
+	return selected, nil
+}
+
+func (c *ProviderBoundaryObservationCoordinator) resetObserver() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.unregister != nil {
+		c.unregister()
+		c.unregister = nil
+	}
+	c.observer = nil
+	c.mu.Unlock()
+}
+
+// Stop unsubscribes from the observer results channel.
+func (c *ProviderBoundaryObservationCoordinator) Stop() {
+	c.resetObserver()
+}
+
+// PreflightCommandDelivery verifies that the active observer is enrolled and
+// is deliverable: the embedded Operator through its in-process processor, any
+// other observer through at least one cmd-channel WebSocket subscriber.
+func (c *ProviderBoundaryObservationCoordinator) PreflightCommandDelivery(ctx context.Context) error {
+	if err := c.synchronizeObserverSubscription(ctx); err != nil {
+		return fmt.Errorf("provider-boundary observation preflight: %w", err)
+	}
+	c.mu.Lock()
+	observer := c.observer
+	c.mu.Unlock()
+	if observer == nil {
+		return fmt.Errorf("provider-boundary observation preflight: %w", constants.ErrProviderBoundaryObserverNotFound)
+	}
+	cmdChannel := pubsub.CmdChannel(observer.OperatorID, observer.OperatorSessionID)
+	if !c.dispatch.commandDeliverable(observer.OperatorID, cmdChannel, c.pubsub) {
+		return fmt.Errorf("provider-boundary observation preflight: %w: cmd channel %s",
+			constants.ErrEvaluationObservationUnavailable, cmdChannel)
+	}
+	return nil
+}
+
+// NotifyAttemptBegin delivers a BEGIN command to the observer. Delivery uses
+// the same governed PublishCommand transport as other gateway dispatches and
+// fails closed when the observer cmd channel has no subscribers.
+func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.Context, _ string, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) error {
+	if providerAttemptID == "" {
+		return nil
+	}
+	if err := c.synchronizeObserverSubscription(ctx); err != nil {
+		return fmt.Errorf("provider-boundary observation begin: %w", err)
+	}
+	command := &evalv1.ProviderBoundaryObservationCommand{
+		ProviderAttemptId:      providerAttemptID,
+		Phase:                  evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_BEGIN,
+		AttemptStartedAtUnixMs: startedAtUnixMs,
+		RetryCount:             retryCount,
+	}
+	return c.publishCommand(ctx, command)
+}
+
+// NotifyAttemptFinalize delivers a FINALIZE command to the observer.
+func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
+	ctx context.Context,
+	_ string,
+	providerAttemptID string,
+	inferenceTransactionID string,
+	startedAtUnixMs int64,
+	completedAtUnixMs int64,
+	failed bool,
+	retryCount uint32,
+) error {
+	if providerAttemptID == "" {
+		return nil
+	}
+	if err := c.synchronizeObserverSubscription(ctx); err != nil {
+		return fmt.Errorf("provider-boundary observation finalize: %w", err)
+	}
+	status := evalv1.ProviderBoundaryObservationAttemptStatus_PROVIDER_BOUNDARY_OBSERVATION_ATTEMPT_STATUS_COMPLETED
+	if failed {
+		status = evalv1.ProviderBoundaryObservationAttemptStatus_PROVIDER_BOUNDARY_OBSERVATION_ATTEMPT_STATUS_FAILED
+	}
+	command := &evalv1.ProviderBoundaryObservationCommand{
+		ProviderAttemptId:        providerAttemptID,
+		InferenceTransactionId:   inferenceTransactionID,
+		Phase:                    evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_FINALIZE,
+		AttemptStartedAtUnixMs:   startedAtUnixMs,
+		AttemptCompletedAtUnixMs: completedAtUnixMs,
+		AttemptStatus:            status,
+		RetryCount:               retryCount,
+	}
+	return c.publishCommand(ctx, command)
+}
+
+func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) error {
+	if err := c.tryPublishCommand(ctx, command); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ProviderBoundaryObservationCoordinator) tryPublishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) error {
+	c.mu.Lock()
+	observer := c.observer
+	c.mu.Unlock()
+	if observer == nil || c.dispatch == nil {
+		return constants.ErrMissingRequiredField
+	}
+	cmdChannel := pubsub.CmdChannel(observer.OperatorID, observer.OperatorSessionID)
+	payload, err := proto.Marshal(command)
+	if err != nil {
+		c.logger.Warn("Provider-boundary observation command marshal failed", "error", err)
+		return err
+	}
+	txID, err := c.dispatch.PublishCommand(ctx, PublishCommandRequest{
+		TargetOperatorSessionID: observer.OperatorSessionID,
+		EventType:               string(constants.Event.Operator.ProviderBoundaryObservation.Requested),
+		Payload:                 payload,
+	})
+	if err != nil {
+		c.logger.Warn("Provider-boundary observation command publish failed",
+			"provider_attempt_id", command.GetProviderAttemptId(),
+			"phase", command.GetPhase().String(),
+			"operator_id", observer.OperatorID,
+			"operator_session_id", observer.OperatorSessionID,
+			"cmd_channel", cmdChannel,
+			"error", err)
+		return err
+	}
+	c.logger.Info("Provider-boundary observation command published",
+		"transaction_id", txID,
+		"provider_attempt_id", command.GetProviderAttemptId(),
+		"phase", command.GetPhase().String(),
+		"operator_id", observer.OperatorID,
+		"operator_session_id", observer.OperatorSessionID,
+		"cmd_channel", cmdChannel)
+	return nil
+}
+
+func (c *ProviderBoundaryObservationCoordinator) ingestResult(ctx context.Context, data []byte) {
+	env := &commonv1.GovernanceEnvelope{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, env); err != nil {
+		c.logger.Warn("Provider-boundary observation ingest: unmarshal envelope failed", "error", err)
+		return
+	}
+	if env.GetEventType() != string(constants.Event.Operator.ProviderBoundaryObservation.Completed) {
+		return
+	}
+	completion := &evalv1.ProviderBoundaryObservationCompleted{}
+	if err := proto.Unmarshal(env.GetPayload(), completion); err != nil {
+		c.logger.Warn("Provider-boundary observation ingest: unmarshal completion failed", "error", err)
+		return
+	}
+	window := completion.GetWindow()
+	if window == nil {
+		return
+	}
+	if err := c.windows.Save(ctx, window); err != nil {
+		c.logger.Warn("Provider-boundary observation ingest: save window failed",
+			"provider_attempt_id", window.GetProviderAttemptId(),
+			"error", err)
+		return
+	}
+	c.logger.Info("Provider-boundary observation window ingested",
+		"provider_attempt_id", window.GetProviderAttemptId(),
+		"sample_count", len(window.GetSamples()),
+		"observation_digest", window.GetObservationDigest())
+}
+
+// PublishCommandRequest is a fire-and-forget governed command publish.
+type PublishCommandRequest struct {
+	TargetOperatorSessionID string
+	EventType               string
+	Payload                 []byte
+	RequestorUserID         string
+	ActingAppID             string
+}
+
+// PublishCommand builds a governed envelope and publishes it to the target
+// operator cmd channel without waiting for a correlated result.
+func (d *DispatchService) PublishCommand(ctx context.Context, req PublishCommandRequest) (string, error) {
+	op, err := d.auth.ValidateOperatorSession(ctx, req.TargetOperatorSessionID)
+	if err != nil {
+		return "", fmt.Errorf("dispatch: publish command: validate operator session: %w", err)
+	}
+	stateRoot, err := d.stateRootProvider.GetCurrentStateRoot(ctx)
+	if err != nil {
+		return "", fmt.Errorf("dispatch: publish command: get state root: %w", err)
+	}
+	env, err := BuildGovernanceEnvelope(BuildEnvelopeParams{
+		OperatorID:        op.Id,
+		OperatorSessionID: op.OperatorSessionId,
+		EventType:         req.EventType,
+		Payload:           req.Payload,
+		RequestorUserID:   req.RequestorUserID,
+		ActingAppID:       req.ActingAppID,
+		StateMerkleRoot:   stateRoot,
+		Posture:           d.posture,
+		Doctrine:          d.doctrine,
+	})
+	if err != nil {
+		return "", fmt.Errorf("dispatch: publish command: %w", err)
+	}
+	wire, err := protojson.Marshal(env)
+	if err != nil {
+		return "", fmt.Errorf("dispatch: publish command: marshal envelope: %w", err)
+	}
+	posture, perr := governance.ParseGovernancePosture(d.posture)
+	if perr != nil {
+		return "", fmt.Errorf("dispatch: publish command: %w", perr)
+	}
+	if posture.RequiresL2Signature() && d.l2Deliberator != nil {
+		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
+		if derr != nil {
+			return "", fmt.Errorf("dispatch: publish command: l2 deliberation: %w", derr)
+		}
+		wire = deliberated
+	}
+	cmdChannel := pubsub.CmdChannel(op.Id, op.OperatorSessionId)
+	delivered, err := d.deliverCommand(ctx, op, cmdChannel, wire)
+	if err != nil {
+		return "", fmt.Errorf("dispatch: publish command: %w", err)
+	}
+	if delivered == 0 {
+		return "", fmt.Errorf("dispatch: publish command: %w", constants.ErrDispatchNoDelivery)
+	}
+	return env.Id, nil
+}

@@ -1,0 +1,77 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package uuid
+
+import (
+	"crypto/rand"
+	"crypto/sha1" //nolint:gosec // RFC 4122 version 5 UUIDs are defined over SHA-1; not a security use.
+	"encoding/hex"
+	"fmt"
+)
+
+// NewString returns a randomly generated RFC 4122 version 4 UUID string
+// in canonical 36-character form (8-4-4-4-12) with hyphens.
+// It returns an error if the system's cryptographic random source fails
+// (INV-CODE-06: a production path must return errors, never panic).
+func NewString() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("uuid: crypto/rand failed: %w", err)
+	}
+	// Set version 4 and variant bits per RFC 4122.
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return format(b), nil
+}
+
+// Parse decodes a canonical 36-character UUID string into a [16]byte.
+// Returns an error if the string is not a valid UUID.
+func Parse(s string) ([16]byte, error) {
+	var b [16]byte
+	if len(s) != 36 || s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
+		return b, fmt.Errorf("uuid: invalid UUID format %q", s)
+	}
+	hexStr := s[0:8] + s[9:13] + s[14:18] + s[19:23] + s[24:36]
+	decoded, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return b, fmt.Errorf("uuid: invalid UUID hex %q: %w", s, err)
+	}
+	copy(b[:], decoded)
+	return b, nil
+}
+
+// NameSpaceOID is the RFC 4122 name space for ISO object identifiers.
+var NameSpaceOID = [16]byte{0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}
+
+// NewSHA1 returns the deterministic RFC 4122 version 5 UUID for name within namespace.
+func NewSHA1(namespace [16]byte, name []byte) [16]byte {
+	h := sha1.New() //nolint:gosec // RFC 4122 version 5 requires SHA-1.
+	h.Write(namespace[:])
+	h.Write(name)
+	var b [16]byte
+	copy(b[:], h.Sum(nil))
+	// Set version 5 and variant bits per RFC 4122.
+	b[6] = (b[6] & 0x0f) | 0x50
+	b[8] = (b[8] & 0x3f) | 0x80
+	return b
+}
+
+// Format renders b in canonical 36-character form (8-4-4-4-12) with hyphens.
+func Format(b [16]byte) string {
+	return format(b)
+}
+
+func format(b [16]byte) string {
+	return fmt.Sprintf("%s-%s-%s-%s-%s",
+		hex.EncodeToString(b[0:4]),
+		hex.EncodeToString(b[4:6]),
+		hex.EncodeToString(b[6:8]),
+		hex.EncodeToString(b[8:10]),
+		hex.EncodeToString(b[10:16]),
+	)
+}

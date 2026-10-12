@@ -1,0 +1,72 @@
+{
+  "prompts": {
+    "AgentModeCloudOperatorBound": {
+      "_go_const": "AgentModeCloudOperatorBound",
+      "value": "ztd.cloud.bound"
+    },
+    "AgentModeZtdBound": {
+      "_go_const": "AgentModeZtdBound",
+      "value": "ztd.bound"
+    },
+    "AgentModeZtdNotBound": {
+      "_go_const": "AgentModeZtdNotBound",
+      "value": "ztd.not.bound"
+    },
+    "SectionAgentPersona": {
+      "_go_const": "PromptSectionAgentPersona",
+      "value": "agent_persona"
+    },
+    "SectionCapabilities": {
+      "_go_const": "PromptSectionCapabilities",
+      "value": "capabilities"
+    },
+    "SectionDissent": {
+      "_go_const": "PromptSectionDissent",
+      "value": "dissent"
+    },
+    "SectionDocs": {
+      "_go_const": "PromptSectionDocs",
+      "value": "docs"
+    },
+    "SectionExecution": {
+      "_go_const": "PromptSectionExecution",
+      "value": "execution"
+    },
+    "SectionIdentity": {
+      "_go_const": "PromptSectionIdentity",
+      "value": "identity"
+    },
+    "SectionInvestigationContext": {
+      "_go_const": "PromptSectionInvestigationContext",
+      "value": "investigation_context"
+    },
+    "SectionLearnedContext": {
+      "_go_const": "PromptSectionLearnedContext",
+      "value": "learned_context"
+    },
+    "SectionLoyalty": {
+      "_go_const": "PromptSectionLoyalty",
+      "value": "loyalty"
+    },
+    "SectionResponseConstraints": {
+      "_go_const": "PromptSectionResponseConstraints",
+      "value": "response_constraints"
+    },
+    "SectionSafety": {
+      "_go_const": "PromptSectionSafety",
+      "value": "safety"
+    },
+    "SectionSystemContext": {
+      "_go_const": "PromptSectionSystemContext",
+      "value": "system_context"
+    },
+    "SectionTools": {
+      "_go_const": "PromptSectionTools",
+      "value": "tools"
+    },
+    "SectionTriageContext": {
+      "_go_const": "PromptSectionTriageContext",
+      "value": "triage_context"
+    }
+  }
+}

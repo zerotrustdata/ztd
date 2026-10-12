@@ -1,0 +1,2646 @@
+{
+  "events": {
+    "AiEvalAssignmentCompleted": {
+      "_go_const": "EventAiEvalAssignmentCompleted",
+      "value": "ztd.v1.ai.eval.assignment.completed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalAssignmentStarted": {
+      "_go_const": "EventAiEvalAssignmentStarted",
+      "value": "ztd.v1.ai.eval.assignment.started",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalCycleCompleted": {
+      "_go_const": "EventAiEvalCycleCompleted",
+      "value": "ztd.v1.ai.eval.cycle.completed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalCycleStarted": {
+      "_go_const": "EventAiEvalCycleStarted",
+      "value": "ztd.v1.ai.eval.cycle.started",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalHeartbeat": {
+      "_go_const": "EventAiEvalHeartbeat",
+      "value": "ztd.v1.ai.eval.heartbeat",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "AiEvalMetricAvailable": {
+      "_go_const": "EventAiEvalMetricAvailable",
+      "value": "ztd.v1.ai.eval.metric.available",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalModelRoleInvoked": {
+      "_go_const": "EventAiEvalModelRoleInvoked",
+      "value": "ztd.v1.ai.eval.model_role.invoked",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalProofAvailable": {
+      "_go_const": "EventAiEvalProofAvailable",
+      "value": "ztd.v1.ai.eval.proof.available",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalPublicationCompleted": {
+      "_go_const": "EventAiEvalPublicationCompleted",
+      "value": "ztd.v1.ai.eval.publication.completed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiEvalStopRequested": {
+      "_go_const": "EventAiEvalStopRequested",
+      "value": "ztd.v1.ai.eval.stop.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "AiEvalVerifierCompleted": {
+      "_go_const": "EventAiEvalVerifierCompleted",
+      "value": "ztd.v1.ai.eval.verifier.completed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AiLLMChatFilterEvent": {
+      "_go_const": "EventAiLLMChatFilterEvent",
+      "value": "ztd.v1.ai.llm.chat.filter.updated",
+      "kind": "outcome",
+      "producers": [
+        "cli"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AppAgentStatusUpdated": {
+      "_go_const": "EventAppAgentStatusUpdated",
+      "value": "ztd.v1.app.agent.status.updated",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AppCaseCreated": {
+      "_go_const": "EventAppCaseCreated",
+      "value": "ztd.v1.app.case.created",
+      "kind": "outcome",
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "gateway.docstore",
+      "transport": [
+        "sse"
+      ]
+    },
+    "AppCaseDeleted": {
+      "_go_const": "EventAppCaseDeleted",
+      "value": "ztd.v1.app.case.deleted",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "AppCaseUpdated": {
+      "_go_const": "EventAppCaseUpdated",
+      "value": "ztd.v1.app.case.updated",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "gateway.docstore",
+      "transport": [
+        "sse"
+      ]
+    },
+    "AppDocumentDeleteRequested": {
+      "_go_const": "EventAppDocumentDeleteRequested",
+      "value": "ztd.v1.app.document.delete.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "DOCUMENT_DELETE",
+        "payload": "ztd.operator.v1.DocumentDeleteRequested"
+      },
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "AppDocumentUpdateRequested": {
+      "_go_const": "EventAppDocumentUpdateRequested",
+      "value": "ztd.v1.app.document.update.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "DOCUMENT_UPDATE",
+        "payload": "ztd.operator.v1.DocumentUpdateRequested"
+      },
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "AppInvestigationCreated": {
+      "_go_const": "EventAppInvestigationCreated",
+      "value": "ztd.v1.app.investigation.created",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "AppInvestigationUpdated": {
+      "_go_const": "EventAppInvestigationUpdated",
+      "value": "ztd.v1.app.investigation.updated",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "AppRunStatusUpdated": {
+      "_go_const": "EventAppRunStatusUpdated",
+      "value": "ztd.v1.app.run.status.updated",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "AppTaskCompleted": {
+      "_go_const": "EventAppTaskCompleted",
+      "value": "ztd.v1.app.task.completed",
+      "kind": "outcome",
+      "producers": [
+        "cli"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorA2aCallRequested": {
+      "_go_const": "EventOperatorA2aCallRequested",
+      "value": "ztd.v1.operator.a2a.call.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "A2A_CALL",
+        "payload": "ztd.operator.v1.A2ACallRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorAuditAiRecordRequested": {
+      "_go_const": "EventOperatorAuditAiRecordRequested",
+      "value": "ztd.v1.operator.audit.ai.record.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "outcomes": [
+        "OperatorAuditAiRecorded"
+      ],
+      "transport": [
+        "pubsub"
+      ]
+    },
+    "OperatorAuditAiRecorded": {
+      "_go_const": "EventOperatorAuditAiRecorded",
+      "value": "ztd.v1.operator.audit.ai.recorded",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log",
+      "reserved": true
+    },
+    "OperatorAuditCommandRecordRequested": {
+      "_go_const": "EventOperatorAuditCommandRecordRequested",
+      "value": "ztd.v1.operator.audit.command.record.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "outcomes": [
+        "OperatorAuditCommandRecorded"
+      ],
+      "transport": [
+        "pubsub"
+      ]
+    },
+    "OperatorAuditCommandRecorded": {
+      "_go_const": "EventOperatorAuditCommandRecorded",
+      "value": "ztd.v1.operator.audit.command.recorded",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorAuditDirectCommandRecordRequested": {
+      "_go_const": "EventOperatorAuditDirectCommandRecordRequested",
+      "value": "ztd.v1.operator.audit.direct.command.record.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "outcomes": [
+        "OperatorAuditDirectCommandRecorded"
+      ],
+      "transport": [
+        "pubsub"
+      ]
+    },
+    "OperatorAuditDirectCommandRecorded": {
+      "_go_const": "EventOperatorAuditDirectCommandRecorded",
+      "value": "ztd.v1.operator.audit.direct.command.recorded",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorAuditDirectCommandResultRecordRequested": {
+      "_go_const": "EventOperatorAuditDirectCommandResultRecordRequested",
+      "value": "ztd.v1.operator.audit.direct.command.result.record.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "outcomes": [
+        "OperatorAuditDirectCommandResultRecorded"
+      ],
+      "transport": [
+        "pubsub"
+      ]
+    },
+    "OperatorAuditDirectCommandResultRecorded": {
+      "_go_const": "EventOperatorAuditDirectCommandResultRecorded",
+      "value": "ztd.v1.operator.audit.direct.command.result.recorded",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log",
+      "reserved": true
+    },
+    "OperatorAuditMcpCallRecordRequested": {
+      "_go_const": "EventOperatorAuditMcpCallRecordRequested",
+      "value": "ztd.v1.operator.audit.mcp.call.record.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "outcomes": [
+        "OperatorAuditMcpCallRecorded"
+      ],
+      "transport": [
+        "pubsub"
+      ]
+    },
+    "OperatorAuditMcpCallRecorded": {
+      "_go_const": "EventOperatorAuditMcpCallRecorded",
+      "value": "ztd.v1.operator.audit.mcp.call.recorded",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log",
+      "reserved": true
+    },
+    "OperatorAuditUserRecordRequested": {
+      "_go_const": "EventOperatorAuditUserRecordRequested",
+      "value": "ztd.v1.operator.audit.user.record.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "outcomes": [
+        "OperatorAuditUserRecorded"
+      ],
+      "transport": [
+        "pubsub"
+      ]
+    },
+    "OperatorAuditUserRecorded": {
+      "_go_const": "EventOperatorAuditUserRecorded",
+      "value": "ztd.v1.operator.audit.user.recorded",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log",
+      "reserved": true
+    },
+    "OperatorBootstrapCompleted": {
+      "_go_const": "EventOperatorBootstrapCompleted",
+      "value": "ztd.v1.operator.bootstrap.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorBootstrapConfigReceived": {
+      "_go_const": "EventOperatorBootstrapConfigReceived",
+      "value": "ztd.v1.operator.bootstrap.config.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorBootstrapFailed": {
+      "_go_const": "EventOperatorBootstrapFailed",
+      "value": "ztd.v1.operator.bootstrap.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorBootstrapReceived": {
+      "_go_const": "EventOperatorBootstrapReceived",
+      "value": "ztd.v1.operator.bootstrap.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorBootstrapRequested": {
+      "_go_const": "EventOperatorBootstrapRequested",
+      "value": "ztd.v1.operator.bootstrap.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorBound": {
+      "_go_const": "EventOperatorBound",
+      "value": "ztd.v1.operator.bound",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandApprovalGranted": {
+      "_go_const": "EventOperatorCommandApprovalGranted",
+      "value": "ztd.v1.operator.command.approval.granted",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandApprovalPreparing": {
+      "_go_const": "EventOperatorCommandApprovalPreparing",
+      "value": "ztd.v1.operator.command.approval.preparing",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandApprovalRejected": {
+      "_go_const": "EventOperatorCommandApprovalRejected",
+      "value": "ztd.v1.operator.command.approval.rejected",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandApprovalRequested": {
+      "_go_const": "EventOperatorCommandApprovalRequested",
+      "value": "ztd.v1.operator.command.approval.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub",
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandCancelAcknowledged": {
+      "_go_const": "EventOperatorCommandCancelAcknowledged",
+      "value": "ztd.v1.operator.command.cancel.acknowledged",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorCommandCancelFailed": {
+      "_go_const": "EventOperatorCommandCancelFailed",
+      "value": "ztd.v1.operator.command.cancel.failed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorCommandCancelRequested": {
+      "_go_const": "EventOperatorCommandCancelRequested",
+      "value": "ztd.v1.operator.command.cancel.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "CANCEL",
+        "payload": "ztd.operator.v1.CommandCancelRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorCommandCancelled",
+        "OperatorCommandCancelFailed"
+      ]
+    },
+    "OperatorCommandCancelled": {
+      "_go_const": "EventOperatorCommandCancelled",
+      "value": "ztd.v1.operator.command.cancelled",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandCompleted": {
+      "_go_const": "EventOperatorCommandCompleted",
+      "value": "ztd.v1.operator.command.completed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub",
+        "sse"
+      ],
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandExecution": {
+      "_go_const": "EventOperatorCommandExecution",
+      "value": "ztd.v1.operator.command.execution.started",
+      "kind": "outcome",
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandFailed": {
+      "_go_const": "EventOperatorCommandFailed",
+      "value": "ztd.v1.operator.command.failed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub",
+        "sse"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandOutputReceived": {
+      "_go_const": "EventOperatorCommandOutputReceived",
+      "value": "ztd.v1.operator.command.output.received",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandRequested": {
+      "_go_const": "EventOperatorCommandRequested",
+      "value": "ztd.v1.operator.command.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "EXECUTE_BASH",
+        "payload": "ztd.operator.v1.CommandRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorCommandCompleted",
+        "OperatorCommandFailed",
+        "OperatorCommandCancelled",
+        "OperatorCommandStatusUpdatedQueued",
+        "OperatorCommandStatusUpdatedRunning",
+        "OperatorCommandStatusUpdatedCompleted",
+        "OperatorCommandStatusUpdatedFailed",
+        "OperatorCommandStatusUpdatedCancelled"
+      ]
+    },
+    "OperatorCommandResult": {
+      "_go_const": "EventOperatorCommandResult",
+      "value": "ztd.v1.operator.command.result.completed",
+      "kind": "outcome",
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandStarted": {
+      "_go_const": "EventOperatorCommandStarted",
+      "value": "ztd.v1.operator.command.started",
+      "kind": "outcome",
+      "transport": [
+        "pubsub",
+        "sse"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorCommandStatusUpdatedCancelled": {
+      "_go_const": "EventOperatorCommandStatusUpdatedCancelled",
+      "value": "ztd.v1.operator.command.status.updated.cancelled",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorCommandStatusUpdatedCompleted": {
+      "_go_const": "EventOperatorCommandStatusUpdatedCompleted",
+      "value": "ztd.v1.operator.command.status.updated.completed",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorCommandStatusUpdatedFailed": {
+      "_go_const": "EventOperatorCommandStatusUpdatedFailed",
+      "value": "ztd.v1.operator.command.status.updated.failed",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorCommandStatusUpdatedQueued": {
+      "_go_const": "EventOperatorCommandStatusUpdatedQueued",
+      "value": "ztd.v1.operator.command.status.updated.queued",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorCommandStatusUpdatedRunning": {
+      "_go_const": "EventOperatorCommandStatusUpdatedRunning",
+      "value": "ztd.v1.operator.command.status.updated.running",
+      "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorContextChanged": {
+      "_go_const": "EventOperatorContextChanged",
+      "value": "ztd.v1.operator.context.changed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorDeviceRegistered": {
+      "_go_const": "EventOperatorDeviceRegistered",
+      "value": "ztd.v1.operator.device.registered",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorEvalAnswerRequested": {
+      "_go_const": "EventOperatorEvalAnswerRequested",
+      "value": "ztd.v1.operator.eval.answer.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "EVAL_ANSWER",
+        "payload": "ztd.operator.v1.EvalAnswerRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFieldReadAccessDenied": {
+      "_go_const": "EventOperatorFieldReadAccessDenied",
+      "value": "ztd.v1.operator.field.read.access.denied",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFieldReadAccessGranted": {
+      "_go_const": "EventOperatorFieldReadAccessGranted",
+      "value": "ztd.v1.operator.field.read.access.granted",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFieldReadRequested": {
+      "_go_const": "EventOperatorFieldReadRequested",
+      "value": "ztd.v1.operator.field.read.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "gateway",
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileDiffFetchCompleted": {
+      "_go_const": "EventOperatorFileDiffFetchCompleted",
+      "value": "ztd.v1.operator.file.diff.fetch.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileDiffFetchFailed": {
+      "_go_const": "EventOperatorFileDiffFetchFailed",
+      "value": "ztd.v1.operator.file.diff.fetch.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileDiffFetchReceived": {
+      "_go_const": "EventOperatorFileDiffFetchReceived",
+      "value": "ztd.v1.operator.file.diff.fetch.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFileDiffFetchRequested": {
+      "_go_const": "EventOperatorFileDiffFetchRequested",
+      "value": "ztd.v1.operator.file.diff.fetch.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "FETCH_FILE_DIFF",
+        "payload": "ztd.operator.v1.FetchFileDiffRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorFileDiffFetchCompleted",
+        "OperatorFileDiffFetchFailed"
+      ]
+    },
+    "OperatorFileDiffFetchStarted": {
+      "_go_const": "EventOperatorFileDiffFetchStarted",
+      "value": "ztd.v1.operator.file.diff.fetch.started",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileEditApprovalFeedback": {
+      "_go_const": "EventOperatorFileEditApprovalFeedback",
+      "value": "ztd.v1.operator.file.edit.approval.feedback",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFileEditApprovalGranted": {
+      "_go_const": "EventOperatorFileEditApprovalGranted",
+      "value": "ztd.v1.operator.file.edit.approval.granted",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileEditApprovalRejected": {
+      "_go_const": "EventOperatorFileEditApprovalRejected",
+      "value": "ztd.v1.operator.file.edit.approval.rejected",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileEditApprovalRequested": {
+      "_go_const": "EventOperatorFileEditApprovalRequested",
+      "value": "ztd.v1.operator.file.edit.approval.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub",
+        "sse"
+      ],
+      "producers": [
+        "cli",
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileEditCompleted": {
+      "_go_const": "EventOperatorFileEditCompleted",
+      "value": "ztd.v1.operator.file.edit.completed",
+      "kind": "outcome",
+      "producers": [
+        "cli",
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileEditFailed": {
+      "_go_const": "EventOperatorFileEditFailed",
+      "value": "ztd.v1.operator.file.edit.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileEditRequested": {
+      "_go_const": "EventOperatorFileEditRequested",
+      "value": "ztd.v1.operator.file.edit.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "FILE_EDIT",
+        "payload": "ztd.operator.v1.FileEditRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorFileEditCompleted",
+        "OperatorFileEditFailed"
+      ]
+    },
+    "OperatorFileEditStarted": {
+      "_go_const": "EventOperatorFileEditStarted",
+      "value": "ztd.v1.operator.file.edit.started",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileEditTimeout": {
+      "_go_const": "EventOperatorFileEditTimeout",
+      "value": "ztd.v1.operator.file.edit.timeout",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFileHistoryFetchCompleted": {
+      "_go_const": "EventOperatorFileHistoryFetchCompleted",
+      "value": "ztd.v1.operator.file.history.fetch.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileHistoryFetchFailed": {
+      "_go_const": "EventOperatorFileHistoryFetchFailed",
+      "value": "ztd.v1.operator.file.history.fetch.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileHistoryFetchReceived": {
+      "_go_const": "EventOperatorFileHistoryFetchReceived",
+      "value": "ztd.v1.operator.file.history.fetch.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFileHistoryFetchRequested": {
+      "_go_const": "EventOperatorFileHistoryFetchRequested",
+      "value": "ztd.v1.operator.file.history.fetch.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "FETCH_FILE_HISTORY",
+        "payload": "ztd.operator.v1.FetchFileHistoryRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorFileHistoryFetchCompleted",
+        "OperatorFileHistoryFetchFailed"
+      ]
+    },
+    "OperatorFileHistoryFetchStarted": {
+      "_go_const": "EventOperatorFileHistoryFetchStarted",
+      "value": "ztd.v1.operator.file.history.fetch.started",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFileRestoreCompleted": {
+      "_go_const": "EventOperatorFileRestoreCompleted",
+      "value": "ztd.v1.operator.file.restore.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFileRestoreFailed": {
+      "_go_const": "EventOperatorFileRestoreFailed",
+      "value": "ztd.v1.operator.file.restore.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFileRestoreReceived": {
+      "_go_const": "EventOperatorFileRestoreReceived",
+      "value": "ztd.v1.operator.file.restore.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFileRestoreRequested": {
+      "_go_const": "EventOperatorFileRestoreRequested",
+      "value": "ztd.v1.operator.file.restore.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "RESTORE_FILE",
+        "payload": "ztd.operator.v1.RestoreFileRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorFileRestoreCompleted",
+        "OperatorFileRestoreFailed"
+      ]
+    },
+    "OperatorFilesystemGrepCompleted": {
+      "_go_const": "EventOperatorFilesystemGrepCompleted",
+      "value": "ztd.v1.operator.filesystem.grep.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemGrepFailed": {
+      "_go_const": "EventOperatorFilesystemGrepFailed",
+      "value": "ztd.v1.operator.filesystem.grep.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemGrepReceived": {
+      "_go_const": "EventOperatorFilesystemGrepReceived",
+      "value": "ztd.v1.operator.filesystem.grep.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFilesystemGrepRequested": {
+      "_go_const": "EventOperatorFilesystemGrepRequested",
+      "value": "ztd.v1.operator.filesystem.grep.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "FS_GREP",
+        "payload": "ztd.operator.v1.FsGrepRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorFilesystemGrepCompleted",
+        "OperatorFilesystemGrepFailed"
+      ]
+    },
+    "OperatorFilesystemGrepStarted": {
+      "_go_const": "EventOperatorFilesystemGrepStarted",
+      "value": "ztd.v1.operator.filesystem.grep.started",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemListCompleted": {
+      "_go_const": "EventOperatorFilesystemListCompleted",
+      "value": "ztd.v1.operator.filesystem.list.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemListFailed": {
+      "_go_const": "EventOperatorFilesystemListFailed",
+      "value": "ztd.v1.operator.filesystem.list.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemListReceived": {
+      "_go_const": "EventOperatorFilesystemListReceived",
+      "value": "ztd.v1.operator.filesystem.list.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFilesystemListRequested": {
+      "_go_const": "EventOperatorFilesystemListRequested",
+      "value": "ztd.v1.operator.filesystem.list.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "FS_LIST",
+        "payload": "ztd.operator.v1.FsListRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorFilesystemListCompleted",
+        "OperatorFilesystemListFailed"
+      ]
+    },
+    "OperatorFilesystemListStarted": {
+      "_go_const": "EventOperatorFilesystemListStarted",
+      "value": "ztd.v1.operator.filesystem.list.started",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemReadCompleted": {
+      "_go_const": "EventOperatorFilesystemReadCompleted",
+      "value": "ztd.v1.operator.filesystem.read.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemReadFailed": {
+      "_go_const": "EventOperatorFilesystemReadFailed",
+      "value": "ztd.v1.operator.filesystem.read.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorFilesystemReadReceived": {
+      "_go_const": "EventOperatorFilesystemReadReceived",
+      "value": "ztd.v1.operator.filesystem.read.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorFilesystemReadRequested": {
+      "_go_const": "EventOperatorFilesystemReadRequested",
+      "value": "ztd.v1.operator.filesystem.read.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "FS_READ",
+        "payload": "ztd.operator.v1.FsReadRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorFilesystemReadCompleted",
+        "OperatorFilesystemReadFailed"
+      ]
+    },
+    "OperatorFilesystemReadStarted": {
+      "_go_const": "EventOperatorFilesystemReadStarted",
+      "value": "ztd.v1.operator.filesystem.read.started",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorHeartbeatMissed": {
+      "_go_const": "EventOperatorHeartbeatMissed",
+      "value": "ztd.v1.operator.heartbeat.missed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "gateway.operator_docs",
+      "reserved": true
+    },
+    "OperatorHeartbeatReceived": {
+      "_go_const": "EventOperatorHeartbeatReceived",
+      "value": "ztd.v1.operator.heartbeat.received",
+      "kind": "fact",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorHeartbeatRequested": {
+      "_go_const": "EventOperatorHeartbeatRequested",
+      "value": "ztd.v1.operator.heartbeat.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "HEARTBEAT",
+        "payload": "ztd.operator.v1.HeartbeatRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "gateway.operator_docs",
+      "outcomes": [
+        "OperatorHeartbeatSent"
+      ]
+    },
+    "OperatorHeartbeatSent": {
+      "_go_const": "EventOperatorHeartbeatSent",
+      "value": "ztd.v1.operator.heartbeat.sent",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "OperatorHistoryFetchCompleted": {
+      "_go_const": "EventOperatorHistoryFetchCompleted",
+      "value": "ztd.v1.operator.history.fetch.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorHistoryFetchFailed": {
+      "_go_const": "EventOperatorHistoryFetchFailed",
+      "value": "ztd.v1.operator.history.fetch.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorHistoryFetchReceived": {
+      "_go_const": "EventOperatorHistoryFetchReceived",
+      "value": "ztd.v1.operator.history.fetch.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorHistoryFetchRequested": {
+      "_go_const": "EventOperatorHistoryFetchRequested",
+      "value": "ztd.v1.operator.history.fetch.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "FETCH_HISTORY",
+        "payload": "ztd.operator.v1.FetchHistoryRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorHistoryFetchCompleted",
+        "OperatorHistoryFetchFailed"
+      ]
+    },
+    "OperatorInferenceCompleted": {
+      "_go_const": "EventOperatorInferenceCompleted",
+      "value": "ztd.v1.operator.inference.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorInferenceFailed": {
+      "_go_const": "EventOperatorInferenceFailed",
+      "value": "ztd.v1.operator.inference.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorInferenceProgressUpdated": {
+      "_go_const": "EventOperatorInferenceProgressUpdated",
+      "value": "ztd.v1.operator.inference.progress.updated",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorInferenceRequested": {
+      "_go_const": "EventOperatorInferenceRequested",
+      "value": "ztd.v1.operator.inference.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "INFERENCE",
+        "payload": "ztd.operator.v1.InferenceRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorInferenceCompleted",
+        "OperatorInferenceFailed",
+        "OperatorInferenceProgressUpdated"
+      ]
+    },
+    "OperatorIntentApprovalGranted": {
+      "_go_const": "EventOperatorIntentApprovalGranted",
+      "value": "ztd.v1.operator.intent.approval.granted",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorIntentApprovalRejected": {
+      "_go_const": "EventOperatorIntentApprovalRejected",
+      "value": "ztd.v1.operator.intent.approval.rejected",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorIntentApprovalRequested": {
+      "_go_const": "EventOperatorIntentApprovalRequested",
+      "value": "ztd.v1.operator.intent.approval.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub",
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorIntentDenied": {
+      "_go_const": "EventOperatorIntentDenied",
+      "value": "ztd.v1.operator.intent.denied",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorIntentGranted": {
+      "_go_const": "EventOperatorIntentGranted",
+      "value": "ztd.v1.operator.intent.granted",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorIntentRequested": {
+      "_go_const": "EventOperatorIntentRequested",
+      "value": "ztd.v1.operator.intent.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorIntentRevokeRequested": {
+      "_go_const": "EventOperatorIntentRevokeRequested",
+      "value": "ztd.v1.operator.intent.revoke.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorIntentRevoked": {
+      "_go_const": "EventOperatorIntentRevoked",
+      "value": "ztd.v1.operator.intent.revoked",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorLogsFetchCompleted": {
+      "_go_const": "EventOperatorLogsFetchCompleted",
+      "value": "ztd.v1.operator.logs.fetch.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorLogsFetchFailed": {
+      "_go_const": "EventOperatorLogsFetchFailed",
+      "value": "ztd.v1.operator.logs.fetch.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorLogsFetchReceived": {
+      "_go_const": "EventOperatorLogsFetchReceived",
+      "value": "ztd.v1.operator.logs.fetch.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorLogsFetchRequested": {
+      "_go_const": "EventOperatorLogsFetchRequested",
+      "value": "ztd.v1.operator.logs.fetch.requested",
+      "kind": "request",
+      "transport": [
+        "governed",
+        "pubsub"
+      ],
+      "governance": {
+        "action_type": "FETCH_LOGS",
+        "payload": "ztd.operator.v1.FetchLogsRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorLogsFetchCompleted",
+        "OperatorLogsFetchFailed"
+      ]
+    },
+    "OperatorMcpCallRequested": {
+      "_go_const": "EventOperatorMcpCallRequested",
+      "value": "ztd.v1.operator.mcp.call.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "MCP_CALL",
+        "payload": "ztd.operator.v1.McpCallRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorMcpPromptGetRequested": {
+      "_go_const": "EventOperatorMcpPromptGetRequested",
+      "value": "ztd.v1.operator.mcp.prompt.get.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "MCP_PROMPT_GET",
+        "payload": "ztd.operator.v1.McpPromptGetRequested"
+      },
+      "producers": [
+        "mcp"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorMcpPromptListRequested": {
+      "_go_const": "EventOperatorMcpPromptListRequested",
+      "value": "ztd.v1.operator.mcp.prompt.list.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "MCP_PROMPT_LIST",
+        "payload": "ztd.operator.v1.McpPromptListRequested"
+      },
+      "producers": [
+        "mcp"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorMcpResourceListRequested": {
+      "_go_const": "EventOperatorMcpResourceListRequested",
+      "value": "ztd.v1.operator.mcp.resource.list.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "MCP_RESOURCE_LIST",
+        "payload": "ztd.operator.v1.McpResourceListRequested"
+      },
+      "producers": [
+        "mcp"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorMcpResourceReadRequested": {
+      "_go_const": "EventOperatorMcpResourceReadRequested",
+      "value": "ztd.v1.operator.mcp.resource.read.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "MCP_RESOURCE_READ",
+        "payload": "ztd.operator.v1.McpResourceReadRequested"
+      },
+      "producers": [
+        "mcp"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorModelProvenanceObservationCompleted": {
+      "_go_const": "EventOperatorModelProvenanceObservationCompleted",
+      "value": "ztd.v1.operator.model.provenance.observation.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorModelProvenanceObservationRequested": {
+      "_go_const": "EventOperatorModelProvenanceObservationRequested",
+      "value": "ztd.v1.operator.model.provenance.observation.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "MODEL_PROVENANCE_OBSERVATION",
+        "payload": "ztd.eval.v1.ModelProvenanceObservationCommand"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorModelProvenanceObservationCompleted"
+      ]
+    },
+    "OperatorNetworkPingCompleted": {
+      "_go_const": "EventOperatorNetworkPingCompleted",
+      "value": "ztd.v1.operator.network.ping.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorNetworkPingFailed": {
+      "_go_const": "EventOperatorNetworkPingFailed",
+      "value": "ztd.v1.operator.network.ping.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorNetworkPingReceived": {
+      "_go_const": "EventOperatorNetworkPingReceived",
+      "value": "ztd.v1.operator.network.ping.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorNetworkPingRequested": {
+      "_go_const": "EventOperatorNetworkPingRequested",
+      "value": "ztd.v1.operator.network.ping.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorNetworkPortCheckCompleted": {
+      "_go_const": "EventOperatorNetworkPortCheckCompleted",
+      "value": "ztd.v1.operator.network.port.check.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorNetworkPortCheckFailed": {
+      "_go_const": "EventOperatorNetworkPortCheckFailed",
+      "value": "ztd.v1.operator.network.port.check.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorNetworkPortCheckReceived": {
+      "_go_const": "EventOperatorNetworkPortCheckReceived",
+      "value": "ztd.v1.operator.network.port.check.received",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorNetworkPortCheckRequested": {
+      "_go_const": "EventOperatorNetworkPortCheckRequested",
+      "value": "ztd.v1.operator.network.port.check.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PORT_CHECK",
+        "payload": "ztd.operator.v1.CheckPortRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorNetworkPortCheckCompleted",
+        "OperatorNetworkPortCheckFailed"
+      ]
+    },
+    "OperatorNetworkPortCheckStarted": {
+      "_go_const": "EventOperatorNetworkPortCheckStarted",
+      "value": "ztd.v1.operator.network.port.check.started",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorNotaryApprovalRequested": {
+      "_go_const": "EventOperatorNotaryApprovalRequested",
+      "value": "ztd.v1.operator.notary.approval.requested",
+      "kind": "request",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorNotaryTransactionExpired": {
+      "_go_const": "EventOperatorNotaryTransactionExpired",
+      "value": "ztd.v1.operator.notary.transaction.expired",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelInventoryCompleted": {
+      "_go_const": "EventOperatorOllamaModelInventoryCompleted",
+      "value": "ztd.v1.operator.ollama.model.inventory.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelInventoryFailed": {
+      "_go_const": "EventOperatorOllamaModelInventoryFailed",
+      "value": "ztd.v1.operator.ollama.model.inventory.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelInventoryRequested": {
+      "_go_const": "EventOperatorOllamaModelInventoryRequested",
+      "value": "ztd.v1.operator.ollama.model.inventory.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OLLAMA_MODEL_INVENTORY",
+        "payload": "ztd.operator.v1.OllamaModelInventoryRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorOllamaModelInventoryCompleted",
+        "OperatorOllamaModelInventoryFailed"
+      ]
+    },
+    "OperatorOllamaModelResidencyCompleted": {
+      "_go_const": "EventOperatorOllamaModelResidencyCompleted",
+      "value": "ztd.v1.operator.ollama.model.residency.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelResidencyFailed": {
+      "_go_const": "EventOperatorOllamaModelResidencyFailed",
+      "value": "ztd.v1.operator.ollama.model.residency.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelResidencyRequested": {
+      "_go_const": "EventOperatorOllamaModelResidencyRequested",
+      "value": "ztd.v1.operator.ollama.model.residency.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OLLAMA_MODEL_RESIDENCY",
+        "payload": "ztd.operator.v1.OllamaModelResidencyRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorOllamaModelResidencyCompleted",
+        "OperatorOllamaModelResidencyFailed"
+      ]
+    },
+    "OperatorPanelListUpdated": {
+      "_go_const": "EventOperatorPanelListUpdated",
+      "value": "ztd.v1.operator.panel.list.updated",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorProviderBoundaryObservationCompleted": {
+      "_go_const": "EventOperatorProviderBoundaryObservationCompleted",
+      "value": "ztd.v1.operator.provider.boundary.observation.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorProviderBoundaryObservationRequested": {
+      "_go_const": "EventOperatorProviderBoundaryObservationRequested",
+      "value": "ztd.v1.operator.provider.boundary.observation.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PROVIDER_BOUNDARY_OBSERVATION",
+        "payload": "ztd.eval.v1.ProviderBoundaryObservationCommand"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorProviderBoundaryObservationCompleted"
+      ]
+    },
+    "OperatorReceiptRecorded": {
+      "_go_const": "EventOperatorReceiptRecorded",
+      "value": "ztd.v1.operator.receipt.recorded",
+      "kind": "fact",
+      "producers": [
+        "gateway",
+        "operator"
+      ],
+      "persistence": "operator.audit_log"
+    },
+    "OperatorReputationCommitmentCreated": {
+      "_go_const": "EventOperatorReputationCommitmentCreated",
+      "value": "ztd.v1.operator.reputation.commitment.created",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorReputationCommitmentFailed": {
+      "_go_const": "EventOperatorReputationCommitmentFailed",
+      "value": "ztd.v1.operator.reputation.commitment.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorReputationCommitmentVerified": {
+      "_go_const": "EventOperatorReputationCommitmentVerified",
+      "value": "ztd.v1.operator.reputation.commitment.verified",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorReputationSlashTier1": {
+      "_go_const": "EventOperatorReputationSlashTier1",
+      "value": "ztd.v1.operator.reputation.slash.tier1",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorReputationSlashTier2": {
+      "_go_const": "EventOperatorReputationSlashTier2",
+      "value": "ztd.v1.operator.reputation.slash.tier2",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorReputationSlashTier3": {
+      "_go_const": "EventOperatorReputationSlashTier3",
+      "value": "ztd.v1.operator.reputation.slash.tier3",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorReputationStakeResolutionCreated": {
+      "_go_const": "EventOperatorReputationStakeResolutionCreated",
+      "value": "ztd.v1.operator.reputation.stake.resolution.created",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorReputationStateUpdateRequested": {
+      "_go_const": "EventOperatorReputationStateUpdateRequested",
+      "value": "ztd.v1.operator.reputation.state.update.requested",
+      "kind": "request",
+      "governance": {
+        "action_type": "DOCUMENT_UPDATE",
+        "payload": "ztd.operator.v1.DocumentUpdateRequested"
+      },
+      "transport": [
+        "governed"
+      ],
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorReputationStateUpdated"
+      ]
+    },
+    "OperatorReputationStateUpdated": {
+      "_go_const": "EventOperatorReputationStateUpdated",
+      "value": "ztd.v1.operator.reputation.state.updated",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorShutdownAcknowledged": {
+      "_go_const": "EventOperatorShutdownAcknowledged",
+      "value": "ztd.v1.operator.shutdown.acknowledged",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorShutdownRequested": {
+      "_go_const": "EventOperatorShutdownRequested",
+      "value": "ztd.v1.operator.shutdown.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "SHUTDOWN",
+        "payload": "ztd.operator.v1.ShutdownRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorShutdownAcknowledged"
+      ]
+    },
+    "OperatorSlotInitializationFailed": {
+      "_go_const": "EventOperatorSlotInitializationFailed",
+      "value": "ztd.v1.operator.slot.initialization.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorStatusUpdatedActive": {
+      "_go_const": "EventOperatorStatusUpdatedActive",
+      "value": "ztd.v1.operator.status.updated.active",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs",
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorStatusUpdatedAvailable": {
+      "_go_const": "EventOperatorStatusUpdatedAvailable",
+      "value": "ztd.v1.operator.status.updated.available",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "OperatorStatusUpdatedBound": {
+      "_go_const": "EventOperatorStatusUpdatedBound",
+      "value": "ztd.v1.operator.status.updated.bound",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs",
+      "transport": [
+        "sse"
+      ]
+    },
+    "OperatorStatusUpdatedOffline": {
+      "_go_const": "EventOperatorStatusUpdatedOffline",
+      "value": "ztd.v1.operator.status.updated.offline",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "OperatorStatusUpdatedStale": {
+      "_go_const": "EventOperatorStatusUpdatedStale",
+      "value": "ztd.v1.operator.status.updated.stale",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "OperatorStatusUpdatedStopped": {
+      "_go_const": "EventOperatorStatusUpdatedStopped",
+      "value": "ztd.v1.operator.status.updated.stopped",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "OperatorStatusUpdatedTerminated": {
+      "_go_const": "EventOperatorStatusUpdatedTerminated",
+      "value": "ztd.v1.operator.status.updated.terminated",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "OperatorStatusUpdatedUnavailable": {
+      "_go_const": "EventOperatorStatusUpdatedUnavailable",
+      "value": "ztd.v1.operator.status.updated.unavailable",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.operator_docs"
+    },
+    "OperatorTerminalApprovalDenied": {
+      "_go_const": "EventOperatorTerminalApprovalDenied",
+      "value": "ztd.v1.operator.terminal.approval.denied",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorTerminalAuthStateChanged": {
+      "_go_const": "EventOperatorTerminalAuthStateChanged",
+      "value": "ztd.v1.operator.terminal.auth.state.changed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorUnbound": {
+      "_go_const": "EventOperatorUnbound",
+      "value": "ztd.v1.operator.unbound",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "PlatformAuditChainCheckpointed": {
+      "_go_const": "EventPlatformAuditChainCheckpointed",
+      "value": "ztd.v1.platform.audit.chain.checkpointed",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "reserved": true
+    },
+    "PlatformAuthInfo": {
+      "_go_const": "EventPlatformAuthInfo",
+      "value": "ztd.v1.platform.auth.info.updated",
+      "kind": "outcome",
+      "producers": [
+        "cli",
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "PlatformAuthLoginFailed": {
+      "_go_const": "EventPlatformAuthLoginFailed",
+      "value": "ztd.v1.platform.auth.login.failed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthLoginRequested": {
+      "_go_const": "EventPlatformAuthLoginRequested",
+      "value": "ztd.v1.platform.auth.login.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthLoginSucceeded": {
+      "_go_const": "EventPlatformAuthLoginSucceeded",
+      "value": "ztd.v1.platform.auth.login.succeeded",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthLogoutFailed": {
+      "_go_const": "EventPlatformAuthLogoutFailed",
+      "value": "ztd.v1.platform.auth.logout.failed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthLogoutRequested": {
+      "_go_const": "EventPlatformAuthLogoutRequested",
+      "value": "ztd.v1.platform.auth.logout.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthLogoutSucceeded": {
+      "_go_const": "EventPlatformAuthLogoutSucceeded",
+      "value": "ztd.v1.platform.auth.logout.succeeded",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthSessionExpired": {
+      "_go_const": "EventPlatformAuthSessionExpired",
+      "value": "ztd.v1.platform.auth.session.expired",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthSessionValidationFailed": {
+      "_go_const": "EventPlatformAuthSessionValidationFailed",
+      "value": "ztd.v1.platform.auth.session.validation.failed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthSessionValidationRequested": {
+      "_go_const": "EventPlatformAuthSessionValidationRequested",
+      "value": "ztd.v1.platform.auth.session.validation.requested",
+      "kind": "request",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthSessionValidationSucceeded": {
+      "_go_const": "EventPlatformAuthSessionValidationSucceeded",
+      "value": "ztd.v1.platform.auth.session.validation.succeeded",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthUserAuthenticated": {
+      "_go_const": "EventPlatformAuthUserAuthenticated",
+      "value": "ztd.v1.platform.auth.user.authenticated",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformAuthUserUnauthenticated": {
+      "_go_const": "EventPlatformAuthUserUnauthenticated",
+      "value": "ztd.v1.platform.auth.user.unauthenticated",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformConsoleLogConnectedConfirmed": {
+      "_go_const": "EventPlatformConsoleLogConnectedConfirmed",
+      "value": "ztd.v1.platform.console.log.connected.confirmed",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "PlatformConsoleLogEntryReceived": {
+      "_go_const": "EventPlatformConsoleLogEntryReceived",
+      "value": "ztd.v1.platform.console.log.entry.received",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "ModelProvenancePreflightProgress": {
+      "_go_const": "EventModelProvenancePreflightProgress",
+      "value": "ztd.v1.inference.model.provenance.preflight.updated",
+      "kind": "fact",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "PlatformApprovalsChanged": {
+      "_go_const": "EventPlatformApprovalsChanged",
+      "value": "ztd.v1.platform.approvals.changed",
+      "kind": "fact",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "PlatformEnrollmentCreateRequested": {
+      "_go_const": "EventPlatformEnrollmentCreateRequested",
+      "value": "ztd.v1.platform.enrollment.create.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_CREATE",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "PlatformEnrollmentCreateSessionRequested": {
+      "_go_const": "EventPlatformEnrollmentCreateSessionRequested",
+      "value": "ztd.v1.platform.enrollment.create_session.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_CREATE_SESSION",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "PlatformEnrollmentDecideRequested": {
+      "_go_const": "EventPlatformEnrollmentDecideRequested",
+      "value": "ztd.v1.platform.enrollment.decide.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_DECIDE",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "PlatformEnrollmentIssueRequested": {
+      "_go_const": "EventPlatformEnrollmentIssueRequested",
+      "value": "ztd.v1.platform.enrollment.issue.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_ISSUE",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "PlatformEnrollmentPersistPolicyRequested": {
+      "_go_const": "EventPlatformEnrollmentPersistPolicyRequested",
+      "value": "ztd.v1.platform.enrollment.persist_policy.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_PERSIST_POLICY",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "PlatformEnrollmentRevokeRequested": {
+      "_go_const": "EventPlatformEnrollmentRevokeRequested",
+      "value": "ztd.v1.platform.enrollment.revoke.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_REVOKE",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "PlatformExternalServiceConfigured": {
+      "_go_const": "EventPlatformExternalServiceConfigured",
+      "value": "ztd.v1.platform.external.service.configured",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformNotification": {
+      "_go_const": "EventPlatformNotification",
+      "value": "ztd.v1.platform.notification.sent",
+      "kind": "outcome",
+      "producers": [
+        "cli",
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "PlatformSseConnectionClosed": {
+      "_go_const": "EventPlatformSseConnectionClosed",
+      "value": "ztd.v1.platform.sse.connection.closed",
+      "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "PlatformSseConnectionError": {
+      "_go_const": "EventPlatformSseConnectionError",
+      "value": "ztd.v1.platform.sse.connection.error",
+      "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "PlatformSseConnectionEstablished": {
+      "_go_const": "EventPlatformSseConnectionEstablished",
+      "value": "ztd.v1.platform.sse.connection.established",
+      "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "PlatformSseConnectionFailed": {
+      "_go_const": "EventPlatformSseConnectionFailed",
+      "value": "ztd.v1.platform.sse.connection.failed",
+      "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "PlatformSseConnectionOpened": {
+      "_go_const": "EventPlatformSseConnectionOpened",
+      "value": "ztd.v1.platform.sse.connection.opened",
+      "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
+    "PlatformSseKeepaliveSent": {
+      "_go_const": "EventPlatformSseKeepaliveSent",
+      "value": "ztd.v1.platform.sse.keepalive.sent",
+      "kind": "stream",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "PlatformTelemetryAuditLogged": {
+      "_go_const": "EventPlatformTelemetryAuditLogged",
+      "value": "ztd.v1.platform.telemetry.audit.logged",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "operator.audit_log",
+      "reserved": true
+    },
+    "PlatformTelemetryErrorLogged": {
+      "_go_const": "EventPlatformTelemetryErrorLogged",
+      "value": "ztd.v1.platform.telemetry.error.logged",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformTelemetryHealthReported": {
+      "_go_const": "EventPlatformTelemetryHealthReported",
+      "value": "ztd.v1.platform.telemetry.health.reported",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformTelemetryPerformanceRecorded": {
+      "_go_const": "EventPlatformTelemetryPerformanceRecorded",
+      "value": "ztd.v1.platform.telemetry.performance.recorded",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PlatformUsageUpdated": {
+      "_go_const": "EventPlatformUsageUpdated",
+      "value": "ztd.v1.platform.usage.updated",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "PublicFeedBatchAcknowledged": {
+      "_go_const": "EventPublicFeedBatchAcknowledged",
+      "value": "ztd.v1.public.feed.batch.acknowledged",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.audit_log",
+      "reserved": true
+    },
+    "PublicFeedBatchExported": {
+      "_go_const": "EventPublicFeedBatchExported",
+      "value": "ztd.v1.public.feed.batch.exported",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.audit_log",
+      "reserved": true
+    },
+    "PublicFeedKeyRotated": {
+      "_go_const": "EventPublicFeedKeyRotated",
+      "value": "ztd.v1.public.feed.key.rotated",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.audit_log",
+      "reserved": true
+    },
+    "PublicFeedProofPublished": {
+      "_go_const": "EventPublicFeedProofPublished",
+      "value": "ztd.v1.public.feed.proof.published",
+      "kind": "outcome",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.audit_log",
+      "reserved": true
+    }
+  }
+}

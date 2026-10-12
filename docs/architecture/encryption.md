@@ -1,0 +1,333 @@
+---
+doc_id: encryption
+title: Encryption Architecture
+audience: maintainers and coding agents
+status: current
+version: v1.0.0
+last_updated: 2026-10-12
+owners:
+  - internal/services/vault/
+  - internal/services/keystore/
+  - internal/services/storage/
+  - internal/services/scrubbing/
+  - internal/services/gateway/gateway_certs.go
+  - internal/services/gateway/secret_manager.go
+  - internal/cli/cmd/vault/
+  - internal/cli/auth/identity_keys.go
+related:
+  - docs/architecture/auth.md
+  - docs/architecture/governance.md
+  - docs/architecture/network.md
+  - docs/architecture/storage.md
+  - docs/devs/troubleshooting.md
+  - docs/reference/fips140-3.md
+when_to_read: Implementing, operating, or auditing encryption at rest, vault lifecycle, platform keystore secret isolation, payload scrubbing, or TLS transport security.
+do_not_use_for:
+  - Network PKI hierarchy, trust bundles, and revocation (docs/architecture/network.md)
+  - Detailed storage schema and persistence boundaries (docs/architecture/storage.md)
+  - Principal identity binding and authentication routes (docs/architecture/auth.md)
+  - FIPS 140-3 module compliance details (docs/reference/fips140-3.md)
+---
+
+# Encryption Architecture
+
+## Purpose
+
+Defines the cryptographic boundaries, key hierarchies, storage controls, and runtime lifecycle for data at rest, platform secrets, scrubbing tokens, and transport security within ztd. Specifies how the encryption vault, platform keystore, sovereign scrubbing boundary, and TLS mechanisms enforce security posture across Gateway and Operator runtimes.
+
+## Quick index
+
+- [Purpose](#purpose)
+- [Invariants](#invariants)
+- [Owned surfaces](#owned-surfaces)
+- [Vault Encryption Architecture](#vault-encryption-architecture)
+- [Platform Keystore Architecture](#platform-keystore-architecture)
+- [Scrubbing and Execution-Site Rehydration](#scrubbing-and-execution-site-rehydration)
+- [TLS and Certificate Protection](#tls-and-certificate-protection)
+- [Procedures](#procedures)
+- [Anti-patterns](#anti-patterns)
+- [Links out](#links-out)
+
+Invariant groups: [Vault encryption](#vault-encryption-inv-enc-vault), [Platform keystore](#platform-keystore-inv-enc-store), [Scrubbing and rehydration](#scrubbing-and-rehydration-inv-enc-scrub), [Transport security](#transport-security-inv-enc-tls).
+
+## Invariants
+
+Ids are stable. Append the next free number within each group; do not renumber.
+
+### Vault encryption (`INV-ENC-VAULT`)
+
+| ID | Rule |
+| --- | --- |
+| INV-ENC-VAULT-01 | Every runtime tree maintains an independent vault. A 32-byte vault private key derives a Key Encryption Key (KEK) using HKDF-SHA256 with info `"ztd-lfaa-kek-v1"`. The KEK wraps a randomly generated 32-byte Data Encryption Key (DEK) using AES Key Wrap (RFC 3394). |
+| INV-ENC-VAULT-02 | The unwrapped DEK exists only in process memory while the vault is unlocked. Calls to `Lock()` or `Close()` zero out the in-memory DEK via `SecureZero()`. |
+| INV-ENC-VAULT-03 | All vault-encrypted records use AES-256-GCM with a fresh 12-byte random nonce prepended to the ciphertext (`NonceSize + len(ciphertext)`). |
+| INV-ENC-VAULT-04 | Vault header verification matches the derived private key fingerprint (`SHA-256("ztd-vault-fingerprint-v1" + privateKey)[:16]`) against the header JSON before attempting DEK unwrapping. |
+
+### Platform keystore (`INV-ENC-STORE`)
+
+| ID | Rule |
+| --- | --- |
+| INV-ENC-STORE-01 | Platform secrets are encrypted at rest with a dedicated 32-byte master key stored in an OS-native keyring (freedesktop Secret Service or an ssh-agent seal on Linux, Keychain on macOS, DPAPI on Windows) or an explicitly provisioned external file selected by `--master-key-file`. No generated plaintext fallback. The runtime tree never holds the master key in plaintext: the only master-key files under `.ztd/secrets/` are the Windows DPAPI seal (`.master_key.dpapi`) and the Linux ssh-agent seal (`.master_key.ssh-agent`), and the external file must sit outside the runtime root. |
+| INV-ENC-STORE-02 | Secrets stored under `.ztd/secrets/` use AES-256-GCM authenticated encryption and JSON metadata specifying format version `2`, nonce, and ciphertext. The additional data binds each secret file's ciphertext to its name, and each sealed value to the binding its caller supplies (for example the public-feed path it is stored at), so ciphertext moved to another name or binding fails authentication. Other format versions are rejected; there is no migration from version `1`. |
+| INV-ENC-STORE-03 | Keystore initialization enforces strict private filesystem permissions (`0700` for `.ztd/secrets/` and `0600` for secret files). Startup fails if master key generation or permissions enforcement fails. |
+| INV-ENC-STORE-04 | A key store with no master key never generates one while `.ztd/secrets/` holds secrets sealed by the keystore; startup fails with `ErrKeyStoreOrphanedSecrets` instead of orphaning them under a new key. |
+| INV-ENC-STORE-05 | Secret names are a single non-hidden path component. Hidden names are reserved for sealed master keys and in-flight atomic writes, so no secret operation can overwrite, read, or delete them or leave the secrets directory. |
+| INV-ENC-STORE-06 | Client identity secrets outside `.ztd/secrets/` are sealed with the same keystore and master key: the CLI private key (`.ztd/cli.key`), each app private key (`.ztd/apps/<name>.key`), and the pending app enrollment state (`.ztd/pki/pending-enrollment/app_<name>.json`, key plus token). Each is stored as a sealed value bound to its runtime-relative path (`Keystore.Encrypt`), is read by unsealing in memory then `tls.X509KeyPair`, and is selected by the global `--master-key-file` flag or the OS key store. A missing or locked master key fails closed; a plaintext file at a sealed path fails with `ErrIdentityFilePlaintext`, and unseal failures wrap `ErrIdentityFileUnseal`. There is no migration. External clients cannot read these keys: use the `ztd mcp stdio` bridge, which unseals in process. |
+
+### Scrubbing and rehydration (`INV-ENC-SCRUB`)
+
+| ID | Rule |
+| --- | --- |
+| INV-ENC-SCRUB-01 | The Sovereign Execution Boundary scrubs outgoing payloads with strict mode enabled by default (`StrictMode: true`), replacing sensitive tokens and credentials with irreversible labels. |
+| INV-ENC-SCRUB-02 | Reversible User-Explicit Information (UEI) placeholders follow the `{{UEI_N}}` pattern. Mapped values are encrypted via the vault into the observed KV store with a 24-hour TTL. L5 Actuator rehydrates `{{UEI_N}}` placeholders immediately before action execution. |
+| INV-ENC-SCRUB-03 | L5 Actuator execution fails closed with `ErrEgressScrubberUnavailable` if an active scrubber is unavailable when scrubbing the target resource on receipt generation. |
+
+### Transport security (`INV-ENC-TLS`)
+
+| ID | Rule |
+| --- | --- |
+| INV-ENC-TLS-01 | The Gateway HTTPS listener enforces TLS 1.3. Workload and Operator ingress routes require mTLS with client certificates bound to SPIFFE URIs under the `ztd.local` trust domain. |
+| INV-ENC-TLS-02 | CA private keys (Root CA, Hub CA, Operator CA, Gateway Peer CA) and Gateway serving certificate private keys are encrypted in the platform keystore. Public certificates and trust bundles persist in `.ztd/pki/`. |
+
+## Owned surfaces
+
+| Claim | Path | Verify |
+| --- | --- | --- |
+| Vault core & AES-GCM/KW crypto | `internal/services/vault/` | `./ztd test unit --pkg ./internal/services/vault` |
+| Platform Keystore & Keyrings | `internal/services/keystore/` | `./ztd test unit --pkg ./internal/services/keystore` |
+| Secret Manager | `internal/services/gateway/secret_manager.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestSecretManager` |
+| Execution Record (`events`) | `internal/services/storage/audit_store.go` | `./ztd test unit --pkg ./internal/services/storage` |
+| Sovereign Execution Scrubber | `internal/services/scrubbing/` | `./ztd test unit --pkg ./internal/services/scrubbing` |
+| Encrypted KV Adapter (UEI) | `internal/services/gateway/encrypted_kv_adapter.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestEncryptedKVAdapter` |
+| PKI Authority & TLS | `internal/services/gateway/gateway_certs.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestPKIAuthority` |
+| Vault CLI Commands | `internal/cli/cmd/vault/` | `./ztd vault status` |
+| Sealed client identity keys | `internal/cli/auth/identity_keys.go` | `./ztd test unit --pkg ./internal/cli/auth --run TestIdentityKey` |
+
+## Vault Encryption Architecture
+
+### Key Hierarchy and Envelope Encryption
+
+ztd uses envelope encryption for vault-protected data at rest. Each runtime environment initializes an independent vault hierarchy:
+
+```text
++-------------------------------------------------------------------+
+|                        Platform Keystore                          |
+|         Master Key (OS Keyring / ssh-agent / DPAPI / File)        |
++-------------------------------------------------------------------+
+                                  │
+                  AES-256-GCM seals .ztd/secrets/vault_key
+                                  ▼
++-------------------------------------------------------------------+
+|                    Vault Key (32 bytes random)                    |
++-------------------------------------------------------------------+
+                                  │
+                 HKDF-SHA256 (info: "ztd-lfaa-kek-v1")
+                                  ▼
++-------------------------------------------------------------------+
+|                   Key Encryption Key (KEK, 32B)                   |
++-------------------------------------------------------------------+
+                                  │
+                 AES Key Wrap (RFC 3394 / aes-256-kw)
+                                  ▼
++-------------------------------------------------------------------+
+|                 Wrapped DEK (in .ztd/vault/vault.header)          |
++-------------------------------------------------------------------+
+                                  │
+                              Unwraps to
+                                  ▼
++-------------------------------------------------------------------+
+|             Data Encryption Key (DEK, 32 bytes in memory)        |
+|             AES-256-GCM + 12-byte random nonce per payload        |
+|             Zeroed on Lock() or Close() via vault.SecureZero()    |
++-------------------------------------------------------------------+
+```
+
+1. **Vault Key**: A randomly generated 32-byte (256-bit) private key sealed under the master key in the platform keystore as `vault_key` (persisted under `.ztd/secrets/vault_key` using AES-256-GCM).
+2. **Key Encryption Key (KEK)**: Derived from the vault key using HKDF-SHA256 with salt `nil` and info string `"ztd-lfaa-kek-v1"`.
+3. **Data Encryption Key (DEK)**: A randomly generated 32-byte AES-256 key (`crypto/rand`).
+4. **Key Wrapping**: The DEK is wrapped by the KEK using AES Key Wrap (RFC 3394 / `aes-256-kw`).
+5. **Vault Header**: Persisted to `.ztd/vault/vault.header` as JSON containing format version `1`, creation timestamp, KDF parameters, KEK algorithm identifier, base64-encoded wrapped DEK, and hex-encoded private key fingerprint (`KeyFingerprintSize = 16` bytes of `SHA-256("ztd-vault-fingerprint-v1" + vaultKey)`).
+6. **Rekey Flow**: Rekeying generates a fresh vault key and rewraps the existing DEK under a new KEK, staging the new key at `.ztd/secrets/vault_key.rekey` and updating the header before sealing the new key again under `vault_key` (sealed secrets are bound to their names, so the staged file cannot be renamed into place) and removing the staged copy. If that final write fails, the staged key still opens the vault and the error names it.
+
+When unlocked, the unwrapped DEK remains strictly in process memory (`Vault.dek`). Calls to `Vault.Lock()` or `Vault.Close()` clear the DEK using `vault.SecureZero()`.
+
+### Data Encryption and Protected Surfaces
+
+Data fields are encrypted using AES-256-GCM (`crypto/cipher.NewGCM`) with a fresh 12-byte random nonce generated per payload (`GenerateNonce()`). The 12-byte nonce is prepended directly to the GCM ciphertext before persistence. The vault exposes only `EncryptWithAAD`/`DecryptWithAAD`: every store binds associated data that names the store and, where the location is stable, the record, so a ciphertext copied into another store or record fails authentication.
+
+Vault encryption protects high-sensitivity fields across platform services:
+
+- **Execution record** (`events`, `internal/services/storage/audit_store.go`): `command_stdout` and `command_stderr` hold the full raw output, gzip-compressed and then encrypted with the vault. `command_raw` and `content_text` are encrypted. Structured metadata (exit code, duration, `execution_id`, session IDs, hashes) stays plaintext for indexing. File diffs are not stored; they are computed from encrypted ledger snapshots.
+- **Canonical Audit Store** (`internal/services/storage/audit_store.go`, `commitment_ledger.go`): Encrypted content columns of `ztd.db`. Every write encrypts through the runtime vault and fails with `ErrAuditStoreVaultLocked` when the vault is locked or absent. There is no plaintext branch and no "encrypted" flag column. Reads decrypt on the owning runtime; a locked vault fails the read. Each ciphertext is bound to its table, column, and row identity as AES-GCM associated data (`Vault.EncryptWithAAD`), and keyed digests use `Vault.HMACSHA256`, which derives a purpose-bound subkey from the DEK with HKDF-SHA256 so the DEK itself is never a MAC key.
+  - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr` (BLOB).
+  - `receipts`: `target_resource`, `result_summary`, `receipt_json` (BLOB). The receipt signature is verified over the decrypted canonical form.
+  - `commitment_ledger`: `target_resource`, `attestation_json` (BLOB). Commitment hash and signature checks run over decrypted values.
+  - `file_mutation_log`: `filepath`, `diff_stat` (BLOB).
+  - `sessions`: `title`, `user_identity` (BLOB).
+  - Plaintext by design: identifiers, hashes, signatures, `seq`, `prev_hash`, `content_digest` (an HMAC-SHA256 under a vault-derived subkey, not a hash of the content), `hash`, `transaction_id`, timestamps, event types, statuses, exit codes, durations, sizes, and truncation flags. Audit-chain checkpoint payloads (`events.content_text` rows of type `ztd.v1.platform.audit.chain.checkpointed`) are encrypted like other `content_text` values.
+  - Exports carry metadata, hashes, and signatures only. No compliance, operational, or `ztd report` export writes decrypted content. Chain-segment verification uses the stored `content_digest` and hash linkage; an exported receipt-recorded entry also carries the plain SHA-256 of the exported receipt body (`content_sha256`), recorded by the exporting runtime after it verified the keyed digest, because an offline importer cannot recompute the keyed digest.
+- **UEI Token Store** (`internal/services/gateway/encrypted_kv_adapter.go`): Reversible User-Explicit Information (UEI) token values are encrypted via `EncryptedKVAdapter` using the vault DEK before storage in `KVStoreService` under `constants.SentinelKeyPrefix` (`"__uei_token_"`). Each value is bound to its full KV key as associated data. Keys and TTL metadata remain visible.
+- **File Ledger** (`internal/services/storage/ledger.go`): Every file snapshot is encrypted and stored with an `.enc` suffix, bound to its git-relative snapshot path (`files/<keyed name>.enc`) as associated data. Mirroring fails closed with `ErrLedgerVaultRequired` when the vault is locked, and no plaintext copy is written. Ledger diffs are computed over decrypted snapshots in memory.
+
+### Gateway Startup and Vault Lifecycle
+
+Gateway startup reads `--vault-dir` (default: `.ztd/vault`). For headless or container deployments without a usable OS keyring, configure the external master key via `--master-key-file`. Mode `0600` grants owner read/write; ztd treats the supplied key file as read-only input.
+
+If no vault header exists on startup, Gateway automatically initializes a new vault header and generates the sealed vault key in the platform keystore. If an existing key cannot be read, decrypted, or matched to the header fingerprint, Gateway startup fails closed. When locked, audit, execution-record, suspended-transaction, file-ledger, and UEI writes fail closed; reads return unencrypted metadata or log decryption failures. A runtime tree with an unsealed or legacy vault layout must be recreated with `ztd gw clean`, which recreates platform secrets and vault state.
+
+## Platform Keystore Architecture
+
+### Master Key and Keyring Providers
+
+The platform keystore (`internal/services/keystore/keystore.go`) protects long-lived operational security material. It uses a dedicated 32-byte master key independent of the vault DEK.
+
+The master key is stored using OS-native keyrings, failing closed if no protected store is available. Secret Service and Keychain hold the key outside the runtime tree. DPAPI and the ssh-agent seal write a sealed blob to a hidden file in `.ztd/secrets/` (`constants.MasterKeyDPAPIFilename`, `constants.MasterKeySSHAgentFilename`); the blob is ciphertext that only the sealing user (DPAPI) or the holder of the sealing SSH private key (ssh-agent) can open, so a copied runtime tree or backup does not expose the master key. No backend writes the master key in plaintext.
+
+- **Linux**: Uses the freedesktop Secret Service API (`newSecretServiceKeyring()`), spoken directly over the session D-Bus (e.g. `gnome-keyring-daemon`, KWallet); no `secret-tool` or libsecret install is required. ztd never autolaunches a session bus. Construction checks that an existing master key item is readable or, when none exists, that the `default` collection alias resolves; a host with only the in-memory `session` collection (autologin or SSH-only sessions whose login keyring was never created) never stores a key there, because it would be lost at logout; such hosts use the ssh-agent seal below. Locked items and collections are unlocked through the service prompt. New keys are created without replacing an existing item, and more than one matching item fails closed. Desktop sessions use this backend.
+- **Linux ssh-agent seal**: Used when `.ztd/secrets/.master_key.ssh-agent` already exists, or when the Secret Service is unreachable or has no `default` collection. ztd uses the agent named by `SSH_AUTH_SOCK`; when it is unset (SSH logins without `-A`), ztd dials the user's systemd agent sockets under `XDG_RUNTIME_DIR` (default `/run/user/<uid>`) in order: `gcr/ssh` (`gcr-ssh-agent.socket`, GNOME and Ubuntu desktops) then `ssh-agent.socket`. The agent signs `ztd-master-key-seal-v1:<salt>` with its first Ed25519 key (else RSA, using `rsa-sha2-512`). Those signatures are deterministic, so HKDF-SHA256 over the signature re-derives the same key-encryption key. The master key is sealed with AES-256-GCM, with the SSH public key as additional data, and the sealed blob holds no plaintext key. Unsealing requires the same SSH key in a reachable agent, either local or forwarded with `ssh -A`. The agent socket must be served by the service user or root (checked with `SO_PEERCRED`), because whoever serves it chooses the sealing key and sees every signature. ECDSA and security-key (`sk-`) keys are not used. Other Secret Service failures fail closed and never fall through to ssh-agent. Containers and hosts without a user agent provision `--master-key-file`.
+- **macOS**: Uses the user's default Keychain (`newKeychainKeyring()`) through Security.framework, called without cgo. The master key is a generic password item (service `ztd-platform`, account `master-encryption-key`) created by the ztd process itself, so its access list trusts only that ztd binary; other programs, including the `security` command, must pass a Keychain prompt to read it. Because macOS identifies the binary by its code signature, the first run of a rebuilt or upgraded unsigned ztd asks once for access; without a GUI session that prompt cannot be shown and startup fails with `ErrKeyStoreLocked`. New keys never replace an existing item. Items created by earlier releases through the `security` command are not read.
+- **Windows**: Uses Windows DPAPI (`newDPAPIKeyring()`) through `CryptProtectData`/`CryptUnprotectData` in `golang.org/x/sys/windows`, scoped to the current user with entropy `ztd-platform/master-encryption-key`. The sealed blob is stored at `.ztd/secrets/.master_key.dpapi`; only the same user on the same machine can unseal it.
+- **External File**: The only plaintext form of the master key, and only when an operator provisions it; ztd never writes it. Select with a nonblank `--master-key-file`; otherwise ztd selects the OS keyring. The flag value is trimmed; an empty or whitespace-only flag behaves as unset. A selected source that fails never falls back to another source. No home-directory filename is discovered.
+
+The external file must contain base64 encoding of exactly 32 random bytes, be regular and at most 4096 bytes, and use an absolute path outside the actual configured runtime root. Both lexical and resolved symlink paths are checked, including symlinks in the runtime root itself. Safe external secret-mount symlinks are supported. Linux and macOS require mode `0400` or `0600`, ownership by the service user or root, and readability by the service; the final path component is opened without following symlinks, so it cannot be swapped for one after resolution. Configure container secret mounts accordingly; world-readable defaults such as `0444` are rejected. Every retrieval checks the opened descriptor's metadata and validates the payload again. ztd never creates, chmods, overwrites, or deletes this external file.
+
+Keep the containing directory and mount under trusted administration: symlink checks do not guarantee separation against path-swap races, hard links, mount aliases, or backups that include both key and ciphertext. Base64 is not encryption; protect the provisioned key and its backups separately from all ciphertext locations. Service-account or root compromise remains outside this file backend's protection.
+
+Gateway background startup saves only the effective key **path** in its launch profile and passes it explicitly to the child. Restart reuses that path even if the invoking environment changes or disappears; a missing file fails closed. Outbound Operators use their own host's explicit path or service environment, not an implicitly forwarded developer-machine path. Vault, report, compliance, and public commands use the same selection rule; read-only keystore construction does not create keys.
+
+OS key creation occurs only during initialization when lookup reports a missing key. It stores the new key and verifies it by reading it back and comparing in constant time; store, retrieval, and verification failures abort startup without switching backends or deleting a stored key. Backend construction performs no write probe.
+
+Changing to a different valid key is not migration or rotation: existing ciphertext will not decrypt. Restore the original key and configuration to recover. Never overwrite an existing key to repair startup; loss of the master key loses access to its encrypted data.
+
+ztd never generates an unencrypted file fallback key. The explicitly provisioned external key remains sensitive unencrypted input.
+
+### Secret Storage Format
+
+Secrets managed by `SecretManager` (`internal/services/gateway/secret_manager.go`) are written to individual JSON files under `.ztd/secrets/<name>` using AES-256-GCM. The JSON format includes `version: 2`, base64 `nonce`, and base64 `ciphertext`, and the ciphertext is bound to the file name (`INV-ENC-STORE-02`).
+
+The platform keystore protects:
+
+- Vault private key (`vault_key`, `vault_key.rekey`)
+- Actuator signing key (`actuator_signing_key`) and Key ID (`actuator_key_id`)
+- Auditor signing key (`auditor_signing_key`), Key ID (`auditor_key_id`), and HMAC key (`auditor_hmac_key`)
+- Notary signing key (`notary_signing_key`)
+- Operator private key (`operator_private_key`)
+- CLI private key (`cli_private_key`)
+- Session encryption key (`session_encryption_key`) and session tokens (`session_token`)
+- Consensus member seeds (`consensus_member_<id>`)
+- Public-feed signing keys (`public_feed_signing_key`), ingest tokens (`public_feed_ingest_token`), and rotation keys (`sealed_new_private_key`)
+- Root CA, Hub CA, Operator CA, and Gateway Peer CA private keys
+- Gateway serving certificate private key
+- Integration API keys
+
+Startup enforces directory permissions (`0700`) and secret file permissions (`0600`) via `Keystore.EnforcePermissions()`.
+
+## Scrubbing and Execution-Site Rehydration
+
+ztd combines irreversible output scrubbing with reversible execution-site rehydration across the sovereign execution boundary:
+
+```text
++---------------------------------------------------------------------------------+
+|                                Ingress / Model Run                              |
+|           Sensitive input registered -> Reversible placeholder {{UEI_1}}        |
+|           Plaintext mapped to Vault-encrypted KV under "__uei_token_" (24h TTL) |
++---------------------------------------------------------------------------------+
+                                         │
+                                         ▼
++---------------------------------------------------------------------------------+
+|                       Governance Pipeline (L1–L4 Verification)                  |
+|                Payload carries only {{UEI_1}} placeholder token                 |
+|             L1 Doctrine, L2 Consensus, L3 Notary inspect scrubbed payload       |
++---------------------------------------------------------------------------------+
+                                         │
+                                         ▼
++---------------------------------------------------------------------------------+
+|                          L5 Actuator Execution Boundary                         |
+|     1. rehydratePayload: Replaces {{UEI_1}} with decrypted original plaintext   |
+|        via ScrubbingService.RehydratePayload() (fails closed on lookup error)   |
+|     2. Capability minting and command execution with rehydrated parameters      |
+|     3. Outbound receipt generation: Scrubber active check enforced;             |
+|        scrubs target_resource and result_summary before signing ActionReceipt   |
++---------------------------------------------------------------------------------+
+```
+
+1. **Irreversible Scrubbing**: The Sovereign Execution Boundary (`internal/services/scrubbing/boundary.go`) inspects outgoing model payloads, command output, and event streams. It redacts detected credentials, API keys, private keys, IP addresses, and personal data using fixed label replacements (e.g., `[GITHUB_TOKEN]`, `[AWS_SECRET]`). Strict mode (`StrictMode: true`) is enabled by default.
+2. **Reversible UEI Rehydration**: Callers register sensitive input strings to obtain a `{{UEI_N}}` token matching `regexp.MustCompile(\`\\{\\{UEI_\\d+\\}\\}\`)`. The value is encrypted into the observed KV store via `EncryptedKVAdapter` with a 24-hour expiration under `constants.SentinelKeyPrefix` (`"__uei_token_"`). Immediately prior to action execution, the L5 Actuator (`internal/services/governance/l5_actuator.go`) rehydrates `{{UEI_N}}` placeholders with original un-scrubbed values via `rehydratePayload`. If rehydration fails, the actuator fails closed and aborts execution before dispatch.
+3. **Outbound Receipt Scrubbing**: Before signing the final `ActionReceipt`, L5 Actuator scrubs the `target_resource` and error causes. If no active scrubber is available, the operation fails closed with `ErrEgressScrubberUnavailable`.
+
+## TLS and Certificate Protection
+
+Network transport encryption relies on TLS 1.3 and SPIFFE identity binding managed by `PKIAuthority` (`internal/services/gateway/gateway_certs.go`):
+
+- **CA Hierarchy**: ECDSA P-256 Root CA (`pki/root/root_ca.crt`), separate Hub CA, Operator CA, and Gateway Peer CA (`pki/authorities/`). CA private keys are stored exclusively in the platform keystore.
+- **Serving Certificate**: Gateway issues a 90-day serving certificate (`pki/issued/service_cert.crt`) with DNS SANs including `ztd.local` and configured IPs. Serving private keys are stored in the platform keystore.
+- **Mutual TLS (mTLS)**: Workload and Operator connections on port 8443 enforce TLS 1.3 mTLS and validate SPIFFE URI SANs (`spiffe://ztd.local/...`) against server-side session records.
+- **Plain HTTP Surface**: Port 8080 serves a restricted plain-HTTP bootstrap and discovery surface.
+
+See [Network Architecture](network.md) for PKI hierarchy details and [Authentication & Authorization Architecture](auth.md) for route authentication modes.
+
+## Procedures
+
+### Initializing the Vault
+
+Generate a new vault header and seal a new vault key in the platform keystore:
+
+```bash
+./ztd vault init
+# Or in headless/container environments:
+./ztd vault init --master-key-file /run/secrets/ztd_master_key
+```
+
+### Unlocking and Validating the Vault
+
+Confirm that the vault unlocks with the key held in the keystore:
+
+```bash
+./ztd vault unlock
+# Or in headless/container environments:
+./ztd vault unlock --master-key-file /run/secrets/ztd_master_key
+```
+
+### Checking Vault Status
+
+Inspect whether a vault header exists and the lock state of the CLI process:
+
+```bash
+./ztd vault status
+```
+
+### Re-keying the Vault
+
+Re-wrap the DEK with a new vault key and atomically commit the new sealed key (stop the runtime first):
+
+```bash
+./ztd vault rekey
+# Or in headless/container environments:
+./ztd vault rekey --master-key-file /run/secrets/ztd_master_key
+```
+
+### Resetting the Vault
+
+Destroy vault headers and database artifacts (requires typing `destroy` or passing `--confirm`):
+
+```bash
+./ztd vault reset --confirm
+```
+
+## Anti-patterns
+
+- **Hardcoding encryption keys**: Storing plaintext private keys or DEKs in configuration files or source code.
+- **Bypassing platform keystore for CA keys**: Writing unencrypted CA or service private key files to disk outside the keystore.
+- **Relying on CLI vault status for Gateway state**: Expecting `./ztd vault status` to report the running Gateway's memory state rather than the CLI process state.
+- **Assuming UEI rehydration is automatic for all scrubbed data**: Expecting output scrubber labels (`[REDACTED_...]`) to rehydrate automatically at execution time.
+- **Allowing unverified execution when rehydration fails**: Failing to fail closed when `rehydratePayload` cannot resolve a `{{UEI_N}}` token.
+- **Editing generated crypto code or docs out of sync**: Changing crypto algorithms without updating owning packages and documentation.
+
+## Links out
+
+- [Authentication & Authorization Architecture](auth.md): Route classification, identity binding, passkey enrollment, and session lifecycle.
+- [Governance Architecture](governance.md): Five-layer verification interlock, L5 actuator dispatch, and receipt signing.
+- [Network Architecture](network.md): PKI hierarchy, trust bundles, SPIFFE identities, and TLS surfaces.
+- [Storage Architecture](storage.md): Database topology, the execution record schema, and retention policies.
+- [FIPS 140-3 Module Linkage and Scope](../reference/fips140-3.md): The validated boundary of the Go Cryptographic Module that ztd links (ztd is not separately validated), approved services, and runtime verification.
+- [Troubleshooting Guide](../devs/troubleshooting.md): Recovery procedures for locked vaults and keystore failures.

@@ -1,0 +1,369 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package governance
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+)
+
+func createStrictVerifier(t *testing.T, replayStore ReplayStore, stateRootProvider StateRootProvider, l3Notary L3Notary) (*L4Warden, ed25519.PrivateKey) {
+	t.Helper()
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate signer: %v", err)
+	}
+	return NewL4Warden(
+		testutil.NewTestLogger(),
+		replayStore,
+		stateRootProvider,
+		&FailClosedSignerStore{Signers: map[string]ed25519.PublicKey{"test-key": pubKey}},
+		&consensusStoreTestAdapter{Inner: &governancetest.SimpleConsensusStore{Consensus: map[string]*models.ConsensusPolicy{
+			"test-consensus": {
+				ID:              "test-consensus",
+				MemberAppIDs:    []string{"test-key"},
+				Quorum:          1,
+				RequireDistinct: true,
+				Enabled:         true,
+			},
+		}}},
+		l3Notary,
+		NewL1Doctrine(),          // doctrine required
+		constants.AllActionTypes, // Use SSOT for action types
+		nil,                      // Clock defaults to RealClock
+		&testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"},
+		&governancetest.UnlockedVault{},
+	), privKey
+}
+
+func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
+	t.Helper()
+	var msg proto.Message
+	switch actionType {
+	case constants.ActionTypeExecuteBash:
+		msg = &operatorv1.CommandRequested{Command: "uptime", ExecutionId: "exec-1", Justification: "test"}
+	case constants.ActionTypeFileEdit:
+		msg = &operatorv1.FileEditRequested{FilePath: constants.TestPathShortData, Content: "test", ExecutionId: "exec-1"}
+	case constants.ActionTypeFsList:
+		msg = &operatorv1.FsListRequested{Path: constants.PathCurrentDir, ExecutionId: "exec-1"}
+	case constants.ActionTypeFsRead:
+		msg = &operatorv1.FsReadRequested{Path: constants.TestPathShortData, ExecutionId: "exec-1"}
+	case constants.ActionTypeFsGrep:
+		msg = &operatorv1.FsGrepRequested{Path: constants.PathCurrentDir, Pattern: "test", ExecutionId: "exec-1"}
+	case constants.ActionTypePortCheck:
+		msg = &operatorv1.CheckPortRequested{Port: 8080, ExecutionId: "exec-1"}
+	case constants.ActionTypeOllamaModelInventory:
+		msg = &operatorv1.OllamaModelInventoryRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeOllamaModelResidency:
+		msg = &operatorv1.OllamaModelResidencyRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeFetchLogs:
+		msg = &operatorv1.FetchLogsRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeFetchHistory:
+		msg = &operatorv1.FetchHistoryRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeFetchFileHistory:
+		msg = &operatorv1.FetchFileHistoryRequested{FilePath: constants.TestPathShortData, ExecutionId: "exec-1"}
+	case constants.ActionTypeRestoreFile:
+		msg = &operatorv1.RestoreFileRequested{FilePath: constants.TestPathShortData, ExecutionId: "exec-1"}
+	case constants.ActionTypeFetchFileDiff:
+		msg = &operatorv1.FetchFileDiffRequested{FilePath: constants.TestPathShortData, ExecutionId: "exec-1"}
+	case constants.ActionTypeShutdown:
+		msg = &operatorv1.ShutdownRequested{Reason: "test"}
+	case constants.ActionTypeHeartbeat:
+		msg = &operatorv1.HeartbeatRequested{}
+	case constants.ActionTypeEvalAnswer:
+		msg = &operatorv1.EvalAnswerRequested{PromptId: "test", Benchmark: "test", Model: "test", Answer: "test"}
+	case constants.ActionTypeMcpCall:
+		msg = &operatorv1.McpCallRequested{ToolName: "test", ArgumentsJson: "{}", ExecutionId: "exec-1"}
+	case constants.ActionTypeA2aCall:
+		msg = &operatorv1.A2ACallRequested{SkillName: "test", PayloadJson: "{}", ExecutionId: "exec-1"}
+	case constants.ActionTypeMcpResourceList:
+		msg = &operatorv1.McpResourceListRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeMcpResourceRead:
+		msg = &operatorv1.McpResourceReadRequested{Uri: "test://resource", ExecutionId: "exec-1"}
+	case constants.ActionTypeMcpPromptList:
+		msg = &operatorv1.McpPromptListRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeMcpPromptGet:
+		msg = &operatorv1.McpPromptGetRequested{Name: "test", ExecutionId: "exec-1"}
+	case constants.ActionTypeDocumentUpdate:
+		updates, err := structpb.NewStruct(map[string]interface{}{
+			"title":  "test-case",
+			"status": "open",
+		})
+		if err != nil {
+			t.Fatalf("failed to build updates struct: %v", err)
+		}
+		msg = &operatorv1.DocumentUpdateRequested{
+			Collection: "cases",
+			DocumentId: "case-1",
+			Updates:    updates,
+			Merge:      false,
+		}
+	case constants.ActionTypeDocumentDelete:
+		msg = &operatorv1.DocumentDeleteRequested{
+			Collection: "cases",
+			DocumentId: "case-1",
+		}
+	case constants.ActionTypeCancel:
+		msg = &operatorv1.CommandCancelRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeInference:
+		msg = &operatorv1.InferenceRequested{
+			Role:  operatorv1.ModelRole_MODEL_ROLE_PRIMARY,
+			Model: "test-model",
+			Messages: []*operatorv1.InferenceMessage{{
+				Role:  operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER,
+				Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: "test prompt"}}},
+			}},
+		}
+	case constants.ActionTypeProviderBoundaryObservation:
+		msg = &evalv1.ProviderBoundaryObservationCommand{
+			ProviderAttemptId: "attempt-1",
+			Phase:             evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_BEGIN,
+		}
+	case constants.ActionTypeModelProvenanceObservation:
+		msg = &evalv1.ModelProvenanceObservationCommand{
+			ProviderAttemptId: "attempt-1",
+			Phase:             evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_BEGIN,
+		}
+	case constants.ActionTypePlatformEnrollmentCreate,
+		constants.ActionTypePlatformEnrollmentDecide,
+		constants.ActionTypePlatformEnrollmentIssue,
+		constants.ActionTypePlatformEnrollmentPersistPolicy,
+		constants.ActionTypePlatformEnrollmentCreateSession,
+		constants.ActionTypePlatformEnrollmentRevoke:
+		msg = &commonv1.PlatformEnrollmentGovernancePayload{
+			Action:    string(actionType),
+			RequestId: "test-request",
+		}
+	default:
+		t.Fatalf("unsupported action type: %v", actionType)
+	}
+	payload, err := proto.Marshal(msg)
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+	return payload
+}
+
+// signL2Vote creates an L2Vote with a signature derived from the Decision field,
+// preventing decision/signature mismatch bugs where the signed string and the
+// Decision field diverge.
+func signL2Vote(privKey ed25519.PrivateKey, keyID, hash string, decision bool) *commonv1.L2Vote {
+	sig := ed25519.Sign(privKey, []byte(fmt.Sprintf("%s|%v", hash, decision)))
+	return &commonv1.L2Vote{
+		SignerKeyId:        keyID,
+		ConsensusSignature: hex.EncodeToString(sig),
+		Decision:           decision,
+	}
+}
+
+func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, posture string) *govtypes.GovernanceEnvelope {
+	t.Helper()
+	// Generate a safe nonce from action type and payload (handle empty payloads)
+	nonceSuffix := hex.EncodeToString(payload)
+	if len(nonceSuffix) > 8 {
+		nonceSuffix = nonceSuffix[:8]
+	}
+	if nonceSuffix == "" {
+		nonceSuffix = "empty"
+	}
+
+	eventType, err := constants.RequestEventForAction(actionType)
+	if err != nil {
+		t.Fatalf("failed to resolve request event for %v: %v", actionType, err)
+	}
+
+	env := &govtypes.GovernanceEnvelope{
+		ProtocolVersion:   govtypes.GovernanceProtocolVersionV2,
+		Timestamp:         timestamppb.Now(),
+		ExpiresAt:         timestamppb.New(time.Now().UTC().Add(time.Hour)),
+		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
+		OperatorId:        "operator-1",
+		OperatorSessionId: "operator-session-1",
+		EventType:         string(eventType),
+		ActionType:        string(actionType),
+		TargetResource:    "localhost",
+		Payload:           payload,
+		StateMerkleRoot:   "root-1",
+		Nonce:             "nonce-" + string(actionType) + "-" + nonceSuffix,
+		// Posture is gateway policy metadata, not intent — it is not part of
+		// the transaction hash. Set it before hashing so the envelope reaches
+		// the warden with posture populated (the warden reads it per-envelope).
+		Posture: posture,
+	}
+	// Compute transaction hash before any governance metadata.
+	// Protocol ordering: L1 → L2 → L3 → L4. L2 signs the hash, then L3 is added.
+	hash, err := govtypes.GenerateMessageID(env)
+	if err != nil {
+		t.Fatalf("failed to generate transaction hash: %v", err)
+	}
+	env.Id = hash
+	env.TransactionHash = hash
+
+	// L2 signs the hash (machine consensus before human notary)
+	env.Governance = &commonv1.GovernanceMetadata{
+		L2: &commonv1.L2Metadata{
+			ConsensusSetId: "test-consensus",
+			Votes: []*commonv1.L2Vote{
+				signL2Vote(privKey, "test-key", hash, true),
+			},
+		},
+	}
+
+	// L3 proof added after L2 signs (human notary after machine consensus)
+	if actionType.IsMutation() {
+		env.Governance.L3 = &commonv1.L3Metadata{
+			Proof: &commonv1.L3Proof{
+				Signature: "human-proof",
+			},
+		}
+	}
+	return env
+}
+
+func rehash(t *testing.T, env *govtypes.GovernanceEnvelope) {
+	t.Helper()
+	hash, err := govtypes.GenerateMessageID(env)
+	if err != nil {
+		t.Fatalf("failed to regenerate transaction hash: %v", err)
+	}
+	env.Id = hash
+	env.TransactionHash = hash
+}
+
+func TestL4Warden_EventActionMismatchRejected(t *testing.T) {
+	t.Parallel()
+
+	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
+	env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, constants.PostureDoctrine)
+	env.ActionType = string(constants.ActionTypeExecuteBash)
+	rehash(t, env)
+
+	_, err := verifier.VerifyEnvelope(context.Background(), env)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrTxEventActionMismatch)
+}
+
+// TestL4Warden_EmptyPayload verifies that a zero-byte payload is accepted only
+// for actions whose typed message has no required fields. An all-default
+// ShutdownRequested (no reason) marshals to zero bytes, and the Gateway stop
+// routes send exactly that; rejecting it as missing made governed stop fail
+// closed on the Operator with TX_PAYLOAD_MISSING.
+func TestL4Warden_EmptyPayload(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		actionType constants.ActionType
+		wantErr    error
+	}{
+		{name: "shutdown without reason", actionType: constants.ActionTypeShutdown},
+		{name: "heartbeat", actionType: constants.ActionTypeHeartbeat},
+		{name: "execute bash", actionType: constants.ActionTypeExecuteBash, wantErr: constants.ErrTxPayloadMissing},
+		{name: "fs list", actionType: constants.ActionTypeFsList, wantErr: constants.ErrTxPayloadMissing},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
+			env := signedEnvelope(t, tc.actionType, nil, privKey, constants.PostureDoctrine)
+
+			_, err := verifier.VerifyEnvelope(context.Background(), env)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestNewGovernancePosture_ErrorsOnInvalidPosture verifies that invalid posture
+// strings return an error wrapping constants.ErrInvalidPosture rather than
+// panicking or silently defaulting (INV-CODE-06, INV-ERR-01).
+func TestNewGovernancePosture_ErrorsOnInvalidPosture(t *testing.T) {
+	t.Parallel()
+	_, err := NewGovernancePosture("invalid-posture")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrInvalidPosture)
+}
+
+// TestNewGovernancePosture_AcceptsValidPostures verifies that all valid posture
+// strings are accepted and return no error.
+func TestNewGovernancePosture_AcceptsValidPostures(t *testing.T) {
+	t.Parallel()
+	validPostures := []string{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary}
+	for _, posture := range validPostures {
+		t.Run(posture, func(t *testing.T) {
+			t.Parallel()
+			p, err := NewGovernancePosture(posture)
+			require.NoError(t, err)
+			assert.NotNil(t, p)
+			assert.Equal(t, posture, p.Name())
+		})
+	}
+}
+
+// createVerifierWithAppPolicyStore creates a L4Warden with a custom signer key ID.
+func createVerifierWithAppPolicyStore(t *testing.T, replayStore ReplayStore, stateRootProvider StateRootProvider, l3Notary L3Notary) (*L4Warden, ed25519.PrivateKey) {
+	t.Helper()
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate signer: %v", err)
+	}
+	return NewL4Warden(
+		testutil.NewTestLogger(),
+		replayStore,
+		stateRootProvider,
+		&FailClosedSignerStore{Signers: map[string]ed25519.PublicKey{"spiffe://ztd.local/app/test-app-id": pubKey}},
+		&consensusStoreTestAdapter{Inner: &governancetest.SimpleConsensusStore{Consensus: map[string]*models.ConsensusPolicy{
+			"test-consensus": {
+				ID:              "test-consensus",
+				MemberAppIDs:    []string{"spiffe://ztd.local/app/test-app-id"},
+				Quorum:          1,
+				RequireDistinct: true,
+				Enabled:         true,
+			},
+		}}},
+		l3Notary,
+		NewL1Doctrine(),
+		constants.AllActionTypes,
+		nil, // Clock defaults to RealClock
+		&testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"},
+		&governancetest.UnlockedVault{},
+	), privKey
+}
+
+// signedEnvelopeWithAppID creates a signed envelope with a specific L2 KeyId.
+func signedEnvelopeWithAppID(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, appID string, posture string) *govtypes.GovernanceEnvelope {
+	t.Helper()
+	env := signedEnvelope(t, actionType, payload, privKey, posture)
+	if env.Governance != nil && env.Governance.L2 != nil && len(env.Governance.L2.Votes) > 0 {
+		env.Governance.L2.Votes[0].SignerKeyId = appID
+	}
+	rehash(t, env)
+	return env
+}

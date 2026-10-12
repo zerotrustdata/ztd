@@ -1,0 +1,491 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package auth
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/pkg/certutil"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/vault"
+)
+
+// rotationThreshold is the window before CLI certificate expiry within
+// which the coordinator will rotate via the mTLS rotation endpoint. Kept
+// here (not in constants) because it is a coordinator policy, not a wire
+// contract.
+const rotationThreshold = 24 * time.Hour
+
+// CredentialStore is the coordinator's typed API over the local CLI
+// identity files. It owns:
+//
+//   - Inspect: classify the local state as absent/complete/partial/corrupt
+//     by examining ALL managed artifacts as a set, never by checking one
+//     file at a time.
+//   - Stage/Commit: write a new complete identity atomically enough that
+//     readers see either the old complete set or the new complete set,
+//     never a half-written one. Credentials are written LAST so a missing
+//     or partial commit is detected by the next Inspect as partial/corrupt.
+//   - Clear: one cleanup operation for logout/recovery that removes the
+//     local CLI credential material. It does NOT remove the shared OS root
+//     CA (per the §4.3 ownership policy).
+//
+// The store does not open browsers, invoke sudo, or perform network I/O.
+// It is safe for concurrent use: an enrollment lock (mu) serializes Stage/
+// Commit/Clear against each other so two concurrent enrollments cannot
+// interleave file writes.
+type CredentialStore struct {
+	fileSvc fs.RuntimeFileService
+	cfg     *config.Config
+	mu      sync.Mutex
+}
+
+// NewCredentialStore returns a CredentialStore backed by the given file
+// service and CLI config. The config is captured by reference; callers
+// must not mutate its path fields after construction.
+func NewCredentialStore(fileSvc fs.RuntimeFileService, cfg *config.Config) *CredentialStore {
+	return &CredentialStore{fileSvc: fileSvc, cfg: cfg}
+}
+
+// stagedIdentity holds the in-memory artifacts waiting for Commit. It is
+// owned by a single Stage call and consumed by Commit. The caller must
+// hold the store lock between Stage and Commit.
+type stagedIdentity struct {
+	artifacts EnrollmentArtifacts
+}
+
+// Inspect examines all managed artifacts as a complete set and returns a
+// LocalIdentity classification. It never writes files, never opens a
+// browser, and never performs network I/O. It is the single source of
+// truth for the coordinator's state-machine decision.
+//
+// The classification reflects LOCAL file consistency only. It does NOT
+// verify that the local trust bundle matches the LIVE gateway root CA —
+// that is a coordinator-level concern (the coordinator compares
+// TrustBundle.PrimaryRootFingerprint against the live fingerprint from
+// EnrollmentGateway.DiscoverGatewayCA and sets LocalIdentity.BundleStale).
+// A LocalStateComplete identity with a stale bundle (e.g., after `gw
+// clean` regenerated the gateway PKI) is indistinguishable from a healthy
+// one through Inspect alone; the coordinator layer must add the liveness
+// check on top.
+//
+// The managed artifact set is:
+//   - credentials JSON (cfg.CredentialsFile)
+//   - CLI cert PEM (cfg.CLICertFile)
+//   - CLI key PEM, sealed under the keystore master key (cfg.CLIKeyFile)
+//   - runtime trust bundle (cfg.DefaultTrustBundleRelPath or custom)
+//
+// A complete identity requires all four to be present, parseable, and
+// mutually consistent (the CLI key's public key matches the CLI cert's
+// public key). Any missing or unparseable identity artifact is partial;
+// a present-but-mismatched cert/key pair is corrupt. The trust bundle is
+// a shared gateway artifact (§4.3) and alone does not promote an absent
+// identity to partial — `gw start` may write it before any CLI enrollment.
+func (s *CredentialStore) Inspect(ctx context.Context) (LocalIdentity, error) {
+	out := LocalIdentity{State: LocalStateAbsent}
+
+	creds, credsErr := s.loadCredentials(ctx)
+	credPresent := creds != nil
+	credCorrupt := credsErr != nil && !isNotFound(credsErr)
+
+	cliCert, cliCertPresent, cliCertCorrupt := s.loadCLICert(ctx)
+	cliKeyPresent, cliKeyCorrupt, cliKeyPub, keyErr := s.loadCLIKeyPub(ctx)
+	if keyErr != nil {
+		return out, keyErr
+	}
+	bundle, bundleErr := ReadTrustBundleFromDisk(ctx, s.fileSvc, s.cfg)
+	bundlePresent := bundle != nil
+	bundleCorrupt := bundleErr != nil
+
+	// The trust bundle is a shared gateway artifact (§4.3: it survives
+	// logout/Clear and may be written by `gw start` independently of any
+	// CLI enrollment). Its presence alone must not promote a cleanly-
+	// absent CLI identity to partial. Only the three CLI identity
+	// artifacts (credentials JSON, CLI cert, CLI key) determine whether
+	// an identity exists.
+	identityPresent := credPresent || cliCertPresent || cliKeyPresent
+
+	// If no CLI identity artifacts are present, the identity is cleanly
+	// absent regardless of the trust bundle.
+	if !identityPresent {
+		return out, nil
+	}
+
+	// Any corrupt identity artifact (present but unparseable) makes the
+	// whole set corrupt. A corrupt trust bundle also makes the set
+	// corrupt, since the CLI cannot validate the gateway without it.
+	// Partial (some present, all parseable but incomplete) is distinct:
+	// the files are individually valid but the set is not.
+	if credCorrupt || cliCertCorrupt || cliKeyCorrupt || bundleCorrupt {
+		out.State = LocalStateCorrupt
+		out.Credentials = creds // may be nil
+		out.CLICert = cliCert   // may be nil
+		out.HasCLIKey = cliKeyPresent
+		out.TrustBundle = bundle // may be nil
+		//nolint:nilerr // intentional fallback: corrupt identity state is captured in out.State
+		return out, nil
+	}
+
+	// All present-and-parseable artifacts are loaded. Classify completeness.
+	out.Credentials = creds
+	out.CLICert = cliCert
+	out.HasCLIKey = cliKeyPresent
+	out.TrustBundle = bundle
+
+	// Cert/key mutual consistency: if both are present, the key's public
+	// key must match the cert's public key.
+	if cliCertPresent && cliKeyPresent {
+		out.KeyMatchesCert = pubKeysMatch(cliCert, cliKeyPub)
+		if !out.KeyMatchesCert {
+			out.State = LocalStateCorrupt
+			return out, nil
+		}
+	}
+
+	complete := credPresent && cliCertPresent && cliKeyPresent && bundlePresent && out.KeyMatchesCert
+	if !complete {
+		out.State = LocalStatePartial
+		return out, nil
+	}
+
+	// Complete and consistent. Inspect expiry to drive the rotation
+	// decision.
+	out.State = LocalStateComplete
+	if cliCert != nil {
+		remaining := time.Until(cliCert.NotAfter)
+		out.CertExpiring = remaining <= rotationThreshold && remaining > 0
+		out.CertExpired = remaining <= 0
+	}
+	return out, nil
+}
+
+// Stage prepares a new identity for commit without writing any of the
+// canonical managed files. The artifacts are held in memory; Commit
+// performs the atomic file replacement. The caller passes the
+// EnrollmentArtifacts produced by the enrollment client (bootstrap,
+// recovery, rotation, or remote operator/device).
+//
+// Stage acquires the store lock and holds it until Commit or Rollback is
+// called. This serializes concurrent enrollments against each other so
+// two Stage/Commit sequences cannot interleave file writes.
+func (s *CredentialStore) Stage(ctx context.Context, artifacts EnrollmentArtifacts) (*stagedIdentity, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if artifacts.CLICertPEM == "" || artifacts.CLISessionID == "" || artifacts.UserID == "" {
+		return nil, fmt.Errorf("%w: staged artifacts missing required CLI fields", constants.ErrValidationFailed)
+	}
+	if artifacts.CLIKey == nil && artifacts.Source.IsLocalCLI() {
+		return nil, fmt.Errorf("%w: staged local CLI artifacts missing CLI key", constants.ErrValidationFailed)
+	}
+	if artifacts.TrustBundlePEM == "" {
+		return nil, fmt.Errorf("%w: staged artifacts missing trust bundle", constants.ErrValidationFailed)
+	}
+
+	// Validate the trust bundle parses and matches the fingerprint pin
+	// (if provided by the caller via the artifacts — the coordinator
+	// validates the pin before staging).
+	if _, err := ParseTrustBundle([]byte(artifacts.TrustBundlePEM), time.Now()); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrValidationFailed, err)
+	}
+
+	// Validate the CLI cert parses and matches the CLI key.
+	cert, err := certutil.ParseCertFromPEM([]byte(artifacts.CLICertPEM))
+	if err != nil {
+		return nil, fmt.Errorf("%w: staged CLI cert: %w", constants.ErrValidationFailed, err)
+	}
+	if artifacts.CLIKey != nil && !pubKeyMatchesCert(cert, &artifacts.CLIKey.PublicKey) {
+		return nil, fmt.Errorf("%w: staged CLI cert/key mismatch", constants.ErrValidationFailed)
+	}
+
+	return &stagedIdentity{artifacts: artifacts}, nil
+}
+
+// Commit writes the staged identity to the canonical managed files in the
+// order required by §4.3:
+//
+//  1. Write the CLI key (PermFilePrivate).
+//  2. Write the CLI cert + chain (PermFilePrivate).
+//  3. Write the runtime trust bundle (PermFilePublic).
+//  4. Write the credentials JSON LAST so a partial commit is detected by
+//     the next Inspect as partial/corrupt (credentials present but cert
+//     missing, or vice versa).
+//
+// Each file is written via RuntimeFileService.WriteFile, which uses a
+// tmp+rename pattern so individual files are atomic. The previous complete
+// identity remains readable until the new file is renamed into place.
+//
+// On any write failure, Commit returns the error and leaves the previously
+// committed identity (if any) in place — it does not half-overwrite the
+// canonical files. The caller may retry Commit with the same staged
+// identity.
+func (s *CredentialStore) Commit(ctx context.Context, staged *stagedIdentity) error {
+	if staged == nil {
+		return fmt.Errorf("%w: nil staged identity", constants.ErrInternal)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	a := staged.artifacts
+
+	cliCertRel, err := s.fileSvc.RelFromAbs(s.cfg.CLICertFile())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrCertSaveFailed, err)
+	}
+	cliKeyRel, err := s.fileSvc.RelFromAbs(s.cfg.CLIKeyFile())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrCertSaveFailed, err)
+	}
+
+	// 1. CLI key (only for local CLI enrollment where we own the key).
+	if a.CLIKey != nil {
+		certBytes, keyBytes, err := certutil.EncodeCertAndKey(a.CLICertPEM, a.CLICertChainPEM, a.CLIKey)
+		if err != nil {
+			return fmt.Errorf("%w: %w", constants.ErrCertSaveFailed, err)
+		}
+		defer vault.SecureZero(keyBytes)
+		if err := sealIdentityFile(ctx, s.fileSvc, s.cfg, filepath.ToSlash(cliKeyRel), keyBytes); err != nil {
+			return fmt.Errorf("%w: %w", constants.ErrCertSaveFailed, err)
+		}
+		if err := s.fileSvc.WriteFile(ctx, cliCertRel, certBytes, constants.PermFilePrivate); err != nil {
+			return fmt.Errorf("%w: %w", constants.ErrCertSaveFailed, err)
+		}
+	} else {
+		// Remote operator enrollment: only the cert is staged (the
+		// key was generated elsewhere). Write the cert + chain.
+		certContent := []byte(a.CLICertPEM)
+		if a.CLICertChainPEM != "" {
+			certContent = append(certContent, []byte("\n"+a.CLICertChainPEM)...)
+		}
+		if err := s.fileSvc.WriteFile(ctx, cliCertRel, certContent, constants.PermFilePrivate); err != nil {
+			return fmt.Errorf("%w: %w", constants.ErrCertSaveFailed, err)
+		}
+	}
+
+	// 2. Runtime trust bundle.
+	if err := WriteTrustBundleToDisk(ctx, s.fileSvc, s.cfg, []byte(a.TrustBundlePEM)); err != nil {
+		return err
+	}
+
+	// 3. Credentials JSON LAST.
+	creds := &Credentials{
+		OperatorSessionID: a.OperatorSessionID,
+		UserID:            a.UserID,
+		OperatorID:        a.OperatorID,
+		CLISessionID:      a.CLISessionID,
+	}
+	if err := SaveCredentials(s.fileSvc, s.cfg, creds); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Rollback releases the staged identity without writing any canonical
+// files. The previously committed identity (if any) remains in place.
+// Called when the coordinator decides not to commit after staging (e.g.,
+// a trust-install failure before browser launch).
+func (s *CredentialStore) Rollback(staged *stagedIdentity) {
+	if staged == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Nothing to clean up — Stage wrote no canonical files. The lock is
+	// released here so a subsequent Stage/Commit can proceed.
+}
+
+// Clear removes the local CLI credential material for logout/recovery
+// cleanup. It removes:
+//   - credentials JSON
+//   - CLI cert
+//   - CLI key
+//
+// It does NOT remove the shared OS root CA (the runtime trust bundle) —
+// system trust is shared and may be used by another runtime or gateway
+// (per §4.3 ownership policy). Callers that also want to remove an exact
+// Windows Personal-store certificate should do so separately via the
+// platform key provider.
+func (s *CredentialStore) Clear(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	credsRel, err := s.fileSvc.RelFromAbs(s.cfg.CredentialsFile())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrFileRemoveFailed, err)
+	}
+	if err := s.fileSvc.Remove(ctx, credsRel); err != nil && !isNotFound(err) {
+		return fmt.Errorf("%w: %w", constants.ErrFileRemoveFailed, err)
+	}
+
+	cliCertRel, err := s.fileSvc.RelFromAbs(s.cfg.CLICertFile())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrFileRemoveFailed, err)
+	}
+	if err := s.fileSvc.Remove(ctx, cliCertRel); err != nil && !isNotFound(err) {
+		return fmt.Errorf("%w: %w", constants.ErrFileRemoveFailed, err)
+	}
+
+	cliKeyRel, err := s.fileSvc.RelFromAbs(s.cfg.CLIKeyFile())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrFileRemoveFailed, err)
+	}
+	if err := s.fileSvc.Remove(ctx, cliKeyRel); err != nil && !isNotFound(err) {
+		return fmt.Errorf("%w: %w", constants.ErrFileRemoveFailed, err)
+	}
+
+	return nil
+}
+
+// LoadCredentials returns the parsed credentials JSON, or (nil, nil) when
+// absent. Wrapper around the package-level LoadCredentials for callers
+// that hold a CredentialStore.
+func (s *CredentialStore) LoadCredentials(ctx context.Context) (*Credentials, error) {
+	return s.loadCredentials(ctx)
+}
+
+// loadCredentials reads and parses the credentials JSON. Returns
+// (nil, nil) when absent, (nil, err) when present but unparseable.
+func (s *CredentialStore) loadCredentials(ctx context.Context) (*Credentials, error) {
+	rel, err := s.fileSvc.RelFromAbs(s.cfg.CredentialsFile())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrFailedToLoadCredentials, err)
+	}
+	data, err := s.fileSvc.ReadFile(ctx, rel)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("%w: %w", constants.ErrFailedToLoadCredentials, err)
+	}
+	var creds Credentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONBody, err)
+	}
+	return &creds, nil
+}
+
+// loadCLICert reads and parses the CLI cert PEM. Returns (nil, false,
+// false) when absent, (nil, false, true) when present but unparseable.
+func (s *CredentialStore) loadCLICert(ctx context.Context) (cert *x509.Certificate, present, corrupt bool) {
+	rel, err := s.fileSvc.RelFromAbs(s.cfg.CLICertFile())
+	if err != nil {
+		return nil, false, false
+	}
+	data, err := s.fileSvc.ReadFile(ctx, rel)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, false, false
+		}
+		return nil, false, true
+	}
+	c, perr := certutil.ParseCertFromPEM(data)
+	if perr != nil {
+		return nil, true, true
+	}
+	return c, true, false
+}
+
+// loadCLIKeyPub unseals the CLI key and returns its public key. Returns
+// (false, false, nil, nil) when absent and (true, true, nil, nil) when the file
+// is present but is plaintext, not a valid sealed value, or not an EC key. A
+// missing or locked master key is an error, not corruption: the sealed key is
+// intact and re-enrolling over it would destroy a recoverable identity.
+func (s *CredentialStore) loadCLIKeyPub(ctx context.Context) (present, corrupt bool, pub *ecdsa.PublicKey, err error) {
+	data, err := UnsealIdentityKey(ctx, s.fileSvc, s.cfg, s.cfg.CLIKeyFile())
+	if err != nil {
+		switch {
+		case isNotFound(err):
+			return false, false, nil, nil
+		case errors.Is(err, constants.ErrIdentityFilePlaintext),
+			errors.Is(err, constants.ErrInvalidCiphertext),
+			errors.Is(err, constants.ErrKeyStoreDecodeBase64),
+			errors.Is(err, constants.ErrKeyStoreUnmarshalFailed),
+			errors.Is(err, constants.ErrKeyStoreUnsupportedVersion):
+			return true, true, nil, nil
+		default:
+			return true, false, nil, err
+		}
+	}
+	defer vault.SecureZero(data)
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return true, true, nil, nil
+	}
+	var key any
+	switch block.Type {
+	case "EC PRIVATE KEY":
+		k, perr := x509.ParseECPrivateKey(block.Bytes)
+		if perr != nil {
+			return true, true, nil, nil
+		}
+		key = k
+	case "PRIVATE KEY":
+		k, perr := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if perr != nil {
+			return true, true, nil, nil
+		}
+		key = k
+	default:
+		return true, true, nil, nil
+	}
+	ecKey, ok := key.(*ecdsa.PrivateKey)
+	if !ok {
+		return true, true, nil, nil
+	}
+	return true, false, &ecKey.PublicKey, nil
+}
+
+// pubKeysMatch reports whether the CLI cert's public key matches the
+// provided CLI key public key.
+func pubKeysMatch(cert *x509.Certificate, keyPub *ecdsa.PublicKey) bool {
+	if cert == nil || keyPub == nil {
+		return false
+	}
+	return pubKeyMatchesCert(cert, keyPub)
+}
+
+// pubKeyMatchesCert reports whether the given public key equals the cert's
+// public key. Used by Stage to validate the staged cert/key pair.
+func pubKeyMatchesCert(cert *x509.Certificate, keyPub *ecdsa.PublicKey) bool {
+	if cert == nil || keyPub == nil {
+		return false
+	}
+	certPub, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return false
+	}
+	return certPub.Equal(keyPub)
+}
+
+// ResolveCLICertPath returns the absolute CLI cert path. Convenience for
+// callers (e.g., the key provider) that need the on-disk path.
+func (s *CredentialStore) ResolveCLICertPath() string {
+	return s.cfg.CLICertFile()
+}
+
+// ResolveCLIKeyPath returns the absolute CLI key path.
+func (s *CredentialStore) ResolveCLIKeyPath() string {
+	return s.cfg.CLIKeyFile()
+}
+
+// ResolveTrustBundlePath returns the absolute trust bundle path (custom
+// external path if configured, otherwise the default runtime path).
+func (s *CredentialStore) ResolveTrustBundlePath() string {
+	return s.cfg.ResolvedTrustBundlePath()
+}

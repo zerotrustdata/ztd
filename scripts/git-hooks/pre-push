@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Lateralus Labs, LLC.
+# Use of this source code is governed by the Business Source License
+# included in the LICENSE file.
+#
+# As of the Change Date listed in the LICENSE file, this software is
+# released under the Apache License, Version 2.0.
+
+# Installed by `make hooks-install` (core.hooksPath=scripts/git-hooks).
+# Re-checks every commit being pushed, which also covers commits made with
+# --no-verify or created by rebase, cherry-pick, and amend.
+set -euo pipefail
+
+check="$(git rev-parse --show-toplevel)/scripts/check-commit-hygiene.sh"
+zero="$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')"
+
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [[ $local_sha == "$zero" ]] && continue
+    if [[ $remote_sha == "$zero" ]]; then
+        "$check" --range "$local_sha" --not --remotes
+    else
+        "$check" --range "$remote_sha..$local_sha"
+    fi
+done

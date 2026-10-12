@@ -1,0 +1,130 @@
+# ==============================================================================
+# Zero Trust Data (ztd) — repository ignore rules
+#
+# Everything here is local-only state that must never be committed. The
+# pre-commit hook (scripts/git-hooks/pre-commit, installed by `make hooks-install`)
+# rejects any staged path these rules match, so `git add -f` cannot smuggle one
+# in. Keep this file the single list of "never commit" paths.
+#
+# Directory names that could collide with a source package (build/, logs/,
+# secrets/, reports/, env/) are anchored to the repo root with a leading "/".
+# Component rules live in console/ and evaluation-explorer/.
+# ==============================================================================
+
+# --- OS ---
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Editors & agent tooling ---
+# Shared agent config is tracked as CLAUDE.md, AGENTS.md, and .claude-plugin/.
+.idea/
+.vscode/
+.settings/
+.project
+.pydevproject
+*.iml
+*.swp
+*.swo
+*~
+.claude/
+.devin/
+.gemini/
+GEMINI.md
+.windsurf/
+.local.dev/
+.local.local/
+
+# --- Scratch ---
+*.tmp
+*.temp
+*.bak
+
+# --- Logs, caches, coverage ---
+*.log
+*.logs
+/logs/
+.cache/
+.nyc_output/
+.vitest-cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+coverage.xml
+coverage.html
+coverage.txt
+# coverage.out, coverage_filtered.out
+*.out
+
+# --- Runtime state ---
+# .ztd/ runtime roots and .ztd-test-tmp/ at any depth.
+.ztd*
+/data/
+/db/
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*-shm
+*-wal
+
+# --- Secrets & key material ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.secret
+*.p12
+*.pfx
+/secrets/
+/ssl/
+/.ssl/
+
+# --- Build outputs ---
+# make build / fips-build / proto-generate: bin/, root binary copies, ./buf.
+/bin/
+/*.sha256
+/ztd
+/ztd-fips
+/ztd
+/ztd-fips
+/operator
+/buf
+/build/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+go.work
+go.work.sum
+# vendor/ is intentionally tracked for air-gapped builds.
+
+# --- Local virtualenvs and env dirs ---
+.venv/
+/venv/
+/env/
+/ENV/
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+
+# --- Generated output (project-root defaults) ---
+# Gateway fixture run results (test/fixtures/gateway_fixture.go).
+/test-results/
+# `ztd report` default --out.
+/reports/
+# `ztd compliance release prepare` work dir.
+/release-evidence/
+# `ztd eval backup` snapshots.
+/eval/backups/

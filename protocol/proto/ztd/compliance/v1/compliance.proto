@@ -1,0 +1,520 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+syntax = "proto3";
+
+package ztd.compliance.v1;
+
+option go_package = "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1;compliancev1";
+
+import "google/protobuf/timestamp.proto";
+
+message VersionedReference {
+  string id = 1;
+  string version = 2;
+}
+
+message NamedDigest {
+  string name = 1;
+  string sha256 = 2;
+}
+
+message ControlAssertionDefinition {
+  string assertion_id = 1;
+  string assertion_version = 2;
+  string title = 3;
+  string statement = 4;
+  string category = 5;
+  repeated string component_scope = 6;
+  string responsibility = 7;
+  repeated string applicable_action_classes = 8;
+  repeated string applicable_arms = 9;
+  repeated string required_evidence_types = 10;
+  repeated VersionedReference required_grader_refs = 11;
+  repeated VersionedReference required_verifier_refs = 12;
+  string minimum_evidence_level = 13;
+  string validation_cycle = 14;
+  string missing_evidence_policy = 15;
+  string passing_rule = 16;
+  repeated string exclusions = 17;
+}
+
+message ControlAssertionCatalog {
+  string catalog_id = 1;
+  string catalog_version = 2;
+  string sha256 = 3;
+  repeated ControlAssertionDefinition assertions = 4;
+}
+
+message FrameworkControlDefinition {
+  string control_id = 1;
+  string title = 2;
+  string description = 3;
+  repeated string applicability_rules = 4;
+  string responsibility = 5;
+  string source_reference = 6;
+  string support_status = 7;
+  string support_rationale = 8;
+}
+
+message FrameworkDefinition {
+  string framework_id = 1;
+  string framework_version = 2;
+  string title = 3;
+  string publisher = 4;
+  string source = 5;
+  string catalog_sha256 = 6;
+  string effective_date = 7;
+  repeated FrameworkControlDefinition controls = 8;
+}
+
+message FrameworkCatalog {
+  string catalog_id = 1;
+  string catalog_version = 2;
+  string sha256 = 3;
+  repeated FrameworkDefinition frameworks = 4;
+}
+
+message ControlCrosswalk {
+  string crosswalk_id = 1;
+  string crosswalk_version = 2;
+  VersionedReference framework_ref = 3;
+  string control_id = 4;
+  repeated VersionedReference assertion_refs = 5;
+  string mapping_type = 6;
+  string rationale = 7;
+  repeated string applicability_conditions = 8;
+  string responsibility = 9;
+  string required_evidence_level = 10;
+  google.protobuf.Timestamp reviewed_at = 11;
+  string reviewer_identity = 12;
+}
+
+message ControlCrosswalkCatalog {
+  string catalog_id = 1;
+  string catalog_version = 2;
+  string sha256 = 3;
+  repeated ControlCrosswalk mappings = 4;
+}
+
+message ComponentInventoryEntry {
+  string component_id = 1;
+  string component_type = 2;
+  string version = 3;
+  string digest = 4;
+}
+
+enum AssessmentWitnessPolicy {
+  ASSESSMENT_WITNESS_POLICY_UNSPECIFIED = 0;
+  ASSESSMENT_WITNESS_POLICY_INTERIM = 1;
+  ASSESSMENT_WITNESS_POLICY_STRICT = 2;
+}
+
+message AssessmentSourceAdmission {
+  string admission_id = 1;
+  string source_kind = 2;
+  string source_version = 3;
+  string source_scope_id = 4;
+  string owner_runtime_boundary = 5;
+  string acquisition_boundary = 6;
+  string run_id = 7;
+  string snapshot_id = 8;
+  repeated string artifact_ids = 9;
+  VersionedReference verifier_ref = 10;
+  string disclosure_classification = 11;
+  AssessmentWitnessPolicy provider_observation_policy = 12;
+  AssessmentWitnessPolicy model_provenance_policy = 13;
+}
+
+message AssessmentApplicabilitySelection {
+  repeated string components = 1;
+  repeated string action_classes = 2;
+  repeated string arms = 3;
+}
+
+message AssessmentSubjectSelection {
+  string source_admission_id = 1;
+  string run_id = 2;
+  string attempt_id = 3;
+  string scenario_id = 4;
+  string transaction_id = 5;
+}
+
+message AssessmentPopulationSelection {
+  repeated AssessmentSubjectSelection subjects = 1;
+}
+
+message AssessmentCoverage {
+  int32 selected_subject_count = 1;
+  int32 assessed_subject_count = 2;
+  int32 failed_subject_count = 3;
+  int32 unavailable_subject_count = 4;
+  repeated AssessmentSubjectSelection unavailable_subjects = 5;
+}
+
+message AssessmentDiagnostic {
+  string code = 1;
+  string severity = 2;
+  string source_admission_id = 3;
+  AssessmentSubjectSelection subject = 4;
+  string message = 5;
+}
+
+enum AssessmentContextKind {
+  ASSESSMENT_CONTEXT_KIND_UNSPECIFIED = 0;
+  ASSESSMENT_CONTEXT_KIND_BUILD_IDENTITY = 1;
+  ASSESSMENT_CONTEXT_KIND_SOURCE_REVISION = 2;
+  ASSESSMENT_CONTEXT_KIND_COMPONENT_INVENTORY = 3;
+  ASSESSMENT_CONTEXT_KIND_NETWORK_TOPOLOGY = 4;
+  ASSESSMENT_CONTEXT_KIND_CONFIGURATION = 5;
+  ASSESSMENT_CONTEXT_KIND_DOCTRINE_BUNDLES = 6;
+  ASSESSMENT_CONTEXT_KIND_TRUST_ANCHORS = 7;
+}
+
+message UnavailableAssessmentContext {
+  AssessmentContextKind kind = 1;
+  string reason = 2;
+}
+
+message AssessmentScope {
+  string scope_id = 1;
+  string organization_id = 2;
+  string deployment_id = 3;
+  string product_version = 4;
+  string build_identity = 5;
+  string source_revision = 6;
+  repeated NamedDigest image_digests = 7;
+  repeated ComponentInventoryEntry component_inventory = 8;
+  string network_topology_hash = 9;
+  repeated NamedDigest configuration_hashes = 10;
+  repeated NamedDigest doctrine_bundle_hashes = 11;
+  repeated NamedDigest consensus_policy_hashes = 12;
+  repeated string trust_anchor_ids = 13;
+  string cryptographic_mode = 14;
+  google.protobuf.Timestamp assessment_window_start = 15;
+  google.protobuf.Timestamp assessment_window_end = 16;
+  repeated string excluded_components = 17;
+  repeated string customer_responsibilities = 18;
+  string active_posture = 19;
+  repeated AssessmentSourceAdmission source_admissions = 20;
+  AssessmentApplicabilitySelection applicability = 21;
+  AssessmentPopulationSelection selected_population = 22;
+  google.protobuf.Timestamp assessment_as_of = 23;
+  repeated UnavailableAssessmentContext unavailable_context = 24;
+}
+
+message EvidenceEncryptionMetadata {
+  string algorithm = 1;
+  string key_id = 2;
+  string authorization_scope = 3;
+  string plaintext_sha256 = 4;
+  string authenticated_metadata_sha256 = 5;
+}
+
+message ComplianceEvidenceReference {
+  string artifact_id = 1;
+  string artifact_type = 2;
+  string sha256 = 3;
+  string media_type = 4;
+  string schema_ref = 5;
+  string producer_identity = 6;
+  google.protobuf.Timestamp produced_at = 7;
+  string scope_id = 8;
+  string run_id = 9;
+  string attempt_id = 10;
+  string scenario_id = 11;
+  string transaction_id = 12;
+  string verification_status = 13;
+  string verifier_id = 14;
+  string verifier_version = 15;
+  google.protobuf.Timestamp verified_at = 16;
+  string bundle_path = 17;
+  EvidenceEncryptionMetadata encryption = 18;
+  string source_admission_id = 19;
+}
+
+message ControlAssertionAssessment {
+  string assessment_id = 1;
+  string scope_id = 2;
+  VersionedReference assertion_ref = 3;
+  string status = 4;
+  string evidence_level = 5;
+  google.protobuf.Timestamp evaluated_at = 6;
+  VersionedReference verifier_ref = 7;
+  repeated string evidence_refs = 8;
+  repeated string metric_refs = 9;
+  string freshness_status = 10;
+  string failure_reason = 11;
+  repeated string limitations = 12;
+  AssessmentCoverage coverage = 13;
+  repeated AssessmentDiagnostic diagnostics = 14;
+}
+
+message FrameworkControlAssessment {
+  string assessment_id = 1;
+  string scope_id = 2;
+  VersionedReference framework_ref = 3;
+  string control_id = 4;
+  string status = 5;
+  string responsibility = 6;
+  repeated string mapping_refs = 7;
+  repeated string assertion_assessment_refs = 8;
+  repeated string customer_attestation_refs = 9;
+  string evidence_level = 10;
+  repeated string findings = 11;
+  repeated string limitations = 12;
+  repeated string remediation = 13;
+}
+
+message ChecksumEntry {
+  string bundle_path = 1;
+  string sha256 = 2;
+}
+
+message ReportSignature {
+  string key_id = 1;
+  string algorithm = 2;
+  string signed_sha256 = 3;
+  string signature = 4;
+}
+
+message ComplianceReportSigningKeyMetadata {
+  string key_id = 1;
+  string algorithm = 2;
+  string purpose = 3;
+  string public_key_sha256 = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message ComplianceReportTrustedKey {
+  ComplianceReportSigningKeyMetadata metadata = 1;
+  string public_key = 2;
+  string assessment_id = 3;
+  string assessor_identity = 4;
+  google.protobuf.Timestamp assessed_at = 5;
+  repeated string allowed_scope_refs = 6;
+  google.protobuf.Timestamp revoked_at = 7;
+}
+
+message ComplianceReportTrustPolicy {
+  string policy_id = 1;
+  string policy_version = 2;
+  repeated ComplianceReportTrustedKey trusted_keys = 3;
+}
+
+message ComplianceEvidenceTrustedKey {
+  string key_id = 1;
+  string public_key = 2;
+  string public_key_sha256 = 3;
+  string assessment_id = 4;
+  string assessor_identity = 5;
+  google.protobuf.Timestamp assessed_at = 6;
+  google.protobuf.Timestamp valid_from = 7;
+  google.protobuf.Timestamp valid_until = 8;
+  repeated string allowed_scope_refs = 9;
+  google.protobuf.Timestamp revoked_at = 10;
+}
+
+message ComplianceEvidenceTrustPolicy {
+  string policy_id = 1;
+  string policy_version = 2;
+  repeated ComplianceEvidenceTrustedKey trusted_keys = 3;
+}
+
+message ComplianceReportManifest {
+  string report_id = 1;
+  string report_schema_version = 2;
+  google.protobuf.Timestamp generated_at = 3;
+  string generator_identity = 4;
+  string generator_version = 5;
+  string scope_ref = 6;
+  repeated VersionedReference framework_refs = 7;
+  string assertion_catalog_ref = 8;
+  repeated string crosswalk_refs = 9;
+  repeated string assessment_refs = 10;
+  string evidence_index_ref = 11;
+  string checksum_root = 12;
+  ReportSignature signature = 13;
+  string bundle_profile = 14;
+  string manifest_sha256 = 15;
+}
+
+message BundleArtifact {
+  string bundle_path = 1;
+  string sha256 = 2;
+  string media_type = 3;
+  string profile = 4;
+  int64 byte_length = 5;
+  EvidenceEncryptionMetadata encryption = 6;
+}
+
+message RenderedFormatEntry {
+  string format = 1;
+  string media_type = 2;
+  string bundle_path = 3;
+}
+
+message ComplianceReportBundle {
+  ComplianceReportManifest manifest = 1;
+  repeated BundleArtifact artifacts = 2;
+  ComplianceAnalysis analysis = 3;
+  repeated FrameworkProfile profiles = 4;
+  repeated RenderedFormatEntry rendered_formats = 5;
+  string checksum_root = 6;
+  ReportSignature checksum_root_signature = 7;
+}
+
+message VerificationFailure {
+  string code = 1;
+  string subject_ref = 2;
+  string reason = 3;
+}
+
+enum VerificationCheckStatus {
+  VERIFICATION_CHECK_STATUS_UNSPECIFIED = 0;
+  VERIFICATION_CHECK_STATUS_PASSED = 1;
+  VERIFICATION_CHECK_STATUS_FAILED = 2;
+}
+
+message VerificationCheckResult {
+  string check_id = 1;
+  VerificationCheckStatus status = 2;
+  repeated string evidence_refs = 3;
+  string verifier_id = 4;
+  string verifier_version = 5;
+  repeated VerificationFailure failures = 6;
+}
+
+message ComplianceVerificationReport {
+  string report_id = 1;
+  bool valid = 2;
+  google.protobuf.Timestamp verified_at = 3;
+  string verifier_id = 4;
+  string verifier_version = 5;
+  repeated VerificationFailure failures = 6;
+  string reproduced_checksum_root = 7;
+  repeated VerificationCheckResult checks = 8;
+}
+
+message OSCALValidatorIdentity {
+  string validator_id = 1;
+  string validator_version = 2;
+  string schema_version = 3;
+  string schema_digest = 4;
+}
+
+message OSCALValidationFailure {
+  string code = 1;
+  string message = 2;
+  string instance_ptr = 3;
+  string schema_ptr = 4;
+  string keyword = 5;
+}
+
+message OSCALValidationResult {
+  OSCALValidatorIdentity validator = 1;
+  bool valid = 2;
+  repeated OSCALValidationFailure structural_failures = 3;
+  repeated OSCALValidationFailure semantic_failures = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Canonical compliance analysis (COMP-4)
+// ---------------------------------------------------------------------------
+
+message EvidenceWindowCompleteness {
+  string scope_id = 1;
+  int32 expected_evidence_count = 2;
+  int32 actual_evidence_count = 3;
+  repeated string missing_evidence_refs = 4;
+  repeated string stale_evidence_refs = 5;
+  string completeness_status = 6;
+  string window_start_ref = 7;
+  string window_end_ref = 8;
+}
+
+message ComplianceGap {
+  string gap_id = 1;
+  string assertion_ref = 2;
+  string framework_ref = 3;
+  string control_id = 4;
+  string gap_type = 5;
+  string description = 6;
+  string responsibility = 7;
+}
+
+message EvidenceLink {
+  string source_ref = 1;
+  string target_ref = 2;
+  string link_type = 3;
+}
+
+message ComplianceFinding {
+  string finding_id = 1;
+  string subject_ref = 2;
+  string severity = 3;
+  string description = 4;
+  string related_assertion_ref = 5;
+  string related_control_id = 6;
+}
+
+message ComplianceRemediation {
+  string remediation_id = 1;
+  string finding_ref = 2;
+  string action = 3;
+  string priority = 4;
+  string owner = 5;
+}
+
+message ControlSection {
+  string section_id = 1;
+  string title = 2;
+  string responsibility = 3;
+  string status_filter = 4;
+  repeated string control_assessment_refs = 5;
+  string description = 6;
+  repeated FrameworkControlReference control_refs = 7;
+}
+
+message ComplianceAnalysis {
+  string analysis_id = 1;
+  string analysis_schema_version = 2;
+  string scope_ref = 3;
+  google.protobuf.Timestamp generated_at = 4;
+  string generator_identity = 5;
+  string generator_version = 6;
+  EvidenceWindowCompleteness evidence_window_completeness = 7;
+  repeated ControlAssertionAssessment assertion_assessments = 8;
+  repeated FrameworkControlAssessment framework_assessments = 9;
+  repeated ComplianceGap gaps = 10;
+  repeated EvidenceLink evidence_links = 11;
+  repeated string limitations = 12;
+  repeated ComplianceFinding findings = 13;
+  repeated ComplianceRemediation remediation = 14;
+  repeated ControlSection sections = 15;
+  repeated string evidence_graph_failures = 16;
+  bool evidence_graph_valid = 17;
+  repeated ComplianceEvidenceReference evidence_resources = 18;
+  string assessment_scope_sha256 = 19;
+  repeated AssessmentDiagnostic diagnostics = 20;
+}
+
+message FrameworkProfile {
+  string profile_id = 1;
+  VersionedReference framework_ref = 2;
+  string profile_version = 3;
+  google.protobuf.Timestamp generated_at = 4;
+  string analysis_ref = 5;
+  repeated FrameworkControlAssessment control_assessments = 6;
+  repeated string limitations = 7;
+}
+
+message FrameworkControlReference {
+  VersionedReference framework_ref = 1;
+  string control_id = 2;
+}

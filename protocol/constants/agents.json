@@ -1,0 +1,122 @@
+{
+  "agents": {
+    "AgentNameDash": {
+      "_go_const": "AgentNameDash",
+      "value": "dash"
+    },
+    "AgentNameSage": {
+      "_go_const": "AgentNameSage",
+      "value": "sage"
+    }
+  },
+  "agent_binaries": {
+    "claude": {
+      "_go_const": "AgentBinaryClaude",
+      "value": "claude"
+    },
+    "codex": {
+      "_go_const": "AgentBinaryCodex",
+      "value": "codex"
+    },
+    "cursor": {
+      "_go_const": "AgentBinaryCursor",
+      "value": "cursor"
+    },
+    "devin": {
+      "_go_const": "AgentBinaryDevin",
+      "value": "devin"
+    },
+    "vscode": {
+      "_go_const": "AgentBinaryVSCode",
+      "value": "vscode"
+    },
+    "continue": {
+      "_go_const": "AgentBinaryContinue",
+      "value": "continue"
+    },
+    "cn": {
+      "_go_const": "AgentBinaryContinueAlias",
+      "value": "cn"
+    },
+    "aider": {
+      "_go_const": "AgentBinaryAider",
+      "value": "aider"
+    },
+    "codeium": {
+      "_go_const": "AgentBinaryCodeium",
+      "value": "codeium"
+    },
+    "tabby": {
+      "_go_const": "AgentBinaryTabby",
+      "value": "tabby"
+    },
+    "ollama": {
+      "_go_const": "AgentBinaryOllama",
+      "value": "ollama"
+    },
+    "gemini": {
+      "_go_const": "AgentBinaryGemini",
+      "value": "gemini"
+    },
+    "goose": {
+      "_go_const": "AgentBinaryGoose",
+      "value": "goose"
+    },
+    "generic": {
+      "_go_const": "AgentBinaryGeneric",
+      "value": "generic"
+    }
+  },
+  "triage_complexity": {
+    "simple": {
+      "_go_const": "TriageComplexitySimple",
+      "value": "simple"
+    },
+    "complex": {
+      "_go_const": "TriageComplexityComplex",
+      "value": "complex"
+    }
+  },
+  "triage_confidence": {
+    "high": {
+      "_go_const": "TriageConfidenceHigh",
+      "value": "high"
+    },
+    "low": {
+      "_go_const": "TriageConfidenceLow",
+      "value": "low"
+    }
+  },
+  "triage_intent": {
+    "information": {
+      "_go_const": "TriageIntentInformation",
+      "value": "information"
+    },
+    "action": {
+      "_go_const": "TriageIntentAction",
+      "value": "action"
+    },
+    "unknown": {
+      "_go_const": "TriageIntentUnknown",
+      "value": "unknown"
+    }
+  },
+  "triage_posture": {
+    "normal": {
+      "_go_const": "TriagePostureNormal",
+      "value": "normal"
+    },
+    "escalated": {
+      "_go_const": "TriagePostureEscalated",
+      "value": "escalated"
+    },
+    "adversarial": {
+      "_go_const": "TriagePostureAdversarial",
+      "value": "adversarial"
+    },
+    "confused": {
+      "_go_const": "TriagePostureConfused",
+      "value": "confused"
+    }
+  }
+}

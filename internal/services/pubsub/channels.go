@@ -1,0 +1,58 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"fmt"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+// CmdChannel returns the command channel for an operator session.
+func CmdChannel(operatorID, operatorSessionID string) string {
+	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixCmd, operatorID, operatorSessionID)
+}
+
+// ResultsChannel returns the results channel for an operator session.
+func ResultsChannel(operatorID, operatorSessionID string) string {
+	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixResults, operatorID, operatorSessionID)
+}
+
+// HeartbeatChannel returns the heartbeat channel for an operator session.
+func HeartbeatChannel(operatorID, operatorSessionID string) string {
+	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixHeartbeat, operatorID, operatorSessionID)
+}
+
+// ReceiptsChannel returns the receipts channel for an operator session.
+// The operator publishes signed ActionReceipt envelopes to this channel
+// after execution; the gateway intercepts, verifies, records, and fans out.
+func ReceiptsChannel(operatorID, operatorSessionID string) string {
+	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixReceipts, operatorID, operatorSessionID)
+}
+
+// RenewalChannel returns the certificate renewal channel for an operator session.
+// The operator publishes a renewal request here; the gateway intercepts it,
+// never fans it out, and publishes its reply on the same channel.
+func RenewalChannel(operatorID, operatorSessionID string) string {
+	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixRenewal, operatorID, operatorSessionID)
+}
+
+// SSECLIChannel returns the in-process channel of a CLI session's SSE stream.
+func SSECLIChannel(cliSessionID string) string {
+	return fmt.Sprintf("%s:%s", constants.ChannelPrefixSSECLI, cliSessionID)
+}
+
+// SSEWebChannel returns the in-process channel of a web session's SSE stream.
+func SSEWebChannel(webSessionID string) string {
+	return fmt.Sprintf("%s:%s", constants.ChannelPrefixSSEWeb, webSessionID)
+}
+
+// AuditChannel returns the LFAA audit ingest channel for an operator session.
+func AuditChannel(operatorID, operatorSessionID string) string {
+	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixAudit, operatorID, operatorSessionID)
+}

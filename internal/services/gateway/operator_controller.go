@@ -1,0 +1,397 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strings"
+
+	"google.golang.org/protobuf/proto"
+
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+)
+
+// OperatorController handles Operator lifecycle endpoints.
+type OperatorController struct {
+	cfg       *config.Config
+	logger    *slog.Logger
+	reg       *RegistrationService
+	auth      *AuthService
+	dispatch  *DispatchService
+	responder *response.Writer
+}
+
+// OperatorControllerDeps groups all dependencies for OperatorController.
+type OperatorControllerDeps struct {
+	Cfg       *config.Config
+	Logger    *slog.Logger
+	Reg       *RegistrationService
+	Auth      *AuthService
+	Dispatch  *DispatchService
+	Responder *response.Writer
+}
+
+func newOperatorController(d OperatorControllerDeps) *OperatorController {
+	return &OperatorController{
+		cfg:       d.Cfg,
+		logger:    d.Logger,
+		reg:       d.Reg,
+		auth:      d.Auth,
+		dispatch:  d.Dispatch,
+		responder: d.Responder,
+	}
+}
+
+func (c *OperatorController) readBody(r *http.Request) ([]byte, error) {
+	return readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
+}
+
+// @Summary		Validate operator session binding
+// @Description	Validates the exact active operator-session, CLI-session, and user binding. The Gateway is authoritative; callers authenticate with an enrolled application mTLS certificate.
+// @Tags			operators
+// @Accept			json
+// @Produce		json
+// @Param			binding	body		models.OperatorSessionValidationRequest	true	"Operator, CLI, and user session binding"
+// @Success		200		{object}	models.OperatorSessionValidationResponse
+// @Failure		400		{string}	string	"Bad Request — malformed JSON"
+// @Failure		401		{string}	string	"Unauthorized — binding is missing, inactive, expired, or mismatched"
+// @Failure		403		{string}	string	"Forbidden — application mTLS identity is not authorized"
+// @Failure		405		{string}	string	"Method Not Allowed"
+// @Failure		500		{string}	string	"Internal Server Error"
+// @Router			/api/v1/operators/validate [post]
+func (c *OperatorController) handleValidateOperatorSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
+		return
+	}
+	var req models.OperatorSessionValidationRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
+		return
+	}
+	op, err := c.auth.ValidateOperatorCLISessionBinding(r.Context(), req.OperatorSessionID, req.CLISessionID, req.UserID)
+	if err != nil {
+		var authErr *AuthError
+		if errors.As(err, &authErr) {
+			c.responder.Error(w, authErr.Status, authErr.Message)
+			return
+		}
+		c.logger.Error("gateway: validate operator CLI session binding", string(constants.ConnectionStateError), err)
+		c.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.OperatorSessionValidationResponse{Valid: true, OperatorID: op.Id, UserID: op.UserId})
+}
+
+// GET /api/v1/operators
+func (c *OperatorController) handleListOperators(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID := r.URL.Query().Get("user_id")
+	if ctxUser, ok := r.Context().Value(constants.ContextKeyUserID).(string); ok && strings.TrimSpace(ctxUser) != "" {
+		if userID != "" && userID != ctxUser {
+			c.responder.Error(w, http.StatusForbidden, "user_id mismatch")
+			return
+		}
+		userID = ctxUser
+	}
+	if userID == "" {
+		c.responder.Error(w, http.StatusBadRequest, "user_id required")
+		return
+	}
+	operators, err := c.reg.ListUserOperators(r.Context(), userID)
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for i := range operators {
+		withResolvedOperatorCapabilities(operators[i])
+	}
+	c.responder.JSON(w, http.StatusOK, models.OperatorSlotResponse{Success: true, Operators: operators})
+}
+
+// withResolvedOperatorCapabilities fills operator_capabilities for browser and CLI listings so
+// every enrolled Operator reports its complete capability set, including
+// documents whose claim predates stored capabilities. Unclaimed slots have no runtime and keep no capabilities.
+func withResolvedOperatorCapabilities(op *operatorv1.OperatorDocument) {
+	if op.IsSlot && !op.Claimed {
+		return
+	}
+	op.OperatorCapabilities = models.OperatorCapabilitiesToProto(operatorcapability.GetOperatorCapabilities(op))
+}
+
+func (c *OperatorController) handleStopOperator(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
+		return
+	}
+	var req models.StopOperatorRequest
+	if err := json.Unmarshal(body, &req); err != nil || strings.TrimSpace(req.OperatorSessionID) == "" {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrGatewayOperatorSessionIDRequired.Error())
+		return
+	}
+	userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	op, err := c.auth.ValidateOperatorSession(r.Context(), req.OperatorSessionID)
+	if err != nil {
+		c.responder.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if op.UserId != userID {
+		c.responder.Error(w, http.StatusForbidden, constants.ErrRegistrationOperatorNotBelongToUser.Error())
+		return
+	}
+	if constants.OperatorStatus(op.Status) != constants.OperatorStatusActive {
+		c.responder.Error(w, http.StatusConflict, constants.ErrRegistrationOperatorNoActiveSession.Error())
+		return
+	}
+	if constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrOperatorStopEmbedded.Error())
+		return
+	}
+	if constants.OperatorType(op.OperatorType) != constants.OperatorTypeRemote {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrOperatorStopNotRemote.Error())
+		return
+	}
+	payload, err := proto.Marshal(&operatorv1.ShutdownRequested{Reason: strings.TrimSpace(req.Reason)})
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, constants.ErrRequestMarshalFailed.Error())
+		return
+	}
+	result, err := c.dispatch.Dispatch(r.Context(), DispatchRequest{
+		TargetOperatorSessionID: req.OperatorSessionID,
+		EventType:               string(constants.Event.Operator.ShutdownRequested),
+		Payload:                 payload,
+		TargetResource:          op.Id,
+		RequestorUserID:         userID,
+	})
+	if err != nil {
+		c.logger.Warn("gateway: stop operator dispatch failed", "operator_id", op.Id, "operator_session_id", op.OperatorSessionId, "error", err)
+		c.responder.Error(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if err := c.reg.MarkOperatorStopped(r.Context(), op.Id, userID, req.Reason); err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.StopOperatorResponse{
+		Success: true, OperatorID: op.Id, OperatorSessionID: op.OperatorSessionId, TransactionID: result.TransactionID,
+	})
+}
+
+// POST /api/v1/operators/{id}/terminate
+func (c *OperatorController) handleTerminateOperator(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req models.TerminateOperatorRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.OperatorID == "" {
+		c.responder.Error(w, http.StatusBadRequest, "operator_id required")
+		return
+	}
+	if req.UserID == "" {
+		c.responder.Error(w, http.StatusBadRequest, "user_id required")
+		return
+	}
+	if err := c.reg.TerminateOperator(r.Context(), req.OperatorID, req.UserID, req.Reason); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.TerminateOperatorResponse{Success: true, Message: "Operator terminated"})
+}
+
+// POST /api/v1/operators/bind
+func (c *OperatorController) handleBindOperators(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req models.BindOperatorsRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(req.OperatorIDs) == 0 {
+		var single struct {
+			OperatorID string `json:"operator_id"`
+		}
+		if err := json.Unmarshal(body, &single); err == nil && strings.TrimSpace(single.OperatorID) != "" {
+			req.OperatorIDs = []string{single.OperatorID}
+		}
+	}
+
+	userID := r.URL.Query().Get("user_id")
+	if ctxUser, ctxSession, ok := browserSessionIDs(r); ok {
+		if userID != "" && userID != ctxUser {
+			c.responder.Error(w, http.StatusForbidden, "user_id mismatch")
+			return
+		}
+		req.UserID = ctxUser
+		req.WebSessionID = ctxSession
+	} else if userID != "" && req.UserID != userID {
+		c.responder.Error(w, http.StatusForbidden, "user_id mismatch")
+		return
+	}
+
+	resp, err := c.reg.BindOperators(r.Context(), req)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, resp)
+}
+
+// POST /api/v1/operators/unbind
+func (c *OperatorController) handleUnbindOperators(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req models.UnbindOperatorsRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(req.OperatorIDs) == 0 {
+		var single struct {
+			OperatorID string `json:"operator_id"`
+		}
+		if err := json.Unmarshal(body, &single); err == nil && strings.TrimSpace(single.OperatorID) != "" {
+			req.OperatorIDs = []string{single.OperatorID}
+		}
+	}
+
+	userID := r.URL.Query().Get("user_id")
+	if ctxUser, ctxSession, ok := browserSessionIDs(r); ok {
+		if userID != "" && userID != ctxUser {
+			c.responder.Error(w, http.StatusForbidden, "user_id mismatch")
+			return
+		}
+		req.UserID = ctxUser
+		req.WebSessionID = ctxSession
+	} else if userID != "" && req.UserID != userID {
+		c.responder.Error(w, http.StatusForbidden, "user_id mismatch")
+		return
+	}
+
+	resp, err := c.reg.UnbindOperators(r.Context(), req)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, resp)
+}
+
+// POST /api/v1/operators/{id}/target
+func (c *OperatorController) handleSetTargetContext(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req models.SetTargetContextRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	userID := r.URL.Query().Get("user_id")
+	if userID != "" && req.UserID != userID {
+		c.responder.Error(w, http.StatusForbidden, "user_id mismatch")
+		return
+	}
+
+	resp, err := c.reg.SetTargetContext(r.Context(), req)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, resp)
+}
+
+// GET /api/v1/operators/session/{id}
+func (c *OperatorController) handleGetOperatorBySession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	sessionID := strings.TrimPrefix(r.URL.Path, constants.APIPaths.OperatorsSession)
+	if sessionID == "" {
+		c.responder.Error(w, http.StatusBadRequest, "session_id required")
+		return
+	}
+	op, err := c.auth.ValidateOperatorSession(r.Context(), sessionID)
+	if err != nil {
+		var authErr *AuthError
+		if errors.As(err, &authErr) {
+			c.responder.Error(w, authErr.Status, authErr.Message)
+			return
+		}
+		c.responder.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Session validation reads the indexed authorization document. A registry
+	// response also needs the current observed telemetry, which GetOperator
+	// overlays without adding telemetry reads to the authentication path.
+	op, err = c.reg.GetOperator(r.Context(), op.Id)
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if op == nil || op.OperatorSessionId != sessionID {
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrGatewayOperatorSessionInvalid.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.OperatorResponse{
+		Success:  true,
+		Operator: op,
+	})
+}

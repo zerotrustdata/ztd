@@ -1,0 +1,281 @@
+# Copyright (c) 2026 Lateralus Labs, LLC.
+# Use of this source code is governed by the Business Source License
+# included in the LICENSE file.
+#
+# As of the Change Date listed in the LICENSE file, this software is
+# released under the Apache License, Version 2.0.
+#
+# Job order:
+#   validate  -> preflight: tag/VERSION/revision agreement, dispatch ref rules
+#   build     -> build-all, checksums, prepublication artifact verification,
+#                cosign keyless signing (.sig + .sigstore.json), staged release set
+#   publish   -> (publish=true only) re-verify the downloaded set, GitHub draft
+#                release, immutable R2 upload under v<VERSION>/, release published,
+#                then promote R2 latest.json (the single website promotion step)
+#   verify-install -> POSTPUBLICATION gate: fresh `go install` from the public module
+#
+# workflow_dispatch: a run from a release tag (refs/tags/v<VERSION>) may publish.
+# A run from a branch is a rehearsal and must keep publish=false.
+
+name: Release Binary
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Create the GitHub release, upload to R2, and publish the release. Requires a release tag ref. Leave false to build, sign, and verify only.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-binary-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Release Inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.preflight.outputs.version }}
+      version_major_minor: ${{ steps.preflight.outputs.version_major_minor }}
+      tag: ${{ steps.preflight.outputs.tag }}
+      publish: ${{ steps.preflight.outputs.publish }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Preflight
+        id: preflight
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          scripts/release-preflight.sh \
+            --event "$EVENT_NAME" \
+            --ref "$REF" \
+            --sha "$SHA" \
+            --publish "${PUBLISH_INPUT:-false}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build, Sign, and Verify
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: true
+
+      - name: Verify install package path
+        run: |
+          set -euo pipefail
+          test "$(go list -m -f '{{.Path}}')" = "github.com/zerotrustdata/ztd"
+          GOBIN="$RUNNER_TEMP/ztd-gobin" go install ./cmd/ztd
+          test -x "$RUNNER_TEMP/ztd-gobin/ztd"
+
+      - name: Build all platforms
+        run: make build-all SOURCE_REVISION="$(git rev-parse HEAD)"
+
+      - name: Generate checksums and verify unsigned artifacts
+        run: |
+          set -euo pipefail
+          scripts/release-artifacts.sh checksums bin
+          scripts/release-artifacts.sh verify bin "$VERSION" "$(git rev-parse HEAD)"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Sign and verify binaries
+        run: scripts/release-artifacts.sh sign bin
+
+      - name: Stage and verify release set
+        run: |
+          set -euo pipefail
+          scripts/release-artifacts.sh stage bin release
+          scripts/release-artifacts.sh verify release "$VERSION" "$(git rev-parse HEAD)"
+          scripts/release-artifacts.sh verify-signatures release
+
+      - name: Upload release set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-set
+          path: release/
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    needs: [validate, build]
+    if: needs.validate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Download release set
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-set
+          path: release
+
+      - name: Re-verify downloaded release set
+        run: |
+          set -euo pipefail
+          scripts/release-artifacts.sh verify release "$VERSION" "$(git rev-parse HEAD)"
+          scripts/release-artifacts.sh verify-signatures release
+
+      - name: Create draft GitHub release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ztd v${{ needs.validate.outputs.version }}
+          body_path: docs/release_notes/v${{ needs.validate.outputs.version_major_minor }}.x/v${{ needs.validate.outputs.version }}.md
+          draft: true
+          prerelease: false
+          files: |
+            release/*
+
+      - name: Upload versioned release set to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.CLOUDFLARE_S3_API_ENDPOINT }}
+          AWS_REGION: auto
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(release/*)
+          [ "${#artifacts[@]}" -gt 0 ] || { echo "release set is empty"; exit 1; }
+          # Versioned sets are immutable: refuse to write into a prefix that already holds objects.
+          existing=$(aws s3 ls "s3://ztd-releases/v$VERSION/" \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --only-show-errors)
+          [ -z "$existing" ] || { echo "s3://ztd-releases/v$VERSION/ already holds objects; versioned release sets are immutable"; exit 1; }
+          for artifact in "${artifacts[@]}"; do
+            name=$(basename "$artifact")
+            key="v$VERSION/$name"
+            want=$(sha256sum "$artifact" | cut -d' ' -f1)
+            aws s3 cp "$artifact" "s3://ztd-releases/$key" \
+              --endpoint-url "$AWS_ENDPOINT_URL" \
+              --only-show-errors
+            # Read the object back and compare bytes, so R2 serves exactly the verified set.
+            got=$(aws s3 cp "s3://ztd-releases/$key" - \
+              --endpoint-url "$AWS_ENDPOINT_URL" \
+              --only-show-errors | sha256sum | cut -d' ' -f1)
+            [ "$got" = "$want" ] || { echo "R2 object $key does not match the verified release set"; exit 1; }
+          done
+
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "$TAG" --draft=false
+
+      # Runs last: unversioned website routes (/ztd, /ztd-linux-amd64, ...) follow this pointer, so it moves
+      # only after the GitHub release is public and the whole versioned set is verified in R2.
+      - name: Promote latest pointer
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.CLOUDFLARE_S3_API_ENDPOINT }}
+          AWS_REGION: auto
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(release/*)
+          present=$(aws s3 ls "s3://ztd-releases/v$VERSION/" \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --only-show-errors | wc -l)
+          [ "$present" -eq "${#artifacts[@]}" ] || { echo "s3://ztd-releases/v$VERSION/ holds $present objects, expected ${#artifacts[@]}; not promoting"; exit 1; }
+          pointer="$RUNNER_TEMP/latest.json"
+          printf '{"version": "%s"}\n' "$VERSION" > "$pointer"
+          want=$(sha256sum "$pointer" | cut -d' ' -f1)
+          aws s3 cp "$pointer" "s3://ztd-releases/latest.json" \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --only-show-errors
+          got=$(aws s3 cp "s3://ztd-releases/latest.json" - \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --only-show-errors | sha256sum | cut -d' ' -f1)
+          [ "$got" = "$want" ] || { echo "R2 latest.json does not match the promoted version"; exit 1; }
+
+  verify-install:
+    # POSTPUBLICATION gate: runs only after the release is public.
+    name: Verify Go Install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [validate, publish]
+    if: needs.validate.outputs.publish == 'true'
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: false
+
+      - name: Fresh go install from the public module path
+        run: |
+          set -euo pipefail
+          go install "github.com/zerotrustdata/ztd/cmd/ztd@v${VERSION}"
+          # go install does not apply release ldflags, so `ztd version` reports the dev
+          # constant. Check the installed module path and version from Go build info.
+          BIN_DIR="$(go env GOBIN)"
+          [ -n "$BIN_DIR" ] || BIN_DIR="$(go env GOPATH)/bin"
+          EXT=""
+          if [ "$RUNNER_OS" = "Windows" ]; then EXT=".exe"; fi
+          BIN="$BIN_DIR/ztd$EXT"
+          test -x "$BIN"
+          go version -m "$BIN" | awk -v v="v${VERSION}" '
+            $1 == "path" && $2 == "github.com/zerotrustdata/ztd/cmd/ztd" { path_ok = 1 }
+            $1 == "mod" && $2 == "github.com/zerotrustdata/ztd" && $3 == v { mod_ok = 1 }
+            END { exit !(path_ok && mod_ok) }'
+          "$BIN" --help >/dev/null
+          echo "Fresh go install verified successfully (github.com/zerotrustdata/ztd/cmd/ztd v${VERSION})"

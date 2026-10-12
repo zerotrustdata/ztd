@@ -1,0 +1,19 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package governance
+
+import (
+	"context"
+
+	"github.com/zerotrustdata/ztd/internal/models"
+)
+
+// AppPolicyStore defines the interface for loading AppPolicies for external apps.
+type AppPolicyStore interface {
+	GetAppPolicy(ctx context.Context, appID string) (*models.AppPolicy, error)
+}

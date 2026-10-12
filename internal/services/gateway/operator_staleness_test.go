@@ -1,0 +1,338 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package gateway
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+	"time"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+)
+
+const operatorsCollection = string(constants.CollectionOperators)
+
+func timeAgo(d time.Duration) *timestamppb.Timestamp {
+	t := time.Now().UTC().Add(-d)
+	return timestamppb.New(t)
+}
+
+// putOperator persists an operator document whose created_at is createdAgo in
+// the past, so the test controls the starting state.
+func putOperator(t *testing.T, svc *DocumentStoreService, id string, op *operatorv1.OperatorDocument, createdAgo time.Duration) {
+	t.Helper()
+	body, err := models.MarshalOperatorDocument(op)
+	require.NoError(t, err)
+	createdAt := time.Now().UTC().Add(-createdAgo)
+	require.NoError(t, svc.DocSetWithTimestamps(t.Context(), operatorsCollection, id, body, createdAt, createdAt))
+}
+
+// persistedOperatorStatus reads the stored status, without derivation.
+func persistedOperatorStatus(t *testing.T, svc *DocumentStoreService, id string) constants.OperatorStatus {
+	t.Helper()
+	doc, err := svc.docGet(t.Context(), operatorsCollection, id)
+	require.NoError(t, err)
+	require.NotNil(t, doc)
+	var status constants.OperatorStatus
+	require.NoError(t, json.Unmarshal(doc.Data["status"], &status))
+	return status
+}
+
+// docStatus is the status a returned document carries.
+func docStatus(t *testing.T, doc *models.Document) constants.OperatorStatus {
+	t.Helper()
+	require.NotNil(t, doc)
+	var status constants.OperatorStatus
+	require.NoError(t, json.Unmarshal(doc.Data["status"], &status))
+	return status
+}
+
+func remoteOperator(status constants.OperatorStatus) *operatorv1.OperatorDocument {
+	return &operatorv1.OperatorDocument{
+		Status:       string(status),
+		OperatorType: string(constants.OperatorTypeRemote),
+	}
+}
+
+func statusFilter(op string, status constants.OperatorStatus) models.DocFilter {
+	return models.DocFilter{Field: "status", Op: op, Value: json.RawMessage(fmt.Sprintf("%q", status))}
+}
+
+func TestOperatorStaleness_EveryReaderDerivesStaleWithoutAWrite(t *testing.T) {
+	silent := constants.OperatorHeartbeatStaleAfter * 2
+
+	readers := map[string]func(svc *DocumentStoreService) constants.OperatorStatus{
+		"DocGet": func(svc *DocumentStoreService) constants.OperatorStatus {
+			doc, err := svc.DocGet(t.Context(), operatorsCollection, "op-1")
+			require.NoError(t, err)
+			return docStatus(t, doc)
+		},
+		"DocQuery": func(svc *DocumentStoreService) constants.OperatorStatus {
+			docs, err := svc.DocQuery(t.Context(), operatorsCollection, nil, "", 0)
+			require.NoError(t, err)
+			require.Len(t, docs, 1)
+			return docStatus(t, docs[0])
+		},
+		"DocList": func(svc *DocumentStoreService) constants.OperatorStatus {
+			docs, err := svc.DocList(t.Context(), operatorsCollection)
+			require.NoError(t, err)
+			require.Len(t, docs, 1)
+			return docStatus(t, docs[0])
+		},
+		"GetField": func(svc *DocumentStoreService) constants.OperatorStatus {
+			field, err := svc.GetField(t.Context(), operatorsCollection, "op-1", "status")
+			require.NoError(t, err)
+			require.NotNil(t, field.Str)
+			return constants.OperatorStatus(*field.Str)
+		},
+	}
+
+	for name, read := range readers {
+		t.Run(name, func(t *testing.T) {
+			svc := newDocumentStoreService(t)
+			op := remoteOperator(constants.OperatorStatusActive)
+			op.LastHeartbeatAt = timeAgo(silent)
+			putOperator(t, svc, "op-1", op, time.Hour)
+
+			assert.Equal(t, constants.OperatorStatusStale, read(svc))
+			assert.Equal(t, constants.OperatorStatusActive, persistedOperatorStatus(t, svc, "op-1"), "staleness is never stored")
+		})
+	}
+}
+
+func TestOperatorStaleness_LastSignOfLife(t *testing.T) {
+	threshold := constants.OperatorHeartbeatStaleAfter
+	silent := threshold + 5*time.Second
+
+	tests := []struct {
+		name       string
+		heartbeat  *timestamppb.Timestamp
+		claimed    *timestamppb.Timestamp
+		createdAgo time.Duration
+		want       constants.OperatorStatus
+	}{
+		{"recent heartbeat", timeAgo(threshold / 2), nil, time.Hour, constants.OperatorStatusActive},
+		{"heartbeat past threshold", timeAgo(silent), nil, time.Hour, constants.OperatorStatusStale},
+		{"heartbeat wins over old claim", timeAgo(threshold / 2), timeAgo(time.Hour), time.Hour, constants.OperatorStatusActive},
+		{"no heartbeat, recent claim", nil, timeAgo(threshold / 2), time.Hour, constants.OperatorStatusActive},
+		{"no heartbeat, old claim", nil, timeAgo(silent), time.Hour, constants.OperatorStatusStale},
+		{"no heartbeat, no claim, new document", nil, nil, threshold / 2, constants.OperatorStatusActive},
+		{"no heartbeat, no claim, old document", nil, nil, silent, constants.OperatorStatusStale},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newDocumentStoreService(t)
+			op := remoteOperator(constants.OperatorStatusActive)
+			op.LastHeartbeatAt = tt.heartbeat
+			op.ClaimedAt = tt.claimed
+			putOperator(t, svc, "op-1", op, tt.createdAgo)
+
+			doc, err := svc.DocGet(t.Context(), operatorsCollection, "op-1")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, docStatus(t, doc))
+		})
+	}
+}
+
+// The heartbeat overlay is the last sign of life a read derives from, so a
+// heartbeat recorded after silence reads as active with no status write.
+func TestOperatorStaleness_RecordedHeartbeatReadsActive(t *testing.T) {
+	svc := newDocumentStoreService(t)
+	_, err := svc.db.Exec(gatewaySchema)
+	require.NoError(t, err)
+	op := remoteOperator(constants.OperatorStatusActive)
+	op.LastHeartbeatAt = timeAgo(constants.OperatorHeartbeatStaleAfter * 10)
+	putOperator(t, svc, "op-1", op, time.Hour)
+
+	doc, err := svc.DocGet(t.Context(), operatorsCollection, "op-1")
+	require.NoError(t, err)
+	require.Equal(t, constants.OperatorStatusStale, docStatus(t, doc))
+
+	require.NoError(t, svc.RecordOperatorHeartbeat(t.Context(), "op-1", heartbeatUpdate{
+		LatestHeartbeatSnapshot: json.RawMessage(`{}`),
+		LastHeartbeatAt:         time.Now().UTC(),
+	}))
+
+	doc, err = svc.DocGet(t.Context(), operatorsCollection, "op-1")
+	require.NoError(t, err)
+	assert.Equal(t, constants.OperatorStatusActive, docStatus(t, doc))
+}
+
+func TestOperatorStaleness_OnlyActiveRemoteOperatorsReadAsStale(t *testing.T) {
+	silent := constants.OperatorHeartbeatStaleAfter * 10
+
+	embedded := &operatorv1.OperatorDocument{Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeEmbedded)}
+	tests := []struct {
+		name string
+		op   *operatorv1.OperatorDocument
+		want constants.OperatorStatus
+	}{
+		{"embedded active", embedded, constants.OperatorStatusActive},
+		{"remote stopped", remoteOperator(constants.OperatorStatusStopped), constants.OperatorStatusStopped},
+		{"remote terminated", remoteOperator(constants.OperatorStatusTerminated), constants.OperatorStatusTerminated},
+		{"remote offline", remoteOperator(constants.OperatorStatusOffline), constants.OperatorStatusOffline},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newDocumentStoreService(t)
+			tt.op.LastHeartbeatAt = timeAgo(silent)
+			putOperator(t, svc, "op-1", tt.op, time.Hour)
+
+			docs, err := svc.DocList(t.Context(), operatorsCollection)
+			require.NoError(t, err)
+			require.Len(t, docs, 1)
+			assert.Equal(t, tt.want, docStatus(t, docs[0]))
+		})
+	}
+}
+
+// Status filters and the limit apply to the derived status.
+func TestOperatorStaleness_StatusQueriesMatchTheDerivedStatus(t *testing.T) {
+	svc := newDocumentStoreService(t)
+	for _, id := range []string{"op-a", "op-b"} {
+		silent := remoteOperator(constants.OperatorStatusActive)
+		silent.LastHeartbeatAt = timeAgo(constants.OperatorHeartbeatStaleAfter * 2)
+		putOperator(t, svc, id, silent, time.Hour)
+	}
+	live := remoteOperator(constants.OperatorStatusActive)
+	live.LastHeartbeatAt = timeAgo(time.Second)
+	putOperator(t, svc, "op-c", live, time.Hour)
+	putOperator(t, svc, "op-d", remoteOperator(constants.OperatorStatusStopped), time.Hour)
+
+	tests := []struct {
+		name    string
+		filters []models.DocFilter
+		limit   int
+		want    []string
+	}{
+		{"== active", []models.DocFilter{statusFilter("==", constants.OperatorStatusActive)}, 0, []string{"op-c"}},
+		{"== active, limit past the silent rows", []models.DocFilter{statusFilter("==", constants.OperatorStatusActive)}, 1, []string{"op-c"}},
+		{"== stale", []models.DocFilter{statusFilter("==", constants.OperatorStatusStale)}, 0, []string{"op-a", "op-b"}},
+		{"== stale, limit", []models.DocFilter{statusFilter("==", constants.OperatorStatusStale)}, 1, []string{"op-a"}},
+		{"!= active", []models.DocFilter{statusFilter("!=", constants.OperatorStatusActive)}, 0, []string{"op-a", "op-b", "op-d"}},
+		{"!= stale", []models.DocFilter{statusFilter("!=", constants.OperatorStatusStale)}, 0, []string{"op-c", "op-d"}},
+		{"!= terminated", []models.DocFilter{statusFilter("!=", constants.OperatorStatusTerminated)}, 0, []string{"op-a", "op-b", "op-c", "op-d"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			docs, err := svc.DocQuery(t.Context(), operatorsCollection, tt.filters, "created_at", tt.limit)
+			require.NoError(t, err)
+			ids := make([]string, 0, len(docs))
+			for _, doc := range docs {
+				ids = append(ids, doc.ID)
+			}
+			assert.Equal(t, tt.want, ids)
+		})
+	}
+}
+
+func TestOperatorStaleness_OtherCollectionsAreNotDerived(t *testing.T) {
+	svc := newDocumentStoreService(t)
+	op := remoteOperator(constants.OperatorStatusActive)
+	op.LastHeartbeatAt = timeAgo(constants.OperatorHeartbeatStaleAfter * 10)
+	body, err := models.MarshalOperatorDocument(op)
+	require.NoError(t, err)
+	require.NoError(t, svc.DocSet(t.Context(), "settings", "not-an-operator", body))
+
+	docs, err := svc.DocList(t.Context(), "settings")
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	assert.JSONEq(t, `"active"`, string(docs[0].Data["status"]))
+}
+
+func TestOperatorStaleness_UndecodableOperatorFailsTheRead(t *testing.T) {
+	svc := newDocumentStoreService(t)
+	require.NoError(t, svc.DocSet(t.Context(), operatorsCollection, "op-1", json.RawMessage(
+		`{"status":"active","operator_type":"remote","runtime_config":"invalid"}`)))
+
+	_, err := svc.DocGet(t.Context(), operatorsCollection, "op-1")
+	assert.ErrorIs(t, err, constants.ErrOperatorStalenessDerive)
+
+	_, err = svc.DocQuery(t.Context(), operatorsCollection, nil, "", 0)
+	assert.ErrorIs(t, err, constants.ErrOperatorStalenessDerive)
+}
+
+// stale_at is the derived deadline a document-holding reader (the console)
+// derives the same status from: last sign of life plus the declared window on
+// every active remote Operator, stale or not, and absent on every other
+// Operator, even one whose stored data carries it.
+func TestOperatorStaleness_StaleAtIsDerivedOnlyForActiveRemoteOperators(t *testing.T) {
+	declared := 2 * time.Minute
+	lastHeartbeat := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
+	embedded := &operatorv1.OperatorDocument{Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeEmbedded)}
+	stopped := remoteOperator(constants.OperatorStatusStopped)
+	stopped.StaleAt = timestamppb.New(lastHeartbeat)
+
+	tests := []struct {
+		name        string
+		op          *operatorv1.OperatorDocument
+		wantStaleAt bool
+	}{
+		{"active remote", remoteOperator(constants.OperatorStatusActive), true},
+		{"embedded active", embedded, false},
+		{"remote stopped with a stored stale_at", stopped, false},
+		{"remote offline", remoteOperator(constants.OperatorStatusOffline), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newDocumentStoreService(t)
+			tt.op.RuntimeConfig = &operatorv1.OperatorRuntimeConfig{HeartbeatIntervalMs: uint32(declared.Milliseconds())}
+			tt.op.LastHeartbeatAt = timestamppb.New(lastHeartbeat)
+			putOperator(t, svc, "op-1", tt.op, time.Hour)
+
+			doc, err := svc.DocGet(t.Context(), operatorsCollection, "op-1")
+			require.NoError(t, err)
+			op, err := models.OperatorDocumentFromStore(doc)
+			require.NoError(t, err)
+			if !tt.wantStaleAt {
+				assert.Nil(t, op.GetStaleAt())
+				return
+			}
+			require.NotNil(t, op.GetStaleAt())
+			assert.Equal(t, lastHeartbeat.Add(constants.OperatorStaleAfter(declared)), op.GetStaleAt().AsTime())
+		})
+	}
+}
+
+func TestOperatorStaleness_UsesDeclaredHeartbeatInterval(t *testing.T) {
+	tests := []struct {
+		name     string
+		declared time.Duration
+		silent   time.Duration
+		want     constants.OperatorStatus
+	}{
+		{"undeclared, past default window", 0, 90 * time.Second, constants.OperatorStatusStale},
+		{"declared 2m, silent 3m is within two intervals", 2 * time.Minute, 3 * time.Minute, constants.OperatorStatusActive},
+		{"declared 2m, silent 5m is past two intervals", 2 * time.Minute, 5 * time.Minute, constants.OperatorStatusStale},
+		{"declared 5m, silent 9m is within two intervals", constants.OperatorHeartbeatMaxInterval, 9 * time.Minute, constants.OperatorStatusActive},
+		{"declared 10s keeps the 60s floor", 10 * time.Second, 50 * time.Second, constants.OperatorStatusActive},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newDocumentStoreService(t)
+			op := remoteOperator(constants.OperatorStatusActive)
+			op.RuntimeConfig = &operatorv1.OperatorRuntimeConfig{HeartbeatIntervalMs: uint32(tt.declared.Milliseconds())}
+			op.LastHeartbeatAt = timeAgo(tt.silent)
+			putOperator(t, svc, "op-1", op, time.Hour)
+
+			doc, err := svc.DocGet(t.Context(), operatorsCollection, "op-1")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, docStatus(t, doc))
+		})
+	}
+}

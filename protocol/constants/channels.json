@@ -1,0 +1,92 @@
+{
+  "channels": {
+    "Governance": {
+      "_go_const": "ChannelGovernance",
+      "value": "governance"
+    },
+    "Error": {
+      "_go_const": "PubSubEventError",
+      "value": "error"
+    },
+    "Message": {
+      "_go_const": "PubSubEventMessage",
+      "value": "message"
+    },
+    "OperatorDevice": {
+      "_go_const": "ChannelOperatorDevice",
+      "value": "operator_device"
+    },
+    "OperatorIntent": {
+      "_go_const": "ChannelOperatorIntent",
+      "value": "operator_intent"
+    },
+    "PMessage": {
+      "_go_const": "PubSubEventPMessage",
+      "value": "pmessage"
+    },
+    "PSubscribe": {
+      "_go_const": "PubSubActionPSubscribe",
+      "value": "psubscribe"
+    },
+    "Publish": {
+      "_go_const": "PubSubActionPublish",
+      "value": "publish"
+    },
+    "SseEvent": {
+      "_go_const": "ChannelSseEvent",
+      "value": "sse_event"
+    },
+    "StorageBlob": {
+      "_go_const": "ChannelStorageBlob",
+      "value": "storage_blob"
+    },
+    "StorageDocument": {
+      "_go_const": "ChannelStorageDocument",
+      "value": "storage_document"
+    },
+    "StorageKv": {
+      "_go_const": "ChannelStorageKv",
+      "value": "storage_kv"
+    },
+    "Subscribe": {
+      "_go_const": "PubSubActionSubscribe",
+      "value": "subscribe"
+    },
+    "Subscribed": {
+      "_go_const": "PubSubEventSubscribed",
+      "value": "subscribed"
+    },
+    "Unsubscribed": {
+      "_go_const": "PubSubEventUnsubscribed",
+      "value": "unsubscribed"
+    },
+    "Unsubscribe": {
+      "_go_const": "PubSubActionUnsubscribe",
+      "value": "unsubscribe"
+    },
+    "PrefixAudit": {
+      "_go_const": "ChannelPrefixAudit",
+      "value": "audit"
+    },
+    "PrefixCmd": {
+      "_go_const": "ChannelPrefixCmd",
+      "value": "cmd"
+    },
+    "PrefixHeartbeat": {
+      "_go_const": "ChannelPrefixHeartbeat",
+      "value": "heartbeat"
+    },
+    "PrefixReceipts": {
+      "_go_const": "ChannelPrefixReceipts",
+      "value": "receipts"
+    },
+    "PrefixRenewal": {
+      "_go_const": "ChannelPrefixRenewal",
+      "value": "renewal"
+    },
+    "PrefixResults": {
+      "_go_const": "ChannelPrefixResults",
+      "value": "results"
+    }
+  }
+}

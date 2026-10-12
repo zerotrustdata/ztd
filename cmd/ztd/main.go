@@ -1,0 +1,35 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package main
+
+import (
+	clicmd "github.com/zerotrustdata/ztd/internal/cli/cmd"
+	"github.com/zerotrustdata/ztd/internal/cli/serve"
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+// Version information (set via ldflags during build)
+var (
+	version        string = string(constants.VersionStabilityDev)
+	buildID        string = string(constants.SystemHealthUnknown)
+	buildTime      string = string(constants.SystemHealthUnknown)
+	platform       string = string(constants.SystemHealthUnknown)
+	sourceRevision string = string(constants.SystemHealthUnknown)
+	sourceTreeHash string = string(constants.SystemHealthUnknown)
+)
+
+func main() {
+	clicmd.ExecuteWithVersionInfo(serve.VersionInfo{
+		Version:             version,
+		BuildID:             buildID,
+		BuildTime:           buildTime,
+		Platform:            platform,
+		SourceRevision:      sourceRevision,
+		SourceTreeStateHash: sourceTreeHash,
+	})
+}

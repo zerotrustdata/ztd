@@ -1,0 +1,229 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"context"
+	"crypto/ed25519"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/services/vault"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+// setupEncryptedKVTest creates a KVStoreService with gateway schema and an
+// unlocked vault for testing EncryptedKVAdapter.
+func setupEncryptedKVTest(t *testing.T) (*KVStoreService, *vault.Vault) {
+	t.Helper()
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+	logger := testutil.NewTestLogger()
+
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.TestGatewayDatabaseFilename)), logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(gatewaySchema)
+	require.NoError(t, err)
+
+	kv := NewKVStoreService(db, logger)
+
+	require.NoError(t, fileSvc.MkdirAll(context.Background(), constants.VaultDirname, constants.PermDirPrivate))
+
+	_, privKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	header, _, err := vault.NewVaultHeader(privKey)
+	require.NoError(t, err)
+	require.NoError(t, header.Save(fileSvc))
+
+	v, err := vault.NewVault(&vault.VaultConfig{FileSvc: fileSvc, Logger: logger})
+	require.NoError(t, err)
+	require.NoError(t, v.Unlock(privKey))
+	t.Cleanup(func() { v.Close() })
+
+	return kv, v
+}
+
+func TestEncryptedKVAdapter_SetGet(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	ctx := context.Background()
+	err := adapter.KVSet(ctx, "test-key", "test-value", 0)
+	require.NoError(t, err)
+
+	val, err := adapter.KVGet(ctx, "test-key")
+	require.NoError(t, err)
+	assert.Equal(t, "test-value", val)
+}
+
+func TestEncryptedKVAdapter_GetNotFound(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	_, err := adapter.KVGet(context.Background(), "nonexistent")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrKeyNotFound)
+}
+
+func TestEncryptedKVAdapter_SetLockedVault(t *testing.T) {
+	kv, _ := setupEncryptedKVTest(t)
+
+	// Create a locked vault (no unlock)
+	lockedFileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, lockedFileSvc.CreateRuntimeTree(context.Background()))
+	require.NoError(t, lockedFileSvc.MkdirAll(context.Background(), constants.VaultDirname, constants.PermDirPrivate))
+	_, privKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	header, _, err := vault.NewVaultHeader(privKey)
+	require.NoError(t, err)
+	require.NoError(t, header.Save(lockedFileSvc))
+	lockedVault, err := vault.NewVault(&vault.VaultConfig{FileSvc: lockedFileSvc, Logger: testutil.NewTestLogger()})
+	require.NoError(t, err)
+	t.Cleanup(func() { lockedVault.Close() })
+
+	adapter := NewEncryptedKVAdapter(kv, lockedVault)
+	err = adapter.KVSet(context.Background(), "key", "value", 0)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrVaultLocked)
+}
+
+func TestEncryptedKVAdapter_GetLockedVault(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	ctx := context.Background()
+	require.NoError(t, adapter.KVSet(ctx, "key", "value", 0))
+
+	// Create a locked vault and swap it in
+	lockedFileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, lockedFileSvc.CreateRuntimeTree(context.Background()))
+	require.NoError(t, lockedFileSvc.MkdirAll(context.Background(), constants.VaultDirname, constants.PermDirPrivate))
+	_, privKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	header, _, err := vault.NewVaultHeader(privKey)
+	require.NoError(t, err)
+	require.NoError(t, header.Save(lockedFileSvc))
+	lockedVault, err := vault.NewVault(&vault.VaultConfig{FileSvc: lockedFileSvc, Logger: testutil.NewTestLogger()})
+	require.NoError(t, err)
+	t.Cleanup(func() { lockedVault.Close() })
+
+	lockedAdapter := NewEncryptedKVAdapter(kv, lockedVault)
+	_, err = lockedAdapter.KVGet(ctx, "key")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrVaultLocked)
+}
+
+func TestEncryptedKVAdapter_ScanPrefix(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	ctx := context.Background()
+	require.NoError(t, adapter.KVSet(ctx, "prefix:key1", "val1", 0))
+	require.NoError(t, adapter.KVSet(ctx, "prefix:key2", "val2", 0))
+	require.NoError(t, adapter.KVSet(ctx, "other:key3", "val3", 0))
+
+	result, err := adapter.KVScanPrefix(ctx, "prefix:")
+	require.NoError(t, err)
+	assert.Len(t, result, 2)
+	assert.Equal(t, "val1", result["prefix:key1"])
+	assert.Equal(t, "val2", result["prefix:key2"])
+}
+
+func TestEncryptedKVAdapter_ScanPrefixEmpty(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	result, err := adapter.KVScanPrefix(context.Background(), "nonexistent:")
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestEncryptedKVAdapter_ScanPrefixLockedVault(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	ctx := context.Background()
+	require.NoError(t, adapter.KVSet(ctx, "prefix:key1", "val1", 0))
+
+	// Create a locked vault
+	lockedFileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, lockedFileSvc.CreateRuntimeTree(context.Background()))
+	require.NoError(t, lockedFileSvc.MkdirAll(context.Background(), constants.VaultDirname, constants.PermDirPrivate))
+	_, privKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	header, _, err := vault.NewVaultHeader(privKey)
+	require.NoError(t, err)
+	require.NoError(t, header.Save(lockedFileSvc))
+	lockedVault, err := vault.NewVault(&vault.VaultConfig{FileSvc: lockedFileSvc, Logger: testutil.NewTestLogger()})
+	require.NoError(t, err)
+	t.Cleanup(func() { lockedVault.Close() })
+
+	lockedAdapter := NewEncryptedKVAdapter(kv, lockedVault)
+	_, err = lockedAdapter.KVScanPrefix(ctx, "prefix:")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrVaultLocked)
+}
+
+func TestEncryptedKVAdapter_SetWithTTL(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	ctx := context.Background()
+	err := adapter.KVSet(ctx, "ttl-key", "ttl-value", 3600)
+	require.NoError(t, err)
+
+	val, err := adapter.KVGet(ctx, "ttl-key")
+	require.NoError(t, err)
+	assert.Equal(t, "ttl-value", val)
+}
+
+func TestEncryptedKVAdapter_RoundtripEncryption(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+
+	ctx := context.Background()
+	testValue := "sensitive-data-that-should-be-encrypted"
+	require.NoError(t, adapter.KVSet(ctx, "secret", testValue, 0))
+
+	// Verify the raw stored value is NOT the plaintext
+	raw, found := kv.KVGet(context.Background(), constants.SentinelKeyPrefix+"secret")
+	require.True(t, found)
+	assert.NotEqual(t, testValue, raw, "stored value should be encrypted")
+
+	// Verify decrypt returns the original
+	decrypted, err := adapter.KVGet(ctx, "secret")
+	require.NoError(t, err)
+	assert.Equal(t, testValue, decrypted)
+}
+
+// TestEncryptedKVAdapter_ValueBoundToKey asserts a ciphertext copied under another key
+// fails authentication instead of decrypting as that key's value.
+func TestEncryptedKVAdapter_ValueBoundToKey(t *testing.T) {
+	kv, v := setupEncryptedKVTest(t)
+	adapter := NewEncryptedKVAdapter(kv, v)
+	ctx := context.Background()
+
+	require.NoError(t, adapter.KVSet(ctx, "token-a", "value-a", 0))
+	raw, found := kv.KVGet(ctx, constants.SentinelKeyPrefix+"token-a")
+	require.True(t, found)
+	require.NoError(t, kv.KVSetObserved(ctx, constants.SentinelKeyPrefix+"token-b", raw, 0))
+
+	_, err := adapter.KVGet(ctx, "token-b")
+	require.Error(t, err)
+}

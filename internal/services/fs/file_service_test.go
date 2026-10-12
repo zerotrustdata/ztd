@@ -1,0 +1,546 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package fs
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/paths"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+// setupTestFS creates a RuntimeFileService backed by a temp directory.
+// It calls paths.InitWithBase so paths.Infra is populated for CreateRuntimeTree.
+func setupTestFS(t *testing.T) RuntimeFileService {
+	t.Helper()
+	baseDir := testutil.TempDir(t)
+	require.NoError(t, paths.InitWithBase(baseDir))
+	svc, err := NewRuntimeFileService(baseDir, testutil.NewVerboseTestLogger(t))
+	require.NoError(t, err)
+	return svc
+}
+
+func TestNewRuntimeFileService_EmptyBaseDirUsesCWD(t *testing.T) {
+	baseDir := testutil.TempDir(t)
+	require.NoError(t, paths.InitWithBase(baseDir))
+
+	svc, err := NewRuntimeFileService("", testutil.NewVerboseTestLogger(t))
+	require.NoError(t, err)
+	assert.NotNil(t, svc)
+}
+
+func TestResolve_EmptyPathReturnsRuntimeDir(t *testing.T) {
+	svc := setupTestFS(t)
+	abs := svc.Resolve("")
+	assert.Contains(t, abs, constants.RuntimeDirname)
+}
+
+func TestResolve_RelativePathJoinsRuntimeDir(t *testing.T) {
+	svc := setupTestFS(t)
+	abs := svc.Resolve("pki/root_ca.crt")
+	assert.Contains(t, abs, constants.RuntimeDirname)
+	assert.Contains(t, abs, "pki")
+	assert.Contains(t, abs, "root_ca.crt")
+}
+
+func TestWriteFile_CreatesFileWithCorrectContent(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	data := []byte("hello world")
+	err := svc.WriteFile(ctx, "test.txt", data, constants.PermFilePrivate)
+	require.NoError(t, err)
+
+	got, err := svc.ReadFile(ctx, "test.txt")
+	require.NoError(t, err)
+	assert.Equal(t, data, got)
+}
+
+func TestOpenFileEditTargetProtectsRuntimeAndResolvesSymlinks(t *testing.T) {
+	ctx := context.Background()
+	baseDir := testutil.TempDir(t)
+	require.NoError(t, paths.InitWithBase(baseDir))
+	svc, err := NewRuntimeFileService(baseDir, testutil.NewVerboseTestLogger(t))
+	require.NoError(t, err)
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+	runtimeRoot := svc.Resolve("")
+	targetDir := filepath.Join(constants.EvaluationControlledTargetDirname)
+	require.NoError(t, svc.MkdirAll(ctx, targetDir, constants.PermDirStandard))
+	require.NoError(t, svc.MkdirAll(ctx, constants.DataDirname, constants.PermDirStandard))
+	require.NoError(t, svc.WriteFile(ctx, filepath.Join(constants.DataDirname, "protected.json"), []byte("protected"), constants.PermFilePrivate))
+	protectedFile := filepath.Join(runtimeRoot, constants.DataDirname, "protected.json")
+
+	open := func(path string) (*FileEditTarget, error) {
+		target, err := svc.OpenFileEditTarget(ctx, path, baseDir)
+		if target != nil {
+			t.Cleanup(func() { _ = target.Close() })
+		}
+		return target, err
+	}
+
+	protectedRelative := filepath.Join(constants.RuntimeDirname, constants.DataDirname, "protected.json")
+	_, err = open(protectedRelative)
+	require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
+	_, err = open(filepath.Join(baseDir, protectedRelative))
+	require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
+
+	lookalike := filepath.Join(baseDir, constants.RuntimeDirname+"-backup", "notes.txt")
+	target, err := open(lookalike)
+	require.NoError(t, err)
+	require.NoError(t, target.WriteFile([]byte("notes"), constants.PermFilePrivate))
+	got, err := os.ReadFile(lookalike)
+	require.NoError(t, err)
+	assert.Equal(t, "notes", string(got))
+
+	validTarget := filepath.Join(runtimeRoot, targetDir, "fixture.txt")
+	target, err = open(validTarget)
+	require.NoError(t, err)
+	assert.Equal(t, validTarget, target.Path())
+	require.NoError(t, target.WriteFile([]byte("marker"), constants.PermFilePrivate))
+	got, err = svc.ReadFile(ctx, filepath.Join(targetDir, "fixture.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "marker", string(got))
+
+	aliasParent := filepath.Join(baseDir, "runtime-alias")
+	require.NoError(t, os.Symlink(filepath.Join(runtimeRoot, constants.DataDirname), aliasParent))
+	_, err = open(filepath.Join(aliasParent, "protected.json"))
+	require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
+
+	targetAlias := filepath.Join(runtimeRoot, targetDir, "protected-link.json")
+	require.NoError(t, os.Symlink(protectedFile, targetAlias))
+	_, err = open(targetAlias)
+	require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
+
+	foreignTarget := filepath.Join(baseDir, "other", constants.RuntimeDirname, targetDir, "fixture.txt")
+	_, err = open(foreignTarget)
+	require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath, "another runtime's evaluation targets are not writable")
+}
+
+// TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation is the TOCTOU
+// regression: replacing a validated evaluation target with a symlink to
+// protected runtime state must not redirect the write.
+func TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation(t *testing.T) {
+	ctx := context.Background()
+	baseDir := testutil.TempDir(t)
+	require.NoError(t, paths.InitWithBase(baseDir))
+	svc, err := NewRuntimeFileService(baseDir, testutil.NewVerboseTestLogger(t))
+	require.NoError(t, err)
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+	require.NoError(t, svc.MkdirAll(ctx, constants.EvaluationControlledTargetDirname, constants.PermDirStandard))
+	require.NoError(t, svc.WriteFile(ctx, filepath.Join(constants.DataDirname, "protected.json"), []byte("protected"), constants.PermFilePrivate))
+	protectedFile := svc.Resolve(filepath.Join(constants.DataDirname, "protected.json"))
+	targetPath := svc.Resolve(filepath.Join(constants.EvaluationControlledTargetDirname, "fixture.txt"))
+	require.NoError(t, svc.WriteFile(ctx, filepath.Join(constants.EvaluationControlledTargetDirname, "fixture.txt"), []byte("marker"), constants.PermFilePrivate))
+
+	target, err := svc.OpenFileEditTarget(ctx, targetPath, baseDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, target.Close()) })
+
+	require.NoError(t, os.Remove(targetPath))
+	require.NoError(t, os.Symlink(protectedFile, targetPath))
+
+	require.Error(t, target.WriteFile([]byte("overwrite"), constants.PermFilePrivate))
+	_, err = target.ReadFile()
+	require.Error(t, err)
+	got, err := os.ReadFile(protectedFile)
+	require.NoError(t, err)
+	assert.Equal(t, "protected", string(got))
+}
+
+func TestOpenFileEditTargetRequiresExistingEvaluationTargetDirectory(t *testing.T) {
+	ctx := context.Background()
+	baseDir := testutil.TempDir(t)
+	require.NoError(t, paths.InitWithBase(baseDir))
+	svc, err := NewRuntimeFileService(baseDir, testutil.NewVerboseTestLogger(t))
+	require.NoError(t, err)
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+	exists, err := svc.FileExists(ctx, constants.EvaluationControlledTargetDirname)
+	require.NoError(t, err)
+	require.False(t, exists, "fixture assumes the runtime tree does not create the target directory")
+
+	_, err = svc.OpenFileEditTarget(ctx, svc.Resolve(filepath.Join(constants.EvaluationControlledTargetDirname, "fixture.txt")), baseDir)
+	require.ErrorIs(t, err, constants.ErrPathNotFound)
+}
+
+func TestWriteFile_ReplacesReadOnlyFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+	require.NoError(t, svc.WriteFile(ctx, "report.json", []byte("original"), constants.PermFileReadOnly))
+	require.NoError(t, svc.WriteFile(ctx, "report.json", []byte("updated"), constants.PermFileReadOnly))
+	body, err := svc.ReadFile(ctx, "report.json")
+	require.NoError(t, err)
+	assert.Equal(t, "updated", string(body))
+}
+
+func TestWriteFile_CreatesParentDirectories(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	err := svc.WriteFile(ctx, "nested/deep/dir/file.txt", []byte("data"), constants.PermFilePrivate)
+	require.NoError(t, err)
+
+	got, err := svc.ReadFile(ctx, "nested/deep/dir/file.txt")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("data"), got)
+}
+
+func TestWriteFile_EnforcesPermissions(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	err := svc.WriteFile(ctx, "secret.txt", []byte("secret"), constants.PermFilePrivate)
+	require.NoError(t, err)
+
+	info, err := svc.Stat(ctx, "secret.txt")
+	require.NoError(t, err)
+	assert.Equal(t, testutil.FileMode(constants.PermFilePrivate, info.IsDir()), info.Mode().Perm())
+}
+
+func TestWriteFile_OverwritesExistingFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "overwrite.txt", []byte("old"), constants.PermFilePrivate))
+	require.NoError(t, svc.WriteFile(ctx, "overwrite.txt", []byte("new"), constants.PermFilePrivate))
+
+	got, err := svc.ReadFile(ctx, "overwrite.txt")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("new"), got)
+}
+
+func TestWriteFile_NoTempFilesRemain(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "clean.txt", []byte("data"), constants.PermFilePrivate))
+
+	absDir := svc.Resolve("")
+	entries, err := os.ReadDir(absDir)
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.False(t, strings.HasPrefix(e.Name(), ".ztd-tmp-"),
+			"temp file remains: %s", e.Name())
+	}
+}
+
+func TestReadFile_NonexistentReturnsErrNotFound(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	_, err := svc.ReadFile(ctx, "does-not-exist.txt")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
+}
+
+func TestFileExists_ExistingFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "exists.txt", []byte("data"), constants.PermFilePrivate))
+
+	exists, err := svc.FileExists(ctx, "exists.txt")
+	require.NoError(t, err)
+	assert.True(t, exists)
+}
+
+func TestFileExists_NonexistentFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	exists, err := svc.FileExists(ctx, "nope.txt")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestStat_ReturnsFileInfo(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "stat.txt", []byte("data"), constants.PermFilePrivate))
+
+	info, err := svc.Stat(ctx, "stat.txt")
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), info.Size())
+	assert.False(t, info.IsDir())
+}
+
+func TestStat_NonexistentReturnsErrNotFound(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	_, err := svc.Stat(ctx, "nope.txt")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
+}
+
+func TestRemove_ExistingFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "remove.txt", []byte("data"), constants.PermFilePrivate))
+	require.NoError(t, svc.Remove(ctx, "remove.txt"))
+
+	exists, err := svc.FileExists(ctx, "remove.txt")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestRemove_NonexistentIsNoOp(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	err := svc.Remove(ctx, "never-existed.txt")
+	assert.NoError(t, err)
+}
+
+func TestRemoveAll_ExistingDirectory(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.MkdirAll(ctx, "rmdir", constants.PermDirStandard))
+	require.NoError(t, svc.WriteFile(ctx, "rmdir/file.txt", []byte("data"), constants.PermFilePrivate))
+	require.NoError(t, svc.RemoveAll(ctx, "rmdir"))
+
+	exists, err := svc.FileExists(ctx, "rmdir")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestRemoveAll_NonexistentIsNoOp(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	err := svc.RemoveAll(ctx, "never-existed")
+	assert.NoError(t, err)
+}
+
+func TestReadDir_ListsEntries(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "dir/a.txt", []byte("a"), constants.PermFilePrivate))
+	require.NoError(t, svc.WriteFile(ctx, "dir/b.txt", []byte("b"), constants.PermFilePrivate))
+
+	entries, err := svc.ReadDir(ctx, "dir")
+	require.NoError(t, err)
+	assert.Len(t, entries, 2)
+
+	names := []string{entries[0].Name(), entries[1].Name()}
+	assert.Contains(t, names, "a.txt")
+	assert.Contains(t, names, "b.txt")
+}
+
+func TestReadDir_NonexistentReturnsErrNotFound(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	_, err := svc.ReadDir(ctx, "no-dir")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
+}
+
+func TestRename_RenamesFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "old.txt", []byte("data"), constants.PermFilePrivate))
+	require.NoError(t, svc.Rename(ctx, "old.txt", "new.txt"))
+
+	got, err := svc.ReadFile(ctx, "new.txt")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("data"), got)
+
+	exists, _ := svc.FileExists(ctx, "old.txt")
+	assert.False(t, exists)
+}
+
+func TestMkdirAll_CreatesNestedDirectories(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	err := svc.MkdirAll(ctx, "a/b/c", constants.PermDirStandard)
+	require.NoError(t, err)
+
+	info, err := svc.Stat(ctx, "a/b/c")
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+}
+
+func TestCreateRuntimeTree_CreatesAllDirectories(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	err := svc.CreateRuntimeTree(ctx)
+	require.NoError(t, err)
+
+	dirs := []string{
+		paths.Infra.DataDir,
+		paths.Infra.PkiDir,
+		paths.Infra.PkiRootDir,
+		paths.Infra.PkiAuthoritiesDir,
+		paths.Infra.PkiIssuedDir,
+		paths.Infra.PkiIssuedHubDir,
+		paths.Infra.PkiIssuedGatewayPeerDir,
+		paths.Infra.AppCertDir,
+		paths.Infra.PkiTrustDir,
+		paths.Infra.PkiRevocationDir,
+		paths.Infra.PkiBinariesDir,
+		paths.Infra.ClientPkiDir,
+		paths.Infra.SecretsDir,
+		paths.Infra.VaultDir,
+		paths.Infra.LedgerDir,
+		paths.Infra.LedgerFilesDir,
+		paths.Infra.LogDir,
+		paths.Infra.PidDir,
+		paths.Infra.BinDir,
+	}
+
+	for _, dir := range dirs {
+		info, err := os.Stat(dir)
+		require.NoError(t, err, "directory not created: %s", dir)
+		assert.True(t, info.IsDir(), "not a directory: %s", dir)
+	}
+}
+
+func TestCreateRuntimeTree_SecretsDirIsPrivate(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+
+	info, err := os.Stat(paths.Infra.SecretsDir)
+	require.NoError(t, err)
+	assert.Equal(t, testutil.FileMode(constants.PermDirPrivate, info.IsDir()), info.Mode().Perm())
+}
+
+func TestCreateRuntimeTree_VaultDirIsPrivate(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+
+	info, err := os.Stat(paths.Infra.VaultDir)
+	require.NoError(t, err)
+	assert.Equal(t, testutil.FileMode(constants.PermDirPrivate, info.IsDir()), info.Mode().Perm())
+}
+
+func TestCreateRuntimeTree_Idempotent(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+
+	info, err := os.Stat(paths.Infra.PkiDir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+}
+
+func TestEnforceFilePermissions_SetsMode(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "perm.txt", []byte("data"), constants.PermFilePublic))
+	require.NoError(t, svc.EnforceFilePermissions(ctx, "perm.txt", constants.PermFilePrivate))
+
+	info, err := svc.Stat(ctx, "perm.txt")
+	require.NoError(t, err)
+	assert.Equal(t, testutil.FileMode(constants.PermFilePrivate, info.IsDir()), info.Mode().Perm())
+}
+
+func TestEnforceDirPermissions_Recursive(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.MkdirAll(ctx, "enforce/sub", constants.PermDirStandard))
+	require.NoError(t, svc.WriteFile(ctx, "enforce/sub/file.txt", []byte("data"), constants.PermFilePublic))
+	require.NoError(t, svc.EnforceDirPermissions(ctx, "enforce", constants.PermDirPrivate))
+
+	info, err := svc.Stat(ctx, "enforce/sub/file.txt")
+	require.NoError(t, err)
+	assert.Equal(t, testutil.FileMode(constants.PermDirPrivate, info.IsDir()), info.Mode().Perm())
+
+	info, err = svc.Stat(ctx, "enforce/sub")
+	require.NoError(t, err)
+	assert.Equal(t, testutil.FileMode(constants.PermDirPrivate, info.IsDir()), info.Mode().Perm())
+}
+
+func TestWriteFile_CancelledContextReturnsError(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := svc.WriteFile(ctx, "cancelled.txt", []byte("data"), constants.PermFilePrivate)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled))
+}
+
+func TestReadFile_CancelledContextReturnsError(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := svc.ReadFile(ctx, "anything.txt")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled))
+}
+
+func TestRelFromAbs_Success(t *testing.T) {
+	svc := setupTestFS(t)
+	abs := svc.Resolve("pki/root_ca.crt")
+	rel, err := svc.RelFromAbs(abs)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join("pki", "root_ca.crt"), rel)
+}
+
+func TestRelFromAbs_OutsidePathReturnsError(t *testing.T) {
+	svc := setupTestFS(t)
+	outside := filepath.Join(os.TempDir(), "outside-ztd", "cert.pem")
+	_, err := svc.RelFromAbs(outside)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
+}
+
+func TestReadFile_RejectsPathTraversal(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	_, err := svc.ReadFile(ctx, filepath.Join("..", "outside.txt"))
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
+}
+
+func TestLstat_RejectsPathTraversal(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	_, err := svc.Lstat(ctx, filepath.Join("..", "outside.txt"))
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
+}
+
+func TestCreateRuntimeTree_CreatesPublicFeedDirs(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.CreateRuntimeTree(ctx))
+
+	for _, dir := range []string{constants.PublicFeedDirname, constants.PublicMirrorDirname} {
+		info, err := os.Stat(filepath.Join(svc.Resolve(""), dir))
+		require.NoError(t, err, dir)
+		assert.True(t, info.IsDir())
+	}
+}

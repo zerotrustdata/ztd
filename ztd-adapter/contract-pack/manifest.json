@@ -1,0 +1,135 @@
+{
+  "files": [
+    {
+      "path": "builder-prompt.md",
+      "sha256": "5f392f48b73c1f419dae59efcbf45869e34157042007fbc1066cbce6fa8e63e4"
+    },
+    {
+      "path": "event-schemas.json",
+      "sha256": "e34c0f64538cd7151f91cfffa306be9832ca89f1df361c0900198f01f1f18283"
+    },
+    {
+      "path": "fixtures/bootstrap.json",
+      "sha256": "fe0b59f4b9cc95229505af27c26b79a544a291d5a46f5d4d0318822db9b10f8b"
+    },
+    {
+      "path": "fixtures/download-availability.json",
+      "sha256": "7b14de0f2c4e8091d688a609a84b15b410b500a22e4905104aa33e17e11381a5"
+    },
+    {
+      "path": "fixtures/empty-evals.json",
+      "sha256": "0d0d74fea2345afe25601e2d9b0c9c4712dcdef05e07e2f2300e5b06ed07bb62"
+    },
+    {
+      "path": "fixtures/live-stream.json",
+      "sha256": "5dc471c43e5f348d8fc559caff8c266ba5478403cb7c0c09d9f3d56c8ce8775a"
+    },
+    {
+      "path": "fixtures/partial-verification.json",
+      "sha256": "755b1bf08416412b6e2733542de49d292981f78b99d2e09d8b6edf7e2f517ab4"
+    },
+    {
+      "path": "fixtures/reconnect.json",
+      "sha256": "377f021d25156a4f12b13d33519cab1d2236984a09a9033e24eadbb4e4e4219f"
+    },
+    {
+      "path": "fixtures/replay-gap.json",
+      "sha256": "c66653e90201397979c177fb16e0f3f24030ba75ba49eb1f16a75c03a51c8766"
+    },
+    {
+      "path": "fixtures/stale-telemetry.json",
+      "sha256": "37ec587ae4b6d2073fd89b614d22fc145f7e25f0ec28618b2b9722a76d88e67f"
+    },
+    {
+      "path": "fixtures/unauthenticated.json",
+      "sha256": "24329be9031f0fb5183ff3cbf45a02ca9f359156f2c92212a1abeffaa04354e4"
+    },
+    {
+      "path": "fixtures/unavailable-metrics.json",
+      "sha256": "02fbcf982dfdf90821d93ff53082227aeb7b588dda35abd73a888b0315d4dcc8"
+    },
+    {
+      "path": "fixtures/wrong-user-rejection.json",
+      "sha256": "b4f6bc7358cfc3e12c62ed341bd268b371471484e9bf9e0823527acd9866d186"
+    },
+    {
+      "path": "models.ts",
+      "sha256": "301a9447dc258076d5641ee5805ef7224caf9428ca0b3119d695768b51c02963"
+    },
+    {
+      "path": "observe.openapi.json",
+      "sha256": "3bfefdb3c4e48902990c2f2f04dd022186d5a5c2e16b081dca329ab4d163a96e"
+    },
+    {
+      "path": "public/disclosure-matrix.json",
+      "sha256": "fa9489fe8cb8bfd3f80d79babebdb71bf57667cbddbdc3af7250482bd473a7be"
+    },
+    {
+      "path": "public/event-schemas.json",
+      "sha256": "1d1a8c5f2a0ad2be51a661664a9ebbae77fbbcdf811127eda718942a86fdefcb"
+    },
+    {
+      "path": "public/fixtures/active.json",
+      "sha256": "cb0788440609fb91fc3fc72641edbe6194368cf2ce0cc946fc651a534457f3ab"
+    },
+    {
+      "path": "public/fixtures/delayed.json",
+      "sha256": "1f410f0a4421467c7d823937b6bf5bc470550d5a4e65f9207e1913af90efd541"
+    },
+    {
+      "path": "public/fixtures/intentionally-stopped.json",
+      "sha256": "f949737e4ba788c06c9caae67af4d14f524552f3adc70995efc9ba95b019f5fe"
+    },
+    {
+      "path": "public/fixtures/safety-stopped.json",
+      "sha256": "eacc2e5dd26139706de1935ff36838996b78f2d606716e32a33aaf904828bcfd"
+    },
+    {
+      "path": "public/fixtures/source-offline.json",
+      "sha256": "eada5dd4397f90e1c9ea1768d1346aecef6119188ba38c2845bce5e905f39973"
+    },
+    {
+      "path": "public/fixtures/stale.json",
+      "sha256": "95dff2b2b9d119e82a5f8bfbb7e657e7831f694d35aa1466ebbb59997e04aee7"
+    },
+    {
+      "path": "public/manifest.json",
+      "sha256": "14d9f719f0f13b86f9f2c424c432cec0080e54157e01bcda5295f83a01219cf5"
+    },
+    {
+      "path": "public/models.ts",
+      "sha256": "81e5d1c120aef881ec3bf5f16e36c5d5c7c4d83d59dab3ac778b29ca86751cae"
+    },
+    {
+      "path": "public/offline-verifier.md",
+      "sha256": "ab648a2ca10e547a6e5167d0736b79ff1ac6c94685dc3d0e247e0ec4bbe9db82"
+    },
+    {
+      "path": "public/proof-schemas.json",
+      "sha256": "920fd70cb9164945c45f2faab2f67657157dc3bcc9fc04823cf3fce43329b3aa"
+    },
+    {
+      "path": "public/public-read.openapi.json",
+      "sha256": "5d755a1eeda068dd02b6dfb3f1c083077d2aa914a52b6d01c5b311141ebfe810"
+    },
+    {
+      "path": "public/README.md",
+      "sha256": "1db8d7ea1a88b2c6efcf8f8f65e9d73cbd4e21005f5b9dea48f289adc89d8ce6"
+    },
+    {
+      "path": "public/runtime-config.schema.json",
+      "sha256": "5280af337996f9b2b19365276179a7a6ff3ed818fe325e16c8d5ad0505e423a3"
+    },
+    {
+      "path": "README.md",
+      "sha256": "a54511682c087bb4b35026f63be7ebfb20f768f153b70947a98338cd27be05d7"
+    },
+    {
+      "path": "runtime-config.schema.json",
+      "sha256": "1df6a885ca7c47b5edd1352c6daac0a923115f791652b4312995d9115fe8d49f"
+    }
+  ],
+  "generated_at": "deterministic",
+  "generator": "ztd-adapter/generator/gen-contract-pack.mjs",
+  "schema_version": "1.0.0"
+}

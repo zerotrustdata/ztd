@@ -1,0 +1,223 @@
+---
+doc_id: sse
+title: SSE Streaming
+audience: maintainers and coding agents
+status: current
+version: v1.0.0
+last_updated: 2026-10-12
+owners:
+  - internal/services/gateway/sse_controller.go
+  - internal/services/gateway/sse_event_publisher.go
+  - internal/services/gateway/sse_event_service.go
+  - internal/services/gateway/approvals_events.go
+  - internal/services/gateway/operator_status_events.go
+  - internal/services/gateway/passkey_orchestrator.go
+  - internal/services/gateway/observe_producer_controller.go
+  - internal/services/gateway/observe_producer.go
+  - internal/services/pubsub/channels.go
+related:
+  - docs/architecture/gateway.md
+  - docs/architecture/auth.md
+  - docs/architecture/network.md
+  - docs/architecture/events.md
+  - docs/architecture/console.md
+  - docs/guides/build_observe_frontend.md
+when_to_read: Understanding how Gateway events reach browsers and CLIs over SSE, integrating observe producers, stream replay and reconnect behavior, or debugging missed or duplicated live events.
+do_not_use_for:
+  - Governance envelope model (see gateway.md)
+  - Authentication mechanisms (see auth.md)
+  - Event registry contents and persistence values (see events.md)
+---
+
+# SSE Streaming
+
+## Purpose
+
+Defines the Gateway's Server-Sent Events (SSE) delivery channel for session-targeted events. The Gateway is the sole SSE publisher for browsers and CLIs. It publishes from its internal services (approvals, Operator status, heartbeats, model provenance progress) and from the observe producer endpoints that application workloads call over mTLS.
+
+SSE is a session-scoped delivery channel for asynchronous notifications and telemetry. Publishing an event neither mutates governed state nor alters the five-layer governance interlock; authoritative outcomes reside in signed receipts and platform records.
+
+## Quick index
+
+- [Purpose](#purpose)
+- [Invariants](#invariants)
+- [Owned surfaces](#owned-surfaces)
+- [Event Routing and Wire Framing](#event-routing-and-wire-framing)
+- [Event Sources and Persistence](#event-sources-and-persistence)
+- [Observe Producers](#observe-producers)
+- [Consumer Replay and Reconnection](#consumer-replay-and-reconnection)
+- [Procedures](#procedures)
+- [Anti-patterns](#anti-patterns)
+- [Links out](#links-out)
+
+Key invariant groups: [Event model](#event-model-inv-sse-evt), [Producer authentication](#producer-authentication-inv-sse-prod), [Consumer authentication](#consumer-authentication-inv-sse-cons), [Delivery semantics](#delivery-semantics-inv-sse-del).
+
+## Invariants
+
+Ids are stable. Append the next free number within each group; do not renumber.
+
+### Event model (`INV-SSE-EVT`)
+
+| ID | Rule |
+| --- | --- |
+| INV-SSE-EVT-01 | Every SSE event is keyed by two routing dimensions: `user_id` (ownership) and exactly one of `web_session_id` or `cli_session_id` (delivery target). A bare `user_id` is not a valid route. The Gateway does not provide user-wide fan-out. |
+| INV-SSE-EVT-02 | Event type strings are constants generated from `protocol/constants/events.json` (`internal/constants/events_gen.go`). The registry's `persistence` value is the contract: a publisher uses `SSEEventPublisher.Publish` for a persisted event and `PublishEphemeral` for an `ephemeral` one. |
+| INV-SSE-EVT-03 | SSE frames carry a `data:` field and, for persisted events, an `id:` field; no `event:` field is emitted. Ephemeral events have no durable row and therefore no `id:` line. Consumers read the application event type from the nested `event.type` value in the JSON data payload. Heartbeats are SSE comments (`: ping\n\n`) and do not advance the event cursor. |
+| INV-SSE-EVT-04 | Ephemeral events are delivered via live streams but not persisted to the SSE store; consumers cannot recover them via replay. Persist-before-publish ordering ensures events that fail to persist never reach consumers. A live ephemeral event is emitted without an `id:` line to avoid rewinding the client's `Last-Event-ID` cursor. |
+
+### Producer authentication (`INV-SSE-PROD`)
+
+| ID | Rule |
+| --- | --- |
+| INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
+
+### Consumer authentication (`INV-SSE-CONS`)
+
+| ID | Rule |
+| --- | --- |
+| INV-SSE-CONS-01 | Consumers use dual authentication: either a web-session cookie (browser) or mTLS certificate + `X-ZTD-CLI-Session-ID` header (CLI or Operator). When both are presented, mTLS takes precedence; an invalid certificate does not fall back to cookie auth. App certificates cannot consume SSE events. |
+| INV-SSE-CONS-02 | `GET /api/v1/sse/events` (polling) and `GET /api/v1/sse/stream` (live) build the route entirely from authenticated context; routing query parameters are ignored. Queries match both the authenticated user and session before returning rows. |
+| INV-SSE-CONS-03 | An Operator holding an mTLS certificate can select an owned CLI session via `X-ZTD-CLI-Session-ID` or an owned web session via `X-ZTD-Web-Session-ID`. The Gateway verifies the named CLI session belongs to that Operator session, or that the Operator's binding record names that web session, before returning events. |
+
+### Delivery semantics (`INV-SSE-DEL`)
+
+| ID | Rule |
+| --- | --- |
+| INV-SSE-DEL-01 | `GET /api/v1/sse/events` returns rows with `id > since_id`, ordered ascending, with `limit` defaulting to 200 and clamped to `[1, 1000]`. Polling does not delete or acknowledge rows. |
+| INV-SSE-DEL-02 | `GET /api/v1/sse/stream` replays at most 1,000 rows per connection. When replay hits the limit, an unnumbered `truncated` sentinel carries the last emitted id and limit; the client may reconnect with a higher cursor. A `Last-Event-ID` header or positive `since_id` query parameter requests replay; `since_id=0` without `Last-Event-ID` requests live-only streams. |
+| INV-SSE-DEL-03 | Each live stream maintains a 100-event in-memory queue. If a consumer falls behind, the Gateway drops the oldest queued event; the consumer can recover via cursor-based replay on reconnect. |
+| INV-SSE-DEL-04 | The stream installs its live listener and clears the server write deadline before flushing response headers. Heartbeats are sent every 30 seconds as SSE comments. The maintenance loop (every 30 seconds) removes events older than one hour from `sse_events`. |
+
+## Owned surfaces
+
+| Claim | Path | Verify |
+| --- | --- | --- |
+| SSE poll handler | `internal/services/gateway/sse_controller.go` (`handleInternalSSEEvents`) | Builds route from auth context, returns rows since cursor |
+| SSE stream handler | `internal/services/gateway/sse_controller.go` (`handleInternalSSEStream`) | `./ztd test integration --pkg ./internal/services/gateway --run HandleInternalSSEStream` |
+| SSE publisher | `internal/services/gateway/sse_event_publisher.go` | Persist-before-publish for `Publish`; live-only for `PublishEphemeral` |
+| SSE event storage | `internal/services/gateway/sse_event_service.go` | Append, list, cleanup (30s interval, >1h purge), count |
+| Live channel naming | `internal/services/pubsub/channels.go`, `internal/constants/channels.go` | `sse:cli:<id>`, `sse:web:<id>` |
+| Observe producers | `internal/services/gateway/observe_producer_controller.go` | `./ztd test integration --pkg ./internal/services/gateway --run ObserveProducer` |
+| Event registry | `protocol/constants/events.json` | `make constants-check` |
+
+## Event Routing and Wire Framing
+
+```text
+Publisher (Internal Service or Observe Producer)
+                      │
+                      ▼
+               SSERoute Struct
+         ├── user_id: "alice"
+         └── target: cli_session_id OR web_session_id (exactly one)
+                      │
+        ┌─────────────┴─────────────┐
+        ▼                           ▼
+Persisted Event             Ephemeral Event
+(Publish)                   (PublishEphemeral)
+  │                           │
+  ├─ 1. Write DB row          │
+  │     (sse_events)          │
+  │                           │
+  └─ 2. PubSub live channel ──┴─► PubSub live channel
+        sse:cli:<id>                  sse:cli:<id>
+        sse:web:<id>                  sse:web:<id>
+```
+
+- **Persisted Frame**:
+  ```text
+  id: 1042
+  data: {"event":{"type":"ztd.v1.operator.status.updated.active","payload":{...}},"timestamp":"..."}
+
+  ```
+- **Ephemeral Frame** (no `id:` field):
+  ```text
+  data: {"event":{"type":"ztd.v1.platform.approvals.changed","payload":{"kind":"transactions"}},"timestamp":"..."}
+
+  ```
+- **Heartbeat Frame** (comment):
+  ```text
+  : ping
+
+  ```
+
+## Event Sources and Persistence
+
+| Event Type | Persistence | Publisher / Trigger | Description |
+| :--- | :--- | :--- | :--- |
+| `ztd.v1.platform.approvals.changed` | ephemeral | `approvals_events.go` | Signals pending L3 transactions or platform enrollment changes |
+| `ztd.v1.operator.status.updated.<state>` | persisted | `operator_status_events.go` | Operator state transitions: `offline` on enrollment, `active` when the Operator's command-channel subscription is established (ready for commands), then `stale`, `stopped`, `terminated` |
+| `ztd.v1.operator.heartbeat.received` | ephemeral | `operator_status_events.go` | Real-time telemetry carrying `last_heartbeat_at` and `stale_at` |
+| `ztd.v1.inference.model.provenance.preflight.updated` | ephemeral | `model_provenance_controller.go` | Progress updates during storage-side model attestation |
+| `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
+| `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
+| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed L3 approval |
+| `passkey.registered` | ephemeral | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed passkey registration |
+
+## Observe Producers
+
+App workloads enrolled through platform enrollment publish telemetry over mTLS to the observe producer endpoints:
+
+- `POST /api/v1/observe/producer/agent-state`
+- `POST /api/v1/observe/producer/run-state`
+
+The Gateway extracts the application SPIFFE ID from the client certificate, validates that the application policy allows telemetry publication, and forwards events to the owning user's active web and CLI sessions.
+
+## Consumer Replay and Reconnection
+
+```text
+Browser / CLI Client                          Gateway SSE Controller
+        │                                                │
+        ├─────── GET /api/v1/sse/stream ────────────────►│
+        │        (Last-Event-ID: 1020)                   │
+        │                                                │
+        │◄────── HTTP 200 (headers flushed) ─────────────┤
+        │                                                │
+        │  [Replay Phase: id > 1020, max 1000]           │
+        │◄────── id: 1021, data: {...} ──────────────────┤
+        │◄────── id: 1022, data: {...} ──────────────────┤
+        │                                                │
+        │  [Live Phase: de-duplicated real-time]         │
+        │◄────── id: 1023, data: {...} ──────────────────┤
+        │◄────── data: {ephemeral...} ───────────────────┤
+        │◄────── : ping ─────────────────────────────────┤
+```
+
+1. **Replay Phase**: On connection, if `Last-Event-ID` or `since_id` is supplied, the Gateway fetches stored events from `sse_events` where `id > cursor` up to a limit of 1,000 events. If the limit is reached, a `truncated` frame is emitted.
+2. **Live Phase**: As events arrive on the pub/sub channel, the Gateway streams them to the client. Stored events emitted during replay are deduplicated by ID.
+3. **Queue Overflow**: Each stream buffer holds up to 100 events. If the consumer cannot keep up, the oldest event is dropped. Reconnecting with `Last-Event-ID` recovers dropped persisted events from SQLite.
+
+## Procedures
+
+### Consuming Live Events via CLI
+
+The CLI client (`internal/cli/sse`) handles connection, backoff, and reconnection automatically:
+
+```bash
+# Connect to SSE stream via CLI session
+./ztd auth context
+```
+
+### Consuming Polled Events
+
+Query unread events since a known cursor:
+
+```bash
+curl -k -H "Cookie: ztd_web_session_cookie=<cookie>" \
+  "https://localhost:8443/api/v1/sse/events?since_id=1000&limit=50"
+```
+
+## Anti-patterns
+
+- **Broadcasting user-wide events without session scoping**: Attempting to publish without specifying `cli_session_id` or `web_session_id` (`INV-SSE-EVT-01`).
+- **Supplying routing IDs in the request body**: Attempting to override the authenticated user or session ID via body JSON (`INV-SSE-CONS-02`).
+- **Treating SSE as a permanent audit log**: Relying on `sse_events` for long-term historical records; rows older than 1 hour are automatically pruned (`INV-SSE-DEL-04`).
+- **Emitting `id:` lines on ephemeral events**: Rewinding consumer cursors by sending synthetic or zero IDs for ephemeral notifications (`INV-SSE-EVT-03`).
+
+## Links out
+
+- [Gateway Architecture](gateway.md): Gateway services and protocol surfaces.
+- [Authentication and Authorization](auth.md): mTLS identities, CLI sessions, web sessions, and application policies.
+- [Network Architecture](network.md): TLS listeners, PKI, and cross-component transport.
+- [Event and Action Protocol](events.md): Event registry, persistence values, and transport ownership.
+- [Console Architecture](console.md): Browser connection lifecycle, reconnect, and event routing.
+- [Public Spectator Architecture](public_spectator.md): Read-only public mirror SSE relay and export architecture.

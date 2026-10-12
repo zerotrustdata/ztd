@@ -1,0 +1,314 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/gateway/scripts"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+)
+
+// HTTPHandlerDependencies groups all dependencies for HTTPHandler as
+// per-controller Deps structs. Each controller's dependency surface is
+// explicit and reviewable. Shared infrastructure (Cfg, Logger, Auth,
+// Responder) is kept as top-level fields because they are cross-cutting,
+// not domain-specific.
+type HTTPHandlerDependencies struct {
+	Cfg    *config.Config
+	Logger *slog.Logger
+	Auth   *AuthService
+
+	PKIControllerDeps                     PKIControllerDeps
+	AuditControllerDeps                   AuditControllerDeps
+	DataControllerDeps                    DataControllerDeps
+	SignerControllerDeps                  SignerControllerDeps
+	BootstrapControllerDeps               BootstrapControllerDeps
+	CLIRecoveryControllerDeps             CLIRecoveryControllerDeps
+	CLIRotationControllerDeps             CLIRotationControllerDeps
+	CLIRefreshControllerDeps              CLIRefreshControllerDeps
+	CLISessionControllerDeps              CLISessionControllerDeps
+	EnrollmentTokenControllerDeps         EnrollmentTokenControllerDeps
+	UserControllerDeps                    UserControllerDeps
+	SessionControllerDeps                 SessionControllerDeps
+	AdminControllerDeps                   AdminControllerDeps
+	OperatorControllerDeps                OperatorControllerDeps
+	DispatchControllerDeps                DispatchControllerDeps
+	InferenceDispatchControllerDeps       InferenceDispatchControllerDeps
+	SSEControllerDeps                     SSEControllerDeps
+	HealthControllerDeps                  HealthControllerDeps
+	GovernanceControllerDeps              GovernanceControllerDeps
+	MCPControllerDeps                     MCPControllerDeps
+	PubSubControllerDeps                  PubSubControllerDeps
+	PasskeyControllerDeps                 PasskeyControllerDeps
+	PlatformEnrollmentControllerDeps      PlatformEnrollmentControllerDeps
+	ObserveControllerDeps                 ObserveControllerDeps
+	ObserveProducerControllerDeps         ObserveProducerControllerDeps
+	PublicFeedControllerDeps              PublicFeedControllerDeps
+	EvalCampaignPublicationControllerDeps EvalCampaignPublicationControllerDeps
+	ProviderObservationControllerDeps     ProviderObservationControllerDeps
+	ModelProvenanceControllerDeps         ModelProvenanceControllerDeps
+}
+
+// HTTPHandler manages the web API for the gateway service.
+type HTTPHandler struct {
+	cfg                          *config.Config
+	logger                       *slog.Logger
+	authMiddleware               *AuthService
+	responder                    *response.Writer
+	mcpController                *MCPController
+	pubsubController             *PubSubController
+	passkeyController            *PasskeyController
+	platformEnrollmentController *PlatformEnrollmentController
+	// Controllers for domain-specific endpoints
+	pkiController                     *PKIController
+	auditController                   *AuditController
+	dataController                    *DataController
+	signerController                  *SignerController
+	bootstrapController               *BootstrapController
+	cliRecoveryController             *CLIRecoveryController
+	cliRotationController             *CLIRotationController
+	cliRefreshController              *CLIRefreshController
+	cliSessionController              *CLISessionController
+	enrollmentTokenController         *EnrollmentTokenController
+	userController                    *UserController
+	sessionController                 *SessionController
+	adminController                   *AdminController
+	operatorController                *OperatorController
+	dispatchController                *DispatchController
+	inferenceDispatchController       *InferenceDispatchController
+	sseController                     *SSEController
+	healthController                  *HealthController
+	governanceController              *GovernanceController
+	observeController                 *ObserveController
+	observeProducerController         *ObserveProducerController
+	publicFeedController              *PublicFeedController
+	evalCampaignPublicationController *EvalCampaignPublicationController
+	providerObservationController     *ProviderObservationController
+	modelProvenanceController         *ModelProvenanceController
+
+	// router is the main HTTP router, built once at construction by
+	// buildPublicRouter and cached for the lifetime of the handler. It is
+	// never invalidated or rebuilt — all route registrations are resolved
+	// against the controller set fixed at construction time. If runtime
+	// reconfiguration of routes is ever needed (e.g., hot-reloading
+	// controllers), this cache contract must be revisited: the handler would
+	// need to rebuild the router under a mutex or swap it atomically.
+	router http.Handler
+
+	// Rate limiting state
+	muLimiters      sync.Mutex
+	limiters        map[string]*tokenBucket
+	limiterLastUsed map[string]time.Time
+}
+
+func newHTTPHandler(deps HTTPHandlerDependencies) (*HTTPHandler, error) {
+	// Initialize script templates
+	if err := scripts.Init(deps.Logger); err != nil {
+		return nil, fmt.Errorf("gateway: failed to initialize script templates: %w", err)
+	}
+
+	// Derive the responder from any controller Deps that carry it. All
+	// controllers share the same responder instance, so we can read it
+	// from any one. PKIControllerDeps is first in the struct.
+	responder := deps.PKIControllerDeps.Responder
+
+	// Initialize enrollment token service (shared dependency, not a controller).
+	// If the caller already provided one (e.g., GatewayModeService shares the
+	// same instance with the passkey handler), reuse it instead of creating a
+	// second service backed by the same store.
+	enrollmentTokenSvc := deps.EnrollmentTokenControllerDeps.EnrollmentTokenSvc
+	if enrollmentTokenSvc == nil {
+		enrollmentTokenSvc = NewEnrollmentTokenService(deps.BootstrapControllerDeps.DocStore, deps.Logger)
+		deps.EnrollmentTokenControllerDeps.EnrollmentTokenSvc = enrollmentTokenSvc
+	}
+
+	// Initialize CLI recovery service (shared dependency, not a controller)
+	cliRecoverySvc := NewCLIRecoveryService(deps.BootstrapControllerDeps.DocStore, deps.Logger)
+	deps.CLIRecoveryControllerDeps.RecoverySvc = cliRecoverySvc
+	if deps.CLIRecoveryControllerDeps.Cfg == nil {
+		deps.CLIRecoveryControllerDeps.Cfg = deps.Cfg
+	}
+	if deps.CLIRecoveryControllerDeps.Logger == nil {
+		deps.CLIRecoveryControllerDeps.Logger = deps.Logger
+	}
+	if deps.CLIRecoveryControllerDeps.UserSvc == nil {
+		deps.CLIRecoveryControllerDeps.UserSvc = deps.BootstrapControllerDeps.UserSvc
+	}
+	if deps.CLIRecoveryControllerDeps.PKI == nil {
+		deps.CLIRecoveryControllerDeps.PKI = deps.BootstrapControllerDeps.PKI
+	}
+	if deps.CLIRecoveryControllerDeps.CLISessionSvc == nil {
+		deps.CLIRecoveryControllerDeps.CLISessionSvc = deps.BootstrapControllerDeps.CLISessionSvc
+	}
+	if deps.CLIRecoveryControllerDeps.OperatorSessionSvc == nil {
+		deps.CLIRecoveryControllerDeps.OperatorSessionSvc = deps.BootstrapControllerDeps.OperatorSessionSvc
+	}
+	if deps.CLIRecoveryControllerDeps.DocStore == nil {
+		deps.CLIRecoveryControllerDeps.DocStore = deps.BootstrapControllerDeps.DocStore
+	}
+	if deps.CLIRecoveryControllerDeps.Responder == nil {
+		deps.CLIRecoveryControllerDeps.Responder = responder
+	}
+
+	// CLIRotationController shares the same shared services as recovery
+	// (PKI, CLISessionSvc, UserSvc). Defaults are filled from the
+	// bootstrap deps so callers only need to set overrides.
+	if deps.CLIRotationControllerDeps.Cfg == nil {
+		deps.CLIRotationControllerDeps.Cfg = deps.Cfg
+	}
+	if deps.CLIRotationControllerDeps.Logger == nil {
+		deps.CLIRotationControllerDeps.Logger = deps.Logger
+	}
+	if deps.CLIRotationControllerDeps.PKI == nil {
+		deps.CLIRotationControllerDeps.PKI = deps.BootstrapControllerDeps.PKI
+	}
+	if deps.CLIRotationControllerDeps.CLISessionSvc == nil {
+		deps.CLIRotationControllerDeps.CLISessionSvc = deps.BootstrapControllerDeps.CLISessionSvc
+	}
+	if deps.CLIRotationControllerDeps.UserSvc == nil {
+		deps.CLIRotationControllerDeps.UserSvc = deps.BootstrapControllerDeps.UserSvc
+	}
+	if deps.CLIRotationControllerDeps.Responder == nil {
+		deps.CLIRotationControllerDeps.Responder = responder
+	}
+
+	// CLIRefreshController shares the same shared services as rotation
+	// (CLISessionSvc, UserSvc). Defaults are filled from the bootstrap
+	// deps so callers only need to set overrides.
+	if deps.CLIRefreshControllerDeps.Cfg == nil {
+		deps.CLIRefreshControllerDeps.Cfg = deps.Cfg
+	}
+	if deps.CLIRefreshControllerDeps.Logger == nil {
+		deps.CLIRefreshControllerDeps.Logger = deps.Logger
+	}
+	if deps.CLIRefreshControllerDeps.CLISessionSvc == nil {
+		deps.CLIRefreshControllerDeps.CLISessionSvc = deps.BootstrapControllerDeps.CLISessionSvc
+	}
+	if deps.CLIRefreshControllerDeps.UserSvc == nil {
+		deps.CLIRefreshControllerDeps.UserSvc = deps.BootstrapControllerDeps.UserSvc
+	}
+	if deps.CLIRefreshControllerDeps.Reg == nil {
+		deps.CLIRefreshControllerDeps.Reg = deps.OperatorControllerDeps.Reg
+	}
+	if deps.CLIRefreshControllerDeps.Auth == nil {
+		deps.CLIRefreshControllerDeps.Auth = deps.Auth
+	}
+	if deps.CLIRefreshControllerDeps.Responder == nil {
+		deps.CLIRefreshControllerDeps.Responder = responder
+	}
+	if deps.CLISessionControllerDeps.Logger == nil {
+		deps.CLISessionControllerDeps.Logger = deps.Logger
+	}
+	if deps.CLISessionControllerDeps.Responder == nil {
+		deps.CLISessionControllerDeps.Responder = responder
+	}
+
+	auditController, err := newAuditController(deps.AuditControllerDeps)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: failed to initialize audit controller: %w", err)
+	}
+
+	h := &HTTPHandler{
+		cfg:                               deps.Cfg,
+		logger:                            deps.Logger,
+		authMiddleware:                    deps.Auth,
+		responder:                         responder,
+		pkiController:                     newPKIController(deps.PKIControllerDeps),
+		auditController:                   auditController,
+		dataController:                    newDataController(deps.DataControllerDeps),
+		signerController:                  newSignerController(deps.SignerControllerDeps),
+		bootstrapController:               newBootstrapController(deps.BootstrapControllerDeps),
+		cliRecoveryController:             newCLIRecoveryController(deps.CLIRecoveryControllerDeps),
+		cliRotationController:             newCLIRotationController(deps.CLIRotationControllerDeps),
+		cliRefreshController:              newCLIRefreshController(deps.CLIRefreshControllerDeps),
+		cliSessionController:              newCLISessionController(deps.CLISessionControllerDeps),
+		enrollmentTokenController:         newEnrollmentTokenController(deps.EnrollmentTokenControllerDeps),
+		userController:                    newUserController(deps.UserControllerDeps),
+		sessionController:                 newSessionController(deps.SessionControllerDeps),
+		adminController:                   newAdminController(deps.AdminControllerDeps),
+		operatorController:                newOperatorController(deps.OperatorControllerDeps),
+		dispatchController:                newDispatchController(deps.DispatchControllerDeps),
+		inferenceDispatchController:       newInferenceDispatchController(deps.InferenceDispatchControllerDeps),
+		sseController:                     newSSEController(deps.SSEControllerDeps),
+		healthController:                  newHealthController(deps.HealthControllerDeps),
+		governanceController:              newGovernanceController(deps.GovernanceControllerDeps),
+		observeController:                 newObserveController(deps.ObserveControllerDeps),
+		observeProducerController:         newObserveProducerController(deps.ObserveProducerControllerDeps),
+		publicFeedController:              newPublicFeedController(deps.PublicFeedControllerDeps),
+		evalCampaignPublicationController: newEvalCampaignPublicationController(deps.EvalCampaignPublicationControllerDeps),
+		providerObservationController:     newProviderObservationController(deps.ProviderObservationControllerDeps),
+		modelProvenanceController:         newModelProvenanceController(deps.ModelProvenanceControllerDeps),
+		mcpController:                     newMCPController(deps.MCPControllerDeps),
+		pubsubController:                  newPubSubController(deps.PubSubControllerDeps),
+		passkeyController:                 newPasskeyController(deps.PasskeyControllerDeps),
+		platformEnrollmentController:      newPlatformEnrollmentController(deps.PlatformEnrollmentControllerDeps),
+		limiters:                          make(map[string]*tokenBucket),
+		limiterLastUsed:                   make(map[string]time.Time),
+	}
+
+	// Build router once to avoid per-request overhead
+	h.router = h.buildPublicRouter()
+
+	return h, nil
+}
+
+// requireAppIdentity verifies the caller is an authenticated app workload
+// with a delegated user identity. The unified auth middleware stamps
+// ContextKeyAppID (app workloads) and ContextKeyUserID (delegated user SAN)
+// during handleAppAuth. On failure it writes 403 (not an app workload) or
+// 401 (missing user identity) and returns ok=false.
+func requireAppIdentity(responder *response.Writer, w http.ResponseWriter, r *http.Request) (appID, userID string, ok bool) {
+	appID, _ = r.Context().Value(constants.ContextKeyAppID).(string)
+	if appID == "" {
+		responder.Error(w, http.StatusForbidden, constants.ErrForbidden.Error())
+		return "", "", false
+	}
+	userID, _ = r.Context().Value(constants.ContextKeyUserID).(string)
+	if userID == "" {
+		responder.Error(w, http.StatusUnauthorized, constants.ErrNotAuthenticated.Error())
+		return "", "", false
+	}
+	return appID, userID, true
+}
+
+func readRequestBody(r *http.Request, maxPayloadBytes int64) ([]byte, error) {
+	limited := io.LimitReader(r.Body, maxPayloadBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxPayloadBytes {
+		return nil, fmt.Errorf("gateway: %w (limit %d bytes)", constants.ErrPayloadExceedsLimit, maxPayloadBytes)
+	}
+	return data, nil
+}
+
+func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.router.ServeHTTP(w, r)
+}
+
+func (h *HTTPHandler) GetMCPGateway() *mcp.GatewayService {
+	return h.mcpController.MCPGateway()
+}
+
+func (h *HTTPHandler) GetPasskeyHandler() *PasskeyHandler {
+	return h.passkeyController.PasskeyHandler()
+}
+
+func (h *HTTPHandler) GetGatewayWebSocketHandler() *GatewayWebSocketHandler {
+	return h.pubsubController.WebSocketHandler()
+}

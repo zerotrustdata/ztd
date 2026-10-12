@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "ztd": {
+      "command": "sh",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/mcp-stdio.sh",
+        "${user_config.ztd_root}",
+        "${user_config.ztd_binary}",
+        "${user_config.app_name}"
+      ]
+    }
+  }
+}

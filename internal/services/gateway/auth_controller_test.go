@@ -1,0 +1,166 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package gateway
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+func setupTestBootstrapController(t *testing.T) *BootstrapController {
+	t.Helper()
+	infra := setupTestInfrastructure(t, false)
+	return newBootstrapController(BootstrapControllerDeps{
+		Cfg:                infra.Cfg,
+		Logger:             infra.Logger,
+		DocStore:           infra.DocStore,
+		UserSvc:            infra.UserSvc,
+		PKI:                infra.PKI,
+		CLISessionSvc:      infra.CLISessionSvc,
+		OperatorSessionSvc: infra.OperatorSessionSvc,
+		EmbeddedOperator:   infra.Embedded,
+		Responder:          infra.Responder,
+	})
+}
+
+func setupTestEnrollmentTokenController(t *testing.T) *EnrollmentTokenController {
+	t.Helper()
+	infra := setupTestInfrastructure(t, false)
+	enrollmentTokenSvc := NewEnrollmentTokenService(infra.DocStore, infra.Logger)
+	return newEnrollmentTokenController(EnrollmentTokenControllerDeps{
+		Cfg:                infra.Cfg,
+		Logger:             infra.Logger,
+		EnrollmentTokenSvc: enrollmentTokenSvc,
+		Responder:          infra.Responder,
+	})
+}
+
+func setupTestUserController(t *testing.T) *UserController {
+	t.Helper()
+	infra := setupTestInfrastructure(t, false)
+	return newUserController(UserControllerDeps{
+		Cfg:       infra.Cfg,
+		Logger:    infra.Logger,
+		UserSvc:   infra.UserSvc,
+		Responder: infra.Responder,
+	})
+}
+
+func setupTestSessionController(t *testing.T) *SessionController {
+	t.Helper()
+	infra := setupTestInfrastructure(t, false)
+	return newSessionController(SessionControllerDeps{
+		Logger:      infra.Logger,
+		DocStore:    infra.DocStore,
+		Responder:   infra.Responder,
+		CrossOrigin: false,
+	})
+}
+
+// setupTestPasskeyService creates a PasskeyHandler with approval dependencies for testing.
+func setupTestPasskeyService(t *testing.T) (*PasskeyHandler, *UserService, storage.SuspendedTransactionStore) {
+	t.Helper()
+	cfg := testutil.NewTestConfig(t)
+	logger := testutil.NewTestLogger()
+
+	fileSvc := newTestFileSvc(t)
+	db, err := openTestDB(t, fileSvc, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	userSvc := NewUserService(db.GetDocStore(), logger)
+	resp := response.NewWriter(logger)
+	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
+	passkey, err := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+	require.NoError(t, err)
+
+	suspendedTxService := db.GetSuspendedStore()
+
+	mcpGateway, err := mcp.NewGatewayService(mcp.Dependencies{
+		Logger:           logger,
+		Responder:        resp,
+		SuspendedStore:   suspendedTxService,
+		ScrubbingService: newTestScrubber(t),
+		ThreatScanner:    governance.NewL1Doctrine(),
+		MaxPayloadBytes:  cfg.Gateway.MaxPayloadBytes,
+		Posture:          string(cfg.Gateway.Posture),
+		AuditStore:       noopAuditEventRecorder{},
+		EmbeddedSession:  fixedEmbeddedSession{},
+	})
+	require.NoError(t, err)
+
+	orchestrator, err := NewPasskeyOrchestrator(mcpGateway, suspendedTxService, db.GetSSEStore(), NewGatewayWebSocketHandler(logger), logger)
+	require.NoError(t, err)
+	passkeyHandler := NewPasskeyHandler(PasskeyHandlerDeps{
+		Service:       passkey,
+		WebSessionSvc: webSessionSvc,
+		Responder:     resp,
+		MaxPayload:    cfg.Gateway.MaxPayloadBytes,
+		Orchestrator:  orchestrator,
+	})
+	return passkeyHandler, userSvc, suspendedTxService
+}
+
+// Test Helpers
+
+func testMethodNotAllowed(t *testing.T, handler http.HandlerFunc, method, url string) {
+	t.Helper()
+	req := httptest.NewRequest(method, url, nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func testInvalidJSON(t *testing.T, handler http.HandlerFunc, method, url string) {
+	t.Helper()
+	req := httptest.NewRequest(method, url, strings.NewReader("{invalid}"))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestReadRequestBody(t *testing.T) {
+	t.Run("Success - reads valid JSON body", func(t *testing.T) {
+		body := `{"test":"data"}`
+		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(body))
+
+		data, err := readRequestBody(req, 1024)
+		require.NoError(t, err)
+		assert.Equal(t, []byte(body), data)
+	})
+
+	t.Run("Success - reads empty body", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(""))
+
+		data, err := readRequestBody(req, 1024)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{}, data)
+	})
+
+	t.Run("Failure - body exceeds max payload bytes", func(t *testing.T) {
+		largeBody := strings.Repeat("a", 200)
+		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(largeBody))
+
+		_, err := readRequestBody(req, 100)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "payload exceeds maximum size limit")
+	})
+}

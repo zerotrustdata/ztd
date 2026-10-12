@@ -1,0 +1,117 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package fs
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+func TestWriteFile_LargeDataPreservesContent(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	data := make([]byte, 1024*1024) // 1MB
+	_, err := rand.Read(data)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.WriteFile(ctx, "large.bin", data, constants.PermFilePrivate))
+
+	got, err := svc.ReadFile(ctx, "large.bin")
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(data, got))
+}
+
+func TestWriteFile_EmptyDataCreatesZeroLengthFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "empty.txt", []byte{}, constants.PermFilePrivate))
+
+	info, err := svc.Stat(ctx, "empty.txt")
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), info.Size())
+}
+
+func TestWriteFile_ConcurrentWritesToSamePath(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	data1 := []byte("content-1")
+	data2 := []byte("content-2")
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_ = svc.WriteFile(ctx, "concurrent.txt", data1, constants.PermFilePrivate)
+	}()
+	go func() {
+		defer wg.Done()
+		_ = svc.WriteFile(ctx, "concurrent.txt", data2, constants.PermFilePrivate)
+	}()
+	wg.Wait()
+
+	got, err := svc.ReadFile(ctx, "concurrent.txt")
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(data1, got) || bytes.Equal(data2, got),
+		"file should contain one of the two written contents")
+}
+
+func TestWriteFile_NestedDeepPath(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	deepPath := "a/b/c/d/e/file.txt"
+	require.NoError(t, svc.WriteFile(ctx, deepPath, []byte("deep"), constants.PermFilePrivate))
+
+	got, err := svc.ReadFile(ctx, deepPath)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("deep"), got)
+}
+
+func TestReadFile_SucceedsWhileWriteFileReplacesTheSameRecord(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	const rel = "record.json"
+	require.NoError(t, svc.WriteFile(ctx, rel, []byte("record-0"), constants.PermFileReadOnly))
+
+	var wg sync.WaitGroup
+	writeErrs := make(chan error, 1)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 300; i++ {
+			if err := svc.WriteFile(ctx, rel, []byte("record-1"), constants.PermFileReadOnly); err != nil {
+				writeErrs <- err
+				return
+			}
+		}
+	}()
+
+	var readErr error
+	for i := 0; i < 300 && readErr == nil; i++ {
+		_, readErr = svc.ReadFile(ctx, rel)
+	}
+	wg.Wait()
+
+	require.NoError(t, readErr, "a reader must never observe the replacement as a failure")
+	select {
+	case err := <-writeErrs:
+		require.NoError(t, err)
+	default:
+	}
+}

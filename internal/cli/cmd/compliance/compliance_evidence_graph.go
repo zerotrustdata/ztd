@@ -1,0 +1,132 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package compliancecmd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+
+	"github.com/spf13/cobra"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+)
+
+// complianceEvidenceGraphCmd creates the `compliance evidence-graph`
+// subcommand tree. The evidence graph imports and cross-validates
+// evidence from eval bundles into a single content-addressed graph with
+// duplicate detection, reference resolution, cycle detection, scope
+// binding, freshness, encryption, digest, and trust validation.
+func complianceEvidenceGraphCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "evidence-graph",
+		Short: "Build and validate the cross-source evidence graph",
+		Long: `Import evidence from persisted eval bundles into a single
+content-addressed evidence graph, then run the full validation gauntlet:
+duplicate ID/content conflict detection, reference resolution, prohibited
+cycle detection, scope/run/attempt/scenario binding, freshness window,
+encryption metadata authentication, canonical digest verification, and
+assessed trust validation. Prints a typed EvidenceGraphReport as canonical
+JSON. Returns nonzero when the graph is invalid or any importer fails.`,
+	}
+	cmd.AddCommand(complianceEvidenceGraphVerifyCmdWithConfig(shared.NewEvidenceFileSvc))
+	return cmd
+}
+
+// complianceEvidenceGraphVerifyCmdWithConfig creates the `compliance
+// evidence-graph verify` subcommand with injectable dependencies for
+// testing. The fileSvcFactory produces a RuntimeFileService that serves
+// as the ArtifactReader for all importers.
+func complianceEvidenceGraphVerifyCmdWithConfig(
+	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
+) *cobra.Command {
+	var (
+		projectRoot string
+		evalRuns    []string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "verify",
+		Short: "Build and validate the evidence graph from persisted runs",
+		Long: `Import evidence from the specified eval bundles into a single
+content-addressed evidence graph and run the full validation gauntlet.
+At least one --eval-run must be supplied.
+
+Eval runs are read, sealed, from data/eval/runs/<run-id>/ under the
+runtime tree.
+
+Prints a typed EvidenceGraphReport as canonical JSON. Returns nonzero when
+the graph is invalid or any importer fails.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(evalRuns) == 0 {
+				return fmt.Errorf("%w: at least one --eval-run is required", constants.ErrValidationFailed)
+			}
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+
+			fileSvc, err := fileSvcFactory(projectRoot, slog.Default())
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+			}
+
+			importers, err := buildEvidenceGraphImporters(ctx, fileSvc, evalRuns, time.Now)
+			if err != nil {
+				return err
+			}
+
+			_, report := evidence.BuildAndValidateGraph(ctx, importers, time.Time{}, time.Time{}, time.Now().UTC())
+
+			body, err := json.Marshal(report)
+			if err != nil {
+				return fmt.Errorf("compliance: marshal evidence graph report: %w", err)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(body))
+
+			if !report.Valid {
+				return constants.ErrReportVerificationFailed
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringSliceVar(&evalRuns, "eval-run", nil, "Eval bundle run ID (repeatable)")
+	cmd.Flags().StringVar(&projectRoot, "project-root", "", "Project root directory (defaults to cwd)")
+
+	return cmd
+}
+
+// buildEvidenceGraphImporters constructs the read-only importer set for
+// the specified eval run IDs. Each run ID is validated as a safe path
+// element before constructing the importer.
+func buildEvidenceGraphImporters(
+	_ context.Context,
+	fileSvc fs.RuntimeFileService,
+	evalRuns []string,
+	nowFunc func() time.Time,
+) ([]evidence.EvidenceImporter, error) {
+	importers := make([]evidence.EvidenceImporter, 0, len(evalRuns))
+
+	for _, runID := range evalRuns {
+		if !evidence.ValidPathElement(runID) {
+			return nil, fmt.Errorf("%w: invalid eval run ID %q", constants.ErrPathValidation, runID)
+		}
+		importers = append(importers, evaluation.NewEvidenceImporter(fileSvc, runID, nowFunc))
+	}
+
+	return importers, nil
+}

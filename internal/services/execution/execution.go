@@ -1,0 +1,981 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package execution
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/security"
+	system "github.com/zerotrustdata/ztd/internal/services/system"
+)
+
+// ExecutionService handles command execution with security controls.
+// The ztdo Operator should be run with sudo/root privileges for full system access.
+// Commands are executed directly without sandboxing or user isolation.
+type ExecutionService struct {
+	config *config.Config
+	logger *slog.Logger
+
+	// Configuration from bootstrap
+	maxConcurrentTasks int
+	maxMemoryMB        int
+
+	// Active executions tracking
+	activeExecutions map[string]*ExecutionContext
+	executionsMutex  sync.RWMutex
+	isStopping       bool          // Service shutdown flag
+	semaphore        chan struct{} // Concurrency control
+	wg               sync.WaitGroup
+}
+
+func (es *ExecutionService) BuildCommandString(command string, args []string) string {
+	if len(args) == 0 {
+		return command
+	}
+	return fmt.Sprintf("%s %s", command, strings.Join(args, " "))
+}
+
+// ExecutionContext tracks an active command execution
+type ExecutionContext struct {
+	Request   *models.ExecutionRequestPayload
+	StartTime time.Time
+	Cancel    context.CancelFunc
+	Process   *os.Process
+	Result    *models.ExecutionResult
+	mu        sync.Mutex // Protects Result field from concurrent access
+}
+
+// streamingWriter captures command output into a bounded buffer. It never logs
+// output: stdout and stderr are execution content, which lives only in the
+// encrypted events table (INV-STOR-ENC-01). Only the execution ID, stream name
+// and size limit appear in the log, when the cap is reached.
+type streamingWriter struct {
+	buffer      *bytes.Buffer
+	logger      *slog.Logger
+	prefix      string
+	executionID string
+	mu          sync.Mutex
+	maxSize     int
+	truncated   bool
+}
+
+// newStreamingWriter creates a bounded capture writer for one output stream.
+func newStreamingWriter(buffer *bytes.Buffer, logger *slog.Logger, prefix string, executionID string, maxSize int) *streamingWriter {
+	return &streamingWriter{
+		buffer:      buffer,
+		logger:      logger,
+		prefix:      prefix,
+		executionID: executionID,
+		maxSize:     maxSize,
+	}
+}
+
+// Write implements io.Writer. It reports the full input length as written even
+// when the buffer cap discards bytes, so the child process never blocks.
+func (sw *streamingWriter) Write(p []byte) (n int, err error) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	n = len(p)
+
+	if sw.truncated {
+		return n, nil
+	}
+
+	if sw.maxSize > 0 && sw.buffer.Len()+len(p) > sw.maxSize {
+		remaining := sw.maxSize - sw.buffer.Len()
+		if remaining > 0 {
+			sw.buffer.Write(p[:remaining])
+		}
+		sw.truncated = true
+		sw.buffer.WriteString("\n... [OUTPUT TRUNCATED BY OPERATOR FOR SAFETY] ...\n")
+		sw.logger.Warn("Command output truncated - limit reached", "stream", sw.prefix, "execution_id", sw.executionID, "limit", sw.maxSize)
+		return n, nil
+	}
+
+	if _, err := sw.buffer.Write(p); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// NewExecutionService creates a new execution service
+func NewExecutionService(cfg *config.Config, logger *slog.Logger) *ExecutionService {
+	es := &ExecutionService{
+		config:             cfg,
+		logger:             logger,
+		maxConcurrentTasks: cfg.MaxConcurrentTasks,
+		maxMemoryMB:        cfg.MaxMemoryMB,
+		activeExecutions:   make(map[string]*ExecutionContext),
+		semaphore:          make(chan struct{}, cfg.MaxConcurrentTasks),
+	}
+
+	es.logger.Info("Execution service initialized", "max_concurrent_tasks", es.maxConcurrentTasks)
+
+	return es
+}
+
+// getCloudCLICommands returns the set of commands that require --cloud flag to execute
+// This is a function to avoid package-level mutable state
+func getCloudCLICommands() map[string]bool {
+	return map[string]bool{
+		// Cloud provider CLIs
+		"aws":    true,
+		"gcloud": true,
+		"az":     true,
+		"gsutil": true,
+		"bq":     true, // BigQuery CLI (part of gcloud)
+		"cbt":    true, // Cloud Bigtable CLI
+		"azcopy": true, // Azure storage copy tool
+		// Infrastructure as Code tools
+		"terraform": true,
+		"kubectl":   true,
+		"helm":      true,
+		"pulumi":    true,
+		"ansible":   true,
+		"eksctl":    true, // EKS CLI
+		"sam":       true, // AWS SAM CLI
+		"cdk":       true, // AWS CDK CLI
+	}
+}
+
+// isCloudCLICommand checks if a command or its arguments invoke cloud CLI tools
+func isCloudCLICommand(command string, args []string) (bool, string) {
+	cloudCLICommands := getCloudCLICommands()
+
+	// Check base command
+	baseCmd := command
+	if idx := strings.LastIndex(command, "/"); idx >= 0 {
+		baseCmd = command[idx+1:]
+	}
+	if cloudCLICommands[baseCmd] {
+		return true, baseCmd
+	}
+
+	// Check if cloud CLI is invoked via shell (e.g., sh -c "aws s3 ls")
+	if (command == "sh" || command == constants.PathBinSh || command == "bash" || command == constants.PathBinBash) && len(args) >= 2 && args[0] == "-c" {
+		shellCmd := strings.Join(args[1:], " ")
+		for cloudCmd := range cloudCLICommands {
+			// Check if cloud command appears at start or after common prefixes
+			if strings.HasPrefix(shellCmd, cloudCmd+" ") ||
+				strings.HasPrefix(shellCmd, cloudCmd+"\t") ||
+				strings.Contains(shellCmd, " "+cloudCmd+" ") ||
+				strings.Contains(shellCmd, ";"+cloudCmd+" ") ||
+				strings.Contains(shellCmd, "|"+cloudCmd+" ") ||
+				strings.Contains(shellCmd, "&&"+cloudCmd+" ") ||
+				strings.Contains(shellCmd, "|| "+cloudCmd+" ") {
+				return true, cloudCmd
+			}
+		}
+	}
+
+	return false, ""
+}
+
+// ExecuteCommand executes a command with security controls and resource limits
+// Returns a domain ExecutionResult with value types.
+func (es *ExecutionService) ExecuteCommand(ctx context.Context, request *models.ExecutionRequestPayload) (*models.ExecutionResult, error) {
+	es.logger.Debug("Executing command",
+		"execution_id", request.ExecutionID,
+		"case_id", request.CaseID,
+		"arg_count", len(request.Args))
+
+	// SECURITY: Block cloud CLI commands unless --cloud flag is set
+	if !es.config.CloudMode {
+		if isCloud, cloudCmd := isCloudCLICommand(request.Command, request.Args); isCloud {
+			es.logger.Warn("Cloud CLI command blocked - Operator not started with --cloud flag",
+				"execution_id", request.ExecutionID,
+				"blocked_tool", cloudCmd,
+				"cloud_mode", es.config.CloudMode)
+
+			now := time.Now().UTC()
+			return &models.ExecutionResult{
+				ExecutionID: request.ExecutionID,
+				CaseID:      request.CaseID,
+				TaskID: func() string {
+					if request.TaskID != nil {
+						return *request.TaskID
+					}
+					return ""
+				}(),
+				InvestigationID: request.InvestigationID,
+				Command:         request.Command,
+				Args:            request.Args,
+				Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+				StartTime:       now,
+				ReturnCode:      constants.ExitCodeCannotExecute, // Command invoked cannot execute
+				Stdout:          "",
+				Stderr:          fmt.Sprintf("Cloud CLI command '%s' is not available. This Operator was not started with --cloud flag.", cloudCmd),
+				ErrorMessage:    fmt.Sprintf("cloud CLI '%s' blocked: Operator requires --cloud flag", cloudCmd),
+				ErrorType:       "cloud_cli_blocked",
+				DurationSeconds: 0,
+			}, nil
+		}
+	}
+
+	// Log execution context
+	es.logger.Debug("Execution context details",
+		"execution_id", request.ExecutionID,
+		"timeout_seconds", request.TimeoutSeconds,
+		"has_working_dir", request.WorkingDirectory != nil)
+
+	// Acquire semaphore for concurrency control
+	select {
+	case es.semaphore <- struct{}{}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("execution: wait for semaphore: %w", constants.ErrExecutionServiceStopping)
+	}
+
+	// Create timeout context - use exactly what was requested
+	timeoutDuration := time.Duration(request.TimeoutSeconds) * time.Second
+	cmdCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
+	defer cancel()
+
+	// Create execution context
+	execCtx := &ExecutionContext{
+		Request:   request,
+		StartTime: time.Now().UTC(),
+		Cancel:    cancel, // Set early to prevent Stop() race
+	}
+
+	// Initialize result
+	result := &models.ExecutionResult{
+		ExecutionID: request.ExecutionID,
+		CaseID:      request.CaseID,
+		TaskID: func() string {
+			if request.TaskID != nil {
+				return *request.TaskID
+			}
+			return ""
+		}(),
+		InvestigationID: request.InvestigationID,
+		Command:         request.Command,
+		Args:            request.Args,
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
+		StartTime:       execCtx.StartTime,
+	}
+
+	execCtx.Result = result
+
+	// Track active execution and handle shutdown coordination
+	es.executionsMutex.Lock()
+	if es.isStopping {
+		es.executionsMutex.Unlock()
+		<-es.semaphore
+		cancel()
+		return nil, fmt.Errorf("execution: service stopping: %w", constants.ErrExecutionServiceStopping)
+	}
+	es.activeExecutions[request.ExecutionID] = execCtx
+	es.wg.Add(1) // Add inside lock to prevent Stop() race
+	es.executionsMutex.Unlock()
+
+	// Unified cleanup function: ensures map cleanup, semaphore release, and wg.Done happen atomically
+	// This prevents race conditions where the map might not be cleared even after wg.Wait() completes
+	defer func() {
+		es.executionsMutex.Lock()
+		delete(es.activeExecutions, request.ExecutionID)
+		es.executionsMutex.Unlock()
+		<-es.semaphore
+		es.wg.Done()
+	}()
+
+	// Execute the command
+	err := es.executeCommandInternal(cmdCtx, execCtx)
+	if err != nil {
+		execCtx.mu.Lock()
+		if result.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING {
+			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+			result.ErrorMessage = err.Error()
+			result.ErrorType = "execution_error"
+			result.ReturnCode = es.errorToReturnCode(err)
+		}
+		execCtx.mu.Unlock()
+	}
+
+	// Finalize result and log completion
+	execCtx.mu.Lock()
+	es.finalizeResult(result)
+
+	es.logger.Debug("Command execution completed",
+		"execution_id", request.ExecutionID,
+		"case_id", request.CaseID,
+		"status", result.Status,
+		"duration_seconds", result.DurationSeconds,
+		"return_code", result.ReturnCode,
+		"stdout_size", len(result.Stdout),
+		"stderr_size", len(result.Stderr))
+	execCtx.mu.Unlock()
+
+	return result, nil
+}
+
+// resolveCommandBinary maps the embedded model client's self-invocation token
+// (the ztd binary image name, exact match, `operator model <verb>` shape only)
+// to this operator's running executable. Resolution happens at the executing
+// operator; the governed command and recorded evidence retain the token text.
+func resolveCommandBinary(parts []string) (string, error) {
+	if len(parts) >= 3 && parts[0] == constants.BinaryImageName &&
+		parts[1] == "operator" && parts[2] == "model" {
+		return os.Executable()
+	}
+	return exec.LookPath(parts[0])
+}
+
+// executeCommandInternal performs the actual command execution
+func (es *ExecutionService) executeCommandInternal(ctx context.Context, execCtx *ExecutionContext) error {
+	request := execCtx.Request
+	result := execCtx.Result
+
+	// Build the full command string for shell execution
+	var fullCommand string
+
+	// Check if command is already a shell with -c flag to avoid double-wrapping
+	// e.g., Command="sh", Args=["-c", "echo $VAR"] should become just "echo $VAR"
+	// not "sh -c echo $VAR" which would then be wrapped again as /bin/sh -c "sh -c echo $VAR"
+	isShellCommand := request.Command == "sh" || request.Command == constants.PathBinSh ||
+		request.Command == "bash" || request.Command == constants.PathBinBash
+
+	switch {
+	case isShellCommand && len(request.Args) >= 2 && request.Args[0] == "-c":
+		// Extract the script directly - it's already meant for shell execution
+		// Join remaining args in case the script was split across multiple args
+		fullCommand = strings.Join(request.Args[1:], " ")
+	case len(request.Args) > 0:
+		// Command and args provided separately - combine them
+		fullCommand = request.Command + " " + strings.Join(request.Args, " ")
+	default:
+		fullCommand = request.Command
+	}
+
+	if strings.TrimSpace(fullCommand) == "" {
+		return fmt.Errorf("execution: command validation: %w", constants.ErrEmptyCommand)
+	}
+
+	// ALWAYS use direct execution for safety unless shell features are specifically required.
+	// This reduces the risk of command injection and satisfies security scanners.
+
+	var cmd *exec.Cmd
+
+	// Check for shell-specific characters that might require a shell
+	// Or if the original command explicitly requested a shell (e.g. for builtins like 'exit')
+	useShell := isShellCommand || security.IsShellRequired(fullCommand)
+
+	if useShell {
+		// Apply memory limit via ulimit if configured - only on Linux
+		shellScript := fullCommand
+		if es.maxMemoryMB > 0 && runtime.GOOS == "linux" {
+			// ulimit -v is virtual memory limit in KB
+			limitKB := es.maxMemoryMB * 1024
+			shellScript = fmt.Sprintf("ulimit -v %d; %s", limitKB, fullCommand)
+		}
+
+		es.logger.Debug("Executing command via shell",
+			"execution_id", request.ExecutionID,
+			"execution_type", "shell")
+
+		// Use bash for shell execution if available, otherwise sh.
+		// On Windows, we search for bash.exe or sh.exe in PATH.
+		// On Unix, we prefer /bin/bash then /bin/sh.
+		shell := es.getShellPath()
+
+		if shell == "" {
+			return fmt.Errorf("execution: shell required: %w", constants.ErrShellRequired)
+		}
+
+		// Execute the shell script. We don't use "--" because:
+		// 1. On Windows Git Bash, "--" is misinterpreted and breaks execution
+		// 2. The script is already properly quoted and safe from injection
+		// 3. Shell options are handled by the shell itself
+		cmd = exec.CommandContext(ctx, shell, "-c", shellScript)
+	} else {
+		// Direct execution: split into command and args
+		parts := strings.Fields(fullCommand)
+		if len(parts) == 0 {
+			return fmt.Errorf("execution: command validation: %w", constants.ErrEmptyCommand)
+		}
+
+		bin, err := resolveCommandBinary(parts)
+		if err != nil {
+			return fmt.Errorf("execution: command lookup: %w", constants.ErrCommandLookup)
+		}
+
+		es.logger.Debug("Executing command directly",
+			"execution_id", request.ExecutionID,
+			"arg_count", len(parts)-1,
+			"execution_type", "direct")
+
+		cmd = exec.CommandContext(ctx, bin, parts[1:]...)
+	}
+
+	// Update result with the full command
+	execCtx.mu.Lock()
+	result.Command = fullCommand
+	result.Args = []string{}
+	execCtx.mu.Unlock()
+
+	// Set working directory: explicit request overrides, otherwise use operator's WorkDir.
+	// WorkDir is the directory the Operator was launched from (or --working-dir flag value).
+	if request.WorkingDirectory != nil {
+		cmd.Dir = *request.WorkingDirectory
+	} else {
+		cmd.Dir = es.config.WorkDir
+	}
+
+	// Inherit the host environment minus ztd's own credentials; ensure PATH is included.
+	cmd.Env = governedEnviron(os.Environ())
+
+	// Add common system paths if PATH is not set
+	pathSet := false
+	for _, env := range cmd.Env {
+		if strings.HasPrefix(env, "PATH=") {
+			pathSet = true
+			break
+		}
+	}
+	if !pathSet {
+		cmd.Env = append(cmd.Env, "PATH="+constants.EnvPathDefault)
+	}
+
+	// Force non-interactive mode for common tools to prevent hanging
+	// These environment variables tell installers/tools to run without user prompts
+	cmd.Env = append(cmd.Env,
+		"DEBIAN_FRONTEND=noninteractive",          // Debian/Ubuntu package managers
+		"APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1",  // apt-key warnings
+		"CLOUDSDK_CORE_DISABLE_PROMPTS=1",         // Google Cloud SDK
+		"CLOUDSDK_INSTALL_DIR="+es.config.WorkDir, // Google Cloud SDK install location
+		"CI=true",          // Generic CI flag (many tools respect this)
+		"NONINTERACTIVE=1", // Generic non-interactive flag
+	)
+
+	// Add any additional environment variables from request
+	for k, v := range request.Environment {
+		// SECURITY: Validate key/value to prevent environment variable injection.
+		// Keys and values should not contain '=' or null characters.
+		if strings.Contains(k, "=") || strings.Contains(k, "\x00") || strings.Contains(v, "\x00") {
+			es.logger.Warn("Skipping invalid environment variable", "execution_id", request.ExecutionID)
+			continue
+		}
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Create buffers for stdout and stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	// Default max output size is 10MB per stream to prevent OOM
+	maxStreamSize := constants.ExecutionMaxStreamSize
+
+	// Create bounded capture writers (output is never logged)
+	stdoutWriter := newStreamingWriter(&stdoutBuf, es.logger, "stdout", request.ExecutionID, maxStreamSize)
+	stderrWriter := newStreamingWriter(&stderrBuf, es.logger, "stderr", request.ExecutionID, maxStreamSize)
+
+	cmd.Stdout = stdoutWriter
+	cmd.Stderr = stderrWriter
+
+	// CRITICAL: Close stdin to prevent commands from hanging waiting for input
+	// Commands that attempt to read from stdin will get EOF and fail fast
+	cmd.Stdin = nil
+
+	// Set process group so we can kill entire command tree on timeout/cancel
+	setProcessGroup(cmd)
+
+	// Ensure CommandContext cancels the entire process group, not just the leader process
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return killProcessGroup(cmd.Process.Pid)
+		}
+		return nil
+	}
+
+	// Bound the time spent waiting on child processes that leave I/O pipes unclosed
+	cmd.WaitDelay = constants.ExecutionWaitDelay
+
+	// Start command
+	startTime := time.Now().UTC()
+	if err := cmd.Start(); err != nil {
+		endTime := time.Now().UTC()
+		duration := endTime.Sub(startTime)
+		execCtx.mu.Lock()
+		result.EndTime = endTime
+		result.DurationSeconds = duration.Seconds()
+		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+		result.ErrorMessage = err.Error()
+		result.ErrorType = "start_error"
+		result.ReturnCode = es.errorToReturnCode(err)
+		execCtx.mu.Unlock()
+		return err
+	}
+
+	// Store process reference for potential cancellation
+	execCtx.mu.Lock()
+	execCtx.Process = cmd.Process
+	execCtx.mu.Unlock()
+
+	// Monitor for context cancellation/timeout and kill process group
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	var err error
+	select {
+	case <-ctx.Done():
+		// Context cancelled or timed out - kill entire process group
+		if cmd.Process != nil {
+			_ = killProcessGroup(cmd.Process.Pid)
+			_ = cmd.Process.Kill()
+		}
+		err = <-done // Wait for process to actually exit
+	case err = <-done:
+		// Command completed normally
+	}
+
+	endTime := time.Now().UTC()
+	duration := endTime.Sub(startTime)
+
+	// Update result
+	execCtx.mu.Lock()
+	result.EndTime = endTime
+	result.DurationSeconds = duration.Seconds()
+	result.Stdout = stdoutBuf.String()
+	result.Stderr = stderrBuf.String()
+
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_TIMEOUT
+			result.ErrorMessage = constants.ErrMessageExecutionTimeout
+			result.ErrorType = "timeout"
+			result.ReturnCode = constants.ExitCodeTimeout
+		} else if exitError, ok := err.(*exec.ExitError); ok {
+			// Command ran but exited with non-zero
+			if waitStatus, ok := exitError.Sys().(syscall.WaitStatus); ok {
+				exitCode := waitStatus.ExitStatus()
+				result.ReturnCode = exitCode
+
+				// Exit codes 126 and 127 may indicate shell errors, but only if stderr
+				// contains the actual error message. A deliberate "exit 127" should be
+				// treated as completed, not failed.
+				stderr := stderrBuf.String()
+				stderrLower := strings.ToLower(stderr)
+
+				switch {
+				case exitCode == 126 && (strings.Contains(stderrLower, "permission denied") ||
+					strings.Contains(stderrLower, "not executable") ||
+					strings.Contains(stderrLower, "cannot execute")):
+					// Actual permission denied error from shell
+					result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+					result.ErrorMessage = constants.ErrMessagePermissionDenied
+					result.ErrorType = "permission_denied"
+				case exitCode == 127 && (strings.Contains(stderrLower, "not found") ||
+					strings.Contains(stderrLower, "no such file") ||
+					strings.Contains(stderrLower, "command not found")):
+					// Actual command not found error from shell
+					result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+					result.ErrorMessage = constants.ErrMessageCommandNotFound
+					result.ErrorType = "command_not_found"
+				default:
+					// All other non-zero exit codes (including deliberate exit 126/127) are normal completion
+					// The command executed and returned an exit code - that's a successful execution
+					result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+				}
+			} else {
+				// Non-Unix system or wait status unavailable - treat as completed with exit code
+				result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+			}
+		} else if errors.Is(err, constants.ErrProcessKilled) {
+			// Process was killed (by us on timeout/cancel, or externally)
+			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+			result.ErrorMessage = constants.ErrMessageCommandTerminated
+			result.ErrorType = string(constants.CommandExitStatusKilled)
+			result.ReturnCode = constants.ExitCodeKilled
+		} else {
+			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+			result.ErrorMessage = err.Error()
+			result.ErrorType = "execution_error"
+			result.ReturnCode = es.errorToReturnCode(err)
+		}
+	} else {
+		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+		result.ReturnCode = constants.ExitCodeSuccess
+	}
+
+	// Create terminal output for UI
+	if result.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED || (stdoutBuf.Len() > 0 || stderrBuf.Len() > 0) {
+		result.TerminalOutput = es.createTerminalOutput(request.Command, request.Args, stdoutBuf.String(), stderrBuf.String())
+	}
+
+	// Collect system information
+	result.SystemInfo = es.collectSystemInfo()
+	result.EnvironmentInfo = es.collectEnvironmentInfo()
+
+	execCtx.mu.Unlock()
+
+	return nil
+}
+
+// getShellPath returns the path to a Posix-compatible shell
+func (es *ExecutionService) getShellPath() string {
+	// Priority: bash, then sh
+	shells := []string{"bash", "sh"}
+
+	if runtime.GOOS != "windows" {
+		// On Unix-like systems, try absolute paths first
+		for _, s := range []string{constants.PathBinBash, constants.PathUsrBinBash, constants.PathBinSh, constants.PathUsrBinSh} {
+			if _, err := os.Stat(s); err == nil {
+				return s
+			}
+		}
+	}
+
+	// Search PATH for bash.exe or sh.exe on Windows, bash/sh on Unix
+	for _, s := range shells {
+		if path, err := exec.LookPath(s); err == nil {
+			return path
+		}
+	}
+
+	// On Windows, also try common Git Bash installation paths
+	if runtime.GOOS == "windows" {
+		commonPaths := []string{
+			constants.PathWindowsGitBinBash,
+			constants.PathWindowsGitUsrBinBash,
+			constants.PathWindowsGitBinSh,
+			constants.PathWindowsMsys64Bash,
+			constants.PathWindowsCygwin64Bash,
+		}
+		for _, path := range commonPaths {
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
+		}
+		// If no POSIX shell found, return empty string to indicate failure
+		// The caller should handle this case appropriately
+		return ""
+	}
+
+	// Unix fallback
+	return constants.PathBinSh
+}
+
+// createTerminalOutput creates terminal-formatted output for UI interfaces
+func (es *ExecutionService) createTerminalOutput(command string, args []string, stdout, stderr string) *models.TerminalOutput {
+	// Combine command and args
+	commandWithArgs := command
+	if len(args) > 0 {
+		commandWithArgs += " " + strings.Join(args, " ")
+	}
+
+	// Split output into lines
+	stdoutLines := strings.Split(stdout, "\n")
+	stderrLines := strings.Split(stderr, "\n")
+
+	// Remove empty last line if present
+	if len(stdoutLines) > 0 && stdoutLines[len(stdoutLines)-1] == "" {
+		stdoutLines = stdoutLines[:len(stdoutLines)-1]
+	}
+	if len(stderrLines) > 0 && stderrLines[len(stderrLines)-1] == "" {
+		stderrLines = stderrLines[:len(stderrLines)-1]
+	}
+
+	// Combine stdout and stderr for terminal simulation
+	combinedOutput := stdout
+	if stderr != "" {
+		if combinedOutput != "" {
+			combinedOutput += "\n"
+		}
+		combinedOutput += stderr
+	}
+
+	// Get last 50 lines for UI
+	const maxLines = constants.ExecutionMaxLines
+	allLines := make([]string, 0, len(stdoutLines)+len(stderrLines))
+	allLines = append(allLines, stdoutLines...)
+	allLines = append(allLines, stderrLines...)
+	var lastLines []string
+
+	if len(allLines) > maxLines {
+		lastLines = allLines[len(allLines)-maxLines:]
+	} else {
+		lastLines = allLines
+	}
+
+	return &models.TerminalOutput{
+		Command:             command,
+		CommandWithArgs:     commandWithArgs,
+		CombinedOutput:      combinedOutput,
+		LastLines:           lastLines,
+		TruncatedStdout:     len(stdoutLines) > maxLines,
+		TruncatedStderr:     len(stderrLines) > maxLines,
+		OriginalStdoutLines: len(stdoutLines),
+		OriginalStderrLines: len(stderrLines),
+		TotalOriginalLines:  len(stdoutLines) + len(stderrLines),
+	}
+}
+
+// errorToReturnCode maps common errors to standard shell return codes
+func (es *ExecutionService) errorToReturnCode(err error) int {
+	if err == nil {
+		return constants.ExitCodeSuccess
+	}
+	errStr := strings.ToLower(err.Error())
+	if strings.Contains(errStr, "executable file not found") ||
+		strings.Contains(errStr, "no such file or directory") ||
+		strings.Contains(errStr, "command not found") {
+		return constants.ExitCodeCommandNotFound
+	}
+	if strings.Contains(errStr, "permission denied") ||
+		strings.Contains(errStr, "access denied") {
+		return constants.ExitCodeCannotExecute
+	}
+	return constants.ExitCodeGeneral
+}
+
+// collectSystemInfo collects system information
+func (es *ExecutionService) collectSystemInfo() *models.ExecutionSystemInfo {
+	info := &models.ExecutionSystemInfo{
+		Hostname:     system.GetHostname(),
+		OS:           constants.Platform(runtime.GOOS),
+		Architecture: runtime.GOARCH,
+		NumCPU:       runtime.NumCPU(),
+		GoVersion:    runtime.Version(),
+		CurrentUser:  system.GetCurrentUser(),
+	}
+
+	es.logger.Debug("System info collected",
+		"hostname", info.Hostname,
+		"os", info.OS,
+		"architecture", info.Architecture,
+		"num_cpu", info.NumCPU,
+		"current_user", info.CurrentUser)
+
+	if constants.Platform(runtime.GOOS) == constants.PlatformLinux {
+		es.logger.Debug("Linux detected - collecting extended system metrics")
+
+		if loadavg, err := getLoadAverage(); err == nil {
+			info.LoadAverage = loadavg
+			es.logger.Debug("Load average collected", "load_average", loadavg)
+		} else {
+			es.logger.Debug("Failed to collect load average", "error", err)
+		}
+
+		if memInfo, err := getMemoryInfo(); err == nil {
+			info.Memory = memInfo
+			es.logger.Debug("Memory information collected", "memory_info", memInfo)
+		} else {
+			es.logger.Debug("Failed to collect memory information", "error", err)
+		}
+	} else {
+		es.logger.Debug("Non-Linux OS - skipping extended system metrics", "os", runtime.GOOS)
+	}
+
+	return info
+}
+
+func (es *ExecutionService) collectEnvironmentInfo() *models.ExecutionEnvironmentInfo {
+	envInfo := &models.ExecutionEnvironmentInfo{
+		ComponentName: es.config.ComponentName,
+		ProjectID:     es.config.ProjectID,
+		MaxMemoryMB:   es.maxMemoryMB,
+	}
+
+	es.logger.Debug("Environment configuration collected",
+		"max_memory_mb", envInfo.MaxMemoryMB)
+
+	return envInfo
+}
+
+// finalizeTiming ensures EndTime is set and calculates DurationSeconds.
+func finalizeTiming(startTime time.Time, endTime *time.Time, durationSeconds *float64) {
+	if endTime.IsZero() {
+		*endTime = time.Now().UTC()
+	}
+
+	if !startTime.IsZero() && !endTime.IsZero() {
+		*durationSeconds = endTime.Sub(startTime).Seconds()
+	}
+}
+
+// finalizeResult finalizes the execution result
+func (es *ExecutionService) finalizeResult(result *models.ExecutionResult) {
+	finalizeTiming(result.StartTime, &result.EndTime, &result.DurationSeconds)
+}
+
+// Stop cancels all active executions and releases resources.
+// It blocks until all active executions have completed their cleanup.
+func (es *ExecutionService) Stop() {
+	es.executionsMutex.Lock()
+	if es.isStopping {
+		es.executionsMutex.Unlock()
+		return
+	}
+	es.isStopping = true
+
+	if len(es.activeExecutions) == 0 {
+		es.executionsMutex.Unlock()
+		return
+	}
+
+	es.logger.Info("Stopping execution service, cancelling active tasks", "count", len(es.activeExecutions))
+
+	for id, execCtx := range es.activeExecutions {
+		es.logger.Info("Cancelling task during shutdown", "execution_id", id)
+		execCtx.mu.Lock()
+		if execCtx.Cancel != nil {
+			execCtx.Cancel()
+		}
+		if execCtx.Process != nil {
+			_ = killProcessGroup(execCtx.Process.Pid)
+			_ = execCtx.Process.Kill()
+		}
+		execCtx.mu.Unlock()
+	}
+	es.executionsMutex.Unlock()
+
+	// Wait for all goroutines to finish their cleanup (removing themselves from activeExecutions and releasing semaphore)
+	es.wg.Wait()
+}
+
+// GetActiveExecutions returns the currently active executions
+func (es *ExecutionService) GetActiveExecutions() map[string]*ExecutionContext {
+	es.executionsMutex.RLock()
+	defer es.executionsMutex.RUnlock()
+
+	// Create a copy to avoid race conditions
+	active := make(map[string]*ExecutionContext)
+	for k, v := range es.activeExecutions {
+		active[k] = v
+	}
+	return active
+}
+
+// CancelExecution cancels a running execution
+func (es *ExecutionService) CancelExecution(requestID string) error {
+	es.executionsMutex.RLock()
+	execCtx, exists := es.activeExecutions[requestID]
+	es.executionsMutex.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("execution: cancel: %w: %s", constants.ErrExecutionNotFound, requestID)
+	}
+
+	es.logger.Info("Cancelling execution", "execution_id", requestID)
+
+	execCtx.mu.Lock()
+	if execCtx.Cancel != nil {
+		execCtx.Cancel()
+	}
+	if execCtx.Process != nil {
+		_ = killProcessGroup(execCtx.Process.Pid)
+		_ = execCtx.Process.Kill()
+	}
+	execCtx.mu.Unlock()
+
+	return nil
+}
+
+// Helper functions for system information
+
+func getLoadAverage() ([]float64, error) {
+	content, err := os.ReadFile(constants.PathProcLoadAvg)
+	if err != nil {
+		return nil, fmt.Errorf("execution: loadavg: read %s: %w", constants.PathProcLoadAvg, constants.ErrPathNotFound)
+	}
+
+	fields := strings.Fields(string(content))
+	if len(fields) < 3 {
+		return nil, fmt.Errorf("execution: loadavg: invalid format: %w", constants.ErrInternal)
+	}
+
+	var loads []float64
+	for i := 0; i < 3; i++ {
+		var load float64
+		if _, err := fmt.Sscanf(fields[i], "%f", &load); err != nil {
+			return nil, fmt.Errorf("execution: loadavg: parse field %d: %w", i, constants.ErrInternal)
+		}
+		loads = append(loads, load)
+	}
+
+	return loads, nil
+}
+
+func getMemoryInfo() (*models.MemoryInfo, error) {
+	file, err := os.Open(constants.PathProcMemInfo)
+	if err != nil {
+		return nil, fmt.Errorf("execution: memory: open %s: %w", constants.PathProcMemInfo, constants.ErrPathNotFound)
+	}
+	defer file.Close()
+
+	info := &models.MemoryInfo{}
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			var value int64
+			if _, err := fmt.Sscanf(fields[1], "%d", &value); err == nil {
+				valueMB := value / 1024
+				switch fields[0] {
+				case "MemTotal:":
+					info.MemTotal = valueMB
+				case "MemFree:":
+					info.MemFree = valueMB
+				case "MemAvailable:":
+					info.MemAvailable = valueMB
+				case "Buffers:":
+					info.Buffers = valueMB
+				case "Cached:":
+					info.Cached = valueMB
+				case "SwapTotal:":
+					info.SwapTotal = valueMB
+				case "SwapFree:":
+					info.SwapFree = valueMB
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("execution: memory: scan %s: %w", constants.PathProcMemInfo, constants.ErrInternal)
+	}
+	return info, nil
+}
+
+// governedEnviron returns environ without the registry secret keys
+// (constants.SecretEnvVars): a governed command never inherits the runtime's
+// own credentials.
+func governedEnviron(environ []string) []string {
+	withheld := make(map[string]bool, len(constants.SecretEnvVars))
+	for _, key := range constants.SecretEnvVars {
+		withheld[string(key)] = true
+	}
+	env := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		key, _, _ := strings.Cut(kv, "=")
+		if !withheld[key] {
+			env = append(env, kv)
+		}
+	}
+	return env
+}

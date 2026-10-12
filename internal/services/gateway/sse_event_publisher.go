@@ -1,0 +1,145 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/pubsub"
+)
+
+// sseCLIChannelPrefix prefixes the pub/sub channel of a CLI session's SSE stream.
+var sseCLIChannelPrefix = pubsub.SSECLIChannel("")
+
+// sseWebChannelPrefix prefixes the pub/sub channel of a web session's SSE stream.
+var sseWebChannelPrefix = pubsub.SSEWebChannel("")
+
+// SSEEventPublisher is the Gateway's in-process producer path for SSE events:
+// it appends a durable row to the SSE event store and then publishes the live
+// event to the pub/sub channel of the route. The stored payload matches the
+// SSEPushPayload wire shape so consumers parse it identically whether it
+// arrived through the HTTP push endpoint or an in-process producer.
+type SSEEventPublisher struct {
+	sseStore *SSEEventService
+	pubsub   *GatewayWebSocketHandler
+}
+
+// NewSSEEventPublisher creates a publisher over the given event store and
+// pub/sub handler. A nil pubsub persists the row without live delivery.
+func NewSSEEventPublisher(sseStore *SSEEventService, pubsub *GatewayWebSocketHandler) *SSEEventPublisher {
+	return &SSEEventPublisher{sseStore: sseStore, pubsub: pubsub}
+}
+
+// Publish constructs the nested SSE event envelope for eventType, appends it to
+// the SSE event store attributed to producerID, and publishes the live event to
+// the channel the SSE stream handler subscribes for route. The row is appended
+// before the live publish so a replaying consumer never misses an event it was
+// shown live.
+func (p *SSEEventPublisher) Publish(route SSERoute, eventType string, payload any, producerID string) error {
+	payloadBytes, err := buildSSEPushPayload(route, eventType, payload)
+	if err != nil {
+		return err
+	}
+	rowID, err := p.sseStore.SSEEventsAppend(route, eventType, string(payloadBytes), producerID)
+	if err != nil {
+		return fmt.Errorf("append sse event: %w", err)
+	}
+	return p.publishLive(route, rowID, payloadBytes)
+}
+
+// PublishEphemeral publishes eventType to the live channel of route without
+// appending a row, for events the registry marks ephemeral: they carry ID 0, so
+// the stream emits them without an id: line and a reconnecting consumer cannot
+// replay them. A consumer that must not miss one reconciles on reconnect.
+func (p *SSEEventPublisher) PublishEphemeral(route SSERoute, eventType string, payload any) error {
+	payloadBytes, err := buildSSEPushPayload(route, eventType, payload)
+	if err != nil {
+		return err
+	}
+	return p.publishLive(route, 0, payloadBytes)
+}
+
+// ConnectedCLISessionIDs returns the CLI sessions that have an SSE stream open
+// right now. Only these can consume a live event, so a producer that fans out
+// to CLI sessions addresses them instead of every session on record.
+func (p *SSEEventPublisher) ConnectedCLISessionIDs() []string {
+	return p.connectedSessionIDs(sseCLIChannelPrefix)
+}
+
+// ConnectedWebSessionIDs returns the web sessions that have an SSE stream open
+// right now, for a producer of ephemeral events that only an open stream can
+// consume.
+func (p *SSEEventPublisher) ConnectedWebSessionIDs() []string {
+	return p.connectedSessionIDs(sseWebChannelPrefix)
+}
+
+// connectedSessionIDs returns the session ids of the open SSE stream channels
+// under prefix.
+func (p *SSEEventPublisher) connectedSessionIDs(prefix string) []string {
+	if p.pubsub == nil {
+		return nil
+	}
+	channels := p.pubsub.HandlerChannelsWithPrefix(prefix)
+	ids := make([]string, len(channels))
+	for i, channel := range channels {
+		ids[i] = strings.TrimPrefix(channel, prefix)
+	}
+	return ids
+}
+
+// buildSSEPushPayload marshals the SSEPushPayload wire shape for eventType and
+// payload addressed to route.
+func buildSSEPushPayload(route SSERoute, eventType string, payload any) ([]byte, error) {
+	dataBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal event data: %w", err)
+	}
+	eventBytes, err := json.Marshal(sseEventEnvelope{Type: eventType, Data: dataBytes})
+	if err != nil {
+		return nil, fmt.Errorf("marshal event envelope: %w", err)
+	}
+	pushPayload := models.SSEPushPayload{
+		UserID: route.UserID,
+		Event:  eventBytes,
+	}
+	if route.WebSessionID != "" {
+		pushPayload.WebSessionID = route.WebSessionID
+	} else {
+		pushPayload.CliSessionID = route.CLISessionID
+	}
+	payloadBytes, err := json.Marshal(pushPayload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal push payload: %w", err)
+	}
+	return payloadBytes, nil
+}
+
+// publishLive wraps payloadBytes in the published-event envelope and sends it
+// on the channel the SSE stream handler subscribes for route. rowID 0 marks an
+// ephemeral event. A nil pubsub performs no live delivery.
+func (p *SSEEventPublisher) publishLive(route SSERoute, rowID int64, payloadBytes []byte) error {
+	var channel string
+	switch {
+	case route.CLISessionID != "":
+		channel = pubsub.SSECLIChannel(route.CLISessionID)
+	case route.WebSessionID != "":
+		channel = pubsub.SSEWebChannel(route.WebSessionID)
+	}
+	if channel == "" || p.pubsub == nil {
+		return nil
+	}
+	envelopeJSON, err := json.Marshal(models.SSEPublishedEvent{ID: rowID, Payload: json.RawMessage(payloadBytes)})
+	if err != nil {
+		return fmt.Errorf("marshal published event: %w", err)
+	}
+	p.pubsub.Publish(channel, envelopeJSON)
+	return nil
+}

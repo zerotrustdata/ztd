@@ -1,0 +1,579 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+func setupSSEEventServiceTest(t *testing.T) *SSEEventService {
+	t.Helper()
+	logger := testutil.NewTestLogger()
+
+	// Use pure in-memory SQLite for Tier 1 unit testing
+	cfg := sqliteutil.DefaultDBConfig(":memory:")
+	db, err := sqliteutil.OpenDB(cfg, logger)
+	require.NoError(t, err)
+
+	// Initialize only the SSE events table schema
+	_, err = db.Exec(gatewaySchema)
+	require.NoError(t, err)
+
+	t.Cleanup(func() { db.Close() })
+
+	return NewSSEEventService(db, logger)
+}
+
+func TestSSERoute_Validate(t *testing.T) {
+	t.Run("Validate accepts UserID + WebSessionID", func(t *testing.T) {
+		route := SSERoute{UserID: "user-1", WebSessionID: "web-session-123"}
+		err := route.validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("Validate accepts UserID + CLISessionID", func(t *testing.T) {
+		route := SSERoute{UserID: "user-1", CLISessionID: "cli-session-456"}
+		err := route.validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("Validate rejects UserID only (no session)", func(t *testing.T) {
+		route := SSERoute{UserID: "user-789"}
+		err := route.validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "sse route requires exactly one of web_session_id or cli_session_id")
+	})
+
+	t.Run("Validate rejects empty route (no IDs set)", func(t *testing.T) {
+		route := SSERoute{}
+		err := route.validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "sse route requires user_id")
+	})
+
+	t.Run("Validate rejects both sessions set", func(t *testing.T) {
+		route := SSERoute{
+			UserID:       "user-1",
+			WebSessionID: "web-session-123",
+			CLISessionID: "cli-session-456",
+		}
+		err := route.validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "mutually-exclusive")
+	})
+
+	t.Run("Validate rejects session without UserID", func(t *testing.T) {
+		route := SSERoute{WebSessionID: "web-session-123"}
+		err := route.validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "sse route requires user_id")
+	})
+}
+
+func TestNullIfEmpty(t *testing.T) {
+
+	t.Run("nullIfEmpty returns Invalid NullString for empty string", func(t *testing.T) {
+		result := nullIfEmpty("")
+		assert.False(t, result.Valid)
+	})
+
+	t.Run("nullIfEmpty returns Valid NullString for non-empty", func(t *testing.T) {
+		result := nullIfEmpty("test-value")
+		assert.True(t, result.Valid)
+		assert.Equal(t, "test-value", result.String)
+	})
+}
+
+func TestSSEEventService_SSEEventsAppend(t *testing.T) {
+
+	t.Run("SSEEventsAppend with WebSessionID", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-1"}
+		_, err := sseSvc.SSEEventsAppend(route, "test-event", `{"data":"value"}`, "producer-1")
+		require.NoError(t, err)
+
+		// Verify event was inserted
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), count)
+	})
+
+	t.Run("SSEEventsAppend with CLISessionID", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", CLISessionID: "cli-session-1"}
+		_, err := sseSvc.SSEEventsAppend(route, "cli-event", `{"cli":"data"}`, "producer-2")
+		require.NoError(t, err)
+
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), count)
+	})
+
+	t.Run("SSEEventsAppend with empty producerID", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-2"}
+		_, err := sseSvc.SSEEventsAppend(route, "test-event", `{"data":"value"}`, "")
+		require.NoError(t, err)
+
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), count)
+	})
+
+	t.Run("SSEEventsAppend rejects invalid route", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{} // No IDs set
+		_, err := sseSvc.SSEEventsAppend(route, "test-event", `{"data":"value"}`, "producer-1")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "sse route requires user_id")
+	})
+
+	t.Run("SSEEventsAppend with large payload", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-3"}
+		largePayload := make([]byte, 1024*100) // 100KB
+		for i := range largePayload {
+			largePayload[i] = byte(i % 256)
+		}
+		_, err := sseSvc.SSEEventsAppend(route, "large-event", string(largePayload), "producer-4")
+		require.NoError(t, err)
+
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), count)
+	})
+
+	t.Run("SSEEventsAppend with special characters in payload", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-4"}
+		specialPayload := `{"key":"value with \n\t\r\"quotes\" and 'apostrophes'"}`
+		_, err := sseSvc.SSEEventsAppend(route, "special-event", specialPayload, "producer-5")
+		require.NoError(t, err)
+
+		events, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 1)
+		assert.Equal(t, specialPayload, events[0].Payload)
+	})
+}
+
+func TestSSEEventService_SSEEventsCount(t *testing.T) {
+
+	t.Run("SSEEventsCount returns 0 for empty table", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("SSEEventsCount returns correct count after inserts", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-count"}
+		for i := 0; i < 5; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(5), count)
+	})
+}
+
+func TestSSEEventService_SSEEventsWipe(t *testing.T) {
+
+	t.Run("SSEEventsWipe deletes all rows", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		// Insert some events
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-wipe"}
+		for i := 0; i < 10; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		// Verify count
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(10), count)
+
+		// Wipe
+		deleted, err := sseSvc.SSEEventsWipe()
+		require.NoError(t, err)
+		assert.Equal(t, int64(10), deleted)
+
+		// Verify empty
+		count, err = sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("SSEEventsWipe returns 0 for empty table", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		deleted, err := sseSvc.SSEEventsWipe()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), deleted)
+	})
+}
+
+func TestSSEEventService_SSEEventsListSince(t *testing.T) {
+
+	t.Run("SSEEventsListSince with WebSessionID", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route1 := SSERoute{UserID: "test-user", WebSessionID: "web-session-list-1"}
+		route2 := SSERoute{UserID: "test-user", WebSessionID: "web-session-list-2"}
+
+		// Insert events for different sessions
+		_, err := sseSvc.SSEEventsAppend(route1, "event-1", `{"session":"1"}`, "producer")
+		require.NoError(t, err)
+		_, err = sseSvc.SSEEventsAppend(route2, "event-2", `{"session":"2"}`, "producer")
+		require.NoError(t, err)
+		_, err = sseSvc.SSEEventsAppend(route1, "event-3", `{"session":"1"}`, "producer")
+		require.NoError(t, err)
+
+		// List events for route1
+		events, err := sseSvc.SSEEventsListSince(route1, 0, 10)
+		require.NoError(t, err)
+		assert.Len(t, events, 2)
+		assert.Equal(t, "web-session-list-1", events[0].WebSessionID)
+		assert.Equal(t, "event-1", events[0].EventType)
+		assert.Equal(t, "event-3", events[1].EventType)
+	})
+
+	t.Run("SSEEventsListSince with CLISessionID", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", CLISessionID: "cli-session-list"}
+		_, err := sseSvc.SSEEventsAppend(route, "cli-event", `{"cli":"data"}`, "producer")
+		require.NoError(t, err)
+
+		events, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		assert.Len(t, events, 1)
+		assert.Equal(t, "cli-session-list", events[0].CLISessionID)
+	})
+
+	t.Run("SSEEventsListSince respects sinceID", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-since"}
+		for i := 0; i < 5; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		// Get all events to find IDs
+		allEvents, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		require.Len(t, allEvents, 5)
+
+		// List since ID 2 (should return 3 events)
+		events, err := sseSvc.SSEEventsListSince(route, allEvents[1].ID, 10)
+		require.NoError(t, err)
+		assert.Len(t, events, 3)
+	})
+
+	t.Run("SSEEventsListSince respects limit", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-limit"}
+		for i := 0; i < 10; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		events, err := sseSvc.SSEEventsListSince(route, 0, 5)
+		require.NoError(t, err)
+		assert.Len(t, events, 5)
+	})
+
+	t.Run("SSEEventsListSince defaults limit to 200 for invalid values", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-default"}
+		for i := 0; i < 5; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		// Test with limit 0
+		events, err := sseSvc.SSEEventsListSince(route, 0, 0)
+		require.NoError(t, err)
+		assert.Len(t, events, 5)
+
+		// Test with negative limit
+		events, err = sseSvc.SSEEventsListSince(route, 0, -1)
+		require.NoError(t, err)
+		assert.Len(t, events, 5)
+
+		// Test with limit > 1000
+		events, err = sseSvc.SSEEventsListSince(route, 0, 2000)
+		require.NoError(t, err)
+		assert.Len(t, events, 5)
+	})
+
+	t.Run("SSEEventsListSince returns empty for non-existent route", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "non-existent"}
+		events, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		assert.Len(t, events, 0)
+	})
+
+	t.Run("SSEEventsListSince rejects invalid route", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{} // No IDs set
+		_, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "sse route requires user_id")
+	})
+
+	t.Run("SSEEventsListSince returns events in ascending ID order", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-order"}
+		for i := 0; i < 3; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		events, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 3)
+
+		// Verify ascending order
+		assert.True(t, events[0].ID < events[1].ID)
+		assert.True(t, events[1].ID < events[2].ID)
+	})
+}
+
+func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
+
+	t.Run("SSEEventsListAllSince returns events across all routes", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		// Insert events for different routes
+		route1 := SSERoute{UserID: "user-a", WebSessionID: "web-session-all-1"}
+		route2 := SSERoute{UserID: "user-b", CLISessionID: "cli-session-all"}
+		route3 := SSERoute{UserID: "user-c", WebSessionID: "web-session-all-3"}
+
+		_, err := sseSvc.SSEEventsAppend(route1, "web-event", `{"type":"web"}`, "producer")
+		require.NoError(t, err)
+		_, err = sseSvc.SSEEventsAppend(route2, "cli-event", `{"type":"cli"}`, "producer")
+		require.NoError(t, err)
+		_, err = sseSvc.SSEEventsAppend(route3, "user-event", `{"type":"user"}`, "producer")
+		require.NoError(t, err)
+
+		// List all events
+		events, err := sseSvc.SSEEventsListAllSince(0, 10)
+		require.NoError(t, err)
+		assert.Len(t, events, 3)
+
+		// Verify we have events from both session types
+		hasWeb := false
+		hasCLI := false
+		for _, event := range events {
+			if event.WebSessionID != "" {
+				hasWeb = true
+			}
+			if event.CLISessionID != "" {
+				hasCLI = true
+			}
+		}
+		assert.True(t, hasWeb, "Should have web session event")
+		assert.True(t, hasCLI, "Should have CLI session event")
+		// Every event has UserID under the new model
+		for _, event := range events {
+			assert.NotEmpty(t, event.UserID)
+		}
+	})
+
+	t.Run("SSEEventsListAllSince respects sinceID", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-since"}
+		for i := 0; i < 5; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		// Get all events to find IDs
+		allEvents, err := sseSvc.SSEEventsListAllSince(0, 10)
+		require.NoError(t, err)
+		require.Len(t, allEvents, 5)
+
+		// List since ID 2
+		events, err := sseSvc.SSEEventsListAllSince(allEvents[1].ID, 10)
+		require.NoError(t, err)
+		assert.Len(t, events, 3)
+	})
+
+	t.Run("SSEEventsListAllSince respects limit", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-limit"}
+		for i := 0; i < 10; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		events, err := sseSvc.SSEEventsListAllSince(0, 5)
+		require.NoError(t, err)
+		assert.Len(t, events, 5)
+	})
+
+	t.Run("SSEEventsListAllSince defaults limit to 200 for invalid values", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-default"}
+		for i := 0; i < 5; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		// Test with limit 0
+		events, err := sseSvc.SSEEventsListAllSince(0, 0)
+		require.NoError(t, err)
+		assert.Len(t, events, 5)
+
+		// Test with limit > 1000
+		events, err = sseSvc.SSEEventsListAllSince(0, 2000)
+		require.NoError(t, err)
+		assert.Len(t, events, 5)
+	})
+
+	t.Run("SSEEventsListAllSince returns empty for empty table", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		events, err := sseSvc.SSEEventsListAllSince(0, 10)
+		require.NoError(t, err)
+		assert.Len(t, events, 0)
+	})
+
+	t.Run("SSEEventsListAllSince returns events in ascending ID order", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-order"}
+		for i := 0; i < 3; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		events, err := sseSvc.SSEEventsListAllSince(0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 3)
+
+		// Verify ascending order
+		assert.True(t, events[0].ID < events[1].ID)
+		assert.True(t, events[1].ID < events[2].ID)
+	})
+}
+
+func TestSSEEventService_RouteIsolation(t *testing.T) {
+
+	t.Run("Events are isolated by route type", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		webRoute := SSERoute{UserID: "user-web", WebSessionID: "web-session-iso"}
+		cliRoute := SSERoute{UserID: "user-cli", CLISessionID: "cli-session-iso"}
+
+		// Insert events for each route type
+		_, err := sseSvc.SSEEventsAppend(webRoute, "web-event", `{"type":"web"}`, "producer")
+		require.NoError(t, err)
+		_, err = sseSvc.SSEEventsAppend(cliRoute, "cli-event", `{"type":"cli"}`, "producer")
+		require.NoError(t, err)
+
+		// Verify each route only sees its own events
+		webEvents, err := sseSvc.SSEEventsListSince(webRoute, 0, 10)
+		require.NoError(t, err)
+		assert.Len(t, webEvents, 1)
+		assert.Equal(t, "web-event", webEvents[0].EventType)
+
+		cliEvents, err := sseSvc.SSEEventsListSince(cliRoute, 0, 10)
+		require.NoError(t, err)
+		assert.Len(t, cliEvents, 1)
+		assert.Equal(t, "cli-event", cliEvents[0].EventType)
+	})
+
+	t.Run("Events are isolated by session ID within same type", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route1 := SSERoute{UserID: "test-user", WebSessionID: "web-session-iso-1"}
+		route2 := SSERoute{UserID: "test-user", WebSessionID: "web-session-iso-2"}
+
+		_, err := sseSvc.SSEEventsAppend(route1, "event-1", `{"session":"1"}`, "producer")
+		require.NoError(t, err)
+		_, err = sseSvc.SSEEventsAppend(route2, "event-2", `{"session":"2"}`, "producer")
+		require.NoError(t, err)
+
+		events1, err := sseSvc.SSEEventsListSince(route1, 0, 10)
+		require.NoError(t, err)
+		assert.Len(t, events1, 1)
+		assert.Equal(t, "event-1", events1[0].EventType)
+
+		events2, err := sseSvc.SSEEventsListSince(route2, 0, 10)
+		require.NoError(t, err)
+		assert.Len(t, events2, 1)
+		assert.Equal(t, "event-2", events2[0].EventType)
+	})
+}
+
+func TestSSEEventService_EventDataIntegrity(t *testing.T) {
+
+	t.Run("Event fields are preserved correctly", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-integrity"}
+		eventType := "test-event-type"
+		payload := `{"key":"value","number":123,"nested":{"field":"data"}}`
+		producerID := "test-producer-123"
+
+		_, err := sseSvc.SSEEventsAppend(route, eventType, payload, producerID)
+		require.NoError(t, err)
+
+		events, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 1)
+
+		event := events[0]
+		assert.Equal(t, eventType, event.EventType)
+		assert.Equal(t, payload, event.Payload)
+		assert.Equal(t, "web-session-integrity", event.WebSessionID)
+		assert.Equal(t, "test-user", event.UserID)
+		assert.NotEmpty(t, event.CreatedAt)
+		assert.Greater(t, event.ID, int64(0))
+	})
+
+	t.Run("Event ID increments correctly", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-increment"}
+		var lastID int64 = 0
+
+		for i := 0; i < 5; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+
+			events, err := sseSvc.SSEEventsListSince(route, 0, 10)
+			require.NoError(t, err)
+			currentID := events[len(events)-1].ID
+			assert.Greater(t, currentID, lastID)
+			lastID = currentID
+		}
+	})
+
+	t.Run("SSEEventsAppend returns sequential row IDs", func(t *testing.T) {
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-seq-ids"}
+
+		var prevID int64 = 0
+		for i := 0; i < 5; i++ {
+			id, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+			assert.Greater(t, id, prevID, "returned row ID should be greater than previous")
+			prevID = id
+		}
+
+		// Verify the returned IDs match the DB row IDs.
+		events, err := sseSvc.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 5)
+		for i, row := range events {
+			assert.Equal(t, int64(i+1), row.ID, "DB row ID should be sequential starting at 1")
+		}
+	})
+}

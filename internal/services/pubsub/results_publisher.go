@@ -1,0 +1,39 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"context"
+
+	"google.golang.org/protobuf/proto"
+
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+)
+
+//go:generate mockery --name ResultsPublisher --output ./mocks --dir .
+
+// ResultsPublisher is the transport-agnostic interface for publishing results
+// from the ztdo Operator back to the requesting agent.
+// Implemented by PubSubResultsService (operator pub/sub via client proxy).
+type ResultsPublisher interface {
+	PublishExecutionResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishCancellationResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishFileEditResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishFsListResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishFsGrepResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishShutdownAcknowledgement(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishInferenceCompletion(ctx context.Context, env *commonv1.GovernanceEnvelope, completion *operatorv1.InferenceCompletion) error
+	PublishInferenceProgress(ctx context.Context, originalMsg *PubSubCommandMessage, progress *operatorv1.InferenceProgressEvent) error
+	PublishProviderBoundaryObservationCompleted(ctx context.Context, origin *commonv1.GovernanceEnvelope, completion *evalv1.ProviderBoundaryObservationCompleted) error
+	PublishModelProvenanceObservationCompleted(ctx context.Context, origin *commonv1.GovernanceEnvelope, completion *evalv1.ModelProvenanceObservationCompleted) error
+	PublishExecutionStatus(ctx context.Context, status proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishHeartbeat(ctx context.Context, heartbeat proto.Message) error
+	PublishActionReceipt(ctx context.Context, env *commonv1.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error
+}

@@ -1,0 +1,276 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package storage
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/services/vault"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+)
+
+// Content columns of commitment_ledger, bound with the commitment hash into the AEAD data
+// (see AuditContentAAD).
+const (
+	CommitmentColumnTargetResource  = "commitment_ledger.target_resource"
+	CommitmentColumnAttestationJSON = "commitment_ledger.attestation_json"
+)
+
+// CommitmentRow represents a single row from the commitment_ledger table.
+type CommitmentRow struct {
+	Seq                         int64
+	TransactionID               string
+	TransactionHash             string
+	PriorCommitmentHash         string
+	Hash                        string
+	StateRootAtCommit           string
+	L2SignatureDigest           string
+	WardenIntentSignatureDigest string
+	HumanSignatureDigest        string
+	ActionType                  string
+	TargetResource              string
+	CommittedAt                 time.Time
+	AuditorKeyID                string
+	Signature                   string
+	AttestationJSON             []byte
+}
+
+// CommitmentLedger is the SQLite-backed storage for commitment attestations.
+// It stores raw JSON attestations with atomic append operations to guarantee
+// chain integrity under concurrent writes: every append selects the chain head
+// inside a BEGIN IMMEDIATE transaction, which SQLite's write lock (and, within
+// one process, the sqliteutil writer gate) serializes. This type is in the
+// storage package to avoid import cycles with the governance package.
+type CommitmentLedger struct {
+	db     *sqliteutil.DB
+	logger *slog.Logger
+	// vault encrypts target_resource and attestation_json at rest. A nil or
+	// locked vault fails every write and read; there is no plaintext branch.
+	vault *vault.Vault
+}
+
+// NewCommitmentLedger creates a new commitment ledger backed by the given SQLite database.
+// The database must already have the commitment_ledger table in its schema.
+// The vault encrypts the content columns; it is the runtime vault shared with the audit store.
+func NewCommitmentLedger(db *sqliteutil.DB, logger *slog.Logger, encryptionVault *vault.Vault) *CommitmentLedger {
+	return &CommitmentLedger{
+		db:     db,
+		logger: logger,
+		vault:  encryptionVault,
+	}
+}
+
+// ListCommitments retrieves all commitments ordered by committed_at_unix_ms ASC (chain order).
+func (cl *CommitmentLedger) ListCommitments() ([]*CommitmentRow, error) {
+	if cl == nil || cl.db == nil {
+		return nil, fmt.Errorf("commitment ledger not initialized")
+	}
+
+	query := `
+	SELECT id, transaction_id, transaction_hash, prior_commitment_hash, hash,
+		state_root_at_commit, l2_signature_digest, warden_intent_signature_digest,
+		human_signature_digest, action_type, target_resource,
+		committed_at_unix_ms, auditor_key_id, signature, attestation_json
+	FROM commitment_ledger
+	ORDER BY id ASC
+	`
+
+	type commitRow struct {
+		row            CommitmentRow
+		stateRoot      sql.NullString
+		l2Digest       sql.NullString
+		actuatorDigest sql.NullString
+		humanDigest    sql.NullString
+		actionType     sql.NullString
+		targetResource []byte
+		auditorKeyID   sql.NullString
+		signature      sql.NullString
+		attestation    []byte
+		committedAtMs  int64
+	}
+
+	rows, err := sqliteutil.MaterializeRows(context.Background(), cl.db, query, nil, func(r *sql.Rows) (commitRow, error) {
+		var row commitRow
+		err := r.Scan(
+			&row.row.Seq, &row.row.TransactionID, &row.row.TransactionHash,
+			&row.row.PriorCommitmentHash, &row.row.Hash,
+			&row.stateRoot, &row.l2Digest, &row.actuatorDigest, &row.humanDigest,
+			&row.actionType, &row.targetResource, &row.committedAtMs,
+			&row.auditorKeyID, &row.signature, &row.attestation,
+		)
+		return row, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("commitment ledger: list: %w", err)
+	}
+
+	var results []*CommitmentRow
+	for _, row := range rows {
+		row.row.CommittedAt = time.UnixMilli(row.committedAtMs)
+		if row.stateRoot.Valid {
+			row.row.StateRootAtCommit = row.stateRoot.String
+		}
+		if row.l2Digest.Valid {
+			row.row.L2SignatureDigest = row.l2Digest.String
+		}
+		if row.actuatorDigest.Valid {
+			row.row.WardenIntentSignatureDigest = row.actuatorDigest.String
+		}
+		if row.humanDigest.Valid {
+			row.row.HumanSignatureDigest = row.humanDigest.String
+		}
+		if row.actionType.Valid {
+			row.row.ActionType = row.actionType.String
+		}
+		if row.row.TargetResource, err = decryptAuditContent(cl.vault, CommitmentColumnTargetResource, row.row.Hash, row.targetResource); err != nil {
+			return nil, fmt.Errorf("commitment ledger: decrypt target_resource: %w", err)
+		}
+		if row.auditorKeyID.Valid {
+			row.row.AuditorKeyID = row.auditorKeyID.String
+		}
+		if row.signature.Valid {
+			row.row.Signature = row.signature.String
+		}
+		attestationJSON, err := decryptAuditContent(cl.vault, CommitmentColumnAttestationJSON, row.row.Hash, row.attestation)
+		if err != nil {
+			return nil, fmt.Errorf("commitment ledger: decrypt attestation_json: %w", err)
+		}
+		row.row.AttestationJSON = []byte(attestationJSON)
+		results = append(results, &row.row)
+	}
+
+	return results, nil
+}
+
+// CommitmentBuilder builds a signed attestation over the given chain head.
+// Storage encodes the typed result once for persistence.
+type CommitmentBuilder func(priorHash string) (*operatorv1.CommitmentAttestation, error)
+
+// AppendCommitment builds and appends an attestation while holding SQLite's write lock so every ledger instance selects a unique chain head.
+func (cl *CommitmentLedger) AppendCommitment(build CommitmentBuilder) error {
+	if cl == nil || cl.db == nil {
+		return fmt.Errorf("commitment ledger not initialized")
+	}
+	var appended *CommitmentRow
+	err := cl.db.ExecInImmediateTxWithRetry(context.Background(), func(conn *sql.Conn) error {
+		var err error
+		appended, err = cl.appendBuiltCommitment(conn, build)
+		return err
+	})
+	if err == nil {
+		cl.logAppend(appended)
+	}
+	return err
+}
+
+// AppendCommitmentJSON appends a prebuilt attestation after verifying its prior hash under SQLite's write lock.
+func (cl *CommitmentLedger) AppendCommitmentJSON(attestationJSON []byte, priorHash, hash string) error {
+	if cl == nil || cl.db == nil {
+		return fmt.Errorf("commitment ledger not initialized")
+	}
+	var appended *CommitmentRow
+	err := cl.db.ExecInImmediateTxWithRetry(context.Background(), func(conn *sql.Conn) error {
+		currentPriorHash, err := selectCommitmentHead(conn)
+		if err != nil {
+			return fmt.Errorf("failed to query current prior hash: %w", err)
+		}
+		if currentPriorHash != "" && currentPriorHash != priorHash {
+			return fmt.Errorf("prior_commitment_hash mismatch: expected %s, got %s", currentPriorHash, priorHash)
+		}
+		if len(attestationJSON) == 0 {
+			return fmt.Errorf("attestation JSON is empty")
+		}
+		attestation := &operatorv1.CommitmentAttestation{}
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(attestationJSON, attestation); err != nil {
+			return fmt.Errorf("failed to unmarshal attestation JSON: %w", err)
+		}
+		appended, err = cl.insertCommitment(conn, attestation, priorHash, hash)
+		return err
+	})
+	if err == nil {
+		cl.logAppend(appended)
+	}
+	return err
+}
+
+// appendBuiltCommitment selects the chain head, builds the attestation over
+// it and appends it. The caller holds the write transaction.
+func (cl *CommitmentLedger) appendBuiltCommitment(conn *sql.Conn, build CommitmentBuilder) (*CommitmentRow, error) {
+	priorHash, err := selectCommitmentHead(conn)
+	if err != nil {
+		return nil, fmt.Errorf("commitment ledger: select head: %w", err)
+	}
+	attestation, err := build(priorHash)
+	if err != nil {
+		return nil, fmt.Errorf("commitment ledger: build: %w", err)
+	}
+	if attestation == nil {
+		return nil, fmt.Errorf("commitment ledger: build: %w", constants.ErrMissingRequiredField)
+	}
+	if attestation.GetPriorCommitmentHash() != priorHash {
+		return nil, fmt.Errorf("commitment ledger: builder prior hash mismatch: %w", constants.ErrValidationFailed)
+	}
+	return cl.insertCommitment(conn, attestation, priorHash, attestation.GetHash())
+}
+
+// selectCommitmentHead returns the latest commitment hash, or "" for an empty ledger.
+func selectCommitmentHead(conn *sql.Conn) (string, error) {
+	var head string
+	err := conn.QueryRowContext(context.Background(), `SELECT hash FROM commitment_ledger ORDER BY id DESC LIMIT 1`).Scan(&head)
+	if err != nil && err != sql.ErrNoRows {
+		return "", err
+	}
+	return head, nil
+}
+
+func (cl *CommitmentLedger) insertCommitment(conn *sql.Conn, attestation *operatorv1.CommitmentAttestation, priorHash, hash string) (*CommitmentRow, error) {
+	canonicalAttestation, err := compliancev1.MarshalCanonical(attestation)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize attestation JSON: %w", err)
+	}
+	targetBytes, err := encryptAuditContent(cl.vault, CommitmentColumnTargetResource, hash, attestation.GetTargetResource())
+	if err != nil {
+		return nil, fmt.Errorf("commitment ledger: encrypt target_resource: %w", err)
+	}
+	attestationBytes, err := encryptAuditContent(cl.vault, CommitmentColumnAttestationJSON, hash, string(canonicalAttestation))
+	if err != nil {
+		return nil, fmt.Errorf("commitment ledger: encrypt attestation_json: %w", err)
+	}
+	_, err = conn.ExecContext(context.Background(), `
+		INSERT INTO commitment_ledger (
+			transaction_id, transaction_hash, prior_commitment_hash, state_root_at_commit,
+			l2_signature_digest, warden_intent_signature_digest, human_signature_digest,
+			action_type, target_resource, committed_at_unix_ms, auditor_key_id, signature,
+			hash, attestation_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, attestation.GetTransactionId(), attestation.GetTransactionHash(), priorHash, attestation.GetStateRootAtCommit(),
+		attestation.GetL2SignatureDigest(), attestation.GetWardenIntentSignatureDigest(), attestation.GetHumanSignatureDigest(),
+		attestation.GetActionType(), targetBytes, attestation.GetCommittedAtUnixMs(), attestation.GetAuditorKeyId(),
+		attestation.GetSignature(), hash, attestationBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert commitment: %w", err)
+	}
+	return &CommitmentRow{TransactionID: attestation.GetTransactionId(), Hash: hash, PriorCommitmentHash: priorHash}, nil
+}
+
+// logAppend runs only after commit and outside the ledger lock: a slow log sink
+// must not block the next chain append or announce a transaction that rolls back.
+func (cl *CommitmentLedger) logAppend(row *CommitmentRow) {
+	if cl.logger != nil {
+		cl.logger.Info("Commitment appended to ledger", "transaction_id", row.TransactionID, "commitment_hash", row.Hash, "prior_commitment_hash", row.PriorCommitmentHash)
+	}
+}

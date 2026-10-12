@@ -1,0 +1,476 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/gateway/scripts"
+	"github.com/zerotrustdata/ztd/internal/services/ztdbinaries"
+)
+
+// PKIController handles PKI and certificate management endpoints.
+type ztdBinaryReader interface {
+	Artifact(string) (io.ReadSeeker, os.FileInfo, error)
+}
+
+type PKIController struct {
+	cfg          *config.Config
+	logger       *slog.Logger
+	pki          *PKIAuthority
+	registration *RegistrationService
+	responder    *response.Writer
+	ztdReader    ztdBinaryReader
+}
+
+// PKIControllerDeps groups all dependencies for PKIController.
+type PKIControllerDeps struct {
+	Cfg          *config.Config
+	Logger       *slog.Logger
+	PKI          *PKIAuthority
+	Registration *RegistrationService
+	Responder    *response.Writer
+	ZtdReader    ztdBinaryReader
+}
+
+func newPKIController(d PKIControllerDeps) *PKIController {
+	return &PKIController{
+		cfg:          d.Cfg,
+		logger:       d.Logger,
+		pki:          d.PKI,
+		registration: d.Registration,
+		responder:    d.Responder,
+		ztdReader:    d.ZtdReader,
+	}
+}
+
+func (c *PKIController) gatewayHTTPPort() string {
+	if c.cfg != nil && c.cfg.Gateway.HTTPPort != 0 {
+		return strconv.Itoa(c.cfg.Gateway.HTTPPort)
+	}
+	return strconv.Itoa(constants.Ports.OperatorHttp)
+}
+
+func (c *PKIController) readBody(r *http.Request) ([]byte, error) {
+	return readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
+}
+
+// @Summary		Get CA bundle
+// @Description	Returns the platform's root CA certificate bundle for trust establishment
+// @Tags			pki
+// @Accept			json
+// @Produce		application/x-pem-file
+// @Success		200	{string}	string
+// @Router			/.well-known/ztd/pki/ca-bundle [get]
+func (c *PKIController) handlePKICABundle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	bundlePath := c.pki.TrustBundlePath()
+	c.logger.Debug("Reading gateway trust bundle", "path", bundlePath)
+
+	pemData, err := c.pki.GatewayTrustBundle()
+	if err != nil {
+		c.logger.Error("Failed to read gateway trust bundle", "error", err, "path", bundlePath)
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrTrustBundleStale, err).Error())
+		return
+	}
+
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValuePEM)
+	w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
+	w.Header().Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(pemData)
+}
+
+// @Summary		Get PKI fingerprint
+// @Description	Returns the platform's PKI fingerprint for verification
+// @Tags			pki
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Router			/.well-known/ztd/pki/fingerprint [get]
+func (c *PKIController) handlePKIFingerprint(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	pemData, err := c.pki.RootCAPEM()
+	if err != nil {
+		c.logger.Error("Failed to read root CA", "error", err)
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrPKILoadRootCA, err).Error())
+		return
+	}
+
+	block, rest := pem.Decode(pemData)
+	if block == nil {
+		c.logger.Error("Invalid root CA PEM")
+		c.responder.Error(w, http.StatusInternalServerError, constants.ErrPEMDecodeFailed.Error())
+		return
+	}
+	if len(rest) > 0 {
+		c.logger.Warn("Unexpected data after root CA PEM block", "extra_bytes", len(rest))
+	}
+
+	hash := sha256.Sum256(block.Bytes)
+	fingerprint := hex.EncodeToString(hash[:])
+
+	c.responder.JSON(w, http.StatusOK, models.PKIFingerprintResponse{
+		RootCA: fingerprint,
+	})
+}
+
+// @Summary		Sign CSR
+// @Description	Signs a certificate signing request (internal mTLS endpoint)
+// @Tags			pki
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	models.PKICSRSignResponse
+// @Router			/api/v1/pki/csr/sign [post]
+func (c *PKIController) handlePKICSRSign(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	// Defense-in-depth: the route auth registry classifies this endpoint as
+	// RouteAuthMTLS, so the middleware rejects unauthenticated callers before
+	// the handler runs. The handler also enforces mTLS directly so a
+	// misconfigured router cannot mint privileged platform identities
+	// (operator, CLI, app, gateway-peer) without an authenticated client
+	// certificate.
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrMissingCertificate.Error())
+		return
+	}
+
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	var req struct {
+		CSR               string `json:"csr_pem"`
+		LeafType          string `json:"leaf_type"`
+		OrganizationID    string `json:"organization_id"`
+		OperatorID        string `json:"operator_id"`
+		UserID            string `json:"user_id"`
+		WorkloadSessionID string `json:"workload_session_id"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	certPEM, chainPEM, err := c.pki.SignCSR(req.CSR, req.LeafType, req.OrganizationID, req.OperatorID, req.UserID, req.WorkloadSessionID, "")
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrPKISignCSR, err).Error())
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, models.PKICSRSignResponse{
+		CertificatePEM:      certPEM,
+		CertificateChainPEM: chainPEM,
+	})
+}
+
+// @Summary		Revoke certificate
+// @Description	Revokes a certificate by serial number (internal mTLS endpoint)
+// @Tags			pki
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	models.StatusResponse
+// @Router			/api/v1/pki/certificates/revoke [post]
+func (c *PKIController) handlePKICertificatesRevoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	var req struct {
+		Serial string `json:"serial"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	if req.Serial == "" {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrMissingRequiredField.Error())
+		return
+	}
+
+	if err := c.pki.RevokeCertificate(r.Context(), req.Serial, req.Reason); err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrPKIRevokeCertificate, err).Error())
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, models.StatusResponse{Status: constants.GatewayModeStatusOK})
+}
+
+// @Summary		Get CRL
+// @Description	Returns the certificate revocation list
+// @Tags			pki
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Router			/.well-known/ztd/pki/crl [get]
+func (c *PKIController) handlePKIRevocationBundle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	crlDER, err := c.pki.GenerateCRL(r.Context())
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrPKIGenerateCRL, err).Error())
+		return
+	}
+
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueCRL)
+	w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
+	w.Header().Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(crlDER)
+}
+
+// @Summary		PKI device enrollment
+// @Description	Enrolls a device via PKI endpoint
+// @Tags			pki
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Router			/api/v1/pki/devices/enroll [post]
+func (c *PKIController) handlePKIDevicesEnroll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	if c.registration == nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrServiceUnavailable.Error())
+		return
+	}
+
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrMissingCertificate.Error())
+		return
+	}
+
+	userID, err := ExtractUserIDFromCert(r.TLS.PeerCertificates[0])
+	if err != nil {
+		c.responder.Error(w, http.StatusUnauthorized, fmt.Errorf("%w: %v", constants.ErrCertParseFailed, err).Error())
+		return
+	}
+
+	body, err := c.readBody(r)
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	var req models.OperatorRegistrationRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	// Device enrollment does not require an organization context
+	organizationID := ""
+	if req.CSR == "" {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrMissingRequiredField.Error())
+		return
+	}
+
+	resp, err := c.registration.RegisterDeviceCSR(r.Context(), userID, organizationID, req)
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrEnrollmentFailed, err).Error())
+		return
+	}
+
+	c.responder.JSON(w, http.StatusCreated, resp)
+}
+
+// @Summary		Download ztd binary
+// @Description	Downloads the ztd binary file binary for the current platform (internal endpoint)
+// @Tags			bootstrap
+// @Produce		application/octet-stream
+// @Success		200	{file}	file
+// @Router			/.well-known/ztd/bin/{filename} [get]
+func (c *PKIController) handleZtdBinaryDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	filename := filepath.Base(r.URL.Path)
+	if filename == "" || filename == "." || strings.Contains(r.URL.Path, "..") || strings.Contains(filename, "\\") {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrPathValidation.Error())
+		return
+	}
+	if err := ztdbinaries.ValidateArtifactName(filename); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if c.ztdReader == nil {
+		c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
+		return
+	}
+
+	file, info, err := c.ztdReader.Artifact(filename)
+	if err != nil {
+		c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
+		return
+	}
+	if closer, ok := file.(io.Closer); ok {
+		defer closer.Close()
+	}
+	contentType := constants.HeaderValueOctetStream
+	if strings.HasSuffix(filename, constants.ZtdBinaryChecksumSuffix) {
+		contentType = constants.HeaderValueTextPlain
+	}
+	w.Header().Set(constants.HeaderContentType, contentType)
+	w.Header().Set(constants.HeaderContentDisposition, fmt.Sprintf("attachment; filename=%s", filename))
+	w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
+	w.Header().Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
+	http.ServeContent(w, r, filename, info.ModTime(), file)
+}
+
+// @Summary		Deploy script Linux
+// @Description	Returns the Linux operator deployment script
+// @Tags			deploy
+// @Produce		text/plain
+// @Success		200	{string}	string
+// @Router			/ztd-deploy.sh [get]
+func (c *PKIController) handleDeployScriptLinux(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	gatewayHost := c.extractGatewayHost(r.Host)
+	data := scripts.TemplateData{
+		GatewayHost: gatewayHost,
+		GatewayPort: c.gatewayHTTPPort(),
+	}
+
+	script, err := scripts.RenderLinuxDeployScript(data)
+	if err != nil {
+		c.logger.Error("Failed to render Linux deploy script", "error", err)
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrInternal, err).Error())
+		return
+	}
+
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueShell)
+	w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
+	w.Header().Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(script))
+}
+
+// @Summary		Deploy script Windows
+// @Description	Returns the Windows operator deployment script
+// @Tags			deploy
+// @Produce		text/plain
+// @Success		200	{string}	string
+// @Router			/ztd-deploy.ps1 [get]
+func (c *PKIController) handleDeployScriptWindows(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	// Log what we're getting
+	c.logger.Info("Deploy script request", "r.Host", r.Host, "RemoteAddr", r.RemoteAddr)
+
+	// Try to get the host from the Host header or X-Forwarded-Host
+	gatewayHost := r.Header.Get("X-Forwarded-Host")
+	if gatewayHost == "" {
+		gatewayHost = r.Host
+	}
+
+	// Remove port if present
+	if h, _, err := net.SplitHostPort(gatewayHost); err == nil {
+		gatewayHost = h
+	}
+
+	// If we still have localhost or empty, try to use the server's own IP address
+	// but only if it's not a loopback request.
+	if gatewayHost == "" || gatewayHost == "localhost" || gatewayHost == "127.0.0.1" || gatewayHost == "::1" {
+		// If it's a loopback request, we might still want to use the actual IP if possible
+		// so other nodes can use the same script.
+		if ip, _, err := net.SplitHostPort(r.Context().Value(http.LocalAddrContextKey).(net.Addr).String()); err == nil {
+			if ip != "" && ip != "127.0.0.1" && ip != "::1" && ip != "0.0.0.0" {
+				gatewayHost = ip
+			}
+		}
+	}
+
+	// Final fallback to constants if we really can't find anything
+	if gatewayHost == "" {
+		gatewayHost = constants.DefaultEndpoint
+	}
+
+	c.logger.Info("Using gateway host for script", "gatewayHost", gatewayHost)
+
+	data := scripts.TemplateData{
+		GatewayHost: gatewayHost,
+		GatewayPort: c.gatewayHTTPPort(),
+	}
+
+	script, err := scripts.RenderWindowsDeployScript(data)
+	if err != nil {
+		c.logger.Error("Failed to render Windows deploy script", "error", err)
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("%w: %v", constants.ErrInternal, err).Error())
+		return
+	}
+
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValuePowerShell)
+	w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
+	w.Header().Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(script))
+}
+
+func (c *PKIController) extractGatewayHost(host string) string {
+	if host == "" {
+		return constants.DefaultEndpoint
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
+	}
+	return host
+}

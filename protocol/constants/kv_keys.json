@@ -1,0 +1,106 @@
+{
+  "kv_keys": {
+    "CachePrefix": {
+      "_go_const": "KVCachePrefix",
+      "value": "ztd"
+    },
+    "SessionWeb": {
+      "_go_const": "KVKeySessionWeb",
+      "value": "ztd:sessions:{session.type}:{session.id}"
+    },
+    "SessionOperator": {
+      "_go_const": "KVKeySessionOperator",
+      "value": "ztd:sessions:operator:{operator.session.id}"
+    },
+    "SessionOperatorBind": {
+      "_go_const": "KVKeySessionOperatorBind",
+      "value": "ztd:sessions:operator:{operator.session.id}:bind"
+    },
+    "SessionWebBind": {
+      "_go_const": "KVKeySessionWebBind",
+      "value": "ztd:sessions:web:{web.session.id}:bind"
+    },
+    "OperatorFirstDeployed": {
+      "_go_const": "KVKeyOperatorFirstDeployed",
+      "value": "ztd:operator:{operator.id}:first.deployed"
+    },
+    "OperatorTrackedStatus": {
+      "_go_const": "KVKeyOperatorTrackedStatus",
+      "value": "ztd:operator:{operator.id}:tracked.status"
+    },
+    "UserOperators": {
+      "_go_const": "KVKeyUserOperators",
+      "value": "ztd:user:{user.id}:operators"
+    },
+    "UserWebSessions": {
+      "_go_const": "KVKeyUserWebSessions",
+      "value": "ztd:user:{user.id}:web_sessions"
+    },
+    "UserMemories": {
+      "_go_const": "KVKeyUserMemories",
+      "value": "ztd:user:{user.id}:memories"
+    },
+    "InvestigationAttachment": {
+      "_go_const": "KVKeyInvestigationAttachment",
+      "value": "ztd:investigation:{investigation.id}:attachment:{attachment.id}"
+    },
+    "InvestigationAttachmentIndex": {
+      "_go_const": "KVKeyInvestigationAttachmentIndex",
+      "value": "ztd:investigation:{investigation.id}:attachment.index"
+    },
+    "AuthNonce": {
+      "_go_const": "KVKeyAuthNonce",
+      "value": "ztd:auth:nonce:{nonce}"
+    },
+    "AuthTokenDownload": {
+      "_go_const": "KVKeyAuthTokenDownload",
+      "value": "ztd:auth:token:download:{token}"
+    },
+    "AuthTokenDevice": {
+      "_go_const": "KVKeyAuthTokenDevice",
+      "value": "ztd:auth:token:device:{token}"
+    },
+    "AuthTokenDeviceUses": {
+      "_go_const": "KVKeyAuthTokenDeviceUses",
+      "value": "ztd:auth:token:device:{token}:uses"
+    },
+    "AuthTokenDeviceFingerprints": {
+      "_go_const": "KVKeyAuthTokenDeviceFingerprints",
+      "value": "ztd:auth:token:device:{token}:fingerprints"
+    },
+    "AuthTokenDeviceRegLock": {
+      "_go_const": "KVKeyAuthTokenDeviceRegLock",
+      "value": "ztd:auth:token:device:{token}:reg.lock"
+    },
+    "AuthDeviceList": {
+      "_go_const": "KVKeyAuthDeviceList",
+      "value": "ztd:auth:device.list:{user.id}"
+    },
+    "AuthLoginFailed": {
+      "_go_const": "KVKeyAuthLoginFailed",
+      "value": "ztd:auth:login:{identifier}:failed"
+    },
+    "AuthLoginLock": {
+      "_go_const": "KVKeyAuthLoginLock",
+      "value": "ztd:auth:login:{identifier}:lock"
+    },
+    "AuthLoginIPAccounts": {
+      "_go_const": "KVKeyAuthLoginIPAccounts",
+      "value": "ztd:auth:login:ip:{ip}:accounts"
+    },
+    "ExecutionPendingCmd": {
+      "_go_const": "KVKeyExecutionPendingCmd",
+      "value": "ztd:execution:{execution.id}:pending.cmd"
+    }
+  },
+  "session_types": {
+    "Web": {
+      "_go_const": "KVSessionTypeWeb",
+      "value": "web"
+    },
+    "Operator": {
+      "_go_const": "KVSessionTypeOperator",
+      "value": "operator"
+    }
+  }
+}

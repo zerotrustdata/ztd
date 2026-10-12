@@ -1,0 +1,220 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+// Package buildinfo computes source-tree state hashes for build-time
+// provenance stamping. The canonical digest covers each file's
+// slash-separated manifest-relative path and the SHA-256 of its content,
+// ordered by path-component tuples.
+//
+// Collection uses an explicit manifest of paths under the base root, skipping
+// entries whose path components match the exclude patterns. Symlinks anywhere
+// in a walked tree are rejected.
+package buildinfo
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+// hashedEntry pairs the canonical manifest key with the SHA-256 hex digest
+// of the file bytes that key represents.
+type hashedEntry struct {
+	key    string
+	digest string
+}
+
+// ComputeSourceManifestHash returns the canonical digest of the listed
+// entries under base. Entries are clean relative paths naming files or
+// directories; each file's key is its path relative to base. Entries that
+// do not exist, escape the base, or are symlinks are rejected.
+func ComputeSourceManifestHash(base string, entries, excludes []string) (string, error) {
+	paths, err := ListSourceManifestFiles(base, entries, excludes)
+	if err != nil {
+		return "", err
+	}
+	files := make([]hashedEntry, 0, len(paths))
+	for _, key := range paths {
+		digest, err := hashFile(filepath.Join(base, filepath.FromSlash(key)))
+		if err != nil {
+			return "", err
+		}
+		files = append(files, hashedEntry{key: key, digest: digest})
+	}
+	return digestEntries(files), nil
+}
+
+// ListSourceManifestFiles returns the sorted, slash-separated paths of regular
+// files in the listed manifest entries. It applies the same validation,
+// exclusions, and symlink rejection as ComputeSourceManifestHash.
+func ListSourceManifestFiles(base string, entries, excludes []string) ([]string, error) {
+	baseInfo, err := os.Stat(base)
+	if err != nil {
+		return nil, fmt.Errorf("buildinfo: stat source base: %w", err)
+	}
+	if !baseInfo.IsDir() {
+		return nil, fmt.Errorf("%w: %s", constants.ErrSourceTreeNotDir, base)
+	}
+	var files []string
+	for _, entry := range entries {
+		if err := validateManifestEntry(entry); err != nil {
+			return nil, err
+		}
+		key := filepath.ToSlash(entry)
+		if excludedKey(key, excludes) {
+			continue
+		}
+		abs := filepath.Join(base, entry)
+		lstat, err := os.Lstat(abs)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("%w: %s", constants.ErrSourceTreeEntryNotFound, entry)
+			}
+			return nil, fmt.Errorf("buildinfo: lstat manifest entry %s: %w", entry, err)
+		}
+		if lstat.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("%w: %s", constants.ErrSourceTreeSymlink, entry)
+		}
+		if lstat.IsDir() {
+			if err := walkRegularFiles(base, abs, excludes, func(_ string, key string) error {
+				files = append(files, key)
+				return nil
+			}); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if !lstat.Mode().IsRegular() {
+			continue
+		}
+		files = append(files, key)
+	}
+	sort.Slice(files, func(i, j int) bool { return lessPathParts(files[i], files[j]) })
+	return compactSortedPaths(files), nil
+}
+
+func walkRegularFiles(base, absDir string, excludes []string, visit func(path, key string) error) error {
+	return filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("buildinfo: walk %s: %w", path, err)
+		}
+		rel, err := filepath.Rel(base, path)
+		if err != nil {
+			return fmt.Errorf("buildinfo: relative path %s: %w", path, err)
+		}
+		key := filepath.ToSlash(rel)
+		if d.IsDir() {
+			if excludedKey(key, excludes) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%w: %s", constants.ErrSourceTreeSymlink, key)
+		}
+		if !d.Type().IsRegular() || excludedKey(key, excludes) {
+			return nil
+		}
+		return visit(path, key)
+	})
+}
+
+func compactSortedPaths(paths []string) []string {
+	if len(paths) == 0 {
+		return paths
+	}
+	out := paths[:1]
+	for _, path := range paths[1:] {
+		if path != out[len(out)-1] {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// digestEntries streams sorted (key, digest) pairs into one SHA-256 in the
+// canonical form key \x00 digest \x00. Keys are ordered by path-component
+// tuples and duplicate keys are collapsed after sorting.
+func digestEntries(entries []hashedEntry) string {
+	sort.Slice(entries, func(i, j int) bool { return lessPathParts(entries[i].key, entries[j].key) })
+	hasher := sha256.New()
+	var prev string
+	for i, entry := range entries {
+		if i > 0 && entry.key == prev {
+			continue
+		}
+		prev = entry.key
+		hasher.Write([]byte(entry.key))
+		hasher.Write([]byte{0})
+		hasher.Write([]byte(entry.digest))
+		hasher.Write([]byte{0})
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// lessPathParts orders slash-separated relative paths component by component,
+// comparing each component byte-wise, with a strict prefix first.
+// This differs from plain string ordering for names like "a.b/d" vs
+// "a/c", where '.' sorts before '/' byte-wise but "a" < "a.b" by parts.
+func lessPathParts(a, b string) bool {
+	as := strings.Split(a, "/")
+	bs := strings.Split(b, "/")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		if as[i] != bs[i] {
+			return as[i] < bs[i]
+		}
+	}
+	return len(as) < len(bs)
+}
+
+// excludedKey reports whether any path component of key matches any
+// exclude pattern (filepath.Match syntax, e.g. ".venv" or "*.egg-info").
+func excludedKey(key string, excludes []string) bool {
+	for _, component := range strings.Split(key, "/") {
+		for _, pattern := range excludes {
+			if ok, err := filepath.Match(pattern, component); err == nil && ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// validateManifestEntry rejects entries that are absolute, empty, or
+// escape the base via "..".
+func validateManifestEntry(entry string) error {
+	canonical := filepath.ToSlash(entry)
+	if canonical == "" || path.IsAbs(canonical) || filepath.IsAbs(entry) || filepath.VolumeName(entry) != "" {
+		return fmt.Errorf("%w: %q", constants.ErrSourceTreeEntryInvalid, entry)
+	}
+	clean := path.Clean(canonical)
+	if clean != canonical || clean == ".." || strings.HasPrefix(clean, "../") {
+		return fmt.Errorf("%w: %q", constants.ErrSourceTreeEntryInvalid, entry)
+	}
+	return nil
+}
+
+func hashFile(path string) (string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("buildinfo: read %s: %w", path, err)
+	}
+	return hashBytes(content), nil
+}
+
+func hashBytes(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
+}

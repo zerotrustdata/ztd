@@ -1,0 +1,420 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  onboarding:
+    name: Linux fresh-host onboarding
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run contributor setup and governed onboarding smoke
+        run: bash scripts/ci/onboarding-smoke.sh
+
+      - name: Preserve governed onboarding evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-onboarding-evidence
+          path: |
+            ${{ runner.temp }}/ztd-onboarding-smoke-${{ github.run_id }}-${{ github.run_attempt }}/evidence/
+            ${{ runner.temp }}/ztd-onboarding-smoke-${{ github.run_id }}-${{ github.run_attempt }}/reports/
+            ${{ runner.temp }}/ztd-onboarding-smoke-${{ github.run_id }}-${{ github.run_attempt }}/logs/
+          if-no-files-found: ignore
+
+  onboarding-distros:
+    name: Fresh-host onboarding (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu, debian, fedora, arch]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Hermetic onboarding script tests
+        run: make test-onboarding
+
+      - name: Replay setup and quickstart on a fresh container host
+        run: bash scripts/onboarding/run-matrix.sh --distros ${{ matrix.distro }} --scenarios "build-only rerun quickstart" --out "${{ runner.temp }}/onboarding"
+
+      - name: Preserve onboarding logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: onboarding-${{ matrix.distro }}
+          path: ${{ runner.temp }}/onboarding/
+          if-no-files-found: ignore
+
+  onboarding-macos:
+    name: macOS native setup, build, and keystore tests
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run native setup, env template step, and build
+        run: |
+          bash scripts/macos-setup.sh -y
+          cp .env.example .env
+          cmp .env.example .env
+          test -x ./ztd
+          ./ztd --help
+          ./ztd gw start --help
+
+      - name: Unlocked CI keychain (keystore tests)
+        run: |
+          keychain="$RUNNER_TEMP/ztd-ci.keychain-db"
+          security create-keychain -p ci "$keychain"
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p ci "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -d user -s "$keychain"
+
+      - name: Keystore unit tests
+        run: ./ztd test unit --pkg ./internal/services/keystore/...
+
+      - name: Keystore integration tests (Keychain)
+        run: ./ztd test integration --pkg ./internal/services/keystore/...
+
+  onboarding-windows:
+    name: Windows native setup, build, and keystore tests
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run native setup, env template step, and build
+        shell: pwsh
+        run: |
+          ./scripts/windows-setup.ps1 -y
+          Copy-Item .env.example .env
+          if ((Get-FileHash .env).Hash -ne (Get-FileHash .env.example).Hash) { throw ".env differs from .env.example" }
+          if (-not (Test-Path ./ztd.exe)) { throw "setup did not produce ztd.exe" }
+          ./ztd.exe --help
+          ./ztd.exe gw start --help
+
+      - name: Keystore unit tests
+        shell: pwsh
+        run: ./ztd.exe test unit --pkg ./internal/services/keystore/...
+
+      - name: Keystore integration tests (DPAPI)
+        shell: pwsh
+        run: ./ztd.exe test integration --pkg ./internal/services/keystore/...
+
+  ci:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: true
+          check-latest: true
+
+      - name: Install dependencies
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.70.0
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc@v1.5.1
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          go install github.com/swaggo/swag/cmd/swag@v1.16.6
+
+      - name: Install protoc
+        run: |
+          PROTOC_ZIP=protoc-35.0-linux-x86_64.zip
+          curl -fSL https://github.com/protocolbuffers/protobuf/releases/download/v35.0/$PROTOC_ZIP -o /tmp/protoc.zip
+          # sha256 from GitHub release asset digest (protobuf v35.0)
+          echo "a45cda0989c17dd950db55f6fbe1e5814c50fda08e87aa422980ac1f89dddbbc  /tmp/protoc.zip" | sha256sum -c -
+          sudo unzip -o /tmp/protoc.zip -d /usr/local bin/protoc
+          sudo chmod +x /usr/local/bin/protoc
+          rm /tmp/protoc.zip
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: protocol/node/package-lock.json
+
+      - name: Verify Version Sync
+        run: make version-sync-check
+
+      - name: Verify Proto & Doctrines
+        run: |
+          make proto-generate
+          git diff --exit-code
+          make doctrines-validate
+
+      - name: Generate & Validate Swagger Docs
+        run: |
+          make swagger-generate
+          git diff --exit-code internal/services/gateway/docs/
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+
+      - name: Security Scan
+        run: make vulncheck
+
+      - name: Unit Tests
+        run: make test-unit
+
+      - name: Install Secret Service (keystore integration tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gnome-keyring dbus
+
+      - name: Integration Tests
+        run: make test-integration
+
+      - name: Enrollment burst timing contract
+        run: make test-enrollment-burst
+
+      - name: Cross-Compile (Windows)
+        run: make build-windows
+
+      - name: Verify Static Linking
+        run: |
+          make build-linux
+          file bin/ztd-linux-amd64 | grep -q "statically linked" || \
+            { echo "ERROR: binary is not statically linked"; file bin/ztd-linux-amd64; exit 1; }
+          ldd bin/ztd-linux-amd64 2>&1 | grep -q "not a dynamic executable" || \
+            { echo "ERROR: binary has dynamic dependencies"; ldd bin/ztd-linux-amd64; exit 1; }
+
+      - name: Operator enrollment scale and CLI lifecycle
+        run: |
+          GOFLAGS='-run=^TestPlatformEnrollmentBurstWithDeploymentEvents$ -v' make test-integration TEST_RACE= TEST_PKGS=./internal/services/gateway
+          bash scripts/ci/operator-deploy-lifecycle.sh --binary "$PWD/bin/ztd-linux-amd64" --count 3 --root "$RUNNER_TEMP/ztd-deployment-lifecycle"
+
+      - name: Preserve Operator lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: operator-deployment-lifecycle
+          path: ${{ runner.temp }}/ztd-deployment-lifecycle/out/
+          if-no-files-found: ignore
+
+  smoke-test:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: true
+
+      - name: Go smoke test
+        run: bash scripts/smoke-test-go.sh
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Commit hygiene
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            scripts/check-commit-hygiene.sh --range "$BASE..HEAD"
+          else
+            scripts/check-commit-hygiene.sh --range HEAD
+          fi
+
+      - name: gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.27.2/gitleaks_8.27.2_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          # sha256 from upstream gitleaks_8.27.2_checksums.txt (v8.27.2 release)
+          echo "141c3b2dede46d8b3a53b47116da756bd223decc0374797559a6b50ecba5590c  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks detect --source . --config .gitleaks.toml --verbose --no-banner
+
+      - name: Test commit hygiene guard
+        run: make test-commit-hygiene
+
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: true
+
+      - name: Install go-licenses
+        run: |
+          # sum.golang.org intermittently drops streams mid-install; retry rather than fail the gate.
+          for attempt in 1 2 3; do
+            timeout 180 go install github.com/google/go-licenses@v1.6.0 && exit 0
+            echo "go-licenses install attempt ${attempt} failed" >&2
+          done
+          exit 1
+
+      - name: Generate license report
+        run: |
+          go-licenses report ./... > licenses.csv 2>/dev/null
+          echo "License report generated"
+
+      - name: Check for forbidden licenses
+        run: |
+          # ztd itself is licensed under BSL 1.1 (BUSL-1.1); allow it for our own module.
+          # Forbid copyleft licenses (GPL/AGPL/LGPL/SSPL) and BUSL in dependencies.
+          if grep -iE 'GPL|AGPL|LGPL|SSPL' licenses.csv; then
+            echo "ERROR: Forbidden copyleft license detected"
+            cat licenses.csv
+            exit 1
+          fi
+          if grep -i 'BUSL' licenses.csv | grep -v 'github.com/zerotrustdata/ztd'; then
+            echo "ERROR: Forbidden BUSL license in dependency"
+            cat licenses.csv
+            exit 1
+          fi
+          echo "License compliance OK"
+
+      - name: Check BSL 1.1 source headers
+        run: make bsl-headers-check
+
+  console-tests:
+    name: Console Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            console/package-lock.json
+            ztd-adapter/package-lock.json
+            evaluation-explorer/package-lock.json
+
+      - name: Install dependencies
+        working-directory: console
+        run: npm ci
+
+      - name: Typecheck and lint
+        working-directory: console
+        run: npm run typecheck && npm run lint
+
+      - name: Run vitest suite
+        working-directory: console
+        run: npm test
+
+      - name: Verify the embedded console is current
+        run: |
+          npm run build --prefix console
+          diff -r console/dist internal/services/gateway/console/static || {
+            echo "ERROR: The embedded console (internal/services/gateway/console/static) is stale."
+            echo "Run 'make ci' (or 'make console-embed') locally and commit the refreshed embed."
+            exit 1
+          }
+
+      - name: Install evaluation explorer dependencies
+        working-directory: evaluation-explorer
+        run: npm ci
+
+      - name: Typecheck and lint the evaluation explorer
+        working-directory: evaluation-explorer
+        run: npm run typecheck && npm run lint
+
+      - name: Run evaluation explorer vitest suite
+        working-directory: evaluation-explorer
+        run: npm test
+
+      - name: Verify the embedded explorer is current
+        run: |
+          npm run build --prefix evaluation-explorer
+          diff -r evaluation-explorer/dist internal/services/gateway/explorer/static || {
+            echo "ERROR: The embedded explorer (internal/services/gateway/explorer/static) is stale."
+            echo "Run 'make ci' (or 'make explorer-embed') locally and commit the refreshed embed."
+            exit 1
+          }
+
+      - name: Test ztd-adapter and verify its contract pack
+        working-directory: ztd-adapter
+        run: |
+          npm ci
+          npm test
+          npm run gen:contract-pack:check
+
+      # Runs here because the notices read license text from the console and
+      # explorer node_modules installed above.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: true
+
+      - name: Check third-party notices
+        run: make third-party-notices-check
+
+  website-tests:
+    name: Website Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Test and build
+        working-directory: website
+        run: npm run check && npm run build
+
+      - name: Validate Cloudflare bundle
+        working-directory: website
+        run: npx wrangler deploy --dry-run

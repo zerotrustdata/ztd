@@ -1,0 +1,406 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"context"
+	"crypto/tls"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"sync"
+	"time"
+
+	"google.golang.org/protobuf/proto"
+
+	"github.com/gorilla/websocket"
+
+	"github.com/zerotrustdata/ztd/internal/certs"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
+	pubsubv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/pubsub/v1"
+)
+
+//go:generate mockery --name PubSubClient --output ./mocks --dir .
+
+// PubSubClient is the interface implemented by both OperatorPubSubClient and MockOperatorPubSubClient.
+// All service fields and function parameters use this interface to allow test doubles.
+type PubSubClient interface {
+	Subscribe(ctx context.Context, channel string) (<-chan []byte, error)
+	Publish(ctx context.Context, channel string, data []byte) error
+	Close()
+}
+
+// OperatorPubSubClient connects to a Operator instance's WebSocket pub/sub endpoint.
+// It provides Subscribe (receive) and Publish (send) over the channel
+// naming convention:
+//
+//	cmd:{operator_id}:{operator_session_id}       (Agent → Operator)
+//	results:{operator_id}:{operator_session_id}    (Operator → Agent)
+//	heartbeat:{operator_id}:{operator_session_id}  (Operator → Agent)
+
+// pubSubWriteTimeout bounds every WebSocket write so a half-open TCP
+// connection cannot block publishes (including heartbeats) indefinitely while
+// the client mutex is held. Exposed as a var so tests can shorten it.
+var pubSubWriteTimeout = 5 * time.Second
+
+type OperatorPubSubClient struct {
+	baseURL        string // e.g. "wss://localhost"
+	logger         *slog.Logger
+	tlsConfig      *tls.Config      // mTLS config; always required
+	serverName     string           // TLS SNI override when endpoint is a raw IP
+	certsTLSConfig *certs.TLSConfig // DI-based TLS config
+
+	// deploymentID is the `operator deploy` launch identifier presented to the
+	// Gateway on every subscription dial; empty for workers not launched by it.
+	deploymentID string
+
+	mu     sync.Mutex
+	closed bool
+	pubWs  *websocket.Conn // persistent WebSocket for publishing
+}
+
+func closeWebSocket(logger *slog.Logger, ws *websocket.Conn, operation string) {
+	if err := ws.Close(); err != nil {
+		logger.Warn("failed to close pub/sub WebSocket", "operation", operation, "error", err)
+	}
+}
+
+// NewOperatorPubSubClient creates a client that connects to a Operator pub/sub endpoint.
+// baseURL must use wss:// scheme — plaintext ws:// is never permitted.
+// serverName overrides the TLS SNI hostname; pass an empty string when the
+// endpoint is a hostname (no override needed).
+// certsTLSConfig must be non-nil; the platform always requires mutual TLS.
+func NewOperatorPubSubClient(baseURL, serverName string, logger *slog.Logger, certsTLSConfig *certs.TLSConfig) (*OperatorPubSubClient, error) {
+	if baseURL == "" {
+		return nil, constants.ErrPubSubURLRequired
+	}
+
+	if len(baseURL) < 6 || baseURL[:6] != "wss://" {
+		return nil, fmt.Errorf("%w: URL must use wss:// scheme, got %q", constants.ErrPubSubTLSConfig, baseURL)
+	}
+
+	if certsTLSConfig == nil {
+		return nil, fmt.Errorf("%w: TLS config is required", constants.ErrPubSubTLSConfig)
+	}
+
+	tlsCfg, err := certsTLSConfig.GetTLSConfig()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrPubSubTLSConfig, err)
+	}
+	if serverName != "" {
+		tlsCfg.ServerName = serverName
+	}
+
+	return &OperatorPubSubClient{
+		baseURL:        baseURL,
+		logger:         logger,
+		tlsConfig:      tlsCfg,
+		serverName:     serverName,
+		certsTLSConfig: certsTLSConfig,
+	}, nil
+}
+
+// SetDeploymentID makes every subscription dial present the launch identifier
+// assigned by `operator deploy`, so the Gateway can announce this worker's
+// established command subscription to the CLI that launched it.
+func (c *OperatorPubSubClient) SetDeploymentID(deploymentID string) {
+	c.deploymentID = deploymentID
+}
+
+// Subscribe subscribes to a Operator pub/sub channel and returns a channel that
+// delivers raw JSON payloads. The returned channel is closed when the
+// subscription ends (context cancelled or connection lost).
+//
+// Subscribe blocks until the broker sends the "subscribed" ACK for the
+// requested channel before returning. This guarantees that any publish sent
+// immediately after Subscribe returns will be delivered to this subscriber —
+// there is no window where the broker could ztd a message because the
+// subscription was not yet registered.
+func (c *OperatorPubSubClient) Subscribe(ctx context.Context, channel string) (<-chan []byte, error) {
+	wsURL := c.pubSubWSURL()
+
+	c.logger.Info("Dialing Operator pub/sub WebSocket",
+		"url", wsURL,
+		"channel", channel,
+		"tls", c.tlsConfig != nil)
+
+	var dialer websocket.Dialer
+	if c.tlsConfig != nil {
+		dialer = *httpclient.WebSocketDialerWithTLS(c.tlsConfig)
+	}
+	var dialHeader http.Header
+	if c.deploymentID != "" {
+		dialHeader = http.Header{constants.HeaderDeploymentID: []string{c.deploymentID}}
+	}
+	ws, resp, err := dialer.DialContext(ctx, wsURL, dialHeader)
+	if err != nil {
+		if resp != nil {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				c.logger.Warn("failed to close pub/sub dial response body", "error", closeErr)
+			}
+		}
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+		c.logger.Error("operator pub/sub WebSocket dial failed",
+			"url", wsURL,
+			string(constants.ConnectionStateError), err,
+			"http_status", statusCode,
+			"tls_enabled", c.tlsConfig != nil)
+		return nil, fmt.Errorf("%w (http_status=%d): %w", constants.ErrPubSubConnect, statusCode, err)
+	}
+
+	c.logger.Info("operator pub/sub WebSocket connected",
+		"url", wsURL,
+		"channel", channel,
+		"tls_enabled", c.tlsConfig != nil)
+
+	subMsg := pubsubv1.PubSubMessage{
+		Action:  constants.PubSubActionSubscribe,
+		Channel: channel,
+	}
+	subBytes, err := proto.Marshal(&subMsg)
+	if err != nil {
+		if closeErr := ws.Close(); closeErr != nil {
+			c.logger.Warn("failed to close pub/sub subscription socket", "error", closeErr)
+		}
+		return nil, fmt.Errorf("%w (%s): marshal subscription: %v", constants.ErrPubSubSubscribe, channel, err)
+	}
+	if err := ws.SetWriteDeadline(time.Now().Add(pubSubWriteTimeout)); err != nil {
+		if closeErr := ws.Close(); closeErr != nil {
+			c.logger.Warn("failed to close pub/sub subscription socket", "error", closeErr)
+		}
+		return nil, fmt.Errorf("%w (%s): set write deadline: %v", constants.ErrPubSubSubscribe, channel, err)
+	}
+	if err := ws.WriteMessage(websocket.BinaryMessage, subBytes); err != nil {
+		if closeErr := ws.Close(); closeErr != nil {
+			c.logger.Warn("failed to close pub/sub subscription socket", "error", closeErr)
+		}
+		return nil, fmt.Errorf("%w (%s): %w", constants.ErrPubSubSubscribe, channel, err)
+	}
+
+	// Block until the broker confirms the subscription is registered. Frames
+	// that arrive before the ACK (e.g. stale messages from a previous session)
+	// are buffered and replayed into the output channel once the goroutine starts.
+	var pending [][]byte
+	if err := c.waitForSubscribedACK(ctx, ws, channel, &pending); err != nil {
+		if closeErr := ws.Close(); closeErr != nil {
+			c.logger.Warn("failed to close pub/sub subscription socket", "error", closeErr)
+		}
+		return nil, fmt.Errorf("%w (%s): %w", constants.ErrPubSubSubscriptionACK, channel, err)
+	}
+
+	out := make(chan []byte, 64)
+
+	// Drain any messages that arrived before the ACK into the output channel.
+	for _, raw := range pending {
+		out <- raw
+	}
+
+	go func() {
+		defer close(out)
+		defer closeWebSocket(c.logger, ws, "subscription end")
+
+		// Close the WebSocket when the context is cancelled so that
+		// ws.ReadMessage unblocks immediately. Without this, a cancelled
+		// subscription would leak until the next inbound frame (or forever
+		// on an idle channel).
+		stop := make(chan struct{})
+		defer close(stop)
+		go func() {
+			select {
+			case <-ctx.Done():
+				closeWebSocket(c.logger, ws, "subscription cancellation")
+			case <-stop:
+			}
+		}()
+
+		for {
+			_, raw, err := ws.ReadMessage()
+			if err != nil {
+				return
+			}
+
+			var event pubsubv1.PubSubEvent
+			if err := proto.Unmarshal(raw, &event); err != nil {
+				c.logger.Warn("Failed to parse pub/sub event", string(constants.ConnectionStateError), err)
+				continue
+			}
+
+			if event.Type != constants.PubSubEventMessage && event.Type != constants.PubSubEventPMessage {
+				continue
+			}
+
+			select {
+			case out <- event.Data:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return out, nil
+}
+
+// waitForSubscribedACK reads frames from ws until it sees a {"type":"subscribed","channel":channel}
+// frame. Any data-bearing message frames received before the ACK are appended to pending so
+// the caller can replay them. Returns an error if the context is cancelled or the connection
+// closes before the ACK arrives.
+func (c *OperatorPubSubClient) waitForSubscribedACK(ctx context.Context, ws *websocket.Conn, channel string, pending *[][]byte) error {
+	const ackTimeout = 5 * time.Second
+	if err := ws.SetReadDeadline(time.Now().Add(ackTimeout)); err != nil {
+		return fmt.Errorf("set subscription ACK read deadline: %w", err)
+	}
+	defer func() {
+		if err := ws.SetReadDeadline(time.Time{}); err != nil {
+			c.logger.Warn("failed to clear subscription ACK read deadline", "error", err)
+		}
+	}()
+
+	// Close the WebSocket when the context is cancelled so that ws.ReadMessage
+	// unblocks immediately rather than waiting for the ackTimeout to expire.
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		select {
+		case <-ctx.Done():
+			closeWebSocket(c.logger, ws, "subscription ACK cancellation")
+		case <-stop:
+		}
+	}()
+
+	for {
+		_, raw, err := ws.ReadMessage()
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("%w: %w", constants.ErrPubSubConnectionError, err)
+		}
+
+		var event pubsubv1.PubSubEvent
+		if err := proto.Unmarshal(raw, &event); err != nil {
+			continue
+		}
+
+		if event.Type == constants.PubSubEventSubscribed && event.Channel == channel {
+			c.logger.Info("operator pub/sub subscription confirmed", "channel", channel)
+			return nil
+		}
+
+		if event.Type == constants.PubSubEventMessage || event.Type == constants.PubSubEventPMessage {
+			*pending = append(*pending, event.Data)
+		}
+	}
+}
+
+// pubSubWSURL returns the full WebSocket URL for the pub/sub stream.
+func (c *OperatorPubSubClient) pubSubWSURL() string {
+	return c.baseURL + constants.APIPaths.PubSubStream
+}
+
+// connectPubWs opens a new persistent publish WebSocket connection.
+// Caller must hold c.mu and must only call this when c.pubWs is nil.
+func (c *OperatorPubSubClient) connectPubWs() error {
+	wsURL := c.pubSubWSURL()
+
+	var dialer websocket.Dialer
+	if c.tlsConfig != nil {
+		dialer = *httpclient.WebSocketDialerWithTLS(c.tlsConfig)
+	}
+
+	ws, resp, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		if resp != nil {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				c.logger.Warn("failed to close pub/sub publish dial response body", "error", closeErr)
+			}
+		}
+		return fmt.Errorf("%w: %w", constants.ErrPubSubPublishConnect, err)
+	}
+	c.logger.Info("operator pub/sub WebSocket connected",
+		"url", wsURL,
+		"direction", "publish",
+		"tls_enabled", c.tlsConfig != nil)
+	c.pubWs = ws
+	return nil
+}
+
+// Publish sends a message to a Operator pub/sub channel via the persistent WebSocket.
+// This is fire-and-forget: the server fans out to all subscribers.
+func (c *OperatorPubSubClient) Publish(ctx context.Context, channel string, data []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return constants.ErrPubSubClosed
+	}
+
+	if c.pubWs == nil {
+		if err := c.connectPubWs(); err != nil {
+			return err
+		}
+	}
+
+	msg := pubsubv1.PubSubMessage{
+		Action:  constants.PubSubActionPublish,
+		Channel: channel,
+		Data:    data,
+	}
+	msgBytes, err := proto.Marshal(&msg)
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrPubSubMarshalPayload, err)
+	}
+
+	if err := c.pubWs.SetWriteDeadline(time.Now().Add(pubSubWriteTimeout)); err != nil {
+		if closeErr := c.pubWs.Close(); closeErr != nil {
+			c.logger.Warn("failed to close pub/sub publish socket", "error", closeErr)
+		}
+		c.pubWs = nil
+		return fmt.Errorf("%w: set write deadline: %v", constants.ErrPubSubPublish, err)
+	}
+	if err := c.pubWs.WriteMessage(websocket.BinaryMessage, msgBytes); err != nil {
+		if closeErr := c.pubWs.Close(); closeErr != nil {
+			c.logger.Warn("failed to close pub/sub publish socket", "error", closeErr)
+		}
+		c.pubWs = nil
+		if err := c.connectPubWs(); err != nil {
+			return fmt.Errorf("%w: %w", constants.ErrPubSubPublishReconnect, err)
+		}
+		if err := c.pubWs.SetWriteDeadline(time.Now().Add(pubSubWriteTimeout)); err != nil {
+			if closeErr := c.pubWs.Close(); closeErr != nil {
+				c.logger.Warn("failed to close pub/sub publish socket", "error", closeErr)
+			}
+			c.pubWs = nil
+			return fmt.Errorf("%w: set reconnect write deadline: %v", constants.ErrPubSubPublishReconnect, err)
+		}
+		if err := c.pubWs.WriteMessage(websocket.BinaryMessage, msgBytes); err != nil {
+			if closeErr := c.pubWs.Close(); closeErr != nil {
+				c.logger.Warn("failed to close pub/sub publish socket", "error", closeErr)
+			}
+			c.pubWs = nil
+			return fmt.Errorf("%w: %w", constants.ErrPubSubPublish, err)
+		}
+	}
+
+	return nil
+}
+
+// Close marks the client as closed and tears down the publish WebSocket.
+// Existing subscriptions will drain naturally when their contexts are cancelled.
+func (c *OperatorPubSubClient) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
+	if c.pubWs != nil {
+		closeWebSocket(c.logger, c.pubWs, "client close")
+		c.pubWs = nil
+	}
+}

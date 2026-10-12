@@ -1,0 +1,38 @@
+name: Bug Report
+description: Create a report to help us improve
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New to ztd and stuck on install or first run? Please use the **First Run Report** form instead — it's shorter and made for that.
+        For a bug in a running deployment, include `./ztd version`, your OS/arch, and the steps below.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: How did you encounter this bug?
+      placeholder: |
+        1. Run `./ztd test ...`
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant logs from the Operator or platform services.

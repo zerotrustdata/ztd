@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="OpenDevOps.AI evaluation explorer: measured model performance, evaluation suites, and live evaluation progress from the public ztd mirror."
+    />
+    <meta name="theme-color" content="#0d1117" />
+    <title>OpenDevOps.AI — Evaluation Explorer</title>
+    <script>
+      (function () {
+        var VALID = { dark: 1, light: 1 };
+        var DEFAULT = 'dark';
+        function readCookie() {
+          var match = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+          return match && VALID[match[1]] ? match[1] : null;
+        }
+        function systemTheme() {
+          return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        var theme = readCookie() || systemTheme() || DEFAULT;
+        document.documentElement.setAttribute('data-theme', theme);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', theme === 'dark' ? '#0d1117' : '#f5f7fb');
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      OpenDevOps.AI Evaluation Explorer requires JavaScript. The site reads only the
+      anonymous public mirror and never connects to a private Gateway.
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

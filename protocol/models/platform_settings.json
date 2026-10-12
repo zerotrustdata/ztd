@@ -1,0 +1,102 @@
+{
+  "_comment": "Canonical PlatformSettings document shape. Operator (ztdo) is the initial authority for security secrets, while client is the authority for user-managed configuration via the dashboard. Document ID is 'platform_settings' in the 'settings' collection.",
+
+  "_authority": "operator (Secrets) / client (Config)",
+  "_consumers": [
+    "agent",
+    "client (JS - reads to serve internal settings API and UI dashboard)"
+  ],
+  "_collection": "settings",
+  "_document_id": "platform_settings",
+
+  "platform_settings": {
+    "_description": "Platform-wide configuration document. Stored flat under a 'settings' key.",
+
+    "settings": {
+      "actuator_key_id": {
+        "type": "string",
+        "required": true,
+        "description": "ED25519 public key identifier for the Actuator signing key. Computed as hex-encoded public key."
+      },
+      "operator_session_id": {
+        "type": "string",
+        "required": false,
+        "description": "Active Operator session identifier for the Operator component."
+      },
+      "llm_command_gen_enabled": {
+        "type": "boolean",
+        "required": false,
+        "default": true
+      },
+      "llm_command_gen_verifier": {
+        "type": "boolean",
+        "required": false,
+        "default": true
+      },
+      "llm_command_gen_passes": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "google_search_enabled": {
+        "type": "boolean",
+        "required": false,
+        "default": false
+      },
+      "google_search_api_key": {
+        "type": "string",
+        "required": false
+      },
+      "google_search_engine_id": {
+        "type": "string",
+        "required": false
+      },
+      "vertex_search_enabled": {
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Whether Vertex AI Search is enabled platform-wide."
+      },
+      "vertex_search_project_id": {
+        "type": "string",
+        "required": false
+      },
+      "vertex_search_engine_id": {
+        "type": "string",
+        "required": false
+      },
+      "vertex_search_location": {
+        "type": "string",
+        "required": false,
+        "default": "global"
+      },
+      "vertex_search_api_key": {
+        "type": "string",
+        "required": false
+      },
+      "enable_command_whitelisting": {
+        "type": "boolean",
+        "required": false,
+        "default": false
+      },
+      "enable_command_blacklisting": {
+        "type": "boolean",
+        "required": false,
+        "default": false
+      }
+    },
+
+    "timestamps": {
+      "created_at": {
+        "type": "string",
+        "format": "iso8601",
+        "required": true
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "iso8601",
+        "required": true
+      }
+    }
+  }
+}

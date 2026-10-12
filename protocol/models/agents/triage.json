@@ -1,0 +1,54 @@
+{
+  "_comment": "Canonical Triage model. Classifies incoming user messages into complexity and intent buckets to route to the appropriate AI (Assistant vs Primary).",
+  "name": "Triage",
+  "metadata": {
+    "id": "triage",
+    "display_name": "Triage",
+    "icon": "manage_search"
+  },
+  "description": "Routes user messages based on complexity and intent.",
+  "request": {
+    "message": { "type": "string", "description": "The user message to triage." },
+    "agent_mode": { "type": "string", "description": "The current AI mode (operator_bound, operator_not_bound, etc.)" },
+    "conversation_history": { "type": "array", "items": { "$ref": "../conversation_message.json" }, "description": "Recent conversation turns." },
+    "attachments": { "type": "array", "items": { "type": "object" }, "description": "Metadata for any attached files." },
+    "model_override": { "type": "string", "nullable": true, "description": "Optional model override." }
+  },
+  "result": {
+    "complexity": {
+      "type": "string",
+      "enum": ["simple", "complex"],
+      "description": "The determined complexity level."
+    },
+    "complexity_confidence": {
+      "type": "string",
+      "enum": ["high", "low"],
+      "description": "Confidence in complexity classification."
+    },
+    "intent": {
+      "type": "string",
+      "enum": ["information", "action", "unknown"],
+      "description": "The determined intent category."
+    },
+    "intent_confidence": {
+      "type": "string",
+      "enum": ["high", "low"],
+      "description": "Confidence in intent classification."
+    },
+    "intent_summary": { "type": "string", "description": "A concise summary of the user's goal." },
+    "follow_up_question": { "type": "string", "nullable": true, "description": "Clarifying question if intent is ambiguous." },
+    "clarifying_questions": { "type": "array", "items": { "type": "string" }, "nullable": true, "description": "Batch of 3 yes/no clarifying questions from the Interrogator when intent confidence is low." },
+    "request_posture": {
+      "type": "string",
+      "enum": ["normal", "escalated", "adversarial", "confused"],
+      "default": "normal",
+      "description": "Triage's read of the user's state. Downstream agents calibrate dissent and denial-memory on this value. 'adversarial' requires a link to prior denied content in the conversation history; a first-turn message cannot be adversarial."
+    },
+    "posture_confidence": {
+      "type": "string",
+      "enum": ["high", "low"],
+      "default": "low",
+      "description": "Confidence in the request_posture classification."
+    }
+  }
+}

@@ -1,0 +1,1564 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"reflect"
+	"sync"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
+	execution "github.com/zerotrustdata/ztd/internal/services/execution"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
+	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	storage "github.com/zerotrustdata/ztd/internal/services/storage"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
+
+// PubSubCommandMessage is the inbound wire message received from Operator pub/sub.
+type PubSubCommandMessage struct {
+	ID                string              `json:"id"`
+	EventType         constants.EventType `json:"event_type"`
+	CaseID            string              `json:"case_id"`
+	TaskID            *string             `json:"task_id"`
+	InvestigationID   string              `json:"investigation_id"`
+	WebSessionID      string              `json:"web_session_id"`
+	CLISessionID      string              `json:"cli_session_id"`
+	OperatorSessionID string              `json:"operator_session_id"`
+	OperatorID        *string             `json:"operator_id"`
+	Payload           json.RawMessage     `json:"payload"`
+	DecodedPayload    proto.Message       `json:"-"`
+	Timestamp         time.Time           `json:"timestamp"`
+
+	// InferenceResult carries the complete inference result produced by
+	// handleInferenceRequestSync so the post-actuation completion
+	// publication can bind it to the final signed receipt.
+	InferenceResult *operatorv1.InferenceResult `json:"-"`
+}
+
+// verifiedActionHandler executes a governed action class after L4 verification.
+// A non-empty summary is stamped into the signed ActionReceipt.
+type verifiedActionHandler func(ctx context.Context, msg *PubSubCommandMessage) (string, error)
+
+func fireAndForgetActionHandler(fn func(context.Context, *PubSubCommandMessage)) verifiedActionHandler {
+	return func(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+		fn(ctx, msg)
+		return "", nil
+	}
+}
+
+// OperatorPubSubService manages the Operator pub/sub connection and dispatches inbound
+// Operator commands to the appropriate first-class service handler.
+type OperatorPubSubService struct {
+	client  PubSubClient
+	config  *config.Config
+	logger  *slog.Logger
+	results ResultsPublisher
+
+	heartbeat *HeartbeatService
+	commands  *CommandService
+	fileOps   *FileOpsService
+	ports     *PortService
+	ollama    *OllamaMaintenanceService
+	audit     *AuditService
+	history   *HistoryService
+
+	// scrubbing scrubs free text that is written into signed or egressed records
+	// (blocked-transaction summaries). Nil or disabled means fixed text only.
+	scrubbing *scrubbing.ScrubbingService
+
+	// inference is the governed execution handler for local LLM inference
+	// (ztdllama). Nil when cfg.Inference.Enabled is false; the event-type
+	// dispatch still fails closed with ErrInferenceBackendNotRegistered.
+	inference                *inference.InferenceExecutionHandler
+	inferenceAttemptStore    inference.AttemptStore
+	providerBoundaryObserver *provider_observer.Handler
+	modelProvenanceOperator  *model_provenance.Handler
+
+	ShutdownChan chan string
+
+	actionHandlers      map[constants.ActionType]verifiedActionHandler
+	legacyEventHandlers map[constants.EventType]func(context.Context, *PubSubCommandMessage)
+
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	running     bool
+	started     bool
+	gatewayMode bool
+	mu          sync.RWMutex
+
+	reconnectBaseDelay    time.Duration
+	onCommandSubscription func(context.Context, string, bool) error
+
+	// governance services
+	actuator *governance.L5Actuator
+	// identity is the Operator and audit session this runtime owns; blocked-transaction
+	// records are filed under it, never under an envelope's claim.
+	identity         governance.RuntimeIdentityProvider
+	l4warden         *governance.L4Warden
+	signerStore      governance.SignerStore
+	governedDocStore governance.GovernedDocumentStore
+
+	// MCP gateway for protocol translation egress
+	mcpGateway   *mcp.GatewayService
+	mcpGatewayMu sync.RWMutex
+
+	// platformEnrollment dispatches the five platform enrollment
+	// governance actions. Nil in outbound (operator) mode; the handlers
+	// are not registered when this is nil.
+	platformEnrollment *PlatformEnrollmentHandler
+}
+
+// CommandServiceConfig holds non-governance dependencies for
+// OperatorPubSubService in both outbound and gateway modes. Governance
+// dependencies are passed separately via OutboundModeDeps or GatewayModeDeps.
+// Gateway-only fields are in GatewayCommandServiceConfig to enforce mode
+// bifurcation at the type level.
+type CommandServiceConfig struct {
+	// OnCommandSubscription observes outbound transport readiness; it grants no authority.
+	OnCommandSubscription func(context.Context, string, bool) error
+	Config                *config.Config
+	Logger                *slog.Logger
+	Execution             *execution.ExecutionService
+	FileEdit              *execution.FileEditService
+	PubSubClient          PubSubClient
+	ResultsService        ResultsPublisher
+	AuditStore            *storage.SQLAuditStore
+	Ledger                *storage.GitLedgerService
+	HistoryHandler        *storage.HistoryHandler
+	Scrubbing             *scrubbing.ScrubbingService
+	// RuntimeVault is this runtime's encryption vault. The L4 Warden refuses dispatch
+	// while it is locked, because the execution record cannot be written without it.
+	RuntimeVault governance.RuntimeVault
+
+	// Inference is the governed execution handler for local LLM inference
+	// (ztdllama). Nil when inference is disabled; the inference event type
+	// remains registered and fails closed at execution.
+	Inference *inference.InferenceExecutionHandler
+
+	// InferenceAttemptStore persists durable provider-attempt records on the
+	// Inference Operator. Nil when inference is disabled.
+	InferenceAttemptStore inference.AttemptStore
+
+	// ProviderBoundaryObserver handles pubsub observation commands on the
+	// remote provider host. Nil when provider-boundary observation is disabled.
+	ProviderBoundaryObserver *provider_observer.Handler
+
+	// ModelProvenanceOperator handles pubsub provenance commands on the
+	// storage-side model file site. Nil when provenance attestation is disabled.
+	ModelProvenanceOperator *model_provenance.Handler
+
+	// Actuator configuration
+	ActuatorSigningKey ed25519.PrivateKey
+	ActuatorKeyID      string
+	AuditorSigningKey  ed25519.PrivateKey
+	AuditorKeyID       string
+}
+
+// GatewayCommandServiceConfig embeds CommandServiceConfig and adds
+// gateway-only fields that are not applicable in outbound mode.
+//
+// GovDeps provides the mode-specific gateway governance dependencies.
+type GatewayCommandServiceConfig struct {
+	CommandServiceConfig
+	GovDeps *GatewayModeDeps
+}
+
+func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCoreDeps, consensusPolicyStore governance.L2ConsensusPolicyStore, governedDocStore governance.GovernedDocumentStore, gatewayMode bool) (*OperatorPubSubService, error) {
+	client := c.PubSubClient
+	if client == nil {
+		return nil, fmt.Errorf("%w: PubSubClient is required", constants.ErrPubSubEmptyPayload)
+	}
+
+	serviceCtx, cancel := context.WithCancel(context.Background())
+
+	rs := &OperatorPubSubService{
+		client:                client,
+		config:                c.Config,
+		logger:                c.Logger,
+		results:               c.ResultsService,
+		ctx:                   serviceCtx,
+		cancel:                cancel,
+		ShutdownChan:          make(chan string, 1),
+		reconnectBaseDelay:    1 * time.Second,
+		gatewayMode:           gatewayMode,
+		onCommandSubscription: c.OnCommandSubscription,
+	}
+
+	rs.heartbeat = NewHeartbeatService(c.Config, c.Logger, &rs.wg)
+	rs.heartbeat.ctx = serviceCtx
+	rs.heartbeat.results = c.ResultsService
+
+	commands, err := NewCommandService(c.Config, c.Logger, c.Execution, c.ResultsService, c.AuditStore)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("pubsub: command service: %w", err)
+	}
+	rs.commands = commands
+
+	fileOps, err := NewFileOpsService(c.Config, c.Logger, c.FileEdit, client, c.Ledger, c.ResultsService, c.Scrubbing, c.AuditStore)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("pubsub: file ops: %w", err)
+	}
+	rs.fileOps = fileOps
+
+	ports, err := NewPortService(c.Config, c.Logger, client, c.Scrubbing, c.AuditStore)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("pubsub: ports: %w", err)
+	}
+	rs.ports = ports
+
+	ollama, err := NewOllamaMaintenanceService(c.Config, c.Logger, client, c.Scrubbing, c.AuditStore)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("pubsub: ollama maintenance: %w", err)
+	}
+	rs.ollama = ollama
+
+	rs.audit = NewAuditService(c.Config, c.Logger, c.AuditStore)
+
+	history, err := NewHistoryService(c.Config, c.Logger, client, c.HistoryHandler, c.Scrubbing, c.AuditStore)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("pubsub: history: %w", err)
+	}
+	rs.history = history
+
+	rs.scrubbing = c.Scrubbing
+	rs.inference = c.Inference
+	rs.inferenceAttemptStore = c.InferenceAttemptStore
+	rs.providerBoundaryObserver = c.ProviderBoundaryObserver
+	rs.modelProvenanceOperator = c.ModelProvenanceOperator
+
+	rs.buildHandlers()
+	if gatewayMode {
+		rs.buildGatewayHandlers()
+	}
+
+	rs.governedDocStore = governedDocStore
+
+	rs.signerStore = core.SignerStore
+	if rs.signerStore == nil {
+		// Provide a fallback empty signer store instead of loading from filesystem.
+		// This ensures outbound mode fails closed if no signer store is provided.
+		rs.signerStore = &governance.FailClosedSignerStore{Signers: make(map[string]ed25519.PublicKey)}
+		c.Logger.Warn("No SignerStore provided; signed transactions will be rejected")
+	}
+
+	// Validate required governance dependencies (fail-closed: missing deps = fatal error)
+	if core.ReplayStore == nil {
+		return nil, constants.ErrTxReplayStoreMissing
+	}
+	if core.StateRootProvider == nil {
+		return nil, constants.ErrTxStateRootRequired
+	}
+	// L3Notary is optional for outbound mode (platform verifies L3)
+	// Mutations requiring L3 will fail-closed at TransactionVerifier if L3Notary is nil
+
+	// Initialize governance services after trusted signers are loaded
+	rs.initializeGovernance(c, core, consensusPolicyStore)
+	// Wire the heartbeat service's actuator after initializeGovernance has
+	// constructed it. Calling SetActuator earlier passes nil and silently
+	// drops every automatic heartbeat (no audit record, no pub/sub publish).
+
+	c.Logger.Info("ztd connectivity initialized")
+	if c.Config.OperatorID != "" {
+		c.Logger.Info("Operator identity configured",
+			"operator_id", c.Config.OperatorID,
+			"operator_session_id", c.Config.OperatorSessionId)
+	}
+	return rs, nil
+}
+
+// BindMCPGateway completes the one-time construction cycle between the gateway and command services before either service starts processing requests.
+func (rs *OperatorPubSubService) BindMCPGateway(gw *mcp.GatewayService) error {
+	if gw == nil {
+		return constants.ErrPubSubMCPGatewayNil
+	}
+
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.started {
+		return constants.ErrPubSubMCPGatewayBindAfterStart
+	}
+
+	rs.mcpGatewayMu.Lock()
+	defer rs.mcpGatewayMu.Unlock()
+	if rs.mcpGateway != nil {
+		return constants.ErrPubSubMCPGatewayAlreadyBound
+	}
+	rs.mcpGateway = gw
+	return nil
+}
+
+// GetMCPGateway returns the immutable MCP gateway binding used for egress dispatch, or nil if binding has not completed.
+func (rs *OperatorPubSubService) GetMCPGateway() *mcp.GatewayService {
+	rs.mcpGatewayMu.RLock()
+	defer rs.mcpGatewayMu.RUnlock()
+	return rs.mcpGateway
+}
+
+// NewOperatorPubSubService creates the dispatcher and all first-class sub-services using the provided config for outbound mode.
+func NewOperatorPubSubService(c CommandServiceConfig, deps OutboundModeDeps) (*OperatorPubSubService, error) {
+	return newOperatorPubSubServiceInternal(c, deps.GovernanceCoreDeps, deps.ConsensusPolicyStore, nil, false)
+}
+
+// NewGatewayOperatorPubSubService creates the dispatcher for gateway mode,
+// wiring gateway-only dependencies from GovDeps. Use NewOperatorPubSubService for outbound mode.
+func NewGatewayOperatorPubSubService(c GatewayCommandServiceConfig) (*OperatorPubSubService, error) {
+	if c.GovDeps == nil {
+		return nil, fmt.Errorf("%w: GovDeps is required for gateway mode", constants.ErrInternal)
+	}
+
+	rs, err := newOperatorPubSubServiceInternal(c.CommandServiceConfig, c.GovDeps.GovernanceCoreDeps, c.GovDeps.ConsensusPolicyStore, c.GovDeps.GovernedDocStore, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wire the platform enrollment handler from gateway-side dependencies.
+	// In gateway mode, platform enrollment dependencies are required and wired
+	// at construction so rs.platformEnrollment is always non-nil.
+	if c.GovDeps.PlatformEnrollmentDeps == nil {
+		return nil, fmt.Errorf("gateway operator pubsub: %w", constants.ErrPlatformEnrollmentDepsRequired)
+	}
+	rs.platformEnrollment = newPlatformEnrollmentHandler(*c.GovDeps.PlatformEnrollmentDeps, c.Logger)
+	rs.registerPlatformEnrollmentHandlers()
+
+	return rs, nil
+}
+
+func (rs *OperatorPubSubService) initializeGovernance(c CommandServiceConfig, core GovernanceCoreDeps, consensusPolicyStore governance.L2ConsensusPolicyStore) {
+	// Initialize L5Actuator with trusted nodes and audit store
+	// ScrubbingService handles data scrubbing/rehydration at the execution boundary
+	rs.identity = core.ExecutionTarget
+	rs.actuator = &governance.L5Actuator{
+		Logger:            c.Logger,
+		SQLAuditStore:     c.AuditStore,
+		Identity:          core.ExecutionTarget, // the runtime's own session; rejection receipts are filed under it
+		StateRootProvider: core.StateRootProvider,
+		ExecutionHandler:  rs, // OperatorPubSubService implements ExecutionHandler
+		Scrubbing:         c.Scrubbing,
+		SigningKey:        c.ActuatorSigningKey,
+		KeyID:             c.ActuatorKeyID,
+		AuditorSigningKey: c.AuditorSigningKey,
+		AuditorKeyID:      c.AuditorKeyID,
+	}
+
+	// Wire the ReceiptPublisher so the actuator publishes signed
+	// ActionReceipts to the gateway's receipts: channel after execution.
+	// PubSubResultsService implements governance.ReceiptPublisher via
+	// PublishActionReceipt. Nil is valid (gateway in-process operator path
+	// records receipts directly in the gateway's SQLAuditStore).
+	if c.ResultsService != nil {
+		if publisher, ok := c.ResultsService.(governance.ReceiptPublisher); ok {
+			rs.actuator.ReceiptPublisher = publisher
+		}
+	}
+
+	// Initialize TransactionVerifier for strict pre-dispatch verification.
+	// The warden has no posture of its own; it reads posture per-envelope
+	// from GovernanceEnvelope.Posture at verification time. The gateway
+	// sets that field at envelope construction from cfg.Gateway.Posture.
+	knownActionTypes := constants.AllActionTypes
+	rs.l4warden = governance.NewL4Warden(
+		c.Logger,
+		core.ReplayStore,
+		core.StateRootProvider,
+		rs.signerStore,
+		consensusPolicyStore,
+		core.L3Notary,
+		core.Doctrine,
+		knownActionTypes,
+		nil, // Clock defaults to RealClock
+		core.ExecutionTarget,
+		c.RuntimeVault,
+	)
+
+	var signerStoreType, l4wardenType string
+	if rs.signerStore != nil {
+		signerStoreType = reflect.TypeOf(rs.signerStore).Elem().Name()
+	}
+	if rs.l4warden != nil {
+		l4wardenType = reflect.TypeOf(rs.l4warden).Elem().Name()
+	}
+	c.Logger.Info("governance services initialized",
+		"signer_store", signerStoreType,
+		"transaction_verifier", l4wardenType)
+}
+
+func (rs *OperatorPubSubService) buildHandlers() {
+	rs.legacyEventHandlers = map[constants.EventType]func(context.Context, *PubSubCommandMessage){
+		constants.Event.Operator.Heartbeat: rs.handleHeartbeatEvent,
+	}
+
+	rs.actionHandlers = map[constants.ActionType]verifiedActionHandler{
+		constants.ActionTypeHeartbeat:   fireAndForgetActionHandler(rs.heartbeat.HandleRequest),
+		constants.ActionTypeExecuteBash: fireAndForgetActionHandler(rs.commands.HandleExecutionRequest),
+		constants.ActionTypeCancel:      fireAndForgetActionHandler(rs.commands.HandleCancelRequest),
+		constants.ActionTypeFileEdit: func(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+			return rs.fileOps.HandleFileEditRequest(ctx, msg)
+		},
+		constants.ActionTypeFsList:                      fireAndForgetActionHandler(rs.fileOps.HandleFsListRequest),
+		constants.ActionTypeFsRead:                      fireAndForgetActionHandler(rs.fileOps.HandleFsReadRequest),
+		constants.ActionTypeFsGrep:                      fireAndForgetActionHandler(rs.fileOps.HandleFsGrepRequest),
+		constants.ActionTypePortCheck:                   fireAndForgetActionHandler(rs.ports.HandlePortCheckRequest),
+		constants.ActionTypeOllamaModelInventory:        fireAndForgetActionHandler(rs.ollama.HandleInventoryRequest),
+		constants.ActionTypeOllamaModelResidency:        fireAndForgetActionHandler(rs.ollama.HandleResidencyRequest),
+		constants.ActionTypeFetchLogs:                   fireAndForgetActionHandler(rs.history.HandleFetchLogsRequest),
+		constants.ActionTypeFetchHistory:                fireAndForgetActionHandler(rs.history.HandleFetchHistoryRequest),
+		constants.ActionTypeFetchFileHistory:            fireAndForgetActionHandler(rs.history.HandleFetchFileHistoryRequest),
+		constants.ActionTypeRestoreFile:                 fireAndForgetActionHandler(rs.history.HandleRestoreFileRequest),
+		constants.ActionTypeFetchFileDiff:               fireAndForgetActionHandler(rs.history.HandleFetchFileDiffRequest),
+		constants.ActionTypeDocumentUpdate:              rs.handleDocumentUpdateSync,
+		constants.ActionTypeDocumentDelete:              rs.handleDocumentDeleteSync,
+		constants.ActionTypeEvalAnswer:                  rs.handleEvalAnswerRequestSync,
+		constants.ActionTypeInference:                   rs.handleInferenceRequestSync,
+		constants.ActionTypeProviderBoundaryObservation: rs.handleProviderBoundaryObservationSync,
+		constants.ActionTypeModelProvenanceObservation:  rs.handleModelProvenanceObservationSync,
+		constants.ActionTypeShutdown: func(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+			return rs.handleShutdownRequest(msg)
+		},
+	}
+}
+
+func (rs *OperatorPubSubService) registerPlatformEnrollmentHandlers() {
+	if rs.platformEnrollment == nil {
+		return
+	}
+	rs.actionHandlers[constants.ActionTypePlatformEnrollmentCreate] = rs.platformEnrollment.HandleCreate
+	rs.actionHandlers[constants.ActionTypePlatformEnrollmentDecide] = rs.platformEnrollment.HandleDecide
+	rs.actionHandlers[constants.ActionTypePlatformEnrollmentIssue] = rs.platformEnrollment.HandleIssue
+	rs.actionHandlers[constants.ActionTypePlatformEnrollmentPersistPolicy] = rs.platformEnrollment.HandlePersistPolicy
+	rs.actionHandlers[constants.ActionTypePlatformEnrollmentCreateSession] = rs.platformEnrollment.HandleCreateSession
+	rs.actionHandlers[constants.ActionTypePlatformEnrollmentRevoke] = rs.platformEnrollment.HandleRevoke
+}
+
+func (rs *OperatorPubSubService) buildGatewayHandlers() {
+	rs.actionHandlers[constants.ActionTypeMcpCall] = rs.handleMcpCallRequestSync
+	rs.actionHandlers[constants.ActionTypeA2aCall] = rs.handleA2aCallRequestSync
+	rs.actionHandlers[constants.ActionTypeMcpResourceRead] = rs.handleMcpResourceReadSync
+	rs.actionHandlers[constants.ActionTypeMcpPromptGet] = rs.handleMcpPromptGetSync
+	rs.actionHandlers[constants.ActionTypeMcpResourceList] = rs.handleMcpResourceListSync
+	rs.actionHandlers[constants.ActionTypeMcpPromptList] = rs.handleMcpPromptListSync
+}
+
+func (rs *OperatorPubSubService) Start(ctx context.Context) error {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	if rs.running {
+		return constants.ErrGatewayAlreadyRunning
+	}
+	if rs.gatewayMode && rs.GetMCPGateway() == nil {
+		return constants.ErrPubSubMCPGateway
+	}
+
+	rs.ctx, rs.cancel = context.WithCancel(ctx)
+	rs.running = true
+	rs.started = true
+
+	rs.heartbeat.ctx = rs.ctx
+
+	channelName := CmdChannel(rs.config.OperatorID, rs.config.OperatorSessionId)
+
+	// Outbound mode subscribes when an Operator identity is configured. Gateway mode receives commands through HTTP and WebSocket handlers instead.
+	if !rs.gatewayMode && rs.config.OperatorID != "" && rs.config.OperatorSessionId != "" {
+		rs.logger.Info("Command service subscribing to Operator channel",
+			"operator_id", rs.config.OperatorID,
+			"operator_session_id", rs.config.OperatorSessionId,
+			"cmd_channel", channelName)
+
+		rs.wg.Add(1)
+		go func() {
+			defer rs.wg.Done()
+			rs.listenForCommands(channelName)
+		}()
+
+		auditChannel := AuditChannel(rs.config.OperatorID, rs.config.OperatorSessionId)
+		rs.wg.Add(1)
+		go func() {
+			defer rs.wg.Done()
+			rs.listenForAuditRecords(auditChannel)
+		}()
+	} else if rs.gatewayMode {
+		rs.logger.Info("Command service starting in Gateway mode (no pub/sub subscription)",
+			"mode", string(constants.GatewayModeGateway))
+	}
+
+	rs.heartbeat.StartSchedulerUnlocked()
+
+	rs.logger.Info("Command service ready")
+	return nil
+}
+
+func (rs *OperatorPubSubService) Stop() error {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	if !rs.running {
+		return nil
+	}
+
+	rs.logger.Info("Command service shutting down...")
+	rs.heartbeat.StopSchedulerUnlocked()
+
+	if rs.cancel != nil {
+		rs.cancel()
+	}
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
+		rs.wg.Wait()
+	}()
+
+	select {
+	case <-shutdownDone:
+		rs.logger.Info("Command service stopped gracefully")
+	case <-time.After(10 * time.Second):
+		rs.logger.Error("Command service shutdown timeout")
+	}
+
+	if rs.client != nil {
+		rs.client.Close()
+	}
+
+	rs.running = false
+	return nil
+}
+
+func (rs *OperatorPubSubService) observeCommandSubscription(connected bool) bool {
+	if rs.onCommandSubscription == nil {
+		return true
+	}
+	if err := rs.onCommandSubscription(rs.ctx, rs.config.OperatorSessionId, connected); err != nil {
+		rs.logger.Error("Failed to record command subscription state", "error", err)
+		select {
+		case rs.ShutdownChan <- constants.ErrOperatorDeployFailed.Error():
+		case <-rs.ctx.Done():
+		}
+		return false
+	}
+	return true
+}
+
+// listenForCommands holds the Operator's cmd-channel subscription for the life
+// of the service. The Gateway is allowed to be down for any length of time (a
+// restart, an upgrade), so a lost subscription is retried with capped backoff
+// until the service context ends; giving up would leave an Operator that still
+// heartbeats over its publish socket but can never receive a command.
+func (rs *OperatorPubSubService) listenForCommands(channelName string) {
+	reconnectDelay := rs.reconnectBaseDelay
+	maxReconnectDelay := 30 * rs.reconnectBaseDelay
+
+	for {
+		select {
+		case <-rs.ctx.Done():
+			rs.logger.Info("Command gateway stopped (context cancelled)")
+			return
+		default:
+		}
+
+		if rs.client == nil {
+			rs.logger.Error("[RECONNECT] No Operator pub/sub client configured")
+			return
+		}
+
+		rs.logger.Info("Subscribing to Operator command channel",
+			"operator_session_id", rs.config.OperatorSessionId,
+			"channel_name", channelName)
+
+		msgCh, err := rs.client.Subscribe(rs.ctx, channelName)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				rs.logger.Info("Command gateway stopped (context cancelled during connection)")
+				return
+			}
+			if IsTLSCertError(err) {
+				rs.logger.Error("Server certificate verification failed during reconnect - this Node binary has outdated certificates",
+					"action", "SSL Failure. Requesting shutdown.",
+					"resolution", "download a new Node binary from https://"+constants.DefaultEndpoint)
+				rs.ShutdownChan <- "SSL_CERT_FAILURE"
+				return
+			}
+			rs.logger.Warn("[RECONNECT] Failed to connect, will retry...",
+				"retry_in_seconds", reconnectDelay.Seconds(), string(constants.ConnectionStateError), err)
+			if !waitForReconnect(rs.ctx, reconnectDelay) {
+				return
+			}
+			reconnectDelay = nextReconnectDelay(reconnectDelay, maxReconnectDelay)
+			continue
+		}
+
+		if !rs.observeCommandSubscription(true) {
+			return
+		}
+		rs.logger.Info("Channel established - Ready to receive")
+		reconnectDelay = rs.reconnectBaseDelay
+
+		if err := rs.heartbeat.SendAutomatic(); err != nil {
+			rs.logger.Error("Failed to send automatic heartbeat", "error", err)
+		}
+
+		disconnected := false
+
+		for !disconnected {
+			select {
+			case <-rs.ctx.Done():
+				rs.logger.Info("Command gateway stopped")
+				return
+			case payload, ok := <-msgCh:
+				if !ok {
+					if !rs.observeCommandSubscription(false) {
+						return
+					}
+					rs.logger.Warn("[RECONNECT] Channel closed, reconnecting...")
+					disconnected = true
+					break
+				}
+				rs.wg.Add(1)
+				go func(p []byte) {
+					defer rs.wg.Done()
+					rs.handleCommandPayload(p)
+				}(payload)
+			}
+		}
+
+		rs.logger.Info("[RECONNECT] Waiting before reconnection attempt...", "delay_seconds", reconnectDelay.Seconds())
+		if !waitForReconnect(rs.ctx, reconnectDelay) {
+			return
+		}
+		reconnectDelay = nextReconnectDelay(reconnectDelay, maxReconnectDelay)
+	}
+}
+
+func (rs *OperatorPubSubService) listenForAuditRecords(channelName string) {
+	if rs.audit == nil || rs.client == nil {
+		rs.logger.Error("Audit ingest listener disabled: audit service or pubsub client missing")
+		return
+	}
+
+	for {
+		select {
+		case <-rs.ctx.Done():
+			return
+		default:
+		}
+
+		msgCh, err := rs.client.Subscribe(rs.ctx, channelName)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			rs.logger.Warn("[AUDIT] Failed to subscribe to audit channel", "error", err)
+			if !waitForReconnect(rs.ctx, rs.reconnectBaseDelay) {
+				return
+			}
+			continue
+		}
+
+		rs.logger.Info("Subscribed to audit ingest channel", "channel_name", channelName)
+		disconnected := false
+		for !disconnected {
+			select {
+			case <-rs.ctx.Done():
+				return
+			case payload, ok := <-msgCh:
+				if !ok {
+					disconnected = true
+					break
+				}
+				if err := rs.audit.HandleAuditRecord(rs.ctx, payload, rs.client); err != nil {
+					rs.logger.Error("Failed to ingest audit record", "error", err)
+				}
+			}
+		}
+		if !waitForReconnect(rs.ctx, rs.reconnectBaseDelay) {
+			return
+		}
+	}
+}
+
+// nextReconnectDelay doubles the current delay, capped at max. This implements
+// exponential backoff for the reconnect loop.
+func waitForReconnect(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func nextReconnectDelay(current, max time.Duration) time.Duration {
+	return min(current*2, max)
+}
+
+func (rs *OperatorPubSubService) handleCommandPayload(payload []byte) {
+	rs.logger.Info("Received message from ztd",
+		"operator_session_id", rs.config.OperatorSessionId,
+		"payload_size", len(payload))
+
+	if len(payload) > MaxPayloadSize {
+		rs.logger.Error("Command payload exceeds maximum size limit",
+			"size", len(payload),
+			"limit", MaxPayloadSize)
+		return
+	}
+
+	// Decode as GovernanceEnvelope - this is the only canonical mutation transport.
+	//Node Node Binary protobuf bytes and other formats are explicitly rejected.
+	envelope := &govpkg.GovernanceEnvelope{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(payload, envelope); err != nil {
+		rs.logger.Error("envelope: non-JSON payload rejected",
+			logging.ErrorKind(err),
+			slog.String("action", "use canonical JSON (protojson) GovernanceEnvelope"))
+		return
+	}
+
+	rs.logger.Info("Decoded request as GovernanceEnvelope",
+		"message_id", envelope.Id,
+		"protocol_version", envelope.ProtocolVersion)
+	rs.handleGovernanceEnvelope(envelope)
+}
+
+// ProcessEnvelope is the public, synchronous entry point for fail-closed
+// Gateway transaction processing. It is used by the listen-mode HTTP surface
+// (POST /api/v1/governance/envelopes) to verify a GovernanceEnvelope and execute it
+// through the Actuator, returning the signed ActionReceipt or a verification
+// error.
+//
+// The signed receipt is returned on execution and verification failure so callers
+// receive cryptographic evidence of the attempt. The accompanying verification
+// error continues to wrap the corresponding governance.ErrXxx sentinel.
+func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+	if len(payload) == 0 {
+		return nil, constants.ErrPubSubEmptyPayload
+	}
+	if len(payload) > MaxPayloadSize {
+		return nil, fmt.Errorf("payload exceeds %d byte limit: %w", MaxPayloadSize, constants.ErrPayloadExceedsLimit)
+	}
+
+	envelope := &govpkg.GovernanceEnvelope{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(payload, envelope); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrTxInvalidEnvelope, err)
+	}
+
+	if err := constants.ValidateGovernedEnvelopeFields(
+		constants.EventType(envelope.EventType),
+		constants.ActionType(envelope.ActionType),
+	); err != nil {
+		return nil, err
+	}
+
+	if rs.l4warden == nil {
+		return nil, constants.ErrPubSubTransactionVerifier
+	}
+	verified, err := rs.l4warden.VerifyEnvelope(ctx, envelope)
+	if err != nil {
+		if rs.actuator == nil {
+			rs.logBlockedTransaction(ctx, envelope, err)
+			return nil, fmt.Errorf("%w: %w", constants.ErrPubSubActuator, err)
+		}
+		receipt, recordErr := rs.actuator.RecordRejectedTransaction(ctx, verified, err)
+		if recordErr != nil {
+			return nil, fmt.Errorf("%w: rejection receipt: %w", err, recordErr)
+		}
+		if envelope.ActionType == string(constants.ActionTypeInference) {
+			rs.publishInferenceCompletion(ctx, envelope, nil, receipt)
+		}
+		return receipt, err
+	}
+
+	if rs.actuator == nil {
+		return nil, constants.ErrPubSubActuator
+	}
+
+	eventType := constants.EventType(verified.Envelope.EventType)
+	if eventType == "" {
+		return nil, constants.ErrTxUnknownEventType
+	}
+	cmdMsg := &PubSubCommandMessage{
+		ID:                envelope.Id,
+		EventType:         eventType,
+		CaseID:            envelope.CaseId,
+		TaskID:            &envelope.TaskId,
+		InvestigationID:   envelope.InvestigationId,
+		WebSessionID:      envelope.WebSessionId,
+		CLISessionID:      envelope.CliSessionId,
+		OperatorSessionID: envelope.OperatorSessionId,
+		OperatorID:        &envelope.OperatorId,
+		Payload:           envelope.Payload,
+		Timestamp:         envelope.Timestamp.AsTime(),
+	}
+
+	receipt, execErr := rs.actuator.Execute(ctx, verified, cmdMsg)
+	if envelope.ActionType == string(constants.ActionTypeInference) {
+		rs.publishInferenceCompletion(ctx, envelope, cmdMsg.InferenceResult, receipt)
+	}
+	if execErr == nil && envelope.ActionType == string(constants.ActionTypeShutdown) {
+		execErr = rs.completeShutdown(ctx, cmdMsg)
+	}
+	return receipt, execErr
+}
+
+// gatewayDispatchedVerificationContext returns a verification context for
+// envelopes issued by the Gateway DispatchService on the operator cmd channel.
+// The PDP binds state_merkle_root at construction; concurrent ledger
+// advancement must not invalidate that binding before the operator executes
+// the command. The root remains subject to canonical hash and required proof
+// verification. External callers that submit through ProcessEnvelope without
+// this context still read the local provider's live root.
+func gatewayDispatchedVerificationContext(parent context.Context, env *govpkg.GovernanceEnvelope) context.Context {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if env == nil || env.StateMerkleRoot == "" {
+		return parent
+	}
+	return context.WithValue(parent, constants.ContextKeyStateMerkleRoot, env.StateMerkleRoot)
+}
+
+// handleGovernanceEnvelope processes a GovernanceEnvelope using the TransactionVerifier, Consensus and Actuator services.
+func (rs *OperatorPubSubService) handleGovernanceEnvelope(env *govpkg.GovernanceEnvelope) {
+	if _, err := constants.ValidateGovernedRequest(constants.EventType(env.EventType)); err == nil {
+		if err := constants.ValidateGovernedEnvelopeFields(
+			constants.EventType(env.EventType),
+			constants.ActionType(env.ActionType),
+		); err != nil {
+			// The rejection reason is recorded on the signed receipt or blocked-transaction
+			// event; the plaintext log must not carry payload content.
+			rs.logger.Error("Governed envelope field validation failed",
+				logging.ErrorKind(err),
+				slog.String("message_id", env.Id))
+			rs.logBlockedTransaction(rs.ctx, env, err)
+			return
+		}
+	}
+
+	var verified *governance.VerifiedTransaction
+
+	// Strict transaction verification (P0: fail-closed gate before any dispatch)
+	if rs.l4warden != nil {
+		var err error
+		verifyCtx := gatewayDispatchedVerificationContext(rs.ctx, env)
+		verified, err = rs.l4warden.VerifyEnvelope(verifyCtx, env)
+		if err != nil {
+			rs.logger.Error("Transaction verification failed - command rejected",
+				logging.ErrorKind(err),
+				slog.String("message_id", env.Id))
+			if rs.actuator == nil {
+				rs.logBlockedTransaction(rs.ctx, env, err)
+				return
+			}
+			receipt, recordErr := rs.actuator.RecordRejectedTransaction(rs.ctx, verified, err)
+			if recordErr != nil {
+				rs.logger.Error("Failed to record signed rejected transaction",
+					string(constants.ConnectionStateError), recordErr,
+					"message_id", env.Id)
+			}
+			if env.ActionType == string(constants.ActionTypeInference) {
+				rs.publishInferenceCompletion(rs.ctx, env, nil, receipt)
+			}
+			return
+		}
+		rs.logger.Info("Transaction verification passed", "message_id", verified.Envelope.Id)
+	} else {
+		rs.logger.Error("FATAL: L4Warden missing - command rejected", "message_id", env.Id)
+		rs.logBlockedTransaction(rs.ctx, env, constants.ErrPubSubL4Warden)
+		return
+	}
+
+	// Convert GovernanceEnvelope to PubSubCommandMessage for execution through Actuator.
+	eventType := constants.EventType(env.EventType)
+	if eventType == "" {
+		rs.logger.Error("GovernanceEnvelope missing event_type - request rejected", "message_id", env.Id)
+		return
+	}
+
+	cmdMsg := &PubSubCommandMessage{
+		ID:                env.Id,
+		EventType:         eventType,
+		CaseID:            env.CaseId,
+		TaskID:            &env.TaskId,
+		InvestigationID:   env.InvestigationId,
+		WebSessionID:      env.WebSessionId,
+		CLISessionID:      env.CliSessionId,
+		OperatorSessionID: env.OperatorSessionId,
+		OperatorID:        &env.OperatorId,
+		Payload:           env.Payload,
+		Timestamp:         env.Timestamp.AsTime(),
+	}
+
+	// Execute through Actuator (execution boundary)
+	if rs.actuator != nil {
+		receipt, err := rs.actuator.Execute(rs.ctx, verified, cmdMsg)
+		if env.ActionType == string(constants.ActionTypeInference) {
+			rs.publishInferenceCompletion(rs.ctx, env, cmdMsg.InferenceResult, receipt)
+		}
+		if err != nil {
+			// Execute returns a nil receipt when it fails closed before the
+			// initial receipt is persisted; GetStatus is nil-safe.
+			rs.logger.Error("Actuator execution failed",
+				logging.ErrorKind(err),
+				slog.String("message_id", env.Id),
+				slog.Any("receipt_status", receipt.GetStatus().String()))
+			return
+		}
+		if env.ActionType == string(constants.ActionTypeShutdown) {
+			if err := rs.completeShutdown(rs.ctx, cmdMsg); err != nil {
+				rs.logger.Error("Shutdown acknowledgement failed", string(constants.ConnectionStateError), err, "message_id", env.Id)
+				return
+			}
+		}
+		rs.logger.Info("Actuator execution succeeded",
+			"message_id", env.Id,
+			"receipt_status", receipt.Status.String())
+	} else {
+		rs.logger.Error("FATAL: Actuator service missing - cannot execute", "message_id", env.Id)
+		return
+	}
+}
+
+// Actuator returns the current L5 actuator.
+func (rs *OperatorPubSubService) Actuator() *governance.L5Actuator {
+	return rs.actuator
+}
+
+// SetActuator sets the L5 actuator (used for testing).
+func (rs *OperatorPubSubService) SetActuator(a *governance.L5Actuator) {
+	rs.actuator = a
+}
+
+// SetL4Warden sets the L4 warden (used for testing).
+func (rs *OperatorPubSubService) SetL4Warden(w *governance.L4Warden) {
+	rs.l4warden = w
+}
+
+// ExecuteVerifiedTransaction implements governance.ExecutionHandler.
+// This is called by Actuator to execute verified transactions, making Actuator the execution boundary.
+func (rs *OperatorPubSubService) ExecuteVerifiedTransaction(ctx context.Context, eventType constants.EventType, cmdMsg governance.CommandMessage) (string, error) {
+	pubsubMsg, ok := cmdMsg.(*PubSubCommandMessage)
+	if !ok {
+		rs.logger.Error("Invalid cmdMsg type", "expected", "*PubSubCommandMessage", "got", fmt.Sprintf("%T", cmdMsg))
+		return "", fmt.Errorf("invalid cmdMsg type %T: %w", cmdMsg, constants.ErrTxPayloadDecodeFailed)
+	}
+	rs.logger.Info("Executing verified transaction through Actuator", "event_type", eventType)
+
+	if handler, ok := rs.legacyEventHandlers[eventType]; ok {
+		handler(ctx, pubsubMsg)
+		return "", nil
+	}
+
+	actionType, err := constants.ValidateGovernedRequest(eventType)
+	if err != nil {
+		rs.logger.Error("No governed action for event type", "event_type", string(eventType), string(constants.ConnectionStateError), err)
+		return "", fmt.Errorf("no handler for event type %s: %w", string(eventType), err)
+	}
+
+	handler, ok := rs.actionHandlers[actionType]
+	if !ok {
+		rs.logger.Error("No handler registered for action type", "action_type", string(actionType))
+		return "", fmt.Errorf("no handler for action type %s: %w", string(actionType), constants.ErrTxUnknownActionType)
+	}
+
+	return handler(ctx, pubsubMsg)
+}
+
+// handleMcpCallRequestSync is the Actuator egress for MCP_CALL transactions:
+// it decodes the typed payload, dispatches to the configured downstream MCP
+// server via the gateway, and returns the textual result so the Actuator can
+// stamp it into the signed ActionReceipt.
+func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	gw := rs.GetMCPGateway()
+	if gw == nil {
+		return "", constants.ErrPubSubMCPGateway
+	}
+
+	req, err := unmarshalPayload(msg.EventType, msg.Payload)
+	if err != nil {
+		rs.logger.Error("Failed to unmarshal MCP call payload", string(constants.ConnectionStateError), err)
+		return "", err
+	}
+	mcpReq, ok := req.(*operatorv1.McpCallRequested)
+	if !ok {
+		return "", fmt.Errorf("invalid payload type for MCP call %T: %w", req, constants.ErrTxPayloadActionMismatch)
+	}
+	if mcpReq.ToolName == "" {
+		return "", constants.ErrPubSubMCPMissingToolName
+	}
+
+	args := json.RawMessage(mcpReq.ArgumentsJson)
+	if len(args) == 0 {
+		args = json.RawMessage("{}")
+	}
+
+	rs.logger.Info("Dispatching verified MCP call to downstream",
+		"tool", mcpReq.ToolName,
+		"transaction_id", msg.ID)
+
+	summary, err := gw.DispatchToDownstream(ctx, mcpReq.ToolName, args, msg.OperatorSessionID)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrGatewayDownstreamHTTPError, err)
+	}
+	// Bound the receipt summary on external tools to avoid unbounded growth on chatty tools.
+	// Native tools return structured JSON payloads (e.g. audit queries) and must not be truncated.
+	if mcpReq.ToolName != "read_field" && !gw.IsNativeTool(mcpReq.ToolName) && len(summary) > constants.ReceiptSummaryMaxBytes {
+		summary = summary[:constants.ReceiptSummaryMaxBytes]
+	}
+
+	return summary, nil
+}
+
+func mcpGatewayOrErr(rs *OperatorPubSubService) (*mcp.GatewayService, error) {
+	gw := rs.GetMCPGateway()
+	if gw == nil {
+		return nil, constants.ErrPubSubMCPGateway
+	}
+	return gw, nil
+}
+
+// handleMcpResourceReadSync is the Actuator egress for MCP_RESOURCE_READ.
+func (rs *OperatorPubSubService) handleMcpResourceReadSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	gw, err := mcpGatewayOrErr(rs)
+	if err != nil {
+		return "", err
+	}
+	req, err := unmarshalPayload(msg.EventType, msg.Payload)
+	if err != nil {
+		return "", err
+	}
+	mcpReq, ok := req.(*operatorv1.McpResourceReadRequested)
+	if !ok {
+		return "", fmt.Errorf("invalid payload type for MCP resource read %T: %w", req, constants.ErrTxPayloadActionMismatch)
+	}
+	if mcpReq.Uri == "" {
+		return "", constants.ErrGatewayURIRequired
+	}
+	return gw.ExecuteResourceRead(ctx, mcpReq.Uri)
+}
+
+// handleMcpPromptGetSync is the Actuator egress for MCP_PROMPT_GET.
+func (rs *OperatorPubSubService) handleMcpPromptGetSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	gw, err := mcpGatewayOrErr(rs)
+	if err != nil {
+		return "", err
+	}
+	req, err := unmarshalPayload(msg.EventType, msg.Payload)
+	if err != nil {
+		return "", err
+	}
+	mcpReq, ok := req.(*operatorv1.McpPromptGetRequested)
+	if !ok {
+		return "", fmt.Errorf("invalid payload type for MCP prompt get %T: %w", req, constants.ErrTxPayloadActionMismatch)
+	}
+	if mcpReq.Name == "" {
+		return "", constants.ErrGatewayNameRequired
+	}
+	return gw.ExecutePromptGet(ctx, mcpReq.Name)
+}
+
+// handleMcpResourceListSync is the Actuator egress for MCP_RESOURCE_LIST.
+func (rs *OperatorPubSubService) handleMcpResourceListSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	gw, err := mcpGatewayOrErr(rs)
+	if err != nil {
+		return "", err
+	}
+	if _, err := unmarshalPayload(msg.EventType, msg.Payload); err != nil {
+		return "", err
+	}
+	return gw.ExecuteResourceList(ctx)
+}
+
+// handleMcpPromptListSync is the Actuator egress for MCP_PROMPT_LIST.
+func (rs *OperatorPubSubService) handleMcpPromptListSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	gw, err := mcpGatewayOrErr(rs)
+	if err != nil {
+		return "", err
+	}
+	if _, err := unmarshalPayload(msg.EventType, msg.Payload); err != nil {
+		return "", err
+	}
+	return gw.ExecutePromptList(ctx)
+}
+
+// handleA2aCallRequestSync is the Actuator egress for A2A_CALL transactions:
+// it decodes the typed payload, dispatches to the configured downstream A2A
+// server via the gateway, and returns the textual result so the Actuator can
+// stamp it into the signed ActionReceipt.
+func (rs *OperatorPubSubService) handleA2aCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	gw := rs.GetMCPGateway()
+	if gw == nil {
+		return "", constants.ErrPubSubA2AGateway
+	}
+
+	req, err := unmarshalPayload(msg.EventType, msg.Payload)
+	if err != nil {
+		rs.logger.Error("Failed to unmarshal A2A call payload", string(constants.ConnectionStateError), err)
+		return "", err
+	}
+	a2aReq, ok := req.(*operatorv1.A2ACallRequested)
+	if !ok {
+		return "", fmt.Errorf("invalid payload type for A2A call %T: %w", req, constants.ErrTxPayloadActionMismatch)
+	}
+	if a2aReq.SkillName == "" {
+		return "", constants.ErrPubSubA2AMissingSkillName
+	}
+
+	payload := json.RawMessage(a2aReq.PayloadJson)
+	if len(payload) == 0 {
+		payload = json.RawMessage("{}")
+	}
+
+	rs.logger.Info("Dispatching verified A2A call to downstream",
+		"skill", a2aReq.SkillName,
+		"transaction_id", msg.ID)
+
+	summary, err := gw.DispatchToA2ADownstream(ctx, a2aReq.SkillName, payload)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrGatewayDownstreamHTTPError, err)
+	}
+	// Bound the receipt summary to avoid unbounded growth on chatty tools.
+	if len(summary) > constants.ReceiptSummaryMaxBytes {
+		summary = summary[:constants.ReceiptSummaryMaxBytes]
+	}
+	return summary, nil
+}
+
+// handleDocumentUpdateSync unmarshals a DocumentUpdateRequested payload from
+// the pub/sub message, converts the updates Struct to JSON, and persists the
+// document via GovernedDocumentStore. When merge is false, the document is
+// replaced (DocReplace); when merge is true, the fields are merged into the
+// existing document (DocMerge), preserving untouched fields. Fail-closed:
+// returns an error if the governed document store is missing (outbound mode),
+// if the payload fails to unmarshal, if the Struct-to-JSON conversion fails,
+// or if the document mutation fails.
+func (rs *OperatorPubSubService) handleDocumentUpdateSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if rs.governedDocStore == nil {
+		return "", constants.ErrGovernedDocStoreNotConfigured
+	}
+
+	var req operatorv1.DocumentUpdateRequested
+	if err := proto.Unmarshal(msg.Payload, &req); err != nil {
+		rs.logger.Error("Failed to unmarshal DocumentUpdateRequested", string(constants.ConnectionStateError), err)
+		return "", fmt.Errorf("pubsub: document update: unmarshal: %w", err)
+	}
+
+	if req.Collection == "" || req.DocumentId == "" {
+		rs.logger.Error("DocumentUpdateRequested missing collection or document_id",
+			"collection", req.Collection, "document_id", req.DocumentId)
+		return "", fmt.Errorf("pubsub: document update: %w", constants.ErrTxPayloadMissing)
+	}
+
+	var data json.RawMessage
+	if req.Updates != nil {
+		jsonBytes, err := protojson.Marshal(req.Updates)
+		if err != nil {
+			rs.logger.Error("Failed to convert updates Struct to JSON", string(constants.ConnectionStateError), err)
+			return "", fmt.Errorf("pubsub: document update: struct to json: %w", err)
+		}
+		data = json.RawMessage(jsonBytes)
+	} else {
+		data = json.RawMessage(`{}`)
+	}
+
+	if req.Merge {
+		if err := rs.governedDocStore.DocMerge(ctx, req.Collection, req.DocumentId, data); err != nil {
+			rs.logger.Error("Failed to merge document update",
+				string(constants.ConnectionStateError), err,
+				"collection", req.Collection, "document_id", req.DocumentId)
+			return "", fmt.Errorf("pubsub: document update: doc merge: %w", err)
+		}
+	} else {
+		if err := rs.governedDocStore.DocReplace(ctx, req.Collection, req.DocumentId, data); err != nil {
+			rs.logger.Error("Failed to persist document update",
+				string(constants.ConnectionStateError), err,
+				"collection", req.Collection, "document_id", req.DocumentId)
+			return "", fmt.Errorf("pubsub: document update: doc replace: %w", err)
+		}
+	}
+
+	rs.logger.Info("Document update persisted",
+		"collection", req.Collection, "document_id", req.DocumentId, "merge", req.Merge)
+	return fmt.Sprintf("document updated: %s/%s", req.Collection, req.DocumentId), nil
+}
+
+// handleDocumentDeleteSync unmarshals a DocumentDeleteRequested payload from
+// the pub/sub message and removes the document via GovernedDocumentStore.
+// Fail-closed: returns an error if the governed document store is missing
+// (outbound mode), if the payload fails to unmarshal, or if DocDelete fails.
+func (rs *OperatorPubSubService) handleDocumentDeleteSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if rs.governedDocStore == nil {
+		return "", constants.ErrGovernedDocStoreNotConfigured
+	}
+
+	var req operatorv1.DocumentDeleteRequested
+	if err := proto.Unmarshal(msg.Payload, &req); err != nil {
+		rs.logger.Error("Failed to unmarshal DocumentDeleteRequested", string(constants.ConnectionStateError), err)
+		return "", fmt.Errorf("pubsub: document delete: unmarshal: %w", err)
+	}
+
+	if req.Collection == "" || req.DocumentId == "" {
+		rs.logger.Error("DocumentDeleteRequested missing collection or document_id",
+			"collection", req.Collection, "document_id", req.DocumentId)
+		return "", fmt.Errorf("pubsub: document delete: %w", constants.ErrTxPayloadMissing)
+	}
+
+	if err := rs.governedDocStore.DocDelete(ctx, req.Collection, req.DocumentId); err != nil {
+		rs.logger.Error("Failed to delete document",
+			string(constants.ConnectionStateError), err,
+			"collection", req.Collection, "document_id", req.DocumentId)
+		return "", fmt.Errorf("pubsub: document delete: doc delete: %w", err)
+	}
+
+	rs.logger.Info("Document deleted",
+		"collection", req.Collection, "document_id", req.DocumentId)
+	return fmt.Sprintf("document deleted: %s/%s", req.Collection, req.DocumentId), nil
+}
+
+func (rs *OperatorPubSubService) handleShutdownRequest(msg *PubSubCommandMessage) (string, error) {
+	rs.logger.Info("Shutdown command received")
+
+	req, err := unmarshalPayload(msg.EventType, msg.Payload)
+	if err != nil {
+		return "", err
+	}
+
+	shutdownReq, ok := req.(*operatorv1.ShutdownRequested)
+	if !ok {
+		return "", fmt.Errorf("invalid payload type %T: %w", req, constants.ErrTxPayloadActionMismatch)
+	}
+
+	reason := shutdownReq.Reason
+	if reason == "" {
+		reason = "No reason provided"
+	}
+	return reason, nil
+}
+
+func (rs *OperatorPubSubService) completeShutdown(ctx context.Context, msg *PubSubCommandMessage) error {
+	if rs.results == nil {
+		return constants.ErrPubSubResultsPublisher
+	}
+	req, err := unmarshalPayload(msg.EventType, msg.Payload)
+	if err != nil {
+		return err
+	}
+	shutdownReq, ok := req.(*operatorv1.ShutdownRequested)
+	if !ok {
+		return fmt.Errorf("invalid payload type %T: %w", req, constants.ErrTxPayloadActionMismatch)
+	}
+	if err := rs.results.PublishShutdownAcknowledgement(ctx, shutdownReq, msg); err != nil {
+		return fmt.Errorf("pubsub: publish shutdown acknowledgement: %w", err)
+	}
+	reason := shutdownReq.Reason
+	if reason == "" {
+		reason = "No reason provided"
+	}
+	select {
+	case rs.ShutdownChan <- reason:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("pubsub: signal shutdown: %w", ctx.Err())
+	}
+}
+
+func (rs *OperatorPubSubService) handleEvalAnswerRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	rs.logger.Info("Eval answer request received")
+
+	req, err := unmarshalPayload(msg.EventType, msg.Payload)
+	if err != nil {
+		rs.logger.Error("Failed to unmarshal eval answer request", string(constants.ConnectionStateError), err)
+		return "", err
+	}
+
+	evalReq, ok := req.(*operatorv1.EvalAnswerRequested)
+	if !ok {
+		rs.logger.Error("Invalid payload type for eval answer request", "got", fmt.Sprintf("%T", req))
+		return "", fmt.Errorf("invalid payload type %T: %w", req, constants.ErrTxPayloadActionMismatch)
+	}
+
+	rs.logger.Info("Eval answer recorded",
+		"prompt_id", evalReq.PromptId,
+		"benchmark", evalReq.Benchmark,
+		"model", evalReq.Model,
+		"answer_length", len(evalReq.Answer))
+
+	// Truncate answer to sane bound for receipt (4 KiB per plan)
+	summary := evalReq.Answer
+	if len(summary) > constants.ReceiptSummaryMaxBytes {
+		summary = summary[:constants.ReceiptSummaryMaxBytes]
+	}
+
+	return summary, nil
+}
+
+func (rs *OperatorPubSubService) handleProviderBoundaryObservationSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if rs.providerBoundaryObserver == nil {
+		return "", fmt.Errorf("provider boundary observer handler not configured: %w", constants.ErrMissingRequiredField)
+	}
+	return rs.providerBoundaryObserver.HandleCommand(ctx, msg.ResultOrigin(), msg.Payload)
+}
+
+func (rs *OperatorPubSubService) handleModelProvenanceObservationSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if rs.modelProvenanceOperator == nil {
+		return "", fmt.Errorf("model provenance operator handler not configured: %w", constants.ErrMissingRequiredField)
+	}
+	return rs.modelProvenanceOperator.HandleCommand(ctx, msg.ResultOrigin(), msg.Payload)
+}
+
+// handleInferenceRequestSync is the Actuator egress for INFERENCE
+// transactions: it dispatches the governed inference request to the
+// configured inference execution handler (which calls the Ollama backend),
+// stamps the canonical result digest onto the InferenceResult, stores the
+// result on the command message for the post-actuation completion
+// publication, and returns the digest as the receipt summary so the signed
+// ActionReceipt binds the complete result (see operator.proto
+// InferenceResult.result_digest).
+func (rs *OperatorPubSubService) handleInferenceRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if rs.inference == nil {
+		return "", fmt.Errorf("inference handler not configured: %w", constants.ErrInferenceBackendNotRegistered)
+	}
+	var governedReq *operatorv1.InferenceRequested
+	if len(msg.Payload) > 0 {
+		governedReq = &operatorv1.InferenceRequested{}
+		if err := proto.Unmarshal(msg.Payload, governedReq); err != nil {
+			return "", fmt.Errorf("inference handler: unmarshal payload: %w", err)
+		}
+		if governedReq.GetStream() && rs.results != nil {
+			ctx = inference.WithProgressReporter(ctx, func(event *operatorv1.InferenceProgressEvent) error {
+				return rs.results.PublishInferenceProgress(ctx, msg, event)
+			})
+		}
+	}
+
+	attemptID := governedReq.GetProviderAttemptId()
+	recordAttempt := rs.inferenceAttemptStore != nil && attemptID != ""
+	failAttempt := func(cause error) {
+		if !recordAttempt {
+			return
+		}
+		if failErr := rs.inferenceAttemptStore.Fail(context.WithoutCancel(ctx), attemptID, inference.ClassifyAttemptFailure(cause)); failErr != nil {
+			rs.logger.Error("inference handler: record failed attempt", "error", failErr)
+		}
+	}
+	if recordAttempt {
+		if err := rs.inferenceAttemptStore.Begin(ctx, &operatorv1.InferenceProviderAttemptRecord{
+			ProviderAttemptId:   attemptID,
+			TransactionId:       msg.ID,
+			RetryCount:          governedReq.GetRetryCount(),
+			RetryClassification: models.ClassifyRetry(governedReq.GetRetryCount()),
+		}); err != nil {
+			return "", fmt.Errorf("inference handler: begin attempt: %w", err)
+		}
+		ctx = inference.WithAttemptStore(ctx, rs.inferenceAttemptStore)
+	}
+
+	resp, err := rs.inference.ExecuteInference(ctx, msg)
+	if err != nil {
+		failAttempt(err)
+		return "", err
+	}
+	result := resp.ToProtoInferenceResult()
+	digest, err := models.ComputeInferenceResultDigest(result)
+	if err != nil {
+		failAttempt(err)
+		return "", err
+	}
+	result.ResultDigest = digest
+	if recordAttempt {
+		if err := rs.inferenceAttemptStore.Complete(ctx, attemptID, digest); err != nil {
+			return "", fmt.Errorf("inference handler: complete attempt: %w", err)
+		}
+	}
+	msg.InferenceResult = result
+	return digest, nil
+}
+
+// publishInferenceCompletion publishes the protocol-owned InferenceCompletion
+// — the final signed ActionReceipt plus the complete InferenceResult — to
+// the operator's results channel after the L5 actuator has finalized and
+// signed the receipt, so the result and its verified receipt are a single
+// correlated outcome. A failed or rejected transaction publishes the FAILED
+// receipt with no result so the waiting Gateway dispatch terminates
+// immediately with a typed failure instead of the generic timeout.
+// Publication is best-effort: the receipt is already persisted locally; a
+// delivery failure is logged and surfaces to the waiting dispatcher as a
+// missing correlated result.
+func (rs *OperatorPubSubService) publishInferenceCompletion(ctx context.Context, env *govpkg.GovernanceEnvelope, result *operatorv1.InferenceResult, receipt *operatorv1.ActionReceipt) {
+	if rs.results == nil || env == nil || receipt == nil {
+		return
+	}
+	completion := &operatorv1.InferenceCompletion{Receipt: receipt}
+	if receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		completion.Result = result
+	}
+	if err := rs.results.PublishInferenceCompletion(ctx, env, completion); err != nil {
+		rs.logger.Error("Failed to publish inference completion to results channel",
+			string(constants.ConnectionStateError), err,
+			"message_id", env.Id)
+	}
+}
+
+// handleHeartbeatEvent processes a heartbeat event through the heartbeat service for publication.
+func (rs *OperatorPubSubService) handleHeartbeatEvent(ctx context.Context, msg *PubSubCommandMessage) {
+	var heartbeat operatorv1.HeartbeatResult
+	if err := proto.Unmarshal(msg.Payload, &heartbeat); err != nil {
+		rs.logger.Error("Failed to unmarshal heartbeat payload", "error", err)
+		return
+	}
+	if err := rs.heartbeat.Publish(ctx, &heartbeat); err != nil {
+		rs.logger.Error("Failed to publish heartbeat", "error", err)
+	}
+}
+
+// SendAutomaticHeartbeat publishes an automatic heartbeat immediately.
+func (rs *OperatorPubSubService) SendAutomaticHeartbeat() error {
+	return rs.heartbeat.SendAutomatic()
+}
+
+// pubsubAuditLogger implements mcp.AuditLogger using the SQLAuditStore so that
+// read_field tool calls produce audit records in operator mode.
+type pubsubAuditLogger struct {
+	store  AuditEventRecorder
+	logger *slog.Logger
+}
+
+// NewAuditLogger constructs an mcp.AuditLogger backed by an audit event recorder.
+func NewAuditLogger(store AuditEventRecorder, logger *slog.Logger) mcp.AuditLogger {
+	return &pubsubAuditLogger{
+		store:  store,
+		logger: logger,
+	}
+}
+
+func (l *pubsubAuditLogger) LogFieldRead(operatorSessionID, collection, documentID, fieldPath string, value mcp.FieldValue) error {
+	event := &storage.Event{
+		OperatorSessionID: operatorSessionID,
+		Timestamp:         time.Now().UTC(),
+		Type:              constants.EventOperatorFieldReadRequested,
+		ContentText:       fmt.Sprintf("%s/%s.%s", collection, documentID, fieldPath),
+		CommandStdout:     value.String(),
+	}
+	if _, err := l.store.RecordEvent(event); err != nil {
+		l.logger.Warn("Failed to record field read in audit store", "error", err,
+			"session", operatorSessionID, "collection", collection)
+		return err
+	}
+	return nil
+}
+
+// ValidateSession implements mcp.SessionValidator for operator mode.
+// In operator mode, session validation is handled by the L3Notary during
+// envelope verification, so this is a no-op that always returns true.
+func (rs *OperatorPubSubService) ValidateSession(operatorSessionID string) (bool, error) {
+	// Operator mode validates sessions via L3Notary during envelope verification
+	// This is a placeholder for the SessionValidator interface
+	return true, nil
+}
+
+// blockedSummary returns the ResultSummary of a blocked transaction. The rejection text is scrubbed
+// when a scrubber is active; otherwise the summary is fixed text, never the raw error.
+func (rs *OperatorPubSubService) blockedSummary(rejectionReason error) string {
+	if rejectionReason == nil || rs.scrubbing == nil || !rs.scrubbing.IsEnabled() {
+		return "blocked"
+	}
+	return "blocked: " + rs.scrubbing.ScrubText(rejectionReason.Error())
+}
+
+// logBlockedTransaction records a blocked/rejected transaction using the ActionReceiptRecord schema.
+// This ensures consistency with accepted/failed Actuator receipts - all transaction outcomes use the same canonical schema.
+func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env *govpkg.GovernanceEnvelope, rejectionReason error) {
+	if rs.audit == nil || rs.audit.auditStore == nil {
+		return
+	}
+	// The envelope's operator and session ids are unverified claims; the record is
+	// filed under the identity this runtime owns.
+	if rs.identity == nil {
+		rs.logger.Error("Failed to record blocked transaction: no runtime identity", string(constants.ConnectionStateError), constants.ErrL5ActuatorRuntimeIdentityMissing, "message_id", env.Id)
+		return
+	}
+	identity, err := rs.identity.RuntimeIdentity(ctx)
+	if err != nil {
+		rs.logger.Error("Failed to record blocked transaction: runtime identity unavailable", string(constants.ConnectionStateError), err, "message_id", env.Id)
+		return
+	}
+
+	// Create ActionReceiptRecord with BLOCKED status for canonical audit trail
+	record := models.ActionReceiptRecord{
+		TransactionID:     env.Id,
+		TransactionHash:   env.TransactionHash,
+		OperatorID:        identity.OperatorID,
+		OperatorSessionID: identity.SessionID,
+		ActionType:        constants.ActionType(env.ActionType),
+		TargetResource:    env.TargetResource,
+		Status:            operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		ResultSummary:     rs.blockedSummary(rejectionReason),
+		StateRootBefore:   "", // Not available for blocked transactions
+		StateRootAfter:    "", // Not available for blocked transactions
+		ExecutedAt:        time.Now().UTC(),
+		SignerKeyID:       "", // No Actuator signature for blocked transactions
+		Signature:         "", // No signature for blocked transactions
+		Timestamp:         time.Now().UTC(),
+	}
+
+	// Log to audit store using canonical RecordActionReceipt for unified query experience
+	if err := rs.audit.auditStore.RecordActionReceipt(&record); err != nil {
+		rs.logger.Error("Failed to record blocked transaction in audit store", string(constants.ConnectionStateError), err, "message_id", env.Id)
+	}
+}
+func (m *PubSubCommandMessage) GetPayload() []byte {
+	return []byte(m.Payload)
+}
+
+func (m *PubSubCommandMessage) SetPayload(p []byte) {
+	m.Payload = p
+}
+
+// InferenceResultDigest implements governance.CommandMessage. It returns the canonical result
+// digest handleInferenceRequestSync stamped on InferenceResult, or "" when none was produced.
+func (m *PubSubCommandMessage) InferenceResultDigest() string {
+	if m == nil || m.InferenceResult == nil {
+		return ""
+	}
+	return m.InferenceResult.GetResultDigest()
+}
+
+// ResultOrigin preserves request identity when a witness completion is published.
+func (msg *PubSubCommandMessage) ResultOrigin() *govpkg.GovernanceEnvelope {
+	origin := &govpkg.GovernanceEnvelope{Id: msg.ID, OperatorSessionId: msg.OperatorSessionID, CaseId: msg.CaseID, InvestigationId: msg.InvestigationID, WebSessionId: msg.WebSessionID, CliSessionId: msg.CLISessionID}
+	if msg.OperatorID != nil {
+		origin.OperatorId = *msg.OperatorID
+	}
+	if msg.TaskID != nil {
+		origin.TaskId = *msg.TaskID
+	}
+	return origin
+}

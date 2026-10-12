@@ -1,0 +1,4292 @@
+definitions:
+  constants.ActionType:
+    enum:
+    - A2A_CALL
+    - CANCEL
+    - DOCUMENT_DELETE
+    - DOCUMENT_UPDATE
+    - EVAL_ANSWER
+    - EXECUTE_BASH
+    - FETCH_FILE_DIFF
+    - FETCH_FILE_HISTORY
+    - FETCH_HISTORY
+    - FETCH_LOGS
+    - FILE_EDIT
+    - FS_GREP
+    - FS_LIST
+    - FS_READ
+    - HEARTBEAT
+    - INFERENCE
+    - MCP_CALL
+    - MCP_PROMPT_GET
+    - MCP_PROMPT_LIST
+    - MCP_RESOURCE_LIST
+    - MCP_RESOURCE_READ
+    - MODEL_PROVENANCE_OBSERVATION
+    - OLLAMA_MODEL_INVENTORY
+    - OLLAMA_MODEL_RESIDENCY
+    - PLATFORM_ENROLLMENT_CREATE
+    - PLATFORM_ENROLLMENT_CREATE_SESSION
+    - PLATFORM_ENROLLMENT_DECIDE
+    - PLATFORM_ENROLLMENT_ISSUE
+    - PLATFORM_ENROLLMENT_PERSIST_POLICY
+    - PLATFORM_ENROLLMENT_REVOKE
+    - PORT_CHECK
+    - PROVIDER_BOUNDARY_OBSERVATION
+    - RESTORE_FILE
+    - SHUTDOWN
+    type: string
+    x-enum-varnames:
+    - ActionTypeA2aCall
+    - ActionTypeCancel
+    - ActionTypeDocumentDelete
+    - ActionTypeDocumentUpdate
+    - ActionTypeEvalAnswer
+    - ActionTypeExecuteBash
+    - ActionTypeFetchFileDiff
+    - ActionTypeFetchFileHistory
+    - ActionTypeFetchHistory
+    - ActionTypeFetchLogs
+    - ActionTypeFileEdit
+    - ActionTypeFsGrep
+    - ActionTypeFsList
+    - ActionTypeFsRead
+    - ActionTypeHeartbeat
+    - ActionTypeInference
+    - ActionTypeMcpCall
+    - ActionTypeMcpPromptGet
+    - ActionTypeMcpPromptList
+    - ActionTypeMcpResourceList
+    - ActionTypeMcpResourceRead
+    - ActionTypeModelProvenanceObservation
+    - ActionTypeOllamaModelInventory
+    - ActionTypeOllamaModelResidency
+    - ActionTypePlatformEnrollmentCreate
+    - ActionTypePlatformEnrollmentCreateSession
+    - ActionTypePlatformEnrollmentDecide
+    - ActionTypePlatformEnrollmentIssue
+    - ActionTypePlatformEnrollmentPersistPolicy
+    - ActionTypePlatformEnrollmentRevoke
+    - ActionTypePortCheck
+    - ActionTypeProviderBoundaryObservation
+    - ActionTypeRestoreFile
+    - ActionTypeShutdown
+  constants.EventType:
+    enum:
+    - ztd.v1.ai.eval.assignment.completed
+    - ztd.v1.ai.eval.assignment.started
+    - ztd.v1.ai.eval.cycle.completed
+    - ztd.v1.ai.eval.cycle.started
+    - ztd.v1.ai.eval.heartbeat
+    - ztd.v1.ai.eval.metric.available
+    - ztd.v1.ai.eval.model_role.invoked
+    - ztd.v1.ai.eval.proof.available
+    - ztd.v1.ai.eval.publication.completed
+    - ztd.v1.ai.eval.stop.requested
+    - ztd.v1.ai.eval.verifier.completed
+    - ztd.v1.ai.llm.chat.filter.updated
+    - ztd.v1.app.agent.status.updated
+    - ztd.v1.app.case.created
+    - ztd.v1.app.case.deleted
+    - ztd.v1.app.case.updated
+    - ztd.v1.app.document.delete.requested
+    - ztd.v1.app.document.update.requested
+    - ztd.v1.app.investigation.created
+    - ztd.v1.app.investigation.updated
+    - ztd.v1.app.run.status.updated
+    - ztd.v1.app.task.completed
+    - ztd.v1.inference.model.provenance.preflight.updated
+    - ztd.v1.operator.a2a.call.requested
+    - ztd.v1.operator.audit.ai.record.requested
+    - ztd.v1.operator.audit.ai.recorded
+    - ztd.v1.operator.audit.command.record.requested
+    - ztd.v1.operator.audit.command.recorded
+    - ztd.v1.operator.audit.direct.command.record.requested
+    - ztd.v1.operator.audit.direct.command.recorded
+    - ztd.v1.operator.audit.direct.command.result.record.requested
+    - ztd.v1.operator.audit.direct.command.result.recorded
+    - ztd.v1.operator.audit.mcp.call.record.requested
+    - ztd.v1.operator.audit.mcp.call.recorded
+    - ztd.v1.operator.audit.user.record.requested
+    - ztd.v1.operator.audit.user.recorded
+    - ztd.v1.operator.bootstrap.completed
+    - ztd.v1.operator.bootstrap.config.received
+    - ztd.v1.operator.bootstrap.failed
+    - ztd.v1.operator.bootstrap.received
+    - ztd.v1.operator.bootstrap.requested
+    - ztd.v1.operator.bound
+    - ztd.v1.operator.command.approval.granted
+    - ztd.v1.operator.command.approval.preparing
+    - ztd.v1.operator.command.approval.rejected
+    - ztd.v1.operator.command.approval.requested
+    - ztd.v1.operator.command.cancel.acknowledged
+    - ztd.v1.operator.command.cancel.failed
+    - ztd.v1.operator.command.cancel.requested
+    - ztd.v1.operator.command.cancelled
+    - ztd.v1.operator.command.completed
+    - ztd.v1.operator.command.execution.started
+    - ztd.v1.operator.command.failed
+    - ztd.v1.operator.command.output.received
+    - ztd.v1.operator.command.requested
+    - ztd.v1.operator.command.result.completed
+    - ztd.v1.operator.command.started
+    - ztd.v1.operator.command.status.updated.cancelled
+    - ztd.v1.operator.command.status.updated.completed
+    - ztd.v1.operator.command.status.updated.failed
+    - ztd.v1.operator.command.status.updated.queued
+    - ztd.v1.operator.command.status.updated.running
+    - ztd.v1.operator.context.changed
+    - ztd.v1.operator.device.registered
+    - ztd.v1.operator.eval.answer.requested
+    - ztd.v1.operator.field.read.access.denied
+    - ztd.v1.operator.field.read.access.granted
+    - ztd.v1.operator.field.read.requested
+    - ztd.v1.operator.file.diff.fetch.completed
+    - ztd.v1.operator.file.diff.fetch.failed
+    - ztd.v1.operator.file.diff.fetch.received
+    - ztd.v1.operator.file.diff.fetch.requested
+    - ztd.v1.operator.file.diff.fetch.started
+    - ztd.v1.operator.file.edit.approval.feedback
+    - ztd.v1.operator.file.edit.approval.granted
+    - ztd.v1.operator.file.edit.approval.rejected
+    - ztd.v1.operator.file.edit.approval.requested
+    - ztd.v1.operator.file.edit.completed
+    - ztd.v1.operator.file.edit.failed
+    - ztd.v1.operator.file.edit.requested
+    - ztd.v1.operator.file.edit.started
+    - ztd.v1.operator.file.edit.timeout
+    - ztd.v1.operator.file.history.fetch.completed
+    - ztd.v1.operator.file.history.fetch.failed
+    - ztd.v1.operator.file.history.fetch.received
+    - ztd.v1.operator.file.history.fetch.requested
+    - ztd.v1.operator.file.history.fetch.started
+    - ztd.v1.operator.file.restore.completed
+    - ztd.v1.operator.file.restore.failed
+    - ztd.v1.operator.file.restore.received
+    - ztd.v1.operator.file.restore.requested
+    - ztd.v1.operator.filesystem.grep.completed
+    - ztd.v1.operator.filesystem.grep.failed
+    - ztd.v1.operator.filesystem.grep.received
+    - ztd.v1.operator.filesystem.grep.requested
+    - ztd.v1.operator.filesystem.grep.started
+    - ztd.v1.operator.filesystem.list.completed
+    - ztd.v1.operator.filesystem.list.failed
+    - ztd.v1.operator.filesystem.list.received
+    - ztd.v1.operator.filesystem.list.requested
+    - ztd.v1.operator.filesystem.list.started
+    - ztd.v1.operator.filesystem.read.completed
+    - ztd.v1.operator.filesystem.read.failed
+    - ztd.v1.operator.filesystem.read.received
+    - ztd.v1.operator.filesystem.read.requested
+    - ztd.v1.operator.filesystem.read.started
+    - ztd.v1.operator.heartbeat.missed
+    - ztd.v1.operator.heartbeat.received
+    - ztd.v1.operator.heartbeat.requested
+    - ztd.v1.operator.heartbeat.sent
+    - ztd.v1.operator.history.fetch.completed
+    - ztd.v1.operator.history.fetch.failed
+    - ztd.v1.operator.history.fetch.received
+    - ztd.v1.operator.history.fetch.requested
+    - ztd.v1.operator.inference.completed
+    - ztd.v1.operator.inference.failed
+    - ztd.v1.operator.inference.progress.updated
+    - ztd.v1.operator.inference.requested
+    - ztd.v1.operator.intent.approval.granted
+    - ztd.v1.operator.intent.approval.rejected
+    - ztd.v1.operator.intent.approval.requested
+    - ztd.v1.operator.intent.denied
+    - ztd.v1.operator.intent.granted
+    - ztd.v1.operator.intent.requested
+    - ztd.v1.operator.intent.revoke.requested
+    - ztd.v1.operator.intent.revoked
+    - ztd.v1.operator.logs.fetch.completed
+    - ztd.v1.operator.logs.fetch.failed
+    - ztd.v1.operator.logs.fetch.received
+    - ztd.v1.operator.logs.fetch.requested
+    - ztd.v1.operator.mcp.call.requested
+    - ztd.v1.operator.mcp.prompt.get.requested
+    - ztd.v1.operator.mcp.prompt.list.requested
+    - ztd.v1.operator.mcp.resource.list.requested
+    - ztd.v1.operator.mcp.resource.read.requested
+    - ztd.v1.operator.model.provenance.observation.completed
+    - ztd.v1.operator.model.provenance.observation.requested
+    - ztd.v1.operator.network.ping.completed
+    - ztd.v1.operator.network.ping.failed
+    - ztd.v1.operator.network.ping.received
+    - ztd.v1.operator.network.ping.requested
+    - ztd.v1.operator.network.port.check.completed
+    - ztd.v1.operator.network.port.check.failed
+    - ztd.v1.operator.network.port.check.received
+    - ztd.v1.operator.network.port.check.requested
+    - ztd.v1.operator.network.port.check.started
+    - ztd.v1.operator.notary.approval.requested
+    - ztd.v1.operator.notary.transaction.expired
+    - ztd.v1.operator.ollama.model.inventory.completed
+    - ztd.v1.operator.ollama.model.inventory.failed
+    - ztd.v1.operator.ollama.model.inventory.requested
+    - ztd.v1.operator.ollama.model.residency.completed
+    - ztd.v1.operator.ollama.model.residency.failed
+    - ztd.v1.operator.ollama.model.residency.requested
+    - ztd.v1.operator.panel.list.updated
+    - ztd.v1.operator.provider.boundary.observation.completed
+    - ztd.v1.operator.provider.boundary.observation.requested
+    - ztd.v1.operator.receipt.recorded
+    - ztd.v1.operator.reputation.commitment.created
+    - ztd.v1.operator.reputation.commitment.failed
+    - ztd.v1.operator.reputation.commitment.verified
+    - ztd.v1.operator.reputation.slash.tier1
+    - ztd.v1.operator.reputation.slash.tier2
+    - ztd.v1.operator.reputation.slash.tier3
+    - ztd.v1.operator.reputation.stake.resolution.created
+    - ztd.v1.operator.reputation.state.update.requested
+    - ztd.v1.operator.reputation.state.updated
+    - ztd.v1.operator.shutdown.acknowledged
+    - ztd.v1.operator.shutdown.requested
+    - ztd.v1.operator.slot.initialization.failed
+    - ztd.v1.operator.status.updated.active
+    - ztd.v1.operator.status.updated.available
+    - ztd.v1.operator.status.updated.bound
+    - ztd.v1.operator.status.updated.offline
+    - ztd.v1.operator.status.updated.stale
+    - ztd.v1.operator.status.updated.stopped
+    - ztd.v1.operator.status.updated.terminated
+    - ztd.v1.operator.status.updated.unavailable
+    - ztd.v1.operator.terminal.approval.denied
+    - ztd.v1.operator.terminal.auth.state.changed
+    - ztd.v1.operator.unbound
+    - ztd.v1.platform.approvals.changed
+    - ztd.v1.platform.audit.chain.checkpointed
+    - ztd.v1.platform.auth.info.updated
+    - ztd.v1.platform.auth.login.failed
+    - ztd.v1.platform.auth.login.requested
+    - ztd.v1.platform.auth.login.succeeded
+    - ztd.v1.platform.auth.logout.failed
+    - ztd.v1.platform.auth.logout.requested
+    - ztd.v1.platform.auth.logout.succeeded
+    - ztd.v1.platform.auth.session.expired
+    - ztd.v1.platform.auth.session.validation.failed
+    - ztd.v1.platform.auth.session.validation.requested
+    - ztd.v1.platform.auth.session.validation.succeeded
+    - ztd.v1.platform.auth.user.authenticated
+    - ztd.v1.platform.auth.user.unauthenticated
+    - ztd.v1.platform.console.log.connected.confirmed
+    - ztd.v1.platform.console.log.entry.received
+    - ztd.v1.platform.enrollment.create.requested
+    - ztd.v1.platform.enrollment.create_session.requested
+    - ztd.v1.platform.enrollment.decide.requested
+    - ztd.v1.platform.enrollment.issue.requested
+    - ztd.v1.platform.enrollment.persist_policy.requested
+    - ztd.v1.platform.enrollment.revoke.requested
+    - ztd.v1.platform.external.service.configured
+    - ztd.v1.platform.notification.sent
+    - ztd.v1.platform.sse.connection.closed
+    - ztd.v1.platform.sse.connection.error
+    - ztd.v1.platform.sse.connection.established
+    - ztd.v1.platform.sse.connection.failed
+    - ztd.v1.platform.sse.connection.opened
+    - ztd.v1.platform.sse.keepalive.sent
+    - ztd.v1.platform.telemetry.audit.logged
+    - ztd.v1.platform.telemetry.error.logged
+    - ztd.v1.platform.telemetry.health.reported
+    - ztd.v1.platform.telemetry.performance.recorded
+    - ztd.v1.platform.usage.updated
+    - ztd.v1.public.feed.batch.acknowledged
+    - ztd.v1.public.feed.batch.exported
+    - ztd.v1.public.feed.key.rotated
+    - ztd.v1.public.feed.proof.published
+    type: string
+    x-enum-varnames:
+    - EventAiEvalAssignmentCompleted
+    - EventAiEvalAssignmentStarted
+    - EventAiEvalCycleCompleted
+    - EventAiEvalCycleStarted
+    - EventAiEvalHeartbeat
+    - EventAiEvalMetricAvailable
+    - EventAiEvalModelRoleInvoked
+    - EventAiEvalProofAvailable
+    - EventAiEvalPublicationCompleted
+    - EventAiEvalStopRequested
+    - EventAiEvalVerifierCompleted
+    - EventAiLLMChatFilterEvent
+    - EventAppAgentStatusUpdated
+    - EventAppCaseCreated
+    - EventAppCaseDeleted
+    - EventAppCaseUpdated
+    - EventAppDocumentDeleteRequested
+    - EventAppDocumentUpdateRequested
+    - EventAppInvestigationCreated
+    - EventAppInvestigationUpdated
+    - EventAppRunStatusUpdated
+    - EventAppTaskCompleted
+    - EventModelProvenancePreflightProgress
+    - EventOperatorA2aCallRequested
+    - EventOperatorAuditAiRecordRequested
+    - EventOperatorAuditAiRecorded
+    - EventOperatorAuditCommandRecordRequested
+    - EventOperatorAuditCommandRecorded
+    - EventOperatorAuditDirectCommandRecordRequested
+    - EventOperatorAuditDirectCommandRecorded
+    - EventOperatorAuditDirectCommandResultRecordRequested
+    - EventOperatorAuditDirectCommandResultRecorded
+    - EventOperatorAuditMcpCallRecordRequested
+    - EventOperatorAuditMcpCallRecorded
+    - EventOperatorAuditUserRecordRequested
+    - EventOperatorAuditUserRecorded
+    - EventOperatorBootstrapCompleted
+    - EventOperatorBootstrapConfigReceived
+    - EventOperatorBootstrapFailed
+    - EventOperatorBootstrapReceived
+    - EventOperatorBootstrapRequested
+    - EventOperatorBound
+    - EventOperatorCommandApprovalGranted
+    - EventOperatorCommandApprovalPreparing
+    - EventOperatorCommandApprovalRejected
+    - EventOperatorCommandApprovalRequested
+    - EventOperatorCommandCancelAcknowledged
+    - EventOperatorCommandCancelFailed
+    - EventOperatorCommandCancelRequested
+    - EventOperatorCommandCancelled
+    - EventOperatorCommandCompleted
+    - EventOperatorCommandExecution
+    - EventOperatorCommandFailed
+    - EventOperatorCommandOutputReceived
+    - EventOperatorCommandRequested
+    - EventOperatorCommandResult
+    - EventOperatorCommandStarted
+    - EventOperatorCommandStatusUpdatedCancelled
+    - EventOperatorCommandStatusUpdatedCompleted
+    - EventOperatorCommandStatusUpdatedFailed
+    - EventOperatorCommandStatusUpdatedQueued
+    - EventOperatorCommandStatusUpdatedRunning
+    - EventOperatorContextChanged
+    - EventOperatorDeviceRegistered
+    - EventOperatorEvalAnswerRequested
+    - EventOperatorFieldReadAccessDenied
+    - EventOperatorFieldReadAccessGranted
+    - EventOperatorFieldReadRequested
+    - EventOperatorFileDiffFetchCompleted
+    - EventOperatorFileDiffFetchFailed
+    - EventOperatorFileDiffFetchReceived
+    - EventOperatorFileDiffFetchRequested
+    - EventOperatorFileDiffFetchStarted
+    - EventOperatorFileEditApprovalFeedback
+    - EventOperatorFileEditApprovalGranted
+    - EventOperatorFileEditApprovalRejected
+    - EventOperatorFileEditApprovalRequested
+    - EventOperatorFileEditCompleted
+    - EventOperatorFileEditFailed
+    - EventOperatorFileEditRequested
+    - EventOperatorFileEditStarted
+    - EventOperatorFileEditTimeout
+    - EventOperatorFileHistoryFetchCompleted
+    - EventOperatorFileHistoryFetchFailed
+    - EventOperatorFileHistoryFetchReceived
+    - EventOperatorFileHistoryFetchRequested
+    - EventOperatorFileHistoryFetchStarted
+    - EventOperatorFileRestoreCompleted
+    - EventOperatorFileRestoreFailed
+    - EventOperatorFileRestoreReceived
+    - EventOperatorFileRestoreRequested
+    - EventOperatorFilesystemGrepCompleted
+    - EventOperatorFilesystemGrepFailed
+    - EventOperatorFilesystemGrepReceived
+    - EventOperatorFilesystemGrepRequested
+    - EventOperatorFilesystemGrepStarted
+    - EventOperatorFilesystemListCompleted
+    - EventOperatorFilesystemListFailed
+    - EventOperatorFilesystemListReceived
+    - EventOperatorFilesystemListRequested
+    - EventOperatorFilesystemListStarted
+    - EventOperatorFilesystemReadCompleted
+    - EventOperatorFilesystemReadFailed
+    - EventOperatorFilesystemReadReceived
+    - EventOperatorFilesystemReadRequested
+    - EventOperatorFilesystemReadStarted
+    - EventOperatorHeartbeatMissed
+    - EventOperatorHeartbeatReceived
+    - EventOperatorHeartbeatRequested
+    - EventOperatorHeartbeatSent
+    - EventOperatorHistoryFetchCompleted
+    - EventOperatorHistoryFetchFailed
+    - EventOperatorHistoryFetchReceived
+    - EventOperatorHistoryFetchRequested
+    - EventOperatorInferenceCompleted
+    - EventOperatorInferenceFailed
+    - EventOperatorInferenceProgressUpdated
+    - EventOperatorInferenceRequested
+    - EventOperatorIntentApprovalGranted
+    - EventOperatorIntentApprovalRejected
+    - EventOperatorIntentApprovalRequested
+    - EventOperatorIntentDenied
+    - EventOperatorIntentGranted
+    - EventOperatorIntentRequested
+    - EventOperatorIntentRevokeRequested
+    - EventOperatorIntentRevoked
+    - EventOperatorLogsFetchCompleted
+    - EventOperatorLogsFetchFailed
+    - EventOperatorLogsFetchReceived
+    - EventOperatorLogsFetchRequested
+    - EventOperatorMcpCallRequested
+    - EventOperatorMcpPromptGetRequested
+    - EventOperatorMcpPromptListRequested
+    - EventOperatorMcpResourceListRequested
+    - EventOperatorMcpResourceReadRequested
+    - EventOperatorModelProvenanceObservationCompleted
+    - EventOperatorModelProvenanceObservationRequested
+    - EventOperatorNetworkPingCompleted
+    - EventOperatorNetworkPingFailed
+    - EventOperatorNetworkPingReceived
+    - EventOperatorNetworkPingRequested
+    - EventOperatorNetworkPortCheckCompleted
+    - EventOperatorNetworkPortCheckFailed
+    - EventOperatorNetworkPortCheckReceived
+    - EventOperatorNetworkPortCheckRequested
+    - EventOperatorNetworkPortCheckStarted
+    - EventOperatorNotaryApprovalRequested
+    - EventOperatorNotaryTransactionExpired
+    - EventOperatorOllamaModelInventoryCompleted
+    - EventOperatorOllamaModelInventoryFailed
+    - EventOperatorOllamaModelInventoryRequested
+    - EventOperatorOllamaModelResidencyCompleted
+    - EventOperatorOllamaModelResidencyFailed
+    - EventOperatorOllamaModelResidencyRequested
+    - EventOperatorPanelListUpdated
+    - EventOperatorProviderBoundaryObservationCompleted
+    - EventOperatorProviderBoundaryObservationRequested
+    - EventOperatorReceiptRecorded
+    - EventOperatorReputationCommitmentCreated
+    - EventOperatorReputationCommitmentFailed
+    - EventOperatorReputationCommitmentVerified
+    - EventOperatorReputationSlashTier1
+    - EventOperatorReputationSlashTier2
+    - EventOperatorReputationSlashTier3
+    - EventOperatorReputationStakeResolutionCreated
+    - EventOperatorReputationStateUpdateRequested
+    - EventOperatorReputationStateUpdated
+    - EventOperatorShutdownAcknowledged
+    - EventOperatorShutdownRequested
+    - EventOperatorSlotInitializationFailed
+    - EventOperatorStatusUpdatedActive
+    - EventOperatorStatusUpdatedAvailable
+    - EventOperatorStatusUpdatedBound
+    - EventOperatorStatusUpdatedOffline
+    - EventOperatorStatusUpdatedStale
+    - EventOperatorStatusUpdatedStopped
+    - EventOperatorStatusUpdatedTerminated
+    - EventOperatorStatusUpdatedUnavailable
+    - EventOperatorTerminalApprovalDenied
+    - EventOperatorTerminalAuthStateChanged
+    - EventOperatorUnbound
+    - EventPlatformApprovalsChanged
+    - EventPlatformAuditChainCheckpointed
+    - EventPlatformAuthInfo
+    - EventPlatformAuthLoginFailed
+    - EventPlatformAuthLoginRequested
+    - EventPlatformAuthLoginSucceeded
+    - EventPlatformAuthLogoutFailed
+    - EventPlatformAuthLogoutRequested
+    - EventPlatformAuthLogoutSucceeded
+    - EventPlatformAuthSessionExpired
+    - EventPlatformAuthSessionValidationFailed
+    - EventPlatformAuthSessionValidationRequested
+    - EventPlatformAuthSessionValidationSucceeded
+    - EventPlatformAuthUserAuthenticated
+    - EventPlatformAuthUserUnauthenticated
+    - EventPlatformConsoleLogConnectedConfirmed
+    - EventPlatformConsoleLogEntryReceived
+    - EventPlatformEnrollmentCreateRequested
+    - EventPlatformEnrollmentCreateSessionRequested
+    - EventPlatformEnrollmentDecideRequested
+    - EventPlatformEnrollmentIssueRequested
+    - EventPlatformEnrollmentPersistPolicyRequested
+    - EventPlatformEnrollmentRevokeRequested
+    - EventPlatformExternalServiceConfigured
+    - EventPlatformNotification
+    - EventPlatformSseConnectionClosed
+    - EventPlatformSseConnectionError
+    - EventPlatformSseConnectionEstablished
+    - EventPlatformSseConnectionFailed
+    - EventPlatformSseConnectionOpened
+    - EventPlatformSseKeepaliveSent
+    - EventPlatformTelemetryAuditLogged
+    - EventPlatformTelemetryErrorLogged
+    - EventPlatformTelemetryHealthReported
+    - EventPlatformTelemetryPerformanceRecorded
+    - EventPlatformUsageUpdated
+    - EventPublicFeedBatchAcknowledged
+    - EventPublicFeedBatchExported
+    - EventPublicFeedKeyRotated
+    - EventPublicFeedProofPublished
+  constants.GatewayMode:
+    enum:
+    - gateway
+    - ok
+    type: string
+    x-enum-varnames:
+    - GatewayModeGateway
+    - GatewayModeStatusOK
+  constants.UserStatus:
+    enum:
+    - active
+    - disabled
+    type: string
+    x-enum-varnames:
+    - UserStatusActive
+    - UserStatusDisabled
+  models.ActionReceiptRecord:
+    properties:
+      acting_app_id:
+        type: string
+      action_receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
+      action_type:
+        $ref: '#/definitions/constants.ActionType'
+      event_type:
+        $ref: '#/definitions/constants.EventType'
+      executed_at:
+        type: string
+      investigation_id:
+        type: string
+      l2_valid:
+        type: boolean
+      l3_valid:
+        type: boolean
+      operator_id:
+        type: string
+      operator_session_id:
+        type: string
+      requestor_user_id:
+        type: string
+      result_summary:
+        type: string
+      signature:
+        type: string
+      signer_key_id:
+        type: string
+      state_root_after:
+        type: string
+      state_root_before:
+        type: string
+      status:
+        $ref: '#/definitions/operatorv1.ExecutionStatus'
+      target_resource:
+        type: string
+      timestamp:
+        type: string
+      transaction_hash:
+        type: string
+      transaction_id:
+        type: string
+    type: object
+  models.AgentLifecycleStatus:
+    enum:
+    - idle
+    - queued
+    - running
+    - waiting
+    - completed
+    - failed
+    - offline
+    type: string
+    x-enum-varnames:
+    - AgentLifecycleStatusIdle
+    - AgentLifecycleStatusQueued
+    - AgentLifecycleStatusRunning
+    - AgentLifecycleStatusWaiting
+    - AgentLifecycleStatusCompleted
+    - AgentLifecycleStatusFailed
+    - AgentLifecycleStatusOffline
+  models.AgentStateProjection:
+    properties:
+      agent_id:
+        type: string
+      display_name:
+        type: string
+      freshness:
+        $ref: '#/definitions/models.SnapshotFreshness'
+      model:
+        type: string
+      observed_at:
+        type: string
+      role:
+        type: string
+      run_id:
+        type: string
+      schema_version:
+        type: string
+      status:
+        $ref: '#/definitions/models.AgentLifecycleStatus'
+      task_id:
+        type: string
+      throughput:
+        $ref: '#/definitions/models.ObservedMeasurement'
+    type: object
+  models.ApprovalRespondRequest:
+    properties:
+      approval_id:
+        type: string
+      approved:
+        type: boolean
+      reason:
+        type: string
+    type: object
+  models.ApprovalRespondResponse:
+    properties:
+      approval_id:
+        type: string
+      approved:
+        type: boolean
+      success:
+        type: boolean
+    type: object
+  models.AuditReceiptsResponse:
+    properties:
+      receipts:
+        items:
+          $ref: '#/definitions/models.ActionReceiptRecord'
+        type: array
+      success:
+        type: boolean
+    type: object
+  models.Authenticator:
+    properties:
+      aaguid:
+        items:
+          type: integer
+        type: array
+      clone_warning:
+        type: boolean
+      sign_count:
+        type: integer
+    type: object
+  models.CampaignFreshness:
+    enum:
+    - active
+    - delayed
+    - stale
+    - intentionally_stopped
+    - safety_stopped
+    - source_offline
+    type: string
+    x-enum-varnames:
+    - CampaignFreshnessActive
+    - CampaignFreshnessDelayed
+    - CampaignFreshnessStale
+    - CampaignFreshnessIntentionallyStopped
+    - CampaignFreshnessSafetyStopped
+    - CampaignFreshnessSourceOffline
+  models.DownloadArtifact:
+    properties:
+      artifact_id:
+        type: string
+      byte_size:
+        type: integer
+      download_url:
+        type: string
+      filename:
+        type: string
+      generated_at:
+        type: string
+      media_type:
+        type: string
+      privacy_classification:
+        $ref: '#/definitions/models.DownloadPrivacyClassification'
+      schema_version:
+        type: string
+      sha256:
+        type: string
+      source_run_id:
+        type: string
+    type: object
+  models.DownloadPrivacyClassification:
+    enum:
+    - public_safe
+    - restricted
+    type: string
+    x-enum-varnames:
+    - DownloadPrivacyPublicSafe
+    - DownloadPrivacyRestricted
+  models.EvalDetail:
+    properties:
+      arm_ids:
+        items:
+          type: string
+        type: array
+      artifact_digest:
+        type: string
+      assigned_tasks:
+        type: integer
+      assistant_variant_id:
+        type: string
+      backend_name:
+        type: string
+      benchmark_population:
+        type: integer
+      campaign_id:
+        type: string
+      completed_at:
+        type: string
+      environment_class:
+        type: string
+      lite_variant_id:
+        type: string
+      metrics:
+        items:
+          $ref: '#/definitions/models.EvalMetricSummary'
+        type: array
+      model_cohort_ids:
+        items:
+          type: string
+        type: array
+      observed_at:
+        type: string
+      primary_variant_id:
+        type: string
+      proof_links:
+        items:
+          $ref: '#/definitions/models.EvidenceSafeLink'
+        type: array
+      published_projection_sha256:
+        type: string
+      qualification_count:
+        type: integer
+      quantization:
+        type: string
+      receipt_count:
+        type: integer
+      repetition_count:
+        type: integer
+      role_combination_id:
+        type: string
+      run_id:
+        type: string
+      schema_version:
+        type: string
+      status:
+        $ref: '#/definitions/models.RunLifecycleStatus'
+      suite_id:
+        type: string
+      suite_version:
+        type: string
+      superseded_count:
+        type: integer
+      terminal_attempts:
+        type: integer
+      unavailable_count:
+        type: integer
+      verification_status:
+        $ref: '#/definitions/models.EvalVerificationStatus'
+    type: object
+  models.EvalMetricSummary:
+    properties:
+      arm_id:
+        type: string
+      denominator:
+        type: integer
+      eligible:
+        type: integer
+      metric_id:
+        type: string
+      metric_version:
+        type: string
+      model_cohort_id:
+        type: string
+      recorded_at:
+        type: string
+      schema_version:
+        type: string
+      unit:
+        type: string
+      value:
+        type: number
+      verification_status:
+        $ref: '#/definitions/models.EvalVerificationStatus'
+    type: object
+  models.EvalSummary:
+    properties:
+      arm_ids:
+        items:
+          type: string
+        type: array
+      campaign_id:
+        type: string
+      completed_at:
+        type: string
+      metric_count:
+        type: integer
+      model_cohort_ids:
+        items:
+          type: string
+        type: array
+      observed_at:
+        type: string
+      published_projection_sha256:
+        type: string
+      receipt_count:
+        type: integer
+      run_id:
+        type: string
+      schema_version:
+        type: string
+      status:
+        $ref: '#/definitions/models.RunLifecycleStatus'
+      suite_id:
+        type: string
+      suite_version:
+        type: string
+      verification_status:
+        $ref: '#/definitions/models.EvalVerificationStatus'
+    type: object
+  models.EvalVerificationStatus:
+    enum:
+    - projection_validated
+    - receipt_verification_not_applicable
+    - verified
+    type: string
+    x-enum-varnames:
+    - EvalVerificationProjectionValidated
+    - EvalVerificationReceiptVerificationNotApplicable
+    - EvalVerificationVerified
+  models.EvidenceSafeLink:
+    properties:
+      artifact_id:
+        type: string
+      label:
+        type: string
+      media_type:
+        type: string
+      schema_version:
+        type: string
+    type: object
+  models.HealthResponse:
+    properties:
+      governance_ready:
+        type: boolean
+      mode:
+        $ref: '#/definitions/constants.GatewayMode'
+      pid:
+        type: integer
+      posture:
+        type: string
+      state_merkle_root:
+        type: string
+      status:
+        $ref: '#/definitions/constants.GatewayMode'
+      version:
+        type: string
+    type: object
+  models.LocalOSUser:
+    properties:
+      domain:
+        type: string
+      gid:
+        type: string
+      sid:
+        type: string
+      uid:
+        type: string
+      username:
+        type: string
+    type: object
+  models.MeasurementScope:
+    enum:
+    - process
+    - system
+    - accelerator
+    type: string
+    x-enum-varnames:
+    - MeasurementScopeProcess
+    - MeasurementScopeSystem
+    - MeasurementScopeAccelerator
+  models.MeasurementStatus:
+    enum:
+    - observed
+    - stale
+    - unavailable
+    - unsupported
+    type: string
+    x-enum-varnames:
+    - MeasurementStatusObserved
+    - MeasurementStatusStale
+    - MeasurementStatusUnavailable
+    - MeasurementStatusUnsupported
+  models.ModelProvenanceResponse:
+    properties:
+      window:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.ObserveBootstrapSnapshot:
+    properties:
+      active_run:
+        $ref: '#/definitions/models.RunSummary'
+      agents:
+        items:
+          $ref: '#/definitions/models.AgentStateProjection'
+        type: array
+      downloads:
+        items:
+          $ref: '#/definitions/models.DownloadArtifact'
+        type: array
+      generated_at:
+        type: string
+      latest_evals:
+        items:
+          $ref: '#/definitions/models.EvalSummary'
+        type: array
+      measurements:
+        $ref: '#/definitions/models.OverviewMeasurements'
+      overview:
+        $ref: '#/definitions/models.OverviewCounters'
+      recent_runs:
+        items:
+          $ref: '#/definitions/models.RunSummary'
+        type: array
+      schema_version:
+        type: string
+    type: object
+  models.ObservePage:
+    properties:
+      cursor:
+        type: string
+      has_more:
+        type: boolean
+      items:
+        items:
+          type: integer
+        type: array
+      limit:
+        type: integer
+      schema_version:
+        type: string
+    type: object
+  models.ObserveProducerAgentStateRequest:
+    properties:
+      agent_id:
+        type: string
+      cli_session_id:
+        type: string
+      display_name:
+        type: string
+      model:
+        type: string
+      observed_at:
+        type: string
+      role:
+        type: string
+      run_id:
+        type: string
+      schema_version:
+        type: string
+      status:
+        $ref: '#/definitions/models.AgentLifecycleStatus'
+      task_id:
+        type: string
+      web_session_id:
+        type: string
+    type: object
+  models.ObserveProducerRunStateRequest:
+    properties:
+      active_task_id:
+        type: string
+      cli_session_id:
+        type: string
+      completed_tasks:
+        type: integer
+      display_name:
+        type: string
+      ended_at:
+        type: string
+      observed_at:
+        type: string
+      run_id:
+        type: string
+      run_kind:
+        $ref: '#/definitions/models.RunKind'
+      schema_version:
+        type: string
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.RunLifecycleStatus'
+      total_tasks:
+        type: integer
+      web_session_id:
+        type: string
+    type: object
+  models.ObservedMeasurement:
+    properties:
+      collector_version:
+        type: string
+      evidence_hash:
+        type: string
+      metric_id:
+        type: string
+      observed_at:
+        type: string
+      schema_version:
+        type: string
+      scope:
+        $ref: '#/definitions/models.MeasurementScope'
+      source_component:
+        type: string
+      status:
+        $ref: '#/definitions/models.MeasurementStatus'
+      unit:
+        type: string
+      value:
+        type: number
+      window_seconds:
+        type: number
+    type: object
+  models.OperatorSessionValidationRequest:
+    properties:
+      cli_session_id:
+        type: string
+      operator_session_id:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.OperatorSessionValidationResponse:
+    properties:
+      operator_id:
+        type: string
+      user_id:
+        type: string
+      valid:
+        type: boolean
+    type: object
+  models.OverviewCounters:
+    properties:
+      agents_running:
+        type: integer
+      agents_running_freshness:
+        $ref: '#/definitions/models.SnapshotFreshness'
+      generated_at:
+        type: string
+      schema_version:
+        type: string
+      success_rate:
+        $ref: '#/definitions/models.SuccessRateMeasurement'
+      tasks_in_queue:
+        type: integer
+      tasks_in_queue_freshness:
+        $ref: '#/definitions/models.SnapshotFreshness'
+    type: object
+  models.OverviewMeasurements:
+    properties:
+      cpu:
+        $ref: '#/definitions/models.ObservedMeasurement'
+      disk:
+        $ref: '#/definitions/models.ObservedMeasurement'
+      ram:
+        $ref: '#/definitions/models.ObservedMeasurement'
+      schema_version:
+        type: string
+      total_throughput:
+        $ref: '#/definitions/models.ObservedMeasurement'
+      vram:
+        $ref: '#/definitions/models.ObservedMeasurement'
+    type: object
+  models.PKICSRSignResponse:
+    properties:
+      certificate_chain_pem:
+        type: string
+      certificate_pem:
+        type: string
+    type: object
+  models.PasskeyAuthVerifyResponse:
+    properties:
+      credential:
+        $ref: '#/definitions/models.PasskeyCredential'
+      error:
+        type: string
+      success:
+        type: boolean
+      user_id:
+        type: string
+      web_session:
+        $ref: '#/definitions/models.WebSessionInfo'
+    type: object
+  models.PasskeyChallengeResponse:
+    properties:
+      error:
+        type: string
+      needs_setup:
+        type: boolean
+      options:
+        $ref: '#/definitions/protocol.CredentialAssertion'
+      success:
+        type: boolean
+    type: object
+  models.PasskeyCredential:
+    properties:
+      attestation_type:
+        type: string
+      authenticator:
+        $ref: '#/definitions/models.Authenticator'
+      created_at_unix_ms:
+        type: integer
+      id:
+        items:
+          type: integer
+        type: array
+      last_used_at_unix_ms:
+        type: integer
+      public_key:
+        items:
+          type: integer
+        type: array
+      transport:
+        items:
+          $ref: '#/definitions/protocol.AuthenticatorTransport'
+        type: array
+    type: object
+  models.PasskeyCredentialsResponse:
+    properties:
+      credentials:
+        items:
+          $ref: '#/definitions/models.PasskeyCredential'
+        type: array
+      success:
+        type: boolean
+    type: object
+  models.PasskeyRegisterChallengeResponse:
+    properties:
+      options:
+        $ref: '#/definitions/protocol.CredentialCreation'
+      success:
+        type: boolean
+      user_id:
+        type: string
+    type: object
+  models.PasskeyRevokeResponse:
+    properties:
+      found:
+        type: boolean
+      remaining:
+        type: integer
+      success:
+        type: boolean
+    type: object
+  models.PasskeyVerifyResponse:
+    properties:
+      credential:
+        $ref: '#/definitions/models.PasskeyCredential'
+      error:
+        type: string
+      success:
+        type: boolean
+      user_id:
+        type: string
+      web_session_id:
+        type: string
+    type: object
+  models.PlatformAppCSRPayload:
+    properties:
+      csr_pem:
+        type: string
+    type: object
+  models.PlatformComponentKind:
+    enum:
+    - dashboard
+    - operator
+    - application
+    type: string
+    x-enum-varnames:
+    - PlatformComponentDashboard
+    - PlatformComponentOperator
+    - PlatformComponentApplication
+  models.PlatformEnrollmentCSRFingerprints:
+    properties:
+      app:
+        type: string
+      cli:
+        type: string
+      operator:
+        type: string
+    type: object
+  models.PlatformEnrollmentCreateRequest:
+    properties:
+      app:
+        $ref: '#/definitions/models.PlatformAppCSRPayload'
+      app_name:
+        type: string
+      component_kind:
+        $ref: '#/definitions/models.PlatformComponentKind'
+      deployment_id:
+        type: string
+      hostname:
+        type: string
+      instance_id:
+        type: string
+      operator:
+        $ref: '#/definitions/models.PlatformOperatorCSRPayload'
+      system_fingerprint:
+        type: string
+      token_hash:
+        description: SHA-256 hex of the requester-generated token.
+        type: string
+    required:
+    - token_hash
+    type: object
+  models.PlatformEnrollmentCreateResponse:
+    properties:
+      approval_url:
+        type: string
+      component_kind:
+        $ref: '#/definitions/models.PlatformComponentKind'
+      component_name:
+        type: string
+      expires_at:
+        type: string
+      fingerprints:
+        $ref: '#/definitions/models.PlatformEnrollmentCSRFingerprints'
+      request_id:
+        type: string
+    type: object
+  models.PlatformOperatorCSRPayload:
+    properties:
+      cli_csr_pem:
+        type: string
+      operator_csr_pem:
+        type: string
+    type: object
+  models.ProviderObservationResponse:
+    properties:
+      provider_attempt:
+        items:
+          type: integer
+        type: array
+      window:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.PublicAssignmentAuditProofBatchPublishRequest:
+    properties:
+      defer_mirror_push:
+        type: boolean
+      proofs:
+        items:
+          $ref: '#/definitions/models.PublicAssignmentAuditProofPublishRequest'
+        type: array
+    type: object
+  models.PublicAssignmentAuditProofBatchPublishResponse:
+    properties:
+      accepted:
+        type: boolean
+      ingested_proofs:
+        type: integer
+      proof_root_sha256:
+        type: string
+    type: object
+  models.PublicAssignmentAuditProofPublishRequest:
+    properties:
+      assignment_id:
+        type: string
+      campaign_id:
+        type: string
+      campaign_revision:
+        type: string
+      database:
+        items:
+          type: integer
+        type: array
+      defer_mirror_push:
+        type: boolean
+      index_digest:
+        type: string
+      run_id:
+        type: string
+      vault_key:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.PublicAssignmentAuditProofPublishResponse:
+    properties:
+      accepted:
+        type: boolean
+      database_sha256:
+        type: string
+      proof_root_sha256:
+        type: string
+      vault_key_sha256:
+        type: string
+    type: object
+  models.PublicFeedExportBatchResponse:
+    properties:
+      feed_chain_hash:
+        type: string
+      high_water_sequence:
+        type: integer
+    type: object
+  models.PublicFeedRecord:
+    properties:
+      record_bytes:
+        type: string
+      record_hash:
+        type: string
+      record_type:
+        $ref: '#/definitions/models.PublicFeedRecordType'
+      sequence:
+        type: integer
+    type: object
+  models.PublicFeedRecordType:
+    enum:
+    - projection
+    - event
+    - proof_manifest
+    - key_revocation
+    type: string
+    x-enum-varnames:
+    - PublicFeedRecordTypeProjection
+    - PublicFeedRecordTypeEvent
+    - PublicFeedRecordTypeProofManifest
+    - PublicFeedRecordTypeKeyRevocation
+  models.PublicFeedSnapshot:
+    properties:
+      batch_count:
+        type: integer
+      feed_chain_hash:
+        type: string
+      freshness:
+        $ref: '#/definitions/models.CampaignFreshness'
+      generated_at:
+        type: string
+      high_water_sequence:
+        type: integer
+      protocol_version:
+        type: string
+      source_id:
+        type: string
+    type: object
+  models.PublicProofCatalogPushResponse:
+    properties:
+      accepted:
+        type: boolean
+      artifact_count:
+        type: integer
+      proof_root_sha256:
+        type: string
+    type: object
+  models.ReputationSignRequest:
+    properties:
+      merkle_root:
+        type: string
+      prev_root:
+        type: string
+      tribunal_command_id:
+        type: string
+    type: object
+  models.ReputationSignResponse:
+    properties:
+      signature:
+        type: string
+    type: object
+  models.RunDetail:
+    properties:
+      active_task_id:
+        type: string
+      completed_tasks:
+        type: integer
+      display_name:
+        type: string
+      ended_at:
+        type: string
+      evidence_safe_links:
+        items:
+          $ref: '#/definitions/models.EvidenceSafeLink'
+        type: array
+      observed_at:
+        type: string
+      run_id:
+        type: string
+      run_kind:
+        $ref: '#/definitions/models.RunKind'
+      schema_version:
+        type: string
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.RunLifecycleStatus'
+      tasks:
+        items:
+          $ref: '#/definitions/models.RunTask'
+        type: array
+      total_tasks:
+        type: integer
+    type: object
+  models.RunKind:
+    enum:
+    - investigation
+    - eval
+    - demo
+    - workflow
+    type: string
+    x-enum-varnames:
+    - RunKindInvestigation
+    - RunKindEval
+    - RunKindDemo
+    - RunKindWorkflow
+  models.RunLifecycleStatus:
+    enum:
+    - queued
+    - running
+    - waiting
+    - completed
+    - failed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - RunLifecycleStatusQueued
+    - RunLifecycleStatusRunning
+    - RunLifecycleStatusWaiting
+    - RunLifecycleStatusCompleted
+    - RunLifecycleStatusFailed
+    - RunLifecycleStatusCancelled
+  models.RunSummary:
+    properties:
+      active_task_id:
+        type: string
+      completed_tasks:
+        type: integer
+      display_name:
+        type: string
+      ended_at:
+        type: string
+      evidence_count:
+        type: integer
+      has_receipts:
+        type: boolean
+      observed_at:
+        type: string
+      run_id:
+        type: string
+      run_kind:
+        $ref: '#/definitions/models.RunKind'
+      schema_version:
+        type: string
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.RunLifecycleStatus'
+      total_tasks:
+        type: integer
+    type: object
+  models.RunTask:
+    properties:
+      display_name:
+        type: string
+      ended_at:
+        type: string
+      model:
+        type: string
+      owning_agent:
+        type: string
+      schema_version:
+        type: string
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.RunLifecycleStatus'
+      task_id:
+        type: string
+    type: object
+  models.SSEEventRow:
+    properties:
+      cli_session_id:
+        type: string
+      created_at:
+        type: string
+      event_type:
+        type: string
+      id:
+        type: integer
+      payload:
+        type: string
+      user_id:
+        type: string
+      web_session_id:
+        type: string
+    type: object
+  models.SSEEventsResponse:
+    properties:
+      count:
+        type: integer
+      events:
+        items:
+          $ref: '#/definitions/models.SSEEventRow'
+        type: array
+    type: object
+  models.SnapshotFreshness:
+    enum:
+    - observed
+    - stale
+    - unavailable
+    type: string
+    x-enum-varnames:
+    - SnapshotFreshnessObserved
+    - SnapshotFreshnessStale
+    - SnapshotFreshnessUnavailable
+  models.StateResponse:
+    properties:
+      state_merkle_root:
+        type: string
+    type: object
+  models.StatusResponse:
+    properties:
+      status:
+        $ref: '#/definitions/constants.GatewayMode'
+    type: object
+  models.SuccessRateMeasurement:
+    properties:
+      denominator:
+        type: integer
+      metric_id:
+        type: string
+      metric_version:
+        type: string
+      unit:
+        type: string
+      value:
+        type: number
+      verification_status:
+        $ref: '#/definitions/models.EvalVerificationStatus'
+    type: object
+  models.SuspendedTransactionsResponse:
+    properties:
+      transactions:
+        items:
+          $ref: '#/definitions/models.SuspendedTxResponse'
+        type: array
+    type: object
+  models.SuspendedTxResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      operator_id:
+        type: string
+      tool_name:
+        type: string
+      transaction_hash:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.User:
+    properties:
+      id:
+        type: string
+      local_os_user:
+        $ref: '#/definitions/models.LocalOSUser'
+      organization_id:
+        type: string
+      passkey_credentials:
+        items:
+          $ref: '#/definitions/models.PasskeyCredential'
+        type: array
+      provider:
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      status:
+        $ref: '#/definitions/constants.UserStatus'
+      webauthn_user_id:
+        description: GUID for WebAuthn v4 compliance (Windows Hello)
+        type: string
+    type: object
+  models.UserCreateResponse:
+    properties:
+      success:
+        type: boolean
+      user_id:
+        type: string
+    type: object
+  models.UserMeResponse:
+    properties:
+      success:
+        type: boolean
+      user:
+        $ref: '#/definitions/models.User'
+    type: object
+  models.WebAuthnAssertionResponse:
+    properties:
+      authenticatorData:
+        type: string
+      clientDataJSON:
+        type: string
+      id:
+        type: string
+      rawId:
+        type: string
+      signature:
+        type: string
+      userHandle:
+        type: string
+    type: object
+  models.WebSessionInfo:
+    properties:
+      expires_at_unix_ms:
+        type: integer
+      id:
+        type: string
+    type: object
+  models.WebSessionResponse:
+    properties:
+      success:
+        type: boolean
+      user_id:
+        type: string
+      web_session_id:
+        type: string
+    type: object
+  operatorv1.ActionReceipt:
+    properties:
+      action_type:
+        description: The registry-derived governance class for the request event.
+        type: string
+      deterministic_stage_evidence:
+        items:
+          $ref: '#/definitions/operatorv1.DeterministicStageEvidence'
+        type: array
+      event_type:
+        description: The semantic request event that produced this receipt.
+        type: string
+      executed_at_unix_ms:
+        description: Timestamp when execution finished
+        type: integer
+      failure_code:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ReceiptFailureCode'
+        description: |-
+          Typed classification of a FAILED receipt. UNSPECIFIED on non-failed
+          receipts. Bound into the signature via canonicalization.
+      final_persistence_attestation:
+        $ref: '#/definitions/operatorv1.ReceiptPersistenceAttestation'
+      l2_status:
+        allOf:
+        - $ref: '#/definitions/operatorv1.L2Status'
+        description: |-
+          Status of L2 (Consensus) signature verification.
+          Distinguishes between "not required" vs "required but failed" for compliance.
+      l3_status:
+        allOf:
+        - $ref: '#/definitions/operatorv1.L3Status'
+        description: |-
+          Status of L3 (Notary/Human) proof verification.
+          Distinguishes between "not required" vs "required but failed" for compliance.
+      result_summary:
+        description: Concise summary of the result (e.g. "exit code 0", "file written")
+        type: string
+      signature:
+        description: ED25519 signature over the canonical receipt fields and deterministic
+          stage evidence hash.
+        type: string
+      signer_key_id:
+        description: ID of the Warden's signing key
+        type: string
+      state_root_after:
+        description: State root after execution
+        type: string
+      state_root_before:
+        description: State root before execution
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ExecutionStatus'
+        description: Final execution status
+      transaction_hash:
+        description: Original GovernanceEnvelope hash
+        type: string
+      transaction_id:
+        description: Original GovernanceEnvelope ID
+        type: string
+    type: object
+  operatorv1.DeterministicStageEvidence:
+    properties:
+      acting_app_id:
+        type: string
+      action_type:
+        type: string
+      audit_record_id:
+        type: string
+      case_id:
+        type: string
+      clock_domain:
+        type: string
+      commitment_hash:
+        type: string
+      doctrine_bundle_hash:
+        type: string
+      doctrine_bundle_version:
+        type: string
+      investigation_id:
+        type: string
+      kind:
+        $ref: '#/definitions/operatorv1.DeterministicStageKind'
+      l2_signature_digest:
+        type: string
+      l3_signature_digest:
+        type: string
+      monotonic_end_ns:
+        type: integer
+      monotonic_start_ns:
+        type: integer
+      operator_id:
+        type: string
+      operator_session_id:
+        type: string
+      outcome:
+        $ref: '#/definitions/operatorv1.DeterministicStageOutcome'
+      parent_stage_id:
+        type: string
+      prior_commitment_hash:
+        type: string
+      receipt_signature_digest:
+        type: string
+      requestor_user_id:
+        type: string
+      signer_key_id:
+        type: string
+      stage_id:
+        type: string
+      state_root_after:
+        type: string
+      state_root_before:
+        type: string
+      task_id:
+        type: string
+      timing_source:
+        type: string
+      transaction_hash:
+        type: string
+      transaction_id:
+        type: string
+    type: object
+  operatorv1.DeterministicStageKind:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_UNSPECIFIED
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION
+  operatorv1.DeterministicStageOutcome:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_UNSPECIFIED
+    - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED
+    - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED
+    - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED
+    - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
+  operatorv1.ExecutionStatus:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED
+    - ExecutionStatus_EXECUTION_STATUS_EXECUTING
+    - ExecutionStatus_EXECUTION_STATUS_COMPLETED
+    - ExecutionStatus_EXECUTION_STATUS_FAILED
+    - ExecutionStatus_EXECUTION_STATUS_CANCELLED
+    - ExecutionStatus_EXECUTION_STATUS_TIMEOUT
+  operatorv1.InferenceDispatchRequest:
+    properties:
+      acting_app_id:
+        description: Application that initiated the inference request.
+        type: string
+      assignment_id:
+        type: string
+      campaign_id:
+        type: string
+      case_id:
+        description: Application context propagated from the chat turn.
+        type: string
+      cli_session_id:
+        type: string
+      context_limit:
+        type: integer
+      evaluation_attempt_id:
+        type: string
+      investigation_id:
+        type: string
+      keep_alive:
+        description: Ollama keep-alive duration override (empty = use config default).
+        type: string
+      max_tokens:
+        description: Maximum tokens to generate (0 = use backend default).
+        type: integer
+      messages:
+        description: Ordered conversation turns sent to the Inference Node. The node
+          validates and re-scrubs every data-bearing part before crossing the provider
+          boundary.
+        items:
+          $ref: '#/definitions/operatorv1.InferenceMessage'
+        type: array
+      model:
+        description: |-
+          Requested provider model. A campaign Inference Operator accepts it only
+          when the exact model and digest occur in the frozen registry committed by
+          model_registry_digest; standard inference uses the configured role model.
+        type: string
+      model_digest:
+        type: string
+      model_registry:
+        items:
+          $ref: '#/definitions/operatorv1.InferenceModelVariant'
+        type: array
+      model_registry_digest:
+        type: string
+      parallel_tool_calls:
+        type: boolean
+      provider_attempt_id:
+        type: string
+      request_schema_version:
+        type: string
+      response_format:
+        $ref: '#/definitions/operatorv1.InferenceResponseFormat'
+      retry_count:
+        description: Zero-based retry ordinal for this provider attempt.
+        type: integer
+      role:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ModelRole'
+        description: Chat-tier role for this request (primary, assistant, lite).
+      run_id:
+        type: string
+      scenario_id:
+        type: string
+      seed:
+        description: |-
+          Optional deterministic generation seed forwarded to the provider when
+          supported. Absent means use the provider default.
+        type: integer
+      stop_sequences:
+        items:
+          type: string
+        type: array
+      stream:
+        description: |-
+          When true, the Gateway forwards live InferenceProgressEvent telemetry
+          to the caller while waiting for the authoritative terminal completion.
+        type: boolean
+      target_operator_session_id:
+        description: |-
+          Explicit Inference Node target. When empty, the gateway requires exactly
+          one enrolled inference-capable operator for the requestor; zero or
+          multiple matches are rejected.
+        type: string
+      task_id:
+        type: string
+      temperature:
+        description: Generation temperature override (0 = use backend default).
+        type: number
+      thinking:
+        $ref: '#/definitions/operatorv1.InferenceThinkingControl'
+      tool_choice:
+        $ref: '#/definitions/operatorv1.InferenceToolChoice'
+      tools:
+        description: Ordered callable function declarations available to the model.
+        items:
+          $ref: '#/definitions/operatorv1.InferenceToolDeclaration'
+        type: array
+      top_k:
+        type: integer
+      top_p:
+        type: number
+      web_session_id:
+        type: string
+    type: object
+  operatorv1.InferenceDispatchResponse:
+    properties:
+      receipt:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ActionReceipt'
+        description: The verified final signed ActionReceipt for the transaction.
+      result:
+        allOf:
+        - $ref: '#/definitions/operatorv1.InferenceResult'
+        description: |-
+          The complete inference result whose result_digest is bound into the
+          signed receipt.
+      transaction_id:
+        description: Transaction ID correlating the dispatch with the audit chain.
+        type: string
+    type: object
+  operatorv1.InferenceLoadState:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - InferenceLoadState_INFERENCE_LOAD_STATE_UNSPECIFIED
+    - InferenceLoadState_INFERENCE_LOAD_STATE_COLD
+    - InferenceLoadState_INFERENCE_LOAD_STATE_WARM
+    - InferenceLoadState_INFERENCE_LOAD_STATE_UNAVAILABLE
+  operatorv1.InferenceMessage:
+    properties:
+      parts:
+        items:
+          $ref: '#/definitions/operatorv1.InferenceMessagePart'
+        type: array
+      role:
+        $ref: '#/definitions/operatorv1.InferenceMessageRole'
+    type: object
+  operatorv1.InferenceMessagePart:
+    properties:
+      part:
+        description: "Types that are valid to be assigned to Part:\n\n\t*InferenceMessagePart_Text\n\t*InferenceMessagePart_ToolCall\n\t*InferenceMessagePart_ToolResult"
+    type: object
+  operatorv1.InferenceMessageRole:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - InferenceMessageRole_INFERENCE_MESSAGE_ROLE_UNSPECIFIED
+    - InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM
+    - InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER
+    - InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT
+    - InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL
+  operatorv1.InferenceModelVariant:
+    properties:
+      digest:
+        type: string
+      model:
+        type: string
+    type: object
+  operatorv1.InferenceResponseFormat:
+    properties:
+      json_schema:
+        type: string
+      media_type:
+        type: string
+    type: object
+  operatorv1.InferenceResponsePart:
+    properties:
+      part:
+        description: "Types that are valid to be assigned to Part:\n\n\t*InferenceResponsePart_Text\n\t*InferenceResponsePart_ToolCall\n\t*InferenceResponsePart_Thinking"
+    type: object
+  operatorv1.InferenceResult:
+    properties:
+      assignment_id:
+        type: string
+      cache_tokens:
+        type: integer
+      campaign_id:
+        type: string
+      completion_tokens:
+        description: Number of completion tokens generated.
+        type: integer
+      evaluation_attempt_id:
+        type: string
+      finish_reason:
+        description: Finish reason (e.g., "stop", "length").
+        type: string
+      generation_duration_ns:
+        type: integer
+      load_duration_ns:
+        type: integer
+      load_state:
+        $ref: '#/definitions/operatorv1.InferenceLoadState'
+      model:
+        description: |-
+          Model that produced the result (echoed from the request or resolved by
+          the backend).
+        type: string
+      model_registry_digest:
+        type: string
+      normalized_request_hash:
+        type: string
+      output_hash:
+        type: string
+      parts:
+        description: Ordered model response parts covered by result_digest.
+        items:
+          $ref: '#/definitions/operatorv1.InferenceResponsePart'
+        type: array
+      prompt_eval_duration_ns:
+        type: integer
+      prompt_tokens:
+        description: Number of prompt tokens consumed.
+        type: integer
+      provider_attempt_id:
+        type: string
+      requested_model:
+        type: string
+      requested_model_digest:
+        type: string
+      result_digest:
+        description: |-
+          Canonical digest of the complete result: lowercase hex SHA-256 over the
+          deterministic protobuf serialization of this message with result_digest
+          cleared. The Inference Node computes it at execution time; the signed
+          ActionReceipt's result_summary binds it, and the User Gateway verifies
+          digest equality before returning success to the caller.
+        type: string
+      retry_classification:
+        $ref: '#/definitions/operatorv1.InferenceRetryClassification'
+      retry_count:
+        type: integer
+      run_id:
+        type: string
+      scenario_id:
+        type: string
+      served_model_digest:
+        type: string
+      thinking_tokens:
+        type: integer
+      time_to_first_token_ns:
+        type: integer
+      timing_source:
+        $ref: '#/definitions/operatorv1.InferenceTimingSource'
+      total_duration_ns:
+        type: integer
+      total_tokens:
+        description: Total tokens (prompt + completion).
+        type: integer
+      usage_reported:
+        type: boolean
+    type: object
+  operatorv1.InferenceRetryClassification:
+    enum:
+    - 0
+    - 1
+    - 2
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED
+    - InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_NONE
+    - InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_INFRASTRUCTURE_PRE_RESULT
+  operatorv1.InferenceThinkingControl:
+    properties:
+      include_thoughts:
+        type: boolean
+      mode:
+        description: "Types that are valid to be assigned to Mode:\n\n\t*InferenceThinkingControl_Enabled\n\t*InferenceThinkingControl_Level"
+    type: object
+  operatorv1.InferenceTimingSource:
+    enum:
+    - 0
+    - 1
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - InferenceTimingSource_INFERENCE_TIMING_SOURCE_UNSPECIFIED
+    - InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER
+  operatorv1.InferenceToolChoice:
+    properties:
+      allowed_tool_names:
+        items:
+          type: string
+        type: array
+      mode:
+        $ref: '#/definitions/operatorv1.InferenceToolChoiceMode'
+    type: object
+  operatorv1.InferenceToolChoiceMode:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_UNSPECIFIED
+    - InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO
+    - InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_NONE
+    - InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_REQUIRED
+  operatorv1.InferenceToolDeclaration:
+    properties:
+      description:
+        type: string
+      json_schema:
+        type: string
+      name:
+        type: string
+    type: object
+  operatorv1.L2Status:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-comments:
+      L2Status_L2_STATUS_NOT_REQUIRED: L2 signature not required by posture (doctrine/ratify)
+      L2Status_L2_STATUS_REQUIRED_FAILED: L2 signature required but missing or invalid
+      L2Status_L2_STATUS_REQUIRED_VALID: L2 signature required and valid
+    x-enum-descriptions:
+    - ""
+    - L2 signature not required by posture (doctrine/ratify)
+    - L2 signature required and valid
+    - L2 signature required but missing or invalid
+    x-enum-varnames:
+    - L2Status_L2_STATUS_UNSPECIFIED
+    - L2Status_L2_STATUS_NOT_REQUIRED
+    - L2Status_L2_STATUS_REQUIRED_VALID
+    - L2Status_L2_STATUS_REQUIRED_FAILED
+  operatorv1.L3Status:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-comments:
+      L3Status_L3_STATUS_NOT_REQUIRED: L3 proof not required by posture (doctrine/consensus)
+      L3Status_L3_STATUS_REQUIRED_FAILED: L3 proof required but missing or invalid
+      L3Status_L3_STATUS_REQUIRED_VALID: L3 proof required and valid
+    x-enum-descriptions:
+    - ""
+    - L3 proof not required by posture (doctrine/consensus)
+    - L3 proof required and valid
+    - L3 proof required but missing or invalid
+    x-enum-varnames:
+    - L3Status_L3_STATUS_UNSPECIFIED
+    - L3Status_L3_STATUS_NOT_REQUIRED
+    - L3Status_L3_STATUS_REQUIRED_VALID
+    - L3Status_L3_STATUS_REQUIRED_FAILED
+  operatorv1.ModelRole:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - ModelRole_MODEL_ROLE_UNSPECIFIED
+    - ModelRole_MODEL_ROLE_PRIMARY
+    - ModelRole_MODEL_ROLE_ASSISTANT
+    - ModelRole_MODEL_ROLE_LITE
+  operatorv1.ReceiptFailureCode:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_ROLE_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW
+  operatorv1.ReceiptPersistenceAttestation:
+    properties:
+      audit_record_id:
+        type: string
+      persisted_at_unix_ms:
+        type: integer
+      receipt_signature_digest:
+        type: string
+      signature:
+        type: string
+      signer_key_id:
+        type: string
+      transaction_id:
+        type: string
+    type: object
+  protocol.AttestationFormat:
+    enum:
+    - packed
+    - tpm
+    - android-key
+    - android-safetynet
+    - fido-u2f
+    - apple
+    - compound
+    - none
+    type: string
+    x-enum-varnames:
+    - AttestationFormatPacked
+    - AttestationFormatTPM
+    - AttestationFormatAndroidKey
+    - AttestationFormatAndroidSafetyNet
+    - AttestationFormatFIDOUniversalSecondFactor
+    - AttestationFormatApple
+    - AttestationFormatCompound
+    - AttestationFormatNone
+  protocol.AuthenticationExtensions:
+    properties:
+      appid:
+        description: AppID is the FIDO AppID Extension input. Authentication only.
+        type: string
+      appidExclude:
+        description: AppIDExclude is the FIDO AppID Exclusion Extension input. Registration
+          only.
+        type: string
+      credBlob:
+        description: CredBlob is the blob to store with the credential. Registration
+          only.
+        items:
+          type: integer
+        type: array
+      credProps:
+        description: CredProps requests the Credential Properties Extension. Registration
+          only.
+        type: boolean
+      credentialProtectionPolicy:
+        allOf:
+        - $ref: '#/definitions/protocol.CredentialProtectionPolicy'
+        description: CredentialProtectionPolicy is the CTAP credProtect policy. Registration
+          only.
+      enforceCredentialProtectionPolicy:
+        description: EnforceCredentialProtectionPolicy requires the credProtect policy
+          is honoured. Registration only.
+        type: boolean
+      getCredBlob:
+        description: GetCredBlob requests the blob stored with the credential. Authentication
+          only.
+        type: boolean
+      hmacCreateSecret:
+        description: HMACCreateSecret requests provisioning of the CTAP hmac-secret.
+          Registration only.
+        type: boolean
+      hmacGetSecret:
+        allOf:
+        - $ref: '#/definitions/protocol.HMACGetSecretInputs'
+        description: HMACGetSecret requests evaluation of the CTAP hmac-secret. Authentication
+          only.
+      largeBlob:
+        allOf:
+        - $ref: '#/definitions/protocol.LargeBlobInputs'
+        description: LargeBlob is the Large blob storage Extension input.
+      minPinLength:
+        description: MinPinLength requests the authenticator minimum PIN length. Registration
+          only.
+        type: boolean
+      prf:
+        allOf:
+        - $ref: '#/definitions/protocol.PRFInputs'
+        description: |-
+          PRF is the Pseudo-random function Extension input. It is a pointer because an empty dictionary is a
+          meaningful input for this extension and only this extension: a Relying Party sends "prf":{} at registration
+          to ask whether the pseudo-random function is available for the credential being created, and the client
+          answers with the 'enabled' output. A value type combined with omitzero cannot express the difference between
+          an absent member and a member present but empty, so a non-nil pointer to a zero value is what carries the
+          bare availability probe.
+      remoteClientDataJSON:
+        description: |-
+          RemoteClientDataJSON is the Remote Client Data JSON Extension input. This member is set by a remote desktop
+          web client and a Relying Party should not normally set it. See [ExtensionRemoteClientDataJSON], which records
+          that this extension is not yet ratified.
+        type: string
+      uvm:
+        description: UVM requests the user verification methods used for the operation.
+        type: boolean
+    type: object
+  protocol.AuthenticatorAttachment:
+    enum:
+    - platform
+    - cross-platform
+    type: string
+    x-enum-varnames:
+    - Platform
+    - CrossPlatform
+  protocol.AuthenticatorSelection:
+    properties:
+      authenticatorAttachment:
+        allOf:
+        - $ref: '#/definitions/protocol.AuthenticatorAttachment'
+        description: |-
+          AuthenticatorAttachment If this member is present, eligible authenticators are filtered to only
+          authenticators attached with the specified AuthenticatorAttachment enum.
+      requireResidentKey:
+        description: |-
+          RequireResidentKey this member describes the Relying Party's requirements regarding resident
+          credentials. If the parameter is set to true, the authenticator MUST create a client-side-resident
+          public key credential source when creating a public key credential.
+        type: boolean
+      residentKey:
+        allOf:
+        - $ref: '#/definitions/protocol.ResidentKeyRequirement'
+        description: |-
+          ResidentKey this member describes the Relying Party's requirements regarding resident
+          credentials per Webauthn Level 2.
+      userVerification:
+        allOf:
+        - $ref: '#/definitions/protocol.UserVerificationRequirement'
+        description: |-
+          UserVerification This member describes the Relying Party's requirements regarding user verification for
+          the create() operation. Eligible authenticators are filtered to only those capable of satisfying this
+          requirement.
+    type: object
+  protocol.AuthenticatorTransport:
+    enum:
+    - usb
+    - nfc
+    - ble
+    - smart-card
+    - hybrid
+    - internal
+    type: string
+    x-enum-varnames:
+    - USB
+    - NFC
+    - BLE
+    - SmartCard
+    - Hybrid
+    - Internal
+  protocol.ConveyancePreference:
+    enum:
+    - none
+    - indirect
+    - direct
+    - enterprise
+    type: string
+    x-enum-varnames:
+    - PreferNoAttestation
+    - PreferIndirectAttestation
+    - PreferDirectAttestation
+    - PreferEnterpriseAttestation
+  protocol.CredentialAssertion:
+    properties:
+      mediation:
+        $ref: '#/definitions/protocol.CredentialMediationRequirement'
+      publicKey:
+        $ref: '#/definitions/protocol.PublicKeyCredentialRequestOptions'
+    type: object
+  protocol.CredentialCreation:
+    properties:
+      mediation:
+        $ref: '#/definitions/protocol.CredentialMediationRequirement'
+      publicKey:
+        $ref: '#/definitions/protocol.PublicKeyCredentialCreationOptions'
+    type: object
+  protocol.CredentialDescriptor:
+    properties:
+      id:
+        description: CredentialID The ID of a credential to allow/disallow.
+        items:
+          type: integer
+        type: array
+      transports:
+        description: The authenticator transports that can be used.
+        items:
+          $ref: '#/definitions/protocol.AuthenticatorTransport'
+        type: array
+      type:
+        allOf:
+        - $ref: '#/definitions/protocol.CredentialType'
+        description: The valid credential types.
+    type: object
+  protocol.CredentialMediationRequirement:
+    enum:
+    - ""
+    - silent
+    - optional
+    - conditional
+    - required
+    type: string
+    x-enum-varnames:
+    - MediationDefault
+    - MediationSilent
+    - MediationOptional
+    - MediationConditional
+    - MediationRequired
+  protocol.CredentialParameter:
+    properties:
+      alg:
+        $ref: '#/definitions/webauthncose.COSEAlgorithmIdentifier'
+      type:
+        $ref: '#/definitions/protocol.CredentialType'
+    type: object
+  protocol.CredentialProtectionPolicy:
+    enum:
+    - userVerificationOptional
+    - userVerificationOptionalWithCredentialIDList
+    - userVerificationRequired
+    type: string
+    x-enum-varnames:
+    - CredentialProtectionPolicyUserVerificationOptional
+    - CredentialProtectionPolicyUserVerificationOptionalWithCredentialIDList
+    - CredentialProtectionPolicyUserVerificationRequired
+  protocol.CredentialType:
+    enum:
+    - public-key
+    type: string
+    x-enum-varnames:
+    - PublicKeyCredentialType
+  protocol.HMACGetSecretInputs:
+    properties:
+      salt1:
+        items:
+          type: integer
+        type: array
+      salt2:
+        items:
+          type: integer
+        type: array
+    type: object
+  protocol.LargeBlobInputs:
+    properties:
+      read:
+        type: boolean
+      support:
+        $ref: '#/definitions/protocol.LargeBlobSupport'
+      write:
+        items:
+          type: integer
+        type: array
+    type: object
+  protocol.LargeBlobSupport:
+    enum:
+    - required
+    - preferred
+    type: string
+    x-enum-varnames:
+    - LargeBlobSupportRequired
+    - LargeBlobSupportPreferred
+  protocol.PRFInputs:
+    properties:
+      eval:
+        $ref: '#/definitions/protocol.PRFValues'
+      evalByCredential:
+        additionalProperties:
+          $ref: '#/definitions/protocol.PRFValues'
+        type: object
+    type: object
+  protocol.PRFValues:
+    properties:
+      first:
+        items:
+          type: integer
+        type: array
+      second:
+        items:
+          type: integer
+        type: array
+    type: object
+  protocol.PublicKeyCredentialCreationOptions:
+    properties:
+      attestation:
+        $ref: '#/definitions/protocol.ConveyancePreference'
+      attestationFormats:
+        items:
+          $ref: '#/definitions/protocol.AttestationFormat'
+        type: array
+      authenticatorSelection:
+        $ref: '#/definitions/protocol.AuthenticatorSelection'
+      challenge:
+        items:
+          type: integer
+        type: array
+      excludeCredentials:
+        items:
+          $ref: '#/definitions/protocol.CredentialDescriptor'
+        type: array
+      extensions:
+        $ref: '#/definitions/protocol.AuthenticationExtensions'
+      hints:
+        items:
+          $ref: '#/definitions/protocol.PublicKeyCredentialHints'
+        type: array
+      pubKeyCredParams:
+        items:
+          $ref: '#/definitions/protocol.CredentialParameter'
+        type: array
+      rp:
+        $ref: '#/definitions/protocol.RelyingPartyEntity'
+      timeout:
+        type: integer
+      user:
+        $ref: '#/definitions/protocol.UserEntity'
+    type: object
+  protocol.PublicKeyCredentialHints:
+    enum:
+    - security-key
+    - client-device
+    - hybrid
+    type: string
+    x-enum-varnames:
+    - PublicKeyCredentialHintSecurityKey
+    - PublicKeyCredentialHintClientDevice
+    - PublicKeyCredentialHintHybrid
+  protocol.PublicKeyCredentialRequestOptions:
+    properties:
+      allowCredentials:
+        items:
+          $ref: '#/definitions/protocol.CredentialDescriptor'
+        type: array
+      challenge:
+        items:
+          type: integer
+        type: array
+      extensions:
+        $ref: '#/definitions/protocol.AuthenticationExtensions'
+      hints:
+        items:
+          $ref: '#/definitions/protocol.PublicKeyCredentialHints'
+        type: array
+      rpId:
+        type: string
+      timeout:
+        type: integer
+      userVerification:
+        $ref: '#/definitions/protocol.UserVerificationRequirement'
+    type: object
+  protocol.RelyingPartyEntity:
+    properties:
+      id:
+        description: A unique identifier for the Relying Party entity, which sets
+          the RP ID.
+        type: string
+      name:
+        description: |-
+          A human-palatable name for the entity. Its function depends on what the PublicKeyCredentialEntity represents:
+
+          When inherited by PublicKeyCredentialRpEntity it is a human-palatable identifier for the Relying Party,
+          intended only for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "ОАО Примертех".
+
+          When inherited by PublicKeyCredentialUserEntity, it is a human-palatable identifier for a user account. It is
+          intended only for display, i.e., aiding the user in determining the difference between user accounts with similar
+          displayNames. For example, "alexm", "alex.p.mueller@example.com" or "+14255551234".
+        type: string
+    type: object
+  protocol.ResidentKeyRequirement:
+    enum:
+    - discouraged
+    - preferred
+    - required
+    type: string
+    x-enum-varnames:
+    - ResidentKeyRequirementDiscouraged
+    - ResidentKeyRequirementPreferred
+    - ResidentKeyRequirementRequired
+  protocol.UserEntity:
+    properties:
+      displayName:
+        description: |-
+          A human-palatable name for the user account, intended only for display.
+          For example, "Alex P. Müller" or "田中 倫". The Relying Party SHOULD let
+          the user choose this, and SHOULD NOT restrict the choice more than necessary.
+        type: string
+      id:
+        description: |-
+          ID is the user handle of the user account entity. To ensure secure operation,
+          authentication and authorization decisions MUST be made on the basis of this id
+          member, not the displayName nor name members. See Section 6.1 of
+          [RFC8266](https://www.w3.org/TR/webauthn/#biblio-rfc8266).
+      name:
+        description: |-
+          A human-palatable name for the entity. Its function depends on what the PublicKeyCredentialEntity represents:
+
+          When inherited by PublicKeyCredentialRpEntity it is a human-palatable identifier for the Relying Party,
+          intended only for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "ОАО Примертех".
+
+          When inherited by PublicKeyCredentialUserEntity, it is a human-palatable identifier for a user account. It is
+          intended only for display, i.e., aiding the user in determining the difference between user accounts with similar
+          displayNames. For example, "alexm", "alex.p.mueller@example.com" or "+14255551234".
+        type: string
+    type: object
+  protocol.UserVerificationRequirement:
+    enum:
+    - required
+    - preferred
+    - discouraged
+    type: string
+    x-enum-comments:
+      VerificationPreferred: This is the default.
+    x-enum-descriptions:
+    - ""
+    - This is the default.
+    - ""
+    x-enum-varnames:
+    - VerificationRequired
+    - VerificationPreferred
+    - VerificationDiscouraged
+  webauthncose.COSEAlgorithmIdentifier:
+    enum:
+    - -7
+    - -8
+    - -9
+    - -19
+    - -35
+    - -36
+    - -37
+    - -38
+    - -39
+    - -47
+    - -51
+    - -52
+    - -257
+    - -258
+    - -259
+    - -65535
+    type: integer
+    x-enum-varnames:
+    - AlgES256
+    - AlgEdDSA
+    - AlgESP256
+    - AlgEd25519
+    - AlgES384
+    - AlgES512
+    - AlgPS256
+    - AlgPS384
+    - AlgPS512
+    - AlgES256K
+    - AlgESP384
+    - AlgESP512
+    - AlgRS256
+    - AlgRS384
+    - AlgRS512
+    - AlgRS1
+info:
+  contact: {}
+paths:
+  /:
+    get:
+      consumes:
+      - text/html
+      description: Returns the public landing page for the gateway
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Landing page
+      tags:
+      - public
+  /.well-known/ztd/bin/{filename}:
+    get:
+      description: Downloads the ztd binary file binary for the current platform (internal
+        endpoint)
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      summary: Download ztd binary
+      tags:
+      - bootstrap
+  /.well-known/ztd/pki/ca-bundle:
+    get:
+      consumes:
+      - application/json
+      description: Returns the platform's root CA certificate bundle for trust establishment
+      produces:
+      - application/x-pem-file
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Get CA bundle
+      tags:
+      - pki
+  /.well-known/ztd/pki/crl:
+    get:
+      consumes:
+      - application/json
+      description: Returns the certificate revocation list
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get CRL
+      tags:
+      - pki
+  /.well-known/ztd/pki/fingerprint:
+    get:
+      consumes:
+      - application/json
+      description: Returns the platform's PKI fingerprint for verification
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get PKI fingerprint
+      tags:
+      - pki
+  /api/v1/approvals:
+    get:
+      description: Lists suspended transactions pending L3 passkey approval for the
+        authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SuspendedTransactionsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: List pending approvals
+      tags:
+      - approvals
+  /api/v1/approvals/{txHash}/challenge:
+    get:
+      description: Generates a WebAuthn assertion challenge for approving a suspended
+        transaction.
+      parameters:
+      - description: Transaction hash
+        in: path
+        name: txHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: WebAuthn assertion options
+          schema:
+            items:
+              type: integer
+            type: array
+        "403":
+          description: Forbidden — belongs to another user
+          schema:
+            type: string
+        "404":
+          description: Transaction not found or expired
+          schema:
+            type: string
+      summary: Get approval challenge
+      tags:
+      - approvals
+  /api/v1/approvals/{txHash}/verify:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Verifies a WebAuthn assertion response to approve a suspended transaction. On success,
+        the transaction resumes execution with the L3 proof attached and an SSE event is emitted.
+      parameters:
+      - description: Transaction hash
+        in: path
+        name: txHash
+        required: true
+        type: string
+      - description: WebAuthn assertion response
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.WebAuthnAssertionResponse'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Canonical protojson ActionReceipt
+          schema:
+            $ref: '#/definitions/operatorv1.ActionReceipt'
+        "403":
+          description: Forbidden — verification failed
+          schema:
+            type: string
+        "404":
+          description: Transaction not found or expired
+          schema:
+            type: string
+        "503":
+          description: Service Unavailable — runtime vault locked; the proof can be
+            resubmitted
+          schema:
+            type: string
+      summary: Verify approval
+      tags:
+      - approvals
+  /api/v1/approvals/respond:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Records a direct deny decision for a suspended transaction owned by the caller. Under ratify or
+        notary posture a CLI caller must present an mTLS client certificate and a web caller must hold a
+        registered passkey. `approved: true` is always rejected with 403: approval requires a WebAuthn
+        assertion through `/api/v1/approvals/{txHash}/verify`.
+      parameters:
+      - description: Approval decision
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ApprovalRespondRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ApprovalRespondResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden — approval requested, session not grounded for posture,
+            or transaction belongs to another user
+          schema:
+            type: string
+        "404":
+          description: Transaction not found or expired
+          schema:
+            type: string
+      summary: Deny a suspended transaction
+      tags:
+      - approvals
+  /api/v1/audit/receipts:
+    get:
+      description: Returns one canonical protojson ActionReceipt when tx_id is set
+        or when investigation_id and action_type uniquely correlate a receipt. Without
+        those selectors, returns searchable receipt records with the complete receipt
+        nested under action_receipt.
+      parameters:
+      - description: Transaction ID for a single canonical ActionReceipt
+        in: query
+        name: tx_id
+        type: string
+      - description: Investigation ID for a unique correlation lookup
+        in: query
+        name: investigation_id
+        type: string
+      - description: Action type required with investigation_id
+        in: query
+        name: action_type
+        type: string
+      - description: Acting app identity filter
+        in: query
+        name: acting_app_id
+        type: string
+      - description: Operator session filter for list results
+        in: query
+        name: operator_session_id
+        type: string
+      - description: Maximum list results
+        in: query
+        name: limit
+        type: integer
+      - description: List offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt
+          schema:
+            $ref: '#/definitions/models.AuditReceiptsResponse'
+        "400":
+          description: Bad Request — conflicting or incomplete selectors
+          schema:
+            type: string
+        "404":
+          description: Receipt not found
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "409":
+          description: Conflict — correlation matched multiple receipts
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+        "503":
+          description: Service Unavailable — egress scrubber unavailable, content
+            withheld
+          schema:
+            type: string
+      summary: Get or list audit receipts
+      tags:
+      - audit
+  /api/v1/audit/receipts/export:
+    get:
+      description: Returns an AuditReceiptsResponse list wrapper. Every searchable
+        record embeds the complete canonical protojson receipt under action_receipt.
+      parameters:
+      - description: Inclusive receipt timestamp in RFC3339 format
+        in: query
+        name: since
+        type: string
+      - description: Acting app identity filter
+        in: query
+        name: acting_app_id
+        type: string
+      - description: Operator session filter
+        in: query
+        name: operator_session_id
+        type: string
+      - description: Maximum results
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuditReceiptsResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+        "503":
+          description: Service Unavailable — egress scrubber unavailable, content
+            withheld
+          schema:
+            type: string
+      summary: Export audit receipts
+      tags:
+      - audit
+  /api/v1/auth/logout:
+    post:
+      description: Clears the web session cookie and deletes the session from the
+        database.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StatusResponse'
+      summary: Logout
+      tags:
+      - auth
+  /api/v1/auth/passkeys:
+    get:
+      consumes:
+      - application/json
+      description: Lists all WebAuthn credentials for the authenticated user. Identity
+        comes from the auth context.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PasskeyCredentialsResponse'
+      summary: List passkey credentials
+      tags:
+      - passkey
+  /api/v1/auth/passkeys/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Revokes a WebAuthn credential by ID. Identity comes from the auth
+        context.
+      parameters:
+      - description: Credential ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PasskeyRevokeResponse'
+        "409":
+          description: Conflict — credential is the user's last passkey
+          schema:
+            type: string
+      summary: Revoke passkey credential
+      tags:
+      - passkey
+  /api/v1/auth/passkeys/authenticate/challenge:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Generates a WebAuthn authentication challenge. Config-driven trust posture:
+        mTLS (session-user binding), CLI bootstrap (public), or console (public).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PasskeyChallengeResponse'
+      summary: Generate WebAuthn authentication challenge
+      tags:
+      - passkey
+  /api/v1/auth/passkeys/authenticate/verify:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Verifies a WebAuthn assertion response. Config-driven trust posture:
+        mTLS (session-user binding, may mint web session in body), CLI bootstrap (public), or console (public, may mint web session + cookie).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PasskeyAuthVerifyResponse'
+      summary: Verify WebAuthn authentication
+      tags:
+      - passkey
+  /api/v1/auth/passkeys/cli/status:
+    get:
+      consumes:
+      - application/json
+      description: Returns the passkey credential list for the mTLS-authenticated
+        user. Identity comes from the mTLS auth context; user_id query params are
+        ignored.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PasskeyCredentialsResponse'
+      summary: CLI passkey status
+      tags:
+      - passkey
+  /api/v1/auth/passkeys/register/challenge:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Generates a WebAuthn registration challenge. Config-driven trust posture:
+        mTLS (session-user binding), JIT (first-credential-only), CLI bootstrap (public), console (public, may auto-create user),
+        or enrollment-token (public, token-gated — the CLI enrollment flow).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PasskeyRegisterChallengeResponse'
+      summary: Generate WebAuthn registration challenge
+      tags:
+      - passkey
+  /api/v1/auth/passkeys/register/verify:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Verifies a WebAuthn attestation response and stores the credential. Config-driven trust posture:
+        mTLS (session-user binding), JIT (first-credential-only), CLI bootstrap (public), console (public, may mint web session + cookie),
+        or enrollment-token (public, token-gated — the CLI enrollment flow).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PasskeyVerifyResponse'
+      summary: Verify WebAuthn registration
+      tags:
+      - passkey
+  /api/v1/auth/platform-enrollments/request:
+    post:
+      consumes:
+      - application/json
+      description: The requester supplies its SHA-256 token hash. Resubmitting the
+        same hash and CSRs recovers the same live request; token conflicts return
+        409.
+      parameters:
+      - description: Enrollment request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PlatformEnrollmentCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.PlatformEnrollmentCreateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create or recover a platform enrollment request
+      tags:
+      - Platform enrollment
+  /api/v1/auth/sessions/me:
+    get:
+      description: Returns the authenticated user's ID and web session ID from the
+        session cookie.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.WebSessionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Get current web session
+      tags:
+      - auth
+  /api/v1/data/blobs/{namespace}/{id}:
+    get:
+      description: Retrieves a blob from the data store
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      summary: Get blob
+      tags:
+      - data
+  /api/v1/gateway/reputation/sign:
+    post:
+      consumes:
+      - application/json
+      description: App mTLS only. Returns an HMAC signature over merkle_root || prev_root
+        || tribunal_command_id. The signing key remains in the Gateway keystore. Signing
+        does not validate the application's scores or satisfy governance proof requirements.
+      parameters:
+      - description: Reputation commitment claim
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReputationSignRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReputationSignResponse'
+        "400":
+          description: Invalid commitment
+          schema:
+            type: string
+        "403":
+          description: App identity required
+          schema:
+            type: string
+        "503":
+          description: Signing unavailable
+          schema:
+            type: string
+      summary: Sign an application reputation commitment
+      tags:
+      - gateway
+  /api/v1/governance/envelopes:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,
+        L4 warden, L5 actuator), and returns the signed ActionReceipt. Transport-to-envelope
+        identity binding is enforced via mTLS certificate URI SAN matching.
+      parameters:
+      - description: GovernanceEnvelope (protojson)
+        in: body
+        name: envelope
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Canonical protojson ActionReceipt
+          schema:
+            $ref: '#/definitions/operatorv1.ActionReceipt'
+        "400":
+          description: Bad Request — malformed envelope
+          schema:
+            type: string
+        "403":
+          description: Forbidden — governance verification failed
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Service Unavailable — processor not configured
+          schema:
+            type: string
+      summary: Submit governance envelope
+      tags:
+      - governance
+  /api/v1/inference/dispatch:
+    post:
+      consumes:
+      - application/json
+      description: Platform-internal endpoint (mTLS, app workload) that routes an
+        inference request through the L1-L5 governance gauntlet to the Inference Node
+        and returns the verified result plus final signed receipt.
+      parameters:
+      - description: Governed inference dispatch request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verified inference result and final signed receipt
+          schema:
+            $ref: '#/definitions/operatorv1.InferenceDispatchResponse'
+        "400":
+          description: Bad Request — malformed body, unknown field, missing messages,
+            invalid role, or acting_app_id identity mismatch
+          schema:
+            type: string
+        "401":
+          description: Unauthorized — missing delegated user identity
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload, model override denied, or
+            governance rejection
+          schema:
+            type: string
+        "404":
+          description: Not Found — no inference-capable operator session
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "409":
+          description: Conflict — multiple inference-capable operators; explicit target
+            required
+          schema:
+            type: string
+        "413":
+          description: Request Entity Too Large — body exceeds the payload limit
+          schema:
+            type: string
+        "422":
+          description: Unprocessable Entity — context overflow, unsupported tools,
+            or target operator session is not inference-capable
+          schema:
+            type: string
+        "500":
+          description: Internal Error
+          schema:
+            type: string
+        "502":
+          description: Bad Gateway — provider or receipt verification failure
+          schema:
+            type: string
+        "503":
+          description: Service Unavailable — command delivered to no operator subscribers
+          schema:
+            type: string
+        "504":
+          description: Gateway Timeout — request deadline exceeded; remote provider
+            outcome unknown
+          schema:
+            type: string
+      summary: Dispatch a governed inference request
+      tags:
+      - inference
+  /api/v1/inference/model-provenance/attestations/{provider_attempt_id}:
+    get:
+      description: Returns the canonical model provenance attestation window for one
+        provider attempt ID (mTLS owner CLI only).
+      parameters:
+      - description: Provider attempt ID
+        in: path
+        name: provider_attempt_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ModelProvenanceResponse'
+        "404":
+          description: Model provenance evidence not found
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Model provenance store unavailable
+          schema:
+            type: string
+      summary: Get model provenance attestation evidence
+      tags:
+      - inference
+  /api/v1/inference/provider-observations/{provider_attempt_id}:
+    get:
+      description: Returns the canonical provider-boundary observation window and
+        durable provider-attempt record for one provider attempt ID (mTLS owner CLI
+        only).
+      parameters:
+      - description: Provider attempt ID
+        in: path
+        name: provider_attempt_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProviderObservationResponse'
+        "404":
+          description: Observation evidence not found
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Provider observation store unavailable
+          schema:
+            type: string
+      summary: Get provider-boundary observation evidence
+      tags:
+      - inference
+  /api/v1/observe/bootstrap:
+    get:
+      description: Returns one bounded initial snapshot for agents, active run, overview
+        counters, recent runs, latest eval summaries, and download metadata.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ObserveBootstrapSnapshot'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Get observe bootstrap snapshot
+      tags:
+      - observe
+  /api/v1/observe/downloads:
+    get:
+      description: Returns a paginated list of allowlisted download artifacts owned
+        by the authenticated user.
+      parameters:
+      - description: Pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Page size (1-100, default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ObservePage'
+        "400":
+          description: Invalid cursor or limit
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: List observe downloads
+      tags:
+      - observe
+  /api/v1/observe/downloads/{artifact_id}:
+    get:
+      description: Returns a single allowlisted download artifact owned by the authenticated
+        user. Use ?download=1 to stream the artifact bytes.
+      parameters:
+      - description: Artifact ID
+        in: path
+        name: artifact_id
+        required: true
+        type: string
+      - description: Set to 1 to stream the artifact bytes instead of returning metadata
+        in: query
+        name: download
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DownloadArtifact'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "404":
+          description: Download not found
+          schema:
+            type: string
+      summary: Get observe download artifact
+      tags:
+      - observe
+  /api/v1/observe/evals:
+    get:
+      description: Returns paginated eval run projections owned by the authenticated
+        user.
+      parameters:
+      - description: Pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Page size (1-100, default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ObservePage'
+        "400":
+          description: Invalid cursor or limit
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: List observe evals
+      tags:
+      - observe
+  /api/v1/observe/evals/{run_id}:
+    get:
+      description: Returns a typed eval detail projection with manifest-safe identity,
+        arm/model information, aggregate metrics, status, and verification boundary.
+      parameters:
+      - description: Eval run ID
+        in: path
+        name: run_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.EvalDetail'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "404":
+          description: Eval not found
+          schema:
+            type: string
+      summary: Get observe eval detail
+      tags:
+      - observe
+  /api/v1/observe/producer/agent-state:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a typed agent state update from an mTLS-authenticated app
+        workload. The gateway derives user_id from the peer certificate, persists
+        the agent state projection, and emits an app.agent.status.updated SSE event
+        after successful persistence.
+      parameters:
+      - description: Agent state update
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ObserveProducerAgentStateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: accepted
+          schema:
+            type: string
+        "400":
+          description: Invalid transition, stale update, or missing fields
+          schema:
+            type: string
+        "401":
+          description: Unauthorized — mTLS user identity required
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload or cross-user
+          schema:
+            type: string
+        "500":
+          description: Persistence failure
+          schema:
+            type: string
+      summary: Push observe agent state
+      tags:
+      - observe
+  /api/v1/observe/producer/run-state:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a typed run state update from an mTLS-authenticated app
+        workload. The gateway derives user_id from the peer certificate, persists
+        the run state projection, and emits an app.run.status.updated SSE event after
+        successful persistence.
+      parameters:
+      - description: Run state update
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ObserveProducerRunStateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: accepted
+          schema:
+            type: string
+        "400":
+          description: Invalid transition, stale update, or missing fields
+          schema:
+            type: string
+        "401":
+          description: Unauthorized — mTLS user identity required
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload or cross-user
+          schema:
+            type: string
+        "500":
+          description: Persistence failure
+          schema:
+            type: string
+      summary: Push observe run state
+      tags:
+      - observe
+  /api/v1/observe/runs:
+    get:
+      description: Returns paginated read-only run summaries owned by the authenticated
+        user.
+      parameters:
+      - description: Pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Page size (1-100, default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ObservePage'
+        "400":
+          description: Invalid cursor or limit
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: List observe runs
+      tags:
+      - observe
+  /api/v1/observe/runs/{run_id}:
+    get:
+      description: Returns a typed run detail projection with tasks and evidence-safe
+        links.
+      parameters:
+      - description: Run ID
+        in: path
+        name: run_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RunDetail'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "404":
+          description: Run not found
+          schema:
+            type: string
+      summary: Get observe run detail
+      tags:
+      - observe
+  /api/v1/operators/validate:
+    post:
+      consumes:
+      - application/json
+      description: Validates the exact active operator-session, CLI-session, and user
+        binding. The Gateway is authoritative; callers authenticate with an enrolled
+        application mTLS certificate.
+      parameters:
+      - description: Operator, CLI, and user session binding
+        in: body
+        name: binding
+        required: true
+        schema:
+          $ref: '#/definitions/models.OperatorSessionValidationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.OperatorSessionValidationResponse'
+        "400":
+          description: Bad Request — malformed JSON
+          schema:
+            type: string
+        "401":
+          description: Unauthorized — binding is missing, inactive, expired, or mismatched
+          schema:
+            type: string
+        "403":
+          description: Forbidden — application mTLS identity is not authorized
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Validate operator session binding
+      tags:
+      - operators
+  /api/v1/pki/certificates/revoke:
+    post:
+      consumes:
+      - application/json
+      description: Revokes a certificate by serial number (internal mTLS endpoint)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StatusResponse'
+      summary: Revoke certificate
+      tags:
+      - pki
+  /api/v1/pki/csr/sign:
+    post:
+      consumes:
+      - application/json
+      description: Signs a certificate signing request (internal mTLS endpoint)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PKICSRSignResponse'
+      summary: Sign CSR
+      tags:
+      - pki
+  /api/v1/pki/devices/enroll:
+    post:
+      consumes:
+      - application/json
+      description: Enrolls a device via PKI endpoint
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: PKI device enrollment
+      tags:
+      - pki
+  /api/v1/public-feed/batches:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Accepts campaign projection records and signs/publishes them through the gateway-owned public spectator stack (mTLS owner CLI only).
+        Returns the gateway publisher high-water sequence and feed-chain hash (mTLS owner CLI only).
+      parameters:
+      - description: Ordered public feed records
+        in: body
+        name: records
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/models.PublicFeedRecord'
+          type: array
+      produces:
+      - application/json
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PublicFeedSnapshot'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "404":
+          description: Snapshot not found
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Public spectator unavailable
+          schema:
+            type: string
+      summary: Get public feed snapshot
+      tags:
+      - public-feed
+      - public-feed
+  /api/v1/public-feed/proofs:
+    post:
+      consumes:
+      - application/json
+      description: Ingests one assignment audit export package into the gateway-owned
+        public proof catalog (mTLS owner CLI only).
+      parameters:
+      - description: Assignment audit proof package
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PublicAssignmentAuditProofPublishRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PublicAssignmentAuditProofPublishResponse'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Public spectator unavailable
+          schema:
+            type: string
+      summary: Publish assignment audit proof
+      tags:
+      - public-feed
+  /api/v1/public-feed/proofs/batch:
+    post:
+      consumes:
+      - application/json
+      description: Ingests many assignment audit export packages in one request (mTLS
+        owner CLI only).
+      parameters:
+      - description: Assignment audit proof batch
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PublicAssignmentAuditProofBatchPublishRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PublicAssignmentAuditProofBatchPublishResponse'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Public spectator unavailable
+          schema:
+            type: string
+      summary: Publish assignment audit proof batch
+      tags:
+      - public-feed
+  /api/v1/public-feed/proofs/push:
+    post:
+      consumes:
+      - application/json
+      description: Flushes the gateway-owned proof catalog and manifest to the public
+        mirror (mTLS owner CLI only).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PublicProofCatalogPushResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Public spectator unavailable
+          schema:
+            type: string
+      summary: Push proof catalog to mirror
+      tags:
+      - public-feed
+  /api/v1/public-feed/snapshot:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        Accepts campaign projection records and signs/publishes them through the gateway-owned public spectator stack (mTLS owner CLI only).
+        Returns the gateway publisher high-water sequence and feed-chain hash (mTLS owner CLI only).
+      parameters:
+      - description: Ordered public feed records
+        in: body
+        name: records
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/models.PublicFeedRecord'
+          type: array
+      produces:
+      - application/json
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PublicFeedSnapshot'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "404":
+          description: Snapshot not found
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Public spectator unavailable
+          schema:
+            type: string
+      summary: Get public feed snapshot
+      tags:
+      - public-feed
+      - public-feed
+  /api/v1/sse/events:
+    get:
+      description: |-
+        Returns one page of stored SSE events after a given ID, for backfill; live delivery uses /api/v1/sse/stream. Dual auth: mTLS for CLI/operator, web session
+        cookie for browser. The route is built entirely from auth context: user_id from
+        cert/cookie, session from header/cookie. The query string carries only since_id and limit.
+      parameters:
+      - description: CLI session ID (mTLS only — user_id derived from cert)
+        in: header
+        name: X-ZTD-CLI-Session-ID
+        type: string
+      - description: Return events after this ID
+        in: query
+        name: since_id
+        type: integer
+      - description: Maximum events to return
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SSEEventsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: Forbidden — unauthorized
+          schema:
+            type: string
+      summary: List stored SSE events
+      tags:
+      - telemetry
+  /api/v1/sse/stream:
+    get:
+      description: |-
+        Streams events via Server-Sent Events (text/event-stream). Dual auth: mTLS for
+        CLI/operator, web session cookie for browser. Supports Last-Event-ID header for
+        reconnection. The route is built entirely from auth context: user_id from cert/cookie,
+        session from header/cookie. The query string carries only since_id.
+      parameters:
+      - description: CLI session ID (mTLS only — user_id derived from cert)
+        in: header
+        name: X-ZTD-CLI-Session-ID
+        type: string
+      - description: Replay events after this ID
+        in: query
+        name: since_id
+        type: integer
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: Forbidden — unauthorized
+          schema:
+            type: string
+      summary: Stream SSE events
+      tags:
+      - telemetry
+  /api/v1/users:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        GET lists all users; POST creates a new user with a generated ID.
+        Zero-PII: users are created with only a generated ID and passkey credentials.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.UserCreateResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "409":
+          description: Conflict — user creation failed
+          schema:
+            type: string
+      summary: List or create users
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: |-
+        GET lists all users; POST creates a new user with a generated ID.
+        Zero-PII: users are created with only a generated ID and passkey credentials.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.UserCreateResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "409":
+          description: Conflict — user creation failed
+          schema:
+            type: string
+      summary: List or create users
+      tags:
+      - users
+  /api/v1/users/me:
+    get:
+      description: |-
+        Returns the authenticated user's profile. Identity comes from the auth context
+        (mTLS or web session cookie).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserMeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "404":
+          description: User not found
+          schema:
+            type: string
+      summary: Get current user
+      tags:
+      - users
+  /console/:
+    get:
+      consumes:
+      - text/html
+      description: 'Serves the ztd Console: passkey authentication, approvals, Operator
+        inventory and binding, cases, investigations, and chat.'
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Returns the index.html SPA
+          schema:
+            type: string
+      summary: Console SPA
+      tags:
+      - public
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Returns the current health status of the gateway
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /health/bootstrap:
+    get:
+      consumes:
+      - application/json
+      description: Returns the current health status during bootstrap (no state root
+        check)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.HealthResponse'
+      summary: Bootstrap health check
+      tags:
+      - health
+  /state:
+    get:
+      consumes:
+      - application/json
+      description: Returns the current state merkle root for envelope binding
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StateResponse'
+      summary: State root
+      tags:
+      - state
+  /ws/v1/pubsub:
+    get:
+      description: |-
+        Upgrades to a WebSocket connection for bidirectional publish/subscribe messaging.
+        Requires mTLS authentication. Topic ACLs enforce that subscribers can only
+        subscribe to channels matching their mTLS workload identity.
+      produces:
+      - text/event-stream
+      responses:
+        "101":
+          description: WebSocket Upgrade
+          schema:
+            type: string
+      summary: WebSocket pub/sub
+      tags:
+      - pubsub
+  /ztd-deploy.ps1:
+    get:
+      description: Returns the Windows operator deployment script
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Deploy script Windows
+      tags:
+      - deploy
+  /ztd-deploy.sh:
+    get:
+      description: Returns the Linux operator deployment script
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Deploy script Linux
+      tags:
+      - deploy
+swagger: "2.0"

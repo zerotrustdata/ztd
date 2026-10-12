@@ -1,0 +1,22 @@
+{
+  "name": "ztd-website",
+  "private": true,
+  "license": "BUSL-1.1",
+  "type": "module",
+  "scripts": {
+    "build": "node src/build.js",
+    "check": "node --test && node src/build.js --check",
+    "deploy": "npm run check && npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "marked": "18.1.1",
+    "wrangler": "4.127.1"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "overrides": {
+    "sharp": "0.35.4",
+    "undici": "7.30.0"
+  }
+}

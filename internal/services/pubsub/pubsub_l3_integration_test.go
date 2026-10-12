@@ -1,0 +1,470 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"context"
+	"crypto/ed25519"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/services/execution"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+// TestOperatorPubSubService_L3Rejection_FailClosed verifies that OperatorPubSubService
+// rejects mutation envelopes when L3 verification fails, ensuring fail-closed behavior
+// through the full ProcessEnvelope → L4Warden → Actuator chain.
+func TestOperatorPubSubService_L3Rejection_FailClosed(t *testing.T) {
+
+	cfg := testutil.NewTestConfig(t)
+	logger := testutil.NewTestLogger()
+
+	// Create a rejecting L3 notary
+	rejectingL3 := &testutil.ConfigurableMockL3Notary{ShouldPass: false}
+
+	// Create a stateful replay store
+	replayStore := testutil.NewStatefulMockReplayStore()
+	stateRootProvider := testutil.NewMockStateRootProvider("test-root")
+
+	// Create signer store with test key
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate signer: %v", err)
+	}
+	signerStore := &governance.FailClosedSignerStore{
+		Signers: map[string]ed25519.PublicKey{"test-key": pubKey},
+	}
+
+	// Create execution service
+	execSvc := execution.NewExecutionService(cfg, logger)
+	fileSvc := newFileEditTestService(t, cfg, logger)
+
+	// Create command service with rejecting L3 notary in gateway mode (required for L2/L3 posture verification)
+	audit := newTestAuditBackend(t, "session-1")
+	cmdSvc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
+		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
+			Ledger:             storagetest.NewTestLedger(t),
+			RuntimeVault:       governancetest.UnlockedVault{},
+			Config:             cfg,
+			Logger:             logger,
+			Execution:          execSvc,
+			FileEdit:           fileSvc,
+			PubSubClient:       NewInProcessPubSubClient(nil, logger),
+			ResultsService:     &mockResultsPublisher{},
+			ActuatorSigningKey: privKey,
+			ActuatorKeyID:      "test-key",
+			AuditStore:         audit.Store,
+			AuditorSigningKey:  audit.AuditorKey,
+			AuditorKeyID:       audit.AuditorKeyID,
+			Scrubbing:          mustNewScrubbingSvc(t, logger),
+		}),
+		GovDeps: &GatewayModeDeps{
+			GovernanceCoreDeps: GovernanceCoreDeps{
+				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
+				L3Notary:          rejectingL3,
+				ReplayStore:       replayStore,
+				StateRootProvider: stateRootProvider,
+				TransactionAudit:  &testutil.MockTransactionAudit{},
+				SignerStore:       signerStore,
+				Doctrine:          governance.NewL1Doctrine(),
+			},
+			ConsensusPolicyStore:   testConsensusStore(),
+			PlatformEnrollmentDeps: &PlatformEnrollmentDeps{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create command service: %v", err)
+	}
+
+	// Build a mutation envelope requiring L3 proof
+	cmdPayload := &operatorv1.CommandRequested{
+		Command:       "echo test",
+		ExecutionId:   "exec-1",
+		Justification: "test",
+	}
+	payloadBytes, err := proto.Marshal(cmdPayload)
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+
+	envelope := &govpkg.GovernanceEnvelope{
+		ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
+		Timestamp:         timestamppb.Now(),
+		ExpiresAt:         timestamppb.New(time.Now().Add(time.Hour)),
+		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
+		OperatorId:        "operator-1",
+		OperatorSessionId: "session-1",
+		EventType:         string(constants.Event.Operator.Command.Requested),
+
+		ActionType:      string(constants.ActionTypeExecuteBash),
+		TargetResource:  "localhost",
+		Payload:         payloadBytes,
+		StateMerkleRoot: "test-root",
+		Nonce:           "nonce-test-1",
+		Posture:         constants.PostureNotary,
+	}
+
+	// Generate transaction hash BEFORE L2/L3 — L2 signs the hash, then L3
+	// is added. Protocol ordering: L1 → L2 → L3 → L4.
+	txHash, err := govpkg.GenerateMessageID(envelope)
+	if err != nil {
+		t.Fatalf("failed to generate transaction hash: %v", err)
+	}
+	envelope.Id = txHash
+	envelope.TransactionHash = txHash
+
+	// L2 signs the hash (machine consensus before human notary)
+	envelope.Governance = &commonv1.GovernanceMetadata{
+		L1: &commonv1.L1Metadata{Validated: true},
+		L2: &commonv1.L2Metadata{
+			ConsensusSetId: "test-consensus",
+			Votes: []*commonv1.L2Vote{
+				signL2Vote(privKey, "test-key", txHash, true),
+			},
+		},
+		L3: &commonv1.L3Metadata{
+			Proof: &commonv1.L3Proof{
+				Signature: "test-proof",
+			},
+		},
+	}
+
+	// Marshal envelope to protojson (canonical wire format)
+	envelopeBytes, err := (protojson.MarshalOptions{}).Marshal(envelope)
+	if err != nil {
+		t.Fatalf("failed to marshal envelope: %v", err)
+	}
+
+	// Process envelope through command service
+	receipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
+
+	// Verify fail-closed behavior: L3 rejection should return error
+	if err == nil {
+		t.Error("Expected L3 rejection error, got nil")
+	}
+	if receipt == nil {
+		t.Fatal("Expected signed failed receipt on L3 rejection, got nil")
+	}
+	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED || receipt.Signature == "" {
+		t.Fatalf("Expected signed failed receipt on L3 rejection, got: %#v", receipt)
+	}
+	if len(receipt.DeterministicStageEvidence) < 2 || receipt.DeterministicStageEvidence[len(receipt.DeterministicStageEvidence)-2].Kind != operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY || receipt.DeterministicStageEvidence[len(receipt.DeterministicStageEvidence)-2].Outcome != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED {
+		t.Fatalf("Expected failed L3 stage evidence, got: %#v", receipt.DeterministicStageEvidence)
+	}
+
+	// Verify the error is an L3-related error
+	if !isL3Error(err) {
+		t.Errorf("Expected L3-related error, got: %v", err)
+	}
+}
+
+// TestOperatorPubSubService_L3Acceptance_Success verifies that OperatorPubSubService
+// accepts mutation envelopes when L3 verification passes, ensuring the full
+// ProcessEnvelope → L4Warden → Actuator chain works correctly.
+func TestOperatorPubSubService_L3Acceptance_Success(t *testing.T) {
+
+	cfg := testutil.NewTestConfig(t)
+	logger := testutil.NewTestLogger()
+
+	// Create an accepting L3 notary
+	acceptingL3 := &testutil.ConfigurableMockL3Notary{ShouldPass: true}
+
+	// Create a stateful replay store
+	replayStore := testutil.NewStatefulMockReplayStore()
+	stateRootProvider := testutil.NewMockStateRootProvider("test-root")
+
+	// Create signer store with test key
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate signer: %v", err)
+	}
+	signerStore := &governance.FailClosedSignerStore{
+		Signers: map[string]ed25519.PublicKey{"test-key": pubKey},
+	}
+
+	// Create execution service
+	execSvc := execution.NewExecutionService(cfg, logger)
+	fileSvc := newFileEditTestService(t, cfg, logger)
+
+	// Create command service with accepting L3 notary in gateway mode (required for L2/L3 posture verification)
+	audit := newTestAuditBackend(t, "session-1")
+	cmdSvc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
+		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
+			Ledger:             storagetest.NewTestLedger(t),
+			RuntimeVault:       governancetest.UnlockedVault{},
+			Config:             cfg,
+			Logger:             logger,
+			Execution:          execSvc,
+			FileEdit:           fileSvc,
+			PubSubClient:       NewInProcessPubSubClient(nil, logger),
+			ResultsService:     &mockResultsPublisher{},
+			ActuatorSigningKey: privKey,
+			ActuatorKeyID:      "test-key",
+			AuditStore:         audit.Store,
+			AuditorSigningKey:  audit.AuditorKey,
+			AuditorKeyID:       audit.AuditorKeyID,
+			Scrubbing:          mustNewScrubbingSvc(t, logger),
+		}),
+		GovDeps: &GatewayModeDeps{
+			GovernanceCoreDeps: GovernanceCoreDeps{
+				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
+				L3Notary:          acceptingL3,
+				ReplayStore:       replayStore,
+				StateRootProvider: stateRootProvider,
+				TransactionAudit:  &testutil.MockTransactionAudit{},
+				SignerStore:       signerStore,
+				Doctrine:          governance.NewL1Doctrine(),
+			},
+			ConsensusPolicyStore:   testConsensusStore(),
+			PlatformEnrollmentDeps: &PlatformEnrollmentDeps{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create command service: %v", err)
+	}
+
+	// Build a mutation envelope requiring L3 proof
+	cmdPayload := &operatorv1.CommandRequested{
+		Command:       "echo test",
+		ExecutionId:   "exec-1",
+		Justification: "test",
+	}
+	payloadBytes, err := proto.Marshal(cmdPayload)
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+
+	envelope := &govpkg.GovernanceEnvelope{
+		ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
+		Timestamp:         timestamppb.Now(),
+		ExpiresAt:         timestamppb.New(time.Now().Add(time.Hour)),
+		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
+		OperatorId:        "operator-1",
+		OperatorSessionId: "session-1",
+		EventType:         string(constants.Event.Operator.Command.Requested),
+
+		ActionType:      string(constants.ActionTypeExecuteBash),
+		TargetResource:  "localhost",
+		Payload:         payloadBytes,
+		StateMerkleRoot: "test-root",
+		Nonce:           "nonce-test-2",
+		Posture:         constants.PostureNotary,
+	}
+
+	// Generate transaction hash BEFORE L2/L3 — L2 signs the hash, then L3
+	// is added. Protocol ordering: L1 → L2 → L3 → L4.
+	txHash, err := govpkg.GenerateMessageID(envelope)
+	if err != nil {
+		t.Fatalf("failed to generate transaction hash: %v", err)
+	}
+	envelope.Id = txHash
+	envelope.TransactionHash = txHash
+
+	// L2 signs the hash (machine consensus before human notary)
+	envelope.Governance = &commonv1.GovernanceMetadata{
+		L1: &commonv1.L1Metadata{Validated: true},
+		L2: &commonv1.L2Metadata{
+			ConsensusSetId: "test-consensus",
+			Votes: []*commonv1.L2Vote{
+				signL2Vote(privKey, "test-key", txHash, true),
+			},
+		},
+		L3: &commonv1.L3Metadata{
+			Proof: &commonv1.L3Proof{
+				Signature: "test-proof",
+			},
+		},
+	}
+
+	// Marshal envelope to protojson (canonical wire format)
+	envelopeBytes, err := (protojson.MarshalOptions{}).Marshal(envelope)
+	if err != nil {
+		t.Fatalf("failed to marshal envelope: %v", err)
+	}
+
+	// Process envelope through command service
+	receipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
+
+	// Verify success: L3 acceptance should return receipt
+	if err != nil {
+		t.Errorf("Expected success with L3 acceptance, got error: %v", err)
+	}
+	if receipt == nil {
+		t.Error("Expected receipt on L3 acceptance, got nil")
+	}
+
+	// Verify receipt fields
+	if receipt != nil {
+		if receipt.TransactionId != txHash {
+			t.Errorf("Expected transaction ID %s, got %s", txHash, receipt.TransactionId)
+		}
+		if receipt.TransactionHash != txHash {
+			t.Errorf("Expected transaction hash %s, got %s", txHash, receipt.TransactionHash)
+		}
+	}
+}
+
+// TestOperatorPubSubService_L3NilNotary_FailClosed verifies that OperatorPubSubService
+// rejects mutation envelopes when L3Notary is nil, ensuring fail-closed behavior.
+func TestOperatorPubSubService_L3NilNotary_FailClosed(t *testing.T) {
+
+	cfg := testutil.NewTestConfig(t)
+	logger := testutil.NewTestLogger()
+
+	// Create a stateful replay store
+	replayStore := testutil.NewStatefulMockReplayStore()
+	stateRootProvider := testutil.NewMockStateRootProvider("test-root")
+
+	// Create signer store with test key
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate signer: %v", err)
+	}
+	signerStore := &governance.FailClosedSignerStore{
+		Signers: map[string]ed25519.PublicKey{"test-key": pubKey},
+	}
+
+	// Create execution service
+	execSvc := execution.NewExecutionService(cfg, logger)
+	fileSvc := newFileEditTestService(t, cfg, logger)
+
+	// Create command service with nil L3 notary in gateway mode (should fail-closed)
+	audit := newTestAuditBackend(t, "session-1")
+	cmdSvc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
+		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
+			Ledger:             storagetest.NewTestLedger(t),
+			RuntimeVault:       governancetest.UnlockedVault{},
+			Config:             cfg,
+			Logger:             logger,
+			Execution:          execSvc,
+			FileEdit:           fileSvc,
+			PubSubClient:       NewInProcessPubSubClient(nil, logger),
+			ResultsService:     &mockResultsPublisher{},
+			ActuatorSigningKey: privKey,
+			ActuatorKeyID:      "test-key",
+			AuditStore:         audit.Store,
+			AuditorSigningKey:  audit.AuditorKey,
+			AuditorKeyID:       audit.AuditorKeyID,
+			Scrubbing:          mustNewScrubbingSvc(t, logger),
+		}),
+		GovDeps: &GatewayModeDeps{
+			GovernanceCoreDeps: GovernanceCoreDeps{
+				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
+				L3Notary:          nil, // Explicitly nil to test fail-closed
+				ReplayStore:       replayStore,
+				StateRootProvider: stateRootProvider,
+				TransactionAudit:  &testutil.MockTransactionAudit{},
+				SignerStore:       signerStore,
+				Doctrine:          governance.NewL1Doctrine(),
+			},
+			ConsensusPolicyStore:   testConsensusStore(),
+			PlatformEnrollmentDeps: &PlatformEnrollmentDeps{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create command service: %v", err)
+	}
+
+	// Build a mutation envelope requiring L3 proof
+	cmdPayload := &operatorv1.CommandRequested{
+		Command:       "echo test",
+		ExecutionId:   "exec-1",
+		Justification: "test",
+	}
+	payloadBytes, err := proto.Marshal(cmdPayload)
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+
+	envelope := &govpkg.GovernanceEnvelope{
+		ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
+		Timestamp:         timestamppb.Now(),
+		ExpiresAt:         timestamppb.New(time.Now().Add(time.Hour)),
+		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
+		OperatorId:        "operator-1",
+		OperatorSessionId: "session-1",
+		EventType:         string(constants.Event.Operator.Command.Requested),
+
+		ActionType:      string(constants.ActionTypeExecuteBash),
+		TargetResource:  "localhost",
+		Payload:         payloadBytes,
+		StateMerkleRoot: "test-root",
+		Nonce:           "nonce-test-3",
+		Posture:         constants.PostureNotary,
+	}
+
+	// Generate transaction hash BEFORE L2/L3 — L2 signs the hash, then L3
+	// is added. Protocol ordering: L1 → L2 → L3 → L4.
+	txHash, err := govpkg.GenerateMessageID(envelope)
+	if err != nil {
+		t.Fatalf("failed to generate transaction hash: %v", err)
+	}
+	envelope.Id = txHash
+	envelope.TransactionHash = txHash
+
+	// L2 signs the hash (machine consensus before human notary)
+	envelope.Governance = &commonv1.GovernanceMetadata{
+		L1: &commonv1.L1Metadata{Validated: true},
+		L2: &commonv1.L2Metadata{
+			ConsensusSetId: "test-consensus",
+			Votes: []*commonv1.L2Vote{
+				signL2Vote(privKey, "test-key", txHash, true),
+			},
+		},
+		L3: &commonv1.L3Metadata{
+			Proof: &commonv1.L3Proof{
+				Signature: "test-proof",
+			},
+		},
+	}
+
+	// Marshal envelope to protojson (canonical wire format)
+	envelopeBytes, err := (protojson.MarshalOptions{}).Marshal(envelope)
+	if err != nil {
+		t.Fatalf("failed to marshal envelope: %v", err)
+	}
+
+	// Process envelope through command service
+	receipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
+
+	// Verify fail-closed behavior: nil L3 notary should return ErrL3NotaryNotConfigured
+	if err == nil {
+		t.Fatal("Expected error with nil L3 notary, got nil")
+	}
+	if !errors.Is(err, governance.ErrL3NotaryNotConfigured) {
+		t.Fatalf("Expected ErrL3NotaryNotConfigured, got: %v", err)
+	}
+	if receipt == nil {
+		t.Fatal("Expected signed failed receipt with nil L3 notary, got nil")
+	}
+	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED || receipt.Signature == "" {
+		t.Fatalf("Expected signed failed receipt with nil L3 notary, got: %#v", receipt)
+	}
+}
+
+// isL3Error checks if an error is L3-related
+func isL3Error(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, governance.ErrL3ProofInvalid) ||
+		errors.Is(err, governance.ErrL3ProofMissing) ||
+		errors.Is(err, governance.ErrL3NotaryNotConfigured)
+}

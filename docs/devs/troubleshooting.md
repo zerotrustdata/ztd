@@ -1,0 +1,216 @@
+---
+doc_id: troubleshooting
+title: Troubleshooting Guide
+audience: maintainers and coding agents
+status: current
+version: v1.0.0
+last_updated: 2026-10-12
+owners:
+  - internal/cli/cmd/
+  - internal/services/gateway/
+  - internal/services/auth/
+  - internal/services/vault/
+related:
+  - docs/devs/devs.md
+  - docs/devs/codemap.md
+  - docs/devs/tests.md
+  - docs/devs/docs.md
+  - docs/devs/release_process.md
+when_to_read: Diagnosing development, build, test, gateway startup, authentication, enrollment, or runtime errors.
+do_not_use_for:
+  - Platform coding standards and invariants (docs/devs/devs.md)
+  - Full documentation catalog and writing rules (docs/devs/docs.md)
+  - Release execution and compliance bundles (docs/devs/release_process.md)
+  - Package and runtime ownership maps (docs/devs/codemap.md)
+  - Test tiers and test execution (docs/devs/tests.md)
+---
+
+# Troubleshooting Guide
+
+## Purpose
+
+Diagnose and resolve common contributor setup, build, test, Gateway startup, authentication, vault, governance, and deployment failures across the ztd platform.
+
+## Quick index
+
+- [Purpose](#purpose)
+- [Quick index](#quick-index)
+- [Invariants](#invariants)
+  - [Environment and binary (`INV-TROUBLE-ENV`)](#environment-and-binary-inv-trouble-env)
+  - [Gateway startup and vault (`INV-TROUBLE-GW`)](#gateway-startup-and-vault-inv-trouble-gw)
+  - [Authentication and trust (`INV-TROUBLE-AUTH`)](#authentication-and-trust-inv-trouble-auth)
+  - [Operator connectivity and governance (`INV-TROUBLE-OP`)](#operator-connectivity-and-governance-inv-trouble-op)
+- [Owned surfaces](#owned-surfaces)
+- [Procedures](#procedures)
+  - [Basic Health and Toolchain Triage](#basic-health-and-toolchain-triage)
+  - [Build and Generation Triage](#build-and-generation-triage)
+  - [Gateway Process Diagnosis](#gateway-process-diagnosis)
+  - [Vault Validation and Key Recovery](#vault-validation-and-key-recovery)
+  - [CLI Authentication and Session Recovery](#cli-authentication-and-session-recovery)
+  - [Operator Connectivity and Enrollment Triage](#operator-connectivity-and-enrollment-triage)
+  - [Governance Pipeline Diagnosis](#governance-pipeline-diagnosis)
+- [Anti-patterns](#anti-patterns)
+- [Links out](#links-out)
+
+## Invariants
+
+Ids are stable. Append the next free number in a topic. Do not renumber.
+
+### Environment and binary (`INV-TROUBLE-ENV`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-TROUBLE-ENV-01 | CLI commands MUST be run from the checkout root. Running from a subdirectory resolves a different `.ztd/` runtime tree. |
+| INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.26.9). |
+| INV-TROUBLE-ENV-03 | A newly built binary MUST be produced with `make build`, which compiles `cmd/ztd` and places the runnable executable at `./ztd`. |
+
+### Gateway startup and vault (`INV-TROUBLE-GW`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-TROUBLE-GW-01 | The Gateway requires an unlocked vault during startup. On first initialization, `.ztd/vault/` and `.ztd/vault/key` are generated. Lost vault keys make data unrecoverable; MUST NOT overwrite or delete vault keys without explicit data disposal intent. |
+| INV-TROUBLE-GW-02 | `gw restart` reads the launch profile at `.ztd/pids/operator-launch-profile.json`. If missing or invalid, restart fails closed; start with explicit flags to generate a new launch profile. |
+| INV-TROUBLE-GW-03 | `gw reset` and `gw clean` are destructive commands that move the local `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`; the gateway starts over without it. MUST NOT use either command to repair retained state. `make clean` removes only build artifacts and the Go build cache; it does not reset Gateway runtime state. |
+
+### Authentication and trust (`INV-TROUBLE-AUTH`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-TROUBLE-AUTH-01 | The canonical trust bundle path is `.ztd/pki/trust/ztdg-ca-bundle.pem`. Tests and tools MUST NOT use non-canonical bundle paths or mutate host PKI to fix test failures. |
+| INV-TROUBLE-AUTH-02 | CLI sessions and certificates expire in 7 days; web sessions expire in 24 hours. When a CLI certificate is valid but session expired, run `ztd auth refresh` rather than re-enrolling. |
+| INV-TROUBLE-AUTH-03 | Headless enrollment (`ztd login`, `ztd login cli`, alias `ztd login headless`, or `ztd auth enroll user --headless`) skips OS trust and passkey ceremony, producing an mTLS-capable CLI identity that does not support web Console sessions. |
+| INV-TROUBLE-AUTH-04 | `ztd logout` ends every web and CLI session of the user on every machine and revokes their CLI certificates. A machine that was logged in elsewhere reports its certificate revoked, and `ztd auth refresh` cannot recover it. Run `ztd logout --local-only` to discard the stale local credentials, then `ztd login`. |
+
+### Operator connectivity and governance (`INV-TROUBLE-OP`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-TROUBLE-OP-01 | Outbound Operators connect strictly outbound over mTLS to the Gateway (`cmd:<operator_id>:<operator_session_id>`) and expose NO inbound listening ports. To diagnose an unreachable Operator, check Gateway mTLS port reachability, local CA bundle integrity, and platform enrollment approval status. |
+| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in audit receipts (`.ztd/audit/` or `ztd audit receipts`) and state roots before altering configuration or attempting re-execution. |
+
+## Owned surfaces
+
+| Claim | Path | Verify |
+| :--- | :--- | :--- |
+| Go version requirement | `go.mod` | `go 1.26.9` |
+| Platform build target | `Makefile`, `cmd/ztd` | `make build` |
+| Gateway launch profile | `internal/cli/serve/gateway.go` | `.ztd/pids/operator-launch-profile.json` |
+| Vault key path | `internal/constants/paths.go` | `VaultKeyRel` (`vault/key`) |
+| CA trust bundle | `internal/constants/paths.go` | `PKITrustDirRel/ztdg-ca-bundle.pem` |
+| CLI session credentials | `internal/cli/auth/`, `.ztd/auth/` | `ztd auth refresh`, `ztd login cli` |
+| Operator enrollment state | `internal/cli/serve/operator.go` | `ztd operator list`, `ztd operator show` |
+
+## Procedures
+
+### Basic Health and Toolchain Triage
+
+```bash
+pwd
+ls README.md ztd Makefile VERSION
+./ztd version
+go version
+```
+
+### Build and Generation Triage
+
+```bash
+# Rebuild the root CLI binary
+make build
+chmod +x ztd
+
+# Validate prerequisites for protocol regeneration
+command -v go
+command -v buf || test -x ./buf
+command -v uv
+make proto-generate
+```
+
+### Gateway Process Diagnosis
+
+```bash
+# Check running Gateway status and logs
+./ztd gw status
+./ztd gw logs
+
+# Run in the foreground with debug logging
+./ztd gw stop
+./ztd gw start --follow --log debug
+```
+
+### Vault Validation and Key Recovery
+
+```bash
+# Validate existing vault header with stored vault key
+./ztd vault unlock
+
+# Linux over SSH without a desktop keyring: seal the master key with your ssh-agent key
+# (writes ciphertext to .ztd/secrets/.master_key.ssh-agent, never the key itself)
+eval "$(ssh-agent)" && ssh-add   # or connect with ssh -A
+./ztd gw start
+
+# Start Gateway with an operator-provisioned master key file outside .ztd/ (container environments)
+./ztd gw start --master-key-file "/run/secrets/ztd_master_key"
+```
+
+### CLI Authentication and Session Recovery
+
+```bash
+# Refresh an expired CLI session with a valid certificate
+./ztd auth refresh
+
+# Force certificate rotation before expiry
+./ztd auth enroll user --rotate-cli
+
+# Headless login on a remote or non-browser server
+./ztd login cli
+
+# Local credentials are stale because the certificate was revoked elsewhere
+./ztd logout --local-only
+./ztd login
+```
+
+### Operator Connectivity and Enrollment Triage
+
+```bash
+# Check enrolled Operator inventory from Gateway
+./ztd operator list
+
+# Inspect detailed status, heartbeat, and capabilities of an Operator
+./ztd operator show <operator-id>
+
+# If an Operator fails to connect, verify mTLS network reachability to Gateway HTTPS port:
+nc -zv 127.0.0.1 8443
+
+# Reset local Operator identity credentials if certificates or keys are corrupted:
+./ztd operator reset-identity
+```
+
+### Governance Pipeline Diagnosis
+
+```bash
+# Query recent audit receipts to identify rejection layers (L1-L4):
+./ztd audit receipts --limit 10
+
+# Inspect specific transaction details and state-root commitments:
+./ztd audit events --limit 20
+```
+
+## Anti-patterns
+
+- Running `./ztd` from outside the repository root, creating disjoint `.ztd/` state trees (`INV-TROUBLE-ENV-01`).
+- Running `gw reset` or `gw clean` to fix transient errors when state must be retained (`INV-TROUBLE-GW-03`).
+- Mutating OS trust or developer PKI state to bypass test failures (`INV-TROUBLE-AUTH-01`).
+- Re-enrolling and wiping valid certificates when a simple `auth refresh` suffices (`INV-TROUBLE-AUTH-02`).
+- Running `auth refresh` against a revoked certificate instead of clearing local credentials and logging in again (`INV-TROUBLE-AUTH-04`).
+- Attempting to connect inbound to an outbound Operator, or configuring inbound firewall ports for an Operator (`INV-TROUBLE-OP-01`).
+- Bypassing the L1–L5 pipeline when an envelope is rejected instead of diagnosing root causes from audit receipts (`INV-TROUBLE-OP-02`).
+
+## Links out
+
+- [Developer Guidelines](devs.md): coding invariants and repository standards.
+- [Code Map](codemap.md): package and runtime ownership maps.
+- [Testing Guide](tests.md): test tiers, fixtures, and CI scope.
+- [Documentation Guide](docs.md): documentation audit, catalog, and formatting rules.
+- [Release Process](release_process.md): versioning and release verification.
+- [Getting Started](../guides/getting_started.md): platform onboarding and deployment procedures.
+- [Glossary](../reference/glossary.md): canonical platform definitions and vocabulary.

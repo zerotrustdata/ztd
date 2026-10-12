@@ -1,0 +1,10 @@
+[
+  {
+    "slug": "enrolling-two-thousand-operators",
+    "title": "From 936 to 2,000 Operators on one Gateway",
+    "date": "2026-10-12",
+    "description": "The failed enrollments, profiles, and fixes behind a 2,000-Operator fleet. A field report on what broke, what changed, and what the measurements actually prove.",
+    "author": "Danny",
+    "tags": ["Engineering", "Scale testing"]
+  }
+]

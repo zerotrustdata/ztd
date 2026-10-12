@@ -1,0 +1,656 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package reporting
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/services/vault"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+	"google.golang.org/protobuf/encoding/protojson"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+)
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+// setupTestAuditStore creates a real SQLAuditStore with a temp directory and
+// unlocked vault for encryption. Cleanup is registered via t.Cleanup.
+func setupTestAuditStore(t *testing.T) *storage.SQLAuditStore {
+	t.Helper()
+	tempDir := testutil.TempDir(t)
+
+	fileSvc, err := fs.NewRuntimeFileService(tempDir, testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+
+	_, privKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	testVault := createTestVault(t, fileSvc, privKey)
+
+	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	cfg := &storage.AuditStoreConfig{
+		RetentionDays:        7,
+		PruneIntervalMinutes: 60,
+		EncryptionVault:      testVault,
+	}
+	store, err := storage.NewSQLAuditStore(cfg, db, testutil.NewTestLogger(), fileSvc)
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+	return store
+}
+
+// createTestVault creates an unlocked vault in the runtime tree.
+func createTestVault(t *testing.T, fileSvc fs.RuntimeFileService, privateKey []byte) *vault.Vault {
+	t.Helper()
+	header, _, err := vault.NewVaultHeader(privateKey)
+	require.NoError(t, err)
+	require.NoError(t, header.Save(fileSvc))
+	v, err := vault.NewVault(&vault.VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+	require.NoError(t, err)
+	require.NoError(t, v.Unlock(privateKey))
+	t.Cleanup(func() { v.Close() })
+	return v
+}
+
+// setupTestCommitmentLedger creates a commitment ledger backed by an in-memory SQLite DB.
+// Returns both the CommitmentLedger and the underlying DB for direct SQL access.
+func setupTestCommitmentLedger(t *testing.T) (*storage.CommitmentLedger, *sqliteutil.DB, *vault.Vault) {
+	t.Helper()
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), testutil.NewTestLogger())
+	require.NoError(t, err)
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS commitment_ledger (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			transaction_id TEXT NOT NULL,
+			transaction_hash TEXT NOT NULL,
+			prior_commitment_hash TEXT NOT NULL,
+			state_root_at_commit TEXT,
+			l2_signature_digest TEXT,
+			warden_intent_signature_digest TEXT,
+			human_signature_digest TEXT,
+			action_type TEXT,
+			target_resource TEXT,
+			committed_at_unix_ms INTEGER NOT NULL,
+			auditor_key_id TEXT,
+			signature TEXT,
+			hash TEXT NOT NULL,
+			attestation_json TEXT NOT NULL,
+			UNIQUE(hash)
+		)
+	`)
+	require.NoError(t, err)
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+	_, privKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	testVault := createTestVault(t, fileSvc, privKey)
+	cl := storage.NewCommitmentLedger(db, testutil.NewTestLogger(), testVault)
+	t.Cleanup(func() { db.Close() })
+	return cl, db, testVault
+}
+
+// insertCommitment inserts a commitment row directly via SQL for testing.
+func insertCommitment(t *testing.T, cl *storage.CommitmentLedger, txID, txHash, priorHash, _, targetResource string) string {
+	t.Helper()
+	return insertCommitmentWithKey(t, cl, ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), txID, txHash, priorHash, "FS_WRITE", targetResource)
+}
+
+func insertCommitmentWithKey(t *testing.T, cl *storage.CommitmentLedger, privateKey ed25519.PrivateKey, txID, txHash, priorHash, actionType, targetResource string) string {
+	t.Helper()
+	attestation := &operatorv1.CommitmentAttestation{
+		TransactionId:       txID,
+		TransactionHash:     txHash,
+		PriorCommitmentHash: priorHash,
+		ActionType:          actionType,
+		TargetResource:      targetResource,
+		CommittedAtUnixMs:   time.Now().UnixMilli(),
+		AuditorKeyId:        hex.EncodeToString(privateKey.Public().(ed25519.PublicKey)),
+	}
+	canonical, err := governance.CanonicalizeCommitmentAttestation(attestation)
+	require.NoError(t, err)
+	hash := sha256.Sum256(canonical)
+	attestation.Hash = hex.EncodeToString(hash[:])
+	attestation.Signature = hex.EncodeToString(ed25519.Sign(privateKey, canonical))
+	attJSON, err := json.Marshal(attestation)
+	require.NoError(t, err)
+	require.NoError(t, cl.AppendCommitmentJSON(attJSON, priorHash, attestation.Hash))
+	return attestation.Hash
+}
+
+// insertCommitmentDirect inserts a commitment row directly via SQL, bypassing
+// chain integrity checks. Used for testing broken chain scenarios.
+func insertCommitmentDirect(t *testing.T, db *sqliteutil.DB, testVault *vault.Vault, txID, txHash, priorHash, hash string) {
+	t.Helper()
+	_, err := db.Exec(`
+		INSERT INTO commitment_ledger (
+			transaction_id, transaction_hash, prior_commitment_hash, hash,
+			attestation_json, committed_at_unix_ms
+		) VALUES (?, ?, ?, ?, ?, ?)
+	`, txID, txHash, priorHash, hash, storagetest.EncryptCommitmentAttestation(t, testVault, hash, `{}`), time.Now().UnixMilli())
+	require.NoError(t, err)
+}
+
+// createSessionAndEvent creates a session and an event, returning the event ID.
+// Needed because file_mutations and receipts have FK constraints on events/sessions.
+func createSessionAndEvent(t *testing.T, store *storage.SQLAuditStore) int64 {
+	t.Helper()
+	sessionID := "test-session-verify"
+	err := store.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
+	require.NoError(t, err)
+	eventID, err := store.RecordEvent(&storage.Event{
+		OperatorSessionID: sessionID,
+		Timestamp:         time.Now().UTC(),
+		Type:              "COMMAND_EXECUTION",
+		CommandRaw:        "echo test",
+	})
+	require.NoError(t, err)
+	return eventID
+}
+
+// findRow finds a verification row by check name.
+func findRow(vr VerificationResult, check string) *VerificationRow {
+	for i := range vr.Rows {
+		if vr.Rows[i].Check == check {
+			return &vr.Rows[i]
+		}
+	}
+	return nil
+}
+
+func hasVerificationDetail(vr VerificationResult, check, detail string) bool {
+	for _, row := range vr.Rows {
+		if row.Check == check && strings.Contains(row.Detail, detail) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// Check 1: Commitment chain integrity
+// ---------------------------------------------------------------------------
+
+func TestReportVerification_EmptyLedger_AllPass(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+
+	fileRes, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, vr.FailCount)
+	assert.True(t, fileRes.RowCount > 0)
+
+	chainRow := findRow(vr, "commitment_chain")
+	require.NotNil(t, chainRow)
+	assert.Equal(t, verifyResultPass, chainRow.Result)
+	assert.Contains(t, chainRow.Detail, "ledger empty")
+}
+
+func TestReportVerification_ValidCommitmentChain_AllPass(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+
+	firstHash := insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	insertCommitment(t, cl, "tx-2", "hash-2", firstHash, "FS_WRITE", "/file2")
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, vr.FailCount)
+
+	chainRow := findRow(vr, "commitment_chain")
+	require.NotNil(t, chainRow)
+	assert.Equal(t, verifyResultPass, chainRow.Result)
+	assert.Contains(t, chainRow.Detail, "2 commitments verified")
+}
+
+func TestReportVerification_MixedAuditorKeysPass(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	_, firstKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	_, secondKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	firstHash := insertCommitmentWithKey(t, cl, firstKey, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	insertCommitmentWithKey(t, cl, secondKey, "tx-2", "hash-2", firstHash, "FS_WRITE", "/file2")
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Zero(t, vr.FailCount)
+	row := findRow(vr, "commitment_signature")
+	require.NotNil(t, row)
+	assert.Equal(t, verifyResultPass, row.Result)
+}
+
+func TestReportVerification_ModifiedSignedFieldFails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, db, testVault := setupTestCommitmentLedger(t)
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	rows, err := cl.ListCommitments()
+	require.NoError(t, err)
+	var attestation operatorv1.CommitmentAttestation
+	require.NoError(t, protojson.Unmarshal(rows[0].AttestationJSON, &attestation))
+	attestation.TargetResource = "/tampered"
+	payload, err := protojson.Marshal(&attestation)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE commitment_ledger SET attestation_json = ? WHERE id = 1`, storagetest.EncryptCommitmentAttestation(t, testVault, rows[0].Hash, string(payload)))
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+	assert.True(t, hasVerificationDetail(vr, "commitment_hash_recompute", "diverge"))
+}
+
+func TestReportVerification_ModifiedHashFails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, db, testVault := setupTestCommitmentLedger(t)
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	rows, err := cl.ListCommitments()
+	require.NoError(t, err)
+	// The row's content is bound to its hash, so a swapped hash alone makes the row
+	// undecryptable; re-encrypt under the new hash to exercise the hash recompute.
+	_, err = db.Exec(`UPDATE commitment_ledger SET hash = 'tampered', attestation_json = ?, target_resource = ? WHERE id = 1`,
+		storagetest.EncryptCommitmentAttestation(t, testVault, "tampered", string(rows[0].AttestationJSON)),
+		storagetest.EncryptCommitmentTargetResource(t, testVault, "tampered", rows[0].TargetResource))
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+	assert.True(t, hasVerificationDetail(vr, "commitment_hash_recompute", "canonical attestation hash"))
+}
+
+func TestReportVerification_MalformedAuditorKeyIDFails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, db, testVault := setupTestCommitmentLedger(t)
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	rows, err := cl.ListCommitments()
+	require.NoError(t, err)
+	var attestation operatorv1.CommitmentAttestation
+	require.NoError(t, protojson.Unmarshal(rows[0].AttestationJSON, &attestation))
+	attestation.AuditorKeyId = "not-hex"
+	canonical, err := governance.CanonicalizeCommitmentAttestation(&attestation)
+	require.NoError(t, err)
+	hash := sha256.Sum256(canonical)
+	attestation.Hash = hex.EncodeToString(hash[:])
+	payload, err := protojson.Marshal(&attestation)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE commitment_ledger SET hash = ?, auditor_key_id = ?, attestation_json = ?, target_resource = ? WHERE id = 1`, attestation.Hash, attestation.AuditorKeyId, storagetest.EncryptCommitmentAttestation(t, testVault, attestation.Hash, string(payload)), storagetest.EncryptCommitmentTargetResource(t, testVault, attestation.Hash, attestation.TargetResource))
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+	row := findRow(vr, "commitment_signature")
+	require.NotNil(t, row)
+	assert.Equal(t, verifyResultFail, row.Result)
+}
+
+func TestReportVerification_InvalidAuditorSignatureFails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, db, testVault := setupTestCommitmentLedger(t)
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	rows, err := cl.ListCommitments()
+	require.NoError(t, err)
+	var attestation operatorv1.CommitmentAttestation
+	require.NoError(t, protojson.Unmarshal(rows[0].AttestationJSON, &attestation))
+	attestation.Signature = "00"
+	payload, err := protojson.Marshal(&attestation)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE commitment_ledger SET signature = ?, attestation_json = ? WHERE id = 1`, attestation.Signature, storagetest.EncryptCommitmentAttestation(t, testVault, rows[0].Hash, string(payload)))
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+	row := findRow(vr, "commitment_signature")
+	require.NotNil(t, row)
+	assert.Equal(t, verifyResultFail, row.Result)
+}
+
+func TestReportVerification_StructuredColumnDivergenceFails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, db, testVault := setupTestCommitmentLedger(t)
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	rows, err := cl.ListCommitments()
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE commitment_ledger SET target_resource = ? WHERE id = 1`, storagetest.EncryptCommitmentTargetResource(t, testVault, rows[0].Hash, "/different"))
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+	assert.True(t, hasVerificationDetail(vr, "commitment_hash_recompute", "structured commitment columns diverge"))
+}
+
+func TestReportVerification_FirstCommitmentHasNonEmptyPriorHash_Fails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+
+	insertCommitment(t, cl, "tx-1", "hash-1", "should-be-empty", "FS_WRITE", "/file1")
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+
+	chainRow := findRow(vr, "commitment_chain")
+	require.NotNil(t, chainRow)
+	assert.Equal(t, verifyResultFail, chainRow.Result)
+	assert.Contains(t, chainRow.Detail, "non-empty prior_commitment_hash")
+}
+
+func TestReportVerification_BrokenChainSecondCommit_Fails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, db, testVault := setupTestCommitmentLedger(t)
+
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	// Insert directly to bypass chain integrity enforcement
+	insertCommitmentDirect(t, db, testVault, "tx-2", "hash-2", "wrong-prior-hash", "commit-hash-2")
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+
+	chainRow := findRow(vr, "commitment_chain")
+	require.NotNil(t, chainRow)
+	assert.Equal(t, verifyResultFail, chainRow.Result)
+	assert.Contains(t, chainRow.Detail, "prior_commitment_hash")
+}
+
+// ---------------------------------------------------------------------------
+// Check 3: Git merkle root cross-check
+// ---------------------------------------------------------------------------
+
+func TestReportVerification_NilLedger_MerkleRootSkipped(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+
+	merkleRow := findRow(vr, "git_merkle_root")
+	require.NotNil(t, merkleRow)
+	assert.Equal(t, verifyResultSkipped, merkleRow.Result)
+	assert.Contains(t, merkleRow.Detail, "ledger not configured")
+}
+
+// ---------------------------------------------------------------------------
+// Check 4: File mutation linkage
+// ---------------------------------------------------------------------------
+
+func TestReportVerification_NilAuditStore_MutationLinkageSkipped(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+
+	mutationRow := findRow(vr, "file_mutation_linkage")
+	require.NotNil(t, mutationRow)
+	assert.Equal(t, verifyResultSkipped, mutationRow.Result)
+	assert.Contains(t, mutationRow.Detail, "audit store not configured")
+}
+
+func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	auditStore := setupTestAuditStore(t)
+	eventID := createSessionAndEvent(t, auditStore)
+
+	err := auditStore.RecordFileMutation(&storage.FileMutationLog{
+		EventID:          eventID,
+		Filepath:         "/test/file1",
+		Operation:        storage.FileMutationWrite,
+		LedgerHashBefore: "hash-before-1",
+		LedgerHashAfter:  "hash-after-1",
+	})
+	require.NoError(t, err)
+
+	err = auditStore.RecordFileMutation(&storage.FileMutationLog{
+		EventID:          eventID,
+		Filepath:         "/test/file2",
+		Operation:        storage.FileMutationCreate,
+		LedgerHashBefore: "hash-before-2",
+		LedgerHashAfter:  "hash-after-2",
+	})
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	require.NoError(t, err)
+
+	mutationRow := findRow(vr, "file_mutation_linkage")
+	require.NotNil(t, mutationRow)
+	assert.Equal(t, verifyResultPass, mutationRow.Result)
+	assert.Contains(t, mutationRow.Detail, "2 write/create ops with hashes")
+}
+
+func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	auditStore := setupTestAuditStore(t)
+	eventID := createSessionAndEvent(t, auditStore)
+
+	err := auditStore.RecordFileMutation(&storage.FileMutationLog{
+		EventID:          eventID,
+		Filepath:         "/test/file1",
+		Operation:        storage.FileMutationWrite,
+		LedgerHashBefore: "hash-before-1",
+		LedgerHashAfter:  "",
+	})
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+
+	mutationRow := findRow(vr, "file_mutation_linkage")
+	require.NotNil(t, mutationRow)
+	assert.Equal(t, verifyResultFail, mutationRow.Result)
+	assert.Contains(t, mutationRow.Detail, "missing ledger_hash_after")
+}
+
+func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	auditStore := setupTestAuditStore(t)
+	eventID := createSessionAndEvent(t, auditStore)
+
+	err := auditStore.RecordFileMutation(&storage.FileMutationLog{
+		EventID:          eventID,
+		Filepath:         "/test/file1",
+		Operation:        "READ",
+		LedgerHashBefore: "hash-before-1",
+		LedgerHashAfter:  "",
+	})
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	require.NoError(t, err)
+
+	mutationRow := findRow(vr, "file_mutation_linkage")
+	require.NotNil(t, mutationRow)
+	assert.Equal(t, verifyResultPass, mutationRow.Result)
+}
+
+// ---------------------------------------------------------------------------
+// Check 5: Receipt/commitment cross-link
+// ---------------------------------------------------------------------------
+
+func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	auditStore := setupTestAuditStore(t)
+	sessionID := "test-session-receipts"
+	err := auditStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
+	require.NoError(t, err)
+
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+
+	err = auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+		TransactionID:     "tx-1",
+		TransactionHash:   "hash-1",
+		OperatorID:        "op-1",
+		OperatorSessionID: sessionID,
+		ActionType:        constants.ActionTypeFileEdit,
+		TargetResource:    "/file1",
+		ExecutedAt:        time.Now().UTC(),
+		SignerKeyID:       "key-1",
+		Signature:         "sig-1",
+	})
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, vr.FailCount)
+
+	crossRow := findRow(vr, "receipt_commitment_crosslink")
+	require.NotNil(t, crossRow)
+	assert.Equal(t, verifyResultPass, crossRow.Result)
+	assert.Contains(t, crossRow.Detail, "all 1 commitments have matching receipts")
+}
+
+func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	auditStore := setupTestAuditStore(t)
+	sessionID := "test-session-missing-receipt"
+	err := auditStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
+	require.NoError(t, err)
+
+	firstHash := insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	insertCommitment(t, cl, "tx-2", "hash-2", firstHash, "FS_WRITE", "/file2")
+
+	err = auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+		TransactionID:     "tx-1",
+		TransactionHash:   "hash-1",
+		OperatorID:        "op-1",
+		OperatorSessionID: sessionID,
+		ActionType:        constants.ActionTypeFileEdit,
+		TargetResource:    "/file1",
+		ExecutedAt:        time.Now().UTC(),
+		SignerKeyID:       "key-1",
+		Signature:         "sig-1",
+	})
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+
+	crossRow := findRow(vr, "receipt_commitment_crosslink")
+	require.NotNil(t, crossRow)
+	assert.Equal(t, verifyResultFail, crossRow.Result)
+	assert.Contains(t, crossRow.Detail, "1 committed transaction_ids have no matching receipt")
+}
+
+func TestReportVerification_EmptyCommitments_NoCrossLinkNeeded(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	auditStore := setupTestAuditStore(t)
+
+	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	require.NoError(t, err)
+
+	// An empty ledger still produces an explicit successful cross-link result.
+	crossRow := findRow(vr, "receipt_commitment_crosslink")
+	require.NotNil(t, crossRow)
+	assert.Equal(t, verifyResultPass, crossRow.Result)
+	assert.Equal(t, "no commitments to cross-link", crossRow.Detail)
+}
+
+// ---------------------------------------------------------------------------
+// Context cancellation
+// ---------------------------------------------------------------------------
+
+func TestReportVerification_ContextCancelled_ReturnsErr(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := reportVerification(ctx, outDir, nil, cl, nil)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// ---------------------------------------------------------------------------
+// CSV output verification
+// ---------------------------------------------------------------------------
+
+func TestReportVerification_CSVFileWritten(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+
+	fileRes, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Equal(t, constants.ReportVerificationFilename, fileRes.Filename)
+	assert.NotEmpty(t, fileRes.SHA256)
+	assert.Equal(t, len(vr.Rows), fileRes.RowCount)
+
+	csvPath := filepath.Join(outDir, constants.ReportVerificationFilename)
+	info, err := os.Stat(csvPath)
+	require.NoError(t, err)
+	assert.Greater(t, info.Size(), int64(0))
+}
+
+// ---------------------------------------------------------------------------
+// Commitment ledger read error
+// ---------------------------------------------------------------------------
+
+func TestReportVerification_CommitmentLedgerReadError_Skipped(t *testing.T) {
+	outDir := testutil.TempDir(t)
+
+	// Create a commitment ledger with a nil db to trigger read error
+	cl := storage.NewCommitmentLedger(nil, testutil.NewTestLogger(), nil)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+
+	chainRow := findRow(vr, "commitment_chain")
+	require.NotNil(t, chainRow)
+	assert.Equal(t, verifyResultSkipped, chainRow.Result)
+	assert.Contains(t, chainRow.Detail, "could not read commitments")
+}
+
+func TestReportVerification_SwappedCommitmentHashFailsOnDecrypt(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, db, _ := setupTestCommitmentLedger(t)
+	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
+	_, err := db.Exec(`UPDATE commitment_ledger SET hash = 'tampered' WHERE id = 1`)
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
+	require.NoError(t, err)
+	assert.Greater(t, vr.FailCount, 0)
+	assert.True(t, hasVerificationDetail(vr, "commitment_chain", "could not read commitments"))
+}

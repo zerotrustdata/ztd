@@ -1,0 +1,229 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package tui
+
+import (
+	"context"
+	"time"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+)
+
+// Identity is the enrolled CLI identity the TUI runs as: the same fields
+// 'ztd auth' reports.
+type Identity struct {
+	UserID            string
+	CLISessionID      string
+	OperatorID        string // bound Operator, empty when the CLI session is unbound
+	OperatorSessionID string // primary bound Operator session, when present
+}
+
+// Options configures the TUI at launch.
+type Options struct {
+	Version  string
+	Identity Identity
+
+	// Session is the CLI's authenticated Gateway session (*api.Client). When
+	// nil the TUI runs without a live event source.
+	Session Session
+
+	// RebuildSession reloads the persisted CLI identity and constructs a fresh
+	// authenticated session after an action issues replacement credentials.
+	RebuildSession func(context.Context, Identity) (Session, error)
+
+	// ApprovalURL returns the browser WebAuthn approval page for a pending
+	// transaction (auth.ApprovalPageURL), and OpenBrowser opens it
+	// (platform.OpenBrowser) — the same flow as 'ztd auth approve'. When
+	// either is nil, approving from the TUI is disabled.
+	ApprovalURL func(txHash string) string
+	OpenBrowser func(url string) error
+
+	// ProgramOptions are appended to the default bubbletea program options
+	// (AltScreen, MouseCellMotion). Tests use this to inject headless options.
+	ProgramOptions []tea.ProgramOption
+
+	// sessionManager is shared by Run's model and adapter; it is kept private
+	// so callers use RebuildSession rather than managing stream state directly.
+	sessionManager *sessionManager
+}
+
+// pane identifies a focusable pane.
+type pane int
+
+const (
+	paneLedger pane = iota
+	paneApprovals
+	paneOperators
+	paneCount
+)
+
+// Model is the bubbletea state container for the Tactical Governance Console.
+type Model struct {
+	width  int
+	height int
+
+	// Configuration
+	version  string
+	identity Identity
+
+	// Gateway access and the approve flow. gw is nil without a session.
+	gw          *gateway
+	approvalURL func(string) string
+	openBrowser func(string) error
+
+	// view is the main-area view; focus is the focused pane of the overview.
+	view  viewID
+	focus pane
+
+	// showHelp shows the key help over the main area; confirm, when set, is
+	// a y/N prompt guarding a mutating action and takes every key.
+	showHelp bool
+	confirm  *confirmation
+
+	// Pipeline state — 5 entries: L1-L5
+	pipeline []pipelineStageState
+	activeTx string
+
+	// Ledger state
+	ledger       []ledgerEntry
+	ledgerScroll int // 0 = auto-scroll to bottom; >0 = manual offset from bottom
+
+	// Pending L3 approvals in Gateway order from the last successful refresh,
+	// the selected row, and the transactions whose browser approval page was
+	// opened from the TUI and are awaiting approval.completed.
+	pending          []models.SuspendedTxResponse
+	pendingSelected  int
+	awaitingApproval map[string]struct{}
+
+	// Operators from the last successful refresh: connected ones only, plus
+	// the total the Gateway listed.
+	operators            []*operatorv1.OperatorDocument
+	operatorsTotal       int
+	operatorsLoaded      bool
+	operatorsErr         string
+	operatorsSelected    int
+	operatorDetailScroll int
+	// operatorStaleGen identifies the armed stale-deadline tick; ticks from
+	// earlier generations are ignored. See armOperatorStaleDeadline.
+	operatorStaleGen uint64
+
+	// Platform enrollments from the last successful refresh: pending
+	// requests and completed enrollments. The enrollments view selects in one
+	// section at a time.
+	enrollPending          []models.PlatformEnrollmentPendingRequest
+	enrollEnrolled         []models.PlatformEnrollmentEnrolledRequest
+	enrollmentsLoaded      bool
+	enrollmentsErr         string
+	enrollSection          enrollSection
+	enrollPendingSelected  int
+	enrollEnrolledSelected int
+
+	// Audit data from the last successful refresh. Events are paged because the
+	// Gateway endpoint returns a bounded slice, while summary and verification
+	// are independent read-only views of the same ledger.
+	auditEvents        []models.AuditEventRow
+	auditEventsCount   int
+	auditEventsLoaded  bool
+	auditEventsErr     string
+	auditOffset        int
+	auditSelected      int
+	auditSummary       models.AuditSummaryResponse
+	auditSummaryLoaded bool
+	auditSummaryErr    string
+	auditVerify        *models.AuditVerifyResponse
+	auditVerifyErr     string
+
+	gatewayStatusSelected int
+
+	// CLI recovery approval form. The token is entered locally and is never
+	// placed in the ledger or confirmation prompt in full.
+	recoveryTokenInput textinput.Model
+	recoveryApprove    bool
+	recoveryState      models.CLIRecoveryState
+	recoveryErr        string
+	rebuildSession     func(context.Context, Identity) (Session, error)
+	sessionManager     *sessionManager
+
+	// Gateway health: posture is nil until health is fetched.
+	health         models.HealthResponse
+	posture        governance.GovernancePosture
+	gatewayVersion string
+
+	// Animation
+	blinkOn bool
+
+	// Connection state (SSE adapter)
+	connStatus ConnStatus
+	connDetail string
+
+	// Status
+	quitting bool
+}
+
+// NewModel constructs a Model with all pipeline stages idle.
+func NewModel(opts Options) Model {
+	recoveryInput := textinput.New()
+	recoveryInput.Prompt = "> "
+	recoveryInput.Placeholder = "paste CLI recovery token"
+	recoveryInput.CharLimit = 512
+	recoveryInput.Width = 48
+	m := Model{
+		version:     opts.Version,
+		identity:    opts.Identity,
+		approvalURL: opts.ApprovalURL,
+		openBrowser: opts.OpenBrowser,
+		pipeline: []pipelineStageState{
+			{status: StatusIdle},
+			{status: StatusIdle},
+			{status: StatusIdle},
+			{status: StatusIdle},
+			{status: StatusIdle},
+		},
+		ledger:             make([]ledgerEntry, 0, 64),
+		awaitingApproval:   make(map[string]struct{}),
+		recoveryTokenInput: recoveryInput,
+		recoveryApprove:    true,
+		rebuildSession:     opts.RebuildSession,
+	}
+	if opts.sessionManager != nil {
+		m.sessionManager = opts.sessionManager
+		m.gw, _, _ = opts.sessionManager.snapshot()
+	} else if opts.Session != nil {
+		m.gw = &gateway{session: opts.Session, userID: opts.Identity.UserID}
+	}
+	return m
+}
+
+// Init implements tea.Model.
+func (m Model) Init() tea.Cmd {
+	return tick()
+}
+
+// hasBlinkingState returns true if any pipeline stage is in Waiting or Failed
+// status, which means the blink animation should be active.
+func (m Model) hasBlinkingState() bool {
+	for _, stage := range m.pipeline {
+		if stage.status == StatusWaiting || stage.status == StatusFailed {
+			return true
+		}
+	}
+	return false
+}
+
+// tick returns a command that waits 500ms then sends a TickMsg.
+func tick() tea.Cmd {
+	return tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg {
+		return TickMsg{}
+	})
+}

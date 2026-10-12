@@ -1,0 +1,438 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"runtime"
+	"sync"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/system"
+	"github.com/zerotrustdata/ztd/internal/timesvc"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/proto"
+)
+
+// HeartbeatService owns all heartbeat logic for the ztdo operator:
+// building heartbeat payloads, handling inbound heartbeat requests,
+// sending automatic heartbeats, and managing the periodic scheduler.
+type HeartbeatService struct {
+	config  *config.Config
+	logger  *slog.Logger
+	results ResultsPublisher
+
+	sinks      []sinkEntry
+	nextSinkID int64
+
+	ctx    context.Context
+	mu     sync.Mutex
+	wg     *sync.WaitGroup
+	ticker *time.Ticker
+	done   chan bool
+}
+
+// NewHeartbeatService creates a new HeartbeatService.
+func NewHeartbeatService(cfg *config.Config, logger *slog.Logger, wg *sync.WaitGroup) *HeartbeatService {
+	return &HeartbeatService{
+		config: cfg,
+		logger: logger,
+		wg:     wg,
+	}
+}
+
+// SetResultsPublisher sets the results publisher for the HeartbeatService.
+func (hs *HeartbeatService) SetResultsPublisher(results ResultsPublisher) {
+	hs.results = results
+}
+
+// SetContext sets the context for the HeartbeatService.
+func (hs *HeartbeatService) SetContext(ctx context.Context) {
+	hs.ctx = ctx
+}
+
+// HeartbeatSink is a callback invoked after each automatic heartbeat cycle.
+// Components register sinks to piggyback periodic work on the heartbeat scheduler.
+type HeartbeatSink = func(ctx context.Context)
+
+// sinkEntry pairs a sink function with its registration ID.
+type sinkEntry struct {
+	id   int64
+	sink HeartbeatSink
+}
+
+// RegisterSink adds a sink that is called after each SendAutomatic cycle.
+// The sink receives the service context. Sinks are called in registration order.
+// Returns a registration ID for use with UnregisterSink.
+func (hs *HeartbeatService) RegisterSink(sink HeartbeatSink) int64 {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	hs.nextSinkID++
+	hs.sinks = append(hs.sinks, sinkEntry{id: hs.nextSinkID, sink: sink})
+	return hs.nextSinkID
+}
+
+// UnregisterSink removes a previously registered sink by its registration ID.
+func (hs *HeartbeatService) UnregisterSink(id int64) {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	for i, s := range hs.sinks {
+		if s.id == id {
+			hs.sinks = append(hs.sinks[:i], hs.sinks[i+1:]...)
+			return
+		}
+	}
+}
+
+// notifySinks calls all registered sinks with the service context.
+// Sink panics are recovered to prevent a misbehaving sink from crashing the
+// heartbeat cycle.
+func (hs *HeartbeatService) notifySinks() {
+	hs.mu.Lock()
+	sinks := make([]sinkEntry, len(hs.sinks))
+	copy(sinks, hs.sinks)
+	hs.mu.Unlock()
+
+	for _, entry := range sinks {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					hs.logger.Error("[HEARTBEAT] Sink panicked", "error", r)
+				}
+			}()
+			entry.sink(hs.ctx)
+		}()
+	}
+}
+
+// Build constructs a complete Heartbeat payload of the given type.
+func (hs *HeartbeatService) Build(heartbeatType models.HeartbeatType) *models.Heartbeat {
+	pwd, err := os.Getwd()
+	if err != nil {
+		hs.logger.Warn("[HEARTBEAT] Failed to get working directory", "error", err)
+		pwd = ""
+	}
+
+	heartbeat := &models.Heartbeat{
+		EventType:         constants.Event.Operator.Heartbeat,
+		SourceComponent:   constants.ComponentNameZTDO,
+		OperatorID:        hs.config.OperatorID,
+		OperatorSessionID: hs.config.OperatorSessionId,
+		CaseID:            "",
+		InvestigationID:   "",
+		Timestamp:         timesvc.NowTimestamp(),
+		HeartbeatType:     heartbeatType,
+		SystemIdentity: models.HeartbeatSystemIdentity{
+			Hostname:     system.GetHostname(),
+			OS:           constants.Platform(system.GetOSName()),
+			Architecture: system.GetArchitecture(),
+			PWD:          pwd,
+			CurrentUser:  system.GetCurrentUser(),
+			CPUCount:     system.GetNumCPU(),
+			MemoryMB:     system.GetMemoryMB(),
+		},
+		NetworkInfo: models.HeartbeatNetworkInfo{
+			HTTPPort:           hs.config.ReportedHTTPPort(),
+			HTTPSPort:          hs.config.ReportedHTTPSPort(),
+			Interfaces:         system.GetNetworkInterfaces(),
+			ConnectivityStatus: system.GetConnectivityStatus(),
+		},
+		VersionInfo: models.HeartbeatVersionInfo{
+			OperatorVersion: hs.config.Version,
+			Status:          constants.VersionStabilityStable,
+		},
+		UptimeInfo: models.HeartbeatUptimeInfo{
+			Uptime:        system.GetUptime(),
+			UptimeSeconds: system.GetUptimeSeconds(),
+		},
+		PerformanceMetrics: models.HeartbeatPerformanceMetrics{
+			CPUPercent:     system.GetCPUPercent(),
+			MemoryPercent:  system.GetMemoryPercent(),
+			DiskPercent:    system.GetDiskPercent(),
+			NetworkLatency: system.GetNetworkLatency(),
+			MemoryUsedMB:   int(system.GetMemoryDetails().UsedMB),
+			MemoryTotalMB:  system.GetMemoryMB(),
+			DiskUsedGB:     system.GetDiskUsedGB(),
+			DiskTotalGB:    system.GetDiskTotalGB(),
+		},
+		OSDetails:     system.GetOSDetails(),
+		UserDetails:   system.GetUserDetails(hs.config.Shell),
+		DiskDetails:   system.GetDiskDetails(),
+		MemoryDetails: system.GetMemoryDetails(),
+		Environment:   system.GetEnvironmentDetails(hs.config.Lang, hs.config.Term, hs.config.TZ),
+		FingerprintDetails: &models.HeartbeatFingerprintDetails{
+			OS:           constants.Platform(runtime.GOOS),
+			Architecture: runtime.GOARCH,
+			CPUCount:     runtime.NumCPU(),
+			MachineID:    hs.config.SystemFingerprint,
+		},
+		SystemFingerprint: hs.config.SystemFingerprint,
+	}
+
+	hs.logger.Info("[HEARTBEAT] Built heartbeat payload",
+		"heartbeat_type", heartbeat.HeartbeatType,
+		"operator_id", heartbeat.OperatorID,
+		"operator_session_id", heartbeat.OperatorSessionID,
+		"hostname", heartbeat.SystemIdentity.Hostname,
+		"os", heartbeat.SystemIdentity.OS,
+		"architecture", heartbeat.SystemIdentity.Architecture,
+		"cpu_percent", fmt.Sprintf("%.2f", heartbeat.PerformanceMetrics.CPUPercent),
+		"memory_percent", heartbeat.PerformanceMetrics.MemoryPercent,
+		"disk_percent", heartbeat.PerformanceMetrics.DiskPercent,
+		"network_latency", heartbeat.PerformanceMetrics.NetworkLatency,
+		"uptime_seconds", heartbeat.UptimeInfo.UptimeSeconds,
+		"http_port", heartbeat.NetworkInfo.HTTPPort,
+		"https_port", heartbeat.NetworkInfo.HTTPSPort)
+
+	return heartbeat
+}
+
+// buildProtoHeartbeat converts the in-memory models.Heartbeat into the canonical
+// operatorv1.HeartbeatResult protobuf carried on the pub/sub heartbeat channel.
+func (hs *HeartbeatService) buildProtoHeartbeat(h *models.Heartbeat) *operatorv1.HeartbeatResult {
+	p := &operatorv1.HeartbeatResult{
+		OperatorId:        h.OperatorID,
+		OperatorSessionId: h.OperatorSessionID,
+		Timestamp:         h.Timestamp,
+		Status:            string(h.HeartbeatType),
+		EventType:         string(h.EventType),
+		SourceComponent:   string(h.SourceComponent),
+		CaseId:            h.CaseID,
+		InvestigationId:   h.InvestigationID,
+		SystemIdentity: &operatorv1.SystemIdentity{
+			Hostname:     h.SystemIdentity.Hostname,
+			Os:           string(h.SystemIdentity.OS),
+			Architecture: h.SystemIdentity.Architecture,
+			Pwd:          h.SystemIdentity.PWD,
+			CurrentUser:  h.SystemIdentity.CurrentUser,
+			CpuCount:     int32(h.SystemIdentity.CPUCount), //nolint:gosec // realistically < 1000
+			MemoryMb:     int32(h.SystemIdentity.MemoryMB), //nolint:gosec // realistically < 1TB (1,000,000 MB)
+		},
+		NetworkInfo: &operatorv1.NetworkInfo{
+			PublicIp:   "",
+			InternalIp: "",
+			Interfaces: h.NetworkInfo.Interfaces,
+		},
+		VersionInfo: &operatorv1.VersionInfo{
+			OperatorVersion: h.VersionInfo.OperatorVersion,
+			Status:          string(h.VersionInfo.Status),
+		},
+		UptimeInfo: &operatorv1.UptimeInfo{
+			Uptime:        h.UptimeInfo.Uptime,
+			UptimeSeconds: h.UptimeInfo.UptimeSeconds,
+		},
+		PerformanceMetrics: &operatorv1.PerformanceMetrics{
+			CpuPercent:     h.PerformanceMetrics.CPUPercent,
+			MemoryPercent:  h.PerformanceMetrics.MemoryPercent,
+			DiskPercent:    h.PerformanceMetrics.DiskPercent,
+			NetworkLatency: h.PerformanceMetrics.NetworkLatency,
+			MemoryUsedMb:   int32(h.PerformanceMetrics.MemoryUsedMB),  //nolint:gosec // realistically < 1TB
+			MemoryTotalMb:  int32(h.PerformanceMetrics.MemoryTotalMB), //nolint:gosec // realistically < 1TB
+			DiskUsedGb:     h.PerformanceMetrics.DiskUsedGB,
+			DiskTotalGb:    h.PerformanceMetrics.DiskTotalGB,
+		},
+		OsDetails: &operatorv1.OSDetails{
+			Kernel:  h.OSDetails.Kernel,
+			Distro:  h.OSDetails.Distro,
+			Version: h.OSDetails.Version,
+		},
+		UserDetails: &operatorv1.UserDetails{
+			Username: h.UserDetails.Username,
+			Uid:      h.UserDetails.UID,
+			Gid:      h.UserDetails.GID,
+			Home:     h.UserDetails.Home,
+			Name:     h.UserDetails.Name,
+			Shell:    h.UserDetails.Shell,
+		},
+		DiskDetails: &operatorv1.DiskDetails{
+			TotalGb: h.DiskDetails.TotalGB,
+			UsedGb:  h.DiskDetails.UsedGB,
+			FreeGb:  h.DiskDetails.FreeGB,
+			Percent: h.DiskDetails.Percent,
+		},
+		MemoryDetails: &operatorv1.MemoryDetails{
+			TotalMb:     h.MemoryDetails.TotalMB,
+			AvailableMb: h.MemoryDetails.AvailableMB,
+			UsedMb:      h.MemoryDetails.UsedMB,
+			Percent:     h.MemoryDetails.Percent,
+		},
+		Environment: &operatorv1.EnvironmentDetails{
+			Pwd:              h.Environment.PWD,
+			Lang:             h.Environment.Lang,
+			Timezone:         h.Environment.Timezone,
+			Term:             h.Environment.Term,
+			IsContainer:      h.Environment.IsContainer,
+			ContainerRuntime: h.Environment.ContainerRuntime,
+			ContainerSignals: h.Environment.ContainerSignals,
+			InitSystem:       h.Environment.InitSystem,
+		},
+		SystemFingerprint: h.SystemFingerprint,
+	}
+
+	if h.FingerprintDetails != nil {
+		p.FingerprintDetails = &operatorv1.FingerprintDetails{
+			Os:           string(h.FingerprintDetails.OS),
+			Architecture: h.FingerprintDetails.Architecture,
+			CpuCount:     int32(h.FingerprintDetails.CPUCount), //nolint:gosec // realistically < 1000
+			MachineId:    h.FingerprintDetails.MachineID,
+		}
+	}
+
+	for _, iface := range h.NetworkInfo.ConnectivityStatus {
+		p.NetworkInfo.ConnectivityStatus = append(p.NetworkInfo.ConnectivityStatus, &operatorv1.NetworkInterface{
+			Name: iface.Name,
+			Ip:   iface.IP,
+			Mtu:  int32(iface.MTU), //nolint:gosec // MTU is typically < 9000
+		})
+	}
+
+	return p
+}
+
+// Publish publishes a heartbeat to the results publisher.
+func (hs *HeartbeatService) Publish(ctx context.Context, heartbeat *operatorv1.HeartbeatResult) error {
+	if hs.results == nil {
+		return constants.ErrPubSubResultsPublisher
+	}
+	return hs.results.PublishHeartbeat(ctx, heartbeat)
+}
+
+// HandleRequest processes an inbound heartbeat request message.
+func (hs *HeartbeatService) HandleRequest(ctx context.Context, msg *PubSubCommandMessage) {
+	var protoReq operatorv1.HeartbeatRequested
+	if err := proto.Unmarshal(msg.Payload, &protoReq); err != nil {
+		hs.logger.Error("[HEARTBEAT] Failed to decode heartbeat request payload as protobuf HeartbeatRequested", "error", err)
+		return
+	}
+
+	hs.logger.Info("[HEARTBEAT] Heartbeat request received (via Protobuf)",
+		"case_id", msg.CaseID,
+		"investigation_id", msg.InvestigationID,
+		"operator_session_id", msg.OperatorSessionID)
+	heartbeat := hs.Build(models.HeartbeatTypeRequested)
+	heartbeat.CaseID = msg.CaseID
+	heartbeat.InvestigationID = msg.InvestigationID
+	if hs.results != nil {
+		protoHeartbeat := hs.buildProtoHeartbeat(heartbeat)
+		if err := hs.results.PublishHeartbeat(ctx, protoHeartbeat); err != nil {
+			hs.logger.Error("[HEARTBEAT] Failed to send requested heartbeat", "error", err)
+		} else {
+			hs.logger.Info("[HEARTBEAT] Requested heartbeat sent successfully")
+		}
+	} else {
+		if hs.config.Gateway.Enabled {
+			hs.logger.Debug("[HEARTBEAT] Results publisher not set, skipping heartbeat in gateway mode")
+		} else {
+			hs.logger.Warn("[HEARTBEAT] Results publisher not set, cannot send heartbeat")
+		}
+	}
+}
+
+// SendAutomatic builds and publishes an automatic heartbeat immediately.
+//
+// An automatic heartbeat is Operator-originated liveness, not a governed
+// operation: it has no ingress, envelope, or L1 through L4 verification, so it
+// is published directly and produces no receipt or ledger commitment. Routing
+// it through the L5 actuator would fabricate execution evidence for a
+// transaction that was never verified.
+func (hs *HeartbeatService) SendAutomatic() error {
+	hs.logger.Info("[HEARTBEAT] Sending automatic heartbeat")
+	if hs.results == nil {
+		if hs.config.Gateway.Enabled {
+			hs.logger.Debug("[HEARTBEAT] Results publisher not set, skipping heartbeat in gateway mode")
+		} else {
+			hs.logger.Warn("[HEARTBEAT] Results publisher not set, cannot send heartbeat")
+		}
+	} else if err := hs.results.PublishHeartbeat(hs.ctx, hs.buildProtoHeartbeat(hs.Build(models.HeartbeatTypeAutomatic))); err != nil {
+		return fmt.Errorf("heartbeat: publish automatic heartbeat: %w", err)
+	}
+
+	hs.notifySinks()
+
+	return nil
+}
+
+// StartScheduler starts the periodic heartbeat ticker goroutine.
+// Must be called with hs.mu held by the caller (StartSchedulerUnlocked variant)
+// or via StartScheduler (acquires lock itself).
+func (hs *HeartbeatService) StartScheduler() {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	hs.startSchedulerUnlocked()
+}
+
+// StartSchedulerUnlocked starts the scheduler without acquiring the lock.
+// Caller must hold hs.mu.
+func (hs *HeartbeatService) StartSchedulerUnlocked() {
+	hs.startSchedulerUnlocked()
+}
+
+func (hs *HeartbeatService) startSchedulerUnlocked() {
+	if hs.config.HeartbeatInterval <= 0 {
+		hs.logger.Info("[HEARTBEAT] Heartbeat scheduler disabled (interval <= 0)")
+		return
+	}
+
+	hs.ticker = time.NewTicker(hs.config.HeartbeatInterval)
+	hs.done = make(chan bool)
+	ticker := hs.ticker
+	done := hs.done
+
+	hs.logger.Info("[HEARTBEAT] Heartbeat scheduler started",
+		"interval_seconds", hs.config.HeartbeatInterval.Seconds())
+
+	hs.wg.Add(1)
+	go func() {
+		defer hs.wg.Done()
+		for {
+			select {
+			case <-done:
+				hs.logger.Info("[HEARTBEAT] Heartbeat scheduler stopped via done channel")
+				return
+			case <-ticker.C:
+				if err := hs.SendAutomatic(); err != nil {
+					hs.logger.Error("[HEARTBEAT] Failed to send automatic heartbeat", "error", err)
+				}
+			case <-hs.ctx.Done():
+				hs.logger.Info("[HEARTBEAT] Heartbeat scheduler stopped via context cancellation")
+				return
+			}
+		}
+	}()
+}
+
+// StopScheduler stops the periodic heartbeat ticker.
+func (hs *HeartbeatService) StopScheduler() {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	hs.stopSchedulerUnlocked()
+}
+
+// StopSchedulerUnlocked stops the scheduler without acquiring the lock.
+// Caller must hold hs.mu.
+func (hs *HeartbeatService) StopSchedulerUnlocked() {
+	hs.stopSchedulerUnlocked()
+}
+
+func (hs *HeartbeatService) stopSchedulerUnlocked() {
+	if hs.ticker != nil {
+		hs.ticker.Stop()
+		hs.ticker = nil
+		hs.logger.Info("[HEARTBEAT] Heartbeat ticker stopped")
+	}
+	if hs.done != nil {
+		close(hs.done)
+		hs.done = nil
+	}
+}

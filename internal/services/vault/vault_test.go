@@ -1,0 +1,989 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package vault
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+var (
+	testPrivateKey1 = []byte("ztd_test_abc123xyz789_TESTKEY1")
+	testPrivateKey2 = []byte("ztd_test_def456uvw012_TESTKEY2")
+)
+
+func TestDeriveKEK(t *testing.T) {
+	t.Parallel()
+	t.Run("deterministic derivation", func(t *testing.T) {
+		t.Parallel()
+		kek1, err := DeriveKEK(testPrivateKey1)
+		require.NoError(t, err)
+		require.Len(t, kek1, KeySize)
+
+		kek2, err := DeriveKEK(testPrivateKey1)
+		require.NoError(t, err)
+
+		assert.Equal(t, kek1, kek2, "same private key should produce same KEK")
+	})
+
+	t.Run("different keys produce different KEKs", func(t *testing.T) {
+		t.Parallel()
+		kek1, err := DeriveKEK(testPrivateKey1)
+		require.NoError(t, err)
+
+		kek2, err := DeriveKEK(testPrivateKey2)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, kek1, kek2, "different private keys should produce different KEKs")
+	})
+
+	t.Run("empty key rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := DeriveKEK([]byte{})
+		require.Error(t, err)
+	})
+}
+
+func TestGenerateDEK(t *testing.T) {
+	t.Parallel()
+	t.Run("generates correct size", func(t *testing.T) {
+		t.Parallel()
+		dek, err := GenerateDEK()
+		require.NoError(t, err)
+		assert.Len(t, dek, KeySize)
+	})
+
+	t.Run("generates unique keys", func(t *testing.T) {
+		t.Parallel()
+		dek1, err := GenerateDEK()
+		require.NoError(t, err)
+
+		dek2, err := GenerateDEK()
+		require.NoError(t, err)
+
+		assert.NotEqual(t, dek1, dek2, "generated DEKs should be unique")
+	})
+}
+
+func TestGenerateNonce(t *testing.T) {
+	t.Parallel()
+	t.Run("generates correct size", func(t *testing.T) {
+		t.Parallel()
+		nonce, err := GenerateNonce()
+		require.NoError(t, err)
+		assert.Len(t, nonce, NonceSize)
+	})
+
+	t.Run("generates unique nonces", func(t *testing.T) {
+		t.Parallel()
+		nonce1, err := GenerateNonce()
+		require.NoError(t, err)
+
+		nonce2, err := GenerateNonce()
+		require.NoError(t, err)
+
+		assert.NotEqual(t, nonce1, nonce2, "generated nonces should be unique")
+	})
+}
+
+func TestKeyFingerprint(t *testing.T) {
+	t.Parallel()
+	t.Run("correct size", func(t *testing.T) {
+		t.Parallel()
+		key := []byte("test-key-material")
+		fp := KeyFingerprint(key)
+		assert.Len(t, fp, KeyFingerprintSize)
+	})
+
+	t.Run("deterministic", func(t *testing.T) {
+		t.Parallel()
+		key := []byte("test-key-material")
+		fp1 := KeyFingerprint(key)
+		fp2 := KeyFingerprint(key)
+		assert.Equal(t, fp1, fp2)
+	})
+
+	t.Run("different keys produce different fingerprints", func(t *testing.T) {
+		t.Parallel()
+		fp1 := KeyFingerprint([]byte("key1"))
+		fp2 := KeyFingerprint([]byte("key2"))
+		assert.NotEqual(t, fp1, fp2)
+	})
+}
+
+func TestAESKeyWrapUnwrap(t *testing.T) {
+	t.Parallel()
+	t.Run("wrap and unwrap 32-byte key", func(t *testing.T) {
+		t.Parallel()
+		kek, err := GenerateDEK()
+		require.NoError(t, err)
+
+		plaintext, err := GenerateDEK()
+		require.NoError(t, err)
+
+		wrapped, err := AESKeyWrap(kek, plaintext)
+		require.NoError(t, err)
+		assert.Len(t, wrapped, len(plaintext)+8)
+
+		unwrapped, err := AESKeyUnwrap(kek, wrapped)
+		require.NoError(t, err)
+		assert.Equal(t, plaintext, unwrapped)
+	})
+
+	t.Run("wrap and unwrap 16-byte key", func(t *testing.T) {
+		t.Parallel()
+		kek, _ := GenerateDEK()
+		plaintext := make([]byte, 16)
+		copy(plaintext, []byte("sixteen-byte-key"))
+
+		wrapped, err := AESKeyWrap(kek, plaintext)
+		require.NoError(t, err)
+
+		unwrapped, err := AESKeyUnwrap(kek, wrapped)
+		require.NoError(t, err)
+		assert.Equal(t, plaintext, unwrapped)
+	})
+
+	t.Run("wrong KEK fails unwrap", func(t *testing.T) {
+		t.Parallel()
+		kek1, _ := GenerateDEK()
+		kek2, _ := GenerateDEK()
+		plaintext, _ := GenerateDEK()
+
+		wrapped, err := AESKeyWrap(kek1, plaintext)
+		require.NoError(t, err)
+
+		_, err = AESKeyUnwrap(kek2, wrapped)
+		require.ErrorIs(t, err, constants.ErrVaultKeyUnwrapFailed)
+	})
+
+	t.Run("tampered ciphertext fails unwrap", func(t *testing.T) {
+		t.Parallel()
+		kek, _ := GenerateDEK()
+		plaintext, _ := GenerateDEK()
+
+		wrapped, err := AESKeyWrap(kek, plaintext)
+		require.NoError(t, err)
+
+		wrapped[10] ^= 0xFF
+
+		_, err = AESKeyUnwrap(kek, wrapped)
+		require.ErrorIs(t, err, constants.ErrVaultKeyUnwrapFailed)
+	})
+
+	t.Run("invalid key sizes rejected", func(t *testing.T) {
+		t.Parallel()
+		invalidKEK := make([]byte, 15)
+		plaintext, _ := GenerateDEK()
+
+		_, err := AESKeyWrap(invalidKEK, plaintext)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidKeySize)
+	})
+
+	t.Run("invalid plaintext size rejected", func(t *testing.T) {
+		t.Parallel()
+		kek, _ := GenerateDEK()
+		invalidPlaintext := make([]byte, 15)
+
+		_, err := AESKeyWrap(kek, invalidPlaintext)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidPlaintextKey)
+	})
+
+	t.Run("too short plaintext rejected", func(t *testing.T) {
+		t.Parallel()
+		kek, _ := GenerateDEK()
+		shortPlaintext := make([]byte, 8)
+
+		_, err := AESKeyWrap(kek, shortPlaintext)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidPlaintextKey)
+	})
+}
+
+func TestAESGCMEncryptDecrypt(t *testing.T) {
+	t.Parallel()
+	t.Run("encrypt and decrypt", func(t *testing.T) {
+		t.Parallel()
+		key, _ := GenerateDEK()
+		nonce, _ := GenerateNonce()
+		plaintext := []byte("Hello, World! This is a test message.")
+
+		ciphertext, err := EncryptAESGCM(key, nonce, plaintext, nil)
+		require.NoError(t, err)
+		assert.NotEqual(t, plaintext, ciphertext)
+
+		decrypted, err := DecryptAESGCM(key, nonce, ciphertext, nil)
+		require.NoError(t, err)
+		assert.Equal(t, plaintext, decrypted)
+	})
+
+	t.Run("with additional data", func(t *testing.T) {
+		t.Parallel()
+		key, _ := GenerateDEK()
+		nonce, _ := GenerateNonce()
+		plaintext := []byte("Secret message")
+		aad := []byte("additional authenticated data")
+
+		ciphertext, err := EncryptAESGCM(key, nonce, plaintext, aad)
+		require.NoError(t, err)
+
+		decrypted, err := DecryptAESGCM(key, nonce, ciphertext, aad)
+		require.NoError(t, err)
+		assert.Equal(t, plaintext, decrypted)
+	})
+
+	t.Run("wrong AAD fails decryption", func(t *testing.T) {
+		t.Parallel()
+		key, _ := GenerateDEK()
+		nonce, _ := GenerateNonce()
+		plaintext := []byte("Secret message")
+		aad := []byte("correct aad")
+
+		ciphertext, err := EncryptAESGCM(key, nonce, plaintext, aad)
+		require.NoError(t, err)
+
+		_, err = DecryptAESGCM(key, nonce, ciphertext, []byte("wrong aad"))
+		require.ErrorIs(t, err, constants.ErrVaultDecryptionFailed)
+	})
+
+	t.Run("wrong key fails decryption", func(t *testing.T) {
+		t.Parallel()
+		key1, _ := GenerateDEK()
+		key2, _ := GenerateDEK()
+		nonce, _ := GenerateNonce()
+		plaintext := []byte("Secret message")
+
+		ciphertext, err := EncryptAESGCM(key1, nonce, plaintext, nil)
+		require.NoError(t, err)
+
+		_, err = DecryptAESGCM(key2, nonce, ciphertext, nil)
+		require.ErrorIs(t, err, constants.ErrVaultDecryptionFailed)
+	})
+
+	t.Run("tampered ciphertext fails decryption", func(t *testing.T) {
+		t.Parallel()
+		key, _ := GenerateDEK()
+		nonce, _ := GenerateNonce()
+		plaintext := []byte("Secret message")
+
+		ciphertext, err := EncryptAESGCM(key, nonce, plaintext, nil)
+		require.NoError(t, err)
+
+		ciphertext[5] ^= 0xFF
+
+		_, err = DecryptAESGCM(key, nonce, ciphertext, nil)
+		require.ErrorIs(t, err, constants.ErrVaultDecryptionFailed)
+	})
+
+	t.Run("invalid key size rejected", func(t *testing.T) {
+		t.Parallel()
+		invalidKey := make([]byte, 16)
+		nonce, _ := GenerateNonce()
+		plaintext := []byte("test")
+
+		_, err := EncryptAESGCM(invalidKey, nonce, plaintext, nil)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidKeySize)
+	})
+
+	t.Run("invalid nonce size rejected", func(t *testing.T) {
+		t.Parallel()
+		key, _ := GenerateDEK()
+		invalidNonce := make([]byte, 8)
+		plaintext := []byte("test")
+
+		_, err := EncryptAESGCM(key, invalidNonce, plaintext, nil)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidNonceSize)
+	})
+}
+
+func TestSecureZero(t *testing.T) {
+	t.Parallel()
+	t.Run("zeros out slice", func(t *testing.T) {
+		t.Parallel()
+		data := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+		SecureZero(data)
+
+		for _, b := range data {
+			assert.Equal(t, byte(0), b)
+		}
+	})
+}
+
+func TestNewVaultHeader(t *testing.T) {
+	t.Parallel()
+	t.Run("creates valid header", func(t *testing.T) {
+		t.Parallel()
+		header, dek, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		require.NotNil(t, header)
+		require.NotNil(t, dek)
+		require.Len(t, dek, KeySize)
+
+		assert.Equal(t, VaultHeaderVersion, header.Version)
+		assert.Equal(t, KDFAlgorithm, header.KDF.Algorithm)
+		assert.Equal(t, KEKAlgorithm, header.KEK.Algorithm)
+		assert.Equal(t, DEKAlgorithm, header.DEK.Algorithm)
+		assert.NotEmpty(t, header.DEK.Wrapped)
+		assert.NotEmpty(t, header.KeyFingerprint)
+
+		SecureZero(dek)
+	})
+
+	t.Run("fingerprint matches private key", func(t *testing.T) {
+		t.Parallel()
+		header, dek, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(dek)
+
+		expectedFP := hex.EncodeToString(PrivateKeyFingerprint(testPrivateKey1))
+		assert.Equal(t, expectedFP, header.KeyFingerprint)
+	})
+}
+
+func TestVaultHeaderUnwrapDEK(t *testing.T) {
+	t.Parallel()
+	t.Run("unwrap with correct key", func(t *testing.T) {
+		t.Parallel()
+		header, originalDEK, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(originalDEK)
+
+		unwrappedDEK, err := header.UnwrapDEK(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(unwrappedDEK)
+
+		assert.Equal(t, originalDEK, unwrappedDEK)
+	})
+
+	t.Run("unwrap with wrong key fails", func(t *testing.T) {
+		t.Parallel()
+		header, dek, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(dek)
+
+		_, err = header.UnwrapDEK(testPrivateKey2)
+		require.ErrorIs(t, err, constants.ErrVaultKeyFingerprintMatch)
+	})
+}
+
+func TestVaultHeaderRekey(t *testing.T) {
+	t.Parallel()
+	t.Run("rekey to new private key", func(t *testing.T) {
+		t.Parallel()
+		header, originalDEK, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(originalDEK)
+
+		err = header.Rekey(testPrivateKey1, testPrivateKey2)
+		require.NoError(t, err)
+
+		_, err = header.UnwrapDEK(testPrivateKey1)
+		require.ErrorIs(t, err, constants.ErrVaultKeyFingerprintMatch)
+
+		unwrappedDEK, err := header.UnwrapDEK(testPrivateKey2)
+		require.NoError(t, err)
+		defer SecureZero(unwrappedDEK)
+
+		assert.Equal(t, originalDEK, unwrappedDEK)
+		assert.NotNil(t, header.LastRekeyedAt)
+	})
+
+	t.Run("rekey with wrong old key fails", func(t *testing.T) {
+		t.Parallel()
+		header, dek, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(dek)
+
+		err = header.Rekey(testPrivateKey2, testPrivateKey2)
+		require.Error(t, err)
+	})
+}
+
+func newTestFileService(t *testing.T) fs.RuntimeFileService {
+	t.Helper()
+	service, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, service.CreateRuntimeTree(context.Background()))
+	return service
+}
+
+func TestVaultHeaderSaveLoad(t *testing.T) {
+	t.Parallel()
+	fileSvc := newTestFileService(t)
+
+	t.Run("save and load", func(t *testing.T) {
+		t.Parallel()
+		header, dek, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(dek)
+
+		err = header.Save(fileSvc)
+		require.NoError(t, err)
+
+		loaded, err := LoadVaultHeader(fileSvc)
+		require.NoError(t, err)
+
+		assert.Equal(t, header.Version, loaded.Version)
+		assert.Equal(t, header.KeyFingerprint, loaded.KeyFingerprint)
+		assert.Equal(t, header.DEK.Wrapped, loaded.DEK.Wrapped)
+	})
+
+	t.Run("load non-existent returns error", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+		_, err := LoadVaultHeader(fileSvc)
+		require.ErrorIs(t, err, constants.ErrVaultHeaderNotFound)
+	})
+}
+
+func TestVaultHeaderExists(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns false when not exists", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+		exists, err := VaultHeaderExists(fileSvc)
+		require.NoError(t, err)
+		assert.False(t, exists)
+	})
+
+	t.Run("returns true when exists", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+		header, dek, _ := NewVaultHeader(testPrivateKey1)
+		defer SecureZero(dek)
+		require.NoError(t, header.Save(fileSvc))
+
+		exists, err := VaultHeaderExists(fileSvc)
+		require.NoError(t, err)
+		assert.True(t, exists)
+	})
+}
+
+func TestVaultHeaderValidatePrivateKey(t *testing.T) {
+	t.Parallel()
+	header, dek, _ := NewVaultHeader(testPrivateKey1)
+	defer SecureZero(dek)
+
+	t.Run("correct key validates", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, header.ValidatePrivateKey(testPrivateKey1))
+	})
+
+	t.Run("wrong key fails validation", func(t *testing.T) {
+		t.Parallel()
+		assert.False(t, header.ValidatePrivateKey(testPrivateKey2))
+	})
+}
+
+func newTestVault(t *testing.T, fileSvc fs.RuntimeFileService, privateKey []byte) *Vault {
+	t.Helper()
+	header, dek, err := NewVaultHeader(privateKey)
+	require.NoError(t, err)
+	SecureZero(dek)
+	require.NoError(t, header.Save(fileSvc))
+	v, err := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+	require.NoError(t, err)
+	require.NoError(t, v.Unlock(privateKey))
+	return v
+}
+
+func TestVaultUnlock(t *testing.T) {
+	t.Parallel()
+	t.Run("unlock existing vault", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		vault1 := newTestVault(t, fileSvc, testPrivateKey1)
+		vault1.Close()
+
+		vault2, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+		defer vault2.Close()
+
+		err := vault2.Unlock(testPrivateKey1)
+		require.NoError(t, err)
+		assert.True(t, vault2.IsUnlocked())
+	})
+
+	t.Run("unlock with wrong key fails", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		vault1 := newTestVault(t, fileSvc, testPrivateKey1)
+		vault1.Close()
+
+		vault2, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+		defer vault2.Close()
+
+		err := vault2.Unlock(testPrivateKey2)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidPrivateKey)
+	})
+
+	t.Run("unlock non-existent vault fails", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		vault, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+		defer vault.Close()
+
+		err := vault.Unlock(testPrivateKey1)
+		require.ErrorIs(t, err, constants.ErrVaultNotInitialized)
+	})
+}
+
+func TestVaultRekey(t *testing.T) {
+	t.Parallel()
+	t.Run("rekey vault", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		vault := newTestVault(t, fileSvc, testPrivateKey1)
+
+		originalDEK, err := vault.GetDEK()
+		require.NoError(t, err)
+		defer SecureZero(originalDEK)
+
+		vault.Close()
+
+		vault2, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+		defer vault2.Close()
+
+		err = vault2.Rekey(testPrivateKey1, testPrivateKey2)
+		require.NoError(t, err)
+
+		err = vault2.Unlock(testPrivateKey1)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidPrivateKey)
+
+		vault3, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+		defer vault3.Close()
+
+		err = vault3.Unlock(testPrivateKey2)
+		require.NoError(t, err)
+
+		newDEK, err := vault3.GetDEK()
+		require.NoError(t, err)
+		defer SecureZero(newDEK)
+
+		assert.Equal(t, originalDEK, newDEK)
+	})
+}
+
+func TestVaultLock(t *testing.T) {
+	t.Parallel()
+	t.Run("lock clears DEK", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		vault := newTestVault(t, fileSvc, testPrivateKey1)
+		defer vault.Close()
+
+		assert.True(t, vault.IsUnlocked())
+
+		vault.Lock()
+		assert.False(t, vault.IsUnlocked())
+
+		_, err := vault.GetDEK()
+		require.ErrorIs(t, err, constants.ErrVaultLocked)
+	})
+}
+
+func TestVaultEncryptDecrypt(t *testing.T) {
+	t.Parallel()
+	t.Run("encrypt and decrypt", func(t *testing.T) {
+		t.Parallel()
+		v := newTestVault(t, newTestFileService(t), testPrivateKey1)
+		defer v.Close()
+
+		plaintext := []byte("This is a secret message that needs encryption.")
+
+		ciphertext, err := v.EncryptWithAAD(plaintext, testVaultAAD)
+		require.NoError(t, err)
+		assert.NotEqual(t, plaintext, ciphertext)
+		assert.Greater(t, len(ciphertext), len(plaintext))
+
+		decrypted, err := v.DecryptWithAAD(ciphertext, testVaultAAD)
+		require.NoError(t, err)
+		assert.Equal(t, plaintext, decrypted)
+	})
+
+	t.Run("encrypt empty data", func(t *testing.T) {
+		t.Parallel()
+		v := newTestVault(t, newTestFileService(t), testPrivateKey1)
+		defer v.Close()
+
+		plaintext := []byte{}
+
+		ciphertext, err := v.EncryptWithAAD(plaintext, testVaultAAD)
+		require.NoError(t, err)
+
+		decrypted, err := v.DecryptWithAAD(ciphertext, testVaultAAD)
+		require.NoError(t, err)
+		assert.Empty(t, decrypted)
+	})
+
+	t.Run("large data", func(t *testing.T) {
+		t.Parallel()
+		v := newTestVault(t, newTestFileService(t), testPrivateKey1)
+		defer v.Close()
+
+		plaintext := bytes.Repeat([]byte("Large data block. "), 10000)
+
+		ciphertext, err := v.EncryptWithAAD(plaintext, testVaultAAD)
+		require.NoError(t, err)
+
+		decrypted, err := v.DecryptWithAAD(ciphertext, testVaultAAD)
+		require.NoError(t, err)
+		assert.Equal(t, plaintext, decrypted)
+	})
+
+	t.Run("decrypt ciphertext too short", func(t *testing.T) {
+		t.Parallel()
+		v := newTestVault(t, newTestFileService(t), testPrivateKey1)
+		defer v.Close()
+
+		_, err := v.DecryptWithAAD([]byte("short"), testVaultAAD)
+		require.Error(t, err)
+	})
+
+	t.Run("encrypt fails when locked", func(t *testing.T) {
+		t.Parallel()
+		v := newTestVault(t, newTestFileService(t), testPrivateKey1)
+		defer v.Close()
+
+		v.Lock()
+		_, err := v.EncryptWithAAD([]byte("test"), testVaultAAD)
+		require.ErrorIs(t, err, constants.ErrVaultLocked)
+	})
+
+	t.Run("decrypt fails when locked", func(t *testing.T) {
+		t.Parallel()
+		v := newTestVault(t, newTestFileService(t), testPrivateKey1)
+		defer v.Close()
+
+		v.Lock()
+		_, err := v.DecryptWithAAD(make([]byte, 32), testVaultAAD)
+		require.ErrorIs(t, err, constants.ErrVaultLocked)
+	})
+}
+
+func TestVaultVerifyIntegrity(t *testing.T) {
+	t.Parallel()
+	fileSvc := newTestFileService(t)
+
+	vault := newTestVault(t, fileSvc, testPrivateKey1)
+	vault.Close()
+
+	t.Run("verify with correct key", func(t *testing.T) {
+		t.Parallel()
+		vault2, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+		defer vault2.Close()
+
+		err := vault2.VerifyIntegrity(testPrivateKey1)
+		require.NoError(t, err)
+	})
+
+	t.Run("verify with wrong key fails", func(t *testing.T) {
+		t.Parallel()
+		vault2, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+		defer vault2.Close()
+
+		err := vault2.VerifyIntegrity(testPrivateKey2)
+		require.Error(t, err)
+	})
+}
+
+func TestVaultReset(t *testing.T) {
+	t.Parallel()
+	t.Run("reset requires confirmation", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		vault := newTestVault(t, fileSvc, testPrivateKey1)
+
+		err := vault.Reset(false)
+		require.Error(t, err)
+		assert.True(t, vault.IsInitialized())
+	})
+
+	t.Run("reset destroys vault", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		vault := newTestVault(t, fileSvc, testPrivateKey1)
+
+		err := vault.Reset(true)
+		require.NoError(t, err)
+
+		assert.False(t, vault.IsUnlocked())
+		assert.False(t, vault.IsInitialized())
+	})
+}
+
+func TestVaultFullLifecycle(t *testing.T) {
+	t.Parallel()
+	fileSvc := newTestFileService(t)
+
+	vault1 := newTestVault(t, fileSvc, testPrivateKey1)
+
+	secretData := []byte("Highly confidential information")
+	encrypted, err := vault1.EncryptWithAAD(secretData, testVaultAAD)
+	require.NoError(t, err)
+
+	vault1.Close()
+
+	vault2, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+	err = vault2.Unlock(testPrivateKey1)
+	require.NoError(t, err)
+
+	decrypted, err := vault2.DecryptWithAAD(encrypted, testVaultAAD)
+	require.NoError(t, err)
+	assert.Equal(t, secretData, decrypted)
+
+	vault2.Close()
+
+	vault3, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+	err = vault3.Rekey(testPrivateKey1, testPrivateKey2)
+	require.NoError(t, err)
+	vault3.Close()
+
+	vault4, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+	err = vault4.Unlock(testPrivateKey1)
+	require.ErrorIs(t, err, constants.ErrVaultInvalidPrivateKey)
+	vault4.Close()
+
+	vault5, _ := NewVault(&VaultConfig{FileSvc: fileSvc, Logger: testutil.NewTestLogger()})
+	err = vault5.Unlock(testPrivateKey2)
+	require.NoError(t, err)
+
+	decrypted2, err := vault5.DecryptWithAAD(encrypted, testVaultAAD)
+	require.NoError(t, err)
+	assert.Equal(t, secretData, decrypted2)
+
+	vault5.Close()
+}
+
+func TestNewVault(t *testing.T) {
+	t.Parallel()
+	t.Run("nil config rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := NewVault(nil)
+		require.Error(t, err)
+	})
+
+	t.Run("empty data dir rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := NewVault(&VaultConfig{Logger: testutil.NewTestLogger()})
+		require.Error(t, err)
+	})
+
+	t.Run("nil logger uses default", func(t *testing.T) {
+		t.Parallel()
+		v, err := NewVault(&VaultConfig{FileSvc: newTestFileService(t)})
+		require.NoError(t, err)
+		defer v.Close()
+		assert.NotNil(t, v)
+	})
+}
+
+func TestVaultUnlockAlreadyOpen(t *testing.T) {
+	t.Parallel()
+	t.Run("unlock already unlocked vault fails", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		v := newTestVault(t, fileSvc, testPrivateKey1)
+		defer v.Close()
+
+		err := v.Unlock(testPrivateKey1)
+		require.ErrorIs(t, err, constants.ErrVaultAlreadyOpen)
+	})
+}
+
+func TestVaultGetDataDir(t *testing.T) {
+	t.Parallel()
+	t.Run("returns configured data dir", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		v := newTestVault(t, fileSvc, testPrivateKey1)
+		defer v.Close()
+
+		assert.Equal(t, fileSvc.Resolve(constants.VaultDirname), v.GetDataDir())
+	})
+}
+
+func TestAESKeyUnwrapInvalidKEK(t *testing.T) {
+	t.Parallel()
+	t.Run("invalid KEK size rejected on unwrap", func(t *testing.T) {
+		t.Parallel()
+		invalidKEK := make([]byte, 15)
+		wrapped := make([]byte, 40)
+
+		_, err := AESKeyUnwrap(invalidKEK, wrapped)
+		require.ErrorIs(t, err, constants.ErrVaultInvalidKeySize)
+	})
+}
+
+func TestDeleteVaultHeader(t *testing.T) {
+	t.Parallel()
+	t.Run("deletes existing header", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+
+		header, dek, err := NewVaultHeader(testPrivateKey1)
+		require.NoError(t, err)
+		defer SecureZero(dek)
+
+		require.NoError(t, header.Save(fileSvc))
+		exists, err := VaultHeaderExists(fileSvc)
+		require.NoError(t, err)
+		assert.True(t, exists)
+
+		require.NoError(t, DeleteVaultHeader(fileSvc))
+		exists, err = VaultHeaderExists(fileSvc)
+		require.NoError(t, err)
+		assert.False(t, exists)
+	})
+
+	t.Run("delete non-existent is no-op", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+		err := DeleteVaultHeader(fileSvc)
+		require.NoError(t, err)
+	})
+}
+
+func TestLoadVaultHeaderCorrupted(t *testing.T) {
+	t.Parallel()
+	t.Run("corrupted JSON returns error", func(t *testing.T) {
+		t.Parallel()
+		fileSvc := newTestFileService(t)
+		require.NoError(t, fileSvc.WriteFile(context.Background(), vaultHeaderPath(), []byte("not valid json {{{"), constants.PermFilePrivate))
+
+		_, err := LoadVaultHeader(fileSvc)
+		require.ErrorIs(t, err, constants.ErrVaultHeaderCorrupted)
+	})
+}
+
+func TestVaultConcurrentAccess(t *testing.T) {
+	t.Parallel()
+	fileSvc := newTestFileService(t)
+
+	v := newTestVault(t, fileSvc, testPrivateKey1)
+	defer v.Close()
+
+	var wg sync.WaitGroup
+	errors := make([]error, 10)
+	matches := make([]bool, 10)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			plaintext := []byte("Concurrent test data")
+			encrypted, err := v.EncryptWithAAD(plaintext, testVaultAAD)
+			if err != nil {
+				errors[idx] = err
+				return
+			}
+			decrypted, err := v.DecryptWithAAD(encrypted, testVaultAAD)
+			if err != nil {
+				errors[idx] = err
+				return
+			}
+			matches[idx] = bytes.Equal(plaintext, decrypted)
+		}(i)
+	}
+
+	t.Cleanup(wg.Wait)
+	wg.Wait()
+
+	for i := 0; i < 10; i++ {
+		require.NoError(t, errors[i])
+		assert.True(t, matches[i])
+	}
+}
+
+func TestVaultEncryptWithAAD(t *testing.T) {
+	t.Parallel()
+	v := newTestVault(t, newTestFileService(t), testPrivateKey1)
+	defer v.Close()
+
+	plaintext := []byte("bound content")
+	ciphertext, err := v.EncryptWithAAD(plaintext, []byte("events.command_stdout|7"))
+	require.NoError(t, err)
+
+	decrypted, err := v.DecryptWithAAD(ciphertext, []byte("events.command_stdout|7"))
+	require.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted)
+
+	_, err = v.DecryptWithAAD(ciphertext, []byte("events.command_stdout|8"))
+	require.ErrorIs(t, err, constants.ErrVaultDecryptionFailed, "another row must not decrypt the blob")
+	_, err = v.DecryptWithAAD(ciphertext, []byte("events.command_stderr|7"))
+	require.ErrorIs(t, err, constants.ErrVaultDecryptionFailed, "another column must not decrypt the blob")
+	_, err = v.DecryptWithAAD(ciphertext, nil)
+	require.ErrorIs(t, err, constants.ErrVaultDecryptionFailed, "associated data is required to decrypt")
+
+	v.Lock()
+	_, err = v.EncryptWithAAD(plaintext, nil)
+	require.ErrorIs(t, err, constants.ErrVaultLocked)
+	_, err = v.DecryptWithAAD(ciphertext, []byte("events.command_stdout|7"))
+	require.ErrorIs(t, err, constants.ErrVaultLocked)
+}
+
+func TestVaultHMACSHA256(t *testing.T) {
+	t.Parallel()
+	fileSvc := newTestFileService(t)
+	v := newTestVault(t, fileSvc, testPrivateKey1)
+	defer v.Close()
+
+	mac, err := v.HMACSHA256("label-a", []byte("data"))
+	require.NoError(t, err)
+	require.Len(t, mac, KeySize)
+
+	again, err := v.HMACSHA256("label-a", []byte("data"))
+	require.NoError(t, err)
+	assert.Equal(t, mac, again, "same key, label and data is deterministic")
+
+	other, err := v.HMACSHA256("label-b", []byte("data"))
+	require.NoError(t, err)
+	assert.NotEqual(t, mac, other, "labels derive independent keys")
+
+	otherVault := newTestVault(t, newTestFileService(t), testPrivateKey1)
+	defer otherVault.Close()
+	otherMAC, err := otherVault.HMACSHA256("label-a", []byte("data"))
+	require.NoError(t, err)
+	assert.NotEqual(t, mac, otherMAC, "each vault has its own DEK")
+
+	dek, err := v.GetDEK()
+	require.NoError(t, err)
+	dekMAC := hmac.New(sha256.New, dek)
+	dekMAC.Write([]byte("data"))
+	assert.NotEqual(t, dekMAC.Sum(nil), mac, "the DEK itself is never the MAC key")
+
+	_, err = v.HMACSHA256("", []byte("data"))
+	require.ErrorIs(t, err, constants.ErrVaultSubkeyLabelEmpty)
+
+	v.Lock()
+	_, err = v.HMACSHA256("label-a", []byte("data"))
+	require.ErrorIs(t, err, constants.ErrVaultLocked)
+}
+
+// testVaultAAD is the associated data the round-trip tests bind into ciphertexts.
+var testVaultAAD = []byte("vault-test|row")

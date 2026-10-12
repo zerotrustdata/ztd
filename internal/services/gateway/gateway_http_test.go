@@ -1,0 +1,819 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package gateway
+
+import (
+	"bytes"
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/json"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/protocol"
+)
+
+func TestCatchAllRedirect(t *testing.T) {
+
+	h, cfg, _ := setupTestHTTPHandler(t)
+	cfg.Gateway.HTTPSPort = 8443
+
+	router := h.buildHTTPRouter()
+
+	cases := []struct {
+		name           string
+		reqHost        string
+		reqPath        string
+		expectedStatus int
+		expectedLoc    string
+	}{
+		{
+			name:           "Redirect safe host localhost",
+			reqHost:        "localhost",
+			reqPath:        "/some/path?foo=bar",
+			expectedStatus: http.StatusMovedPermanently,
+			expectedLoc:    "https://localhost:8443/some/path?foo=bar",
+		},
+		{
+			name:           "Redirect safe host with port",
+			reqHost:        "localhost:8080",
+			reqPath:        "/some/path",
+			expectedStatus: http.StatusMovedPermanently,
+			expectedLoc:    "https://localhost:8443/some/path",
+		},
+		{
+			name:           "Fallback for unsafe host",
+			reqHost:        "evil.com",
+			reqPath:        "/some/path",
+			expectedStatus: http.StatusMovedPermanently,
+			expectedLoc:    "https://localhost:8443/some/path",
+		},
+		{
+			name:           "Prevent path injection redirect",
+			reqHost:        "localhost",
+			reqPath:        "//evil.com/some/path",
+			expectedStatus: http.StatusTemporaryRedirect, // Go's ServeMux intercepts and cleans double slashes with a 307
+			expectedLoc:    "/evil.com/some/path",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "http://"+tc.reqHost+tc.reqPath, nil)
+			req.Host = tc.reqHost
+			rr := httptest.NewRecorder()
+
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tc.expectedStatus, rr.Code)
+			assert.Equal(t, tc.expectedLoc, rr.Header().Get("Location"))
+		})
+	}
+}
+
+func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfrastructure) {
+	t.Helper()
+	infra := setupTestInfrastructure(t, false)
+
+	mcpGateway, err := mcp.NewGatewayService(mcp.Dependencies{
+		Logger:           infra.Logger,
+		Responder:        infra.Responder,
+		SuspendedStore:   infra.SuspendedStore,
+		ScrubbingService: newTestScrubber(t),
+		ThreatScanner:    governance.NewL1Doctrine(),
+		MaxPayloadBytes:  infra.Cfg.Gateway.MaxPayloadBytes,
+		Posture:          string(infra.Cfg.Gateway.Posture),
+		AuditStore:       noopAuditEventRecorder{},
+		EmbeddedSession:  fixedEmbeddedSession{},
+	})
+	require.NoError(t, err, "failed to create MCP gateway")
+	h, err := newHTTPHandler(HTTPHandlerDependencies{
+		Cfg:    infra.Cfg,
+		Logger: infra.Logger,
+		Auth:   infra.Auth,
+		PKIControllerDeps: PKIControllerDeps{
+			Cfg:          infra.Cfg,
+			Logger:       infra.Logger,
+			PKI:          infra.PKI,
+			Registration: infra.Reg,
+			Responder:    infra.Responder,
+		},
+		AuditControllerDeps: AuditControllerDeps{
+			Cfg:        infra.Cfg,
+			Logger:     infra.Logger,
+			AuditStore: infra.AuditStore,
+			Responder:  infra.Responder,
+			Scrubber:   infra.Scrubber,
+		},
+		DataControllerDeps: DataControllerDeps{
+			Cfg:       infra.Cfg,
+			Logger:    infra.Logger,
+			DocStore:  infra.DocStore,
+			SSEStore:  infra.SSEStore,
+			BlobStore: infra.BlobStore,
+			Pubsub:    infra.Pubsub,
+			Responder: infra.Responder,
+		},
+		SignerControllerDeps: SignerControllerDeps{
+			Cfg:         infra.Cfg,
+			Logger:      infra.Logger,
+			DocStore:    infra.DocStore,
+			SignerStore: infra.SignerStore,
+			Responder:   infra.Responder,
+		},
+		BootstrapControllerDeps: BootstrapControllerDeps{
+			Cfg:                infra.Cfg,
+			Logger:             infra.Logger,
+			DocStore:           infra.DocStore,
+			UserSvc:            infra.UserSvc,
+			PKI:                infra.PKI,
+			CLISessionSvc:      infra.CLISessionSvc,
+			OperatorSessionSvc: infra.OperatorSessionSvc,
+			EmbeddedOperator:   infra.Embedded,
+			Responder:          infra.Responder,
+		},
+		EnrollmentTokenControllerDeps: EnrollmentTokenControllerDeps{
+			Cfg:       infra.Cfg,
+			Logger:    infra.Logger,
+			Responder: infra.Responder,
+		},
+		UserControllerDeps: UserControllerDeps{
+			Cfg:       infra.Cfg,
+			Logger:    infra.Logger,
+			UserSvc:   infra.UserSvc,
+			Responder: infra.Responder,
+		},
+		SessionControllerDeps: SessionControllerDeps{
+			Logger:      infra.Logger,
+			DocStore:    infra.DocStore,
+			Responder:   infra.Responder,
+			CrossOrigin: len(infra.Cfg.Gateway.AllowedOrigins) > 0,
+		},
+		AdminControllerDeps: AdminControllerDeps{
+			Cfg:            infra.Cfg,
+			Logger:         infra.Logger,
+			DocStore:       infra.DocStore,
+			SignerStore:    infra.SignerStore,
+			ConsensusStore: infra.ConsensusStore,
+			UserSvc:        infra.UserSvc,
+			Responder:      infra.Responder,
+		},
+		OperatorControllerDeps: OperatorControllerDeps{
+			Cfg:       infra.Cfg,
+			Logger:    infra.Logger,
+			Reg:       infra.Reg,
+			Auth:      infra.Auth,
+			Responder: infra.Responder,
+		},
+		DispatchControllerDeps: DispatchControllerDeps{
+			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(infra.Cfg.Gateway.Posture), governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
+			Responder:   infra.Responder,
+			Logger:      infra.Logger,
+		},
+		SSEControllerDeps: SSEControllerDeps{
+			Cfg:       infra.Cfg,
+			Logger:    infra.Logger,
+			DocStore:  infra.DocStore,
+			KVStore:   infra.KVStore,
+			SSEStore:  infra.SSEStore,
+			Pubsub:    infra.Pubsub,
+			Auth:      infra.Auth,
+			Responder: infra.Responder,
+		},
+		HealthControllerDeps: HealthControllerDeps{
+			Cfg:               infra.Cfg,
+			Logger:            infra.Logger,
+			DocStore:          infra.DocStore,
+			StateRootSvc:      infra.StateRootSvc,
+			Responder:         infra.Responder,
+			IsReady:           func() bool { return true },
+			IsGovernanceReady: func(context.Context) bool { return true },
+		},
+		GovernanceControllerDeps: GovernanceControllerDeps{
+			Cfg:       infra.Cfg,
+			Logger:    infra.Logger,
+			Responder: infra.Responder,
+		},
+		MCPControllerDeps:     MCPControllerDeps{MCPGateway: mcpGateway},
+		PubSubControllerDeps:  PubSubControllerDeps{Handler: infra.Pubsub},
+		PasskeyControllerDeps: PasskeyControllerDeps{Handler: infra.Passkey},
+	})
+	require.NoError(t, err, "failed to create HTTP handler")
+	return h, infra.Cfg, infra
+}
+
+func TestHandleHealth(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	t.Run("Returns 503 when platform_settings not found", func(t *testing.T) {
+		h.dataController.docStore.DocDelete(t.Context(), "settings", "platform_settings")
+		req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
+		rr := httptest.NewRecorder()
+
+		h.healthController.handleHealth(rr, req)
+		assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+		assert.JSONEq(t, `{"error":"platform_settings not ready"}`, rr.Body.String())
+	})
+
+	t.Run("Returns 200 when platform_settings exists", func(t *testing.T) {
+		settings := models.SettingsDocument{
+			Settings: &models.PlatformSettings{
+				ActuatorKeyID: "test-key-id",
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		settingsBytes, err := json.Marshal(settings)
+		require.NoError(t, err)
+		err = h.dataController.docStore.DocSet(t.Context(), "settings", "platform_settings", settingsBytes)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
+		rr := httptest.NewRecorder()
+
+		h.healthController.handleHealth(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		var resp models.HealthResponse
+		err = json.Unmarshal(rr.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.Equal(t, constants.GatewayModeStatusOK, resp.Status)
+	})
+}
+
+func TestHandleHealth_StateRootFailure(t *testing.T) {
+	h, _, infra := setupTestHTTPHandler(t)
+
+	settings := models.SettingsDocument{
+		Settings: &models.PlatformSettings{
+			ActuatorKeyID: "test-key-id",
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	settingsBytes, err := json.Marshal(settings)
+	require.NoError(t, err)
+	err = h.dataController.docStore.DocSet(t.Context(), "settings", "platform_settings", settingsBytes)
+	require.NoError(t, err)
+
+	// Force state root calculation to fail by dropping the commitment table the root read queries
+	_, err = infra.DB.db.Exec("DROP TABLE state_nodes")
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
+	rr := httptest.NewRecorder()
+
+	h.healthController.handleHealth(rr, req)
+	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	assert.JSONEq(t, `{"error":"state root calculation failed"}`, rr.Body.String())
+}
+
+func TestHandleBootstrapHealth(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	t.Run("Returns 503 when not ready", func(t *testing.T) {
+		h.healthController.isReady = func() bool { return false }
+		req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
+		rr := httptest.NewRecorder()
+
+		h.healthController.handleBootstrapHealth(rr, req)
+		assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+		assert.JSONEq(t, `{"error":"service initializing"}`, rr.Body.String())
+	})
+
+	t.Run("Returns 200 when ready", func(t *testing.T) {
+		h.healthController.isReady = func() bool { return true }
+		req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
+		rr := httptest.NewRecorder()
+
+		h.healthController.handleBootstrapHealth(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		var resp models.HealthResponse
+		err := json.Unmarshal(rr.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.Equal(t, constants.GatewayModeStatusOK, resp.Status)
+		assert.Equal(t, constants.GatewayModeGateway, resp.Mode)
+		// Bootstrap health does not include governance_ready or state_merkle_root
+		assert.Empty(t, resp.StateMerkleRoot)
+	})
+}
+
+func TestNewHTTPHandler(t *testing.T) {
+	h, cfg, _ := setupTestHTTPHandler(t)
+
+	assert.NotNil(t, h)
+	assert.NotNil(t, h.cfg)
+	assert.NotNil(t, h.logger)
+	assert.NotNil(t, h.dataController.docStore)
+	assert.NotNil(t, h.dataController.sseStore)
+	assert.NotNil(t, h.GetGatewayWebSocketHandler())
+	assert.NotNil(t, h.authMiddleware)
+	assert.NotNil(t, h.pkiController.pki)
+	assert.NotNil(t, h.bootstrapController.cliSessionSvc)
+	assert.NotNil(t, h.bootstrapController.operatorSessionSvc)
+	assert.NotNil(t, h.GetPasskeyHandler())
+	assert.NotNil(t, h.adminController.userSvc)
+	assert.NotNil(t, h.responder)
+	assert.NotNil(t, h.GetMCPGateway())
+	assert.NotNil(t, h.pkiController)
+	assert.NotNil(t, h.dataController)
+	assert.NotNil(t, h.bootstrapController)
+	assert.NotNil(t, h.enrollmentTokenController)
+	assert.NotNil(t, h.userController)
+	assert.NotNil(t, h.sessionController)
+	assert.NotNil(t, h.adminController)
+	assert.NotNil(t, h.operatorController)
+	assert.Equal(t, cfg, h.cfg)
+}
+
+func TestBuildPublicRouter(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	router := h.buildPublicRouter()
+	assert.NotNil(t, router)
+
+	// Test that health endpoint is registered
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	// Health endpoint may require auth in some configurations, so we just check it's registered
+	assert.NotNil(t, rr)
+
+	// Test that PKI devices enroll endpoint is registered on public router
+	req = httptest.NewRequest(http.MethodPost, constants.APIPaths.PKIDevicesEnroll, nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	// Endpoint requires mTLS, so we expect 401 Unauthorized, not 404 Not Found
+	assert.NotEqual(t, http.StatusNotFound, rr.Code, "PKIDevicesEnroll should be registered on public router")
+
+	// 1. RouteAuthWebSession routing tests for cookie-authed paths
+	authedPaths := []string{
+		"/api/v1/users/me",
+		"/api/v1/approvals/tx-123/challenge",
+		"/api/v1/approvals/tx-123/verify",
+		"/api/v1/auth/passkeys/cred-123",
+		"/api/v1/auth/sessions/me",
+	}
+	for _, path := range authedPaths {
+		req = httptest.NewRequest(http.MethodGet, path, nil)
+		rr = httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code, "Path %s should be RouteAuthWebSession and return 401, not 302/404", path)
+		assert.Contains(t, rr.Body.String(), constants.ErrWebSessionCookieRequired.Error(), "Path %s should return web session cookie required error", path)
+	}
+
+	// 2. Console passkey endpoint accessibility tests (must bypass mTLS check)
+	consolePasskeyPaths := []string{
+		constants.APIPaths.AuthPasskeysConsoleRegisterChallenge,
+		constants.APIPaths.AuthPasskeysConsoleRegisterVerify,
+		constants.APIPaths.AuthPasskeysConsoleAuthenticateChallenge,
+		constants.APIPaths.AuthPasskeysConsoleAuthenticateVerify,
+	}
+	for _, path := range consolePasskeyPaths {
+		req = httptest.NewRequest(http.MethodPost, path, nil)
+		rr = httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		// Since these are public, they bypass mTLS and reach the handler.
+		// Since we send nil/empty body, they may fail with 400 or other errors,
+		// but they must NOT return 401 with ErrMTLSCertRequired.
+		assert.NotContains(t, rr.Body.String(), constants.ErrMTLSCertRequired.Error(), "Path %s should bypass mTLS check", path)
+		assert.NotEqual(t, http.StatusNotFound, rr.Code, "Path %s should be registered", path)
+	}
+
+	// 3. CLI passkey status endpoint must be mTLS-gated (exact path overrides RouteAuthWebSession prefix)
+	req = httptest.NewRequest(http.MethodGet, constants.APIPaths.AuthPasskeysCLIStatus, nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	// The cli/status path is under /api/v1/auth/passkeys (RouteAuthWebSession prefix) but registered
+	// as an exact RouteAuthMTLS path, so it must hit the mTLS middleware and return 401, not pass through.
+	assert.NotEqual(t, http.StatusNotFound, rr.Code, "cli/status should be registered on public router")
+	assert.Contains(t, rr.Body.String(), constants.ErrMTLSCertRequired.Error(), "cli/status should be mTLS-gated")
+
+	// 4. Landing page redirect test (302 to /console/ directly)
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusFound, rr.Code, "Landing page should redirect with 302")
+	assert.Equal(t, "/console/", rr.Header().Get("Location"), "Landing page should redirect directly to /console/")
+
+	// 5. mTLS-protected passkey CLI status must NOT bypass mTLS
+	mtlsPasskeyPaths := []string{
+		constants.APIPaths.AuthPasskeysCLIStatus,
+	}
+	for _, path := range mtlsPasskeyPaths {
+		req = httptest.NewRequest(http.MethodPost, path, nil)
+		rr = httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		assert.NotEqual(t, http.StatusNotFound, rr.Code, "Path %s should be registered", path)
+		assert.Contains(t, rr.Body.String(), constants.ErrMTLSCertRequired.Error(), "Path %s should be mTLS-gated", path)
+	}
+}
+
+// TestRemovedTrustScriptRoutes verifies that the deprecated trust-script endpoints
+// (/web-cert.sh, /web-cert.ps1, /.well-known/ztd/pki/trust-windows) no longer serve
+// scripts on the public HTTPS router, while the raw CA bundle discovery endpoint
+// still serves the full bundle. This is a regression guard for the Section 10
+// breaking removal of script-based trust installation.
+func TestRemovedTrustScriptRoutes(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+	router := h.buildPublicRouter()
+
+	// /web-cert.sh and /web-cert.ps1 are no longer registered and no longer
+	// classified as RouteAuthNone, so they fail-closed to mTLS (401) rather
+	// than serving a script. Either way, they must not return 200 with a
+	// script content type or body.
+	scriptPaths := []string{
+		"/web-cert.sh",
+		"/web-cert.ps1",
+	}
+	for _, path := range scriptPaths {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+
+		assert.NotEqual(t, http.StatusOK, rr.Code, "%s must not serve a script (status)", path)
+		ct := rr.Header().Get("Content-Type")
+		assert.NotEqual(t, "application/x-sh", ct, "%s must not return x-sh content type", path)
+		assert.NotEqual(t, "application/x-powershell", ct, "%s must not return x-powershell content type", path)
+		body := rr.Body.String()
+		assert.NotContains(t, body, "update-ca-certificates", "%s must not serve a trust script", path)
+		assert.NotContains(t, body, "LocalMachine", "%s must not serve a trust script", path)
+	}
+
+	// /.well-known/ztd/pki/trust-windows falls under the public PKI prefix
+	// (RouteAuthNone) so it reaches the mux, but the handler is gone → 404.
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/ztd/pki/trust-windows", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusNotFound, rr.Code, "trust-windows alias must no longer be registered")
+	assert.NotEqual(t, "application/x-powershell", rr.Header().Get("Content-Type"))
+
+	// The raw CA bundle discovery endpoint must still serve the full bundle.
+	req = httptest.NewRequest(http.MethodGet, constants.APIPaths.WellKnownPKICABundle, nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code, "ca-bundle must still be served")
+	assert.Equal(t, "application/x-pem-file", rr.Header().Get("Content-Type"))
+	assert.NotEmpty(t, rr.Body.Bytes(), "ca-bundle must return a non-empty PEM bundle")
+}
+
+// TestRemovedCLIEnrollRoute verifies that the deprecated
+// POST /api/v1/auth/cli/enroll endpoint (handleCLIEnrollment) no longer
+// issues credentials on either the public HTTPS router or the plain HTTP
+// router. The handler was removed in 5f; the path must never return 200 with
+// a certificate. It fail-closes to mTLS auth rejection (401) on the public
+// router and is not registered on the plain HTTP router (404).
+func TestRemovedCLIEnrollRoute(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	enrollBody := `{"cli_csr_pem":"-----BEGIN CERTIFICATE REQUEST-----\n-----END CERTIFICATE REQUEST-----\n"}`
+
+	// Public HTTPS router: the path is no longer explicitly classified and
+	// the handler is gone, so it fail-closes to RouteAuthMTLS → 401 (never
+	// 200 with a cert).
+	//
+	// The path is inlined as a literal because the
+	// constants.APIPaths.AuthCLIEnroll constant was deleted in Section 9
+	// (handleCLIEnrollment removal). These tests assert the route's
+	// absence, so a literal is intentional and avoids reintroducing a
+	// constant for a removed endpoint.
+	publicRouter := h.buildPublicRouter()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/cli/enroll", bytes.NewReader([]byte(enrollBody)))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	publicRouter.ServeHTTP(rr, req)
+	assert.NotEqual(t, http.StatusOK, rr.Code, "enroll must not return 200 on public router")
+	assert.NotContains(t, rr.Body.String(), "cli_cert", "enroll must not issue a CLI certificate on public router")
+	assert.NotContains(t, rr.Body.String(), "BEGIN CERTIFICATE", "enroll must not return any certificate on public router")
+
+	// Plain HTTP router: the handler was never registered here either, so
+	// the path is a 404 (or fail-closed). Either way, never 200 with a cert.
+	// Literal path: see note above (AuthCLIEnroll constant removed in
+	// Section 9).
+	httpRouter := h.buildHTTPRouter()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/auth/cli/enroll", bytes.NewReader([]byte(enrollBody)))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	httpRouter.ServeHTTP(rr, req)
+	assert.NotEqual(t, http.StatusOK, rr.Code, "enroll must not return 200 on plain HTTP router")
+	assert.NotContains(t, rr.Body.String(), "cli_cert", "enroll must not issue a CLI certificate on plain HTTP router")
+	assert.NotContains(t, rr.Body.String(), "BEGIN CERTIFICATE", "enroll must not return any certificate on plain HTTP router")
+}
+
+// TestCLICertBoundToOperator is a regression test for the auth path used by
+// `./ztd login` clients (CLI cert + Bearer <operator_session_id> +
+// X-ZTD-CLI-Session-ID). The cert URI SAN is a CLI SPIFFE ID and must be
+// accepted on internal routes when the cli session is owned by the bound
+// Operator session.
+func TestCLICertBoundToOperator(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	const (
+		userID            = "u-1"
+		cliSessionID      = "cli-bound-1"
+		operatorSessionID = "op-session-bound-1"
+		otherOpSessionID  = "op-session-other"
+	)
+
+	cliSess := models.CLISession{
+		ID:                cliSessionID,
+		UserID:            userID,
+		OperatorSessionID: operatorSessionID,
+		ExpiresAt:         time.Now().Add(24 * time.Hour),
+	}
+	b, _ := json.Marshal(cliSess)
+	require.NoError(t, h.dataController.docStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, b))
+
+	wid := protocol.NewWorkloadIdentity()
+	cliURI, err := wid.CLISPIFFEURL(userID, cliSessionID)
+	require.NoError(t, err)
+	opURI, err := wid.OperatorSPIFFEURL("org", "op-id", operatorSessionID)
+	require.NoError(t, err)
+
+	t.Run("CLI cert bound to Operator session is accepted", func(t *testing.T) {
+		bound, err := h.authMiddleware.cliCertBoundToOperator(t.Context(),
+			[]*url.URL{cliURI}, cliSessionID, userID, operatorSessionID,
+		)
+		require.NoError(t, err)
+		assert.True(t, bound)
+	})
+
+	t.Run("CLI cert bound to a different Operator session is rejected", func(t *testing.T) {
+		bound, err := h.authMiddleware.cliCertBoundToOperator(t.Context(),
+			[]*url.URL{cliURI}, cliSessionID, userID, otherOpSessionID,
+		)
+		require.NoError(t, err)
+		assert.False(t, bound)
+	})
+
+	t.Run("operator URI is not accepted via the CLI path", func(t *testing.T) {
+		bound, err := h.authMiddleware.cliCertBoundToOperator(t.Context(),
+			[]*url.URL{opURI}, cliSessionID, userID, operatorSessionID,
+		)
+		require.NoError(t, err)
+		assert.False(t, bound)
+	})
+
+	t.Run("expired CLI session is rejected", func(t *testing.T) {
+		expired := models.CLISession{
+			ID:                "cli-expired",
+			UserID:            userID,
+			OperatorSessionID: operatorSessionID,
+			ExpiresAt:         time.Now().Add(-1 * time.Hour),
+		}
+		eb, _ := json.Marshal(expired)
+		require.NoError(t, h.dataController.docStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), "cli-expired", eb))
+		expiredURI, err := wid.CLISPIFFEURL(userID, "cli-expired")
+		require.NoError(t, err)
+		bound, err := h.authMiddleware.cliCertBoundToOperator(t.Context(),
+			[]*url.URL{expiredURI}, "cli-expired", userID, operatorSessionID,
+		)
+		require.NoError(t, err)
+		assert.False(t, bound)
+	})
+}
+
+func TestHTTPHandler_ServeHTTP(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+	// ServeHTTP uses buildPublicRouter which redirects "/" to "/console/"
+	assert.Equal(t, http.StatusFound, rr.Code)
+	assert.Equal(t, "/console/", rr.Header().Get("Location"))
+}
+
+func TestHTTPHandler_GetMCPGateway(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	mcpGateway := h.GetMCPGateway()
+	assert.NotNil(t, mcpGateway, "GetMCPGateway should return non-nil service")
+}
+
+func TestHTTPHandler_GetPasskeyHandler(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	passkey := h.GetPasskeyHandler()
+	assert.NotNil(t, passkey, "GetPasskeyHandler should return non-nil service")
+}
+
+func TestHTTPHandler_GetGatewayWebSocketHandler(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	pubsub := h.GetGatewayWebSocketHandler()
+	assert.NotNil(t, pubsub, "GetGatewayWebSocketHandler should return non-nil service")
+}
+
+// makeTestAppWorkloadCert returns a self-signed cert with a SPIFFE URI SAN for an app workload identity.
+func makeTestAppWorkloadCert(t *testing.T, appID string) *x509.Certificate {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	spiffeURI, err := url.Parse("spiffe://ztd.local/app/" + appID)
+	require.NoError(t, err)
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test-app-cert"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		URIs:         []*url.URL{spiffeURI},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(certDER)
+	require.NoError(t, err)
+	return cert
+}
+
+func TestHTTPHandler_handleInternalSSEEvents(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	t.Run("Method not allowed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/internal/sse/events", nil)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEEvents(rr, req)
+		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+		assert.JSONEq(t, `{"error":"method not allowed"}`, rr.Body.String())
+	})
+
+	t.Run("Missing auth identity (no context, no mTLS)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/events", nil)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEEvents(rr, req)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		assert.JSONEq(t, `{"error":"missing auth identity"}`, rr.Body.String())
+	})
+
+	t.Run("mTLS auth - missing routing parameter", func(t *testing.T) {
+		// Context has UserID but no session ID → route has UserID only → 400.
+		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/events", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEEvents(rr, req)
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.JSONEq(t, `{"error":"sse route requires exactly one of web_session_id or cli_session_id"}`, rr.Body.String())
+	})
+
+	// Note: "multiple routing parameters" is not testable through the handler
+	// because buildSSERouteFromContext always picks one session (CLI takes
+	// precedence over web). The mutually-exclusive scenario is tested directly
+	// at the authorizeSSERoute level in sse_authorize_test.go
+	// (TestAuthorizeSSERoute_MultipleRoutingTargets).
+
+	t.Run("cookie auth - derives web_session_id from context (no URL param needed)", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), constants.ContextKeyWebSessionID, "web-session-1")
+		ctx = context.WithValue(ctx, constants.ContextKeyUserID, "user-1")
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/events", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEEvents(rr, req)
+		// Cookie auth derives web_session_id from context, so no URL param is needed.
+		// The handler should succeed (200) since the routing target is resolved from context.
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("cookie auth - URL web_session_id is ignored (security: session fixation prevention)", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), constants.ContextKeyWebSessionID, "web-session-auth")
+		ctx = context.WithValue(ctx, constants.ContextKeyUserID, "user-1")
+		// Pass a different web_session_id in the URL — it MUST be ignored.
+		// The context (cookie) value is the source of truth.
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/events?web_session_id=web-session-attacker", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEEvents(rr, req)
+		// Should succeed using the context web_session_id, ignoring the URL value.
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+}
+
+func TestHTTPHandler_handleInternalSSEStream(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	t.Run("Method not allowed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/internal/sse/stream", nil)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEStream(rr, req)
+		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+		assert.JSONEq(t, `{"error":"method not allowed"}`, rr.Body.String())
+	})
+
+	t.Run("Missing auth identity (no context, no mTLS)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/stream", nil)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEStream(rr, req)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		assert.JSONEq(t, `{"error":"missing auth identity"}`, rr.Body.String())
+	})
+
+	t.Run("mTLS auth - missing routing parameter", func(t *testing.T) {
+		// Context has UserID but no session ID → route has UserID only → 400.
+		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/stream", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEStream(rr, req)
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.JSONEq(t, `{"error":"sse route requires exactly one of web_session_id or cli_session_id"}`, rr.Body.String())
+	})
+
+	t.Run("cookie auth - derives web_session_id from context (stream starts)", func(t *testing.T) {
+		// Context has WebSessionID + UserID → handler builds route with both →
+		// auth succeeds and the SSE stream starts. Use a cancellable context +
+		// goroutine to avoid blocking the test (the stream is long-lived).
+		ctx := context.WithValue(context.Background(), constants.ContextKeyWebSessionID, "web-session-1")
+		ctx = context.WithValue(ctx, constants.ContextKeyUserID, "user-1")
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/stream", nil)
+		req = req.WithContext(ctx)
+
+		stream := startInternalSSEStream(t, h, req)
+		stream.awaitSubscribed()
+		stream.stop()
+
+		// The stream should have started — Content-Type set to text/event-stream.
+		assert.Equal(t, "text/event-stream", stream.rec.Header().Get("Content-Type"))
+	})
+}
+
+func TestHTTPHandler_handleInternalSSEStream_CLIMTLSAuth(t *testing.T) {
+	h, _, _ := setupTestHTTPHandler(t)
+
+	const (
+		userID       = "u-cli-mtls"
+		cliSessionID = "cli-mtls-1"
+	)
+
+	cliSess := models.CLISession{
+		ID:        cliSessionID,
+		UserID:    userID,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	b, _ := json.Marshal(cliSess)
+	require.NoError(t, h.dataController.docStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, b))
+
+	t.Run("CLI mTLS auth with matching user ID passes auth", func(t *testing.T) {
+		// Context stamps UserID + CLISessionID (simulating auth middleware).
+		// The handler builds the route from context — no URL params needed.
+		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, userID)
+		ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, cliSessionID)
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/stream", nil)
+		req = req.WithContext(ctx)
+
+		stream := startInternalSSEStream(t, h, req)
+		stream.awaitSubscribed()
+		stream.stop()
+
+		// Stream should have started — not 401/403.
+		assert.Equal(t, "text/event-stream", stream.rec.Header().Get("Content-Type"))
+	})
+
+	t.Run("CLI mTLS auth with wrong user ID is forbidden", func(t *testing.T) {
+		// Route has UserID "other-user" but CLI session belongs to userID → 403.
+		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "other-user")
+		ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, cliSessionID)
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/stream", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEStream(rr, req)
+		assert.Equal(t, http.StatusForbidden, rr.Code)
+	})
+
+	t.Run("CLI mTLS auth with app ID is rejected as mTLS auth", func(t *testing.T) {
+		// App cert → 401 "missing auth identity" (app workloads are not SSE consumers).
+		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, userID)
+		ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, cliSessionID)
+		ctx = context.WithValue(ctx, constants.ContextKeyAppID, "app-1")
+		req := httptest.NewRequest(http.MethodGet, "/internal/sse/stream", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		h.sseController.handleInternalSSEStream(rr, req)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+}

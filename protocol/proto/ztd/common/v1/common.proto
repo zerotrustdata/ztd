@@ -1,0 +1,229 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+syntax = "proto3";
+
+package ztd.common.v1;
+
+option go_package = "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1;commonv1";
+
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Custom field options for L1 Doctrine governance.
+// Applied to payload fields in operator.proto to declare regex patterns
+// that, if matched, cause immediate L1 rejection (hard gate).
+extend google.protobuf.FieldOptions {
+  // Comma-separated list of forbidden regex patterns evaluated against the
+  // field value at L1 Doctrine verification time.
+  string forbidden_patterns = 50001;
+}
+
+// Source component identifier
+enum Component {
+  COMPONENT_UNSPECIFIED = 0;
+  COMPONENT_AGENT = 1;
+  COMPONENT_ZTDO = 2;
+  COMPONENT_CLIENT = 3;
+}
+
+// Doctrine (L1Doctrine) Governance: Technical Bedrock (Hard Gates)
+message L1Metadata {
+  bool validated = 1;
+  repeated string violations = 2;
+}
+
+// Consensus (L2) Governance: a vote from a single L2 consensus member.
+message L2Vote {
+  string signer_key_id       = 1; // member appID == TrustedSigner.ID
+  string consensus_signature = 2; // ed25519 over "<transaction_hash>|<decision>"
+  bool   decision            = 3; // member's safe (true) / unsafe (false) vote
+}
+
+// Consensus (L2) Governance: a vote set from an enrolled consensus set.
+message L2Metadata {
+  string consensus_set_id = 1;    // ID of the consensus set that produced this vote set
+  repeated L2Vote votes   = 2;    // independent member votes
+}
+
+// Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
+// L3Proof is a union: fields 1-4 are populated for WebAuthn (web sessions),
+// fields 5-6 for CLI/mTLS (operator sessions). Exactly one proof type
+// should be populated per instance.
+message L3Proof {
+  // WebAuthn: client data JSON from the authenticator assertion
+  string client_data_json = 1 [json_name = "clientDataJSON"];
+  // WebAuthn: authenticator data bytes (base64)
+  string authenticator_data = 2 [json_name = "authenticatorData"];
+  // WebAuthn: signature over the authenticator assertion
+  string signature = 3;
+  // WebAuthn: credential ID used for the assertion
+  string credential_id = 4 [json_name = "credentialId"];
+  // CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication
+  string mtls_cert_fingerprint = 5 [json_name = "mtlsCertFingerprint"];
+  // CLI/mTLS: Ed25519 signature over transaction_hash using the operator private key
+  string cli_signature = 6 [json_name = "cliSignature"];
+}
+
+message L3Metadata {
+  L3Proof proof = 1;             // WebAuthn or CLI/mTLS proof
+}
+
+// Unified Governance Metadata
+message GovernanceMetadata {
+  L1Metadata l1 = 1;
+  L2Metadata l2 = 2;
+  L3Metadata l3 = 3;
+}
+
+// GovernanceEnvelope is the single canonical container for all ztd mutations.
+// It binds identity, intent, state, and governance proofs into one transaction.
+message GovernanceEnvelope {
+  // Identity & Metadata
+  string id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  Component source_component = 4;
+  string operator_id = 5;
+  string operator_session_id = 6;
+  string web_session_id = 7;
+  string cli_session_id = 22;
+  string requestor_user_id = 25;  // The human user who authorized the action (delegator)
+  string acting_app_id = 26;      // The app/tool acting on behalf of the user (delegate)
+
+  // Intent & Payload
+  // event_type is the canonical pub/sub routing key from protocol/constants/events.json
+  // (e.g., "ztd.v1.operator.command.requested", "ztd.v1.operator.heartbeat.sent").
+  // Distinct from action_type: event_type routes the message, action_type classifies the intent.
+  string event_type = 8;
+  bytes payload = 9;                       // Raw protobuf payload
+  google.protobuf.Struct intent_data = 10; // Structured JSON-first view
+  // action_type is the UAP-compatible action classification (e.g., EXECUTE_BASH, FILE_EDIT).
+  // Included in the transaction hash canonicalization.
+  string action_type = 19;
+  string target_resource = 20;             // UAP-compatible target resource
+
+  // State & Replay Protection
+  string state_merkle_root = 11;
+  string nonce = 12;
+  string transaction_hash = 13;
+  string protocol_version = 21;            // UAP-compatible protocol version (e.g., "1.0")
+
+  // Governance Proofs
+  GovernanceMetadata governance = 14;
+
+  // Application Context
+  string case_id = 15;
+  string investigation_id = 16;
+  string task_id = 17;
+  string system_fingerprint = 18;
+  string tenant_id = 23;
+  string binding_persona = 24;
+
+  // Gateway governance posture at envelope construction time (doctrine,
+  // consensus, ratify, notary). Set by the gateway; the operator reads it here at
+  // L4 verification time instead of from out-of-band config. Not included
+  // in the transaction hash — it is policy metadata, not intent.
+  string posture = 27;
+}
+
+enum PlatformComponentKind {
+  // Value 2 and its name were a retired component kind. They stay
+  // reserved so the numbering and name are never reused.
+  reserved 2;
+  reserved "PLATFORM_COMPONENT_KIND_ENSEMBLE";
+  PLATFORM_COMPONENT_KIND_UNSPECIFIED = 0;
+  PLATFORM_COMPONENT_KIND_DASHBOARD = 1;
+  PLATFORM_COMPONENT_KIND_OPERATOR = 3;
+  PLATFORM_COMPONENT_KIND_APPLICATION = 4;
+}
+
+enum PlatformEnrollmentDecision {
+  PLATFORM_ENROLLMENT_DECISION_UNSPECIFIED = 0;
+  PLATFORM_ENROLLMENT_DECISION_APPROVE = 1;
+  PLATFORM_ENROLLMENT_DECISION_DENY = 2;
+}
+
+message PlatformEnrollmentFingerprints {
+  string app = 1;
+  string operator = 2;
+  string cli = 3;
+}
+
+message PlatformEnrollmentGovernancePayload {
+  string action = 1;
+  string intent = 2;
+  string request_id = 3;
+  PlatformComponentKind component_kind = 4;
+  string instance_id = 5;
+  string actor_user_id = 6;
+  PlatformEnrollmentDecision decision = 7;
+  PlatformEnrollmentFingerprints fingerprints = 8;
+  string target_collection = 9;
+  string target_document_id = 10;
+  // Public identifiers and attribution metadata carried forward between
+  // handlers. These are all public values (no credentials, token hashes,
+  // CSR PEM, or private keys); placing them in the audited payload keeps
+  // the handlers stateless with respect to each other.
+  string operator_id = 11;
+  string operator_session_id = 12;
+  string cli_session_id = 13;
+  string policy_id = 14;
+  string certificate_serial = 15;
+  string certificate_fingerprint = 16;
+  string owner_user_id = 17;
+  string reason = 18;
+  // A fixed, bounded decision cohort. Every member is fingerprint-bound and
+  // committed atomically by the existing PLATFORM_ENROLLMENT_DECIDE action.
+  repeated PlatformEnrollmentDecisionTarget decision_targets = 19;
+  // The issuance lease the ISSUE submitter holds. The handler signs and
+  // writes only while the stored lease still names this owner, so a holder
+  // whose lease was reclaimed cannot complete or roll back the request.
+  string issuance_lease_owner = 20;
+}
+
+message PlatformEnrollmentDecisionTarget {
+  string request_id = 1;
+  PlatformEnrollmentFingerprints fingerprints = 2;
+}
+
+message PlatformEnrollmentCompletionTranscript {
+  string protocol_version = 1;
+  string request_id = 2;
+  string token_hash = 3;
+  PlatformComponentKind component_kind = 4;
+  string instance_id = 5;
+  PlatformEnrollmentFingerprints fingerprints = 6;
+}
+
+// CommandIntent is deprecated. New callers must use the Gateway HTTP protocol
+// and submit a semantic request event; the Gateway derives the governed action
+// from the event registry. This message remains only while the W10 audit
+// ingest migration removes the legacy cmd: transport.
+message CommandIntent {
+  option deprecated = true;
+  // Identity & routing
+  string operator_id = 1;
+  string operator_session_id = 2;
+  string requestor_user_id = 3;
+
+  // Intent classification
+  string event_type = 4;
+  string action_type = 5;
+  string target_resource = 6;
+
+  // Payload: serialized operator protobuf bytes (e.g., CommandRequested, FileEditRequested)
+  bytes payload = 7;
+
+  // Application context
+  string case_id = 8;
+  string investigation_id = 9;
+  string task_id = 10;
+  string web_session_id = 11;
+  string cli_session_id = 12;
+}

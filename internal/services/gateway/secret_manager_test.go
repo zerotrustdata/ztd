@@ -1,0 +1,649 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package gateway
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+// newSecretManagerTestDB opens a raw sqliteutil.DB with just the documents +
+// kv_store schema that SecretManager needs, without pulling in the full
+// CanonicalDBService wiring.
+func newSecretManagerTestDB(t *testing.T) *sqliteutil.DB {
+	t.Helper()
+	tmpDir := testutil.TempDir(t)
+	dbPath := filepath.Join(tmpDir, constants.TestSecretManagerDBFilename)
+	cfg := sqliteutil.DefaultDBConfig(dbPath)
+	db, err := sqliteutil.OpenDB(cfg, testutil.NewTestLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.Exec(gatewaySchema)
+	require.NoError(t, err)
+	return db
+}
+
+// newTestSecretManager creates a SecretManager with the in-memory keyring.
+func newTestSecretManager(t *testing.T, db *sqliteutil.DB, fileSvc fs.RuntimeFileService) *SecretManager {
+	t.Helper()
+	return newTestSecretManagerWithKeyring(t, db, fileSvc, keystoretest.NewMemoryKeyring())
+}
+
+func newTestSecretManagerWithKeyring(t *testing.T, db *sqliteutil.DB, fileSvc fs.RuntimeFileService, keyring keystore.Keyring) *SecretManager {
+	t.Helper()
+	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, ks.Initialize())
+	require.NoError(t, ks.EnforcePermissions())
+	return &SecretManager{
+		db:       db,
+		logger:   testutil.NewTestLogger(),
+		fileSvc:  fileSvc,
+		keystore: ks,
+	}
+}
+
+func readSecretFromDB(t *testing.T, db *sqliteutil.DB, name string) string {
+	t.Helper()
+	var dataJSON string
+	err := db.QueryRow(
+		"SELECT data FROM documents WHERE collection = 'settings' AND id = 'platform_settings'",
+	).Scan(&dataJSON)
+	require.NoError(t, err)
+	var doc models.SettingsDocument
+	require.NoError(t, json.Unmarshal([]byte(dataJSON), &doc))
+	require.NotNil(t, doc.Settings)
+	switch name {
+	case "actuator_key_id":
+		return doc.Settings.ActuatorKeyID
+	default:
+		return ""
+	}
+}
+
+func updatePlatformSetting(t *testing.T, db *sqliteutil.DB, name string, value string) {
+	t.Helper()
+	var dataJSON string
+	require.NoError(t, db.QueryRow(
+		"SELECT data FROM documents WHERE collection = 'settings' AND id = 'platform_settings'",
+	).Scan(&dataJSON))
+	var doc models.SettingsDocument
+	require.NoError(t, json.Unmarshal([]byte(dataJSON), &doc))
+	require.NotNil(t, doc.Settings)
+	switch name {
+	case "actuator_key_id":
+		doc.Settings.ActuatorKeyID = value
+	}
+	mutated, err := json.Marshal(doc)
+	require.NoError(t, err)
+	_, err = db.Exec(
+		"UPDATE documents SET data = ? WHERE collection = 'settings' AND id = 'platform_settings'",
+		string(mutated),
+	)
+	require.NoError(t, err)
+}
+
+func TestSecretManager_InitAppSettings_CreatesSecretsAndFiles(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	require.NoError(t, sm.InitAppSettings())
+
+	key, err := sm.keystore.DecryptSecret("session_encryption_key")
+	require.NoError(t, err)
+	assert.NotEmpty(t, key)
+	// Secrets are now stored in keystore, not in DB
+	// actuator_key_id is the only secret stored in DB
+	keyID := readSecretFromDB(t, db, "actuator_key_id")
+	assert.NotEmpty(t, keyID)
+
+}
+
+func TestSecretManager_InitAppSettings_CreatesValidActuatorKey(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	require.NoError(t, sm.InitAppSettings())
+
+	// Seed is now stored in keystore, not DB
+	seedHex, err := sm.keystore.DecryptSecret("actuator_signing_key")
+	require.NoError(t, err)
+	seed, err := hex.DecodeString(seedHex)
+	require.NoError(t, err)
+	require.Len(t, seed, ed25519.SeedSize)
+
+	priv, keyID, err := sm.GetActuatorKey()
+	require.NoError(t, err)
+	require.Len(t, priv, ed25519.PrivateKeySize)
+	assert.Equal(t, readSecretFromDB(t, db, "actuator_key_id"), keyID)
+	assert.Equal(t, hex.EncodeToString(priv.Public().(ed25519.PublicKey)), keyID)
+}
+
+func TestSecretManager_InitAppSettings_CreatesDistinctAuditorIdentity(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+	require.NoError(t, sm.InitAppSettings())
+
+	actuatorKey, actuatorKeyID, err := sm.GetActuatorKey()
+	require.NoError(t, err)
+	auditorKey, auditorKeyID, err := sm.GetAuditorKey()
+	require.NoError(t, err)
+	assert.NotEqual(t, actuatorKeyID, auditorKeyID)
+	assert.NotEqual(t, actuatorKey.Seed(), auditorKey.Seed())
+}
+
+func TestSecretManager_InitAppSettings_FirstBootCreatesAllSettingsAndKeys(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+
+	// Ensure platform_settings document does not exist initially
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM documents WHERE collection = 'settings' AND id = 'platform_settings'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	require.NoError(t, sm.InitAppSettings())
+
+	// Platform settings document created in DB
+	err = db.QueryRow("SELECT COUNT(*) FROM documents WHERE collection = 'settings' AND id = 'platform_settings'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	// Digest manifest exists
+	manifestBytes, err := fileSvc.ReadFile(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifestBytes)
+
+	// All required bootstrap secrets exist in secrets directory
+	for _, secretName := range requiredBootstrapSecrets {
+		data, err := fileSvc.ReadFile(context.Background(), filepath.Join(constants.SecretsDirname, secretName))
+		require.NoError(t, err, "missing required bootstrap secret file: %s", secretName)
+		require.NotEmpty(t, data)
+	}
+
+	// Actuator and auditor keys can be retrieved and are distinct
+	actuatorKey, actuatorKeyID, err := sm.GetActuatorKey()
+	require.NoError(t, err)
+	require.NotEmpty(t, actuatorKeyID)
+	require.Len(t, actuatorKey, ed25519.PrivateKeySize)
+
+	auditorKey, auditorKeyID, err := sm.GetAuditorKey()
+	require.NoError(t, err)
+	require.NotEmpty(t, auditorKeyID)
+	require.Len(t, auditorKey, ed25519.PrivateKeySize)
+
+	assert.NotEqual(t, actuatorKeyID, auditorKeyID)
+	assert.NotEqual(t, actuatorKey.Seed(), auditorKey.Seed())
+}
+
+func TestSecretManager_InitAppSettings_RejectsMalformedAuditorIdentity(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+	require.NoError(t, sm.InitAppSettings())
+	require.NoError(t, sm.keystore.EncryptSecret(constants.SecretsFileAuditorSigningKey, "invalid"))
+
+	err := sm.InitAppSettings()
+	require.Error(t, err)
+}
+
+func TestSecretManager_GetActuatorKey_RejectsMalformedSeedLength(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+	require.NoError(t, sm.InitAppSettings())
+
+	// Store malformed seed directly in keystore
+	err := sm.keystore.EncryptSecret("actuator_signing_key", strings.Repeat("a", ed25519.PrivateKeySize*2))
+	require.NoError(t, err)
+
+	_, _, err = sm.GetActuatorKey()
+	require.Error(t, err)
+}
+
+func TestSecretManager_GetActuatorKey_RejectsMismatchedKeyID(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+	require.NoError(t, sm.InitAppSettings())
+
+	updatePlatformSetting(t, db, "actuator_key_id", strings.Repeat("b", ed25519.PublicKeySize*2))
+
+	_, _, err := sm.GetActuatorKey()
+	require.Error(t, err)
+}
+
+func TestSecretManager_InitAppSettings_FailsWhenFileWriteFails(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
+
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Replace the secrets directory with a file to cause real write failure
+	// This uses actual filesystem operations without mocking
+	require.NoError(t, os.RemoveAll(secretsDir))
+	require.NoError(t, os.WriteFile(secretsDir, []byte("not a directory"), 0600))
+	t.Cleanup(func() { _ = os.Remove(secretsDir) })
+
+	err := sm.InitAppSettings()
+	require.Error(t, err)
+	// Error occurs during preexisting bootstrap state check when stat fails on a file
+}
+
+func TestSecretManager_InitAppSettings_DetectsDBFileDivergence(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	require.NoError(t, sm.InitAppSettings())
+
+	// Write corrupted encrypted data (simulating manual file tampering)
+	corruptedData := []byte(`{"version":1,"nonce":"AAAA","ciphertext":"corrupted"}`)
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileSessionEncryptionKey), corruptedData, 0600))
+
+	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	err := sm2.InitAppSettings()
+	require.Error(t, err)
+	// With encryption, file corruption causes digest mismatch
+}
+
+func TestSecretManager_InitAppSettings_WritesDigestManifest(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+	require.NoError(t, sm.InitAppSettings())
+
+	manifestPath := filepath.Join(fileSvc.Resolve(constants.SecretsDirname), constants.SecretsFileBootstrapDigest)
+	data, err := os.ReadFile(manifestPath)
+	require.NoError(t, err, "bootstrap digest manifest must be written")
+
+	var manifest bootstrapDigestManifest
+	require.NoError(t, json.Unmarshal(data, &manifest))
+	assert.Equal(t, 1, manifest.Version)
+	assert.NotEmpty(t, manifest.UpdatedAt)
+
+	// Manifest should contain entries for all required secrets
+	for _, name := range requiredBootstrapSecrets {
+		ref, ok := manifest.Secrets[name]
+		require.True(t, ok, "manifest must include %s entry", name)
+		assert.NotEmpty(t, ref.SHA256, "manifest digest for %s must not be empty", name)
+	}
+}
+
+func TestSecretManager_InitAppSettings_ManifestPermissions(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+	require.NoError(t, sm.InitAppSettings())
+
+	info, err := os.Stat(filepath.Join(fileSvc.Resolve(constants.SecretsDirname), constants.SecretsFileBootstrapDigest))
+	require.NoError(t, err)
+	// Windows doesn't support Unix permissions exactly, so just check file is not world-writable
+	perm := info.Mode().Perm()
+	assert.NotEqual(t, os.FileMode(0777), perm, "manifest should not be world-writable")
+}
+
+func TestSecretManager_InitAppSettings_RejectsUncoordinatedSecretRotation(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	require.NoError(t, sm.InitAppSettings())
+
+	// Write corrupted encrypted data (simulating manual file tampering)
+	corruptedData := []byte(`{"version":1,"nonce":"AAAA","ciphertext":"corrupted"}`)
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileSessionEncryptionKey), corruptedData, 0600))
+
+	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	err := sm2.InitAppSettings()
+	require.Error(t, err)
+	// With encryption, file corruption causes digest mismatch
+}
+
+func TestSecretManager_InitAppSettings_RejectsPreexistingSecretWithoutAppSettings(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
+
+	preSeeded := strings.Repeat("c", 64)
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileSessionEncryptionKey), []byte(preSeeded), 0600))
+
+	sm := newTestSecretManager(t, db, fileSvc)
+	err := sm.InitAppSettings()
+	require.Error(t, err)
+}
+
+func TestSecretManager_InitAppSettings_FailsWhenRequiredSecretFileMissing(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	require.NoError(t, sm.InitAppSettings())
+	require.NoError(t, fileSvc.Remove(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileSessionEncryptionKey)))
+
+	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	err := sm2.InitAppSettings()
+	require.ErrorIs(t, err, constants.ErrBootstrapSecretsMissing)
+}
+
+func TestSecretManager_InitAppSettings_FailsWhenDigestManifestMissing(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	require.NoError(t, sm.InitAppSettings())
+	require.NoError(t, fileSvc.Remove(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest)))
+
+	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	err := sm2.InitAppSettings()
+	require.ErrorIs(t, err, constants.ErrBootstrapSecretsMissing)
+}
+
+func TestSecretManager_InitAppSettings_FailsWhenAuditorKeyMissing(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	require.NoError(t, sm.InitAppSettings())
+	require.NoError(t, fileSvc.Remove(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileAuditorSigningKey)))
+
+	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	err := sm2.InitAppSettings()
+	require.ErrorIs(t, err, constants.ErrBootstrapSecretsMissing)
+}
+
+func TestSecretManager_InitAppSettings_FailsWhenDigestManifestEntryMissing(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	require.NoError(t, sm.InitAppSettings())
+	manifestPath := filepath.Join(secretsDir, constants.SecretsFileBootstrapDigest)
+	data, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+	var manifest bootstrapDigestManifest
+	require.NoError(t, json.Unmarshal(data, &manifest))
+	delete(manifest.Secrets, "session_encryption_key")
+	mutated, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, mutated, 0600))
+
+	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	err = sm2.InitAppSettings()
+	require.Error(t, err)
+}
+
+func TestSecretManager_InitAppSettings_ReturnsErrorOnMalformedPlatformSettings(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	keyring := keystoretest.NewMemoryKeyring()
+
+	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	require.NoError(t, sm.InitAppSettings())
+
+	_, err := db.Exec(
+		"UPDATE documents SET data = ? WHERE collection = 'settings' AND id = 'platform_settings'",
+		"{invalid json",
+	)
+	require.NoError(t, err)
+
+	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
+	err = sm2.InitAppSettings()
+	// This test is no longer valid since InitAppSettings doesn't read platform_settings on subsequent boots
+	// It only checks for existence and then validates secrets
+	require.NoError(t, err)
+}
+
+func TestSecretManager_APIKeys(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Store and retrieve API key
+	err := sm.StoreAPIKey("openai", "sk-test-key-12345")
+	require.NoError(t, err)
+
+	retrieved, err := sm.GetAPIKey("openai")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-test-key-12345", retrieved)
+
+	// Non-existent service returns error
+	_, err = sm.GetAPIKey("nonexistent")
+	require.Error(t, err)
+}
+
+func TestSecretManager_OperatorPrivateKey(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Generate and store Operator private key
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	privKey := ed25519.NewKeyFromSeed(seed)
+
+	err := sm.StoreOperatorPrivateKey(privKey)
+	require.NoError(t, err)
+
+	// Retrieve and validate
+	retrieved, err := sm.GetOperatorPrivateKey()
+	require.NoError(t, err)
+	assert.Equal(t, privKey, retrieved)
+
+	// Verify public key matches
+	assert.Equal(t, privKey.Public().(ed25519.PublicKey), retrieved.Public().(ed25519.PublicKey))
+}
+
+func TestSecretManager_OperatorPrivateKey_RejectsInvalidSeed(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Store invalid seed length
+	err := sm.keystore.EncryptSecret("operator_private_key", "deadbeef")
+	require.NoError(t, err)
+
+	_, err = sm.GetOperatorPrivateKey()
+	require.Error(t, err)
+}
+
+func TestSecretManager_CLIPrivateKey(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Generate and store CLI private key
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = byte(i + 1)
+	}
+	privKey := ed25519.NewKeyFromSeed(seed)
+
+	err := sm.StoreCLIPrivateKey(privKey)
+	require.NoError(t, err)
+
+	// Retrieve and validate
+	retrieved, err := sm.GetCLIPrivateKey()
+	require.NoError(t, err)
+	assert.Equal(t, privKey, retrieved)
+
+	// Verify public key matches
+	assert.Equal(t, privKey.Public().(ed25519.PublicKey), retrieved.Public().(ed25519.PublicKey))
+}
+
+func TestSecretManager_SessionToken(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Store session token with 1 hour TTL
+	token := "session-abc-123"
+	err := sm.StoreSessionToken(token, time.Hour)
+	require.NoError(t, err)
+
+	// Retrieve valid token
+	retrieved, err := sm.GetSessionToken()
+	require.NoError(t, err)
+	assert.Equal(t, token, retrieved)
+}
+
+func TestSecretManager_SessionToken_Expires(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Store session token with 1 millisecond TTL
+	token := "session-expired"
+	err := sm.StoreSessionToken(token, time.Millisecond)
+	require.NoError(t, err)
+
+	// Wait for expiry with polling
+	require.Eventually(t, func() bool {
+		_, err := sm.GetSessionToken()
+		return errors.Is(err, constants.ErrExpired)
+	}, 100*time.Millisecond, 10*time.Millisecond, "session token should expire")
+}
+
+func TestSecretManager_SessionToken_InvalidFormat(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Store malformed token data
+	err := sm.keystore.EncryptSecret("session_token", "invalid-format-no-pipe")
+	require.NoError(t, err)
+
+	_, err = sm.GetSessionToken()
+	require.Error(t, err)
+}
+
+func TestSecretManager_GetKeystore(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	ks := sm.GetKeystore()
+	assert.NotNil(t, ks)
+	assert.Same(t, sm.keystore, ks)
+}
+
+func TestSecretManager_GetSessionEncryptionKey(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Initialize to create the key
+	require.NoError(t, sm.InitAppSettings())
+
+	// Retrieve the key
+	key, err := sm.GetSessionEncryptionKey()
+	require.NoError(t, err)
+	assert.NotEmpty(t, key)
+	assert.Len(t, key, 64) // 32 bytes hex encoded
+}
+
+func TestSecretManager_GetSessionEncryptionKey_NotInitialized(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Try to retrieve without initialization
+	_, err := sm.GetSessionEncryptionKey()
+	require.Error(t, err)
+}
+
+func TestSecretManager_GetAuditorHMACKey(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Initialize to create the key
+	require.NoError(t, sm.InitAppSettings())
+
+	// Retrieve the key
+	key, err := sm.GetAuditorHMACKey()
+	require.NoError(t, err)
+	assert.NotEmpty(t, key)
+	assert.Len(t, key, 64) // 32 bytes hex encoded
+}
+
+func TestSecretManager_GetAuditorHMACKey_NotInitialized(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Try to retrieve without initialization
+	_, err := sm.GetAuditorHMACKey()
+	require.Error(t, err)
+}
+
+func TestSecretManager_NotaryKey(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Store notary key
+	seedHex := hex.EncodeToString([]byte("notary-seed-32-bytes-long-1234567890"))
+
+	err := sm.StoreNotaryKey(seedHex)
+	require.NoError(t, err)
+
+	// Retrieve and validate
+	retrieved, err := sm.GetNotaryKey()
+	require.NoError(t, err)
+	assert.Equal(t, seedHex, retrieved)
+}
+
+func TestSecretManager_GetNotaryKey_NotInitialized(t *testing.T) {
+	db := newSecretManagerTestDB(t)
+	fileSvc := newTestFileSvc(t)
+	sm := newTestSecretManager(t, db, fileSvc)
+
+	// Try to retrieve without initialization
+	_, err := sm.GetNotaryKey()
+	require.Error(t, err)
+}

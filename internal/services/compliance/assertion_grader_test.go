@@ -1,0 +1,544 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package compliance_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/compliance/catalog"
+	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
+)
+
+func assertionGraderCatalog(missingPolicy string) *compliancev1.ControlAssertionCatalog {
+	return &compliancev1.ControlAssertionCatalog{
+		CatalogId:      "assertion-grader-test",
+		CatalogVersion: "1.0.0",
+		Sha256:         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		Assertions: []*compliancev1.ControlAssertionDefinition{{
+			AssertionId:             "ZTD-GOV-BLOCK-001",
+			AssertionVersion:        "1.0.0",
+			Title:                   "Governed block outcome",
+			Statement:               "A prohibited governed action is rejected.",
+			Category:                "governance",
+			ComponentScope:          []string{"gateway"},
+			Responsibility:          "platform",
+			ApplicableActionClasses: []string{"governed_mutation"},
+			ApplicableArms:          []string{"governed"},
+			RequiredEvidenceTypes:   []string{"action_receipt"},
+			RequiredGraderRefs:      []*compliancev1.VersionedReference{{Id: "policy_outcome", Version: "1.0.0"}},
+			RequiredVerifierRefs:    []*compliancev1.VersionedReference{{Id: "receipt_integrity", Version: "1.0.0"}},
+			MinimumEvidenceLevel:    "L2",
+			ValidationCycle:         "7d",
+			MissingEvidencePolicy:   missingPolicy,
+			PassingRule:             "all_required",
+		}},
+	}
+}
+
+func assertionGraderNode(artifactType evidence.ArtifactType, producer string, body []byte, producedAt time.Time) evidence.EvidenceNode {
+	digest := sha256.Sum256(body)
+	return evidence.EvidenceNode{
+		ArtifactID:         evidence.ContentAddress(artifactType, body),
+		ArtifactType:       artifactType,
+		SHA256:             hex.EncodeToString(digest[:]),
+		MediaType:          constants.MediaTypeJSON,
+		SchemaRef:          "test",
+		ProducerIdentity:   producer,
+		ProducedAt:         producedAt,
+		ScopeID:            "scope-1",
+		RunID:              "run-1",
+		VerificationStatus: evidence.VerificationStatusVerified,
+		VerifierID:         "test-verifier",
+		VerifierVersion:    "1.0.0",
+		VerifiedAt:         producedAt,
+		CanonicalBytes:     body,
+		References:         []string{},
+	}
+}
+
+func assertionGraderGraph(t *testing.T, now time.Time, metricValue int) *evidence.EvidenceGraph {
+	t.Helper()
+	graph := evidence.NewEvidenceGraph(0, nil)
+	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":`+strconv.Itoa(metricValue)+`,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
+	require.NoError(t, graph.AddNode(receipt))
+	require.NoError(t, graph.AddNode(metric))
+	return graph
+}
+
+func gradeAssertionTestGraph(t *testing.T, graph *evidence.EvidenceGraph, assertions *compliancev1.ControlAssertionCatalog, now time.Time) *compliancev1.ControlAssertionAssessment {
+	t.Helper()
+	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{
+		ScopeID:     "scope-1",
+		WindowStart: now.Add(-24 * time.Hour),
+		WindowEnd:   now,
+		EvaluatedAt: now,
+		Assertions:  assertions,
+		Graph:       graph,
+	})
+	require.NoError(t, err)
+	require.Len(t, assessments, 1)
+	return assessments[0]
+}
+
+func TestGradeControlAssertions_SatisfiesAllRequiredVerifiedEvidence(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assertions := assertionGraderCatalog("unverifiable")
+	assessment := gradeAssertionTestGraph(t, assertionGraderGraph(t, now, 1), assertions, now)
+
+	assert.Equal(t, "satisfied", assessment.GetStatus())
+	assert.Equal(t, "fresh", assessment.GetFreshnessStatus())
+	assert.Equal(t, "L2", assessment.GetEvidenceLevel())
+	assert.Empty(t, assessment.GetFailureReason())
+	assert.Len(t, assessment.GetEvidenceRefs(), 2)
+	assert.Len(t, assessment.GetMetricRefs(), 1)
+	assert.Equal(t, constants.AssertionGraderID, assessment.GetVerifierRef().GetId())
+	assert.Equal(t, constants.AssertionGraderVersion, assessment.GetVerifierRef().GetVersion())
+	assert.NoError(t, catalog.ValidateAssertionAssessment(assessment, "scope-1", assertions))
+}
+
+func TestGradeControlAssertions_FailsWhenRequiredGraderReportsFailure(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assessment := gradeAssertionTestGraph(t, assertionGraderGraph(t, now, 0), assertionGraderCatalog("unverifiable"), now)
+
+	assert.Equal(t, "not_satisfied", assessment.GetStatus())
+	assert.Equal(t, "fresh", assessment.GetFreshnessStatus())
+	assert.NotEmpty(t, assessment.GetFailureReason())
+}
+
+func TestGradeControlAssertions_UnverifiableWhenMetricVerificationIsNotVerified(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := assertionGraderGraph(t, now, 1)
+	for _, node := range graph.NodesByScope("scope-1") {
+		if node.ArtifactType == evidence.ArtifactTypeEvalMetric {
+			node.CanonicalBytes = []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"unverified"}`)
+			digest := sha256.Sum256(node.CanonicalBytes)
+			node.SHA256 = hex.EncodeToString(digest[:])
+			node.ArtifactID = evidence.ContentAddress(node.ArtifactType, node.CanonicalBytes)
+		}
+	}
+	assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
+
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+}
+
+func TestGradeControlAssertions_UnverifiableWhenMetricBodyIsMalformed(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := assertionGraderGraph(t, now, 1)
+	for _, node := range graph.NodesByScope("scope-1") {
+		if node.ArtifactType == evidence.ArtifactTypeEvalMetric {
+			node.CanonicalBytes = []byte(`{"metric_id":`)
+			digest := sha256.Sum256(node.CanonicalBytes)
+			node.SHA256 = hex.EncodeToString(digest[:])
+			node.ArtifactID = evidence.ContentAddress(node.ArtifactType, node.CanonicalBytes)
+		}
+	}
+	assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
+
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+}
+
+func TestGradeControlAssertions_DoesNotTreatVerifiedReceiptAsPolicyOutcome(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := evidence.NewEvidenceGraph(0, nil)
+	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	require.NoError(t, graph.AddNode(receipt))
+	assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
+
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+	assert.Equal(t, "L2", assessment.GetEvidenceLevel())
+}
+
+func TestGradeControlAssertions_DerivesDemonstratedLevelFromBoundIndependentObservation(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assertions := assertionGraderCatalog("unverifiable")
+	assertions.Assertions[0].RequiredEvidenceTypes = []string{"action_receipt", "state_observation"}
+	assertions.Assertions[0].MinimumEvidenceLevel = "L3"
+	graph := evidence.NewEvidenceGraph(0, nil)
+	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	receipt.ScenarioID = "scenario-1"
+	receipt.TransactionID = "transaction-1"
+	observation := assertionGraderNode(evidence.ArtifactTypeStateObservation, "collector", []byte(`{"effect":"absent"}`), now.Add(-time.Hour))
+	observation.ScenarioID = "scenario-1"
+	metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "evaluation-verifier", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
+	metric.ScenarioID = "scenario-1"
+	metric.References = []string{observation.ArtifactID}
+	require.NoError(t, graph.AddNode(receipt))
+	require.NoError(t, graph.AddNode(observation))
+	require.NoError(t, graph.AddNode(metric))
+
+	assessment := gradeAssertionTestGraph(t, graph, assertions, now)
+	assert.Equal(t, "satisfied", assessment.GetStatus())
+	assert.Equal(t, "L3", assessment.GetEvidenceLevel())
+}
+
+func TestGradeControlAssertions_DoesNotCombineRequirementsAcrossSubjects(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name          string
+		mutateReceipt func(*evidence.EvidenceNode)
+		mutateMetric  func(*evidence.EvidenceNode)
+	}{
+		{name: "different runs", mutateReceipt: func(node *evidence.EvidenceNode) { node.RunID = "run-2" }, mutateMetric: func(*evidence.EvidenceNode) {}},
+		{name: "different attempts", mutateReceipt: func(node *evidence.EvidenceNode) { node.AttemptID = "attempt-1" }, mutateMetric: func(node *evidence.EvidenceNode) { node.AttemptID = "attempt-2" }},
+		{name: "different scenarios", mutateReceipt: func(node *evidence.EvidenceNode) { node.ScenarioID = "scenario-1" }, mutateMetric: func(node *evidence.EvidenceNode) { node.ScenarioID = "scenario-2" }},
+		{name: "different transactions", mutateReceipt: func(node *evidence.EvidenceNode) { node.TransactionID = "transaction-1" }, mutateMetric: func(node *evidence.EvidenceNode) { node.TransactionID = "transaction-2" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			graph := evidence.NewEvidenceGraph(0, nil)
+			receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+			metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
+			tt.mutateReceipt(&receipt)
+			tt.mutateMetric(&metric)
+			require.NoError(t, graph.AddNode(receipt))
+			require.NoError(t, graph.AddNode(metric))
+
+			assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
+			assert.Equal(t, "unverifiable", assessment.GetStatus())
+			assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+		})
+	}
+}
+
+func TestGradeControlAssertions_DoesNotTreatObservationAsIndependentStateMeasurement(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assertions := assertionGraderCatalog("unverifiable")
+	assertions.Assertions[0].RequiredEvidenceTypes = []string{"state_observation"}
+	assertions.Assertions[0].RequiredGraderRefs = []*compliancev1.VersionedReference{{Id: "independent_state", Version: "1.0.0"}}
+	assertions.Assertions[0].RequiredVerifierRefs = []*compliancev1.VersionedReference{{Id: "state_observation", Version: "1.0.0"}}
+	graph := evidence.NewEvidenceGraph(0, nil)
+	observation := assertionGraderNode(evidence.ArtifactTypeStateObservation, "collector", []byte(`{"effect":"present"}`), now.Add(-time.Hour))
+	require.NoError(t, graph.AddNode(observation))
+
+	assessment := gradeAssertionTestGraph(t, graph, assertions, now)
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+}
+
+func TestGradeControlAssertions_DoesNotTreatReceiptAsNotaryProof(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assertions := assertionGraderCatalog("unverifiable")
+	assertions.Assertions[0].RequiredVerifierRefs = []*compliancev1.VersionedReference{{Id: "notary_proof", Version: "1.0.0"}}
+	graph := evidence.NewEvidenceGraph(0, nil)
+	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
+	require.NoError(t, graph.AddNode(receipt))
+	require.NoError(t, graph.AddNode(metric))
+
+	assessment := gradeAssertionTestGraph(t, graph, assertions, now)
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+}
+
+func TestGradeControlAssertions_DoesNotTreatConfigArtifactAsFIPSOperation(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assertions := assertionGraderCatalog("unverifiable")
+	assertions.Assertions[0].RequiredEvidenceTypes = []string{"config_attestation"}
+	assertions.Assertions[0].RequiredGraderRefs = []*compliancev1.VersionedReference{{Id: "fips_mode", Version: "1.0.0"}}
+	assertions.Assertions[0].RequiredVerifierRefs = []*compliancev1.VersionedReference{{Id: "runtime_fips", Version: "1.0.0"}}
+	graph := evidence.NewEvidenceGraph(0, nil)
+	config := assertionGraderNode(evidence.ArtifactTypeConfigAttestation, "gateway", []byte(`{"cryptographic_mode":"fips"}`), now.Add(-time.Hour))
+	require.NoError(t, graph.AddNode(config))
+
+	assessment := gradeAssertionTestGraph(t, graph, assertions, now)
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+}
+
+func TestGradeControlAssertions_IgnoresUnverifiedEvidence(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := assertionGraderGraph(t, now, 1)
+	for _, node := range graph.NodesByScope("scope-1") {
+		node.VerificationStatus = evidence.VerificationStatusUnverified
+	}
+	assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
+
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+	assert.Empty(t, assessment.GetEvidenceRefs())
+	assert.Empty(t, assessment.GetMetricRefs())
+}
+
+func TestGradeControlAssertions_IgnoresEvidenceFromAnotherScope(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := evidence.NewEvidenceGraph(0, nil)
+	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
+	receipt.ScopeID = "scope-2"
+	metric.ScopeID = "scope-2"
+	require.NoError(t, graph.AddNode(receipt))
+	require.NoError(t, graph.AddNode(metric))
+
+	assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Empty(t, assessment.GetEvidenceRefs())
+}
+
+func TestGradeControlAssertions_ReportsStaleRequiredEvidence(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := assertionGraderGraph(t, now, 1)
+	for _, node := range graph.NodesByScope("scope-1") {
+		node.ProducedAt = now.Add(-48 * time.Hour)
+	}
+	assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
+
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Equal(t, "stale", assessment.GetFreshnessStatus())
+	assert.NotEmpty(t, assessment.GetFailureReason())
+	assert.Len(t, assessment.GetEvidenceRefs(), 2)
+	assert.Len(t, assessment.GetMetricRefs(), 1)
+}
+
+func TestGradeControlAssertions_AppliesMissingEvidencePolicy(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		policy string
+		status string
+	}{
+		{policy: "unverifiable", status: "unverifiable"},
+		{policy: "customer_attestation_required", status: "customer_attestation_required"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.policy, func(t *testing.T) {
+			assessment := gradeAssertionTestGraph(t, evidence.NewEvidenceGraph(0, nil), assertionGraderCatalog(tt.policy), now)
+			assert.Equal(t, tt.status, assessment.GetStatus())
+			assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+			assert.Equal(t, "L0", assessment.GetEvidenceLevel())
+		})
+	}
+}
+
+func TestGradeControlAssertions_NotApplicableOnlyForExplicitlyExcludedPopulation(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{
+		ScopeID:     "scope-1",
+		WindowStart: now.Add(-24 * time.Hour),
+		WindowEnd:   now,
+		EvaluatedAt: now,
+		Applicability: &evidence.AssertionApplicability{
+			Components:    []string{"operator"},
+			ActionClasses: []string{"governed_read"},
+			Arms:          []string{"baseline"},
+		},
+		Assertions: assertionGraderCatalog("unverifiable"),
+		Graph:      evidence.NewEvidenceGraph(0, nil),
+	})
+	require.NoError(t, err)
+	require.Len(t, assessments, 1)
+	assert.Equal(t, "not_applicable", assessments[0].GetStatus())
+	assert.Equal(t, "not_applicable", assessments[0].GetFreshnessStatus())
+	assert.Equal(t, "L0", assessments[0].GetEvidenceLevel())
+	assert.Empty(t, assessments[0].GetFailureReason())
+}
+
+func TestGradeControlAssertions_MatchingPopulationWithoutEvidenceIsUnverifiable(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{
+		ScopeID:     "scope-1",
+		WindowStart: now.Add(-24 * time.Hour),
+		WindowEnd:   now,
+		EvaluatedAt: now,
+		Applicability: &evidence.AssertionApplicability{
+			Components:    []string{"gateway"},
+			ActionClasses: []string{"governed_mutation"},
+			Arms:          []string{"governed"},
+		},
+		Assertions: assertionGraderCatalog("unverifiable"),
+		Graph:      evidence.NewEvidenceGraph(0, nil),
+	})
+	require.NoError(t, err)
+	require.Len(t, assessments, 1)
+	assert.Equal(t, "unverifiable", assessments[0].GetStatus())
+	assert.Equal(t, "incomplete", assessments[0].GetFreshnessStatus())
+}
+
+func TestGradeControlAssertions_AppliesAssertionValidationCycle(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := assertionGraderGraph(t, now, 1)
+	for _, node := range graph.NodesByScope("scope-1") {
+		node.ProducedAt = now.Add(-8 * 24 * time.Hour)
+	}
+
+	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{ScopeID: "scope-1", WindowStart: now.Add(-90 * 24 * time.Hour), WindowEnd: now, EvaluatedAt: now, Assertions: assertionGraderCatalog("unverifiable"), Graph: graph})
+	require.NoError(t, err)
+	require.Len(t, assessments, 1)
+	assert.Equal(t, "unverifiable", assessments[0].GetStatus())
+	assert.Equal(t, "stale", assessments[0].GetFreshnessStatus())
+}
+
+func assertionPopulationGraph(t *testing.T, now time.Time, values map[string]*int) *evidence.EvidenceGraph {
+	t.Helper()
+	graph := evidence.NewEvidenceGraph(0, nil)
+	for scenarioID, value := range values {
+		receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"`+scenarioID+`"}`), now.Add(-time.Hour))
+		receipt.SourceAdmissionID = "source-1"
+		receipt.ScenarioID = scenarioID
+		require.NoError(t, graph.AddNode(receipt))
+		if value == nil {
+			continue
+		}
+		metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "evaluation-verifier", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":`+strconv.Itoa(*value)+`,"eligible":true,"verification_status":"verified","subject":"`+scenarioID+`"}`), now.Add(-time.Hour))
+		metric.SourceAdmissionID = "source-1"
+		metric.ScenarioID = scenarioID
+		require.NoError(t, graph.AddNode(metric))
+	}
+	return graph
+}
+
+func gradeAssertionPopulation(t *testing.T, graph *evidence.EvidenceGraph, subjects []evidence.AssertionSubject, now time.Time) *compliancev1.ControlAssertionAssessment {
+	t.Helper()
+	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{
+		ScopeID:     "scope-1",
+		WindowStart: now.Add(-24 * time.Hour),
+		WindowEnd:   now,
+		EvaluatedAt: now,
+		Population:  &evidence.AssertionPopulation{Subjects: subjects},
+		Assertions:  assertionGraderCatalog("unverifiable"),
+		Graph:       graph,
+	})
+	require.NoError(t, err)
+	require.Len(t, assessments, 1)
+	return assessments[0]
+}
+
+func TestGradeControlAssertions_SelectedPopulationRequiresEverySubjectToPass(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	passed := 1
+	assessment := gradeAssertionPopulation(t, assertionPopulationGraph(t, now, map[string]*int{"scenario-1": &passed, "scenario-2": nil}), []evidence.AssertionSubject{{SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-1"}, {SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-2"}}, now)
+
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+	assert.Len(t, assessment.GetEvidenceRefs(), 3)
+	assert.Contains(t, assessment.GetLimitations(), "selected population: 2; assessed: 1; unavailable: 1")
+	require.NotNil(t, assessment.GetCoverage())
+	assert.Equal(t, int32(2), assessment.GetCoverage().GetSelectedSubjectCount())
+	assert.Equal(t, int32(1), assessment.GetCoverage().GetAssessedSubjectCount())
+	assert.Equal(t, int32(1), assessment.GetCoverage().GetUnavailableSubjectCount())
+	require.Len(t, assessment.GetCoverage().GetUnavailableSubjects(), 1)
+	assert.Equal(t, "source-1", assessment.GetCoverage().GetUnavailableSubjects()[0].GetSourceAdmissionId())
+	assert.Equal(t, "scenario-2", assessment.GetCoverage().GetUnavailableSubjects()[0].GetScenarioId())
+	require.Len(t, assessment.GetDiagnostics(), 1)
+	assert.Equal(t, "required_evidence_missing", assessment.GetDiagnostics()[0].GetCode())
+	assert.Equal(t, "source-1", assessment.GetDiagnostics()[0].GetSourceAdmissionId())
+	assert.Equal(t, "scenario-2", assessment.GetDiagnostics()[0].GetSubject().GetScenarioId())
+}
+
+func TestGradeControlAssertions_KnownPopulationFailurePrecedesUnavailableSubjects(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	failed := 0
+	assessment := gradeAssertionPopulation(t, assertionPopulationGraph(t, now, map[string]*int{"scenario-1": &failed, "scenario-2": nil}), []evidence.AssertionSubject{{SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-1"}, {SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-2"}}, now)
+
+	assert.Equal(t, "not_satisfied", assessment.GetStatus())
+	assert.Equal(t, "fresh", assessment.GetFreshnessStatus())
+	assert.Len(t, assessment.GetEvidenceRefs(), 3)
+	assert.Contains(t, assessment.GetLimitations(), "selected population: 2; assessed: 1; unavailable: 1")
+}
+
+func TestGradeControlAssertions_IgnoresSubjectsOutsideSelectedPopulation(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	passed := 1
+	failed := 0
+	assessment := gradeAssertionPopulation(t, assertionPopulationGraph(t, now, map[string]*int{"scenario-1": &passed, "scenario-2": &failed}), []evidence.AssertionSubject{{SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-1"}}, now)
+
+	assert.Equal(t, "satisfied", assessment.GetStatus())
+	assert.Len(t, assessment.GetEvidenceRefs(), 2)
+	assert.Contains(t, assessment.GetLimitations(), "selected population: 1; assessed: 1; unavailable: 0")
+}
+
+func TestGradeControlAssertions_EmptySelectedPopulationCannotPass(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	passed := 1
+	assessment := gradeAssertionPopulation(t, assertionPopulationGraph(t, now, map[string]*int{"scenario-1": &passed}), []evidence.AssertionSubject{}, now)
+
+	assert.Equal(t, "unverifiable", assessment.GetStatus())
+	assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
+	assert.Empty(t, assessment.GetEvidenceRefs())
+	assert.Contains(t, assessment.GetLimitations(), "selected population: 0; assessed: 0; unavailable: 0")
+}
+
+func TestGradeControlAssertions_RejectsIncompleteRequests(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	valid := evidence.AssertionGradingRequest{ScopeID: "scope-1", WindowStart: now.Add(-time.Hour), WindowEnd: now, EvaluatedAt: now, Assertions: assertionGraderCatalog("unverifiable"), Graph: evidence.NewEvidenceGraph(0, nil)}
+	tests := []struct {
+		name   string
+		mutate func(*evidence.AssertionGradingRequest)
+	}{
+		{name: "missing scope", mutate: func(request *evidence.AssertionGradingRequest) { request.ScopeID = "" }},
+		{name: "missing graph", mutate: func(request *evidence.AssertionGradingRequest) { request.Graph = nil }},
+		{name: "missing catalog", mutate: func(request *evidence.AssertionGradingRequest) { request.Assertions = nil }},
+		{name: "incomplete applicability", mutate: func(request *evidence.AssertionGradingRequest) {
+			request.Applicability = &evidence.AssertionApplicability{}
+		}},
+		{name: "duplicate applicability value", mutate: func(request *evidence.AssertionGradingRequest) {
+			request.Applicability = &evidence.AssertionApplicability{Components: []string{"gateway", "gateway"}, ActionClasses: []string{"governed_mutation"}, Arms: []string{"governed"}}
+		}},
+		{name: "incomplete selected subject", mutate: func(request *evidence.AssertionGradingRequest) {
+			request.Population = &evidence.AssertionPopulation{Subjects: []evidence.AssertionSubject{{RunID: "run-1"}}}
+		}},
+		{name: "duplicate selected subject", mutate: func(request *evidence.AssertionGradingRequest) {
+			subject := evidence.AssertionSubject{SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-1"}
+			request.Population = &evidence.AssertionPopulation{Subjects: []evidence.AssertionSubject{subject, subject}}
+		}},
+		{name: "inverted window", mutate: func(request *evidence.AssertionGradingRequest) { request.WindowStart = now.Add(time.Hour) }},
+		{name: "evaluation outside window", mutate: func(request *evidence.AssertionGradingRequest) { request.EvaluatedAt = now.Add(time.Hour) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := valid
+			tt.mutate(&request)
+			_, err := evidence.GradeControlAssertions(context.Background(), request)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+		})
+	}
+}
+
+func TestGradeControlAssertions_StopsOnCancellation(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := evidence.GradeControlAssertions(ctx, evidence.AssertionGradingRequest{ScopeID: "scope-1", WindowStart: now.Add(-time.Hour), WindowEnd: now, EvaluatedAt: now, Assertions: assertionGraderCatalog("unverifiable"), Graph: assertionGraderGraph(t, now, 1)})
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestGradeControlAssertions_RejectsInvalidGraph(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	graph := assertionGraderGraph(t, now, 1)
+	graph.NodesByScope("scope-1")[0].References = []string{"missing"}
+	graph.ResolveReferences()
+
+	_, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{ScopeID: "scope-1", WindowStart: now.Add(-time.Hour), WindowEnd: now, EvaluatedAt: now, Assertions: assertionGraderCatalog("unverifiable"), Graph: graph})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+}
+
+func TestGradeControlAssertions_EmitsAssessmentForEveryCanonicalAssertion(t *testing.T) {
+	assertions, _, _, err := catalog.LoadCanonicalCatalogs()
+	require.NoError(t, err)
+	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+
+	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{ScopeID: "scope-1", WindowStart: now.Add(-24 * time.Hour), WindowEnd: now, EvaluatedAt: now, Assertions: assertions, Graph: evidence.NewEvidenceGraph(0, nil)})
+	require.NoError(t, err)
+	assert.Len(t, assessments, len(assertions.GetAssertions()))
+	for _, assessment := range assessments {
+		assert.NotEqual(t, "satisfied", assessment.GetStatus())
+		assert.NoError(t, catalog.ValidateAssertionAssessment(assessment, "scope-1", assertions))
+	}
+}

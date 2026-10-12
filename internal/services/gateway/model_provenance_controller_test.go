@@ -1,0 +1,230 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+)
+
+func TestModelProvenanceControllerHandleModelProvenance_RejectsNonGet(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
+		Logger:    logger,
+		Responder: response.NewWriter(logger),
+	})
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.InferenceModelProvenanceAttestations+"attempt-1", nil)
+	rr := httptest.NewRecorder()
+	controller.handleModelProvenance(rr, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestModelProvenanceControllerHandleModelProvenance_UnavailableWithoutStore(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
+		Logger:    logger,
+		Responder: response.NewWriter(logger),
+	})
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceModelProvenanceAttestations+"attempt-1", nil)
+	rr := httptest.NewRecorder()
+	controller.handleModelProvenance(rr, req)
+	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+}
+
+func TestModelProvenanceControllerHandleModelProvenance_NotFound(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	store, err := model_provenance.NewWindowStore(fileSvc)
+	require.NoError(t, err)
+	logger := testutil.NewTestLogger()
+	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
+		Logger:    logger,
+		Responder: response.NewWriter(logger),
+		Windows:   store,
+	})
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceModelProvenanceAttestations+"missing-attempt", nil).WithContext(ctx)
+	rr := httptest.NewRecorder()
+	controller.handleModelProvenance(rr, req)
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func TestModelProvenanceControllerHandleModelProvenance_ReturnsWindow(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	store, err := model_provenance.NewWindowStore(fileSvc)
+	require.NoError(t, err)
+	digest := strings.Repeat("a", 64)
+	window := &evalv1.ModelProvenanceAttestationWindow{
+		SchemaVersion:              model_provenance.SchemaVersion,
+		ProviderAttemptId:          "attempt-1",
+		ProvenanceOperatorId:       "test-provenance-operator",
+		ServedModelTag:             "probe-model:7b",
+		ExpectedModelDigest:        digest,
+		ObservedModelDigest:        digest,
+		ManifestDigest:             strings.Repeat("b", 64),
+		ManifestVerificationStatus: evalv1.ModelManifestVerificationStatus_MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED,
+		AttestedAtUnixMs:           1_700_000_000_000,
+		DigestMatch:                true,
+	}
+	attestationDigest, err := model_provenance.ComputeAttestationDigest(window)
+	require.NoError(t, err)
+	window.AttestationDigest = attestationDigest
+	require.NoError(t, store.Save(ctx, window))
+
+	logger := testutil.NewTestLogger()
+	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
+		Logger:    logger,
+		Responder: response.NewWriter(logger),
+		Windows:   store,
+	})
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceModelProvenanceAttestations+"attempt-1", nil)
+	rr := httptest.NewRecorder()
+	controller.handleModelProvenance(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp models.ModelProvenanceResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	loaded := &evalv1.ModelProvenanceAttestationWindow{}
+	require.NoError(t, evalv1.UnmarshalCanonical(resp.Window, loaded))
+	assert.Equal(t, "attempt-1", loaded.GetProviderAttemptId())
+}
+
+type stubModelProvenancePreflight struct {
+	commandErr error
+	attestErr  error
+}
+
+func (s stubModelProvenancePreflight) PreflightCommandDelivery(context.Context) error {
+	return s.commandErr
+}
+
+func (s stubModelProvenancePreflight) PreflightStorageAttestation(context.Context, string, string) (*evalv1.ModelProvenanceAttestationWindow, error) {
+	if s.attestErr != nil {
+		return nil, s.attestErr
+	}
+	digest := strings.Repeat("a", 64)
+	window := &evalv1.ModelProvenanceAttestationWindow{
+		SchemaVersion:              model_provenance.SchemaVersion,
+		ProviderAttemptId:          "preflight-provenance",
+		ProvenanceOperatorId:       "test-provenance-operator",
+		ServedModelTag:             "probe-model:7b",
+		ExpectedModelDigest:        digest,
+		ObservedModelDigest:        digest,
+		ManifestDigest:             strings.Repeat("b", 64),
+		ManifestVerificationStatus: evalv1.ModelManifestVerificationStatus_MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED,
+		AttestedAtUnixMs:           1_700_000_000_000,
+		DigestMatch:                true,
+	}
+	attestationDigest, err := model_provenance.ComputeAttestationDigest(window)
+	if err != nil {
+		return nil, err
+	}
+	window.AttestationDigest = attestationDigest
+	return window, nil
+}
+
+func TestModelProvenanceControllerHandleModelProvenancePreflight_ReturnsReady(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
+		Logger:                logger,
+		Responder:             response.NewWriter(logger),
+		ProvenanceCoordinator: stubModelProvenancePreflight{},
+	})
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceModelProvenanceAttestations+"_preflight", nil)
+	rr := httptest.NewRecorder()
+	controller.handleModelProvenance(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"status":"ready"`)
+}
+
+func TestModelProvenanceControllerHandleModelProvenanceAttestPreflight_ReturnsReady(t *testing.T) {
+	t.Parallel()
+	logger := testutil.NewTestLogger()
+	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
+		Logger:                logger,
+		Responder:             response.NewWriter(logger),
+		ProvenanceCoordinator: stubModelProvenancePreflight{},
+	})
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceModelProvenanceAttestations+"_attest?served_model_tag=Impulse2000%2Fsmollm3%3A3b-q4_k_m&expected_model_digest="+strings.Repeat("a", 64), nil)
+	rr := httptest.NewRecorder()
+	controller.handleModelProvenance(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp models.ModelProvenanceAttestResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, "ready", resp.Status)
+	assert.NotEmpty(t, resp.Window)
+}
+
+type progressingModelProvenancePreflight struct{ stubModelProvenancePreflight }
+
+func (s progressingModelProvenancePreflight) PreflightStorageAttestationWithProgress(ctx context.Context, tag, digest string, progress func(string)) (*evalv1.ModelProvenanceAttestationWindow, error) {
+	progress("awaiting_operator")
+	progress("attesting_storage")
+	return s.PreflightStorageAttestation(ctx, tag, digest)
+}
+
+func TestModelProvenanceController_ProgressUsesAuthenticatedSession(t *testing.T) {
+	logger := testutil.NewTestLogger()
+	broker := NewGatewayWebSocketHandler(logger)
+	var delivered []models.ModelProvenancePreflightProgress
+	unsubscribe := broker.RegisterHandler("sse:cli:requesting-cli", func(_ string, data []byte) {
+		var publication models.SSEPublishedEvent
+		require.NoError(t, json.Unmarshal(data, &publication))
+		require.Zero(t, publication.ID, "progress must be ephemeral")
+		var push models.SSEPushPayload
+		require.NoError(t, json.Unmarshal(publication.Payload, &push))
+		require.Equal(t, "owner", push.UserID)
+		require.Equal(t, "requesting-cli", push.CliSessionID)
+		var event struct {
+			Type string                                  `json:"type"`
+			Data models.ModelProvenancePreflightProgress `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(push.Event, &event))
+		require.Equal(t, string(constants.EventModelProvenancePreflightProgress), event.Type)
+		delivered = append(delivered, event.Data)
+	})
+	defer unsubscribe()
+	other := broker.RegisterHandler("sse:cli:other-cli", func(_ string, _ []byte) { t.Error("progress leaked to another session") })
+	defer other()
+	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
+		Logger: logger, Responder: response.NewWriter(logger), ProgressPublisher: NewSSEEventPublisher(nil, broker),
+		ProvenanceCoordinator: progressingModelProvenancePreflight{stubModelProvenancePreflight{attestErr: constants.ErrEvaluationObservationUnavailable}},
+	})
+	ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "owner")
+	ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, "requesting-cli")
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceModelProvenanceAttestations+"_attest?served_model_tag=probe-model%3A7b&expected_model_digest="+strings.Repeat("a", 64)+"&request_id=request-1&cli_session_id=other-cli&user_id=other-user", nil).WithContext(ctx)
+	rr := httptest.NewRecorder()
+	controller.handleModelProvenance(rr, req)
+	require.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	require.Len(t, delivered, 3)
+	require.Equal(t, "request-1", delivered[0].RequestID)
+	require.Equal(t, "awaiting_operator", delivered[0].Phase)
+	require.Equal(t, "attesting_storage", delivered[1].Phase)
+	require.Equal(t, "failed", delivered[2].Phase)
+	require.NotEmpty(t, delivered[2].Error)
+}

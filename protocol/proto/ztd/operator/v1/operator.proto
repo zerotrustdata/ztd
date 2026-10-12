@@ -1,0 +1,1692 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+syntax = "proto3";
+
+package ztd.operator.v1;
+
+option go_package = "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1;operatorv1";
+
+import "ztd/common/v1/common.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Execution status enum for command and operation results
+enum ExecutionStatus {
+  EXECUTION_STATUS_UNSPECIFIED = 0;
+  EXECUTION_STATUS_EXECUTING = 1;
+  EXECUTION_STATUS_COMPLETED = 2;
+  EXECUTION_STATUS_FAILED = 3;
+  EXECUTION_STATUS_CANCELLED = 4;
+  EXECUTION_STATUS_TIMEOUT = 5;
+}
+
+// L3 validation status enum for Notary (L3Notary) proof verification
+// Distinguishes between "not required" vs "required but failed" for compliance
+enum L3Status {
+  L3_STATUS_UNSPECIFIED = 0;
+  L3_STATUS_NOT_REQUIRED = 1;  // L3 proof not required by posture (doctrine/consensus)
+  L3_STATUS_REQUIRED_VALID = 2;  // L3 proof required and valid
+  L3_STATUS_REQUIRED_FAILED = 3;  // L3 proof required but missing or invalid
+}
+
+// L2 validation status enum for Consensus (L2Consensus) signature verification
+// Distinguishes between "not required" vs "required but failed" for compliance
+enum L2Status {
+  L2_STATUS_UNSPECIFIED = 0;
+  L2_STATUS_NOT_REQUIRED = 1;  // L2 signature not required by posture (doctrine/ratify)
+  L2_STATUS_REQUIRED_VALID = 2;  // L2 signature required and valid
+  L2_STATUS_REQUIRED_FAILED = 3;  // L2 signature required but missing or invalid
+}
+
+// Heartbeat type enum
+enum HeartbeatType {
+  HEARTBEAT_TYPE_UNSPECIFIED = 0;
+  HEARTBEAT_TYPE_AUTOMATIC = 1;
+  HEARTBEAT_TYPE_MANUAL = 2;
+}
+
+// Payload for ztd.v1.operator.command.requested
+message CommandRequested {
+  // Shell command string to execute
+  string command = 1 [(ztd.common.v1.forbidden_patterns) = "(^|\\s)sudo(\\s|$),(^|\\s)su(\\s|$),rm -rf /"];
+
+  // Unique execution identifier (correlation key)
+  string execution_id = 2;
+
+  // Justification for running this command (High-level Sage request)
+  string justification = 3;
+
+  // Vault scrubbing mode for output storage
+  reserved 4;
+  reserved "vault_mode";
+
+  // Execution timeout override in seconds
+  int32 timeout_seconds = 5;
+
+  // Intent: The high-level goal (The "Why")
+  string intent = 6;
+
+  // Environment variables
+  map<string, string> environment = 7;
+
+  // Working directory override
+  string working_directory = 8;
+}
+
+message CommandCancelRequested {
+  string execution_id = 1;
+}
+
+message FileEditRequested {
+  string file_path = 1;
+  string operation = 2;
+  string execution_id = 3;
+  string justification = 4;
+  string content = 5;
+  string old_content = 6;
+  string new_content = 7;
+  string insert_content = 8;
+  int32 insert_position = 9;
+  int32 start_line = 10;
+  int32 end_line = 11;
+  string patch_content = 12;
+  bool create_backup = 13;
+  bool create_if_missing = 14;
+  reserved 15;
+  reserved "vault_mode";
+}
+
+message FsListRequested {
+  string path = 1 [(ztd.common.v1.forbidden_patterns) = "/mnt/pnfs/private/.*"];
+  string execution_id = 2;
+  int32 max_depth = 3;
+  int32 max_entries = 4;
+  reserved 5;
+  reserved "vault_mode";
+}
+
+message FsReadRequested {
+  string path = 1 [(ztd.common.v1.forbidden_patterns) = "/mnt/pnfs/private/.*"];
+  string execution_id = 2;
+  int32 max_size = 3;
+  reserved 4;
+  reserved "vault_mode";
+}
+
+message HeartbeatRequested {
+  // Empty message - just the event type matters
+}
+
+message FsGrepRequested {
+  string path = 1;
+  string execution_id = 2;
+  string pattern = 3;
+  repeated string includes = 4;
+  int32 max_matches = 5;
+  reserved 6;
+  reserved "vault_mode";
+}
+
+message CheckPortRequested {
+  string execution_id = 1;
+  int32 port = 2;
+  string host = 3;
+  string protocol = 4;
+}
+
+message FetchLogsRequested {
+  string execution_id = 1;
+  reserved 2;
+  reserved "vault_mode";
+}
+
+message FetchHistoryRequested {
+  string execution_id = 1;
+  string operator_session_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  bool include_commands = 5;
+  bool include_file_mutations = 6;
+}
+
+message FetchFileHistoryRequested {
+  string execution_id = 1;
+  string file_path = 2;
+  int32 limit = 3;
+  string operator_session_id = 4;
+}
+
+message FetchFileDiffRequested {
+  string execution_id = 1;
+  string diff_id = 2;
+  string operator_session_id = 3;
+  string file_path = 4;
+  int32 limit = 5;
+}
+
+message RestoreFileRequested {
+  string execution_id = 1;
+  string file_path = 2;
+  string commit_hash = 3;
+  string operator_session_id = 4;
+}
+
+message DirectCommandAuditRequested {
+  string command = 1;
+  string execution_id = 2;
+  string operator_session_id = 3;
+  string type = 4;
+}
+
+message DirectCommandResultAuditRequested {
+  string command = 1;
+  string execution_id = 2;
+  string output = 3;
+  string stderr = 4;
+  int32 exit_code = 5;
+  float execution_time_seconds = 6;
+}
+
+message AuditMsgRequested {
+  string content = 1;
+}
+
+// DocumentUpdateRequested is the typed payload for governed document
+// create/update operations (cases, investigations, memories, tasks).
+// App workloads submit these through the governance envelope pipeline
+// for L1-L5 verification before the gateway persists them via DocSet.
+message DocumentUpdateRequested {
+  // Target collection name (e.g., "cases", "investigations", "memories").
+  string collection = 1;
+
+  // Document ID to create or update.
+  string document_id = 2;
+
+  // Field updates as a structured payload. The gateway converts this to
+  // JSON for document store persistence.
+  google.protobuf.Struct updates = 3;
+
+  // If true, use PATCH (merge); if false, use PUT (replace).
+  bool merge = 4;
+}
+
+// DocumentDeleteRequested is the typed payload for governed document
+// deletion operations (cases, investigations). App workloads submit
+// these through the governance envelope pipeline for L1-L5 verification
+// before the gateway removes them via DocDelete.
+message DocumentDeleteRequested {
+  // Target collection name.
+  string collection = 1;
+
+  // Document ID to delete.
+  string document_id = 2;
+}
+
+message SignCertificateRequested {
+  string public_key_pem = 1;
+  string common_name = 2;
+  string organizational_unit = 3;
+  int32 validity_days = 4;
+}
+
+message SignCertificateResult {
+  bool success = 1;
+  string certificate_pem = 2;
+  string serial = 3;
+  string error = 4;
+}
+
+message RevokeCertificateRequested {
+  string serial = 1;
+  string reason = 2;
+}
+
+message RevokeCertificateResult {
+  bool success = 1;
+  string error = 2;
+}
+
+message GetRevocationBundleRequested {
+}
+
+message GetRevocationBundleResult {
+  bool success = 1;
+  string bundle_json = 2;
+  string signature = 3;
+  string error = 4;
+}
+
+message CreateDeviceLinkRequested {
+  string user_id = 1;
+  string organization_id = 2;
+  string operator_id = 3;
+  string web_session_id = 4;
+  string name = 5;
+  int32 max_uses = 6;
+  int32 ttl_seconds = 7;
+}
+
+message DeviceLink {
+  string token = 1;
+  string user_id = 2;
+  string organization_id = 3;
+  string operator_id = 4;
+  string web_session_id = 5;
+  string name = 6;
+  int32 max_uses = 7;
+  int32 uses = 8;
+  string status = 9;
+  int64 created_at_unix_ms = 10;
+  int64 expires_at_unix_ms = 11;
+}
+
+message DeviceLinkResult {
+  bool success = 1;
+  DeviceLink link = 2;
+  string operator_command = 3;
+  string error = 4;
+}
+
+message ListDeviceLinksRequested {
+  string user_id = 1;
+}
+
+message ListDeviceLinksResult {
+  bool success = 1;
+  repeated DeviceLink links = 2;
+  string error = 3;
+}
+
+message DeleteDeviceLinkRequested {
+  string token = 1;
+  string user_id = 2;
+}
+
+message TerminateOperatorRequested {
+  string operator_id = 1;
+  string user_id = 2;
+  string reason = 3;
+}
+
+message TerminateOperatorResult {
+  bool success = 1;
+  string message = 2;
+  string error = 3;
+}
+
+message ListOperatorSlotsRequested {
+  string user_id = 1;
+}
+
+message ListOperatorSlotsResult {
+  bool success = 1;
+  repeated OperatorDocument operators = 2;
+  string error = 3;
+}
+
+message BindOperatorsRequested {
+  repeated string operator_ids = 1;
+  string user_id = 2;
+  string web_session_id = 3; // The client/web session ID
+}
+
+message BindOperatorsResult {
+  bool success = 1;
+  int32 bound_count = 2;
+  int32 failed_count = 3;
+  repeated string bound_operator_ids = 4;
+  repeated string failed_operator_ids = 5;
+  string error = 6;
+}
+
+message UnbindOperatorsRequested {
+  repeated string operator_ids = 1;
+  string user_id = 2;
+  string web_session_id = 3;
+}
+
+message UnbindOperatorsResult {
+  bool success = 1;
+  int32 unbound_count = 2;
+  int32 failed_count = 3;
+  repeated string unbound_operator_ids = 4;
+  repeated string failed_operator_ids = 5;
+  string error = 6;
+}
+
+message SetTargetContextRequested {
+  string operator_id = 1;
+  string user_id = 2;
+  string web_session_id = 3;
+}
+
+message SetTargetContextResult {
+  bool success = 1;
+  string operator_id = 2;
+  string error = 3;
+}
+
+// OperatorRuntimeConfig captures the CLI flags and env var overrides active
+// when the Operator started. Sent to the Gateway at bootstrap and stored in
+// OperatorDocument.runtime_config.
+message OperatorRuntimeConfig {
+  reserved 3, 4, 10, 12, 13;
+  reserved "local_storage_enabled", "inference_enabled", "provider_boundary_observer_enabled", "provenance_operator_enabled", "no_git";
+  bool cloud_mode = 1;
+  string cloud_provider = 2;
+  string log_level = 5;
+  int32 http_port = 6;
+  // Enabled capabilities (data, inference, provenance, observer). Deployment
+  // shape is OperatorDocument.operator_type, never a capability.
+  repeated string capabilities = 7;
+  string local_dir = 8;
+  string account = 9;
+  // Approved remote Ollama provider URL (--inference-ollama-endpoint).
+  string inference_ollama_endpoint = 11;
+  // Root directory containing content-addressed model weight blobs.
+  string provenance_operator_model_storage_root = 14;
+  // Operator host GOOS recorded at startup (for example "linux" or "windows").
+  string platform = 15;
+  // How often this Operator sends heartbeats, declared at session start. The
+  // Gateway derives the Operator's stale deadline from it. Zero means the
+  // Operator did not declare one and the Gateway default window applies.
+  uint32 heartbeat_interval_ms = 16;
+}
+
+// OperatorDocument is the canonical Operator record. The Gateway owns and
+// persists it; every other component reads it through this contract.
+message OperatorDocument {
+  string id = 1;
+  string user_id = 2;
+  string organization_id = 3;
+  string component = 4;
+  string name = 5;
+  string status = 6;
+  string operator_session_id = 7;
+  string bound_web_session_id = 8;
+  string operator_cert = 9;
+  string operator_cert_serial = 10;
+  int32 slot_number = 11;
+  bool is_slot = 12;
+  bool claimed = 13;
+  string operator_type = 14;
+  // Field 15 and the name cloud_subtype are reserved: the cloud subtype
+  // taxonomy was removed when operator types migrated to embedded/remote.
+  reserved 15;
+  reserved "cloud_subtype";
+  string system_fingerprint = 16;
+  // Fields 17/18 carried unix-millisecond integers; times are now Timestamps.
+  reserved 17, 18;
+  reserved "created_at_unix_ms", "updated_at_unix_ms";
+  google.protobuf.Timestamp created_at = 19;
+  google.protobuf.Timestamp updated_at = 20;
+  google.protobuf.Timestamp started_at = 21;
+  google.protobuf.Timestamp claimed_at = 22;
+  google.protobuf.Timestamp last_heartbeat_at = 23;
+  repeated string operator_capabilities = 24;
+  string local_dir = 25;
+  string account = 26;
+  int32 port = 27;
+  string stop_reason = 28;
+  HeartbeatResult latest_heartbeat_snapshot = 29;
+  string current_hostname = 30;
+  OperatorRuntimeConfig runtime_config = 31;
+  string consumed_by_operator_id = 32;
+  // Chain of operator certificates for zero-trust verification.
+  string operator_cert_chain = 33;
+  // Reason for operator termination (e.g., "user_requested", "max_duration_exceeded").
+  string termination_reason = 34;
+  // Instant after which an active remote Operator that stays silent reads as
+  // stale: its last sign of life plus the stale window for its declared
+  // heartbeat interval. The Gateway derives it on every read and never stores
+  // it; it is unset for an Operator that cannot read as stale.
+  google.protobuf.Timestamp stale_at = 35;
+}
+
+message ShutdownRequested {
+  string reason = 1;
+}
+
+message EvalAnswerRequested {
+  // Unique identifier for this prompt/task in the benchmark
+  string prompt_id = 1;
+
+  // Benchmark name (e.g., "ifeval", "simpleqa", "gpqa")
+  string benchmark = 2;
+
+  // The model's answer text (opaque to the Gateway)
+  string answer = 3;
+
+  // Model identifier (provider:model format, e.g., "openai:gpt-4")
+  string model = 4;
+}
+
+// Payload for ztd.v1.operator.mcp.call.requested
+// Carries the downstream MCP tool name and its JSON-RPC arguments verbatim so
+// the Gateway can verify L1 forbidden patterns against the tool name before
+// the Warden dispatches the verified call to the configured downstream MCP
+// server.
+message McpCallRequested {
+  // The MCP tool name (e.g., "fs_read", "drop_table"). Forbidden patterns
+  // here block the interlock sequence at L1 before any signature or state check.
+  string tool_name = 1 [(ztd.common.v1.forbidden_patterns) = "(?i)^(sudo|su)$,(?i)^rm[ _-]?rf[ _-]?root$,(?i)^drop[ _-]?database$"];
+
+  // JSON-encoded arguments object exactly as the MCP client supplied it.
+  // Stored as a string (not Struct) so the canonical hash is computed over
+  // the bytes the client signed, with no normalization ambiguity.
+  string arguments_json = 2;
+
+  // Optional client-supplied invocation id surfaced back in the result.
+  string execution_id = 3;
+}
+
+// Payload for ztd.v1.operator.a2a.call.requested
+// Mirrors McpCallRequested for the Agent-to-Agent JSON protocol.
+message A2aCallRequested {
+  // Target agent skill / capability name.
+  string skill_name = 1 [(ztd.common.v1.forbidden_patterns) = "(?i)^(sudo|su)$"];
+
+  // JSON-encoded A2A task payload.
+  string payload_json = 2;
+
+  string execution_id = 3;
+}
+
+// Payload for ztd.v1.operator.mcp.resources.list.requested
+// Lists available resources from the downstream MCP server.
+message McpResourceListRequested {
+  // Optional client-supplied invocation id surfaced back in the result.
+  string execution_id = 1;
+}
+
+// Payload for ztd.v1.operator.mcp.resources.read.requested
+// Reads a specific resource from the downstream MCP server.
+message McpResourceReadRequested {
+  // The resource URI to read (e.g., "file:///path/to/file", "memory://var").
+  string uri = 1 [(ztd.common.v1.forbidden_patterns) = "/mnt/pnfs/private/.*"];
+
+  // Optional client-supplied invocation id surfaced back in the result.
+  string execution_id = 2;
+}
+
+// Payload for ztd.v1.operator.mcp.prompts.list.requested
+// Lists available prompts from the downstream MCP server.
+message McpPromptListRequested {
+  // Optional client-supplied invocation id surfaced back in the result.
+  string execution_id = 1;
+}
+
+// Payload for ztd.v1.operator.mcp.prompts.get.requested
+// Gets a specific prompt template from the downstream MCP server.
+message McpPromptGetRequested {
+  // The prompt name/template identifier.
+  string name = 1;
+
+  // Optional client-supplied invocation id surfaced back in the result.
+  string execution_id = 2;
+}
+
+enum DeterministicStageKind {
+  DETERMINISTIC_STAGE_KIND_UNSPECIFIED = 0;
+  DETERMINISTIC_STAGE_KIND_L1_DOCTRINE = 1;
+  DETERMINISTIC_STAGE_KIND_PROTOCOL_L2 = 2;
+  DETERMINISTIC_STAGE_KIND_L3_NOTARY = 3;
+  DETERMINISTIC_STAGE_KIND_L4_VERIFICATION = 4;
+  DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE = 5;
+  DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND = 6;
+  DETERMINISTIC_STAGE_KIND_L5_EXECUTION = 7;
+}
+
+enum DeterministicStageOutcome {
+  DETERMINISTIC_STAGE_OUTCOME_UNSPECIFIED = 0;
+  DETERMINISTIC_STAGE_OUTCOME_VERIFIED = 1;
+  DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED = 2;
+  DETERMINISTIC_STAGE_OUTCOME_COMPLETED = 3;
+  DETERMINISTIC_STAGE_OUTCOME_FAILED = 4;
+}
+
+message DeterministicStageEvidence {
+  string stage_id = 1;
+  DeterministicStageKind kind = 2;
+  int64 monotonic_start_ns = 3;
+  int64 monotonic_end_ns = 4;
+  string clock_domain = 5;
+  string timing_source = 6;
+  DeterministicStageOutcome outcome = 7;
+  string transaction_id = 8;
+  string transaction_hash = 9;
+  string action_type = 10;
+  string operator_id = 11;
+  string operator_session_id = 12;
+  string requestor_user_id = 13;
+  string acting_app_id = 14;
+  string case_id = 15;
+  string investigation_id = 16;
+  string task_id = 17;
+  string state_root_before = 18;
+  string state_root_after = 19;
+  string signer_key_id = 20;
+  string receipt_signature_digest = 21;
+  string commitment_hash = 22;
+  string prior_commitment_hash = 23;
+  string l2_signature_digest = 24;
+  string l3_signature_digest = 25;
+  string audit_record_id = 26;
+  string parent_stage_id = 27;
+  string doctrine_bundle_hash = 28;
+  string doctrine_bundle_version = 29;
+}
+
+// ReceiptPersistenceAttestation is the signed proof that a receipt signature was durably associated with an audit record at a specific timestamp.
+message ReceiptPersistenceAttestation {
+  string transaction_id = 1;
+  string receipt_signature_digest = 2;
+  int64 persisted_at_unix_ms = 3;
+  string audit_record_id = 4;
+  string signer_key_id = 5;
+  string signature = 6;
+}
+
+// ReceiptFailureCode is the typed classification of a FAILED ActionReceipt.
+// The L5 actuator stamps it at finalization so verifiers can distinguish
+// governance rejections, client faults, and provider failures without
+// string-matching the result_summary. It is bound into the receipt signature.
+enum ReceiptFailureCode {
+  RECEIPT_FAILURE_CODE_UNSPECIFIED = 0;
+  // The transaction failed governance verification before execution
+  // (L1 doctrine, L2 consensus, L3 notary, identity, replay, expiry).
+  RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED = 1;
+  // The request model did not equal the configured role model.
+  RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED = 2;
+  // The request carried an unspecified or unknown model role.
+  RECEIPT_FAILURE_CODE_ROLE_INVALID = 3;
+  // The request carried a malformed model reference.
+  RECEIPT_FAILURE_CODE_MODEL_REF_INVALID = 4;
+  // The inference backend was unreachable or not registered.
+  RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE = 5;
+  // The inference backend request timed out.
+  RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT = 6;
+  // The inference backend failed generation.
+  RECEIPT_FAILURE_CODE_GENERATE_FAILED = 7;
+  // Any other execution failure.
+  RECEIPT_FAILURE_CODE_EXECUTION_FAILED = 8;
+  // The requested or configured model is absent from the provider's model store.
+  RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND = 9;
+  // The provider returned a malformed or oversized response.
+  RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID = 10;
+  RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID = 11;
+  RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED = 12;
+  RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED = 13;
+  RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH = 14;
+  RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH = 15;
+  RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID = 16;
+  RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID = 17;
+  RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID = 18;
+  RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED = 19;
+  // The prompt filled the provider's context window, so the provider truncated it or left no room to generate.
+  RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
+}
+
+// ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
+message ActionReceipt {
+  // Original GovernanceEnvelope ID
+  string transaction_id = 1;
+
+  // Original GovernanceEnvelope hash
+  string transaction_hash = 2;
+
+  // Final execution status
+  ExecutionStatus status = 3;
+
+  // Concise summary of the result (e.g. "exit code 0", "file written")
+  string result_summary = 4;
+
+  // State root before execution
+  string state_root_before = 5;
+
+  // State root after execution
+  string state_root_after = 6;
+
+  // Timestamp when execution finished
+  int64 executed_at_unix_ms = 7;
+
+  // ID of the Warden's signing key
+  string signer_key_id = 8;
+
+  // ED25519 signature over the canonical receipt fields and deterministic stage evidence hash.
+  string signature = 9;
+
+  // Status of L2 (Consensus) signature verification.
+  // Distinguishes between "not required" vs "required but failed" for compliance.
+  L2Status l2_status = 11;
+
+  // Status of L3 (Notary/Human) proof verification.
+  // Distinguishes between "not required" vs "required but failed" for compliance.
+  L3Status l3_status = 12;
+
+  repeated DeterministicStageEvidence deterministic_stage_evidence = 13;
+  ReceiptPersistenceAttestation final_persistence_attestation = 14;
+
+  // Typed classification of a FAILED receipt. UNSPECIFIED on non-failed
+  // receipts. Bound into the signature via canonicalization.
+  ReceiptFailureCode failure_code = 15;
+
+  // The semantic request event that produced this receipt.
+  string event_type = 16;
+
+  // The registry-derived governance class for the request event.
+  string action_type = 17;
+}
+
+// CommitmentAttestation is the Auditor's signed record that a verified
+// transaction is consistent with the prior ledger of commitments and is
+// authorized to be executed.
+message CommitmentAttestation {
+  // TransactionID and TransactionHash identify the envelope being
+  // committed (these mirror UAPEnvelope.Id / TransactionHash).
+  string transaction_id = 1;
+  string transaction_hash = 2;
+
+  // PriorCommitmentHash is the Hash of the immediately-preceding
+  // CommitmentAttestation in the ledger, or GenesisPriorHash for the
+  // first commitment. This is what makes the ledger a chain.
+  string prior_commitment_hash = 3;
+
+  // StateRootAtCommit is the Gateway's state root at the moment the
+  // Auditor signed this attestation. It is checked against the
+  // envelope.StateMerkleRoot the L2 consensus signed over.
+  string state_root_at_commit = 4;
+
+  // L2SignatureDigest, WardenIntentSignatureDigest and HumanSignatureDigest bind each authority's signatures without duplicating them. The digest input removes empty signature strings, sorts the remaining UTF-8 strings by byte value, prefixes the list with its unsigned 32-bit big-endian count, and appends each string as an unsigned 32-bit big-endian byte length followed by its bytes. The digest is the lowercase hexadecimal SHA-256 of that input, or the empty string when no signatures remain.
+  string l2_signature_digest = 5;
+  string warden_intent_signature_digest = 6;
+  string human_signature_digest = 7;
+
+  // ActionType and TargetResource are carried for ledger readability
+  // without re-fetching the original envelope.
+  string action_type = 8;
+  string target_resource = 9;
+
+  // CommittedAtUnixMs is the Auditor's local timestamp at signing.
+  int64 committed_at_unix_ms = 10;
+
+  // AuditorKeyID identifies which Auditor key signed this attestation.
+  string auditor_key_id = 11;
+
+  // ED25519 signature over the canonical serialization of fields 1-11. String fields are UTF-8 encoded in field-number order as an unsigned 32-bit big-endian byte length followed by the bytes. CommittedAtUnixMs is encoded as a signed 64-bit two's-complement big-endian integer without a length prefix.
+  string signature = 12;
+
+  // Lowercase hexadecimal SHA-256 of the canonical serialization signed by Signature. It is what the next attestation chains to.
+  string hash = 13;
+}
+
+// Result payload for ztd.v1.operator.command.completed or failed
+message CommandResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string stdout = 3;
+  string error = 4;
+  string stderr = 5;
+  int32 return_code = 6;
+  float execution_time_seconds = 7;
+
+  // Timestamp when execution started
+  int64 start_time_unix_ms = 8;
+
+  // Timestamp when execution ended
+  int64 end_time_unix_ms = 9;
+}
+
+service OperatorService {
+  // Execute a shell command
+  rpc ExecuteCommand(CommandRequested) returns (CommandResult);
+
+  // Cancel a running command
+  rpc CancelCommand(CommandCancelRequested) returns (CommandResult);
+
+  // Edit a file
+  rpc EditFile(FileEditRequested) returns (CommandResult);
+
+  // List directory contents
+  rpc ListFileSystem(FsListRequested) returns (CommandResult);
+
+  // Read file contents
+  rpc ReadFileSystem(FsReadRequested) returns (CommandResult);
+}
+
+// Hardened Result Payloads (v0.2.0 Protocol-First)
+
+message FsEntry {
+  string name = 1;
+  bool is_dir = 2;
+  int64 size = 3;
+  int32 mode = 4;
+  int64 mod_time = 5;
+  string path = 6;
+}
+
+message FsListResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string path = 3;
+  repeated FsEntry entries = 4;
+  bool truncated = 5;
+  int32 total_count = 6;
+  float duration_seconds = 7;
+  string error_message = 8;
+  string error_type = 9;
+}
+
+message FsReadResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string path = 3;
+  string content = 4;
+  int64 size_bytes = 5;
+  bool truncated = 6;
+  float duration_seconds = 7;
+  string error_message = 8;
+  string error_type = 9;
+}
+
+message FsGrepMatch {
+  string path = 1;
+  int32 line_number = 2;
+  string content = 3;
+  repeated string before = 4;
+  repeated string after = 5;
+}
+
+message FsGrepResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string path = 3;
+  repeated FsGrepMatch matches = 4;
+  int32 total_matches = 5;
+  bool truncated = 6;
+  float duration_seconds = 7;
+  string error_message = 8;
+  string error_type = 9;
+}
+
+message FileEditResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string file_path = 3;
+  string operation = 4;
+  float duration_seconds = 5;
+  int64 bytes_written = 6;
+  int32 lines_changed = 7;
+  string backup_path = 8;
+  string error_message = 9;
+  string error_type = 10;
+  string content = 11;
+  int32 stdout_size = 12;
+  int32 stderr_size = 13;
+}
+
+message ExecutionStatusUpdate {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string command = 3;
+  bool process_alive = 4;
+  float elapsed_seconds = 5;
+  string new_output = 6;
+  string new_stderr = 7;
+  string message = 8;
+}
+
+message PortCheckEntry {
+  string host = 1;
+  int32 port = 2;
+  bool open = 3;
+  float latency_ms = 4;
+  string error = 5;
+}
+
+message PortCheckResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  repeated PortCheckEntry results = 3;
+  string error_message = 4;
+  string error_type = 5;
+}
+
+message OllamaModelInventoryRequested {
+  string execution_id = 1;
+}
+
+message ProviderModelInventoryEntry {
+  string provider_class = 1;
+  string served_model_tag = 2;
+  string model_digest = 3;
+  string model_family = 4;
+  string parameter_size = 5;
+  uint64 parameter_count = 6;
+  string quantization = 7;
+  string format = 8;
+  uint32 context_limit = 9;
+  repeated string advertised_capabilities = 10;
+}
+
+message OllamaModelInventoryResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  repeated ProviderModelInventoryEntry entries = 3;
+  string error_message = 4;
+  string error_type = 5;
+  reserved 6;
+  reserved "role_bindings";
+}
+
+message OllamaModelResidencyRequested {
+  string execution_id = 1;
+}
+
+message OllamaModelResidencyModel {
+  string name = 1;
+}
+
+message OllamaModelResidencyResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  repeated OllamaModelResidencyModel models = 3;
+  string error_message = 4;
+  string error_type = 5;
+}
+
+message FetchLogsResult {
+  string execution_id = 1;
+  string command = 2;
+  int32 return_code = 3;
+  int64 duration_ms = 4;
+  string stdout = 5;
+  string stderr = 6;
+  int32 stdout_size = 7;
+  int32 stderr_size = 8;
+  string timestamp = 9;
+  reserved 10;
+  reserved "vault_mode";
+  string error = 11;
+}
+
+message AuditWebSession {
+  string id = 1;
+  string title = 2;
+  string created_at = 3;
+  string user_identity = 4;
+}
+
+message AuditFileMutation {
+  int64 id = 1;
+  string filepath = 2;
+  string operation = 3;
+  string ledger_hash_before = 4;
+  string ledger_hash_after = 5;
+  string diff_stat = 6;
+}
+
+message AuditEvent {
+  int64 id = 1;
+  string operator_session_id = 2;
+  string timestamp = 3;
+  string type = 4;
+  string content_text = 5;
+  string command_raw = 6;
+  int32 command_exit_code = 7;
+  string command_stdout = 8;
+  string command_stderr = 9;
+  int64 execution_duration_ms = 10;
+  bool stored_locally = 11;
+  // Fields 12 and 13 were stdout_truncated and stderr_truncated. Nothing truncates
+  // the local record, so the flags were removed.
+  reserved 12, 13;
+  reserved "stdout_truncated", "stderr_truncated";
+  repeated AuditFileMutation file_mutations = 14;
+}
+
+message FetchHistoryResult {
+  bool success = 1;
+  string execution_id = 2;
+  string operator_session_id = 3;
+  AuditWebSession web_session = 4;
+  repeated AuditEvent events = 5;
+  int32 total = 6;
+  int32 limit = 7;
+  int32 offset = 8;
+  string error = 9;
+}
+
+message FileHistoryEntry {
+  string commit_hash = 1;
+  string timestamp = 2;
+  string message = 3;
+}
+
+message FetchFileHistoryResult {
+  bool success = 1;
+  string execution_id = 2;
+  string file_path = 3;
+  repeated FileHistoryEntry history = 4;
+  string error = 5;
+}
+
+message RestoreFileResult {
+  bool success = 1;
+  string execution_id = 2;
+  string file_path = 3;
+  string commit_hash = 4;
+  string error = 5;
+}
+
+message FileDiffEntry {
+  string id = 1;
+  string timestamp = 2;
+  string file_path = 3;
+  string operation = 4;
+  string ledger_hash_before = 5;
+  string ledger_hash_after = 6;
+  string diff_stat = 7;
+  string diff_content = 8;
+  int32 diff_size = 9;
+  string operator_session_id = 10;
+}
+
+message FetchFileDiffResult {
+  bool success = 1;
+  string execution_id = 2;
+  repeated FileDiffEntry diffs = 3;
+  FileDiffEntry diff = 4;
+  int32 total = 5;
+  string operator_session_id = 6;
+  string error = 7;
+}
+
+message HeartbeatResult {
+  string operator_id = 1;
+  string operator_session_id = 2;
+  string timestamp = 3;
+  string status = 4;
+  string event_type = 5;
+  string source_component = 6;
+  string case_id = 7;
+  string investigation_id = 8;
+  SystemIdentity system_identity = 9;
+  NetworkInfo network_info = 10;
+  VersionInfo version_info = 11;
+  UptimeInfo uptime_info = 12;
+  PerformanceMetrics performance_metrics = 13;
+  OSDetails os_details = 14;
+  UserDetails user_details = 15;
+  DiskDetails disk_details = 16;
+  MemoryDetails memory_details = 17;
+  EnvironmentDetails environment = 18;
+  FingerprintDetails fingerprint_details = 20;
+  string system_fingerprint = 21;
+  // Field 22 and the name api_key are reserved: Operators authenticate with
+  // mTLS workload identity, never API keys. Field 19 and the name
+  // capability_flags are reserved: the file ledger is a required Operator
+  // dependency, so there is no ledger capability to report.
+  reserved 19, 22;
+  reserved "api_key", "capability_flags";
+}
+
+message SystemIdentity {
+  string hostname = 1;
+  string os = 2;
+  string architecture = 3;
+  string pwd = 4;
+  string current_user = 5;
+  int32 cpu_count = 6;
+  int32 memory_mb = 7;
+}
+
+message NetworkInterface {
+  string name = 1;
+  string ip = 2;
+  int32 mtu = 3;
+}
+
+message NetworkInfo {
+  string public_ip = 1;
+  string internal_ip = 2;
+  repeated string interfaces = 3;
+  repeated NetworkInterface connectivity_status = 4;
+}
+
+message VersionInfo {
+  string operator_version = 1;
+  string status = 2;
+}
+
+message UptimeInfo {
+  string uptime = 1;
+  int64 uptime_seconds = 2;
+}
+
+message PerformanceMetrics {
+  double cpu_percent = 1;
+  double memory_percent = 2;
+  double disk_percent = 3;
+  double network_latency = 4;
+  int32 memory_used_mb = 5;
+  int32 memory_total_mb = 6;
+  double disk_used_gb = 7;
+  double disk_total_gb = 8;
+}
+
+message OSDetails {
+  string kernel = 1;
+  string distro = 2;
+  string version = 3;
+}
+
+message UserDetails {
+  string username = 1;
+  int32 uid = 2;
+  int32 gid = 3;
+  string home = 4;
+  string name = 5;
+  string shell = 6;
+}
+
+message DiskDetails {
+  double total_gb = 1;
+  double used_gb = 2;
+  double free_gb = 3;
+  double percent = 4;
+}
+
+message MemoryDetails {
+  int64 total_mb = 1;
+  int64 available_mb = 2;
+  int64 used_mb = 3;
+  double percent = 4;
+}
+
+message EnvironmentDetails {
+  string pwd = 1;
+  string lang = 2;
+  string timezone = 3;
+  string term = 4;
+  bool is_container = 5;
+  string container_runtime = 6;
+  repeated string container_signals = 7;
+  string init_system = 8;
+}
+
+message FingerprintDetails {
+  string os = 1;
+  string architecture = 2;
+  int32 cpu_count = 3;
+  string machine_id = 4;
+}
+
+// ============================================================================
+// Passkey / WebAuthn L3 Brokerage
+// ============================================================================
+
+// A stored passkey credential for a user
+message PasskeyCredential {
+  string id = 1;
+  string public_key = 2;  // base64url-encoded public key
+  int64 counter = 3;
+  repeated string transports = 4;
+  int64 created_at_unix_ms = 5;
+  int64 last_used_at_unix_ms = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Registration Challenge
+// ---------------------------------------------------------------------------
+
+message PasskeyRegisterChallengeRequested {
+  string user_id = 1;
+  string user_name = 2;
+}
+
+message PasskeyRegisterChallengeResult {
+  bool success = 1;
+  string error = 2;
+  // WebAuthn PublicKeyCredentialCreationOptions fields
+  string challenge = 3;
+  message RelyingParty {
+    string name = 1;
+    string id = 2;
+  }
+  RelyingParty rp = 4;
+  message UserInfo {
+    string id = 1;
+    string name = 2;
+    string display_name = 3;
+  }
+  UserInfo user = 5;
+  message PublicKeyCredentialParameters {
+    string type = 1;
+    int32 alg = 2;
+  }
+  repeated PublicKeyCredentialParameters pub_key_cred_params = 6;
+  int64 timeout = 7;
+  string attestation = 8;
+  message AuthenticatorSelection {
+    string resident_key = 1;
+    string user_verification = 2;
+  }
+  AuthenticatorSelection authenticator_selection = 9;
+  repeated string exclude_credentials = 10;
+}
+
+// ---------------------------------------------------------------------------
+// Registration Verification
+// ---------------------------------------------------------------------------
+
+message AttestationResponse {
+  string id = 1;
+  string raw_id = 2;
+  string client_data_json = 3;
+  string attestation_object = 4;
+  repeated string transports = 5;
+}
+
+message PasskeyRegisterVerifyRequested {
+  string user_id = 1;
+  AttestationResponse attestation_response = 2;
+}
+
+message PasskeyRegisterVerifyResult {
+  bool success = 1;
+  string error = 2;
+  PasskeyCredential credential = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Authentication Challenge
+// ---------------------------------------------------------------------------
+
+message PasskeyAuthChallengeRequested {
+  string user_id = 1;
+}
+
+message PasskeyAuthChallengeResult {
+  bool success = 1;
+  string error = 2;
+  bool needs_setup = 3;
+  // WebAuthn PublicKeyCredentialRequestOptions fields
+  string challenge = 4;
+  int64 timeout = 5;
+  string rp_id = 6;
+  repeated string allow_credentials = 7;
+  string user_verification = 8;
+}
+
+// ---------------------------------------------------------------------------
+// Authentication Verification
+// ---------------------------------------------------------------------------
+
+message AssertionResponse {
+  string id = 1;
+  string raw_id = 2;
+  string client_data_json = 3;
+  string authenticator_data = 4;
+  string signature = 5;
+  string user_handle = 6;
+}
+
+message PasskeyAuthVerifyRequested {
+  string user_id = 1;
+  AssertionResponse assertion_response = 2;
+}
+
+message PasskeyAuthVerifyResult {
+  bool success = 1;
+  string error = 2;
+  string user_id = 3;
+  string web_session_id = 4;
+  int64 session_expires_at_unix_ms = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Credential Management
+// ---------------------------------------------------------------------------
+
+message ListPasskeyCredentialsRequested {
+  string user_id = 1;
+}
+
+message ListPasskeyCredentialsResult {
+  bool success = 1;
+  string error = 2;
+  repeated PasskeyCredential credentials = 3;
+}
+
+message RevokePasskeyCredentialRequested {
+  string user_id = 1;
+  string credential_id = 2;
+}
+
+message RevokePasskeyCredentialResult {
+  bool success = 1;
+  string error = 2;
+  bool found = 3;
+  int32 remaining = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Inference (ztdllama)
+// ---------------------------------------------------------------------------
+
+// ModelRole identifies the chat-tier role for a governed inference request.
+enum ModelRole {
+  MODEL_ROLE_UNSPECIFIED = 0;
+  MODEL_ROLE_PRIMARY = 1;
+  MODEL_ROLE_ASSISTANT = 2;
+  MODEL_ROLE_LITE = 3;
+}
+
+// InferenceMessageRole identifies the semantic role of one ordered conversation turn.
+enum InferenceMessageRole {
+  INFERENCE_MESSAGE_ROLE_UNSPECIFIED = 0;
+  INFERENCE_MESSAGE_ROLE_SYSTEM = 1;
+  INFERENCE_MESSAGE_ROLE_USER = 2;
+  INFERENCE_MESSAGE_ROLE_ASSISTANT = 3;
+  INFERENCE_MESSAGE_ROLE_TOOL = 4;
+}
+
+// InferenceToolCall carries a model-requested function invocation. arguments_json is a canonical JSON object.
+message InferenceToolCall {
+  string call_id = 1;
+  string name = 2;
+  string arguments_json = 3;
+}
+
+// InferenceToolResult carries a tool continuation value. result_json is a canonical JSON value.
+message InferenceToolResult {
+  string call_id = 1;
+  string name = 2;
+  string result_json = 3;
+}
+
+// InferenceMessagePart carries exactly one typed part of a conversation turn.
+message InferenceMessagePart {
+  oneof part {
+    string text = 1;
+    InferenceToolCall tool_call = 2;
+    InferenceToolResult tool_result = 3;
+  }
+}
+
+// InferenceMessage preserves one ordered conversation turn without prompt flattening.
+message InferenceMessage {
+  InferenceMessageRole role = 1;
+  repeated InferenceMessagePart parts = 2;
+}
+
+// InferenceToolDeclaration defines one callable function. json_schema is a canonical strict JSON Schema object.
+message InferenceToolDeclaration {
+  string name = 1;
+  string description = 2;
+  string json_schema = 3;
+}
+
+message InferenceResponseFormat {
+  string media_type = 1;
+  string json_schema = 2;
+}
+
+enum InferenceToolChoiceMode {
+  INFERENCE_TOOL_CHOICE_MODE_UNSPECIFIED = 0;
+  INFERENCE_TOOL_CHOICE_MODE_AUTO = 1;
+  INFERENCE_TOOL_CHOICE_MODE_NONE = 2;
+  INFERENCE_TOOL_CHOICE_MODE_REQUIRED = 3;
+}
+
+message InferenceToolChoice {
+  InferenceToolChoiceMode mode = 1;
+  repeated string allowed_tool_names = 2;
+}
+
+message InferenceThinkingControl {
+  oneof mode {
+    bool enabled = 1;
+    string level = 2;
+  }
+  bool include_thoughts = 3;
+}
+
+// InferenceResponsePart carries exactly one typed model response part.
+message InferenceResponsePart {
+  oneof part {
+    string text = 1;
+    InferenceToolCall tool_call = 2;
+    string thinking = 3;
+  }
+}
+
+message InferenceModelVariant {
+  string model = 1;
+  string digest = 2;
+}
+
+// Payload for ztd.v1.operator.inference.requested. The handler receives an ordered typed conversation, validates and scrubs every data-bearing part, and sends only the normalized request across the provider boundary.
+message InferenceRequested {
+  // Chat-tier role for this request (primary, assistant, lite).
+  ModelRole role = 1;
+
+  // Ollama model name (e.g., "gemma3:4b"). Encodes the role; Ollama routes by
+  // model name in the API call.
+  string model = 2;
+
+  reserved 3;
+  reserved "prompt";
+
+  // Generation temperature override (0 = use backend default).
+  float temperature = 4;
+
+  // Maximum tokens to generate (0 = use backend default).
+  int32 max_tokens = 5;
+
+  // Ollama keep-alive duration override (empty = use config default).
+  string keep_alive = 6;
+
+  // Ordered conversation turns sent to the backend.
+  repeated InferenceMessage messages = 7;
+
+  // Ordered callable function declarations available to the model.
+  repeated InferenceToolDeclaration tools = 8;
+
+  optional float top_p = 9;
+  optional int32 top_k = 10;
+  repeated string stop_sequences = 11;
+  InferenceResponseFormat response_format = 12;
+  string request_schema_version = 13;
+  InferenceToolChoice tool_choice = 14;
+  optional bool parallel_tool_calls = 15;
+  InferenceThinkingControl thinking = 16;
+  optional int32 context_limit = 17;
+  string provider_attempt_id = 18;
+  string model_digest = 19;
+  string campaign_id = 20;
+  string run_id = 21;
+  string assignment_id = 22;
+  string evaluation_attempt_id = 23;
+  string scenario_id = 24;
+  repeated InferenceModelVariant model_registry = 25;
+  string model_registry_digest = 26;
+
+  // When true, the Inference Node publishes bounded InferenceProgressEvent
+  // telemetry on the results channel while the provider stream is active.
+  // Progress events are delivery telemetry only; the signed
+  // InferenceCompletion remains the sole authoritative terminal outcome.
+  bool stream = 27;
+
+  // Zero-based retry ordinal for this provider attempt. Each retry uses a
+  // distinct provider_attempt_id and is durably retained.
+  uint32 retry_count = 28;
+
+  // Optional deterministic generation seed forwarded to the provider when
+  // supported. Absent means use the provider default.
+  optional int32 seed = 29;
+}
+
+enum InferenceTimingSource {
+  INFERENCE_TIMING_SOURCE_UNSPECIFIED = 0;
+  INFERENCE_TIMING_SOURCE_PROVIDER = 1;
+}
+
+enum InferenceLoadState {
+  INFERENCE_LOAD_STATE_UNSPECIFIED = 0;
+  INFERENCE_LOAD_STATE_COLD = 1;
+  INFERENCE_LOAD_STATE_WARM = 2;
+  INFERENCE_LOAD_STATE_UNAVAILABLE = 3;
+}
+
+enum InferenceRetryClassification {
+  INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED = 0;
+  INFERENCE_RETRY_CLASSIFICATION_NONE = 1;
+  INFERENCE_RETRY_CLASSIFICATION_INFRASTRUCTURE_PRE_RESULT = 2;
+}
+
+enum InferenceProviderAttemptStatus {
+  INFERENCE_PROVIDER_ATTEMPT_STATUS_UNSPECIFIED = 0;
+  INFERENCE_PROVIDER_ATTEMPT_STATUS_IN_PROGRESS = 1;
+  INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED = 2;
+  INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED = 3;
+}
+
+// InferenceProviderAttemptRecord is the durable operator-local record for one
+// governed provider attempt. It is written before provider contact and
+// finalized only after terminal receipt/result evidence is available.
+message InferenceProviderAttemptRecord {
+  string provider_attempt_id = 1;
+  string transaction_id = 2;
+  uint32 retry_count = 3;
+  InferenceRetryClassification retry_classification = 4;
+  InferenceProviderAttemptStatus status = 5;
+  int64 started_at_unix_ms = 6;
+  int64 completed_at_unix_ms = 7;
+  string result_digest = 8;
+  // failure_summary is a fixed failure category (never provider or Go error
+  // text, which can echo prompt material); empty unless status is FAILED.
+  string failure_summary = 9;
+  // raw_response_digest is the hex SHA-256 of the provider byte stream of a
+  // 200 response. Only the digest and size are kept; the stream itself is
+  // never persisted in the attempt store.
+  string raw_response_digest = 10;
+  uint64 raw_response_size_bytes = 11;
+}
+
+// InferenceResult carries ordered response parts, usage metadata, and the finish reason returned by the backend. The governed envelope carries this for the receipt and audit chain.
+message InferenceResult {
+  reserved 1;
+  reserved "text";
+
+  // Number of prompt tokens consumed.
+  int32 prompt_tokens = 2;
+
+  // Number of completion tokens generated.
+  int32 completion_tokens = 3;
+
+  // Total tokens (prompt + completion).
+  int32 total_tokens = 4;
+
+  // Finish reason (e.g., "stop", "length").
+  string finish_reason = 5;
+
+  // Model that produced the result (echoed from the request or resolved by
+  // the backend).
+  string model = 6;
+
+  // Canonical digest of the complete result: lowercase hex SHA-256 over the
+  // deterministic protobuf serialization of this message with result_digest
+  // cleared. The Inference Node computes it at execution time; the signed
+  // ActionReceipt's result_summary binds it, and the User Gateway verifies
+  // digest equality before returning success to the caller.
+  string result_digest = 7;
+
+  // Ordered model response parts covered by result_digest.
+  repeated InferenceResponsePart parts = 8;
+
+  bool usage_reported = 9;
+  optional int32 thinking_tokens = 10;
+  optional int32 cache_tokens = 11;
+  optional int64 load_duration_ns = 12;
+  optional int64 prompt_eval_duration_ns = 13;
+  optional int64 generation_duration_ns = 14;
+  optional int64 total_duration_ns = 15;
+  optional int64 time_to_first_token_ns = 16;
+  InferenceTimingSource timing_source = 17;
+  string provider_attempt_id = 18;
+  string requested_model = 19;
+  string requested_model_digest = 20;
+  string served_model_digest = 21;
+  string normalized_request_hash = 22;
+  string output_hash = 23;
+  string campaign_id = 24;
+  string run_id = 25;
+  string assignment_id = 26;
+  string evaluation_attempt_id = 27;
+  string scenario_id = 28;
+  string model_registry_digest = 29;
+  uint32 retry_count = 30;
+  InferenceLoadState load_state = 31;
+  InferenceRetryClassification retry_classification = 32;
+}
+
+// InferenceProgressEvent carries bounded incremental provider output for
+// live cross-boundary delivery telemetry. It is not authoritative; the
+// signed InferenceCompletion remains the sole terminal outcome.
+message InferenceProgressEvent {
+  // Stable provider-attempt identity copied from the governed request.
+  string provider_attempt_id = 1;
+
+  // Monotonic sequence number for this attempt, starting at 1.
+  uint32 sequence = 2;
+
+  // Ordered response parts emitted by this provider stream event.
+  repeated InferenceResponsePart parts = 3;
+
+  // Measured time from immediately before the provider request to the first
+  // observable thinking, text, or tool-call event. Present only on the first
+  // progress event that carries observable output for the attempt.
+  optional int64 time_to_first_token_ns = 4;
+
+  // Provider-served model tag when known from the stream event.
+  string served_model = 5;
+}
+
+// InferenceCompletion is the protocol-owned completion publication for a
+// governed inference request. The Inference Node publishes it to the
+// results channel only after the L5 Actuator has finalized and signed the
+// ActionReceipt, so the complete result and its verified receipt are a
+// single correlated outcome. A failed execution carries the FAILED receipt
+// and no result, which terminates the Gateway's dispatch wait immediately
+// instead of at the dispatch deadline.
+message InferenceCompletion {
+  // The signed final ActionReceipt for the inference transaction.
+  ActionReceipt receipt = 1;
+
+  // The complete inference result. Absent when the receipt status is not
+  // EXECUTION_STATUS_COMPLETED.
+  InferenceResult result = 2;
+}
+
+// InferenceDispatchRequest is the protocol-owned request body for
+// POST /api/v1/inference/dispatch, the mTLS-protected platform-internal
+// endpoint app workloads call to dispatch a governed
+// inference request to the Inference Node.
+message InferenceDispatchRequest {
+  // Chat-tier role for this request (primary, assistant, lite).
+  ModelRole role = 1;
+
+  reserved 2;
+  reserved "prompt";
+
+  // Requested provider model. A campaign Inference Operator accepts it only
+  // when the exact model and digest occur in the frozen registry committed by
+  // model_registry_digest; standard inference uses the configured role model.
+  string model = 3;
+
+  // Generation temperature override (0 = use backend default).
+  float temperature = 4;
+
+  // Maximum tokens to generate (0 = use backend default).
+  int32 max_tokens = 5;
+
+  // Ollama keep-alive duration override (empty = use config default).
+  string keep_alive = 6;
+
+  // Explicit Inference Node target. When empty, the gateway requires exactly
+  // one enrolled inference-capable operator for the requestor; zero or
+  // multiple matches are rejected.
+  string target_operator_session_id = 7;
+
+  // Application that initiated the inference request.
+  string acting_app_id = 8;
+
+  // Application context propagated from the chat turn.
+  string case_id = 9;
+  string investigation_id = 10;
+  string task_id = 11;
+  string web_session_id = 12;
+  string cli_session_id = 13;
+
+  // Ordered conversation turns sent to the Inference Node. The node validates and re-scrubs every data-bearing part before crossing the provider boundary.
+  repeated InferenceMessage messages = 14;
+
+  // Ordered callable function declarations available to the model.
+  repeated InferenceToolDeclaration tools = 15;
+
+  optional float top_p = 16;
+  optional int32 top_k = 17;
+  repeated string stop_sequences = 18;
+  InferenceResponseFormat response_format = 19;
+  string request_schema_version = 20;
+  InferenceToolChoice tool_choice = 21;
+  optional bool parallel_tool_calls = 22;
+  InferenceThinkingControl thinking = 23;
+  optional int32 context_limit = 24;
+  string provider_attempt_id = 25;
+  string model_digest = 26;
+  string campaign_id = 27;
+  string run_id = 28;
+  string assignment_id = 29;
+  string evaluation_attempt_id = 30;
+  string scenario_id = 31;
+  repeated InferenceModelVariant model_registry = 32;
+  string model_registry_digest = 33;
+
+  // When true, the Gateway forwards live InferenceProgressEvent telemetry
+  // to the caller while waiting for the authoritative terminal completion.
+  bool stream = 34;
+
+  // Zero-based retry ordinal for this provider attempt.
+  uint32 retry_count = 35;
+
+  // Optional deterministic generation seed forwarded to the provider when
+  // supported. Absent means use the provider default.
+  optional int32 seed = 36;
+}
+
+// InferenceDispatchStreamFailure is the protocol-owned terminal failure
+// frame for a streaming dispatch that already started NDJSON delivery.
+// Reason is a public-safe centralized sentinel; it never carries raw
+// prompts, model output, or receipt bodies.
+message InferenceDispatchStreamFailure {
+  string reason = 1;
+}
+
+// InferenceDispatchStreamFrame is one NDJSON line in a streaming dispatch
+// response. Progress frames are delivery telemetry only. The completion
+// frame carries the verified terminal result and signed receipt. A failure
+// frame is the explicit terminal outcome when cancellation, disconnect,
+// backpressure, or event-to-terminal hash reconciliation prevents a
+// verified completion after the HTTP response has started.
+message InferenceDispatchStreamFrame {
+  oneof frame {
+    InferenceProgressEvent progress = 1;
+    InferenceDispatchResponse completion = 2;
+    InferenceDispatchStreamFailure failure = 3;
+  }
+}
+
+// InferenceDispatchResponse is the protocol-owned success response for
+// POST /api/v1/inference/dispatch. The Gateway returns it only after
+// verifying the final receipt signature, persistence attestation,
+// transaction identity, and result digest equality. Failure responses use
+// the gateway's standard typed error envelope with a public-safe code.
+message InferenceDispatchResponse {
+  // Transaction ID correlating the dispatch with the audit chain.
+  string transaction_id = 1;
+
+  // The complete inference result whose result_digest is bound into the
+  // signed receipt.
+  InferenceResult result = 2;
+
+  // The verified final signed ActionReceipt for the transaction.
+  ActionReceipt receipt = 3;
+}

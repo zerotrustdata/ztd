@@ -1,0 +1,9 @@
+# evaluation-explorer rules beyond the root .gitignore (node_modules/, dist/).
+*.local
+.legacy-storefront/
+scripts/.generated/
+scripts/.bridge/
+
+# Playwright output
+/test-results/
+/playwright-report/

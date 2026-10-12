@@ -1,0 +1,161 @@
+# OpenDevOps.ai evaluation explorer
+
+## Prerequisites
+
+Run commands from the repository root unless a section changes directory. The repository `ztd` binary exists (`make build`), Node dependencies are installed in `evaluation-explorer`, the CLI has a valid `./ztd auth context`, and the approved Ollama provider is reachable at the endpoint passed to the Gateway as `--inference-ollama-endpoint`. Do not install, start, pull, or manage Ollama on this host. The native evaluation suite does not call Ollama.
+
+On the **provider host** (where Ollama runs), run separate witness Operator sessions when running full campaigns, started with `./ztd operator start` (see `./ztd operator start --help`):
+
+1. **Observer Operator** — `--capabilities observer` for provider-boundary resource observation.
+2. **Provenance Operator** — `--capabilities provenance` with `--model-storage-root` pointing at the Ollama models directory (for example `~/.ollama/models`).
+
+## Start and verify the platform
+
+```bash
+make gw GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'
+./ztd auth enroll pending
+make status
+./ztd auth context
+curl -fsS "http://<ollama-host>:11434/api/version"
+```
+
+Gateway and Operators report healthy before a real evaluation. Approve or deny an exact pending workload request only through the documented `auth enroll` flow (`pending`, `approve`, `deny`); do not reset the trust domain to repair an enrollment wait.
+
+## Start the complete mock experience
+
+```bash
+cd evaluation-explorer
+npm run dev:mock
+```
+
+Open `http://127.0.0.1:5173`. This command starts or reuses the host mirror on private `127.0.0.1:8081` and public read-only `127.0.0.1:8082`, publishes deterministic fixture history, replays a scripted lifecycle through the real publisher and mirror, and starts Vite. The browser connects only to `127.0.0.1:8082` with credentials omitted.
+
+## Start the real native evaluation experience
+
+```bash
+cd evaluation-explorer
+npm run dev:real
+```
+
+Requires the gateway-owned mirror (`./ztd gw start --public-spectator`, which is the default; `make gw` starts it with the embedded Operator). Use `npm run health` to inspect mirror state, publisher sequence, freshness, route isolation, and the last accepted record.
+
+Run a campaign evaluation with live publication to the public mirror:
+
+```bash
+./ztd eval campaigns create <campaign-id> <frozen-model-tag> --suite smoke-suite
+./ztd eval runs start <campaign-id> --require-witness
+```
+
+This requires enabled Data, Inference, Observer, and Provenance capabilities. The Gateway embedded Operator can supply all of them (`make gw MODEL_STORAGE_ROOT=<model-store>`); separate outbound Operators are optional. Freeze the provider inventory and pass the chat acceptance gate first; see [First model campaign](../docs/architecture/evals.md#first-model-campaign). Provider access comes from the Inference Operator's enrolled configuration.
+
+Resume a prepared or interrupted run, or catch up publication for an existing run:
+
+```bash
+./ztd eval runs resume <run-id> --publish --daemon
+./ztd eval runs publish <run-id>
+```
+
+The Go `CampaignPublicationCoordinator` in the evaluation service projects canonical campaign state into public-safe explorer records and publishes them through the real `ztd public` publisher. The explorer's TypeScript `campaign-adapter` decodes those envelopes from the mirror. No separate projector script is involved.
+
+## Optional disposable public-feed reset
+
+This reset removes the host `.ztd/public-feed` and `.ztd/public-mirror` state, creates a new local public signing chain, and republishes the selected seed. It does not remove evaluation report roots. Obtain explicit owner confirmation immediately before running it, then use one of:
+
+```bash
+cd evaluation-explorer
+npm run dev:mock -- --reset
+```
+
+Do not use `./ztd gw clean` for a public-feed problem.
+
+## Publish evaluation reports
+
+Publication is owned by the Go evaluation service. Campaign runs project lifecycle events, assignment results, and aggregate records into the public feed as they execute (`runs start` publishes by default; `runs resume` uses `--publish`) or on demand (`ztd eval runs publish <run-id>`). The publisher signs batches, writes the durable outbox, and advances the high-water sequence; the mirror ingests signed batches and serves anonymous reads and SSE.
+
+## Expected browser states
+
+The overview first reconstructs bootstrap, complete paginated history, and the sealed snapshot, then connects SSE. A live run appears as queued, running, provisional assignment and metric updates, and finally completed, failed, or stopped without a refresh. Reload reconstructs the same state before SSE resumes. Current-standard verified, run-scoped verified, not fully verified, legacy unverified, in-progress, failed, unavailable, and not-evaluated states remain distinct; the site never averages datasets.
+
+The Evaluation runs table defaults to all quality states for the selected release, keeping active runs and failures visible beside verified history. Use its quality filter to inspect verified runs only.
+
+The Evals leaderboard admits only scored models with exactly 100% evaluation coverage and current-standard or run-scoped verification. Each role leader ranks by pass rate descending, advertised parameter count ascending, then completed evaluation elapsed time ascending. Size comes from the model tag or name (billions or millions of parameters); elapsed time comes from a dataset containing one homogeneous model run. Unknown sizes and durations follow known values, with model name and variant ID providing a stable final order. Size and evaluation time appear beside each leader.
+
+## Verification
+
+```bash
+cd evaluation-explorer
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm audit --audit-level=moderate
+npm run health
+```
+
+For a platform production-code change:
+
+```bash
+make build
+./ztd test unit
+./ztd test lint
+./ztd test coverage
+```
+
+Rebuild and restart the Gateway when the platform binary changed:
+
+```bash
+make build
+make down && make gw GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'
+make status
+```
+
+## Production build and packaging
+
+The checked-in local runtime remains loopback-only for development. `npm run build` replaces the emitted runtime with the exact bytes from `runtime.production.json`, disables source maps, scans the complete asset tree for prohibited content, and fails on any unexpected file. Production does **not** use Cloudflare Workers or Pages; the gateway-owned public listener on `8082` serves `dist/` and the anonymous mirror API from one origin.
+
+```bash
+cd evaluation-explorer
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm audit --audit-level=moderate
+```
+
+After `npm run build`, run `make build` to refresh the embedded explorer, then restart the Gateway. The production runtime names only `https://opendevops.ai`. External browsers reach that origin through the dedicated `opendevops-feed` Cloudflare Tunnel, which terminates at loopback `http://127.0.0.1:8082`.
+
+## Host service supervision
+
+The gateway owns the in-process public mirror (`8081` private ingest, `8082` public read/SSE) and evaluation explorer when started with `--public-spectator` (default). Do not install a host mirror systemd unit for production.
+
+The checked-in `evaluation-explorer/deploy/systemd/opendevops-feed-tunnel.service` runs only the Cloudflare Tunnel on the Gateway host. It reads generated configuration and credentials from the owner-protected `~/.cloudflared` directory and forwards `https://opendevops.ai` to `http://127.0.0.1:8082`. Neither the tunnel unit nor the Gateway binary contains a token, key, or ingest credential in source control.
+
+After the release owner creates the dedicated `opendevops-feed` tunnel and DNS route, install the tunnel unit when no other process owns the same tunnel session:
+
+```bash
+install -Dm600 evaluation-explorer/deploy/systemd/opendevops-feed-tunnel.service ~/.config/systemd/user/opendevops-feed-tunnel.service
+systemctl --user daemon-reload
+systemctl --user enable --now opendevops-feed-tunnel.service
+systemctl --user status opendevops-feed-tunnel.service
+```
+
+User lingering must be enabled for restart-on-boot before login:
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
+Stopping the tunnel preserves publisher and mirror state. Disable the tunnel service first if external route isolation or disclosure acceptance fails; do not reset feed state, rotate keys, or delete the tunnel as an ordinary rollback.
+
+## Focused troubleshooting
+
+- **Workload unhealthy:** run `./ztd auth enroll pending`, approve the exact pending request when appropriate, and recheck with `make status`.
+- **Mirror unreachable:** run `npm run health`; verify host listeners `8081` and `8082` separately. The browser uses only `8082` and publisher ingest uses only `8081`.
+- **Publisher retry:** run `./ztd public push`, then `npm run health`. A retained outbox retries in order without rerunning evaluation.
+- **Malformed projection:** run the contract and feed-transport tests plus `./ztd test unit --pkg ./internal/services/evaluation`. Do not bypass strict validation or publish a known-invalid corpus.
+- **No SSE:** verify `/stream` through `npm run health`, reload to reconstruct history, and confirm browser requests do not target `8081`, Gateway ports, report paths, or the provider.
+- **Terminal evaluation failure:** retain the report and failed public record, publish the actual exit disposition, reconcile attempt and metric counts, and use a fresh run directory only after fixing an offline defect. Never retry under the same run identity.
+
+Stop the foreground mirror with Ctrl-C. Stopping this process preserves mirror state and report roots. Gateway cleanup (`./ztd gw clean`) and public-feed reset are destructive operations and require immediate explicit confirmation for their exact scope.

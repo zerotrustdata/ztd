@@ -1,0 +1,140 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package governance
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/hex"
+	"testing"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+// TestEvalAnswerVerification tests that EVAL_ANSWER envelopes are accepted by the verifier
+// and can be executed by the Actuator with a signed receipt.
+func TestEvalAnswerVerification(t *testing.T) {
+	// Generate test key
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err, "failed to generate signer")
+
+	// Create verifier with EVAL_ANSWER in known action types
+	verifier := NewL4Warden(
+		nil,
+		testutil.NewStatefulMockReplayStore(),
+		testutil.NewMockStateRootProvider("test-state-root-v1"),
+		&FailClosedSignerStore{Signers: map[string]ed25519.PublicKey{"test-key-id": pubKey}},
+		&NoopConsensusPolicyStore{}, // consensus policy store not used in tests
+		nil,                         // L3 verifier not needed for EVAL_ANSWER (non-mutation)
+		NewL1Doctrine(),
+		[]constants.ActionType{constants.ActionTypeEvalAnswer},
+		nil, // Clock defaults to RealClock
+		&testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"},
+		&governancetest.UnlockedVault{},
+	)
+
+	// Create an EVAL_ANSWER payload
+	payload := &operatorv1.EvalAnswerRequested{
+		PromptId:  "test-prompt-001",
+		Benchmark: "ifeval",
+		Answer:    "This is a test answer.",
+		Model:     "openai:gpt-4",
+	}
+
+	payloadBytes, err := proto.Marshal(payload)
+	require.NoError(t, err, "Failed to marshal payload")
+
+	eventType, err := constants.RequestEventForAction(constants.ActionTypeEvalAnswer)
+	require.NoError(t, err, "Failed to resolve request event")
+
+	// Create envelope with proper structure
+	envelope := &govtypes.GovernanceEnvelope{
+		ProtocolVersion:   govtypes.GovernanceProtocolVersionV2,
+		Timestamp:         timestamppb.Now(),
+		ExpiresAt:         timestamppb.New(time.Now().UTC().Add(time.Hour)),
+		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
+		OperatorId:        "operator-1",
+		OperatorSessionId: "operator-session-1",
+		EventType:         string(eventType),
+		ActionType:        string(constants.ActionTypeEvalAnswer),
+		TargetResource:    "localhost",
+		Payload:           payloadBytes,
+		StateMerkleRoot:   "test-state-root-v1",
+		Nonce:             "test-nonce-001",
+		Posture:           "doctrine",
+	}
+
+	// Compute transaction hash
+	computedHash, err := govtypes.GenerateMessageID(envelope)
+	require.NoError(t, err, "Failed to compute transaction hash")
+	envelope.Id = computedHash
+	envelope.TransactionHash = computedHash
+
+	// Add L2 governance signature
+	envelope.Governance = &commonv1.GovernanceMetadata{
+		L2: &commonv1.L2Metadata{
+			ConsensusSetId: "test-consensus",
+			Votes: []*commonv1.L2Vote{
+				{
+					SignerKeyId:        "test-key-id",
+					ConsensusSignature: hex.EncodeToString(ed25519.Sign(privKey, []byte(computedHash+"|true"))),
+					Decision:           true,
+				},
+			},
+		},
+	}
+
+	// Verify the envelope
+	verified, err := verifier.VerifyEnvelope(context.Background(), envelope)
+	require.NoError(t, err, "VerifyEnvelope failed")
+
+	assert.Equal(t, constants.ActionTypeEvalAnswer, verified.ActionType, "Expected action type EVAL_ANSWER")
+
+	// Check that the decoded payload is correct
+	evalPayload, ok := verified.DecodedPayload.(*operatorv1.EvalAnswerRequested)
+	require.True(t, ok, "Decoded payload is not EvalAnswerRequested, got %T", verified.DecodedPayload)
+
+	assert.Equal(t, "test-prompt-001", evalPayload.PromptId, "Expected prompt_id test-prompt-001")
+	assert.Equal(t, "ifeval", evalPayload.Benchmark, "Expected benchmark ifeval")
+	assert.Equal(t, "This is a test answer.", evalPayload.Answer, "Expected answer 'This is a test answer.'")
+	assert.Equal(t, "openai:gpt-4", evalPayload.Model, "Expected model openai:gpt-4")
+
+	// 4. Execute through L5Actuator
+	keyID := "test-key-id"
+	actuator, auditStore := newCommitmentTestActuator(t)
+	require.NoError(t, auditStore.CreateSession("operator-session-1", constants.SessionTypeOperator, "eval fixture", "test-user"))
+	actuator.StateRootProvider = testutil.NewMockStateRootProvider("test-state-root-v1")
+	actuator.ExecutionHandler = &mockExecutionHandler{
+		ExecuteVerifiedTransactionFunc: func(ctx context.Context, eventType constants.EventType, cmdMsg CommandMessage) (string, error) {
+			return payload.Answer, nil
+		},
+	}
+	actuator.SigningKey = privKey
+	actuator.KeyID = keyID
+
+	receipt, err := actuator.Execute(context.Background(), verified, nil)
+	require.NoError(t, err, "L5Actuator execution failed")
+
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "Expected status COMPLETED")
+	assert.Equal(t, payload.Answer, receipt.ResultSummary, "Expected result summary '%s'", payload.Answer)
+	assert.Equal(t, keyID, receipt.SignerKeyId, "Expected signer key ID %s", keyID)
+	assert.NotEmpty(t, receipt.Signature, "Expected non-empty signature in receipt")
+}

@@ -1,0 +1,93 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build e2e
+
+package e2e
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+// TestOperatorRegistry_ActiveOperator verifies that after platform enrollment
+// approval, the gateway's operator registry records the operator as active.
+// The operator is discovered through the owner-authenticated operator list
+// endpoint rather than parsing a session ID from process logs or
+// environment variables. On an approved stack at least one operator must be
+// registered with active status.
+//
+// This replaces the prior test that extracted the operator session ID from
+// the process environment and queried a single session. The typed list
+// endpoint is the canonical discovery path and does not depend on runtime
+// introspection.
+func TestOperatorRegistry_ActiveOperator(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultClientTimeout)
+	defer cancel()
+
+	operators, err := e2eClient.ListOperators(ctx)
+	require.NoError(t, err, "owner-authenticated operator list must succeed")
+	require.True(t, operators.Success, "operator list response must report success")
+	require.NotEmpty(t, operators.Operators,
+		"at least one operator must be registered on an approved stack")
+
+	var active *operatorv1.OperatorDocument
+	for i := range operators.Operators {
+		if operators.Operators[i].Status == string(constants.OperatorStatusActive) && operators.Operators[i].OperatorType == string(constants.OperatorTypeRemote) {
+			active = operators.Operators[i]
+			break
+		}
+	}
+	require.NotNil(t, active, "at least one operator must have active status")
+	assert.NotEmpty(t, active.Id, "active operator must have a non-empty ID")
+	assert.NotEmpty(t, active.OperatorSessionId, "active operator must have a session ID")
+	assert.NotNil(t, active.CreatedAt, "active operator must have a creation timestamp")
+	t.Logf("active operator discovered: id=%s session=%s slot=%d",
+		active.Id, active.OperatorSessionId, active.SlotNumber)
+
+	// Cross-check: the session lookup endpoint must return the same operator
+	// document with active status. This proves the registry is consistent
+	// across the list and session-scoped query paths.
+	single, err := e2eClient.GetOperatorBySession(ctx, active.OperatorSessionId)
+	require.NoError(t, err, "session lookup for the active operator must succeed")
+	require.True(t, single.Success, "session lookup response must report success")
+	require.NotNil(t, single.Operator, "session lookup must return an operator document")
+	assert.Equal(t, active.Id, single.Operator.Id,
+		"session lookup must return the same operator ID as the list")
+	assert.Equal(t, string(constants.OperatorStatusActive), single.Operator.Status,
+		"session lookup must report active status")
+}
+
+// TestOperatorRegistry_HeartbeatTimestampSet verifies that the active
+// operator's last_heartbeat_at is set and recent, indicating the pub/sub
+// heartbeat path has recorded at least one heartbeat. A heartbeat is
+// observed-tier telemetry and never touches the bound document's UpdatedAt.
+// The detailed advancement assertion lives in the pubsub_heartbeat test; this
+// test confirms the baseline that the registry is not stale at suite start.
+func TestOperatorRegistry_HeartbeatTimestampSet(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultClientTimeout)
+	defer cancel()
+
+	operators, err := e2eClient.ListOperators(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, operators.Operators)
+
+	active := findLiveActiveRemoteOperator(operators.Operators)
+	require.NotNil(t, active, "an active operator must exist")
+	require.NotNil(t, active.LastHeartbeatAt,
+		"active operator last_heartbeat_at must be set by at least one heartbeat delivery")
+	assert.WithinDuration(t, time.Now(), active.LastHeartbeatAt.AsTime(), 5*time.Minute,
+		"active operator last_heartbeat_at must be within 5 minutes of now — heartbeat path may be stale")
+}

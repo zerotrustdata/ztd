@@ -1,0 +1,71 @@
+{
+  "description": "Environment variable names read by the Go binary. Every key has a category (INV-ENV-04): secret, user_endpoint, host, or test. Platform configuration is never read from the environment: it is a typed default or an explicit flag.",
+  "categories": {
+    "secret": "API keys, tokens, client secrets, encryption keys",
+    "user_endpoint": "User-specific endpoint or identity with no correct universal default",
+    "host": "Host fact provided by the OS, read as a fact rather than as ztd configuration",
+    "test": "Test-harness selector read only by `ztd test` tooling and test code; never user configuration"
+  },
+  "env_vars": {
+    "E2EFleetSessions": {
+      "_go_const": "EnvVar.E2EFleetSessions",
+      "value": "ZTD_E2E_FLEET_SESSIONS",
+      "category": "test",
+      "description": "Comma-separated owner Operator session identities selecting the live E2E fleet; unset selects the entire remote registry"
+    },
+    "Shell": {
+      "_go_const": "EnvVar.Shell",
+      "value": "SHELL",
+      "category": "host",
+      "description": "Login shell reported by the host"
+    },
+    "Lang": {
+      "_go_const": "EnvVar.Lang",
+      "value": "LANG",
+      "category": "host",
+      "description": "Locale reported by the host"
+    },
+    "Term": {
+      "_go_const": "EnvVar.Term",
+      "value": "TERM",
+      "category": "host",
+      "description": "Terminal type reported by the host"
+    },
+    "TZ": {
+      "_go_const": "EnvVar.TZ",
+      "value": "TZ",
+      "category": "host",
+      "description": "Time zone reported by the host"
+    },
+    "Home": {
+      "_go_const": "EnvVar.Home",
+      "value": "HOME",
+      "category": "host",
+      "description": "Home directory reported by the host"
+    },
+    "User": {
+      "_go_const": "EnvVar.User",
+      "value": "USER",
+      "category": "host",
+      "description": "Login user name reported by the host"
+    },
+    "SSHAuthSock": {
+      "_go_const": "EnvVar.SSHAuthSock",
+      "value": "SSH_AUTH_SOCK",
+      "category": "host",
+      "description": "SSH agent socket provided by the host session"
+    },
+    "XDGRuntimeDir": {
+      "_go_const": "EnvVar.XDGRuntimeDir",
+      "value": "XDG_RUNTIME_DIR",
+      "category": "host",
+      "description": "Per-user runtime directory provided by the host session; locates the systemd user ssh-agent sockets for the Linux master-key seal when SSH_AUTH_SOCK is unset"
+    },
+    "CloudflareAPIToken": {
+      "_go_const": "EnvVar.CloudflareAPIToken",
+      "value": "CLOUDFLARE_API_TOKEN",
+      "category": "secret",
+      "description": "Cloudflare API token for tunnel DNS routing"
+    }
+  }
+}

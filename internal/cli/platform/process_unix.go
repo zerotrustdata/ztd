@@ -1,0 +1,229 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build !windows
+// +build !windows
+
+package platform
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"syscall"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+// processFinder is an interface for finding processes
+type processFinder interface {
+	FindProcess(pid int) (process, error)
+}
+
+// process is an interface for process operations
+type process interface {
+	Signal(sig syscall.Signal) error
+}
+
+// osProcess wraps os.Process to implement the process interface
+type osProcess struct {
+	*os.Process
+}
+
+func (p *osProcess) Signal(sig syscall.Signal) error {
+	return p.Process.Signal(sig)
+}
+
+// osProcessFinder wraps os.FindProcess to implement processFinder
+type osProcessFinder struct{}
+
+func (f osProcessFinder) FindProcess(pid int) (process, error) {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return nil, err
+	}
+	return &osProcess{p}, nil
+}
+
+// realCommandExecutor implements CommandExecutor using actual exec package
+type realCommandExecutor struct{}
+
+func (c realCommandExecutor) Command(name string, args ...string) *exec.Cmd {
+	return exec.Command(name, args...)
+}
+
+func (c realCommandExecutor) Output(cmd *exec.Cmd) ([]byte, error) {
+	return cmd.Output()
+}
+
+func (c realCommandExecutor) Run(cmd *exec.Cmd) error {
+	return cmd.Run()
+}
+
+// sleeper is an interface for sleep operations (for testing)
+type sleeper interface {
+	Sleep(d time.Duration)
+}
+
+// timeSleeper wraps time.Sleep to implement sleeper
+type timeSleeper struct{}
+
+func (s timeSleeper) Sleep(d time.Duration) {
+	time.Sleep(d)
+}
+
+// ticker is an interface for ticker operations (for testing)
+type ticker interface {
+	C() <-chan time.Time
+	Stop()
+}
+
+// timeTicker wraps time.Ticker to implement ticker
+type timeTicker struct {
+	*time.Ticker
+}
+
+func (t *timeTicker) C() <-chan time.Time {
+	return t.Ticker.C
+}
+
+// tickerFactory is an interface for creating tickers
+type tickerFactory interface {
+	NewTicker(d time.Duration) ticker
+}
+
+// timeTickerFactory wraps time.NewTicker to implement tickerFactory
+type timeTickerFactory struct{}
+
+func (f timeTickerFactory) NewTicker(d time.Duration) ticker {
+	return &timeTicker{time.NewTicker(d)}
+}
+
+// setProcessGroup sets the process group for Unix systems
+func setProcessGroup(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
+	}
+}
+
+// isProcessRunning checks if a process with the given PID is running on Unix systems.
+// It uses syscall.Signal(0) which doesn't actually send a signal but checks if the process exists.
+func (pm *ProcessManager) isProcessRunning(pid int) bool {
+	return pm.isProcessRunningWithFinder(pid, osProcessFinder{})
+}
+
+// isProcessRunningWithFinder checks if a process is running using a provided processFinder (for testing)
+func (pm *ProcessManager) isProcessRunningWithFinder(pid int, finder processFinder) bool {
+	if pid == 0 {
+		return false
+	}
+
+	proc, err := finder.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+
+	err = proc.Signal(syscall.Signal(0))
+	return err == nil
+}
+
+// findProcessOnPort finds the PID of the process listening on the given port on Unix systems.
+// It uses lsof to find the process ID.
+func (pm *ProcessManager) findProcessOnPort(port int) int {
+	return pm.findProcessOnPortWithFactory(port, realCommandExecutor{})
+}
+
+// findProcessOnPortWithFactory finds the PID using a provided CommandExecutor (for testing)
+func (pm *ProcessManager) findProcessOnPortWithFactory(port int, executor CommandExecutor) int {
+	cmd := executor.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+	output, err := executor.Output(cmd)
+	if err != nil {
+		return 0
+	}
+
+	var pid int
+	if _, err := fmt.Sscanf(string(output), "%d", &pid); err != nil {
+		return 0
+	}
+
+	return pid
+}
+
+// findOperatorProcess finds the PID of the running ztd operator process using pgrep.
+// This is used as a fallback when the PID file is missing or stale.
+func (pm *ProcessManager) findOperatorProcess() int {
+	return pm.findOperatorProcessWithExecutor(realCommandExecutor{})
+}
+
+// findOperatorProcessWithExecutor finds the PID using a provided CommandExecutor (for testing)
+func (pm *ProcessManager) findOperatorProcessWithExecutor(executor CommandExecutor) int {
+	pattern := fmt.Sprintf("ztd gw start.*--data-dir %s([[:space:]]|$)", pm.fileSvc.Resolve(constants.DataDirname))
+	cmd := executor.Command("pgrep", "-f", pattern)
+	output, err := executor.Output(cmd)
+	if err != nil {
+		return 0
+	}
+
+	var pid int
+	if _, err := fmt.Sscanf(string(output), "%d", &pid); err != nil {
+		return 0
+	}
+
+	return pid
+}
+
+// stopProcess stops a process with the given PID on Unix systems.
+// It sends SIGTERM first, then SIGKILL if the process doesn't exit within the timeout.
+func (pm *ProcessManager) stopProcess(pid int, name string) error {
+	_ = name
+	return pm.stopProcessWithDeps(pid, osProcessFinder{}, timeSleeper{}, timeTickerFactory{}, ShutdownTimeout)
+}
+
+// stopProcessWithDeps stops a process using injected dependencies (for testing)
+func (pm *ProcessManager) stopProcessWithDeps(pid int, finder processFinder, sleep sleeper, tickerFactory tickerFactory, timeoutDur time.Duration) error {
+	if pid == 0 {
+		return nil
+	}
+
+	if !pm.isProcessRunningWithFinder(pid, finder) {
+		return nil
+	}
+
+	proc, err := finder.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("process_manager: find process: %w", err)
+	}
+
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("process_manager: send SIGTERM: %w", err)
+	}
+
+	timeout := time.After(timeoutDur)
+	ticker := tickerFactory.NewTicker(HealthCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			if err := proc.Signal(syscall.SIGKILL); err != nil {
+				return fmt.Errorf("process_manager: send SIGKILL: %w", err)
+			}
+			for i := 0; i < MaxHealthChecks; i++ {
+				sleep.Sleep(SigKillPollInterval)
+				if !pm.isProcessRunningWithFinder(pid, finder) {
+					return nil
+				}
+			}
+			return fmt.Errorf("process_manager: %w (pid %d)", constants.ErrProcessSigKillTimeout, pid)
+		case <-ticker.C():
+			if !pm.isProcessRunningWithFinder(pid, finder) {
+				return nil
+			}
+		}
+	}
+}

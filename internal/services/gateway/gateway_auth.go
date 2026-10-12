@@ -1,0 +1,1322 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/protocol"
+)
+
+// RouteAuthMode classifies how a route should be authenticated.
+type RouteAuthMode int
+
+const (
+	// RouteAuthNone: truly public routes (health, PKI bootstrap, console SPA, passkey console).
+	// No authentication required.
+	RouteAuthNone RouteAuthMode = iota
+	// RouteAuthMTLS: mTLS only (SSE push, governance, PKI management, operators, audit).
+	// Requires a verified client certificate with valid operator/CLI/app identity.
+	RouteAuthMTLS
+	// RouteAuthWebSession: web session cookie only (users/me, auth/sessions/me, passkeys management, approvals browser).
+	// Validates the web_session cookie and stamps context with user_id + web_session_id.
+	RouteAuthWebSession
+	// RouteAuthDual: mTLS OR web session cookie (SSE stream, SSE events).
+	// Tries mTLS first (stronger auth); falls back to cookie if no cert present.
+	RouteAuthDual
+)
+
+// RouteAuthRegistry classifies every route by its auth requirement.
+// Exact paths are matched precisely (highest priority). Prefixes allow any path under the prefix.
+// No excluded prefixes — each route is explicitly classified by mode.
+type RouteAuthRegistry struct {
+	exactPaths  map[string]RouteAuthMode
+	prefixes    map[string]RouteAuthMode
+	jwksEnabled bool
+}
+
+// NewRouteAuthRegistry creates a registry with the canonical route auth classifications.
+func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
+	r := &RouteAuthRegistry{
+		exactPaths:  make(map[string]RouteAuthMode),
+		prefixes:    make(map[string]RouteAuthMode),
+		jwksEnabled: jwksEnabled,
+	}
+
+	// --- RouteAuthNone: truly public routes ---
+
+	// Health check (always public)
+	r.addExact(constants.APIPaths.Health, RouteAuthNone)
+
+	// Landing page (always public to allow redirecting to /console)
+	r.addExact(constants.APIPaths.Landing, RouteAuthNone)
+
+	// State endpoint (always public for envelope binding)
+	r.addExact(constants.APIPaths.State, RouteAuthNone)
+
+	// PKI bootstrap routes (public material only)
+	r.addPrefix(constants.APIPaths.WellKnownPKIPrefix, RouteAuthNone)
+	r.addPrefix(constants.APIPaths.WellKnownBinPrefix, RouteAuthNone)
+
+	// Deploy script endpoints (public for initial deployment)
+	r.addExact(constants.APIPaths.DeployScriptLinux, RouteAuthNone)
+	r.addExact(constants.APIPaths.DeployScriptWindows, RouteAuthNone)
+
+	// Protocol entry points (CSR enrollment, bootstrap)
+	// PKICSRSign signs privileged platform leaf types (operator, CLI, app,
+	// gateway-peer); it requires a validated mTLS identity (operator/CLI
+	// session) so only authenticated callers can mint those identities.
+	// PKIDevicesEnroll is the device bootstrap path that creates operator
+	// and CLI identities; the caller does not yet have a validated session,
+	// so the route is RouteAuthNone and the handler enforces mTLS directly
+	// (requires a client certificate and extracts the user ID from it).
+	r.addExact(constants.APIPaths.PublicFeedBatches, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.PublicFeedSnapshot, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.PublicFeedProofs, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.PublicFeedProofsBatch, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.PublicFeedProofsPush, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.PublicFeedProofsPrune, RouteAuthMTLS)
+	r.addPrefix(constants.APIPaths.EvalCampaignPublicationStateByRun, RouteAuthMTLS)
+	r.addPrefix(constants.APIPaths.InferenceProviderObservations, RouteAuthMTLS)
+	r.addPrefix(constants.APIPaths.InferenceModelProvenanceAttestations, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.PKICSRSign, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.PKIDevicesEnroll, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthBootstrap, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthBootstrapStatus, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthLogout, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthEnrollmentTokenValidate, RouteAuthNone)
+	r.addPrefix(constants.APIPaths.ApprovePage, RouteAuthNone)
+
+	// CLI recovery discovery surface — public, token-scoped.
+	// The opaque token (looked up via its hash) and proof-of-possession
+	// signature provide the authorization context; no mTLS or cookie required.
+	r.addExact(constants.APIPaths.AuthCLIRecoveryRequest, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthCLIRecoveryStatus, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthCLIRecoveryComplete, RouteAuthNone)
+
+	// Platform enrollment discovery surface — public, token-scoped.
+	// The opaque token and proof-of-possession signatures provide the
+	// authorization context; no mTLS or cookie required. The service
+	// checks bootstrap state (HasAnyUsers) before creating a request.
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentRequest, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentStatus, RouteAuthNone)
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentComplete, RouteAuthNone)
+
+	// Operator bootstrap websocket — public, token-scoped like the platform
+	// enrollment surface. An unenrolled Operator has no client certificate;
+	// the token hash, proofs, and owner decision gate the PEM bundle.
+	r.addExact(constants.APIPaths.AuthOperatorBootstrapWebSocket, RouteAuthNone)
+
+	// Console SPA (public, no auth required)
+	r.addPrefix(constants.APIPaths.ConsolePrefix, RouteAuthNone)
+
+	// Passkey console routes (public, no mTLS for browser access)
+	r.addPrefix(constants.APIPaths.AuthPasskeysConsolePrefix, RouteAuthNone)
+
+	// CLI-initiated enrollment passkey routes (public — the enrollment
+	// token is the credential, same model as AuthEnrollmentTokenValidate).
+	r.addPrefix(constants.APIPaths.AuthPasskeysEnrollmentPrefix, RouteAuthNone)
+
+	// --- RouteAuthDual: SSE consumer endpoints (mTLS for CLI/operator, web session cookie for browser) ---
+	r.addExact(constants.APIPaths.SSEStream, RouteAuthDual)
+	r.addExact(constants.APIPaths.SSEEvents, RouteAuthDual)
+
+	// --- RouteAuthWebSession: browser-facing routes (cookie auth) ---
+	r.addPrefix(constants.APIPaths.UsersPrefix, RouteAuthWebSession)
+	r.addPrefix(constants.APIPaths.AuthSessionsPrefix, RouteAuthWebSession)
+	r.addPrefix(constants.APIPaths.Approvals, RouteAuthWebSession)
+	r.addPrefix(constants.APIPaths.AuthPasskeys, RouteAuthWebSession)
+
+	// Observe API — passkey-scoped, read-only observability surface. Every
+	// observe route requires a validated web session cookie. The middleware
+	// stamps user_id into context; controllers apply ownership scoping.
+	r.addPrefix(constants.APIPaths.ObservePrefix, RouteAuthWebSession)
+
+	// Observe producer endpoints — mTLS-authenticated app workload only,
+	// never browser-accessible. The producer prefix is longer than
+	// ObservePrefix so it takes precedence in the longest-prefix match,
+	// ensuring producer paths fail closed to mTLS instead of inheriting
+	// the observe prefix's web-session classification. The two exact
+	// producer paths are also classified explicitly so they are matched at
+	// the highest priority (exact match before prefix match).
+	r.addPrefix(constants.APIPaths.ObserveProducerPrefix, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ObserveProducerAgentState, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ObserveProducerRunState, RouteAuthMTLS)
+
+	// mTLS-only operator sub-paths (must precede the browser-capable prefix).
+	r.addExact(constants.APIPaths.OperatorsValidate, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.OperatorsTarget, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.OperatorsCommands, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.OperatorsStop, RouteAuthMTLS)
+	r.addPrefix(constants.APIPaths.OperatorsSession, RouteAuthMTLS)
+	// Browser operator list/bind/unbind (cookie or mTLS for CLI parity).
+	r.addExact(constants.APIPaths.Operators, RouteAuthDual)
+	r.addExact(constants.APIPaths.OperatorsBind, RouteAuthDual)
+	r.addExact(constants.APIPaths.OperatorsUnbind, RouteAuthDual)
+	// Browser operator detail/stop under /api/v1/operators/{id}/ (terminate remains mTLS-enforced in handler).
+	r.addPrefix(constants.APIPaths.OperatorsByID, RouteAuthDual)
+
+	// API reference spec — read by the Console API view (cookie) and by CLI or
+	// builder tooling (mTLS). Not public: it enumerates the full route surface.
+	r.addExact(constants.SwaggerDocPath, RouteAuthDual)
+
+	r.addExact(constants.APIPaths.GatewayReputationSign, RouteAuthMTLS)
+
+	// Owner audit read routes support the browser console's web session and
+	// the CLI's verified mTLS session. Write/ingest paths remain mTLS default.
+	r.addExact(constants.APIPaths.AuditEvents, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuditSummary, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuditVerify, RouteAuthDual)
+
+	// CLI recovery approval — browser console, authenticated existing user.
+	r.addExact(constants.APIPaths.AuthCLIRecoveryApprove, RouteAuthWebSession)
+
+	// CLI recovery approval — mTLS, already-enrolled CLI. The approver user
+	// ID is derived from the verified CLI certificate URI SAN by the unified
+	// auth middleware. This is the headless counterpart to the browser path.
+	r.addExact(constants.APIPaths.AuthCLIRecoveryApproveCLI, RouteAuthMTLS)
+
+	// Platform enrollment owner surfaces — dual auth (web session cookie
+	// for browser console, mTLS for CLI). The controller enforces
+	// active-first-user authorization after the middleware stamps the
+	// user ID from the verified session or certificate.
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentPending, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentEnrolled, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentDecision, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentBatchDecision, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentRevoke, RouteAuthDual)
+
+	// --- RouteAuthMTLS: mTLS-protected sub-paths under WebSession prefixes ---
+	// These exact paths must be checked before the WebSession prefix matches.
+	r.addExact(constants.APIPaths.AuthPasskeysCLIStatus, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ApprovalsCLIStatus, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ApprovalsCLIList, RouteAuthMTLS)
+	// Direct approval response: CLI (mTLS) or browser (web session). The
+	// handler enforces posture-specific grounding (mTLS cert or passkey).
+	r.addExact(constants.APIPaths.ApprovalsRespond, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuthEnrollmentTokenGenerate, RouteAuthMTLS)
+
+	// CLI rotation — mTLS only. The caller's identity (user ID + active CLI
+	// session ID) is derived from the verified CLI certificate URI SAN.
+	// The fail-closed default already covers this path, but the explicit
+	// classification documents the requirement and is asserted by tests.
+	r.addExact(constants.APIPaths.AuthCLIRotate, RouteAuthMTLS)
+
+	// CLI session refresh — mTLS only. The caller's identity (user ID) is
+	// derived from the verified CLI certificate URI SAN. The cert is the
+	// proof of identity; the session is NOT required to be active (the
+	// whole point is to recover from an expired session). The auth
+	// middleware's handleCLIAuth path rejects expired sessions before
+	// reaching the controller, so the controller only runs for certs with
+	// a valid (non-expired) session OR a cert whose URI SAN session ID has
+	// no persisted session (handled by the controller's oldSession=nil
+	// path). The explicit classification documents the requirement.
+	r.addExact(constants.APIPaths.AuthCLIRefresh, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.AuthCLIBind, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.AuthCLIUnbind, RouteAuthMTLS)
+	// CLI logout — mTLS only, admitted on the certificate alone like refresh
+	// (isCLISessionCertIdentityPath), so an expired session can still log out.
+	r.addExact(constants.APIPaths.AuthCLILogout, RouteAuthMTLS)
+
+	// CLI session info — mTLS only. Returns the authenticated session's
+	// persisted operator binding so the CLI can resync local credentials.
+	// An expired or missing session fails closed (401) like every other
+	// session-bound route; the caller recovers via the refresh endpoint.
+	r.addExact(constants.APIPaths.AuthCLISession, RouteAuthMTLS)
+
+	// JIT passkey routes: RouteAuthNone when JWKS is enabled (JWT middleware handles auth),
+	// RouteAuthMTLS when JWKS is disabled (not accessible without mTLS).
+	if jwksEnabled {
+		r.addPrefix(constants.APIPaths.AuthPasskeysJITPrefix, RouteAuthNone)
+		// MCP endpoint is public when JWKS is enabled for BYO clients (JWT middleware handles auth)
+		r.addExact(constants.APIPaths.MCPEndpoint, RouteAuthNone)
+		// A2A endpoints are public when JWKS is enabled
+		r.addPrefix(constants.APIPaths.A2APrefix, RouteAuthNone)
+	} else {
+		// When JWKS is disabled, JIT passkey routes require mTLS
+		r.addPrefix(constants.APIPaths.AuthPasskeysJITPrefix, RouteAuthMTLS)
+	}
+
+	return r
+}
+
+func (r *RouteAuthRegistry) addExact(path string, mode RouteAuthMode) {
+	r.exactPaths[path] = mode
+}
+
+func (r *RouteAuthRegistry) addPrefix(prefix string, mode RouteAuthMode) {
+	r.prefixes[prefix] = mode
+}
+
+// AuthMode returns the authentication mode for the given path.
+// Exact paths are checked first (highest priority), then prefix matches.
+// Unknown routes default to RouteAuthMTLS (fail-closed).
+func (r *RouteAuthRegistry) AuthMode(path string) RouteAuthMode {
+	// Check exact matches first (highest priority)
+	if mode, ok := r.exactPaths[path]; ok {
+		return mode
+	}
+
+	// Check prefix matches — longest prefix wins
+	var bestPrefix string
+	var bestMode RouteAuthMode
+	found := false
+	for prefix, mode := range r.prefixes {
+		if strings.HasPrefix(path, prefix) {
+			if !found || len(prefix) > len(bestPrefix) {
+				bestPrefix = prefix
+				bestMode = mode
+				found = true
+			}
+		}
+	}
+	if found {
+		return bestMode
+	}
+
+	// Fail-closed default: unknown routes require mTLS
+	return RouteAuthMTLS
+}
+
+// AuthError represents a structured authentication error.
+type AuthError struct {
+	Message string                    `json:"error"`
+	Reason  constants.AuthErrorReason `json:"reason,omitempty"`
+	Status  int                       `json:"-"`
+}
+
+// PrivilegedRouteRegistry defines routes that require operator or CLI auth.
+// App certificates are blocked from these routes. This centralized registry
+// eliminates fragile HasPrefix duplication in handleAppAuth.
+type PrivilegedRouteRegistry struct {
+	prefixes map[string]struct{}
+}
+
+// NewPrivilegedRouteRegistry creates a registry with the canonical privileged routes.
+func NewPrivilegedRouteRegistry() *PrivilegedRouteRegistry {
+	r := &PrivilegedRouteRegistry{
+		prefixes: make(map[string]struct{}),
+	}
+
+	// Governance envelope submission admits policy-authorized apps and enforces
+	// transport identity plus the five-layer verification gauntlet in its handler.
+
+	// Query endpoints require operator/CLI auth
+	r.addPrefix(constants.APIPaths.QueryPrefix)
+
+	return r
+}
+
+func (r *PrivilegedRouteRegistry) addPrefix(prefix string) {
+	r.prefixes[prefix] = struct{}{}
+}
+
+// IsPrivileged returns true if the path matches a privileged route prefix.
+func (r *PrivilegedRouteRegistry) IsPrivileged(path string) bool {
+	for prefix := range r.prefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *AuthError) Error() string {
+	b, err := json.Marshal(e)
+	if err != nil {
+		return fmt.Sprintf("{\"error\":\"%s\"}", e.Message)
+	}
+	return string(b)
+}
+
+func (e *AuthError) Is(target error) bool {
+	t, ok := target.(*AuthError)
+	if !ok {
+		return false
+	}
+	if t.Reason == "" {
+		return true
+	}
+	return e.Reason == t.Reason
+}
+
+// cacheEntry represents a cached value with expiration time.
+type cacheEntry[T any] struct {
+	value     T
+	expiresAt time.Time
+}
+
+// AuthService handles authentication for the Gateway service.
+type AuthService struct {
+	db         *DocumentStoreService
+	pki        *PKIAuthority
+	logger     *slog.Logger
+	userSvc    *UserService
+	personaSvc *PersonaService
+	responder  *response.Writer
+
+	jwks        *JWKSProvider
+	jwtRole     string
+	jwtIssuer   string
+	jwtAudience string
+
+	routeAuth        *RouteAuthRegistry
+	privilegedRoutes *PrivilegedRouteRegistry
+
+	// Rate limiting state for app policies
+	muLimiters sync.Mutex
+	limiters   map[string]*tokenBucket
+
+	// Auth caching (5-minute TTL)
+	userCache sync.Map // userID -> *cacheEntry[*models.User]
+}
+
+// NewAuthService creates a new AuthService.
+func NewAuthService(docStore *DocumentStoreService, pki *PKIAuthority, logger *slog.Logger, userSvc *UserService, personaSvc *PersonaService, responder *response.Writer, jwks *JWKSProvider, jwtRole, jwtIssuer, jwtAudience string) *AuthService {
+	jwksEnabled := jwks != nil
+	return &AuthService{
+		db:               docStore,
+		pki:              pki,
+		logger:           logger,
+		userSvc:          userSvc,
+		personaSvc:       personaSvc,
+		responder:        responder,
+		jwks:             jwks,
+		jwtRole:          jwtRole,
+		jwtIssuer:        jwtIssuer,
+		jwtAudience:      jwtAudience,
+		routeAuth:        NewRouteAuthRegistry(jwksEnabled),
+		privilegedRoutes: NewPrivilegedRouteRegistry(),
+		limiters:         make(map[string]*tokenBucket),
+	}
+}
+
+// getCachedUser retrieves a user from cache if valid.
+func (s *AuthService) getCachedUser(userID string) *models.User {
+	if userID == "" {
+		return nil
+	}
+	entry, ok := s.userCache.Load(userID)
+	if !ok {
+		return nil
+	}
+	ce := entry.(*cacheEntry[*models.User])
+	if time.Now().After(ce.expiresAt) {
+		s.userCache.Delete(userID)
+		return nil
+	}
+	return ce.value
+}
+
+// cacheUser stores a user in cache with 5-minute TTL.
+func (s *AuthService) cacheUser(userID string, user *models.User) {
+	if userID == "" || user == nil {
+		return
+	}
+	s.userCache.Store(userID, &cacheEntry[*models.User]{
+		value:     user,
+		expiresAt: time.Now().Add(5 * time.Minute),
+	})
+}
+
+// invalidateUserCache removes a user from cache.
+func (s *AuthService) invalidateUserCache(userID string) {
+	if userID != "" {
+		s.userCache.Delete(userID)
+	}
+}
+
+// getAndValidateUser fetches a user by ID (cache-first), caches the result,
+// and verifies the user is active. Returns the user if active, nil if not found,
+// or an error if the lookup fails or the user is disabled.
+func (s *AuthService) getAndValidateUser(ctx context.Context, userID string) error {
+	if s.userSvc == nil || userID == "" {
+		return nil
+	}
+	user := s.getCachedUser(userID)
+	if user == nil {
+		var err error
+		user, err = s.userSvc.GetByID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("gateway: auth: load user %s: %w: %w", userID, err, constants.ErrUserNotFound)
+		}
+		if user != nil {
+			s.cacheUser(userID, user)
+		}
+	}
+	if user != nil && !user.IsActive() {
+		return &AuthError{Message: constants.ErrIdentityDisabled.Error(), Reason: constants.AuthErrorReasonIdentityDisabled, Status: http.StatusForbidden}
+	}
+	return nil
+}
+
+// InvalidateUserCache is a public method for explicit cache invalidation.
+// Call this after user status changes (disable, delete, etc.) to ensure cache consistency.
+func (s *AuthService) InvalidateUserCache(userID string) {
+	s.invalidateUserCache(userID)
+}
+
+// ValidateOperatorSession checks if a session ID is valid and returns the Operator document.
+// Auth depends on session validity (existence + certificate revocation), not on operator
+// status liveness signals from other processes. The primary session invalidation mechanism
+// is certificate revocation via PKI authority.
+func (s *AuthService) ValidateOperatorSession(ctx context.Context, operatorSessionID string) (*operatorv1.OperatorDocument, error) {
+	if operatorSessionID == "" {
+		return nil, &AuthError{Message: constants.ErrGatewayOperatorSessionIDRequired.Error(), Status: http.StatusUnauthorized}
+	}
+
+	docs, err := s.db.FindOperatorsBySession(ctx, operatorSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: auth: query operator session: %w", err)
+	}
+
+	if len(docs) == 0 {
+		return nil, &AuthError{Message: constants.ErrGatewayOperatorSessionInvalid.Error(), Status: http.StatusUnauthorized}
+	}
+	if len(docs) != 1 {
+		return nil, &AuthError{Message: constants.ErrGatewayOperatorSessionDuplicate.Error(), Status: http.StatusUnauthorized}
+	}
+
+	// Convert Document to OperatorDocument
+	op, err := models.OperatorDocumentFromStore(docs[0])
+	if err != nil {
+		return nil, fmt.Errorf("gateway: auth: unmarshal operator document: %w: %w", err, constants.ErrResponseParseFailed)
+	}
+
+	// [PIVOT] Reject terminated identities (Plan §4.6)
+	// We allow OFFLINE and STALE statuses to authenticate (to support bootstrap
+	// and recovery), but TERMINATED is a hard-gate rejection.
+	if constants.OperatorStatus(op.Status) == constants.OperatorStatusTerminated {
+		return nil, &AuthError{Message: constants.ErrOperatorIdentityDisabled.Error(), Status: http.StatusUnauthorized}
+	}
+
+	// Operator registration age does not expire a persistent runtime identity.
+	// Authentication retains transport certificate checks and identity retirement.
+
+	// Check if the linked user is active (plan §4.6)
+	// This is the single chokepoint that makes retirement real - without it,
+	// a stale CLI cert can still talk to the Gateway.
+	if err := s.getAndValidateUser(ctx, op.UserId); err != nil {
+		return nil, err
+	}
+
+	return op, nil
+}
+
+func (s *AuthService) ValidateOperatorCLISessionBinding(ctx context.Context, operatorSessionID, cliSessionID, userID string) (*operatorv1.OperatorDocument, error) {
+	op, err := s.ValidateOperatorSession(ctx, operatorSessionID)
+	if err != nil {
+		return nil, err
+	}
+	if op.UserId != userID {
+		return nil, &AuthError{Message: constants.ErrGatewayOperatorSessionUserMismatch.Error(), Status: http.StatusUnauthorized}
+	}
+	if cliSessionID == "" {
+		return nil, &AuthError{Message: constants.ErrCLIL3SessionIDRequired.Error(), Status: http.StatusUnauthorized}
+	}
+	doc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: auth: load CLI session binding: %w", err)
+	}
+	if doc == nil {
+		return nil, &AuthError{Message: constants.ErrCLISessionNotFound.Error(), Status: http.StatusUnauthorized}
+	}
+	b, err := json.Marshal(doc.Data)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: auth: marshal CLI session binding: %w: %w", err, constants.ErrRequestMarshalFailed)
+	}
+	var cliSession models.CLISession
+	if err := json.Unmarshal(b, &cliSession); err != nil {
+		return nil, fmt.Errorf("gateway: auth: unmarshal CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
+	}
+	checkTime := time.Now()
+	if !cliSession.IsActive || (!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) || (!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) || (!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
+		return nil, &AuthError{Message: constants.ErrCLISessionExpired.Error(), Status: http.StatusUnauthorized}
+	}
+	if cliSession.UserID != userID || !cliSessionBindsOperator(&cliSession, operatorSessionID) {
+		return nil, &AuthError{Message: constants.ErrGatewayCLISessionBindingMismatch.Error(), Status: http.StatusUnauthorized}
+	}
+	return op, nil
+}
+
+// extractOperatorSessionIDFromMTLS extracts the operator session ID from the mTLS certificate's SPIFFE URI SAN.
+// This enables mTLS-only authentication without requiring Bearer tokens.
+func (s *AuthService) extractOperatorSessionIDFromMTLS(r *http.Request) string {
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		return ""
+	}
+
+	cert := r.TLS.PeerCertificates[0]
+	wid := protocol.NewWorkloadIdentity()
+
+	for _, uri := range cert.URIs {
+		spiffeID := uri.String()
+		if sessionID, ok := wid.ExtractOperatorSessionID(spiffeID); ok {
+			return sessionID
+		}
+	}
+
+	return ""
+}
+
+// Middleware returns an http.Handler that authenticates requests using the unified auth middleware.
+// The route auth mode is determined by RouteAuthRegistry, and auth is enforced accordingly.
+// No bypasses — every request goes through the middleware. Fail-closed for unknown routes.
+func (s *AuthService) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mode := s.routeAuth.AuthMode(r.URL.Path)
+
+		switch mode {
+		case RouteAuthNone:
+			// Truly public routes: no auth required
+			next.ServeHTTP(w, r)
+			return
+
+		case RouteAuthMTLS:
+			// mTLS only: enforce cert presence + revocation + identity extraction
+			s.handleMTLSAuth(w, r, next)
+			return
+
+		case RouteAuthWebSession:
+			// Web session cookie only: validate cookie, stamp context
+			s.handleWebSessionAuth(w, r, next)
+			return
+
+		case RouteAuthDual:
+			// Dual auth: try mTLS first, fall back to web session cookie
+			if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+				s.handleMTLSAuth(w, r, next)
+			} else {
+				s.handleWebSessionAuth(w, r, next)
+			}
+			return
+
+		default:
+			// Fail-closed: unknown routes default to RouteAuthMTLS
+			s.handleMTLSAuth(w, r, next)
+			return
+		}
+	})
+}
+
+// handleMTLSAuth enforces mTLS cert presence, revocation check, and operator/CLI/app identity extraction.
+// It stamps the context with identity info and calls next on success.
+func (s *AuthService) handleMTLSAuth(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		s.logger.Warn("gateway: auth: mTLS required but no client certificate provided", "path", r.URL.Path)
+		s.responder.Error(w, http.StatusUnauthorized, constants.ErrMTLSCertRequired.Error())
+		return
+	}
+
+	// Verify certificate revocation status
+	if s.pki != nil {
+		if err := s.pki.VerifyCertificate(r.Context(), r.TLS.PeerCertificates[0]); err != nil {
+			s.logger.Warn("gateway: auth: mTLS certificate revoked", "path", r.URL.Path, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: verify certificate: %w: %s", err, constants.ErrCertRevocationCheckFailed))
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrMTLSCertRevoked.Error())
+			return
+		}
+	}
+
+	// Extract operator session ID from mTLS certificate SPIFFE URI SAN
+	operatorSessionID := s.extractOperatorSessionIDFromMTLS(r)
+	cliSessionID := r.Header.Get(constants.HeaderCLISessionID)
+
+	switch {
+	case operatorSessionID != "":
+		s.handleOperatorAuth(w, r, operatorSessionID, cliSessionID, next)
+		return
+	case cliSessionID != "":
+		if s.handleCLIAuth(w, r, cliSessionID, next) {
+			return
+		}
+	default:
+		if s.handleAppAuth(w, r, next) {
+			return
+		}
+	}
+
+	// For WebSockets, return a plain text error for 401.
+	if strings.HasPrefix(r.URL.Path, constants.APIPaths.WSPrefix) {
+		http.Error(w, constants.ErrGatewayUnauthorized.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	s.responder.Error(w, http.StatusUnauthorized, constants.ErrProtocolAuthRequired.Error())
+}
+
+// handleWebSessionAuth validates the web session cookie and stamps context with user_id + web_session_id.
+func (s *AuthService) handleWebSessionAuth(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	webSessionID, userID, err := s.ValidateWebSessionCookie(r)
+	if err != nil {
+		s.responder.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	ctx := context.WithValue(r.Context(), constants.ContextKeyUserID, userID)
+	ctx = context.WithValue(ctx, constants.ContextKeyWebSessionID, webSessionID)
+	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// handleOperatorAuth handles authentication for Operator sessions.
+// Always handles the request (succeeds or writes an error response).
+func (s *AuthService) handleOperatorAuth(w http.ResponseWriter, r *http.Request, operatorSessionID, cliSessionID string, next http.Handler) {
+	op, err := s.ValidateOperatorSession(r.Context(), operatorSessionID)
+	if err == nil {
+		if len(r.TLS.PeerCertificates) > 0 {
+			wid := protocol.NewWorkloadIdentity()
+			cert := r.TLS.PeerCertificates[0]
+			match := false
+			for _, uri := range cert.URIs {
+				if wid.MatchesOperator(uri.String(), op.OrganizationId, op.Id, operatorSessionID) {
+					match = true
+					break
+				}
+			}
+			if !match && cliSessionID != "" {
+				var err error
+				match, err = s.cliCertBoundToOperator(r.Context(), cert.URIs, cliSessionID, op.UserId, operatorSessionID)
+				if err != nil {
+					s.logger.Error("gateway: auth: CLI cert binding check failed", "operator_session_id", operatorSessionID, "cli_session_id", cliSessionID, string(constants.ConnectionStateError), err)
+					s.responder.Error(w, http.StatusInternalServerError, constants.ErrCLICertBindingCheckFailed.Error())
+					return
+				}
+			}
+			if !match {
+				s.logger.Warn("gateway: auth: mTLS URI SAN mismatch for Operator session", "path", r.URL.Path, "operator_id", op.Id, "operator_session_id", operatorSessionID)
+				s.responder.Error(w, http.StatusForbidden, constants.ErrMTLSIdentityMismatch.Error())
+				return
+			}
+		}
+
+		// Stamp context with user_id and operator session info
+		ctx := context.WithValue(r.Context(), constants.ContextKeyUserID, op.UserId)
+		ctx = context.WithValue(ctx, constants.ContextKeyTenantID, op.OrganizationId)
+		ctx = context.WithValue(ctx, constants.ContextKeyOperatorID, op.Id)
+		ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, operatorSessionID)
+		if cliSessionID != "" {
+			ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, cliSessionID)
+		}
+		if webSessionID := r.Header.Get(constants.HeaderWebSessionID); webSessionID != "" {
+			ctx = context.WithValue(ctx, constants.ContextKeyWebSessionID, webSessionID)
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+		return
+	}
+
+	s.logger.Warn("gateway: auth: Invalid Operator session attempt", "operator_session_id", safeTruncateID(operatorSessionID), string(constants.ConnectionStateError), err)
+
+	if ae, ok := err.(*AuthError); ok {
+		s.responder.Error(w, ae.Status, ae.Message)
+		return
+	}
+	s.logger.Error("gateway: auth: operator session validation failed", "operator_session_id", safeTruncateID(operatorSessionID), string(constants.ConnectionStateError), err)
+	s.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+}
+
+// handleCLIAuth handles authentication for CLI sessions.
+func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliSessionID string, next http.Handler) bool {
+	if len(r.TLS.PeerCertificates) > 0 {
+		wid := protocol.NewWorkloadIdentity()
+		cert := r.TLS.PeerCertificates[0]
+		if isCLISessionCertIdentityPath(r.URL.Path) {
+			return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, wid, next)
+		}
+
+		cliDoc, err := s.db.DocGet(r.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
+		if err != nil {
+			s.logger.Error("gateway: auth: load CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: load CLI session %s: %w: %w", cliSessionID, err, constants.ErrNotFound))
+			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionLoadFailed.Error())
+			return true
+		}
+		if cliDoc == nil {
+			// Session not found. The only paths that may proceed with a
+			// missing session are the refresh and logout endpoints, where
+			// the cert is the proof of identity and the session may have
+			// been lost (e.g., gateway volume reset). All other paths fail
+			// closed.
+			if isCLISessionCertIdentityPath(r.URL.Path) {
+				return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, wid, next)
+			}
+			s.logger.Warn("gateway: auth: CLI session not found", "cli_session_id", cliSessionID)
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionInvalid.Error())
+			return true
+		}
+
+		var cliSession models.CLISession
+		b, err := json.Marshal(cliDoc.Data)
+		if err != nil {
+			s.logger.Error("gateway: auth: marshal CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal CLI session %s: %w: %w", cliSessionID, err, constants.ErrRequestMarshalFailed))
+			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionParseFailed.Error())
+			return true
+		}
+		if err := json.Unmarshal(b, &cliSession); err != nil {
+			s.logger.Error("gateway: auth: unmarshal CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal CLI session %s: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed))
+			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionParseFailed.Error())
+			return true
+		}
+
+		if !cliSession.IsActive {
+			s.logger.Warn("gateway: auth: CLI session inactive", "cli_session_id", cliSessionID)
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionInvalid.Error())
+			return true
+		}
+
+		checkTime := time.Now()
+		if (!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) ||
+			(!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) ||
+			(!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
+			// Session expired. The only paths that may proceed with an
+			// expired session are the refresh and logout endpoints, where
+			// the cert is the proof of identity and the session expiry is
+			// the condition being recovered from (or logged out of). All
+			// other paths fail closed.
+			if isCLISessionCertIdentityPath(r.URL.Path) {
+				return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, wid, next)
+			}
+			s.logger.Warn("gateway: auth: CLI session expired", "cli_session_id", cliSessionID)
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionExpired.Error())
+			return true
+		}
+
+		if err := s.getAndValidateUser(r.Context(), cliSession.UserID); err != nil {
+			if ae, ok := err.(*AuthError); ok {
+				s.logger.Warn("gateway: auth: CLI session identity disabled", "user_id", cliSession.UserID)
+				s.responder.Error(w, ae.Status, ae.Message)
+			} else {
+				s.logger.Error("gateway: auth: load user for CLI session", "user_id", cliSession.UserID, string(constants.ConnectionStateError), err)
+				s.responder.Error(w, http.StatusInternalServerError, constants.ErrIdentityValidationFailed.Error())
+			}
+			return true
+		}
+
+		match := false
+		fingerprintMatch := matchesCertificateFingerprint(cert, cliSession.CertFingerprint)
+		for _, uri := range cert.URIs {
+			uriString := uri.String()
+			if wid.MatchesCLI(uriString, cliSession.UserID, cliSessionID) {
+				match = true
+				break
+			}
+			certUserID, userOK := wid.ExtractUserID(uriString)
+			certSessionID, sessionOK := wid.ExtractCLISessionID(uriString)
+			if fingerprintMatch && userOK && sessionOK && certUserID == cliSession.UserID && wid.MatchesCLI(uriString, certUserID, certSessionID) {
+				match = true
+				break
+			}
+		}
+		if !match {
+			s.logger.Warn("gateway: auth: mTLS URI SAN mismatch for CLI session", "path", r.URL.Path, "cli_session_id", cliSessionID)
+			s.responder.Error(w, http.StatusForbidden, constants.ErrMTLSIdentityMismatch.Error())
+			return true
+		}
+		// Stamp context with user_id and cli_session_id. Operator identity
+		// is stamped from the persisted session binding — never from
+		// request headers, which are client-controlled and not
+		// authoritative.
+		ctx := context.WithValue(r.Context(), constants.ContextKeyUserID, cliSession.UserID)
+		ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, cliSessionID)
+
+		headerOpID := r.Header.Get(constants.HeaderOperatorID)
+		headerOpSessionID := r.Header.Get(constants.HeaderOperatorSessionID)
+
+		if cliSession.OperatorSessionID != "" {
+			// A request targets the primary binding unless its operator
+			// session header names another session bound to this CLI session.
+			targetSessionID := cliSession.OperatorSessionID
+			if headerOpSessionID != "" && headerOpSessionID != targetSessionID {
+				if !cliSessionBindsOperator(&cliSession, headerOpSessionID) {
+					s.logger.Warn("gateway: auth: operator headers mismatch persisted CLI session binding",
+						"path", r.URL.Path,
+						"cli_session_id", cliSessionID,
+						"persisted_operator_session_id", safeTruncateID(cliSession.OperatorSessionID))
+					s.responder.Error(w, http.StatusForbidden, constants.ErrOperatorBindingMismatch.Error())
+					return true
+				}
+				targetSessionID = headerOpSessionID
+			}
+			op, err := s.ValidateOperatorSession(r.Context(), targetSessionID)
+			if err != nil {
+				if ae, ok := err.(*AuthError); ok {
+					s.logger.Warn("gateway: auth: persisted operator binding invalid", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), err)
+					s.responder.Error(w, ae.Status, ae.Message)
+				} else {
+					s.logger.Error("gateway: auth: resolve persisted operator binding", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), err)
+					s.responder.Error(w, http.StatusInternalServerError, constants.ErrIdentityValidationFailed.Error())
+				}
+				return true
+			}
+			if (headerOpID != "" && headerOpID != op.Id) || (targetSessionID != cliSession.OperatorSessionID && op.UserId != cliSession.UserID) {
+				s.logger.Warn("gateway: auth: operator headers mismatch persisted CLI session binding",
+					"path", r.URL.Path,
+					"cli_session_id", cliSessionID,
+					"persisted_operator_session_id", safeTruncateID(cliSession.OperatorSessionID))
+				s.responder.Error(w, http.StatusForbidden, constants.ErrOperatorBindingMismatch.Error())
+				return true
+			}
+			ctx = context.WithValue(ctx, constants.ContextKeyOperatorID, op.Id)
+			ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, targetSessionID)
+			ctx = context.WithValue(ctx, constants.ContextKeyBoundOperatorSessionIDs, cliSession.BoundOperatorSessionIDs)
+		} else if headerOpID != "" || headerOpSessionID != "" {
+			// No persisted binding: the caller must not assert an operator
+			// identity the session does not carry.
+			s.logger.Warn("gateway: auth: operator headers sent but CLI session has no operator binding", "path", r.URL.Path, "cli_session_id", cliSessionID)
+			s.responder.Error(w, http.StatusForbidden, constants.ErrOperatorBindingMismatch.Error())
+			return true
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+		return true
+	}
+
+	return false
+}
+
+func matchesCertificateFingerprint(cert *x509.Certificate, expected string) bool {
+	if cert == nil || expected == "" {
+		return false
+	}
+	fingerprint := sha256.Sum256(cert.Raw)
+	actual := hex.EncodeToString(fingerprint[:])
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) == 1
+}
+
+// isCLISessionCertIdentityPath reports whether path is admitted on the CLI
+// certificate alone, whatever state its CLI session is in. Refresh needs this
+// to recover a stale session. Logout needs it so a user whose session already
+// expired can still log out; it grants nothing refresh does not, since any
+// holder of an unrevoked certificate can refresh and then log out.
+func isCLISessionCertIdentityPath(path string) bool {
+	return path == constants.APIPaths.AuthCLIRefresh || path == constants.APIPaths.AuthCLILogout
+}
+
+// handleCLIRefreshAuth is the fail-closed auth path for the CLI session refresh and logout endpoints. It runs before persisted CLI session and Operator binding validation because refresh recovers expired, missing, inactive, or stale session state, and logout must work from that same state. The cert is the proof of identity: handleMTLSAuth already verified its revocation status, chain, and expiry.
+//
+// Security guarantees:
+//   - The cert is verified (revocation, chain, expiry) by handleMTLSAuth.
+//   - The user ID is extracted from the cert URI SAN, never from the
+//     request body or the expired/missing session record.
+//   - The user is validated as active.
+//   - The header session either matches the cert URI SAN or carries the same user and certificate fingerprint after a prior session rotation.
+//   - Only the refresh and logout endpoints are reachable through this path;
+//     all other endpoints fail closed on expired/missing sessions.
+func (s *AuthService) cliRefreshSessionMatchesCertificate(ctx context.Context, cliSessionID, userID string, cert *x509.Certificate) (bool, error) {
+	doc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
+	if err != nil {
+		return false, fmt.Errorf("gateway: auth: load refreshed CLI session: %w", err)
+	}
+	if doc == nil {
+		return false, nil
+	}
+	session, err := decodeCLISession(doc)
+	if err != nil {
+		return false, fmt.Errorf("gateway: auth: decode refreshed CLI session: %w", err)
+	}
+	return session.UserID == userID && matchesCertificateFingerprint(cert, session.CertFingerprint), nil
+}
+
+func (s *AuthService) handleCLIRefreshAuth(w http.ResponseWriter, r *http.Request, cert *x509.Certificate, oldCLISessionID string, wid *protocol.WorkloadIdentity, next http.Handler) bool {
+	var userID string
+	var certSessionID string
+	for _, uri := range cert.URIs {
+		uriStr := uri.String()
+		uid, userOK := wid.ExtractUserID(uriStr)
+		sid, sessionOK := wid.ExtractCLISessionID(uriStr)
+		if userOK && sessionOK && wid.MatchesCLI(uriStr, uid, sid) {
+			userID = uid
+			certSessionID = sid
+			break
+		}
+	}
+	if userID == "" || certSessionID == "" {
+		s.logger.Warn("gateway: auth: CLI refresh: cert URI SAN is invalid", "path", r.URL.Path)
+		s.responder.Error(w, http.StatusForbidden, constants.ErrMTLSIdentityMismatch.Error())
+		return true
+	}
+	if certSessionID != oldCLISessionID {
+		matches, err := s.cliRefreshSessionMatchesCertificate(r.Context(), oldCLISessionID, userID, cert)
+		if err != nil {
+			s.logger.Error("gateway: auth: CLI refresh: validate rotated session binding", "cli_session_id", oldCLISessionID, string(constants.ConnectionStateError), err)
+			s.responder.Error(w, http.StatusInternalServerError, constants.ErrIdentityValidationFailed.Error())
+			return true
+		}
+		if !matches {
+			s.logger.Warn("gateway: auth: CLI refresh: cert does not match rotated session", "path", r.URL.Path, "cli_session_id_prefix", safeTruncateID(oldCLISessionID))
+			s.responder.Error(w, http.StatusForbidden, constants.ErrMTLSIdentityMismatch.Error())
+			return true
+		}
+	}
+
+	// Validate the user is still active. An expired session does not
+	// bypass user-disabled checks.
+	if err := s.getAndValidateUser(r.Context(), userID); err != nil {
+		if ae, ok := err.(*AuthError); ok {
+			s.logger.Warn("gateway: auth: CLI refresh: identity disabled", "user_id", userID)
+			s.responder.Error(w, ae.Status, ae.Message)
+		} else {
+			s.logger.Error("gateway: auth: CLI refresh: load user", "user_id", userID, string(constants.ConnectionStateError), err)
+			s.responder.Error(w, http.StatusInternalServerError, constants.ErrIdentityValidationFailed.Error())
+		}
+		return true
+	}
+
+	s.logger.Info("gateway: auth: CLI refresh: admitting expired/missing session for refresh",
+		"user_id", userID,
+		"cli_session_id_prefix", safeTruncateID(oldCLISessionID),
+	)
+
+	ctx := context.WithValue(r.Context(), constants.ContextKeyUserID, userID)
+	ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, oldCLISessionID)
+	next.ServeHTTP(w, r.WithContext(ctx))
+	return true
+}
+
+// handleAppAuth handles authentication for system and external apps via URI SAN.
+func (s *AuthService) handleAppAuth(w http.ResponseWriter, r *http.Request, next http.Handler) bool {
+	if len(r.TLS.PeerCertificates) > 0 {
+		cert := r.TLS.PeerCertificates[0]
+		wid := protocol.NewWorkloadIdentity()
+		for _, uri := range cert.URIs {
+			uriStr := uri.String()
+			if wid.IsAppSAN(uriStr) {
+				appID := uriStr
+				doc, err := s.db.DocGet(r.Context(), marshaler.CollectionName(constants.CollectionAppPolicies), appID)
+				if err != nil {
+					s.logger.Warn("gateway: auth: app policy not found", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: load app policy %s: %w", appID, err))
+					s.responder.Error(w, http.StatusForbidden, constants.ErrAppPolicyNotFound.Error())
+					return true
+				}
+				if doc == nil {
+					s.logger.Warn("gateway: auth: app policy not found", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: load app policy %s: %w", appID, constants.ErrNotFound))
+					s.responder.Error(w, http.StatusForbidden, constants.ErrAppPolicyNotFound.Error())
+					return true
+				}
+
+				var policy models.AppPolicy
+				data, err := json.Marshal(doc.Data)
+				if err != nil {
+					s.logger.Error("gateway: auth: marshal app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal app policy %s: %w: %w", appID, err, constants.ErrRequestMarshalFailed))
+					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
+					return true
+				}
+				if err := json.Unmarshal(data, &policy); err != nil {
+					s.logger.Error("gateway: auth: unmarshal app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal app policy %s: %w: %w", appID, err, constants.ErrResponseParseFailed))
+					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
+					return true
+				}
+
+				if s.privilegedRoutes.IsPrivileged(r.URL.Path) {
+					s.responder.Error(w, http.StatusForbidden, constants.ErrPrivilegedEndpointAccess.Error())
+					return true
+				}
+
+				if err := s.enforceAppPolicy(r, &policy, appID); err != nil {
+					s.logger.Warn("gateway: auth: app policy enforcement failed", "app_id", appID, string(constants.ConnectionStateError), err)
+					if ae, ok := err.(*AuthError); ok {
+						s.responder.Error(w, ae.Status, ae.Message)
+					} else {
+						s.responder.Error(w, http.StatusForbidden, err.Error())
+					}
+					return true
+				}
+
+				ctx := context.WithValue(r.Context(), constants.ContextKeyAppID, appID)
+				// Delegated certs carry a second URI SAN for the requestor user identity.
+				// Extract it so processGatewayTransaction can bind both identities to
+				// the signed governance envelope (RequestorUserId + ActingAppId).
+				wid2 := protocol.NewWorkloadIdentity()
+				var delegateUserID string
+				for _, u2 := range cert.URIs {
+					u2Str := u2.String()
+					if wid2.IsUserSAN(u2Str) {
+						if userID, ok := wid2.ExtractUserIDFromUserSAN(u2Str); ok {
+							delegateUserID = userID
+						}
+						break
+					}
+				}
+				if delegateUserID != "" {
+					ctx = context.WithValue(ctx, constants.ContextKeyUserID, delegateUserID)
+				}
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// getLimiter returns a rate limiter for the given app ID, creating one if needed.
+func (s *AuthService) getLimiter(appID string, rps int) *tokenBucket {
+	s.muLimiters.Lock()
+	defer s.muLimiters.Unlock()
+
+	limiter, exists := s.limiters[appID]
+	if !exists {
+		// Create a new limiter with the configured RPS and a burst of 2x RPS
+		limiter = newTokenBucket(float64(rps), rps*2)
+		s.limiters[appID] = limiter
+	}
+	return limiter
+}
+
+// enforceAppPolicy validates that the request complies with the app's policy.
+// It checks collection access, event types, intents, and rate limits.
+func (s *AuthService) enforceAppPolicy(r *http.Request, policy *models.AppPolicy, appID string) error {
+	// Check rate limit (if configured)
+	if policy.RateLimitRPS > 0 {
+		limiter := s.getLimiter(appID, policy.RateLimitRPS)
+		if !limiter.Allow() {
+			s.logger.Warn("gateway: auth: app rate limit exceeded", "app_id", appID, "rate_limit_rps", policy.RateLimitRPS, "path", r.URL.Path)
+			return &AuthError{Message: fmt.Sprintf("rate limit exceeded (%d RPS)", policy.RateLimitRPS), Reason: constants.AuthErrorReasonRateLimitExceeded, Status: http.StatusTooManyRequests}
+		}
+	}
+
+	// Check payload size (if configured)
+	if policy.MaxPayloadBytes > 0 {
+		if r.ContentLength > policy.MaxPayloadBytes {
+			return &AuthError{Message: fmt.Sprintf("payload exceeds maximum allowed size of %d bytes", policy.MaxPayloadBytes), Reason: constants.AuthErrorReasonPayloadTooLarge, Status: http.StatusRequestEntityTooLarge}
+		}
+	}
+
+	// Check collection access for /_query paths (already blocked, but for future-proofing)
+	if strings.HasPrefix(r.URL.Path, constants.APIPaths.QueryPrefix) {
+		// Extract collection from query parameters
+		collection := r.URL.Query().Get("collection")
+		if collection != "" && len(policy.AllowedCollections) > 0 {
+			allowed := false
+			for _, allowedCol := range policy.AllowedCollections {
+				if collection == allowedCol {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return &AuthError{Message: fmt.Sprintf("collection '%s' not in allowed collections", collection), Reason: constants.AuthErrorReasonCollectionNotAllowed, Status: http.StatusForbidden}
+			}
+		}
+	}
+
+	return nil
+}
+
+// cliCertBoundToOperator reports whether the presented client certificate is a
+// CLI workload SPIFFE ID whose CLI session is owned by the given operator
+// session. This lets a CLI client (./ztd login) call internal APIs scoped by
+// cli_session_id while presenting its CLI mTLS cert and the linked operator
+// session as a Bearer token.
+func (s *AuthService) cliCertBoundToOperator(ctx context.Context, certURIs []*url.URL, cliSessionID, userID, operatorSessionID string) (bool, error) {
+	if cliSessionID == "" || operatorSessionID == "" {
+		return false, nil
+	}
+	wid := protocol.NewWorkloadIdentity()
+	uriMatch := false
+	for _, uri := range certURIs {
+		if userID != "" && wid.MatchesCLI(uri.String(), userID, cliSessionID) {
+			uriMatch = true
+			break
+		}
+		if wid.MatchesCLISessionOnly(uri.String(), cliSessionID) {
+			uriMatch = true
+			break
+		}
+	}
+	if !uriMatch {
+		return false, nil
+	}
+	doc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
+	if err != nil {
+		return false, fmt.Errorf("gateway: auth: load CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrNotFound)
+	}
+	if doc == nil {
+		return false, nil
+	}
+	var cliSession models.CLISession
+	b, err := json.Marshal(doc.Data)
+	if err != nil {
+		return false, fmt.Errorf("gateway: auth: marshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrRequestMarshalFailed)
+	}
+	if err := json.Unmarshal(b, &cliSession); err != nil {
+		return false, fmt.Errorf("gateway: auth: unmarshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
+	}
+	if !cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(time.Now()) {
+		return false, nil
+	}
+	return cliSessionBindsOperator(&cliSession, operatorSessionID), nil
+}
+
+// ValidateWebSessionCookie extracts and validates the web session cookie from
+// the request, returning the web session ID and user ID if valid. This is used
+// by the unified auth middleware for RouteAuthWebSession and RouteAuthDual modes.
+func (s *AuthService) ValidateWebSessionCookie(r *http.Request) (webSessionID, userID string, err error) {
+	cookie, err := r.Cookie(constants.WebSessionCookieName)
+	if err != nil || cookie == nil {
+		return "", "", constants.ErrWebSessionCookieRequired
+	}
+
+	webSessionID = cookie.Value
+	if webSessionID == "" {
+		return "", "", constants.ErrWebSessionCookieInvalid
+	}
+
+	doc, err := s.db.DocGet(r.Context(), marshaler.CollectionName(constants.CollectionWebSessions), webSessionID)
+	if err != nil {
+		s.logger.Error("gateway: auth: load web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: load web session %s: %w: %w", webSessionID, err, constants.ErrNotFound))
+		return "", "", constants.ErrWebSessionValidationFailed
+	}
+	if doc == nil {
+		return "", "", constants.ErrWebSessionNotFound
+	}
+
+	var webSession models.WebSession
+	data, err := json.Marshal(doc.Data)
+	if err != nil {
+		s.logger.Error("gateway: auth: marshal web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal web session %s: %w: %w", webSessionID, err, constants.ErrRequestMarshalFailed))
+		return "", "", constants.ErrSessionParseFailed
+	}
+	if err := json.Unmarshal(data, &webSession); err != nil {
+		s.logger.Error("gateway: auth: unmarshal web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal web session %s: %w: %w", webSessionID, err, constants.ErrResponseParseFailed))
+		return "", "", constants.ErrSessionParseFailed
+	}
+
+	if time.Now().UnixMilli() > webSession.ExpiresAtUnixMs {
+		return "", "", constants.ErrWebSessionExpired
+	}
+
+	if err := s.getAndValidateUser(r.Context(), webSession.UserID); err != nil {
+		if ae, ok := err.(*AuthError); ok {
+			return "", "", ae
+		}
+		s.logger.Error("gateway: auth: load user for web session", "user_id", webSession.UserID, string(constants.ConnectionStateError), err)
+		return "", "", constants.ErrIdentityValidationFailed
+	}
+
+	// The persisted session body does not carry its own ID; the document key
+	// (the cookie value looked up above) is the web session ID. Returning
+	// webSession.ID would hand downstream SSE routing an empty session.
+	return webSessionID, webSession.UserID, nil
+}
+
+// HasJWKS returns true if JWT authentication is configured.
+func (s *AuthService) HasJWKS() bool {
+	return s.jwks != nil
+}
+
+// JWTAuthMiddleware validates JWT tokens and performs JIT user provisioning.
+// This is for external IdP authentication on MCP/A2A endpoints.
+func (s *AuthService) JWTAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.jwks == nil {
+			s.logger.Warn("JWT authentication requested but JWKS provider not configured")
+			s.responder.Error(w, http.StatusServiceUnavailable, constants.ErrJWTAuthNotConfigured.Error())
+			return
+		}
+
+		authHeader := r.Header.Get(constants.HeaderAuthorization)
+		if !strings.HasPrefix(authHeader, constants.BearerScheme) {
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrJWTSignatureMissing.Error())
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, constants.BearerScheme)
+		if tokenString == "" {
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrJWTTokenMissing.Error())
+			return
+		}
+
+		jwt, err := ParseAndVerifyJWT(r.Context(), tokenString, s.jwks, s.jwtRole, s.jwtIssuer, s.jwtAudience)
+		if err != nil {
+			s.logger.Warn("gateway: auth: JWT validation failed", string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: verify JWT: %w: %w", err, constants.ErrFailedToLoadCredentials))
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrJWTInvalidToken.Error())
+			return
+		}
+
+		if jwt.Claims.Sub == "" {
+			s.responder.Error(w, http.StatusUnauthorized, constants.ErrJWTSessionSubjectMissing.Error())
+			return
+		}
+
+		// JIT User Provisioning: get or create user by subject
+		// Try cache first
+		user := s.getCachedUser(jwt.Claims.Sub)
+		if user == nil {
+			var err error
+			user, err = s.userSvc.GetBySub(r.Context(), jwt.Claims.Sub)
+			if err != nil {
+				s.logger.Error("gateway: auth: JIT user lookup failed", "sub", jwt.Claims.Sub, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: lookup user by sub %s: %w: %w", jwt.Claims.Sub, err, constants.ErrUserNotFound))
+				s.responder.Error(w, http.StatusInternalServerError, constants.ErrIdentityValidationFailed.Error())
+				return
+			}
+			if user != nil {
+				s.cacheUser(jwt.Claims.Sub, user)
+			}
+		}
+		if user == nil {
+			var jitErr error
+			user, jitErr = s.userSvc.CreateUserWithSub(r.Context(), jwt.Claims.Sub)
+			if jitErr != nil {
+				s.logger.Error("gateway: auth: JIT user provisioning failed", "sub", jwt.Claims.Sub, "error", jitErr)
+				s.responder.Error(w, http.StatusInternalServerError, constants.ErrUserCreationFailed.Error())
+				return
+			}
+			s.cacheUser(jwt.Claims.Sub, user)
+		}
+
+		if !user.IsActive() {
+			s.responder.Error(w, http.StatusForbidden, constants.ErrIdentityDisabled.Error())
+			return
+		}
+
+		// Persona Mapping: map JWT roles to binding persona
+		bindingPersona, err := s.personaSvc.MapRolesToPersona(r.Context(), jwt.Roles)
+		if err != nil {
+			s.logger.Warn("gateway: auth: map roles to persona failed, using default", string(constants.ConnectionStateError), err)
+			bindingPersona = constants.DefaultBindingPersona
+		}
+
+		// Extract tenant_id from JWT claims (if present)
+		tenantID := jwt.Claims.TenantID
+		if tenantID == "" {
+			tenantID = constants.DefaultTenantID
+		}
+
+		// Stamp context with identity and persona
+		ctx := context.WithValue(r.Context(), constants.ContextKeyUserID, user.ID)
+		ctx = context.WithValue(ctx, constants.ContextKeyTenantID, tenantID)
+		ctx = context.WithValue(ctx, constants.ContextKeyBindingPersona, bindingPersona)
+
+		s.logger.Debug("gateway: auth: JWT authentication successful", "user_id", user.ID, "tenant_id", tenantID, "persona", bindingPersona)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// safeTruncateID returns the first 8 characters of id followed by "...", or the
+// full id if it is 8 characters or shorter. This prevents panics on short or empty IDs.
+func safeTruncateID(id string) string {
+	const n = 8
+	if len(id) <= n {
+		return id
+	}
+	return id[:n] + "..."
+}

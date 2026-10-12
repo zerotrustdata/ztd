@@ -1,0 +1,158 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package operatorcmd
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+func TestOperatorCpCmdExecution(t *testing.T) {
+	t.Run("cp copies binary to directory", func(t *testing.T) {
+		tmpDir := testutil.TempDir(t)
+		destDir := filepath.Join(tmpDir, "dest")
+		require.NoError(t, os.MkdirAll(destDir, 0o755))
+
+		cmd := operatorCpCmd()
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		cmd.SetArgs([]string{destDir})
+		err := cmd.Execute()
+		require.NoError(t, err)
+		assert.Contains(t, buf.String(), "Copied")
+
+		entries, _ := os.ReadDir(destDir)
+		assert.NotEmpty(t, entries)
+	})
+
+	t.Run("cp copies binary to specific file", func(t *testing.T) {
+		tmpDir := testutil.TempDir(t)
+		destFile := filepath.Join(tmpDir, "custom-name")
+
+		cmd := operatorCpCmd()
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		cmd.SetArgs([]string{destFile})
+		err := cmd.Execute()
+		require.NoError(t, err)
+		assert.Contains(t, buf.String(), "Copied")
+
+		info, err := os.Stat(destFile)
+		require.NoError(t, err)
+		assert.False(t, info.IsDir())
+	})
+}
+
+func TestOperatorStartCmdFlags(t *testing.T) {
+	t.Run("start command has all expected flags", func(t *testing.T) {
+		root := &cobra.Command{Use: "ztd"}
+		root.PersistentFlags().StringP("endpoint", "e", "", "Gateway endpoint")
+		cmd := operatorStartCmd()
+		root.AddCommand(cmd)
+		_ = cmd.ParseFlags([]string{})
+
+		expectedFlags := []string{
+			"endpoint", "trust-bundle", "working-dir",
+			"cloud", "provider", "log", "heartbeat-interval",
+			"capabilities", "inference-ollama-endpoint",
+			"inference-keep-alive",
+		}
+		for _, flagName := range expectedFlags {
+			flag := cmd.Flags().Lookup(flagName)
+			assert.NotNil(t, flag, "operator start should have --%s flag", flagName)
+		}
+		// The Inference Operator is a worker: the user picks each role's model
+		// in the Console and campaign authority travels on each dispatch, so
+		// neither is a startup binding.
+		for _, removed := range []string{
+			"inference-campaign-id", "inference-model-registry-digest",
+			"inference-primary-model", "inference-assistant-model", "inference-lite-model",
+			"autochthon",
+		} {
+			assert.Nil(t, cmd.Flags().Lookup(removed), "operator start must not have --%s", removed)
+		}
+		// The Operator identity lives in memory from enrollment; it is never
+		// loaded from disk.
+		for _, removed := range []string{"key", "cert"} {
+			assert.Nil(t, cmd.Flags().Lookup(removed), "operator start must not have --%s", removed)
+		}
+	})
+
+	t.Run("start command endpoint has shorthand 'e'", func(t *testing.T) {
+		root := &cobra.Command{Use: "ztd"}
+		root.PersistentFlags().StringP("endpoint", "e", "", "Gateway endpoint")
+		cmd := operatorStartCmd()
+		root.AddCommand(cmd)
+		_ = cmd.ParseFlags([]string{})
+
+		flag := cmd.Flags().ShorthandLookup("e")
+		assert.NotNil(t, flag)
+	})
+
+	t.Run("start command heartbeat defaults to 30", func(t *testing.T) {
+		cmd := operatorStartCmd()
+		flag := cmd.Flags().Lookup("heartbeat-interval")
+		require.NotNil(t, flag)
+		assert.Equal(t, "30", flag.DefValue)
+	})
+}
+
+func TestOperatorDeployCmdErrorPaths(t *testing.T) {
+	t.Run("deploy fails when no credentials", func(t *testing.T) {
+		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+
+		cmd := operatorDeployCmdWithConfig(func(_ string) (*config.Config, error) { return cfg, nil }, authcmd.PanickingClientFactory(), cmdtest.FileSvcFactoryFor(fileSvc), scriptedConnector(false, ""))
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		err := cmd.RunE(cmd, []string{})
+		assert.Error(t, err)
+	})
+}
+
+func TestOperatorStreamCmdExtraFlags(t *testing.T) {
+	t.Run("stream command has concurrency and timeout flags", func(t *testing.T) {
+		cmd := operatorStreamCmd()
+		concurrencyFlag := cmd.Flags().Lookup("concurrency")
+		timeoutFlag := cmd.Flags().Lookup("timeout")
+		assert.NotNil(t, concurrencyFlag)
+		assert.NotNil(t, timeoutFlag)
+		assert.Equal(t, "50", concurrencyFlag.DefValue)
+		assert.Equal(t, "60", timeoutFlag.DefValue)
+	})
+
+	t.Run("start and stream commands have no no-git flag", func(t *testing.T) {
+		assert.Nil(t, operatorStreamCmd().Flags().Lookup("no-git"), "the file ledger is required, so there is no flag to disable it")
+		assert.Nil(t, operatorStartCmd().Flags().Lookup("no-git"), "the file ledger is required, so there is no flag to disable it")
+	})
+
+	t.Run("stream command has gateway tunnel port flags", func(t *testing.T) {
+		cmd := operatorStreamCmd()
+		httpPortFlag := cmd.Flags().Lookup("gateway-http-port")
+		httpsPortFlag := cmd.Flags().Lookup("gateway-https-port")
+		endpointFlag := cmd.Flags().Lookup("endpoint")
+		assert.NotNil(t, httpPortFlag)
+		assert.NotNil(t, httpsPortFlag)
+		assert.NotNil(t, endpointFlag)
+		assert.Equal(t, "8080", httpPortFlag.DefValue)
+		assert.Equal(t, "8443", httpsPortFlag.DefValue)
+		assert.Equal(t, "e", endpointFlag.Shorthand)
+	})
+}

@@ -1,0 +1,224 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package gateway
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
+)
+
+func TestHandleEnrollmentTokenGenerate(t *testing.T) {
+	t.Run("Success - returns 201 with token when context has user_id and cli_session_id", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/generate", nil)
+		ctx := context.WithValue(req.Context(), constants.ContextKeyUserID, "user-gen-1")
+		ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, "cli-gen-1")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenGenerate(rr, req)
+
+		assert.Equal(t, http.StatusCreated, rr.Code)
+		var resp map[string]string
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.NotEmpty(t, resp["token"])
+	})
+
+	t.Run("Failure - 401 when context has no user_id or cli_session_id", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/generate", nil)
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenGenerate(rr, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+
+	t.Run("Failure - method not allowed", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/enrollment-token/generate", nil)
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenGenerate(rr, req)
+
+		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	})
+}
+
+func TestHandleEnrollmentTokenValidate(t *testing.T) {
+	t.Run("Success - returns 200 with user_id and cli_session_id for valid token", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		token, err := c.enrollmentTokenSvc.GenerateToken(t.Context(), "user-val-1", "cli-val-1")
+		require.NoError(t, err)
+
+		body, _ := json.Marshal(map[string]string{"token": token.Token})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/validate", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp map[string]string
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.Equal(t, "user-val-1", resp["user_id"])
+		assert.Equal(t, "cli-val-1", resp["cli_session_id"])
+	})
+
+	t.Run("Failure - 410 Gone for expired token", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		token, err := c.enrollmentTokenSvc.GenerateToken(t.Context(), "user-exp-1", "cli-exp-1")
+		require.NoError(t, err)
+
+		expiredToken := &models.EnrollmentToken{
+			Token:        token.Token,
+			UserID:       "user-exp-1",
+			CLISessionID: "cli-exp-1",
+			CreatedAt:    token.CreatedAt,
+			ExpiresAt:    token.ExpiresAt.Add(-1 * time.Hour),
+			Consumed:     false,
+		}
+		expiredData, _ := json.Marshal(expiredToken)
+		c.enrollmentTokenSvc.db.DocSet(t.Context(),
+			marshaler.CollectionName(constants.CollectionEnrollmentTokens),
+			token.Token, expiredData,
+		)
+
+		body, _ := json.Marshal(map[string]string{"token": token.Token})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/validate", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusGone, rr.Code)
+	})
+
+	t.Run("Failure - 409 Conflict for consumed token", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		token, err := c.enrollmentTokenSvc.GenerateToken(t.Context(), "user-con-1", "cli-con-1")
+		require.NoError(t, err)
+
+		_, err = c.enrollmentTokenSvc.ValidateAndConsumeToken(t.Context(), token.Token)
+		require.NoError(t, err)
+
+		body, _ := json.Marshal(map[string]string{"token": token.Token})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/validate", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusConflict, rr.Code)
+	})
+
+	t.Run("Failure - 401 for unknown token", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		body, _ := json.Marshal(map[string]string{"token": "nonexistenttoken1234567890abcdef"})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/validate", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+
+	t.Run("Failure - 400 for empty token field", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		body, _ := json.Marshal(map[string]string{"token": ""})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/validate", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Failure - 400 for invalid JSON", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/validate", strings.NewReader("{invalid}"))
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Failure - method not allowed", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/enrollment-token/validate", nil)
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	})
+
+	t.Run("Failure - oversized body rejected by readRequestBody", func(t *testing.T) {
+		c := setupTestEnrollmentTokenController(t)
+		c.cfg.Gateway.MaxPayloadBytes = 100
+
+		largeBody := strings.Repeat("a", 200)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/enrollment-token/validate", strings.NewReader(largeBody))
+		rr := httptest.NewRecorder()
+
+		c.handleEnrollmentTokenValidate(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+}
+
+func TestEnrollmentTokenRouteRegistration(t *testing.T) {
+	t.Run("Generate endpoint is registered on public router behind mTLS", func(t *testing.T) {
+		h, _, _ := setupTestHTTPHandler(t)
+		router := h.buildPublicRouter()
+
+		body, _ := json.Marshal(map[string]string{"token": "test"})
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthEnrollmentTokenGenerate, bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.NotEqual(t, http.StatusNotFound, rr.Code, "generate endpoint must be registered on public router")
+	})
+
+	t.Run("Validate endpoint is registered on public router", func(t *testing.T) {
+		h, _, _ := setupTestHTTPHandler(t)
+		router := h.buildPublicRouter()
+
+		body, _ := json.Marshal(map[string]string{"token": "nonexistenttoken1234567890abcdef"})
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthEnrollmentTokenValidate, bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.NotEqual(t, http.StatusNotFound, rr.Code, "validate endpoint must be registered on public router")
+	})
+}

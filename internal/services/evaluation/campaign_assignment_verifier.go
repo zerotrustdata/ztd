@@ -1,0 +1,215 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package evaluation
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+)
+
+// CampaignAssignmentVerificationRequest carries persisted assignment state for
+// read-only independent verification.
+type CampaignAssignmentVerificationRequest struct {
+	Assignment                *evalv1.EvaluationAssignment
+	Result                    *evalv1.EvaluationAssignmentResult
+	ScenarioInput             ScenarioInputFixture
+	ScenarioGold              ScenarioGoldCriteria
+	ScenarioTools             ScenarioToolExpectations
+	GradingMethod             evalv1.EvaluationGradingMethod
+	FormationRunEvidence      *FormationRunEvidence
+	AgentTrace                *AgentTrace
+	CatalogRef                *compliancev1.VersionedReference
+	ProviderObservationReader *CampaignProviderObservationReader
+	ProviderObservationPolicy ProviderObservationPolicy
+	ModelProvenanceReader     *CampaignModelProvenanceReader
+	ModelProvenancePolicy     ModelProvenancePolicy
+}
+
+// CampaignAssignmentVerifier independently verifies one persisted assignment
+// result without invoking inference, providers, tools, or mutation.
+type CampaignAssignmentVerifier struct {
+	now func() time.Time
+}
+
+func NewCampaignAssignmentVerifier(now func() time.Time) *CampaignAssignmentVerifier {
+	if now == nil {
+		now = time.Now
+	}
+	return &CampaignAssignmentVerifier{now: now}
+}
+
+// Verify recomputes assignment digests and deterministic grades from declared
+// evidence and returns a typed verification report.
+func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAssignmentVerificationRequest) (*evalv1.EvaluationVerificationReport, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	verifiedAt := v.now().UTC()
+	report := &evalv1.EvaluationVerificationReport{
+		SchemaVersion: CampaignSchemaVersion,
+		ReportId:      req.Result.GetAssignmentId(),
+		RunId:         req.Result.GetRunId(),
+		AssignmentId:  req.Result.GetAssignmentId(),
+		VerifiedAt:    timestamppb.New(verifiedAt),
+	}
+	failures := make([]string, 0)
+	if req.Assignment == nil || req.Result == nil {
+		failures = append(failures, "assignment and result are required")
+		return finalizeCampaignVerificationReport(report, failures), nil
+	}
+	if req.Assignment.GetAssignmentId() != req.Result.GetAssignmentId() || req.Assignment.GetRunId() != req.Result.GetRunId() {
+		failures = append(failures, "assignment and result binding mismatch")
+	}
+	if err := ValidateAssignmentResultDigest(req.Result); err != nil {
+		failures = append(failures, "result digest validation failed: "+err.Error())
+	}
+	if IsHeterogeneousAssignment(req.Assignment) {
+		failures = append(failures, v.verifyHeterogeneousAssignment(ctx, req)...)
+	} else {
+		failures = append(failures, v.verifyHomogeneousAssignment(req)...)
+	}
+	if req.ProviderObservationReader != nil && len(scoredModelInferences(req.Result)) > 0 {
+		observationFailures, _ := req.ProviderObservationReader.VerifyAssignmentProviderObservations(ctx, req.Result, req.ProviderObservationPolicy)
+		failures = append(failures, observationFailures...)
+	}
+	if req.ModelProvenanceReader != nil && len(scoredModelInferences(req.Result)) > 0 {
+		provenanceFailures, _ := req.ModelProvenanceReader.VerifyAssignmentModelProvenance(ctx, req.Result, req.ModelProvenancePolicy)
+		failures = append(failures, provenanceFailures...)
+	}
+	return finalizeCampaignVerificationReport(report, failures), nil
+}
+
+func (v *CampaignAssignmentVerifier) verifyHeterogeneousAssignment(ctx context.Context, req CampaignAssignmentVerificationRequest) []string {
+	failures := make([]string, 0)
+	if err := VerifyFormationAssignmentEvidence(req.Assignment, req.Result); err != nil {
+		failures = append(failures, "formation assignment evidence validation failed: "+err.Error())
+	}
+	if req.FormationRunEvidence == nil {
+		failures = append(failures, "formation run evidence is required for heterogeneous verification")
+	} else {
+		if err := VerifyFormationRunEvidenceMatchesResult(req.Assignment, req.FormationRunEvidence, req.Result); err != nil {
+			failures = append(failures, "formation run evidence mismatch: "+err.Error())
+		}
+		failures = append(failures, VerifyFormationWitnessEvidence(
+			ctx,
+			req.FormationRunEvidence,
+			req.ProviderObservationReader,
+			req.ModelProvenanceReader,
+			req.ProviderObservationPolicy,
+			req.ModelProvenancePolicy,
+		)...)
+	}
+	skipGradeRecomputation := !CatalogRecomputesGrades(req.CatalogRef)
+	if !skipGradeRecomputation {
+		recomputedGrades, err := RecomputeFormationAssignmentGrades(AssignmentExecutionRequest{
+			Assignment:    req.Assignment,
+			GradingMethod: req.GradingMethod,
+			ScenarioInput: req.ScenarioInput,
+			ScenarioGold:  req.ScenarioGold,
+			ScenarioTools: req.ScenarioTools,
+		}, req.Result)
+		if err != nil {
+			failures = append(failures, "formation grade recomputation failed: "+err.Error())
+		} else if !gradesEquivalent(req.Result.GetDeterministicGrades(), recomputedGrades) {
+			failures = append(failures, "stored deterministic grades do not match formation recomputation")
+		}
+	}
+	return failures
+}
+
+// verifyHomogeneousAssignment binds a model-role result to its persisted agent
+// trace and recomputes lifecycle, trajectory, and grades from that trace.
+func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAssignmentVerificationRequest) []string {
+	trace := req.AgentTrace
+	if trace == nil {
+		return []string{"agent trace is required for homogeneous verification"}
+	}
+	failures := make([]string, 0)
+	if err := ValidateAgentTraceDigest(trace); err != nil {
+		return append(failures, "agent trace digest validation failed: "+err.Error())
+	}
+	if trace.RunID != req.Assignment.GetRunId() || trace.AssignmentID != req.Assignment.GetAssignmentId() {
+		return append(failures, fmt.Sprintf("agent trace binding mismatch: %v", constants.ErrEvaluationEvidenceTraceMismatch))
+	}
+	body, err := MarshalCanonicalJSONObject(trace)
+	if err != nil {
+		return append(failures, "agent trace canonicalization failed: "+err.Error())
+	}
+	if !resultReferencesEvidenceBody(req.Result, body) {
+		failures = append(failures, "result does not reference the persisted agent trace evidence")
+	}
+	if len(req.Result.GetToolCalls()) != len(trace.ToolCalls) {
+		failures = append(failures, fmt.Sprintf("result records %d tool calls, agent trace records %d", len(req.Result.GetToolCalls()), len(trace.ToolCalls)))
+	} else {
+		for i, call := range trace.ToolCalls {
+			record := req.Result.GetToolCalls()[i]
+			if record.GetCallId() != call.CallID || record.GetToolName() != call.ToolName || record.GetArgumentsHash() != agentArgumentsHash(call.ArgumentsJSON) {
+				failures = append(failures, fmt.Sprintf("tool call %d does not match agent trace", i))
+			}
+		}
+	}
+	execReq := AssignmentExecutionRequest{
+		Assignment:    req.Assignment,
+		AttemptID:     trace.EvaluationAttemptID,
+		GradingMethod: req.GradingMethod,
+		ScenarioInput: req.ScenarioInput,
+		ScenarioGold:  req.ScenarioGold,
+		ScenarioTools: req.ScenarioTools,
+	}
+	lifecycle := agentTraceLifecycle(execReq, trace)
+	if req.Result.GetLifecycleStatus() != lifecycle {
+		failures = append(failures, fmt.Sprintf("stored lifecycle %s does not match agent trace lifecycle %s", req.Result.GetLifecycleStatus(), lifecycle))
+	}
+	if !CatalogRecomputesGrades(req.CatalogRef) {
+		return failures
+	}
+	grading, err := GradeHomogeneousScenario(execReq, trace, lifecycle)
+	if err != nil {
+		return append(failures, "homogeneous grade recomputation failed: "+err.Error())
+	}
+	if !gradesEquivalent(req.Result.GetDeterministicGrades(), grading.DeterministicGrades) {
+		failures = append(failures, "stored deterministic grades do not match agent trace recomputation")
+	}
+	if req.Result.GetTrajectoryOutcome() != grading.Trajectory.Outcome {
+		failures = append(failures, fmt.Sprintf("stored trajectory outcome %s does not match agent trace recomputation %s", req.Result.GetTrajectoryOutcome(), grading.Trajectory.Outcome))
+	}
+	return failures
+}
+
+func resultReferencesEvidenceBody(result *evalv1.EvaluationAssignmentResult, body []byte) bool {
+	digest := models.SHA256Hex(body)
+	for _, ref := range result.GetEvidenceRefs() {
+		if ref.GetArtifactType() == string(complianceevidence.ArtifactTypeEvaluationAssignmentTrace) && ref.GetSha256() == digest {
+			return true
+		}
+	}
+	return false
+}
+
+func finalizeCampaignVerificationReport(report *evalv1.EvaluationVerificationReport, failures []string) *evalv1.EvaluationVerificationReport {
+	report.FailureReasons = failures
+	report.FailureCount = uint32(len(failures))
+	if len(failures) == 0 {
+		report.Status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+		return report
+	}
+	report.Status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+	return report
+}

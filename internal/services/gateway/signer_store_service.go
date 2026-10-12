@@ -1,0 +1,146 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+)
+
+// SignerStoreService provides trusted signer CRUD operations.
+type SignerStoreService struct {
+	db     *sqliteutil.DB
+	logger *slog.Logger
+	docSvc *DocumentStoreService
+}
+
+// NewSignerStoreService creates a new signer store service.
+// docSvc is the shared DocumentStoreService instance from CanonicalDBService.
+func NewSignerStoreService(db *sqliteutil.DB, logger *slog.Logger, docSvc *DocumentStoreService) *SignerStoreService {
+	return &SignerStoreService{
+		db:     db,
+		logger: logger,
+		docSvc: docSvc,
+	}
+}
+
+// GetTrustedSigner retrieves an L2 signer public key from the database.
+// Implements governance.SignerStore.
+func (s *SignerStoreService) GetTrustedSigner(ctx context.Context, keyID string) (ed25519.PublicKey, error) {
+	doc, err := s.docSvc.DocGet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), keyID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", constants.ErrDocumentStoreUnmarshalData, keyID)
+	}
+	if doc == nil {
+		if len(keyID) == hex.EncodedLen(ed25519.PublicKeySize) {
+			if pubBytes, err := hex.DecodeString(keyID); err == nil && len(pubBytes) == ed25519.PublicKeySize {
+				return ed25519.PublicKey(pubBytes), nil
+			}
+		}
+		return nil, nil
+	}
+
+	data, err := json.Marshal(doc.Data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreMarshalDocument, err)
+	}
+
+	var signer models.TrustedSigner
+	if err := json.Unmarshal(data, &signer); err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+	}
+
+	if !signer.Enabled {
+		return nil, nil
+	}
+
+	pubBytes, err := hex.DecodeString(signer.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrValidationFailed, err)
+	}
+
+	if len(pubBytes) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("%w: invalid public key size: %d", constants.ErrValidationFailed, len(pubBytes))
+	}
+
+	return ed25519.PublicKey(pubBytes), nil
+}
+
+// AddTrustedSigner adds or updates a trusted L2 signer in the database.
+func (s *SignerStoreService) AddTrustedSigner(ctx context.Context, signer models.TrustedSigner) error {
+	if signer.ID == "" {
+		return fmt.Errorf("%w: signer ID", constants.ErrMissingRequiredField)
+	}
+	if signer.PublicKey == "" {
+		return fmt.Errorf("%w: signer public key", constants.ErrMissingRequiredField)
+	}
+
+	if signer.AddedAt.IsZero() {
+		signer.AddedAt = time.Now().UTC()
+	}
+
+	data, err := json.Marshal(signer)
+	if err != nil {
+		return fmt.Errorf("%w: %v", constants.ErrDocumentStoreMarshalDocument, err)
+	}
+
+	return s.docSvc.DocSet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), signer.ID, data)
+}
+
+// ListTrustedSigners returns all trusted L2 signers in the database.
+func (s *SignerStoreService) ListTrustedSigners(ctx context.Context) ([]models.TrustedSigner, error) {
+	docs, err := s.docSvc.DocQuery(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), nil, "id", 0)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+	}
+
+	results := make([]models.TrustedSigner, 0, len(docs))
+	for _, doc := range docs {
+		data, err := json.Marshal(doc.Data)
+		if err != nil {
+			s.logger.Warn("failed to marshal signer document", "error", err)
+			continue
+		}
+		var signer models.TrustedSigner
+		if err := json.Unmarshal(data, &signer); err != nil {
+			s.logger.Warn("failed to unmarshal signer document", "error", err)
+			continue
+		}
+		// id is not in the data map usually, so we set it from doc.ID
+		signer.ID = doc.ID
+		results = append(results, signer)
+	}
+	return results, nil
+}
+
+// DeleteTrustedSigner removes a trusted L2 signer from the database.
+func (s *SignerStoreService) DeleteTrustedSigner(ctx context.Context, keyID string) (bool, error) {
+	return s.docSvc.DocDeleteWithResult(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), keyID)
+}
+
+// HasTrustedSigners returns true if at least one trusted L2 signer is provisioned in the database.
+func (s *SignerStoreService) HasTrustedSigners(ctx context.Context) (bool, error) {
+	filters := []models.DocFilter{
+		{Field: "enabled", Op: "==", Value: json.RawMessage("true")},
+	}
+	docs, err := s.docSvc.DocQuery(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), filters, "", 1)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+	}
+	return len(docs) > 0, nil
+}

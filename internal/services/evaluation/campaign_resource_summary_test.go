@@ -1,0 +1,219 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package evaluation
+
+import (
+	"errors"
+	"math"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+)
+
+const (
+	callScoredChain = evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN
+	callPostTurn    = evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_POST_TURN
+)
+
+func TestBuildPublicResourceSummary(t *testing.T) {
+	reported := evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
+	zero := uint32(0)
+	tests := []struct {
+		name       string
+		result     *evalv1.EvaluationAssignmentResult
+		assertions func(t *testing.T, summary *PublicResourceSummary)
+	}{
+		{
+			name:   "no scored calls is explicitly unavailable",
+			result: &evalv1.EvaluationAssignmentResult{},
+			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				assert.Nil(t, summary.InputTokens.Value)
+				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS, summary.InputTokens.UnavailableReason)
+			},
+		},
+		{
+			name: "reported prompt output zeros remain observed while optional counters stay unavailable",
+			result: &evalv1.EvaluationAssignmentResult{
+				ModelInferences:          []*evalv1.ModelInferenceRecord{{Classification: callScoredChain, UsageAvailability: reported, RetryCount: &zero}},
+				ScoredInferenceSpanNanos: proto.Uint64(2_000_000),
+			},
+			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				require.NotNil(t, summary.InputTokens.Value)
+				assert.Zero(t, *summary.InputTokens.Value)
+				require.NotNil(t, summary.OutputTokens.Value)
+				assert.Zero(t, *summary.OutputTokens.Value)
+				assert.Nil(t, summary.ThinkingTokens.Value)
+				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE, summary.ThinkingTokens.UnavailableReason)
+				assert.Nil(t, summary.CacheTokens.Value)
+				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE, summary.CacheTokens.UnavailableReason)
+				require.NotNil(t, summary.Retries.Value)
+				assert.Zero(t, *summary.Retries.Value)
+				require.NotNil(t, summary.LatencyMS.Value)
+				assert.Equal(t, float64(2), *summary.LatencyMS.Value)
+			},
+		},
+		{
+			name: "explicit zero optional counters remain observed",
+			result: &evalv1.EvaluationAssignmentResult{
+				ModelInferences: []*evalv1.ModelInferenceRecord{{
+					Classification:    callScoredChain,
+					UsageAvailability: reported,
+					ThinkingTokens:    &zero,
+					CacheTokens:       &zero,
+				}},
+			},
+			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				require.NotNil(t, summary.ThinkingTokens.Value)
+				assert.Zero(t, *summary.ThinkingTokens.Value)
+				require.NotNil(t, summary.CacheTokens.Value)
+				assert.Zero(t, *summary.CacheTokens.Value)
+			},
+		},
+		{
+			name: "cache absent on one call leaves input output observed and cache unavailable",
+			result: &evalv1.EvaluationAssignmentResult{
+				ModelInferences: []*evalv1.ModelInferenceRecord{
+					{Classification: callScoredChain, UsageAvailability: reported, PromptTokens: 3, CompletionTokens: 4, CacheTokens: &zero},
+					{Classification: callScoredChain, UsageAvailability: reported, PromptTokens: 1, CompletionTokens: 2},
+				},
+			},
+			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				require.NotNil(t, summary.InputTokens.Value)
+				assert.Equal(t, float64(4), *summary.InputTokens.Value)
+				require.NotNil(t, summary.OutputTokens.Value)
+				assert.Equal(t, float64(6), *summary.OutputTokens.Value)
+				assert.Nil(t, summary.CacheTokens.Value)
+				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.CacheTokens.UnavailableReason)
+			},
+		},
+		{
+			name: "mixed thinking presence is incomplete without affecting complete cache",
+			result: &evalv1.EvaluationAssignmentResult{
+				ModelInferences: []*evalv1.ModelInferenceRecord{
+					{Classification: callScoredChain, UsageAvailability: reported, ThinkingTokens: proto.Uint32(2), CacheTokens: &zero},
+					{Classification: callScoredChain, UsageAvailability: reported, CacheTokens: &zero},
+				},
+			},
+			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				assert.Nil(t, summary.ThinkingTokens.Value)
+				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.ThinkingTokens.UnavailableReason)
+				require.NotNil(t, summary.CacheTokens.Value)
+				assert.Zero(t, *summary.CacheTokens.Value)
+			},
+		},
+		{
+			name: "missing one contributor does not become zero",
+			result: &evalv1.EvaluationAssignmentResult{
+				ModelInferences: []*evalv1.ModelInferenceRecord{{Classification: callScoredChain, UsageAvailability: reported}, {Classification: callScoredChain, UsageAvailability: evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE}},
+			},
+			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				assert.Nil(t, summary.InputTokens.Value)
+				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.InputTokens.UnavailableReason)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			summary, err := BuildPublicResourceSummary(tt.result)
+			require.NoError(t, err)
+			tt.assertions(t, summary)
+		})
+	}
+
+	_, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{ModelInferences: []*evalv1.ModelInferenceRecord{{Classification: callScoredChain, UsageAvailability: reported}}, ScoredInferenceSpanNanos: proto.Uint64(math.MaxUint64)})
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+}
+
+func TestBuildPublicResourceSummary_ExcludesMemoryCodexCalls(t *testing.T) {
+	reported := evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
+	scored := &evalv1.ModelInferenceRecord{
+		AgentPersona: "sage", Classification: callScoredChain, UsageAvailability: reported, PromptTokens: 10, CompletionTokens: 5,
+		ThinkingTokens: proto.Uint32(2), CacheTokens: proto.Uint32(1), RetryCount: proto.Uint32(1),
+	}
+	codex := &evalv1.ModelInferenceRecord{
+		AgentPersona: "codex", Classification: callPostTurn, UsageAvailability: reported, PromptTokens: 700, CompletionTokens: 300,
+		ThinkingTokens: proto.Uint32(40), CacheTokens: proto.Uint32(30), RetryCount: proto.Uint32(9),
+	}
+	span := proto.Uint64(3_000_000)
+
+	without, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{
+		ModelInferences: []*evalv1.ModelInferenceRecord{scored}, ScoredInferenceSpanNanos: span,
+	})
+	require.NoError(t, err)
+	with, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{
+		ModelInferences: []*evalv1.ModelInferenceRecord{scored, codex}, ScoredInferenceSpanNanos: span,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, without, with)
+	require.NotNil(t, with.InputTokens.Value)
+	assert.Equal(t, float64(10), *with.InputTokens.Value)
+	require.NotNil(t, with.Retries.Value)
+	assert.Equal(t, float64(1), *with.Retries.Value)
+
+	t.Run("codex-only result reports no scored calls", func(t *testing.T) {
+		summary, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{
+			ModelInferences: []*evalv1.ModelInferenceRecord{codex},
+		})
+		require.NoError(t, err)
+		assert.Nil(t, summary.InputTokens.Value)
+		assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS, summary.InputTokens.UnavailableReason)
+	})
+}
+
+func TestBuildPublicResourceSummary_ExcludesGraderCalls(t *testing.T) {
+	reported := evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
+	scoredCalls := []*evalv1.ModelInferenceRecord{
+		{
+			AgentPersona: "triage", Classification: callScoredChain, UsageAvailability: reported, PromptTokens: 4, CompletionTokens: 1,
+			ThinkingTokens: proto.Uint32(0), CacheTokens: proto.Uint32(2), RetryCount: proto.Uint32(0),
+		},
+		{
+			AgentPersona: "sage", Classification: callScoredChain, UsageAvailability: reported, PromptTokens: 10, CompletionTokens: 5,
+			ThinkingTokens: proto.Uint32(2), CacheTokens: proto.Uint32(1), RetryCount: proto.Uint32(1),
+		},
+	}
+	graderCalls := []*evalv1.GraderModelCallRecord{
+		{GraderCallId: "grader-1", AssignmentId: "assignment-1", JudgeVariantId: "judge-a"},
+		{GraderCallId: "grader-2", AssignmentId: "assignment-1", JudgeVariantId: "judge-a"},
+	}
+	span := proto.Uint64(3_000_000)
+
+	without, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{
+		ModelInferences: scoredCalls, ScoredInferenceSpanNanos: span,
+	})
+	require.NoError(t, err)
+	with, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{
+		ModelInferences: scoredCalls, GraderCalls: graderCalls, ScoredInferenceSpanNanos: span,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, without, with, "grader calls must not change any scored aggregate")
+	require.NotNil(t, with.InputTokens.Value)
+	assert.Equal(t, float64(14), *with.InputTokens.Value)
+	require.NotNil(t, with.OutputTokens.Value)
+	assert.Equal(t, float64(6), *with.OutputTokens.Value)
+	require.NotNil(t, with.ThinkingTokens.Value)
+	assert.Equal(t, float64(2), *with.ThinkingTokens.Value)
+	require.NotNil(t, with.CacheTokens.Value)
+	assert.Equal(t, float64(3), *with.CacheTokens.Value)
+	require.NotNil(t, with.Retries.Value)
+	assert.Equal(t, float64(1), *with.Retries.Value)
+	require.NotNil(t, with.LatencyMS.Value)
+	assert.Equal(t, float64(3), *with.LatencyMS.Value)
+}
+
+func TestBuildPublicResourceSummary_NilResult(t *testing.T) {
+	_, err := BuildPublicResourceSummary(nil)
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.False(t, errors.Is(err, constants.ErrEvidenceArtifactMalformed))
+}

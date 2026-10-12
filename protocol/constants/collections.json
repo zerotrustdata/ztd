@@ -1,0 +1,132 @@
+{
+  "collections": {
+    "account_locks": {
+      "_go_const": "CollectionAccountLocks",
+      "value": "account_locks"
+    },
+    "agent_activity_metadata": {
+      "_go_const": "CollectionAgentActivityMetadata",
+      "value": "agent_activity_metadata",
+      "_governed": true
+    },
+    "app_policies": {
+      "_go_const": "CollectionAppPolicies",
+      "value": "app_policies"
+    },
+    "auth_admin_audit": {
+      "_go_const": "CollectionAuthAdminAudit",
+      "value": "auth_admin_audit"
+    },
+    "bound_sessions": {
+      "_go_const": "CollectionBoundSessions",
+      "value": "bound_sessions"
+    },
+    "cases": {
+      "_go_const": "CollectionCases",
+      "value": "cases",
+      "_governed": true
+    },
+    "cli_sessions": {
+      "_go_const": "CollectionCLISessions",
+      "value": "cli_sessions"
+    },
+    "investigations": {
+      "_go_const": "CollectionInvestigations",
+      "value": "investigations",
+      "_governed": true
+    },
+    "login_audit": {
+      "_go_const": "CollectionLoginAudit",
+      "value": "login_audit"
+    },
+    "memories": {
+      "_go_const": "CollectionMemories",
+      "value": "memories",
+      "_governed": true
+    },
+    "operator_sessions": {
+      "_go_const": "CollectionOperatorSessions",
+      "value": "operator_sessions"
+    },
+    "operator_usage": {
+      "_go_const": "CollectionOperatorUsage",
+      "value": "operator_usage"
+    },
+    "operators": {
+      "_go_const": "CollectionOperators",
+      "value": "operators"
+    },
+    "organizations": {
+      "_go_const": "CollectionOrganizations",
+      "value": "organizations"
+    },
+    "passkey_challenges": {
+      "_go_const": "CollectionPasskeyChallenges",
+      "value": "passkey_challenges"
+    },
+    "platform_enrollments": {
+      "_go_const": "CollectionPlatformEnrollments",
+      "value": "platform_enrollments"
+    },
+    "personas": {
+      "_go_const": "CollectionPersonas",
+      "value": "personas"
+    },
+    "reputation_commitments": {
+      "_go_const": "CollectionReputationCommitments",
+      "value": "reputation_commitments",
+      "_governed": true
+    },
+    "reputation_state": {
+      "_go_const": "CollectionReputationState",
+      "value": "reputation_state",
+      "_governed": true
+    },
+    "revoked_certificates": {
+      "_go_const": "CollectionRevokedCertificates",
+      "value": "revoked_certificates"
+    },
+    "settings": {
+      "_go_const": "CollectionSettings",
+      "value": "settings"
+    },
+    "stake_resolutions": {
+      "_go_const": "CollectionStakeResolutions",
+      "value": "stake_resolutions",
+      "_governed": true
+    },
+    "tasks": {
+      "_go_const": "CollectionTasks",
+      "value": "tasks",
+      "_governed": true
+    },
+    "trusted_signers": {
+      "_go_const": "CollectionTrustedSigners",
+      "value": "trusted_signers"
+    },
+    "users": {
+      "_go_const": "CollectionUsers",
+      "value": "users"
+    },
+    "web_sessions": {
+      "_go_const": "CollectionWebSessions",
+      "value": "web_sessions"
+    },
+    "observe_agent_states": {
+      "_go_const": "CollectionObserveAgentStates",
+      "value": "observe_agent_states"
+    },
+    "observe_runs": {
+      "_go_const": "CollectionObserveRuns",
+      "value": "observe_runs"
+    },
+    "observe_evals": {
+      "_go_const": "CollectionObserveEvals",
+      "value": "observe_evals"
+    },
+    "observe_downloads": {
+      "_go_const": "CollectionObserveDownloads",
+      "value": "observe_downloads"
+    }
+  }
+}

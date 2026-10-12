@@ -1,0 +1,362 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+)
+
+// PublicFeedController handles owner mTLS publication of signed public-feed batches.
+type PublicFeedController struct {
+	logger    *slog.Logger
+	responder *response.Writer
+	spectator func() *PublicSpectatorRuntime
+}
+
+// PublicFeedControllerDeps groups dependencies for PublicFeedController.
+type PublicFeedControllerDeps struct {
+	Logger    *slog.Logger
+	Responder *response.Writer
+	Spectator func() *PublicSpectatorRuntime
+}
+
+func newPublicFeedController(d PublicFeedControllerDeps) *PublicFeedController {
+	return &PublicFeedController{
+		logger:    d.Logger,
+		responder: d.Responder,
+		spectator: d.Spectator,
+	}
+}
+
+// @Summary		Export public feed batch
+// @Description	Accepts campaign projection records and signs/publishes them through the gateway-owned public spectator stack (mTLS owner CLI only).
+// @Tags			public-feed
+// @Accept			json
+// @Produce		json
+// @Param			records	body	[]models.PublicFeedRecord	true	"Ordered public feed records"
+// @Success		200	{object}	models.PublicFeedExportBatchResponse
+// @Failure		400	{string}	string	"Bad Request"
+// @Failure		405	{string}	string	"Method Not Allowed"
+// @Failure		503	{string}	string	"Public spectator unavailable"
+// @Router			/api/v1/public-feed/batches [post]
+//
+// @Summary		Get public feed snapshot
+// @Description	Returns the gateway publisher high-water sequence and feed-chain hash (mTLS owner CLI only).
+// @Tags			public-feed
+// @Produce		json
+// @Success		200	{object}	models.PublicFeedSnapshot
+// @Failure		404	{string}	string	"Snapshot not found"
+// @Failure		405	{string}	string	"Method Not Allowed"
+// @Failure		503	{string}	string	"Public spectator unavailable"
+// @Router			/api/v1/public-feed/snapshot [get]
+func (c *PublicFeedController) handlePublicFeedSnapshot(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	publisher, err := c.publisher()
+	if err != nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	snapshot, err := publisher.GetSnapshot(r.Context())
+	if err != nil {
+		if errors.Is(err, constants.ErrPublicFeedSnapshotNotFound) {
+			c.responder.Error(w, http.StatusNotFound, err.Error())
+			return
+		}
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("public-feed: snapshot: %w", err).Error())
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, snapshot)
+}
+
+func (c *PublicFeedController) handlePublicFeedBatches(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	publisher, err := c.publisher()
+	if err != nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, constants.PublicFeedBatchMaxBytes))
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	var records []models.PublicFeedRecord
+	if err := json.Unmarshal(body, &records); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	if err := publisher.ExportBatch(r.Context(), records); err != nil {
+		status, message := publicFeedExportBatchErrorStatus(err)
+		c.responder.Error(w, status, message)
+		return
+	}
+
+	snapshot, err := publisher.GetSnapshot(r.Context())
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("public-feed: snapshot: %w", err).Error())
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, models.PublicFeedExportBatchResponse{
+		HighWaterSequence: snapshot.HighWaterSequence,
+		FeedChainHash:     snapshot.FeedChainHash,
+	})
+}
+
+// @Summary		Publish assignment audit proof
+// @Description	Ingests one assignment audit export package into the gateway-owned public proof catalog (mTLS owner CLI only).
+// @Tags			public-feed
+// @Accept			json
+// @Produce		json
+// @Param			request	body	models.PublicAssignmentAuditProofPublishRequest	true	"Assignment audit proof package"
+// @Success		200	{object}	models.PublicAssignmentAuditProofPublishResponse
+// @Failure		400	{string}	string	"Bad Request"
+// @Failure		405	{string}	string	"Method Not Allowed"
+// @Failure		503	{string}	string	"Public spectator unavailable"
+// @Router			/api/v1/public-feed/proofs [post]
+func (c *PublicFeedController) handlePublicFeedProofs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	publisher, err := c.publisher()
+	if err != nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, constants.PublicFeedProofIngestMaxBytes))
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	var request models.PublicAssignmentAuditProofPublishRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	manifest, err := publisher.PublishAssignmentAuditProof(r.Context(), request)
+	if err != nil {
+		status, message := publicFeedProofPublishErrorStatus(err)
+		c.responder.Error(w, status, message)
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, models.PublicAssignmentAuditProofPublishResponse{
+		Accepted:        true,
+		DatabaseSHA256:  hashBytes(request.Database),
+		VaultKeySHA256:  hashBytes(request.VaultKey),
+		ProofRootSHA256: manifest.ProofRootSHA256,
+	})
+}
+
+// @Summary		Publish assignment audit proof batch
+// @Description	Ingests many assignment audit export packages in one request (mTLS owner CLI only).
+// @Tags			public-feed
+// @Accept			json
+// @Produce		json
+// @Param			request	body	models.PublicAssignmentAuditProofBatchPublishRequest	true	"Assignment audit proof batch"
+// @Success		200	{object}	models.PublicAssignmentAuditProofBatchPublishResponse
+// @Failure		400	{string}	string	"Bad Request"
+// @Failure		405	{string}	string	"Method Not Allowed"
+// @Failure		503	{string}	string	"Public spectator unavailable"
+// @Router			/api/v1/public-feed/proofs/batch [post]
+func (c *PublicFeedController) handlePublicFeedProofsBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	publisher, err := c.publisher()
+	if err != nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, constants.PublicFeedProofIngestMaxBytes))
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	var request models.PublicAssignmentAuditProofBatchPublishRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	manifest, err := publisher.PublishAssignmentAuditProofBatch(r.Context(), request)
+	if err != nil {
+		status, message := publicFeedProofPublishErrorStatus(err)
+		c.responder.Error(w, status, message)
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, models.PublicAssignmentAuditProofBatchPublishResponse{
+		Accepted:        true,
+		IngestedProofs:  len(request.Proofs),
+		ProofRootSHA256: manifest.ProofRootSHA256,
+	})
+}
+
+// @Summary		Push proof catalog to mirror
+// @Description	Flushes the gateway-owned proof catalog and manifest to the public mirror (mTLS owner CLI only).
+// @Tags			public-feed
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	models.PublicProofCatalogPushResponse
+// @Failure		405	{string}	string	"Method Not Allowed"
+// @Failure		503	{string}	string	"Public spectator unavailable"
+// @Router			/api/v1/public-feed/proofs/push [post]
+func (c *PublicFeedController) handlePublicFeedProofsPush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	publisher, err := c.publisher()
+	if err != nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	manifest, err := publisher.FlushProofPackage(r.Context())
+	if err != nil {
+		status, message := publicFeedProofPublishErrorStatus(err)
+		c.responder.Error(w, status, message)
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, models.PublicProofCatalogPushResponse{
+		Accepted:        true,
+		ArtifactCount:   manifest.ArtifactCount,
+		ProofRootSHA256: manifest.ProofRootSHA256,
+	})
+}
+
+func (c *PublicFeedController) handlePublicFeedProofsPrune(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	publisher, err := c.publisher()
+	if err != nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, constants.PublicFeedKeyRegistrationMaxBytes))
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+	var request models.PublicProofCatalogPruneRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+
+	removed, err := publisher.PruneProofCatalogForRun(r.Context(), request.RunID)
+	if err != nil {
+		status, message := publicFeedProofPublishErrorStatus(err)
+		c.responder.Error(w, status, message)
+		return
+	}
+
+	catalog, err := publisher.GetProofCatalog(r.Context())
+	remaining := 0
+	if err == nil {
+		remaining = len(catalog.Entries)
+	}
+	c.responder.JSON(w, http.StatusOK, models.PublicProofCatalogPruneResponse{
+		Accepted:       true,
+		RemovedCount:   removed,
+		RemainingCount: remaining,
+	})
+}
+
+func publicFeedProofPublishErrorStatus(err error) (int, string) {
+	switch {
+	case errors.Is(err, constants.ErrPublicFeedDisabled):
+		return http.StatusServiceUnavailable, err.Error()
+	case errors.Is(err, constants.ErrMissingRequiredField),
+		errors.Is(err, constants.ErrPublicFeedProofNotVerified),
+		errors.Is(err, constants.ErrPublicFeedBatchEmpty),
+		errors.Is(err, constants.ErrPublicFeedProofOversized),
+		errors.Is(err, constants.ErrPublicFeedProofPathTraversal),
+		errors.Is(err, constants.ErrPublicFeedProofRestricted):
+		return http.StatusBadRequest, err.Error()
+	default:
+		return http.StatusInternalServerError, err.Error()
+	}
+}
+
+func hashBytes(value []byte) string {
+	sum := sha256.Sum256(value)
+	return hex.EncodeToString(sum[:])
+}
+
+func (c *PublicFeedController) publisher() (*PublicPublisherService, error) {
+	if c.spectator == nil {
+		return nil, constants.ErrPublicFeedDisabled
+	}
+	runtime := c.spectator()
+	if runtime == nil || !runtime.Running() {
+		return nil, constants.ErrPublicFeedDisabled
+	}
+	publisher := runtime.Publisher()
+	if publisher == nil {
+		return nil, constants.ErrPublicFeedDisabled
+	}
+	return publisher, nil
+}
+
+func publicFeedExportBatchErrorStatus(err error) (int, string) {
+	switch {
+	case errors.Is(err, constants.ErrPublicFeedDisabled):
+		return http.StatusServiceUnavailable, err.Error()
+	case errors.Is(err, constants.ErrPublicFeedBatchEmpty),
+		errors.Is(err, constants.ErrPublicFeedBatchOversized),
+		errors.Is(err, constants.ErrPublicFeedSequenceOutOfOrder),
+		errors.Is(err, constants.ErrPublicFeedRecordHashMismatch),
+		errors.Is(err, constants.ErrPublicFeedRecordTypeInvalid),
+		errors.Is(err, constants.ErrPublicFeedRecordSchemaInvalid),
+		errors.Is(err, constants.ErrPublicFeedRestrictedField):
+		return http.StatusBadRequest, err.Error()
+	default:
+		return http.StatusInternalServerError, err.Error()
+	}
+}

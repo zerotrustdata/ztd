@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "ztd": {
+      "command": "/path/to/ztd",
+      "args": ["mcp", "stdio", "--app", "claude"]
+    }
+  },
+  "excludeTools": [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "WebSearch",
+    "WebFetch"
+  ]
+}

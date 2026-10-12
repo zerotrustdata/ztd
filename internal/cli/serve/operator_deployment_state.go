@@ -1,0 +1,107 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package serve
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+)
+
+// OperatorDeploymentRecorder persists the Operator's non-secret enrollment and
+// startup progress so a deploying CLI discovers it without parsing process
+// output. Writes preserve enrollment identity across subscription changes,
+// and terminal startup failures take precedence over late readiness callbacks.
+type OperatorDeploymentRecorder struct {
+	fileSvc  fs.RuntimeFileService
+	launchID string
+	state    models.OperatorDeploymentState
+	mu       sync.Mutex
+}
+
+func NewOperatorDeploymentRecorder(fileSvc fs.RuntimeFileService, launchID string) (*OperatorDeploymentRecorder, error) {
+	if fileSvc == nil {
+		return nil, fmt.Errorf("operator deployment state: %w", constants.ErrFileServiceInit)
+	}
+	return &OperatorDeploymentRecorder{fileSvc: fileSvc, launchID: launchID}, nil
+}
+
+// LaunchID returns the identifier `operator deploy` assigned to this launch,
+// or "" when the Operator was not launched by it (or r is nil).
+func (r *OperatorDeploymentRecorder) LaunchID() string {
+	if r == nil {
+		return ""
+	}
+	return r.launchID
+}
+
+func operatorDeploymentStateRelPath() string {
+	return filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator)
+}
+
+// Reset removes any record left by a previous launch of this working directory.
+func (r *OperatorDeploymentRecorder) Reset(ctx context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.fileSvc.Remove(ctx, operatorDeploymentStateRelPath()); err != nil {
+		return fmt.Errorf("operator deployment state: reset: %w", err)
+	}
+	r.state = models.OperatorDeploymentState{}
+	return nil
+}
+
+// Record atomically replaces the persisted state.
+func (r *OperatorDeploymentRecorder) Record(ctx context.Context, state models.OperatorDeploymentState) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// A startup failure is terminal for this process, including late callbacks.
+	if r.state.Phase == models.OperatorDeploymentPhaseFailed {
+		return nil
+	}
+	state.LaunchID = r.launchID
+	state.UpdatedAt = time.Now().UTC()
+	if state.RequestID == "" {
+		state.RequestID = r.state.RequestID
+	}
+	if state.Fingerprints == (models.PlatformEnrollmentCSRFingerprints{}) {
+		state.Fingerprints = r.state.Fingerprints
+	}
+	if state.OperatorSessionID == "" {
+		state.OperatorSessionID = r.state.OperatorSessionID
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("operator deployment state: marshal: %w", err)
+	}
+	rel := operatorDeploymentStateRelPath()
+	if err := r.fileSvc.MkdirAll(ctx, filepath.Dir(rel), constants.PermDirPrivate); err != nil {
+		return fmt.Errorf("operator deployment state: create dir: %w", err)
+	}
+	if err := r.fileSvc.WriteFile(ctx, rel, data, constants.PermFilePrivate); err != nil {
+		return fmt.Errorf("operator deployment state: write: %w", err)
+	}
+	r.state = state
+	return nil
+}
+
+// CommandSubscriptionChanged records transport readiness for this process.
+// This observation neither grants authority nor replaces Gateway session checks.
+func (r *OperatorDeploymentRecorder) CommandSubscriptionChanged(ctx context.Context, sessionID string, connected bool) error {
+	phase := models.OperatorDeploymentPhaseEnrolled
+	if connected {
+		phase = models.OperatorDeploymentPhaseReady
+	}
+	return r.Record(ctx, models.OperatorDeploymentState{Phase: phase, OperatorSessionID: sessionID})
+}

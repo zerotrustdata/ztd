@@ -1,0 +1,340 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package wizard
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+// --- validatePublicBaseURL ---
+
+func TestValidatePublicBaseURL_ValidHTTPS(t *testing.T) {
+	assert.NoError(t, validatePublicBaseURL("https://demo.zerotrustdata.io"))
+}
+
+func TestValidatePublicBaseURL_HttpLocalhost(t *testing.T) {
+	assert.NoError(t, validatePublicBaseURL("http://localhost:8080"))
+}
+
+func TestValidatePublicBaseURL_Http127(t *testing.T) {
+	assert.NoError(t, validatePublicBaseURL("http://127.0.0.1:8080"))
+}
+
+func TestValidatePublicBaseURL_HttpIPv6Loopback(t *testing.T) {
+	assert.NoError(t, validatePublicBaseURL("http://[::1]:8080"))
+}
+
+func TestValidatePublicBaseURL_RejectsEmpty(t *testing.T) {
+	assert.Error(t, validatePublicBaseURL(""))
+}
+
+func TestValidatePublicBaseURL_RejectsNonURL(t *testing.T) {
+	assert.Error(t, validatePublicBaseURL("not-a-url"))
+}
+
+func TestValidatePublicBaseURL_RejectsNonLoopbackHTTP(t *testing.T) {
+	assert.Error(t, validatePublicBaseURL("http://demo.zerotrustdata.io"))
+}
+
+func TestValidatePublicBaseURL_RejectsQuery(t *testing.T) {
+	assert.Error(t, validatePublicBaseURL("https://demo.zerotrustdata.io?foo=bar"))
+}
+
+func TestValidatePublicBaseURL_RejectsFragment(t *testing.T) {
+	assert.Error(t, validatePublicBaseURL("https://demo.zerotrustdata.io#section"))
+}
+
+func TestValidatePublicBaseURL_RejectsUserInfo(t *testing.T) {
+	assert.Error(t, validatePublicBaseURL("https://user@demo.zerotrustdata.io"))
+}
+
+func TestValidatePublicBaseURL_RejectsUnsupportedScheme(t *testing.T) {
+	assert.Error(t, validatePublicBaseURL("ftp://demo.zerotrustdata.io"))
+}
+
+// --- validateConsensusURL ---
+
+func TestValidateConsensusURL_EmptyIsOptional(t *testing.T) {
+	assert.NoError(t, validateConsensusURL(""))
+}
+
+func TestValidateConsensusURL_ValidHTTPS(t *testing.T) {
+	assert.NoError(t, validateConsensusURL("https://consensus.zerotrustdata.io"))
+}
+
+func TestValidateConsensusURL_RejectsHTTP(t *testing.T) {
+	assert.Error(t, validateConsensusURL("http://consensus.zerotrustdata.io"))
+}
+
+func TestValidateConsensusURL_RejectsFragment(t *testing.T) {
+	assert.Error(t, validateConsensusURL("https://consensus.zerotrustdata.io#frag"))
+}
+
+func TestValidateConsensusURL_RejectsUserInfo(t *testing.T) {
+	assert.Error(t, validateConsensusURL("https://user@consensus.zerotrustdata.io"))
+}
+
+func TestValidateConsensusURL_RejectsUnsupportedScheme(t *testing.T) {
+	assert.Error(t, validateConsensusURL("ftp://consensus.zerotrustdata.io"))
+}
+
+// --- validateConsensusID ---
+
+func TestValidateConsensusID_EmptyRejected(t *testing.T) {
+	assert.Error(t, validateConsensusID(""))
+}
+
+func TestValidateConsensusID_ValidAlphaNumeric(t *testing.T) {
+	assert.NoError(t, validateConsensusID("trib-prod-01"))
+}
+
+func TestValidateConsensusID_ValidUnderscore(t *testing.T) {
+	assert.NoError(t, validateConsensusID("trib_prod_01"))
+}
+
+func TestValidateConsensusID_RejectsSpecialChars(t *testing.T) {
+	assert.Error(t, validateConsensusID("trib!prod"))
+}
+
+func TestValidateConsensusID_RejectsSpaces(t *testing.T) {
+	assert.Error(t, validateConsensusID("trib prod"))
+}
+
+func TestValidateConsensusID_RejectsDots(t *testing.T) {
+	assert.Error(t, validateConsensusID("trib.prod"))
+}
+
+// --- validateConsensusBootstrap ---
+
+func TestValidateConsensusBootstrap_MatchingID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bootstrap.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"consensus_id":"trib-001","members":[]}`), 0644))
+	assert.NoError(t, validateConsensusBootstrap(path, "trib-001"))
+}
+
+func TestValidateConsensusBootstrap_MismatchedID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bootstrap.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"consensus_id":"trib-001","members":[]}`), 0644))
+	assert.Error(t, validateConsensusBootstrap(path, "trib-999"))
+}
+
+func TestValidateConsensusBootstrap_NotJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bootstrap.json")
+	require.NoError(t, os.WriteFile(path, []byte("not json"), 0644))
+	assert.Error(t, validateConsensusBootstrap(path, "trib-001"))
+}
+
+func TestValidateConsensusBootstrap_MissingFile(t *testing.T) {
+	assert.Error(t, validateConsensusBootstrap("/nonexistent/path.json", "trib-001"))
+}
+
+func TestValidateConsensusBootstrap_Directory(t *testing.T) {
+	dir := t.TempDir()
+	assert.Error(t, validateConsensusBootstrap(dir, "trib-001"))
+}
+
+func TestValidateConsensusBootstrap_MissingConsensusIDField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bootstrap.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"members":[]}`), 0644))
+	assert.Error(t, validateConsensusBootstrap(path, "trib-001"))
+}
+
+// --- validatePasskeyRP ---
+
+func TestValidatePasskeyRP_ExactMatch(t *testing.T) {
+	assert.NoError(t, validatePasskeyRP("demo.zerotrustdata.io", "https://demo.zerotrustdata.io"))
+}
+
+func TestValidatePasskeyRP_SuffixMatch(t *testing.T) {
+	assert.NoError(t, validatePasskeyRP("zerotrustdata.io", "https://api.zerotrustdata.io"))
+}
+
+func TestValidatePasskeyRP_Mismatch(t *testing.T) {
+	assert.Error(t, validatePasskeyRP("other.com", "https://demo.zerotrustdata.io"))
+}
+
+func TestValidatePasskeyRP_EmptyRpID(t *testing.T) {
+	assert.Error(t, validatePasskeyRP("", "https://demo.zerotrustdata.io"))
+}
+
+func TestValidatePasskeyRP_InvalidOrigin(t *testing.T) {
+	assert.Error(t, validatePasskeyRP("demo.zerotrustdata.io", "not-a-url"))
+}
+
+func TestValidatePasskeyRP_HttpOriginAllowed(t *testing.T) {
+	assert.NoError(t, validatePasskeyRP("localhost", "http://localhost:8443"))
+}
+
+func TestValidatePasskeyRP_UnsupportedScheme(t *testing.T) {
+	assert.Error(t, validatePasskeyRP("demo.zerotrustdata.io", "ftp://demo.zerotrustdata.io"))
+}
+
+// The following tests assert the stricter centralized behavior delegated to
+// browserorigin.Parse and browserorigin.ValidateRPID. The previous wizard
+// implementation accepted any registrable suffix as an RP ID without checking
+// the Public Suffix List, and accepted any http origin regardless of host.
+// The centralized parser rejects public-suffix RP IDs (which would scope
+// credentials across unrelated tenants) and non-loopback HTTP origins.
+
+func TestValidatePasskeyRP_RejectsPublicSuffixRPID(t *testing.T) {
+	// "app" is an ICANN public suffix. Using it as an RP ID would scope
+	// passkey credentials across every *.app tenant, so the centralized
+	// validator rejects it even though it is a suffix of the origin host.
+	err := validatePasskeyRP("app", "https://your-app.lovable.app")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+}
+
+func TestValidatePasskeyRP_RejectsUnrelatedSuffix(t *testing.T) {
+	err := validatePasskeyRP("other.com", "https://demo.zerotrustdata.io")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+}
+
+func TestValidatePasskeyRP_RejectsNonLoopbackHTTPOrigin(t *testing.T) {
+	err := validatePasskeyRP("example.com", "http://example.com")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+}
+
+func TestValidatePasskeyRP_RejectsPortBearingRPID(t *testing.T) {
+	// The centralized validator derives the RP ID from the hostname only;
+	// a port-bearing override is never a valid WebAuthn RP ID.
+	err := validatePasskeyRP("demo.zerotrustdata.io:8443", "https://demo.zerotrustdata.io:8443")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+}
+
+// --- validateDownstreamURL ---
+
+func TestValidateDownstreamURL_EmptyRejected(t *testing.T) {
+	assert.Error(t, validateDownstreamURL(""))
+}
+
+func TestValidateDownstreamURL_ValidHTTP(t *testing.T) {
+	assert.NoError(t, validateDownstreamURL("http://mcp:3000"))
+}
+
+func TestValidateDownstreamURL_ValidHTTPS(t *testing.T) {
+	assert.NoError(t, validateDownstreamURL("https://mcp.example.com"))
+}
+
+func TestValidateDownstreamURL_InvalidURL(t *testing.T) {
+	assert.Error(t, validateDownstreamURL("not-a-url"))
+}
+
+func TestValidateDownstreamURL_RejectsFragment(t *testing.T) {
+	assert.Error(t, validateDownstreamURL("https://mcp.example.com#frag"))
+}
+
+func TestValidateDownstreamURL_RejectsCredentials(t *testing.T) {
+	assert.Error(t, validateDownstreamURL("https://user:pass@mcp.example.com"))
+}
+
+func TestValidateDownstreamURL_RejectsUnsupportedScheme(t *testing.T) {
+	assert.Error(t, validateDownstreamURL("ftp://mcp.example.com"))
+}
+
+// --- validateCORSOrigin ---
+
+func TestValidateCORSOrigin_ValidHTTPS(t *testing.T) {
+	assert.NoError(t, validateCORSOrigin("https://console.zerotrustdata.io"))
+}
+
+func TestValidateCORSOrigin_ValidHTTP(t *testing.T) {
+	assert.NoError(t, validateCORSOrigin("http://localhost:8080"))
+}
+
+func TestValidateCORSOrigin_RejectsEmpty(t *testing.T) {
+	assert.Error(t, validateCORSOrigin(""))
+}
+
+func TestValidateCORSOrigin_RejectsPath(t *testing.T) {
+	assert.Error(t, validateCORSOrigin("https://console.zerotrustdata.io/path"))
+}
+
+func TestValidateCORSOrigin_RejectsQuery(t *testing.T) {
+	assert.Error(t, validateCORSOrigin("https://console.zerotrustdata.io?q=1"))
+}
+
+func TestValidateCORSOrigin_RejectsFragment(t *testing.T) {
+	assert.Error(t, validateCORSOrigin("https://console.zerotrustdata.io#frag"))
+}
+
+func TestValidateCORSOrigin_RejectsUserInfo(t *testing.T) {
+	assert.Error(t, validateCORSOrigin("https://user@console.zerotrustdata.io"))
+}
+
+func TestValidateCORSOrigin_RejectsUnsupportedScheme(t *testing.T) {
+	assert.Error(t, validateCORSOrigin("ftp://console.zerotrustdata.io"))
+}
+
+func TestValidateCORSOrigin_AllowsRootPath(t *testing.T) {
+	assert.NoError(t, validateCORSOrigin("https://console.zerotrustdata.io/"))
+}
+
+// The following tests assert the stricter centralized behavior delegated to
+// browserorigin.Parse. The previous wizard implementation accepted any
+// http origin regardless of host; the centralized parser rejects non-loopback
+// HTTP because a browser origin served over plain HTTP outside loopback is
+// not a secure CORS origin.
+
+func TestValidateCORSOrigin_RejectsNonLoopbackHTTP(t *testing.T) {
+	err := validateCORSOrigin("http://example.com")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+}
+
+func TestValidateCORSOrigin_RejectsNonLoopbackHTTPWithPort(t *testing.T) {
+	err := validateCORSOrigin("http://app.lovable.app:3000")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+}
+
+func TestValidateCORSOrigin_RejectsIPHost(t *testing.T) {
+	err := validateCORSOrigin("https://192.168.1.10")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+}
+
+// --- isLoopbackHost ---
+
+func TestIsLoopbackHost_Localhost(t *testing.T) {
+	assert.True(t, isLoopbackHost("localhost"))
+}
+
+func TestIsLoopbackHost_127001(t *testing.T) {
+	assert.True(t, isLoopbackHost("127.0.0.1"))
+}
+
+func TestIsLoopbackHost_IPv6Loopback(t *testing.T) {
+	assert.True(t, isLoopbackHost("::1"))
+}
+
+func TestIsLoopbackHost_ExternalHost(t *testing.T) {
+	assert.False(t, isLoopbackHost("demo.zerotrustdata.io"))
+}
+
+func TestIsLoopbackHost_Empty(t *testing.T) {
+	assert.False(t, isLoopbackHost(""))
+}
+
+func TestIsLoopbackHost_127002(t *testing.T) {
+	assert.False(t, isLoopbackHost("127.0.0.2"))
+}

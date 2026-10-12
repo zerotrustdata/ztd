@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ztd-native": {
+      "command": "/path/to/ztd",
+      "args": ["mcp", "stdio"],
+      "disabled": false
+    }
+  }
+}

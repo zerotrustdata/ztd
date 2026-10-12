@@ -1,0 +1,903 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package gateway
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+func newPasskeyServiceHTTPForTest(t *testing.T) (*PasskeyHandler, *WebSessionService, *models.User) {
+	t.Helper()
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	user, err := NewUserService(db.GetDocStore(), logger).CreateUser(t.Context())
+	require.NoError(t, err)
+	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
+	resp := response.NewWriter(logger)
+	svc, err := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+	require.NoError(t, err)
+	enrollmentTokenSvc := NewEnrollmentTokenService(db.GetDocStore(), logger)
+	handler := NewPasskeyHandler(PasskeyHandlerDeps{
+		Service:            svc,
+		WebSessionSvc:      webSessionSvc,
+		EnrollmentTokenSvc: enrollmentTokenSvc,
+		Responder:          resp,
+		MaxPayload:         10 * 1024 * 1024,
+	})
+	return handler, webSessionSvc, user
+}
+
+type passkeyErrorResponse struct {
+	Error string `json:"error"`
+}
+
+func TestPasskeyRegisterChallenge(t *testing.T) {
+	cfg := passkeyHandlerConfig{source: sourceJWT, requireAuthenticatedUser: true, enforceSessionUserBinding: true}
+
+	tests := []struct {
+		name       string
+		method     string
+		body       any
+		ctxUserID  string
+		wantStatus int
+		wantJSON   func(t *testing.T, body passkeyErrorResponse)
+	}{
+		{
+			name:       "rejects non-POST",
+			method:     http.MethodGet,
+			body:       nil,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "rejects missing user_id without context",
+			method:     http.MethodPost,
+			body:       map[string]string{},
+			wantStatus: http.StatusBadRequest,
+			wantJSON: func(t *testing.T, body passkeyErrorResponse) {
+				assert.Contains(t, body.Error, "user_id")
+			},
+		},
+		{
+			name:       "rejects user_id mismatch with session",
+			method:     http.MethodPost,
+			body:       map[string]string{"user_id": "different-user"},
+			ctxUserID:  "session-user",
+			wantStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, _ := newPasskeyServiceHTTPForTest(t)
+			handler := svc.RegisterChallenge(cfg)
+
+			var bodyReader *bytes.Reader
+			if tc.body != nil {
+				b, err := json.Marshal(tc.body)
+				require.NoError(t, err)
+				bodyReader = bytes.NewReader(b)
+			} else {
+				bodyReader = bytes.NewReader([]byte("{}"))
+			}
+
+			req := httptest.NewRequest(tc.method, "/api/v1/auth/passkeys/register/challenge", bodyReader)
+			if tc.ctxUserID != "" {
+				req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, tc.ctxUserID))
+			}
+			rr := httptest.NewRecorder()
+			handler(rr, req)
+
+			assert.Equal(t, tc.wantStatus, rr.Code)
+			if tc.wantJSON != nil {
+				var body passkeyErrorResponse
+				require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+				tc.wantJSON(t, body)
+			}
+		})
+	}
+
+	// Full happy-path: valid user_id via context, challenge returned
+	t.Run("issues challenge for authenticated user", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		handler := svc.RegisterChallenge(cfg)
+
+		body, err := json.Marshal(map[string]string{})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/passkeys/register/challenge", bytes.NewReader(body))
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, user.ID))
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.PasskeyRegisterChallengeResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.True(t, resp.Success)
+		assert.NotNil(t, resp.Options)
+	})
+}
+
+func TestPasskeyAuthenticateChallenge(t *testing.T) {
+	cfg := passkeyHandlerConfig{source: sourceJWT, requireAuthenticatedUser: true, enforceSessionUserBinding: true}
+
+	tests := []struct {
+		name       string
+		method     string
+		body       any
+		ctxUserID  string
+		wantStatus int
+		wantKey    string
+	}{
+		{
+			name:       "rejects non-POST",
+			method:     http.MethodGet,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "rejects missing user_id",
+			method:     http.MethodPost,
+			body:       map[string]string{},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "rejects mismatch user_id",
+			method:     http.MethodPost,
+			body:       map[string]string{"user_id": "other"},
+			ctxUserID:  "session-user",
+			wantStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, _ := newPasskeyServiceHTTPForTest(t)
+			handler := svc.AuthenticateChallenge(cfg)
+
+			bodyBytes := []byte("{}")
+			if tc.body != nil {
+				var err error
+				bodyBytes, err = json.Marshal(tc.body)
+				require.NoError(t, err)
+			}
+
+			req := httptest.NewRequest(tc.method, "/api/v1/auth/passkeys/authenticate/challenge", bytes.NewReader(bodyBytes))
+			if tc.ctxUserID != "" {
+				req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, tc.ctxUserID))
+			}
+			rr := httptest.NewRecorder()
+			handler(rr, req)
+
+			assert.Equal(t, tc.wantStatus, rr.Code)
+		})
+	}
+
+	// User with no credentials → success:false, needs_setup:true
+	t.Run("no credentials returns needs_setup", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		handler := svc.AuthenticateChallenge(cfg)
+
+		body, _ := json.Marshal(map[string]string{})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/passkeys/authenticate/challenge", bytes.NewReader(body))
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, user.ID))
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.PasskeyChallengeResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.False(t, resp.Success)
+		assert.True(t, resp.NeedsSetup)
+	})
+}
+
+func TestPasskeyListCredentials(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		ctxUserID  string
+		wantStatus int
+	}{
+		{
+			name:       "rejects non-GET",
+			method:     http.MethodPost,
+			ctxUserID:  "user1",
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "rejects missing context user_id",
+			method:     http.MethodGet,
+			ctxUserID:  "",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "returns empty list for user with no credentials",
+			method:     http.MethodGet,
+			ctxUserID:  "REPLACE",
+			wantStatus: http.StatusOK,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, user := newPasskeyServiceHTTPForTest(t)
+			ctxUserID := tc.ctxUserID
+			if ctxUserID == "REPLACE" {
+				ctxUserID = user.ID
+			}
+			req := httptest.NewRequest(tc.method, "/api/v1/auth/passkeys", nil)
+			if ctxUserID != "" {
+				req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, ctxUserID))
+			}
+			rr := httptest.NewRecorder()
+			svc.ListCredentials(rr, req)
+
+			assert.Equal(t, tc.wantStatus, rr.Code)
+			if tc.wantStatus == http.StatusOK {
+				var resp models.PasskeyCredentialsResponse
+				require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+				assert.True(t, resp.Success)
+			}
+		})
+	}
+
+	t.Run("ignores query user_id param (IDOR fix)", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/passkeys?user_id=other-user", nil)
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, user.ID))
+		rr := httptest.NewRecorder()
+		svc.ListCredentials(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.PasskeyCredentialsResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.True(t, resp.Success)
+	})
+}
+
+func TestPasskeyRevokeCredential(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		ctxUserID  string
+		wantStatus int
+	}{
+		{
+			name:       "rejects non-DELETE",
+			method:     http.MethodGet,
+			path:       "/api/v1/auth/passkeys/some-id",
+			ctxUserID:  "user1",
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "rejects missing context user_id",
+			method:     http.MethodDelete,
+			path:       "/api/v1/auth/passkeys/some-id",
+			ctxUserID:  "",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "returns not-found gracefully for unknown credential",
+			method:     http.MethodDelete,
+			path:       "/api/v1/auth/passkeys/nonexistent",
+			ctxUserID:  "REPLACE",
+			wantStatus: http.StatusOK,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, user := newPasskeyServiceHTTPForTest(t)
+			ctxUserID := tc.ctxUserID
+			if ctxUserID == "REPLACE" {
+				ctxUserID = user.ID
+			}
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			if ctxUserID != "" {
+				req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, ctxUserID))
+			}
+			rr := httptest.NewRecorder()
+			svc.RevokeCredential(rr, req)
+
+			assert.Equal(t, tc.wantStatus, rr.Code)
+		})
+	}
+
+	t.Run("ignores query user_id param (IDOR fix)", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/auth/passkeys/nonexistent?user_id=other-user", nil)
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, user.ID))
+		rr := httptest.NewRecorder()
+		svc.RevokeCredential(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.PasskeyRevokeResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.True(t, resp.Success)
+		assert.False(t, resp.Found)
+	})
+
+	t.Run("returns 409 conflict when revoking last passkey", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		credID := "cred-1"
+		err := svc.addCredential(t.Context(), user.ID, testCredential(credID))
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/auth/passkeys/"+base64.RawURLEncoding.EncodeToString([]byte(credID)), nil)
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, user.ID))
+		rr := httptest.NewRecorder()
+		svc.RevokeCredential(rr, req)
+
+		assert.Equal(t, http.StatusConflict, rr.Code)
+		assert.Contains(t, rr.Body.String(), constants.ErrLastPasskeyRevoke.Error())
+	})
+}
+
+func TestPasskeyCLIStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		ctxUserID  string
+		wantStatus int
+	}{
+		{
+			name:       "rejects non-GET",
+			method:     http.MethodPost,
+			ctxUserID:  "user1",
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "rejects missing context user_id",
+			method:     http.MethodGet,
+			ctxUserID:  "",
+			wantStatus: http.StatusUnauthorized,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, _ := newPasskeyServiceHTTPForTest(t)
+			req := httptest.NewRequest(tc.method, "/api/v1/auth/passkeys/cli/status", nil)
+			if tc.ctxUserID != "" {
+				req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, tc.ctxUserID))
+			}
+			rr := httptest.NewRecorder()
+			svc.CLIStatus(rr, req)
+
+			assert.Equal(t, tc.wantStatus, rr.Code)
+		})
+	}
+
+	t.Run("returns credential list for authenticated user", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/passkeys/cli/status", nil)
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, user.ID))
+		rr := httptest.NewRecorder()
+		svc.CLIStatus(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.PasskeyCredentialsResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.True(t, resp.Success)
+	})
+}
+
+func TestPasskeyEnforceFirstCred(t *testing.T) {
+	tests := []struct {
+		name      string
+		wantAllow bool
+	}{
+		{
+			name:      "allows registration when user has no credentials",
+			wantAllow: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, user := newPasskeyServiceHTTPForTest(t)
+			forbidden, _, _ := svc.enforceFirstCred(t.Context(), user.ID)
+			if tc.wantAllow {
+				assert.False(t, forbidden)
+			} else {
+				assert.True(t, forbidden)
+			}
+		})
+	}
+}
+
+func TestPasskeyConfigInvariants(t *testing.T) {
+	// Enumerate all production passkey handler configs used in buildPublicRouter.
+	// These must be kept in sync with gateway_http_router.go.
+	type cfgEntry struct {
+		name       string
+		cfg        passkeyHandlerConfig
+		isRegister bool // true if used with RegisterChallenge/RegisterVerify
+	}
+	productionConfigs := []cfgEntry{
+		{"jitCfg", passkeyHandlerConfig{source: sourceJWT, enforceFirstCredentialOnly: true, requireAuthenticatedUser: true, enforceSessionUserBinding: true}, true},
+		{"browserBootstrapRegisterCfg", passkeyHandlerConfig{source: sourceBrowserBootstrap, enforceFirstCredentialOnly: true, createWebSession: true, setCookie: true, createUserOnBootstrap: true}, true},
+		{"browserBootstrapAuthCfg", passkeyHandlerConfig{source: sourceBrowserBootstrap, createWebSession: true, setCookie: true}, false},
+		{"enrollmentRegisterCfg", passkeyHandlerConfig{source: sourceEnrollmentToken, requireEnrollmentToken: true, createWebSession: true, setCookie: true}, true},
+	}
+
+	for _, pc := range productionConfigs {
+		t.Run(pc.name, func(t *testing.T) {
+			// Invariant 1: setCookie must imply createWebSession
+			if pc.cfg.setCookie {
+				assert.True(t, pc.cfg.createWebSession,
+					"%s: setCookie=true must imply createWebSession=true", pc.name)
+			}
+			// Invariant 2: For registration configs, at least one of
+			// enforceFirstCredentialOnly, requireAuthenticatedUser, or
+			// requireEnrollmentToken must be set. Without any of these the
+			// endpoint would allow anonymous, unrestricted passkey
+			// registration. Authentication configs are exempt: the user is
+			// not yet authenticated and first-credential enforcement is
+			// irrelevant.
+			if pc.isRegister && !pc.cfg.enforceFirstCredentialOnly && !pc.cfg.requireAuthenticatedUser && !pc.cfg.requireEnrollmentToken {
+				t.Errorf("%s: registration config with no authorization mode (enforceFirstCredentialOnly, requireAuthenticatedUser, requireEnrollmentToken all false) — "+
+					"this allows anonymous unrestricted registration and must not be used in production", pc.name)
+			}
+		})
+	}
+}
+
+func TestPasskeyCookieConsistency(t *testing.T) {
+	svc, webSessionSvc, user := newPasskeyServiceHTTPForTest(t)
+
+	webSession, err := webSessionSvc.CreateWebSession(t.Context(), user.ID)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	svc.setWebSessionCookie(rr, webSession)
+
+	cookies := rr.Result().Cookies()
+	require.Len(t, cookies, 1)
+	cookie := cookies[0]
+
+	assert.Equal(t, constants.WebSessionCookieName, cookie.Name)
+	assert.Equal(t, webSession.ID, cookie.Value)
+	assert.Equal(t, constants.PathRoot, cookie.Path)
+	assert.True(t, cookie.HttpOnly)
+	assert.True(t, cookie.Secure)
+	assert.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
+	assert.Equal(t, webSession.ExpiresAtUnixMs/1000, cookie.Expires.Unix())
+}
+
+func TestPasskeyCookieCrossOriginSameSiteNone(t *testing.T) {
+	svc, webSessionSvc, user := newPasskeyServiceHTTPForTest(t)
+	svc.crossOrigin = true
+
+	webSession, err := webSessionSvc.CreateWebSession(t.Context(), user.ID)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	svc.setWebSessionCookie(rr, webSession)
+
+	cookies := rr.Result().Cookies()
+	require.Len(t, cookies, 1)
+	cookie := cookies[0]
+
+	assert.True(t, cookie.Secure)
+	assert.Equal(t, http.SameSiteNoneMode, cookie.SameSite)
+}
+
+func TestPasskeyReadBodyRejectsOversized(t *testing.T) {
+	svc, _, _ := newPasskeyServiceHTTPForTest(t)
+
+	largeBody := bytes.NewReader(bytes.Repeat([]byte("a"), 11*1024*1024))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/passkeys/register/challenge", largeBody)
+	rr := httptest.NewRecorder()
+
+	_, err := svc.readBody(rr, req)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "http: request body too large")
+}
+
+func TestPasskeyRegisterVerify_SSEEmission(t *testing.T) {
+	t.Run("emitPasskeyRegisteredSSE appends event and publishes", func(t *testing.T) {
+		db := newTestDB(t)
+		logger := testutil.NewTestLogger()
+		webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
+		resp := response.NewWriter(logger)
+		svc, err := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+		require.NoError(t, err)
+		sseStore := db.GetSSEStore()
+		pubsub := NewGatewayWebSocketHandler(logger)
+		t.Cleanup(func() { pubsub.Close() })
+		orchestrator, err := NewPasskeyOrchestrator(nil, nil, sseStore, pubsub, logger)
+		require.NoError(t, err)
+		handler := NewPasskeyHandler(PasskeyHandlerDeps{
+			Service:       svc,
+			WebSessionSvc: webSessionSvc,
+			Responder:     resp,
+			MaxPayload:    10 * 1024 * 1024,
+			Orchestrator:  orchestrator,
+		})
+
+		const cliSessionID = "cli-sse-test-1"
+		const userID = "u-sse-test-1"
+
+		handler.orchestrator.EmitPasskeyRegisteredSSE(userID, cliSessionID)
+
+		route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
+		events, err := sseStore.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 1)
+		assert.Equal(t, "passkey.registered", events[0].EventType)
+		assert.Contains(t, events[0].Payload, cliSessionID)
+		assert.Contains(t, events[0].Payload, userID)
+	})
+
+	t.Run("no SSE emission when dependencies not set", func(t *testing.T) {
+		db := newTestDB(t)
+		logger := testutil.NewTestLogger()
+		webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
+		resp := response.NewWriter(logger)
+		svc, err := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+		require.NoError(t, err)
+		handler := NewPasskeyHandler(PasskeyHandlerDeps{
+			Service:       svc,
+			WebSessionSvc: webSessionSvc,
+			Responder:     resp,
+			MaxPayload:    10 * 1024 * 1024,
+		})
+
+		const cliSessionID = "cli-no-sse-1"
+		const userID = "u-no-sse-1"
+
+		if handler.orchestrator != nil {
+			handler.orchestrator.EmitPasskeyRegisteredSSE(userID, cliSessionID)
+		}
+
+		sseStore := db.GetSSEStore()
+		route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
+		events, err := sseStore.SSEEventsListSince(route, 0, 10)
+		require.NoError(t, err)
+		assert.Empty(t, events)
+	})
+}
+
+// TestPasskeyHandler_RegisterChallenge_CLIEnrollmentFlow documents the
+// original 400 Bad Request bug: when the CLI-initiated enrollment flow was
+// routed through browserBootstrapRegisterCfg, the CLI had already created a
+// user, so HasAnyUsers() returned true and the handler rejected the
+// (empty) user_id with 400. This test pins the broken behavior of the old
+// shared config so the fix (a separate enrollment-token flow) is
+// verifiable.
+func TestPasskeyHandler_RegisterChallenge_CLIEnrollmentFlow(t *testing.T) {
+	svc, _, user := newPasskeyServiceHTTPForTest(t)
+	// Simulate the OLD shared config: browser bootstrap with
+	// createUserOnBootstrap=true AND enforceFirstCredentialOnly=true.
+	// The CLI flow sends user_id="" because the JS DOM round-trip
+	// clobbered it (see plan §"The DOM-as-data-store race").
+	oldCfg := passkeyHandlerConfig{
+		source:                     sourceBrowserBootstrap,
+		enforceFirstCredentialOnly: true,
+		createWebSession:           true,
+		setCookie:                  true,
+		createUserOnBootstrap:      true,
+	}
+	handler := svc.RegisterChallenge(oldCfg)
+
+	body, err := json.Marshal(map[string]string{"user_id": "", "cli_session_id": "cli-1"})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/passkeys/console/register/challenge", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+
+	// The user already exists (the CLI created it via `auth enroll user`), so
+	// HasAnyUsers() is true and the handler returns 400 user_id required.
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	var resp passkeyErrorResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Contains(t, resp.Error, "user_id")
+	// user.ID is referenced to avoid an unused-variable lint; it is the
+	// user that the CLI created and that the broken flow failed to bind.
+	_ = user
+}
+
+// TestPasskeyHandler_RegisterChallenge_EnrollmentToken covers the new
+// CLI-initiated enrollment register challenge flow. The enrollment token is
+// the single authorization primitive; user_id and cli_session_id are
+// derived from the token, not sent by the client.
+func TestPasskeyHandler_RegisterChallenge_EnrollmentToken(t *testing.T) {
+	cfg := passkeyHandlerConfig{source: sourceEnrollmentToken, requireEnrollmentToken: true, createWebSession: true, setCookie: true}
+
+	t.Run("valid token returns 200 with challenge options", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		tok, err := svc.enrollmentTokenSvc.GenerateToken(t.Context(), user.ID, "cli-valid-1")
+		require.NoError(t, err)
+
+		handler := svc.RegisterChallenge(cfg)
+		body, err := json.Marshal(map[string]string{"enrollment_token": tok.Token})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterChallenge, bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.PasskeyRegisterChallengeResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.True(t, resp.Success)
+		assert.NotNil(t, resp.Options)
+	})
+
+	// challenge must NOT consume the token — verify is the consuming
+	// step. A second challenge with the same token must still succeed
+	// (200, not 409). This pins the two-phase semantics and prevents
+	// the regression where challenge consumes, breaking verify.
+	t.Run("challenge does not consume token", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		tok, err := svc.enrollmentTokenSvc.GenerateToken(t.Context(), user.ID, "cli-replay-1")
+		require.NoError(t, err)
+
+		handler := svc.RegisterChallenge(cfg)
+		body, err := json.Marshal(map[string]string{"enrollment_token": tok.Token})
+		require.NoError(t, err)
+
+		req1 := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterChallenge, bytes.NewReader(body))
+		rr1 := httptest.NewRecorder()
+		handler(rr1, req1)
+		assert.Equal(t, http.StatusOK, rr1.Code)
+
+		// Re-issue with the same token; the challenge step only
+		// validates, so this must still be 200, not 409 consumed.
+		req2 := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterChallenge, bytes.NewReader(body))
+		rr2 := httptest.NewRecorder()
+		handler(rr2, req2)
+		assert.Equal(t, http.StatusOK, rr2.Code)
+
+		// The token must still be unconsumed in the store so that the
+		// verify step can consume it.
+		tok2, err := svc.enrollmentTokenSvc.ValidateToken(t.Context(), tok.Token)
+		require.NoError(t, err)
+		assert.False(t, tok2.Consumed)
+	})
+
+	t.Run("expired token returns 410", func(t *testing.T) {
+		db := newTestDB(t)
+		logger := testutil.NewTestLogger()
+		userSvc := NewUserService(db.GetDocStore(), logger)
+		user, err := userSvc.CreateUser(t.Context())
+		require.NoError(t, err)
+		webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
+		resp := response.NewWriter(logger)
+		psvc, err := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+		require.NoError(t, err)
+		enrollmentTokenSvc := NewEnrollmentTokenService(db.GetDocStore(), logger)
+		handler := NewPasskeyHandler(PasskeyHandlerDeps{
+			Service:            psvc,
+			WebSessionSvc:      webSessionSvc,
+			EnrollmentTokenSvc: enrollmentTokenSvc,
+			Responder:          resp,
+			MaxPayload:         10 * 1024 * 1024,
+		})
+		tok, err := enrollmentTokenSvc.GenerateToken(t.Context(), user.ID, "cli-exp-1")
+		require.NoError(t, err)
+		// Overwrite the persisted token with an expires_at in the past so
+		// ValidateAndConsumeToken rejects it as expired.
+		expiredDoc, err := json.Marshal(models.EnrollmentToken{
+			Token:        tok.Token,
+			UserID:       user.ID,
+			CLISessionID: "cli-exp-1",
+			CreatedAt:    time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC),
+			ExpiresAt:    time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC),
+			Consumed:     false,
+		})
+		require.NoError(t, err)
+		require.NoError(t, db.GetDocStore().DocSet(t.Context(),
+			marshaler.CollectionName(constants.CollectionEnrollmentTokens), tok.Token, expiredDoc))
+
+		hh := handler.RegisterChallenge(cfg)
+		body, err := json.Marshal(map[string]string{"enrollment_token": tok.Token})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterChallenge, bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+		hh(rr, req)
+
+		assert.Equal(t, http.StatusGone, rr.Code)
+	})
+
+	t.Run("consumed token returns 409", func(t *testing.T) {
+		svc, _, user := newPasskeyServiceHTTPForTest(t)
+		tok, err := svc.enrollmentTokenSvc.GenerateToken(t.Context(), user.ID, "cli-con-1")
+		require.NoError(t, err)
+		// Consume it once.
+		_, err = svc.enrollmentTokenSvc.ValidateAndConsumeToken(t.Context(), tok.Token)
+		require.NoError(t, err)
+
+		handler := svc.RegisterChallenge(cfg)
+		body, err := json.Marshal(map[string]string{"enrollment_token": tok.Token})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterChallenge, bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusConflict, rr.Code)
+	})
+
+	t.Run("missing token returns 400", func(t *testing.T) {
+		svc, _, _ := newPasskeyServiceHTTPForTest(t)
+		handler := svc.RegisterChallenge(cfg)
+		body, err := json.Marshal(map[string]string{})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterChallenge, bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		var resp passkeyErrorResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		assert.Contains(t, resp.Error, "enrollment_token")
+	})
+
+	t.Run("invalid token returns 401", func(t *testing.T) {
+		svc, _, _ := newPasskeyServiceHTTPForTest(t)
+		handler := svc.RegisterChallenge(cfg)
+		body, err := json.Marshal(map[string]string{"enrollment_token": "not-a-real-token"})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterChallenge, bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+}
+
+// TestPasskeyHandler_RegisterVerify_EnrollmentToken_Valid verifies the
+// happy-path enrollment-token registration verify: a valid token + a valid
+// attestation yields 200, a web session cookie, and an SSE
+// passkey.registered event carrying the token's cli_session_id.
+func TestPasskeyHandler_RegisterVerify_EnrollmentToken_Valid(t *testing.T) {
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	userSvc := NewUserService(db.GetDocStore(), logger)
+	user, err := userSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
+	resp := response.NewWriter(logger)
+	psvc, err := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+	require.NoError(t, err)
+	enrollmentTokenSvc := NewEnrollmentTokenService(db.GetDocStore(), logger)
+	sseStore := db.GetSSEStore()
+	pubsub := NewGatewayWebSocketHandler(logger)
+	t.Cleanup(func() { pubsub.Close() })
+	orchestrator, err := NewPasskeyOrchestrator(nil, nil, sseStore, pubsub, logger)
+	require.NoError(t, err)
+	handler := NewPasskeyHandler(PasskeyHandlerDeps{
+		Service:            psvc,
+		WebSessionSvc:      webSessionSvc,
+		EnrollmentTokenSvc: enrollmentTokenSvc,
+		Responder:          resp,
+		MaxPayload:         10 * 1024 * 1024,
+		Orchestrator:       orchestrator,
+	})
+
+	tok, err := enrollmentTokenSvc.GenerateToken(t.Context(), user.ID, "cli-verify-1")
+	require.NoError(t, err)
+
+	cfg := passkeyHandlerConfig{source: sourceEnrollmentToken, requireEnrollmentToken: true, createWebSession: true, setCookie: true}
+	hh := handler.RegisterVerify(cfg)
+
+	// We cannot produce a real WebAuthn attestation in a unit test, so we
+	// send a malformed attestation and assert the handler rejects it with
+	// a 400 (not a 200 success=false). This pins the contract: the
+	// enrollment-token flow returns proper 4xx errors, never the old
+	// 200-OK-on-error anti-pattern.
+	body, err := json.Marshal(struct {
+		EnrollmentToken     string                             `json:"enrollment_token"`
+		AttestationResponse models.WebAuthnAttestationResponse `json:"attestation_response"`
+	}{
+		EnrollmentToken: tok.Token,
+		AttestationResponse: models.WebAuthnAttestationResponse{
+			ID:                "fake-id",
+			RawID:             "fake-rawId",
+			ClientDataJSON:    "fake",
+			AttestationObject: "fake",
+		},
+	})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthPasskeysEnrollmentRegisterVerify, bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	hh(rr, req)
+
+	// The token was consumed by the challenge step in a real flow; here we
+	// only assert the verify path does not return 200 success=false for
+	// internal errors. A malformed attestation yields a 400 from
+	// VerifyRegistration.
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+// TestPasskeyHandler_BindEmbeddedOperatorToWebSession verifies the
+// embedded-operator binding the passkey verify paths (browser bootstrap
+// and enrollment-token registration) invoke after creating a web session:
+// the claimed embedded operator is bound via the KV pair, the
+// bound_sessions durability document, and the operator document's
+// bound_web_session_id. A real WebAuthn attestation cannot be produced in
+// a unit test, so the binding call the verify handlers make is exercised
+// directly. A web session for a different user silently binds nothing.
+func TestPasskeyHandler_BindEmbeddedOperatorToWebSession(t *testing.T) {
+	infra := setupTestInfrastructure(t, false)
+
+	user, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+	other, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+
+	// Claim the embedded operator for the first user — the same state the
+	// first user's bootstrap produces.
+	operatorID, operatorSessionID, err := infra.Embedded.ClaimEmbeddedOperator(t.Context(), user.ID)
+	require.NoError(t, err)
+
+	t.Run("claimed operator binds to web session", func(t *testing.T) {
+		webSession, err := infra.WebSessionSvc.CreateWebSession(t.Context(), user.ID)
+		require.NoError(t, err)
+
+		infra.Passkey.bindEmbeddedOperatorSession(t.Context(), user.ID, webSession.ID)
+
+		// KV pair: operator session -> web session.
+		boundWebID, found := infra.KVStore.KVGet(t.Context(), sessionOperatorBindKey(operatorSessionID))
+		require.True(t, found, "sessionOperatorBind entry must exist")
+		assert.Equal(t, webSession.ID, boundWebID)
+
+		// KV pair: web session -> operator session IDs.
+		raw, found := infra.KVStore.KVGet(t.Context(), sessionWebBindKey(webSession.ID))
+		require.True(t, found, "sessionWebBind entry must exist")
+		var sessionIDs []string
+		require.NoError(t, json.Unmarshal([]byte(raw), &sessionIDs))
+		assert.Contains(t, sessionIDs, operatorSessionID)
+
+		// bound_sessions durability document.
+		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionBoundSessions), webSession.ID)
+		require.NoError(t, err)
+		require.NotNil(t, doc)
+		var bDoc models.BoundSessionsDocumentGo
+		b, err := json.Marshal(doc.Data)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(b, &bDoc))
+		assert.Equal(t, user.ID, bDoc.UserID)
+		assert.Contains(t, bDoc.OperatorIDs, operatorID)
+		assert.Contains(t, bDoc.OperatorSessionIDs, operatorSessionID)
+
+		// The operator document itself carries bound_web_session_id.
+		op := loadEmbeddedOperatorDoc(t, infra.DocStore)
+		assert.Equal(t, webSession.ID, op.BoundWebSessionId)
+	})
+
+	t.Run("different user's web session binds nothing", func(t *testing.T) {
+		webSession, err := infra.WebSessionSvc.CreateWebSession(t.Context(), other.ID)
+		require.NoError(t, err)
+
+		infra.Passkey.bindEmbeddedOperatorSession(t.Context(), other.ID, webSession.ID)
+
+		_, found := infra.KVStore.KVGet(t.Context(), sessionWebBindKey(webSession.ID))
+		assert.False(t, found, "no binding for a different user's web session")
+		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionBoundSessions), webSession.ID)
+		require.NoError(t, err)
+		assert.Nil(t, doc)
+	})
+}

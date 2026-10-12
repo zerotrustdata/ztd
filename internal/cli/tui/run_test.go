@@ -1,0 +1,131 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package tui
+
+import (
+	"context"
+	"io"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/zerotrustdata/ztd/internal/cli/sse"
+)
+
+// headlessProgramOptions returns program options that allow Run to execute
+// without a real terminal. The provided input string is fed to the program;
+// "q" triggers a clean quit via the key handler.
+func headlessProgramOptions(input string) []tea.ProgramOption {
+	return []tea.ProgramOption{
+		tea.WithoutRenderer(),
+		tea.WithInput(strings.NewReader(input)),
+		tea.WithOutput(io.Discard),
+	}
+}
+
+func TestRun_NoSessionReturnsQuickly(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(t.Context(), Options{
+			ProgramOptions: headlessProgramOptions("q"),
+		})
+	}()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after simulated quit keypress")
+	}
+}
+
+func TestRun_QuitViaCtrlC(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(t.Context(), Options{
+			ProgramOptions: headlessProgramOptions("ctrl+c"),
+		})
+	}()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after ctrl+c")
+	}
+}
+
+func TestRun_PassesOptionsToModel(t *testing.T) {
+	opts := Options{
+		Version:        "v1.3.6",
+		Identity:       Identity{UserID: "user-1", CLISessionID: "cli-1", OperatorID: "op-1"},
+		ProgramOptions: headlessProgramOptions("q"),
+	}
+
+	done := make(chan struct{}, 1)
+	var capturedModel Model
+	go func() {
+		m := NewModel(opts)
+		capturedModel = m
+		done <- struct{}{}
+	}()
+	<-done
+
+	assert.Equal(t, "v1.3.6", capturedModel.version)
+	assert.Equal(t, opts.Identity, capturedModel.identity)
+}
+
+type stubSession struct{}
+
+func (s *stubSession) NewSSEClient() *sse.Client {
+	return sse.NewClient("http://127.0.0.1:1/nonexistent", nil)
+}
+
+func (s *stubSession) DoRequestContext(_ context.Context, _, _ string, _ interface{}) ([]byte, error) {
+	return nil, nil
+}
+
+func TestRun_AdapterGoroutineCleanedUpOnExit(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(t.Context(), Options{
+			Session:        &stubSession{},
+			ProgramOptions: headlessProgramOptions("q"),
+		})
+	}()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run() did not return; adapter goroutine may not be cleaned up")
+	}
+}
+
+func TestRun_CancelledContextExits(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, Options{
+			ProgramOptions: headlessProgramOptions("q"),
+		})
+	}()
+
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after context cancellation")
+	}
+}

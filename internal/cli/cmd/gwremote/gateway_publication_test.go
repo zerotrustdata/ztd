@@ -1,0 +1,217 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gwremote
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+)
+
+type stubGatewayPublicationClient struct {
+	mu        sync.Mutex
+	highWater int64
+	postCalls int
+}
+
+func (c *stubGatewayPublicationClient) Get(path string) ([]byte, error) {
+	if path != constants.APIPaths.PublicFeedSnapshot {
+		return nil, fmt.Errorf("unexpected get path: %s", path)
+	}
+	c.mu.Lock()
+	highWater := c.highWater
+	c.mu.Unlock()
+	if highWater == 0 {
+		return nil, fmt.Errorf("%w: status 404: {\"error\":\"public-feed: snapshot not found\"}", constants.ErrHTTPStatusError)
+	}
+	snapshot := models.PublicFeedSnapshot{HighWaterSequence: highWater}
+	body, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func (c *stubGatewayPublicationClient) Post(path string, body interface{}) ([]byte, error) {
+	if path != constants.APIPaths.PublicFeedBatches {
+		return nil, fmt.Errorf("unexpected post path: %s", path)
+	}
+	records, ok := body.([]models.PublicFeedRecord)
+	if !ok {
+		return nil, fmt.Errorf("unexpected post body type: %T", body)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.postCalls++
+	expected := c.highWater + 1
+	for index, record := range records {
+		if record.Sequence != expected+int64(index) {
+			return nil, fmt.Errorf("%w: status 400: {\"error\":\"public-feed: batch sequence is out of order\"}", constants.ErrHTTPStatusError)
+		}
+	}
+	c.highWater = records[len(records)-1].Sequence
+	resp := models.PublicFeedExportBatchResponse{HighWaterSequence: c.highWater}
+	payload, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func (c *stubGatewayPublicationClient) Put(string, interface{}) ([]byte, error) {
+	return nil, fmt.Errorf("unexpected put")
+}
+
+func (c *stubGatewayPublicationClient) Delete(string) ([]byte, error) {
+	return nil, fmt.Errorf("unexpected delete")
+}
+
+func TestRemoteGatewayCampaignFeedExporterUsesGatewaySnapshot(t *testing.T) {
+	client := &stubGatewayPublicationClient{highWater: 41}
+	exporter := &remoteGatewayCampaignFeedExporter{client: client}
+
+	highWater, err := exporter.HighWaterSequence(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(41), highWater)
+}
+
+func TestRemoteGatewayCampaignFeedExporterEmptySnapshotReturnsZero(t *testing.T) {
+	client := &stubGatewayPublicationClient{}
+	exporter := &remoteGatewayCampaignFeedExporter{client: client}
+
+	highWater, err := exporter.HighWaterSequence(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), highWater)
+}
+
+func TestRemoteGatewayCampaignFeedExporterRetriesSequenceOutOfOrder(t *testing.T) {
+	client := &stubGatewayPublicationClient{highWater: 10}
+	exporter := &remoteGatewayCampaignFeedExporter{client: client}
+	records := []evaluation.CampaignPublicFeedRecord{{
+		Sequence:    6,
+		RecordHash:  "hash",
+		RecordBytes: "{}",
+	}}
+	require.NoError(t, exporter.ExportBatch(context.Background(), records))
+	assert.Equal(t, int64(11), records[0].Sequence)
+	assert.Equal(t, 2, client.postCalls)
+}
+
+func TestShouldPublishViaGatewayWithoutHostExportConfig(t *testing.T) {
+	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
+	original := GatewayHealthCheck
+	GatewayHealthCheck = func() bool { return true }
+	t.Cleanup(func() { GatewayHealthCheck = original })
+
+	assert.False(t, isHostPublicFeedConfigured(context.Background(), fileSvc))
+	assert.True(t, ShouldPublishViaGateway(context.Background(), fileSvc))
+}
+
+func TestShouldPublishViaGatewayReturnsFalseWhenGatewayUnhealthy(t *testing.T) {
+	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
+	original := GatewayHealthCheck
+	GatewayHealthCheck = func() bool { return false }
+	t.Cleanup(func() { GatewayHealthCheck = original })
+
+	assert.False(t, isHostPublicFeedConfigured(context.Background(), fileSvc))
+	assert.False(t, ShouldPublishViaGateway(context.Background(), fileSvc))
+}
+
+func TestIsPublicFeedSequenceOutOfOrder(t *testing.T) {
+	assert.True(t, isPublicFeedSequenceOutOfOrder(fmt.Errorf("gateway export batch: %w", constants.ErrPublicFeedSequenceOutOfOrder)))
+	assert.False(t, isPublicFeedSequenceOutOfOrder(nil))
+	assert.False(t, isPublicFeedSequenceOutOfOrder(fmt.Errorf("other error")))
+}
+
+func TestIsPublicFeedSnapshotNotFound(t *testing.T) {
+	assert.True(t, isPublicFeedSnapshotNotFound(fmt.Errorf("snapshot lookup: %w", constants.ErrPublicFeedSnapshotNotFound)))
+	assert.False(t, isPublicFeedSnapshotNotFound(nil))
+}
+
+func TestNewCampaignFeedExporter_RequiresHealthyGateway(t *testing.T) {
+	WithGatewayHealthCheck(t, false)
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+
+	_, err := NewCampaignFeedExporter(context.Background(), fileSvc, cfg)
+	assert.ErrorIs(t, err, constants.ErrGatewayUnhealthy)
+}
+
+func TestNewCampaignFeedExporter_UsesGatewaySnapshot(t *testing.T) {
+	WithGatewayHealthCheck(t, true)
+	client := &stubGatewayPublicationClient{highWater: 12}
+	exporter := &remoteGatewayCampaignFeedExporter{client: client}
+
+	highWater, err := exporter.HighWaterSequence(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(12), highWater)
+}
+
+type capturingGatewayProofPublisherClient struct {
+	lastPath string
+	lastBody interface{}
+}
+
+func (c *capturingGatewayProofPublisherClient) Get(string) ([]byte, error) {
+	return nil, fmt.Errorf("unexpected get")
+}
+
+func (c *capturingGatewayProofPublisherClient) Post(path string, body interface{}) ([]byte, error) {
+	c.lastPath = path
+	c.lastBody = body
+	resp := models.PublicAssignmentAuditProofPublishResponse{Accepted: true}
+	payload, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func (c *capturingGatewayProofPublisherClient) Put(string, interface{}) ([]byte, error) {
+	return nil, fmt.Errorf("unexpected put")
+}
+
+func (c *capturingGatewayProofPublisherClient) Delete(string) ([]byte, error) {
+	return nil, fmt.Errorf("unexpected delete")
+}
+
+func TestRemoteGatewayCampaignProofPublisherPostsStructuredRequest(t *testing.T) {
+	client := &capturingGatewayProofPublisherClient{}
+	publisher := &remoteGatewayCampaignProofPublisher{client: client}
+	err := publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{{
+		CampaignID:       "campaign-1",
+		CampaignRevision: "rev-1",
+		RunID:            "run-1",
+		AssignmentID:     "assignment-1",
+		IndexDigest:      "digest-1",
+		Artifacts: evaluation.AssignmentAuditSliceArtifacts{
+			Database: []byte("db-bytes"),
+			VaultKey: []byte("vault-key"),
+		},
+	}}, false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.APIPaths.PublicFeedProofs, client.lastPath)
+	request, ok := client.lastBody.(models.PublicAssignmentAuditProofPublishRequest)
+	require.True(t, ok, "expected structured request body, got %T", client.lastBody)
+	assert.Equal(t, "campaign-1", request.CampaignID)
+	assert.Equal(t, "rev-1", request.CampaignRevision)
+	assert.Equal(t, "run-1", request.RunID)
+	assert.Equal(t, "assignment-1", request.AssignmentID)
+	assert.Equal(t, "digest-1", request.IndexDigest)
+	assert.Equal(t, []byte("db-bytes"), request.Database)
+	assert.Equal(t, []byte("vault-key"), request.VaultKey)
+}

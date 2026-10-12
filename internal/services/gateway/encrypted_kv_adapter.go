@@ -1,0 +1,97 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	storage "github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/services/vault"
+)
+
+// EncryptedKVAdapter bridges KVStoreService (in the canonical gateway DB) to the
+// storage.TokenStore interface expected by ScrubbingService. Values are encrypted
+// at rest via the vault. Entries are written as state_tier='observed' so they
+// do not participate in the bound state root hash.
+type EncryptedKVAdapter struct {
+	kv    *KVStoreService
+	vault *vault.Vault
+}
+
+// Ensure EncryptedKVAdapter implements storage.TokenStore.
+var _ storage.TokenStore = (*EncryptedKVAdapter)(nil)
+
+// encryptedKVAADVersion versions the associated data bound into every value.
+const encryptedKVAADVersion = "ztd-kv-aad-v1"
+
+// encryptedKVAAD binds a value ciphertext to its full KV key, so a value copied
+// under another key fails authentication instead of decrypting as that key's value.
+func encryptedKVAAD(fullKey string) []byte {
+	return []byte(encryptedKVAADVersion + "|" + fullKey)
+}
+
+// NewEncryptedKVAdapter returns an EncryptedKVAdapter that satisfies storage.TokenStore.
+func NewEncryptedKVAdapter(kv *KVStoreService, v *vault.Vault) *EncryptedKVAdapter {
+	return &EncryptedKVAdapter{kv: kv, vault: v}
+}
+
+func (a *EncryptedKVAdapter) KVSet(ctx context.Context, key, value string, ttlSeconds int) error {
+	if !a.vault.IsUnlocked() {
+		return fmt.Errorf("encrypted_kv_adapter: cannot encrypt key %s: %w", key, constants.ErrVaultLocked)
+	}
+	fullKey := constants.SentinelKeyPrefix + key
+	encrypted, err := a.vault.EncryptWithAAD([]byte(value), encryptedKVAAD(fullKey))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt value for key %s: %w", key, err)
+	}
+	return a.kv.KVSetObserved(ctx, fullKey, string(encrypted), ttlSeconds)
+}
+
+func (a *EncryptedKVAdapter) KVGet(ctx context.Context, key string) (string, error) {
+	fullKey := constants.SentinelKeyPrefix + key
+	value, found := a.kv.KVGet(ctx, fullKey)
+	if !found {
+		return "", fmt.Errorf("encrypted_kv_adapter: key %s: %w", key, constants.ErrKeyNotFound)
+	}
+	if !a.vault.IsUnlocked() {
+		return "", fmt.Errorf("encrypted_kv_adapter: cannot decrypt key %s: %w", key, constants.ErrVaultLocked)
+	}
+	decrypted, err := a.vault.DecryptWithAAD([]byte(value), encryptedKVAAD(fullKey))
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt value for key %s: %w", key, err)
+	}
+	return string(decrypted), nil
+}
+
+func (a *EncryptedKVAdapter) KVScanPrefix(ctx context.Context, prefix string) (map[string]string, error) {
+	fullKeys, err := a.kv.KVKeys(ctx, constants.SentinelKeyPrefix+prefix+"*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan keys with prefix %q: %w", prefix, err)
+	}
+
+	if !a.vault.IsUnlocked() {
+		return nil, fmt.Errorf("encrypted_kv_adapter: cannot decrypt prefix %s: %w", prefix, constants.ErrVaultLocked)
+	}
+
+	result := make(map[string]string, len(fullKeys))
+	for _, fullKey := range fullKeys {
+		value, found := a.kv.KVGet(ctx, fullKey)
+		if !found {
+			continue
+		}
+		decrypted, err := a.vault.DecryptWithAAD([]byte(value), encryptedKVAAD(fullKey))
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt value for key %s: %w", fullKey, err)
+		}
+		result[strings.TrimPrefix(fullKey, constants.SentinelKeyPrefix)] = string(decrypted)
+	}
+	return result, nil
+}

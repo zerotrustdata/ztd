@@ -1,0 +1,110 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package gateway
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+)
+
+func TestHandleBootstrapWithURL(t *testing.T) {
+	t.Run("Success - Bootstrap with CLI CSR creates the first real user", func(t *testing.T) {
+		c := setupTestBootstrapController(t)
+		cliCsr := testutil.GenerateTestCSRP256(t, "test-cli")
+		body := map[string]string{
+			"name":               "Owner",
+			"cli_csr_pem":        cliCsr,
+			"system_fingerprint": "test-fp",
+		}
+		b, err := json.Marshal(body)
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/bootstrap", bytes.NewReader(b))
+		rr := httptest.NewRecorder()
+
+		c.handleLocalBootstrapWithURL(rr, req)
+
+		assert.Equal(t, http.StatusCreated, rr.Code)
+		var resp models.BootstrapResponse
+		err = json.Unmarshal(rr.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.True(t, resp.Success)
+		assert.Equal(t, string(constants.DocIDEmbeddedOperator), resp.OperatorID)
+		assert.NotEmpty(t, resp.OperatorSessionID)
+		assert.NotEmpty(t, resp.CLISessionID)
+		assert.NotEmpty(t, resp.HubTrustBundle)
+		assert.NotEqual(t, resp.OperatorSessionID, resp.CLISessionID,
+			"cli_session_id MUST be a distinct identifier from operator_session_id")
+		// Bootstrap creates exactly one real user (the first human enrollee
+		// and gateway admin). There is no ephemeral bootstrap-user concept.
+		hasUsers, err := c.userSvc.HasAnyUsers(t.Context())
+		require.NoError(t, err)
+		assert.True(t, hasUsers, "bootstrap must create the first real user")
+	})
+
+	t.Run("Failure - Rejects bootstrap if ANY other users exist", func(t *testing.T) {
+		c := setupTestBootstrapController(t)
+		c.userSvc.CreateUser(t.Context())
+
+		body := map[string]string{
+			"name": "Superadmin",
+		}
+		b, err := json.Marshal(body)
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/bootstrap", bytes.NewReader(b))
+		rr := httptest.NewRecorder()
+
+		c.handleLocalBootstrapWithURL(rr, req)
+
+		assert.Equal(t, http.StatusForbidden, rr.Code)
+		assert.JSONEq(t, `{"error":"`+constants.ErrBootstrapInitialSetupOnly.Error()+`"}`, rr.Body.String())
+	})
+}
+
+func TestHandleBootstrapStatus(t *testing.T) {
+	t.Run("Fresh gateway is not bootstrapped", func(t *testing.T) {
+		c := setupTestBootstrapController(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/bootstrap/status", nil)
+		rr := httptest.NewRecorder()
+		c.handleBootstrapStatus(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.BootstrapStatusResponse
+		err := json.Unmarshal(rr.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		// bootstrapped is false until a human enrolls as the first owner.
+		assert.False(t, resp.Bootstrapped, "bootstrapped is false on a fresh gateway with no users")
+	})
+
+	t.Run("Bootstrapped after creating the first user", func(t *testing.T) {
+		c := setupTestBootstrapController(t)
+		_, err := c.userSvc.CreateUser(t.Context())
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/bootstrap/status", nil)
+		rr := httptest.NewRecorder()
+		c.handleBootstrapStatus(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp models.BootstrapStatusResponse
+		err = json.Unmarshal(rr.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.True(t, resp.Bootstrapped, "bootstrapped flips to true once the first user exists")
+	})
+}

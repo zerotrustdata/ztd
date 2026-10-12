@@ -1,0 +1,196 @@
+---
+doc_id: release_process
+title: Release Process
+audience: maintainers and coding agents
+status: current
+version: v1.0.0
+last_updated: 2026-10-12
+owners:
+  - VERSION
+  - Makefile
+  - CHANGELOG.md
+  - README.md
+  - .github/CONTRIBUTING.md
+  - AGENTS.md
+  - CLAUDE.md
+  - protocol/docs/
+  - internal/services/gateway/explorer/static/
+  - internal/services/gateway/console/static/
+  - internal/cli/cmd/compliance/
+related:
+  - docs/devs/devs.md
+  - docs/devs/codemap.md
+  - docs/devs/tests.md
+  - docs/devs/docs.md
+  - docs/devs/troubleshooting.md
+  - docs/guides/ux_smoke_test.md
+when_to_read: Preparing, auditing, generating compliance evidence for, and executing a platform release.
+do_not_use_for:
+  - Coding invariants and style guidelines (docs/devs/devs.md)
+  - Documentation audit workflow and documentation catalog (docs/devs/docs.md)
+  - Test tiers and test execution (docs/devs/tests.md)
+  - Runtime and package ownership maps (docs/devs/codemap.md)
+  - Diagnostics, failure modes, and recovery procedures (docs/devs/troubleshooting.md)
+---
+
+# Release Process
+
+## Purpose
+
+Defines the release preparation, change inventory, documentation reconciliation, version synchronization, compliance evidence generation, and release publication workflow for the ztd platform and protocol packages.
+
+## Quick index
+
+- [Purpose](#purpose)
+- [Quick index](#quick-index)
+- [Invariants](#invariants)
+  - [Separation of duties (`INV-REL-DUTY`)](#separation-of-duties-inv-rel-duty)
+  - [Version synchronization (`INV-REL-VER`)](#version-synchronization-inv-rel-ver)
+  - [Compliance evidence (`INV-REL-COMP`)](#compliance-evidence-inv-rel-comp)
+  - [Release smoke evidence (`INV-REL-SMOKE`)](#release-smoke-evidence-inv-rel-smoke)
+- [Owned surfaces](#owned-surfaces)
+- [Procedures](#procedures)
+  - [Agent PR Preparation Sequence](#agent-pr-preparation-sequence)
+  - [Release Owner Tagging and Publication (Post-Merge)](#release-owner-tagging-and-publication-post-merge)
+  - [Release Signing](#release-signing)
+  - [Website Download Set and Promotion (R2)](#website-download-set-and-promotion-r2)
+- [Anti-patterns](#anti-patterns)
+- [Links out](#links-out)
+
+## Invariants
+
+Ids are stable. Append the next free number in a topic. Do not renumber.
+
+### Separation of duties (`INV-REL-DUTY`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-REL-DUTY-01 | The AI coding agent MUST NOT run `git commit`, `git push`, `gh pr create`, or `make release`. The agent prepares the working tree, audits docs, generates compliance evidence, and hands back the prepared tree to the release owner. |
+| INV-REL-DUTY-02 | The release owner MUST review prepared changes, commit, open and merge the PR, pull the merged `main` branch locally, and execute `make release` to tag and push. |
+
+### Version synchronization (`INV-REL-VER`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-REL-VER-01 | `VERSION` is the single source of truth for the platform and protocol version (`vX.Y.Z\n`). |
+| INV-REL-VER-02 | PR preparation MUST synchronize `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md`, and npm package versions declared in `internal/tools/versionsync`. `make version-sync` performs the sync and `make version-sync-check` verifies it. |
+| INV-REL-VER-04 | `CHANGELOG.md` MUST include a row under the minor-version section (`## vX.Y.x`) linking to the new release notes file `docs/release_notes/vX.Y.x/vX.Y.Z.md`. When a release adds a new minor-version section, the release creates both the `## vX.Y.x` section above existing sections and `docs/release_notes/vX.Y.x/`; `make release` derives notes path from `VERSION` and aborts when missing. |
+| INV-REL-VER-05 | Before tagging, every verified evaluation campaign MUST state the release it measured. The release is recorded in the campaign digest or, when the digest does not record it, carried as an asserted tag set with `ztd eval campaigns tag --release vX.Y.Z <campaign>...`. `ztd eval campaigns list` shows any campaign whose release is `unknown`. |
+| INV-REL-VER-06 | The Evaluation Explorer bundle compiles the current release from `VERSION` (`CURRENT_PLATFORM_RELEASE`). After changing `VERSION`, PR preparation MUST rebuild the bundle, refresh Gateway embed (`make explorer-embed`), and commit `internal/services/gateway/explorer/static/`. Stale embeds default the Explorer's release filter to the release current when built. |
+| INV-REL-VER-07 | The console embed (`internal/services/gateway/console/static/`) carries no release string, but `make console-embed-check` MUST pass before PR so committed embeds match `console/` at the release commit. |
+| INV-REL-VER-08 | Current installation examples in `README.md` and `.github/CONTRIBUTING.md` MUST match `VERSION`. Audit prerequisites and startup commands against current `Makefile`. Audit `AGENTS.md` and `CLAUDE.md` for removed paths, commands, and targets. Historical release notes and scoped evidence retain original versions. |
+
+### Compliance evidence (`INV-REL-COMP`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-REL-COMP-01 | Every release MUST include a signed, verified public compliance report bundle and its canonical projections (`vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`) in `docs/release_notes/vX.Y.x/`. |
+| INV-REL-COMP-02 | Report trust policies and evidence trust policies MUST be external to the report bundle. Supplying external trust does not replace first-party engineering assessment. |
+| INV-REL-COMP-03 | Compliance projections MUST match canonical renderings in the bundle (`report.md` and `report.csv`). |
+
+### Release smoke evidence (`INV-REL-SMOKE`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-REL-SMOKE-01 | Release PR preparation MUST run `./ztd test release-smoke --root <new-private-directory>` against the built candidate binary and retain its complete output. The maintained smoke does not require Python, Ensemble, an LLM, or provider credentials. |
+| INV-REL-SMOKE-02 | The runner MUST create and own an isolated Gateway and dedicated data Operator through the supported enrollment/deployment lifecycle. It MUST exercise governed `FILE_EDIT` with exact worker-local receipt verification and read-back, and embedded governed document create/merge preserving fields not included in the merge. |
+| INV-REL-SMOKE-03 | The data worker MUST run in its dedicated runtime, and `report all` MUST read that worker's populated `.ztd` stores. A report against Gateway state, an empty runtime, or stores combined from different runtime roots is not release evidence. |
+| INV-REL-SMOKE-04 | Release smoke acceptance requires non-empty local receipts, commitments, and file mutations in both worker and Gateway runtimes; `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST be `PASS` in each runtime report; and all verification rows MUST contain zero `FAIL` and zero `SKIPPED`. |
+| INV-REL-SMOKE-05 | Smoke artifacts are engineering acceptance evidence, not the signed public compliance bundle required by `INV-REL-COMP-01`. A passing smoke run does not replace release compliance preparation or expand claims of tested `doctrine` posture. |
+| INV-REL-SMOKE-06 | The runner MUST retain command logs, metadata, per-runtime reports, and a summary identifying binary SHA-256, source revision and dirty state, platform, posture, ingress, runtime roots, local signed receipts, and start/end times. `make ci` is not a substitute for runtime smoke acceptance. |
+
+## Owned surfaces
+
+| Claim | Path | Verify |
+| :--- | :--- | :--- |
+| Repository version | `VERSION` | `cat VERSION` |
+| Release index | `CHANGELOG.md` | Table row under `## vX.Y.x` |
+| Installation and contributor entry points | `README.md`, `.github/CONTRIBUTING.md` | Installation examples match `VERSION`; prerequisites and startup commands match `Makefile` |
+| Agent entry points | `AGENTS.md`, `CLAUDE.md` | Repository map and build/test examples reference maintained paths and targets |
+| Protocol spec headers | `protocol/docs/a2a.md`, `constants.md`, `mcp.md`, `spec.md` | `Version: vX.Y.Z` header |
+| Explorer embed | `internal/services/gateway/explorer/static/` | `grep -l "$(cat VERSION)" internal/services/gateway/explorer/static/assets/*.js` lists bundle; `console-tests` CI job fails if embed differs |
+| Console embed | `internal/services/gateway/console/static/` | `make console-embed-check` |
+| Core-platform smoke runbook | `docs/guides/ux_smoke_test.md` | `./ztd test release-smoke --root <new-private-directory>` |
+| Smoke evidence artifacts | `<root>/` | `evidence/smoke-summary.json`, `reports/{gateway,worker}/`, and logs under `logs/` |
+| Compliance projection | `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md`, `.csv` | `ztd compliance release-evidence` |
+| Tag and push target | `Makefile` (`make release`) | Release owner only on merged `main` |
+
+## Procedures
+
+### Agent PR Preparation Sequence
+
+For campaign evidence, verify the recorded release in protected `campaign-spec.json`. Compliance capture preserves digest-bound release and source revision and excludes operator `release-tag.json` assertions. Campaign exports report release provenance in `run_summary.json` and SQLite metadata. See [Evaluation Architecture](../architecture/evals.md) for export contracts.
+
+To refresh published runs after correcting asserted tags, execute `ztd public restore --run-id <run> --force`.
+
+1. **Determine change inventory:** Diff `v<prev-tag>..HEAD` to identify all added, changed, removed, fixed, and security-sensitive features.
+2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`, audit affected documents end-to-end against production code, and update stale cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI.
+3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` following the template with Overview, Added, Changed, Removed (when anything is removed), Fixed, Tests, Documentation, Compliance Evidence, and Deferred sections.
+4. **Set version:** Update `VERSION` to `vX.Y.Z\n`.
+5. **Sync protocol specs and npm versions:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Synchronize Go installation examples in `README.md` and `.github/CONTRIBUTING.md` (`INV-REL-VER-08`).
+6. **Regenerate protocol bindings:** When `protocol/proto/ztd/` changed, run `make proto-generate` so generated Go and TypeScript output is current.
+7. **Update CHANGELOG:** Add the release table row under `## vX.Y.x` in `CHANGELOG.md`. When the release adds a new minor-version section, add the `## vX.Y.x` section with table headers above existing minor-version sections and create `docs/release_notes/vX.Y.x/`.
+8. **Refresh embedded frontends:** Run `make explorer-embed` (`INV-REL-VER-06`) and `make console-embed-check` (`INV-REL-VER-07`); refresh stale console embeds with `make console-embed`. `make build` compiles using committed embeds without building frontends.
+9. **Run the core-platform smoke gate:** Build the candidate with `make build`, then run `./ztd test release-smoke --root <new-private-directory>`. Require exit status 0 and `result: PASS` in `<root>/evidence/smoke-summary.json`; retain the entire root as review evidence. The runner owns and cleans up its isolated Gateway and worker.
+10. **Generate and verify compliance evidence:** From repository root, run `./ztd compliance release-prepare` (add `--new-key` when no report-signing key exists under `.ztd/secrets/`). The command reads runtime `ztd.db` read-only, derives protected scope with `ProductVersion = "X.Y.Z"` from `VERSION`, git, and SHA-256 digest of running `ztd` binary, exports assessment window, builds external trust policies, generates a public bundle (sealed under `.ztd/reports/`), exports it to `release-evidence/<version>/report-bundle/`, verifies the export offline, and projects the verified export into `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`.
+11. **Finalize document metadata:** Update `last_updated` and `version` on every audited document.
+12. **Verification checks:** Run `./ztd test lint`, `./ztd test unit`, `make console-lint console-test console-embed-check`, `make constants-check`, `make swagger-generate` (expect no diff), and package integration tests. Record in release notes what ran.
+
+### Release Owner Tagging and Publication (Post-Merge)
+
+```bash
+# On merged main branch with clean tree:
+git checkout main && git pull
+make release
+```
+
+`make release` runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. GitHub Actions workflows in `.github/workflows/release-binary.yml` validate the tag, build and sign binaries, create GitHub release, and publish website download assets.
+
+### Release Signing
+
+`.github/workflows/release-binary.yml` signs each binary in the release set keylessly with `cosign sign-blob --bundle`, using the workflow's GitHub OIDC identity. Each binary ships with `<binary>.sha256`, `<binary>.sig`, and `<binary>.sigstore.json`. No long-lived signing key exists for release binaries. `scripts/release-artifacts.sh` owns signing and verification helpers (`sign`, `verify-signatures`), and the workflow verifies every bundle before staging and again after download.
+
+The public signer identity is `https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/vX.Y.Z`, with OIDC issuer `https://token.actions.githubusercontent.com`. Verification procedures reside in [Verify a release binary](../guides/getting_started.md#verify-a-release-binary).
+
+### Website Download Set and Promotion (R2)
+
+The publish job in `.github/workflows/release-binary.yml` publishes the 30-file release set (7 targets × binary, `.sha256`, `.sig`, `.sigstore.json`, plus `checksums-sha256.txt` and `ztd-binaries.json`) to the `ztd-releases` R2 bucket in three steps:
+
+1. **Versioned upload:** The set is written under `s3://ztd-releases/v<VERSION>/` and each object is read back and compared by SHA-256 against the verified local file. Refuses write when prefix already holds objects.
+2. **GitHub publish:** `gh release edit --draft=false` marks GitHub release public.
+3. **Promotion:** `s3://ztd-releases/latest.json` is written last as `{"version": "<VERSION>"}` and read back. This is the sole object updating unversioned download routes.
+
+`website/worker.js` serves the set:
+- `/v/<version>/<file>` serves `v<version>/<file>` directly with `public, max-age=31536000, immutable`.
+- Unversioned routes (`/ztd`, `/ztd-linux-amd64`, `/checksums-sha256.txt`, ...) read `latest.json` on each request and serve `v<version>/<file>` with `public, max-age=300`.
+- Missing or malformed `latest.json` returns plain-text 503 with `cache-control: no-store`.
+
+**Failure behavior:** Failures before step 3 leave unversioned routes pointing at the previous version. To rerun, the release owner removes `v<VERSION>/` via `aws s3 rm --recursive s3://ztd-releases/v<VERSION>/ --endpoint-url <CLOUDFLARE_S3_API_ENDPOINT>` after confirming `latest.json` does not reference `<VERSION>`. Failures at step 3 after public GitHub release leave unversioned routes on the previous version; recover by manually writing `latest.json` with the new version.
+
+**Rollback:** Rewrite `latest.json` to the target rollback version (e.g. `{"version": "2.3.1"}`). Immutable `v<version>/` prefixes remain intact; unversioned routes restore within the 5-minute cache TTL.
+
+## Anti-patterns
+
+- Agent running `git commit`, `git push`, or `make release` (`INV-REL-DUTY-01`).
+- Running `make release` from a feature branch or with unmerged changes (`INV-REL-DUTY-02`).
+- Updating document metadata without auditing entire document against code (`INV-DOC-FMT-02` in [Documentation Guide](docs.md)).
+- Recording a source revision for a Gateway built from a different commit (`INV-REL-COMP-01`).
+- Hand-editing compliance projections instead of generating through `ztd compliance release-evidence` (`INV-REL-COMP-01`, `INV-REL-COMP-03`).
+- Leaving README or contributor installation examples pinned to a release other than `VERSION`, or agent instructions pointing to removed commands (`INV-REL-VER-08`).
+- Bumping `VERSION` without rebuilding Explorer embed, leaving release filters on stale versions (`INV-REL-VER-06`).
+- Adding release rows to non-existent `## vX.Y.x` sections instead of creating new minor sections (`INV-REL-VER-04`).
+- Treating `make ci` as release smoke acceptance, or failing to retain maintained runner evidence roots (`INV-REL-SMOKE-01`, `INV-REL-SMOKE-06`).
+- Treating scenario exit status alone as smoke acceptance without verifying signed receipts, governed read-back, and populated worker stores (`INV-REL-SMOKE-02`, `INV-REL-SMOKE-04`).
+- Generating release smoke reports from Gateway `.ztd` trees when mutations executed in dedicated data worker runtimes (`INV-REL-SMOKE-03`).
+- Substituting smoke CSVs for signed and offline-verified public compliance bundles (`INV-REL-SMOKE-05`, `INV-REL-COMP-01`).
+- Writing `latest.json` before GitHub release publication, or without verifying versioned prefix completeness.
+- Overwriting or deleting published `v<version>/` prefixes to change served versions. Roll back by rewriting `latest.json`.
+
+## Links out
+
+- [Developer Guidelines](devs.md): coding invariants and repository standards.
+- [Documentation Guide](docs.md): documentation audit, catalog, and formatting standards.
+- [Testing Guide](tests.md): test execution tiers and verification commands.
+- [Code Map](codemap.md): package and runtime ownership maps.
+- [Troubleshooting Guide](troubleshooting.md): diagnostics and recovery procedures.
+- [Host-Native Headless UX Smoke Test](../guides/ux_smoke_test.md): maintained release smoke command, runtime scenarios, evidence, and acceptance criteria.

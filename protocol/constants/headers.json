@@ -1,0 +1,164 @@
+{
+  "headers": {
+    "Accept": {
+      "_go_const": "HeaderAccept",
+      "value": "Accept"
+    },
+    "AcceptLanguage": {
+      "_go_const": "HeaderAcceptLanguage",
+      "value": "Accept-Language"
+    },
+    "AccessControlAllowCredentials": {
+      "_go_const": "HeaderAccessControlAllowCredentials",
+      "value": "Access-Control-Allow-Credentials"
+    },
+    "AccessControlAllowOrigin": {
+      "_go_const": "HeaderAccessControlAllowOrigin",
+      "value": "Access-Control-Allow-Origin"
+    },
+    "AccessControlRequestHeaders": {
+      "_go_const": "HeaderAccessControlRequestHeaders",
+      "value": "Access-Control-Request-Headers"
+    },
+    "AccessControlRequestMethod": {
+      "_go_const": "HeaderAccessControlRequestMethod",
+      "value": "Access-Control-Request-Method"
+    },
+    "Authorization": {
+      "_go_const": "HeaderAuthorization",
+      "value": "Authorization"
+    },
+    "BoundOperators": {
+      "_go_const": "HeaderBoundOperators",
+      "value": "X-ZTD-Bound-Operators"
+    },
+    "CLISessionID": {
+      "_go_const": "HeaderCLISessionID",
+      "value": "X-ZTD-CLI-Session-ID"
+    },
+    "CacheControl": {
+      "_go_const": "HeaderCacheControl",
+      "value": "Cache-Control"
+    },
+    "CaseID": {
+      "_go_const": "HeaderCaseID",
+      "value": "X-ZTD-Case-ID"
+    },
+    "ContentDisposition": {
+      "_go_const": "HeaderContentDisposition",
+      "value": "Content-Disposition"
+    },
+    "ContentLanguage": {
+      "_go_const": "HeaderContentLanguage",
+      "value": "Content-Language"
+    },
+    "ContentLength": {
+      "_go_const": "HeaderContentLength",
+      "value": "Content-Length"
+    },
+    "ContentType": {
+      "_go_const": "HeaderContentType",
+      "value": "Content-Type"
+    },
+    "Cookie": {
+      "_go_const": "HeaderCookie",
+      "value": "Cookie"
+    },
+    "DeploymentID": {
+      "_go_const": "HeaderDeploymentID",
+      "value": "X-ZTD-Deployment-ID"
+    },
+    "ExecutionID": {
+      "_go_const": "HeaderExecutionID",
+      "value": "X-ZTD-Execution-ID"
+    },
+    "InvestigationID": {
+      "_go_const": "HeaderInvestigationID",
+      "value": "X-ZTD-Investigation-ID"
+    },
+    "LastEventID": {
+      "_go_const": "HeaderLastEventID",
+      "value": "Last-Event-ID"
+    },
+    "OperatorID": {
+      "_go_const": "HeaderOperatorID",
+      "value": "X-ZTD-Operator-ID"
+    },
+    "OperatorSessionID": {
+      "_go_const": "HeaderOperatorSessionID",
+      "value": "X-ZTD-Operator-Session-ID"
+    },
+    "OrganizationID": {
+      "_go_const": "HeaderOrganizationID",
+      "value": "X-ZTD-Organization-ID"
+    },
+    "Pragma": {
+      "_go_const": "HeaderPragma",
+      "value": "Pragma"
+    },
+    "RequestID": {
+      "_go_const": "HeaderRequestID",
+      "value": "X-ZTD-Request-ID"
+    },
+    "RequestedWith": {
+      "_go_const": "HeaderRequestedWith",
+      "value": "X-Requested-With"
+    },
+    "SetCookie": {
+      "_go_const": "HeaderSetCookie",
+      "value": "Set-Cookie"
+    },
+    "SourceComponent": {
+      "_go_const": "HeaderSourceComponent",
+      "value": "X-ZTD-Source-Component"
+    },
+    "SystemFingerprint": {
+      "_go_const": "HeaderSystemFingerprint",
+      "value": "X-ZTD-System-Fingerprint"
+    },
+    "TaskID": {
+      "_go_const": "HeaderTaskID",
+      "value": "X-ZTD-Task-ID"
+    },
+    "UserAgent": {
+      "_go_const": "HeaderUserAgent",
+      "value": "User-Agent"
+    },
+    "UserID": {
+      "_go_const": "HeaderUserID",
+      "value": "X-ZTD-User-ID"
+    },
+    "WebSessionID": {
+      "_go_const": "HeaderWebSessionID",
+      "value": "X-ZTD-Web-Session-ID"
+    },
+    "XAccelBuffering": {
+      "_go_const": "HeaderXAccelBuffering",
+      "value": "X-Accel-Buffering"
+    },
+    "XContentTypeOptions": {
+      "_go_const": "HeaderXContentTypeOptions",
+      "value": "X-Content-Type-Options"
+    },
+    "XForwardedFor": {
+      "_go_const": "HeaderXForwardedFor",
+      "value": "X-Forwarded-For"
+    },
+    "XForwardedHost": {
+      "_go_const": "HeaderXForwardedHost",
+      "value": "X-Forwarded-Host"
+    },
+    "XForwardedProto": {
+      "_go_const": "HeaderXForwardedProto",
+      "value": "X-Forwarded-Proto"
+    },
+    "XFrameOptions": {
+      "_go_const": "HeaderXFrameOptions",
+      "value": "X-Frame-Options"
+    },
+    "XRequestTimestamp": {
+      "_go_const": "HeaderXRequestTimestamp",
+      "value": "X-Request-Timestamp"
+    }
+  }
+}

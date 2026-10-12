@@ -1,0 +1,103 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package compliance_test
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	legacycompliance "github.com/zerotrustdata/ztd/internal/services/compliance"
+	"github.com/zerotrustdata/ztd/internal/services/compliance/catalog"
+)
+
+func TestCanonicalComplianceCatalogMatchesReviewedPhase1Scope(t *testing.T) {
+	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
+	require.NoError(t, err)
+
+	mappedControls := 0
+	unsupportedControls := 0
+	for _, framework := range frameworks.Frameworks {
+		for _, control := range framework.Controls {
+			switch control.SupportStatus {
+			case "mapped":
+				mappedControls++
+			case "unsupported":
+				unsupportedControls++
+			}
+		}
+	}
+	assert.Len(t, assertions.Assertions, 13)
+	assert.Len(t, crosswalks.Mappings, 60)
+	assert.Equal(t, 34, mappedControls)
+	assert.Equal(t, 97, unsupportedControls)
+}
+
+func TestCanonicalCrosswalkMapsEveryInitialAssertion(t *testing.T) {
+	assertions, _, crosswalks, err := catalog.LoadCanonicalCatalogs()
+	require.NoError(t, err)
+
+	mapped := make(map[string]struct{})
+	for _, mapping := range crosswalks.Mappings {
+		for _, reference := range mapping.AssertionRefs {
+			mapped[reference.Id+"@"+reference.Version] = struct{}{}
+		}
+	}
+	for _, assertion := range assertions.Assertions {
+		_, exists := mapped[assertion.AssertionId+"@"+assertion.AssertionVersion]
+		assert.True(t, exists, assertion.AssertionId)
+	}
+}
+
+func TestCanonicalFrameworkCatalogSupportDispositionsMatchCrosswalkCoverage(t *testing.T) {
+	_, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
+	require.NoError(t, err)
+
+	mapped := make(map[string]struct{}, len(crosswalks.Mappings))
+	for _, mapping := range crosswalks.Mappings {
+		mapped[mapping.FrameworkRef.Id+"@"+mapping.FrameworkRef.Version+":"+mapping.ControlId] = struct{}{}
+	}
+	for _, framework := range frameworks.Frameworks {
+		for _, control := range framework.Controls {
+			key := framework.FrameworkId + "@" + framework.FrameworkVersion + ":" + control.ControlId
+			_, hasMapping := mapped[key]
+			assert.Equal(t, control.SupportStatus == "mapped", hasMapping, key)
+		}
+	}
+}
+
+func TestCanonicalFrameworkCatalogResolvesKSIAndOverlayControlReferences(t *testing.T) {
+	_, frameworks, _, err := catalog.LoadCanonicalCatalogs()
+	require.NoError(t, err)
+	fedRAMP := catalog.FindFramework(frameworks, "fedramp-20x", "CR26-2026-06-24")
+	require.NotNil(t, fedRAMP)
+	nist := catalog.FindFramework(frameworks, "nist-sp-800-53", "rev5")
+	require.NotNil(t, nist)
+
+	ksiPath := filepath.Join(constants.TestPathRepoRootFromCompliancePackage, constants.DefaultKSICatalogPath)
+	ksiCatalog, err := legacycompliance.LoadKSICatalog(ksiPath)
+	require.NoError(t, err)
+	for _, ksi := range ksiCatalog.KSIs {
+		assert.NotNil(t, catalog.FindFrameworkControl(fedRAMP, ksi.ID), ksi.ID)
+		for _, controlRef := range ksi.ControlRefs {
+			assert.NotNil(t, catalog.FindFrameworkControl(nist, controlRef), "%s references %s", ksi.ID, controlRef)
+		}
+	}
+
+	overlayPath := filepath.Join(constants.TestPathRepoRootFromCompliancePackage, constants.DefaultOverlayDirPath, constants.COSAiSOverlaysFilename)
+	overlayCatalog, err := legacycompliance.LoadOverlayCatalog(overlayPath)
+	require.NoError(t, err)
+	for _, overlay := range overlayCatalog.Overlays {
+		for _, controlRef := range overlay.ControlRefs {
+			assert.NotNil(t, catalog.FindFrameworkControl(nist, controlRef), "%s references %s", overlay.ID, controlRef)
+		}
+	}
+}

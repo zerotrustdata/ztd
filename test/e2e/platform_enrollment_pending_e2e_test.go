@@ -1,0 +1,127 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build e2e
+
+package e2e
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/models"
+)
+
+// TestPlatformEnrollment_PendingDiscovery verifies the authenticated pending
+// platform enrollment list against a stack where the owner is bootstrapped but
+// no enrollments have been approved. The user starts the full stack
+// (gateway and operators) without approving any enrollment requests, then runs:
+//
+//	./ztd test e2e --run TestPlatformEnrollment_PendingDiscovery
+//
+// The test asserts that both Operator workloads (data and inference) appear
+// in the pending list, that request IDs are non-empty and
+// unique, and that the raw JSON response excludes requester tokens, token
+// hashes, CSR PEM, certificate PEM, and private key material. The pending
+// list is the owner's discovery surface for approval decisions; leaking
+// secret material there would allow an attacker to complete enrollment
+// without owner approval.
+//
+// This replaces the prior TestPlatformEnrollment_PendingDiscoveryNoTokens_E2E
+// which used a per-test fixture. This version connects to a
+// user-managed platform and asserts the same invariants through the typed
+// E2E client.
+func TestPlatformEnrollment_PendingDiscovery(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	// Subscribe before the first read so no event after it is missed.
+	events := newE2EEventWaiters()
+	stream := subscribeE2EEvents(ctx, t, events)
+	defer stream.stop()
+
+	// Precondition: this test requires a platform with pending enrollment
+	// requests from both Operator workloads (data and inference).
+	// The user starts the full stack without approving any
+	// enrollments. On an approved stack (no pending requests), fail fast
+	// with an actionable message instead of timing out.
+	pending, err := e2eClient.GetPendingEnrollments(ctx)
+	require.NoError(t, err, "pending enrollment list must succeed")
+	if len(pending.Requests) == 0 {
+		t.Fatalf("TestPlatformEnrollment_PendingDiscovery requires pending enrollment requests. " +
+			"Start a fresh stack without approving enrollments (./ztd gw start, then ./ztd operator start), " +
+			"then run: ./ztd test e2e --run TestPlatformEnrollment_PendingDiscovery")
+	}
+
+	// Wait for both Operator workloads to appear. The data and inference
+	// Operators submit enrollment requests on startup; they may not all be
+	// present immediately. Each wait reads the list, then blocks on the next
+	// approvals.changed (enrollments) event, so a missing workload fails after
+	// the bounded event wait rather than passing.
+	countOperators := func(requests []models.PlatformEnrollmentPendingRequest) int {
+		n := 0
+		for _, r := range requests {
+			if r.ComponentKind == models.PlatformComponentOperator {
+				n++
+			}
+		}
+		return n
+	}
+	for countOperators(pending.Requests) < 2 {
+		events.awaitPending(ctx, t, "both Operator workloads (data, inference) in the pending list")
+		pending, err = e2eClient.GetPendingEnrollments(ctx)
+		require.NoError(t, err, "pending enrollment list must succeed")
+	}
+
+	require.NotEmpty(t, pending.Requests, "pending list must contain requests on an unapproved stack")
+	t.Logf("pending list contains %d requests (%d operator)",
+		len(pending.Requests), countOperators(pending.Requests))
+
+	// Assert request IDs are non-empty and unique.
+	seen := make(map[string]bool, len(pending.Requests))
+	for _, r := range pending.Requests {
+		require.NotEmpty(t, r.RequestID, "each pending request must have a non-empty request ID")
+		require.False(t, seen[r.RequestID], "request ID %s is duplicated in the pending list", r.RequestID)
+		seen[r.RequestID] = true
+		assert.Equal(t, models.PlatformEnrollmentStatePending, r.State,
+			"pending list request %s must be in the pending state", r.RequestID)
+	}
+	t.Logf("all %d request IDs are non-empty and unique", len(pending.Requests))
+
+	// Assert the raw JSON response excludes secret material. The typed
+	// PlatformEnrollmentPendingRequest model omits token hashes, CSR PEM,
+	// and certificates by construction, but the raw wire payload is checked
+	// directly as defense-in-depth: a future field addition that leaks
+	// secret material would not be caught by the typed decode alone.
+	raw, err := e2eClient.GetPendingRaw(ctx)
+	require.NoError(t, err, "raw pending list fetch must succeed for secret-leak assertion")
+	for _, forbidden := range []string{
+		"token_hash",
+		"csr_pem",
+		"operator_csr_pem",
+		"cli_csr_pem",
+		"BEGIN CERTIFICATE",
+		"END CERTIFICATE",
+		"BEGIN CERTIFICATE REQUEST",
+		"END CERTIFICATE REQUEST",
+		"BEGIN PRIVATE KEY",
+		"END PRIVATE KEY",
+		"BEGIN EC PRIVATE KEY",
+		"END EC PRIVATE KEY",
+		"BEGIN RSA PRIVATE KEY",
+		"END RSA PRIVATE KEY",
+		"requester_token",
+	} {
+		assert.NotContains(t, raw, forbidden,
+			"pending list raw JSON must not expose %q", forbidden)
+	}
+	t.Logf("pending list raw JSON contains no tokens, hashes, CSR PEM, certificates, or private keys")
+}

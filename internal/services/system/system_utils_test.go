@@ -1,0 +1,357 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build !windows
+// +build !windows
+
+package system
+
+import (
+	"math"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGetConnectivityStatus(t *testing.T) {
+	t.Parallel()
+
+	status := GetConnectivityStatus()
+
+	require.NotNil(t, status)
+
+	for i, item := range status {
+		assert.NotEmpty(t, item.Name, "interface %d Name should not be empty", i)
+		assert.NotEmpty(t, item.IP, "interface %d IP should not be empty", i)
+		assert.Positive(t, item.MTU, "interface %d MTU should be positive", i)
+	}
+}
+
+func TestGetUptime(t *testing.T) {
+	t.Parallel()
+	uptime := GetUptime()
+
+	assert.NotEmpty(t, uptime)
+	if uptime != "unknown" {
+		assert.True(t, strings.Contains(uptime, ":") || strings.Contains(uptime, "days"),
+			"GetUptime() = %q, expected time format with ':' or 'days'", uptime)
+	}
+}
+
+func TestGetUptimeSeconds(t *testing.T) {
+	t.Parallel()
+	uptime := GetUptimeSeconds()
+
+	assert.GreaterOrEqual(t, uptime, int64(0))
+	assert.LessOrEqual(t, uptime, int64(365*24*3600*10))
+}
+
+func TestGetCPUPercent(t *testing.T) {
+	t.Parallel()
+	cpuPercent := GetCPUPercent()
+
+	assert.GreaterOrEqual(t, cpuPercent, 0.0)
+	assert.LessOrEqual(t, cpuPercent, 100.0)
+	rounded := float64(int(cpuPercent*100+0.5)) / 100
+	assert.InDelta(t, cpuPercent, rounded, 0.005, "GetCPUPercent() should be rounded to 2 decimal places")
+}
+
+func TestGetMemoryPercent(t *testing.T) {
+	t.Parallel()
+	memPercent := GetMemoryPercent()
+
+	assert.GreaterOrEqual(t, memPercent, 0.0)
+	assert.LessOrEqual(t, memPercent, 100.0)
+	rounded := float64(int(memPercent*100+0.5)) / 100
+	assert.InDelta(t, memPercent, rounded, 0.005, "GetMemoryPercent() should be rounded to 2 decimal places")
+}
+
+func TestGetNetworkLatency(t *testing.T) {
+	t.Parallel()
+
+	latency := GetNetworkLatency()
+
+	assert.GreaterOrEqual(t, latency, 0.0)
+	assert.LessOrEqual(t, latency, 1000.0)
+	rounded := math.Round(latency*100) / 100
+	assert.InDelta(t, latency, rounded, 0.001, "GetNetworkLatency() should be rounded to 2 decimal places")
+}
+
+func TestSystemUtilsIntegration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("all functions execute without panic", func(t *testing.T) {
+		t.Parallel()
+		require.NotNil(t, GetConnectivityStatus())
+		assert.NotEmpty(t, GetUptime())
+		assert.GreaterOrEqual(t, GetUptimeSeconds(), int64(0))
+
+		cpuPercent := GetCPUPercent()
+		assert.GreaterOrEqual(t, cpuPercent, 0.0)
+		assert.LessOrEqual(t, cpuPercent, 100.0)
+
+		memPercent := GetMemoryPercent()
+		assert.GreaterOrEqual(t, memPercent, 0.0)
+		assert.LessOrEqual(t, memPercent, 100.0)
+
+		assert.GreaterOrEqual(t, GetNetworkLatency(), 0.0)
+	})
+}
+
+func TestGetInitProcessName(t *testing.T) {
+	t.Parallel()
+	initName := getInitProcessName()
+
+	assert.NotEmpty(t, initName)
+	assert.NotContains(t, initName, "/")
+	assert.NotContains(t, initName, "\x00")
+}
+
+func TestDetectInitSystem(t *testing.T) {
+	t.Parallel()
+	assert.NotEmpty(t, detectInitSystem())
+}
+
+func TestGetEnvironmentDetails_ContainerFields(t *testing.T) {
+	t.Parallel()
+	details := GetEnvironmentDetails("", "", "")
+
+	assert.NotNil(t, details.ContainerSignals)
+	assert.NotEmpty(t, details.ContainerRuntime)
+	assert.NotEmpty(t, details.InitSystem)
+	assert.NotEmpty(t, details.PWD)
+}
+
+func TestGetDiskPercent(t *testing.T) {
+	t.Parallel()
+	diskPercent := GetDiskPercent()
+
+	assert.GreaterOrEqual(t, diskPercent, 0.0)
+	assert.LessOrEqual(t, diskPercent, 100.0)
+}
+
+func TestGetDiskDetails(t *testing.T) {
+	t.Parallel()
+	details := GetDiskDetails()
+
+	assert.GreaterOrEqual(t, details.TotalGB, 0.0)
+	assert.GreaterOrEqual(t, details.UsedGB, 0.0)
+	assert.GreaterOrEqual(t, details.FreeGB, 0.0)
+	assert.GreaterOrEqual(t, details.Percent, 0.0)
+	assert.LessOrEqual(t, details.Percent, 100.0)
+
+	if details.TotalGB > 0 {
+		assert.LessOrEqual(t, details.UsedGB, details.TotalGB)
+		assert.LessOrEqual(t, details.FreeGB, details.TotalGB)
+	}
+}
+
+func TestGetDiskUsedGB(t *testing.T) {
+	t.Parallel()
+	usedGB := GetDiskUsedGB()
+
+	assert.GreaterOrEqual(t, usedGB, 0.0)
+}
+
+func TestGetDiskTotalGB(t *testing.T) {
+	t.Parallel()
+	totalGB := GetDiskTotalGB()
+
+	assert.GreaterOrEqual(t, totalGB, 0.0)
+}
+
+func TestGetDiskDetails_Consistency(t *testing.T) {
+	t.Parallel()
+	details := GetDiskDetails()
+	usedGB := GetDiskUsedGB()
+	totalGB := GetDiskTotalGB()
+
+	assert.InDelta(t, details.UsedGB, usedGB, 0.5, "GetDiskDetails.UsedGB and GetDiskUsedGB should be consistent")
+	assert.InDelta(t, details.TotalGB, totalGB, 0.5, "GetDiskDetails.TotalGB and GetDiskTotalGB should be consistent")
+}
+
+func TestGetOSDetails(t *testing.T) {
+	t.Parallel()
+	details := GetOSDetails()
+
+	assert.NotEmpty(t, details.Kernel)
+	assert.NotEmpty(t, details.Distro)
+}
+
+func TestReadOSReleaseField_MissingField(t *testing.T) {
+	t.Parallel()
+	result := readOSReleaseField("NONEXISTENT_FIELD_XYZ")
+
+	assert.Equal(t, "unknown", result)
+}
+
+func TestGetUserDetails(t *testing.T) {
+	t.Parallel()
+	details := GetUserDetails("/bin/bash")
+
+	assert.NotEmpty(t, details.Username)
+	assert.Equal(t, "/bin/bash", details.Shell)
+	assert.GreaterOrEqual(t, details.UID, int32(0))
+	assert.GreaterOrEqual(t, details.GID, int32(0))
+}
+
+func TestParseUserID_EnforcesInt32Bounds(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		value    string
+		expected int32
+	}{
+		{name: "zero", value: "0", expected: 0},
+		{name: "max_int32", value: "2147483647", expected: 2147483647},
+		{name: "above_max_int32", value: "2147483648", expected: 0},
+		{name: "negative", value: "-1", expected: 0},
+		{name: "malformed", value: "not-a-number", expected: 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expected, parseUserID(tc.value))
+		})
+	}
+}
+
+func TestGetUserDetails_ShellEmpty_DefaultsToSh(t *testing.T) {
+	t.Parallel()
+	details := GetUserDetails("")
+
+	assert.Equal(t, "/bin/sh", details.Shell)
+}
+
+func TestGetUserDetails_ShellInjected(t *testing.T) {
+	t.Parallel()
+	details := GetUserDetails("/bin/zsh")
+
+	assert.Equal(t, "/bin/zsh", details.Shell)
+}
+
+func TestGetMemoryDetails(t *testing.T) {
+	t.Parallel()
+	details := GetMemoryDetails()
+
+	assert.Positive(t, details.TotalMB)
+	assert.GreaterOrEqual(t, details.AvailableMB, int64(0))
+	assert.GreaterOrEqual(t, details.UsedMB, int64(0))
+	assert.GreaterOrEqual(t, details.Percent, 0.0)
+	assert.LessOrEqual(t, details.Percent, 100.0)
+	assert.LessOrEqual(t, details.UsedMB, details.TotalMB)
+}
+
+func TestGetMemoryMB(t *testing.T) {
+	t.Parallel()
+	totalMB := GetMemoryMB()
+
+	assert.Positive(t, totalMB)
+}
+
+func TestGetMemoryDetails_Consistency(t *testing.T) {
+	t.Parallel()
+	details := GetMemoryDetails()
+	totalMB := GetMemoryMB()
+
+	assert.InDelta(t, details.TotalMB, int64(totalMB), 10, "GetMemoryDetails.TotalMB and GetMemoryMB should be consistent")
+}
+
+func TestGetHostname(t *testing.T) {
+	t.Parallel()
+	hostname := GetHostname()
+
+	assert.NotEmpty(t, hostname)
+	assert.NotEqual(t, "unknown", hostname)
+}
+
+func TestGetOSName(t *testing.T) {
+	t.Parallel()
+	osName := GetOSName()
+
+	assert.NotEmpty(t, osName)
+	assert.Equal(t, runtime.GOOS, osName)
+}
+
+func TestGetArchitecture(t *testing.T) {
+	t.Parallel()
+	arch := GetArchitecture()
+
+	assert.NotEmpty(t, arch)
+	assert.Equal(t, runtime.GOARCH, arch)
+}
+
+func TestGetNumCPU(t *testing.T) {
+	t.Parallel()
+	numCPU := GetNumCPU()
+
+	assert.Positive(t, numCPU)
+	assert.Equal(t, runtime.NumCPU(), numCPU)
+}
+
+func TestGetCurrentUser(t *testing.T) {
+	t.Parallel()
+	currentUser := GetCurrentUser()
+
+	assert.NotEmpty(t, currentUser)
+	assert.NotEqual(t, "unknown", currentUser)
+}
+
+func TestGetNetworkInterfaces(t *testing.T) {
+	t.Parallel()
+	interfaces := GetNetworkInterfaces()
+
+	require.NotNil(t, interfaces)
+	assert.NotEmpty(t, interfaces)
+
+	for _, iface := range interfaces {
+		assert.NotEmpty(t, iface)
+	}
+}
+
+func TestGetTimezone_InjectedValue(t *testing.T) {
+	t.Parallel()
+	tz := getTimezone("America/Los_Angeles")
+
+	assert.Equal(t, "America/Los_Angeles", tz)
+}
+
+func TestGetTimezone_EmptyFallsBackToSystem(t *testing.T) {
+	t.Parallel()
+	tz := getTimezone("")
+
+	assert.NotEmpty(t, tz)
+}
+
+func TestGetEnvironmentDetails_AllFields(t *testing.T) {
+	t.Parallel()
+	details := GetEnvironmentDetails("", "", "")
+
+	assert.NotEmpty(t, details.PWD)
+	assert.NotEmpty(t, details.ContainerRuntime)
+	assert.NotEmpty(t, details.InitSystem)
+	assert.NotNil(t, details.ContainerSignals)
+}
+
+func TestGetEnvironmentDetails_TimezoneInjected(t *testing.T) {
+	t.Parallel()
+	details := GetEnvironmentDetails("", "", "America/New_York")
+
+	assert.Equal(t, "America/New_York", details.Timezone)
+}
+
+func TestGetEnvironmentDetails_LangAndTermInjected(t *testing.T) {
+	t.Parallel()
+	details := GetEnvironmentDetails("en_US.UTF-8", "xterm-256color", "")
+
+	assert.Equal(t, "en_US.UTF-8", details.Lang)
+	assert.Equal(t, "xterm-256color", details.Term)
+}

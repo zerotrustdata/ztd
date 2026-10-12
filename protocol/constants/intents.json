@@ -1,0 +1,212 @@
+{
+  "intents": {
+    "ApigatewayDiscovery": {
+      "_go_const": "IntentApigatewayDiscovery",
+      "value": "apigateway_discovery"
+    },
+    "AcmDiscovery": {
+      "_go_const": "IntentAcmDiscovery",
+      "value": "acm_discovery"
+    },
+    "AthenaDiscovery": {
+      "_go_const": "IntentAthenaDiscovery",
+      "value": "athena_discovery"
+    },
+    "AthenaQueryExecution": {
+      "_go_const": "IntentAthenaQueryExecution",
+      "value": "athena_query_execution"
+    },
+    "AuroraCloning": {
+      "_go_const": "IntentAuroraCloning",
+      "value": "aurora_cloning"
+    },
+    "AuroraClusterManagement": {
+      "_go_const": "IntentAuroraClusterManagement",
+      "value": "aurora_cluster_management"
+    },
+    "AuroraGlobalDatabase": {
+      "_go_const": "IntentAuroraGlobalDatabase",
+      "value": "aurora_global_database"
+    },
+    "AuroraScaling": {
+      "_go_const": "IntentAuroraScaling",
+      "value": "aurora_scaling"
+    },
+    "AutoscalingDiscovery": {
+      "_go_const": "IntentAutoscalingDiscovery",
+      "value": "autoscaling_discovery"
+    },
+    "AutoscalingManagement": {
+      "_go_const": "IntentAutoscalingManagement",
+      "value": "autoscaling_management"
+    },
+    "CloudformationDeployment": {
+      "_go_const": "IntentCloudformationDeployment",
+      "value": "cloudformation_deployment"
+    },
+    "CloudfrontDiscovery": {
+      "_go_const": "IntentCloudfrontDiscovery",
+      "value": "cloudfront_discovery"
+    },
+    "CloudwatchLogs": {
+      "_go_const": "IntentCloudwatchLogs",
+      "value": "cloudwatch_logs"
+    },
+    "CloudwatchMetrics": {
+      "_go_const": "IntentCloudwatchMetrics",
+      "value": "cloudwatch_metrics"
+    },
+    "CodedeployDiscovery": {
+      "_go_const": "IntentCodedeployDiscovery",
+      "value": "codedeploy_discovery"
+    },
+    "CostExplorer": {
+      "_go_const": "IntentCostExplorer",
+      "value": "cost_explorer"
+    },
+    "DynamodbDiscovery": {
+      "_go_const": "IntentDynamodbDiscovery",
+      "value": "dynamodb_discovery"
+    },
+    "DynamodbRead": {
+      "_go_const": "IntentDynamodbRead",
+      "value": "dynamodb_read"
+    },
+    "DynamodbWrite": {
+      "_go_const": "IntentDynamodbWrite",
+      "value": "dynamodb_write"
+    },
+    "Ec2Discovery": {
+      "_go_const": "IntentEc2Discovery",
+      "value": "ec2_discovery"
+    },
+    "Ec2Management": {
+      "_go_const": "IntentEc2Management",
+      "value": "ec2_management"
+    },
+    "Ec2SnapshotManagement": {
+      "_go_const": "IntentEc2SnapshotManagement",
+      "value": "ec2_snapshot_management"
+    },
+    "EcsDiscovery": {
+      "_go_const": "IntentEcsDiscovery",
+      "value": "ecs_discovery"
+    },
+    "EcsManagement": {
+      "_go_const": "IntentEcsManagement",
+      "value": "ecs_management"
+    },
+    "EksDiscovery": {
+      "_go_const": "IntentEksDiscovery",
+      "value": "eks_discovery"
+    },
+    "ElasticacheDiscovery": {
+      "_go_const": "IntentElasticacheDiscovery",
+      "value": "elasticache_discovery"
+    },
+    "ElbDiscovery": {
+      "_go_const": "IntentElbDiscovery",
+      "value": "elb_discovery"
+    },
+    "EventbridgeDiscovery": {
+      "_go_const": "IntentEventbridgeDiscovery",
+      "value": "eventbridge_discovery"
+    },
+    "GlueDiscovery": {
+      "_go_const": "IntentGlueDiscovery",
+      "value": "glue_discovery"
+    },
+    "IamDiscovery": {
+      "_go_const": "IntentIamDiscovery",
+      "value": "iam_discovery"
+    },
+    "KmsCrypto": {
+      "_go_const": "IntentKmsCrypto",
+      "value": "kms_crypto"
+    },
+    "KmsDiscovery": {
+      "_go_const": "IntentKmsDiscovery",
+      "value": "kms_discovery"
+    },
+    "LambdaDiscovery": {
+      "_go_const": "IntentLambdaDiscovery",
+      "value": "lambda_discovery"
+    },
+    "LambdaInvoke": {
+      "_go_const": "IntentLambdaInvoke",
+      "value": "lambda_invoke"
+    },
+    "RdsDiscovery": {
+      "_go_const": "IntentRdsDiscovery",
+      "value": "rds_discovery"
+    },
+    "RdsManagement": {
+      "_go_const": "IntentRdsManagement",
+      "value": "rds_management"
+    },
+    "RdsSnapshotManagement": {
+      "_go_const": "IntentRdsSnapshotManagement",
+      "value": "rds_snapshot_management"
+    },
+    "Route53Discovery": {
+      "_go_const": "IntentRoute53Discovery",
+      "value": "route53_discovery"
+    },
+    "Route53Management": {
+      "_go_const": "IntentRoute53Management",
+      "value": "route53_management"
+    },
+    "S3BucketDiscovery": {
+      "_go_const": "IntentS3BucketDiscovery",
+      "value": "s3_bucket_discovery"
+    },
+    "S3Delete": {
+      "_go_const": "IntentS3Delete",
+      "value": "s3_delete"
+    },
+    "S3Read": {
+      "_go_const": "IntentS3Read",
+      "value": "s3_read"
+    },
+    "S3Write": {
+      "_go_const": "IntentS3Write",
+      "value": "s3_write"
+    },
+    "SecretsRead": {
+      "_go_const": "IntentSecretsRead",
+      "value": "secrets_read"
+    },
+    "SnsDiscovery": {
+      "_go_const": "IntentSnsDiscovery",
+      "value": "sns_discovery"
+    },
+    "SnsPublish": {
+      "_go_const": "IntentSnsPublish",
+      "value": "sns_publish"
+    },
+    "SqsDiscovery": {
+      "_go_const": "IntentSqsDiscovery",
+      "value": "sqs_discovery"
+    },
+    "SqsManagement": {
+      "_go_const": "IntentSqsManagement",
+      "value": "sqs_management"
+    },
+    "StepfunctionsDiscovery": {
+      "_go_const": "IntentStepfunctionsDiscovery",
+      "value": "stepfunctions_discovery"
+    },
+    "StepfunctionsExecution": {
+      "_go_const": "IntentStepfunctionsExecution",
+      "value": "stepfunctions_execution"
+    },
+    "TerraformState": {
+      "_go_const": "IntentTerraformState",
+      "value": "terraform_state"
+    },
+    "VpcDiscovery": {
+      "_go_const": "IntentVpcDiscovery",
+      "value": "vpc_discovery"
+    }
+  }
+}

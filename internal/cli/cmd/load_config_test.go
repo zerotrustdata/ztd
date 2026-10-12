@@ -1,0 +1,40 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package cmd
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+func TestLoadConfigSuccess(t *testing.T) {
+	cfg, err := shared.LoadConfig("")
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
+	assert.NotEmpty(t, cfg.ProjectRoot)
+}
+
+func TestLoadConfigWrapsError(t *testing.T) {
+	originalLoad := shared.ConfigLoad
+	shared.ConfigLoad = func(string) (*config.Config, error) {
+		return nil, fmt.Errorf("disk read failure")
+	}
+	defer func() { shared.ConfigLoad = originalLoad }()
+
+	cfg, err := shared.LoadConfig("")
+	assert.Nil(t, cfg)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrConfigLoadFailed)
+	assert.Contains(t, err.Error(), "disk read failure")
+}

@@ -1,0 +1,84 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"net"
+	"strings"
+)
+
+func containsAny(s string, patterns []string) bool {
+	sLower := strings.ToLower(s)
+	for _, p := range patterns {
+		if strings.Contains(sLower, strings.ToLower(p)) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTLSCertError returns true if the error indicates a TLS certificate trust failure.
+// These are non-retryable conditions caused by stale embedded CA certificates or
+// expired/revoked server certificates. The Operator must self-terminate when this
+// occurs to prevent noisy retry loops against the server.
+func IsTLSCertError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for x509 certificate verification errors (most common case)
+	// Go wraps these as x509.UnknownAuthorityError, x509.CertificateInvalidError, etc.
+	var unknownAuthErr x509.UnknownAuthorityError
+	if errors.As(err, &unknownAuthErr) {
+		return true
+	}
+
+	var certInvalidErr x509.CertificateInvalidError
+	if errors.As(err, &certInvalidErr) {
+		return true
+	}
+
+	var hostnameErr x509.HostnameError
+	if errors.As(err, &hostnameErr) {
+		return true
+	}
+
+	// Check for tls.RecordHeaderError (malformed TLS)
+	var recordErr tls.RecordHeaderError
+	if errors.As(err, &recordErr) {
+		return true
+	}
+
+	// Check for tls.AlertError (TLS alert from peer, e.g. bad_certificate = alert 42)
+	var alertErr *tls.AlertError
+	if errors.As(err, &alertErr) {
+		return true
+	}
+
+	// Check for net.OpError wrapping a TLS error
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return IsTLSCertError(opErr.Err)
+	}
+
+	// Fallback: string matching for edge cases where error types aren't exported
+	errStr := err.Error()
+	return containsAny(errStr, []string{
+		"certificate signed by unknown authority",
+		"certificate has expired",
+		"certificate is not trusted",
+		"tls: bad certificate",
+		"tls: unknown certificate authority",
+		"x509: certificate",
+		"tls: failed to verify certificate",
+		"tls: handshake failure",
+	})
+}

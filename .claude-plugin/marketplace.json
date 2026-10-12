@@ -1,0 +1,17 @@
+{
+  "name": "ztd",
+  "owner": {
+    "name": "Lateralus Labs",
+    "url": "https://zerotrustdata.io"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for the ztd governance platform."
+  },
+  "plugins": [
+    {
+      "name": "ztd",
+      "source": "./claude-plugin",
+      "description": "Puts Claude Code on the ztd governed path: the ztd Gateway MCP server is the only way to act, and every other tool is denied."
+    }
+  ]
+}

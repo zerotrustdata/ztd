@@ -1,0 +1,29 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+syntax = "proto3";
+
+package ztd.pubsub.v1;
+
+option go_package = "github.com/zerotrustdata/ztd/protocol/proto/ztd/pubsub/v1;pubsubv1";
+
+// PubSubMessage is the client-to-server WebSocket frame for pub/sub operations.
+// Clients send this message to subscribe, unsubscribe, or publish on a channel.
+message PubSubMessage {
+  string action = 1;  // Operation to perform: "subscribe", "psubscribe", "unsubscribe", or "publish".
+  string channel = 2; // Target channel name. Follows the convention "{prefix}:{operator_id}:{session_id}".
+  bytes data = 3;     // Payload bytes for publish actions. Empty for subscribe/unsubscribe.
+}
+
+// PubSubEvent is the server-to-client WebSocket frame delivered to subscribers.
+// The broker emits events for message delivery, subscription acknowledgments, and errors.
+message PubSubEvent {
+  string type = 1;    // Event type: "message", "pmessage", "subscribed", "unsubscribed", or "error".
+  string channel = 2; // Channel the event pertains to.
+  string pattern = 3; // Pattern matched for pmessage events. Empty for direct channel deliveries.
+  bytes data = 4;     // Message payload for message/pmessage events. Empty for acknowledgment events.
+}

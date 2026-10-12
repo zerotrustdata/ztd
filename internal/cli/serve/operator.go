@@ -1,0 +1,201 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package serve
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+
+	"github.com/zerotrustdata/ztd/internal/certs"
+	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/auth"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
+)
+
+// ServeOperatorOptions holds the configuration for running the operator in standalone mode.
+type ServeOperatorOptions struct {
+	OperatorCapabilities constants.OperatorCapabilities
+	LogLevel             string
+	Endpoint             string
+	// HTTPPort and HTTPSPort override the Gateway discovery and mTLS ports the
+	// Operator dials; zero selects the platform defaults.
+	HTTPPort          int
+	HTTPSPort         int
+	TrustBundlePath   string
+	WorkingDir        string
+	DeploymentID      string
+	LaunchDir         string
+	CloudMode         bool
+	CloudProvider     string
+	HeartbeatInterval time.Duration
+
+	Posture string
+
+	// Inference (ztdllama) settings for an Operator with the inference
+	// capability calling the configured remote Ollama provider.
+	InferenceOllamaEndpoint string
+	InferenceKeepAlive      string
+
+	ProviderBoundaryObserverID string
+
+	ProvenanceOperatorID               string
+	ProvenanceOperatorModelStorageRoot string
+
+	// MasterKeyFile is an operator-provisioned master key outside the runtime
+	// directory, required where no OS key store exists.
+	MasterKeyFile string
+}
+
+// resolveOperatorEndpoint returns the trimmed endpoint if non-empty, otherwise the default endpoint.
+func resolveOperatorEndpoint(endpoint string) string {
+	if trimmed := strings.TrimSpace(endpoint); trimmed != "" {
+		return trimmed
+	}
+	return constants.DefaultEndpoint
+}
+
+// resolveWorkingDir returns workingDir if set, otherwise falls back to launchDir.
+func resolveWorkingDir(workingDir, launchDir string) string {
+	if workingDir != "" {
+		return workingDir
+	}
+	return launchDir
+}
+
+// classifyConfigLoadError inspects a config.Load error and returns the
+// appropriate exit code and an actionable user-facing message. All
+// config.Load errors return ExitConfigError with no actionable message.
+// The operator no longer requires config posture to start (it reads
+// posture per-envelope from GovernanceEnvelope.Posture at L4 verification
+// time), so the former posture-required enrollment-pending path is gone.
+func classifyConfigLoadError(err error) (exitCode int, actionable string) {
+	return constants.ExitConfigError, ""
+}
+
+// buildOperatorLoadOptions creates config.LoadOptions from ServeOperatorOptions and
+// resolved runtime parameters.
+func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effectiveWorkDir string) config.LoadOptions {
+	return config.LoadOptions{
+		OperatorCapabilities: opts.OperatorCapabilities,
+		OperatorEndpoint:     operatorEndpoint,
+		HTTPPort:             opts.HTTPPort,
+		HTTPSPort:            opts.HTTPSPort,
+		CloudMode:            opts.CloudMode,
+		CloudProvider:        opts.CloudProvider,
+		MasterKeyFile:        opts.MasterKeyFile,
+		LogLevel:             opts.LogLevel,
+		WorkDir:              effectiveWorkDir,
+		PKIDir:               "",
+		SecretsDir:           "",
+		HeartbeatInterval:    opts.HeartbeatInterval,
+		Shell:                os.Getenv(string(constants.EnvVar.Shell)),
+		Lang:                 os.Getenv(string(constants.EnvVar.Lang)),
+		Term:                 os.Getenv(string(constants.EnvVar.Term)),
+		TZ:                   os.Getenv(string(constants.EnvVar.TZ)),
+		Posture:              config.GatewayPosture(opts.Posture),
+
+		InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint,
+		InferenceKeepAlive:      opts.InferenceKeepAlive,
+
+		ProviderBoundaryObserverID: opts.ProviderBoundaryObserverID,
+
+		ProvenanceOperatorID:               opts.ProvenanceOperatorID,
+		ProvenanceOperatorModelStorageRoot: opts.ProvenanceOperatorModelStorageRoot,
+	}
+}
+
+func newOperatorRuntimeFileService(opts ServeOperatorOptions, logger *slog.Logger) (fs.RuntimeFileService, string, error) {
+	effectiveWorkDir := resolveWorkingDir(opts.WorkingDir, opts.LaunchDir)
+	fileSvc, err := fs.NewRuntimeFileService(effectiveWorkDir, logger)
+	return fileSvc, effectiveWorkDir, err
+}
+
+// RunOperator runs the operator in standalone mode with the given options.
+func RunOperator(opts ServeOperatorOptions, vi VersionInfo) {
+	logger, err := logging.NewStdoutLogger(opts.LogLevel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid log level '%s': %v\n", opts.LogLevel, err)
+		os.Exit(constants.ExitConfigError)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	rt, err := StartOperator(ctx, opts, vi, OperatorRuntimeDeps{
+		Logger:         logger,
+		ClientIdentity: certs.NewClientIdentity(tls.Certificate{}),
+	})
+	if err != nil {
+		os.Exit(operatorExitCode(err))
+	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-rt.Failed():
+		logger.Error("Service failed, shutting down", string(constants.ConnectionStateError), err)
+	case sig := <-sigChan:
+		logger.Info("Received signal, shutting down", "signal", sig.String())
+	case <-rt.Done():
+		logger.Info("Operator service requested shutdown")
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), time.Duration(constants.ShutdownTimeout)*time.Second)
+	if err := rt.Stop(shutdownCtx); err != nil {
+		logger.Error("Graceful shutdown failed", string(constants.ConnectionStateError), err)
+	}
+	shutdownCancel()
+
+	os.Exit(constants.ExitSuccess)
+}
+
+func operatorCapabilities(opts ServeOperatorOptions) constants.OperatorCapabilities {
+	return operatorcapability.ResolveOperatorCapabilities(&operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(opts.OperatorCapabilities)})
+}
+
+func operatorFingerprintOptions(opts ServeOperatorOptions, localDir, account string) auth.FingerprintOptions {
+	return auth.FingerprintOptions{
+		LocalDir:     localDir,
+		Account:      account,
+		Port:         constants.Ports.OperatorHttp,
+		Capabilities: operatorCapabilities(opts),
+	}
+}
+
+// Include the canonical runtime directory so same-host workers with the same capabilities enroll independently.
+func operatorInstanceID(hostname string, capabilities constants.OperatorCapabilities, dir string) string {
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	if absolute, err := filepath.Abs(dir); err == nil {
+		dir = absolute
+	}
+	digest := sha256.Sum256([]byte(dir))
+	capabilityNames := capabilities.String()
+	hostnameLimit := constants.PlatformEnrollmentMaxInstanceIDBytes - len("operator--") - len(capabilityNames) - 1 - 32
+	if hostnameLimit > 64 {
+		hostnameLimit = 64
+	}
+	return fmt.Sprintf("operator-%.*s-%s-%x", hostnameLimit, hostname, capabilityNames, digest[:16])
+}

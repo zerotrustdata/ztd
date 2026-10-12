@@ -1,0 +1,79 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package consensus
+
+import (
+	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
+
+	"github.com/zerotrustdata/ztd/internal/governance"
+	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
+)
+
+// ConsensusMember represents a single member identity in the Consensus.
+// Each member is an enrolled agentic app with its own Ed25519 signing key.
+// The member's public key is registered as a TrustedSigner (keyID = AppID).
+type ConsensusMember struct {
+	AppID      string
+	PrivateKey ed25519.PrivateKey
+}
+
+// evaluateSafety runs MITRE checks via L1Doctrine.
+// This is the deterministic L1-doctrine check relocated from
+// l2_consensus.go. The pluggable heterogeneous-reasoner backend is a
+// later extension point and is not stubbed in (devs.md: do not build
+// things that should not yet exist).
+func (s *ConsensusService) evaluateSafety(doctrine *govsvc.L1Doctrine, cmdData string) bool {
+	return s.runMITREChecks(doctrine, cmdData)
+}
+
+// runMITREChecks leverages L1Doctrine to identify malicious activity patterns.
+// Fail-closed: if Doctrine is nil, the payload is NOT safe.
+func (s *ConsensusService) runMITREChecks(doctrine *govsvc.L1Doctrine, data string) bool {
+	if doctrine == nil {
+		return false
+	}
+	signals := doctrine.AnalyzeCommand(data)
+	for _, sig := range signals {
+		if sig.BlockRecommended {
+			return false
+		}
+	}
+	return true
+}
+
+// extractCommandData extracts command data from the envelope.
+// Relocated from l2_consensus.go.
+func extractCommandData(env *governance.GovernanceEnvelope) (string, error) {
+	var cmdData string
+
+	if env.IntentData != nil && len(env.IntentData.Fields) > 0 {
+		jsonBytes, err := env.IntentData.MarshalJSON()
+		if err != nil {
+			return "", fmt.Errorf("consensus: extract command data: %w", err)
+		}
+		cmdData = string(jsonBytes)
+	} else {
+		cmdData = string(env.Payload)
+	}
+
+	return cmdData, nil
+}
+
+// signDecision creates a cryptographic signature of the decision.
+// The signature is over "<transaction_hash>|<decision>", matching the
+// existing verifyL2Signature primitive in l4_warden.go.
+func signDecision(privateKey ed25519.PrivateKey, messageID string, isSafe bool) (string, error) {
+	if privateKey == nil {
+		return "", fmt.Errorf("consensus: sign decision: private key missing")
+	}
+	payload := fmt.Sprintf("%s|%v", messageID, isSafe)
+	sig := ed25519.Sign(privateKey, []byte(payload))
+	return hex.EncodeToString(sig), nil
+}

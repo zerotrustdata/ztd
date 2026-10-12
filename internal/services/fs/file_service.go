@@ -1,0 +1,388 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+// Package fs provides a focused file service for the .ztd/ runtime directory.
+// It wraps os.* calls with opinionated defaults for atomic writes, permissions,
+// and error wrapping. This is not a virtual filesystem abstraction — it is a
+// thin service layer that enforces consistent file I/O patterns across the
+// codebase.
+package fs
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/pathutil"
+	"github.com/zerotrustdata/ztd/internal/security"
+)
+
+// RuntimeFileService provides safe file operations within the .ztd runtime directory.
+// All paths are resolved relative to the runtime directory root.
+type RuntimeFileService interface {
+	// MkdirAll creates a directory and all parents with the given mode.
+	// Path must be within the runtime directory.
+	MkdirAll(ctx context.Context, relPath string, mode os.FileMode) error
+
+	// CreateRuntimeTree creates the full .ztd/ directory tree with correct
+	// permissions. Called once at startup. Idempotent.
+	CreateRuntimeTree(ctx context.Context) error
+
+	// ReadFile reads a file within the runtime directory.
+	// Returns wrapped constants.ErrNotFound if file does not exist.
+	ReadFile(ctx context.Context, relPath string) ([]byte, error)
+
+	// FileExists checks if a file exists. Returns false, nil for non-existent.
+	FileExists(ctx context.Context, relPath string) (bool, error)
+
+	// Stat returns FileInfo for a path within the runtime directory.
+	Stat(ctx context.Context, relPath string) (os.FileInfo, error)
+	Lstat(ctx context.Context, relPath string) (os.FileInfo, error)
+
+	// WriteFile atomically writes data to a file within the runtime directory.
+	// Uses tmp+rename pattern with a unique temp file per call. Creates parent
+	// directories if needed.
+	WriteFile(ctx context.Context, relPath string, data []byte, mode os.FileMode) error
+
+	// OpenForAppend opens a file for appending (O_CREATE|O_WRONLY|O_APPEND).
+	// Creates parent directories if needed. Returns the raw *os.File — the
+	// caller must Close it. Used for log files that require streaming append
+	// (WriteFile's atomic tmp+rename is wrong for logs).
+	OpenForAppend(ctx context.Context, relPath string, mode os.FileMode) (*os.File, error)
+
+	// OpenForRead opens an existing file for streaming read. Returns
+	// constants.ErrNotFound if the file does not exist. The caller must Close
+	// the returned handle. Used for tail/follow operations on log files.
+	OpenForRead(ctx context.Context, relPath string) (*os.File, error)
+
+	// TryLock creates relPath if needed and takes a non-blocking exclusive
+	// lock on it. It returns constants.ErrRuntimeFileLocked when another
+	// process holds the lock. Closing the returned handle releases it; the
+	// kernel releases it if the process exits.
+	TryLock(ctx context.Context, relPath string, mode os.FileMode) (io.Closer, error)
+
+	// Remove deletes a file. No-op if file doesn't exist.
+	Remove(ctx context.Context, relPath string) error
+
+	// RemoveAll deletes a directory tree. No-op if path doesn't exist.
+	RemoveAll(ctx context.Context, relPath string) error
+
+	// ArchiveRuntime renames the whole runtime directory aside to
+	// .ztd-<MMDDHHMM> rather than deleting it and returns the archive path
+	// ("" if there was no runtime directory). Destructive cleans use this so
+	// nothing is unrecoverable; callers must not RemoveAll the runtime root.
+	ArchiveRuntime(ctx context.Context, now time.Time) (string, error)
+
+	// ReadDir lists directory entries.
+	ReadDir(ctx context.Context, relPath string) ([]os.DirEntry, error)
+
+	// Rename atomically renames a file or directory.
+	Rename(ctx context.Context, oldPath, newPath string) error
+
+	// EnforceDirPermissions recursively enforces directory permissions.
+	EnforceDirPermissions(ctx context.Context, relPath string, mode os.FileMode) error
+
+	// EnforceFilePermissions enforces file permissions on a single file.
+	EnforceFilePermissions(ctx context.Context, relPath string, mode os.FileMode) error
+
+	// Resolve converts a relative path within .ztd/ to an absolute path.
+	Resolve(relPath string) string
+
+	// Rel converts an absolute path within .ztd/ to a path relative to the runtime dir.
+	// Returns an error if the path is outside the runtime directory.
+	Rel(absPath string) (string, error)
+
+	// RelFromAbs converts an absolute path within .ztd/ to a relative path.
+	// Returns an error if the path is outside the runtime directory.
+	RelFromAbs(absPath string) (string, error)
+
+	// OpenFileEditTarget applies the governed FILE_EDIT path policy and opens
+	// the destination beneath a directory handle. Runtime control and evidence
+	// files are rejected; the executing runtime's controlled evaluation target
+	// directory is the sole writable runtime subtree. The caller must Close
+	// the returned target.
+	OpenFileEditTarget(ctx context.Context, path, workDir string) (*FileEditTarget, error)
+}
+
+// localFS is the default RuntimeFileService implementation, operating
+// directly on the local filesystem within the .ztd/ runtime directory.
+type localFS struct {
+	baseDir    string
+	runtimeDir string
+	logger     *slog.Logger
+}
+
+// NewRuntimeFileService creates a RuntimeFileService scoped to the .ztd/
+// directory under baseDir.
+func NewRuntimeFileService(baseDir string, logger *slog.Logger) (RuntimeFileService, error) {
+	if baseDir == "" {
+		var err error
+		baseDir, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("fs: get working directory: %w", err)
+		}
+	}
+
+	return &localFS{
+		baseDir:    baseDir,
+		runtimeDir: pathutil.SafeJoin(baseDir, constants.RuntimeDirname),
+		logger:     logger,
+	}, nil
+}
+
+// Resolve converts a relative path within .ztd/ to an absolute path.
+// It uses pathutil.SafeJoin and verifies the resolved path is within
+// the runtime directory to prevent path traversal.
+func (fs *localFS) Resolve(relPath string) string {
+	if relPath == "" {
+		return fs.runtimeDir
+	}
+	absPath := pathutil.SafeJoin(fs.runtimeDir, relPath)
+	return absPath
+}
+
+// Rel converts an absolute path within .ztd/ to a path relative to the runtime dir.
+func (fs *localFS) Rel(absPath string) (string, error) {
+	rel, err := filepath.Rel(fs.runtimeDir, absPath)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s: %w", constants.ErrPathValidation, absPath, err)
+	}
+	if !fs.isWithinRuntimeDir(absPath) {
+		return "", fmt.Errorf("%w: %s is outside runtime dir %s", constants.ErrPathValidation, absPath, fs.runtimeDir)
+	}
+	return rel, nil
+}
+
+// RelFromAbs converts an absolute path within .ztd/ to a relative path.
+// Returns an error if the path is outside the runtime directory.
+func (fs *localFS) RelFromAbs(absPath string) (string, error) {
+	return fs.Rel(absPath)
+}
+
+func withinPath(root, candidate string) bool {
+	rel, err := filepath.Rel(root, candidate)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolveExistingPath resolves symlinked ancestors while retaining a suffix
+// for a file or directory that does not exist yet.
+func resolveExistingPath(path string) (string, error) {
+	probe := filepath.Clean(path)
+	var suffix []string
+	for {
+		if _, err := os.Lstat(probe); err == nil {
+			resolved, err := filepath.EvalSymlinks(probe)
+			if err != nil {
+				return "", err
+			}
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved), nil
+		} else if !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTDIR) {
+			return "", err
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			return "", fmt.Errorf("unable to resolve existing ancestor for %s", path)
+		}
+		suffix = append(suffix, filepath.Base(probe))
+		probe = parent
+	}
+}
+
+// isWithinRuntimeDir verifies that absPath is within the runtime directory.
+func (fs *localFS) isWithinRuntimeDir(absPath string) bool {
+	rel, err := filepath.Rel(fs.runtimeDir, absPath)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..") && rel != ".."
+}
+
+func (fs *localFS) resolveValidated(relPath string) (string, error) {
+	if relPath == "" {
+		return fs.runtimeDir, nil
+	}
+	absPath, err := security.ValidatePath(relPath, fs.runtimeDir)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrPathValidation, err)
+	}
+	return absPath, nil
+}
+
+// MkdirAll creates a directory and all parents with the given mode.
+func (fs *localFS) MkdirAll(ctx context.Context, relPath string, mode os.FileMode) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	absPath := fs.Resolve(relPath)
+	if err := os.MkdirAll(absPath, mode); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+	}
+	return nil
+}
+
+// ReadFile reads a file within the runtime directory.
+// Returns wrapped constants.ErrNotFound if file does not exist.
+func (fs *localFS) ReadFile(ctx context.Context, relPath string) ([]byte, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	absPath, err := fs.resolveValidated(relPath)
+	if err != nil {
+		return nil, err
+	}
+	f, err := openRetrying(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", constants.ErrNotFound, absPath)
+		}
+		return nil, fmt.Errorf("%w: %w", constants.ErrFileOpenFailed, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrFileReadFailed, err)
+	}
+	return data, nil
+}
+
+// FileExists checks if a file exists. Returns false, nil for non-existent.
+func (fs *localFS) FileExists(ctx context.Context, relPath string) (bool, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+	}
+	absPath := fs.Resolve(relPath)
+	_, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("%w: %w", constants.ErrStatFailed, err)
+	}
+	return true, nil
+}
+
+// Stat returns FileInfo for a path within the runtime directory.
+func (fs *localFS) Stat(ctx context.Context, relPath string) (os.FileInfo, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	absPath := fs.Resolve(relPath)
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", constants.ErrNotFound, absPath)
+		}
+		return nil, fmt.Errorf("%w: %w", constants.ErrStatFailed, err)
+	}
+	return info, nil
+}
+
+func (fs *localFS) Lstat(ctx context.Context, relPath string) (os.FileInfo, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	absPath, err := fs.resolveValidated(relPath)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", constants.ErrNotFound, absPath)
+		}
+		return nil, fmt.Errorf("%w: %w", constants.ErrStatFailed, err)
+	}
+	return info, nil
+}
+
+// Remove deletes a file. No-op if file doesn't exist.
+func (fs *localFS) Remove(ctx context.Context, relPath string) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	absPath := fs.Resolve(relPath)
+	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("%w: %s: %w", constants.ErrFileRemoveFailed, relPath, err)
+	}
+	return nil
+}
+
+// RemoveAll deletes a directory tree. No-op if path doesn't exist.
+func (fs *localFS) RemoveAll(ctx context.Context, relPath string) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	absPath := fs.Resolve(relPath)
+	if err := os.RemoveAll(absPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("%w: %s: %w", constants.ErrDirRemoveFailed, relPath, err)
+	}
+	return nil
+}
+
+// ReadDir lists directory entries.
+func (fs *localFS) ReadDir(ctx context.Context, relPath string) ([]os.DirEntry, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	absPath := fs.Resolve(relPath)
+	// Windows reports ERROR_PATH_NOT_FOUND when ReadDir targets a regular file.
+	// Distinguish that from a missing directory before mapping the read error.
+	info, statErr := os.Stat(absPath)
+	if statErr == nil && !info.IsDir() {
+		return nil, fmt.Errorf("%w: %s is not a directory", constants.ErrDirectoryRead, absPath)
+	}
+	entries, err := os.ReadDir(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", constants.ErrNotFound, absPath)
+		}
+		return nil, fmt.Errorf("%w: %w", constants.ErrDirectoryRead, err)
+	}
+	return entries, nil
+}
+
+// Rename atomically renames a file or directory.
+func (fs *localFS) Rename(ctx context.Context, oldPath, newPath string) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	oldAbs := fs.Resolve(oldPath)
+	newAbs := fs.Resolve(newPath)
+	if err := os.Rename(oldAbs, newAbs); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrFileRenameFailed, err)
+	}
+	return nil
+}

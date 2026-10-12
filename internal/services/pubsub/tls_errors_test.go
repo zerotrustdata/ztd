@@ -1,0 +1,116 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package pubsub
+
+import (
+	"crypto/x509"
+	"fmt"
+	"net"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+func TestIsTLSCertError(t *testing.T) {
+	t.Parallel()
+	t.Run("returns false for nil error", func(t *testing.T) {
+		t.Parallel()
+		assert.False(t, IsTLSCertError(nil))
+	})
+
+	t.Run("returns false for generic errors", func(t *testing.T) {
+		t.Parallel()
+		assert.False(t, IsTLSCertError(fmt.Errorf("connection refused")))
+		assert.False(t, IsTLSCertError(fmt.Errorf("timeout")))
+		assert.False(t, IsTLSCertError(fmt.Errorf("EOF")))
+		assert.False(t, IsTLSCertError(fmt.Errorf("some random error")))
+	})
+
+	t.Run("detects x509.UnknownAuthorityError", func(t *testing.T) {
+		t.Parallel()
+		err := x509.UnknownAuthorityError{}
+		assert.True(t, IsTLSCertError(err))
+	})
+
+	t.Run("detects x509.CertificateInvalidError", func(t *testing.T) {
+		t.Parallel()
+		err := x509.CertificateInvalidError{
+			Reason: x509.Expired,
+		}
+		assert.True(t, IsTLSCertError(err))
+	})
+
+	t.Run("detects x509.HostnameError", func(t *testing.T) {
+		t.Parallel()
+		err := x509.HostnameError{
+			Host: constants.DefaultEndpoint,
+		}
+		assert.True(t, IsTLSCertError(err))
+	})
+
+	t.Run("detects wrapped x509 errors", func(t *testing.T) {
+		t.Parallel()
+		innerErr := x509.UnknownAuthorityError{}
+		wrappedErr := fmt.Errorf("connection failed: %w", innerErr)
+		assert.True(t, IsTLSCertError(wrappedErr))
+	})
+
+	t.Run("detects x509 errors wrapped in net.OpError", func(t *testing.T) {
+		t.Parallel()
+		innerErr := x509.UnknownAuthorityError{}
+		opErr := &net.OpError{
+			Op:  "read",
+			Net: "tcp",
+			Err: innerErr,
+		}
+		assert.True(t, IsTLSCertError(opErr))
+	})
+
+	t.Run("detects string-based certificate signed by unknown authority", func(t *testing.T) {
+		t.Parallel()
+		err := fmt.Errorf("tls: failed to verify certificate: x509: certificate signed by unknown authority")
+		assert.True(t, IsTLSCertError(err))
+	})
+
+	t.Run("detects string-based certificate has expired", func(t *testing.T) {
+		t.Parallel()
+		err := fmt.Errorf("x509: certificate has expired or is not yet valid")
+		assert.True(t, IsTLSCertError(err))
+	})
+
+	t.Run("detects string-based tls bad certificate", func(t *testing.T) {
+		t.Parallel()
+		err := fmt.Errorf("tls: bad certificate")
+		assert.True(t, IsTLSCertError(err))
+	})
+
+	t.Run("detects string-based tls handshake failure", func(t *testing.T) {
+		t.Parallel()
+		err := fmt.Errorf("tls: handshake failure")
+		assert.True(t, IsTLSCertError(err))
+	})
+
+	t.Run("returns false for non-TLS net.OpError", func(t *testing.T) {
+		t.Parallel()
+		opErr := &net.OpError{
+			Op:  "dial",
+			Net: "tcp",
+			Err: fmt.Errorf("connection refused"),
+		}
+		assert.False(t, IsTLSCertError(opErr))
+	})
+
+	t.Run("detects deeply nested x509 error", func(t *testing.T) {
+		t.Parallel()
+		innerErr := x509.CertificateInvalidError{Reason: x509.NotAuthorizedToSign}
+		wrapped1 := fmt.Errorf("redis: %w", innerErr)
+		wrapped2 := fmt.Errorf("pubsub receive: %w", wrapped1)
+		assert.True(t, IsTLSCertError(wrapped2))
+	})
+}

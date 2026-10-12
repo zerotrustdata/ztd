@@ -1,0 +1,46 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package constants
+
+// Ports defines canonical ZTD networking ports.
+// These values are generated from protocol/constants/ports.json (SSOT).
+var Ports = struct {
+	OperatorHttp  int `json:"OperatorHttp"`
+	OperatorHttps int `json:"OperatorHttps"`
+}{
+	OperatorHttp:  8080,
+	OperatorHttps: 8443,
+}
+
+// Deployment default ports for auxiliary services that are not part of the
+// gateway protocol but are Gateway-owned listeners started by `ztd gw start`.
+// These are Go-only constants (not mirrored in protocol/constants/ports.json) because
+// they are deployment defaults, not protocol-level ports.
+const (
+	// PublicSpectatorPrivatePort is the loopback-only authenticated ingest
+	// listener for the gateway-owned public mirror.
+	PublicSpectatorPrivatePort = 8081
+	// PublicSpectatorPublicPort is the loopback-only anonymous read/SSE
+	// listener for the gateway-owned public mirror.
+	PublicSpectatorPublicPort = 8082
+	// EvalExplorerDefaultPort serves the embedded evaluation explorer SPA.
+	EvalExplorerDefaultPort = 5173
+
+	// InferenceOllamaDefaultPort is Ollama's default loopback API port. The
+	// Go inference backend connects to this port over loopback HTTP.
+	InferenceOllamaDefaultPort = 11434
+)
+
+// GatewayReservedLoopbackPorts are ports the gateway process binds for its own
+// auxiliary listeners. HTTP/HTTPS port fallback must skip them, or a busy 8080
+// falls back to 8081 and collides with the public spectator ingest listener.
+var GatewayReservedLoopbackPorts = map[int]struct{}{
+	PublicSpectatorPrivatePort: {},
+	PublicSpectatorPublicPort:  {},
+	EvalExplorerDefaultPort:    {},
+}

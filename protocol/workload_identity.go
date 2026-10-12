@@ -1,0 +1,229 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package protocol
+
+import (
+	"fmt"
+	"net/url"
+	"strings"
+)
+
+const (
+	// TrustDomain is the SPIFFE trust domain for ztd.
+	TrustDomain = "ztd.local"
+)
+
+// WorkloadIdentity provides helper functions for generating SPIFFE workload identities.
+type WorkloadIdentity struct{}
+
+// NewWorkloadIdentity creates a new WorkloadIdentity helper.
+func NewWorkloadIdentity() *WorkloadIdentity {
+	return &WorkloadIdentity{}
+}
+
+// OperatorSPIFFEID generates the SPIFFE ID for an Operator workload.
+// Format: spiffe://ztd.local/operator/<organization_id>/<operator_id>/<operator_session_id>
+func (w *WorkloadIdentity) OperatorSPIFFEID(organizationID, operatorID, sessionID string) string {
+	return fmt.Sprintf("spiffe://%s/operator/%s/%s/%s", TrustDomain, organizationID, operatorID, sessionID)
+}
+
+// OperatorSPIFFEURL generates the SPIFFE URL for an Operator workload.
+func (w *WorkloadIdentity) OperatorSPIFFEURL(organizationID, operatorID, sessionID string) (*url.URL, error) {
+	return url.Parse(w.OperatorSPIFFEID(organizationID, operatorID, sessionID))
+}
+
+// CLISPIFFEID generates the SPIFFE ID for a CLI (BYO client) workload.
+// Format: spiffe://ztd.local/cli/<user_id>/<cli_session_id>
+func (w *WorkloadIdentity) CLISPIFFEID(userID, sessionID string) string {
+	return fmt.Sprintf("spiffe://%s/cli/%s/%s", TrustDomain, userID, sessionID)
+}
+
+// CLISPIFFEURL generates the SPIFFE URL for a CLI workload.
+func (w *WorkloadIdentity) CLISPIFFEURL(userID, sessionID string) (*url.URL, error) {
+	return url.Parse(w.CLISPIFFEID(userID, sessionID))
+}
+
+// AppSPIFFEID generates the SPIFFE ID for an application (agent) workload.
+// Format: spiffe://ztd.local/app/<operator_id>
+func (w *WorkloadIdentity) AppSPIFFEID(operatorID string) string {
+	return fmt.Sprintf("spiffe://%s/app/%s", TrustDomain, operatorID)
+}
+
+// AppSPIFFEURL generates the SPIFFE URL for an application workload.
+func (w *WorkloadIdentity) AppSPIFFEURL(operatorID string) (*url.URL, error) {
+	return url.Parse(w.AppSPIFFEID(operatorID))
+}
+
+// UserSPIFFEID generates the SPIFFE ID for a user (human delegator).
+// Format: spiffe://ztd.local/user/<user_id>
+func (w *WorkloadIdentity) UserSPIFFEID(userID string) string {
+	return fmt.Sprintf("spiffe://%s/user/%s", TrustDomain, userID)
+}
+
+// UserSPIFFEURL generates the SPIFFE URL for a user identity.
+func (w *WorkloadIdentity) UserSPIFFEURL(userID string) (*url.URL, error) {
+	return url.Parse(w.UserSPIFFEID(userID))
+}
+
+// HubSPIFFEID generates the SPIFFE ID for the hub (operator-listen) workload.
+// Format: spiffe://ztd.local/hub/operator-listen
+func (w *WorkloadIdentity) HubSPIFFEID() string {
+	return fmt.Sprintf("spiffe://%s/hub/operator-listen", TrustDomain)
+}
+
+// HubSPIFFEURL generates the SPIFFE URL for the hub workload.
+func (w *WorkloadIdentity) HubSPIFFEURL() (*url.URL, error) {
+	return url.Parse(w.HubSPIFFEID())
+}
+
+// MatchesOperator checks if a SPIFFE ID matches an Operator identity.
+func (w *WorkloadIdentity) MatchesOperator(spiffeID, organizationID, operatorID, sessionID string) bool {
+	return spiffeID == w.OperatorSPIFFEID(organizationID, operatorID, sessionID)
+}
+
+// MatchesCLI checks if a SPIFFE ID matches a CLI identity.
+func (w *WorkloadIdentity) MatchesCLI(spiffeID, userID, sessionID string) bool {
+	return spiffeID == w.CLISPIFFEID(userID, sessionID)
+}
+
+// MatchesCLISessionOnly checks if a SPIFFE ID matches a CLI identity with the given session ID,
+// regardless of the user ID. This is useful for initial routing/verification before user context is loaded.
+func (w *WorkloadIdentity) MatchesCLISessionOnly(spiffeID, sessionID string) bool {
+	extractedSessionID, ok := w.ExtractCLISessionID(spiffeID)
+	return ok && extractedSessionID == sessionID
+}
+
+// MatchesApp checks if a SPIFFE ID matches an application identity.
+func (w *WorkloadIdentity) MatchesApp(spiffeID, operatorID string) bool {
+	return spiffeID == w.AppSPIFFEID(operatorID)
+}
+
+// IsAppSAN reports whether the SPIFFE ID is an app workload identity
+// (spiffe://<trust_domain>/app/...).
+func (w *WorkloadIdentity) IsAppSAN(spiffeID string) bool {
+	prefix := fmt.Sprintf("spiffe://%s/app/", TrustDomain)
+	return strings.HasPrefix(spiffeID, prefix)
+}
+
+// IsUserSAN reports whether the SPIFFE ID is a user workload identity
+// (spiffe://<trust_domain>/user/...).
+func (w *WorkloadIdentity) IsUserSAN(spiffeID string) bool {
+	prefix := fmt.Sprintf("spiffe://%s/user/", TrustDomain)
+	return strings.HasPrefix(spiffeID, prefix)
+}
+
+// MatchesHub checks if a SPIFFE ID matches the hub identity.
+func (w *WorkloadIdentity) MatchesHub(spiffeID string) bool {
+	return spiffeID == w.HubSPIFFEID()
+}
+
+// ExtractCLISessionID extracts the CLI session ID from a SPIFFE ID.
+// Returns the session ID and true if the SPIFFE ID is a valid CLI identity.
+func (w *WorkloadIdentity) ExtractCLISessionID(spiffeID string) (string, bool) {
+	prefix := fmt.Sprintf("spiffe://%s/cli/", TrustDomain)
+	if !strings.HasPrefix(spiffeID, prefix) {
+		return "", false
+	}
+	// Format: spiffe://ztd.local/cli/<user_id>/<cli_session_id>
+	parts := strings.Split(strings.TrimPrefix(spiffeID, prefix), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", false
+	}
+	return parts[1], true
+}
+
+// ExtractUserID extracts the user ID from a CLI SPIFFE ID.
+// Returns the user ID and true if the SPIFFE ID is a valid CLI identity.
+// Format: spiffe://ztd.local/cli/<user_id>/<cli_session_id>
+func (w *WorkloadIdentity) ExtractUserID(spiffeID string) (string, bool) {
+	prefix := fmt.Sprintf("spiffe://%s/cli/", TrustDomain)
+	if !strings.HasPrefix(spiffeID, prefix) {
+		return "", false
+	}
+	parts := strings.Split(strings.TrimPrefix(spiffeID, prefix), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", false
+	}
+	return parts[0], true
+}
+
+// ExtractUserIDFromUserSAN extracts the user ID from a user SPIFFE ID.
+// This is used for delegated credentials where the user identity is in a
+// dedicated URI SAN of the form spiffe://ztd.local/user/<user_id>.
+func (w *WorkloadIdentity) ExtractUserIDFromUserSAN(spiffeID string) (string, bool) {
+	prefix := fmt.Sprintf("spiffe://%s/user/", TrustDomain)
+	if !strings.HasPrefix(spiffeID, prefix) {
+		return "", false
+	}
+	userID := strings.TrimPrefix(spiffeID, prefix)
+	if userID == "" || strings.Contains(userID, "/") {
+		return "", false
+	}
+	return userID, true
+}
+
+// GatewayPeerSPIFFEID generates the SPIFFE ID for a gateway peer workload.
+// Format: spiffe://ztd.local/gateway/<gateway_id>
+func (w *WorkloadIdentity) GatewayPeerSPIFFEID(gatewayID string) string {
+	return fmt.Sprintf("spiffe://%s/gateway/%s", TrustDomain, gatewayID)
+}
+
+// GatewayPeerSPIFFEURL generates the SPIFFE URL for a gateway peer workload.
+func (w *WorkloadIdentity) GatewayPeerSPIFFEURL(gatewayID string) (*url.URL, error) {
+	return url.Parse(w.GatewayPeerSPIFFEID(gatewayID))
+}
+
+// MatchesGatewayPeer checks if a SPIFFE ID matches a gateway peer identity.
+func (w *WorkloadIdentity) MatchesGatewayPeer(spiffeID, gatewayID string) bool {
+	return spiffeID == w.GatewayPeerSPIFFEID(gatewayID)
+}
+
+// ExtractGatewayID extracts the gateway ID from a SPIFFE ID.
+// Returns the gateway ID and true if the SPIFFE ID is a valid gateway peer identity.
+func (w *WorkloadIdentity) ExtractGatewayID(spiffeID string) (string, bool) {
+	prefix := fmt.Sprintf("spiffe://%s/gateway/", TrustDomain)
+	if !strings.HasPrefix(spiffeID, prefix) {
+		return "", false
+	}
+	// Format: spiffe://ztd.local/gateway/<gateway_id>
+	parts := strings.Split(strings.TrimPrefix(spiffeID, prefix), "/")
+	if len(parts) != 1 || parts[0] == "" {
+		return "", false
+	}
+	return parts[0], true
+}
+
+// ExtractOperatorSessionID extracts the operator session ID from a SPIFFE ID.
+// Returns the session ID and true if the SPIFFE ID is a valid Operator identity.
+// Format: spiffe://ztd.local/operator/<organization_id>/<operator_id>/<operator_session_id>
+func (w *WorkloadIdentity) ExtractOperatorSessionID(spiffeID string) (string, bool) {
+	id, ok := w.ExtractOperatorIdentity(spiffeID)
+	return id.OperatorSessionID, ok
+}
+
+// OperatorWorkload is the identity an Operator SPIFFE ID carries.
+type OperatorWorkload struct {
+	OrganizationID    string
+	OperatorID        string
+	OperatorSessionID string
+}
+
+// ExtractOperatorIdentity parses an Operator SPIFFE ID. It returns false when
+// spiffeID is not a valid Operator identity.
+// Format: spiffe://ztd.local/operator/<organization_id>/<operator_id>/<operator_session_id>
+func (w *WorkloadIdentity) ExtractOperatorIdentity(spiffeID string) (OperatorWorkload, bool) {
+	prefix := fmt.Sprintf("spiffe://%s/operator/", TrustDomain)
+	if !strings.HasPrefix(spiffeID, prefix) {
+		return OperatorWorkload{}, false
+	}
+	parts := strings.Split(strings.TrimPrefix(spiffeID, prefix), "/")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return OperatorWorkload{}, false
+	}
+	return OperatorWorkload{OrganizationID: parts[0], OperatorID: parts[1], OperatorSessionID: parts[2]}, true
+}

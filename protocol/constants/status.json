@@ -1,0 +1,2297 @@
+{
+  "status": {
+    "action_type": {
+      "A2A_CALL": {
+        "_go_const": "ActionTypeA2aCall",
+        "_mutation": true,
+        "value": "A2A_CALL"
+      },
+      "CANCEL": {
+        "_go_const": "ActionTypeCancel",
+        "_mutation": true,
+        "value": "CANCEL"
+      },
+      "EVAL_ANSWER": {
+        "_go_const": "ActionTypeEvalAnswer",
+        "value": "EVAL_ANSWER"
+      },
+      "EXECUTE_BASH": {
+        "_go_const": "ActionTypeExecuteBash",
+        "_mutation": true,
+        "value": "EXECUTE_BASH"
+      },
+      "FETCH_FILE_DIFF": {
+        "_go_const": "ActionTypeFetchFileDiff",
+        "value": "FETCH_FILE_DIFF"
+      },
+      "FETCH_FILE_HISTORY": {
+        "_go_const": "ActionTypeFetchFileHistory",
+        "value": "FETCH_FILE_HISTORY"
+      },
+      "FETCH_HISTORY": {
+        "_go_const": "ActionTypeFetchHistory",
+        "value": "FETCH_HISTORY"
+      },
+      "FETCH_LOGS": {
+        "_go_const": "ActionTypeFetchLogs",
+        "value": "FETCH_LOGS"
+      },
+      "FILE_EDIT": {
+        "_go_const": "ActionTypeFileEdit",
+        "_mutation": true,
+        "value": "FILE_EDIT"
+      },
+      "FS_GREP": {
+        "_go_const": "ActionTypeFsGrep",
+        "value": "FS_GREP"
+      },
+      "FS_LIST": {
+        "_go_const": "ActionTypeFsList",
+        "value": "FS_LIST"
+      },
+      "FS_READ": {
+        "_go_const": "ActionTypeFsRead",
+        "value": "FS_READ"
+      },
+      "HEARTBEAT": {
+        "_go_const": "ActionTypeHeartbeat",
+        "value": "HEARTBEAT"
+      },
+      "INFERENCE": {
+        "_go_const": "ActionTypeInference",
+        "_mutation": true,
+        "value": "INFERENCE"
+      },
+      "PROVIDER_BOUNDARY_OBSERVATION": {
+        "_go_const": "ActionTypeProviderBoundaryObservation",
+        "value": "PROVIDER_BOUNDARY_OBSERVATION"
+      },
+      "MODEL_PROVENANCE_OBSERVATION": {
+        "_go_const": "ActionTypeModelProvenanceObservation",
+        "value": "MODEL_PROVENANCE_OBSERVATION"
+      },
+      "DOCUMENT_UPDATE": {
+        "_go_const": "ActionTypeDocumentUpdate",
+        "_mutation": true,
+        "value": "DOCUMENT_UPDATE"
+      },
+      "DOCUMENT_DELETE": {
+        "_go_const": "ActionTypeDocumentDelete",
+        "_mutation": true,
+        "value": "DOCUMENT_DELETE"
+      },
+      "MCP_CALL": {
+        "_go_const": "ActionTypeMcpCall",
+        "_mutation": true,
+        "value": "MCP_CALL"
+      },
+      "MCP_PROMPT_GET": {
+        "_go_const": "ActionTypeMcpPromptGet",
+        "value": "MCP_PROMPT_GET"
+      },
+      "MCP_PROMPT_LIST": {
+        "_go_const": "ActionTypeMcpPromptList",
+        "value": "MCP_PROMPT_LIST"
+      },
+      "MCP_RESOURCE_LIST": {
+        "_go_const": "ActionTypeMcpResourceList",
+        "value": "MCP_RESOURCE_LIST"
+      },
+      "MCP_RESOURCE_READ": {
+        "_go_const": "ActionTypeMcpResourceRead",
+        "value": "MCP_RESOURCE_READ"
+      },
+      "PLATFORM_ENROLLMENT_CREATE": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentCreate",
+        "value": "PLATFORM_ENROLLMENT_CREATE"
+      },
+      "PLATFORM_ENROLLMENT_DECIDE": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentDecide",
+        "_mutation": true,
+        "value": "PLATFORM_ENROLLMENT_DECIDE"
+      },
+      "PLATFORM_ENROLLMENT_ISSUE": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentIssue",
+        "_mutation": true,
+        "value": "PLATFORM_ENROLLMENT_ISSUE"
+      },
+      "PLATFORM_ENROLLMENT_PERSIST_POLICY": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentPersistPolicy",
+        "_mutation": true,
+        "value": "PLATFORM_ENROLLMENT_PERSIST_POLICY"
+      },
+      "PLATFORM_ENROLLMENT_CREATE_SESSION": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentCreateSession",
+        "_mutation": true,
+        "value": "PLATFORM_ENROLLMENT_CREATE_SESSION"
+      },
+      "PLATFORM_ENROLLMENT_REVOKE": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentRevoke",
+        "_mutation": true,
+        "value": "PLATFORM_ENROLLMENT_REVOKE"
+      },
+      "PORT_CHECK": {
+        "_go_const": "ActionTypePortCheck",
+        "value": "PORT_CHECK"
+      },
+      "OLLAMA_MODEL_INVENTORY": {
+        "_go_const": "ActionTypeOllamaModelInventory",
+        "value": "OLLAMA_MODEL_INVENTORY"
+      },
+      "OLLAMA_MODEL_RESIDENCY": {
+        "_go_const": "ActionTypeOllamaModelResidency",
+        "value": "OLLAMA_MODEL_RESIDENCY"
+      },
+      "RESTORE_FILE": {
+        "_go_const": "ActionTypeRestoreFile",
+        "_mutation": true,
+        "value": "RESTORE_FILE"
+      },
+      "SHUTDOWN": {
+        "_go_const": "ActionTypeShutdown",
+        "_mutation": true,
+        "value": "SHUTDOWN"
+      }
+    },
+    "ai_source": {
+      "ai.terminal.anchored": {
+        "_go_const": "AISourceTerminalAnchored",
+        "value": "ai.terminal.anchored"
+      },
+      "ai.terminal.direct": {
+        "_go_const": "AISourceTerminalDirect",
+        "value": "ai.terminal.direct"
+      },
+      "ai.tool.call": {
+        "_go_const": "AISourceToolCall",
+        "value": "ai.tool.call"
+      }
+    },
+    "ai_task_id": {
+      "ai.agent.continue": {
+        "_go_const": "AITaskIDAgentContinue",
+        "value": "ai.agent.continue"
+      },
+      "ai.chat": {
+        "_go_const": "AITaskIDChat",
+        "value": "ai.chat"
+      },
+      "ai.command": {
+        "_go_const": "AITaskIDCommand",
+        "value": "ai.command"
+      },
+      "ai.direct.command": {
+        "_go_const": "AITaskIDDirectCommand",
+        "value": "ai.direct.command"
+      },
+      "ai.fetch.file.diff": {
+        "_go_const": "AITaskIDFetchFileDiff",
+        "value": "ai.fetch.file.diff"
+      },
+      "ai.fetch.file.history": {
+        "_go_const": "AITaskIDFetchFileHistory",
+        "value": "ai.fetch.file.history"
+      },
+      "ai.fetch.history": {
+        "_go_const": "AITaskIDFetchHistory",
+        "value": "ai.fetch.history"
+      },
+      "ai.fetch.logs": {
+        "_go_const": "AITaskIDFetchLogs",
+        "value": "ai.fetch.logs"
+      },
+      "ai.file.edit": {
+        "_go_const": "AITaskIDFileEdit",
+        "value": "ai.file.edit"
+      },
+      "ai.fs.list": {
+        "_go_const": "AITaskIDFsList",
+        "value": "ai.fs.list"
+      },
+      "ai.fs.read": {
+        "_go_const": "AITaskIDFsRead",
+        "value": "ai.fs.read"
+      },
+      "ai.intent.grant": {
+        "_go_const": "AITaskIDIntentGrant",
+        "value": "ai.intent.grant"
+      },
+      "ai.intent.revoke": {
+        "_go_const": "AITaskIDIntentRevoke",
+        "value": "ai.intent.revoke"
+      },
+      "ai.port.check": {
+        "_go_const": "AITaskIDPortCheck",
+        "value": "ai.port.check"
+      },
+      "ai.recursive_grep": {
+        "_go_const": "AITaskIDRecursiveGrep",
+        "value": "ai.recursive_grep"
+      },
+      "ai.restore.file": {
+        "_go_const": "AITaskIDRestoreFile",
+        "value": "ai.restore.file"
+      },
+      "chat": {
+        "_go_const": "AITaskIdChat",
+        "value": "ai.chat"
+      },
+      "case": {
+        "_go_const": "AITaskIdCase",
+        "value": "ai.case"
+      },
+      "memory": {
+        "_go_const": "AITaskIdMemory",
+        "value": "ai.memory"
+      },
+      "command": {
+        "_go_const": "AITaskIdCommand",
+        "value": "ai.command"
+      },
+      "command_execution": {
+        "_go_const": "AITaskIdCommandExecution",
+        "value": "ai.command.execution"
+      },
+      "direct_command": {
+        "_go_const": "AITaskIdDirectCommand",
+        "value": "ai.direct.command"
+      },
+      "intent_grant": {
+        "_go_const": "AITaskIdIntentGrant",
+        "value": "ai.intent.grant"
+      },
+      "intent_revoke": {
+        "_go_const": "AITaskIdIntentRevoke",
+        "value": "ai.intent.revoke"
+      },
+      "file_edit": {
+        "_go_const": "AITaskIdFileEdit",
+        "value": "ai.file.edit"
+      },
+      "file_operation": {
+        "_go_const": "AITaskIdFileOperation",
+        "value": "ai.file.operation"
+      },
+      "fs_list": {
+        "_go_const": "AITaskIdFsList",
+        "value": "ai.fs.list"
+      },
+      "recursive_grep": {
+        "_go_const": "AITaskIdRecursiveGrep",
+        "value": "ai.recursive.grep"
+      },
+      "port_check": {
+        "_go_const": "AITaskIdPortCheck",
+        "value": "ai.port.check"
+      },
+      "agent_continue": {
+        "_go_const": "AITaskIdAgentContinue",
+        "value": "ai.agent.continue"
+      },
+      "investigation_query": {
+        "_go_const": "AITaskIdInvestigationQuery",
+        "value": "ai.investigation.query"
+      }
+    },
+    "approval.error.type": {
+      "approval.exception": {
+        "_go_const": "ApprovalErrorTypeApprovalException",
+        "value": "approval.exception"
+      },
+      "approval.publish.failure": {
+        "_go_const": "ApprovalErrorTypeApprovalPublishFailure",
+        "value": "approval.publish.failure"
+      },
+      "approval.timeout": {
+        "_go_const": "ApprovalErrorTypeApprovalTimeout",
+        "value": "approval.timeout"
+      },
+      "intent.approval.exception": {
+        "_go_const": "ApprovalErrorTypeIntentApprovalException",
+        "value": "intent.approval.exception"
+      },
+      "invalid.intent": {
+        "_go_const": "ApprovalErrorTypeInvalidIntent",
+        "value": "invalid.intent"
+      }
+    },
+    "approval_type": {
+      "agent.continue": {
+        "_go_const": "ApprovalTypeAgentContinue",
+        "value": "agent.continue"
+      },
+      "command": {
+        "_go_const": "ApprovalTypeCommand",
+        "value": "command"
+      },
+      "file.edit": {
+        "_go_const": "ApprovalTypeFileEdit",
+        "value": "file.edit"
+      },
+      "intent": {
+        "_go_const": "ApprovalTypeIntent",
+        "value": "intent"
+      }
+    },
+    "attachment.type": {
+      "image": {
+        "_go_const": "AttachmentTypeImage",
+        "value": "image"
+      },
+      "other": {
+        "_go_const": "AttachmentTypeOther",
+        "value": "other"
+      },
+      "pdf": {
+        "_go_const": "AttachmentTypePdf",
+        "value": "pdf"
+      },
+      "text": {
+        "_go_const": "AttachmentTypeText",
+        "value": "text"
+      }
+    },
+    "audit_event_source": {
+      "conversation": {
+        "_go_const": "AuditEventSourceConversation",
+        "value": "conversation"
+      }
+    },
+    "audit_event_type": {
+      "command.approved": {
+        "_go_const": "AuditEventTypeCommandApproved",
+        "value": "command.approved"
+      },
+      "command.denied": {
+        "_go_const": "AuditEventTypeCommandDenied",
+        "value": "command.denied"
+      },
+      "command.executed": {
+        "_go_const": "AuditEventTypeCommandExecuted",
+        "value": "command.executed"
+      },
+      "command.started": {
+        "_go_const": "AuditEventTypeCommandStarted",
+        "value": "command.started"
+      },
+      "config.changed": {
+        "_go_const": "AuditEventTypeConfigChanged",
+        "value": "config.changed"
+      },
+      "escalation.approved": {
+        "_go_const": "AuditEventTypeEscalationApproved",
+        "value": "escalation.approved"
+      },
+      "escalation.requested": {
+        "_go_const": "AuditEventTypeEscalationRequested",
+        "value": "escalation.requested"
+      },
+      "file.created": {
+        "_go_const": "AuditEventTypeFileCreated",
+        "value": "file.created"
+      },
+      "file.deleted": {
+        "_go_const": "AuditEventTypeFileDeleted",
+        "value": "file.deleted"
+      },
+      "file.modified": {
+        "_go_const": "AuditEventTypeFileModified",
+        "value": "file.modified"
+      },
+      "ztd.bound": {
+        "_go_const": "AuditEventTypeZtdBound",
+        "value": "ztd.bound"
+      },
+      "message": {
+        "_go_const": "AuditEventTypeMessage",
+        "value": "message"
+      },
+      "permission.granted": {
+        "_go_const": "AuditEventTypePermissionGranted",
+        "value": "permission.granted"
+      },
+      "permission.revoked": {
+        "_go_const": "AuditEventTypePermissionRevoked",
+        "value": "permission.revoked"
+      },
+      "session.started": {
+        "_go_const": "AuditEventTypeSessionStarted",
+        "value": "session.started"
+      }
+    },
+    "audit_sse_event_type": {
+      "audit.complete": {
+        "_go_const": "AuditSseEventTypeComplete",
+        "value": "audit.complete"
+      },
+      "audit.connected": {
+        "_go_const": "AuditSseEventTypeConnected",
+        "value": "audit.connected"
+      },
+      "audit.error": {
+        "_go_const": "AuditSseEventTypeError",
+        "value": "audit.error"
+      },
+      "audit.event": {
+        "_go_const": "AuditSseEventTypeEvent",
+        "value": "audit.event"
+      },
+      "audit.metadata": {
+        "_go_const": "AuditSseEventTypeMetadata",
+        "value": "audit.metadata"
+      }
+    },
+    "auth_audit_event_type": {
+      "auth_failed": {
+        "_go_const": "AuthAuditEventTypeAuthFailed",
+        "value": "auth_failed"
+      },
+      "auth_success": {
+        "_go_const": "AuthAuditEventTypeAuthSuccess",
+        "value": "auth_success"
+      }
+    },
+    "auth_audit_result": {
+      "failure": {
+        "_go_const": "AuthAuditResultFailure",
+        "value": "failure"
+      },
+      "success": {
+        "_go_const": "AuthAuditResultSuccess",
+        "value": "success"
+      }
+    },
+    "auth_method": {
+      "kv_pubsub": {
+        "_go_const": "AuthMethodKvPubSub",
+        "value": "kv_pubsub"
+      },
+      "session": {
+        "_go_const": "AuthMethodSession",
+        "value": "session"
+      },
+      "proxy": {
+        "_go_const": "AuthMethodProxy",
+        "value": "proxy"
+      },
+      "operator_session": {
+        "_go_const": "AuthMethodOperatorSession",
+        "value": "operator_session"
+      },
+      "test": {
+        "_go_const": "AuthMethodTest",
+        "value": "test"
+      }
+    },
+    "auth_provider": {
+      "jwt": {
+        "_go_const": "AuthProviderJWT",
+        "value": "jwt"
+      },
+      "local": {
+        "_go_const": "AuthProviderLocal",
+        "value": "local"
+      },
+      "passkey": {
+        "_go_const": "AuthProviderPasskey",
+        "value": "passkey"
+      }
+    },
+    "case_status": {
+      "Closed": {
+        "_go_const": "CaseStatusClosed",
+        "value": "Closed"
+      },
+      "Escalated": {
+        "_go_const": "CaseStatusEscalated",
+        "value": "Escalated"
+      },
+      "HumanReview": {
+        "_go_const": "CaseStatusHumanReview",
+        "value": "HumanReview"
+      },
+      "InProgress": {
+        "_go_const": "CaseStatusInProgress",
+        "value": "InProgress"
+      },
+      "New": {
+        "_go_const": "CaseStatusNew",
+        "value": "New"
+      },
+      "Resolved": {
+        "_go_const": "CaseStatusResolved",
+        "value": "Resolved"
+      },
+      "Triage": {
+        "_go_const": "CaseStatusTriage",
+        "value": "Triage"
+      },
+      "WaitingForCustomer": {
+        "_go_const": "CaseStatusWaitingForCustomer",
+        "value": "WaitingForCustomer"
+      }
+    },
+    "citation_layout": {
+      "120": {
+        "_go_const": "CitationLayoutSentenceLookaheadChars",
+        "value": "120"
+      },
+      "16": {
+        "_go_const": "CitationLayoutFaviconSizePx",
+        "value": "16"
+      },
+      "200": {
+        "_go_const": "CitationLayoutParagraphLookaheadChars",
+        "value": "200"
+      },
+      "360": {
+        "_go_const": "CitationLayoutHoverCardWidthPx",
+        "value": "360"
+      },
+      "60": {
+        "_go_const": "CitationLayoutHeadingSegmentMaxLength",
+        "value": "60"
+      },
+      "8": {
+        "_go_const": "CitationLayoutHoverCardViewportMarginPx",
+        "value": "8"
+      }
+    },
+    "command_category": {
+      "csv_whitelist": {
+        "_go_const": "CommandCategoryCSVWhitelist",
+        "value": "csv_whitelist"
+      },
+      "network_diagnostics": {
+        "_go_const": "CommandCategoryNetworkDiagnostics",
+        "value": "network_diagnostics"
+      },
+      "system_diagnostics": {
+        "_go_const": "CommandCategorySystemDiagnostics",
+        "value": "system_diagnostics"
+      }
+    },
+    "command_error_type": {
+      "agent.conflict": {
+        "_go_const": "CommandErrorTypeAgentConflict",
+        "value": "agent.conflict"
+      },
+      "approval.denied": {
+        "_go_const": "CommandErrorTypeApprovalDenied",
+        "value": "approval.denied"
+      },
+      "approval.timeout": {
+        "_go_const": "CommandErrorTypeApprovalTimeout",
+        "value": "approval.timeout"
+      },
+      "binding.violation": {
+        "_go_const": "CommandErrorTypeBindingViolation",
+        "value": "binding.violation"
+      },
+      "blacklist.violation": {
+        "_go_const": "CommandErrorTypeBlacklistViolation",
+        "value": "blacklist.violation"
+      },
+      "cloud.operator.required": {
+        "_go_const": "CommandErrorTypeCloudOperatorRequired",
+        "value": "cloud.operator.required"
+      },
+      "command.execution.failed": {
+        "_go_const": "CommandErrorTypeCommandExecutionFailed",
+        "value": "command.execution.failed"
+      },
+      "command.timeout": {
+        "_go_const": "CommandErrorTypeCommandTimeout",
+        "value": "command.timeout"
+      },
+      "configuration.error": {
+        "_go_const": "CommandErrorTypeConfigurationError",
+        "value": "configuration.error"
+      },
+      "execution.error": {
+        "_go_const": "CommandErrorTypeExecutionError",
+        "value": "execution.error"
+      },
+      "execution.failed": {
+        "_go_const": "CommandErrorTypeExecutionFailed",
+        "value": "execution.failed"
+      },
+      "fetch.file.diff.failed": {
+        "_go_const": "CommandErrorTypeFetchFileDiffFailed",
+        "value": "fetch.file.diff.failed"
+      },
+      "fetch.file.history.failed": {
+        "_go_const": "CommandErrorTypeFetchFileHistoryFailed",
+        "value": "fetch.file.history.failed"
+      },
+      "fetch.history.failed": {
+        "_go_const": "CommandErrorTypeFetchHistoryFailed",
+        "value": "fetch.history.failed"
+      },
+      "fetch.logs.failed": {
+        "_go_const": "CommandErrorTypeFetchLogsFailed",
+        "value": "fetch.logs.failed"
+      },
+      "fs.list.failed": {
+        "_go_const": "CommandErrorTypeFsListFailed",
+        "value": "fs.list.failed"
+      },
+      "fs.read.failed": {
+        "_go_const": "CommandErrorTypeFsReadFailed",
+        "value": "fs.read.failed"
+      },
+      "ztd.resolution.error": {
+        "_go_const": "CommandErrorTypeZtdResolutionError",
+        "value": "ztd.resolution.error"
+      },
+      "invalid.intent": {
+        "_go_const": "CommandErrorTypeInvalidIntent",
+        "value": "invalid.intent"
+      },
+      "missing.operator.id": {
+        "_go_const": "CommandErrorTypeMissingOperatorID",
+        "value": "missing.operator.id"
+      },
+      "no.operators.available": {
+        "_go_const": "CommandErrorTypeNoOperatorsAvailable",
+        "value": "no.operators.available"
+      },
+      "operation.timeout": {
+        "_go_const": "CommandErrorTypeOperationTimeout",
+        "value": "operation.timeout"
+      },
+      "partial.iam.detach.failed": {
+        "_go_const": "CommandErrorTypePartialIAMDetachFailed",
+        "value": "partial.iam.detach.failed"
+      },
+      "partial.iam.update.failed": {
+        "_go_const": "CommandErrorTypePartialIAMUpdateFailed",
+        "value": "partial.iam.update.failed"
+      },
+      "permission.denied": {
+        "_go_const": "CommandErrorTypePermissionDenied",
+        "value": "permission.denied"
+      },
+      "permission.error": {
+        "_go_const": "CommandErrorTypePermissionError",
+        "value": "permission.error"
+      },
+      "port.check.failed": {
+        "_go_const": "CommandErrorTypePortCheckFailed",
+        "value": "port.check.failed"
+      },
+      "pubsub.subscription.not.ready": {
+        "_go_const": "CommandErrorTypePubSubSubscriptionNotReady",
+        "value": "pubsub.subscription.not.ready"
+      },
+      "restore.file.failed": {
+        "_go_const": "CommandErrorTypeRestoreFileFailed",
+        "value": "restore.file.failed"
+      },
+      "risk.analysis.blocked": {
+        "_go_const": "CommandErrorTypeRiskAnalysisBlocked",
+        "value": "risk.analysis.blocked"
+      },
+      "security.error": {
+        "_go_const": "CommandErrorTypeSecurityError",
+        "value": "security.error"
+      },
+      "security.violation": {
+        "_go_const": "CommandErrorTypeSecurityViolation",
+        "value": "security.violation"
+      },
+      "unknown.tool": {
+        "_go_const": "CommandErrorTypeUnknownTool",
+        "value": "unknown.tool"
+      },
+      "user.cancelled": {
+        "_go_const": "CommandErrorTypeUserCancelled",
+        "value": "user.cancelled"
+      },
+      "user.denied": {
+        "_go_const": "CommandErrorTypeUserDenied",
+        "value": "user.denied"
+      },
+      "user.feedback": {
+        "_go_const": "CommandErrorTypeUserFeedback",
+        "value": "user.feedback"
+      },
+      "validation.error": {
+        "_go_const": "CommandErrorTypeValidationError",
+        "value": "validation.error"
+      },
+      "whitelist.violation": {
+        "_go_const": "CommandErrorTypeWhitelistViolation",
+        "value": "whitelist.violation"
+      }
+    },
+    "command_status": {
+      "cancelled": {
+        "_go_const": "CommandStatusCancelled",
+        "value": "cancelled"
+      },
+      "completed": {
+        "_go_const": "CommandStatusCompleted",
+        "value": "completed"
+      },
+      "executing": {
+        "_go_const": "CommandStatusExecuting",
+        "value": "executing"
+      },
+      "failed": {
+        "_go_const": "CommandStatusFailed",
+        "value": "failed"
+      },
+      "output": {
+        "_go_const": "CommandStatusOutput",
+        "value": "output"
+      },
+      "pending": {
+        "_go_const": "CommandStatusPending",
+        "value": "pending"
+      },
+      "timeout": {
+        "_go_const": "CommandStatusTimeout",
+        "value": "timeout"
+      }
+    },
+    "component_name": {
+      "client": {
+        "_go_const": "ComponentNameClient",
+        "value": "client"
+      },
+      "ztdo": {
+        "_go_const": "ComponentNameZTDO",
+        "value": "ztdo"
+      },
+      "ztdo-gateway": {
+        "_go_const": "ComponentNameZTDOGateway",
+        "value": "ztdo-gateway"
+      }
+    },
+    "component_status": {
+      "active": {
+        "_go_const": "ComponentStatusActive",
+        "value": "active"
+      },
+      "error": {
+        "_go_const": "ComponentStatusError",
+        "value": "error"
+      },
+      "inactive": {
+        "_go_const": "ComponentStatusInactive",
+        "value": "inactive"
+      },
+      "maintenance": {
+        "_go_const": "ComponentStatusMaintenance",
+        "value": "maintenance"
+      },
+      "degraded": {
+        "_go_const": "ComponentStatusDegraded",
+        "value": "degraded"
+      }
+    },
+    "connection_state": {
+      "closed": {
+        "_go_const": "ConnectionStateClosed",
+        "value": "closed"
+      },
+      "connected": {
+        "_go_const": "ConnectionStateConnected",
+        "value": "connected"
+      },
+      "connecting": {
+        "_go_const": "ConnectionStateConnecting",
+        "value": "connecting"
+      },
+      "disconnected": {
+        "_go_const": "ConnectionStateDisconnected",
+        "value": "disconnected"
+      },
+      "error": {
+        "_go_const": "ConnectionStateError",
+        "value": "error"
+      },
+      "reconnecting": {
+        "_go_const": "ConnectionStateReconnecting",
+        "value": "reconnecting"
+      }
+    },
+    "conversation_status": {
+      "active": {
+        "_go_const": "ConversationStatusActive",
+        "value": "active"
+      },
+      "completed": {
+        "_go_const": "ConversationStatusCompleted",
+        "value": "completed"
+      },
+      "inactive": {
+        "_go_const": "ConversationStatusInactive",
+        "value": "inactive"
+      }
+    },
+    "download_audit_event_type": {
+      "download_token_failed": {
+        "_go_const": "DownloadAuditEventTypeDownloadTokenFailed",
+        "value": "download_token_failed"
+      },
+      "download_token_success": {
+        "_go_const": "DownloadAuditEventTypeDownloadTokenSuccess",
+        "value": "download_token_success"
+      }
+    },
+    "environment": {
+      "dev": {
+        "_go_const": "EnvironmentDev",
+        "value": "dev"
+      },
+      "production": {
+        "_go_const": "EnvironmentProduction",
+        "value": "production"
+      },
+      "test": {
+        "_go_const": "EnvironmentTest",
+        "value": "test"
+      }
+    },
+    "escalation_risk": {
+      "critical": {
+        "_go_const": "EscalationRiskCritical",
+        "value": "critical"
+      },
+      "high": {
+        "_go_const": "EscalationRiskHigh",
+        "value": "high"
+      },
+      "low": {
+        "_go_const": "EscalationRiskLow",
+        "value": "low"
+      },
+      "medium": {
+        "_go_const": "EscalationRiskMedium",
+        "value": "medium"
+      }
+    },
+    "execution_status": {
+      "cancel_requested": {
+        "_go_const": "ExecutionStatusCancelRequested",
+        "value": "cancel_requested"
+      },
+      "cancelled": {
+        "_go_const": "ExecutionStatusCancelled",
+        "value": "cancelled"
+      },
+      "completed": {
+        "_go_const": "ExecutionStatusCompleted",
+        "value": "completed"
+      },
+      "denied": {
+        "_go_const": "ExecutionStatusDenied",
+        "value": "denied"
+      },
+      "executing": {
+        "_go_const": "ExecutionStatusExecuting",
+        "value": "executing"
+      },
+      "failed": {
+        "_go_const": "ExecutionStatusFailed",
+        "value": "failed"
+      },
+      "feedback": {
+        "_go_const": "ExecutionStatusFeedback",
+        "value": "feedback"
+      },
+      "pending": {
+        "_go_const": "ExecutionStatusPending",
+        "value": "pending"
+      },
+      "timeout": {
+        "_go_const": "ExecutionStatusTimeout",
+        "value": "timeout"
+      }
+    },
+    "file_operation": {
+      "create": {
+        "_go_const": "FileOperationCreate",
+        "value": "create"
+      },
+      "delete": {
+        "_go_const": "FileOperationDelete",
+        "value": "delete"
+      },
+      "insert": {
+        "_go_const": "FileOperationInsert",
+        "value": "insert"
+      },
+      "patch": {
+        "_go_const": "FileOperationPatch",
+        "value": "patch"
+      },
+      "read": {
+        "_go_const": "FileOperationRead",
+        "value": "read"
+      },
+      "replace": {
+        "_go_const": "FileOperationReplace",
+        "value": "replace"
+      },
+      "update": {
+        "_go_const": "FileOperationUpdate",
+        "value": "update"
+      },
+      "write": {
+        "_go_const": "FileOperationWrite",
+        "value": "write"
+      }
+    },
+    "ztd_availability": {
+      "OFFLINE": {
+        "_go_const": "ZtdAvailabilityOffline",
+        "value": "OFFLINE"
+      },
+      "ONLINE": {
+        "_go_const": "ZtdAvailabilityOnline",
+        "value": "ONLINE"
+      }
+    },
+    "gateway_mode": {
+      "gateway": {
+        "_go_const": "GatewayModeGateway",
+        "value": "gateway"
+      },
+      "ok": {
+        "_go_const": "GatewayModeStatusOK",
+        "value": "ok"
+      }
+    },
+    "health_status": {
+      "healthy": {
+        "_go_const": "HealthStatusHealthy",
+        "value": "healthy"
+      },
+      "unhealthy": {
+        "_go_const": "HealthStatusUnhealthy",
+        "value": "unhealthy"
+      }
+    },
+    "heartbeat_type": {
+      "automatic": {
+        "_go_const": "HeartbeatTypeAutomatic",
+        "value": "automatic"
+      },
+      "bootstrap": {
+        "_go_const": "HeartbeatTypeBootstrap",
+        "value": "bootstrap"
+      },
+      "requested": {
+        "_go_const": "HeartbeatTypeRequested",
+        "value": "requested"
+      }
+    },
+    "history_actor": {
+      "": {
+        "_go_const": "HistoryActorNone",
+        "value": ""
+      },
+      "ztdo": {
+        "_go_const": "HistoryActorZTDO",
+        "value": "ztdo"
+      },
+      "system": {
+        "_go_const": "HistoryActorSystem",
+        "value": "system"
+      },
+      "user": {
+        "_go_const": "HistoryActorUser",
+        "value": "user"
+      }
+    },
+    "infrastructure_status": {
+      "critical": {
+        "_go_const": "InfrastructureStatusCritical",
+        "value": "critical"
+      },
+      "degraded": {
+        "_go_const": "InfrastructureStatusDegraded",
+        "value": "degraded"
+      },
+      "healthy": {
+        "_go_const": "InfrastructureStatusHealthy",
+        "value": "healthy"
+      },
+      "stable": {
+        "_go_const": "InfrastructureStatusStable",
+        "value": "stable"
+      },
+      "unknown": {
+        "_go_const": "InfrastructureStatusUnknown",
+        "value": "unknown"
+      },
+      "operational": {
+        "_go_const": "InfrastructureStatusOperational",
+        "value": "operational"
+      },
+      "down": {
+        "_go_const": "InfrastructureStatusDown",
+        "value": "down"
+      }
+    },
+    "investigation_status": {
+      "Closed": {
+        "_go_const": "InvestigationStatusClosed",
+        "value": "Closed"
+      },
+      "Escalated": {
+        "_go_const": "InvestigationStatusEscalated",
+        "value": "Escalated"
+      },
+      "Open": {
+        "_go_const": "InvestigationStatusOpen",
+        "value": "Open"
+      },
+      "Resolved": {
+        "_go_const": "InvestigationStatusResolved",
+        "value": "Resolved"
+      }
+    },
+    "llm_models": {
+      "claude-haiku-4-5": {
+        "_go_const": "LLMsAnthropicClaude45Haiku",
+        "value": "claude-haiku-4-5"
+      },
+      "claude-opus-4-6": {
+        "_go_const": "LLMsAnthropicClaude46Opus",
+        "value": "claude-opus-4-6"
+      },
+      "claude-sonnet-4-6": {
+        "_go_const": "LLMsAnthropicClaude46Sonnet",
+        "value": "claude-sonnet-4-6"
+      },
+      "gemini-3-flash-preview": {
+        "_go_const": "LLMsGemini3Flash",
+        "value": "gemini-3-flash-preview"
+      },
+      "gemini-3.1-flash-lite": {
+        "_go_const": "LLMsGemini31FlashLite",
+        "value": "gemini-3.1-flash-lite"
+      },
+      "gemini-3.1-pro-preview": {
+        "_go_const": "LLMsGemini31Pro",
+        "value": "gemini-3.1-pro-preview"
+      },
+      "gemma4:12b": {
+        "_go_const": "LLMsOllamaGemma412b",
+        "value": "gemma4:12b"
+      },
+      "gemma4:e2b": {
+        "_go_const": "LLMsOllamaGemma4E2b",
+        "value": "gemma4:e2b"
+      },
+      "gemma4:e4b": {
+        "_go_const": "LLMsOllamaGemma4E4b",
+        "value": "gemma4:e4b"
+      },
+      "google_gemma-4-E2B-it-Q4_K_M.gguf": {
+        "_go_const": "LLMsLlamacppGemma4E2b",
+        "value": "google_gemma-4-E2B-it-Q4_K_M.gguf"
+      },
+      "gpt-5.4": {
+        "_go_const": "LLMsOpenaiGpt54",
+        "value": "gpt-5.4"
+      },
+      "gpt-5.4-mini": {
+        "_go_const": "LLMsOpenaiGpt54Mini",
+        "value": "gpt-5.4-mini"
+      },
+      "gpt-5.4-nano": {
+        "_go_const": "LLMsOpenaiGpt54Nano",
+        "value": "gpt-5.4-nano"
+      },
+      "gpt-5.4-pro": {
+        "_go_const": "LLMsOpenaiGpt54Pro",
+        "value": "gpt-5.4-pro"
+      },
+      "granite4.2:3b": {
+        "_go_const": "LLMsOllamaGranite423b",
+        "value": "granite4.2:3b"
+      },
+      "granite4.2:8b": {
+        "_go_const": "LLMsOllamaGranite428b",
+        "value": "granite4.2:8b"
+      },
+      "llama3.2:3b": {
+        "_go_const": "LLMsOllamaLlama323b",
+        "value": "llama3.2:3b"
+      },
+      "qwen3.5:2b": {
+        "_go_const": "LLMsOllamaQwen352b",
+        "value": "qwen3.5:2b"
+      }
+    },
+    "login_audit_event_type": {
+      "account_locked": {
+        "_go_const": "LoginAuditEventTypeAccountLocked",
+        "value": "account_locked"
+      },
+      "account_unlocked": {
+        "_go_const": "LoginAuditEventTypeAccountUnlocked",
+        "value": "account_unlocked"
+      },
+      "login_anomaly": {
+        "_go_const": "LoginAuditEventTypeLoginAnomaly",
+        "value": "login_anomaly"
+      },
+      "login_failed": {
+        "_go_const": "LoginAuditEventTypeLoginFailed",
+        "value": "login_failed"
+      },
+      "login_success": {
+        "_go_const": "LoginAuditEventTypeLoginSuccess",
+        "value": "login_success"
+      }
+    },
+    "network_protocol": {
+      "tcp": {
+        "_go_const": "NetworkProtocolTCP",
+        "value": "tcp"
+      },
+      "udp": {
+        "_go_const": "NetworkProtocolUDP",
+        "value": "udp"
+      }
+    },
+    "operator_history_event_type": {
+      "authenticated": {
+        "_go_const": "HistoryEventTypeAuthenticated",
+        "value": "authenticated"
+      },
+      "bound": {
+        "_go_const": "HistoryEventTypeBound",
+        "value": "bound"
+      },
+      "claimed": {
+        "_go_const": "HistoryEventTypeClaimed",
+        "value": "claimed"
+      },
+      "created": {
+        "_go_const": "HistoryEventTypeCreated",
+        "value": "created"
+      },
+      "created.from.refresh": {
+        "_go_const": "HistoryEventTypeCreatedFromRefresh",
+        "value": "created.from.refresh"
+      },
+      "deactivated": {
+        "_go_const": "HistoryEventTypeDeactivated",
+        "value": "deactivated"
+      },
+      "heartbeat.received": {
+        "_go_const": "HistoryEventTypeHeartbeatReceived",
+        "value": "heartbeat.received"
+      },
+      "reconnected": {
+        "_go_const": "HistoryEventTypeReconnected",
+        "value": "reconnected"
+      },
+      "registered": {
+        "_go_const": "HistoryEventTypeRegistered",
+        "value": "registered"
+      },
+      "reset": {
+        "_go_const": "HistoryEventTypeReset",
+        "value": "reset"
+      },
+      "shutdown.requested": {
+        "_go_const": "HistoryEventTypeShutdownRequested",
+        "value": "shutdown.requested"
+      },
+      "slot.consumed": {
+        "_go_const": "HistoryEventTypeSlotConsumed",
+        "value": "slot.consumed"
+      },
+      "slot.created": {
+        "_go_const": "HistoryEventTypeSlotCreated",
+        "value": "slot.created"
+      },
+      "slot.released": {
+        "_go_const": "HistoryEventTypeSlotReleased",
+        "value": "slot.released"
+      },
+      "status.changed": {
+        "_go_const": "HistoryEventTypeStatusChanged",
+        "value": "status.changed"
+      },
+      "stopped": {
+        "_go_const": "HistoryEventTypeStopped",
+        "value": "stopped"
+      },
+      "terminated": {
+        "_go_const": "HistoryEventTypeTerminated",
+        "value": "terminated"
+      },
+      "terminated.for.refresh": {
+        "_go_const": "HistoryEventTypeTerminatedForRefresh",
+        "value": "terminated.for.refresh"
+      },
+      "unbound": {
+        "_go_const": "HistoryEventTypeUnbound",
+        "value": "unbound"
+      }
+    },
+    "operator_status": {
+      "active": {
+        "_go_const": "OperatorStatusActive",
+        "value": "active"
+      },
+      "available": {
+        "_go_const": "OperatorStatusAvailable",
+        "value": "available"
+      },
+      "bound": {
+        "_go_const": "OperatorStatusBound",
+        "value": "bound"
+      },
+      "offline": {
+        "_go_const": "OperatorStatusOffline",
+        "value": "offline"
+      },
+      "stale": {
+        "_go_const": "OperatorStatusStale",
+        "value": "stale"
+      },
+      "stopped": {
+        "_go_const": "OperatorStatusStopped",
+        "value": "stopped"
+      },
+      "terminated": {
+        "_go_const": "OperatorStatusTerminated",
+        "value": "terminated"
+      },
+      "unavailable": {
+        "_go_const": "OperatorStatusUnavailable",
+        "value": "unavailable"
+      }
+    },
+    "operator_tool_name": {
+      "check_port_status": {
+        "_go_const": "ZtdToolNameCheckPort",
+        "value": "check_port_status"
+      },
+      "fetch_execution_output": {
+        "_go_const": "ZtdToolNameFetchExecutionOutput",
+        "value": "fetch_execution_output"
+      },
+      "fetch_file_diff": {
+        "_go_const": "ZtdToolNameFetchFileDiff",
+        "value": "fetch_file_diff"
+      },
+      "fetch_file_history": {
+        "_go_const": "ZtdToolNameFetchFileHistory",
+        "value": "fetch_file_history"
+      },
+      "fetch_session_history": {
+        "_go_const": "ZtdToolNameFetchSessionHistory",
+        "value": "fetch_session_history"
+      },
+      "file_create_on_operator": {
+        "_go_const": "ZtdToolNameFileCreate",
+        "value": "file_create_on_operator"
+      },
+      "file_read_on_operator": {
+        "_go_const": "ZtdToolNameFileRead",
+        "value": "file_read_on_operator"
+      },
+      "file_update_on_operator": {
+        "_go_const": "ZtdToolNameFileUpdate",
+        "value": "file_update_on_operator"
+      },
+      "file_write_on_operator": {
+        "_go_const": "ZtdToolNameFileWrite",
+        "value": "file_write_on_operator"
+      },
+      "ztd_web_search": {
+        "_go_const": "ZtdToolNameZtdWebSearch",
+        "value": "ztd_web_search"
+      },
+      "get_command_constraints": {
+        "_go_const": "ZtdToolNameGetCommandConstraints",
+        "value": "get_command_constraints"
+      },
+      "grant_intent_permission": {
+        "_go_const": "ZtdToolNameGrantIntent",
+        "value": "grant_intent_permission"
+      },
+      "list_files_and_directories_with_detailed_metadata": {
+        "_go_const": "ZtdToolNameListFiles",
+        "value": "list_files_and_directories_with_detailed_metadata"
+      },
+      "list_ssh_inventory": {
+        "_go_const": "ZtdToolNameListSSHInventory",
+        "value": "list_ssh_inventory"
+      },
+      "query_investigation_context": {
+        "_go_const": "ZtdToolNameQueryInvestigationContext",
+        "value": "query_investigation_context"
+      },
+      "read_file_content": {
+        "_go_const": "ZtdToolNameReadFileContent",
+        "value": "read_file_content"
+      },
+      "recursive_grep_search": {
+        "_go_const": "ZtdToolNameRecursiveGrep",
+        "value": "recursive_grep_search"
+      },
+      "restore_file": {
+        "_go_const": "ZtdToolNameRestoreFile",
+        "value": "restore_file"
+      },
+      "revoke_intent_permission": {
+        "_go_const": "ZtdToolNameRevokeIntent",
+        "value": "revoke_intent_permission"
+      },
+      "run_commands_with_operator": {
+        "_go_const": "ZtdToolNameRunCommands",
+        "value": "run_commands_with_operator"
+      }
+    },
+    "operator_type": {
+      "embedded": {
+        "_go_const": "OperatorTypeEmbedded",
+        "value": "embedded"
+      },
+      "remote": {
+        "_go_const": "OperatorTypeRemote",
+        "value": "remote"
+      }
+    },
+    "platform": {
+      "darwin": {
+        "_go_const": "PlatformDarwin",
+        "value": "darwin"
+      },
+      "linux": {
+        "_go_const": "PlatformLinux",
+        "value": "linux"
+      },
+      "windows": {
+        "_go_const": "PlatformWindows",
+        "value": "windows"
+      }
+    },
+    "priority": {
+      "1": {
+        "_go_const": "PriorityLow",
+        "value": "1"
+      },
+      "2": {
+        "_go_const": "PriorityMedium",
+        "value": "2"
+      },
+      "3": {
+        "_go_const": "PriorityHigh",
+        "value": "3"
+      },
+      "4": {
+        "_go_const": "PriorityCritical",
+        "value": "4"
+      }
+    },
+    "risk_level": {
+      "HIGH": {
+        "_go_const": "RiskLevelHigh",
+        "value": "HIGH"
+      },
+      "LOW": {
+        "_go_const": "RiskLevelLow",
+        "value": "LOW"
+      },
+      "MEDIUM": {
+        "_go_const": "RiskLevelMedium",
+        "value": "MEDIUM"
+      }
+    },
+    "risk_threshold": {
+      "high": {
+        "_go_const": "RiskThresholdHigh",
+        "value": "high"
+      },
+      "low": {
+        "_go_const": "RiskThresholdLow",
+        "value": "low"
+      },
+      "medium": {
+        "_go_const": "RiskThresholdMedium",
+        "value": "medium"
+      }
+    },
+    "scrubber_priority": {
+      "10": {
+        "_go_const": "ScrubberPriorityExactCredential",
+        "value": "10"
+      },
+      "20": {
+        "_go_const": "ScrubberPriorityUrlOrConnection",
+        "value": "20"
+      },
+      "30": {
+        "_go_const": "ScrubberPriorityContextualCredential",
+        "value": "30"
+      },
+      "40": {
+        "_go_const": "ScrubberPriorityGenericPII",
+        "value": "40"
+      }
+    },
+    "sentinel_status": {
+      "error": {
+        "_go_const": "SentinelStatusError",
+        "value": "error"
+      },
+      "failure": {
+        "_go_const": "SentinelStatusFailure",
+        "value": "failure"
+      },
+      "interrupted": {
+        "_go_const": "SentinelStatusInterrupted",
+        "value": "interrupted"
+      },
+      "invalid_exit": {
+        "_go_const": "SentinelStatusInvalidExit",
+        "value": "invalid_exit"
+      },
+      "killed": {
+        "_go_const": "SentinelStatusKilled",
+        "value": "killed"
+      },
+      "misuse": {
+        "_go_const": "SentinelStatusMisuse",
+        "value": "misuse"
+      },
+      "not_executable": {
+        "_go_const": "SentinelStatusNotExecutable",
+        "value": "not_executable"
+      },
+      "not_found": {
+        "_go_const": "SentinelStatusNotFound",
+        "value": "not_found"
+      },
+      "success": {
+        "_go_const": "SentinelStatusSuccess",
+        "value": "success"
+      },
+      "terminated": {
+        "_go_const": "SentinelStatusTerminated",
+        "value": "terminated"
+      }
+    },
+    "session_end_reason": {
+      "integrity_failure": {
+        "_go_const": "SessionEndReasonIntegrityFailure",
+        "value": "integrity_failure"
+      },
+      "invalidate_all": {
+        "_go_const": "SessionEndReasonInvalidateAll",
+        "value": "invalidate_all"
+      },
+      "session_regeneration": {
+        "_go_const": "SessionEndReasonSessionRegeneration",
+        "value": "session_regeneration"
+      },
+      "timeout_absolute": {
+        "_go_const": "SessionEndReasonTimeoutAbsolute",
+        "value": "timeout_absolute"
+      },
+      "timeout_idle": {
+        "_go_const": "SessionEndReasonTimeoutIdle",
+        "value": "timeout_idle"
+      },
+      "user_deleted": {
+        "_go_const": "SessionEndReasonUserDeleted",
+        "value": "user_deleted"
+      },
+      "user_logout": {
+        "_go_const": "SessionEndReasonUserLogout",
+        "value": "user_logout"
+      }
+    },
+    "session_event_type": {
+      "ztd.bound": {
+        "_go_const": "SessionEventTypeZtdBound",
+        "value": "ztd.bound"
+      },
+      "ztd.unbound": {
+        "_go_const": "SessionEventTypeZtdUnbound",
+        "value": "ztd.unbound"
+      },
+      "session.created": {
+        "_go_const": "SessionEventTypeSessionCreated",
+        "value": "session.created"
+      },
+      "session.ended": {
+        "_go_const": "SessionEventTypeSessionEnded",
+        "value": "session.ended"
+      },
+      "session.regenerated": {
+        "_go_const": "SessionEventTypeSessionRegenerated",
+        "value": "session.regenerated"
+      },
+      "session.suspicious_activity": {
+        "_go_const": "SessionEventTypeSessionSuspiciousActivity",
+        "value": "session.suspicious_activity"
+      },
+      "session.timeout.absolute": {
+        "_go_const": "SessionEventTypeSessionTimeoutAbsolute",
+        "value": "session.timeout.absolute"
+      },
+      "session.timeout.idle": {
+        "_go_const": "SessionEventTypeSessionTimeoutIdle",
+        "value": "session.timeout.idle"
+      }
+    },
+    "session_key_prefix": {
+      "cli_session": {
+        "_go_const": "SessionKeyPrefixCLI",
+        "value": "cli_session"
+      },
+      "operator_session": {
+        "_go_const": "SessionKeyPrefixOperator",
+        "value": "operator_session"
+      },
+      "web_session": {
+        "_go_const": "SessionKeyPrefixWeb",
+        "value": "web_session"
+      }
+    },
+    "session_suspicious_reason": {
+      "excessive_ip_changes": {
+        "_go_const": "SessionSuspiciousReasonExcessiveIPChanges",
+        "value": "excessive_ip_changes"
+      }
+    },
+    "session_type": {
+      "cli": {
+        "_go_const": "SessionTypeCLI",
+        "value": "cli"
+      },
+      "operator": {
+        "_go_const": "SessionTypeOperator",
+        "value": "operator"
+      },
+      "web": {
+        "_go_const": "SessionTypeWeb",
+        "value": "web"
+      }
+    },
+    "severity": {
+      "1": {
+        "_go_const": "SeverityLow",
+        "value": "1"
+      },
+      "2": {
+        "_go_const": "SeverityMedium",
+        "value": "2"
+      },
+      "3": {
+        "_go_const": "SeverityHigh",
+        "value": "3"
+      },
+      "4": {
+        "_go_const": "SeverityCritical",
+        "value": "4"
+      }
+    },
+    "slash_tier": {
+      "1": {
+        "_go_const": "SlashTier1",
+        "value": "1"
+      },
+      "2": {
+        "_go_const": "SlashTier2",
+        "value": "2"
+      },
+      "3": {
+        "_go_const": "SlashTier3",
+        "value": "3"
+      }
+    },
+    "stream_status": {
+      "cancelled": {
+        "_go_const": "StreamStatusCancelled",
+        "value": "cancelled"
+      },
+      "completed": {
+        "_go_const": "StreamStatusCompleted",
+        "value": "completed"
+      },
+      "exited": {
+        "_go_const": "StreamStatusExited",
+        "value": "exited"
+      },
+      "failed": {
+        "_go_const": "StreamStatusFailed",
+        "value": "failed"
+      },
+      "summary": {
+        "_go_const": "StreamStatusSummary",
+        "value": "summary"
+      }
+    },
+    "system_health": {
+      "degraded": {
+        "_go_const": "SystemHealthDegraded",
+        "value": "degraded"
+      },
+      "healthy": {
+        "_go_const": "SystemHealthHealthy",
+        "value": "healthy"
+      },
+      "unhealthy": {
+        "_go_const": "SystemHealthUnhealthy",
+        "value": "unhealthy"
+      },
+      "unknown": {
+        "_go_const": "SystemHealthUnknown",
+        "value": "unknown"
+      }
+    },
+    "task_status": {
+      "cancelled": {
+        "_go_const": "TaskStatusCancelled",
+        "value": "cancelled"
+      },
+      "completed": {
+        "_go_const": "TaskStatusCompleted",
+        "value": "completed"
+      },
+      "executing": {
+        "_go_const": "TaskStatusInProgress",
+        "value": "executing"
+      },
+      "failed": {
+        "_go_const": "TaskStatusFailed",
+        "value": "failed"
+      },
+      "pending": {
+        "_go_const": "TaskStatusPending",
+        "value": "pending"
+      }
+    },
+    "tool_call_defaults": {
+      "Processing": {
+        "_go_const": "ToolCallDefaultsLabel",
+        "value": "Processing"
+      },
+      "general": {
+        "_go_const": "ToolCallDefaultsCategory",
+        "value": "general"
+      },
+      "sync": {
+        "_go_const": "ToolCallDefaultsIcon",
+        "value": "sync"
+      }
+    },
+    "tool_call_status": {
+      "completed": {
+        "_go_const": "ToolCallStatusCompleted",
+        "value": "completed"
+      },
+      "failed": {
+        "_go_const": "ToolCallStatusFailed",
+        "value": "failed"
+      },
+      "started": {
+        "_go_const": "ToolCallStatusStarted",
+        "value": "started"
+      }
+    },
+    "tool_display_category": {
+      "execution": {
+        "_go_const": "ToolDisplayCategoryExecution",
+        "value": "execution"
+      },
+      "file": {
+        "_go_const": "ToolDisplayCategoryFile",
+        "value": "file"
+      },
+      "general": {
+        "_go_const": "ToolDisplayCategoryGeneral",
+        "value": "general"
+      },
+      "network": {
+        "_go_const": "ToolDisplayCategoryNetwork",
+        "value": "network"
+      },
+      "search": {
+        "_go_const": "ToolDisplayCategorySearch",
+        "value": "search"
+      }
+    },
+    "tool_scope": {
+      "operator_gated": {
+        "_go_const": "ToolScopeOperatorGated",
+        "value": "operator_gated"
+      },
+      "universal": {
+        "_go_const": "ToolScopeUniversal",
+        "value": "universal"
+      }
+    },
+    "user_role": {
+      "admin": {
+        "_go_const": "UserRoleAdmin",
+        "value": "admin"
+      },
+      "operator": {
+        "_go_const": "UserRoleOperator",
+        "value": "operator"
+      },
+      "owner": {
+        "_go_const": "UserRoleOwner",
+        "value": "owner"
+      },
+      "user": {
+        "_go_const": "UserRoleUser",
+        "value": "user"
+      }
+    },
+    "user_status": {
+      "active": {
+        "_go_const": "UserStatusActive",
+        "value": "active"
+      },
+      "disabled": {
+        "_go_const": "UserStatusDisabled",
+        "value": "disabled"
+      }
+    },
+    "version_stability": {
+      "beta": {
+        "_go_const": "VersionStabilityBeta",
+        "value": "beta"
+      },
+      "dev": {
+        "_go_const": "VersionStabilityDev",
+        "value": "dev"
+      },
+      "stable": {
+        "_go_const": "VersionStabilityStable",
+        "value": "stable"
+      },
+      "unstable": {
+        "_go_const": "VersionStabilityUnstable",
+        "value": "unstable"
+      },
+      "deprecated": {
+        "_go_const": "VersionStabilityDeprecated",
+        "value": "deprecated"
+      }
+    },
+    "workflow_type": {
+      "ztd.bound": {
+        "_go_const": "WorkflowTypeZtdBound",
+        "value": "ztd.bound"
+      },
+      "ztd.cloud.bound": {
+        "_go_const": "WorkflowTypeZtdCloudBound",
+        "value": "ztd.cloud.bound"
+      },
+      "ztd.not.bound": {
+        "_go_const": "WorkflowTypeZtdNotBound",
+        "value": "ztd.not.bound"
+      },
+      "triage": {
+        "_go_const": "WorkflowTypeTriage",
+        "value": "triage"
+      },
+      "investigation": {
+        "_go_const": "WorkflowTypeInvestigation",
+        "value": "investigation"
+      }
+    },
+    "error_code": {
+      "generic_error": {
+        "_go_const": "ErrorCodeGenericError",
+        "value": "ZTD-1000"
+      },
+      "unexpected_error": {
+        "_go_const": "ErrorCodeUnexpectedError",
+        "value": "ZTD-1001"
+      },
+      "not_implemented": {
+        "_go_const": "ErrorCodeNotImplemented",
+        "value": "ZTD-1002"
+      },
+      "config_error": {
+        "_go_const": "ErrorCodeConfigError",
+        "value": "ZTD-1100"
+      },
+      "missing_env_var": {
+        "_go_const": "ErrorCodeMissingEnvVar",
+        "value": "ZTD-1101"
+      },
+      "invalid_settings": {
+        "_go_const": "ErrorCodeInvalidSettings",
+        "value": "ZTD-1102"
+      },
+      "service_init_error": {
+        "_go_const": "ErrorCodeServiceInitError",
+        "value": "ZTD-1103"
+      },
+      "auth_error": {
+        "_go_const": "ErrorCodeAuthError",
+        "value": "ZTD-1200"
+      },
+      "token_expired": {
+        "_go_const": "ErrorCodeTokenExpired",
+        "value": "ZTD-1201"
+      },
+      "invalid_token": {
+        "_go_const": "ErrorCodeInvalidToken",
+        "value": "ZTD-1202"
+      },
+      "insufficient_permissions": {
+        "_go_const": "ErrorCodeInsufficientPermissions",
+        "value": "ZTD-1203"
+      },
+      "db_connection_error": {
+        "_go_const": "ErrorCodeDBConnectionError",
+        "value": "ZTD-1300"
+      },
+      "db_query_error": {
+        "_go_const": "ErrorCodeDBQueryError",
+        "value": "ZTD-1301"
+      },
+      "db_document_not_found": {
+        "_go_const": "ErrorCodeDBDocumentNotFound",
+        "value": "ZTD-1302"
+      },
+      "db_write_error": {
+        "_go_const": "ErrorCodeDBWriteError",
+        "value": "ZTD-1303"
+      },
+      "db_transaction_error": {
+        "_go_const": "ErrorCodeDBTransactionError",
+        "value": "ZTD-1304"
+      },
+      "pubsub_connection_error": {
+        "_go_const": "ErrorCodePubSubConnectionError",
+        "value": "ZTD-1400"
+      },
+      "pubsub_publish_error": {
+        "_go_const": "ErrorCodePubSubPublishError",
+        "value": "ZTD-1401"
+      },
+      "pubsub_subscribe_error": {
+        "_go_const": "ErrorCodePubSubSubscribeError",
+        "value": "ZTD-1402"
+      },
+      "pubsub_topic_error": {
+        "_go_const": "ErrorCodePubSubTopicError",
+        "value": "ZTD-1403"
+      },
+      "storage_connection_error": {
+        "_go_const": "ErrorCodeStorageConnectionError",
+        "value": "ZTD-1500"
+      },
+      "storage_read_error": {
+        "_go_const": "ErrorCodeStorageReadError",
+        "value": "ZTD-1501"
+      },
+      "storage_write_error": {
+        "_go_const": "ErrorCodeStorageWriteError",
+        "value": "ZTD-1502"
+      },
+      "storage_delete_error": {
+        "_go_const": "ErrorCodeStorageDeleteError",
+        "value": "ZTD-1503"
+      },
+      "api_connection_error": {
+        "_go_const": "ErrorCodeAPIConnectionError",
+        "value": "ZTD-1600"
+      },
+      "api_timeout_error": {
+        "_go_const": "ErrorCodeAPITimeoutError",
+        "value": "ZTD-1601"
+      },
+      "api_response_error": {
+        "_go_const": "ErrorCodeAPIResponseError",
+        "value": "ZTD-1602"
+      },
+      "api_request_error": {
+        "_go_const": "ErrorCodeAPIRequestError",
+        "value": "ZTD-1603"
+      },
+      "api_rate_limit_error": {
+        "_go_const": "ErrorCodeAPIRateLimitError",
+        "value": "ZTD-1604"
+      },
+      "generic_not_found": {
+        "_go_const": "ErrorCodeGenericNotFound",
+        "value": "ZTD-1605"
+      },
+      "external_service_error": {
+        "_go_const": "ErrorCodeExternalServiceError",
+        "value": "ZTD-1607"
+      },
+      "validation_error": {
+        "_go_const": "ErrorCodeValidationError",
+        "value": "ZTD-1700"
+      },
+      "missing_required_field": {
+        "_go_const": "ErrorCodeMissingRequiredField",
+        "value": "ZTD-1701"
+      },
+      "invalid_field_format": {
+        "_go_const": "ErrorCodeInvalidFieldFormat",
+        "value": "ZTD-1702"
+      },
+      "invalid_field_value": {
+        "_go_const": "ErrorCodeInvalidFieldValue",
+        "value": "ZTD-1703"
+      },
+      "invalid_field_type": {
+        "_go_const": "ErrorCodeInvalidFieldType",
+        "value": "ZTD-1704"
+      },
+      "schema_validation_failed": {
+        "_go_const": "ErrorCodeSchemaValidationFailed",
+        "value": "ZTD-1705"
+      },
+      "schema_not_found": {
+        "_go_const": "ErrorCodeSchemaNotFound",
+        "value": "ZTD-1706"
+      },
+      "invalid_input": {
+        "_go_const": "ErrorCodeInvalidInput",
+        "value": "ZTD-1707"
+      },
+      "business_logic_error": {
+        "_go_const": "ErrorCodeBusinessLogicError",
+        "value": "ZTD-1800"
+      },
+      "workflow_error": {
+        "_go_const": "ErrorCodeWorkflowError",
+        "value": "ZTD-1801"
+      },
+      "state_transition_error": {
+        "_go_const": "ErrorCodeStateTransitionError",
+        "value": "ZTD-1802"
+      },
+      "resource_conflict": {
+        "_go_const": "ErrorCodeResourceConflict",
+        "value": "ZTD-1803"
+      },
+      "task_creation_failed": {
+        "_go_const": "ErrorCodeTaskCreationFailed",
+        "value": "ZTD-1804"
+      },
+      "operation_failed": {
+        "_go_const": "ErrorCodeOperationFailed",
+        "value": "ZTD-1805"
+      },
+      "governance_rejected": {
+        "_go_const": "ErrorCodeGovernanceRejected",
+        "value": "ZTD-1806"
+      },
+      "model_capability_unsupported": {
+        "_go_const": "ErrorCodeModelCapabilityUnsupported",
+        "value": "ZTD-1807"
+      },
+      "service_unavailable_error": {
+        "_go_const": "ErrorCodeServiceUnavailableError",
+        "value": "ZTD-1900"
+      }
+    },
+    "error_category": {
+      "validation": {
+        "_go_const": "ErrorCategoryValidation",
+        "value": "validation"
+      },
+      "business_logic": {
+        "_go_const": "ErrorCategoryBusinessLogic",
+        "value": "business_logic"
+      },
+      "configuration": {
+        "_go_const": "ErrorCategoryConfiguration",
+        "value": "configuration"
+      },
+      "auth": {
+        "_go_const": "ErrorCategoryAuth",
+        "value": "auth"
+      },
+      "permission": {
+        "_go_const": "ErrorCategoryPermission",
+        "value": "permission"
+      },
+      "resource_not_found": {
+        "_go_const": "ErrorCategoryResourceNotFound",
+        "value": "resource_not_found"
+      },
+      "conflict": {
+        "_go_const": "ErrorCategoryConflict",
+        "value": "conflict"
+      },
+      "rate_limit": {
+        "_go_const": "ErrorCategoryRateLimit",
+        "value": "rate_limit"
+      },
+      "service_unavailable": {
+        "_go_const": "ErrorCategoryServiceUnavailable",
+        "value": "service_unavailable"
+      },
+      "external_service": {
+        "_go_const": "ErrorCategoryExternalService",
+        "value": "external_service"
+      },
+      "timeout": {
+        "_go_const": "ErrorCategoryTimeout",
+        "value": "timeout"
+      },
+      "database": {
+        "_go_const": "ErrorCategoryDatabase",
+        "value": "database"
+      },
+      "network": {
+        "_go_const": "ErrorCategoryNetwork",
+        "value": "network"
+      },
+      "pubsub": {
+        "_go_const": "ErrorCategoryPubSub",
+        "value": "pubsub"
+      },
+      "storage": {
+        "_go_const": "ErrorCategoryStorage",
+        "value": "storage"
+      },
+      "internal": {
+        "_go_const": "ErrorCategoryInternal",
+        "value": "internal"
+      },
+      "dependency": {
+        "_go_const": "ErrorCategoryDependency",
+        "value": "dependency"
+      }
+    },
+    "error_severity": {
+      "low": {
+        "_go_const": "ErrorSeverityLow",
+        "value": "low"
+      },
+      "medium": {
+        "_go_const": "ErrorSeverityMedium",
+        "value": "medium"
+      },
+      "high": {
+        "_go_const": "ErrorSeverityHigh",
+        "value": "high"
+      },
+      "critical": {
+        "_go_const": "ErrorSeverityCritical",
+        "value": "critical"
+      },
+      "info": {
+        "_go_const": "ErrorSeverityInfo",
+        "value": "info"
+      }
+    },
+    "consensus_member": {
+      "axiom": {
+        "_go_const": "ConsensusMemberAxiom",
+        "value": "axiom"
+      },
+      "concord": {
+        "_go_const": "ConsensusMemberConcord",
+        "value": "concord"
+      },
+      "variance": {
+        "_go_const": "ConsensusMemberVariance",
+        "value": "variance"
+      },
+      "pragma": {
+        "_go_const": "ConsensusMemberPragma",
+        "value": "pragma"
+      },
+      "nemesis": {
+        "_go_const": "ConsensusMemberNemesis",
+        "value": "nemesis"
+      }
+    },
+    "consensus_audit_mode": {
+      "unanimous": {
+        "_go_const": "ConsensusAuditModeUnanimous",
+        "value": "unanimous"
+      },
+      "majority": {
+        "_go_const": "ConsensusAuditModeMajority",
+        "value": "majority"
+      },
+      "tied": {
+        "_go_const": "ConsensusAuditModeTied",
+        "value": "tied"
+      }
+    },
+    "consensus_audit_status": {
+      "ok": {
+        "_go_const": "ConsensusAuditStatusOk",
+        "value": "ok"
+      },
+      "revised": {
+        "_go_const": "ConsensusAuditStatusRevised",
+        "value": "revised"
+      },
+      "swap": {
+        "_go_const": "ConsensusAuditStatusSwap",
+        "value": "swap"
+      }
+    },
+    "auditor_reason": {
+      "ok": {
+        "_go_const": "AuditorReasonOk",
+        "value": "ok"
+      },
+      "revised": {
+        "_go_const": "AuditorReasonRevised",
+        "value": "revised"
+      },
+      "revised_from_dissent": {
+        "_go_const": "AuditorReasonRevisedFromDissent",
+        "value": "revised_from_dissent"
+      },
+      "swapped_to_dissenter": {
+        "_go_const": "AuditorReasonSwappedToDissenter",
+        "value": "swapped_to_dissenter"
+      },
+      "whitelist_violation": {
+        "_go_const": "AuditorReasonWhitelistViolation",
+        "value": "whitelist_violation"
+      },
+      "no_valid_revision": {
+        "_go_const": "AuditorReasonNoValidRevision",
+        "value": "no_valid_revision"
+      },
+      "auditor_error": {
+        "_go_const": "AuditorReasonAuditorError",
+        "value": "auditor_error"
+      },
+      "empty_response": {
+        "_go_const": "AuditorReasonEmptyResponse",
+        "value": "empty_response"
+      },
+      "context_overflow": {
+        "_go_const": "AuditorReasonContextOverflow",
+        "value": "context_overflow"
+      }
+    },
+    "tie_break_reason": {
+      "shortest": {
+        "_go_const": "TieBreakReasonShortest",
+        "value": "shortest"
+      },
+      "excluded_nemesis": {
+        "_go_const": "TieBreakReasonExcludedNemesis",
+        "value": "excluded_nemesis"
+      }
+    },
+    "reasoning_agent": {
+      "sage": {
+        "_go_const": "ReasoningAgentSage",
+        "value": "sage"
+      },
+      "dash": {
+        "_go_const": "ReasoningAgentDash",
+        "value": "dash"
+      }
+    },
+    "triage_complexity_classification": {
+      "simple": {
+        "_go_const": "TriageComplexitySimple",
+        "value": "simple"
+      },
+      "complex": {
+        "_go_const": "TriageComplexityComplex",
+        "value": "complex"
+      }
+    },
+    "triage_confidence": {
+      "high": {
+        "_go_const": "TriageConfidenceHigh",
+        "value": "high"
+      },
+      "low": {
+        "_go_const": "TriageConfidenceLow",
+        "value": "low"
+      }
+    },
+    "triage_intent_classification": {
+      "action": {
+        "_go_const": "TriageIntentAction",
+        "value": "action"
+      },
+      "information": {
+        "_go_const": "TriageIntentInformation",
+        "value": "information"
+      },
+      "unknown": {
+        "_go_const": "TriageIntentUnknown",
+        "value": "unknown"
+      }
+    },
+    "triage_request_posture": {
+      "normal": {
+        "_go_const": "TriagePostureNormal",
+        "value": "normal"
+      },
+      "adversarial": {
+        "_go_const": "TriagePostureAdversarial",
+        "value": "adversarial"
+      },
+      "escalated": {
+        "_go_const": "TriagePostureEscalated",
+        "value": "escalated"
+      },
+      "confused": {
+        "_go_const": "TriagePostureConfused",
+        "value": "confused"
+      }
+    },
+    "thinking_phase": {
+      "end": {
+        "_go_const": "ThinkingPhaseEnd",
+        "value": "end"
+      },
+      "start": {
+        "_go_const": "ThinkingPhaseStart",
+        "value": "start"
+      },
+      "update": {
+        "_go_const": "ThinkingPhaseUpdate",
+        "value": "update"
+      }
+    },
+    "operator_capability": {
+      "data": {
+        "_go_const": "OperatorCapabilityData",
+        "value": "data"
+      },
+      "inference": {
+        "_go_const": "OperatorCapabilityInference",
+        "value": "inference"
+      },
+      "provenance": {
+        "_go_const": "OperatorCapabilityProvenance",
+        "value": "provenance"
+      },
+      "observer": {
+        "_go_const": "OperatorCapabilityObserver",
+        "value": "observer"
+      }
+    }
+  }
+}

@@ -1,0 +1,360 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package constants
+
+// APIPaths defines the canonical ZTD API paths.
+var APIPaths = struct {
+	InternalPrefix string `json:"internal_prefix"`
+	OperatorPrefix string `json:"operator_prefix"`
+	// MCP routes
+	MCPEndpoint string `json:"mcp_endpoint"`
+	// A2A routes
+	A2ACall   string `json:"a2a_call"`
+	A2APrefix string `json:"a2a_prefix"`
+	// Governance routes
+	GovernanceEnvelopes     string `json:"governance_envelopes"`
+	GovernanceSigners       string `json:"governance_signers"`
+	GovernanceSignersByID   string `json:"governance_signers_by_id"`
+	GovernanceSignersPrefix string `json:"governance_signers_prefix"`
+	// Gateway identity routes
+	GatewayReputationSign string `json:"gateway_reputation_sign"`
+	// Operator routes
+	Operators         string `json:"operators"`
+	OperatorsByID     string `json:"operators_by_id"`
+	OperatorsValidate string `json:"operators_validate"`
+	OperatorsBind     string `json:"operators_bind"`
+	OperatorsUnbind   string `json:"operators_unbind"`
+	OperatorsTarget   string `json:"operators_target"`
+	OperatorsSession  string `json:"operators_session"`
+	OperatorsCommands string `json:"operators_commands"`
+	OperatorsStop     string `json:"operators_stop"`
+	// Inference dispatch route (ztdllama). Platform-internal endpoint on the
+	// User Gateway that mTLS-authenticated app workloads call to dispatch a
+	// governed inference request to the Inference Node.
+	InferenceDispatch                    string `json:"inference_dispatch"`
+	InferenceProviderObservations        string `json:"inference_provider_observations"`
+	InferenceModelProvenanceAttestations string `json:"inference_model_provenance_attestations"`
+	// Intent routes
+	GrantIntent  string `json:"grant_intent"`
+	RevokeIntent string `json:"revoke_intent"`
+	// Data routes
+	DataSettings    string `json:"data_settings"`
+	DataDB          string `json:"data_db"`
+	DataBlobs       string `json:"data_blobs"`
+	DataPrefix      string `json:"data_prefix"`
+	DataItems       string `json:"data_items"`
+	DataBlobsPrefix string `json:"data_blobs_prefix"`
+	QueryPrefix     string `json:"query_prefix"`
+	// PubSub routes
+	PubSubPublish   string `json:"pubsub_publish"`
+	PubSubStream    string `json:"pubsub_stream"`
+	PubSubWebSocket string `json:"pubsub_websocket"`
+	// SSE routes
+	SSEEvents string `json:"sse_events"`
+	SSEStream string `json:"sse_stream"`
+	// PKI routes
+	PKICSRSign            string `json:"pki_csr_sign"`
+	PKIDevicesEnroll      string `json:"pki_devices_enroll"`
+	PKICertificatesRevoke string `json:"pki_certificates_revoke"`
+	PKIRevocationBundle   string `json:"pki_revocation_bundle"`
+	PKICRL                string `json:"pki_crl"`
+	PKICABundle           string `json:"pki_ca_bundle"`
+	PKIFingerprint        string `json:"pki_fingerprint"`
+	// Audit routes
+	AuditReceipts       string `json:"audit_receipts"`
+	AuditReceiptsExport string `json:"audit_receipts_export"`
+	AuditRecords        string `json:"audit_records"`
+	AuditEvents         string `json:"audit_events"`
+	AuditSummary        string `json:"audit_summary"`
+	AuditReport         string `json:"audit_report"`
+	AuditVerify         string `json:"audit_verify"`
+	AuditStream         string `json:"audit_stream"`
+	// Public feed routes
+	PublicFeedBatches     string `json:"public_feed_batches"`
+	PublicFeedSnapshot    string `json:"public_feed_snapshot"`
+	PublicFeedProofs      string `json:"public_feed_proofs"`
+	PublicFeedProofsBatch string `json:"public_feed_proofs_batch"`
+	PublicFeedProofsPush  string `json:"public_feed_proofs_push"`
+	PublicFeedProofsPrune string `json:"public_feed_proofs_prune"`
+	// Native eval campaign publication state (gateway-owned idempotency)
+	EvalCampaignPublicationStateByRun string `json:"eval_campaign_publication_state_by_run"`
+	// User routes
+	Users   string `json:"users"`
+	UsersMe string `json:"users_me"`
+	// Auth routes
+	AuthLogout                               string `json:"auth_logout"`
+	AuthBootstrap                            string `json:"auth_bootstrap"`
+	AuthBootstrapStatus                      string `json:"auth_bootstrap_status"`
+	AuthPlatformEnrollmentRequest            string `json:"auth_platform_enrollment_request"`
+	AuthPlatformEnrollmentStatus             string `json:"auth_platform_enrollment_status"`
+	AuthPlatformEnrollmentComplete           string `json:"auth_platform_enrollment_complete"`
+	AuthPlatformEnrollmentPending            string `json:"auth_platform_enrollment_pending"`
+	AuthPlatformEnrollmentEnrolled           string `json:"auth_platform_enrollment_enrolled"`
+	AuthPlatformEnrollmentBatchDecision      string `json:"auth_platform_enrollment_batch_decision"`
+	AuthPlatformEnrollmentDecision           string `json:"auth_platform_enrollment_decision"`
+	AuthPlatformEnrollmentRevoke             string `json:"auth_platform_enrollment_revoke"`
+	AuthOperatorBootstrapWebSocket           string `json:"auth_operator_bootstrap_websocket"`
+	AuthCLIRecoveryRequest                   string `json:"auth_cli_recovery_request"`
+	AuthCLIRecoveryStatus                    string `json:"auth_cli_recovery_status"`
+	AuthCLIRecoveryApprove                   string `json:"auth_cli_recovery_approve"`
+	AuthCLIRecoveryApproveCLI                string `json:"auth_cli_recovery_approve_cli"`
+	AuthCLIRecoveryComplete                  string `json:"auth_cli_recovery_complete"`
+	AuthCLIRotate                            string `json:"auth_cli_rotate"`
+	AuthCLIRefresh                           string `json:"auth_cli_refresh"`
+	AuthCLIBind                              string `json:"auth_cli_bind"`
+	AuthCLIUnbind                            string `json:"auth_cli_unbind"`
+	AuthCLILogout                            string `json:"auth_cli_logout"`
+	AuthCLISession                           string `json:"auth_cli_session"`
+	AuthPasskeys                             string `json:"auth_passkeys"`
+	AuthPasskeysByID                         string `json:"auth_passkeys_by_id"`
+	AuthPasskeysJITRegisterChallenge         string `json:"auth_passkeys_jit_register_challenge"`
+	AuthPasskeysJITRegisterVerify            string `json:"auth_passkeys_jit_register_verify"`
+	AuthPasskeysJITPrefix                    string `json:"auth_passkeys_jit_prefix"`
+	AuthPasskeysPrefix                       string `json:"auth_passkeys_prefix"`
+	AuthPasskeysCLIStatus                    string `json:"auth_passkeys_cli_status"`
+	AuthPasskeysConsoleRegisterChallenge     string `json:"auth_passkeys_console_register_challenge"`
+	AuthPasskeysConsoleRegisterVerify        string `json:"auth_passkeys_console_register_verify"`
+	AuthPasskeysConsoleAuthenticateChallenge string `json:"auth_passkeys_console_authenticate_challenge"`
+	AuthPasskeysConsoleAuthenticateVerify    string `json:"auth_passkeys_console_authenticate_verify"`
+	AuthPasskeysConsolePrefix                string `json:"auth_passkeys_console_prefix"`
+	AuthPasskeysEnrollmentRegisterChallenge  string `json:"auth_passkeys_enrollment_register_challenge"`
+	AuthPasskeysEnrollmentRegisterVerify     string `json:"auth_passkeys_enrollment_register_verify"`
+	AuthPasskeysEnrollmentPrefix             string `json:"auth_passkeys_enrollment_prefix"`
+	AuthSessionsMe                           string `json:"auth_sessions_me"`
+	AuthEnrollmentTokenGenerate              string `json:"auth_enrollment_token_generate"`
+	AuthEnrollmentTokenValidate              string `json:"auth_enrollment_token_validate"`
+	// Approval routes
+	Approvals             string `json:"approvals"`
+	ApprovalsByID         string `json:"approvals_by_id"`
+	ApprovalsPrefix       string `json:"approvals_prefix"`
+	ApprovePage           string `json:"approve_page"`
+	ApprovePagePrefix     string `json:"approve_page_prefix"`
+	ApprovalsVerifyAction string `json:"approvals_verify_action"`
+	ApprovalsCLIStatus    string `json:"approvals_cli_status"`
+	ApprovalsCLIList      string `json:"approvals_cli_list"`
+	ApprovalsRespond      string `json:"approvals_respond"`
+	// Admin routes
+	AdminAppPoliciesBySigner string `json:"admin_app_policies_by_signer"`
+	AdminAppsRevoke          string `json:"admin_apps_revoke"`
+	AdminAppPoliciesPrefix   string `json:"admin_app_policies_prefix"`
+	AdminConsensus           string `json:"admin_consensus"`
+	AdminConsensusByID       string `json:"admin_consensus_by_id"`
+	AdminConsensusPrefix     string `json:"admin_consensus_prefix"`
+	// Consensus routes
+	ConsensusDeliberate string `json:"consensus_deliberate"`
+	// Well-known routes
+	WellKnownPKICABundle    string `json:"well_known_pki_ca_bundle"`
+	WellKnownPKIFingerprint string `json:"well_known_pki_fingerprint"`
+	WellKnownBinPrefix      string `json:"well_known_bin_prefix"`
+	WellKnownPKIPrefix      string `json:"well_known_pki_prefix"`
+	// Deploy scripts
+	DeployScriptLinux   string `json:"deploy_script_linux"`
+	DeployScriptWindows string `json:"deploy_script_windows"`
+	// Console SPA
+	ConsolePrefix string `json:"console_prefix"`
+	// Observe API routes (passkey-scoped, read-only observability surface)
+	ObservePrefix        string `json:"observe_prefix"`
+	ObserveBootstrap     string `json:"observe_bootstrap"`
+	ObserveRuns          string `json:"observe_runs"`
+	ObserveRunsByID      string `json:"observe_runs_by_id"`
+	ObserveEvals         string `json:"observe_evals"`
+	ObserveEvalsByID     string `json:"observe_evals_by_id"`
+	ObserveDownloads     string `json:"observe_downloads"`
+	ObserveDownloadsByID string `json:"observe_downloads_by_id"`
+	// Observe producer routes (mTLS-authenticated, app-workload-only mutation
+	// surface for persisting agent and run state projections). These are
+	// never browser-accessible; the RouteAuthMTLS classification is
+	// explicit so the producer sub-prefix does not inherit the
+	// RouteAuthWebSession classification of the observe prefix.
+	ObserveProducerPrefix     string `json:"observe_producer_prefix"`
+	ObserveProducerAgentState string `json:"observe_producer_agent_state"`
+	ObserveProducerRunState   string `json:"observe_producer_run_state"`
+	// WebSocket prefix
+	WSPrefix string `json:"ws_prefix"`
+	// User routes
+	UsersPrefix string `json:"users_prefix"`
+	// Auth session routes
+	AuthSessionsPrefix string `json:"auth_sessions_prefix"`
+	// Health
+	Health string `json:"health"`
+	// State
+	State string `json:"state"`
+	// Landing
+	Landing string `json:"landing"`
+}{
+	InternalPrefix: "/api/v1",
+	OperatorPrefix: "/api",
+	// MCP routes
+	MCPEndpoint: "/mcp",
+	// A2A routes
+	A2ACall:   "/api/v1/a2a/call",
+	A2APrefix: "/api/v1/a2a/",
+	// Governance routes
+	GovernanceEnvelopes:     "/api/v1/governance/envelopes",
+	GovernanceSigners:       "/api/v1/governance/signers",
+	GovernanceSignersByID:   "/api/v1/governance/signers/",
+	GovernanceSignersPrefix: "/api/v1/governance/signers/",
+	// Gateway identity routes
+	GatewayReputationSign: "/api/v1/gateway/reputation/sign",
+	// Operator routes
+	Operators:                            "/api/v1/operators",
+	OperatorsByID:                        "/api/v1/operators/",
+	OperatorsValidate:                    "/api/v1/operators/validate",
+	OperatorsBind:                        "/api/v1/operators/bind",
+	OperatorsUnbind:                      "/api/v1/operators/unbind",
+	OperatorsTarget:                      "/api/v1/operators/target",
+	OperatorsSession:                     "/api/v1/operators/session/",
+	OperatorsCommands:                    "/api/v1/operators/commands",
+	OperatorsStop:                        "/api/v1/operators/stop",
+	InferenceDispatch:                    "/api/v1/inference/dispatch",
+	InferenceProviderObservations:        "/api/v1/inference/provider-observations/",
+	InferenceModelProvenanceAttestations: "/api/v1/inference/model-provenance/attestations/",
+	// Intent routes
+	GrantIntent:  "/api/v1/operators/{operator_id}/intents/grant",
+	RevokeIntent: "/api/v1/operators/{operator_id}/intents/revoke",
+	// Data routes
+	DataSettings:    "/api/v1/data/settings",
+	DataDB:          "/api/v1/data/",
+	DataBlobs:       "/api/v1/blobs/",
+	DataPrefix:      "/api/v1/data/",
+	DataItems:       "/api/v1/data/items",
+	DataBlobsPrefix: "/api/v1/blobs/",
+	QueryPrefix:     "/_query",
+	// PubSub routes
+	PubSubPublish:   "/api/v1/pubsub/publish",
+	PubSubStream:    "/api/v1/pubsub/stream",
+	PubSubWebSocket: "/ws/pubsub",
+	// SSE routes
+	SSEEvents: "/api/v1/sse/events",
+	SSEStream: "/api/v1/sse/stream",
+	// PKI routes
+	PKICSRSign:            "/api/v1/pki/csr/sign",
+	PKIDevicesEnroll:      "/api/v1/pki/devices/enroll",
+	PKICertificatesRevoke: "/api/v1/pki/certificates/revoke",
+	PKIRevocationBundle:   "/api/v1/pki/revocation-bundle",
+	PKICRL:                "/.well-known/ztd/pki/crl",
+	PKICABundle:           "/.well-known/ztd/pki/ca-bundle",
+	PKIFingerprint:        "/.well-known/ztd/pki/fingerprint",
+	// Audit routes
+	AuditReceipts:       "/api/v1/audit/receipts",
+	AuditReceiptsExport: "/api/v1/audit/receipts/export",
+	AuditRecords:        "/api/v1/audit/records",
+	AuditEvents:         "/api/v1/audit/events",
+	AuditSummary:        "/api/v1/audit/summary",
+	AuditReport:         "/api/v1/audit/report",
+	AuditVerify:         "/api/v1/audit/verify",
+	AuditStream:         "/api/v1/audit/stream",
+	// Public feed routes
+	PublicFeedBatches:     "/api/v1/public-feed/batches",
+	PublicFeedSnapshot:    "/api/v1/public-feed/snapshot",
+	PublicFeedProofs:      "/api/v1/public-feed/proofs",
+	PublicFeedProofsBatch: "/api/v1/public-feed/proofs/batch",
+	PublicFeedProofsPush:  "/api/v1/public-feed/proofs/push",
+	PublicFeedProofsPrune: "/api/v1/public-feed/proofs/prune",
+	// Native eval campaign publication state
+	EvalCampaignPublicationStateByRun: "/api/v1/eval/campaign/runs/",
+	// User routes
+	Users:   "/api/v1/users",
+	UsersMe: "/api/v1/users/me",
+	// Auth routes
+	AuthLogout:                               "/api/v1/auth/logout",
+	AuthBootstrap:                            "/api/v1/auth/bootstrap",
+	AuthBootstrapStatus:                      "/api/v1/auth/bootstrap/status",
+	AuthPlatformEnrollmentRequest:            "/api/v1/auth/platform-enrollments/request",
+	AuthPlatformEnrollmentStatus:             "/api/v1/auth/platform-enrollments/status",
+	AuthPlatformEnrollmentComplete:           "/api/v1/auth/platform-enrollments/complete",
+	AuthPlatformEnrollmentPending:            "/api/v1/auth/platform-enrollments/pending",
+	AuthPlatformEnrollmentEnrolled:           "/api/v1/auth/platform-enrollments/enrolled",
+	AuthPlatformEnrollmentDecision:           "/api/v1/auth/platform-enrollments/decision",
+	AuthPlatformEnrollmentBatchDecision:      "/api/v1/auth/platform-enrollments/decisions",
+	AuthPlatformEnrollmentRevoke:             "/api/v1/auth/platform-enrollments/revoke",
+	AuthOperatorBootstrapWebSocket:           "/ws/operator/bootstrap",
+	AuthCLIRecoveryRequest:                   "/api/v1/auth/cli/recovery/request",
+	AuthCLIRecoveryStatus:                    "/api/v1/auth/cli/recovery/status",
+	AuthCLIRecoveryApprove:                   "/api/v1/auth/cli/recovery/approve",
+	AuthCLIRecoveryApproveCLI:                "/api/v1/auth/cli/recovery/approve-cli",
+	AuthCLIRecoveryComplete:                  "/api/v1/auth/cli/recovery/complete",
+	AuthCLIRotate:                            "/api/v1/auth/cli/rotate",
+	AuthCLIRefresh:                           "/api/v1/auth/cli/refresh",
+	AuthCLIBind:                              "/api/v1/auth/cli/bind",
+	AuthCLIUnbind:                            "/api/v1/auth/cli/unbind",
+	AuthCLILogout:                            "/api/v1/auth/cli/logout",
+	AuthCLISession:                           "/api/v1/auth/cli/session",
+	AuthPasskeys:                             "/api/v1/auth/passkeys",
+	AuthPasskeysByID:                         "/api/v1/auth/passkeys/",
+	AuthPasskeysJITRegisterChallenge:         "/api/v1/auth/passkeys/jit-register/challenge",
+	AuthPasskeysJITRegisterVerify:            "/api/v1/auth/passkeys/jit-register/verify",
+	AuthPasskeysJITPrefix:                    "/api/v1/auth/passkeys/jit-",
+	AuthPasskeysPrefix:                       "/api/v1/auth/passkeys/",
+	AuthPasskeysCLIStatus:                    "/api/v1/auth/passkeys/cli/status",
+	AuthPasskeysConsoleRegisterChallenge:     "/api/v1/auth/passkeys/console/register/challenge",
+	AuthPasskeysConsoleRegisterVerify:        "/api/v1/auth/passkeys/console/register/verify",
+	AuthPasskeysConsoleAuthenticateChallenge: "/api/v1/auth/passkeys/console/authenticate/challenge",
+	AuthPasskeysConsoleAuthenticateVerify:    "/api/v1/auth/passkeys/console/authenticate/verify",
+	AuthPasskeysConsolePrefix:                "/api/v1/auth/passkeys/console/",
+	AuthPasskeysEnrollmentRegisterChallenge:  "/api/v1/auth/passkeys/enrollment/register/challenge",
+	AuthPasskeysEnrollmentRegisterVerify:     "/api/v1/auth/passkeys/enrollment/register/verify",
+	AuthPasskeysEnrollmentPrefix:             "/api/v1/auth/passkeys/enrollment/",
+	AuthSessionsMe:                           "/api/v1/auth/sessions/me",
+	AuthEnrollmentTokenGenerate:              "/api/v1/auth/enrollment-token/generate",
+	AuthEnrollmentTokenValidate:              "/api/v1/auth/enrollment-token/validate",
+	// Approval routes
+	Approvals:             "/api/v1/approvals",
+	ApprovalsByID:         "/api/v1/approvals/",
+	ApprovalsPrefix:       "/api/v1/approvals/",
+	ApprovePage:           "/api/v1/approve/",
+	ApprovePagePrefix:     "/api/v1/approve/",
+	ApprovalsVerifyAction: "/verify",
+	ApprovalsCLIStatus:    "/api/v1/approvals/status/",
+	ApprovalsCLIList:      "/api/v1/approvals/pending",
+	ApprovalsRespond:      "/api/v1/approvals/respond",
+	// Admin routes
+	AdminAppPoliciesBySigner: "/api/v1/admin/app-policies/",
+	AdminAppsRevoke:          "/api/v1/admin/apps/revoke",
+	AdminAppPoliciesPrefix:   "/api/v1/admin/app-policies/",
+	AdminConsensus:           "/api/v1/admin/consensus",
+	AdminConsensusByID:       "/api/v1/admin/consensus/",
+	AdminConsensusPrefix:     "/api/v1/admin/consensus/",
+	// Consensus routes
+	ConsensusDeliberate: "/consensus/v1/deliberate",
+	// Well-known routes
+	WellKnownPKICABundle:    "/.well-known/ztd/pki/ca-bundle",
+	WellKnownPKIFingerprint: "/.well-known/ztd/pki/fingerprint",
+	WellKnownBinPrefix:      "/.well-known/ztd/bin/",
+	WellKnownPKIPrefix:      "/.well-known/ztd/pki/",
+	// Deploy scripts
+	DeployScriptLinux:   "/" + DeployScriptFilenameLinux,
+	DeployScriptWindows: "/" + DeployScriptFilenameWindows,
+	// Console SPA
+	ConsolePrefix: "/console/",
+	// Observe API routes (passkey-scoped, read-only observability surface)
+	ObservePrefix:        "/api/v1/observe/",
+	ObserveBootstrap:     "/api/v1/observe/bootstrap",
+	ObserveRuns:          "/api/v1/observe/runs",
+	ObserveRunsByID:      "/api/v1/observe/runs/",
+	ObserveEvals:         "/api/v1/observe/evals",
+	ObserveEvalsByID:     "/api/v1/observe/evals/",
+	ObserveDownloads:     "/api/v1/observe/downloads",
+	ObserveDownloadsByID: "/api/v1/observe/downloads/",
+	// Observe producer routes (mTLS-authenticated, app-workload-only)
+	ObserveProducerPrefix:     "/api/v1/observe/producer/",
+	ObserveProducerAgentState: "/api/v1/observe/producer/agent-state",
+	ObserveProducerRunState:   "/api/v1/observe/producer/run-state",
+	// WebSocket prefix
+	WSPrefix: "/ws/",
+	// User routes
+	UsersPrefix: "/api/v1/users/",
+	// Auth session routes
+	AuthSessionsPrefix: "/api/v1/auth/sessions/",
+	// Health
+	Health: "/api/v1/health",
+	// State
+	State: "/api/v1/state",
+	// Landing
+	Landing: "/",
+}

@@ -1,0 +1,115 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package eval
+
+import (
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+)
+
+func WriteCampaignMirrorRestoreProgress(w io.Writer, progress evaluation.CampaignMirrorReconcileProgress) {
+	prefix := fmt.Sprintf("[%d/%d] %s", progress.Index, progress.Total, progress.RunID)
+	switch progress.Status {
+	case evaluation.CampaignMirrorReconcileChecking:
+		_, _ = fmt.Fprintf(w, "Checking campaign run %d/%d: %s\n", progress.Index, progress.Total, progress.RunID)
+	case evaluation.CampaignMirrorReconcileRestored:
+		_, _ = fmt.Fprintf(w, "%s restored (%d record(s))\n", prefix, progress.PublishedRecords)
+	case evaluation.CampaignMirrorReconcileRepublished:
+		_, _ = fmt.Fprintf(w, "%s republished (%d record(s))\n", prefix, progress.PublishedRecords)
+	case evaluation.CampaignMirrorReconcilePresent:
+		_, _ = fmt.Fprintf(w, "%s already present\n", prefix)
+	case evaluation.CampaignMirrorReconcileIneligible:
+		_, _ = fmt.Fprintf(w, "%s skipped (campaign is unfinished or lacks passing verification)\n", prefix)
+	case evaluation.CampaignMirrorReconcileHostAbsent:
+		_, _ = fmt.Fprintf(w, "%s skipped (host artifacts absent)\n", prefix)
+	case evaluation.CampaignMirrorReconcileMissing:
+		_, _ = fmt.Fprintf(w, "%s missing from public mirror\n", prefix)
+	case evaluation.CampaignMirrorReconcileFailed:
+		_, _ = fmt.Fprintf(w, "%s failed: %v\n", prefix, progress.Err)
+	}
+}
+
+func WriteCampaignMirrorRestoreQueueResult(stdout, stderr io.Writer, result *evaluation.CampaignMirrorReconcileResult, force bool) {
+	if result == nil {
+		return
+	}
+	restored := len(result.RestoredRunIDs)
+	republished := len(result.RepublishedRunIDs)
+	skipped := len(result.SkippedRunIDs)
+	hostAbsent := len(result.HostAbsentRunIDs)
+
+	switch {
+	case republished > 0:
+		_, _ = fmt.Fprintf(stdout, "Republished %d verified dataset(s) to public mirror (%d record(s)).\n", republished, result.PublishedRecords)
+		if restored > 0 {
+			_, _ = fmt.Fprintf(stdout, "Restored %d additional verified dataset(s) that were missing from public mirror.\n", restored)
+		}
+		if skipped > 0 {
+			_, _ = fmt.Fprintf(stdout, "%d verified dataset(s) were already present in public mirror.\n", skipped)
+		}
+	case restored > 0:
+		_, _ = fmt.Fprintf(stdout, "Restored %d verified dataset(s) to public mirror (%d record(s)).\n", restored, result.PublishedRecords)
+		if skipped > 0 {
+			_, _ = fmt.Fprintf(stdout, "%d verified dataset(s) were already present in public mirror.\n", skipped)
+		}
+	case skipped > 0:
+		if force {
+			_, _ = fmt.Fprintf(stdout, "Verified campaign mirror restore complete: %d verified dataset(s) already present; none were republished.\n", skipped)
+		} else {
+			_, _ = fmt.Fprintf(stdout, "Verified campaign mirror restore complete: %d verified dataset(s) already present in public mirror (nothing to do).\n", skipped)
+		}
+	default:
+		_, _ = fmt.Fprintln(stdout, "Verified campaign mirror restore complete: nothing to do.")
+	}
+
+	if ineligible := len(result.IneligibleRunIDs); ineligible > 0 {
+		_, _ = fmt.Fprintf(stdout, "Skipped %d campaign run(s) that are unfinished or lack passing verification.\n", ineligible)
+	}
+	if hostAbsent > 0 {
+		writeHostAbsentMirrorNote(stdout, result.HostAbsentRunIDs)
+	}
+
+	for runID, reason := range result.FailedRuns {
+		_, _ = fmt.Fprintf(stderr, "error: mirror restore failed for %s: %s\n", runID, reason)
+	}
+}
+
+func WriteCampaignMirrorRestoreRunResult(stdout io.Writer, runID string, published int, force bool) {
+	if published == 0 {
+		if force {
+			_, _ = fmt.Fprintf(stdout, "Verified campaign mirror restore complete: run %s already present in public mirror; nothing was republished.\n", runID)
+			return
+		}
+		_, _ = fmt.Fprintf(stdout, "Verified campaign mirror restore complete: run %s already present in public mirror (nothing to do).\n", runID)
+		return
+	}
+	if force {
+		_, _ = fmt.Fprintf(stdout, "Republished run %s to public mirror (%d record(s)).\n", runID, published)
+		return
+	}
+	_, _ = fmt.Fprintf(stdout, "Restored run %s to public mirror (%d record(s)).\n", runID, published)
+}
+
+func writeHostAbsentMirrorNote(w io.Writer, runIDs []string) {
+	if len(runIDs) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "Note: %d verified run(s) were skipped — local campaign artifacts under .ztd/data/eval/runs/ are missing (usually after a .ztd wipe).\n", len(runIDs))
+	_, _ = fmt.Fprintln(w, "Restore the local campaign evidence from an evaluation backup before retrying mirror restore.")
+	_, _ = fmt.Fprintf(w, "Skipped run IDs: %s\n", formatRunIDList(runIDs))
+}
+
+func formatRunIDList(runIDs []string) string {
+	if len(runIDs) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(runIDs, " ") + "]"
+}

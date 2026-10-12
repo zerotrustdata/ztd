@@ -1,0 +1,217 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package gateway
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+)
+
+func modelProvenanceControllerDeps(logger *slog.Logger, responder *response.Writer, fileSvc fs.RuntimeFileService) ModelProvenanceControllerDeps {
+	deps := ModelProvenanceControllerDeps{
+		Logger:    logger,
+		Responder: responder,
+	}
+	if fileSvc == nil {
+		return deps
+	}
+	if windows, err := model_provenance.NewWindowStore(fileSvc); err == nil {
+		deps.Windows = windows
+	}
+	return deps
+}
+
+// ModelProvenanceController serves owner mTLS reads of model provenance
+// attestation evidence stored in the gateway runtime volume.
+type ModelProvenanceController struct {
+	logger            *slog.Logger
+	responder         *response.Writer
+	windows           model_provenance.WindowStore
+	preflight         modelProvenancePreflight
+	progressPublisher *SSEEventPublisher
+}
+
+type modelProvenancePreflight interface {
+	PreflightCommandDelivery(ctx context.Context) error
+	PreflightStorageAttestation(ctx context.Context, servedModelTag, expectedModelDigest string) (*evalv1.ModelProvenanceAttestationWindow, error)
+}
+
+// ModelProvenanceControllerDeps groups dependencies for ModelProvenanceController.
+type ModelProvenanceControllerDeps struct {
+	Logger                *slog.Logger
+	Responder             *response.Writer
+	Windows               model_provenance.WindowStore
+	ProvenanceCoordinator modelProvenancePreflight
+	ProgressPublisher     *SSEEventPublisher
+}
+
+func newModelProvenanceController(d ModelProvenanceControllerDeps) *ModelProvenanceController {
+	return &ModelProvenanceController{
+		logger:            d.Logger,
+		responder:         d.Responder,
+		windows:           d.Windows,
+		preflight:         d.ProvenanceCoordinator,
+		progressPublisher: d.ProgressPublisher,
+	}
+}
+
+// @Summary		Get model provenance attestation evidence
+// @Description	Returns the canonical model provenance attestation window for one provider attempt ID (mTLS owner CLI only).
+// @Tags			inference
+// @Produce		json
+// @Param			provider_attempt_id	path	string	true	"Provider attempt ID"
+// @Success		200	{object}	models.ModelProvenanceResponse
+// @Failure		404	{string}	string	"Model provenance evidence not found"
+// @Failure		405	{string}	string	"Method Not Allowed"
+// @Failure		503	{string}	string	"Model provenance store unavailable"
+// @Router			/api/v1/inference/model-provenance/attestations/{provider_attempt_id} [get]
+func (c *ModelProvenanceController) handleModelProvenance(w http.ResponseWriter, r *http.Request) {
+	suffix := strings.TrimPrefix(r.URL.Path, constants.APIPaths.InferenceModelProvenanceAttestations)
+	switch suffix {
+	case "_preflight":
+		c.handleModelProvenancePreflight(w, r)
+		return
+	case "_attest":
+		c.handleModelProvenanceAttestPreflight(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	if c.windows == nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrServiceUnavailable.Error())
+		return
+	}
+
+	providerAttemptID := suffix
+	if providerAttemptID == "" || strings.Contains(providerAttemptID, "/") {
+		c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
+		return
+	}
+
+	window, err := c.windows.Load(r.Context(), providerAttemptID)
+	if err != nil {
+		if errors.Is(err, constants.ErrNotFound) {
+			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
+			return
+		}
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("model provenance: load window: %w", err).Error())
+		return
+	}
+
+	body, err := evalv1.MarshalCanonical(window)
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("model provenance: marshal window: %w", err).Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.ModelProvenanceResponse{Window: body})
+}
+
+func (c *ModelProvenanceController) handleModelProvenancePreflight(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	if c.preflight == nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrServiceUnavailable.Error())
+		return
+	}
+	if err := c.preflight.PreflightCommandDelivery(r.Context()); err != nil {
+		if errors.Is(err, constants.ErrEvaluationObservationUnavailable) ||
+			errors.Is(err, constants.ErrProvenanceOperatorNotFound) ||
+			errors.Is(err, constants.ErrProvenanceOperatorAmbiguous) {
+			c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		c.responder.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+func (c *ModelProvenanceController) handleModelProvenanceAttestPreflight(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	if c.preflight == nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrServiceUnavailable.Error())
+		return
+	}
+	servedModelTag := strings.TrimSpace(r.URL.Query().Get("served_model_tag"))
+	expectedModelDigest := strings.TrimSpace(r.URL.Query().Get("expected_model_digest"))
+	if servedModelTag == "" || expectedModelDigest == "" {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrMissingRequiredField.Error())
+		return
+	}
+	// The probe waits up to ModelProvenanceAttestationPreflightTimeout while the
+	// Provenance Operator hashes the model, longer than the server WriteTimeout.
+	// A deadline expiring mid-response truncates the TLS record and the client
+	// sees "tls: bad record MAC", so clear it; the probe bounds the wait.
+	rc := http.NewResponseController(w)
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		c.logger.Warn("model provenance attestation preflight: failed to clear WriteTimeout", "error", err)
+	}
+	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	route := buildSSERouteFromContext(r.Context())
+	publish := func(phase, message string) {
+		if c.progressPublisher == nil || requestID == "" || route.validate() != nil {
+			return
+		}
+		if err := c.progressPublisher.PublishEphemeral(route, string(constants.EventModelProvenancePreflightProgress), models.ModelProvenancePreflightProgress{
+			RequestID: requestID, ServedModelTag: servedModelTag, Phase: phase, Error: message,
+		}); err != nil {
+			c.logger.Warn("model provenance preflight progress delivery failed", "error", err)
+		}
+	}
+	var window *evalv1.ModelProvenanceAttestationWindow
+	var err error
+	if coordinator, ok := c.preflight.(interface {
+		PreflightStorageAttestationWithProgress(context.Context, string, string, func(string)) (*evalv1.ModelProvenanceAttestationWindow, error)
+	}); ok {
+		window, err = coordinator.PreflightStorageAttestationWithProgress(r.Context(), servedModelTag, expectedModelDigest, func(phase string) { publish(phase, "") })
+	} else {
+		window, err = c.preflight.PreflightStorageAttestation(r.Context(), servedModelTag, expectedModelDigest)
+	}
+	if err != nil {
+		publish("failed", err.Error())
+		if errors.Is(err, constants.ErrEvaluationObservationUnavailable) ||
+			errors.Is(err, constants.ErrProvenanceOperatorNotFound) ||
+			errors.Is(err, constants.ErrProvenanceOperatorAmbiguous) ||
+			errors.Is(err, constants.ErrMissingRequiredField) {
+			c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		c.responder.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	windowBody, err := evalv1.MarshalCanonical(window)
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("model provenance attestation preflight: marshal window: %w", err).Error())
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.ModelProvenanceAttestResponse{
+		Status:              "ready",
+		ServedModelTag:      servedModelTag,
+		ExpectedModelDigest: expectedModelDigest,
+		Window:              windowBody,
+	})
+}

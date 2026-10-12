@@ -1,0 +1,118 @@
+{
+  "_comment": "Concrete SSE event fixture instances. Each entry is a sample event with a canonical wire 'type' string (matching an EventType constant in protocol/constants/events.json) and a 'data' payload. No Go or console test currently reads this file; it is retained as sample SSE event data. Routing fields (web_session_id, investigation_id, case_id) are included in 'data' for shape reference only.",
+  "_authority": "client",
+  "_consumers": [
+    "cli",
+    "console"
+  ],
+  "port_check_requested": {
+    "type": "ztd.v1.operator.network.port.check.requested",
+    "data": {
+      "tool_name": "port_check",
+      "execution_id": "fixture-portcheck-exec-001",
+      "status": "requested",
+      "port": "443",
+      "host": "example.com",
+      "web_session_id": "fixture-sess-008",
+      "investigation_id": "fixture-inv-008",
+      "case_id": "fixture-case-008",
+      "timestamp": "2026-01-15T10:30:06Z"
+    }
+  },
+  "port_check_completed": {
+    "type": "ztd.v1.operator.network.port.check.completed",
+    "data": {
+      "tool_name": "port_check",
+      "execution_id": "fixture-portcheck-exec-001",
+      "status": "completed",
+      "port": "443",
+      "host": "example.com",
+      "is_open": true,
+      "web_session_id": "fixture-sess-009",
+      "investigation_id": "fixture-inv-009",
+      "case_id": "fixture-case-009",
+      "timestamp": "2026-01-15T10:30:07Z"
+    }
+  },
+  "port_check_failed": {
+    "type": "ztd.v1.operator.network.port.check.failed",
+    "data": {
+      "tool_name": "port_check",
+      "execution_id": "fixture-portcheck-exec-002",
+      "status": "failed",
+      "port": "443",
+      "host": "example.com",
+      "error": "Fixture port check failure message.",
+      "web_session_id": "fixture-sess-010",
+      "investigation_id": "fixture-inv-010",
+      "case_id": "fixture-case-010",
+      "timestamp": "2026-01-15T10:30:08Z"
+    }
+  },
+  "operator_command_requested": {
+    "type": "ztd.v1.operator.command.requested",
+    "data": {
+      "tool_name": "execute_bash",
+      "execution_id": "fixture-cmd-exec-001",
+      "status": "requested",
+      "display_detail": "ls -la /var/log",
+      "web_session_id": "fixture-sess-012",
+      "investigation_id": "fixture-inv-012",
+      "case_id": "fixture-case-012",
+      "timestamp": "2026-01-15T10:30:10Z"
+    }
+  },
+  "operator_command_started": {
+    "type": "ztd.v1.operator.command.started",
+    "data": {
+      "tool_name": "execute_bash",
+      "execution_id": "fixture-cmd-exec-001",
+      "status": "running",
+      "display_detail": "ls -la /var/log",
+      "web_session_id": "fixture-sess-013",
+      "investigation_id": "fixture-inv-013",
+      "case_id": "fixture-case-013",
+      "timestamp": "2026-01-15T10:30:11Z"
+    }
+  },
+  "operator_command_completed": {
+    "type": "ztd.v1.operator.command.completed",
+    "data": {
+      "tool_name": "execute_bash",
+      "execution_id": "fixture-cmd-exec-001",
+      "status": "completed",
+      "content": "drwxr-xr-x  root root 4096 Jan 15 10:30 /var/log",
+      "web_session_id": "fixture-sess-014",
+      "investigation_id": "fixture-inv-014",
+      "case_id": "fixture-case-014",
+      "timestamp": "2026-01-15T10:30:12Z"
+    }
+  },
+  "operator_command_failed": {
+    "type": "ztd.v1.operator.command.failed",
+    "data": {
+      "tool_name": "execute_bash",
+      "execution_id": "fixture-cmd-exec-002",
+      "status": "failed",
+      "error": "Fixture command execution failure message.",
+      "web_session_id": "fixture-sess-015",
+      "investigation_id": "fixture-inv-015",
+      "case_id": "fixture-case-015",
+      "timestamp": "2026-01-15T10:30:13Z"
+    }
+  },
+  "platform_sse_connection_established": {
+    "type": "ztd.v1.platform.sse.connection.established",
+    "data": {
+      "web_session_id": "fixture-sess-018",
+      "timestamp": "2026-01-15T10:30:00Z"
+    }
+  },
+  "platform_sse_keepalive_sent": {
+    "type": "ztd.v1.platform.sse.keepalive.sent",
+    "data": {
+      "web_session_id": "fixture-sess-018",
+      "timestamp": "2026-01-15T10:30:15Z"
+    }
+  }
+}

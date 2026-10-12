@@ -1,0 +1,222 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package vault
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+)
+
+// VaultHeader contains the metadata and wrapped DEK for an encrypted vault.
+// The header is stored at .ztd/vault/vault.header as JSON.
+// The DEK is wrapped (encrypted) with the KEK derived from the operator's private key.
+type VaultHeader struct {
+	Version        int        `json:"version"`
+	CreatedAt      time.Time  `json:"created_at"`
+	LastRekeyedAt  *time.Time `json:"last_rekeyed_at,omitempty"`
+	KDF            KDFParams  `json:"kdf"`
+	KEK            KEKParams  `json:"kek"`
+	DEK            DEKParams  `json:"dek"`
+	KeyFingerprint string     `json:"key_fingerprint"`
+}
+
+// KDFParams contains key derivation function configuration
+type KDFParams struct {
+	Algorithm string `json:"algorithm"`
+	Info      string `json:"info"`
+}
+
+// KEKParams contains key encryption key configuration
+type KEKParams struct {
+	Algorithm string `json:"algorithm"`
+}
+
+// DEKParams contains the wrapped data encryption key
+type DEKParams struct {
+	Algorithm string `json:"algorithm"`
+	Wrapped   string `json:"wrapped"`
+}
+
+const (
+	VaultHeaderVersion = 1
+
+	KDFAlgorithm = "hkdf-sha256"
+	KEKAlgorithm = "aes-256-kw"
+	DEKAlgorithm = "aes-256-gcm"
+)
+
+// NewVaultHeader creates a new vault header with a freshly generated DEK
+// wrapped with a KEK derived from the provided private key.
+func NewVaultHeader(privateKey []byte) (*VaultHeader, []byte, error) {
+	kek, err := DeriveKEK(privateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to derive KEK: %w", err)
+	}
+	defer SecureZero(kek)
+
+	dek, err := GenerateDEK()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate DEK: %w", err)
+	}
+
+	wrappedDEK, err := AESKeyWrap(kek, dek)
+	if err != nil {
+		SecureZero(dek)
+		return nil, nil, fmt.Errorf("failed to wrap DEK: %w", err)
+	}
+
+	header := &VaultHeader{
+		Version:   VaultHeaderVersion,
+		CreatedAt: time.Now().UTC(),
+		KDF: KDFParams{
+			Algorithm: KDFAlgorithm,
+			Info:      HKDFInfo,
+		},
+		KEK: KEKParams{
+			Algorithm: KEKAlgorithm,
+		},
+		DEK: DEKParams{
+			Algorithm: DEKAlgorithm,
+			Wrapped:   base64.StdEncoding.EncodeToString(wrappedDEK),
+		},
+		KeyFingerprint: hex.EncodeToString(PrivateKeyFingerprint(privateKey)),
+	}
+
+	return header, dek, nil
+}
+
+// UnwrapDEK unwraps the DEK using the provided private key.
+func (h *VaultHeader) UnwrapDEK(privateKey []byte) ([]byte, error) {
+	expectedFingerprint := hex.EncodeToString(PrivateKeyFingerprint(privateKey))
+	if h.KeyFingerprint != expectedFingerprint {
+		return nil, constants.ErrVaultKeyFingerprintMatch
+	}
+
+	kek, err := DeriveKEK(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive KEK: %w", err)
+	}
+	defer SecureZero(kek)
+
+	wrappedDEK, err := base64.StdEncoding.DecodeString(h.DEK.Wrapped)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode wrapped DEK: %w", err)
+	}
+
+	dek, err := AESKeyUnwrap(kek, wrappedDEK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unwrap DEK: %w", err)
+	}
+
+	return dek, nil
+}
+
+// Rekey re-wraps the DEK with a new private key.
+func (h *VaultHeader) Rekey(oldPrivateKey, newPrivateKey []byte) error {
+	dek, err := h.UnwrapDEK(oldPrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to unwrap DEK with old key: %w", err)
+	}
+	defer SecureZero(dek)
+
+	newKEK, err := DeriveKEK(newPrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to derive new KEK: %w", err)
+	}
+	defer SecureZero(newKEK)
+
+	wrappedDEK, err := AESKeyWrap(newKEK, dek)
+	if err != nil {
+		return fmt.Errorf("failed to wrap DEK with new key: %w", err)
+	}
+
+	now := time.Now().UTC()
+	h.LastRekeyedAt = &now
+	h.DEK.Wrapped = base64.StdEncoding.EncodeToString(wrappedDEK)
+	h.KeyFingerprint = hex.EncodeToString(PrivateKeyFingerprint(newPrivateKey))
+
+	return nil
+}
+
+func vaultHeaderPath() string {
+	return filepath.Join(constants.VaultDirname, constants.VaultHeaderFilename)
+}
+
+// Save writes the header through the runtime-owned file service.
+func (h *VaultHeader) Save(fileSvc fs.RuntimeFileService) error {
+	if fileSvc == nil {
+		return fmt.Errorf("vault header save: %w", constants.ErrMissingRequiredField)
+	}
+
+	data, err := json.MarshalIndent(h, "", "  ")
+	if err != nil {
+		return fmt.Errorf("vault header: marshal: %w", err)
+	}
+	if err := fileSvc.WriteFile(context.Background(), vaultHeaderPath(), data, constants.PermFilePrivate); err != nil {
+		return fmt.Errorf("vault header: write: %w", err)
+	}
+	return nil
+}
+
+// LoadVaultHeader loads a vault header through the runtime-owned file service.
+func LoadVaultHeader(fileSvc fs.RuntimeFileService) (*VaultHeader, error) {
+	if fileSvc == nil {
+		return nil, fmt.Errorf("vault header load: %w", constants.ErrMissingRequiredField)
+	}
+
+	data, err := fileSvc.ReadFile(context.Background(), vaultHeaderPath())
+	if err != nil {
+		if errors.Is(err, constants.ErrNotFound) {
+			return nil, constants.ErrVaultHeaderNotFound
+		}
+		return nil, fmt.Errorf("vault header: read: %w", err)
+	}
+
+	var header VaultHeader
+	if err := json.Unmarshal(data, &header); err != nil {
+		return nil, constants.ErrVaultHeaderCorrupted
+	}
+	if header.Version > VaultHeaderVersion {
+		return nil, constants.ErrVaultHeaderVersionUnsup
+	}
+	return &header, nil
+}
+
+// VaultHeaderExists checks whether the runtime vault header exists.
+func VaultHeaderExists(fileSvc fs.RuntimeFileService) (bool, error) {
+	if fileSvc == nil {
+		return false, fmt.Errorf("vault header exists: %w", constants.ErrMissingRequiredField)
+	}
+	return fileSvc.FileExists(context.Background(), vaultHeaderPath())
+}
+
+// DeleteVaultHeader removes the vault header through the runtime-owned file service.
+func DeleteVaultHeader(fileSvc fs.RuntimeFileService) error {
+	if fileSvc == nil {
+		return fmt.Errorf("vault header delete: %w", constants.ErrMissingRequiredField)
+	}
+	if err := fileSvc.Remove(context.Background(), vaultHeaderPath()); err != nil {
+		return fmt.Errorf("vault header: delete: %w", err)
+	}
+	return nil
+}
+
+// ValidatePrivateKey checks if the provided private key matches the vault's key fingerprint.
+func (h *VaultHeader) ValidatePrivateKey(privateKey []byte) bool {
+	expectedFingerprint := hex.EncodeToString(PrivateKeyFingerprint(privateKey))
+	return h.KeyFingerprint == expectedFingerprint
+}

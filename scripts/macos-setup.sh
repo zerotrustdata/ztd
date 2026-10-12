@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Lateralus Labs, LLC.
+# Use of this source code is governed by the Business Source License
+# included in the LICENSE file.
+#
+# As of the Change Date listed in the LICENSE file, this software is
+# released under the Apache License, Version 2.0.
+
+# ztd macOS dev setup: install the toolchain, build evaluation-explorer, make
+# build, install the contributor toolchain that `make ci` needs (Go dev tools,
+# Node deps), and offer to add the repository root to PATH.
+# Pass --build-only to stop after `make build`.
+# See docs/architecture/scripts.md and docs/guides/getting_started.md
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/dev-setup-common.sh
+source "${SCRIPT_DIR}/lib/dev-setup-common.sh"
+
+ztd_macos_brew_install() {
+    local packages=("$@")
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "FATAL: Homebrew is required on macOS. Install it from https://brew.sh"
+        exit 1
+    fi
+    brew install "${packages[@]}"
+}
+
+ztd_macos_install_missing() {
+    local missing=("$@")
+    local brew_packages=()
+    local item
+
+    for item in "${missing[@]}"; do
+        case "$item" in
+            git) brew_packages+=("git") ;;
+            make) brew_packages+=("make") ;;
+            go) brew_packages+=("go") ;;
+            node) brew_packages+=("node") ;;
+            rg) brew_packages+=("ripgrep") ;;
+            bc) brew_packages+=("bc") ;;
+            cc)
+                echo "A C compiler is required by the Go race detector. Install the Xcode Command Line Tools:"
+                echo "  xcode-select --install"
+                echo "Finish that installer, then rerun: bash scripts/macos-setup.sh"
+                ;;
+            curl) echo "curl ships with macOS; check that /usr/bin is on PATH." ;;
+        esac
+    done
+
+    if [[ ${#brew_packages[@]} -gt 0 ]]; then
+        echo "They can be installed via: brew install ${brew_packages[*]}"
+        if ztd_setup_confirm "Install with Homebrew now? [y/N] "; then
+            ztd_macos_brew_install "${brew_packages[@]}"
+        fi
+    fi
+}
+
+ztd_setup_init "$@"
+ztd_setup_main macOS ztd_macos_install_missing scripts/macos-setup.sh
