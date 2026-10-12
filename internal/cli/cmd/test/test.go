@@ -298,19 +298,13 @@ func testLintCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "lint",
 		Short: "Run linting and quality checks",
-		Long:  `Run golangci-lint with modern Go 1.26.3 best practices. This includes staticcheck, govet, and additional linters for bug prevention, security, and code quality.`,
+		Long:  `Run golangci-lint with the repository configuration. This includes staticcheck, govet, and additional linters for bug prevention, security, and code quality. Install the pinned golangci-lint with make dev-tools.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Running linting and quality checks...")
 
-			// Check if golangci-lint is installed
+			// The Makefile owns the golangci-lint pin; install it with make dev-tools.
 			if _, err := exec.LookPath("golangci-lint"); err != nil {
-				fmt.Println("golangci-lint not found. Installing...")
-				installCmd := exec.Command("go", "install", "github.com/golangci/golangci-lint/cmd/golangci-lint@v2.12.2")
-				installCmd.Stdout = os.Stdout
-				installCmd.Stderr = os.Stderr
-				if err := installCmd.Run(); err != nil {
-					return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-				}
+				return fmt.Errorf("%w: golangci-lint not on PATH (run make dev-tools): %w", constants.ErrLintingFailed, err)
 			}
 
 			// Run golangci-lint

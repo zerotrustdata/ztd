@@ -57,7 +57,7 @@ Documents how to stage ztd for deployment in network-isolated environments using
 
 | ID | Rule |
 | :--- | :--- |
-| INV-AIR-BUILD-01 | Native binary builds MUST use `GOTOOLCHAIN=local GOFLAGS=-mod=vendor` to ensure the checked-in vendor tree provides all dependencies. Go 1.26.9 must already be installed; automatic toolchain downloading is prohibited. |
+| INV-AIR-BUILD-01 | Native binary builds MUST use `GOTOOLCHAIN=local GOFLAGS=-mod=vendor` to ensure the checked-in vendor tree provides all dependencies. Go 1.27.2 must already be installed; automatic toolchain downloading is prohibited. |
 | INV-AIR-BUILD-02 | A source archive MUST include committed Gateway frontend embeds. `make build` uses those embeds when local `dist/` trees are absent. |
 | INV-AIR-BUILD-03 | `make test-airgap` verifies vendor tree presence and a vendored Go build, but does NOT verify runtime egress blocking or endpoint configuration. |
 
@@ -83,7 +83,7 @@ Documents how to stage ztd for deployment in network-isolated environments using
 ### Supported deployment forms
 
 1. **Native binary**: Transfer a prebuilt static `ztd` binary and its `.sha256` checksum sidecar for the target OS and architecture. No runtime compiler or toolchain is required on the target host.
-2. **Offline source build**: Transfer the complete source tree including `vendor/`, the committed evaluation-explorer and console embeds, and a build host with Go 1.26.9 pre-installed.
+2. **Offline source build**: Transfer the complete source tree including `vendor/`, the committed evaluation-explorer and console embeds, and a build host with Go 1.27.2 pre-installed.
 
 ### Runtime network behavior in air-gap
 

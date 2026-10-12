@@ -14,7 +14,7 @@
 #   checksums <bin-dir>                    Write checksums-sha256.txt for expected binaries.
 #   verify <bin-dir> <version> <revision>  Require the complete, unstale binary set, matching
 #                                          .sha256 files, manifest digests, and build metadata.
-#   sign <bin-dir>                         cosign keyless sign-blob per binary (.sig + .sigstore.json),
+#   sign <bin-dir>                         cosign keyless sign-blob per binary (.sigstore.json bundle),
 #                                          then verify each bundle against the workflow identity.
 #   verify-signatures <bin-dir>            Verify every .sigstore.json bundle against the identity.
 #   stage <bin-dir> <out-dir>              Copy exactly the publishable file set into out-dir.
@@ -115,7 +115,7 @@ cmd_verify() {
 		[ -e "$path" ] || continue
 		name=$(basename "$path")
 		case "$name" in
-			*.sha256|*.sig|*.sigstore.json) continue ;;
+			*.sha256|*.sigstore.json) continue ;;
 		esac
 		grep -qxF "$name" <<<"$names" || die "unexpected binary in release set: $name"
 	done
@@ -161,7 +161,6 @@ cmd_sign() {
 		[ -s "$dir/$name" ] || die "missing binary: $name"
 		# Keyless signing: the Fulcio certificate is embedded in the bundle.
 		cosign sign-blob --yes "$dir/$name" \
-			--output-signature "$dir/$name.sig" \
 			--bundle "$dir/$name.sigstore.json"
 	done
 	cmd_verify_signatures "$dir"
@@ -174,7 +173,6 @@ cmd_verify_signatures() {
 	names=$(expected_binaries)
 	for name in $names; do
 		[ -s "$dir/$name.sigstore.json" ] || die "missing signature bundle: $name.sigstore.json"
-		[ -s "$dir/$name.sig" ] || die "missing signature: $name.sig"
 		cosign verify-blob \
 			--bundle "$dir/$name.sigstore.json" \
 			--certificate-identity "$id" \
@@ -190,7 +188,7 @@ cmd_stage() {
 	rm -rf "$out"
 	mkdir -p "$out"
 	for name in $names; do
-		cp "$dir/$name" "$dir/$name.sha256" "$dir/$name.sig" "$dir/$name.sigstore.json" "$out/"
+		cp "$dir/$name" "$dir/$name.sha256" "$dir/$name.sigstore.json" "$out/"
 	done
 	cp "$dir/checksums-sha256.txt" "$dir/ztd-binaries.json" "$out/"
 	set -- "$out"/*

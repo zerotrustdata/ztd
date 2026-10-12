@@ -148,13 +148,13 @@ make release
 
 ### Release Signing
 
-`.github/workflows/release-binary.yml` signs each binary in the release set keylessly with `cosign sign-blob --bundle`, using the workflow's GitHub OIDC identity. Each binary ships with `<binary>.sha256`, `<binary>.sig`, and `<binary>.sigstore.json`. No long-lived signing key exists for release binaries. `scripts/release-artifacts.sh` owns signing and verification helpers (`sign`, `verify-signatures`), and the workflow verifies every bundle before staging and again after download.
+`.github/workflows/release-binary.yml` signs each binary in the release set keylessly with `cosign sign-blob --bundle`, using the workflow's GitHub OIDC identity. Each binary ships with `<binary>.sha256` and `<binary>.sigstore.json`; the Sigstore bundle carries the signature, certificate, and transparency-log proof. No long-lived signing key exists for release binaries. `scripts/release-artifacts.sh` owns signing and verification helpers (`sign`, `verify-signatures`), and the workflow verifies every bundle before staging and again after download.
 
 The public signer identity is `https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/vX.Y.Z`, with OIDC issuer `https://token.actions.githubusercontent.com`. Verification procedures reside in [Verify a release binary](../guides/getting_started.md#verify-a-release-binary).
 
 ### Website Download Set and Promotion (R2)
 
-The publish job in `.github/workflows/release-binary.yml` publishes the 30-file release set (7 targets × binary, `.sha256`, `.sig`, `.sigstore.json`, plus `checksums-sha256.txt` and `ztd-binaries.json`) to the `ztd-releases` R2 bucket in three steps:
+The publish job in `.github/workflows/release-binary.yml` publishes the 23-file release set (7 targets × binary, `.sha256`, `.sigstore.json`, plus `checksums-sha256.txt` and `ztd-binaries.json`) to the `ztd-releases` R2 bucket in three steps:
 
 1. **Versioned upload:** The set is written under `s3://ztd-releases/v<VERSION>/` and each object is read back and compared by SHA-256 against the verified local file. Refuses write when prefix already holds objects.
 2. **GitHub publish:** `gh release edit --draft=false` marks GitHub release public.

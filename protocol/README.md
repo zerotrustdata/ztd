@@ -6,7 +6,7 @@ The protocol directory contains the shared wire contracts, external constant reg
 
 ### Go
 
-The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, which requires Go 1.26.9. Install the module with `go get github.com/zerotrustdata/ztd`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
+The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, which requires Go 1.27.2. Install the module with `go get github.com/zerotrustdata/ztd`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
 
 ### TypeScript
 

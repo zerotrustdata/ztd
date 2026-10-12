@@ -28,7 +28,7 @@ jobs:
 
       - name: Preserve governed onboarding evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-onboarding-evidence
           path: |
@@ -57,7 +57,7 @@ jobs:
 
       - name: Preserve onboarding logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: onboarding-${{ matrix.distro }}
           path: ${{ runner.temp }}/onboarding/
@@ -132,27 +132,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.9'
+          go-version-file: go.mod
           cache: true
           check-latest: true
 
-      - name: Install dependencies
+      - name: Install pinned Go tools
         run: |
-          go install github.com/bufbuild/buf/cmd/buf@v1.70.0
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
-          go install github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc@v1.5.1
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          go install github.com/swaggo/swag/cmd/swag@v1.16.6
-
-      - name: Install protoc
-        run: |
-          PROTOC_ZIP=protoc-35.0-linux-x86_64.zip
-          curl -fSL https://github.com/protocolbuffers/protobuf/releases/download/v35.0/$PROTOC_ZIP -o /tmp/protoc.zip
-          # sha256 from GitHub release asset digest (protobuf v35.0)
-          echo "a45cda0989c17dd950db55f6fbe1e5814c50fda08e87aa422980ac1f89dddbbc  /tmp/protoc.zip" | sha256sum -c -
-          sudo unzip -o /tmp/protoc.zip -d /usr/local bin/protoc
-          sudo chmod +x /usr/local/bin/protoc
-          rm /tmp/protoc.zip
+          make ci-tools
+          echo "golangci_lint=$(sed -n 's/^GOLANGCI_LINT_VERSION[[:space:]]*:=[[:space:]]*//p' Makefile)" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -178,7 +165,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: ${{ env.golangci_lint }}
 
       - name: Security Scan
         run: make vulncheck
@@ -213,7 +200,7 @@ jobs:
 
       - name: Preserve Operator lifecycle evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: operator-deployment-lifecycle
           path: ${{ runner.temp }}/ztd-deployment-lifecycle/out/
@@ -230,7 +217,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.9'
+          go-version-file: go.mod
           cache: true
 
       - name: Go smoke test
@@ -278,14 +265,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.9'
+          go-version-file: go.mod
           cache: true
 
       - name: Install go-licenses
         run: |
           # sum.golang.org intermittently drops streams mid-install; retry rather than fail the gate.
           for attempt in 1 2 3; do
-            timeout 180 go install github.com/google/go-licenses@v1.6.0 && exit 0
+            timeout 180 go install github.com/google/go-licenses/v2@v2.0.1 && exit 0
             echo "go-licenses install attempt ${attempt} failed" >&2
           done
           exit 1
@@ -386,7 +373,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.9'
+          go-version-file: go.mod
           cache: true
 
       - name: Check third-party notices

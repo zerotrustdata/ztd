@@ -5829,6 +5829,9 @@
         "webauthncose.COSEAlgorithmIdentifier": {
             "type": "integer",
             "enum": [
+                -48,
+                -49,
+                -50,
                 -7,
                 -8,
                 -9,
@@ -5847,6 +5850,9 @@
                 -65535
             ],
             "x-enum-varnames": [
+                "AlgMLDSA44",
+                "AlgMLDSA65",
+                "AlgMLDSA87",
                 "AlgES256",
                 "AlgEdDSA",
                 "AlgESP256",

@@ -198,11 +198,12 @@ test('CORS preflight for metadata answers without reading latest.json', async ()
 test('releaseKey accepts every published release-set file and nothing else', () => {
   for (const name of [
     'ztd-linux-386', 'ztd-darwin-arm64', 'ztd-windows-arm64.exe.sigstore.json',
-    'ztd-darwin-amd64.sig', 'checksums-sha256.txt', 'ztd-binaries.json'
+    'ztd-darwin-amd64.sha256', 'checksums-sha256.txt', 'ztd-binaries.json'
   ]) {
     assert.equal(releaseKey(`/${name}`), name, name);
   }
   assert.equal(releaseKey('/ztd-linux-amd64.sigstore'), null);
+  assert.equal(releaseKey('/ztd-darwin-amd64.sig'), null);
   assert.equal(releaseKey('/ztd-binaries.json.bak'), null);
   assert.equal(releaseKey('/ztd-windows-386.exe'), null);
 });

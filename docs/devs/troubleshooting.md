@@ -61,7 +61,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-ENV-01 | CLI commands MUST be run from the checkout root. Running from a subdirectory resolves a different `.ztd/` runtime tree. |
-| INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.26.9). |
+| INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.2). |
 | INV-TROUBLE-ENV-03 | A newly built binary MUST be produced with `make build`, which compiles `cmd/ztd` and places the runnable executable at `./ztd`. |
 
 ### Gateway startup and vault (`INV-TROUBLE-GW`)
@@ -92,7 +92,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Go version requirement | `go.mod` | `go 1.26.9` |
+| Go version requirement | `go.mod` | `go 1.27.2` |
 | Platform build target | `Makefile`, `cmd/ztd` | `make build` |
 | Gateway launch profile | `internal/cli/serve/gateway.go` | `.ztd/pids/operator-launch-profile.json` |
 | Vault key path | `internal/constants/paths.go` | `VaultKeyRel` (`vault/key`) |

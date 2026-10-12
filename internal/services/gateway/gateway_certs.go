@@ -556,7 +556,7 @@ func (pki *PKIAuthority) GenerateCRL(ctx context.Context) (crlDER []byte, err er
 	}
 
 	// Build revoked certificate list for CRL
-	revokedCerts := []pkix.RevokedCertificate{}
+	revokedCerts := []x509.RevocationListEntry{}
 	now := time.Now().UTC()
 
 	for _, doc := range docs {
@@ -579,7 +579,7 @@ func (pki *PKIAuthority) GenerateCRL(ctx context.Context) (crlDER []byte, err er
 			revokedAt = now
 		}
 
-		revokedCerts = append(revokedCerts, pkix.RevokedCertificate{
+		revokedCerts = append(revokedCerts, x509.RevocationListEntry{
 			SerialNumber:   serial,
 			RevocationTime: revokedAt,
 		})
@@ -587,11 +587,11 @@ func (pki *PKIAuthority) GenerateCRL(ctx context.Context) (crlDER []byte, err er
 
 	// Create CRL template
 	crlTemplate := &x509.RevocationList{
-		SignatureAlgorithm:  x509.ECDSAWithSHA256,
-		RevokedCertificates: revokedCerts,
-		Number:              big.NewInt(1), // Simple version number
-		ThisUpdate:          now,
-		NextUpdate:          now.Add(24 * time.Hour), // CRL valid for 24 hours
+		SignatureAlgorithm:        x509.ECDSAWithSHA256,
+		RevokedCertificateEntries: revokedCerts,
+		Number:                    big.NewInt(1), // Simple version number
+		ThisUpdate:                now,
+		NextUpdate:                now.Add(24 * time.Hour), // CRL valid for 24 hours
 	}
 
 	// Generate CRL signed by Operator intermediate CA

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-const RELEASE_PATH = /^(?:ztd-(?:linux-(?:amd64|arm64|386)|darwin-(?:amd64|arm64)|windows-(?:amd64|arm64)\.exe)(?:\.sha256|\.sig|\.sigstore\.json)?|checksums-sha256\.txt|ztd-binaries\.json)$/;
+const RELEASE_PATH = /^(?:ztd-(?:linux-(?:amd64|arm64|386)|darwin-(?:amd64|arm64)|windows-(?:amd64|arm64)\.exe)(?:\.sha256|\.sigstore\.json)?|checksums-sha256\.txt|ztd-binaries\.json)$/;
 const TEXT_ARTIFACT = /\.(?:sha256|sig)$|^checksums-sha256\.txt$/;
 const JSON_ARTIFACT = /\.sigstore\.json$|^ztd-binaries\.json$/;
 const METADATA_ARTIFACT = /\.(?:sha256|sig|sigstore\.json)$|^(?:checksums-sha256\.txt|ztd-binaries\.json|latest\.json)$/;

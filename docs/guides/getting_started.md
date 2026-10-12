@@ -140,7 +140,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 
 | Requirement | Version | Notes |
 | :--- | :--- | :--- |
-| Go | 1.26.9 | Required to build from source |
+| Go | 1.27.2 | Required to build from source |
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
@@ -193,7 +193,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with three companion files: `<binary>.sha256` (checksum), `<binary>.sig` (signature), and `<binary>.sigstore.json` (Sigstore bundle). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.0`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.0`, then run both checks there.
 
 Run the checksum check:
 
@@ -212,7 +212,7 @@ $actual = (Get-FileHash -Algorithm SHA256 .\ztd-windows-amd64.exe).Hash
 if ($expected -ne $actual) { throw 'checksum mismatch: do not run this binary' }
 ```
 
-Then verify the signer identity with `cosign` 2.0 or later:
+Then verify the signer identity with `cosign` 3.0 or later:
 
 ```bash
 cosign verify-blob \

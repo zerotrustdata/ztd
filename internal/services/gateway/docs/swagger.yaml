@@ -2677,6 +2677,9 @@ definitions:
     - VerificationDiscouraged
   webauthncose.COSEAlgorithmIdentifier:
     enum:
+    - -48
+    - -49
+    - -50
     - -7
     - -8
     - -9
@@ -2695,6 +2698,9 @@ definitions:
     - -65535
     type: integer
     x-enum-varnames:
+    - AlgMLDSA44
+    - AlgMLDSA65
+    - AlgMLDSA87
     - AlgES256
     - AlgEdDSA
     - AlgESP256

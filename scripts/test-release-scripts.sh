@@ -147,21 +147,20 @@ printf stray > "$BIN/ztd-linux-mips"
 scripts/release-artifacts.sh verify "$BIN" 1.0.0 "$HEAD_SHA" >/dev/null 2>&1 && fail 'stray artifact was accepted'
 rm "$BIN/ztd-linux-mips"
 
-# Stage exercises exact file selection only. Placeholder signatures are never
+# Stage exercises exact file selection only. Placeholder bundles are never
 # passed to cosign and do not represent verified signatures.
 for name in "${NAMES[@]}"; do
-	printf 'fixture signature placeholder\n' > "$BIN/$name.sig"
 	printf '{"fixture":"placeholder"}\n' > "$BIN/$name.sigstore.json"
 done
 STAGED="$SCRATCH/staged"
 scripts/release-artifacts.sh stage "$BIN" "$STAGED" >/dev/null
 EXPECTED_FILES=()
 for name in "${NAMES[@]}"; do
-	EXPECTED_FILES+=("$name" "$name.sha256" "$name.sig" "$name.sigstore.json")
+	EXPECTED_FILES+=("$name" "$name.sha256" "$name.sigstore.json")
 done
 EXPECTED_FILES+=(checksums-sha256.txt ztd-binaries.json)
 printf '%s\n' "${EXPECTED_FILES[@]}" | sort > "$SCRATCH/expected-files"
 find "$STAGED" -maxdepth 1 -type f -printf '%f\n' | sort > "$SCRATCH/actual-files"
 diff -u "$SCRATCH/expected-files" "$SCRATCH/actual-files" || fail 'staged release set does not contain exactly the catalog artifacts'
-[ "$(wc -l < "$SCRATCH/actual-files")" -eq 30 ] || fail 'staged release set does not contain 30 files'
+[ "$(wc -l < "$SCRATCH/actual-files")" -eq 23 ] || fail 'staged release set does not contain 23 files'
 echo 'PASS: catalog artifact completeness, checksums, revision/manifest/tamper/stray rejection, and staging names'

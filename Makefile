@@ -154,13 +154,14 @@ COVERAGE_PCT   = go tool cover -func=coverage_filtered.out | tail -1 | awk '{pri
 # TOOLS
 # =============================================================================
 # Protocol buffer plugin versions - update these when upgrading tools
-PROTOC_GEN_GO_VERSION := v1.36.11
+PROTOC_GEN_GO_VERSION := v1.36.12
 PROTOC_GEN_DOC_VERSION := v1.5.1
 
-# Developer toolchain pins. Keep in sync with .github/workflows/build-and-test.yml;
-# `make dev-tools` and `make dev-check` read these.
-BUF_VERSION := v1.70.0
-GOLANGCI_LINT_VERSION := v2.12.2
+# Developer toolchain pins. These are the only copy: CI installs them with
+# `make ci-tools` and reads GOLANGCI_LINT_VERSION for golangci-lint-action;
+# `make dev-tools` and `make dev-check` read them locally.
+BUF_VERSION := v1.73.0
+GOLANGCI_LINT_VERSION := v2.14.0
 GOVULNCHECK_VERSION := v1.9.0
 SWAG_VERSION := v1.16.6
 
@@ -169,13 +170,15 @@ SWAG_VERSION := v1.16.6
 PROTO_PLUGIN_PKGS := \
 	google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION) \
 	github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc@$(PROTOC_GEN_DOC_VERSION)
-# govulncheck and swag are pinned to the same versions CI installs (build-and-test.yml).
-GO_DEV_TOOL_PKGS := \
+# CI gets golangci-lint from golangci-lint-action, so ci-tools omits it.
+GO_CI_TOOL_PKGS := \
 	github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) \
 	$(PROTO_PLUGIN_PKGS) \
-	github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) \
 	golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) \
 	github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
+GO_DEV_TOOL_PKGS := \
+	$(GO_CI_TOOL_PKGS) \
+	github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 # Recursive (=) so the lookup runs when a recipe uses it, after buf-install has
 # had the chance to put buf on PATH. $(shell) does not see the exported PATH on
@@ -415,11 +418,14 @@ hooks-install:
 	@echo "Git hooks installed (core.hooksPath=scripts/git-hooks)."
 
 # Go-based tools (buf, protoc plugins, golangci-lint, govulncheck, swag).
-# Explicit `make dev-tools` refreshes every tool to the pinned versions.
-.PHONY: dev-tools
-dev-tools:
-	@echo "Installing Go dev tools into $(GO_BIN_DIR)..."
-	@for pkg in $(GO_DEV_TOOL_PKGS); do \
+# Explicit `make dev-tools` refreshes every tool to the pinned versions;
+# `make ci-tools` installs the CI subset.
+dev-tools: TOOL_PKGS = $(GO_DEV_TOOL_PKGS)
+ci-tools: TOOL_PKGS = $(GO_CI_TOOL_PKGS)
+.PHONY: dev-tools ci-tools
+dev-tools ci-tools:
+	@echo "Installing Go tools into $(GO_BIN_DIR)..."
+	@for pkg in $(TOOL_PKGS); do \
 		echo "  go install $$pkg"; \
 		go install $$pkg || exit 1; \
 	done

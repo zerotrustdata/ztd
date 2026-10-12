@@ -93,7 +93,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-ENV-01 | The Go toolchain MUST satisfy the `go` line in `go.mod` (Go 1.26.9). Setup scripts read that line and check the development toolchain, including Node.js 22.22.2+, 24.15+, or 26+ and `npm`; a fresh `make build` uses committed frontend embeds and does not require Node.js. |
+| INV-ENV-01 | The Go toolchain MUST satisfy the `go` line in `go.mod` (Go 1.27.2). Setup scripts read that line and check the development toolchain, including Node.js 22.22.2+, 24.15+, or 26+ and `npm`; a fresh `make build` uses committed frontend embeds and does not require Node.js. |
 | INV-ENV-02 | Commands in this guide MUST be run from the repository root unless the owning component guide specifies otherwise. |
 | INV-ENV-03 | CLI behavior MUST be taken from `./ztd <command> --help`. This file MUST NOT grow a flag inventory. |
 | INV-ENV-04 | Environment variables MUST be read only through typed keys in `protocol/constants/env_vars.json`, which assigns each key one of four categories: `secret` (API keys, tokens, client secrets, encryption keys), `user_endpoint` (user-specific endpoint or identity with no universal default), `host` (OS-provided host fact, e.g. `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TZ`, `SSH_AUTH_SOCK`), and `test` (test-harness selector read only by test tooling, e.g. `ZTD_E2E_FLEET_SESSIONS`). Platform configuration (ports, paths, passkey origins, consensus, doctrine, vault paths) is never read from environment variables; it is a typed default in code or an explicit command flag. Every env key MUST be declared with a `category` in `protocol/constants/env_vars.json`; raw-string keys outside the registry are prohibited (`INV-TYPE-06`). Repo-root `.env.example` is verified by `make constants-check`. |
@@ -249,7 +249,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Go version and module | `go.mod` | `go` directive is `1.26.9` |
+| Go version and module | `go.mod` | `go` directive is `1.27.2` |
 | Setup prerequisites | `scripts/lib/dev-setup-common.sh`, `scripts/linux-setup.sh`, `scripts/macos-setup.sh`, `scripts/windows-setup.ps1`, `scripts/dev-check.sh` | Setup scripts read Go version from `go.mod` and tool pins from `Makefile`; development checks include Node.js 22.22.2+, 24.15+, or 26+ and `npm`. CI targets run `make dev-check` first. Fresh clones run `make build` using committed frontend embeds. |
 | Platform CLI binary | `Makefile` (`MAIN_PKG := ./cmd/ztd`), `cmd/ztd` | `make build` writes `bin/ztd-<os>-<arch>` and copies runnable binary to repo root |
 | Cobra root and groups | `internal/cli/cmd/main.go`, `internal/cli/cmd/<group>/` | `./ztd --help` |
