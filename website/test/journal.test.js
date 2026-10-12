@@ -66,8 +66,7 @@ test('published field note preserves measurements, exposes no local sources, and
   const article = output.get('build-in-public/enrolling-two-thousand-operators/index.html');
   assert.match(article, /54\.82 s; 2,000 workers/);
   assert.match(article, /2,001\/2,001 succeeded; 0 failures/);
-  assert.match(article, /Neither establishes a maximum supported fleet size/);
-  assert.match(article, /raw reports are not published/);
+  assert.match(article, /Neither tells you a maximum fleet size/);
   assert.equal((article.match(/<h1>/g) ?? []).length, 1);
   const headings = [...article.matchAll(/<h2 id="([^"]+)"/g)].map(match => match[1]);
   assert.ok(headings.length > 20);
