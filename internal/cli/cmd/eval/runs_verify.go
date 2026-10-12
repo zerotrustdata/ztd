@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -27,7 +28,7 @@ type campaignVerificationPublication interface {
 	PublishRunVerification(context.Context, string, *evalv1.EvaluationVerificationReport) (int, error)
 }
 
-type campaignVerificationPublicationFactory func(*cobra.Command, fs.RuntimeFileService) (campaignVerificationPublication, error)
+type campaignVerificationPublicationFactory func(*cobra.Command, fs.RuntimeFileService, *config.Config) (campaignVerificationPublication, error)
 
 type runVerifyJSON struct {
 	RunID          string   `json:"run_id"`
@@ -253,11 +254,11 @@ func verifyRun(
 	}
 	publicationFactory := deps.campaignPublicationFactory
 	if publicationFactory == nil {
-		publicationFactory = func(cmd *cobra.Command, fileSvc fs.RuntimeFileService) (campaignVerificationPublication, error) {
-			return NewCampaignPublicationCoordinator(cmd, fileSvc)
+		publicationFactory = func(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (campaignVerificationPublication, error) {
+			return NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		}
 	}
-	publication, pubErr := publicationFactory(cmd, fileSvc)
+	publication, pubErr := publicationFactory(cmd, fileSvc, cfg)
 	if pubErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: run verify publication unavailable: %v\n", pubErr)
 		return report, nil

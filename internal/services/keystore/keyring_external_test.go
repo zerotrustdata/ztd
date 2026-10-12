@@ -188,14 +188,16 @@ func TestExternalKeyring_SelectionAndContinuity(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "existing value", value)
 	for _, blank := range []string{"", "  \t"} {
-		wrong, err := NewWithFS(fileSvc, logger, Options{MasterKeyFile: blank})
-		require.NoError(t, err)
-		_, err = wrong.DecryptSecret("continuity")
 		// A blank option selects the host OS key store, never the provisioned
-		// file key. That store holds either another key (ciphertext rejected) or
-		// none at all (key not found); the file key must not decrypt either way.
+		// file key. A host without one fails closed at construction; otherwise
+		// the store holds either another key (ciphertext rejected) or none at
+		// all (key not found). The file key must not decrypt in any case.
+		wrong, err := NewWithFS(fileSvc, logger, Options{MasterKeyFile: blank})
+		if err == nil {
+			_, err = wrong.DecryptSecret("continuity")
+		}
 		require.Error(t, err)
-		require.True(t, errors.Is(err, constants.ErrInvalidCiphertext) || errors.Is(err, constants.ErrKeyStoreKeyNotFound), "blank master key file must not select the provisioned key: %v", err)
+		require.True(t, errors.Is(err, constants.ErrKeyStoreOSKeyringRequired) || errors.Is(err, constants.ErrInvalidCiphertext) || errors.Is(err, constants.ErrKeyStoreKeyNotFound), "blank master key file must not select the provisioned key: %v", err)
 	}
 	_, err = Open(fileSvc, logger, Options{MasterKeyFile: filepath.Join(dir, "missing")})
 	require.ErrorIs(t, err, os.ErrNotExist)

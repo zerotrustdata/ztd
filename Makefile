@@ -251,7 +251,7 @@ help:
 		'  third-party-notices       Regenerate THIRD_PARTY_NOTICES.md' \
 		'  third-party-notices-check Check THIRD_PARTY_NOTICES.md for drift' \
 		'  swagger-generate          Generate the Gateway OpenAPI specification' \
-		'  website-build             Render zerotrustdata.io from README.md' \
+		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
 		'  website-test              Test the website generator and Worker' \
 		'' \
 		'Components' \
@@ -315,7 +315,7 @@ third-party-notices-check:
 
 .PHONY: website-build
 website-build:
-	@echo "Rendering zerotrustdata.io from README.md and website/src/index.html..."
+	@echo "Building zerotrustdata.io from website/src, website/content and README.md..."
 	@cd website && npm run build
 
 .PHONY: website-test

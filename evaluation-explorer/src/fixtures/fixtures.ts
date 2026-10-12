@@ -7,6 +7,7 @@
 // renders. Real campaign publication replaces these with live projected records
 // published through the mirror; the store treats both identically.
 
+import { platformRelease } from '../../build-platform-release.ts';
 import type { CampaignProjectionEnvelope } from '../contract/campaign-wire';
 import type {
   AssignmentResult,
@@ -17,8 +18,13 @@ import type {
   MethodologySnapshot,
   ModelSummary,
   ProviderEnvironment,
+  ReleaseProvenance,
   SuiteSummary,
 } from '../contract/types';
+
+// Every fixture snapshot record is recorded against the current platform
+// release so the default release filter shows it.
+export const FIXTURE_RELEASE = { release: platformRelease, release_basis: 'recorded' } as const satisfies ReleaseProvenance;
 
 const NOW = '2026-09-14T08:00:00Z';
 const EXPLO_DATASET = 'ds-exploratory-baseline-20260914-r2';
@@ -45,6 +51,7 @@ export const fixtureProviderEnvironment: ProviderEnvironment = {
 export const fixtureCatalogExploratory: CatalogSnapshot = {
   schema_version: '1.2.0',
   kind: 'catalog_snapshot',
+  ...FIXTURE_RELEASE,
   dataset_id: EXPLO_DATASET,
   dataset_kind: 'exploratory_baseline',
   quality_state: 'exploratory_partial',
@@ -75,6 +82,7 @@ export const fixtureCatalogExploratory: CatalogSnapshot = {
 export const fixtureCatalogVerified: CatalogSnapshot = {
   schema_version: '1.5.0',
   kind: 'catalog_snapshot',
+  ...FIXTURE_RELEASE,
   dataset_id: VERIFIED_DATASET,
   dataset_kind: 'verified_public_snapshot',
   quality_state: 'legacy_unverified',
@@ -105,6 +113,7 @@ export const fixtureCatalogVerified: CatalogSnapshot = {
 export const fixtureCatalogLive: CatalogSnapshot = {
   schema_version: '1.2.0',
   kind: 'catalog_snapshot',
+  ...FIXTURE_RELEASE,
   dataset_id: LIVE_DATASET,
   dataset_kind: 'live_run',
   quality_state: 'live_in_progress',
@@ -267,6 +276,7 @@ const evaluatedVariants: Array<{
 export const fixtureModelSummaries: ModelSummary[] = evaluatedVariants.map((v) => ({
   schema_version: '1.2.0',
   kind: 'model_summary',
+  ...FIXTURE_RELEASE,
   dataset_id: EXPLO_DATASET,
   quality_state: 'exploratory_partial',
   observed_at: NOW,
@@ -311,6 +321,7 @@ const unevaluatedNames = [
 export const fixtureUnevaluatedModels: ModelSummary[] = unevaluatedNames.map((name, i) => ({
   schema_version: '1.2.0',
   kind: 'model_summary',
+  ...FIXTURE_RELEASE,
   dataset_id: EXPLO_DATASET,
   quality_state: 'not_evaluated',
   observed_at: NOW,
@@ -327,6 +338,7 @@ export const fixtureInventoryOnlyModels: ModelSummary[] = [
   {
     schema_version: '1.2.0',
     kind: 'model_summary',
+    ...FIXTURE_RELEASE,
     dataset_id: EXPLO_DATASET,
     quality_state: 'not_evaluated',
     observed_at: NOW,
@@ -354,6 +366,7 @@ const suiteDefs = [
 export const fixtureSuiteSummaries: SuiteSummary[] = suiteDefs.map((s) => ({
   schema_version: '1.2.0',
   kind: 'suite_summary',
+  ...FIXTURE_RELEASE,
   dataset_id: EXPLO_DATASET,
   quality_state: s.verifier === 'passed' ? 'exploratory_verified' : 'exploratory_partial',
   observed_at: NOW,
@@ -382,6 +395,7 @@ export const fixtureSuiteSummaries: SuiteSummary[] = suiteDefs.map((s) => ({
 export const fixtureEvaluationSummaries: EvaluationSummary[] = suiteDefs.map((s) => ({
   schema_version: '1.2.0',
   kind: 'evaluation_summary',
+  ...FIXTURE_RELEASE,
   dataset_id: EXPLO_DATASET,
   quality_state: s.verifier === 'passed' ? 'exploratory_verified' : 'exploratory_partial',
   observed_at: NOW,
@@ -424,6 +438,7 @@ export const fixtureAssignmentResults: AssignmentResult[] = [
   {
     schema_version: '1.2.0',
     kind: 'assignment_result',
+    ...FIXTURE_RELEASE,
     dataset_id: EXPLO_DATASET,
     quality_state: 'exploratory_verified',
     observed_at: NOW,
@@ -484,6 +499,7 @@ export const fixtureAssignmentResults: AssignmentResult[] = [
   {
     schema_version: '1.2.0',
     kind: 'assignment_result',
+    ...FIXTURE_RELEASE,
     dataset_id: EXPLO_DATASET,
     quality_state: 'exploratory_partial',
     observed_at: NOW,
@@ -647,6 +663,7 @@ export const fixtureCampaignResultEnvelope: CampaignProjectionEnvelope = {
 export const fixtureMethodology: MethodologySnapshot = {
   schema_version: '1.2.0',
   kind: 'methodology_snapshot',
+  ...FIXTURE_RELEASE,
   dataset_id: EXPLO_DATASET,
   quality_state: 'exploratory_partial',
   observed_at: NOW,
@@ -865,6 +882,7 @@ export const fixtureLiveEvents: LiveEvent[] = [
 export const fixtureLiveEvaluationSummary: EvaluationSummary = {
   schema_version: '1.2.0',
   kind: 'evaluation_summary',
+  ...FIXTURE_RELEASE,
   dataset_id: LIVE_DATASET,
   quality_state: 'live_in_progress',
   observed_at: '2026-09-14T08:00:05Z',
@@ -933,6 +951,7 @@ const verifiedModels: Array<{
 export const fixtureVerifiedModelSummaries: ModelSummary[] = verifiedModels.map((m) => ({
   schema_version: '1.5.0',
   kind: 'model_summary',
+  ...FIXTURE_RELEASE,
   dataset_id: VERIFIED_DATASET,
   quality_state: 'legacy_unverified',
   observed_at: NOW,
@@ -955,6 +974,7 @@ export const fixtureVerifiedModelSummaries: ModelSummary[] = verifiedModels.map(
 export const fixtureVerifiedSuiteSummary: SuiteSummary = {
   schema_version: '1.5.0',
   kind: 'suite_summary',
+  ...FIXTURE_RELEASE,
   dataset_id: VERIFIED_DATASET,
   quality_state: 'legacy_unverified',
   observed_at: NOW,
@@ -979,6 +999,7 @@ export const fixtureVerifiedEvaluationSummaries: EvaluationSummary[] = [
   {
     schema_version: '1.5.0',
     kind: 'evaluation_summary',
+    ...FIXTURE_RELEASE,
     dataset_id: VERIFIED_DATASET,
     quality_state: 'legacy_unverified',
     observed_at: NOW,
@@ -1013,6 +1034,7 @@ export const fixtureVerifiedEvaluationSummaries: EvaluationSummary[] = [
   {
     schema_version: '1.5.0',
     kind: 'evaluation_summary',
+    ...FIXTURE_RELEASE,
     dataset_id: VERIFIED_DATASET,
     quality_state: 'legacy_unverified',
     observed_at: NOW,
@@ -1055,6 +1077,7 @@ function verifiedAssignment(
   return {
     schema_version: '1.5.0',
     kind: 'assignment_result',
+    ...FIXTURE_RELEASE,
     dataset_id: VERIFIED_DATASET,
     quality_state: 'legacy_unverified',
     observed_at: NOW,

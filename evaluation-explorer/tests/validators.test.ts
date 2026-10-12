@@ -23,12 +23,15 @@ import {
 } from '../src/fixtures/fixtures';
 
 describe('isCatalogSnapshot', () => {
+  // The fixture carries recorded provenance; each case supplies its own.
+  const unattributedCatalog = { ...fixtureCatalogExploratory, release: undefined, release_basis: undefined };
+
   it.each([
     { release: 'v2.3.0', release_basis: 'recorded', source_revision: 'abc123' },
     { release: 'v2.2.7', release_basis: 'asserted' },
     { release: '', release_basis: 'unknown' },
   ])('accepts explicit campaign provenance %j', (identity) => {
-    expect(() => isCatalogSnapshot({ ...fixtureCatalogExploratory, ...identity })).not.toThrow();
+    expect(() => isCatalogSnapshot({ ...unattributedCatalog, ...identity })).not.toThrow();
   });
 
   it.each([
@@ -38,7 +41,7 @@ describe('isCatalogSnapshot', () => {
     { release: 'v2.3.0', release_basis: 'inferred' },
     { release_basis: 'unknown', source_revision: 42 },
   ])('rejects invalid campaign provenance %j', (identity) => {
-    expect(() => isCatalogSnapshot({ ...fixtureCatalogExploratory, ...identity })).toThrow(ValidationError);
+    expect(() => isCatalogSnapshot({ ...unattributedCatalog, ...identity })).toThrow(ValidationError);
   });
 
   it('accepts a valid catalog snapshot', () => {

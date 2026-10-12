@@ -23,10 +23,11 @@
 // must be initialized (run scripts/seed.mjs or `ztd public init` first).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fixturePublishLines } from './fixture-lines.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -99,25 +100,6 @@ function defaultRunTag() {
   return new Date().toISOString().replace(/[-:T]/g, '').replace(/\..+$/, '');
 }
 
-function generateAllRecords() {
-  const viteNode = resolve(projectRoot, 'node_modules/.bin/vite-node');
-  if (!existsSync(viteNode)) {
-    throw new Error('vite-node not found; run npm install in the frontend project first');
-  }
-  const outPath = resolve(__dirname, '.generated/fixture-events.jsonl');
-  const result = spawnSync(
-    viteNode,
-    [resolve(__dirname, 'generate-fixture-records.ts'), '--out', outPath, '--events'],
-    { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-  if (result.status !== 0) {
-    throw new Error(`event generation exited with code ${result.status}`);
-  }
-  return readFileSync(outPath, 'utf8').trim().split('\n');
-}
-
 // Rewrite a record's live-run identity fields to this invocation's run tag.
 // Fixture run ids are run-live-demo[-failed|-stopped]-20260914; they map to
 // run-live-<tag>[-failed|-stopped]. Dataset id ds-live-demo-20260914 maps to
@@ -185,7 +167,7 @@ function sleep(ms) {
 
 async function main() {
   const { interval, once, runTag } = parseArgs();
-  const allLines = generateAllRecords();
+  const allLines = await fixturePublishLines(true);
 
   const projections = [];
   const events = [];

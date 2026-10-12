@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -300,7 +301,7 @@ func (p *recordingCampaignVerificationPublication) PublishRunVerification(_ cont
 // recordPublication routes verification publication to a recorder.
 func (e *runEnv) recordPublication() *recordingCampaignVerificationPublication {
 	publication := &recordingCampaignVerificationPublication{}
-	e.deps.campaignPublicationFactory = func(*cobra.Command, fs.RuntimeFileService) (campaignVerificationPublication, error) {
+	e.deps.campaignPublicationFactory = func(*cobra.Command, fs.RuntimeFileService, *config.Config) (campaignVerificationPublication, error) {
 		return publication, nil
 	}
 	return publication

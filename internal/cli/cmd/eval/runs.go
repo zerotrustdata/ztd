@@ -271,14 +271,14 @@ func runsPublishCmd(deps nativeEvalDeps) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
-			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
+			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
 			if err := evaluation.RejectArchivedRun(cmd.Context(), fileSvc, runID); err != nil {
 				return fmt.Errorf("evaluation: runs publish: %w", err)
 			}
-			publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc)
+			publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 			if err != nil {
 				return fmt.Errorf("evaluation: runs publish: %w", err)
 			}

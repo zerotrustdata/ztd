@@ -66,7 +66,7 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
 
-**Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'`. Quickstart displays this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
+**Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'`. Quickstart passes the key file to every `./ztd` call it makes, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Quickstart displays this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
 
 ### Step by step
 

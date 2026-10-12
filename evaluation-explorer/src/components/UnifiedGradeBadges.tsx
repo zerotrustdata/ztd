@@ -6,7 +6,6 @@
 // Note: Header "lane" summary (formation vs homogeneous) was skipped per plan instructions
 // as it cannot be cleanly derived from existing AssignmentResult fields without guessing.
 
-import { useState } from 'react';
 import type { AssignmentResult, PublicScenarioCriterion } from '../contract/types';
 import { DetailRow } from './shared';
 import { assignmentGradeChips } from '../views/derived';
@@ -37,14 +36,11 @@ export function UnifiedGradeBadges({ assignment }: { assignment: AssignmentResul
       {gradeChips.map((grade) => {
         const criterion = criterionMap.get(grade.criterion_id);
         const tone = statusTone(grade.status);
-        const [isExpanded, setIsExpanded] = useState(false);
 
         return (
           <details
             key={grade.criterion_id}
             className={`grade-badge-details grade-${grade.status}`}
-            open={isExpanded}
-            onToggle={(e) => setIsExpanded(e.currentTarget.open)}
           >
             <summary className={`grade-badge-summary tone-${tone}`}>
               <span className="badge-label">

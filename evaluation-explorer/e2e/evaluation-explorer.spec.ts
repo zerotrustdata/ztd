@@ -2,6 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { FIXTURE_RELEASE } from '../src/fixtures/fixtures';
 
 const mirrorOrigin = process.env.ZTD_PUBLIC_MIRROR_ORIGIN ?? 'http://127.0.0.1:8082';
 const datasetId = 'native-core-execution-boundary';
@@ -21,6 +22,7 @@ function nativeEvaluation(runId: string) {
   return {
     schema_version: '1.3.0',
     kind: 'evaluation_summary',
+    ...FIXTURE_RELEASE,
     dataset_id: datasetId,
     quality_state: 'verified_public',
     observed_at: '2026-09-15T23:38:22Z',

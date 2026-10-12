@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
+import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
 import type { AssignmentResult, EvaluationSummary } from '../src/contract/types';
 
 const mirrorOrigin = 'http://127.0.0.1:8082';
@@ -25,6 +25,7 @@ function evaluation(): EvaluationSummary {
   return {
     schema_version: '1.4.0',
     kind: 'evaluation_summary',
+    ...FIXTURE_RELEASE,
     dataset_id: datasetId,
     quality_state: 'exploratory_partial',
     observed_at: '2026-09-20T00:00:00Z',
@@ -145,6 +146,7 @@ test('renders rich assignment evidence from mirror history and follows sibling r
   await expect(page.getByText('Follows a bounded response-format instruction.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'What happened' })).toBeVisible();
   await expect(page.getByText('1 observed')).toBeVisible();
+  await page.locator('.grade-badge-summary').filter({ hasText: 'Format compliance' }).click();
   await expect(page.getByText('Criterion passed')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Evidence and methodology' })).toBeVisible();
   await expect(page.getByText('Evaluation projection')).toBeVisible();

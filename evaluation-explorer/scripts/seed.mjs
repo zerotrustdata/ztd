@@ -28,10 +28,11 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fixturePublishLines } from './fixture-lines.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -187,21 +188,12 @@ async function resetFeedState() {
   await ensureMirror();
 }
 
-function generateFixtureRecords() {
+async function generateFixtureRecords() {
   const outPath = resolve(__dirname, '.generated/fixture-records.jsonl');
-  const localViteNode = resolve(projectRoot, 'node_modules/.bin/vite-node');
-  const command = existsSync(localViteNode) ? localViteNode : 'npx';
-  const args = existsSync(localViteNode)
-    ? [resolve(__dirname, 'generate-fixture-records.ts'), '--out', outPath]
-    : ['vite-node', resolve(__dirname, 'generate-fixture-records.ts'), '--out', outPath];
-  const result = spawnSync(command, args, {
-    cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-  if (result.status !== 0) {
-    throw new Error(`fixture generation exited with code ${result.status}`);
-  }
+  const lines = await fixturePublishLines(false);
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, lines.join('\n') + '\n', 'utf8');
+  console.log(`Generated ${lines.length} fixture projection records -> ${outPath}`);
   return outPath;
 }
 
@@ -401,7 +393,7 @@ async function main() {
   if (!records && !fixtures) {
     throw new Error('Specify --fixtures for mock fixture seeding or --records <path> for a pre-generated JSONL file. Real evaluations publish through ztd eval campaign publish.');
   }
-  const recordsPath = records ?? generateFixtureRecords();
+  const recordsPath = records ?? await generateFixtureRecords();
   if (!existsSync(recordsPath)) {
     throw new Error(`records file not found: ${recordsPath}`);
   }

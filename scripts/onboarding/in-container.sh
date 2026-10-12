@@ -123,7 +123,7 @@ scenario_quickstart() {
     expect_no_log quickstart.log 'command not found'
     local session
     session="$(awk '$1 == "Operator" && $2 == "session" {print $3; exit}' "$OUT/quickstart.log")"
-    expect "audit trail for the governed action" bash -c "./ztd gw data audit list --operator-session-id '$session' >'$OUT/audit.log' 2>&1"
+    expect "audit trail for the governed action" bash -c "./ztd gw data audit list --operator-session-id '$session' --master-key-file '$key' >'$OUT/audit.log' 2>&1"
     expect "make down exits 0" bash -c "make down >'$OUT/down.log' 2>&1"
 }
 

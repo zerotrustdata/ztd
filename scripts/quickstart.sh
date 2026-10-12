@@ -49,8 +49,19 @@ ztd_ui_init
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$REPO_ROOT"
 ZTD=./ztd
+# The master key file seals and unseals the Gateway vault and the CLI identity
+# keys alike, so every ./ztd call below carries it.
+KEY_ARGS=()
+if [[ -n "$MASTER_KEY_FILE" ]]; then
+    KEY_ARGS=(--master-key-file "$MASTER_KEY_FILE")
+fi
 LOG="$(mktemp "${TMPDIR:-/tmp}/ztd-quickstart.XXXXXX")"
 trap 'rm -f "$LOG"' EXIT
+
+# usage: ztd_cli <ztd arguments...>
+ztd_cli() {
+    "$ZTD" "$@" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"}
+}
 
 # Runs a command with its output captured; on failure shows the tail and exits.
 # usage: ztd_quickstart_run <what> <command...>
@@ -68,7 +79,7 @@ ztd_quickstart_run() {
 # pipefail the writer's SIGPIPE would turn an online Gateway into "stopped".
 ztd_gateway_online() {
     local status
-    status="$("$ZTD" gw status 2>/dev/null)" || return 1
+    status="$(ztd_cli gw status 2>/dev/null)" || return 1
     grep -Eq '^Gateway[[:space:]]+online' <<<"$status"
 }
 
@@ -91,12 +102,8 @@ ztd_ui_step 2 4 "Gateway"
 if ztd_gateway_online; then
     ztd_ui_ok "already running — reusing it"
 else
-    gw_args=(gw start --capabilities data)
-    if [[ -n "$MASTER_KEY_FILE" ]]; then
-        gw_args+=(--master-key-file "$MASTER_KEY_FILE")
-    fi
     ztd_ui_info "starting on https://localhost:8443 (doctrine posture, embedded data Operator)..."
-    if ! ztd_quickstart_run "Gateway start" "$ZTD" "${gw_args[@]}" ${GW_EXTRA[@]+"${GW_EXTRA[@]}"}; then
+    if ! ztd_quickstart_run "Gateway start" ztd_cli gw start --capabilities data ${GW_EXTRA[@]+"${GW_EXTRA[@]}"}; then
         if grep -qiE 'keyring|keystore|secret service|ssh-agent|master key' "$LOG"; then
             echo >&2
             ztd_ui_warn "No usable key store for the vault master key. Either:" >&2
@@ -111,25 +118,28 @@ fi
 
 # 3. Sign in --------------------------------------------------------------------
 ztd_ui_step 3 4 "Sign in"
-if "$ZTD" auth context >/dev/null 2>&1; then
+if ztd_cli auth context >/dev/null 2>&1; then
     ztd_ui_ok "CLI already signed in — reusing the identity"
 else
-    ztd_quickstart_run "ztd login" "$ZTD" login || exit 1
+    ztd_quickstart_run "ztd login" ztd_cli login || exit 1
     ztd_ui_ok "signed in as the Gateway owner (headless CLI identity)"
 fi
 
 # 4. First governed action ------------------------------------------------------
 ztd_ui_step 4 4 "First governed action"
 ztd_ui_info "./ztd operator run --all-active --cmd 'echo hello from ztd'"
-ztd_quickstart_run "governed action" "$ZTD" operator run --all-active --cmd 'echo hello from ztd' || exit 1
+ztd_quickstart_run "governed action" ztd_cli operator run --all-active --cmd 'echo hello from ztd' || exit 1
 sed 's/^/    /' "$LOG"
 session="$(awk '$1 == "Operator" && $2 == "session" {print $3; exit}' "$LOG")"
 ztd_ui_ok "admitted by the Gateway, executed by the Operator, signed and recorded"
 
-console="$("$ZTD" gw status 2>/dev/null | awk '$1 == "Console" {print $2}')"
+console="$(ztd_cli gw status 2>/dev/null | awk '$1 == "Console" {print $2}')"
 echo -e "\n${ZTD_UI_GREEN}${ZTD_UI_BOLD}${ZTD_UI_OK} You're running ztd${ZTD_UI_RESET} ${ZTD_UI_DIM}($(ztd_ui_elapsed))${ZTD_UI_RESET}\n"
 echo -e "  ${ZTD_UI_BOLD}Watch${ZTD_UI_RESET}     ./ztd tui                ${ZTD_UI_DIM}live governance console in the terminal${ZTD_UI_RESET}"
 echo -e "  ${ZTD_UI_BOLD}Browser${ZTD_UI_RESET}   ./ztd login web          ${ZTD_UI_DIM}add a passkey, then open ${console:-https://localhost:8443/console/}${ZTD_UI_RESET}"
 echo -e "  ${ZTD_UI_BOLD}Evidence${ZTD_UI_RESET}  ./ztd gw data audit list --operator-session-id ${session:-<id>}"
 echo -e "  ${ZTD_UI_BOLD}Agents${ZTD_UI_RESET}    ./ztd mcp agent run claude"
 echo -e "  ${ZTD_UI_BOLD}Stop${ZTD_UI_RESET}      make down                ${ZTD_UI_DIM}state in .ztd/ is kept${ZTD_UI_RESET}"
+if [[ -n "$MASTER_KEY_FILE" ]]; then
+    echo -e "\n  ${ZTD_UI_DIM}Pass --master-key-file $MASTER_KEY_FILE to each ./ztd command above.${ZTD_UI_RESET}"
+fi

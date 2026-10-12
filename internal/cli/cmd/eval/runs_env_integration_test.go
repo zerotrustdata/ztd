@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -58,7 +59,7 @@ func setupRunEnv(t *testing.T) *runEnv {
 	paths.Host = server.URL
 	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
 	require.NoError(t, err)
-	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths}
+	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, MasterKeyFile: keystoretest.ProvisionMasterKeyFile(t)}
 
 	control := newFakeProcessControl()
 	fixedNow := time.Unix(1789657337, 0).UTC()

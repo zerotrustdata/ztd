@@ -118,8 +118,8 @@ func Cmd() *cobra.Command {
 		verifierFactory: func(fileSvc fs.RuntimeFileService, now func() time.Time) nativeEvalVerifier {
 			return evaluation.NewVerifier(fileSvc, evaluation.NewRegistry(), now)
 		},
-		campaignPublicationFactory: func(cmd *cobra.Command, fileSvc fs.RuntimeFileService) (campaignVerificationPublication, error) {
-			return NewCampaignPublicationCoordinator(cmd, fileSvc)
+		campaignPublicationFactory: func(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (campaignVerificationPublication, error) {
+			return NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		},
 		formationRunnerFactory: newProductionCampaignFormationRunner,
 		runControl:             defaultRunControlDeps(),

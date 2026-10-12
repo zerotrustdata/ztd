@@ -185,7 +185,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Started run %s of campaign %s\n", runID, opts.CampaignID)
 	}
 	if opts.Publish {
-		publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc)
+		publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}

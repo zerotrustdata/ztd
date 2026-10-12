@@ -61,7 +61,7 @@ func PublicRestoreCmdWithConfig(configLoader func(string) (*config.Config, error
 			if err := fileSvc.CreateRuntimeTree(shared.CommandContext(cmd)); err != nil {
 				return fmt.Errorf("public restore: create runtime tree: %w", err)
 			}
-			publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc)
+			publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 			if err != nil {
 				return fmt.Errorf("public restore: %w", err)
 			}

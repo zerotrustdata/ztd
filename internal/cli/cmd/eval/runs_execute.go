@@ -215,7 +215,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	controller := controllerFactory(evaluation.NewCampaignAssignmentRouter(buildFormation, buildAgent))
 	var publication *evaluation.CampaignPublicationCoordinator
 	if opts.Publish {
-		publication, err = NewCampaignPublicationCoordinator(cmd, fileSvc)
+		publication, err = NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		if err != nil {
 			return 0, fmt.Errorf("evaluation: run execute: %w", err)
 		}

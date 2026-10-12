@@ -5,13 +5,11 @@ on:
     branches: [main]
     paths:
       - README.md
-      - docs/diagrams/ztd-diagram.png
       - website/**
       - .github/workflows/deploy-website.yml
   pull_request:
     paths:
       - README.md
-      - docs/diagrams/ztd-diagram.png
       - website/**
       - .github/workflows/deploy-website.yml
   workflow_dispatch:

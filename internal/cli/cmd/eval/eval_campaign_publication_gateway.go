@@ -97,16 +97,9 @@ func (s *gatewayCampaignPublicationStateStore) Save(_ context.Context, state *ev
 }
 
 // NewCampaignPublicationCoordinator wires the host-side publication of run
-// lifecycle projections to the Gateway mirror.
-func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFileService) (*evaluation.CampaignPublicationCoordinator, error) {
-	projectRoot, err := cmd.Flags().GetString("project-root")
-	if err != nil {
-		return nil, fmt.Errorf("campaign publication: read project root: %w", err)
-	}
-	cfg, err := shared.LoadConfig(projectRoot)
-	if err != nil {
-		return nil, fmt.Errorf("campaign publication: load config: %w", err)
-	}
+// lifecycle projections to the Gateway mirror. cfg is the command's loaded
+// config, so the Gateway client unseals the CLI identity under its master key.
+func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (*evaluation.CampaignPublicationCoordinator, error) {
 	exporter, err := gwremote.NewCampaignFeedExporter(shared.CommandContext(cmd), fileSvc, cfg)
 	if err != nil {
 		return nil, err

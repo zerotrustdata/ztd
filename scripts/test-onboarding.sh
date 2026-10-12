@@ -288,7 +288,8 @@ make_fake_repo() {
 #!/bin/sh
 STATE="${ZTD_STUB_STATE:?}"
 echo "$*" >>"$STATE/calls.log"
-case "$*" in
+# Match on the command alone; quickstart appends the key flag to every call.
+case "${*% --master-key-file *}" in
 --version) echo "ztd version v1.0.0" ;;
 "gw status")
 	if [ -e "$STATE/gw.on" ]; then
@@ -334,10 +335,16 @@ test_quickstart_end_to_end_is_idempotent() {
 	grep -qF "You're running ztd" "$out" || fail "quickstart first run: no success banner"
 	grep -qxF 'gw start --capabilities data --master-key-file /tmp/k.key' "$state/calls.log" ||
 		fail "quickstart first run: missing gw start call with --master-key-file"
-	grep -qxF 'login' "$state/calls.log" || fail "quickstart first run: missing login call"
+	grep -qxF 'login --master-key-file /tmp/k.key' "$state/calls.log" ||
+		fail "quickstart first run: missing login call with --master-key-file"
+	grep -qxF "operator run --all-active --cmd echo hello from ztd --master-key-file /tmp/k.key" "$state/calls.log" ||
+		fail "quickstart first run: missing operator run call with --master-key-file"
+	if grep -v -e '^--version$' -e ' --master-key-file /tmp/k.key$' "$state/calls.log" >&2; then
+		fail "quickstart first run: ztd call without --master-key-file"
+	fi
 
 	starts="$(count_calls "$state" '^gw start')"
-	logins="$(count_calls "$state" '^login$')"
+	logins="$(count_calls "$state" '^login ')"
 
 	rc=0
 	out="$SCRATCH/qs-e2e-second.out"
@@ -348,7 +355,7 @@ test_quickstart_end_to_end_is_idempotent() {
 	grep -qF 'already signed in' "$out" || { cat "$out" >&2; fail "quickstart second run: CLI not reported as already signed in"; }
 	[[ "$(count_calls "$state" '^gw start')" == "$starts" ]] ||
 		fail "quickstart second run: issued a new gw start"
-	[[ "$(count_calls "$state" '^login$')" == "$logins" ]] ||
+	[[ "$(count_calls "$state" '^login ')" == "$logins" ]] ||
 		fail "quickstart second run: issued a new login"
 }
 
