@@ -12,10 +12,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -270,9 +272,7 @@ func TestClaimRunRootRejectsSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	link := filepath.Join(parent, "linked")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
-	}
+	testutil.Symlink(t, target, link)
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: link})
 	if err := r.claimRunRoot(); err == nil {
 		t.Fatal("symlink root must be rejected")
@@ -304,9 +304,13 @@ func TestVerifyEvidenceFailsRunOnUnverifiedWorkerExport(t *testing.T) {
 }
 
 func TestZtdCommandFailurePropagatesWithExitCode(t *testing.T) {
-	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: t.TempDir(), ZtdBin: "/bin/false"})
+	bin, args := "/bin/false", []string(nil)
+	if runtime.GOOS == "windows" {
+		bin, args = "cmd.exe", []string{"/c", "exit 1"}
+	}
+	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: t.TempDir(), ZtdBin: bin})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
-	_, err := r.ztd(context.Background(), "always-fails", r.opts.RunDir)
+	_, err := r.ztd(context.Background(), "always-fails", r.opts.RunDir, args...)
 	if err == nil {
 		t.Fatal("expected command failure")
 	}

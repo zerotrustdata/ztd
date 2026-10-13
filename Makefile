@@ -502,8 +502,15 @@ EXPLORER_EMBED := internal/services/gateway/explorer/static
 # Frontend builds are incremental: each dist rebuilds only when its sources
 # change, and each embed refreshes only when its dist is newer. The explorer
 # bundle also compiles in VERSION and imports ztd-adapter/src. The Go source
-# lister avoids platform-specific find commands during Makefile parsing.
-SOURCE_FILES := go run ./internal/tools/sourcefiles -base .
+# lister avoids platform-specific find commands during Makefile parsing. It is
+# built once to a fixed path (go build skips the link when current) instead of
+# three `go run` temp builds per make invocation.
+SOURCE_FILES_TOOL := $(BIN_DIR)/.tools/sourcefiles$(if $(filter windows,$(HOST_OS)),.exe,)
+SOURCE_FILES_BUILD := $(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1)
+ifneq ($(SOURCE_FILES_BUILD),)
+$(error building $(SOURCE_FILES_TOOL) failed: $(SOURCE_FILES_BUILD))
+endif
+SOURCE_FILES := $(SOURCE_FILES_TOOL) -base .
 
 EXPLORER_SOURCES := $(shell $(SOURCE_FILES) -exclude node_modules,dist,tests,e2e evaluation-explorer) $(shell $(SOURCE_FILES) ztd-adapter/src) VERSION
 

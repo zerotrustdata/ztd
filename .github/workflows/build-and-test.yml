@@ -96,9 +96,9 @@ jobs:
         run: ./ztd test integration --pkg ./internal/services/keystore/...
 
   onboarding-windows:
-    name: Windows native setup, build, and keystore tests
+    name: Windows native setup, build, and tests
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,13 +113,33 @@ jobs:
           ./ztd.exe --help
           ./ztd.exe gw start --help
 
-      - name: Keystore unit tests
+      - name: Verify Version Sync (CRLF checkout)
         shell: pwsh
-        run: ./ztd.exe test unit --pkg ./internal/services/keystore/...
+        run: make version-sync-check
 
-      - name: Keystore integration tests (DPAPI)
+      - name: Unit tests
         shell: pwsh
-        run: ./ztd.exe test integration --pkg ./internal/services/keystore/...
+        run: ./ztd.exe test unit
+
+      - name: Windows integration tests (DPAPI keystore, local Operator discovery, release-smoke process owner)
+        shell: pwsh
+        run: |
+          foreach ($pkg in './internal/services/keystore/...', './internal/cli/cmd/operator', './internal/cli/cmd/test') {
+            ./ztd.exe test integration --pkg $pkg
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Release smoke
+        shell: pwsh
+        run: ./ztd.exe test release-smoke --root "$env:RUNNER_TEMP\ztd-release-smoke" --binary "$PWD\ztd.exe"
+
+      - name: Preserve release smoke evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-smoke-windows
+          path: ${{ runner.temp }}/ztd-release-smoke/
+          if-no-files-found: ignore
 
   ci:
     name: Build & Test

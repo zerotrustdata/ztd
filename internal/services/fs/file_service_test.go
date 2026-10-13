@@ -115,12 +115,12 @@ func TestOpenFileEditTargetProtectsRuntimeAndResolvesSymlinks(t *testing.T) {
 	assert.Equal(t, "marker", string(got))
 
 	aliasParent := filepath.Join(baseDir, "runtime-alias")
-	require.NoError(t, os.Symlink(filepath.Join(runtimeRoot, constants.DataDirname), aliasParent))
+	testutil.Symlink(t, filepath.Join(runtimeRoot, constants.DataDirname), aliasParent)
 	_, err = open(filepath.Join(aliasParent, "protected.json"))
 	require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
 
 	targetAlias := filepath.Join(runtimeRoot, targetDir, "protected-link.json")
-	require.NoError(t, os.Symlink(protectedFile, targetAlias))
+	testutil.Symlink(t, protectedFile, targetAlias)
 	_, err = open(targetAlias)
 	require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
 
@@ -150,7 +150,7 @@ func TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, target.Close()) })
 
 	require.NoError(t, os.Remove(targetPath))
-	require.NoError(t, os.Symlink(protectedFile, targetPath))
+	testutil.Symlink(t, protectedFile, targetPath)
 
 	require.Error(t, target.WriteFile([]byte("overwrite"), constants.PermFilePrivate))
 	_, err = target.ReadFile()

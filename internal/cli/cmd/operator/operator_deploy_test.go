@@ -184,6 +184,18 @@ func (m *mockRemoteDeployClient) ExecuteAgent(ctx context.Context, req models.De
 	}
 }
 
+// deployTestRoot returns a --dest-dir for the mock remote host. SSH targets
+// accept only POSIX paths, so on Windows the test runs from a temp working
+// directory and passes the root relative to it.
+func deployTestRoot(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return filepath.Join(t.TempDir(), "fleet")
+	}
+	t.Chdir(t.TempDir())
+	return "fleet"
+}
+
 func defaultTestRemoteFactory(t *testing.T, customMock ...*mockRemoteDeployClient) remoteDeployClientFactory {
 	t.Helper()
 	return func(ctx context.Context, host string, port int, identityFile string) (remoteDeployClient, error) {
@@ -278,20 +290,27 @@ func TestOperatorDeployRejectsInvalidFlagCombinations(t *testing.T) {
 }
 
 func TestOperatorDeployInstallsBinaryWithoutStartingIt(t *testing.T) {
-	remoteDir := filepath.Join(t.TempDir(), "fleet")
+	remoteDir := deployTestRoot(t)
 
 	out, err := runOperatorDeploy(t, &cmdtest.MockAPIClient{}, "--hosts", "localhost", "--remote-dir", remoteDir)
 	require.NoError(t, err, out)
 
-	info, err := os.Stat(filepath.Join(remoteDir, "ztd"))
+	// localhost deploys locally, which installs ztd.exe on Windows.
+	binary := "ztd"
+	if runtime.GOOS == "windows" {
+		binary = "ztd.exe"
+	}
+	info, err := os.Stat(filepath.Join(remoteDir, binary))
 	require.NoError(t, err)
-	assert.NotZero(t, info.Mode()&0o111, "installed binary must be executable")
+	if runtime.GOOS != "windows" {
+		assert.NotZero(t, info.Mode()&0o111, "installed binary must be executable")
+	}
 	assert.NoFileExists(t, filepath.Join(remoteDir, "ztd.new"), "staging file must be renamed into place")
 	assert.NoFileExists(t, filepath.Join(remoteDir, operatorDeployStartLog))
 }
 
 func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing.T) {
-	remoteDir := filepath.Join(t.TempDir(), "fleet")
+	remoteDir := deployTestRoot(t)
 	dirs := operatorDeployDirs(remoteDir, 2)
 
 	pending := models.PlatformEnrollmentPendingResponse{}
@@ -323,7 +342,7 @@ func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing
 }
 
 func TestOperatorDeployFailsClosedWhenAWorkerIsReadyWithoutARequest(t *testing.T) {
-	remoteDir := filepath.Join(t.TempDir(), "fleet")
+	remoteDir := deployTestRoot(t)
 
 	client := &cmdtest.MockAPIClient{}
 
@@ -338,7 +357,7 @@ func TestOperatorDeployFailsClosedWhenAWorkerIsReadyWithoutARequest(t *testing.T
 }
 
 func TestOperatorDeployFailsWhenAWorkerIsNeverAnnouncedAndNamesItsOwnFailure(t *testing.T) {
-	remoteDir := filepath.Join(t.TempDir(), "fleet")
+	remoteDir := deployTestRoot(t)
 	client := &cmdtest.MockAPIClient{}
 	previous := operatorDeployEnrollTimeout
 	operatorDeployEnrollTimeout = 200 * time.Millisecond
@@ -361,7 +380,7 @@ func TestOperatorDeployFailsWhenAWorkerIsNeverAnnouncedAndNamesItsOwnFailure(t *
 }
 
 func TestOperatorDeployDoesNotCallASubscriptionOnAStoppedOperatorReady(t *testing.T) {
-	remoteDir := filepath.Join(t.TempDir(), "fleet")
+	remoteDir := deployTestRoot(t)
 	listBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{
 		Requests: []models.PlatformEnrollmentPendingRequest{{RequestID: "req-1", Fingerprints: testWorkerFingerprints}},
 	})
@@ -382,7 +401,7 @@ func TestOperatorDeployDoesNotCallASubscriptionOnAStoppedOperatorReady(t *testin
 // The launch ID is not a secret: another process that announces it first must
 // not have its request approved in place of the worker's.
 func TestOperatorDeployRefusesARequestThatDoesNotCarryTheWorkersKeys(t *testing.T) {
-	remoteDir := filepath.Join(t.TempDir(), "fleet")
+	remoteDir := deployTestRoot(t)
 	listBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{
 		Requests: []models.PlatformEnrollmentPendingRequest{{RequestID: "req-1", Fingerprints: models.PlatformEnrollmentCSRFingerprints{Operator: "intruder-operator-fp", CLI: "intruder-cli-fp"}}},
 	})
@@ -397,7 +416,7 @@ func TestOperatorDeployRefusesARequestThatDoesNotCarryTheWorkersKeys(t *testing.
 }
 
 func TestOperatorDeployRefusesApprovalWhenTheWorkerRecordedNoKeys(t *testing.T) {
-	remoteDir := filepath.Join(t.TempDir(), "fleet")
+	remoteDir := deployTestRoot(t)
 	listBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{
 		Requests: []models.PlatformEnrollmentPendingRequest{{RequestID: "req-1", Fingerprints: testWorkerFingerprints}},
 	})
@@ -416,7 +435,7 @@ func TestOperatorDeployRefusesApprovalWhenTheWorkerRecordedNoKeys(t *testing.T) 
 }
 
 func TestOperatorDeployLocalBatchSharesBinaryAndPreservesEarlierBatch(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "fleet")
+	root := deployTestRoot(t)
 	client := &cmdtest.MockAPIClient{}
 	out, err := runOperatorDeploy(t, client, "--local", "--dest-dir", root, "--count", "10", "--parallel", "4")
 	require.NoError(t, err, out)
@@ -460,7 +479,7 @@ func TestOperatorDeployRejectsUnsafeBatchesAndRoles(t *testing.T) {
 }
 
 func TestOperatorDeployRoleFlagsReachWorkerWithoutShellExpansion(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "fleet")
+	root := deployTestRoot(t)
 	payload := "http://provider:11434/path?q='$(touch INJECTED)'"
 	client := &cmdtest.MockAPIClient{}
 	out, err := runOperatorDeploy(t, client, "--hosts", "host", "--dest-dir", root,
@@ -492,7 +511,7 @@ func TestOperatorDeployRoleIdentities(t *testing.T) {
 }
 
 func TestOperatorDeploySeparatesOwnerAndWorkerEndpoints(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "fleet")
+	root := deployTestRoot(t)
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 	var ownerURL string
@@ -525,7 +544,7 @@ func TestOperatorDeploySeparatesOwnerAndWorkerEndpoints(t *testing.T) {
 }
 
 func TestOperatorDeployForwardsGatewayPortsToTheWorker(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "fleet")
+	root := deployTestRoot(t)
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 	cmd := operatorDeployCmdWithConfig(
@@ -583,7 +602,7 @@ func TestOperatorDeployApprovalClientDialsTheWorkerGatewayPorts(t *testing.T) {
 }
 
 func TestOperatorDeployStopsBeforeStartingWorkersWhenTheGatewayIsUnreachable(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "fleet")
+	root := deployTestRoot(t)
 	mock := &mockRemoteDeployClient{
 		preflightErr:    errors.New("connection refused"),
 		recordPreflight: true,
@@ -619,7 +638,7 @@ func TestOperatorDeployRejectsInvalidWorkerEndpoints(t *testing.T) {
 }
 
 func TestOperatorDeployParallelEnrollmentApprovesOnlyOwnRequests(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "fleet")
+	root := deployTestRoot(t)
 	const workers = 12
 	expected := make(map[string]bool, workers)
 	pending := models.PlatformEnrollmentPendingResponse{Requests: []models.PlatformEnrollmentPendingRequest{{RequestID: "unrelated"}}}
@@ -909,7 +928,7 @@ func TestRemoteDeployClient_WSLUnavailable(t *testing.T) {
 	})
 
 	t.Run("operator deploy command surfaces ErrWSLUnavailable on WSL bootstrap failure", func(t *testing.T) {
-		root := filepath.Join(t.TempDir(), "fleet")
+		root := deployTestRoot(t)
 		mock := &mockRemoteDeployClient{
 			host:     "wsl-host",
 			isWSL:    true,

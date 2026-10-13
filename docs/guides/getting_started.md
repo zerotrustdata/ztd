@@ -58,7 +58,15 @@ bash scripts/linux-setup.sh --build-only   # macOS: bash scripts/macos-setup.sh 
 make quickstart
 ```
 
-On Windows, run `pwsh scripts/windows-setup.ps1 --build-only` and follow the native host instructions, or use WSL 2 with the Linux commands above.
+On Windows, the same flow runs natively from PowerShell 7:
+
+```powershell
+git clone https://github.com/zerotrustdata/ztd.git; cd ztd
+pwsh scripts/windows-setup.ps1 --build-only
+make quickstart
+```
+
+Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe), GNU Make (`winget install ezwinports.make` or `choco install make`), and Go 1.27.2. Run `make` targets from PowerShell; WSL is not required. The setup script stops if a `GOROOT` environment variable points at an older Go install than the active toolchain, because builds would then use the wrong standard library. Paths such as `--working-dir ~/.ztd-op1` and `MODEL_STORAGE_ROOT=$env:USERPROFILE\.ollama\models` work as written. WSL 2 with the Linux commands above also works.
 
 ### What setup does
 
@@ -82,6 +90,8 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 | Stop the platform (state in `.ztd/` is kept) | `make down` (`./ztd gw stop` in `~/ztd`) |
 
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
+
+**Windows and macOS:** The Gateway seals its vault key with DPAPI on Windows and the Keychain on macOS automatically; no ssh-agent or master key file is needed.
 
 **Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'` (or `ZTD_MASTER_KEY_FILE=/abs/path/master.key` for `start.sh`). Quickstart and `start.sh` pass the key file to every `./ztd` call they make, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Both display this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
 
@@ -140,11 +150,17 @@ Or approve all pending requests simultaneously:
 
 ### Verify a governed action and local evidence
 
-On Linux, macOS, or another Unix-like host, run the provider-free release smoke test from a built checkout:
+Run the provider-free release smoke test from a built checkout:
 
 ```bash
 smoke_parent="$(mktemp -d)"
 ./ztd test release-smoke --root "$smoke_parent/run" --binary "$PWD/ztd"
+```
+
+On Windows, from PowerShell:
+
+```powershell
+./ztd test release-smoke --root "$env:TEMP\ztd-smoke\run1" --binary "$PWD\ztd.exe"
 ```
 
 The command starts and owns an isolated Gateway and data Operator, submits a governed file edit through the Gateway command API, creates and merges a document through the embedded Operator path, verifies exact read-back and signed receipts, exports both runtimes' reports, and stops only its own processes. It requires no model service, provider key, or existing platform runtime. Inspect the `evidence/` and `reports/` outputs under `$smoke_parent/run`, then remove the temporary directory when finished.

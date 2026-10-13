@@ -30,11 +30,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestExecuteDeployHostPrepare(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("USERPROFILE", tempHome) // os.UserHomeDir on Windows
 
 	ctx := context.Background()
 
@@ -51,7 +53,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 		info1, err := os.Stat(resolved[0])
 		require.NoError(t, err)
 		require.True(t, info1.IsDir())
-		require.Equal(t, os.FileMode(constants.PermDirPrivate), info1.Mode().Perm())
+		require.Equal(t, testutil.FileMode(constants.PermDirPrivate, true), info1.Mode().Perm())
 
 		// Check home dir
 		expectedHomeSub := filepath.Join(tempHome, "ztd-test-deploy")
@@ -62,7 +64,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 		info2, err := os.Stat(resolved[1])
 		require.NoError(t, err)
 		require.True(t, info2.IsDir())
-		require.Equal(t, os.FileMode(constants.PermDirPrivate), info2.Mode().Perm())
+		require.Equal(t, testutil.FileMode(constants.PermDirPrivate, true), info2.Mode().Perm())
 	})
 
 	t.Run("empty dirs error", func(t *testing.T) {
@@ -104,7 +106,7 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 
 		info, err := os.Stat(targetFile)
 		require.NoError(t, err)
-		require.Equal(t, os.FileMode(constants.PermFileExecutable), info.Mode().Perm())
+		require.Equal(t, testutil.FileMode(constants.PermFileExecutable, false), info.Mode().Perm())
 	})
 
 	t.Run("missing source", func(t *testing.T) {

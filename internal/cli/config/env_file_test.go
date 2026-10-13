@@ -92,7 +92,7 @@ func TestLoadEnvFile(t *testing.T) {
 		}
 		target := writeEnvFile(t, string(token)+"=x\n", constants.PermFilePrivate)
 		link := filepath.Join(testutil.TempDir(t), constants.EnvFilename)
-		require.NoError(t, os.Symlink(target, link))
+		testutil.Symlink(t, target, link)
 		assert.Error(t, LoadEnvFile(link))
 	})
 }

@@ -802,7 +802,7 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 	require.NoError(t, os.MkdirAll(filepath.Dir(protectedPath), constants.PermDirStandard))
 	require.NoError(t, os.WriteFile(protectedPath, []byte(protected), constants.PermFilePrivate))
 	aliasPath := filepath.Join(workDir, "runtime-alias.json")
-	require.NoError(t, os.Symlink(protectedPath, aliasPath))
+	testutil.Symlink(t, protectedPath, aliasPath)
 
 	receipts := make(chan *operatorv1.ActionReceipt, 8)
 	unregisterReceiptCapture := infra.Pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {

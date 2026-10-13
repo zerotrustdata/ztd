@@ -24,7 +24,8 @@ func TestMakefile_FrontendSourceDiscoveryDoesNotDependOnPlatformFind(t *testing.
 	require.NoError(t, err)
 
 	makefile := string(body)
-	assert.Contains(t, makefile, "SOURCE_FILES := go run ./internal/tools/sourcefiles -base .")
+	assert.Contains(t, makefile, "$(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1)")
+	assert.Contains(t, makefile, "SOURCE_FILES := $(SOURCE_FILES_TOOL) -base .")
 	for _, line := range strings.Split(makefile, "\n") {
 		if strings.HasPrefix(line, "EXPLORER_SOURCES :=") || strings.HasPrefix(line, "CONSOLE_SOURCES :=") {
 			assert.Contains(t, line, "$(SOURCE_FILES)")

@@ -10,7 +10,9 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -62,6 +64,9 @@ func (t *ProcMetricTopTool) Execute(ctx context.Context, args json.RawMessage) (
 	}
 
 	entries, err := os.ReadDir(constants.PathProc)
+	if errors.Is(err, fs.ErrNotExist) {
+		return CallToolResult{}, unsupportedPlatformError("proc_metric_top", constants.PathProc)
+	}
 	if err != nil {
 		return CallToolResult{}, fmt.Errorf("proc_metric_top: failed to read %s: %w", constants.PathProc, err)
 	}

@@ -113,6 +113,28 @@ function Test-Curl {
     return $false
 }
 
+# GOTOOLCHAIN=auto lets `go version` report the go.mod toolchain while an
+# explicit GOROOT still points the compiler at the older installed stdlib,
+# which fails later with "package crypto/... is not in std".
+function Assert-GoRootMatches {
+    param([Version]$Have)
+    if (-not $env:GOROOT) {
+        return
+    }
+    $versionFile = Join-Path $env:GOROOT "VERSION"
+    if (-not (Test-Path $versionFile)) {
+        return
+    }
+    $rootVersion = Parse-GoVersion (Get-Content $versionFile -TotalCount 1)
+    if ($rootVersion -and $rootVersion -ne $Have) {
+        Write-Host "  go: GOROOT=$env:GOROOT is Go v$($rootVersion.ToString()) but the active toolchain is v$($Have.ToString())." -ForegroundColor Red
+        Write-Host "      Builds will use the wrong standard library. Remove the GOROOT environment variable, for example:" -ForegroundColor Red
+        Write-Host "      [Environment]::SetEnvironmentVariable('GOROOT', `$null, 'User')   # or 'Machine' from an elevated shell" -ForegroundColor Red
+        Write-Host "      then open a new terminal and re-run this script." -ForegroundColor Red
+        exit 1
+    }
+}
+
 function Test-Go {
     param([Version]$Need)
     if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
@@ -129,6 +151,7 @@ function Test-Go {
         return $false
     }
     if (Test-VersionAtLeast -Have $have -Need $Need) {
+        Assert-GoRootMatches -Have $have
         Write-Host "  go: detected (v$($have.ToString()), need >= $($Need.ToString()))" -ForegroundColor Green
         return $true
     }

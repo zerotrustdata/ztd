@@ -410,7 +410,7 @@ In-depth test rules reside in [Testing Guide](tests.md).
 | `./ztd test summary` | | Reads chaos summary from test vault. |
 | `./ztd test public-loop` | | Provider-free public-feed qualification. Stays in `testcmd` (`INV-PKG-02`). |
 | `./ztd test scale` | 3 | Operator fleet scale qualification in `internal/cli/cmd/test/scale.go`: isolated Gateway, `operator deploy` batches, then `TestOperatorFleet_*` in `test/e2e/`. Owns its own Gateway and worker teardown. |
-| `./ztd test release-smoke` | | Provider-free governed release qualification in `internal/cli/cmd/test/release_smoke.go`: isolated Gateway and data Operator, governed file and document mutations, local evidence exports, and owned-process cleanup. Run on Unix-like hosts. |
+| `./ztd test release-smoke` | | Provider-free governed release qualification in `internal/cli/cmd/test/release_smoke.go`: isolated Gateway and data Operator, governed file and document mutations, local evidence exports, and owned-process cleanup. Runs on Unix-like hosts and Windows. |
 
 Component test entry points named by root Makefile: `make test`, `make test-unit`, `make test-integration`, `make console-test`, `make website-test`.
 

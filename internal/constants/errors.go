@@ -270,6 +270,10 @@ var (
 	ErrMCPValidateOperatorArgsNullBytes            = errors.New("argument must not contain null bytes")
 	ErrMCPValidateOperatorArgsDangerousChar        = errors.New("argument contains dangerous character")
 
+	// ErrMCPToolUnsupportedPlatform marks a native tool whose OS data source
+	// (/proc, systemctl, kernel log) does not exist on this host.
+	ErrMCPToolUnsupportedPlatform = errors.New("tool is unsupported on this platform")
+
 	// MCP OOM detection errors
 	ErrMCPGetWorkingDirectory = errors.New("get working directory")
 	ErrMCPOpenLogFile         = errors.New("open log file")

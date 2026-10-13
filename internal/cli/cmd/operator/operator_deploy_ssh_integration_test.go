@@ -26,6 +26,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -222,7 +223,18 @@ func writeDeploySourceBinary(t *testing.T) (string, []byte) {
 	return src, content
 }
 
+// requirePOSIXDeployHost skips on Windows: the in-process SFTP server serves
+// the local Windows filesystem, which the client correctly classifies as a
+// WSL target, so the POSIX SSH transport is only exercised on Unix hosts.
+func requirePOSIXDeployHost(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX SSH deploy transport needs a Unix host; Windows targets use the WSL bootstrap")
+	}
+}
+
 func TestDeploySSH_UploadBinaryAndAgentRoundTrip(t *testing.T) {
+	requirePOSIXDeployHost(t)
 	addr, hostKey, srv := startDeploySSHServer(t)
 	client := dialDeploySSHClient(t, addr, hostKey)
 	t.Cleanup(func() { _ = client.Close() })
@@ -264,6 +276,7 @@ func TestDeploySSH_UploadBinaryAndAgentRoundTrip(t *testing.T) {
 }
 
 func TestDeploySSH_AgentErrorSurfacesToCaller(t *testing.T) {
+	requirePOSIXDeployHost(t)
 	addr, hostKey, _ := startDeploySSHServer(t)
 	client := dialDeploySSHClient(t, addr, hostKey)
 	t.Cleanup(func() { _ = client.Close() })
@@ -281,6 +294,7 @@ func TestDeploySSH_AgentErrorSurfacesToCaller(t *testing.T) {
 }
 
 func TestDeploySSH_ExecuteDeploySSHUploadsThroughFactory(t *testing.T) {
+	requirePOSIXDeployHost(t)
 	addr, hostKey, _ := startDeploySSHServer(t)
 	client := dialDeploySSHClient(t, addr, hostKey)
 

@@ -78,6 +78,14 @@ bash scripts/linux-setup.sh --build-only   # macOS: bash scripts/macos-setup.sh 
 make quickstart
 ```
 
+On Windows, from PowerShell 7 (needs Git for Windows, GNU Make, and Go 1.27.2; WSL is not required):
+
+```powershell
+git clone https://github.com/zerotrustdata/ztd.git; cd ztd
+pwsh scripts/windows-setup.ps1 --build-only
+make quickstart
+```
+
 The setup script checks for Git, Make, curl, and Go 1.27.2, builds `./ztd`, and creates `.env` from `.env.example` (mode `0600`). Every `./ztd` command loads `.env`; the default flow needs no edits. `make quickstart` starts a Gateway on localhost, signs in, and runs the first governed action. On Linux without a Secret Service keyring or ssh-agent, pass a provisioned master key with `QUICKSTART_ARGS='--master-key-file /abs/path/master.key'`. Rerunning it is safe.
 
 The Gateway-only track requires Git, Go 1.27.2, and Make. Fresh clones use the committed Console and Evaluation Explorer embeds. Node.js 22.22.2+, 24.15+, or 26+ and npm are required only to rebuild those frontends. This track has no Ollama or model SDK requirement.

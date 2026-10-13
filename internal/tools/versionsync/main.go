@@ -36,7 +36,7 @@ var (
 	semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	// The top-level "version" key is the only one indented by exactly two spaces.
 	npmTopLevelVersion = `(?m)^  "version": "(?P<v>[^"]+)"`
-	npmRootPackage     = `(?m)^    "": \{\n(?:      .*\n)*?      "version": "(?P<v>[^"]+)"`
+	npmRootPackage     = `(?m)^    "": \{\r?\n(?:      .*\n)*?      "version": "(?P<v>[^"]+)"`
 	docVersionHeader   = `(?m)^Version: v(?P<v>\S+)`
 )
 

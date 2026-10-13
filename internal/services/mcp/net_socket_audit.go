@@ -82,6 +82,7 @@ func (t *NetSocketAuditTool) Execute(ctx context.Context, args json.RawMessage) 
 		protocols = []string{proto}
 	}
 
+	opened := 0
 	for _, proto := range protocols {
 		path := getProcNetPath(proto)
 		// proto is validated by validateProcNetPath to satisfy CodeQL uncontrolled-data-in-path-expression rule.
@@ -90,6 +91,7 @@ func (t *NetSocketAuditTool) Execute(ctx context.Context, args json.RawMessage) 
 			// Skip protocols that are not available on this system
 			continue
 		}
+		opened++
 
 		protoSockets, err := parseProcNetFile(ctx, file, proto)
 		file.Close()
@@ -99,6 +101,10 @@ func (t *NetSocketAuditTool) Execute(ctx context.Context, args json.RawMessage) 
 		}
 
 		sockets = append(sockets, protoSockets...)
+	}
+
+	if opened == 0 {
+		return CallToolResult{}, unsupportedPlatformError("net_socket_audit", constants.PathProcNet)
 	}
 
 	result := NetSocketAuditResult{
