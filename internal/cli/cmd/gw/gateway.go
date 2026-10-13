@@ -463,7 +463,27 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				return fmt.Errorf("%w: %w", constants.ErrInvalidPosture, err)
 			}
 
-			// Detect and display network identity before prompting
+			// A running Gateway is checked before identity detection so a
+			// rerun reports reuse or a configuration conflict without first
+			// printing the startup network inventory.
+			if !follow {
+				fileSvc, err := fileSvcFactory("", slog.Default())
+				if err != nil {
+					return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+				}
+				pm, err := platform.NewProcessManager(fileSvc)
+				if err != nil {
+					return fmt.Errorf("%w: %w", constants.ErrInternal, err)
+				}
+				running, pid, err := pm.OperatorStatus()
+				if err != nil {
+					return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
+				}
+				if running {
+					return reuseRunningGateway(cmd, fileSvc, gatewayFlagsToServeConfig(resolved), pid)
+				}
+			}
+
 			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 			identityResult := detectIdentity(context.Background(), logger, resolved.CertIdentityMode)
 
@@ -471,8 +491,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				cmd.Printf("Warning: Failed to detect network identity\n")
 				cmd.Println("Falling back to localhost-only mode")
 			} else {
-				cmd.Println(identityResult.Identity.FormatForDisplay())
-				cmd.Println()
+				printNetworkIdentity(cmd, resolved.ListenHost, identityResult.Identity)
 			}
 
 			// Foreground mode: run gateway directly in the current process
@@ -519,15 +538,6 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				return fmt.Errorf("%w: %w", constants.ErrInternal, err)
 			}
 
-			running, pid, err := pm.OperatorStatus()
-			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
-			}
-			if running {
-				cmd.Printf("ztd Gateway is already running (PID: %d)\n", pid)
-				return nil
-			}
-
 			cmd.Println("[ztd] Starting ztd Gateway service...")
 			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
 
@@ -539,7 +549,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			}
 			gatewayCfg = startOpts.GatewayConfig
 
-			_, pid, err = pm.OperatorStatus()
+			_, pid, err := pm.OperatorStatus()
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
 			}
@@ -555,13 +565,10 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				return fmt.Errorf("%w: persist launch profile: %w", constants.ErrInternal, err)
 			}
 
-			externalIP := network.GetExternalInterfaceIP()
-			hostname := pickHostname(identityResult.Identity)
-
 			cmd.Printf("[ztd] Gateway started (PID: %d)\n", pid)
 			cmd.Println()
 			printListenHostNotice(cmd, gatewayCfg.ListenHost)
-			printNextSteps(cmd, postureObj, externalIP, hostname)
+			printNextSteps(cmd, postureObj, gatewayCfg.ListenHost, network.GetExternalInterfaceIP(), consoleOriginFor(gatewayCfg.PublicBaseURL))
 
 			return nil
 		},
@@ -761,9 +768,8 @@ restart.`,
 
 			if identityResult.ShouldFallback {
 				cmd.Printf("Warning: Failed to detect network identity, falling back to localhost-only mode\n")
-			} else if identityResult.Identity != nil {
-				cmd.Println(identityResult.Identity.FormatForDisplay())
-				cmd.Println()
+			} else {
+				printNetworkIdentity(cmd, profile.Config.ListenHost, identityResult.Identity)
 			}
 
 			// Apply the resolved cert mode (may differ from the persisted
@@ -798,15 +804,11 @@ restart.`,
 			}
 
 			cmd.Println("ztd Gateway restarted successfully")
-			printListenHostNotice(cmd, profile.Config.ListenHost)
 			postureObj, _ := governance.ParseGovernancePosture(string(profile.Config.Posture))
-			cmd.Printf("Governance mode: %s\n", postureObj.Description())
-			cmd.Printf("\nConsole UI: %s/console/ (WebAuthn/passkey dashboard)\n", network.LocalhostHTTPSURL(constants.Ports.OperatorHttps))
-			if postureObj.RequiresL3Proof() {
-				cmd.Printf("\nNext step: Run '%s auth enroll user' to register a passkey (required for %s posture)\n", getBinaryName(), postureObj.Name())
-			} else {
-				cmd.Printf("\nNext step: Run '%s auth enroll user' to authenticate (passkey optional for %s posture)\n", getBinaryName(), postureObj.Name())
-			}
+			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
+			cmd.Println()
+			printListenHostNotice(cmd, profile.Config.ListenHost)
+			printNextSteps(cmd, postureObj, profile.Config.ListenHost, network.GetExternalInterfaceIP(), consoleOriginFor(profile.Config.PublicBaseURL))
 			return nil
 		},
 	}

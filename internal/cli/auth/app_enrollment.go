@@ -237,7 +237,7 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 		c.logger.Info("app enrollment: request submitted", "app_name", c.appName, "request_id", requestID, "fingerprint", appFP)
 		if out != nil {
 			fmt.Fprintf(out, "Enrollment request submitted for application %q.\n", c.appName)
-			fmt.Fprintf(out, "Approve with: ztd auth enroll approve %s\n", requestID)
+			fmt.Fprintf(out, "Approve on the Gateway host with: %s auth enroll approve %s\n", constants.LocalBinaryName, requestID)
 		}
 	}
 

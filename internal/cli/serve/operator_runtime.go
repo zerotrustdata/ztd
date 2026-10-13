@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 )
@@ -93,6 +94,10 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	if err != nil {
 		logger.Error("Failed to create file service", string(constants.ConnectionStateError), err)
 		return nil, startFailure(exitcode.FromError(err), err)
+	}
+	if err := refuseGatewayRuntime(ctx, fileSvc, effectiveWorkDir); err != nil {
+		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
+		return nil, startFailure(constants.ExitConfigError, err)
 	}
 	if err := fileSvc.CreateRuntimeTree(ctx); err != nil {
 		logger.Error("Failed to create runtime tree", string(constants.ConnectionStateError), err)
@@ -275,4 +280,19 @@ func (rt *OperatorRuntime) Stop(ctx context.Context) error {
 	rt.cancel()
 	rt.wg.Wait()
 	return rt.service.Stop(ctx)
+}
+
+// refuseGatewayRuntime keeps an outbound Operator out of a Gateway's runtime
+// tree. Each executing runtime owns its own audit store and state root, so an
+// Operator launched from the Gateway directory without --working-dir would
+// otherwise open the Gateway's databases and vault.
+func refuseGatewayRuntime(ctx context.Context, fileSvc fs.RuntimeFileService, workDir string) error {
+	isGateway, err := fileSvc.FileExists(ctx, constants.GatewayRuntimeMarker)
+	if err != nil {
+		return fmt.Errorf("operator start: inspect runtime %s: %w", workDir, err)
+	}
+	if isGateway {
+		return fmt.Errorf("%w: %s; pass --working-dir with a separate directory, for example ~/.ztd-operator", constants.ErrOperatorGatewayRuntime, fileSvc.Resolve(""))
+	}
+	return nil
 }

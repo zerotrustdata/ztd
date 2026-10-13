@@ -77,9 +77,12 @@ For setup details, see the [Getting Started guide](docs/guides/getting_started.m
 To run the Gateway with its embedded Operator carrying the Data, Inference, and Observer capabilities, use `make gw`. When the Ollama provider for the Inference capability is not on this host, uncomment `ZTD_OLLAMA_ENDPOINT` in `.env` and set it ([Configure `.env`](docs/guides/getting_started.md#configure-env)). Set `MODEL_STORAGE_ROOT` to the local model store to add the Provenance capability:
 
 ```bash
+make down   # capabilities are fixed at startup; stop the quickstart Gateway first
 make gw
 make status
 ```
+
+When a Gateway is already running with different startup flags, `./ztd gw start` lists the differences and exits without changing it.
 
 `make up` and `make gw` listen on loopback only. To enroll Operators from other hosts, use `make up-public` or `make gw-public`, which listen on all interfaces.
 
@@ -99,11 +102,14 @@ Sign in at `https://localhost:8443/console/` with a passkey.
 
 ### 2. Explore the protocol and evidence model
 
-The repository includes a protocol layer and example integrations in Go.
+The repository includes a protocol layer and example integrations in Go. From the checkout, run the examples:
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.4
+go run ./examples/governance-envelope/
+go run ./examples/workload-identity/
 ```
+
+To use the protocol in your own Go module, run `go get github.com/zerotrustdata/ztd@v1.0.4`, import the packages, then `go mod tidy`. See [Use the Protocol Library](docs/guides/getting_started.md#use-the-protocol-library-go-module).
 
 ## What is in the repo
 

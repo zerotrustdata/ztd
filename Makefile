@@ -856,8 +856,6 @@ quickstart:
 up: build
 	@echo "Starting the ztd Gateway on this host..."
 	@./ztd gw start $(GW_LISTEN_ARGS) $(GW_ARGS)
-	@echo "Host platform started. Check it with: make status"
-	@echo "Sign in with: ./ztd login (headless) or ./ztd login web (browser passkey)"
 
 # Gateway whose embedded Operator carries every Operator capability.
 # Capabilities are immutable in a running Gateway, so run `make down` first when
@@ -888,7 +886,6 @@ operator: build
 .PHONY: status
 status:
 	@./ztd gw status
-	@./ztd operator list
 
 # Operators first (governed shutdown needs the Gateway), then the Gateway even if
 # no Operator was running. Runtime state in .ztd/ is preserved.

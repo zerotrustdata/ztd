@@ -136,7 +136,6 @@ The command starts and owns an isolated Gateway and data Operator, submits a gov
 
 ```bash
 make status
-./ztd operator list
 ./ztd tui
 ```
 
@@ -188,17 +187,17 @@ Additional build targets:
 | `make build-darwin` | macOS: amd64, arm64 |
 | `make build-windows` | Windows: amd64, arm64 |
 
-For cross-compilation:
+For cross-compilation (writes `bin/ztd-<os>-<arch>` only; `./ztd` stays the host binary):
 
 ```bash
-GOOS=linux GOARCH=amd64 make build
-GOOS=darwin GOARCH=arm64 make build
-GOOS=windows GOARCH=amd64 make build
+make build-target GOOS=linux GOARCH=amd64
+make build-target GOOS=darwin GOARCH=arm64
+make build-target GOOS=windows GOARCH=amd64
 ```
 
 ztd is built and distributed natively; container execution is not maintained or supported as a distribution image.
 
-Or download the binary from a running Gateway's bootstrap endpoint:
+Or download the binary from a running Gateway's bootstrap endpoint. The endpoint serves only binaries listed in `bin/ztd-binaries.json`, which `make build-all` writes on the Gateway host; it returns 404 after a plain `make build`:
 
 ```bash
 curl -fSLO http://localhost:8080/.well-known/ztd/bin/ztd-linux-amd64
@@ -209,7 +208,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.0`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.4`, then run both checks there.
 
 Run the checksum check:
 
@@ -233,7 +232,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.0' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.4' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -266,7 +265,7 @@ make gw MODEL_STORAGE_ROOT=/srv/ollama/models
 
 The Inference capability uses `ZTD_OLLAMA_ENDPOINT` from `.env` (see [Configure `.env`](#configure-env)); `GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'` overrides it for one run.
 
-Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them. Startup ends with the same output as `gw status`:
+Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them; `gw start` against a running Gateway with different flags lists the differences and exits nonzero. `make gw` ends with the `gw status` output:
 
 ```text
 Gateway  online (PID 29424)
@@ -350,13 +349,13 @@ make down
 
 ## Use the Protocol Library (Go Module)
 
-To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services:
+To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.0
+go get github.com/zerotrustdata/ztd@v1.0.4
 ```
 
-Import in Go code:
+Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:
 
 ```go
 import (

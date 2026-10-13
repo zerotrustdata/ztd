@@ -8,6 +8,7 @@
 package serve
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -491,4 +492,16 @@ func TestOperatorInstanceIDSeparatesSameHostAndRole(t *testing.T) {
 	assert.NotEqual(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityData}, "/fleet/op-00002"))
 	assert.NotEqual(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityInference}, "/fleet/op-00001"))
 	assert.LessOrEqual(t, len(operatorInstanceID(strings.Repeat("h", 253), constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, "/fleet")), constants.PlatformEnrollmentMaxInstanceIDBytes)
+}
+
+func TestRefuseGatewayRuntime(t *testing.T) {
+	ctx := context.Background()
+	fileSvc, workDir, err := newOperatorRuntimeFileService(ServeOperatorOptions{WorkingDir: t.TempDir()}, testLogger())
+	require.NoError(t, err)
+	require.NoError(t, refuseGatewayRuntime(ctx, fileSvc, workDir))
+
+	require.NoError(t, fileSvc.WriteFile(ctx, constants.GatewayRuntimeMarker, []byte("ca"), constants.PermFilePrivate))
+	err = refuseGatewayRuntime(ctx, fileSvc, workDir)
+	require.ErrorIs(t, err, constants.ErrOperatorGatewayRuntime)
+	assert.Contains(t, err.Error(), "--working-dir")
 }

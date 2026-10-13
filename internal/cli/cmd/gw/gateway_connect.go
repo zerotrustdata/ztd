@@ -313,9 +313,8 @@ func connectStoppedGateway(
 	identityResult := detectIdentity(cmd.Context(), logger, connectCfg.CertIdentityMode)
 	if identityResult.ShouldFallback {
 		cmd.Println("Warning: Failed to detect network identity, falling back to localhost-only mode")
-	} else if identityResult.Identity != nil {
-		cmd.Println(identityResult.Identity.FormatForDisplay())
-		cmd.Println()
+	} else {
+		printNetworkIdentity(cmd, connectCfg.ListenHost, identityResult.Identity)
 	}
 	connectCfg.CertIdentityMode = identityResult.CertMode
 
@@ -368,9 +367,8 @@ func connectRestartGateway(
 	identityResult := detectIdentity(cmd.Context(), logger, connectCfg.CertIdentityMode)
 	if identityResult.ShouldFallback {
 		cmd.Println("Warning: Failed to detect network identity, falling back to localhost-only mode")
-	} else if identityResult.Identity != nil {
-		cmd.Println(identityResult.Identity.FormatForDisplay())
-		cmd.Println()
+	} else {
+		printNetworkIdentity(cmd, connectCfg.ListenHost, identityResult.Identity)
 	}
 	connectCfg.CertIdentityMode = identityResult.CertMode
 

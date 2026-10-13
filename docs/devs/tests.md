@@ -185,6 +185,8 @@ make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64
 
 ### Cross-Component Test Execution
 
+The frontend targets need their npm dependencies. On a fresh clone, run `make dev-node` (protocol/node, console, ztd-adapter, website) and `npm ci --prefix evaluation-explorer` first; the full setup script installs both.
+
 ```bash
 # Console (TypeScript): Vitest unit and component tests
 make console-test

@@ -50,9 +50,9 @@ The reference Gateway and Operator are subcommands in the same static `ztd` bina
 
 **Operator host requirements:**
 
-- The `ztd` binary and a writable launch directory. The process creates its `.ztd/` runtime tree below that directory for vault keys and local state. Operator credentials are never written there; they exist only in process memory.
+- The `ztd` binary and a writable working directory. The Operator creates its `.ztd/` runtime tree (vault keys, audit database, ledger) under `--working-dir`, or under the launch directory when the flag is omitted. Operator credentials are never written there; they exist only in process memory.
 - Outbound access to the Gateway on ports 8080 (bootstrap websocket) and 8443 (mTLS pub/sub).
-- A working directory for command execution. Use `--working-dir` to select this directory.
+- A working directory of its own. `--working-dir` selects both where commands run and where the runtime tree lives. Operator start refuses a directory that already holds a Gateway runtime.
 
 No inbound port is required on the Operator host.
 
@@ -100,10 +100,10 @@ On the Operator host, start the worker in the foreground:
 ./ztd operator start --endpoint <gateway-host>
 ```
 
-For a same-host deployment:
+For a same-host deployment, give the Operator its own working directory so it does not share the Gateway's `.ztd/`:
 
 ```bash
-./ztd operator start --endpoint localhost
+./ztd operator start --endpoint localhost --working-dir ~/.ztd-operator
 ```
 
 The Operator executes:

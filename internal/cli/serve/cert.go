@@ -61,7 +61,7 @@ func LogCertBundle(logger *slog.Logger, label string, pemData []byte) {
 			break
 		}
 		if block.Type != "CERTIFICATE" {
-			logger.Info("[TLS-DEBUG] non-cert PEM block in bundle", "label", label, "type", block.Type)
+			logger.Debug("[TLS-DEBUG] non-cert PEM block in bundle", "label", label, "type", block.Type)
 			continue
 		}
 		cert, err := x509.ParseCertificate(block.Bytes)
@@ -71,7 +71,7 @@ func LogCertBundle(logger *slog.Logger, label string, pemData []byte) {
 			continue
 		}
 		fp := sha256.Sum256(block.Bytes)
-		logger.Info("[TLS-DEBUG] bundle cert",
+		logger.Debug("[TLS-DEBUG] bundle cert",
 			"label", label,
 			"idx", idx,
 			"subject", cert.Subject.String(),
@@ -86,5 +86,5 @@ func LogCertBundle(logger *slog.Logger, label string, pemData []byte) {
 		)
 		idx++
 	}
-	logger.Info("[TLS-DEBUG] bundle parsed", "label", label, "cert_count", idx)
+	logger.Debug("[TLS-DEBUG] bundle parsed", "label", label, "cert_count", idx)
 }

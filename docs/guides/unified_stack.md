@@ -272,7 +272,7 @@ Expect `"passed": true` with three role entries (lite, assistant, primary), per-
 | Purpose | Campaign ID | Run ID pattern | Model inventory |
 | :--- | :--- | :--- | :--- |
 | **Init campaign** (one model, single-model gate) | `eval-init-<variant_id>` | `<campaign-id>-<unix>` | `.ztd/eval/inventories/<campaign-id>.json` |
-| **Mini smoke** (multi-model validation) | `eval-smoke-mini` | `smoke-mini-<unix>` | `.ztd/eval/inventories/eval-smoke-mini.json` |
+| **Mini smoke** (one-model end-to-end validation) | `eval-smoke-mini` | `smoke-mini-<unix>` | `.ztd/eval/inventories/eval-smoke-mini.json` |
 | **Full homogeneous run** | `eval-genesis-homogeneous` | `genesis-homogeneous-<seq>` | `.ztd/eval/model-inventory.json` |
 
 Single model init campaign:
@@ -308,7 +308,10 @@ The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public r
 
 #### Phase C — Monitor execution
 
+`runs start` prints the run ID (`smoke-mini-<unix>`); `./ztd eval runs list --campaign eval-smoke-mini` lists it again. Set `RUN_ID` to it:
+
 ```bash
+RUN_ID=smoke-mini-<unix>
 ./ztd eval runs show "$RUN_ID"
 ./ztd eval runs assignments "$RUN_ID" --failed
 ./ztd eval runs verify "$RUN_ID" --coverage
