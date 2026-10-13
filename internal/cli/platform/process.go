@@ -471,6 +471,16 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 	if err := pm.checkPortAvailable(availableHTTPSPort, "Operator HTTPS"); err != nil {
 		return fmt.Errorf("%w: HTTPS port %d: %w", constants.ErrPortUnavailable, availableHTTPSPort, err)
 	}
+	if offset != 0 && opts.Notices != nil {
+		holder := "another process"
+		if holderPID := pm.findProcessOnPort(effectiveHTTPPort); holderPID > 0 {
+			holder = fmt.Sprintf("PID %d", holderPID)
+		}
+		_, _ = fmt.Fprintf(opts.Notices,
+			"[ztd] Port %d is held by %s; the Gateway listens on HTTP %d and HTTPS %d instead.\n"+
+				"[ztd] CLI commands run from this directory follow these ports; Operators on other hosts need -e <host>:%d --port %d.\n",
+			effectiveHTTPPort, holder, availableHTTPPort, availableHTTPSPort, availableHTTPPort, availableHTTPSPort)
+	}
 	if err := pm.checkSpectatorListenersFree(opts.GatewayConfig); err != nil {
 		return err
 	}

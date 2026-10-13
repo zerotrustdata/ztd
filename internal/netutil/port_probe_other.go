@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strconv"
 	"syscall"
 
@@ -30,16 +31,23 @@ func reserveTCPPort() (int, io.Closer, error) {
 }
 
 func checkTCPPortBind(port int) error {
-	// Go enables SO_REUSEADDR for TCP listeners. On BSD that lets a wildcard
-	// bind coexist with an existing listener on a specific address. Disable it
-	// for probes so any occupied address makes the wildcard bind fail.
-	config := net.ListenConfig{Control: func(_, _ string, conn syscall.RawConn) error {
-		var optionErr error
-		controlErr := conn.Control(func(fd uintptr) {
-			optionErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 0)
-		})
-		return errors.Join(controlErr, optionErr)
-	}}
+	// Go enables SO_REUSEADDR for TCP listeners. On Linux that matches the real
+	// Gateway bind exactly: any listening socket on the port, wildcard or
+	// specific, still conflicts, while TIME_WAIT sockets left by a Gateway that
+	// just stopped do not. Disabling it there would report a freshly stopped
+	// Gateway's ports as busy for a minute and shift the restart off the
+	// defaults. On BSD, SO_REUSEADDR lets a wildcard bind coexist with a
+	// listener on a specific address, so the probe disables it there.
+	var config net.ListenConfig
+	if runtime.GOOS != "linux" {
+		config.Control = func(_, _ string, conn syscall.RawConn) error {
+			var optionErr error
+			controlErr := conn.Control(func(fd uintptr) {
+				optionErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 0)
+			})
+			return errors.Join(controlErr, optionErr)
+		}
+	}
 	// Probe each family explicitly so IPv4 and IPv6 conflicts are both detected.
 	for _, network := range []string{"tcp4", "tcp6"} {
 		listener, err := config.Listen(context.Background(), network, net.JoinHostPort("", strconv.Itoa(port)))

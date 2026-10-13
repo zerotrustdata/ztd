@@ -569,7 +569,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			cmd.Printf("[ztd] Gateway started (PID: %d)\n", pid)
 			cmd.Println()
 			printListenHostNotice(cmd, gatewayCfg.ListenHost)
-			printNextSteps(cmd, postureObj, gatewayCfg.ListenHost, network.GetExternalInterfaceIP(), consoleOriginFor(gatewayCfg.PublicBaseURL))
+			printNextSteps(cmd, postureObj, gatewayCfg, network.GetExternalInterfaceIP())
 
 			return nil
 		},
@@ -809,7 +809,7 @@ restart.`,
 			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
 			cmd.Println()
 			printListenHostNotice(cmd, profile.Config.ListenHost)
-			printNextSteps(cmd, postureObj, profile.Config.ListenHost, network.GetExternalInterfaceIP(), consoleOriginFor(profile.Config.PublicBaseURL))
+			printNextSteps(cmd, postureObj, profile.Config, network.GetExternalInterfaceIP())
 			return nil
 		},
 	}
