@@ -37,6 +37,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	sshpkg "github.com/zerotrustdata/ztd/internal/pkg/ssh"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/uuid"
@@ -102,26 +103,6 @@ func isLocalTarget(host string) bool {
 
 func isRemoteTarget(host string) bool {
 	return !isLocalTarget(host)
-}
-
-func isLoopbackEndpoint(endpoint string) bool {
-	ep := strings.TrimSpace(endpoint)
-	if ep == "" {
-		return false
-	}
-	if idx := strings.Index(ep, "://"); idx != -1 {
-		ep = ep[idx+3:]
-	}
-	host := ep
-	if h, _, err := net.SplitHostPort(ep); err == nil {
-		host = h
-	}
-	host = strings.Trim(host, "[]")
-	if strings.EqualFold(host, constants.LocalhostHostname) || strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified())
 }
 
 func isWindowsPath(p string) bool {
@@ -975,8 +956,9 @@ func useDeployGatewayPorts(cmd *cobra.Command) {
 	if strings.Contains(host, "://") {
 		return
 	}
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+	host, _, err := netutil.SplitEndpoint(host)
+	if err != nil {
+		return
 	}
 	if host == "" {
 		host = constants.LocalhostHostname
@@ -1158,10 +1140,10 @@ func validateOperatorDeployFlags(
 			if workerEndpoint == "" {
 				return "", "", fmt.Errorf("%w: %w: --operator-endpoint is required for remote deployment with --background", constants.ErrMissingRequiredField, constants.ErrOperatorEndpointInvalid)
 			}
-			if isLoopbackEndpoint(workerEndpoint) {
+			if netutil.IsLoopbackEndpoint(workerEndpoint) {
 				return "", "", fmt.Errorf("%w: remote deployment requires a non-loopback --operator-endpoint (got %q)", constants.ErrOperatorEndpointInvalid, workerEndpoint)
 			}
-		} else if workerEndpoint != "" && isLoopbackEndpoint(workerEndpoint) {
+		} else if workerEndpoint != "" && netutil.IsLoopbackEndpoint(workerEndpoint) {
 			return "", "", fmt.Errorf("%w: remote deployment requires a non-loopback --operator-endpoint (got %q)", constants.ErrOperatorEndpointInvalid, workerEndpoint)
 		}
 	} else {

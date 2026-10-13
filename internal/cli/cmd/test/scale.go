@@ -242,26 +242,6 @@ func (c *scaleConfig) hasRemoteHosts() bool {
 	return false
 }
 
-func isLoopbackEndpoint(endpoint string) bool {
-	ep := strings.TrimSpace(endpoint)
-	if idx := strings.Index(ep, "://"); idx != -1 {
-		ep = ep[idx+3:]
-	}
-	host := ep
-	if h, _, err := net.SplitHostPort(ep); err == nil {
-		host = h
-	}
-	host = strings.Trim(host, "[]")
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	if ip != nil && (ip.IsLoopback() || ip.IsUnspecified()) {
-		return true
-	}
-	return false
-}
-
 func (c *scaleConfig) validate() error {
 	switch {
 	case c.Count < 1 || c.Count > scaleMaxCount:
@@ -303,7 +283,7 @@ func (c *scaleConfig) validate() error {
 		if strings.TrimSpace(c.OperatorEndpoint) == "" {
 			return fmt.Errorf("%w: --operator-endpoint is required when remote hosts are targeted: %w", constants.ErrScaleTestInvalidInput, constants.ErrOperatorEndpointInvalid)
 		}
-		if isLoopbackEndpoint(c.OperatorEndpoint) {
+		if netutil.IsLoopbackEndpoint(c.OperatorEndpoint) {
 			return fmt.Errorf("%w: --operator-endpoint cannot be loopback (%s) when remote hosts are targeted: %w", constants.ErrScaleTestInvalidInput, c.OperatorEndpoint, constants.ErrOperatorEndpointInvalid)
 		}
 	}

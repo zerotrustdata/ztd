@@ -38,7 +38,7 @@ func SplitEndpoint(endpoint string) (string, int, error) {
 }
 
 // IsLoopbackEndpoint reports whether endpoint names the local host: localhost,
-// or a loopback or unspecified IP. A URL scheme and port are ignored. A
+// or a loopback or unspecified IP. A URL scheme, path, and port are ignored. A
 // malformed endpoint is not loopback.
 func IsLoopbackEndpoint(endpoint string) bool {
 	ep := strings.TrimSpace(endpoint)
@@ -47,6 +47,9 @@ func IsLoopbackEndpoint(endpoint string) bool {
 	}
 	if idx := strings.Index(ep, "://"); idx != -1 {
 		ep = ep[idx+3:]
+	}
+	if idx := strings.IndexByte(ep, '/'); idx != -1 {
+		ep = ep[:idx]
 	}
 	host, _, err := SplitEndpoint(ep)
 	if err != nil {

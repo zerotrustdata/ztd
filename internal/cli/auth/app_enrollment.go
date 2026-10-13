@@ -30,12 +30,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
@@ -754,10 +756,10 @@ func resolveGatewayHTTPURL(cfg *config.Config) string {
 		if strings.Contains(host, "://") {
 			return strings.TrimRight(host, "/")
 		}
-		if _, _, err := net.SplitHostPort(host); err == nil {
-			return "http://" + host
+		if bare, port, err := netutil.SplitEndpoint(host); err == nil && port == 0 {
+			return "http://" + net.JoinHostPort(bare, strconv.Itoa(constants.Ports.OperatorHttp))
 		}
-		return fmt.Sprintf("http://%s:%d", host, constants.Ports.OperatorHttp)
+		return "http://" + host
 	}
 	host := "127.0.0.1"
 	if cfg != nil && cfg.Paths != nil && cfg.Paths.Host != "" {

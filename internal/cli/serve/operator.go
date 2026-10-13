@@ -13,11 +13,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
@@ -81,32 +80,17 @@ func resolveOperatorGateway(endpoint string, httpPort int) (string, int, error) 
 	if strings.Contains(endpoint, "://") {
 		return "", 0, fmt.Errorf("%w: %q", constants.ErrGatewayEndpointInvalid, endpoint)
 	}
-	if !endpointHasPort(endpoint) {
-		// No port: a hostname, IPv4 address, or bare/bracketed IPv6 address.
-		return strings.TrimSuffix(strings.TrimPrefix(endpoint, "["), "]"), httpPort, nil
-	}
-	host, portText, err := net.SplitHostPort(endpoint)
+	host, port, err := netutil.SplitEndpoint(endpoint)
 	if err != nil {
-		return "", 0, fmt.Errorf("%w: %q", constants.ErrGatewayEndpointInvalid, endpoint)
+		return "", 0, err
 	}
-	port, err := strconv.Atoi(portText)
-	if host == "" || err != nil || port < 1 || port > 65535 {
-		return "", 0, fmt.Errorf("%w: %q", constants.ErrGatewayEndpointInvalid, endpoint)
+	if port == 0 {
+		return host, httpPort, nil
 	}
 	if httpPort != 0 && httpPort != port {
 		return "", 0, fmt.Errorf("%w: endpoint port %d conflicts with --gateway-http-port %d", constants.ErrGatewayEndpointInvalid, port, httpPort)
 	}
 	return host, port, nil
-}
-
-// endpointHasPort reports whether endpoint carries a port suffix: "[v6]:port",
-// or "name:port" with exactly one colon. A bare IPv6 address has several colons
-// and no brackets, so it carries no port.
-func endpointHasPort(endpoint string) bool {
-	if strings.HasPrefix(endpoint, "[") {
-		return strings.Contains(endpoint, "]:")
-	}
-	return strings.Count(endpoint, ":") == 1
 }
 
 // resolveWorkingDir returns workingDir if set, otherwise falls back to launchDir.
