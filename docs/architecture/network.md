@@ -3,8 +3,8 @@ doc_id: network
 title: Network Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.6
+last_updated: 2026-10-13
 owners:
   - internal/services/gateway/
   - internal/services/network/

@@ -3,8 +3,8 @@ doc_id: reset_workload_identity
 title: Reset Workload Identity
 audience: platform operators, administrators, developers
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.6
+last_updated: 2026-10-13
 owners:
   - docs/guides/reset_workload_identity.md
   - internal/cli/cmd/operator
@@ -44,7 +44,7 @@ The command:
 2. Removes CLI session credentials, the CLI certificate and private key, and cached Gateway trust bundles.
 3. Preserves SQLite databases, vault keys, model files, local configuration, and logs.
 
-Worker process discovery for reset is supported on Linux. Gateway runtime directories and symlinked identity paths are refused. An explicit reset clears local state only; it does not communicate revocation to a remote Gateway.
+Operator process discovery for reset is supported on Linux, macOS, and Windows. It targets the current user's inspectable Operator processes in the specified working directory; processes owned by another user or inaccessible to the current process are skipped. If a matching process cannot be stopped, the reset fails before removing credentials. Gateway runtime directories and symlinked identity paths are refused. An explicit reset clears local state only; it does not communicate revocation to a remote Gateway.
 
 ## Re-enroll and Start the Operator
 

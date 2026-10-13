@@ -6,32 +6,15 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 
 | Path | Purpose |
 | --- | --- |
-| `eval/base-model-inventory.json` | **Default genesis program inventory** — 50 init-campaign models (41 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it) |
+| `eval/base-model-inventory.json` | **Default genesis program inventory** — 75 init-campaign models (75 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 5,625 cells total) |
 | `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); currently 47 entries and does not yet list `gemma4:12b`, `glm-5.3-air`, or `qwen2.5:1b-rlcd` |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
 
-The base inventory is the canonical 50-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are a reference provider snapshot; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
+The base inventory is the canonical 75-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are a reference provider snapshot; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
 
 The optional Hugging Face rollout intake (`eval/rollout-intake-hf.json`) also tracks the small text-generation trend candidate Qwen 2.5 1B RLCD. Larger trend entries are intentionally excluded from this 16 GiB-provider intake; classification, image, audio, and image-text-to-text repositories from the same trend snapshot are also not added to the text-generation queue.
 
-### 50-model program set
-
-| Family | Models |
-| --- | --- |
-| DeepSeek | `deepseek-r1:7b` |
-| GLM | `milkey/GLM-4-9B-0414:Q4_K_M`, `glm-5.3-air` |
-| GPT-OSS | `gpt-oss:20b` |
-| Gemma | `gemma2:9b`, `gemma3:270m`, `gemma3:1b`, `gemma3:4b`, `gemma4:e2b`, `gemma4:e4b`, `gemma4:12b` |
-| Granite | `granite4.2:3b`, `granite4.2:8b`, `granite3.3:2b`, `granite3.3:8b` |
-| Hermes | `hermes3:8b` |
-| Llama | `llama3.1:8b`, `llama3.2:1b`, `llama3.2:3b`, `tinyllama:1.1b` |
-| Mistral | `mistral:7b`, `ministral-3:3b`, `ministral-3:8b` |
-| Phi | `phi4-mini:3.8b`, `phi4-mini-reasoning:3.8b` |
-| Qwen | `pdevine/qwen3.6:27b-mtp-q4_K_M`, `qwen3:30b`, `qwen3.5:0.8b`, `qwen3.5:2b`, `qwen3.5:4b`, `qwen3.5:9b`, `qwen3:0.6b`, `qwen3:1.7b`, `qwen3:4b`, `qwen3:8b`, `qwen2.5:0.5b`, `qwen2.5:1b-rlcd`, `qwen2.5:3b`, `qwen2.5:7b`, `qwen2.5-coder:7b`, `qwen3.6:35b-a3b`, `qwen3.8:27b` |
-| SmolLM | `smollm2:135m`, `smollm2:360m`, `smollm2:1.7b`, `Impulse2000/smollm3:3b-q4_k_m` |
-| Other | `Randomblock1/nemotron-nano:8b`, `sam860/LFM2:350m`, `sam860/LFM2:700m`, `sam860/LFM2:2.6b` |
-
-Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). Each single-model run is **41** assignments under `default-suite`.
+The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). Each single-model run is **75** assignments under `default-suite`.
 
 ## Runtime files (campaign host)
 

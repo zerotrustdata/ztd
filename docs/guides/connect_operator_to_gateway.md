@@ -3,7 +3,7 @@ doc_id: connect_operator_to_gateway
 title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - docs/guides/connect_operator_to_gateway.md
@@ -236,6 +236,8 @@ To stop all local workers running under the current user (Linux, macOS, and Wind
 ./ztd operator stop
 ```
 
+This discovers `ztd operator start` processes owned by the current user and targets only those workers; it does not stop the Gateway or unrelated `ztd` commands. It first requests governed shutdown where an active Gateway connection is available, then waits for exit and escalates to the platform process termination mechanism if needed. On Windows, both escalation signals terminate the process because Windows has no catchable `TERM` signal. Processes owned by another user, or that cannot be inspected due to permissions or bitness, are skipped. Local stop does not revoke enrollment; because Operator credentials are memory-only, the next start performs enrollment again and needs owner approval.
+
 ---
 
 ## Troubleshooting
@@ -251,6 +253,10 @@ Confirm port 8080 is reachable. `connection refused` from a remote host means th
 ### Pub/Sub Connection Fails After Enrollment
 
 Verify port 8443 is reachable, the endpoint contains no scheme or port suffix, and the hostname matches the Gateway certificate SAN.
+
+### Operator Cannot Start from Its Model Store
+
+Keep `--working-dir` outside `--model-storage-root`. Startup refuses a runtime `.ztd/` tree that is equal to or nested under the model storage root, so the provenance model store remains isolated from runtime state.
 
 ---
 

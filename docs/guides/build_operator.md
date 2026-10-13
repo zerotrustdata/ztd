@@ -3,7 +3,7 @@ doc_id: build_operator
 title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - docs/guides/
@@ -57,7 +57,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | Gateway start command and flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Operator list/bind/run/stop commands | `internal/cli/cmd/operator/operator.go` | `./ztd operator --help` |
 | Vault administration | `internal/cli/cmd/vault/` | `./ztd vault --help` |
-| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.0.5` | `go get github.com/zerotrustdata/ztd@v1.0.5` |
+| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.0.6` | `go get github.com/zerotrustdata/ztd@v1.0.6` |
 
 ## Procedures
 
@@ -123,7 +123,7 @@ The enrolled owner reviews and approves the request:
 | :--- | :--- |
 | `-e, --endpoint <host[:port]>` | Gateway host for bootstrap websocket and pub/sub. A port names the Gateway HTTP discovery port and must match `--gateway-http-port` when both are set; the pub/sub port comes from `--gateway-https-port`. URL schemes are rejected. Default: `localhost`. |
 | `--trust-bundle <path>` | Owner-supplied CA trust bundle to pin Gateway identity. |
-| `--working-dir <path>` | Sets command execution directory and `.ztd/` runtime root. Defaults to current directory. Start refuses a directory that holds a Gateway runtime. |
+| `--working-dir <path>` | Sets command execution directory and `.ztd/` runtime root. Defaults to current directory. Start refuses a directory that holds a Gateway runtime or places the runtime tree inside `--model-storage-root`. |
 | `-c, --cloud` | Enables cloud Operator mode. |
 | `--provider <aws\|gcp\|azure>` | Sets cloud provider recorded in configuration. |
 | `-l, --log <level>` | Sets `info`, `error`, or `debug` logging. |

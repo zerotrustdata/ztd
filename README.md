@@ -7,7 +7,7 @@ ztd lets AI systems propose actions without giving them direct control over real
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
 
-The current version is **v1.0.5**. See the [release notes](docs/release_notes/v1.0.x/v1.0.5.md) for changes and validation results.
+The current version is **v1.0.6**. See the [release notes](docs/release_notes/v1.0.x/v1.0.6.md) for changes and validation results.
 
 ## What ztd does
 
@@ -65,7 +65,7 @@ On Linux or macOS, paste this into a terminal:
 curl -fsSL https://zerotrustdata.io/start.sh | sh
 ```
 
-It installs the signed release binary into `~/ztd` after verifying its SHA-256 checksum, starts a Gateway on `https://localhost:8443`, signs the CLI in, and runs a first governed action. It never uses sudo, and rerunning it is safe. Set `ZTD_DIR` to choose another directory, `ZTD_VERSION` to pin a release, and `ZTD_MASTER_KEY_FILE` on Linux hosts without a Secret Service keyring or ssh-agent. To install only the binary, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh`, or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell. Every release binary, checksum, and Sigstore bundle is listed at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
+It installs the release binary into `~/ztd` after verifying its SHA-256 checksum, starts a Gateway on `https://localhost:8443`, signs the CLI in, and runs a first governed action. The installer does not verify the Sigstore signature; see the [release verification steps](docs/guides/getting_started.md#verify-a-release-binary) to verify it manually. It never uses sudo, and rerunning it is safe. Set `ZTD_DIR` to choose another directory, `ZTD_VERSION` to pin a release, and `ZTD_MASTER_KEY_FILE` on Linux hosts without a Secret Service keyring or ssh-agent. To install only the binary, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh`, or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell. Every release binary, checksum, and Sigstore bundle is listed at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
 
 ### 2. Build and run from source
 
@@ -127,7 +127,7 @@ go run ./examples/governance-envelope/
 go run ./examples/workload-identity/
 ```
 
-To use the protocol in your own Go module, run `go get github.com/zerotrustdata/ztd@v1.0.5`, import the packages, then `go mod tidy`. See [Use the Protocol Library](docs/guides/getting_started.md#use-the-protocol-library-go-module).
+To use the protocol in your own Go module, run `go get github.com/zerotrustdata/ztd@v1.0.6`, import the packages, then `go mod tidy`. See [Use the Protocol Library](docs/guides/getting_started.md#use-the-protocol-library-go-module).
 
 ## What is in the repo
 

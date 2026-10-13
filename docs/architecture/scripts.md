@@ -3,7 +3,7 @@ doc_id: scripts
 title: Automation Scripts
 audience: maintainers and coding agents
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - scripts/

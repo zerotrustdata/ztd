@@ -3,7 +3,7 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - docs/guides/build_gateway.md
@@ -138,7 +138,7 @@ Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, 
 Custom Gateway implementations consume the ztd Protocol Library for protobuf schema definitions, SPIFFE workload identity helpers, and JSON protocol constants.
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.5
+go get github.com/zerotrustdata/ztd@v1.0.6
 ```
 
 Import protobuf types and SPIFFE helpers from `github.com/zerotrustdata/ztd/protocol`.

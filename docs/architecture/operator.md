@@ -182,6 +182,8 @@ Witness constraints:
 - Adding `data` permits governed command execution in the same process.
 - Streamed inference progress is scrubbed at the source before publication. Streams are buffered line-by-line and scrubbed against regex patterns. Private keys are buffered until completion. The terminal `output_hash` binds the concatenated scrubbed progress chunks.
 
+Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration and stable provenance and provider-boundary observer pseudonyms. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
+
 ### Multi-Operator Coexistence and Composite Fingerprinting
 
 Multiple Operator instances can execute concurrently on a single host. Operators are disambiguated by four factors:
@@ -223,6 +225,8 @@ Communication between the Gateway and Operators uses dedicated, isolated WebSock
 - **Command Ingress**: `cmd:<operator_id>:<operator_session_id>`: Receives canonical `GovernanceEnvelope` transactions dispatched from the Gateway.
 - **Receipt Egress**: `receipts:<operator_id>:<operator_session_id>`: Publishes signed `ActionReceipt` objects back to the Gateway.
 - **Heartbeat Channel**: Publishes periodic telemetry frames containing process metrics and timestamp proofs.
+
+The native `sys_info` tool also reports host OS details. On Unix-like systems it reads the distribution name from `/etc/os-release` and kernel, uptime, and load averages from the host interfaces where available. On Windows it reads the product name and build from the registry (correcting Windows 10 labels for build 22000 and later), reports kernel version and uptime, and returns `unknown` for load average because Windows does not expose that metric through this collector. Unavailable or unreadable values are returned as `unknown`.
 
 ### Five-Layer Execution Boundary (L4 Warden & L5 Actuator)
 
