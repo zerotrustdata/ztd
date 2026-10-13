@@ -125,6 +125,23 @@ func testIntegrationCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 		Short: "Run Tier 2 (In-Process Integration) tests",
 		Long:  `Run in-process integration tests with the 'integration' build tag. These tests run the gateway in-process against real on-disk SQLite databases, local PKI generation, and local pubsub. Use --pkg and --run to select a package and tests by regular expression.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !cmd.Flags().Changed("pkg") && !cmd.Flags().Changed("run") {
+				fmt.Println("make test-integration")
+
+				// Delegate to the Makefile so the CLI and repository test target share
+				// package exclusions, race settings, cache settings, and timeouts.
+				code, err := runner(cmd.Context(), "make", "test-integration")
+				if err != nil {
+					return fmt.Errorf("%w: %w", constants.ErrIntegrationTestsFailed, err)
+				}
+				if code != 0 {
+					return fmt.Errorf("%w: exit code %d", constants.ErrIntegrationTestsFailed, code)
+				}
+
+				fmt.Println("Integration tests completed successfully.")
+				return nil
+			}
+
 			fmt.Println("Running Tier 2 (In-Process Integration) tests...")
 
 			testArgs := []string{"test", "-tags=integration", "-count=1", "-timeout", integrationTestTimeout.String()}
@@ -137,7 +154,11 @@ func testIntegrationCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 			if runRegexp != "" {
 				testArgs = append(testArgs, "-run", runRegexp)
 			}
-			testArgs = append(testArgs, pkg)
+			targetPkg := pkg
+			if targetPkg == "" {
+				targetPkg = "./..."
+			}
+			testArgs = append(testArgs, targetPkg)
 
 			code, err := runner(cmd.Context(), "go", testArgs...)
 			if err != nil {

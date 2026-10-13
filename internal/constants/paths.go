@@ -95,15 +95,19 @@ const (
 
 // System paths (Windows) for registry, hosts, and Git Bash locations.
 const (
-	PathWindowsSystemRoot           = "SystemRoot"
-	PathWindowsHostsFile            = "System32\\drivers\\etc\\hosts"
-	PathWindowsRegistryCryptography = "SOFTWARE\\Microsoft\\Cryptography"
-	PathWindowsRegistryMachineGuid  = "MachineGuid"
-	PathWindowsGitBinBash           = "C:\\Program Files\\Git\\bin\\bash.exe"
-	PathWindowsGitUsrBinBash        = "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
-	PathWindowsGitBinSh             = "C:\\Program Files\\Git\\bin\\sh.exe"
-	PathWindowsMsys64Bash           = "C:\\msys64\\usr\\bin\\bash.exe"
-	PathWindowsCygwin64Bash         = "C:\\cygwin64\\bin\\bash.exe"
+	PathWindowsSystemRoot                 = "SystemRoot"
+	PathWindowsHostsFile                  = "System32\\drivers\\etc\\hosts"
+	PathWindowsRegistryCryptography       = "SOFTWARE\\Microsoft\\Cryptography"
+	PathWindowsRegistryMachineGuid        = "MachineGuid"
+	PathWindowsRegistryCurrentVersion     = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"
+	PathWindowsRegistryProductName        = "ProductName"
+	PathWindowsRegistryCurrentBuild       = "CurrentBuild"
+	PathWindowsRegistryCurrentBuildNumber = "CurrentBuildNumber"
+	PathWindowsGitBinBash                 = "C:\\Program Files\\Git\\bin\\bash.exe"
+	PathWindowsGitUsrBinBash              = "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
+	PathWindowsGitBinSh                   = "C:\\Program Files\\Git\\bin\\sh.exe"
+	PathWindowsMsys64Bash                 = "C:\\msys64\\usr\\bin\\bash.exe"
+	PathWindowsCygwin64Bash               = "C:\\cygwin64\\bin\\bash.exe"
 
 	// Windows temp directory prefixes and filenames for cert store operations
 	WindowsTempCertImportPrefix = "ztd-cert-import-*"

@@ -75,6 +75,8 @@ func TestSelectInferenceOperator_FailsClosedOnAmbiguity(t *testing.T) {
 	}
 	_, err := SelectInferenceOperator(operators, "")
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorAmbiguous)
+	assert.Contains(t, err.Error(), "inf-1 (session sess-inf-1)")
+	assert.Contains(t, err.Error(), "inf-2 (session sess-inf-2)")
 }
 
 func TestSelectInferenceOperatorForHardware(t *testing.T) {

@@ -110,7 +110,8 @@ make dev-setup    # Installs missing Go tools, Node dependencies, and git hooks
 make dev-check    # Preflight verification; runs before all CI targets
 ```
 
-- `make dev-tools`: Installs `buf`, `protoc-gen-go`, `protoc-gen-doc`, `golangci-lint`, `govulncheck`, and `swag` to `GOBIN` or `GOPATH/bin`.
+- `make dev-tools`: Refreshes all six Go developer tools (`buf`, `protoc-gen-go`, `protoc-gen-doc`, `golangci-lint`, `govulncheck`, and `swag`) to their pinned versions in `GOBIN` or `GOPATH/bin`.
+- `make dev-tools-if-needed`: Called by `make dev-setup`. Inspects tool module versions and Go compiler versions using `go version -m` (`ztd_tool_version`). Reinstalls on pin mismatch or when built with an older Go toolchain than `go.mod` requires, and fails after install if `PATH` still resolves a stale copy elsewhere outside `GOBIN`.
 - `make hooks-install`: Points `core.hooksPath` to `scripts/git-hooks`.
 - `make dev-node`: Installs npm dependencies across `protocol/node`, `console`, `ztd-adapter`, and `website`.
 

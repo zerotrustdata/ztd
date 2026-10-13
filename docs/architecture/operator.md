@@ -123,6 +123,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-OP-STOR-01 | Under LFAA, the Operator's local SQLite database (`.ztd/data/ztd.db`) and Git file ledger (`.ztd/data/ledger/`) are the authoritative execution records. Gateway receipt mirrors are best-effort projections. |
 | INV-OP-STOR-02 | Operator private keys, CSRs, requester tokens, and issued certificates MUST be held in memory only during remote runtime execution; they MUST NOT be written to plaintext files in `.ztd/`. |
 | INV-OP-STOR-03 | An outbound Operator's runtime tree is `--working-dir/.ztd/`, or the launch directory's `.ztd/` when the flag is omitted. `operator start` MUST refuse a runtime tree that holds a Gateway root CA (`GatewayRuntimeMarker`, `pki/root/root_ca.crt`), so an Operator never opens a Gateway's audit store or vault. |
+| INV-OP-STOR-04 | An Operator's runtime tree (`.ztd/`) MUST NOT reside inside the model storage root (`--model-storage-root`). `operator start` MUST refuse startup with `ErrOperatorModelStoreRuntime` if the resolved runtime tree is inside or equal to the model storage root, preserving the model store as a pure read-only witness and weight cache. |
 
 ## Owned surfaces
 
@@ -245,6 +246,7 @@ The Operator owns the final two layers of the governance interlock:
 - **Git File Ledger**: Every governed `FILE_EDIT` or `RESTORE_FILE` action creates an encrypted snapshot in Git before and after modification.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
 - **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
+- **Model Store Isolation**: An Operator's runtime state (`.ztd/`) must never reside inside the model storage root (`--model-storage-root`). `operator start` validates this pre-flight via `refuseModelStoreRuntime` and fails closed with `ErrOperatorModelStoreRuntime` (INV-OP-STOR-04), preserving the provenance model store as a pure read-only witness.
 
 ### Autochthon Subsystem
 

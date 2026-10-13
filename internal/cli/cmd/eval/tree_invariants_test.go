@@ -125,8 +125,8 @@ func checkPositionalIDs(t *testing.T, cmd *cobra.Command) {
 		}
 		c.Flags().VisitAll(func(f *pflag.Flag) {
 			for _, pattern := range idFlagPatterns {
-				if strings.HasSuffix(f.Name, pattern) && f.Name != "session-id" && f.Name != "pool-id" {
-					// session-id and pool-id are not command IDs
+				if strings.HasSuffix(f.Name, pattern) && f.Name != "session-id" && f.Name != "operator-session-id" && f.Name != "pool-id" {
+					// session-id, operator-session-id, and pool-id are not command IDs
 					t.Errorf("command %s should use positional argument for ID, not flag --%s (invariant 5)", strings.Join(path, " "), f.Name)
 				}
 			}

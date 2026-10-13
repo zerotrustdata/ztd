@@ -31,13 +31,16 @@ source "$SCRIPT_DIR/lib/dev-setup-common.sh"
 GO_MIN="$(sed -n 's/^go //p' "$SOURCE_ROOT/go.mod" | head -1 | tr -d '[:space:]')"
 [[ -n "$GO_MIN" ]] || fail "could not read the Go version from go.mod"
 
-# Coreutils the code under test calls, symlinked so "missing" tools stay missing.
+# Coreutils the code under test calls, wrapped so "missing" tools stay missing.
+# 'ln -s' on Windows/Git Bash creates .exe copies that fail to load msys-2.0.dll
+# under restricted PATH, so we use /bin/sh exec wrappers.
 CORE="$SCRATCH/core-bin"
 mkdir -p "$CORE"
 for tool in sed awk grep head tail tr cat mktemp basename dirname uname id rm touch cmp cp wc cut mkdir; do
 	real="$(command -v "$tool" || true)"
 	if [[ -n "$real" ]]; then
-		ln -s "$real" "$CORE/$tool"
+		printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" >"$CORE/$tool"
+		chmod 755 "$CORE/$tool"
 	fi
 done
 
@@ -257,8 +260,14 @@ test_create_env_file_owner_only_and_kept() {
 		ztd_ui_init
 		ztd_create_env_file >/dev/null
 	) || fail "ztd_create_env_file failed"
-	cmp -s "$repo/.env.example" "$repo/.env" || fail ".env is not a copy of .env.example"
-	[[ -n "$(find "$repo/.env" -perm 600)" ]] || fail ".env mode: want 600"
+	case "$(uname -s)" in
+	MINGW* | MSYS* | CYGWIN*)
+		echo "SKIP: NTFS has no POSIX mode 600"
+		;;
+	*)
+		[[ -n "$(find "$repo/.env" -perm 600)" ]] || fail ".env mode: want 600"
+		;;
+	esac
 
 	printf 'kept\n' >"$repo/.env"
 	(
@@ -309,8 +318,8 @@ make_fake_repo() {
 #!/bin/sh
 STATE="${ZTD_STUB_STATE:?}"
 echo "$*" >>"$STATE/calls.log"
-# Match on the command alone; quickstart appends the key flag to every call.
-case "${*% --master-key-file *}" in
+cmd="$*"
+case "${cmd% --master-key-file *}" in
 --version) echo "ztd version v1.0.0" ;;
 "gw status")
 	if [ -e "$STATE/gw.on" ]; then

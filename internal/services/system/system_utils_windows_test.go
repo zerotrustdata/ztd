@@ -35,3 +35,19 @@ func TestReadSystemCPUTimes(t *testing.T) {
 	assert.NotZero(t, total)
 	assert.LessOrEqual(t, idle, total)
 }
+
+func TestGetWindowsVersion(t *testing.T) {
+	t.Parallel()
+
+	ver := GetWindowsVersion()
+	assert.NotEmpty(t, ver)
+	assert.NotEqual(t, "Unknown", ver)
+}
+
+func TestGetWindowsKernelVersion(t *testing.T) {
+	t.Parallel()
+
+	kernel := GetWindowsKernelVersion()
+	assert.NotEmpty(t, kernel)
+	assert.Contains(t, kernel, "Windows ")
+}

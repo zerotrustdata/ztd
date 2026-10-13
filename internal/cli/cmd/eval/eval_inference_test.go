@@ -204,6 +204,7 @@ func TestGatesProbe_TakesModelOnlyAsPositionalArgument(t *testing.T) {
 	cmd := gatesProbeEvalCmd(nativeEvalDeps{})
 
 	assert.Nil(t, cmd.Flags().Lookup("model"), "the deprecated --model flag must not exist")
+	assert.NotNil(t, cmd.Flags().Lookup("operator-session-id"), "the --operator-session-id flag must exist")
 	assert.Error(t, cmd.Args(cmd, nil), "probe requires the positional <model>")
 	assert.NoError(t, cmd.Args(cmd, []string{"qwen3:4b"}))
 }

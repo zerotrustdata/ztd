@@ -92,7 +92,11 @@ func SelectInferenceOperatorForHardware(
 		selected := matches[0]
 		return &selected, nil
 	default:
-		return nil, constants.ErrInferenceOperatorAmbiguous
+		candidates := make([]string, 0, len(matches))
+		for _, match := range matches {
+			candidates = append(candidates, fmt.Sprintf("%s (session %s)", match.OperatorID, match.OperatorSessionID))
+		}
+		return nil, fmt.Errorf("%w: %s", constants.ErrInferenceOperatorAmbiguous, strings.Join(candidates, ", "))
 	}
 }
 

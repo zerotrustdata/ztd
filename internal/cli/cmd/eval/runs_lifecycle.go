@@ -93,8 +93,12 @@ func writeRunStartPlan(cmd *cobra.Command, plan runStartPlanJSON, jsonOutput boo
 	if jsonOutput {
 		return output.WriteJSON(cmd.OutOrStdout(), plan)
 	}
-	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Run start plan\nCampaign: %s\nRun: %s\nLane: %s\nModels: %v\nCells: %d\nModel registry digest: %s\nSessions resolved: %t\n",
-		plan.CampaignID, plan.RunID, plan.Lane, plan.ModelTags, plan.CellCount, plan.ModelRegistryDigest, plan.SessionsResolved)
+	sessionsResolvedLabel := "skipped (dry run)"
+	if plan.SessionsResolved {
+		sessionsResolvedLabel = "true"
+	}
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Run start plan\nCampaign: %s\nRun: %s\nLane: %s\nModels: %v\nCells: %d\nModel registry digest: %s\nSessions resolved: %s\n",
+		plan.CampaignID, plan.RunID, plan.Lane, plan.ModelTags, plan.CellCount, plan.ModelRegistryDigest, sessionsResolvedLabel)
 	if err != nil || !plan.SessionsResolved {
 		return err
 	}

@@ -121,7 +121,7 @@ cmd_verify() {
 	done
 
 	if [ -s "$dir/checksums-sha256.txt" ]; then
-		[ "$(awk '{print $2}' "$dir/checksums-sha256.txt" | sort)" = "$(printf '%s\n' "$names" | sort)" ] \
+		[ "$(awk '{sub(/^\*/, "", $2); print $2}' "$dir/checksums-sha256.txt" | sort)" = "$(printf '%s\n' "$names" | sort)" ] \
 			|| die "checksums-sha256.txt does not list exactly the expected binaries"
 		(cd "$dir" && sha256sum -c --status checksums-sha256.txt) || die "checksums-sha256.txt does not verify"
 	fi

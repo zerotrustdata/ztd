@@ -398,6 +398,62 @@ func TestTestIntegrationCmd_VerboseFlagAppendsGoTestVerbose(t *testing.T) {
 	assert.Contains(t, captured, "./internal/services/gateway")
 }
 
+func TestTestIntegrationCmd_TargetedOnlyPkg(t *testing.T) {
+	var captured []string
+	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
+	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/gateway"))
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	assert.Contains(t, captured, "-tags=integration")
+	assert.Contains(t, captured, "./internal/services/gateway")
+	assert.NotContains(t, captured, "-run")
+}
+
+func TestTestIntegrationCmd_TargetedOnlyRun(t *testing.T) {
+	var captured []string
+	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
+	require.NoError(t, cmd.Flags().Set("run", "TestSpecificIntegrationTest"))
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	assert.Contains(t, captured, "-tags=integration")
+	assert.Contains(t, captured, "./...")
+	idx := -1
+	for i, arg := range captured {
+		if arg == "-run" {
+			idx = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, idx, 0)
+	require.True(t, len(captured) > idx+1)
+	assert.Equal(t, "TestSpecificIntegrationTest", captured[idx+1])
+}
+
+func TestTestIntegrationCmd_TargetedRunnerFailureWrapsIntegrationError(t *testing.T) {
+	runnerErr := fmt.Errorf("child process failed")
+	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(2, runnerErr, &[]string{}))
+	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/gateway"))
+
+	err := cmd.RunE(cmd, nil)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
+	assert.ErrorIs(t, err, runnerErr)
+}
+
+func TestTestIntegrationCmd_TargetedNonzeroExitWrapsIntegrationError(t *testing.T) {
+	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(2, nil, &[]string{}))
+	require.NoError(t, cmd.Flags().Set("run", "TestSpecificIntegrationTest"))
+
+	err := cmd.RunE(cmd, nil)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
+	assert.Contains(t, err.Error(), "exit code 2")
+}
+
 func TestTestIntegrationCmd_DefaultOmitsRunFlag(t *testing.T) {
 	var captured []string
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
@@ -425,4 +481,5 @@ func TestTestIntegrationCmd_NonzeroExitWrapsIntegrationError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
+	assert.Contains(t, err.Error(), "exit code 2")
 }

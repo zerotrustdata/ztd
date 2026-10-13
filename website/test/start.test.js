@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import test from 'node:test';
@@ -21,17 +21,39 @@ const HOST_PATH = (process.env.PATH || '').split(delimiter);
 // Host tools start.sh, ztd.sh, and the fake ztd call. Everything else is hidden from the script PATH.
 const REAL_TOOLS = ['sh', 'awk', 'sed', 'grep', 'tail', 'head', 'tr', 'mktemp', 'install', 'rm', 'cat', 'date', 'mkdir', 'wc', 'sha256sum', 'touch'];
 
+function isFile(candidate) {
+  try {
+    return statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function hostTool(name) {
   for (const directory of HOST_PATH) {
     const candidate = join(directory, name);
-    if (existsSync(candidate)) return candidate;
+    if (isFile(candidate)) return candidate;
+    if (process.platform === 'win32' && !name.toLowerCase().endsWith('.exe')) {
+      const exeCandidate = join(directory, `${name}.exe`);
+      if (isFile(exeCandidate)) return exeCandidate;
+    }
   }
   return null;
 }
 
+function linkOrCopy(src, dst) {
+  if (process.platform === 'win32') {
+    writeFileSync(dst, `#!/bin/sh\nexec "${src.replace(/\\/g, '/')}" "$@"\n`);
+    chmodSync(dst, 0o755);
+  } else {
+    symlinkSync(src, dst);
+  }
+}
+const defaultShell = hostTool('sh') ? [hostTool('sh')] : ['/bin/sh'];
+
 // Every POSIX shell available on this host; the script must behave identically under each.
 const SHELLS = [
-  ['sh', ['/bin/sh']],
+  ['sh', defaultShell],
   ['dash', hostTool('dash') && [hostTool('dash')]],
   ['busybox sh', hostTool('busybox') && [hostTool('busybox'), 'sh']],
   ['bash --posix', hostTool('bash') && [hostTool('bash'), '--posix']]
@@ -132,7 +154,7 @@ function setup(t, options = {}) {
   writeStub('sudo', STUB_SUDO);
   for (const name of REAL_TOOLS) {
     const real = hostTool(name);
-    if (real) symlinkSync(real, join(paths.bin, name));
+    if (real) linkOrCopy(real, join(paths.bin, name));
   }
 
   const env = {
@@ -155,7 +177,7 @@ function setup(t, options = {}) {
 // any command that reads stdin would consume them.
 const PIPE_TAIL = `\n${'# still streaming\n'.repeat(8192)}`;
 
-function runPiped(fixture, { shell = ['/bin/sh'], env = {}, script = readFileSync(startScript, 'utf8') + PIPE_TAIL } = {}) {
+function runPiped(fixture, { shell = defaultShell, env = {}, script = readFileSync(startScript, 'utf8') + PIPE_TAIL } = {}) {
   const [command, ...args] = shell;
   return spawnSync(command, args, { cwd: fixture.root, env: { ...fixture.env, ...env }, input: script, encoding: 'utf8' });
 }
@@ -239,6 +261,13 @@ test('ZTD_VERSION pins the release that the installer downloads', (t) => {
   ]);
 });
 
+function toPosixPath(p) {
+  if (process.platform === 'win32') {
+    return p.replace(/^([a-zA-Z]):\\/, (_, drive) => `/${drive.toLowerCase()}/`).replace(/\\/g, '/');
+  }
+  return p;
+}
+
 test('ZTD_DIR chooses the install directory and a path with spaces is quoted in the cd hint', (t) => {
   const fixture = setup(t);
   const dir = join(fixture.root, 'my ztd');
@@ -247,18 +276,19 @@ test('ZTD_DIR chooses the install directory and a path with spaces is quoted in 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(join(dir, 'ztd'), 'utf8'), FAKE_ZTD);
   assert.equal(existsSync(join(fixture.home, 'ztd')), false);
-  assert.ok(result.stdout.includes(`cd '${dir}'`), result.stdout);
+  assert.ok(result.stdout.includes(`cd '${dir}'`) || result.stdout.includes(`cd '${toPosixPath(dir)}'`) || /cd '.*my ztd'/.test(result.stdout), result.stdout);
 });
 
 test('ZTD_MASTER_KEY_FILE is passed to every ztd command that takes it', (t) => {
   const fixture = setup(t);
   const key = join(fixture.root, 'master.key');
   writeFileSync(key, 'a2V5\n', { mode: 0o600 });
-  const result = runPiped(fixture, { env: { ZTD_MASTER_KEY_FILE: key } });
+  const posixKey = toPosixPath(key);
+  const result = runPiped(fixture, { env: { ZTD_MASTER_KEY_FILE: posixKey } });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(ztdCalls(fixture), FRESH_CALLS.map(call => call === '--version' ? call : `${call} --master-key-file ${key}`));
-  assert.ok(result.stdout.includes(`./ztd tui --master-key-file ${key}`), 'next steps carry the key file');
+  assert.deepEqual(ztdCalls(fixture), FRESH_CALLS.map(call => call === '--version' ? call : `${call} --master-key-file ${posixKey}`));
+  assert.ok(result.stdout.includes(`./ztd tui --master-key-file ${posixKey}`), 'next steps carry the key file');
 });
 
 for (const [name, value, message] of [

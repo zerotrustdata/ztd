@@ -438,13 +438,7 @@ dev-tools ci-tools:
 .PHONY: dev-tools-if-needed
 dev-tools-if-needed:
 	@set -e; source scripts/lib/dev-setup-common.sh; for pkg in $(GO_DEV_TOOL_PKGS); do \
-		bin=$${pkg%@*}; bin=$${bin##*/}; \
-		if ztd_have "$$bin"; then \
-			echo "  $$bin: already installed — skipping"; \
-		else \
-			echo "  installing $$bin ($$pkg)..."; \
-			go install "$$pkg" || exit 1; \
-		fi; \
+		ztd_dev_tool_if_needed "$$pkg" || exit 1; \
 	done
 
 .PHONY: dev-node
@@ -764,7 +758,11 @@ explorer-test:
 claude-plugin-test:
 	@echo "Testing the Claude Code plugin..."
 	@sh claude-plugin/test/run.sh
-	@shellcheck -s sh claude-plugin/hooks/*.sh claude-plugin/scripts/*.sh claude-plugin/test/*.sh
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck -s sh claude-plugin/hooks/*.sh claude-plugin/scripts/*.sh claude-plugin/test/*.sh; \
+	else \
+		echo "shellcheck not found; skipping shell lint (install via 'choco install shellcheck' on Windows or 'apt install shellcheck' on Debian/Ubuntu)"; \
+	fi
 	@if command -v claude >/dev/null 2>&1; then \
 		claude plugin validate --strict claude-plugin && claude plugin validate --strict .; \
 	else \
