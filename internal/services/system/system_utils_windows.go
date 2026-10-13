@@ -175,18 +175,20 @@ func GetDiskPercent() float64 {
 
 func GetOSDetails() models.HeartbeatOSDetails {
 	return models.HeartbeatOSDetails{
-		Kernel:  getWindowsKernelVersion(),
+		Kernel:  GetWindowsKernelVersion(),
 		Distro:  "Windows",
-		Version: getWindowsVersion(),
+		Version: GetWindowsVersion(),
 	}
 }
 
-func getWindowsKernelVersion() string {
-	version := getWindowsVersion()
+// GetWindowsKernelVersion returns the Windows kernel version string.
+func GetWindowsKernelVersion() string {
+	version := GetWindowsVersion()
 	return fmt.Sprintf("Windows %s", version)
 }
 
-func getWindowsVersion() string {
+// GetWindowsVersion returns the Windows OS version as Major.Minor.Build.
+func GetWindowsVersion() string {
 	version := windows.RtlGetVersion()
 	if version == nil {
 		return "Unknown"

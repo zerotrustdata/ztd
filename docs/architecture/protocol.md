@@ -3,8 +3,8 @@ doc_id: protocol
 title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.6
+last_updated: 2026-10-13
 owners:
   - protocol/
   - internal/constants/
@@ -63,7 +63,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | --- | --- |
 | INV-PROT-VER-01 | The root `VERSION` file is the sole source of truth for platform and protocol version numbers. The declarations that `internal/tools/versionsync` checks MUST remain in exact string synchronization with it: the protocol document headers (`protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, `protocol/docs/spec.md`) and the `version` declarations in `package.json` and `package-lock.json` for first-party npm packages (`console`, `evaluation-explorer`, `ztd-adapter`, `protocol/node`, and `website`). |
 | INV-PROT-VER-02 | Go protocol packages are part of the root module `github.com/zerotrustdata/ztd` (`go.mod`) and are versioned exclusively through root git tags of the form `vX.Y.Z`. External consumers resolve them with `go get github.com/zerotrustdata/ztd@vX.Y.Z`. Release tooling creates no `protocol/v*` tags. |
-| INV-PROT-VER-03 | The release target `make release` MUST fail closed if the working tree has uncommitted changes after synchronization, if the release notes document `docs/release_notes/v<MAJOR_MINOR>.x/v<VERSION>.md` is missing, or if the local tag `v<VERSION>` already exists. |
+| INV-PROT-VER-03 | The release target `make release` MUST run from clean `main` at `origin/main` after a successful release-workflow rehearsal for that commit. It MUST fail closed if version synchronization leaves uncommitted changes, if the release notes document `docs/release_notes/v<MAJOR_MINOR>.x/v<VERSION>.md` is missing, or if the local tag `v<VERSION>` already exists. |
 | INV-PROT-VER-04 | The CI job `Verify Version Sync` in `.github/workflows/build-and-test.yml` MUST run `make version-sync-check` on pushes and pull requests to `main`, terminating the build if any version declaration diverges from `VERSION`. |
 
 ### Protobuf and Wire Schemas (`INV-PROT-SCHEMA`)
@@ -202,10 +202,10 @@ Platform identities use the canonical SPIFFE trust domain `ztd.local` (`protocol
 
 ## Version Synchronization and Release
 
-All first-party components adhere strictly to `VERSION` (`v1.0.0`):
+All first-party components adhere strictly to the root `VERSION` file:
 
 1. **Check and Sync**: `internal/tools/versionsync` verifies that `protocol/docs/*.md` headers and `package.json` files match `VERSION`. Verified with `make version-sync-check`.
-2. **Release Target**: `make release` ensures a clean git working tree, validates version parity, verifies release notes exist, and tags `v<VERSION>`.
+2. **Release Target**: `make release` requires clean `main` at `origin/main` and a successful release-workflow rehearsal for that commit. It runs version sync, requires a clean working tree and release notes, then tags and pushes `v<VERSION>`. See [Release Process](../devs/release_process.md) for the full workflow.
 
 ## Anti-patterns
 

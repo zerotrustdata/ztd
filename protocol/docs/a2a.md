@@ -1,7 +1,7 @@
 # Agent-to-Agent (A2A) Protocol Specification
 
 Last Updated: 2026-10-12
-Version: v1.0.5
+Version: v1.0.6
 
 The **Agent-to-Agent (A2A)** protocol defines a cryptographically governed mechanism for autonomous AI agents to discover, invoke, and delegate tasks to peer agent capabilities. The ztd Gateway terminates inbound A2A requests, translates them into the canonical `GovernanceEnvelope` wire format, executes the 5-layer governance sequence (L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, L5 Actuator), and securely dispatches verified skill payloads to configured downstream agent executors.
 

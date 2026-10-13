@@ -5,7 +5,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-//go:build unix
+//go:build unix || windows
 
 package testcmd
 
@@ -17,15 +17,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 )
 
 // smokeProcessOwner tracks the OS processes the release smoke runner starts
-// itself. Each process leads its own process group, so stopping it signals the
-// whole group and never a process the runner did not start.
+// itself. Each process leads its own process group (a Job Object on Windows),
+// so stopping it reaches the whole tree and never a process the runner did not
+// start.
 type smokeProcessOwner struct {
 	mu    sync.Mutex
 	procs []*smokeOwnedProcess
@@ -35,7 +35,7 @@ type smokeProcessOwner struct {
 type smokeOwnedProcess struct {
 	name       string
 	cmd        *exec.Cmd
-	pgid       int
+	group      smokeProcessGroup
 	stdoutPath string
 	exited     chan struct{}
 	waitErr    error
@@ -67,13 +67,21 @@ func (o *smokeProcessOwner) start(name, dir, logPrefix string, argv, env []strin
 	cmd.Env = append(config.WithoutUserEnv(os.Environ()), env...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = smokeProcessGroupAttr()
 	if err := cmd.Start(); err != nil {
 		_ = stdout.Close()
 		_ = stderr.Close()
 		return nil, fmt.Errorf("release smoke: start %s: %w", name, err)
 	}
-	p := &smokeOwnedProcess{name: name, cmd: cmd, pgid: cmd.Process.Pid, stdoutPath: stdoutPath, exited: make(chan struct{})}
+	group, err := newSmokeProcessGroup(cmd)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return nil, fmt.Errorf("release smoke: contain %s: %w", name, err)
+	}
+	p := &smokeOwnedProcess{name: name, cmd: cmd, group: group, stdoutPath: stdoutPath, exited: make(chan struct{})}
 	go func() {
 		p.waitErr = cmd.Wait()
 		_ = stdout.Close()
@@ -107,35 +115,30 @@ func (o *smokeProcessOwner) wait(ctx context.Context, p *smokeOwnedProcess) erro
 	}
 }
 
-// stop sends SIGTERM to the process group, waits up to grace, then SIGKILL.
+// stop asks the process group to terminate, waits up to grace, then kills it.
 // It is idempotent for a process that has already exited.
 func (o *smokeProcessOwner) stop(p *smokeOwnedProcess, grace time.Duration) error {
-	if err := syscall.Kill(-p.pgid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return fmt.Errorf("release smoke: %s: SIGTERM: %w", p.name, err)
+	if err := p.group.terminate(); err != nil {
+		return fmt.Errorf("release smoke: %s: terminate: %w", p.name, err)
 	}
 	deadline := time.Now().Add(grace)
-	for time.Now().Before(deadline) && smokeProcessGroupExists(p.pgid) {
+	for time.Now().Before(deadline) && p.group.exists() {
 		time.Sleep(25 * time.Millisecond)
 	}
-	if !smokeProcessGroupExists(p.pgid) {
+	if !p.group.exists() {
 		return nil
 	}
-	if err := syscall.Kill(-p.pgid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return fmt.Errorf("release smoke: %s: SIGKILL: %w", p.name, err)
+	if err := p.group.kill(); err != nil {
+		return fmt.Errorf("release smoke: %s: kill: %w", p.name, err)
 	}
 	deadline = time.Now().Add(grace)
-	for time.Now().Before(deadline) && smokeProcessGroupExists(p.pgid) {
+	for time.Now().Before(deadline) && p.group.exists() {
 		time.Sleep(25 * time.Millisecond)
 	}
-	if smokeProcessGroupExists(p.pgid) {
-		return fmt.Errorf("release smoke: %s: process group still running after SIGKILL", p.name)
+	if p.group.exists() {
+		return fmt.Errorf("release smoke: %s: process group still running after kill", p.name)
 	}
 	return nil
-}
-
-func smokeProcessGroupExists(pgid int) bool {
-	err := syscall.Kill(-pgid, 0)
-	return err == nil || !errors.Is(err, syscall.ESRCH)
 }
 
 // stopAll stops every process the owner started that is still running.

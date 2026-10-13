@@ -46,11 +46,14 @@
     "cloud_provider": "aws",
     "heartbeat_interval_ms": 30000,
     "http_port": 8080,
+    "inference_keep_alive": "",
     "inference_ollama_endpoint": "http://localhost:11434",
     "local_dir": "/home/user/.ztd",
     "log_level": "info",
     "platform": "linux",
-    "provenance_operator_model_storage_root": "/models"
+    "provenance_operator_id": "",
+    "provenance_operator_model_storage_root": "/models",
+    "provider_boundary_observer_id": ""
   },
   "slot_number": 1,
   "stale_at": "2026-01-15T12:31:00Z",

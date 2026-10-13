@@ -8,12 +8,18 @@
 package keystore
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -389,4 +395,127 @@ func (m *simpleMemoryKeyring) StoreMasterKey(key []byte) error {
 func (m *simpleMemoryKeyring) DeleteMasterKey() error {
 	m.key = nil
 	return nil
+}
+
+// approvalKeyring holds RetrieveMasterKey the way the macOS Keychain does while
+// its access prompt for a rebuilt binary is open, until the test releases it.
+type approvalKeyring struct {
+	simpleMemoryKeyring
+	release chan struct{}
+}
+
+func (a *approvalKeyring) RetrieveMasterKey() ([]byte, error) {
+	<-a.release
+	return a.simpleMemoryKeyring.RetrieveMasterKey()
+}
+
+func TestKeystore_Initialize_LogsWhileAwaitingKeyStoreApproval(t *testing.T) {
+	keyring := &approvalKeyring{release: make(chan struct{})}
+	require.NoError(t, keyring.StoreMasterKey(testMasterKey(7)))
+	var logs syncBuffer
+	ks := &Keystore{logger: slog.New(slog.NewTextHandler(&logs, nil)), keyring: keyring}
+
+	done := make(chan error, 1)
+	go func() { done <- ks.Initialize() }()
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), constants.KeyStoreAwaitingApprovalLog)
+	}, constants.KeyStoreApprovalNoticeDelay+5*time.Second, 50*time.Millisecond)
+	close(keyring.release)
+	require.NoError(t, <-done)
+}
+
+func TestKeystore_Initialize_FastRetrievalLogsNoApprovalWait(t *testing.T) {
+	keyring := newMemoryKeyring()
+	require.NoError(t, keyring.StoreMasterKey(testMasterKey(7)))
+	var logs syncBuffer
+	ks := &Keystore{logger: slog.New(slog.NewTextHandler(&logs, nil)), keyring: keyring}
+
+	require.NoError(t, ks.Initialize())
+	assert.NotContains(t, logs.String(), constants.KeyStoreAwaitingApprovalLog)
+}
+
+// syncBuffer is a bytes.Buffer safe for a logger goroutine and a reader.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// countingKeyring counts master key reads, each of which can be an OS key
+// store prompt.
+type countingKeyring struct {
+	simpleMemoryKeyring
+	reads int
+}
+
+func (c *countingKeyring) RetrieveMasterKey() ([]byte, error) {
+	c.reads++
+	return c.simpleMemoryKeyring.RetrieveMasterKey()
+}
+
+func TestKeystore_ReadsMasterKeyOncePerProcess(t *testing.T) {
+	fileSvc, _ := setupTestFileService(t)
+	keyring := &countingKeyring{}
+	require.NoError(t, keyring.StoreMasterKey(testMasterKey(3)))
+	ks, err := NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
+	require.NoError(t, err)
+
+	require.NoError(t, ks.Initialize())
+	for i := range 5 {
+		name := fmt.Sprintf("secret-%d", i)
+		require.NoError(t, ks.EncryptSecret(name, "value"))
+		got, err := ks.DecryptSecret(name)
+		require.NoError(t, err)
+		require.Equal(t, "value", got)
+	}
+	assert.Equal(t, 1, keyring.reads, "the master key must be read from the key store once")
+
+	held := ks.masterKey
+	ks.Close()
+	assert.Nil(t, ks.masterKey)
+	assert.Equal(t, make([]byte, vault.KeySize), held, "Close must zero the held key")
+	got, err := ks.DecryptSecret("secret-0")
+	require.NoError(t, err)
+	assert.Equal(t, "value", got)
+	assert.Equal(t, 2, keyring.reads, "an operation after Close reads the key again")
+}
+
+func TestKeystore_GeneratedKeyIsHeld(t *testing.T) {
+	fileSvc, _ := setupTestFileService(t)
+	keyring := &countingKeyring{}
+	ks, err := NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
+	require.NoError(t, err)
+
+	require.NoError(t, ks.Initialize())
+	reads := keyring.reads
+	require.NoError(t, ks.EncryptSecret("secret", "value"))
+	assert.Equal(t, reads, keyring.reads, "the generated and verified key is held")
+}
+
+func TestKeystore_PurgeZeroesHeldKey(t *testing.T) {
+	fileSvc, _ := setupTestFileService(t)
+	keyring := &countingKeyring{}
+	require.NoError(t, keyring.StoreMasterKey(testMasterKey(5)))
+	ks, err := NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, ks.Initialize())
+	require.NoError(t, ks.EncryptSecret("secret", "value"))
+
+	held := ks.masterKey
+	require.NoError(t, ks.Purge())
+	assert.Nil(t, ks.masterKey)
+	assert.Equal(t, make([]byte, vault.KeySize), held)
+	_, err = ks.DecryptSecret("secret")
+	require.Error(t, err)
 }

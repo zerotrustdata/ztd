@@ -8,11 +8,14 @@
 package gw
 
 import (
+	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -67,12 +70,14 @@ type nextStep struct {
 }
 
 // printNextSteps outputs where the Gateway is reachable and the commands that
-// come next. Endpoints follow the listen host: remote enrollment is offered
-// only when the listeners bind a routable interface. Ratify and notary enforce
-// L3 human proof, so they lead with the passkey sign-in; doctrine and consensus
-// lead with the headless sign-in. A same-host Operator gets its own working
+// come next. Endpoints follow the listen host and the ports the Gateway
+// actually bound: remote enrollment is offered only when the listeners bind a
+// routable interface, and the Operator command carries the ports whenever
+// startup shifted them off the defaults. Ratify and notary enforce L3 human
+// proof, so they lead with the passkey sign-in; doctrine and consensus lead
+// with the headless sign-in. A same-host Operator gets its own working
 // directory, because Operator start refuses the Gateway's runtime tree.
-func printNextSteps(cmd *cobra.Command, posture governance.GovernancePosture, listenHost, externalIP, consoleOrigin string) {
+func printNextSteps(cmd *cobra.Command, posture governance.GovernancePosture, cfg serve.GatewayConfig, externalIP string) {
 	bin := getBinaryName()
 	var steps []nextStep
 	if posture != nil && posture.RequiresL3Proof() {
@@ -84,16 +89,16 @@ func printNextSteps(cmd *cobra.Command, posture governance.GovernancePosture, li
 			nextStep{bin + " login", "Sign in headless (CLI and TUI)"},
 			nextStep{bin + " login web", "Sign in with a browser passkey (enables the Console)"})
 	}
-	if isLoopbackListenHost(listenHost) {
-		steps = append(steps, nextStep{bin + " operator start --endpoint localhost --working-dir ~/.ztd-operator", "Add an Operator on this host"})
+	if isLoopbackListenHost(cfg.ListenHost) {
+		steps = append(steps, nextStep{bin + " operator start " + operatorEndpointArgs("--endpoint", constants.LocalhostHostname, cfg) + " --working-dir ~/.ztd-operator", "Add an Operator on this host"})
 	} else {
-		steps = append(steps, nextStep{bin + " operator start -e " + externalIP + " --working-dir ~/.ztd-operator", "Add an Operator (run on the Operator host)"})
+		steps = append(steps, nextStep{bin + " operator start " + operatorEndpointArgs("-e", externalIP, cfg) + " --working-dir ~/.ztd-operator", "Add an Operator (run on the Operator host)"})
 	}
 	steps = append(steps,
 		nextStep{bin + " auth enroll pending", "Approve pending Operator enrollments"},
 		nextStep{bin + " gw status", "Gateway, Operators, and enrollments"})
 
-	cmd.Printf("Console  %s/console/\n", consoleOrigin)
+	cmd.Printf("Console  %s/console/\n", consoleOriginFor(cfg.PublicBaseURL, cfg.HTTPSPort))
 	cmd.Println()
 	cmd.Println("Next steps:")
 	for i, step := range steps {
@@ -106,12 +111,31 @@ func printNextSteps(cmd *cobra.Command, posture governance.GovernancePosture, li
 	cmd.Println()
 }
 
+// operatorEndpointArgs renders the Operator's Gateway endpoint flags. The bare
+// host suffices on the default ports; a Gateway that bound other ports needs
+// both spelled out, because the Operator would otherwise dial the defaults.
+func operatorEndpointArgs(flag, host string, cfg serve.GatewayConfig) string {
+	httpPort, httpsPort := effectivePort(cfg.HTTPPort, constants.Ports.OperatorHttp), effectivePort(cfg.HTTPSPort, constants.Ports.OperatorHttps)
+	if httpPort == constants.Ports.OperatorHttp && httpsPort == constants.Ports.OperatorHttps {
+		return flag + " " + host
+	}
+	return fmt.Sprintf("%s %s --port %d", flag, net.JoinHostPort(host, strconv.Itoa(httpPort)), httpsPort)
+}
+
+// effectivePort returns port, or the default when the config leaves it unset.
+func effectivePort(port, defaultPort int) int {
+	if port == 0 {
+		return defaultPort
+	}
+	return port
+}
+
 // consoleOriginFor returns the origin that serves the browser Console: the
-// configured public base URL when set, otherwise the loopback HTTPS origin
-// that the default passkey relying party accepts.
-func consoleOriginFor(publicBaseURL string) string {
+// configured public base URL when set, otherwise the loopback HTTPS origin on
+// the port the Gateway bound (the default when httpsPort is unset).
+func consoleOriginFor(publicBaseURL string, httpsPort int) string {
 	if publicBaseURL != "" {
 		return strings.TrimRight(publicBaseURL, "/")
 	}
-	return network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
+	return network.LocalhostHTTPSURL(effectivePort(httpsPort, constants.Ports.OperatorHttps))
 }

@@ -10,6 +10,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"strings"
@@ -33,11 +34,40 @@ import (
 	vaultcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/vault"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/version"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 var osExit = os.Exit
+
+// recordLocalGatewayPorts points a CLI without --endpoint/--port at the ports
+// the Gateway managed from this runtime root actually bound. `gw start` shifts
+// both ports when the requested HTTP port is busy and persists the result in
+// the launch profile; without this the CLI would keep dialing the protocol
+// defaults. The profile is trusted only while its Gateway is running, so a
+// stale profile never redirects the CLI away from a Gateway started another
+// way. Any read failure leaves the protocol defaults in place: `gw restart`
+// and `gw status` own reporting a damaged profile.
+func recordLocalGatewayPorts() {
+	fileSvc, err := shared.NewFileSvc("", slog.Default())
+	if err != nil {
+		return
+	}
+	profile, err := serve.ReadLaunchProfile(fileSvc)
+	if err != nil {
+		return
+	}
+	pm, err := platform.NewProcessManager(fileSvc)
+	if err != nil {
+		return
+	}
+	pid, err := pm.ReadPIDFile(constants.OperatorPIDFilename)
+	if err != nil || pid == 0 || !pm.IsProcessRunning(pid) {
+		return
+	}
+	config.SetLocalGatewayPorts(profile.Config.HTTPPort, profile.Config.HTTPSPort)
+}
 
 func NewRootCmd(cliVersion string, vi serve.VersionInfo) *cobra.Command {
 	rootCmd := &cobra.Command{
@@ -90,6 +120,8 @@ ztd tui`,
 			} else if port > 0 {
 				config.SetHTTPEndpointOverride("localhost")
 				config.SetHTTPSEndpointOverride(fmt.Sprintf("localhost:%d", port))
+			} else {
+				recordLocalGatewayPorts()
 			}
 			return nil
 		},

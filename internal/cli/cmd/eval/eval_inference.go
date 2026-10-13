@@ -185,6 +185,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	var prompt string
 	var seed int32 = -1
 	var stream bool
+	var operatorSessionID string
 	cmd := &cobra.Command{
 		Use:   "probe <model>",
 		Short: "Single non-scored governed inference probe",
@@ -207,7 +208,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: list operators: %w", err)
 			}
-			selected, err := evaluation.SelectInferenceOperator(operators, "")
+			selected, err := evaluation.SelectInferenceOperator(operators, operatorSessionID)
 			if err != nil {
 				return fmt.Errorf("evaluation: gates probe: %w", err)
 			}
@@ -260,6 +261,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd.Flags().StringVar(&prompt, "prompt", "", "Probe prompt (default: Reply with exactly: probe-ok)")
 	cmd.Flags().Int32Var(&seed, "seed", -1, "Optional deterministic generation seed (omit for provider default)")
 	cmd.Flags().BoolVar(&stream, "stream", false, "Request live NDJSON progress telemetry during generation")
+	cmd.Flags().StringVar(&operatorSessionID, "operator-session-id", "", "Target Operator session ID")
 	return cmd
 }
 

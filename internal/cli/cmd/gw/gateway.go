@@ -544,7 +544,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
-			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg}
+			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(&startOpts); err != nil {
 				return fmt.Errorf("%w: %v", constants.ErrProcessStartFailed, err)
 			}
@@ -569,7 +569,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			cmd.Printf("[ztd] Gateway started (PID: %d)\n", pid)
 			cmd.Println()
 			printListenHostNotice(cmd, gatewayCfg.ListenHost)
-			printNextSteps(cmd, postureObj, gatewayCfg.ListenHost, network.GetExternalInterfaceIP(), consoleOriginFor(gatewayCfg.PublicBaseURL))
+			printNextSteps(cmd, postureObj, gatewayCfg, network.GetExternalInterfaceIP())
 
 			return nil
 		},
@@ -777,7 +777,7 @@ restart.`,
 			// value if detection failed and fell back to "localhost").
 			profile.Config.CertIdentityMode = identityResult.CertMode
 
-			startOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
+			startOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(&startOpts); err != nil {
 				if running {
 					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}
@@ -809,7 +809,7 @@ restart.`,
 			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
 			cmd.Println()
 			printListenHostNotice(cmd, profile.Config.ListenHost)
-			printNextSteps(cmd, postureObj, profile.Config.ListenHost, network.GetExternalInterfaceIP(), consoleOriginFor(profile.Config.PublicBaseURL))
+			printNextSteps(cmd, postureObj, profile.Config, network.GetExternalInterfaceIP())
 			return nil
 		},
 	}

@@ -3,8 +3,8 @@ doc_id: ux_smoke_test
 title: Host-Native Headless UX Smoke Test
 audience: developers, evaluators, compliance auditors
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.6
+last_updated: 2026-10-13
 owners:
   - docs/guides/ux_smoke_test.md
 related:
@@ -45,7 +45,7 @@ The runner does not contact external LLM providers and requires zero model crede
 3. Dispatches a typed governed `FILE_EDIT` through `POST /api/v1/operators/commands` and verifies exact content via governed read-back.
 4. Creates and merges an embedded governed document, confirming untouched fields are preserved.
 5. Performs a second embedded `FILE_EDIT` to generate real Gateway-local file-mutation and ledger evidence.
-6. Stops its owned processes and exports reports to the run root.
+6. Stops its owned processes and exports reports to the run root. Process cleanup uses Unix process groups (`syscall.Setpgid`, `syscall.Kill`) and Windows Job Objects (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) to ensure no orphan Gateway or Operator processes persist.
 
 Use a new, non-existent directory for every run; an existing path is rejected. When `--root` is omitted, the default is `.local.dev/release-smoke/<UTC timestamp>`.
 

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,6 +92,16 @@ func TestRun_WriteSyncsOnlyVersionSpans(t *testing.T) {
 
 	stdout.Reset()
 	require.Equal(t, 0, run([]string{"-check"}, root, &stdout, &stderr))
+}
+
+// Windows checkouts with core.autocrlf=true see CRLF lockfiles.
+func TestRun_CheckAcceptsCRLFLockfiles(t *testing.T) {
+	root := newRepo(t, "1.2.3", "1.2.3")
+	for _, pkg := range []string{"console", "protocol/node"} {
+		writeFile(t, root, pkg+"/package-lock.json", strings.ReplaceAll(packageLockJSON("1.2.3"), "\n", "\r\n"))
+	}
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, 0, run([]string{"-check"}, root, &stdout, &stderr), stderr.String())
 }
 
 func TestRun_AmbiguousDeclarationFails(t *testing.T) {

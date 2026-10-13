@@ -38,6 +38,22 @@ if (copy && navigator.clipboard) {
   });
 }
 
+// Copy buttons for command lines on the Releases pages. Hidden until clipboard access is available.
+if (navigator.clipboard) {
+  document.querySelectorAll('[data-copy]').forEach(button => {
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy);
+        button.textContent = 'Copied ✓';
+      } catch {
+        button.textContent = 'Copy failed';
+      }
+      setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+    });
+  });
+}
+
 const progress = document.querySelector('.reading-progress');
 if (progress) {
   const article = document.querySelector('main article');

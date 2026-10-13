@@ -19,6 +19,7 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -147,6 +148,35 @@ func TestStartOperator_ProcessDeathReturnsChildDiagnostic(t *testing.T) {
 	require.Error(t, startErr)
 	assert.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
 	assert.ErrorContains(t, startErr, "gateway child startup diagnostic")
+
+	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
+}
+
+// TestStartOperator_KeyStoreApprovalExtendsHealthWait verifies that a child
+// waiting on the user to approve OS key store access (a macOS Keychain prompt
+// for a rebuilt binary) is not killed when the normal health budget runs out:
+// the user is told what to approve, and the start waits for the child.
+func TestStartOperator_KeyStoreApprovalExtendsHealthWait(t *testing.T) {
+	t.Setenv(testReexecEnv, "keystore-approval")
+	fileSvc := newStartFailureFileSvc(t)
+
+	pm, err := NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	// A race-instrumented re-exec can take several seconds to reach TestMain
+	// under full-suite load. Allow that startup time, while keeping the normal
+	// health budget shorter than the child's 20s approval hold. Reaching the
+	// child's denial still proves the marker extended the health wait.
+	pm.SetHealthCheckParameters(100*time.Millisecond, 150)
+
+	opts := minimalStartOpts()
+	var notices bytes.Buffer
+	opts.Notices = &notices
+	startErr := pm.StartOperator(opts)
+	require.Error(t, startErr)
+	assert.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
+	assert.ErrorContains(t, startErr, "key store approval denied",
+		"the start must wait past the health budget for the child's outcome")
+	assert.Contains(t, notices.String(), "Keychain prompt")
 
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
 }

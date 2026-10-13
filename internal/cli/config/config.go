@@ -208,8 +208,19 @@ func (c *Config) AppKeyFile(name string) string {
 	return filepath.Join(c.RuntimeDir, constants.PkiSubdirApps, name+constants.FileExtKey)
 }
 
+// OperatorHTTPSPort returns the HTTPS/mTLS port of the Gateway on this host:
+// the port it actually bound when SetLocalGatewayPorts recorded one, otherwise
+// the protocol default.
 func (c *Config) OperatorHTTPSPort() int {
-	return constants.Ports.OperatorHttps
+	_, https := LocalGatewayPorts()
+	return https
+}
+
+// OperatorHTTPPort returns the plain HTTP discovery port of the Gateway on this
+// host, following SetLocalGatewayPorts like OperatorHTTPSPort.
+func (c *Config) OperatorHTTPPort() int {
+	http, _ := LocalGatewayPorts()
+	return http
 }
 
 // OperatorHTTPURL returns the HTTPS URL for the operator API.
@@ -246,6 +257,38 @@ var httpEndpointOverride string
 // httpsEndpointOverride is set by the --port flag (combined with --endpoint host)
 // to allow connecting to a remote gateway HTTPS/mTLS endpoint on a different port.
 var httpsEndpointOverride string
+
+// localGatewayHTTPPort and localGatewayHTTPSPort are the ports the Gateway
+// launched from this runtime root actually bound. `gw start` moves both by the
+// same offset when the requested HTTP port is busy, and persists the result in
+// the launch profile; the root command records them here so a CLI without
+// --endpoint reaches that Gateway instead of the protocol defaults. Zero
+// selects the protocol default.
+var localGatewayHTTPPort, localGatewayHTTPSPort int
+
+// SetLocalGatewayPorts records the ports the local Gateway bound. Explicit
+// --endpoint/--port overrides still take precedence.
+func SetLocalGatewayPorts(httpPort, httpsPort int) {
+	endpointMu.Lock()
+	defer endpointMu.Unlock()
+	localGatewayHTTPPort = httpPort
+	localGatewayHTTPSPort = httpsPort
+}
+
+// LocalGatewayPorts returns the HTTP and HTTPS ports of the Gateway on this
+// host, falling back to the protocol defaults for any port not recorded.
+func LocalGatewayPorts() (httpPort, httpsPort int) {
+	endpointMu.RLock()
+	defer endpointMu.RUnlock()
+	httpPort, httpsPort = localGatewayHTTPPort, localGatewayHTTPSPort
+	if httpPort == 0 {
+		httpPort = constants.Ports.OperatorHttp
+	}
+	if httpsPort == 0 {
+		httpsPort = constants.Ports.OperatorHttps
+	}
+	return httpPort, httpsPort
+}
 
 // SetEndpointOverride sets both HTTP and HTTPS endpoint overrides to the same value.
 // Backward-compatible — used by tests that pass full URLs.
@@ -307,5 +350,5 @@ func (c *Config) OperatorDiscoveryURL() string {
 	if c.Paths != nil && strings.Contains(c.Paths.Host, "://") {
 		return c.Paths.Host
 	}
-	return network.LocalhostHTTPURL(constants.Ports.OperatorHttp)
+	return network.LocalhostHTTPURL(c.OperatorHTTPPort())
 }

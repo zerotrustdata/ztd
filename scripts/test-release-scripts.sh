@@ -21,6 +21,8 @@ fail() {
 	exit 1
 }
 
+command -v jq >/dev/null 2>&1 || fail "jq is required to run release script tests (install via 'choco install jq' on Windows or 'apt install jq' on Debian/Ubuntu)"
+
 fixture_commit() {
 	git -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -qm "$1"
 }

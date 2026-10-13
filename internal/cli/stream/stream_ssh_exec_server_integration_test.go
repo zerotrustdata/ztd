@@ -89,7 +89,7 @@ func TestStreamToHost_DeliversBinaryViaSFTPAndExecutesDirectly(t *testing.T) {
 	// Verify the binary was uploaded via SFTP with 0755 permissions and expected content
 	assert.True(t, strings.HasPrefix(remoteUploadedPath, "/tmp/"+constants.StreamTempBinaryPrefix),
 		"uploaded path %q should start with /tmp/.ztd-stream-", remoteUploadedPath)
-	assert.Equal(t, os.FileMode(0755), remoteUploadedMode, "remote binary must have 0755 permissions")
+	assert.Equal(t, testutil.FileMode(0o755, false), remoteUploadedMode, "remote binary must have 0755 permissions")
 	assert.Equal(t, binary, remoteUploadedContent, "remote uploaded content must match binary")
 
 	// Verify remote binary was cleaned up on exit

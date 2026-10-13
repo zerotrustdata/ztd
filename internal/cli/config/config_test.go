@@ -599,3 +599,26 @@ func TestOperatorPublicURL_HostFullURL(t *testing.T) {
 		assert.Equal(t, network.LocalhostHTTPSURL(constants.Ports.OperatorHttps), result)
 	})
 }
+
+// A Gateway that shifted off busy default ports records the ports it bound;
+// the default (no --endpoint) URLs must follow them, while explicit overrides
+// still win.
+func TestSetLocalGatewayPorts_DefaultURLsFollowBoundPorts(t *testing.T) {
+	SetEndpointOverride("")
+	SetLocalGatewayPorts(0, 0)
+	t.Cleanup(func() {
+		SetEndpointOverride("")
+		SetLocalGatewayPorts(0, 0)
+	})
+
+	SetLocalGatewayPorts(8087, 8450)
+
+	cfg := &Config{Paths: &PathsConfig{}}
+	assert.Equal(t, 8450, cfg.OperatorHTTPSPort())
+	assert.Equal(t, network.LocalhostHTTPSURL(8450), cfg.OperatorHTTPURL())
+	assert.Equal(t, network.LocalhostHTTPURL(8087), cfg.OperatorDiscoveryURL())
+
+	SetEndpointOverride("remote.example.com:9000")
+	assert.Equal(t, "https://remote.example.com:9000", cfg.OperatorHTTPURL())
+	assert.Equal(t, "http://remote.example.com:9000", cfg.OperatorDiscoveryURL())
+}

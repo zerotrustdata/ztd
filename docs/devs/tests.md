@@ -3,7 +3,7 @@ doc_id: tests
 title: Testing Guide
 audience: maintainers and coding agents
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - internal/cli/cmd/test/
@@ -103,15 +103,19 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Chaos testing harness and summary | `internal/tools/chaos/`, `internal/cli/cmd/test/chaos.go` | `./ztd test chaos --help`, `./ztd test summary` |
 | Public loop qualification harness | `internal/cli/cmd/test/public_loop.go` | `./ztd test public-loop --help` |
 | Operator fleet scale qualification | `internal/cli/cmd/test/scale.go`, `test/e2e/operator_fleet_e2e_test.go` | `./ztd test scale --help`, `make test-scale` |
-| Makefile platform test targets | `Makefile` | `make test`, `make test-unit`, `make test-integration`, `make test-enrollment-burst`, `make test-operator-burst`, `make test-coverage`, `make test-cross-enrollment`, `make test-scale`, `make test-airgap` |
+| Makefile platform test targets and package exclusions | `Makefile` (`TEST_EXCLUDE_PKGS`, `TEST_PKGS`) | `make test`, `make test-unit`, `make test-integration`, `make test-enrollment-burst`, `make test-operator-burst`, `make test-coverage`, `make test-cross-enrollment`, `make test-scale`, `make test-airgap` |
+| Platform CI scope | `.github/workflows/build-and-test.yml`, `.github/workflows/build-and-test-fips.yml` | Workflow job steps and `Makefile` CI targets |
 | Cross-component test targets | `Makefile`, `console/`, `protocol/` | `make console-test`, `make ci-protocol` |
 | Onboarding script tests | `scripts/test-onboarding.sh`, `scripts/onboarding/` | `make test-onboarding`, `make test-onboarding-docker` |
 | Integration Gateway fixture | `test/fixtures/gateway_fixture.go` | `NewGatewayFixture` |
+| Gateway-local client identity | `test/fixtures/cli_identity.go` | `BootstrapCLIIdentity` and `CreateCLIMTLSClient` |
 | File service test isolation | `internal/testutil/paths.go`, `internal/services/fs/file_service.go` | `testutil.TempDir` |
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
-| Windows port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort` |
+| Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
 | Live E2E suite | `test/e2e/` | `./ztd test e2e` |
 | Completion transcript wire contract | `internal/services/gateway/platform_enrollment_validation_test.go` | `TestPlatformEnrollmentCompletionTranscriptGoldenVector` |
+
+Gateway-local MCP/A2A tests use `BootstrapCLIIdentity` to enroll the owner through the real bootstrap endpoint and bind the CLI session to the certless embedded Operator that executes those calls. `EnrollClientIdentity` enrolls a remote Operator and its CLI identity; that remote Operator remains offline until it subscribes to its command channel. Enrollment persists its session synchronously and must not be tested by waiting for active command readiness.
 
 ## Procedures
 
@@ -154,6 +158,8 @@ make test-coverage
 ./ztd test lint
 make lint
 ```
+
+Unfiltered unit and integration commands delegate to `make test-unit` and `make test-integration`, so they share Makefile package exclusions and test settings. Supplying `--pkg` or `--run` invokes `go test` directly for the requested selection. The single source for excluded package patterns is `TEST_EXCLUDE_PKGS` in the root Makefile; coverage also applies `COVERAGE_ONLY_EXCLUDE_PKGS`.
 
 ### Run Specialized Test Harnesses
 
@@ -206,6 +212,8 @@ make ci-protocol
 # Full local CI pipeline across all components (stages run in sequence)
 make ci
 ```
+
+`make ci` refreshes generated artifacts as it runs. GitHub Actions separately checks generated-file freshness. Checks that GitHub Actions runs on Linux are Makefile targets shared with `make ci`, so the local gate cannot drift from CI: `verify-static` (standard and FIPS binaries), `fips-verify`, `build-windows`, `test-go-import`, `test-onboarding`, and `website-bundle-check`. `make ci` does not run the jobs that need a host it does not own: the Docker distro matrix (`make test-onboarding-docker`), the fresh-host contributor setup (`scripts/ci/onboarding-smoke.sh`), the Operator deployment lifecycle (`scripts/ci/operator-deploy-lifecycle.sh`, which needs ports 8080 and 8443 free), the FIPS-mode reruns of the unit and integration suites, and the native macOS and Windows jobs. `make test-onboarding` covers the host assumptions those jobs exercise offline: runtime and website goals parse with no Go on `PATH`, and developer tools install with the `go.mod` toolchain under an older system Go. The main CI workflow runs the full unit and integration suites on Linux and macOS; Windows runs the full unit suite and targeted integration tests for `internal/services/keystore/...`, `internal/cli/cmd/operator`, and `internal/cli/cmd/test`. The FIPS workflow runs the unit and integration Makefile targets with the FIPS Go module enabled. These workflows do not run the live E2E suite or fleet scale qualification as part of the standard test suite.
 
 ### Onboarding Script Tests
 

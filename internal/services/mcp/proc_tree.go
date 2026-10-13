@@ -10,7 +10,9 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -107,6 +109,9 @@ type processTreeResult struct {
 
 func buildProcessTree(ctx context.Context, rootPID, maxDepth int) (*processTreeResult, error) {
 	entries, err := os.ReadDir(procDirectory)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, unsupportedPlatformError("proc_tree", procDirectory)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s: %w", procDirectory, err)
 	}

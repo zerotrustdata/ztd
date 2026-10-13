@@ -107,6 +107,17 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 	row.reportCustom(rc.LogLevel, rc.CloudMode, rc.CloudProvider)
 	row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
 	row.reported[flagModelStorageRoot] = rc.ProvenanceOperatorModelStorageRoot
+	// Operators resolve these to non-empty defaults before reporting; empty
+	// means an Operator that predates reporting them, so leave them unknown.
+	for flag, value := range map[string]string{
+		flagInferenceKeepAlive: rc.InferenceKeepAlive,
+		flagProvenanceID:       rc.ProvenanceOperatorId,
+		flagObserverID:         rc.ProviderBoundaryObserverId,
+	} {
+		if value != "" {
+			row.reported[flag] = value
+		}
+	}
 	return row
 }
 

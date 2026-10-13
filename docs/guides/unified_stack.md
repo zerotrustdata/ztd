@@ -3,7 +3,7 @@ doc_id: unified_stack
 title: Unified Stack Guide
 audience: platform operators and evaluators
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - Makefile
@@ -73,6 +73,16 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 - A browser with WebAuthn support for the owner passkey, or headless enrollment.
 
 `./ztd` loads `.env` from the working directory (the repo root; template: `.env.example`, mode `0600`) at startup; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
+
+Use `ZTD_ARGS` for global CLI flags shared by `make up`, `make gw`, `make operator`, `make status`, and `make down`. When using a provisioned master key file, pass it to every lifecycle invocation so status and governed shutdown can unseal the CLI identity with the same key:
+
+```bash
+make gw ZTD_ARGS='--master-key-file /absolute/path/master.key'
+make status ZTD_ARGS='--master-key-file /absolute/path/master.key'
+make down ZTD_ARGS='--master-key-file /absolute/path/master.key'
+```
+
+`make quickstart` accepts the key file through `QUICKSTART_ARGS`, as described in [Getting Started](getting_started.md).
 
 ### Binary building and version alignment
 

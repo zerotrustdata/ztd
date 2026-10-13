@@ -203,3 +203,64 @@ func (r *cancelAfterRead) Read(p []byte) (int, error) {
 	r.cancel()
 	return n, err
 }
+
+// A multi-runner tag (Ollama 0.40+) stores a wrapper manifest whose layers
+// include one manifest per runner; the provider reports the served runner
+// manifest's digest. The window attests that runner manifest's weights only.
+func TestOllamaStorageAttestor_AttestMultiRunnerManifest(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "blobs"), 0o755))
+	writeBlob := func(body []byte) string {
+		digest := models.SHA256Hex(body)
+		require.NoError(t, os.WriteFile(filepath.Join(root, "blobs", "sha256-"+digest), body, 0o600))
+		return digest
+	}
+	runnerManifest := func(weights string) []byte {
+		body, err := json.Marshal(map[string]interface{}{
+			"schemaVersion": 2,
+			"mediaType":     ollamaRunnerManifestMediaType,
+			"layers":        []map[string]interface{}{{"digest": "sha256:" + weights, "mediaType": "application/vnd.ollama.image.model", "size": 7}},
+		})
+		require.NoError(t, err)
+		return body
+	}
+	ggmlWeights := writeBlob([]byte("ggml-wt"))
+	llamaWeights := writeBlob([]byte("llama-w"))
+	ggmlManifest := writeBlob(runnerManifest(ggmlWeights))
+	llamaManifestBody := runnerManifest(llamaWeights)
+	llamaManifest := writeBlob(llamaManifestBody)
+	wrapper, err := json.Marshal(map[string]interface{}{
+		"schemaVersion": 2,
+		"layers": []map[string]interface{}{
+			{"digest": "sha256:" + ggmlWeights, "mediaType": "application/vnd.ollama.image.model", "size": 7},
+			{"digest": "sha256:" + ggmlManifest, "mediaType": ollamaRunnerManifestMediaType, "size": len(runnerManifest(ggmlWeights))},
+			{"digest": "sha256:" + llamaManifest, "mediaType": ollamaRunnerManifestMediaType, "size": len(llamaManifestBody)},
+		},
+	})
+	require.NoError(t, err)
+	manifestPath := filepath.Join(root, "manifests", "registry.ollama.ai", "library", "probe-model", "1b")
+	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
+	require.NoError(t, os.WriteFile(manifestPath, wrapper, 0o600))
+	attestor, err := NewOllamaStorageAttestor(root, "test-provenance-operator")
+	require.NoError(t, err)
+
+	window, err := attestor.Attest(context.Background(), "probe-model:1b", llamaManifest, time.UnixMilli(1_700_000_000_000))
+	require.NoError(t, err)
+	assert.True(t, window.GetDigestMatch())
+	assert.Equal(t, llamaManifest, window.GetObservedModelDigest())
+	require.Len(t, window.GetWeightAttestations(), 1)
+	assert.Equal(t, llamaWeights, window.GetWeightAttestations()[0].GetBlobDigest())
+
+	// A digest the wrapper does not reference still fails closed.
+	window, err = attestor.Attest(context.Background(), "probe-model:1b", strings.Repeat("a", 64), time.UnixMilli(1_700_000_000_000))
+	require.NoError(t, err)
+	assert.False(t, window.GetDigestMatch())
+	assert.Equal(t, models.SHA256Hex(wrapper), window.GetObservedModelDigest())
+
+	// A tampered runner manifest blob is rejected.
+	require.NoError(t, os.WriteFile(filepath.Join(root, "blobs", "sha256-"+llamaManifest), []byte("tampered"), 0o600))
+	_, err = attestor.Attest(context.Background(), "probe-model:1b", llamaManifest, time.UnixMilli(1_700_000_000_000))
+	require.Error(t, err)
+}

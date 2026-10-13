@@ -144,8 +144,8 @@ func TestL2Consensus_QuorumReached(t *testing.T) {
 		ConsensusNServiceMembers: 3,
 	})
 
-	identity := fixtures.EnrollClientIdentity(t, f, "quorum-user", "test-org", "fp-quorum", "test-host")
-	apiClient := fixtures.CreateMTLSClient(t, f, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, f, "fp-quorum")
+	apiClient := fixtures.CreateCLIMTLSClient(t, f, identity)
 
 	resp := doToolsCall(t, apiClient, f.Service.GetHTTPSPort(), identity.OperatorSessionID, "echo", map[string]string{"message": "hello quorum"})
 	defer resp.Body.Close()
@@ -185,8 +185,8 @@ func TestL2Consensus_QuorumNotReached(t *testing.T) {
 		ConsensusNServiceMembers: 1,
 	})
 
-	identity := fixtures.EnrollClientIdentity(t, f, "no-quorum-user", "test-org", "fp-no-quorum", "test-host")
-	apiClient := fixtures.CreateMTLSClient(t, f, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, f, "fp-no-quorum")
+	apiClient := fixtures.CreateCLIMTLSClient(t, f, identity)
 
 	resp := doToolsCall(t, apiClient, f.Service.GetHTTPSPort(), identity.OperatorSessionID, "echo", map[string]string{"message": "hello no-quorum"})
 	defer resp.Body.Close()
@@ -216,8 +216,8 @@ func TestL2Consensus_VetoByMITRE(t *testing.T) {
 		ConsensusID:       "veto-consensus",
 	})
 
-	identity := fixtures.EnrollClientIdentity(t, f, "veto-user", "test-org", "fp-veto", "test-host")
-	apiClient := fixtures.CreateMTLSClient(t, f, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, f, "fp-veto")
+	apiClient := fixtures.CreateCLIMTLSClient(t, f, identity)
 
 	// Submit a command that should trigger MITRE detection (destructive command).
 	// The L1 doctrine should flag "rm -rf /" as malicious and the consensus member
@@ -249,8 +249,8 @@ func TestL2Consensus_L1ToL5Walkthrough(t *testing.T) {
 	})
 
 	// The fixture auto-wires a 1-member consensus for consensus posture.
-	identity := fixtures.EnrollClientIdentity(t, f, "walkthrough-user", "test-org", "fp-walkthrough", "test-host")
-	apiClient := fixtures.CreateMTLSClient(t, f, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, f, "fp-walkthrough")
+	apiClient := fixtures.CreateCLIMTLSClient(t, f, identity)
 
 	// L1: Submit a benign tools/call that passes L1 doctrine checks
 	resp := doToolsCall(t, apiClient, f.Service.GetHTTPSPort(), identity.OperatorSessionID, "echo", map[string]string{"message": "l1-l5 test"})

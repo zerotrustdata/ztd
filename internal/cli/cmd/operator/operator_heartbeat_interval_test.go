@@ -38,3 +38,11 @@ func TestOperatorStartCmd_RejectsHeartbeatIntervalPastMaximum(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrOperatorHeartbeatIntervalInvalid)
 }
+
+func TestOperatorStartCmd_RejectsArgsAfterDoubleDash(t *testing.T) {
+	cmd := operatorStartCmd()
+	require.NoError(t, cmd.ParseFlags([]string{"--provenance-operator-id", "p", "--", "--capabilities", "observer,provenance"}))
+
+	require.Error(t, cmd.ValidateArgs(cmd.Flags().Args()), "flags after -- must not be silently dropped")
+	assert.False(t, cmd.Flags().Changed("capabilities"))
+}

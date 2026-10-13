@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -229,6 +230,11 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ModelRegistryDigest:          spec.GetModelRegistryDigest(),
 		ModelRegistry:                evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
 	}
+	if summary.Run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE {
+		if err := evaluation.ValidateOperatorWorkingDirectory(executionBinding.DataOperatorWorkingDirectory); err != nil {
+			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+	}
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
 	}
@@ -329,15 +335,37 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	return executed, nil
 }
 
-func releaseResidentProviderModels(
-	cmd *cobra.Command,
-	deps nativeEvalDeps,
-	opts runExecuteOptions,
-	cfg *config.Config,
-	authContext *auth.ClientAuthContext,
-	inferenceSessionID string,
-	endpoint string,
-) error {
+// releaseResidentProviderModels unloads every model resident on the provider
+// before scored work, so a run never starts against a warm, foreign model.
+func releaseResidentProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID, endpoint string) error {
+	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, endpoint, "resident", nil)
+}
+
+// releaseRunModels unloads the campaign's own models once the run is done.
+func releaseRunModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, operators []*operatorv1.OperatorDocument, inferenceSessionID string, spec *evalv1.EvaluationCampaignSpec) error {
+	if inferenceSessionID == "" || spec == nil || len(spec.GetModelRegistry()) == 0 {
+		return nil
+	}
+	endpoint, err := resolveCampaignOllamaEndpoint(operators, inferenceSessionID)
+	if err != nil {
+		return err
+	}
+	modelTags := make([]string, 0, len(spec.GetModelRegistry()))
+	for _, variant := range spec.GetModelRegistry() {
+		if variant != nil && variant.GetServedModelTag() != "" {
+			modelTags = append(modelTags, variant.GetServedModelTag())
+		}
+	}
+	if len(modelTags) == 0 {
+		return nil
+	}
+	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, endpoint, "campaign", modelTags)
+}
+
+// releaseProviderModels releases the resident provider models, limited to
+// only when it is non-nil, through the exact Inference Operator session and
+// waits until the provider reports them absent.
+func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID, endpoint, label string, only []string) error {
 	dispatcher, err := newHarnessOllamaModelCommandDispatcher(cfg, authContext, deps.gatewayDeps())
 	if err != nil {
 		return err
@@ -352,77 +380,16 @@ func releaseResidentProviderModels(
 	if err != nil {
 		return fmt.Errorf("evaluation: read provider residency: %w", err)
 	}
-	if len(residency.Models) == 0 {
-		return nil
-	}
 	residentTags := make([]string, 0, len(residency.Models))
-	for _, model := range residency.Models {
-		residentTags = append(residentTags, model.Name)
-	}
-	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, modelCommandEnvironment(endpoint), maintenance.NewID); err != nil {
-		return err
-	}
-	waitCtx, cancel := context.WithTimeout(cmd.Context(), 2*time.Minute)
-	defer cancel()
-	if err := evaluation.WaitForOllamaModelsAbsent(waitCtx, dispatcher, maintenance, residentTags); err != nil {
-		return err
-	}
-	if !opts.JSONOutput {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Released %d resident model(s) through inference session %s\n", len(residentTags), inferenceSessionID)
-	}
-	return nil
-}
-
-func releaseRunModels(
-	cmd *cobra.Command,
-	deps nativeEvalDeps,
-	opts runExecuteOptions,
-	cfg *config.Config,
-	authContext *auth.ClientAuthContext,
-	operators []*operatorv1.OperatorDocument,
-	inferenceSessionID string,
-	spec *evalv1.EvaluationCampaignSpec,
-) error {
-	if inferenceSessionID == "" || spec == nil || len(spec.GetModelRegistry()) == 0 {
-		return nil
-	}
-	endpoint, err := resolveCampaignOllamaEndpoint(operators, inferenceSessionID)
-	if err != nil {
-		return err
-	}
-	modelTags := make([]string, 0, len(spec.GetModelRegistry()))
-	for _, variant := range spec.GetModelRegistry() {
-		if variant != nil && variant.GetServedModelTag() != "" {
-			modelTags = append(modelTags, variant.GetServedModelTag())
-		}
-	}
-	dispatcher, err := newHarnessOllamaModelCommandDispatcher(cfg, authContext, deps.gatewayDeps())
-	if err != nil {
-		return err
-	}
-	maintenance := evaluation.OllamaModelMaintenanceContext{
-		TargetOperatorSessionID: inferenceSessionID,
-		Environment:             modelCommandEnvironment(endpoint),
-		CaseID:                  opts.RunID,
-		NewID:                   adaptNewID(deps.newID),
-	}
-	residency, err := evaluation.ReadOllamaProviderResidency(cmd.Context(), dispatcher, maintenance)
-	if err != nil {
-		return err
-	}
-	residentTags := make([]string, 0, len(modelTags))
-	for _, tag := range modelTags {
-		for _, resident := range residency.Models {
-			if resident.Name == tag {
-				residentTags = append(residentTags, tag)
-				break
-			}
+	for _, resident := range residency.Models {
+		if only == nil || slices.Contains(only, resident.Name) {
+			residentTags = append(residentTags, resident.Name)
 		}
 	}
 	if len(residentTags) == 0 {
 		return nil
 	}
-	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, modelCommandEnvironment(endpoint), maintenance.NewID); err != nil {
+	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, maintenance.Environment, maintenance.NewID); err != nil {
 		return err
 	}
 	waitCtx, cancel := context.WithTimeout(cmd.Context(), 2*time.Minute)
@@ -431,7 +398,7 @@ func releaseRunModels(
 		return err
 	}
 	if !opts.JSONOutput {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Released %d campaign model(s) through inference session %s\n", len(residentTags), inferenceSessionID)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Released %d %s model(s) through inference session %s\n", len(residentTags), label, inferenceSessionID)
 	}
 	return nil
 }

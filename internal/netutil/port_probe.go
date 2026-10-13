@@ -24,7 +24,8 @@ func ReserveTCPPort() (int, io.Closer, error) {
 	return port, reservation, nil
 }
 
-// CheckTCPPortAvailable probes the wildcard address used by the Gateway.
+// CheckTCPPortAvailable probes IPv4 and IPv6 wildcard binds used by the Gateway,
+// rejecting conflicts with wildcard or loopback listeners in either family.
 // The port is released before return, so the eventual server bind can still race.
 func CheckTCPPortAvailable(port int) error {
 	if port < 1 || port > 65535 {

@@ -223,7 +223,7 @@ func TestRunsStart_DryRunPrintsPlanWithoutWriting(t *testing.T) {
 	out := env.mustRun(t, "runs", "start", "eval-a", "--dry-run")
 	assert.Contains(t, out, "Run start plan")
 	assert.Contains(t, out, "eval-a")
-	assert.Contains(t, out, "Sessions resolved: false")
+	assert.Contains(t, out, "Sessions resolved: skipped (dry run)")
 
 	runIDs, err := env.store(t).ListRunIDs(context.Background())
 	require.NoError(t, err)

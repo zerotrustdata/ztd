@@ -3,7 +3,7 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - internal/services/ztdo.go
@@ -123,12 +123,13 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-OP-STOR-01 | Under LFAA, the Operator's local SQLite database (`.ztd/data/ztd.db`) and Git file ledger (`.ztd/data/ledger/`) are the authoritative execution records. Gateway receipt mirrors are best-effort projections. |
 | INV-OP-STOR-02 | Operator private keys, CSRs, requester tokens, and issued certificates MUST be held in memory only during remote runtime execution; they MUST NOT be written to plaintext files in `.ztd/`. |
 | INV-OP-STOR-03 | An outbound Operator's runtime tree is `--working-dir/.ztd/`, or the launch directory's `.ztd/` when the flag is omitted. `operator start` MUST refuse a runtime tree that holds a Gateway root CA (`GatewayRuntimeMarker`, `pki/root/root_ca.crt`), so an Operator never opens a Gateway's audit store or vault. |
+| INV-OP-STOR-04 | An Operator's runtime tree (`.ztd/`) MUST NOT reside inside the model storage root (`--model-storage-root`). `operator start` MUST refuse startup with `ErrOperatorModelStoreRuntime` if the resolved runtime tree is inside or equal to the model storage root, preserving the model store as a pure read-only witness and weight cache. |
 
 ## Owned surfaces
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Operator CLI commands | `internal/cli/cmd/operator/`, `internal/cli/serve/` | `make build && ./ztd operator --help` |
+| Operator CLI commands and process lifecycle | `internal/cli/cmd/operator/`, `internal/cli/serve/` | `make build && ./ztd operator --help` |
 | Operator service implementation | `internal/services/ztdo.go` (`services.ZtdoService`) | `internal/services/ztdo_test.go`, `internal/services/ztdo_integration_test.go` |
 | L4 Warden pre-dispatch pipeline | `internal/services/governance/l4_warden.go` | `internal/services/governance/l4_warden_test.go` |
 | L5 Actuator execution boundary | `internal/services/governance/l5_actuator.go` | `internal/services/governance/l5_actuator_test.go` |
@@ -157,24 +158,31 @@ Each Operator process declares its functional roles through startup flags:
 
 # Inference Operator (Ollama model serving backend)
 ./ztd operator start --endpoint gateway.example --capabilities inference \
-  --inference-ollama-endpoint http://127.0.0.1:11434
+  --inference-ollama-endpoint http://127.0.0.1:11434 \
+  --inference-keep-alive -1
 
 # Provenance Operator (storage-side model weight attestation witness)
 ./ztd operator start --endpoint gateway.example --capabilities provenance \
-  --model-storage-root /srv/ollama/models
+  --model-storage-root /srv/ollama/models \
+  --provenance-operator-id prov-witness-01
 
 # Observer Operator (host hardware telemetry sampling witness)
-./ztd operator start --endpoint gateway.example --capabilities observer
+./ztd operator start --endpoint gateway.example --capabilities observer \
+  --provider-boundary-observer-id obs-telemetry-01
 
 # Multi-capability Operator (combined execution and witness)
 ./ztd operator start --endpoint gateway.example --capabilities data,inference,provenance \
-  --model-storage-root /srv/ollama/models
+  --model-storage-root /srv/ollama/models \
+  --inference-keep-alive 5m \
+  --provenance-operator-id prov-witness-01
 ```
 
 Witness constraints:
 - Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand`.
 - Adding `data` permits governed command execution in the same process.
 - Streamed inference progress is scrubbed at the source before publication. Streams are buffered line-by-line and scrubbed against regex patterns. Private keys are buffered until completion. The terminal `output_hash` binds the concatenated scrubbed progress chunks.
+
+Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration and stable provenance and provider-boundary observer pseudonyms. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
 
 ### Multi-Operator Coexistence and Composite Fingerprinting
 
@@ -218,6 +226,8 @@ Communication between the Gateway and Operators uses dedicated, isolated WebSock
 - **Receipt Egress**: `receipts:<operator_id>:<operator_session_id>`: Publishes signed `ActionReceipt` objects back to the Gateway.
 - **Heartbeat Channel**: Publishes periodic telemetry frames containing process metrics and timestamp proofs.
 
+The native `sys_info` tool also reports host OS details. On Unix-like systems it reads the distribution name from `/etc/os-release` and kernel, uptime, and load averages from the host interfaces where available. On Windows it reads the product name and build from the registry (correcting Windows 10 labels for build 22000 and later), reports kernel version and uptime, and returns `unknown` for load average because Windows does not expose that metric through this collector. Unavailable or unreadable values are returned as `unknown`.
+
 ### Five-Layer Execution Boundary (L4 Warden & L5 Actuator)
 
 The Operator owns the final two layers of the governance interlock:
@@ -245,6 +255,7 @@ The Operator owns the final two layers of the governance interlock:
 - **Git File Ledger**: Every governed `FILE_EDIT` or `RESTORE_FILE` action creates an encrypted snapshot in Git before and after modification.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
 - **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
+- **Model Store Isolation**: An Operator's runtime state (`.ztd/`) must never reside inside the model storage root (`--model-storage-root`). `operator start` validates this pre-flight via `refuseModelStoreRuntime` and fails closed with `ErrOperatorModelStoreRuntime` (INV-OP-STOR-04), preserving the provenance model store as a pure read-only witness.
 
 ### Autochthon Subsystem
 

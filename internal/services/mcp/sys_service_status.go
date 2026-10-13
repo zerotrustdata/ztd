@@ -10,7 +10,9 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -93,6 +95,9 @@ func getServiceStatus(ctx context.Context, serviceName string, executor commandE
 	// serviceName is passed as a separate argument to executor.CombinedOutput to satisfy CodeQL command-injection rule.
 	// This prevents shell injection by avoiding shell interpretation.
 	output, err := executor.CombinedOutput(ctx, "systemctl", "show", serviceName, "--no-pager")
+	if errors.Is(err, exec.ErrNotFound) {
+		return SysServiceStatusResult{}, unsupportedPlatformError("sys_service_status", "systemctl")
+	}
 	if err != nil {
 		//nolint:nilerr // intentional fallback: systemctl error recorded in SysServiceStatusResult
 		return SysServiceStatusResult{

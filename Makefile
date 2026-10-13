@@ -31,6 +31,7 @@ GOTOOLCHAIN ?= auto
 export GOTOOLCHAIN
 TMPDIR ?= /tmp
 .DEFAULT_GOAL := help
+comma := ,
 
 # =============================================================================
 # BUILD VARIABLES
@@ -57,7 +58,7 @@ SOURCE_TREE_HASH ?= $(shell go run ./internal/tools/treehash -mode manifest -bas
 BUILD_ID ?= $(SOURCE_TREE_HASH)
 SOURCE_REVISION ?= unknown
 LDFLAGS = -X main.version=$(VERSION) -X main.buildID=$(BUILD_ID) -X main.buildTime=$(BUILD_TIME) -X main.sourceRevision=$(SOURCE_REVISION) -X main.sourceTreeHash=$(SOURCE_TREE_HASH)
-HOST_ARCH := $(shell go env GOARCH)
+HOST_ARCH := $(shell go env GOARCH 2>/dev/null)
 
 # Platform and architecture lists are emitted by the typed ztd-binary catalog.
 PLATFORMS := $(shell go run ./internal/tools/ztdbinaries -list-targets 2>/dev/null)
@@ -109,7 +110,7 @@ COVERAGE_THRESHOLD := 75
 # Packages excluded from test runs (and implicitly from coverage too).
 # Each pattern is matched against Go import paths.
 TEST_EXCLUDE_PKGS := \
-	/test/ \
+	ztd/test \
 	/cmd/ztd \
 	/internal/constants \
 	/internal/httpclient \
@@ -220,6 +221,7 @@ help:
 		'  build-compressed          Build for the host and compress with UPX' \
 		'  fips-build                Build the Linux AMD64 FIPS variant' \
 		'  fips-verify               Build and verify the FIPS variant' \
+		'  verify-static             Check a built Linux binary is fully static (STATIC_BINARY=...)' \
 		'  version-sync              Sync version declarations to VERSION' \
 		'  release-rehearse          Run the release workflow on main without publishing' \
 		'  release                   Tag and push the release in VERSION (needs a passing rehearsal)' \
@@ -234,6 +236,7 @@ help:
 		'  test-cross-enrollment     Run Tier 3 cross-enrollment E2E tests' \
 		'  test-scale                Operator fleet scale qualification (SCALE_COUNT=100, SCALE_ARGS=...)' \
 		'  test-airgap               Verify the vendored air-gap build' \
+		'  test-go-import            Build a fresh module that imports ztd via a replace directive' \
 		'  test-onboarding           Hermetic tests for the setup and quickstart scripts' \
 		'  test-onboarding-docker    Fresh-host onboarding in clean Linux containers (DISTROS=..., SCENARIOS=...)' \
 		'  lint                      Run all lint and quality checks' \
@@ -254,6 +257,7 @@ help:
 		'  swagger-generate          Generate the Gateway OpenAPI specification' \
 		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
 		'  website-test              Test the website generator and Worker' \
+		'  website-bundle-check      Validate the Cloudflare Worker bundle (wrangler dry run)' \
 		'' \
 		'Components' \
 		'  console-build             Build the console SPA' \
@@ -276,6 +280,7 @@ help:
 		'  status                    Show Gateway status, Operators, and pending enrollments' \
 		'  down                      Stop local Operators, then the host Gateway' \
 		'  stop                      Alias for down' \
+		'  ZTD_ARGS                  Global CLI flags shared by up, gw, operator, status, and down' \
 		'' \
 		'Maintenance' \
 		'  clean                     Remove build artifacts and Go caches' \
@@ -314,7 +319,7 @@ third-party-notices-check:
 	@echo "Checking THIRD_PARTY_NOTICES.md against vendor/ and the npm locks..."
 	@tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT && \
 		go run ./internal/tools/thirdpartynotices -repo . -out "$$tmp" && \
-		diff -u THIRD_PARTY_NOTICES.md "$$tmp" || { echo "THIRD_PARTY_NOTICES.md is stale; run 'make third-party-notices'"; exit 1; }
+		diff -u --strip-trailing-cr THIRD_PARTY_NOTICES.md "$$tmp" || { echo "THIRD_PARTY_NOTICES.md is stale; run 'make third-party-notices'"; exit 1; }
 
 .PHONY: website-build
 website-build:
@@ -325,6 +330,11 @@ website-build:
 website-test:
 	@echo "Testing the zerotrustdata.io generator and Worker..."
 	@cd website && npm run check
+
+.PHONY: website-bundle-check
+website-bundle-check:
+	@echo "Validating the Cloudflare Worker bundle..."
+	@cd website && npx wrangler deploy --dry-run
 
 # =============================================================================
 # PROTOCOL GENERATION
@@ -438,13 +448,7 @@ dev-tools ci-tools:
 .PHONY: dev-tools-if-needed
 dev-tools-if-needed:
 	@set -e; source scripts/lib/dev-setup-common.sh; for pkg in $(GO_DEV_TOOL_PKGS); do \
-		bin=$${pkg%@*}; bin=$${bin##*/}; \
-		if ztd_have "$$bin"; then \
-			echo "  $$bin: already installed — skipping"; \
-		else \
-			echo "  installing $$bin ($$pkg)..."; \
-			go install "$$pkg" || exit 1; \
-		fi; \
+		ztd_dev_tool_if_needed "$$pkg" || exit 1; \
 	done
 
 .PHONY: dev-node
@@ -502,10 +506,26 @@ EXPLORER_EMBED := internal/services/gateway/explorer/static
 # Frontend builds are incremental: each dist rebuilds only when its sources
 # change, and each embed refreshes only when its dist is newer. The explorer
 # bundle also compiles in VERSION and imports ztd-adapter/src. The Go source
-# lister avoids platform-specific find commands during Makefile parsing.
-SOURCE_FILES := go run ./internal/tools/sourcefiles -base .
+# lister avoids platform-specific find commands during Makefile parsing. It is
+# built once to a fixed path (go build skips the link when current) instead of
+# three `go run` temp builds per make invocation. Goals that only drive an
+# already-built ./ztd, or only run the website's npm scripts, need no Go
+# toolchain, so they skip the lister entirely.
+# The `||` keeps a failed build non-empty: shells that exec a lone command
+# report "command not found" outside the 2>&1 capture.
+TOOLCHAIN_FREE_GOALS := help status down stop website-test website-build website-bundle-check
+SOURCE_FILES_TOOL := $(BIN_DIR)/.tools/sourcefiles$(if $(filter windows,$(HOST_OS)),.exe,)
+ifneq ($(filter-out $(TOOLCHAIN_FREE_GOALS),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))),)
+SOURCE_FILES_BUILD := $(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1 || echo "go build exited $$?")
+ifneq ($(SOURCE_FILES_BUILD),)
+$(error building $(SOURCE_FILES_TOOL) failed: $(SOURCE_FILES_BUILD))
+endif
+source_files = $(shell $(SOURCE_FILES_TOOL) -base . $(1))
+else
+source_files =
+endif
 
-EXPLORER_SOURCES := $(shell $(SOURCE_FILES) -exclude node_modules,dist,tests,e2e evaluation-explorer) $(shell $(SOURCE_FILES) ztd-adapter/src) VERSION
+EXPLORER_SOURCES := $(call source_files,-exclude node_modules$(comma)dist$(comma)tests$(comma)e2e evaluation-explorer) $(call source_files,ztd-adapter/src) VERSION
 
 evaluation-explorer/node_modules/.package-lock.json: evaluation-explorer/package-lock.json
 	@npm ci --prefix evaluation-explorer
@@ -524,7 +544,7 @@ explorer-embed: $(EXPLORER_EMBED)/index.html
 
 CONSOLE_DIST := console/dist
 CONSOLE_EMBED := internal/services/gateway/console/static
-CONSOLE_SOURCES := $(shell $(SOURCE_FILES) -exclude node_modules,dist,tests console)
+CONSOLE_SOURCES := $(call source_files,-exclude node_modules$(comma)dist$(comma)tests console)
 
 $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 	@rm -rf $(CONSOLE_EMBED) && cp -r $(CONSOLE_DIST) $(CONSOLE_EMBED)
@@ -644,6 +664,17 @@ fips-verify: fips-build
 	@GODEBUG=fips140=only ./ztd-fips version --fips
 	@echo "FIPS 140-3 self-check passed."
 
+# Shipped Linux binaries carry no libc dependency. CI checks both the standard
+# and the FIPS binary through this one target.
+STATIC_BINARY ?= $(BIN_DIR)/ztd-linux-amd64
+.PHONY: verify-static
+verify-static:
+	@file "$(STATIC_BINARY)" | grep -q "statically linked" || \
+		{ echo "ERROR: $(STATIC_BINARY) is not statically linked"; file "$(STATIC_BINARY)"; exit 1; }
+	@ldd "$(STATIC_BINARY)" 2>&1 | grep -q "not a dynamic executable" || \
+		{ echo "ERROR: $(STATIC_BINARY) has dynamic dependencies"; ldd "$(STATIC_BINARY)"; exit 1; }
+	@echo "$(STATIC_BINARY) is statically linked."
+
 # Format all Go source files. Build targets no longer format the working tree;
 # run this explicitly or wire it into a pre-commit hook.
 .PHONY: fmt
@@ -714,6 +745,10 @@ test-airgap:
 	@go build -mod=vendor ./... || { echo "ERROR: vendored build failed"; exit 1; }
 	@echo "Air-gap verification PASSED."
 
+.PHONY: test-go-import
+test-go-import:
+	@bash scripts/smoke-test-go.sh
+
 # =============================================================================
 # CONSOLE — Gateway-embedded browser frontend (console/, served at /console/)
 # =============================================================================
@@ -757,7 +792,11 @@ explorer-test:
 claude-plugin-test:
 	@echo "Testing the Claude Code plugin..."
 	@sh claude-plugin/test/run.sh
-	@shellcheck -s sh claude-plugin/hooks/*.sh claude-plugin/scripts/*.sh claude-plugin/test/*.sh
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck -s sh claude-plugin/hooks/*.sh claude-plugin/scripts/*.sh claude-plugin/test/*.sh; \
+	else \
+		echo "shellcheck not found; skipping shell lint (install via 'choco install shellcheck' on Windows or 'apt install shellcheck' on Debian/Ubuntu)"; \
+	fi
 	@if command -v claude >/dev/null 2>&1; then \
 		claude plugin validate --strict claude-plugin && claude plugin validate --strict .; \
 	else \
@@ -792,12 +831,12 @@ test-coverage:
 # =============================================================================
 .PHONY: lint
 lint: vulncheck doctrines-validate
-	@golangci-lint run
+	@exec golangci-lint run
 	@echo "All linting and quality checks complete."
 
 .PHONY: vulncheck
 vulncheck:
-	@govulncheck ./...
+	@exec govulncheck ./...
 
 .PHONY: doctrines-validate
 doctrines-validate:
@@ -855,7 +894,7 @@ quickstart:
 .PHONY: up
 up: build
 	@echo "Starting the ztd Gateway on this host..."
-	@./ztd gw start $(GW_LISTEN_ARGS) $(GW_ARGS)
+	@./ztd gw start $(ZTD_ARGS) $(GW_LISTEN_ARGS) $(GW_ARGS)
 
 # Gateway whose embedded Operator carries every Operator capability.
 # Capabilities are immutable in a running Gateway, so run `make down` first when
@@ -863,13 +902,12 @@ up: build
 # added only when MODEL_STORAGE_ROOT names the local model store. GW_ARGS
 # carries extra flags, for example
 #   make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint http://host:11434'
-comma := ,
 GW_CAPABILITIES ?= data,inference,observer
 MODEL_STORAGE_ROOT ?=
 .PHONY: gw
 gw: build
-	@./ztd gw start --capabilities $(GW_CAPABILITIES)$(if $(MODEL_STORAGE_ROOT),$(comma)provenance --model-storage-root $(MODEL_STORAGE_ROOT)) $(GW_LISTEN_ARGS) $(GW_ARGS)
-	@./ztd gw status
+	@./ztd gw start $(ZTD_ARGS) --capabilities $(GW_CAPABILITIES)$(if $(MODEL_STORAGE_ROOT),$(comma)provenance --model-storage-root $(MODEL_STORAGE_ROOT)) $(GW_LISTEN_ARGS) $(GW_ARGS)
+	@./ztd gw status $(ZTD_ARGS)
 
 .PHONY: up-public gw-public
 up-public gw-public: GW_LISTEN_ARGS := --listen-host 0.0.0.0
@@ -881,18 +919,18 @@ gw-public: gw
 #   make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --working-dir ~/.ztd-inference'
 .PHONY: operator
 operator: build
-	@./ztd operator start $(OPERATOR_ARGS)
+	@./ztd operator start $(ZTD_ARGS) $(OPERATOR_ARGS)
 
 .PHONY: status
 status:
-	@./ztd gw status
+	@./ztd gw status $(ZTD_ARGS)
 
 # Operators first (governed shutdown needs the Gateway), then the Gateway even if
 # no Operator was running. Runtime state in .ztd/ is preserved.
 .PHONY: down stop
 down:
-	-@./ztd operator stop
-	@./ztd gw stop
+	-@./ztd operator stop $(ZTD_ARGS)
+	@./ztd gw stop $(ZTD_ARGS)
 
 stop: down
 
@@ -918,7 +956,9 @@ ci-platform: dev-check
 	@$(MAKE) explorer-catalog-check
 	@$(MAKE) lint
 	@$(MAKE) _ci-test
+	@$(MAKE) _ci-binaries
 	@$(MAKE) test-airgap
+	@$(MAKE) test-go-import
 	@$(MAKE) bsl-headers-check
 	@$(MAKE) third-party-notices-check
 	@$(MAKE) test-commit-hygiene
@@ -955,6 +995,7 @@ ci-protocol: dev-check
 ci-website: dev-check
 	@$(MAKE) website-test
 	@$(MAKE) website-build
+	@$(MAKE) website-bundle-check
 	@echo "Website CI complete."
 
 .PHONY: bsl-headers-check
@@ -993,6 +1034,19 @@ _ci-test:
 	@$(MAKE) test-enrollment-burst
 	@echo "=== integration tests and coverage ==="
 	@$(MAKE) test-coverage
+
+# Release-shape checks GitHub Actions runs on the built binaries: the Windows
+# cross-compile, then (on a Linux host, the FIPS tested OE) the FIPS self-check
+# and fully static standard and FIPS binaries.
+.PHONY: _ci-binaries
+_ci-binaries:
+	@$(MAKE) build-windows
+ifeq ($(HOST_OS),linux)
+	@$(MAKE) build-linux
+	@$(MAKE) verify-static
+	@$(MAKE) fips-verify
+	@$(MAKE) verify-static STATIC_BINARY=$(BIN_DIR)/ztd-fips-$(FIPS_GOOS)-$(FIPS_GOARCH)
+endif
 
 # =============================================================================
 # RELEASE

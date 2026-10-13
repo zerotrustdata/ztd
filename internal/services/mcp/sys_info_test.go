@@ -104,3 +104,11 @@ func TestSysInfoTool_Execute_Timeout(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
 }
+
+func TestFormatUptime(t *testing.T) {
+	require.Equal(t, "unknown", formatUptime(-1))
+	require.Equal(t, "0d 0h 0m", formatUptime(0))
+	require.Equal(t, "0d 0h 59m", formatUptime(59*60))
+	require.Equal(t, "0d 1h 0m", formatUptime(3600))
+	require.Equal(t, "1d 2h 3m", formatUptime(86400+2*3600+3*60))
+}

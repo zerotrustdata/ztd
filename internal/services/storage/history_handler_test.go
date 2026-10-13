@@ -684,7 +684,7 @@ func TestHistoryHandler_RestoreFileRejectsSymlinkIntoProtectedRuntimePath(t *tes
 	protectedRel := filepath.Join(constants.SecretsDirname, constants.SecretsFileVaultKey)
 	require.NoError(t, hh.fileSvc.WriteFile(ctx, protectedRel, []byte("sentinel"), constants.PermFilePrivate))
 	require.NoError(t, os.Remove(linkPath))
-	require.NoError(t, os.Symlink(hh.fileSvc.Resolve(protectedRel), linkPath))
+	testutil.Symlink(t, hh.fileSvc.Resolve(protectedRel), linkPath)
 
 	requestJSON := testutil.BuildRestoreFileRequestedPayload(t, "exec-123", linkPath, commitHash, sessionID)
 	response, _ := hh.HandleRestoreFile(ctx, testRestoreSessionID, requestJSON)

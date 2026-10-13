@@ -68,10 +68,11 @@ function Get-GoMinVersion {
     return $line.Line.Substring(3).Trim()
 }
 
-function Parse-MajorMinor {
+function Parse-GoVersion {
     param([string]$Version)
-    if ($Version -match '(\d+)\.(\d+)') {
-        return [Version]"$($Matches[1]).$($Matches[2])"
+    if ($Version -match '(\d+)\.(\d+)(?:\.(\d+))?') {
+        $patch = if ($Matches[3]) { $Matches[3] } else { "0" }
+        return [Version]"$($Matches[1]).$($Matches[2]).$patch"
     }
     return $null
 }
@@ -112,6 +113,70 @@ function Test-Curl {
     return $false
 }
 
+# GOTOOLCHAIN=auto lets `go version` report the go.mod toolchain while an
+# explicit GOROOT still points the compiler at a different installed stdlib,
+# which fails later with "package crypto/... is not in std".
+function Assert-GoRootMatches {
+    param([Version]$Have)
+    $userGoRoot = [Environment]::GetEnvironmentVariable('GOROOT', 'User')
+    $machineGoRoot = [Environment]::GetEnvironmentVariable('GOROOT', 'Machine')
+    $processGoRoot = $env:GOROOT
+
+    if (-not $userGoRoot -and -not $machineGoRoot -and -not $processGoRoot) {
+        return
+    }
+
+    $candidateScopes = [ordered]@{}
+    if ($machineGoRoot) { $candidateScopes["Machine"] = $machineGoRoot }
+    if ($userGoRoot) { $candidateScopes["User"] = $userGoRoot }
+    if ($processGoRoot -and ($processGoRoot -ne $userGoRoot) -and ($processGoRoot -ne $machineGoRoot)) {
+        $candidateScopes["Process"] = $processGoRoot
+    } elseif ($processGoRoot -and -not $userGoRoot -and -not $machineGoRoot) {
+        $candidateScopes["Process"] = $processGoRoot
+    }
+
+    $mismatches = [System.Collections.Generic.List[string]]::new()
+    $mismatchedScopes = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($scope in $candidateScopes.Keys) {
+        $rootPath = $candidateScopes[$scope]
+        $rootVersion = $null
+        $versionFile = Join-Path $rootPath "VERSION"
+        if (Test-Path $versionFile) {
+            $rootVersion = Parse-GoVersion (Get-Content $versionFile -TotalCount 1)
+        } elseif (Test-Path (Join-Path $rootPath "bin\go.exe")) {
+            $goExeOut = (& (Join-Path $rootPath "bin\go.exe") version 2>$null)
+            if ($goExeOut -match 'go(\d+\.\d+(?:\.\d+)?)') {
+                $rootVersion = Parse-GoVersion $Matches[1]
+            }
+        }
+        if ($rootVersion -and $rootVersion -ne $Have) {
+            if (-not $mismatchedScopes.Contains($scope)) {
+                $mismatchedScopes.Add($scope)
+            }
+            $mismatches.Add("  go: GOROOT ($scope scope)='$rootPath' is Go v$($rootVersion.ToString()) but the active toolchain is v$($Have.ToString()).")
+        }
+    }
+
+    if ($mismatchedScopes.Count -gt 0) {
+        foreach ($msg in $mismatches) {
+            Write-Host $msg -ForegroundColor Red
+        }
+        Write-Host "      Builds will use the wrong standard library. Remove the GOROOT environment variable:" -ForegroundColor Red
+        if ($mismatchedScopes.Contains("Machine")) {
+            Write-Host "      Machine: elevated shell ([Environment]::SetEnvironmentVariable('GOROOT', `$null, 'Machine')) or System Environment Variables" -ForegroundColor Red
+        }
+        if ($mismatchedScopes.Contains("User")) {
+            Write-Host "      User: [Environment]::SetEnvironmentVariable('GOROOT', `$null, 'User')" -ForegroundColor Red
+        }
+        if ($mismatchedScopes.Contains("Process") -and -not $mismatchedScopes.Contains("Machine") -and -not $mismatchedScopes.Contains("User")) {
+            Write-Host "      Process: Remove-Item Env:\GOROOT" -ForegroundColor Red
+        }
+        Write-Host "      then open a new terminal and re-run this script." -ForegroundColor Red
+        exit 1
+    }
+}
+
 function Test-Go {
     param([Version]$Need)
     if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
@@ -120,14 +185,15 @@ function Test-Go {
     }
     $goOutput = go version 2>$null
     $have = $null
-    if ($goOutput -match 'go(\d+\.\d+)') {
-        $have = [Version]$Matches[1]
+    if ($goOutput -match 'go(\d+\.\d+(?:\.\d+)?)') {
+        $have = Parse-GoVersion $Matches[1]
     }
     if (-not $have) {
         Write-Host "  go: detected but version unknown" -ForegroundColor Yellow
         return $false
     }
     if (Test-VersionAtLeast -Have $have -Need $Need) {
+        Assert-GoRootMatches -Have $have
         Write-Host "  go: detected (v$($have.ToString()), need >= $($Need.ToString()))" -ForegroundColor Green
         return $true
     }
@@ -183,6 +249,24 @@ function Test-Ripgrep {
     return $false
 }
 
+function Test-Shellcheck {
+    if (Get-Command shellcheck.exe, shellcheck -ErrorAction SilentlyContinue) {
+        Write-Host "  shellcheck: detected" -ForegroundColor Green
+        return $true
+    }
+    Write-Host "  shellcheck: missing" -ForegroundColor Yellow
+    return $false
+}
+
+function Test-Jq {
+    if (Get-Command jq.exe, jq -ErrorAction SilentlyContinue) {
+        Write-Host "  jq: detected" -ForegroundColor Green
+        return $true
+    }
+    Write-Host "  jq: missing" -ForegroundColor Yellow
+    return $false
+}
+
 function Refresh-SessionPath {
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
         [System.Environment]::GetEnvironmentVariable("Path", "User")
@@ -232,6 +316,12 @@ function Install-WindowsPackages {
         if ($Missing -contains "rg") {
             $commands += "winget install --id BurntSushi.ripgrep.MSVC -e --accept-package-agreements --accept-source-agreements"
         }
+        if ($Missing -contains "shellcheck") {
+            $commands += "winget install --id koalaman.shellcheck -e --accept-package-agreements --accept-source-agreements"
+        }
+        if ($Missing -contains "jq") {
+            $commands += "winget install --id jqlang.jq -e --accept-package-agreements --accept-source-agreements"
+        }
     } elseif ($choco) {
         $packages = @()
         if ($Missing -contains "git") { $packages += "git" }
@@ -239,6 +329,8 @@ function Install-WindowsPackages {
         if ($Missing -contains "node") { $packages += "nodejs-lts" }
         if ($Missing -contains "make") { $packages += "make" }
         if ($Missing -contains "rg") { $packages += "ripgrep" }
+        if ($Missing -contains "shellcheck") { $packages += "shellcheck" }
+        if ($Missing -contains "jq") { $packages += "jq" }
         if ($packages.Count -gt 0) {
             $commands += "choco install -y $($packages -join ' ')"
         }
@@ -501,12 +593,8 @@ function Show-NextSteps {
     }
     Write-Host "Configure (optional): .env  # remote Ollama endpoint, Cloudflare token; ./ztd loads it at startup"
     Write-Host ""
-    Write-Host "Recommended next steps:"
-    Write-Host "  Native gateway:"
-    Write-Host "    $binary gw start"
-    Write-Host ""
-    Write-Host "  Owner enrollment against a running gateway:"
-    Write-Host "    $binary auth enroll user -e localhost"
+    Write-Host "Next:"
+    Write-Host "  make quickstart       # starts a local Gateway, signs you in, and runs your first governed action"
     Write-Host ""
     Write-Host "Docs: docs/guides/getting_started.md"
     if ($Script:PathConfigured) {
@@ -524,7 +612,7 @@ if (-not (Test-Path (Join-Path $Script:RepoRoot "go.mod"))) {
     exit 1
 }
 
-$goMin = [Version](Parse-MajorMinor (Get-GoMinVersion))
+$goMin = Parse-GoVersion (Get-GoMinVersion)
 
 if ($Script:BuildOnly) {
     $totalSteps = 3
@@ -546,6 +634,24 @@ if (-not (Test-Go -Need $goMin)) { $missing += "go" }
 if (-not $Script:BuildOnly) {
     if (-not (Test-Node)) { $missing += "node" }
     if (-not (Test-Ripgrep)) { $missing += "rg" }
+
+    $missingCi = @()
+    if (-not (Test-Shellcheck)) { $missingCi += "shellcheck" }
+    if (-not (Test-Jq)) { $missingCi += "jq" }
+    if ($missingCi.Count -gt 0) {
+        $chocoCmd = "choco install $($missingCi -join ' ')"
+        Write-Host "  make ci tools missing ($($missingCi -join ', ')); suggested install:" -ForegroundColor Yellow
+        Write-Host "    $chocoCmd" -ForegroundColor Cyan
+        if (Confirm-Setup "Install $($missingCi -join ' ') now via Chocolatey? [y/N] ") {
+            $choco = Get-Command choco -ErrorAction SilentlyContinue
+            if ($choco) {
+                Invoke-Expression "choco install -y $($missingCi -join ' ')"
+                Refresh-SessionPath
+            } else {
+                Write-Host "  Chocolatey (choco) not found; run '$chocoCmd' once Chocolatey is installed." -ForegroundColor Yellow
+            }
+        }
+    }
 }
 
 if ($missing.Count -gt 0) {

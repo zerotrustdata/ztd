@@ -64,7 +64,15 @@ type WindowsProcessChecker interface {
 // single struct definition, eliminating the previous triple-duplication.
 type OperatorStartOptions struct {
 	serve.GatewayConfig
+	// Notices receives progress the user must act on during a background
+	// start, such as an OS key store approval prompt. Nil discards it.
+	Notices io.Writer
 }
+
+// keyStoreApprovalNotice tells the user why a background start is still
+// waiting after the child logged constants.KeyStoreAwaitingApprovalLog.
+const keyStoreApprovalNotice = "[ztd] Waiting for access to the vault master key in the OS key store.\n" +
+	"[ztd] On macOS, approve the Keychain prompt for ztd with your login password and choose Always Allow."
 
 type ProcessManager struct {
 	fileSvc fs.RuntimeFileService
@@ -463,6 +471,16 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 	if err := pm.checkPortAvailable(availableHTTPSPort, "Operator HTTPS"); err != nil {
 		return fmt.Errorf("%w: HTTPS port %d: %w", constants.ErrPortUnavailable, availableHTTPSPort, err)
 	}
+	if offset != 0 && opts.Notices != nil {
+		holder := "another process"
+		if holderPID := pm.findProcessOnPort(effectiveHTTPPort); holderPID > 0 {
+			holder = fmt.Sprintf("PID %d", holderPID)
+		}
+		_, _ = fmt.Fprintf(opts.Notices,
+			"[ztd] Port %d is held by %s; the Gateway listens on HTTP %d and HTTPS %d instead.\n"+
+				"[ztd] CLI commands run from this directory follow these ports; Operators on other hosts need -e <host>:%d --port %d.\n",
+			effectiveHTTPPort, holder, availableHTTPPort, availableHTTPSPort, availableHTTPPort, availableHTTPSPort)
+	}
 	if err := pm.checkSpectatorListenersFree(opts.GatewayConfig); err != nil {
 		return err
 	}
@@ -583,7 +601,10 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 
 	healthURL := fmt.Sprintf("http://%s:%d%s", constants.LocalhostIP, availableHTTPPort, constants.APIPaths.Health)
 	client := &http.Client{Timeout: checkInterval}
-	for i := 0; i < maxChecks; i++ {
+	// A child waiting on the user to approve OS key store access keeps the
+	// start alive until KeyStoreApprovalTimeout instead of the health budget.
+	var approvalDeadline time.Time
+	for i := 0; i < maxChecks || time.Now().Before(approvalDeadline); i++ {
 		select {
 		case <-waitCh:
 			return failStart()
@@ -598,6 +619,12 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 				return nil
 			}
 		}
+		if approvalDeadline.IsZero() && pm.childLogContains(logStartOffset, constants.KeyStoreAwaitingApprovalLog) {
+			approvalDeadline = time.Now().Add(constants.KeyStoreApprovalTimeout)
+			if opts.Notices != nil {
+				_, _ = fmt.Fprintln(opts.Notices, keyStoreApprovalNotice)
+			}
+		}
 		select {
 		case <-waitCh:
 			return failStart()
@@ -605,11 +632,15 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 		}
 	}
 
+	reason := "gateway did not become healthy"
+	if !approvalDeadline.IsZero() {
+		reason = fmt.Sprintf("gateway did not become healthy: OS key store access was not approved within %v", constants.KeyStoreApprovalTimeout)
+	}
 	cleanupErr := errors.Join(stopChild(false), pm.deletePID(constants.OperatorPIDFilename))
 	if cleanupErr != nil {
-		return fmt.Errorf("%w: gateway did not become healthy, check %s: cleanup: %w", constants.ErrProcessStartFailed, logPath, cleanupErr)
+		return fmt.Errorf("%w: %s, check %s: cleanup: %w", constants.ErrProcessStartFailed, reason, logPath, cleanupErr)
 	}
-	return fmt.Errorf("%w: gateway did not become healthy, check %s", constants.ErrProcessStartFailed, logPath)
+	return fmt.Errorf("%w: %s, check %s", constants.ErrProcessStartFailed, reason, logPath)
 }
 
 // checkSpectatorListenersFree fails before the child is spawned when a fixed
@@ -668,6 +699,21 @@ func (pm *ProcessManager) startupDiagnostic(startOffset int64) string {
 		return ""
 	}
 	return diagnosticFromChildOutput(string(data))
+}
+
+// childLogContains reports whether the child's output for this start attempt
+// contains marker. It never reads output from an earlier invocation.
+func (pm *ProcessManager) childLogContains(startOffset int64, marker string) bool {
+	handle, err := pm.logSvc.OpenLogForRead(context.Background())
+	if err != nil {
+		return false
+	}
+	defer handle.Close()
+	if _, err := handle.Seek(startOffset, io.SeekStart); err != nil {
+		return false
+	}
+	data, err := io.ReadAll(io.LimitReader(handle, maxStartupDiagnosticBytes))
+	return err == nil && strings.Contains(string(data), marker)
 }
 
 // diagnosticFromChildOutput prefers the last ERROR record: its message plus the

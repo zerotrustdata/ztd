@@ -1,5 +1,13 @@
 [
   {
+    "slug": "going-public-onboarding-beyond-linux",
+    "title": "Going public, and finding out onboarding only worked on Linux",
+    "date": "2026-10-13",
+    "description": "The repo went public, three release tags never shipped, and onboarding fell over the moment it left Linux. What broke on Windows and macOS, and what's still clunky.",
+    "author": "Danny",
+    "tags": ["Engineering", "Releases", "Onboarding"]
+  },
+  {
     "slug": "enrolling-two-thousand-operators",
     "title": "From 936 to 2,000 Operators on one Gateway",
     "date": "2026-10-12",

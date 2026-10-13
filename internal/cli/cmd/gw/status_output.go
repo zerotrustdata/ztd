@@ -67,11 +67,11 @@ func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory au
 	printOperatorTables(cmd.OutOrStdout(), collectOperatorInventory(client, fileSvc, cfg))
 	fmt.Fprintln(cmd.OutOrStdout())
 	printEnrollmentSummary(cmd.OutOrStdout(), client)
-	publicBaseURL := ""
+	var launched serve.GatewayConfig
 	if profile, err := serve.ReadLaunchProfile(fileSvc); err == nil {
-		publicBaseURL = profile.Config.PublicBaseURL
+		launched = profile.Config
 	}
-	origin := consoleOriginFor(publicBaseURL)
+	origin := consoleOriginFor(launched.PublicBaseURL, launched.HTTPSPort)
 	fmt.Fprintln(cmd.OutOrStdout())
 	cmd.Printf("Console  %s/console/\n", origin)
 	return nil

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -107,16 +108,10 @@ func TestNetSocketAuditTool_Execute_ProtocolCaseInsensitivity(t *testing.T) {
 	args, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	// Should succeed because the code converts to lowercase before validation
-	result, err := tool.Execute(ctx, args)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-
-	// Mock fileOpener returns os.ErrNotExist, expect empty result
-	var resultData NetSocketAuditResult
-	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	assert.NoError(t, err)
-	assert.Empty(t, resultData.Sockets)
+	// Validation accepts the lowercased protocol; the missing /proc/net file
+	// then reports the platform as unsupported rather than a validation error.
+	_, err = tool.Execute(ctx, args)
+	assert.ErrorIs(t, err, constants.ErrMCPToolUnsupportedPlatform)
 }
 
 func TestNetSocketAuditTool_Execute_FileNotFound(t *testing.T) {
@@ -135,14 +130,8 @@ func TestNetSocketAuditTool_Execute_FileNotFound(t *testing.T) {
 	args, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	result, err := tool.Execute(ctx, args)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-
-	var resultData NetSocketAuditResult
-	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	assert.NoError(t, err)
-	assert.Empty(t, resultData.Sockets)
+	_, err = tool.Execute(ctx, args)
+	assert.ErrorIs(t, err, constants.ErrMCPToolUnsupportedPlatform, "no readable /proc/net file must not be reported as zero sockets")
 }
 
 func TestNetSocketAuditTool_Execute_ContextCancellation(t *testing.T) {
@@ -700,8 +689,11 @@ func TestNetSocketAuditTool_Execute_NilFileOpener(t *testing.T) {
 	args, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	// This will fail to open /proc/net/tcp on non-Linux systems, but should not panic
 	result, err := tool.Execute(ctx, args)
-	assert.NoError(t, err) // Should handle missing file gracefully
+	if runtime.GOOS != "linux" {
+		assert.ErrorIs(t, err, constants.ErrMCPToolUnsupportedPlatform)
+		return
+	}
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 }

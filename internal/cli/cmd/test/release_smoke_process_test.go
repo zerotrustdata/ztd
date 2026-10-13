@@ -5,7 +5,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-//go:build unix
+//go:build unix || windows
 
 package testcmd
 
@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,12 @@ import (
 
 func startSleeper(t *testing.T, r *releaseSmokeRun) *smokeOwnedProcess {
 	t.Helper()
-	proc, err := r.owner.start("sleeper", t.TempDir(), filepath.Join(r.logDir, "sleeper"), []string{"/bin/sleep", "60"}, nil)
+	argv := []string{"/bin/sleep", "60"}
+	if runtime.GOOS == "windows" {
+		// cmd.exe runs ping as a grandchild, so stopping must reach the whole job.
+		argv = []string{"cmd.exe", "/c", "ping", "-n", "61", "127.0.0.1"}
+	}
+	proc, err := r.owner.start("sleeper", t.TempDir(), filepath.Join(r.logDir, "sleeper"), argv, nil)
 	if err != nil {
 		t.Fatalf("start owned process: %v", err)
 	}

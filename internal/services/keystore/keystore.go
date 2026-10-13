@@ -18,6 +18,8 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -61,10 +63,17 @@ type Options struct {
 }
 
 // Keystore provides OS-protected key storage and encryption for platform secrets.
+// It reads the master key from its key store once and holds it in process
+// memory until Close or Purge zero it, like the vault DEK (INV-ENC-VAULT-02):
+// every OS key store read can require user approval, such as a macOS Keychain
+// prompt, so a process must not read it again for each secret.
 type Keystore struct {
 	logger  *slog.Logger
 	keyring Keyring
 	fileSvc fs.RuntimeFileService
+
+	mu        sync.Mutex
+	masterKey []byte
 }
 
 // NewWithKeyringAndFS creates a new Keystore instance with a custom keyring and
@@ -124,31 +133,75 @@ func Open(fileSvc fs.RuntimeFileService, logger *slog.Logger, opts Options) (*Ke
 
 // Initialize creates or retrieves the master encryption key from the key store.
 func (k *Keystore) Initialize() error {
-	key, err := k.keyring.RetrieveMasterKey()
-	if err != nil {
-		if errors.Is(err, constants.ErrKeyStoreKeyNotFound) {
-			if err := k.rejectOrphanedSecrets(); err != nil {
-				return err
-			}
-			k.logger.Info("[Keystore] Master key not found, generating new key", "keyring", k.keyring.Name())
-			return k.generateAndStoreMasterKey()
-		}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.masterKey != nil {
+		return nil
+	}
+	_, err := k.loadMasterKeyLocked()
+	if err == nil {
+		k.logger.Info("[Keystore] Master key retrieved", "keyring", k.keyring.Name())
+		return nil
+	}
+	if !errors.Is(err, constants.ErrKeyStoreKeyNotFound) {
 		return fmt.Errorf("%w: %w (%s)", constants.ErrKeyStoreRetrieveFailed, err, masterKeyProvisioning)
 	}
-	defer vault.SecureZero(key)
-
-	if len(key) != vault.KeySize {
-		return fmt.Errorf("%w: got %d, expected %d", constants.ErrKeyStoreInvalidKeyLength, len(key), vault.KeySize)
+	if err := k.rejectOrphanedSecrets(); err != nil {
+		return err
 	}
-
-	k.logger.Info("[Keystore] Master key retrieved", "keyring", k.keyring.Name())
-	return nil
+	k.logger.Info("[Keystore] Master key not found, generating new key", "keyring", k.keyring.Name())
+	return k.generateAndStoreMasterKeyLocked()
 }
 
-// generateAndStoreMasterKey generates a new AES-256 key, stores it, and reads
-// it back so a store that silently dropped or altered the key fails startup
-// instead of leaving secrets encrypted under a key nobody holds.
-func (k *Keystore) generateAndStoreMasterKey() error {
+// Close zeroes the master key held in memory. A later operation reads it from
+// the key store again.
+func (k *Keystore) Close() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.dropMasterKeyLocked()
+}
+
+func (k *Keystore) dropMasterKeyLocked() {
+	if k.masterKey != nil {
+		vault.SecureZero(k.masterKey)
+		k.masterKey = nil
+	}
+}
+
+// loadMasterKeyLocked returns the held master key, reading it from the key
+// store on first use. Callers hold k.mu and must not retain or zero the key.
+func (k *Keystore) loadMasterKeyLocked() ([]byte, error) {
+	if k.masterKey != nil {
+		return k.masterKey, nil
+	}
+	key, err := k.retrieveMasterKey()
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != vault.KeySize {
+		vault.SecureZero(key)
+		return nil, fmt.Errorf("%w: got %d, expected %d", constants.ErrKeyStoreInvalidKeyLength, len(key), vault.KeySize)
+	}
+	k.masterKey = key
+	return key, nil
+}
+
+// retrieveMasterKey reads the master key and logs once when the key store
+// holds the read for user approval, such as a macOS Keychain access prompt for
+// a rebuilt ztd binary, so a blocked start explains what it is waiting for.
+func (k *Keystore) retrieveMasterKey() ([]byte, error) {
+	notice := time.AfterFunc(constants.KeyStoreApprovalNoticeDelay, func() {
+		k.logger.Warn(constants.KeyStoreAwaitingApprovalLog, "keyring", k.keyring.Name())
+	})
+	defer notice.Stop()
+	return k.keyring.RetrieveMasterKey()
+}
+
+// generateAndStoreMasterKeyLocked generates a new AES-256 key, stores it, and
+// reads it back so a store that silently dropped or altered the key fails
+// startup instead of leaving secrets encrypted under a key nobody holds. The
+// verified key becomes the held master key. Callers hold k.mu.
+func (k *Keystore) generateAndStoreMasterKeyLocked() error {
 	key := make([]byte, vault.KeySize)
 	defer vault.SecureZero(key)
 	if _, err := rand.Read(key); err != nil {
@@ -163,10 +216,11 @@ func (k *Keystore) generateAndStoreMasterKey() error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrKeyStoreVerifyFailed, err)
 	}
-	defer vault.SecureZero(stored)
 	if subtle.ConstantTimeCompare(stored, key) != 1 {
+		vault.SecureZero(stored)
 		return constants.ErrKeyStoreVerifyFailed
 	}
+	k.masterKey = stored
 
 	k.logger.Info("[Keystore] Master key generated and stored", "keyring", k.keyring.Name())
 	return nil
@@ -227,11 +281,12 @@ func secretPath(name string) (string, error) {
 // encrypt performs AES-256-GCM encryption on plaintext bound to aad and
 // returns the EncryptedSecret structure.
 func (k *Keystore) encrypt(plaintext, aad []byte) (*EncryptedSecret, error) {
-	key, err := k.keyring.RetrieveMasterKey()
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	key, err := k.loadMasterKeyLocked()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrKeyStoreRetrieveFailed, err)
 	}
-	defer vault.SecureZero(key)
 
 	nonce, err := vault.GenerateNonce()
 	if err != nil {
@@ -257,11 +312,12 @@ func (k *Keystore) decrypt(enc *EncryptedSecret, aad []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%w: got %d, expected %d", constants.ErrKeyStoreUnsupportedVersion, enc.Version, keyVersion)
 	}
 
-	key, err := k.keyring.RetrieveMasterKey()
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	key, err := k.loadMasterKeyLocked()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrKeyStoreRetrieveFailed, err)
 	}
-	defer vault.SecureZero(key)
 
 	plaintext, err := vault.DecryptAESGCM(key, enc.Nonce, enc.Ciphertext, aad)
 	if err != nil {
@@ -399,6 +455,9 @@ func (k *Keystore) DeleteSecret(name string) error {
 
 // Purge removes all secrets from disk and deletes the master key from its key store.
 func (k *Keystore) Purge() error {
+	k.mu.Lock()
+	k.dropMasterKeyLocked()
+	k.mu.Unlock()
 	if err := k.keyring.DeleteMasterKey(); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrKeyStoreDeleteFailed, err)
 	}

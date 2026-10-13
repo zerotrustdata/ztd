@@ -3,7 +3,7 @@ doc_id: gateway
 title: Gateway Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - internal/services/gateway/
@@ -78,6 +78,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GW-GOV-01 | Every transaction submitted via `POST /api/v1/governance/envelopes` or admitted via MCP/A2A MUST traverse the five-layer governance pipeline. The Gateway PDP coordinates L1–L3; the executing Operator PEP (embedded or remote) enforces L4–L5. |
 | INV-GW-GOV-02 | The Gateway MUST NOT synthesize missing L2 consensus votes or L3 notary proofs for direct envelope submissions or governed HTTP command dispatch. Transactions lacking required proofs MUST fail closed at L4. |
+| INV-GW-GOV-03 | Governed HTTP command dispatch (`POST /api/v1/operators/commands`) reports an admitted action whose handler ran and failed the same way for the embedded and an outbound Operator: HTTP 200 with the handler's typed failure result (`DispatchService`, `embeddedHandlerFailed`). An L4 rejection is 403, and any embedded failure before or around the handler (no final receipt, no failed L5 execution stage) fails the dispatch. |
 
 ### MCP Native Tool Registry (`INV-GW-MCP`)
 
@@ -119,6 +120,7 @@ The Gateway binary operates in two distinct execution modes:
 
 The Gateway is configured via CLI flags or an interactive setup wizard:
 - `ztd gw start [--posture <posture>] [--http-port 8080] [--https-port 8443] [--listen-host 127.0.0.1]`: Starts the Gateway. The listeners bind loopback by default; specify `--listen-host 0.0.0.0` when remote Operators or external clients connect.
+- Port selection (background start): when the requested HTTP port is held by a live listener, `gw start` moves both ports up by the same offset, skipping the Gateway's own auxiliary ports (8081, 8082, 5173), and prints the holder and the bound ports (`internal/cli/platform/process.go`). On Linux the availability probe keeps `SO_REUSEADDR`, matching the Gateway's own bind, so TIME_WAIT sockets left by a Gateway that just stopped do not count as busy; on BSD/macOS it disables `SO_REUSEADDR` so a wildcard probe still detects a listener on a specific address (`internal/netutil/port_probe_other.go`). The bound ports are persisted in the launch profile. Every CLI command run without `--endpoint`/`--port` reads them from the launch profile while its Gateway is running (`recordLocalGatewayPorts` in `internal/cli/cmd/main.go`, `config.SetLocalGatewayPorts`). The startup guidance and `gw status` print the Console URL and the Operator `--endpoint <host>:<http> --port <https>` command on the bound ports.
 - `ztd gw start` against a running Gateway (background start, without `--follow`): compares the startup flags the caller set explicitly among `--capabilities`, `--posture`, `--listen-host`, `--http-port`, `--https-port`, `--model-storage-root`, `--inference-ollama-endpoint`, `--public-base-url`, `--cors-origin`, and `--passkey-rp-id`/`--passkey-rp-name`/`--passkey-rp-origin` with the running launch profile (`gateway_start_running.go`); a `ZTD_OLLAMA_ENDPOINT` value (exported or from `.env`) counts as setting `--inference-ollama-endpoint`. Other flags are not compared. It reuses the Gateway when they match and otherwise lists the differences and fails with `ErrGatewayAlreadyRunning`. Without a launch profile, any of these flags fails the same way (`ErrLaunchProfileMissing`). Stop the Gateway (`ztd gw stop` or `make down`) to change them; `.ztd/` state is kept.
 - `ztd gw setup`: Launches an interactive terminal wizard producing a resolved platform configuration.
 - `ztd gw start -i`: Launches the interactive setup wizard, then boots the Gateway immediately with the confirmed settings.

@@ -222,7 +222,7 @@ The Policy Execution Point (PEP) deployed on a target host (`ztd operator`). It 
 
 ## Heartbeat
 
-Periodic health and status telemetry sent by a Governed Operator to the Gateway over its outbound connection. `HeartbeatRequested` is an empty trigger; `HeartbeatResult` (`ztd.operator.v1.HeartbeatResult`) reports operator identity, uptime, OS, architecture, CPU count, memory and disk metrics, network interfaces, runtime environment, and system fingerprint. The Gateway monitors heartbeats to maintain operator liveness records.
+Periodic health and status telemetry sent by a Governed Operator to the Gateway over its outbound connection. `HeartbeatRequested` is an empty trigger; `HeartbeatResult` (`ztd.operator.v1.HeartbeatResult`) reports operator identity, uptime, OS, architecture, CPU count, memory and disk metrics, network interfaces, runtime environment, and system fingerprint. The separate native `sys_info` MCP tool reports OS version, kernel version, uptime, and load average where available; Windows reports load average as `unknown`. The Gateway monitors heartbeats to maintain operator liveness records.
 
 ---
 

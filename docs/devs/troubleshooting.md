@@ -3,7 +3,7 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - internal/cli/cmd/
@@ -73,6 +73,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-GW-02 | `gw restart` reads the launch profile at `.ztd/pids/operator-launch-profile.json`. If missing or invalid, restart fails closed; start with explicit flags to generate a new launch profile. |
 | INV-TROUBLE-GW-03 | `gw reset` and `gw clean` are destructive commands that move the local `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`; the gateway starts over without it. MUST NOT use either command to repair retained state. `make clean` removes only build artifacts and the Go build cache; it does not reset Gateway runtime state. |
 | INV-TROUBLE-GW-04 | `gw start` against a running Gateway succeeds only when every explicitly set startup flag (capabilities, posture, listen host, ports, model storage root, Ollama endpoint, public base URL, CORS and passkey origins) matches the running launch profile. Otherwise it prints the differences and fails with `ErrGatewayAlreadyRunning`; stop the Gateway (`./ztd gw stop` or `make down`), then rerun the start command. Runtime state in `.ztd/` is kept. |
+| INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` must be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and waits up to five minutes. Approve with the login password and **Always Allow**; a denied or unanswered prompt fails with `ErrKeyStoreLocked` or `OS key store access was not approved`. Over SSH, start once from the desktop session. |
 
 ### Authentication and trust (`INV-TROUBLE-AUTH`)
 

@@ -76,8 +76,8 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 	})
 	fixture.WaitForReady(t)
 
-	identity := fixtures.EnrollClientIdentity(t, fixture, "a2a-user", "a2a-org", "a2a-fingerprint", "a2a-host")
-	mtlsClient := fixtures.CreateMTLSClient(t, fixture, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, fixture, "a2a-fingerprint")
+	mtlsClient := fixtures.CreateCLIMTLSClient(t, fixture, identity)
 	mtlsURL := network.LocalhostHTTPSURL(fixture.Service.GetHTTPSPort())
 
 	// Test A2A Call (Suspends for L3, then Resume)

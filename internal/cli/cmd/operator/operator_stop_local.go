@@ -8,16 +8,21 @@
 package operatorcmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/spf13/cobra"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 type localOperatorProcess struct {
@@ -35,6 +40,62 @@ func (p localOperatorProcess) matches(op *operatorv1.OperatorDocument) bool {
 	}
 	hostname, err := os.Hostname()
 	return err == nil && operatorHostnameValue(op) == hostname && op.LocalDir != "" && filepath.IsAbs(op.LocalDir) && filepath.Clean(op.LocalDir) == p.dir
+}
+
+// localOperatorSessionID reads the session the worker in dir recorded at
+// enrollment. Each launch resets the record, so it names the live process;
+// "" falls back to hostname and working-directory matching.
+func localOperatorSessionID(dir string) string {
+	fileSvc, err := fs.NewRuntimeFileService(dir, slog.Default())
+	if err != nil {
+		return ""
+	}
+	state, err := readOperatorDeploymentState(context.Background(), fileSvc)
+	if err != nil || state == nil {
+		return ""
+	}
+	return state.OperatorSessionID
+}
+
+// isZtdExecutable reports whether base names the ztd binary. Windows file
+// names carry .exe and are case-insensitive.
+func isZtdExecutable(base string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(base, "ztd") || strings.EqualFold(base, "ztd.exe")
+	}
+	return base == "ztd"
+}
+
+func isLocalOperatorArgv(args []string) bool {
+	return len(args) >= 3 && isZtdExecutable(filepath.Base(args[0])) && (args[1] == "operator" || args[1] == "operators") && args[2] == "start"
+}
+
+func operatorArgValue(args []string, flag string) string {
+	for i := 3; i < len(args); i++ {
+		if args[i] == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+		if value, ok := strings.CutPrefix(args[i], flag+"="); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+// localOperatorDir resolves a local worker's directory the way operator start
+// does: --working-dir with ~ expanded and relative paths taken from the
+// worker's cwd, else the cwd itself.
+func localOperatorDir(args []string, cwd string) string {
+	dir := operatorArgValue(args, "--working-dir")
+	if expanded, err := resolveHomePath(dir); err == nil {
+		dir = expanded
+	}
+	if dir == "" {
+		dir = cwd
+	} else if !filepath.IsAbs(dir) {
+		dir = filepath.Join(cwd, dir)
+	}
+	return filepath.Clean(dir)
 }
 
 type operatorStopResult struct {

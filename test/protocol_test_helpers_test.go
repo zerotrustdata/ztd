@@ -175,8 +175,8 @@ func newAdapterFixture(t *testing.T, testName, downstreamURL string) adapterFixt
 	}
 	f := fixtures.NewGatewayFixture(t, opts)
 	f.WaitForReady(t)
-	identity := fixtures.EnrollClientIdentity(t, f, testName+"-user", testName+"-org", testName+"-fp", testName+"-host")
-	client := fixtures.CreateMTLSClient(t, f, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, f, testName+"-fp")
+	client := fixtures.CreateCLIMTLSClient(t, f, identity)
 	return adapterFixture{
 		fixture:  f,
 		mtlsURL:  network.LocalhostHTTPSURL(f.Service.GetHTTPSPort()),

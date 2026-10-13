@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -237,6 +238,9 @@ func TestLedgerPaths_RestoreRefusesWhenBackupFails(t *testing.T) {
 func TestLedgerPaths_RestoreRefusesWhenBackupSnapshotCannotBeWritten(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("directory permissions do not constrain root")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("a read-only directory mode does not block file creation on Windows")
 	}
 	lms, tempDir := setupTestLedger(t)
 	hostFile := filepath.Join(tempDir, "restore-backup-refused.txt")

@@ -128,7 +128,8 @@ func readLicenseFiles(dir string) ([]LicenseFile, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", e.Name(), err)
 		}
-		files = append(files, LicenseFile{Name: e.Name(), Text: string(data)})
+		text := strings.ReplaceAll(string(data), "\r\n", "\n")
+		files = append(files, LicenseFile{Name: e.Name(), Text: text})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	return files, nil

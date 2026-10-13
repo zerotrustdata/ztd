@@ -93,8 +93,12 @@ func writeRunStartPlan(cmd *cobra.Command, plan runStartPlanJSON, jsonOutput boo
 	if jsonOutput {
 		return output.WriteJSON(cmd.OutOrStdout(), plan)
 	}
-	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Run start plan\nCampaign: %s\nRun: %s\nLane: %s\nModels: %v\nCells: %d\nModel registry digest: %s\nSessions resolved: %t\n",
-		plan.CampaignID, plan.RunID, plan.Lane, plan.ModelTags, plan.CellCount, plan.ModelRegistryDigest, plan.SessionsResolved)
+	sessionsResolvedLabel := "skipped (dry run)"
+	if plan.SessionsResolved {
+		sessionsResolvedLabel = "true"
+	}
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Run start plan\nCampaign: %s\nRun: %s\nLane: %s\nModels: %v\nCells: %d\nModel registry digest: %s\nSessions resolved: %s\n",
+		plan.CampaignID, plan.RunID, plan.Lane, plan.ModelTags, plan.CellCount, plan.ModelRegistryDigest, sessionsResolvedLabel)
 	if err != nil || !plan.SessionsResolved {
 		return err
 	}
@@ -351,10 +355,13 @@ func runsResumeCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resume <run>",
 		Short: "Execute the remaining queued assignments of a run",
-		Long: `Execute queued assignments of an existing run through the direct formation
-runner, which dispatches each role to the Inference Operator. By default one
-assignment runs; --limit raises that and --daemon runs until the matrix is
-exhausted. An archived run cannot be resumed.`,
+		Long: `Execute queued assignments of an existing run. A model-role assignment runs
+as a tool-calling agent (each turn an Inference Operator dispatch, each tool
+call a governed Data Operator action); a formation assignment runs each role
+through the Inference Operator. By default one assignment runs; --limit raises
+that and --daemon runs until the matrix is exhausted. A run left with an
+unresolved running assignment cannot resume; cancel it and start a new run.
+An archived run cannot be resumed.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]

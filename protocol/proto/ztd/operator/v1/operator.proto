@@ -396,6 +396,12 @@ message OperatorRuntimeConfig {
   // Gateway derives the Operator's stale deadline from it. Zero means the
   // Operator did not declare one and the Gateway default window applies.
   uint32 heartbeat_interval_ms = 16;
+  // Ollama keep-alive duration (--inference-keep-alive).
+  string inference_keep_alive = 17;
+  // Stable provenance attestor pseudonym (--provenance-operator-id).
+  string provenance_operator_id = 18;
+  // Stable provider-boundary observer pseudonym (--provider-boundary-observer-id).
+  string provider_boundary_observer_id = 19;
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and

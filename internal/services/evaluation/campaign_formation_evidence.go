@@ -225,8 +225,10 @@ func FormationRunResultFromEvidence(evidence *FormationRunEvidence) (*FormationR
 }
 
 // VerifyFormationRunEvidenceMatchesResult independently checks that one stored
-// assignment result matches persisted formation-run evidence.
-func VerifyFormationRunEvidenceMatchesResult(assignment *evalv1.EvaluationAssignment, evidence *FormationRunEvidence, result *evalv1.EvaluationAssignmentResult) error {
+// assignment result matches persisted formation-run evidence. gradingMethod is
+// the scenario's, because the lifecycle the evidence implies depends on it
+// (formationAssignmentOutcome).
+func VerifyFormationRunEvidenceMatchesResult(assignment *evalv1.EvaluationAssignment, gradingMethod evalv1.EvaluationGradingMethod, evidence *FormationRunEvidence, result *evalv1.EvaluationAssignmentResult) error {
 	if assignment == nil || evidence == nil || result == nil {
 		return fmt.Errorf("evaluation: verify formation run evidence matches result: %w", constants.ErrMissingRequiredField)
 	}
@@ -238,8 +240,9 @@ func VerifyFormationRunEvidenceMatchesResult(assignment *evalv1.EvaluationAssign
 		return err
 	}
 	imported, err := ImportAssignmentResultFromFormationRun(AssignmentExecutionRequest{
-		Assignment: assignment,
-		AttemptID:  evidence.EvaluationAttemptID,
+		Assignment:    assignment,
+		AttemptID:     evidence.EvaluationAttemptID,
+		GradingMethod: gradingMethod,
 	}, formationResult, importTime(result), func(prefix string) string { return prefix })
 	if err != nil {
 		return err

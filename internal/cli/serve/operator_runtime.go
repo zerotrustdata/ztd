@@ -14,6 +14,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/zerotrustdata/ztd/internal/certs"
@@ -102,6 +105,10 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		return nil, startFailure(exitcode.FromError(err), err)
 	}
 	if err := refuseGatewayRuntime(ctx, fileSvc, effectiveWorkDir); err != nil {
+		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
+		return nil, startFailure(constants.ExitConfigError, err)
+	}
+	if err := refuseModelStoreRuntime(fileSvc.Resolve(""), opts.ProvenanceOperatorModelStorageRoot); err != nil {
 		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
 		return nil, startFailure(constants.ExitConfigError, err)
 	}
@@ -299,6 +306,43 @@ func refuseGatewayRuntime(ctx context.Context, fileSvc fs.RuntimeFileService, wo
 	}
 	if isGateway {
 		return fmt.Errorf("%w: %s; pass --working-dir with a separate directory, for example ~/.ztd-operator", constants.ErrOperatorGatewayRuntime, fileSvc.Resolve(""))
+	}
+	return nil
+}
+
+// refuseModelStoreRuntime keeps an Operator's runtime tree (.ztd) out of a
+// model storage root. The model store is a read-only witness and weight cache;
+// an Operator launched with its working directory inside the model store would
+// place runtime state, logs, and databases inside the model repository.
+func refuseModelStoreRuntime(runtimeDir, modelStorageRoot string) error {
+	modelRoot := strings.TrimSpace(modelStorageRoot)
+	if modelRoot == "" {
+		return nil
+	}
+	rt := strings.TrimSpace(runtimeDir)
+	if rt == "" {
+		return nil
+	}
+
+	absModelRoot, err := filepath.Abs(modelRoot)
+	if err != nil {
+		absModelRoot = filepath.Clean(modelRoot)
+	}
+	absRuntime, err := filepath.Abs(rt)
+	if err != nil {
+		absRuntime = filepath.Clean(rt)
+	}
+
+	checkModelRoot := absModelRoot
+	checkRuntime := absRuntime
+	if runtime.GOOS == "windows" {
+		checkModelRoot = strings.ToLower(checkModelRoot)
+		checkRuntime = strings.ToLower(checkRuntime)
+	}
+
+	rel, err := filepath.Rel(checkModelRoot, checkRuntime)
+	if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%w: %s; pass --working-dir with a separate directory outside the model store", constants.ErrOperatorModelStoreRuntime, absRuntime)
 	}
 	return nil
 }

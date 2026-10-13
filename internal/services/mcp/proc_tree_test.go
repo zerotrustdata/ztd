@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -41,7 +42,7 @@ func TestProcTreeTool_Execute_Errors(t *testing.T) {
 		defer func() { procDirectory = oldProcDir }()
 
 		_, err := tool.Execute(context.Background(), json.RawMessage(`{}`))
-		require.Error(t, err)
+		require.ErrorIs(t, err, constants.ErrMCPToolUnsupportedPlatform)
 		require.Contains(t, err.Error(), "failed to build process tree")
 	})
 }

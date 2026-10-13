@@ -362,6 +362,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <li><a href="#local">Local-first</a></li>
         <li><a href="#start">Quick start</a></li>
         <li class="journal-nav"><a href="/build-in-public/">Build in Public</a></li>
+        <li class="journal-nav"><a href="/releases/">Releases</a></li>
         <li><a href="#contact">Contact</a></li>
       </ul>
     </nav>
@@ -378,7 +379,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div>
       <div class="status-line">
-        <span class="chip"><span class="dot"></span>ztd <b>pre-release</b></span>
+        <span class="chip"><span class="dot"></span>ztd <b>experimental</b></span>
         <span class="chip">Zero-trust execution layer</span>
         <span class="chip">Source available · BSL 1.1</span>
       </div>
@@ -641,43 +642,44 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="rv">
       <p class="eyebrow">07 / Quick start</p>
       <h2 id="start-title">First governed action in <em>one command</em></h2>
-      <p class="lede">Setup builds the binary. <code>make quickstart</code> starts a Gateway on localhost, signs in, and runs a first governed action. Rerunning it is safe.</p>
-      <p class="req">The Gateway-only track needs <code>git</code>, <code>Go 1.27.2</code>, <code>make</code>, and <code>curl</code>; the setup script installs what is missing. It doesn't need Ollama or a model SDK. The full platform runs the embedded Operator with the Data, Inference, and Observer capabilities, plus Provenance when <code>MODEL_STORAGE_ROOT</code> names the local model store.</p>
+      <p class="lede">Paste one line into a terminal. It installs the signed <code>ztd</code> binary into <code>~/ztd</code>, starts a Gateway on localhost, signs in, and runs a first governed action. Rerunning it is safe.</p>
+      <p class="req">Linux or macOS with <code>curl</code>. No root, no sudo, no toolchain: the installer verifies the binary against its published SHA-256 checksum before writing it. On Windows, install the binary from PowerShell with <code>irm https://zerotrustdata.io/ztd.ps1 | iex</code>. Every binary, checksum, and Sigstore bundle is on the <a href="/releases/">Releases</a> page. To build from source instead, you need <code>git</code>, <code>Go 1.27.2</code>, and <code>make</code>.</p>
       <div class="pk">
-        <div><code>make quickstart</code><span>Run it end to end</span></div>
         <div><code>./ztd tui</code><span>Watch governance live</span></div>
+        <div><code>./ztd login web</code><span>Open the console</span></div>
       </div>
     </div>
     <div class="panel rv">
       <div class="tabs" role="tablist" aria-label="Install paths">
-        <button role="tab" aria-selected="true" aria-controls="tp-1" id="tb-1">Gateway</button>
+        <button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">One command</button>
+        <button role="tab" aria-selected="false" aria-controls="tp-1" id="tb-1" tabindex="-1">From source</button>
         <button role="tab" aria-selected="false" aria-controls="tp-2" id="tb-2" tabindex="-1">Enroll</button>
         <button role="tab" aria-selected="false" aria-controls="tp-3" id="tb-3" tabindex="-1">Full platform</button>
       </div>
-      <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1">
+      <div class="code" role="tabpanel" id="tp-0" aria-labelledby="tb-0">
+<pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
+<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh | sh
+<span class="c"># binary only: curl -fsSL https://zerotrustdata.io/ztd.sh | sh</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh | sh">Copy</button>
+      </div>
+      <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
-<span class="p">$ </span>bash scripts/linux-setup.sh --build-only
-<span class="p">$ </span>make quickstart
-<span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
+<span class="p">$ </span>make quickstart</pre>
+        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;make quickstart">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-2" aria-labelledby="tb-2" hidden>
-<pre><span class="c"># sign in as the owner with a passkey, then approve workloads</span>
-<span class="p">$ </span>./ztd login web
+<pre><span class="c"># approve Operators and apps waiting to enroll</span>
 <span class="p">$ </span>./ztd auth enroll pending
-<span class="p">$ </span>./ztd auth enroll approve &lt;request-id&gt; --yes
-<span class="c"># headless: ./ztd login for a CLI-only mTLS identity</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="./ztd login web&#10;./ztd auth enroll pending&#10;./ztd auth enroll approve <request-id> --yes">Copy</button>
+<span class="p">$ </span>./ztd auth enroll approve &lt;request-id&gt;</pre>
+        <button class="btn sm ghost copy" type="button" data-copy="./ztd auth enroll pending">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-3" aria-labelledby="tb-3" hidden>
-<pre><span class="c"># Gateway + embedded Operator with data, inference, and observer capabilities</span>
-<span class="c"># remote Ollama provider: set ZTD_OLLAMA_ENDPOINT in .env</span>
-<span class="p">$ </span>make down   <span class="c"># capabilities are fixed at startup; stop the quickstart Gateway first</span>
-<span class="p">$ </span>make gw
-<span class="p">$ </span>make status
-<span class="c"># then sign in at https://localhost:8443/console/</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="make down&#10;make gw&#10;make status">Copy</button>
+<pre><span class="c"># capabilities are fixed at startup, so restart the Gateway with all of them</span>
+<span class="p">$ </span>./ztd gw stop
+<span class="p">$ </span>./ztd gw start --capabilities data,inference,observer
+<span class="c"># Ollama on another host: add --inference-ollama-endpoint http://&lt;host&gt;:11434</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="./ztd gw stop&#10;./ztd gw start --capabilities data,inference,observer">Copy</button>
       </div>
     </div>
   </div>
@@ -690,7 +692,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div>
         <p class="eyebrow">08 / Where it stands</p>
         <h2 id="status-title">Serious, experimental, and looking for pilots</h2>
-        <p>ztd is a serious experimental platform, not a polished enterprise product yet. It's under active development, built with a lot of design depth, and meant for real pilot-and-feedback cycles. The first release, v1.0.0, is in release qualification; until it ships, build from source. We won't claim certifications we don't have.</p>
+        <p>ztd is a serious experimental platform, not a polished enterprise product yet. It's under active development, built with a lot of design depth, and meant for real pilot-and-feedback cycles. Signed release binaries for Linux, macOS, and Windows are on the <a href="/releases/">Releases</a> page. We won't claim certifications we don't have.</p>
         <div class="cta-row status-actions">
           <a class="btn" href="https://github.com/zerotrustdata/ztd/blob/main/docs/guides/getting_started.md" rel="noopener">Getting started</a>
           <a class="btn ghost" href="https://github.com/zerotrustdata/ztd/blob/main/.github/CONTRIBUTING.md" rel="noopener">Contribute</a>
@@ -699,7 +701,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <ul>
         <li><b>Pilot it</b>Run it in a lab, platform team, or security group that's evaluating LLM execution boundaries.</li>
         <li><b>Break it</b>Review the security and governance assumptions. Design critique is welcome.</li>
-        <li><b>Test it</b>Run <code>ztd eval boundary</code>, the native execution-boundary suite. It needs no model.</li>
+        <li><b>Test it</b>Run <code>./ztd eval boundary run</code>, the native execution-boundary suite. It needs no model.</li>
         <li><b>Build on it</b>Help with examples, docs, and integrations for real use cases.</li>
       </ul>
     </div>
@@ -763,8 +765,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <ul>
           <li><a class="contact-email" href="mailto:danny@zerotrustdata.io">danny@zerotrustdata.io</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd" rel="noopener">GitHub</a></li>
-          <li><a href="https://github.com/zerotrustdata/ztd/releases" rel="noopener">Releases</a></li>
-          <li><a href="https://github.com/zerotrustdata/ztd/blob/main/docs/release_notes/v1.0.x/v1.0.0.md" rel="noopener">Release notes</a></li>
+          <li><a href="/releases/">Releases</a></li>
+          <li><a href="/releases/latest/">Release notes</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd/blob/main/.github/SECURITY.md" rel="noopener">Security policy</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd/blob/main/LICENSE" rel="noopener">License (BSL 1.1)</a></li>
         </ul>

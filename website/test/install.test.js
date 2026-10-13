@@ -4,26 +4,48 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const installer = fileURLToPath(new URL('../static/ztd.sh', import.meta.url));
-const SHELL = '/bin/sh';
 const HOST_PATH = (process.env.PATH || '').split(delimiter);
 
 // Host tools the installer may call directly. Everything else on the host is hidden
 // from the installer PATH so that stubs decide which checksum tool exists.
 const REAL_TOOLS = ['awk', 'tr', 'mktemp', 'install', 'rm', 'cat', 'sed', 'sleep'];
 
+function isFile(candidate) {
+  try {
+    return statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function hostTool(name) {
   for (const directory of HOST_PATH) {
     const candidate = join(directory, name);
-    if (existsSync(candidate)) return candidate;
+    if (isFile(candidate)) return candidate;
+    if (process.platform === 'win32' && !name.toLowerCase().endsWith('.exe')) {
+      const exeCandidate = join(directory, `${name}.exe`);
+      if (isFile(exeCandidate)) return exeCandidate;
+    }
   }
   return null;
+}
+
+const SHELL = hostTool('sh') || '/bin/sh';
+
+function linkOrCopy(src, dst) {
+  if (process.platform === 'win32') {
+    writeFileSync(dst, `#!/bin/sh\nexec "${src.replace(/\\/g, '/')}" "$@"\n`);
+    chmodSync(dst, 0o755);
+  } else {
+    symlinkSync(src, dst);
+  }
 }
 
 function sha256Hex(content) {
@@ -91,11 +113,11 @@ function makeBin(root, { shasum, sha256sum }) {
   if (sha256sum) {
     const real = hostTool('sha256sum');
     if (!real) throw new Error('sha256sum is required on the host for this test');
-    symlinkSync(real, join(bin, 'sha256sum'));
+    linkOrCopy(real, join(bin, 'sha256sum'));
   }
   for (const name of REAL_TOOLS) {
     const real = hostTool(name);
-    if (real) symlinkSync(real, join(bin, name));
+    if (real) linkOrCopy(real, join(bin, name));
   }
   return bin;
 }
@@ -426,7 +448,15 @@ kill -INT "$PPID"
 test('installer refuses to write through a symbolic link, even with ZTD_OVERWRITE=1', (t) => {
   const fixture = setup(t, { shasum: true });
   const outside = join(fixture.work, '..', 'outside-target');
-  symlinkSync(outside, join(fixture.work, 'ztd'));
+  try {
+    symlinkSync(outside, join(fixture.work, 'ztd'));
+  } catch (err) {
+    if (process.platform === 'win32' && err.code === 'EPERM') {
+      t.skip('symlinks require Developer Mode on Windows');
+      return;
+    }
+    throw err;
+  }
 
   const result = runInstaller(fixture, { ZTD_OVERWRITE: '1' });
   assert.notEqual(result.status, 0);
@@ -487,6 +517,10 @@ test('installer fails before any download when ZTD_INSTALL_DIR does not exist', 
 });
 
 test('installer never invokes sudo when the install directory is not writable', (t) => {
+  if (process.platform === 'win32') {
+    t.skip('chmod does not enforce read-only directories on Windows');
+    return;
+  }
   if (process.getuid && process.getuid() === 0) {
     t.skip('root can write any directory');
     return;

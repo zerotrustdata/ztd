@@ -104,7 +104,7 @@ func (v *CampaignAssignmentVerifier) verifyHeterogeneousAssignment(ctx context.C
 	if req.FormationRunEvidence == nil {
 		failures = append(failures, "formation run evidence is required for heterogeneous verification")
 	} else {
-		if err := VerifyFormationRunEvidenceMatchesResult(req.Assignment, req.FormationRunEvidence, req.Result); err != nil {
+		if err := VerifyFormationRunEvidenceMatchesResult(req.Assignment, req.GradingMethod, req.FormationRunEvidence, req.Result); err != nil {
 			failures = append(failures, "formation run evidence mismatch: "+err.Error())
 		}
 		failures = append(failures, VerifyFormationWitnessEvidence(

@@ -3,8 +3,8 @@ doc_id: evals
 title: Evaluation Programs
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.6
+last_updated: 2026-10-13
 owners:
   - internal/services/evaluation/
   - internal/cli/cmd/eval/
@@ -164,6 +164,8 @@ The `ztd eval` command tree organizes platform evaluation across ten subcommands
 - `ztd eval backup`: Archive evaluation evidence to an external directory with a SHA-256 manifest.
 - `ztd eval restore [dir]`: Verify and restore evaluation evidence into `.ztd/` from complete snapshots.
 
+`ztd eval runs resume` executes queued assignments. It fails closed if an assignment remains in `running` without a terminal persisted result; cancel that run and create a new one rather than retrying an ambiguous attempt. Archived runs also cannot resume.
+
 ### Executing a Formation Campaign
 
 ```bash
@@ -218,12 +220,13 @@ Suites define scenario catalogs and test inputs:
 #### System Lane (Formation Campaigns)
 - Evaluates multi-model collaboration across three distinct roles: `lite` (triage/routing), `assistant` (intermediate processing), and `primary` (final synthesis).
 - The direct formation runner passes serialized input fixtures to the `lite` model via the Inference Operator, appends its output to the context, and invokes subsequent roles.
-- Graded solely on formation completion (`formation-roles` structural grade). It validates that all three roles executed without errors; it does not grade answer correctness.
+- Deterministic scenarios grade structural formation completion (`formation-roles`); this does not establish answer correctness. A scenario configured for semantic-judge grading becomes `GRADER_FAILED` with an unavailable structural `semantic-judge-available` grade because the direct formation runner records no judge evidence.
+- Persists one canonical formation-run evidence envelope per assignment, binding run, assignment, attempt, campaign, scenario, formation, model registry digest, inference/data sessions, role telemetry, and witness digests. The assignment result references this content-addressed artifact, and verification checks its digest and independently recomputes the expected lifecycle and grades using the frozen scenario grading method.
 
 #### Model-Role Lane (Single-Agent Campaigns)
 - Freezes a campaign targeting exactly one model variant (`INV-EVAL-CAMP-06`).
 - Executes assignments through `CampaignAgentExecutor` in a bounded loop of up to 8 turns.
-- Injects workspace files into an isolated directory under the Data Operator's root (`ScenarioWorkspace`) via governed `FILE_EDIT` actions.
+- Injects workspace files into an isolated directory under the Data Operator's root (`ScenarioWorkspace`) via governed `FILE_EDIT` actions. Workspace paths follow the Data Operator host, not the CLI: a POSIX working directory keeps POSIX paths, and a drive-letter one (a Windows Operator) uses slash-form paths such as `D:/ztd/workspaces/...`. Run execution rejects a model-role binding whose working directory is not absolute before any assignment is marked running.
 - Dispatches tool invocations as governed Gateway transactions (`FS_READ`, `FS_LIST`, `FS_GREP`, `FILE_EDIT`, `EXECUTE_BASH`).
 - Seals the complete conversation and tool trajectory as a content-addressed agent trace (`campaign_agent_trace.go`) graded deterministically against scenario gold criteria.
 
@@ -251,7 +254,7 @@ Suites define scenario catalogs and test inputs:
 ### Evidence Persistence, Backups, and Offline Verification
 
 - **Evidence Layout**:
-  - Run records: `.ztd/data/eval/runs/<run-id>/` (`report.json`, `verification.json`, `<assignment-id>-formation-run.json`).
+  - Run records: `.ztd/data/eval/runs/<run-id>/` (`report.json`, `verification.json`, `assignments/<assignment-id>-formation-run.json` for formation evidence, and `assignments/<assignment-id>-agent-trace.json` for model-role traces).
   - Campaign records: `.ztd/data/eval/campaigns/<campaign-id>/` (`campaign_spec.json`, frozen artifacts).
   - Witness windows: `data/inference/provider-observer/windows/` and `data/inference/model-provenance/windows/`.
 - **Backup & Restore**:

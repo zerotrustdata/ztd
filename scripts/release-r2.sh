@@ -13,6 +13,9 @@
 #   upload <release-dir> <version>   Write the verified set under v<version>/. Refuses
 #                                    any key that already exists (versioned sets are
 #                                    immutable) and reads every object back by SHA-256.
+#                                    ztd-binaries.json is written last: the website lists
+#                                    a version on /releases/ only once its manifest exists,
+#                                    so the manifest's presence means the set is complete.
 #   promote <release-dir> <version>  Require every v<version>/ object to match the set,
 #                                    then write latest.json and read it back.
 #   check                            Prove the credentials can write, read back, and delete
@@ -26,6 +29,7 @@
 set -euo pipefail
 
 BUCKET="ztd-releases"
+MANIFEST="ztd-binaries.json"
 
 die() {
 	echo "release-r2: $*" >&2
@@ -60,12 +64,15 @@ require_absent() {
 }
 
 release_set() {
-	local dir=$1
+	local dir=$1 artifact
 	[ -d "$dir" ] || die "release directory not found: $dir"
-	shopt -s nullglob
-	ARTIFACTS=("$(cd "$dir" && pwd)"/*)
-	shopt -u nullglob
-	[ "${#ARTIFACTS[@]}" -gt 0 ] || die "release set is empty: $dir"
+	dir=$(cd "$dir" && pwd)
+	[ -f "$dir/$MANIFEST" ] || die "release set has no $MANIFEST: $dir"
+	ARTIFACTS=()
+	for artifact in "$dir"/*; do
+		[ "${artifact##*/}" = "$MANIFEST" ] || ARTIFACTS+=("$artifact")
+	done
+	ARTIFACTS+=("$dir/$MANIFEST")
 }
 
 cmd_upload() {

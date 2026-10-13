@@ -647,3 +647,34 @@ func TestPromptForScpOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveOperatorWorkingDir(t *testing.T) {
+	home := filepath.Join(string(filepath.Separator)+"home", "operator")
+	if volume := filepath.VolumeName(os.TempDir()); volume != "" {
+		home = volume + home
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "blank keeps the launch directory", in: "  ", want: ""},
+		{name: "tilde alone", in: "~", want: home},
+		{name: "tilde slash", in: "~/.ztd-inference", want: filepath.Join(home, ".ztd-inference")},
+		{name: "tilde backslash", in: `~\.ztd-inference`, want: filepath.Join(home, ".ztd-inference")},
+		{name: "relative is made absolute", in: "ops", want: filepath.Join(cwd, "ops")},
+		{name: "absolute is cleaned", in: filepath.Join(home, "a", "..", "b"), want: filepath.Join(home, "b")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveOperatorWorkingDir(tt.in)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

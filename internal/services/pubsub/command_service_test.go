@@ -35,7 +35,7 @@ func TestPayloadToExecutionRequest(t *testing.T) {
 			Intent:         "list files",
 			TimeoutSeconds: 30,
 			Environment: map[string]string{
-				"OLLAMA_HOST": "http://inference.example:11434",
+				"ZTD_OLLAMA_ENDPOINT": "http://inference.example:11434",
 			},
 			WorkingDirectory: "/var/lib/ztd",
 		}
@@ -59,7 +59,7 @@ func TestPayloadToExecutionRequest(t *testing.T) {
 		assert.Equal(t, "test", execReq.Justification)
 		assert.Equal(t, "list files", execReq.Intent)
 		assert.Equal(t, 30, execReq.TimeoutSeconds)
-		assert.Equal(t, map[string]string{"OLLAMA_HOST": "http://inference.example:11434"}, execReq.Environment)
+		assert.Equal(t, map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://inference.example:11434"}, execReq.Environment)
 		require.NotNil(t, execReq.WorkingDirectory)
 		assert.Equal(t, "/var/lib/ztd", *execReq.WorkingDirectory)
 	})

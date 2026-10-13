@@ -152,7 +152,7 @@ func releaseSmokeCmdWithRunner(runner func(context.Context, releaseSmokeOptions)
 		Short: "Run an isolated governed release smoke and verify local evidence",
 		Long: `Start an isolated Gateway and dedicated data Operator. Exercise a typed governed FILE_EDIT through the supported command dispatch API and verify exact read-back. Create and merge a document through the embedded governed execution path, preserving untouched fields. Export Gateway and worker evidence from their own runtimes and require nonempty receipts, commitments, and file mutations in both runtimes, with all verification rows passing and none skipped.
 
-The command needs a Unix-like host for process-group cleanup. It needs a built ztd binary and the checked-in Go modules; it does not use an LLM or provider key. All run artifacts are retained under --root.`,
+The command runs on Unix-like hosts (process groups) and Windows (Job Objects) and stops every process it started. It needs a built ztd binary and the checked-in Go modules; it does not use an LLM or provider key. All run artifacts are retained under --root.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.RunDir == "" {

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -28,11 +29,9 @@ func newOutputCmd() (*cobra.Command, *bytes.Buffer) {
 	return cmd, buf
 }
 
-const testConsoleOrigin = "https://localhost:8443"
-
 func TestPrintNextSteps_LoopbackOffersOnlyLocalEndpoints(t *testing.T) {
 	cmd, buf := newOutputCmd()
-	printNextSteps(cmd, &governance.DoctrinePosture{}, constants.LocalhostIP, "192.168.1.100", testConsoleOrigin)
+	printNextSteps(cmd, &governance.DoctrinePosture{}, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "192.168.1.100")
 
 	out := buf.String()
 	bin := getBinaryName()
@@ -52,7 +51,7 @@ func TestPrintNextSteps_PublicOffersRemoteEnrollment(t *testing.T) {
 	for _, host := range []string{"0.0.0.0", "::", "192.168.1.10"} {
 		t.Run(host, func(t *testing.T) {
 			cmd, buf := newOutputCmd()
-			printNextSteps(cmd, &governance.DoctrinePosture{}, host, "192.168.1.100", testConsoleOrigin)
+			printNextSteps(cmd, &governance.DoctrinePosture{}, serve.GatewayConfig{ListenHost: host}, "192.168.1.100")
 			out := buf.String()
 			assert.Contains(t, out, getBinaryName()+" operator start -e 192.168.1.100 --working-dir ~/.ztd-operator")
 			assert.NotContains(t, out, "--endpoint localhost")
@@ -73,7 +72,7 @@ func TestPrintNextSteps_PasskeyGuidanceFollowsPosture(t *testing.T) {
 	for _, p := range postures {
 		t.Run(p.posture.Name(), func(t *testing.T) {
 			cmd, buf := newOutputCmd()
-			printNextSteps(cmd, p.posture, constants.LocalhostIP, "", testConsoleOrigin)
+			printNextSteps(cmd, p.posture, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "")
 			out := buf.String()
 			if p.required {
 				assert.Contains(t, out, "Register a passkey (required: "+p.posture.Name()+" posture enforces L3)")
@@ -85,9 +84,30 @@ func TestPrintNextSteps_PasskeyGuidanceFollowsPosture(t *testing.T) {
 	}
 }
 
+// A Gateway that shifted off busy default ports must advertise the ports it
+// bound, or every printed command dials a port nothing listens on.
+func TestPrintNextSteps_ShiftedPortsAreSpelledOut(t *testing.T) {
+	shifted := serve.GatewayConfig{HTTPPort: 8087, HTTPSPort: 8450}
+
+	cmd, buf := newOutputCmd()
+	loopback := shifted
+	loopback.ListenHost = constants.LocalhostIP
+	printNextSteps(cmd, &governance.DoctrinePosture{}, loopback, "192.168.1.100")
+	out := buf.String()
+	assert.Contains(t, out, "Console  https://localhost:8450/console/")
+	assert.Contains(t, out, getBinaryName()+" operator start --endpoint localhost:8087 --port 8450 --working-dir ~/.ztd-operator")
+
+	cmd, buf = newOutputCmd()
+	public := shifted
+	public.ListenHost = "0.0.0.0"
+	printNextSteps(cmd, &governance.DoctrinePosture{}, public, "192.168.1.100")
+	assert.Contains(t, buf.String(), getBinaryName()+" operator start -e 192.168.1.100:8087 --port 8450 --working-dir ~/.ztd-operator")
+}
+
 func TestConsoleOriginFor(t *testing.T) {
-	assert.Equal(t, network.LocalhostHTTPSURL(constants.Ports.OperatorHttps), consoleOriginFor(""))
-	assert.Equal(t, "https://gw.example.com", consoleOriginFor("https://gw.example.com/"))
+	assert.Equal(t, network.LocalhostHTTPSURL(constants.Ports.OperatorHttps), consoleOriginFor("", 0))
+	assert.Equal(t, network.LocalhostHTTPSURL(8450), consoleOriginFor("", 8450))
+	assert.Equal(t, "https://gw.example.com", consoleOriginFor("https://gw.example.com/", 8450))
 }
 
 func TestPrintNetworkIdentity_OnlyForRoutableListeners(t *testing.T) {

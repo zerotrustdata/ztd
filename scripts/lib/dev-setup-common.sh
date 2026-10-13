@@ -313,28 +313,78 @@ ztd_collect_missing() {
     fi
 }
 
-# --- contributor-toolchain checks (used by dev-check.sh) -----------------------
+# --- contributor-toolchain checks (used by dev-check.sh and dev-tools-if-needed) -
 
-# Checks a Go-installed tool, optionally against a pinned version. A version
-# mismatch warns rather than fails: it still runs, but may not match CI output.
+# Reads the exact module version and Go build version of a Go binary via
+# `go version -m`. Returns 1 if the binary cannot be resolved or does not
+# expose Go build information.
+# Outputs: "<mod_version> <go_version>", e.g. "v1.73.0 1.27.2".
+ztd_tool_version() {
+    local target="$1" resolved
+    if [[ -f "$target" ]]; then
+        resolved="$target"
+    else
+        resolved="$(command -v "$target" 2>/dev/null)" || return 1
+    fi
+    if [[ "$resolved" != *.exe && -f "${resolved}.exe" ]]; then
+        resolved="${resolved}.exe"
+    fi
+    [[ -f "$resolved" ]] || return 1
+
+    local info line1 go_ver mod_ver
+    info="$(go version -m "$resolved" 2>/dev/null)" || return 1
+    line1="$(echo "$info" | head -1)"
+    go_ver="$(echo "$line1" | sed -En 's/.*:[[:space:]]*(go|go version go)?([0-9]+(\.[0-9]+)*).*/\2/p')"
+    mod_ver="$(echo "$info" | awk '$1 == "mod" { print $3; exit }')"
+    echo "${mod_ver:-unknown} ${go_ver:-unknown}"
+}
+
+# Checks a Go-installed tool, optionally against a pinned version and minimum Go
+# build version. A version or build-version mismatch warns rather than fails.
 # usage: ztd_check_tool <command> [pinned-version] [version-flag]
 ztd_check_tool() {
-    local cmd="$1" pinned="${2:-}" flag="${3:---version}" got
+    local cmd="$1" pinned="${2:-}"
     pinned="${pinned#v}"
     if ! ztd_have "$cmd"; then
         ztd_ui_fail "$cmd: missing (run: make dev-tools)"
         return 1
     fi
-    if [[ -z "$pinned" ]]; then
-        ztd_ui_ok "$cmd"
+
+    local versions mod_ver go_ver
+    if ! versions="$(ztd_tool_version "$cmd")"; then
+        local flag="${3:---version}" got
+        got="$(ztd_extract_version "$("$cmd" "$flag" 2>&1 | head -1)")"
+        if [[ -z "$pinned" ]]; then
+            ztd_ui_ok "$cmd"
+            return 0
+        fi
+        if [[ "$got" == "$pinned" ]]; then
+            ztd_ui_ok "$cmd $got"
+        else
+            ztd_ui_warn "$cmd ${got:-unknown} (CI pins v$pinned; run: make dev-tools)"
+        fi
         return 0
     fi
-    got="$(ztd_extract_version "$("$cmd" "$flag" 2>&1 | head -1)")"
-    if [[ "$got" == "$pinned" ]]; then
-        ztd_ui_ok "$cmd $got"
-    else
-        ztd_ui_warn "$cmd ${got:-unknown} (CI pins $pinned; run: make dev-tools)"
+
+    mod_ver="${versions%% *}"
+    go_ver="${versions##* }"
+    local mod_clean="${mod_ver#v}"
+
+    if [[ -n "$pinned" && "$mod_clean" != "$pinned" ]]; then
+        ztd_ui_warn "$cmd ${mod_ver:-unknown} (CI pins v$pinned; run: make dev-tools)"
+        return 0
     fi
+
+    local min_go="${ZTD_GO_MIN:-}"
+    if [[ -z "$min_go" && -f go.mod ]]; then
+        min_go="$(sed -n 's/^go //p' go.mod | head -1 | tr -d '[:space:]')"
+    fi
+    if [[ -n "$min_go" && "$go_ver" != "unknown" ]] && ! ztd_version_ge "$go_ver" "$min_go"; then
+        ztd_ui_warn "$cmd ${mod_ver:-unknown} built with go $go_ver (need >= $min_go; run: make dev-tools)"
+        return 0
+    fi
+
+    ztd_ui_ok "$cmd ${mod_clean:-$mod_ver}"
     return 0
 }
 
@@ -342,11 +392,106 @@ ztd_check_go_tools() {
     local failed=0
     ztd_check_tool buf "$(ztd_make_var BUF_VERSION)" || failed=1
     ztd_check_tool protoc-gen-go "$(ztd_make_var PROTOC_GEN_GO_VERSION)" || failed=1
-    ztd_check_tool protoc-gen-doc || failed=1
+    ztd_check_tool protoc-gen-doc "$(ztd_make_var PROTOC_GEN_DOC_VERSION)" || failed=1
     ztd_check_tool golangci-lint "$(ztd_make_var GOLANGCI_LINT_VERSION)" || failed=1
-    ztd_check_tool govulncheck || failed=1
-    ztd_check_tool swag || failed=1
+    ztd_check_tool govulncheck "$(ztd_make_var GOVULNCHECK_VERSION)" || failed=1
+    ztd_check_tool swag "$(ztd_make_var SWAG_VERSION)" || failed=1
     return $failed
+}
+
+# Installs or refreshes a Go developer tool if missing, if pinned version
+# mismatches, or if built with an older Go version than go.mod requires.
+# Fails after install if PATH still resolves a stale copy elsewhere outside GOBIN.
+# usage: ztd_dev_tool_if_needed <pkg-with-version>
+ztd_dev_tool_if_needed() {
+    local pkg="$1"
+    local bin="${pkg%@*}"; bin="${bin##*/}"
+    local pinned="${pkg##*@}"
+    local need_install=false
+    local reason=""
+
+    local min_go="${ZTD_GO_MIN:-}"
+    if [[ -z "$min_go" && -f go.mod ]]; then
+        min_go="$(sed -n 's/^go //p' go.mod | head -1 | tr -d '[:space:]')"
+    fi
+
+    if ! ztd_have "$bin"; then
+        need_install=true
+        reason="missing"
+    else
+        local versions mod_ver go_ver
+        if ! versions="$(ztd_tool_version "$bin")"; then
+            need_install=true
+            reason="build info unavailable"
+        else
+            mod_ver="${versions%% *}"
+            go_ver="${versions##* }"
+            local mod_clean="${mod_ver#v}" pin_clean="${pinned#v}"
+            if [[ "$mod_clean" != "$pin_clean" ]]; then
+                need_install=true
+                reason="version mismatch: got ${mod_ver:-unknown}, pinned $pinned"
+            elif [[ -n "$min_go" && "$go_ver" != "unknown" ]] && ! ztd_version_ge "$go_ver" "$min_go"; then
+                need_install=true
+                reason="built with older Go $go_ver (need >= $min_go)"
+            fi
+        fi
+    fi
+
+    if [[ "$need_install" != true ]]; then
+        echo "  $bin: already installed (${mod_ver:-current}) — skipping"
+        return 0
+    fi
+
+    echo "  installing $bin ($pkg; $reason)..."
+    # `go install pkg@version` resolves the toolchain from the tool's go.mod, not
+    # ours, so GOTOOLCHAIN=auto would build with an older local Go. Require ours.
+    local toolchain="${GOTOOLCHAIN:-auto}"
+    if [[ -n "$min_go" ]]; then
+        toolchain="go${min_go}+auto"
+    fi
+    GOTOOLCHAIN="$toolchain" go install "$pkg" || return 1
+    hash -d "$bin" 2>/dev/null || hash -r 2>/dev/null || true
+
+    local gobin
+    gobin="$(go env GOBIN 2>/dev/null)"
+    if [[ -z "$gobin" ]]; then
+        gobin="$(go env GOPATH 2>/dev/null)/bin"
+    fi
+    if command -v cygpath >/dev/null 2>&1 && [[ -n "$gobin" ]]; then
+        gobin="$(cygpath -u "$gobin")"
+    fi
+
+    local resolved
+    resolved="$(command -v "$bin" 2>/dev/null)"
+    if [[ -z "$resolved" ]]; then
+        echo "FATAL: $bin was installed but cannot be found on PATH." >&2
+        return 1
+    fi
+
+    local post_versions post_mod post_go
+    post_versions="$(ztd_tool_version "$bin" 2>/dev/null)" || post_versions="unknown unknown"
+    post_mod="${post_versions%% *}"
+    post_go="${post_versions##* }"
+    local post_mod_clean="${post_mod#v}" pin_clean="${pinned#v}"
+
+    local is_stale=false
+    if [[ "$post_mod_clean" != "$pin_clean" ]]; then
+        is_stale=true
+    elif [[ -n "$min_go" && "$post_go" != "unknown" ]] && ! ztd_version_ge "$post_go" "$min_go"; then
+        is_stale=true
+    fi
+
+    if [[ "$is_stale" == true ]]; then
+        echo "FATAL: after installing $pkg, PATH resolves $bin to '$resolved' (version ${post_mod:-unknown}, built with go ${post_go:-unknown})." >&2
+        echo "The resolved binary is stale (pinned $pinned, need go >= $min_go)." >&2
+        shopt -s nocasematch 2>/dev/null
+        if [[ "$resolved" != "$gobin"/* ]]; then
+            echo "A stale copy outside GOBIN ($gobin) is shadowing the installed tool." >&2
+            echo "Remove '$resolved' or ensure GOBIN is placed ahead of it in PATH." >&2
+        fi
+        return 1
+    fi
+    return 0
 }
 
 # npm's hidden lockfile is written after installation. Reuse the tree only

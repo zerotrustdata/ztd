@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -56,6 +57,9 @@ func (t *SysOOMDetectTool) Execute(ctx context.Context, args json.RawMessage) (C
 
 	logPath := req.LogPath
 	if logPath == "" {
+		if runtime.GOOS != "linux" {
+			return CallToolResult{}, unsupportedPlatformError("sys_oom_detect", constants.PathVarLogDmesg+" or an explicit log_path")
+		}
 		logPath = constants.PathVarLogDmesg
 	}
 

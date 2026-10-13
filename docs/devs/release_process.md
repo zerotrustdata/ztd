@@ -3,20 +3,29 @@ doc_id: release_process
 title: Release Process
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - VERSION
   - Makefile
+  - .github/workflows/release-binary.yml
+  - .github/workflows/deploy-website.yml
   - CHANGELOG.md
   - README.md
   - .github/CONTRIBUTING.md
   - AGENTS.md
   - CLAUDE.md
   - protocol/docs/
+  - scripts/release-preflight.sh
+  - scripts/release-artifacts.sh
+  - scripts/release-r2.sh
+  - internal/cli/cmd/test/release_smoke.go
+  - internal/cli/cmd/compliance/
   - internal/services/gateway/explorer/static/
   - internal/services/gateway/console/static/
-  - internal/cli/cmd/compliance/
+  - website/worker.js
+  - website/src/releases.js
+  - website/wrangler.jsonc
 related:
   - docs/devs/devs.md
   - docs/devs/codemap.md
@@ -109,7 +118,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Installation and contributor entry points | `README.md`, `.github/CONTRIBUTING.md` | Installation examples match `VERSION`; prerequisites and startup commands match `Makefile` |
 | Agent entry points | `AGENTS.md`, `CLAUDE.md` | Repository map and build/test examples reference maintained paths and targets |
 | Protocol spec headers | `protocol/docs/a2a.md`, `constants.md`, `mcp.md`, `spec.md` | `Version: vX.Y.Z` header |
-| Explorer embed | `internal/services/gateway/explorer/static/` | `grep -l "$(cat VERSION)" internal/services/gateway/explorer/static/assets/*.js` lists bundle; `console-tests` CI job fails if embed differs |
+| Explorer embed | `internal/services/gateway/explorer/static/` | `make explorer-embed`; `grep -l "$(cat VERSION)" internal/services/gateway/explorer/static/assets/*.js` lists the current bundle |
 | Console embed | `internal/services/gateway/console/static/` | `make console-embed-check` |
 | Core-platform smoke runbook | `docs/guides/ux_smoke_test.md` | `./ztd test release-smoke --root <new-private-directory>` |
 | Smoke evidence artifacts | `<root>/` | `evidence/smoke-summary.json`, `reports/{gateway,worker}/`, and logs under `logs/` |
@@ -124,8 +133,8 @@ For campaign evidence, verify the recorded release in protected `campaign-spec.j
 
 To refresh published runs after correcting asserted tags, execute `ztd public restore --run-id <run> --force`.
 
-1. **Determine change inventory:** Diff `v<prev-tag>..HEAD` to identify all added, changed, removed, fixed, and security-sensitive features.
-2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`, audit affected documents end-to-end against production code, and update stale cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI.
+1. **Determine change inventory:** Review `git diff --name-status v<prev-tag>..HEAD` and the full diff to identify all added, changed, removed, fixed, and security-sensitive behavior. Group changes by affected contract or user journey (for example CLI and Operator lifecycle, protocol, evaluation, installation, website downloads, or release automation) so tests and documentation are traced across layers rather than file-by-file alone.
+2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`; map changed code, schemas, configuration, and workflows to their canonical documents; then audit each affected document end-to-end against those sources. Review linked guides and entry points for stale commands, claims, and cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI. Documents assessed and left unchanged retain their metadata.
 3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then follow the template with Overview, Added, Changed, Removed (when anything is removed), Fixed, Tests, Documentation, Compliance Evidence, and Deferred sections.
 4. **Set version:** Update `VERSION` to `vX.Y.Z\n`.
 5. **Sync protocol specs and npm versions:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Synchronize Go installation examples in `README.md` and `.github/CONTRIBUTING.md` (`INV-REL-VER-08`).
@@ -133,9 +142,9 @@ To refresh published runs after correcting asserted tags, execute `ztd public re
 7. **Update CHANGELOG:** Add the release table row under `## vX.Y.x` in `CHANGELOG.md`. When the release adds a new minor-version section, add the `## vX.Y.x` section with table headers above existing minor-version sections and create `docs/release_notes/vX.Y.x/`.
 8. **Refresh embedded frontends:** Run `make explorer-embed` (`INV-REL-VER-06`) and `make console-embed-check` (`INV-REL-VER-07`); refresh stale console embeds with `make console-embed`. `make build` compiles using committed embeds without building frontends.
 9. **Run the core-platform smoke gate:** Build the candidate with `make build`, then run `./ztd test release-smoke --root <new-private-directory>`. Require exit status 0 and `result: PASS` in `<root>/evidence/smoke-summary.json`; retain the entire root as review evidence. The runner owns and cleans up its isolated Gateway and worker.
-10. **Generate and verify compliance evidence:** From repository root, run `./ztd compliance release-prepare` (add `--new-key` when no report-signing key exists under `.ztd/secrets/`). The command reads runtime `ztd.db` read-only, derives protected scope with `ProductVersion = "X.Y.Z"` from `VERSION`, git, and SHA-256 digest of running `ztd` binary, exports assessment window, builds external trust policies, generates a public bundle (sealed under `.ztd/reports/`), exports it to `release-evidence/<version>/report-bundle/`, verifies the export offline, and projects the verified export into `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`.
+10. **Generate and verify compliance evidence:** Run `./ztd compliance release-prepare` with the candidate `./ztd` binary and the intended Gateway runtime database. From the repository root, defaults apply only when that checkout also owns the assessment runtime; otherwise pass `--project-root <gateway-runtime-root>` (or an explicit `--db`) and the matching `--repo-root`. Add `--new-key` only when creating the report-signing key. The command reads `ztd.db` read-only, derives protected scope from `VERSION`, git, the running binary digest, and the assessment window, builds external trust policies, generates and seals the public bundle under the runtime root, exports it under `release-evidence/<version>/report-bundle/`, verifies the export offline, and projects the verified bundle into `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`. Keep smoke artifacts as separate engineering acceptance evidence; they do not replace this bundle.
 11. **Finalize document metadata:** Update `last_updated` and `version` on every audited document.
-12. **Verification checks:** Run `./ztd test lint`, `./ztd test unit`, `make console-lint console-test console-embed-check`, `make constants-check`, `make swagger-generate` (expect no diff), and package integration tests. Record in release notes what ran.
+12. **Verification checks:** Run `./ztd test lint`, `./ztd test unit`, and the relevant `./ztd test integration --pkg <package>` packages. Run `make console-lint console-test console-embed-check`, `make explorer-lint explorer-test`, and `make constants-check`. When API annotations changed, run `make swagger-generate` and commit the generated OpenAPI diff. Run checks required by affected surfaces, including `make website-test website-build` for website changes. Record the exact commands and outcomes in release notes.
 
 ### Release Owner Tagging and Publication (Post-Merge)
 
@@ -148,7 +157,7 @@ make release
 
 `make release-rehearse` dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. A rehearsal runs preflight, a write/read/delete probe of the real `ztd-releases` R2 bucket with the publish credential (`scripts/release-r2.sh check`), `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. A tag that fails after the Go module proxy has cached it cannot be reused, so release failures are found in the rehearsal, not on a tag.
 
-`make release` aborts unless the current branch is `main`, `HEAD` equals `origin/main` after a fetch, and a `workflow_dispatch` run of the release workflow on `HEAD` succeeded. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. GitHub Actions workflows in `.github/workflows/release-binary.yml` validate the tag, build and sign binaries, create GitHub release, and publish website download assets.
+`make release` aborts unless the current branch is `main`, `HEAD` equals `origin/main` after a fetch, and a successful `workflow_dispatch` rehearsal exists for `HEAD`. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or the tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. `.github/workflows/release-binary.yml` validates the tag, builds and signs binaries, creates a draft GitHub release, uploads and verifies the versioned R2 set, publishes the GitHub release, then promotes website downloads. After publication, a separate matrix verifies fresh `go install` on Linux, macOS, and Windows.
 
 ### Release Signing
 
@@ -169,7 +178,7 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - Unversioned routes (`/ztd`, `/ztd-linux-amd64`, `/checksums-sha256.txt`, ...) read `latest.json` on each request and serve `v<version>/<file>` with `public, max-age=300`.
 - Missing or malformed `latest.json` returns plain-text 503 with `cache-control: no-store`.
 
-**Failure behavior:** Failures before step 3 leave unversioned routes pointing at the previous version. To rerun, the release owner first confirms `latest.json` does not reference `<VERSION>`, then removes the set from `website/` with `for f in $(../scripts/release-artifacts.sh list-binaries); do for k in "$f" "$f.sha256" "$f.sigstore.json"; do npx wrangler r2 object delete "ztd-releases/v<VERSION>/$k" --remote; done; done` plus the same delete for `checksums-sha256.txt` and `ztd-binaries.json`. A release tag cannot be reused once the Go module proxy has cached it; bump `VERSION` instead of rerunning a burned tag. Failures at step 3 after public GitHub release leave unversioned routes on the previous version; recover by writing `latest.json` with the new version (`npx wrangler r2 object put ztd-releases/latest.json --file latest.json --content-type application/json --remote`).
+**Failure behavior:** Failures before step 3 leave unversioned routes pointing at the previous version. To rerun an upload before GitHub publication, the release owner first confirms `latest.json` does not reference `<VERSION>`, then removes the set from `website/` with `for f in $(../scripts/release-artifacts.sh list-binaries); do for k in "$f" "$f.sha256" "$f.sigstore.json"; do npx wrangler r2 object delete "ztd-releases/v<VERSION>/$k" --remote; done; done` plus the same delete for `checksums-sha256.txt` and `ztd-binaries.json`. A release tag cannot be reused once the Go module proxy has cached it; bump `VERSION` instead of rerunning a burned tag. If the GitHub release is public but step 3 failed, retrieve the verified release set and rerun `scripts/release-r2.sh promote <release-dir> <version>`; it verifies every versioned object against the set before moving `latest.json`. A manual pointer write is a last resort and MUST follow an independent check of every object in `v<VERSION>/` against the verified release set.
 
 **Rollback:** Rewrite `latest.json` to the target rollback version (e.g. `{"version": "2.3.1"}`). Immutable `v<version>/` prefixes remain intact; unversioned routes restore within the 5-minute cache TTL.
 

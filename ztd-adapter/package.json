@@ -1,6 +1,6 @@
 {
   "name": "ztd-adapter",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "ztd audited browser adapter — generator-neutral integration core for the observe frontend. Builders (Lovable, Notion, other) wrap this adapter; they do not rewrite its transport code.",
   "license": "BUSL-1.1",
