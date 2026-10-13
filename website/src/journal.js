@@ -3,11 +3,10 @@
 
 import { readFile } from 'node:fs/promises';
 import { Marked, Renderer } from 'marked';
+import { JOURNAL_PATH, ORIGIN, RELEASES_PATH, escape, layout as pageLayout } from './layout.js';
 
-const ORIGIN = 'https://zerotrustdata.io';
-export const JOURNAL_PATH = '/build-in-public/';
+export { JOURNAL_PATH };
 const DESCRIPTION = 'Building Zero Trust Data in public. Daily notes on the code, the decisions, the failures, and the evidence behind ztd.';
-const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const postPath = post => `${JOURNAL_PATH}${post.slug}/`;
 const dateLabel = date => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 const tags = post => post.tags.map(tag => `<span class="tag">${escape(tag)}</span>`).join('');
@@ -36,6 +35,12 @@ export function renderMarkdown(markdown, title) {
   const normalized = markdown.replace(/\r\n/g, '\n').trim();
   if (!normalized.startsWith(`# ${title}\n`)) throw new Error('journal Markdown H1 must match the post title');
   const body = normalized.slice(normalized.indexOf('\n') + 1).trim();
+  return { ...renderMarkdownBody(body), minutes: Math.max(1, Math.ceil(body.split(/\s+/).length / 220)) };
+}
+
+// Renders GitHub-flavored Markdown for the strict CSP: raw HTML is escaped, headings get stable ids, and every
+// link and image passes through resolveLink, which returns a safe href or throws. Also used for release notes.
+export function renderMarkdownBody(body, resolveLink = safeLink) {
   const headings = [];
   const ids = new Set();
   const renderer = new Renderer();
@@ -52,9 +57,9 @@ export function renderMarkdown(markdown, title) {
     return `<h${depth} id="${id}">${label}</h${depth}>\n`;
   };
   renderer.link = function ({ href, title: label, tokens }) {
-    return `<a href="${escape(safeLink(href))}"${label ? ` title="${escape(label)}"` : ''}>${this.parser.parseInline(tokens)}</a>`;
+    return `<a href="${escape(resolveLink(href))}"${label ? ` title="${escape(label)}"` : ''}>${this.parser.parseInline(tokens)}</a>`;
   };
-  renderer.image = ({ href, text }) => `<img src="${escape(safeLink(href))}" alt="${escape(text)}" loading="lazy" decoding="async">`;
+  renderer.image = ({ href, text }) => `<img src="${escape(resolveLink(href))}" alt="${escape(text)}" loading="lazy" decoding="async">`;
   renderer.table = function (token) {
     return `<div class="table-scroll" role="region" aria-label="Data table" tabindex="0">${defaultTable.call(this, token)}</div>\n`;
   };
@@ -63,46 +68,11 @@ export function renderMarkdown(markdown, title) {
     const cell = header ? 'th' : 'td';
     return `<${cell}${header ? ' scope="col"' : ''}${align ? ` class="align-${align}"` : ''}>${this.parser.parseInline(tokens)}</${cell}>\n`;
   };
-  const html = new Marked({ renderer, gfm: true }).parse(body);
-  return { html, headings, minutes: Math.max(1, Math.ceil(body.split(/\s+/).length / 220)) };
+  return { html: new Marked({ renderer, gfm: true }).parse(body), headings };
 }
 
-function layout({ title, description, path, article, content }) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escape(title)} — Zero Trust Data</title>
-<meta name="description" content="${escape(description)}">
-<meta name="theme-color" content="#080b10">
-<link rel="canonical" href="${ORIGIN}${path}">
-<meta property="og:type" content="${article ? 'article' : 'website'}">
-<meta property="og:title" content="${escape(title)}">
-<meta property="og:description" content="${escape(description)}">
-<meta property="og:url" content="${ORIGIN}${path}">
-<meta property="og:site_name" content="Zero Trust Data">
-<meta name="twitter:card" content="summary">
-${article ? `<meta name="author" content="${escape(article.author)}"><meta property="article:published_time" content="${article.date}">` : ''}
-<link rel="icon" href="/favicon-100x100.png" type="image/png" sizes="100x100">
-<link rel="alternate" type="application/rss+xml" title="Build in Public — Zero Trust Data" href="${JOURNAL_PATH}feed.xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/journal.css">
-<script src="/journal.js" defer></script>
-</head>
-<body>
-<a class="skip" href="#main">Skip to content</a>
-<header class="site-header"><div class="shell header-inner">
-<a class="brand" href="/" aria-label="Zero Trust Data home"><img src="/logo.png" width="74" height="32" alt=""><span>ZERO TRUST DATA</span></a>
-<nav aria-label="Primary"><a href="/#how">The platform</a><a class="nav-current" href="${JOURNAL_PATH}"${article ? '' : ' aria-current="page"'}>Build in Public</a><a class="github-link" href="https://github.com/zerotrustdata/ztd">GitHub <span aria-hidden="true">↗</span></a></nav>
-</div></header>
-${article ? '<progress class="reading-progress" max="100" value="0" aria-label="Reading progress" hidden></progress>' : ''}
-<main id="main" class="shell">${content}</main>
-<footer class="site-footer shell"><a class="footer-brand" href="/">Zero Trust Data<span>A model can ask. The host decides.</span></a><div><a href="${JOURNAL_PATH}feed.xml">RSS feed ↗</a><a href="mailto:danny@zerotrustdata.io">Get in touch ↗</a><a href="https://github.com/zerotrustdata/ztd">Source ↗</a></div><p>© 2026 Lateralus Labs, LLC.</p></footer>
-</body>
-</html>\n`;
+function layout({ article, ...page }) {
+  return pageLayout({ ...page, article, section: 'journal', current: !article });
 }
 
 function postCard(post, index, total) {
@@ -154,7 +124,7 @@ export async function prepareJournal(contentDirectory = new URL('../content/', i
   posts.sort((a, b) => b.date.localeCompare(a.date) || a.slug.localeCompare(b.slug));
   const files = new Map([['build-in-public/index.html', renderIndex(posts)], ['build-in-public/feed.xml', renderFeed(posts)]]);
   posts.forEach((post, index) => files.set(`build-in-public/${post.slug}/index.html`, renderArticle(post, posts[index + 1])));
-  const urls = ['/', JOURNAL_PATH, ...posts.map(postPath)];
+  const urls = ['/', JOURNAL_PATH, RELEASES_PATH, ...posts.map(postPath)];
   files.set('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(path => `  <url><loc>${ORIGIN}${path}</loc></url>`).join('\n')}\n</urlset>\n`);
   return files;
 }

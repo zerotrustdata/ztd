@@ -64,6 +64,31 @@ local scale reports and runtime state are not copied into the website.
 
 For project context and the current architecture, see the [repository overview](../README.md).
 
+## Releases and one-command onboarding
+
+`/releases/` lists every published ztd version and `/releases/v<version>/` shows one version's downloads, pinned
+install commands, verification steps, and release notes; `/releases/latest/` redirects to the version named by
+`latest.json`. The Worker renders these pages per request (`src/releases.js`) from the `ztd-releases` R2 bucket, so
+a release appears without a website deploy. A version is listed only when its `v<version>/ztd-binaries.json` manifest
+exists and it is not newer than `latest.json`: `scripts/release-r2.sh` uploads the manifest last, so an incomplete
+or unpromoted set never appears. The download table comes from the validated manifest; a malformed manifest is a
+503, never a partial page. Release notes are rendered at build time from `docs/release_notes/vX.Y.x/vX.Y.Z.md` into
+`dist/_release-notes/<version>.html` fragments (`src/release-notes.js`), which the Worker composes into the version
+page and does not serve on their own. Relative links in a note resolve to that file at the release tag on GitHub, or
+to the Releases page for links to another note.
+
+`static/start.sh` is the one-command onboarding script, `curl -fsSL https://zerotrustdata.io/start.sh | sh`. It
+downloads `ztd.sh`, installs the checksum-verified binary into `$ZTD_DIR` (default `~/ztd`), and then runs the
+`make quickstart` steps: start or reuse a Gateway, sign in or reuse the CLI identity, and run a first governed
+action. `static/ztd.sh` and `static/ztd.ps1` install only the binary. Both shell scripts run entirely from a `main`
+function called on the last line, so a truncated download executes nothing, and every child reads `/dev/null` so
+none can consume the piped script.
+
+`test/start.test.js` and `test/install.test.js` run the scripts offline against stub `curl`, `uname`, and `sudo`
+commands and a fake `ztd` that records its invocations and stdin. The start tests pipe the script into every
+available POSIX shell (`sh`, `dash`, `busybox sh`, `bash --posix`), cover reuse, every environment variable, each
+failure remedy, truncated downloads, and run `shellcheck` when it is installed.
+
 ## Production deployment
 
 `wrangler.jsonc` declares both hostnames as Cloudflare Worker Custom Domains. On the first authenticated deployment,
@@ -83,7 +108,8 @@ it makes a GitHub release public. Each release is written under an immutable `v<
 `latest.json` (`{"version": "X.Y.Z"}`) is promoted last. `/v/<version>/<file>` serves one pinned version, `/latest.json`
 serves the pointer, and unversioned routes such as `/ztd-linux-amd64` resolve through the pointer per request. The
 install scripts read `latest.json` once and fetch the binary and its checksum from that single version (or from
-`ZTD_VERSION` when it is set). The workflow writes through this package's wrangler (`scripts/release-r2.sh`), so
+`ZTD_VERSION` when it is set). Within a set, `ztd-binaries.json` is uploaded last, after every other object has been
+read back and verified, so its presence is what lists the version on `/releases/`. The workflow writes through this package's wrangler (`scripts/release-r2.sh`), so
 its `release` environment needs `CLOUDFLARE_ACCOUNT_API_TOKEN` (with R2 object read/write on `ztd-releases`) and
 `CLOUDFLARE_ACCOUNT_ID`.
 

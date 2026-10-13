@@ -55,11 +55,21 @@ ztd is a governance boundary, not a sandbox.
 
 ## Try it
 
-Two entry points are available.
+Three entry points are available.
 
-### 1. Run the platform locally (recommended)
+### 1. One command (recommended)
 
-The default workflow runs natively on the host:
+On Linux or macOS, paste this into a terminal:
+
+```bash
+curl -fsSL https://zerotrustdata.io/start.sh | sh
+```
+
+It installs the signed release binary into `~/ztd` after verifying its SHA-256 checksum, starts a Gateway on `https://localhost:8443`, signs the CLI in, and runs a first governed action. It never uses sudo, and rerunning it is safe. Set `ZTD_DIR` to choose another directory, `ZTD_VERSION` to pin a release, and `ZTD_MASTER_KEY_FILE` on Linux hosts without a Secret Service keyring or ssh-agent. To install only the binary, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh`, or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell. Every release binary, checksum, and Sigstore bundle is listed at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
+
+### 2. Build and run from source
+
+The source workflow runs natively on the host:
 
 ```bash
 git clone https://github.com/zerotrustdata/ztd.git
@@ -100,7 +110,7 @@ On a headless machine, use `./ztd login`. This creates a CLI-only mTLS identity.
 
 Sign in at `https://localhost:8443/console/` with a passkey.
 
-### 2. Explore the protocol and evidence model
+### 3. Explore the protocol and evidence model
 
 The repository includes a protocol layer and example integrations in Go. From the checkout, run the examples:
 

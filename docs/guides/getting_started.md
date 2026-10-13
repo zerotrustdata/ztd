@@ -33,7 +33,24 @@ Both roles run from the static `ztd` binary, selected by the `gw` or `operator` 
 
 ## Quick Start
 
-ztd runs natively on the machine as a host binary. Three commands take a clean machine to a running Gateway and a first governed action:
+ztd runs natively on the machine as a host binary. On Linux or macOS, one command takes a clean machine to a running Gateway and a first governed action:
+
+```bash
+curl -fsSL https://zerotrustdata.io/start.sh | sh
+```
+
+`start.sh` installs the signed release binary into `~/ztd` with the checksum-verified installer, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. It never uses sudo, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. It reads these environment variables:
+
+| Variable | Effect |
+| :--- | :--- |
+| `ZTD_DIR` | Install and runtime directory (default `~/ztd`). Runtime state lives in `$ZTD_DIR/.ztd/`. |
+| `ZTD_VERSION` | Install this `X.Y.Z` release instead of the latest. |
+| `ZTD_OVERWRITE=1` | Replace an existing `$ZTD_DIR/ztd` (upgrade). A running Gateway keeps its version until `./ztd gw restart`. |
+| `ZTD_MASTER_KEY_FILE` | Absolute path to a provisioned master key file for hosts without an OS key store; passed to every `./ztd` call. |
+
+To install only the binary into the current directory, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh` (or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell). Binaries, checksums, Sigstore bundles, and release notes for every version are at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
+
+To build from source instead, three commands take a clean machine to the same state:
 
 ```bash
 git clone https://github.com/zerotrustdata/ztd.git && cd ztd
@@ -62,11 +79,11 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 | Use the browser console | `./ztd login web`, then open `https://localhost:8443/console/` |
 | Inspect the evidence for what ran | `./ztd gw data audit list --operator-session-id <id>` |
 | Govern an AI agent | `./ztd mcp agent run claude` |
-| Stop the platform (state in `.ztd/` is kept) | `make down` |
+| Stop the platform (state in `.ztd/` is kept) | `make down` (`./ztd gw stop` in `~/ztd`) |
 
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
 
-**Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'`. Quickstart passes the key file to every `./ztd` call it makes, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Quickstart displays this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
+**Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'` (or `ZTD_MASTER_KEY_FILE=/abs/path/master.key` for `start.sh`). Quickstart and `start.sh` pass the key file to every `./ztd` call they make, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Both display this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
 
 ### Configure `.env`
 

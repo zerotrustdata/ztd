@@ -362,6 +362,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <li><a href="#local">Local-first</a></li>
         <li><a href="#start">Quick start</a></li>
         <li class="journal-nav"><a href="/build-in-public/">Build in Public</a></li>
+        <li class="journal-nav"><a href="/releases/">Releases</a></li>
         <li><a href="#contact">Contact</a></li>
       </ul>
     </nav>
@@ -378,7 +379,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div>
       <div class="status-line">
-        <span class="chip"><span class="dot"></span>ztd <b>pre-release</b></span>
+        <span class="chip"><span class="dot"></span>ztd <b>experimental</b></span>
         <span class="chip">Zero-trust execution layer</span>
         <span class="chip">Source available · BSL 1.1</span>
       </div>
@@ -641,20 +642,27 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="rv">
       <p class="eyebrow">07 / Quick start</p>
       <h2 id="start-title">First governed action in <em>one command</em></h2>
-      <p class="lede">Setup builds the binary. <code>make quickstart</code> starts a Gateway on localhost, signs in, and runs a first governed action. Rerunning it is safe.</p>
-      <p class="req">The Gateway-only track needs <code>git</code>, <code>Go 1.27.2</code>, <code>make</code>, and <code>curl</code>; the setup script installs what is missing. It doesn't need Ollama or a model SDK. The full platform runs the embedded Operator with the Data, Inference, and Observer capabilities, plus Provenance when <code>MODEL_STORAGE_ROOT</code> names the local model store.</p>
+      <p class="lede">Paste one line into a terminal. It installs the signed <code>ztd</code> binary into <code>~/ztd</code>, starts a Gateway on localhost, signs in, and runs a first governed action. Rerunning it is safe.</p>
+      <p class="req">Linux or macOS with <code>curl</code>. No root, no sudo, no toolchain: the installer verifies the binary against its published SHA-256 checksum before writing it. On Windows, install the binary from PowerShell with <code>irm https://zerotrustdata.io/ztd.ps1 | iex</code>. Every binary, checksum, and Sigstore bundle is on the <a href="/releases/">Releases</a> page. To build from source instead, the Gateway-only track needs <code>git</code>, <code>Go 1.27.2</code>, and <code>make</code>; the full platform runs the embedded Operator with the Data, Inference, and Observer capabilities.</p>
       <div class="pk">
-        <div><code>make quickstart</code><span>Run it end to end</span></div>
         <div><code>./ztd tui</code><span>Watch governance live</span></div>
+        <div><code>./ztd login web</code><span>Open the console</span></div>
       </div>
     </div>
     <div class="panel rv">
       <div class="tabs" role="tablist" aria-label="Install paths">
-        <button role="tab" aria-selected="true" aria-controls="tp-1" id="tb-1">Gateway</button>
+        <button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">One command</button>
+        <button role="tab" aria-selected="false" aria-controls="tp-1" id="tb-1" tabindex="-1">From source</button>
         <button role="tab" aria-selected="false" aria-controls="tp-2" id="tb-2" tabindex="-1">Enroll</button>
         <button role="tab" aria-selected="false" aria-controls="tp-3" id="tb-3" tabindex="-1">Full platform</button>
       </div>
-      <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1">
+      <div class="code" role="tabpanel" id="tp-0" aria-labelledby="tb-0">
+<pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
+<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh | sh
+<span class="c"># binary only: curl -fsSL https://zerotrustdata.io/ztd.sh | sh</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh | sh">Copy</button>
+      </div>
+      <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
 <span class="p">$ </span>bash scripts/linux-setup.sh --build-only
@@ -690,7 +698,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div>
         <p class="eyebrow">08 / Where it stands</p>
         <h2 id="status-title">Serious, experimental, and looking for pilots</h2>
-        <p>ztd is a serious experimental platform, not a polished enterprise product yet. It's under active development, built with a lot of design depth, and meant for real pilot-and-feedback cycles. The first release, v1.0.0, is in release qualification; until it ships, build from source. We won't claim certifications we don't have.</p>
+        <p>ztd is a serious experimental platform, not a polished enterprise product yet. It's under active development, built with a lot of design depth, and meant for real pilot-and-feedback cycles. Signed release binaries for Linux, macOS, and Windows are on the <a href="/releases/">Releases</a> page. We won't claim certifications we don't have.</p>
         <div class="cta-row status-actions">
           <a class="btn" href="https://github.com/zerotrustdata/ztd/blob/main/docs/guides/getting_started.md" rel="noopener">Getting started</a>
           <a class="btn ghost" href="https://github.com/zerotrustdata/ztd/blob/main/.github/CONTRIBUTING.md" rel="noopener">Contribute</a>
@@ -763,8 +771,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <ul>
           <li><a class="contact-email" href="mailto:danny@zerotrustdata.io">danny@zerotrustdata.io</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd" rel="noopener">GitHub</a></li>
-          <li><a href="https://github.com/zerotrustdata/ztd/releases" rel="noopener">Releases</a></li>
-          <li><a href="https://github.com/zerotrustdata/ztd/blob/main/docs/release_notes/v1.0.x/v1.0.0.md" rel="noopener">Release notes</a></li>
+          <li><a href="/releases/">Releases</a></li>
+          <li><a href="/releases/latest/">Release notes</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd/blob/main/.github/SECURITY.md" rel="noopener">Security policy</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd/blob/main/LICENSE" rel="noopener">License (BSL 1.1)</a></li>
         </ul>
