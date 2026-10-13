@@ -82,7 +82,18 @@ func TestBuildFormationRunEvidence_RoundTripsAndValidatesDigest(t *testing.T) {
 	assignmentResult, err := ImportAssignmentResultFromFormationRun(req, formationResult, time.Unix(1_700_000_001, 0).UTC(), func(prefix string) string { return prefix + "-1" })
 	require.NoError(t, err)
 	assignmentResult.ModelInferences[0].PromptTokens++
-	assert.Error(t, VerifyFormationRunEvidenceMatchesResult(req.Assignment, loaded, assignmentResult))
+	assert.Error(t, VerifyFormationRunEvidenceMatchesResult(req.Assignment, req.GradingMethod, loaded, assignmentResult))
+
+	// A completed formation under a semantic-judge scenario is GRADER_FAILED, and
+	// verification derives the same lifecycle from the evidence only when it is
+	// given the scenario's grading method.
+	judgeReq := req
+	judgeReq.GradingMethod = gradingSemanticJudge
+	judged, err := ImportAssignmentResultFromFormationRun(judgeReq, formationResult, time.Unix(1_700_000_001, 0).UTC(), func(prefix string) string { return prefix + "-1" })
+	require.NoError(t, err)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED, judged.GetLifecycleStatus())
+	require.NoError(t, VerifyFormationRunEvidenceMatchesResult(req.Assignment, gradingSemanticJudge, loaded, judged))
+	assert.Error(t, VerifyFormationRunEvidenceMatchesResult(req.Assignment, gradingDeterministic, loaded, judged))
 }
 
 func TestCampaignFormationExecutor_PersistsFormationRunEvidence(t *testing.T) {

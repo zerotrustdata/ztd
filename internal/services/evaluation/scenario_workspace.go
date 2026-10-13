@@ -23,26 +23,44 @@ import (
 const scenarioWorkspaceDigestHexLength = 16
 
 // ScenarioWorkspace is the attempt-scoped fixture workspace on the bound Data
-// Operator. Paths are POSIX paths on the remote operator host. The root sits
-// under the operator's reported working directory, so the production `./`
-// instruction and the prompt's "Working Directory" line resolve to its parent,
-// and it is unique per run and attempt, so concurrent or repeated attempts
-// never see each other's fixtures.
+// Operator. Paths are paths on the remote operator host, whose OS need not be
+// the CLI's: a POSIX working directory keeps POSIX paths, and a drive-letter
+// working directory makes every path a slash-form Windows path ("D:/x/y"),
+// which Windows file APIs accept. The root sits under the operator's reported
+// working directory, so the production `./` instruction and the prompt's
+// "Working Directory" line resolve to its parent, and it is unique per run and
+// attempt, so concurrent or repeated attempts never see each other's fixtures.
 type ScenarioWorkspace struct {
 	Root                     string
 	OperatorWorkingDirectory string
 }
 
+// ValidateOperatorWorkingDirectory reports whether a Data Operator's working
+// directory can host scenario workspaces. Run execution checks it before any
+// assignment is marked running, so a bad binding never strands an assignment.
+func ValidateOperatorWorkingDirectory(operatorWorkingDirectory string) error {
+	_, err := cleanOperatorWorkingDirectory(operatorWorkingDirectory)
+	return err
+}
+
+func cleanOperatorWorkingDirectory(operatorWorkingDirectory string) (string, error) {
+	workingDirectory, ok := cleanOperatorAbsPath(operatorWorkingDirectory)
+	if !ok || strings.Contains(operatorWorkingDirectory, "\x00") {
+		return "", fmt.Errorf("%w: operator working directory %q is not an absolute path", constants.ErrEvaluationWorkspaceUnavailable, operatorWorkingDirectory)
+	}
+	return workingDirectory, nil
+}
+
 // NewScenarioWorkspace derives the attempt-scoped workspace for one attempt.
 func NewScenarioWorkspace(operatorWorkingDirectory, runID, attemptID string) (ScenarioWorkspace, error) {
-	if !path.IsAbs(operatorWorkingDirectory) || strings.Contains(operatorWorkingDirectory, "\x00") {
-		return ScenarioWorkspace{}, fmt.Errorf("%w: operator working directory %q is not an absolute path", constants.ErrEvaluationWorkspaceUnavailable, operatorWorkingDirectory)
+	workingDirectory, err := cleanOperatorWorkingDirectory(operatorWorkingDirectory)
+	if err != nil {
+		return ScenarioWorkspace{}, err
 	}
 	if runID == "" || attemptID == "" {
 		return ScenarioWorkspace{}, fmt.Errorf("evaluation: scenario workspace: %w", constants.ErrMissingRequiredField)
 	}
 	sum := sha256.Sum256([]byte(runID + "\x00" + attemptID))
-	workingDirectory := path.Clean(operatorWorkingDirectory)
 	return ScenarioWorkspace{
 		Root:                     path.Join(workingDirectory, constants.EvaluationWorkspaceDirname, constants.EvaluationWorkspacePrefix+hex.EncodeToString(sum[:])[:scenarioWorkspaceDigestHexLength]),
 		OperatorWorkingDirectory: workingDirectory,
@@ -64,12 +82,52 @@ func (w ScenarioWorkspace) FilePath(relPath string) (string, error) {
 
 // Resolve turns a path argument a model supplied into a cleaned absolute
 // path: absolute paths are cleaned, relative ones resolve against the
-// operator working directory the way the operator itself resolves them.
+// operator working directory the way the operator itself resolves them. On a
+// Windows operator, backslashes are separators and a rooted path without a
+// drive ("\x") sits on the working directory's drive.
 func (w ScenarioWorkspace) Resolve(value string) string {
-	if path.IsAbs(value) {
-		return path.Clean(value)
+	volume, workingRest, windows := splitWindowsVolume(w.OperatorWorkingDirectory)
+	if !windows {
+		if path.IsAbs(value) {
+			return path.Clean(value)
+		}
+		return path.Clean(path.Join(w.OperatorWorkingDirectory, value))
 	}
-	return path.Clean(path.Join(w.OperatorWorkingDirectory, value))
+	if cleaned, ok := cleanOperatorAbsPath(value); ok {
+		return cleaned
+	}
+	value = strings.ReplaceAll(value, `\`, "/")
+	if strings.HasPrefix(value, "/") {
+		return volume + path.Clean(value)
+	}
+	return volume + path.Clean(path.Join(workingRest, value))
+}
+
+// cleanOperatorAbsPath cleans an absolute operator-host path and reports
+// whether it is one. POSIX paths clean as POSIX paths. A drive-letter path
+// ("D:\x", "d:/x") becomes slash form with an upper-case drive, and only the
+// part after the drive is cleaned, so ".." never climbs past the drive root.
+func cleanOperatorAbsPath(value string) (string, bool) {
+	if volume, rest, ok := splitWindowsVolume(value); ok {
+		return volume + path.Clean(rest), true
+	}
+	if path.IsAbs(value) {
+		return path.Clean(value), true
+	}
+	return "", false
+}
+
+// splitWindowsVolume splits a drive-letter absolute path into its upper-case
+// volume ("D:") and its rooted, slash-form remainder ("/x/y").
+func splitWindowsVolume(value string) (volume, rest string, ok bool) {
+	if len(value) < 3 || value[1] != ':' || (value[2] != '\\' && value[2] != '/') {
+		return "", "", false
+	}
+	drive := value[0]
+	if (drive < 'a' || drive > 'z') && (drive < 'A' || drive > 'Z') {
+		return "", "", false
+	}
+	return strings.ToUpper(value[:1]) + ":", strings.ReplaceAll(value[2:], `\`, "/"), true
 }
 
 // Contains reports whether value resolves to the root or a path under it.

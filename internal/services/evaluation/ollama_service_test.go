@@ -37,13 +37,13 @@ func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ con
 func TestReleaseOllamaModels_TargetsExactInferenceSession(t *testing.T) {
 	t.Parallel()
 	dispatcher := &recordingOllamaModelCommandDispatcher{}
-	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "registry.example/team/gemma3:4b"}, map[string]string{"OLLAMA_HOST": "http://provider.example:11434"}, func(prefix string) string { return prefix + "-id" })
+	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "registry.example/team/gemma3:4b"}, map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://provider.example:11434"}, func(prefix string) string { return prefix + "-id" })
 	require.NoError(t, err)
 	require.Len(t, dispatcher.requests, 2)
 	assert.Equal(t, "inference-session", dispatcher.requests[0].TargetOperatorSessionID)
 	assert.Equal(t, "ztd operator model release qwen3:0.6b", dispatcher.requests[0].Command)
 	assert.Equal(t, "ztd operator model release registry.example/team/gemma3:4b", dispatcher.requests[1].Command)
-	assert.Equal(t, "http://provider.example:11434", dispatcher.requests[0].Environment["OLLAMA_HOST"])
+	assert.Equal(t, "http://provider.example:11434", dispatcher.requests[0].Environment["ZTD_OLLAMA_ENDPOINT"])
 }
 
 func TestMarshalOllamaModelCommandPayload_CarriesExecutionFields(t *testing.T) {
@@ -51,7 +51,7 @@ func TestMarshalOllamaModelCommandPayload_CarriesExecutionFields(t *testing.T) {
 	payload, err := MarshalOllamaModelCommandPayload(OllamaModelCommandDispatchRequest{
 		Command:          "ollama stop qwen3:0.6b",
 		ExecutionID:      "exec-1",
-		Environment:      map[string]string{"OLLAMA_HOST": "http://provider.example:11434"},
+		Environment:      map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://provider.example:11434"},
 		WorkingDirectory: "/root",
 		TimeoutSeconds:   30,
 	})
@@ -60,7 +60,7 @@ func TestMarshalOllamaModelCommandPayload_CarriesExecutionFields(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(payload, &command))
 	assert.Equal(t, "ollama stop qwen3:0.6b", command.GetCommand())
 	assert.Equal(t, "exec-1", command.GetExecutionId())
-	assert.Equal(t, map[string]string{"OLLAMA_HOST": "http://provider.example:11434"}, command.GetEnvironment())
+	assert.Equal(t, map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://provider.example:11434"}, command.GetEnvironment())
 	assert.Equal(t, "/root", command.GetWorkingDirectory())
 	assert.Equal(t, int32(30), command.GetTimeoutSeconds())
 }

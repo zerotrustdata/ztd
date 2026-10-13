@@ -4,7 +4,7 @@ title: Model Provenance Architecture
 audience: engineering, campaign operators, and coding agents
 status: current
 version: v1.0.0
-last_updated: 2026-10-12
+last_updated: 2026-10-13
 owners:
   - internal/services/inference/model_provenance/
   - protocol/proto/ztd/eval/v1/eval.proto
@@ -62,6 +62,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-PROV-ATTEST-02 | On FINALIZE, `OllamaStorageAttestor` reads the manifest via `ollama.ParseName`, computes its SHA-256 digest, and hashes every referenced blob under `blobs/sha256-<digest>`. |
 | INV-PROV-ATTEST-03 | Digest mismatch, missing blob, invalid digest reference, content hash mismatch, or size mismatch fails attestation and prevents publishing a completion window. |
 | INV-PROV-ATTEST-04 | The attestation window records `MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED`. Sigstore, Cosign, and SPIFFE/SPIRE attestation tokens are not implemented. |
+| INV-PROV-ATTEST-05 | A multi-runner tag (Ollama 0.40+) stores a wrapper manifest whose layers include one `application/vnd.docker.distribution.manifest.v2+json` manifest per runner, and the provider reports the served runner manifest's digest. When the expected digest is not the wrapper's own, the attestor attests the referenced runner manifest blob whose digest equals it: the blob's hash is verified and only its config and layers are attested. A digest the wrapper does not reference is a mismatch. |
 
 ### Evidence persistence and verification (`INV-PROV-PERSIST`)
 
@@ -115,6 +116,7 @@ Campaign Coordinator (Gateway)
                           ▼
 4. OllamaStorageAttestor reads manifest via ollama.ParseName
    ├── Computes SHA-256 of manifest file -> compares with expected_digest
+   ├── Multi-runner tag: attests the referenced runner manifest named by expected_digest
    ├── Parses config and layer blobs (blobs/sha256-<digest>)
    └── Opens and streams each blob through SHA-256 hasher -> checks byte size
                           │

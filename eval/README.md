@@ -85,7 +85,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval models pull` | Dispatch governed pull/copy maintenance to the exact Inference Operator session |
 | `ztd eval campaigns create` | Create a frozen campaign definition from model selector or formations |
 | `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags |
-| `ztd eval runs export` | Export one run to a directory you choose (`--output-dir`) |
+| `ztd eval runs export` | Export one run's disclosure-safe bundle under the runtime root (`--output-dir`, runtime-relative) |
 | `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json` |
 | `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models |
 | `ztd eval rollout list` | Inspect queue entries |
@@ -131,15 +131,15 @@ Runs marked `verified` in the queue but missing under `.ztd/data/eval/runs/<veri
 ./ztd eval runs start eval-init-qwen3-0-6b --publish --daemon --require-witness
 ```
 
-### Archive evidence to a directory you choose
+### Export and back up evidence
 
-Canonical evidence stays under `.ztd/data/eval/runs/` during execution. Export a portable bundle any time:
+Canonical evidence stays under `.ztd/data/eval/runs/` during execution, encrypted with the runtime vault. Export a disclosure-safe bundle (JSONL, CSV, SQLite) any time. `--output-dir` is relative to the runtime root, so this writes `.ztd/exports/granite-reference/`:
 
 ```bash
-./ztd eval runs export eval-init-granite3-3-2b-1789754079 --output-dir ./my-eval-archive/granite-reference
+./ztd eval runs export eval-init-granite3-3-2b-1789754079 --output-dir exports/granite-reference
 ```
 
-Back up `.ztd/data/eval/runs/` and `.ztd/eval/` together before a full platform wipe if you want to resume without re-executing inference.
+To keep the evidence itself across a full platform wipe, back it up to a directory outside the runtime tree with `./ztd eval backup` and restore it with `./ztd eval restore`. The backup holds the evidence in its encrypted form, so only a runtime with the same vault key can read a restored snapshot.
 
 ## License
 

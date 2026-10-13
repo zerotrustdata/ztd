@@ -78,6 +78,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GW-GOV-01 | Every transaction submitted via `POST /api/v1/governance/envelopes` or admitted via MCP/A2A MUST traverse the five-layer governance pipeline. The Gateway PDP coordinates L1–L3; the executing Operator PEP (embedded or remote) enforces L4–L5. |
 | INV-GW-GOV-02 | The Gateway MUST NOT synthesize missing L2 consensus votes or L3 notary proofs for direct envelope submissions or governed HTTP command dispatch. Transactions lacking required proofs MUST fail closed at L4. |
+| INV-GW-GOV-03 | Governed HTTP command dispatch (`POST /api/v1/operators/commands`) reports an admitted action whose handler ran and failed the same way for the embedded and an outbound Operator: HTTP 200 with the handler's typed failure result (`DispatchService`, `embeddedHandlerFailed`). An L4 rejection is 403, and any embedded failure before or around the handler (no final receipt, no failed L5 execution stage) fails the dispatch. |
 
 ### MCP Native Tool Registry (`INV-GW-MCP`)
 
