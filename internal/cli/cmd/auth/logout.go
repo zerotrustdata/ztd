@@ -84,8 +84,11 @@ deleted from this machine. The shared OS root CA (runtime trust bundle) is NOT
 removed: system trust is shared and may be used by another runtime or gateway.
 
 Because the certificates are revoked, other machines that were logged in must
-clear their stale local credentials ('ztd logout --local-only') before they can
-'ztd login' again. Logging back in on a bootstrapped gateway uses the recovery
+clear their stale local credentials first. On each of them, run this command:
+ztd logout --local-only
+Then log in again with:
+ztd login
+Logging back in on a bootstrapped gateway uses the recovery
 flow, approved with an existing passkey in the Console.
 
   web   End only the web sessions (and unbind operators bound to them). The CLI

@@ -45,17 +45,20 @@ func loginCmdWithConfig(
 	cmd.Long = `Log in to the running Gateway. Bare 'login' and 'login cli' sign in without a
 browser: passkey registration and OS trust installation are skipped. The resulting
 identity is mTLS-only and cannot authenticate to the Console. On a bootstrapped
-Gateway, recovery is approved from an already-enrolled CLI with
-'ztd auth approve-recovery <token>'.
+Gateway, recovery is approved from an already-enrolled CLI with:
+ztd auth approve-recovery <token>
 
-  cli (headless)   Headless CLI-only login (the default). Same as bare 'login'.
+  cli (headless)   Headless CLI-only login (the default). Same as bare login.
   web              Browser login: enroll a CLI session, install the gateway root CA
                    into the OS trust store, and register or confirm a passkey.
                    The resulting identity can use both the CLI and the Console.
 
 The coordinator inspects the local CLI identity and chooses bootstrap, recovery,
-rotation, or reuse exactly as 'auth enroll user' does. The Gateway must already be
-running (use './ztd gw start' first). To sign out, run 'ztd logout'.`
+rotation, or reuse exactly as auth enroll user does. The Gateway must already be
+running. Start it with:
+./ztd gw start
+To sign out, run this command:
+ztd logout`
 	cmd.AddCommand(
 		newWebLoginCmd("web", deps),
 		newCLILoginCmd("cli", deps),
@@ -97,7 +100,7 @@ func newCLILoginCmd(use string, deps userEnrollmentDeps) *cobra.Command {
 		Short: "Log in headless, without a browser (CLI-only identity)",
 		Long: `Log in without a browser. Enrolls a CLI-only identity: passkey registration and OS
 trust installation are skipped, and recovery approval is delegated to an
-already-enrolled CLI via 'ztd auth approve-recovery <token>'. The resulting
+already-enrolled CLI via ztd auth approve-recovery <token>. The resulting
 identity is mTLS-only and cannot authenticate to the Console.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

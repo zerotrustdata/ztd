@@ -101,7 +101,7 @@ func reuseRunningGateway(cmd *cobra.Command, fileSvc fs.RuntimeFileService, requ
 		}
 		if explicit := explicitStartupFlags(cmd.Flags()); len(explicit) > 0 {
 			cmd.Printf("ztd Gateway is already running (PID: %d) without a launch profile, so %v cannot be verified.\n", pid, explicit)
-			cmd.Printf("Stop it with '%s gw stop', then rerun this command.\n", bin)
+			cmd.Printf("Stop the Gateway, then rerun this command:\n%s gw stop\n", bin)
 			return fmt.Errorf("%w: PID %d: %w", constants.ErrGatewayAlreadyRunning, pid, constants.ErrLaunchProfileMissing)
 		}
 		cmd.Printf("ztd Gateway is already running (PID: %d)\n", pid)
@@ -116,7 +116,7 @@ func reuseRunningGateway(cmd *cobra.Command, fileSvc fs.RuntimeFileService, requ
 	cmd.Printf("ztd Gateway is already running (PID: %d) with a different startup configuration.\n", pid)
 	cmd.Println()
 	renderConfigDelta(cmd, deltas)
-	cmd.Printf("These settings are fixed while the Gateway runs. Stop it with '%s gw stop'\n", bin)
+	cmd.Printf("These settings are fixed while the Gateway runs. Stop the Gateway with:\n%s gw stop\n", bin)
 	cmd.Println("(or 'make down'), then rerun this command. Runtime state in .ztd/ is kept.")
 	return fmt.Errorf("%w: PID %d: requested startup configuration differs", constants.ErrGatewayAlreadyRunning, pid)
 }

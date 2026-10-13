@@ -40,8 +40,11 @@ func printListenHostNotice(cmd *cobra.Command, listenHost string) {
 	}
 	bin := getBinaryName()
 	cmd.Printf("[ztd] Listening on loopback only (%s). Remote Operators, workstations, and LAN\n", listenHost)
-	cmd.Println("      clients cannot reach this Gateway. To listen on all interfaces, run")
-	cmd.Printf("      '%s gw stop', then '%s gw start --listen-host 0.0.0.0'.\n", bin, bin)
+	cmd.Println("      clients cannot reach this Gateway. To listen on all interfaces, run these")
+	cmd.Println("      two commands in order:")
+	cmd.Println()
+	cmd.Printf("%s gw stop\n", bin)
+	cmd.Printf("%s gw start --listen-host 0.0.0.0\n", bin)
 	cmd.Println()
 }
 
@@ -90,15 +93,15 @@ func printNextSteps(cmd *cobra.Command, posture governance.GovernancePosture, li
 		nextStep{bin + " auth enroll pending", "Approve pending Operator enrollments"},
 		nextStep{bin + " gw status", "Gateway, Operators, and enrollments"})
 
-	width := 0
-	for _, step := range steps {
-		width = max(width, len(step.command))
-	}
 	cmd.Printf("Console  %s/console/\n", consoleOrigin)
 	cmd.Println()
 	cmd.Println("Next steps:")
-	for _, step := range steps {
-		cmd.Printf("  %-*s  %s\n", width, step.command, step.purpose)
+	for i, step := range steps {
+		if i > 0 {
+			cmd.Println()
+		}
+		cmd.Println("  " + step.purpose + ":")
+		cmd.Println(step.command)
 	}
 	cmd.Println()
 }

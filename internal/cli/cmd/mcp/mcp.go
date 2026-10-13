@@ -129,7 +129,7 @@ mTLS with a bound CLI session. Every tool call passes through the L1-L5 governan
 pipeline. HTTP is never used for proxy traffic — it is reserved for CA bundle
 discovery and health checks only.
 
-This command is launched automatically by 'ztd mcp agent run'. When invoked
+This command is launched automatically by ztd mcp agent run. When invoked
 directly (e.g. from an IDE MCP config), credentials resolve in order:
   1. --app <name>: the owner-approved application identity enrolled under that name
   2. --client-cert/--client-key flags
@@ -140,8 +140,12 @@ the gateway URL defaults to the local gateway (override with --gateway-url).
 
 This command is a credential CONSUMER, not an enrollment UI. It does NOT enroll,
 open a browser, install OS trust, or run a passkey ceremony. If credentials are
-absent, run 'ztd auth enroll user', 'ztd auth enroll app <name>', or
-'ztd mcp agent run' first to obtain them.
+absent, enroll or launch first with one of these commands:
+ztd auth enroll user
+ztd auth enroll app <name>
+ztd mcp agent run
+
+to obtain them.
 
 Cert and key must be supplied as a pair per tier; supplying only one half fails closed.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -622,7 +626,8 @@ func agentCmd() *cobra.Command {
 		Long: `Configure and integrate ztd with popular AI agent binaries (Claude, Codex,
 Cursor, Devin, etc.) for seamless MCP tool access.
 
-For tools the launcher does not support, use 'ztd mcp agent show <agent>'
+For tools the launcher does not support, run this command:
+ztd mcp agent show <agent>
 to display the Stdio Transport MCP client configuration, then copy the
 generated JSON to your agent's MCP settings file.`,
 	}
@@ -685,7 +690,8 @@ func agentListCmd() *cobra.Command {
 				cmd.Printf("  %-13s - %s\n", integration.ID, integration.DisplayName)
 			}
 			cmd.Println()
-			cmd.Println("Use 'ztd mcp agent show <agent>' to show configuration for a specific agent.")
+			cmd.Println("Show the configuration for a specific agent with:")
+			cmd.Println("ztd mcp agent show <agent>")
 		},
 	}
 }
@@ -781,7 +787,10 @@ GATEWAY POSTURE:
   If the launcher has to start the gateway, it uses --posture, else the posture of
   the previous managed gateway (its launch profile), else doctrine. Posture is
   immutable on a running gateway; an explicit --posture that does not match it is
-  an error. Use 'ztd gw restart' (or 'ztd gw start --posture <p>') to change it.
+  an error. Change it with:
+ztd gw restart
+or with:
+ztd gw start --posture <p>
 
 AUDIT TRAIL:
   When launching an agent, the agent is automatically enrolled as an external app
@@ -797,7 +806,8 @@ APPLICATION ENROLLMENT MODEL:
   Each agent is an application enrolled through the owner-approved platform
   enrollment protocol. The first launch submits an
   enrollment request and waits; approve it in the Console or with
-  'ztd auth enroll approve <request-id> --yes'. The launcher never approves its own
+ztd auth enroll approve <request-id> --yes
+The launcher never approves its own
   request. The approved mTLS certificate (7-day validity, revocable by request ID)
   carries both identities:
   - App SPIFFE ID: spiffe://ztd.local/app/<agent-name> (the agent's policy identity)
@@ -816,7 +826,8 @@ L3 APPROVAL FLOW:
   4. Return the result to the tool
 
 For full L1-L5 governance (L2 consensus, L3 human approval via WebAuthn), start
-the gateway and use 'ztd mcp stdio'.`,
+the gateway, then run this command:
+ztd mcp stdio`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -879,7 +890,7 @@ func confirmRunningGatewayPosture(fileSvc fs.RuntimeFileService, requested strin
 		return fmt.Errorf("%w: cannot confirm the running gateway's posture is %q: %w", constants.ErrGatewayPostureMismatch, requested, err)
 	}
 	if string(profile.Config.Posture) != requested {
-		return fmt.Errorf("%w: running gateway posture is %q, requested %q; restart it with 'ztd gw restart' or omit --posture",
+		return fmt.Errorf("%w: running gateway posture is %q, requested %q; restart it with:\nztd gw restart\nor omit --posture",
 			constants.ErrGatewayPostureMismatch, profile.Config.Posture, requested)
 	}
 	return nil
@@ -1097,7 +1108,7 @@ func launchAgentProcess(integration agent.Integration, extraArgs, launchArgs []s
 
 func runMCPAgentRun(args []string, verify bool, posture string, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), enrollerFactory authcmd.EnrollerFactory) error {
 	if len(args) == 0 {
-		return fmt.Errorf("%w: specify an agent name to launch with ztd governance\n\nUsage:\n  ztd mcp agent run <agent> [-- <args...>]\n\nUse 'ztd mcp agent list' to see supported agents", constants.ErrAgentNotFound)
+		return fmt.Errorf("%w: specify an agent name to launch with ztd governance\n\nUsage:\n  ztd mcp agent run <agent> [-- <args...>]\n\nList supported agents with:\nztd mcp agent list", constants.ErrAgentNotFound)
 	}
 
 	integration, err := agent.Lookup(args[0])

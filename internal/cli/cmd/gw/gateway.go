@@ -379,7 +379,8 @@ Any flags provided on the command line are used as initial values in the wizard.
 				cmd.Printf("  Passkey RP Origins: %s\n", strings.Join(resolved.PasskeyRpOrigins, ", "))
 			}
 			cmd.Println()
-			cmd.Println("Run 'ztd gw start' to launch the gateway with these settings.")
+			cmd.Println("Launch the gateway with these settings:")
+			cmd.Println(getBinaryName() + " gw start")
 
 			return nil
 		},
@@ -1029,7 +1030,7 @@ still runs unless --skip-backup is also given).`,
 					"Stop all running ztd services",
 					"Rename the runtime directory (.ztd) aside to .ztd-<MMDDHHMM>; nothing is deleted, but the gateway starts over with no databases, secrets, logs, or TLS/PKI",
 					"Remove ztd root CA anchors from the OS trust store",
-					"CLI credentials become invalid; run './ztd auth enroll user' again after restarting the gateway",
+					"CLI credentials become invalid; after restarting the gateway, run ./ztd auth enroll user",
 				},
 				AssumeYes:  force,
 				SkipBackup: skipBackup,

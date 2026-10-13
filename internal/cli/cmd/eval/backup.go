@@ -80,8 +80,9 @@ SHA-256 manifest; file content is stored once per digest in the shared objects/
 directory, so only files not already backed up are copied.
 
 The destination must be outside .ztd/ so it survives deleting the runtime tree. Run and lease state is not copied. Runs made by
-'ztd eval runs start' and 'resume' back up to the default directory
-automatically when they finish. Use 'ztd eval restore' to put a snapshot back.`,
+ztd eval runs start or resume back up to the default directory
+automatically when they finish. Put a snapshot back with:
+ztd eval restore`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
@@ -117,7 +118,7 @@ func restoreEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restore [snapshot-dir]",
 		Short: "Restore evaluation evidence from backup snapshot(s)",
-		Long: `Verify every file in snapshot(s) created by 'ztd eval backup' against their
+		Long: `Verify every file in snapshot(s) created by ztd eval backup against their
 manifests, then write them back into .ztd/. Files already present with identical
 content are skipped. If any existing file differs, nothing is written unless
 --overwrite is passed.
@@ -128,7 +129,8 @@ newest snapshot that holds it, so evidence a later snapshot no longer lists is
 still recovered. Pass a specific <snapshot-dir> to restore only that snapshot.
 
 Restoring puts host evidence back; it does not rebuild the Gateway mirror. After
-re-enrolling a fresh stack, run 'ztd public restore --queue'.`,
+re-enrolling a fresh stack, run this command:
+ztd public restore --queue`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)

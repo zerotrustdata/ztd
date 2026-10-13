@@ -140,7 +140,7 @@ Examples:
 			if len(result.Failed) > 0 {
 				return fmt.Errorf("evaluation: models pull: %d model(s) failed", len(result.Failed))
 			}
-			_, err = fmt.Fprintln(out, "\nNext: `ztd eval models freeze` to bind the registry to the pulled digests.")
+			_, err = fmt.Fprintln(out, "\nNext, bind the registry to the pulled digests with:\nztd eval models freeze")
 			return err
 		},
 	}

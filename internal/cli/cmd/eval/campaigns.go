@@ -512,7 +512,7 @@ Examples:
 				return fmt.Errorf("evaluation: campaigns create: %w", err)
 			}
 			if len(registry) == 0 {
-				return fmt.Errorf("evaluation: campaigns create: the model registry is empty (run `ztd eval models freeze` or `ztd eval models import`): %w", constants.ErrEvaluationSelectionEmpty)
+				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
 			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, SuiteID: suite, Platform: platformIdentity(cmd)}
 			if formationCampaign {
@@ -555,7 +555,7 @@ Examples:
 			if stacks > 0 {
 				_, _ = fmt.Fprintf(out, "Stacks: %d (set digest %s)\n", stacks, stackDigest)
 			}
-			_, err = fmt.Fprintf(out, "\nNext: ztd eval runs start %s\n", campaignID)
+			_, err = fmt.Fprintf(out, "\nNext, start the run with:\nztd eval runs start %s\n", campaignID)
 			return err
 		},
 	}

@@ -94,7 +94,7 @@ func resolveClientOperatorContext(client APIClient, context *auth.ClientAuthCont
 		return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 	}
 	if info.OperatorSessionID == "" || info.OperatorID == "" {
-		return fmt.Errorf("%w: CLI session has no operator binding; run './ztd auth refresh' or re-enroll with './ztd auth enroll user'", constants.ErrNotAuthenticated)
+		return fmt.Errorf("%w: CLI session has no operator binding\nRefresh the session with:\n./ztd auth refresh\nor re-enroll with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 	context.OperatorID = info.OperatorID
 	context.OperatorSessionID = info.OperatorSessionID
@@ -110,7 +110,7 @@ func persistClientOperatorContext(fileSvc fs.RuntimeFileService, cfg *config.Con
 		return fmt.Errorf("auth context: %w", err)
 	}
 	if creds == nil {
-		return fmt.Errorf("%w: local CLI credentials are absent; run './ztd auth enroll user'", constants.ErrNotAuthenticated)
+		return fmt.Errorf("%w: local CLI credentials are absent\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 	creds.OperatorID = context.OperatorID
 	creds.OperatorSessionID = context.OperatorSessionID

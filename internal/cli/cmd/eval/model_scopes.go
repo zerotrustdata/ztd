@@ -77,7 +77,7 @@ func (m modelInventories) load(ctx context.Context, scope modelScope) (*evaluati
 			return nil, fmt.Errorf("evaluation: check model registry: %w", err)
 		}
 		if !exists {
-			return nil, fmt.Errorf("evaluation: model registry is not frozen (run `ztd eval models freeze` or `ztd eval models import`): %w", constants.ErrNotFound)
+			return nil, fmt.Errorf("evaluation: model registry is not frozen\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrNotFound)
 		}
 		return evaluation.LoadModelInventoryFreezeFromRuntime(ctx, m.fileSvc, evaluation.DefaultModelInventoryRelPath)
 	default:

@@ -86,7 +86,8 @@ The gateway must already be running.`,
 				return fmt.Errorf("%w: %w", constants.ErrFailedToLoadCredentials, err)
 			}
 			if creds == nil {
-				cmd.Println("No local CLI identity found. Use 'auth enroll user' to enroll first.")
+				cmd.Println("No local CLI identity found. Enroll first with:")
+				cmd.Println("ztd auth enroll user")
 				return nil
 			}
 			cmd.Printf("Refreshing CLI session for user %s (old session %s).\n", creds.UserID, creds.CLISessionID)

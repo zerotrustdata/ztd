@@ -308,7 +308,7 @@ func (c *OperatorBootstrapClient) observeCreated(ctx context.Context, attempt *o
 		"cli_fingerprint", attempt.fingerprints.CLI,
 		"approval_url", created.ApprovalURL,
 		"expires_at", created.ExpiresAt)
-	fmt.Fprintf(os.Stderr, "Approve on the Gateway host with: %s auth enroll approve %s\n", constants.LocalBinaryName, created.RequestID)
+	fmt.Fprintf(os.Stderr, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, created.RequestID)
 	return c.cfg.Deployment.Record(ctx, models.OperatorDeploymentState{Phase: models.OperatorDeploymentPhasePendingApproval, RequestID: created.RequestID})
 }
 

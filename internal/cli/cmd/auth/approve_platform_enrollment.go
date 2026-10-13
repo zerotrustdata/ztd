@@ -83,7 +83,7 @@ func denyPlatformEnrollmentCmd() *cobra.Command {
 			long: `Deny one or more pending platform workload enrollment requests (dashboard,
 application, or operator) from the authenticated CLI identity (mTLS).
 
-Selectors work as in 'ztd auth enroll approve': space-separated request IDs,
+Selectors work as in ztd auth enroll approve: space-separated request IDs,
 instance IDs, or hostnames, or --all for every pending request. Every selector
 must match a pending request or nothing is denied.
 

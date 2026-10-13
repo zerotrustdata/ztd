@@ -109,7 +109,7 @@ For a same-host deployment, give the Operator its own working directory so it do
 The Operator executes:
 1. Generates Operator and CLI ECDSA P-256 keys, certificate signing requests (CSRs), and a request token in memory.
 2. Opens a websocket to `ws://<gateway-host>:8080/ws/operator/bootstrap` and sends the enrollment request.
-3. Prints the request ID and approval command (`Approve on the Gateway host with: ./ztd auth enroll approve <request-id>`), signs the completion transcript with both private keys as proof of possession, enters `pending_approval`, and holds the socket open.
+3. Prints the request ID and approval command (`Approve on the Gateway host with:` followed by `./ztd auth enroll approve <request-id>` on its own line), signs the completion transcript with both private keys as proof of possession, enters `pending_approval`, and holds the socket open.
 
 ### 4. Inspect and Approve the Request
 

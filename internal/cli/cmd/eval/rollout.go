@@ -116,7 +116,7 @@ Examples:
 				return fmt.Errorf("evaluation: rollout add: %w", err)
 			}
 			if len(registry) == 0 {
-				return fmt.Errorf("evaluation: rollout add: the model registry is empty (run `ztd eval models freeze` or `ztd eval models import`): %w", constants.ErrEvaluationSelectionEmpty)
+				return fmt.Errorf("evaluation: rollout add: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
 			selected, err := selector.withArgs(args).Resolve(registry)
 			if err != nil {
@@ -316,7 +316,7 @@ func rolloutNextCmd(deps nativeEvalDeps) *cobra.Command {
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), entry)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Next pending model\nTag: %s\nVariant: %s\nCampaign: %s\nRegistry digest: %s\nCells: %d\n\nQualify it with:\n  ztd eval rollout run --until 1\n",
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Next pending model\nTag: %s\nVariant: %s\nCampaign: %s\nRegistry digest: %s\nCells: %d\n\nQualify it with:\nztd eval rollout run --until 1\n",
 				entry.ServedModelTag, entry.VariantID, entry.CampaignID, entry.ModelRegistryDigest, entry.HomogeneousCellCount)
 			return err
 		},

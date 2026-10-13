@@ -49,7 +49,8 @@ func NewRootCmd(cliVersion string, vi serve.VersionInfo) *cobra.Command {
 		Long: `ztd is a zero-trust execution platform for agentic infrastructure.
 The CLI manages the ztd Gateway (ztdg), ztd Operator (ztdo), and platform setup.
 
-Run 'ztd tui' to launch the Tactical Governance Console (TUI).`,
+Launch the Tactical Governance Console (TUI) with:
+ztd tui`,
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},

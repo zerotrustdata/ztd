@@ -66,7 +66,7 @@ func operatorRunCmdWithConfig(
 		Short: "Execute a shell command on one or more remote operators",
 		Long: `Execute a governed shell command on remote operator sessions through the gateway.
 
-Provide one or more operator session IDs (from './ztd operator list') and the
+Provide one or more operator session IDs (from ./ztd operator list) and the
 command to run with --cmd, or pass --all-active to target every active
 operator session owned by the authenticated user. Commands are dispatched in
 parallel using the native EXECUTE_BASH gateway path, with at most --concurrency
@@ -75,7 +75,9 @@ requests in flight (default: the number of targets, capped at 64).
 With --json the output also carries a summary of dispatch latency
 (p50/p95/p99/max over successful dispatches) and the wall time of the run.
 
-Requires './ztd auth enroll user'. Each target session must belong to the
+Requires an enrolled CLI. Enroll with:
+./ztd auth enroll user
+Each target session must belong to the
 authenticated user and be active.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -113,7 +115,7 @@ authenticated user and be active.`,
 
 			creds, err := auth.LoadCredentials(fileSvc, cfg)
 			if err != nil || creds == nil {
-				return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+				return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 			}
 
 			poolSize := concurrency
@@ -270,7 +272,7 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 					}
 				}
 				if len(matched) > 1 {
-					return fmt.Errorf("operator stop: ambiguous local workers for session %s; use bare 'ztd operator stop' to stop all local workers", sessionID)
+					return fmt.Errorf("operator stop: ambiguous local workers for session %s\nStop all local workers with:\nztd operator stop", sessionID)
 				}
 				response, err := requestOperatorStop(client, sessionID, reason)
 				if len(matched) == 0 {

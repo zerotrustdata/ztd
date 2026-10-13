@@ -56,7 +56,7 @@ func (m Model) renderApprovalsView(width, height int) string {
 		)
 		detail = append(detail, wrapText(tx.TransactionHash, innerWidth(rightWidth))...)
 		detail = append(detail, "",
-			detailStyle.Render("a / enter: approve in the browser (WebAuthn), as 'ztd auth approve'"))
+			detailStyle.Render("a / enter: approve in the browser (WebAuthn), as ztd auth approve"))
 	} else {
 		detail = append(detail, detailStyle.Render("(nothing selected)"))
 	}

@@ -692,7 +692,7 @@ func Run(cfg Config) error {
 	fmt.Printf("%-23s | %5d | %-16s | %6d | %s (%.0f%% success)\n", "TOTAL", cfg.Count, "", int(total), matchTotal, successRate)
 
 	fmt.Printf("\nNote: Results are probabilistic (~60/20/10/10 distribution) and will vary by run.\n")
-	fmt.Printf("Use './ztd test summary' to see aggregate results across all test runs.\n")
+	fmt.Printf("See aggregate results across all test runs with:\n./ztd test summary\n")
 	fmt.Printf("\n")
 	fmt.Printf("Test vault: %s\n", dataDir)
 	fmt.Printf("Audit DB  : %s\n", filepath.Join(dataDir, constants.DbFilename))

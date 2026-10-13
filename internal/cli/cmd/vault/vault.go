@@ -118,7 +118,7 @@ func vaultUnlockCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFac
 				return fmt.Errorf("vault unlock: check header: %w", err)
 			}
 			if !headerExists {
-				return fmt.Errorf("%w: %s. Run 'ztd vault init' first", constants.ErrVaultNotInitialized, vaultDirAbs)
+				return fmt.Errorf("%w: %s\nInitialize the vault first with:\nztd vault init", constants.ErrVaultNotInitialized, vaultDirAbs)
 			}
 
 			ks, err := newKeystore(fileSvc, keystore.Options{MasterKeyFile: masterKeyFile}, false)

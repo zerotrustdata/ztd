@@ -465,7 +465,7 @@ type deploymentEventsConnector func(context.Context, fs.RuntimeFileService, *con
 func connectGatewayDeploymentEvents(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (deploymentWatcher, func(), error) {
 	creds, err := auth.LoadCredentials(fileSvc, cfg)
 	if err != nil || creds == nil || creds.CLISessionID == "" {
-		return nil, nil, fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+		return nil, nil, fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 	httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
 	if err != nil {
@@ -554,7 +554,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each wor
 
 			creds, err := auth.LoadCredentials(fileSvc, cfg)
 			if err != nil || creds == nil {
-				return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+				return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 			}
 
 			hosts, workerEndpoint, err := validateOperatorDeployFlags(

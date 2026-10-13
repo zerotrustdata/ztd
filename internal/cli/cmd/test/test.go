@@ -344,7 +344,8 @@ func testSummaryCmd() *cobra.Command {
 			}
 			if !exists {
 				cmd.Printf("Test vault directory not found at %s\n", fileSvc.Resolve(testVaultRelDir))
-				cmd.Println("Run './ztd test chaos' first to generate test data.")
+				cmd.Println("Generate test data first with:")
+				cmd.Println("./ztd test chaos")
 				return nil
 			}
 
@@ -362,7 +363,8 @@ func testSummaryCmd() *cobra.Command {
 
 			if len(testRuns) == 0 {
 				cmd.Println("No chaos test runs found in test vault.")
-				cmd.Println("Run './ztd test chaos' first to generate test data.")
+				cmd.Println("Generate test data first with:")
+				cmd.Println("./ztd test chaos")
 				return nil
 			}
 

@@ -259,7 +259,7 @@ func operatorListCmdWithConfig(configLoader func(string) (*config.Config, error)
 
 			creds, err := auth.LoadCredentials(fileSvc, cfg)
 			if err != nil || creds == nil {
-				return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+				return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 			}
 
 			client, err := clientFactory(fileSvc, cfg)

@@ -39,7 +39,8 @@ func Cmd() *cobra.Command {
 		Short: "Run with no Gateway: sample this host and breed a local prior",
 		Long: `Run the autochthon in the foreground. It does not dial a Gateway, enroll, or listen, and it accepts no envelope. It samples this host, including TERM, once a second and breeds a local prior under .ztd/autochthon/ in the working directory.
 
-Only --working-dir and --log are accepted; any Gateway-facing flag, including the inherited --endpoint and --port, fails before any file is opened. Use 'ztd autochthon status' to verify and report on a runtime root.`,
+Only --working-dir and --log are accepted; any Gateway-facing flag, including the inherited --endpoint and --port, fails before any file is opened. Verify and report on a runtime root with:
+ztd autochthon status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd, workingDir, logLevel)

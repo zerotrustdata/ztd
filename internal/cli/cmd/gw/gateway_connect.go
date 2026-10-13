@@ -244,7 +244,7 @@ func runGatewayConnect(
 			cmd.Println("The CLI cannot safely reconstruct non-default settings from a running process.")
 			cmd.Println()
 			cmd.Printf("To apply the new frontend origin, stop the Gateway and rerun:\n")
-			cmd.Printf("  %s gw stop && %s gw connect %s\n", getBinaryName(), getBinaryName(), origin.URL)
+			cmd.Printf("%s gw stop && %s gw connect %s\n", getBinaryName(), getBinaryName(), origin.URL)
 			return fmt.Errorf("%w: no launch profile for running gateway (PID %d)", constants.ErrLaunchProfileMissing, pid)
 		}
 		return fmt.Errorf("gateway connect: read launch profile: %w", err)

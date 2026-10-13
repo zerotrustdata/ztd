@@ -46,8 +46,8 @@ request IDs, component kind, instance ID, hostname, state, and issued
 identity metadata — never requester tokens, token hashes, CSR PEM, or
 certificates.
 
-Use the request ID with 'ztd auth enroll revoke <request-id>' to revoke a
-completed enrollment.`,
+Revoke a completed enrollment by request ID with:
+ztd auth enroll revoke <request-id>`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")

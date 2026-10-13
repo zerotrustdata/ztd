@@ -102,7 +102,8 @@ func operatorBindCmdWithConfig(
 Every operator session is validated before any binding changes; if one is
 rejected, nothing is bound. The first session is the primary binding. Binding
 changes issue a replacement CLI session server-side and update local
-credentials. Use './ztd operator list' to discover operator session IDs.
+credentials. Discover operator session IDs with:
+./ztd operator list
 Confirmation can be skipped with --yes for non-interactive automation.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -162,7 +163,7 @@ func runOperatorBind(
 
 	creds, err := auth.LoadCredentials(fileSvc, cfg)
 	if err != nil || creds == nil {
-		return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+		return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 
 	client, err := clientFactory(fileSvc, cfg)
@@ -295,7 +296,7 @@ func runOperatorBindList(
 
 	creds, err := auth.LoadCredentials(fileSvc, cfg)
 	if err != nil || creds == nil {
-		return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+		return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 
 	sessionInfo, err := bindClientFactory(cfg).SessionInfo(cmd.Context(), fileSvc)
@@ -394,7 +395,7 @@ func runOperatorBindUnbind(
 
 	creds, err := auth.LoadCredentials(fileSvc, cfg)
 	if err != nil || creds == nil {
-		return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+		return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 
 	if !output.JSONEnabled(cmd) {

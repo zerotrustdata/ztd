@@ -159,7 +159,7 @@ func suitesExportCmd(deps nativeEvalDeps) *cobra.Command {
 		Use:   "export <suite>",
 		Short: "Write one suite's definition file to stdout",
 		Long: `Write a suite's full definition (every prompt, fixture, and grading criterion) as
-JSON on stdout, in the format 'ztd eval suites create' reads. Redirect it to a
+JSON on stdout, in the format read by ztd eval suites create. Redirect it to a
 file to use a built-in suite as the template for a custom one.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -270,7 +270,7 @@ func writeSuite(cmd *cobra.Command, deps nativeEvalDeps, source string, apply fu
 	if output.JSONEnabled(cmd) {
 		return output.WriteJSON(cmd.OutOrStdout(), payload)
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Suite %s@%s %s (%d scenarios)\nCatalog digest: %s\n\nNext: ztd eval campaigns create <campaign> <model> --suite %s\n",
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Suite %s@%s %s (%d scenarios)\nCatalog digest: %s\n\nNext, create a campaign with:\nztd eval campaigns create <campaign> <model> --suite %s\n",
 		payload.ID, payload.Version, verb, payload.ScenarioCount, payload.CatalogDigest, payload.ID)
 	return err
 }
