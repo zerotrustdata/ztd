@@ -110,7 +110,12 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 				require.Equal(t, models.OperatorDeploymentPhaseReady, states[i].Phase, "CLI completion requires command-subscription readiness")
 				require.NotEmpty(t, states[i].OperatorSessionID)
 			} else {
-				require.Equal(t, models.OperatorDeploymentPhasePendingApproval, states[i].Phase)
+				// Without --approve the CLI returns once the Gateway announces the
+				// request; the worker journals pending_approval only after its
+				// created frame arrives, so either pre-decision phase is valid.
+				require.Contains(t, []models.OperatorDeploymentPhase{models.OperatorDeploymentPhaseRequesting, models.OperatorDeploymentPhasePendingApproval}, states[i].Phase)
+				require.NotEmpty(t, states[i].Fingerprints.Operator)
+				require.NotEmpty(t, states[i].Fingerprints.CLI)
 			}
 		}
 		return states
@@ -152,7 +157,18 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 
 	denied := deploy("pending_then_denied", 1, n+2, false)
 	require.Empty(t, denied[0].OperatorSessionID, "pending enrollment cannot claim a ready session")
-	require.NoError(t, e2eClient.DenyEnrollment(ctx, denied[0].RequestID))
+	// The Gateway is authoritative for the staged request; bind the denial to
+	// the keys this worker recorded, as the deploy CLI's own approval does.
+	pending, err := e2eClient.GetPendingEnrollments(ctx)
+	require.NoError(t, err)
+	var deniedRequestID string
+	for _, req := range pending.Requests {
+		if req.Fingerprints == denied[0].Fingerprints {
+			deniedRequestID = req.RequestID
+		}
+	}
+	require.NotEmpty(t, deniedRequestID, "the staged worker's request must be pending at the Gateway")
+	require.NoError(t, e2eClient.DenyEnrollment(ctx, deniedRequestID))
 	deniedDir := filepath.Join(root, fmt.Sprintf("op-%05d", n+2))
 	require.Eventually(t, func() bool {
 		return deploymentState(t, deniedDir).Phase == models.OperatorDeploymentPhaseFailed
