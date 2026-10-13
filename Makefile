@@ -808,7 +808,7 @@ doctrines-validate:
 swagger-generate:
 	@echo "Generating Swagger/OpenAPI documentation..."
 	@command -v swag &> /dev/null || go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
-	@swag init --dir cmd/ztd,internal/services/gateway,internal/models,internal/constants --output internal/services/gateway/docs --outputTypes json,yaml --parseInternal --parseDependencyLevel 1 --packagePrefix github.com/zerotrustdata/ztd,github.com/go-webauthn,encoding/json 2>/dev/null
+	@swag init --dir cmd/ztd,internal/services/gateway,internal/models,internal/constants --output internal/services/gateway/docs --outputTypes json,yaml --parseInternal --parseDependencyLevel 1 --packagePrefix github.com/zerotrustdata/ztd,github.com/go-webauthn,encoding/json --quiet
 	@echo "Swagger documentation generated successfully."
 
 

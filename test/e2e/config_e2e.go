@@ -60,10 +60,16 @@ const (
 // scenarios on a headless host). Blank selects the OS key store.
 const e2eMasterKeyFileEnv = "ZTD_E2E_MASTER_KEY_FILE"
 
+// e2eMasterKeyFile returns the environment's master key file, or "" for the
+// OS key store.
+func e2eMasterKeyFile() string {
+	return strings.TrimSpace(os.Getenv(e2eMasterKeyFileEnv))
+}
+
 // e2eMasterKeyArgs returns the global CLI flag that points a child ztd process
 // at the environment's master key file, or nil for the OS key store.
 func e2eMasterKeyArgs() []string {
-	if path := strings.TrimSpace(os.Getenv(e2eMasterKeyFileEnv)); path != "" {
+	if path := e2eMasterKeyFile(); path != "" {
 		return []string{"--master-key-file", path}
 	}
 	return nil
@@ -114,7 +120,7 @@ func loadE2EConfig() (*e2eConfig, error) {
 		return nil, fmt.Errorf("e2e: resolve runtime root: %w", err)
 	}
 
-	config.SetMasterKeyFileOverride(os.Getenv(e2eMasterKeyFileEnv))
+	config.SetMasterKeyFileOverride(e2eMasterKeyFile())
 	cfg, err := config.Load(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("e2e: load CLI config: %w", err)

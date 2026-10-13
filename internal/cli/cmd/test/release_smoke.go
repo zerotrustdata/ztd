@@ -35,13 +35,10 @@ import (
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	operatorcli "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	govservice "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
-	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
-	"github.com/zerotrustdata/ztd/internal/services/vault"
 	harness "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -434,7 +431,11 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	record, err := readSmokeLocalReceipt(runtimeRoot, r.masterKey, tx)
+	fileSvc, err := fs.NewRuntimeFileService(runtimeRoot, slog.Default())
+	if err != nil {
+		return err
+	}
+	record, err := storage.ReadLocalActionReceipt(fileSvc, slog.Default(), r.masterKey, tx)
 	if err != nil {
 		return err
 	}
@@ -469,45 +470,6 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	return nil
 }
 
-// readSmokeLocalReceipt opens the runtime's canonical audit database through
-// RuntimeFileService and returns the signed receipt record owned by that
-// runtime. It never consults the Gateway mirror for a remote Operator receipt.
-func readSmokeLocalReceipt(runtimeRoot, masterKeyFile, tx string) (*models.ActionReceiptRecord, error) {
-	fileSvc, err := fs.NewRuntimeFileService(runtimeRoot, slog.Default())
-	if err != nil {
-		return nil, err
-	}
-	ks, err := keystore.Open(fileSvc, slog.Default(), keystore.Options{MasterKeyFile: masterKeyFile})
-	if err != nil {
-		return nil, fmt.Errorf("open runtime keystore: %w", err)
-	}
-	key, err := ks.LoadVaultKey()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrVaultKeyReadFailed, err)
-	}
-	defer vault.SecureZero(key)
-	v, err := vault.NewVault(&vault.VaultConfig{FileSvc: fileSvc, Logger: slog.Default()})
-	if err != nil {
-		return nil, err
-	}
-	if err := v.Unlock(key); err != nil {
-		return nil, err
-	}
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), slog.Default())
-	if err != nil {
-		return nil, err
-	}
-	cfg := storage.DefaultAuditStoreConfig()
-	cfg.EncryptionVault = v
-	store, err := storage.NewSQLAuditStore(cfg, db, slog.Default(), fileSvc)
-	if err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	defer store.Close()
-	defer db.Close()
-	return store.GetActionReceipt(tx)
-}
 func (r *releaseSmokeRun) readBackFile(ctx context.Context) (string, error) {
 	out, err := r.ztdGateway(ctx, "file-read-back", "--json", "operator", "run", r.workerSession, "--cmd", "cat -- "+r.fileName, "--timeout", "60")
 	if err != nil {

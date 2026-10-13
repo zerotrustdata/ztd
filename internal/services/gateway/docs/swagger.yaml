@@ -2467,7 +2467,7 @@ definitions:
   protocol.CredentialParameter:
     properties:
       alg:
-        $ref: '#/definitions/webauthncose.COSEAlgorithmIdentifier'
+        type: integer
       type:
         $ref: '#/definitions/protocol.CredentialType'
     type: object
@@ -2675,48 +2675,6 @@ definitions:
     - VerificationRequired
     - VerificationPreferred
     - VerificationDiscouraged
-  webauthncose.COSEAlgorithmIdentifier:
-    enum:
-    - -48
-    - -49
-    - -50
-    - -7
-    - -8
-    - -9
-    - -19
-    - -35
-    - -36
-    - -37
-    - -38
-    - -39
-    - -47
-    - -51
-    - -52
-    - -257
-    - -258
-    - -259
-    - -65535
-    type: integer
-    x-enum-varnames:
-    - AlgMLDSA44
-    - AlgMLDSA65
-    - AlgMLDSA87
-    - AlgES256
-    - AlgEdDSA
-    - AlgESP256
-    - AlgEd25519
-    - AlgES384
-    - AlgES512
-    - AlgPS256
-    - AlgPS384
-    - AlgPS512
-    - AlgES256K
-    - AlgESP384
-    - AlgESP512
-    - AlgRS256
-    - AlgRS384
-    - AlgRS512
-    - AlgRS1
 info:
   contact: {}
 paths:

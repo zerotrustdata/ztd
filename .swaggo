@@ -1,0 +1,5 @@
+// Upstream splits webauthncose.COSEAlgorithmIdentifier constants across files
+// (cose_algorithm_identifier.go, cose_algorithm_identifier_mldsa.go); swag merges
+// them in map order, so the generated enum order is not deterministic. The
+// Gateway contract carries the COSE identifier as a plain integer.
+replace github.com/go-webauthn/webauthn/protocol/webauthncose.COSEAlgorithmIdentifier integer

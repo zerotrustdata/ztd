@@ -37,8 +37,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/testutil"
-	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -176,6 +176,10 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 	// With a pinned CA the worker bootstraps over wss:// on the HTTPS port, so
 	// the stall is a TCP listener that never answers the TLS ClientHello. The
 	// preflight's TCP probe sends nothing and is not counted as a bootstrap.
+	// Omit --approve: with it, deploy points its own event stream and approval
+	// calls at --gateway-https-port, so the CLI's ClientHello would hit the
+	// stall before any worker exists. Without it the CLI stays on the real
+	// Gateway and waits for staging that the stalled worker never reaches.
 	bootstrapStarted := make(chan struct{}, 1)
 	releaseBootstrap := make(chan struct{})
 	stall, err := net.Listen("tcp", "127.0.0.1:0")
@@ -221,7 +225,7 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 	go func() {
 		defer close(canceledDone)
 		output, err := deploymentCLI(canceledCtx, bin, "operator", "deploy", "--local", "--dest-dir", root,
-			"--count", "1", "--start-index", strconv.Itoa(n+3), "--background", "--approve",
+			"--count", "1", "--start-index", strconv.Itoa(n+3), "--background",
 			"--trust-bundle", e2eCfg.cfg.ResolvedTrustBundlePath(),
 			"--operator-endpoint", "127.0.0.1", "--gateway-https-port", bootstrapPort,
 			"--endpoint", e2eCfg.cfg.Paths.Host)
@@ -348,23 +352,24 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		require.False(t, filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)), "receipt evidence must belong to this fleet")
 		fileSvc, err := fs.NewRuntimeFileService(op.Operator.LocalDir, testutil.NewTestLogger())
 		require.NoError(t, err)
-		db := deploymentAuditDB(t, fileSvc)
-		var receiptJSON string
-		var operatorID, sessionID string
-		require.NoError(t, db.QueryRow("SELECT receipt_json, operator_id, operator_session_id FROM receipts WHERE transaction_id = ?", result.TransactionID).Scan(&receiptJSON, &operatorID, &sessionID), "the Operator's local receipt is authoritative")
-		var receipt operatorv1.ActionReceipt
-		require.NoError(t, compliancev1.UnmarshalCanonical([]byte(receiptJSON), &receipt))
+		// The Operator's local receipt is authoritative; its content columns are
+		// sealed with the Operator's vault key, so read through the audit store.
+		record, err := storage.ReadLocalActionReceipt(fileSvc, testutil.NewTestLogger(), e2eMasterKeyFile(), result.TransactionID)
+		require.NoError(t, err)
+		require.NotNil(t, record, "the Operator must hold its own local receipt")
+		receipt := record.ActionReceipt
+		require.NotNil(t, receipt, "the local receipt must carry its signed canonical body")
 		require.Equal(t, result.TransactionID, receipt.TransactionId)
-		require.Equal(t, result.OperatorID, operatorID)
-		require.Equal(t, result.OperatorSessionID, sessionID)
+		require.Equal(t, result.OperatorID, record.OperatorID)
+		require.Equal(t, result.OperatorSessionID, record.OperatorSessionID)
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 		key, err := governance.SignerPublicKey(receipt.SignerKeyId)
 		require.NoError(t, err)
-		require.NoError(t, governance.VerifyActionReceiptSignature(&receipt, key))
+		require.NoError(t, governance.VerifyActionReceiptSignature(receipt, key))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		require.Eventually(t, func() bool {
 			projected, err := e2eClient.GetActionReceipt(ctx, result.TransactionID)
-			return err == nil && proto.Equal(projected, &receipt)
+			return err == nil && proto.Equal(projected, receipt)
 		}, 10*time.Second, 50*time.Millisecond, "Gateway must project the same signed local receipt")
 		cancel()
 	}
