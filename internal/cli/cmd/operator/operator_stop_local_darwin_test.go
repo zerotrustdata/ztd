@@ -38,13 +38,15 @@ func TestMain(m *testing.M) {
 }
 
 // startStopTestWorker runs this test binary as a TERM-ignoring "ztd operator
-// start" worker in dir.
+// start" worker in dir. The binary is copied, not hardlinked: proc_pidpath
+// reports whichever name the kernel cached for a shared vnode, which may be
+// the test binary's own name rather than "ztd".
 func startStopTestWorker(t *testing.T, dir string, args ...string) *exec.Cmd {
 	t.Helper()
 	executable, err := os.Executable()
 	require.NoError(t, err)
 	workerPath := filepath.Join(t.TempDir(), "ztd")
-	require.NoError(t, os.Link(executable, workerPath))
+	require.NoError(t, CopyFile(executable, workerPath))
 	child := exec.Command(workerPath, append([]string{"operator", "start"}, args...)...)
 	child.Dir = dir
 	child.Env = append(os.Environ(), "ZTD_STOP_TEST_WORKER=1")
