@@ -230,7 +230,7 @@ Execute a governed shell command on active Operators in parallel:
 ./ztd operator stop <operator-session-id> --reason "maintenance"
 ```
 
-To stop all local workers running under the current user:
+To stop all local workers running under the current user (Linux, macOS, and Windows):
 
 ```bash
 ./ztd operator stop

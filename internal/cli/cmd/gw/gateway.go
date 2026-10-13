@@ -544,7 +544,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
-			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg}
+			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(&startOpts); err != nil {
 				return fmt.Errorf("%w: %v", constants.ErrProcessStartFailed, err)
 			}
@@ -777,7 +777,7 @@ restart.`,
 			// value if detection failed and fell back to "localhost").
 			profile.Config.CertIdentityMode = identityResult.CertMode
 
-			startOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
+			startOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(&startOpts); err != nil {
 				if running {
 					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}

@@ -59,23 +59,31 @@ func DialSSH(ctx context.Context, r HostConfig, clientConfig *sshlib.ClientConfi
 		proxyCmd := strings.ReplaceAll(r.ProxyCommand, "%h", r.Hostname)
 		proxyCmd = strings.ReplaceAll(proxyCmd, "%p", r.Port)
 
-		cmd := ProxyCommand(dialCtx, proxyCmd)
+		// The dial timeout bounds the handshake, while the proxy must remain
+		// alive until its SSH connection closes or the caller cancels.
+		proxyCtx, cancelProxy := context.WithCancel(ctx)
+		cmd := ProxyCommand(proxyCtx, proxyCmd)
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
+			cancelProxy()
 			return nil, fmt.Errorf("ssh: proxy stdin pipe: %w", err)
 		}
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
+			cancelProxy()
 			_ = stdin.Close()
 			return nil, fmt.Errorf("ssh: proxy stdout pipe: %w", err)
 		}
 		if err := cmd.Start(); err != nil {
+			cancelProxy()
 			_ = stdin.Close()
 			_ = stdout.Close()
 			return nil, fmt.Errorf("ssh: start proxy: %w", err)
 		}
 
-		conn = NewProxyConn(cmd, stdin, stdout, addr)
+		proxyConn := NewProxyConn(cmd, stdin, stdout, addr)
+		proxyConn.cancel = cancelProxy
+		conn = proxyConn
 	} else {
 		var d net.Dialer
 		if clientConfig.Timeout > 0 {
@@ -98,9 +106,14 @@ func DialSSH(ctx context.Context, r HostConfig, clientConfig *sshlib.ClientConfi
 	}
 
 	handshakeDone := make(chan struct{})
-	defer close(handshakeDone)
+	watcherDone := make(chan struct{})
+	defer func() {
+		close(handshakeDone)
+		<-watcherDone
+	}()
 
 	go func() {
+		defer close(watcherDone)
 		select {
 		case <-handshakeDone:
 		case <-dialCtx.Done():
@@ -109,7 +122,7 @@ func DialSSH(ctx context.Context, r HostConfig, clientConfig *sshlib.ClientConfi
 	}()
 
 	sshConn, chans, reqs, err := sshlib.NewClientConn(conn, addr, clientConfig)
-	if err != nil {
+	if err != nil || dialCtx.Err() != nil {
 		_ = conn.Close()
 		if dialCtx.Err() != nil {
 			return nil, fmt.Errorf("ssh: client connection: %w", dialCtx.Err())
@@ -177,6 +190,7 @@ type ProxyConn struct {
 	stdout io.Reader
 	cmd    *exec.Cmd
 	addr   string
+	cancel context.CancelFunc
 
 	// golang.org/x/crypto/ssh closes the net.Conn from more than one goroutine
 	// (connection teardown and the key-exchange loop), and exec.Cmd.Wait must
@@ -207,6 +221,9 @@ func (c *ProxyConn) Close() error {
 	c.closeOnce.Do(func() {
 		if c.stdin != nil {
 			_ = c.stdin.Close()
+		}
+		if c.cancel != nil {
+			c.cancel()
 		}
 		if c.cmd != nil {
 			if err := c.cmd.Wait(); err != nil {

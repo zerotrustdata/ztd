@@ -236,6 +236,34 @@ func TestDialSSH_ProxyCommandThatExitsImmediatelyFailsHandshake(t *testing.T) {
 	assert.Contains(t, err.Error(), "ssh: client connection")
 }
 
+func TestDialSSH_ProxyCommandHandshakeCancellationStopsChild(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		callerTimeout time.Duration
+		dialTimeout   time.Duration
+	}{
+		{name: "dial timeout", callerTimeout: 10 * time.Second, dialTimeout: 100 * time.Millisecond},
+		{name: "caller timeout", callerTimeout: 100 * time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), tc.callerTimeout)
+			t.Cleanup(cancel)
+			config := &sshlib.ClientConfig{
+				User:            "testuser",
+				HostKeyCallback: sshlib.FixedHostKey(newTestSigner(t).PublicKey()),
+				Timeout:         tc.dialTimeout,
+			}
+			// This process never answers the handshake or reads stdin. DialSSH
+			// must cancel and reap it instead of waiting for it to exit naturally.
+			start := time.Now()
+			client, err := DialSSH(ctx, HostConfig{ProxyCommand: "exec sleep 30", Hostname: "h", Port: "22"}, config, "h:22")
+			assert.Nil(t, client)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			assert.Less(t, time.Since(start), 5*time.Second, "cancellation must interrupt the proxy process")
+		})
+	}
+}
+
 func TestDialSSH_DirectTCP_Success(t *testing.T) {
 	signer := newTestSigner(t)
 	serverAddr, cleanup := startTestSSHServer(t, signer)

@@ -53,8 +53,8 @@ func TestUniversalGateway_MultiProtocolAutoDetection(t *testing.T) {
 		AllowTestPortZero: true,
 	})
 
-	identity := fixtures.EnrollClientIdentity(t, f, "test-user", "test-org", "test-fingerprint", "test-host")
-	apiClient := fixtures.CreateMTLSClient(t, f, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, f, "test-fingerprint")
+	apiClient := fixtures.CreateCLIMTLSClient(t, f, identity)
 	mtlsURL := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
 
 	t.Run("mcp_payload_detected_on_universal_endpoint", func(t *testing.T) {
@@ -126,8 +126,8 @@ func TestUniversalGateway_OOBSuspensionAndApproval(t *testing.T) {
 		AllowTestPortZero: true,
 	})
 
-	identity := fixtures.EnrollClientIdentity(t, f, "test-user", "test-org", "test-fingerprint", "test-host")
-	apiClient := fixtures.CreateMTLSClient(t, f, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, f, "test-fingerprint")
+	apiClient := fixtures.CreateCLIMTLSClient(t, f, identity)
 	mtlsURL := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
 
 	t.Run("transaction_suspension_for_l3_approval", func(t *testing.T) {

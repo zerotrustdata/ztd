@@ -84,7 +84,8 @@ type CanonicalDBService struct {
 
 // OpenCanonicalDBService opens (or creates) the unified SQLite database.
 // ks is the initialized keystore holding the master key (see keystore.Open);
-// it encrypts the vault key and every platform secret at rest.
+// it encrypts the vault key and every platform secret at rest. Close zeroes
+// the master key ks holds in memory.
 func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc fs.RuntimeFileService) (*CanonicalDBService, error) {
 	if fileSvc == nil {
 		return nil, fmt.Errorf("%w: runtime file service", constants.ErrMissingRequiredField)
@@ -397,6 +398,10 @@ func (s *CanonicalDBService) Close() error {
 		if err := s.stores.AuditStore.Close(); err != nil {
 			s.logger.Error("AuditStore close error", "error", err)
 		}
+	}
+
+	if s.sm != nil && s.sm.keystore != nil {
+		s.sm.keystore.Close()
 	}
 
 	if err := s.db.Close(); err != nil {

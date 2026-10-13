@@ -319,7 +319,7 @@ func connectStoppedGateway(
 	connectCfg.CertIdentityMode = identityResult.CertMode
 
 	cmd.Println("[ztd] Starting ztd Gateway service...")
-	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg}
+	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg, Notices: cmd.ErrOrStderr()}
 	if err := pm.StartOperator(&startOpts); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 	}
@@ -378,7 +378,7 @@ func connectRestartGateway(
 	}
 
 	cmd.Println("Starting ztd Gateway with updated configuration...")
-	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg}
+	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg, Notices: cmd.ErrOrStderr()}
 	if err := pm.StartOperator(&startOpts); err != nil {
 		// Rollback: attempt to restore the previously validated profile.
 		cmd.Printf("Failed to start Gateway with new configuration: %v\n", err)

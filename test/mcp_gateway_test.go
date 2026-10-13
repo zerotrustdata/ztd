@@ -65,10 +65,10 @@ func TestMCPGateway_EndToEnd(t *testing.T) {
 	fixture.WaitForReady(t)
 
 	// Enroll client identity
-	identity := fixtures.EnrollClientIdentity(t, fixture, "mcp-user", "mcp-org", "mcp-fingerprint", "mcp-host")
+	identity := fixtures.BootstrapCLIIdentity(t, fixture, "mcp-fingerprint")
 
 	// Create mTLS client with enrolled identity
-	mtlsClient := fixtures.CreateMTLSClient(t, fixture, identity)
+	mtlsClient := fixtures.CreateCLIMTLSClient(t, fixture, identity)
 
 	// MCP routes are available on HTTPS port with mTLS
 	mcpURL := network.LocalhostHTTPSURL(fixture.Service.GetHTTPSPort())
@@ -252,8 +252,8 @@ done
 
 	fixture.WaitForReady(t)
 
-	identity := fixtures.EnrollClientIdentity(t, fixture, "sub-user", "sub-org", "sub-fingerprint", "sub-host")
-	mtlsClient := fixtures.CreateMTLSClient(t, fixture, identity)
+	identity := fixtures.BootstrapCLIIdentity(t, fixture, "sub-fingerprint")
+	mtlsClient := fixtures.CreateCLIMTLSClient(t, fixture, identity)
 	mcpURL := network.LocalhostHTTPSURL(fixture.Service.GetHTTPSPort())
 
 	// Test tools/list proxied to subprocess downstream

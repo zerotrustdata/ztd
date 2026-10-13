@@ -268,7 +268,9 @@ func TestDeploySSH_UploadBinaryAndAgentRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.ResolvedDirs, 1)
-	assert.Equal(t, dest, resp.ResolvedDirs[0])
+	resolvedDest, err := filepath.EvalSymlinks(dest)
+	require.NoError(t, err)
+	assert.Equal(t, resolvedDest, resp.ResolvedDirs[0])
 
 	commands := srv.recordedCommands()
 	require.NotEmpty(t, commands)

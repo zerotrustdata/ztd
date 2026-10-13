@@ -318,8 +318,15 @@ make_fake_repo() {
 #!/bin/sh
 STATE="${ZTD_STUB_STATE:?}"
 echo "$*" >>"$STATE/calls.log"
+<<<<<<< HEAD
 cmd="$*"
 case "${cmd% --master-key-file *}" in
+=======
+# Match on the command alone; quickstart appends the key flag to every call.
+# Join first: bash (macOS /bin/sh) applies ${*%...} to each argument.
+args="$*"
+case "${args% --master-key-file *}" in
+>>>>>>> c25a431f47545c50930161ed411420cc329e7163
 --version) echo "ztd version v1.0.0" ;;
 "gw status")
 	if [ -e "$STATE/gw.on" ]; then

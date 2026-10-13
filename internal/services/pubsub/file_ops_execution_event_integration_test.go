@@ -60,8 +60,6 @@ func TestHandleFsListRequest_PublishesEntryPath(t *testing.T) {
 	tmpDir := testutil.TempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("hello"), 0o600))
 	require.NoError(t, os.Mkdir(filepath.Join(tmpDir, "sub"), 0o700))
-	listedDir, err := filepath.EvalSymlinks(tmpDir)
-	require.NoError(t, err)
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -83,16 +81,18 @@ func TestHandleFsListRequest_PublishesEntryPath(t *testing.T) {
 	listing, ok := results.fsListResults[0].(*operatorv1.FsListResult)
 	require.True(t, ok, "published result is %T", results.fsListResults[0])
 	require.Empty(t, listing.GetErrorMessage())
+	// FS_LIST preserves the validated requested path, including symlink aliases.
+	assert.Equal(t, tmpDir, listing.GetPath())
 	entries := make(map[string]*operatorv1.FsEntry, len(listing.GetEntries()))
 	for _, entry := range listing.GetEntries() {
 		entries[entry.GetName()] = entry
 	}
 	require.Contains(t, entries, "a.txt")
 	require.Contains(t, entries, "sub")
-	assert.Equal(t, filepath.Join(listedDir, "a.txt"), entries["a.txt"].GetPath())
+	assert.Equal(t, filepath.Join(tmpDir, "a.txt"), entries["a.txt"].GetPath())
 	assert.False(t, entries["a.txt"].GetIsDir())
 	assert.Equal(t, int64(5), entries["a.txt"].GetSize())
-	assert.Equal(t, filepath.Join(listedDir, "sub"), entries["sub"].GetPath())
+	assert.Equal(t, filepath.Join(tmpDir, "sub"), entries["sub"].GetPath())
 	assert.True(t, entries["sub"].GetIsDir())
 }
 

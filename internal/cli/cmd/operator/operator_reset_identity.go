@@ -57,7 +57,13 @@ func operatorResetIdentityCmdWithDiscovery(discover func() ([]localOperatorProce
 				}
 			}()
 			for _, worker := range workers {
-				if worker.dir != dir {
+				// dir is canonical; a worker started through a symlinked path
+				// (macOS /var is /private/var) names the same directory.
+				workerDir := worker.dir
+				if resolved, err := filepath.EvalSymlinks(workerDir); err == nil {
+					workerDir = resolved
+				}
+				if workerDir != dir {
 					continue
 				}
 				result := stopLocalOperator(cmd, worker, models.StopOperatorResponse{}, nil, time.Second)

@@ -107,11 +107,14 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Cross-component test targets | `Makefile`, `console/`, `protocol/` | `make console-test`, `make ci-protocol` |
 | Onboarding script tests | `scripts/test-onboarding.sh`, `scripts/onboarding/` | `make test-onboarding`, `make test-onboarding-docker` |
 | Integration Gateway fixture | `test/fixtures/gateway_fixture.go` | `NewGatewayFixture` |
+| Gateway-local client identity | `test/fixtures/cli_identity.go` | `BootstrapCLIIdentity` and `CreateCLIMTLSClient` |
 | File service test isolation | `internal/testutil/paths.go`, `internal/services/fs/file_service.go` | `testutil.TempDir` |
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
 | Windows port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort` |
 | Live E2E suite | `test/e2e/` | `./ztd test e2e` |
 | Completion transcript wire contract | `internal/services/gateway/platform_enrollment_validation_test.go` | `TestPlatformEnrollmentCompletionTranscriptGoldenVector` |
+
+Gateway-local MCP/A2A tests use `BootstrapCLIIdentity` to enroll the owner through the real bootstrap endpoint and bind the CLI session to the certless embedded Operator that executes those calls. `EnrollClientIdentity` enrolls a remote Operator and its CLI identity; that remote Operator remains offline until it subscribes to its command channel. Enrollment persists its session synchronously and must not be tested by waiting for active command readiness.
 
 ## Procedures
 

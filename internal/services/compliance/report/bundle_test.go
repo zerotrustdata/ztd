@@ -329,7 +329,11 @@ func TestPersistBundle_RefusesFileServiceThatDoesNotSeal(t *testing.T) {
 
 func TestExportBundle_WritesReplayablePlaintextBundle(t *testing.T) {
 	result, fileSvc := persistedBundleFixture(t)
-	outDir := filepath.Join(t.TempDir(), "export")
+	// ExportBundle returns a canonical path; macOS temp dirs sit under the
+	// /var -> /private/var symlink.
+	tempDir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	outDir := filepath.Join(tempDir, "export")
 
 	descriptorPath, err := ExportBundle(context.Background(), fileSvc, result.Bundle.GetManifest().GetReportId(), outDir)
 	require.NoError(t, err)

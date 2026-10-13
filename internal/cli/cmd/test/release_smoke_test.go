@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -304,9 +305,14 @@ func TestVerifyEvidenceFailsRunOnUnverifiedWorkerExport(t *testing.T) {
 }
 
 func TestZtdCommandFailurePropagatesWithExitCode(t *testing.T) {
-	bin, args := "/bin/false", []string(nil)
-	if runtime.GOOS == "windows" {
-		bin, args = "cmd.exe", []string{"/c", "exit 1"}
+	bin, args := "cmd.exe", []string{"/c", "exit 1"}
+	if runtime.GOOS != "windows" {
+		// /bin/false on Linux, /usr/bin/false on macOS.
+		path, err := exec.LookPath("false")
+		if err != nil {
+			t.Fatalf("find false: %v", err)
+		}
+		bin, args = path, nil
 	}
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: t.TempDir(), ZtdBin: bin})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")

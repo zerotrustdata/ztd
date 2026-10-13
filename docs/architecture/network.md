@@ -8,6 +8,8 @@ last_updated: 2026-10-12
 owners:
   - internal/services/gateway/
   - internal/services/network/
+  - internal/netutil/port_probe.go
+  - internal/pkg/ssh/dialer.go
   - internal/constants/ports.go
   - internal/constants/channels.go
   - protocol/workload_identity.go
@@ -84,6 +86,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-NET-PORT-01 | The Gateway MUST expose a consolidated two-port topology: HTTP Discovery/Bootstrap (`8080` default) and HTTPS Merged API/Console (`8443` default). Startup MUST fail if multiple logical surfaces are assigned to the same port. |
 | INV-NET-PORT-02 | The plain HTTP router (`buildHTTPRouter`) MUST serve only health, state root, CA bundle discovery, and token-scoped bootstrap/recovery initiation. All unhandled paths MUST redirect with HTTP 301 to HTTPS, validating the `Host` header against `isSafeHost`. |
 | INV-NET-PORT-03 | Privileged CSR signing (`/api/v1/pki/csr/sign`), CLI rotation, CLI refresh, CLI session query, and enrollment approval routes MUST NOT be registered on the plain HTTP router. |
+| INV-NET-PORT-04 | Gateway port selection MUST reject wildcard and loopback conflicts in either available TCP address family. Probes MUST release their sockets before returning; availability is a check, not a reservation for the eventual listener. |
 
 ### Communication Patterns (`INV-NET-COMM`)
 
@@ -98,6 +101,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | --- | --- | --- |
 | PKI Authority and TLS config | `internal/services/gateway/gateway_certs.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestPKIAuthority` |
 | Default port constants | `internal/constants/ports.go` | `protocol/constants/ports.json` and `internal/config/config.go` |
+| TCP port availability | `internal/netutil/port_probe.go`, `internal/netutil/port_probe_other.go`, `internal/netutil/port_probe_windows.go` | `./ztd test integration --pkg ./internal/netutil --run TestTCPPortProbe` |
+| SSH deployment transport | `internal/pkg/ssh/dialer.go` | `./ztd test integration --pkg ./internal/pkg/ssh` and `./ztd test integration --pkg ./internal/cli/stream` |
 | HTTP & HTTPS route muxing | `internal/services/gateway/gateway_http_router.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestGatewayHTTPRouter` |
 | SPIFFE identity formatting | `protocol/workload_identity.go` | `./ztd test unit --pkg ./protocol --run TestWorkloadIdentity` |
 | Network identity detection | `internal/services/network/identity.go` | `./ztd test unit --pkg ./internal/services/network` |
@@ -192,6 +197,8 @@ The Gateway exposes a strict two-port topology:
 2. **HTTPS Listener (`8443` default)**: Primary authenticated surface. Negotiates HTTP/2 (`GatewayHTTP2MaxConcurrentStreams = 8192`) via ALPN while supporting HTTP/1.1 for WebSocket connections.
 3. **Loopback Auxiliary Ports**: `8081` (Evaluation spectator), `8082` (Public mirror read listener), `5173` (Vite dev). These are auxiliary loopback listeners and never exposed as core protocol surfaces.
 
+Gateway startup resolves occupied ports through `netutil.CheckTCPPortAvailable`. On Unix, it probes IPv4 and IPv6 wildcard sockets separately with address reuse disabled, so macOS/BSD cannot report a loopback listener's port as free. An unavailable IPv6 stack leaves the IPv4 probe authoritative. Windows uses an exclusive bind without listening to avoid firewall prompts. Every probe releases the port before returning, so another process can still claim it before Gateway startup.
+
 ## Listener Isolation: Outbound-Only Operators
 
 Governed Operators enforce strict listener isolation:
@@ -206,6 +213,8 @@ Governed Operators enforce strict listener isolation:
   - `renewal:<operator_id>:<operator_session_id>`: Certificate leaf renewal.
   - `audit:<operator_id>:<operator_session_id>`: Gateway-to-Operator audit ingest.
 - **Embedded Substrate**: When running in Gateway mode, Gateway-local operations use an in-process loopback pub/sub bridge without opening network sockets.
+
+SSH deployment and streaming use `internal/pkg/ssh.DialSSH`. Its dial timeout covers connection setup and the SSH handshake. A configured `ProxyCommand` remains alive for the established SSH connection, until the caller cancels or closes it. A failed or timed-out handshake cancels and reaps the proxy process.
 
 ## Network Identity Detection and SAN Drift
 

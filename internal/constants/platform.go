@@ -76,3 +76,15 @@ const (
 	LogLevelDebug   = "debug"
 	LogLevelDefault = LogLevelInfo
 )
+
+// Master key store approval. When reading the vault master key blocks for
+// longer than KeyStoreApprovalNoticeDelay, the OS key store is waiting on the
+// user (macOS asks before a rebuilt or upgraded ztd binary reads its Keychain
+// item). The keystore then logs KeyStoreAwaitingApprovalLog, and a background
+// gw start that finds it in the child's log keeps waiting up to
+// KeyStoreApprovalTimeout instead of failing the health check.
+const (
+	KeyStoreApprovalNoticeDelay = 2 * time.Second
+	KeyStoreApprovalTimeout     = 5 * time.Minute
+	KeyStoreAwaitingApprovalLog = "[Keystore] Waiting for approval to read the master key from the OS key store"
+)
