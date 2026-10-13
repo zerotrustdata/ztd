@@ -107,7 +107,7 @@ func ultraEfficientSpeedsterProductionDeps(t *testing.T, dispatcher *recordingFo
 		ObservationLoader:      observer,
 		InferenceDispatcher:    dispatcher,
 		ModelCommandDispatcher: modelDispatcher,
-		OllamaEnvironment:      map[string]string{"OLLAMA_HOST": "http://127.0.0.1:11434"},
+		OllamaEnvironment:      map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://127.0.0.1:11434"},
 		NewID:                  func(prefix string) string { return prefix + "-id" },
 		Now:                    func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
 	}

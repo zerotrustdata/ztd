@@ -253,3 +253,46 @@ func TestEmbeddedDispatchDeadlineWhileAwaitingProcessor(t *testing.T) {
 		require.Zero(t, resultHandlerCount(broker, op))
 	})
 }
+
+// An embedded handler that runs and fails publishes its typed failure result;
+// the dispatch returns that result, as for an outbound Operator. Without an
+// executed L5 stage the same error still fails the dispatch.
+func TestEmbeddedDispatchReturnsHandlerFailureResult(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		executed bool
+	}{{name: "handler ran", executed: true}, {name: "refused before handler", executed: false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := testutil.NewTestLogger()
+			broker := NewGatewayWebSocketHandler(logger)
+			op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded)}
+			processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
+				env := &commonv1.GovernanceEnvelope{}
+				require.NoError(t, protojson.Unmarshal(wire, env))
+				receipt := &operatorv1.ActionReceipt{TransactionId: env.Id, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, FailureCode: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED}
+				if tc.executed {
+					result, err := proto.Marshal(&operatorv1.FileEditResult{ExecutionId: "execution", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "content required"})
+					require.NoError(t, err)
+					out, err := protojson.Marshal(&commonv1.GovernanceEnvelope{Id: env.Id, EventType: string(constants.EventOperatorFileEditFailed), ActionType: env.ActionType, Payload: result})
+					require.NoError(t, err)
+					broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), out)
+					receipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{{
+						Kind:    operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION,
+						Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
+					}}
+				}
+				return receipt, constants.ErrFileEditContentRequired
+			})
+			svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, processor)
+			payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: "/tmp/ztd-eval/a.txt", Operation: string(constants.FileOperationWrite), ExecutionId: "execution"})
+			require.NoError(t, err)
+			result, err := svc.Dispatch(t.Context(), DispatchRequest{TargetOperatorSessionID: op.OperatorSessionId, RequestorUserID: "user", EventType: string(constants.EventOperatorFileEditRequested), Payload: payload, Timeout: 5 * time.Second})
+			if !tc.executed {
+				require.ErrorIs(t, err, constants.ErrFileEditContentRequired)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, string(constants.EventOperatorFileEditFailed), result.ResultEnvelope.GetEventType())
+		})
+	}
+}

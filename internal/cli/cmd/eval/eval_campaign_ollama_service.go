@@ -113,6 +113,9 @@ func (d *harnessOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx con
 	return result, nil
 }
 
+// modelCommandEnvironment names the provider endpoint for the `ztd operator
+// model` maintenance subcommands, which read ZTD_OLLAMA_ENDPOINT and fail
+// closed without it.
 func modelCommandEnvironment(endpoint string) map[string]string {
-	return map[string]string{"OLLAMA_HOST": endpoint}
+	return map[string]string{string(constants.EnvVar.OllamaEndpoint): endpoint}
 }

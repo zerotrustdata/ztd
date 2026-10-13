@@ -51,6 +51,10 @@ func NewOllamaStorageAttestor(modelStorageRoot, operatorID string) (*OllamaStora
 	return &OllamaStorageAttestor{modelStorageRoot: root, operatorID: operatorID}, nil
 }
 
+// ollamaRunnerManifestMediaType marks a wrapper layer that is itself one
+// runner's manifest in a multi-runner tag.
+const ollamaRunnerManifestMediaType = "application/vnd.docker.distribution.manifest.v2+json"
+
 type ollamaManifest struct {
 	Config struct {
 		Digest    string `json:"digest"`
@@ -84,12 +88,25 @@ func (a *OllamaStorageAttestor) Attest(ctx context.Context, servedModelTag, expe
 	}
 
 	manifestDigest := models.SHA256Hex(manifestBytes)
-	observedDigest := normalizeOllamaDigest(manifestDigest)
 
 	var manifest ollamaManifest
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		return nil, fmt.Errorf("model provenance attestor: parse manifest: %w", err)
 	}
+	expected := normalizeOllamaDigest(expectedModelDigest)
+	if manifestDigest != expected {
+		runnerDigest, runnerBytes, found, err := a.readRunnerManifest(manifest, expected)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			manifestDigest, manifest = runnerDigest, ollamaManifest{}
+			if err := json.Unmarshal(runnerBytes, &manifest); err != nil {
+				return nil, fmt.Errorf("model provenance attestor: parse runner manifest: %w", err)
+			}
+		}
+	}
+	observedDigest := normalizeOllamaDigest(manifestDigest)
 
 	weightAttestations := make([]*evalv1.ModelWeightAttestation, 0, len(manifest.Layers)+1)
 	if manifest.Config.Digest != "" {
@@ -107,7 +124,7 @@ func (a *OllamaStorageAttestor) Attest(ctx context.Context, servedModelTag, expe
 		weightAttestations = append(weightAttestations, attestation)
 	}
 
-	digestMatch := observedDigest == normalizeOllamaDigest(expectedModelDigest)
+	digestMatch := observedDigest == expected
 	return &evalv1.ModelProvenanceAttestationWindow{
 		SchemaVersion:              SchemaVersion,
 		ProvenanceOperatorId:       a.operatorID,
@@ -120,6 +137,34 @@ func (a *OllamaStorageAttestor) Attest(ctx context.Context, servedModelTag, expe
 		AttestedAtUnixMs:           attestedAt.UTC().UnixMilli(),
 		DigestMatch:                digestMatch,
 	}, nil
+}
+
+// readRunnerManifest resolves a multi-runner tag. Ollama stores such a tag's
+// manifest as a wrapper whose layers include one manifest per runner, and its
+// API reports the served runner manifest's digest, not the wrapper's. When the
+// wrapper references a runner manifest with exactly the expected digest, that
+// content-addressed blob is read, its hash verified, and returned, so the
+// window attests only the weights the served digest names. found is false when
+// no referenced runner manifest has that digest.
+func (a *OllamaStorageAttestor) readRunnerManifest(wrapper ollamaManifest, expectedDigest string) (digest string, body []byte, found bool, err error) {
+	for _, layer := range wrapper.Layers {
+		if layer.MediaType != ollamaRunnerManifestMediaType || normalizeOllamaDigest(layer.Digest) != expectedDigest {
+			continue
+		}
+		digestHex, err := digestRefToHex(layer.Digest)
+		if err != nil {
+			return "", nil, false, err
+		}
+		body, err := os.ReadFile(filepath.Join(a.modelStorageRoot, "blobs", "sha256-"+digestHex))
+		if err != nil {
+			return "", nil, false, fmt.Errorf("model provenance attestor: read runner manifest %s: %w", digestHex, err)
+		}
+		if models.SHA256Hex(body) != digestHex {
+			return "", nil, false, fmt.Errorf("model provenance attestor: runner manifest digest mismatch for %s", digestHex)
+		}
+		return digestHex, body, true, nil
+	}
+	return "", nil, false, nil
 }
 
 func (a *OllamaStorageAttestor) attestBlob(ctx context.Context, digestRef, mediaType string, declaredSize int64) (*evalv1.ModelWeightAttestation, error) {

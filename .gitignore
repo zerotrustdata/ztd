@@ -128,3 +128,5 @@ npm-debug.log*
 /release-evidence/
 # `ztd eval backup` snapshots.
 /eval/backups/
+# `ztd eval` workspaces
+workspaces/

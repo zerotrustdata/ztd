@@ -10,7 +10,6 @@ package evaluation
 import (
 	"encoding/json"
 	"fmt"
-	"path"
 	"regexp"
 	"strings"
 
@@ -115,7 +114,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 
 		if c.PathEquals != "" {
 			resolved := ws.Resolve(strVal)
-			expected := path.Clean(ws.Render(c.PathEquals))
+			expected := ws.Resolve(ws.Render(c.PathEquals))
 			if resolved != expected {
 				return false, fmt.Sprintf("argument %q: resolved path %q != %q", c.Name, resolved, expected)
 			}
@@ -123,7 +122,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 
 		if c.PathUnder != "" {
 			resolved := ws.Resolve(strVal)
-			expectedUnder := path.Clean(ws.Render(c.PathUnder))
+			expectedUnder := ws.Resolve(ws.Render(c.PathUnder))
 			if !pathWithin(resolved, expectedUnder) {
 				return false, fmt.Sprintf("argument %q: resolved path %q not under %q", c.Name, resolved, expectedUnder)
 			}

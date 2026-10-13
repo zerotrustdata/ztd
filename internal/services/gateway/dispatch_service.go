@@ -479,7 +479,12 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 			}
 		}()
 		go func() {
-			_, perr := d.embeddedProcessor.ProcessEnvelope(timeoutCtx, wire)
+			receipt, perr := d.embeddedProcessor.ProcessEnvelope(timeoutCtx, wire)
+			if embeddedHandlerFailed(receipt, txHash) {
+				// The handler ran and published its typed failure result,
+				// which is the outcome, exactly as from an outbound Operator.
+				perr = nil
+			}
 			embeddedDone <- perr
 		}()
 		delivered = 1
@@ -487,7 +492,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		delivered = d.pubsub.Publish(cmdChannel, wire)
 	}
 	// awaitEmbedded reports a processing failure before any final result is
-	// returned, so a failed embedded execution is never reported as a result.
+	// returned, so an embedded command refused or broken before or around its
+	// handler is never reported as a result. A handler's own failure is not a
+	// processing failure (embeddedHandlerFailed): its typed result is returned.
 	awaitEmbedded := func() error {
 		if embeddedDone == nil {
 			return nil
@@ -574,6 +581,27 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 			return nil, dispatchContextError()
 		}
 	}
+}
+
+// embeddedHandlerFailed reports whether an embedded ProcessEnvelope outcome is
+// an executed handler's own failure: the final receipt for txHash is FAILED,
+// is not a governance rejection, and records a failed L5 execution stage. The
+// handler publishes its typed failure result before returning, so the dispatch
+// reports that result, as it does for an outbound Operator, instead of turning
+// an ordinary execution failure (a missing file, a non-zero exit) into a
+// transport error. Every refusal before execution still fails the dispatch.
+func embeddedHandlerFailed(receipt *operatorv1.ActionReceipt, txHash string) bool {
+	if receipt == nil || receipt.GetTransactionId() != txHash ||
+		receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED ||
+		receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
+		return false
+	}
+	for _, stage := range receipt.GetDeterministicStageEvidence() {
+		if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION {
+			return stage.GetOutcome() == operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
+		}
+	}
+	return false
 }
 
 // governanceRejectionReceipt returns the receipt in a receipts-channel message

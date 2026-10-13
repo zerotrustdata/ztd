@@ -4,7 +4,7 @@ title: Evaluation Programs
 audience: maintainers and coding agents
 status: current
 version: v1.0.0
-last_updated: 2026-10-12
+last_updated: 2026-10-13
 owners:
   - internal/services/evaluation/
   - internal/cli/cmd/eval/
@@ -223,7 +223,7 @@ Suites define scenario catalogs and test inputs:
 #### Model-Role Lane (Single-Agent Campaigns)
 - Freezes a campaign targeting exactly one model variant (`INV-EVAL-CAMP-06`).
 - Executes assignments through `CampaignAgentExecutor` in a bounded loop of up to 8 turns.
-- Injects workspace files into an isolated directory under the Data Operator's root (`ScenarioWorkspace`) via governed `FILE_EDIT` actions.
+- Injects workspace files into an isolated directory under the Data Operator's root (`ScenarioWorkspace`) via governed `FILE_EDIT` actions. Workspace paths follow the Data Operator host, not the CLI: a POSIX working directory keeps POSIX paths, and a drive-letter one (a Windows Operator) uses slash-form paths such as `D:/ztd/workspaces/...`. Run execution rejects a model-role binding whose working directory is not absolute before any assignment is marked running.
 - Dispatches tool invocations as governed Gateway transactions (`FS_READ`, `FS_LIST`, `FS_GREP`, `FILE_EDIT`, `EXECUTE_BASH`).
 - Seals the complete conversation and tool trajectory as a content-addressed agent trace (`campaign_agent_trace.go`) graded deterministically against scenario gold criteria.
 
