@@ -45,7 +45,7 @@ On Windows, run `pwsh scripts/windows-setup.ps1 --build-only` and follow the nat
 
 ### What setup does
 
-The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22.22.2+, 24.15+, or 26+. Rerunning setup reuses everything already installed.
+The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22.22.2+, 24.15+, or 26+. Rerunning setup reuses everything already installed.
 
 ### What `make quickstart` does
 
@@ -67,6 +67,22 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
 
 **Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'`. Quickstart passes the key file to every `./ztd` call it makes, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Quickstart displays this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
+
+### Configure `.env`
+
+Every `./ztd` command, including the `make` targets, loads the repo-root `.env` at startup. Setup creates it from `.env.example` with every entry commented, so the default flow (`make quickstart`, `make up`, `make gw`) needs no edits. Uncomment and set an entry when you need it:
+
+| Key | Set it when |
+| :--- | :--- |
+| `ZTD_OLLAMA_ENDPOINT` | The approved Ollama provider is not on this host (default `http://127.0.0.1:11434`). Supplies `--inference-ollama-endpoint` for `make gw`, `make operator`, and `./ztd operator model` commands. |
+| `CLOUDFLARE_API_TOKEN` | You route a tunnel hostname with `./ztd gw tunnel route-dns` ([Cloudflare Tunnel](cloudflare_tunnel.md)). |
+
+```bash
+$EDITOR .env
+make gw
+```
+
+`.env` must stay owner-only (`chmod 600 .env`); `./ztd` refuses to start if it is group- or world-readable, a symlink, or holds a key that `.env.example` does not list. A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
 
 ### Step by step
 
@@ -245,10 +261,10 @@ make gw
 `make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data,inference,observer`) to `--capabilities` on its embedded Operator. The embedded Operator always includes Data. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
 
 ```bash
-make gw MODEL_STORAGE_ROOT=/srv/ollama/models GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'
+make gw MODEL_STORAGE_ROOT=/srv/ollama/models
 ```
 
-`ZTD_OLLAMA_ENDPOINT` in the repo-root `.env` (template: `.env.example`) supplies `--inference-ollama-endpoint` when the flag is not set.
+The Inference capability uses `ZTD_OLLAMA_ENDPOINT` from `.env` (see [Configure `.env`](#configure-env)); `GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'` overrides it for one run.
 
 Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them. Startup ends with the same output as `gw status`:
 

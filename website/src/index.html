@@ -670,10 +670,11 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       </div>
       <div class="code" role="tabpanel" id="tp-3" aria-labelledby="tb-3" hidden>
 <pre><span class="c"># Gateway + embedded Operator with data, inference, and observer capabilities</span>
-<span class="p">$ </span>make gw GW_ARGS='--inference-ollama-endpoint http://&lt;ollama-host&gt;:11434'
+<span class="c"># remote Ollama provider: set ZTD_OLLAMA_ENDPOINT in .env</span>
+<span class="p">$ </span>make gw
 <span class="p">$ </span>make status
 <span class="c"># then sign in at https://localhost:8443/console/</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="make gw GW_ARGS='--inference-ollama-endpoint http://&lt;ollama-host&gt;:11434'&#10;make status">Copy</button>
+        <button class="btn sm ghost copy" type="button" data-copy="make gw&#10;make status">Copy</button>
       </div>
     </div>
   </div>
