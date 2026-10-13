@@ -18,6 +18,10 @@
 #                                    so the manifest's presence means the set is complete.
 #   promote <release-dir> <version>  Require every v<version>/ object to match the set,
 #                                    then write latest.json and read it back.
+#   check                            Prove the credentials can write, read back, and delete
+#                                    an object under _preflight/ (a prefix the website
+#                                    Worker never serves). Every release run, rehearsals
+#                                    included, runs it before building.
 #
 # Remote storage authenticates with CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
 # ZTD_R2_PERSIST_TO=<dir> targets wrangler local storage instead (release rehearsal).
@@ -105,11 +109,26 @@ cmd_promote() {
 	echo "promoted $BUCKET/latest.json to $version"
 }
 
+cmd_check() {
+	local probe key want got
+	probe=$(mktemp)
+	key="_preflight/${GITHUB_RUN_ID:-local}-$$-$(date +%s)"
+	printf 'release credential check %s\n' "$key" >"$probe"
+	want=$(sha256sum "$probe" | cut -d' ' -f1)
+	r2 put "$BUCKET/$key" --file "$probe" --content-type text/plain >/dev/null || { rm -f "$probe"; die "cannot write $BUCKET/$key; check CLOUDFLARE_API_TOKEN has R2 object read/write on $BUCKET"; }
+	rm -f "$probe"
+	got=$(remote_digest "$key") || die "cannot read back $BUCKET/$key"
+	r2 delete "$BUCKET/$key" >/dev/null || die "cannot delete $BUCKET/$key"
+	[ "$got" = "$want" ] || die "$BUCKET/$key read back a different object"
+	echo "R2 credentials can write, read, and delete in $BUCKET"
+}
+
 usage() {
 	cat >&2 <<'EOF'
 usage: release-r2.sh <subcommand> [args]
   upload <release-dir> <version>
   promote <release-dir> <version>
+  check
 EOF
 	exit 2
 }
@@ -121,6 +140,7 @@ main() {
 	case "$sub" in
 		upload) [ $# -eq 2 ] || usage; cmd_upload "$1" "$2" ;;
 		promote) [ $# -eq 2 ] || usage; cmd_promote "$1" "$2" ;;
+		check) [ $# -eq 0 ] || usage; cmd_check ;;
 		*) usage ;;
 	esac
 }

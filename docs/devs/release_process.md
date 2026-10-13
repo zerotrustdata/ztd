@@ -4,7 +4,7 @@ title: Release Process
 audience: maintainers and coding agents
 status: current
 version: v1.0.0
-last_updated: 2026-10-12
+last_updated: 2026-10-13
 owners:
   - VERSION
   - Makefile
@@ -146,7 +146,7 @@ make release-rehearse
 make release
 ```
 
-`make release-rehearse` dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. A rehearsal runs preflight, `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. A tag that fails after the Go module proxy has cached it cannot be reused, so release failures are found in the rehearsal, not on a tag.
+`make release-rehearse` dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. A rehearsal runs preflight, a write/read/delete probe of the real `ztd-releases` R2 bucket with the publish credential (`scripts/release-r2.sh check`), `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. A tag that fails after the Go module proxy has cached it cannot be reused, so release failures are found in the rehearsal, not on a tag.
 
 `make release` aborts unless the current branch is `main`, `HEAD` equals `origin/main` after a fetch, and a `workflow_dispatch` run of the release workflow on `HEAD` succeeded. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. GitHub Actions workflows in `.github/workflows/release-binary.yml` validate the tag, build and sign binaries, create GitHub release, and publish website download assets.
 
@@ -158,7 +158,7 @@ The public signer identity is `https://github.com/zerotrustdata/ztd/.github/work
 
 ### Website Download Set and Promotion (R2)
 
-The publish job in `.github/workflows/release-binary.yml` publishes the 23-file release set (7 targets × binary, `.sha256`, `.sigstore.json`, plus `checksums-sha256.txt` and `ztd-binaries.json`) to the `ztd-releases` R2 bucket (the bucket `website/wrangler.jsonc` binds as `RELEASES`) in three steps. `scripts/release-r2.sh` owns the R2 writes and runs the website's pinned `wrangler r2 object` commands, authenticated with the `release` environment secrets `CLOUDFLARE_ACCOUNT_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The `verify-download` job runs the same script against wrangler local storage on every rehearsal.
+The publish job in `.github/workflows/release-binary.yml` publishes the 23-file release set (7 targets × binary, `.sha256`, `.sigstore.json`, plus `checksums-sha256.txt` and `ztd-binaries.json`) to the `ztd-releases` R2 bucket (the bucket `website/wrangler.jsonc` binds as `RELEASES`) in three steps. `scripts/release-r2.sh` owns the R2 writes and runs the website's pinned `wrangler r2 object` commands, authenticated with the repository secrets `CLOUDFLARE_ACCOUNT_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. These are repository-level, not `release` environment secrets: the `release` environment admits only `v*` tags, so an environment copy is invisible to rehearsals and shadows the credential they verified. The `credentials` job runs `release-r2.sh check` against the real bucket on every run, and the `verify-download` job runs `upload` and `promote` against wrangler local storage on every rehearsal.
 
 1. **Versioned upload:** `release-r2.sh upload` writes the set under `ztd-releases/v<VERSION>/` and reads each object back, comparing SHA-256 against the verified local file. It refuses to write when any key of the set already exists.
 2. **GitHub publish:** `gh release edit --draft=false` marks GitHub release public.
@@ -189,6 +189,7 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - Treating scenario exit status alone as smoke acceptance without verifying signed receipts, governed read-back, and populated worker stores (`INV-REL-SMOKE-02`, `INV-REL-SMOKE-04`).
 - Generating release smoke reports from Gateway `.ztd` trees when mutations executed in dedicated data worker runtimes (`INV-REL-SMOKE-03`).
 - Substituting smoke CSVs for signed and offline-verified public compliance bundles (`INV-REL-SMOKE-05`, `INV-REL-COMP-01`).
+- Adding `CLOUDFLARE_*` secrets to the `release` or `production` environment; they shadow the repository secrets that rehearsals verify.
 - Writing `latest.json` before GitHub release publication, or without verifying versioned prefix completeness.
 - Overwriting or deleting published `v<version>/` prefixes to change served versions. Roll back by rewriting `latest.json`.
 

@@ -96,11 +96,12 @@ Cloudflare creates the required DNS records and manages their TLS certificates. 
 nameserver delegation must match the two nameservers assigned to the `zerotrustdata.io` zone in Cloudflare.
 The Worker also keeps its `workers.dev` hostname enabled as a deployment preview while DNS changes propagate.
 
-The GitHub Actions workflow validates website changes on pull requests and deploys changes from `main`. The
-`production` environment needs these repository or environment secrets:
+The GitHub Actions workflow validates website changes on pull requests and deploys changes from `main`. Both this
+workflow and the binary release workflow read one pair of repository-level secrets; do not add copies to the
+`production` or `release` environments, because an environment secret shadows the repository one and drifts from it:
 
 - `CLOUDFLARE_ACCOUNT_API_TOKEN` — a scoped token that can deploy Workers, manage Worker routes/custom domains,
-  read the zone, and use the `ztd-releases` R2 bucket binding.
+  read the zone, and read/write objects in the `ztd-releases` R2 bucket.
 - `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID that owns the zone and Worker.
 
 The binary release workflow publishes its binaries, signatures, and per-file checksums to the same R2 bucket before
@@ -108,8 +109,7 @@ it makes a GitHub release public. Each release is written under an immutable `v<
 `latest.json` (`{"version": "X.Y.Z"}`) is promoted last. `/v/<version>/<file>` serves one pinned version, `/latest.json`
 serves the pointer, and unversioned routes such as `/ztd-linux-amd64` resolve through the pointer per request. The
 install scripts read `latest.json` once and fetch the binary and its checksum from that single version (or from
-`ZTD_VERSION` when it is set). Within a set, `ztd-binaries.json` is uploaded last, after every other object has been
-read back and verified, so its presence is what lists the version on `/releases/`. The workflow writes through this package's wrangler (`scripts/release-r2.sh`), so
+`ZTD_VERSION` when it is set). The workflow writes through this package's wrangler (`scripts/release-r2.sh`), so
 its `release` environment needs `CLOUDFLARE_ACCOUNT_API_TOKEN` (with R2 object read/write on `ztd-releases`) and
 `CLOUDFLARE_ACCOUNT_ID`.
 
