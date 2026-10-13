@@ -221,6 +221,7 @@ help:
 		'  build-compressed          Build for the host and compress with UPX' \
 		'  fips-build                Build the Linux AMD64 FIPS variant' \
 		'  fips-verify               Build and verify the FIPS variant' \
+		'  verify-static             Check a built Linux binary is fully static (STATIC_BINARY=...)' \
 		'  version-sync              Sync version declarations to VERSION' \
 		'  release-rehearse          Run the release workflow on main without publishing' \
 		'  release                   Tag and push the release in VERSION (needs a passing rehearsal)' \
@@ -235,6 +236,7 @@ help:
 		'  test-cross-enrollment     Run Tier 3 cross-enrollment E2E tests' \
 		'  test-scale                Operator fleet scale qualification (SCALE_COUNT=100, SCALE_ARGS=...)' \
 		'  test-airgap               Verify the vendored air-gap build' \
+		'  test-go-import            Build a fresh module that imports ztd via a replace directive' \
 		'  test-onboarding           Hermetic tests for the setup and quickstart scripts' \
 		'  test-onboarding-docker    Fresh-host onboarding in clean Linux containers (DISTROS=..., SCENARIOS=...)' \
 		'  lint                      Run all lint and quality checks' \
@@ -255,6 +257,7 @@ help:
 		'  swagger-generate          Generate the Gateway OpenAPI specification' \
 		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
 		'  website-test              Test the website generator and Worker' \
+		'  website-bundle-check      Validate the Cloudflare Worker bundle (wrangler dry run)' \
 		'' \
 		'Components' \
 		'  console-build             Build the console SPA' \
@@ -327,6 +330,11 @@ website-build:
 website-test:
 	@echo "Testing the zerotrustdata.io generator and Worker..."
 	@cd website && npm run check
+
+.PHONY: website-bundle-check
+website-bundle-check:
+	@echo "Validating the Cloudflare Worker bundle..."
+	@cd website && npx wrangler deploy --dry-run
 
 # =============================================================================
 # PROTOCOL GENERATION
@@ -501,11 +509,14 @@ EXPLORER_EMBED := internal/services/gateway/explorer/static
 # lister avoids platform-specific find commands during Makefile parsing. It is
 # built once to a fixed path (go build skips the link when current) instead of
 # three `go run` temp builds per make invocation. Goals that only drive an
-# already-built ./ztd need no Go toolchain, so they skip the lister entirely.
-TOOLCHAIN_FREE_GOALS := help status down stop
+# already-built ./ztd, or only run the website's npm scripts, need no Go
+# toolchain, so they skip the lister entirely.
+# The `||` keeps a failed build non-empty: shells that exec a lone command
+# report "command not found" outside the 2>&1 capture.
+TOOLCHAIN_FREE_GOALS := help status down stop website-test website-build website-bundle-check
 SOURCE_FILES_TOOL := $(BIN_DIR)/.tools/sourcefiles$(if $(filter windows,$(HOST_OS)),.exe,)
 ifneq ($(filter-out $(TOOLCHAIN_FREE_GOALS),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))),)
-SOURCE_FILES_BUILD := $(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1)
+SOURCE_FILES_BUILD := $(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1 || echo "go build exited $$?")
 ifneq ($(SOURCE_FILES_BUILD),)
 $(error building $(SOURCE_FILES_TOOL) failed: $(SOURCE_FILES_BUILD))
 endif
@@ -653,6 +664,17 @@ fips-verify: fips-build
 	@GODEBUG=fips140=only ./ztd-fips version --fips
 	@echo "FIPS 140-3 self-check passed."
 
+# Shipped Linux binaries carry no libc dependency. CI checks both the standard
+# and the FIPS binary through this one target.
+STATIC_BINARY ?= $(BIN_DIR)/ztd-linux-amd64
+.PHONY: verify-static
+verify-static:
+	@file "$(STATIC_BINARY)" | grep -q "statically linked" || \
+		{ echo "ERROR: $(STATIC_BINARY) is not statically linked"; file "$(STATIC_BINARY)"; exit 1; }
+	@ldd "$(STATIC_BINARY)" 2>&1 | grep -q "not a dynamic executable" || \
+		{ echo "ERROR: $(STATIC_BINARY) has dynamic dependencies"; ldd "$(STATIC_BINARY)"; exit 1; }
+	@echo "$(STATIC_BINARY) is statically linked."
+
 # Format all Go source files. Build targets no longer format the working tree;
 # run this explicitly or wire it into a pre-commit hook.
 .PHONY: fmt
@@ -722,6 +744,10 @@ test-airgap:
 	@echo "  2. Building with vendored modules (-mod=vendor)..."
 	@go build -mod=vendor ./... || { echo "ERROR: vendored build failed"; exit 1; }
 	@echo "Air-gap verification PASSED."
+
+.PHONY: test-go-import
+test-go-import:
+	@bash scripts/smoke-test-go.sh
 
 # =============================================================================
 # CONSOLE — Gateway-embedded browser frontend (console/, served at /console/)
@@ -930,7 +956,9 @@ ci-platform: dev-check
 	@$(MAKE) explorer-catalog-check
 	@$(MAKE) lint
 	@$(MAKE) _ci-test
+	@$(MAKE) _ci-binaries
 	@$(MAKE) test-airgap
+	@$(MAKE) test-go-import
 	@$(MAKE) bsl-headers-check
 	@$(MAKE) third-party-notices-check
 	@$(MAKE) test-commit-hygiene
@@ -967,6 +995,7 @@ ci-protocol: dev-check
 ci-website: dev-check
 	@$(MAKE) website-test
 	@$(MAKE) website-build
+	@$(MAKE) website-bundle-check
 	@echo "Website CI complete."
 
 .PHONY: bsl-headers-check
@@ -1005,6 +1034,19 @@ _ci-test:
 	@$(MAKE) test-enrollment-burst
 	@echo "=== integration tests and coverage ==="
 	@$(MAKE) test-coverage
+
+# Release-shape checks GitHub Actions runs on the built binaries: the Windows
+# cross-compile, then (on a Linux host, the FIPS tested OE) the FIPS self-check
+# and fully static standard and FIPS binaries.
+.PHONY: _ci-binaries
+_ci-binaries:
+	@$(MAKE) build-windows
+ifeq ($(HOST_OS),linux)
+	@$(MAKE) build-linux
+	@$(MAKE) verify-static
+	@$(MAKE) fips-verify
+	@$(MAKE) verify-static STATIC_BINARY=$(BIN_DIR)/ztd-fips-$(FIPS_GOOS)-$(FIPS_GOARCH)
+endif
 
 # =============================================================================
 # RELEASE

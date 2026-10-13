@@ -30,13 +30,14 @@ source "$SCRIPT_DIR/lib/dev-setup-common.sh"
 
 GO_MIN="$(sed -n 's/^go //p' "$SOURCE_ROOT/go.mod" | head -1 | tr -d '[:space:]')"
 [[ -n "$GO_MIN" ]] || fail "could not read the Go version from go.mod"
+MAKE_BIN="$(command -v make)" || fail "make is required to run the onboarding tests"
 
 # Coreutils the code under test calls, wrapped so "missing" tools stay missing.
 # 'ln -s' on Windows/Git Bash creates .exe copies that fail to load msys-2.0.dll
 # under restricted PATH, so we use /bin/sh exec wrappers.
 CORE="$SCRATCH/core-bin"
 mkdir -p "$CORE"
-for tool in sed awk grep head tail tr cat mktemp basename dirname uname id rm touch cmp cp wc cut mkdir; do
+for tool in sed awk grep head tail tr cat mktemp basename dirname uname id rm touch cmp cp wc cut mkdir chmod date; do
 	real="$(command -v "$tool" || true)"
 	if [[ -n "$real" ]]; then
 		printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" >"$CORE/$tool"
@@ -131,6 +132,76 @@ test_go_too_old_is_missing() {
 	missing="$(collect_missing home-old-go "$bin" --build-only)" ||
 		fail "collect_missing (old go) failed"
 	[[ "$missing" == "go" ]] || fail "old go: want MISSING 'go', got '$missing'"
+}
+
+# `go install pkg@version` takes its toolchain from the tool's go.mod, not ours,
+# so under GOTOOLCHAIN=auto an older system Go builds the tool and the
+# post-install freshness check rejects it. The stub go mirrors that: it builds
+# with STUB_GO_MIN only when the install pins that toolchain.
+test_dev_tool_installs_with_go_mod_toolchain() {
+	local bin="$SCRATCH/bin-dev-tool" gobin="$SCRATCH/gobin-dev-tool"
+	mkdir -p "$bin" "$gobin"
+	cat >"$bin/go" <<'STUB'
+#!/bin/sh
+case "$1" in
+env)
+	[ "$2" = GOBIN ] && echo "$STUB_GOBIN"
+	;;
+install)
+	built_with=1.26.9
+	[ "$GOTOOLCHAIN" = "go${STUB_GO_MIN}+auto" ] && built_with="$STUB_GO_MIN"
+	printf '#!/bin/sh\n# built-with %s\n' "$built_with" >"$STUB_GOBIN/fakebuf"
+	chmod 755 "$STUB_GOBIN/fakebuf"
+	;;
+version)
+	built_with="$(sed -n 's/^# built-with //p' "$3")"
+	printf '%s: go%s\n\tmod\texample.com/fakebuf\tv1.0.0\n' "$3" "$built_with"
+	;;
+*)
+	exit 1
+	;;
+esac
+STUB
+	chmod 755 "$bin/go"
+	(
+		HOME="$SCRATCH/home-dev-tool"
+		mkdir -p "$HOME"
+		PATH="$bin:$gobin:$CORE"
+		GOTOOLCHAIN=auto
+		ZTD_GO_MIN="$GO_MIN"
+		STUB_GO_MIN="$GO_MIN"
+		STUB_GOBIN="$gobin"
+		export HOME PATH GOTOOLCHAIN ZTD_GO_MIN STUB_GO_MIN STUB_GOBIN
+		# shellcheck source=lib/dev-setup-common.sh
+		source "$SCRIPT_DIR/lib/dev-setup-common.sh"
+		ztd_dev_tool_if_needed example.com/cmd/fakebuf@v1.0.0
+	) >"$SCRATCH/dev-tool.out" 2>&1 || {
+		cat "$SCRATCH/dev-tool.out" >&2
+		fail "dev tool installed under an older system Go was rejected as stale"
+	}
+}
+
+# make_without_go <goal>: make -n <goal> with no Go toolchain on PATH.
+make_without_go() {
+	HOME="$SCRATCH/home-make-no-go" PATH="$CORE" "$MAKE_BIN" -C "$SOURCE_ROOT" -n "$1" \
+		>"$SCRATCH/make-no-go.out" 2>&1
+}
+
+# Runtime goals drive an already-built ./ztd and website goals run only npm, so
+# both must parse without Go on PATH. A build goal must still fail, which proves
+# the PATH really lacks Go.
+test_runtime_make_goals_need_no_go() {
+	local goal
+	mkdir -p "$SCRATCH/home-make-no-go"
+	for goal in help status down stop website-test website-build website-bundle-check; do
+		make_without_go "$goal" || {
+			cat "$SCRATCH/make-no-go.out" >&2
+			fail "make $goal failed without go on PATH"
+		}
+	done
+	if make_without_go build; then
+		fail "make build succeeded without go on PATH; the no-Go PATH is not isolated"
+	fi
 }
 
 # The WSL rule (a node reachable only under /mnt/<letter>/ does not count) needs
@@ -417,6 +488,8 @@ main() {
 	run_test test_build_only_does_not_require_node
 	run_test test_full_mode_requires_node
 	run_test test_go_too_old_is_missing
+	run_test test_dev_tool_installs_with_go_mod_toolchain
+	run_test test_runtime_make_goals_need_no_go
 	run_test test_ztd_have_accepts_native_tool
 	run_test test_ui_plain_when_not_tty
 	run_test test_ui_no_color_clears_palette

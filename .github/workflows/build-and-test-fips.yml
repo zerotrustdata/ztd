@@ -75,8 +75,4 @@ jobs:
         run: make test-integration
 
       - name: Verify Static Linking (FIPS binary)
-        run: |
-          file bin/ztd-fips-linux-amd64 | grep -q "statically linked" || \
-            { echo "ERROR: FIPS binary is not statically linked"; file bin/ztd-fips-linux-amd64; exit 1; }
-          ldd bin/ztd-fips-linux-amd64 2>&1 | grep -q "not a dynamic executable" || \
-            { echo "ERROR: FIPS binary has dynamic dependencies"; ldd bin/ztd-fips-linux-amd64; exit 1; }
+        run: make verify-static STATIC_BINARY=bin/ztd-fips-linux-amd64

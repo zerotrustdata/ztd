@@ -226,10 +226,7 @@ jobs:
       - name: Verify Static Linking
         run: |
           make build-linux
-          file bin/ztd-linux-amd64 | grep -q "statically linked" || \
-            { echo "ERROR: binary is not statically linked"; file bin/ztd-linux-amd64; exit 1; }
-          ldd bin/ztd-linux-amd64 2>&1 | grep -q "not a dynamic executable" || \
-            { echo "ERROR: binary has dynamic dependencies"; ldd bin/ztd-linux-amd64; exit 1; }
+          make verify-static
 
       - name: Operator enrollment scale and CLI lifecycle
         run: |
@@ -259,7 +256,7 @@ jobs:
           cache: true
 
       - name: Go smoke test
-        run: bash scripts/smoke-test-go.sh
+        run: make test-go-import
 
   secret-scan:
     name: Secret Scan
@@ -441,5 +438,4 @@ jobs:
         run: npm run check && npm run build
 
       - name: Validate Cloudflare bundle
-        working-directory: website
-        run: npx wrangler deploy --dry-run
+        run: make website-bundle-check

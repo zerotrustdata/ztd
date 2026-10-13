@@ -24,7 +24,7 @@ func TestMakefile_FrontendSourceDiscoveryDoesNotDependOnPlatformFind(t *testing.
 	require.NoError(t, err)
 
 	makefile := string(body)
-	assert.Contains(t, makefile, "$(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1)")
+	assert.Contains(t, makefile, `$(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1 || echo "go build exited $$?")`)
 	assert.Contains(t, makefile, "source_files = $(shell $(SOURCE_FILES_TOOL) -base . $(1))")
 	for _, line := range strings.Split(makefile, "\n") {
 		if strings.HasPrefix(line, "EXPLORER_SOURCES :=") || strings.HasPrefix(line, "CONSOLE_SOURCES :=") {
@@ -35,8 +35,9 @@ func TestMakefile_FrontendSourceDiscoveryDoesNotDependOnPlatformFind(t *testing.
 	}
 }
 
-// Runtime goals drive an already-built ./ztd, so they must parse without a Go
-// toolchain on PATH (fresh-host onboarding runs `make down` from a plain shell).
+// Runtime and website goals must parse without a Go toolchain on PATH:
+// fresh-host onboarding runs `make down` from a plain shell, and the website CI
+// job has only Node.
 func TestMakefile_RuntimeGoalsSkipSourceLister(t *testing.T) {
 	root, err := RepositoryRoot(".")
 	require.NoError(t, err)
@@ -44,6 +45,6 @@ func TestMakefile_RuntimeGoalsSkipSourceLister(t *testing.T) {
 	require.NoError(t, err)
 
 	makefile := string(body)
-	assert.Contains(t, makefile, "TOOLCHAIN_FREE_GOALS := help status down stop")
+	assert.Contains(t, makefile, "TOOLCHAIN_FREE_GOALS := help status down stop website-test website-build website-bundle-check")
 	assert.Contains(t, makefile, "ifneq ($(filter-out $(TOOLCHAIN_FREE_GOALS),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))),)")
 }
