@@ -278,6 +278,15 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 			},
 		},
 		{
+			// One remote Operator holding two capabilities shows both, with each capability's reported flags.
+			Id: "op-witness", OperatorType: string(constants.OperatorTypeRemote), Status: string(constants.OperatorStatusActive), CurrentHostname: "beepboop",
+			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
+				Capabilities:                       []string{string(constants.OperatorCapabilityObserver), string(constants.OperatorCapabilityProvenance)},
+				ProvenanceOperatorModelStorageRoot: `D:\models`, ProvenanceOperatorId: "beepboop-provenance",
+				ProviderBoundaryObserverId: "beepboop-observer", LocalDir: `D:\models`, HttpPort: 8080,
+			},
+		},
+		{
 			Id: string(constants.DocIDEmbeddedOperator), OperatorType: string(constants.OperatorTypeEmbedded), Status: string(constants.OperatorStatusActive),
 			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
 				Capabilities:                       []string{string(constants.OperatorCapabilityInference), string(constants.OperatorCapabilityProvenance)},
@@ -316,6 +325,12 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 	require.Equal(t, [][]string{
 		{"provenance", "--model-storage-root", "/srv/models"},
 	}, flagRowsFor(out, "op-prov"))
+	require.Equal(t, []string{"op-witness", "remote", "active", "beepboop", "8080", "provenance,observer", `D:\models`}, tableRow(t, out, "op-witness"))
+	require.Equal(t, [][]string{
+		{"provenance", "--model-storage-root", `D:\models`},
+		{"provenance", "--provenance-operator-id", "beepboop-provenance"},
+		{"observer", "--provider-boundary-observer-id", "beepboop-observer"},
+	}, flagRowsFor(out, "op-witness"))
 	require.NotContains(t, out, "http://ignored:11434")
 	require.NotContains(t, out, "Remote Operators  unavailable")
 }

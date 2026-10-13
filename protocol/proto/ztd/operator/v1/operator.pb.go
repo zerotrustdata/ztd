@@ -3557,8 +3557,14 @@ type OperatorRuntimeConfig struct {
 	// Gateway derives the Operator's stale deadline from it. Zero means the
 	// Operator did not declare one and the Gateway default window applies.
 	HeartbeatIntervalMs uint32 `protobuf:"varint,16,opt,name=heartbeat_interval_ms,json=heartbeatIntervalMs,proto3" json:"heartbeat_interval_ms,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Ollama keep-alive duration (--inference-keep-alive).
+	InferenceKeepAlive string `protobuf:"bytes,17,opt,name=inference_keep_alive,json=inferenceKeepAlive,proto3" json:"inference_keep_alive,omitempty"`
+	// Stable provenance attestor pseudonym (--provenance-operator-id).
+	ProvenanceOperatorId string `protobuf:"bytes,18,opt,name=provenance_operator_id,json=provenanceOperatorId,proto3" json:"provenance_operator_id,omitempty"`
+	// Stable provider-boundary observer pseudonym (--provider-boundary-observer-id).
+	ProviderBoundaryObserverId string `protobuf:"bytes,19,opt,name=provider_boundary_observer_id,json=providerBoundaryObserverId,proto3" json:"provider_boundary_observer_id,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *OperatorRuntimeConfig) Reset() {
@@ -3666,6 +3672,27 @@ func (x *OperatorRuntimeConfig) GetHeartbeatIntervalMs() uint32 {
 		return x.HeartbeatIntervalMs
 	}
 	return 0
+}
+
+func (x *OperatorRuntimeConfig) GetInferenceKeepAlive() string {
+	if x != nil {
+		return x.InferenceKeepAlive
+	}
+	return ""
+}
+
+func (x *OperatorRuntimeConfig) GetProvenanceOperatorId() string {
+	if x != nil {
+		return x.ProvenanceOperatorId
+	}
+	return ""
+}
+
+func (x *OperatorRuntimeConfig) GetProviderBoundaryObserverId() string {
+	if x != nil {
+		return x.ProviderBoundaryObserverId
+	}
+	return ""
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and
@@ -12064,7 +12091,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
 	"\voperator_id\x18\x02 \x01(\tR\n" +
 	"operatorId\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\xe3\x04\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\x8e\x06\n" +
 	"\x15OperatorRuntimeConfig\x12\x1d\n" +
 	"\n" +
 	"cloud_mode\x18\x01 \x01(\bR\tcloudMode\x12%\n" +
@@ -12077,7 +12104,10 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x19inference_ollama_endpoint\x18\v \x01(\tR\x17inferenceOllamaEndpoint\x12R\n" +
 	"&provenance_operator_model_storage_root\x18\x0e \x01(\tR\"provenanceOperatorModelStorageRoot\x12\x1a\n" +
 	"\bplatform\x18\x0f \x01(\tR\bplatform\x122\n" +
-	"\x15heartbeat_interval_ms\x18\x10 \x01(\rR\x13heartbeatIntervalMsJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
+	"\x15heartbeat_interval_ms\x18\x10 \x01(\rR\x13heartbeatIntervalMs\x120\n" +
+	"\x14inference_keep_alive\x18\x11 \x01(\tR\x12inferenceKeepAlive\x124\n" +
+	"\x16provenance_operator_id\x18\x12 \x01(\tR\x14provenanceOperatorId\x12A\n" +
+	"\x1dprovider_boundary_observer_id\x18\x13 \x01(\tR\x1aproviderBoundaryObserverIdJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
 	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x15local_storage_enabledR\x11inference_enabledR\"provider_boundary_observer_enabledR\x1bprovenance_operator_enabledR\x06no_git\"\xd1\v\n" +
 	"\x10OperatorDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +

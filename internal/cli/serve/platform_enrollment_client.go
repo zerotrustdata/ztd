@@ -413,7 +413,10 @@ func operatorRuntimeConfig(cfg *config.Config) (json.RawMessage, error) {
 		Account:      auth.ResolveCurrentAccount(),
 
 		InferenceOllamaEndpoint:            cfg.Inference.OllamaEndpoint,
+		InferenceKeepAlive:                 cfg.Inference.KeepAlive,
+		ProvenanceOperatorId:               cfg.ProvenanceOperator.OperatorID,
 		ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot,
+		ProviderBoundaryObserverId:         cfg.ProviderBoundaryObserver.ObserverID,
 		Platform:                           runtime.GOOS,
 		HeartbeatIntervalMs:                uint32(cfg.HeartbeatInterval.Milliseconds()),
 	})

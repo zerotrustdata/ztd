@@ -347,6 +347,9 @@ func operatorStartCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start the ztd Operator in foreground (worker mode)",
 		Long:  `Start the ztd Operator in foreground as a worker. This connects to the Gateway and executes commands. This is the re-exec target for remote deployment and can also be run directly for debugging.`,
+		// Anything after "--" is positional and would otherwise be silently
+		// dropped, starting the Operator without the intended flags.
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateHeartbeatInterval(heartbeatInterval); err != nil {
 				return err
