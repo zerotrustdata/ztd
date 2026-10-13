@@ -837,7 +837,8 @@ harness-clean:
 # HOST PLATFORM LIFECYCLE
 # =============================================================================
 # These targets run the platform directly on the development host by calling
-# ./ztd and never read .env: pass ./ztd flags through the *_ARGS variables
+# ./ztd, which loads only registry secret and user_endpoint keys from .env
+# (.env.example); pass every other ./ztd flag through the *_ARGS variables
 # (confirm flags with `./ztd gw start --help` and `./ztd operator start --help`).
 # up-public and gw-public run up and gw with the Gateway listeners bound to
 # every interface so Operators on other hosts can enroll; up and gw stay

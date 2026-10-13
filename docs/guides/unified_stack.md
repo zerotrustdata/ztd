@@ -68,11 +68,11 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 ### Prerequisites
 
 - A built `./ztd` binary (`make build`). See [Getting Started](getting_started.md).
-- An approved Ollama provider reachable from the Inference Operator host, for example: `curl -fsS http://192.168.1.2:11434/api/version`. The Inference Operator default endpoint is `http://127.0.0.1:11434`; set `--inference-ollama-endpoint` when the approved provider is remote.
+- An approved Ollama provider reachable from the Inference Operator host, for example: `curl -fsS http://192.168.1.2:11434/api/version`. The Inference Operator default endpoint is `http://127.0.0.1:11434`; set `ZTD_OLLAMA_ENDPOINT` in `.env` (or `--inference-ollama-endpoint`) when the approved provider is remote.
 - Host ports available: **8080** (HTTP discovery) and **8443** (HTTPS/mTLS API and console). The public spectator and evaluation explorer listen on loopback **8081**, **8082**, and **5173** by default.
 - A browser with WebAuthn support for the owner passkey, or headless enrollment.
 
-Host binaries do not read `.env`. Pass start flags through `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
+`./ztd` loads the repo-root `.env` (template: `.env.example`, mode `0600`) at startup; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
 
 ### Binary building and version alignment
 

@@ -99,7 +99,7 @@ type GatewayFlags struct {
 // binding them to the provided GatewayFlags struct.
 func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().Var(&f.OperatorCapabilities, "capabilities", "Comma-separated embedded Operator capabilities: data,inference,provenance,observer (repeatable; the embedded Operator always includes data; default: data)")
-	cmd.Flags().StringVar(&f.InferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Approved Ollama endpoint for embedded inference")
+	cmd.Flags().StringVar(&f.InferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Approved Ollama endpoint for embedded inference (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
 	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Ollama keep-alive duration")
 	cmd.Flags().StringVar(&f.ProviderBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorID, "provenance-operator-id", "", "Stable provenance identity")
@@ -141,9 +141,11 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 }
 
 // resolveGatewayFlags finalizes gateway flag values. Gateway configuration is
-// flag-only: no environment variable supplies a value for these settings.
+// flag-only, except that the user_endpoint ZTD_OLLAMA_ENDPOINT supplies
+// --inference-ollama-endpoint when the flag is blank.
 func resolveGatewayFlags(f GatewayFlags) GatewayFlags {
 	f.MasterKeyFile = strings.TrimSpace(f.MasterKeyFile)
+	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint)
 	return f
 }
 

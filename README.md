@@ -74,10 +74,10 @@ The Gateway-only track requires Git, Go 1.27.2, and Make. Fresh clones use the c
 
 For setup details, see the [Getting Started guide](docs/guides/getting_started.md#native-host-build).
 
-To run the Gateway with its embedded Operator carrying the Data, Inference, and Observer capabilities, use `make gw`. Pass the Ollama endpoint for the Inference capability through `GW_ARGS`. Set `MODEL_STORAGE_ROOT` to the local model store to add the Provenance capability:
+To run the Gateway with its embedded Operator carrying the Data, Inference, and Observer capabilities, use `make gw`. Set the Ollama endpoint for the Inference capability as `ZTD_OLLAMA_ENDPOINT` in `.env` (template: `.env.example`), or pass `--inference-ollama-endpoint` through `GW_ARGS`. Set `MODEL_STORAGE_ROOT` to the local model store to add the Provenance capability:
 
 ```bash
-make gw GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'
+make gw
 make status
 ```
 

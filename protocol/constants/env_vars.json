@@ -7,6 +7,12 @@
     "test": "Test-harness selector read only by `ztd test` tooling and test code; never user configuration"
   },
   "env_vars": {
+    "OllamaEndpoint": {
+      "_go_const": "EnvVar.OllamaEndpoint",
+      "value": "ZTD_OLLAMA_ENDPOINT",
+      "category": "user_endpoint",
+      "description": "Approved Ollama provider endpoint; default for --inference-ollama-endpoint on gw start, operator start, and operator model commands"
+    },
     "E2EFleetSessions": {
       "_go_const": "EnvVar.E2EFleetSessions",
       "value": "ZTD_E2E_FLEET_SESSIONS",

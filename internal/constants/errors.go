@@ -654,6 +654,9 @@ var (
 	ErrConfigHTTPSPortZero     = errors.New("httpsPort cannot be 0 in production")
 	ErrConfigPortsMustDiffer   = errors.New("httpPort and httpsPort must be different")
 	ErrConfigInvalidWorkingDir = errors.New("invalid working directory")
+	ErrEnvFileInvalid          = errors.New(".env must be a regular file owned by the user or root with mode 0600 or 0400")
+	ErrEnvFileMalformed        = errors.New(".env line is not KEY=VALUE")
+	ErrEnvFileUnknownKey       = errors.New(".env key is not a secret or user_endpoint key in protocol/constants/env_vars.json")
 
 	ErrLoadCertKeyPair         = errors.New("failed to load client certificate/key pair")
 	ErrOperatorDeployFailed    = errors.New("operator deploy failed")

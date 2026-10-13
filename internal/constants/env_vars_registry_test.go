@@ -100,6 +100,22 @@ func TestSecretEnvVars_MatchRegistrySecrets(t *testing.T) {
 	assert.ElementsMatch(t, want, got)
 }
 
+// TestUserEndpointEnvVars_MatchRegistryUserEndpoints asserts UserEndpointEnvVars
+// lists exactly the registry keys in category "user_endpoint".
+func TestUserEndpointEnvVars_MatchRegistryUserEndpoints(t *testing.T) {
+	var want []string
+	for _, entry := range loadEnvVarRegistry(t) {
+		if entry.Category == "user_endpoint" {
+			want = append(want, entry.Value)
+		}
+	}
+	got := make([]string, 0, len(UserEndpointEnvVars))
+	for _, key := range UserEndpointEnvVars {
+		got = append(got, string(key))
+	}
+	assert.ElementsMatch(t, want, got)
+}
+
 // TestProductionGoEnvReads_UseRegistryKeys asserts no production Go code reads
 // the environment through a raw string literal; every key goes through the
 // typed constants.EnvVar registry (INV-TYPE-06, INV-ENV-04).

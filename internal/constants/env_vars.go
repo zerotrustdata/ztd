@@ -12,6 +12,7 @@ type EnvVarKey string
 
 // EnvVar groups all environment variable name constants consumed by ztdo.
 var EnvVar = struct {
+	OllamaEndpoint     EnvVarKey
 	E2EFleetSessions   EnvVarKey
 	Shell              EnvVarKey
 	Lang               EnvVarKey
@@ -23,6 +24,7 @@ var EnvVar = struct {
 	XDGRuntimeDir      EnvVarKey
 	CloudflareAPIToken EnvVarKey
 }{
+	OllamaEndpoint:     EnvVarKey("ZTD_OLLAMA_ENDPOINT"),
 	E2EFleetSessions:   EnvVarKey("ZTD_E2E_FLEET_SESSIONS"),
 	Shell:              EnvVarKey("SHELL"),
 	Lang:               EnvVarKey("LANG"),
@@ -39,4 +41,9 @@ var EnvVar = struct {
 // credentials and are withheld from governed child processes.
 var SecretEnvVars = []EnvVarKey{
 	EnvVar.CloudflareAPIToken,
+}
+
+// UserEndpointEnvVars are the registry keys in category "user_endpoint".
+var UserEndpointEnvVars = []EnvVarKey{
+	EnvVar.OllamaEndpoint,
 }

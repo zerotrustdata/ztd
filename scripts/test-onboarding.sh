@@ -248,6 +248,27 @@ test_path_profile_matches_whole_path() {
 	[[ "$count" == 1 ]] || fail "sibling and child paths masked the repo root: marker lines want 1, got $count"
 }
 
+test_create_env_file_owner_only_and_kept() {
+	local repo="$SCRATCH/repo-env"
+	mkdir -p "$repo"
+	printf '# template\n' >"$repo/.env.example"
+	(
+		cd "$repo" || exit 1
+		ztd_ui_init
+		ztd_create_env_file >/dev/null
+	) || fail "ztd_create_env_file failed"
+	cmp -s "$repo/.env.example" "$repo/.env" || fail ".env is not a copy of .env.example"
+	[[ -n "$(find "$repo/.env" -perm 600)" ]] || fail ".env mode: want 600"
+
+	printf 'kept\n' >"$repo/.env"
+	(
+		cd "$repo" || exit 1
+		ztd_ui_init
+		ztd_create_env_file >/dev/null
+	) || fail "ztd_create_env_file rerun failed"
+	[[ "$(cat "$repo/.env")" == kept ]] || fail "rerun overwrote an existing .env"
+}
+
 test_confirm_noninteractive_exits_2() {
 	local rc=0
 	(
@@ -392,6 +413,7 @@ main() {
 	run_test test_path_profile_idempotent
 	run_test test_path_profile_respects_home_form
 	run_test test_path_profile_matches_whole_path
+	run_test test_create_env_file_owner_only_and_kept
 	run_test test_confirm_noninteractive_exits_2
 	run_test test_linux_setup_rejects_unknown_option
 	run_test test_quickstart_help_and_unknown_option

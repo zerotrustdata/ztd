@@ -341,6 +341,9 @@ const RuntimeArchiveTimestampLayout = "01021504"
 const (
 	PathCurrentDir = "."
 
+	// EnvFilename is the project-root env file (template: .env.example).
+	EnvFilename = ".env"
+
 	RuntimeDirname           = ".ztd"
 	DataDirname              = "data"
 	VaultDirname             = "vault"

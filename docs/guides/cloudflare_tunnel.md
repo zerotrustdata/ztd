@@ -85,7 +85,7 @@ export CLOUDFLARE_API_TOKEN='<token-with-dns-edit-permission>'
 ./ztd gw tunnel route-dns --name ztd console.example.com
 ```
 
-To keep the token in the repo-root `.env` instead (template: `.env.example`), export it into the shell with `set -a; . ./.env; set +a` before running the command. `--api-token` overrides the environment.
+To keep the token in the repo-root `.env` instead (template: `.env.example`, mode `0600`), set `CLOUDFLARE_API_TOKEN` there; `./ztd` loads `.env` from the working directory at startup. `--api-token` overrides the environment.
 
 ### 3. Start the Gateway with tunnel-aware configuration
 

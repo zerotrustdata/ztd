@@ -232,9 +232,10 @@ Platform operational configuration is **never** loaded from environment variable
 Production Go code accesses the environment solely via typed constants defined on `constants.EnvVar`:
 - **Host Facts**: `EnvVar.Shell` (`SHELL`), `EnvVar.Lang` (`LANG`), `EnvVar.Term` (`TERM`), `EnvVar.TZ` (`TZ`), `EnvVar.Home` (`HOME`), `EnvVar.User` (`USER`), `EnvVar.SSHAuthSock` (`SSH_AUTH_SOCK`), `EnvVar.XDGRuntimeDir` (`XDG_RUNTIME_DIR`).
 - **Secrets**: `EnvVar.CloudflareAPIToken` (`CLOUDFLARE_API_TOKEN`).
+- **User Endpoints**: `EnvVar.OllamaEndpoint` (`ZTD_OLLAMA_ENDPOINT`), the default for `--inference-ollama-endpoint`.
 - **Test Harness**: `EnvVar.E2EFleetSessions` (`ZTD_E2E_FLEET_SESSIONS`).
 
-Raw `os.Getenv("...")` calls with hardcoded strings are prohibited.
+Raw `os.Getenv("...")` calls with hardcoded strings are prohibited. `config.LoadEnvFile` (`internal/cli/config/env_file.go`) loads secret and user_endpoint keys from the repo-root `.env` into the process environment at CLI startup.
 
 ---
 

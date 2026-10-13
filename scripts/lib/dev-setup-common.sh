@@ -407,6 +407,17 @@ ztd_run_make_build() {
     make build
 }
 
+# Creates the owner-only .env that every ./ztd command loads, from the
+# commented .env.example template. An existing .env is kept.
+ztd_create_env_file() {
+    if [[ -e .env ]]; then
+        ztd_ui_ok "kept existing .env"
+        return
+    fi
+    (umask 077 && cp .env.example .env)
+    ztd_ui_ok "created .env from .env.example (mode 600)"
+}
+
 ztd_run_dev_setup() {
     make dev-setup
 }
@@ -556,6 +567,7 @@ ztd_print_next_steps_unix() {
     echo -e "\n${ZTD_UI_GREEN}${ZTD_UI_BOLD}${ZTD_UI_OK} ztd is ready${ZTD_UI_RESET} ${ZTD_UI_DIM}($(ztd_ui_elapsed))${ZTD_UI_RESET}\n"
     echo -e "  ${ZTD_UI_BOLD}Next${ZTD_UI_RESET}      make quickstart"
     echo -e "            ${ZTD_UI_DIM}starts a local Gateway, signs you in, and runs your first governed action${ZTD_UI_RESET}"
+    echo -e "  ${ZTD_UI_BOLD}Configure${ZTD_UI_RESET} .env     ${ZTD_UI_DIM}optional: remote Ollama endpoint, Cloudflare token; ./ztd loads it at startup${ZTD_UI_RESET}"
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
         echo -e "  ${ZTD_UI_BOLD}Develop${ZTD_UI_RESET}   make ci      ${ZTD_UI_DIM}full local CI${ZTD_UI_RESET}"
         echo -e "            make help    ${ZTD_UI_DIM}every target${ZTD_UI_RESET}"
@@ -617,6 +629,7 @@ ztd_setup_main() {
     step=$((step + 1)); ztd_ui_step "$step" "$total" "Building ztd"
     ztd_run_make_build
     ztd_ui_ok "built ./ztd"
+    ztd_create_env_file
 
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
         step=$((step + 1)); ztd_ui_step "$step" "$total" "Installing the contributor toolchain (Go dev tools, Node deps)"

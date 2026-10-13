@@ -499,6 +499,8 @@ function Show-NextSteps {
         Write-Host "  make help             # all targets"
         Write-Host ""
     }
+    Write-Host "Configure (optional): .env  # remote Ollama endpoint, Cloudflare token; ./ztd loads it at startup"
+    Write-Host ""
     Write-Host "Recommended next steps:"
     Write-Host "  Native gateway:"
     Write-Host "    $binary gw start"
@@ -591,6 +593,14 @@ Write-Host "`n[STEP $buildStep/$totalSteps] Building ztd..." -ForegroundColor Ye
 Set-Location $Script:RepoRoot
 Invoke-Step "make build" { make build }
 Write-Host "Build successful." -ForegroundColor Green
+# Every ./ztd command loads .env at startup; create it from the commented
+# template and keep an existing one.
+if (Test-Path (Join-Path $Script:RepoRoot ".env")) {
+    Write-Host "Kept existing .env." -ForegroundColor Green
+} else {
+    Copy-Item (Join-Path $Script:RepoRoot ".env.example") (Join-Path $Script:RepoRoot ".env")
+    Write-Host "Created .env from .env.example." -ForegroundColor Green
+}
 
 if ($Script:BuildOnly) {
     Write-Host "`n[STEP 3/$totalSteps] Offering to add the repository root to PATH..." -ForegroundColor Yellow

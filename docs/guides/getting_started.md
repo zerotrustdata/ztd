@@ -248,6 +248,8 @@ make gw
 make gw MODEL_STORAGE_ROOT=/srv/ollama/models GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'
 ```
 
+`ZTD_OLLAMA_ENDPOINT` in the repo-root `.env` (template: `.env.example`) supplies `--inference-ollama-endpoint` when the flag is not set.
+
 Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them. Startup ends with the same output as `gw status`:
 
 ```text
