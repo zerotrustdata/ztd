@@ -7,7 +7,7 @@ ztd lets AI systems propose actions without giving them direct control over real
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
 
-The current version is **v1.0.3**. See the [release notes](docs/release_notes/v1.0.x/v1.0.3.md) for changes and validation results.
+The current version is **v1.0.4**. See the [release notes](docs/release_notes/v1.0.x/v1.0.4.md) for changes and validation results.
 
 ## What ztd does
 
@@ -100,7 +100,7 @@ Sign in at `https://localhost:8443/console/` with a passkey.
 The repository includes a protocol layer and example integrations in Go.
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.3
+go get github.com/zerotrustdata/ztd@v1.0.4
 ```
 
 ## What is in the repo

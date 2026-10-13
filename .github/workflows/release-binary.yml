@@ -9,12 +9,14 @@
 #   validate  -> preflight: tag/VERSION/revision agreement, dispatch ref rules
 #   build     -> build-all, checksums, prepublication artifact verification,
 #                cosign keyless signing (.sigstore.json bundles), staged release set
-#   verify-download -> download the artifact set exactly as publish will and
-#                re-verify it; runs on rehearsals too, so `make release-rehearse`
-#                covers everything up to publication
+#   verify-download -> download the artifact set exactly as publish will, re-verify
+#                it, and run scripts/release-r2.sh against wrangler local storage;
+#                runs on rehearsals too, so `make release-rehearse` covers
+#                everything up to publication
 #   publish   -> (publish=true only) re-verify the downloaded set, GitHub draft
-#                release, immutable R2 upload under v<VERSION>/, release published,
-#                then promote R2 latest.json (the single website promotion step)
+#                release, immutable R2 upload under v<VERSION>/ (wrangler), release
+#                published, then promote R2 latest.json (the single website
+#                promotion step)
 #   verify-install -> POSTPUBLICATION gate: fresh `go install` from the public module
 #
 # workflow_dispatch: a run from a release tag (refs/tags/v<VERSION>) may publish.
@@ -163,6 +165,26 @@ jobs:
           scripts/release-artifacts.sh verify release "$VERSION" "$(git rev-parse HEAD)"
           scripts/release-artifacts.sh verify-signatures release
 
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install wrangler
+        run: npm ci --prefix website
+
+      - name: Rehearse R2 publication against wrangler local storage
+        env:
+          ZTD_R2_PERSIST_TO: ${{ runner.temp }}/r2
+        run: |
+          set -euo pipefail
+          if scripts/release-r2.sh promote release "$VERSION"; then echo "promote accepted an unpublished set"; exit 1; fi
+          scripts/release-r2.sh upload release "$VERSION"
+          scripts/release-r2.sh promote release "$VERSION"
+          if scripts/release-r2.sh upload release "$VERSION"; then echo "upload overwrote an immutable versioned set"; exit 1; fi
+
   publish:
     name: Publish Release
     needs: [validate, build, verify-download]
@@ -212,35 +234,21 @@ jobs:
           files: |
             release/*
 
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install wrangler
+        run: npm ci --prefix website
+
       - name: Upload versioned release set to R2
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-          AWS_ENDPOINT_URL: ${{ secrets.CLOUDFLARE_S3_API_ENDPOINT }}
-          AWS_REGION: auto
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          artifacts=(release/*)
-          [ "${#artifacts[@]}" -gt 0 ] || { echo "release set is empty"; exit 1; }
-          # Versioned sets are immutable: refuse to write into a prefix that already holds objects.
-          existing=$(aws s3 ls "s3://ztd-releases/v$VERSION/" \
-            --endpoint-url "$AWS_ENDPOINT_URL" \
-            --only-show-errors)
-          [ -z "$existing" ] || { echo "s3://ztd-releases/v$VERSION/ already holds objects; versioned release sets are immutable"; exit 1; }
-          for artifact in "${artifacts[@]}"; do
-            name=$(basename "$artifact")
-            key="v$VERSION/$name"
-            want=$(sha256sum "$artifact" | cut -d' ' -f1)
-            aws s3 cp "$artifact" "s3://ztd-releases/$key" \
-              --endpoint-url "$AWS_ENDPOINT_URL" \
-              --only-show-errors
-            # Read the object back and compare bytes, so R2 serves exactly the verified set.
-            got=$(aws s3 cp "s3://ztd-releases/$key" - \
-              --endpoint-url "$AWS_ENDPOINT_URL" \
-              --only-show-errors | sha256sum | cut -d' ' -f1)
-            [ "$got" = "$want" ] || { echo "R2 object $key does not match the verified release set"; exit 1; }
-          done
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ACCOUNT_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: scripts/release-r2.sh upload release "$VERSION"
 
       - name: Publish Release
         env:
@@ -252,28 +260,9 @@ jobs:
       # only after the GitHub release is public and the whole versioned set is verified in R2.
       - name: Promote latest pointer
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-          AWS_ENDPOINT_URL: ${{ secrets.CLOUDFLARE_S3_API_ENDPOINT }}
-          AWS_REGION: auto
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          artifacts=(release/*)
-          present=$(aws s3 ls "s3://ztd-releases/v$VERSION/" \
-            --endpoint-url "$AWS_ENDPOINT_URL" \
-            --only-show-errors | wc -l)
-          [ "$present" -eq "${#artifacts[@]}" ] || { echo "s3://ztd-releases/v$VERSION/ holds $present objects, expected ${#artifacts[@]}; not promoting"; exit 1; }
-          pointer="$RUNNER_TEMP/latest.json"
-          printf '{"version": "%s"}\n' "$VERSION" > "$pointer"
-          want=$(sha256sum "$pointer" | cut -d' ' -f1)
-          aws s3 cp "$pointer" "s3://ztd-releases/latest.json" \
-            --endpoint-url "$AWS_ENDPOINT_URL" \
-            --only-show-errors
-          got=$(aws s3 cp "s3://ztd-releases/latest.json" - \
-            --endpoint-url "$AWS_ENDPOINT_URL" \
-            --only-show-errors | sha256sum | cut -d' ' -f1)
-          [ "$got" = "$want" ] || { echo "R2 latest.json does not match the promoted version"; exit 1; }
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ACCOUNT_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: scripts/release-r2.sh promote release "$VERSION"
 
   verify-install:
     # POSTPUBLICATION gate: runs only after the release is public.
@@ -292,6 +281,9 @@ jobs:
     env:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

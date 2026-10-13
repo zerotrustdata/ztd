@@ -157,18 +157,18 @@ The public signer identity is `https://github.com/zerotrustdata/ztd/.github/work
 
 ### Website Download Set and Promotion (R2)
 
-The publish job in `.github/workflows/release-binary.yml` publishes the 23-file release set (7 targets × binary, `.sha256`, `.sigstore.json`, plus `checksums-sha256.txt` and `ztd-binaries.json`) to the `ztd-releases` R2 bucket in three steps:
+The publish job in `.github/workflows/release-binary.yml` publishes the 23-file release set (7 targets × binary, `.sha256`, `.sigstore.json`, plus `checksums-sha256.txt` and `ztd-binaries.json`) to the `ztd-releases` R2 bucket (the bucket `website/wrangler.jsonc` binds as `RELEASES`) in three steps. `scripts/release-r2.sh` owns the R2 writes and runs the website's pinned `wrangler r2 object` commands, authenticated with the `release` environment secrets `CLOUDFLARE_ACCOUNT_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The `verify-download` job runs the same script against wrangler local storage on every rehearsal.
 
-1. **Versioned upload:** The set is written under `s3://ztd-releases/v<VERSION>/` and each object is read back and compared by SHA-256 against the verified local file. Refuses write when prefix already holds objects.
+1. **Versioned upload:** `release-r2.sh upload` writes the set under `ztd-releases/v<VERSION>/` and reads each object back, comparing SHA-256 against the verified local file. It refuses to write when any key of the set already exists.
 2. **GitHub publish:** `gh release edit --draft=false` marks GitHub release public.
-3. **Promotion:** `s3://ztd-releases/latest.json` is written last as `{"version": "<VERSION>"}` and read back. This is the sole object updating unversioned download routes.
+3. **Promotion:** `release-r2.sh promote` re-checks every `v<VERSION>/` object against the set, then writes `ztd-releases/latest.json` last as `{"version": "<VERSION>"}` and reads it back. This is the sole object updating unversioned download routes.
 
 `website/worker.js` serves the set:
 - `/v/<version>/<file>` serves `v<version>/<file>` directly with `public, max-age=31536000, immutable`.
 - Unversioned routes (`/ztd`, `/ztd-linux-amd64`, `/checksums-sha256.txt`, ...) read `latest.json` on each request and serve `v<version>/<file>` with `public, max-age=300`.
 - Missing or malformed `latest.json` returns plain-text 503 with `cache-control: no-store`.
 
-**Failure behavior:** Failures before step 3 leave unversioned routes pointing at the previous version. To rerun, the release owner removes `v<VERSION>/` via `aws s3 rm --recursive s3://ztd-releases/v<VERSION>/ --endpoint-url <CLOUDFLARE_S3_API_ENDPOINT>` after confirming `latest.json` does not reference `<VERSION>`. Failures at step 3 after public GitHub release leave unversioned routes on the previous version; recover by manually writing `latest.json` with the new version.
+**Failure behavior:** Failures before step 3 leave unversioned routes pointing at the previous version. To rerun, the release owner first confirms `latest.json` does not reference `<VERSION>`, then removes the set from `website/` with `for f in $(../scripts/release-artifacts.sh list-binaries); do for k in "$f" "$f.sha256" "$f.sigstore.json"; do npx wrangler r2 object delete "ztd-releases/v<VERSION>/$k" --remote; done; done` plus the same delete for `checksums-sha256.txt` and `ztd-binaries.json`. A release tag cannot be reused once the Go module proxy has cached it; bump `VERSION` instead of rerunning a burned tag. Failures at step 3 after public GitHub release leave unversioned routes on the previous version; recover by writing `latest.json` with the new version (`npx wrangler r2 object put ztd-releases/latest.json --file latest.json --content-type application/json --remote`).
 
 **Rollback:** Rewrite `latest.json` to the target rollback version (e.g. `{"version": "2.3.1"}`). Immutable `v<version>/` prefixes remain intact; unversioned routes restore within the 5-minute cache TTL.
 

@@ -83,11 +83,9 @@ it makes a GitHub release public. Each release is written under an immutable `v<
 `latest.json` (`{"version": "X.Y.Z"}`) is promoted last. `/v/<version>/<file>` serves one pinned version, `/latest.json`
 serves the pointer, and unversioned routes such as `/ztd-linux-amd64` resolve through the pointer per request. The
 install scripts read `latest.json` once and fetch the binary and its checksum from that single version (or from
-`ZTD_VERSION` when it is set). The workflow additionally needs:
-
-- `CLOUDFLARE_ACCESS_KEY_ID`
-- `CLOUDFLARE_SECRET_ACCESS_KEY`
-- `CLOUDFLARE_S3_API_ENDPOINT`
+`ZTD_VERSION` when it is set). The workflow writes through this package's wrangler (`scripts/release-r2.sh`), so
+its `release` environment needs `CLOUDFLARE_ACCOUNT_API_TOKEN` (with R2 object read/write on `ztd-releases`) and
+`CLOUDFLARE_ACCOUNT_ID`.
 
 For an initial deployment from a trusted workstation:
 
