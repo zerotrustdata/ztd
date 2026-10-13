@@ -45,7 +45,13 @@ else
     mkdir -p "$ROOT"
     ROOT="$(realpath "$ROOT")"
 fi
-mkdir -p "$ROOT/run" "$ROOT/out" "$ROOT/home" "$ROOT/tmp" "$ROOT/bin"
+mkdir -p "$ROOT/run" "$ROOT/out" "$ROOT/home" "$ROOT/tmp" "$ROOT/bin" "$ROOT/keys"
+# CI runners have neither a Secret Service keyring nor an ssh-agent, so seal
+# this owned Gateway and its CLI identity with a provisioned master key file:
+# 32 random bytes, base64, 0600, outside the runtime root.
+MASTER_KEY="$ROOT/keys/master.key"
+(set -C && head -c 32 /dev/urandom | base64 >"$MASTER_KEY")
+export ZTD_E2E_MASTER_KEY_FILE="$MASTER_KEY"
 # Copy once so rebuilding the workspace binary cannot change this scenario.
 cp "$BIN" "$ROOT/bin/ztd"
 BIN="$ROOT/bin/ztd"
@@ -123,9 +129,14 @@ cleanup() {
         echo "Operator teardown failed; see $ROOT/out/operator-cleanup.log" >&2
         status=1
     fi
-    if ! (cd "$ROOT/run" && "$BIN" gw stop) >"$ROOT/out/gateway-stop.log" 2>&1; then
+    if ! (cd "$ROOT/run" && "$BIN" gw stop --master-key-file "$MASTER_KEY") >"$ROOT/out/gateway-stop.log" 2>&1; then
         echo "Gateway teardown failed; see $ROOT/out/gateway-stop.log" >&2
         status=1
+    fi
+    if ((status != 0)); then
+        for log in gateway-start owner-login; do
+            [[ -s "$ROOT/out/$log.log" ]] && { echo "--- $log.log (tail)"; tail -n 20 "$ROOT/out/$log.log"; } >&2
+        done
     fi
     echo "Deployment lifecycle evidence: $ROOT/out (exit $status)"
     exit "$status"
@@ -134,8 +145,8 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 (cd "$ROOT/run" && "$BIN" gw start --cert-mode localhost --posture doctrine \
-    --capabilities data --public-spectator=false --log info) >"$ROOT/out/gateway-start.log" 2>&1
-(cd "$ROOT/run" && "$BIN" login --endpoint localhost) >"$ROOT/out/owner-login.log" 2>&1
+    --capabilities data --public-spectator=false --log info --master-key-file "$MASTER_KEY") >"$ROOT/out/gateway-start.log" 2>&1
+(cd "$ROOT/run" && "$BIN" login --endpoint localhost --master-key-file "$MASTER_KEY") >"$ROOT/out/owner-login.log" 2>&1
 cd "$REPO"
 setsid env ZTD_E2E_RUNTIME_ROOT="$ROOT/run" \
 ZTD_E2E_FLEET_SIZE="$COUNT" \

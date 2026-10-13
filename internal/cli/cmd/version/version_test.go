@@ -106,7 +106,7 @@ func TestRunVersion_JSONEmitsProvenanceFields(t *testing.T) {
 		Version:             "2.1.8",
 		BuildID:             "abc123",
 		BuildTime:           "2026-09-12T00:00:00Z",
-		Platform:            "linux_amd64",
+		Platform:            "linux/amd64",
 		SourceRevision:      "deadbeef" + strings.Repeat("0", 32),
 		SourceTreeStateHash: "a" + strings.Repeat("1", 63),
 	}

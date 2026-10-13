@@ -127,16 +127,15 @@ cmd_verify() {
 	fi
 
 	# Build metadata is checked by running the binary only when the host can execute it.
+	# Read the typed `version --json` contract; platform is stamped as GOOS/GOARCH.
 	if [ "$(uname -s)/$(uname -m)" = "Linux/x86_64" ]; then
 		local out
-		out=$("$dir/ztd-linux-amd64" version) || die "ztd-linux-amd64 version failed"
-		echo "$out" | grep -qx "ztd version v${version}" || die "ztd-linux-amd64 does not report version v${version}"
-		echo "$out" | grep -qx "platform: *linux_amd64" || die "ztd-linux-amd64 does not report platform linux_amd64"
-		echo "$out" | grep -qx "source rev: *${revision}" || die "ztd-linux-amd64 does not report source revision ${revision}"
-		if echo "$out" | grep -q "source state: modified"; then
-			die "ztd-linux-amd64 was built from a modified source tree"
-		fi
-		"$dir/ztd-linux-amd64" version --fips >/dev/null || die "ztd-linux-amd64 is not in FIPS 140-3 approved mode"
+		out=$("$dir/ztd-linux-amd64" version --json --fips) || die "ztd-linux-amd64 is not in FIPS 140-3 approved mode"
+		[ "$(jq -r '.version' <<<"$out")" = "v${version}" ] || die "ztd-linux-amd64 does not report version v${version}"
+		[ "$(jq -r '.platform' <<<"$out")" = "linux/amd64" ] || die "ztd-linux-amd64 does not report platform linux/amd64"
+		[ "$(jq -r '.source_revision' <<<"$out")" = "$revision" ] || die "ztd-linux-amd64 does not report source revision ${revision}"
+		[ "$(jq -r '.source_tree_modified' <<<"$out")" = "false" ] || die "ztd-linux-amd64 was not built from a clean, VCS-stamped source tree"
+		[ "$(jq -r '.fips140.enabled' <<<"$out")" = "true" ] || die "ztd-linux-amd64 is not in FIPS 140-3 approved mode"
 		echo "host binary metadata verified (linux/amd64, FIPS approved mode)"
 	else
 		echo "host is $(uname -s)/$(uname -m); runtime metadata checks skipped for non-host binaries"
