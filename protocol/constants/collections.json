@@ -26,9 +26,25 @@
       "value": "cases",
       "_governed": true
     },
+    "cli_recovery_requests": {
+      "_go_const": "CollectionCLIRecoveryRequests",
+      "value": "cli_recovery_requests"
+    },
     "cli_sessions": {
       "_go_const": "CollectionCLISessions",
       "value": "cli_sessions"
+    },
+    "consensus": {
+      "_go_const": "CollectionConsensus",
+      "value": "consensus"
+    },
+    "enrollment_tokens": {
+      "_go_const": "CollectionEnrollmentTokens",
+      "value": "enrollment_tokens"
+    },
+    "eval_campaign_publication_state": {
+      "_go_const": "CollectionEvalCampaignPublicationState",
+      "value": "eval_campaign_publication_state"
     },
     "investigations": {
       "_go_const": "CollectionInvestigations",
@@ -43,6 +59,30 @@
       "_go_const": "CollectionMemories",
       "value": "memories",
       "_governed": true
+    },
+    "observe_assignment_progress": {
+      "_go_const": "CollectionObserveAssignmentProgress",
+      "value": "observe_assignment_progress"
+    },
+    "observe_cycle_states": {
+      "_go_const": "CollectionObserveCycleStates",
+      "value": "observe_cycle_states"
+    },
+    "observe_publication_progress": {
+      "_go_const": "CollectionObservePublicationProgress",
+      "value": "observe_publication_progress"
+    },
+    "observe_source_freshness": {
+      "_go_const": "CollectionObserveSourceFreshness",
+      "value": "observe_source_freshness"
+    },
+    "observe_supervisor_states": {
+      "_go_const": "CollectionObserveSupervisorStates",
+      "value": "observe_supervisor_states"
+    },
+    "observe_verification_progress": {
+      "_go_const": "CollectionObserveVerificationProgress",
+      "value": "observe_verification_progress"
     },
     "operator_sessions": {
       "_go_const": "CollectionOperatorSessions",

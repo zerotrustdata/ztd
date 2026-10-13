@@ -30,9 +30,6 @@ var identityFiles = []string{
 	path.Join(runtimepaths.PkiDirname, runtimepaths.PkiSubdirTrust, runtimepaths.PkiFileGatewayBundle),
 }
 
-// gatewayMarker identifies a Gateway runtime, which Reset refuses to touch.
-var gatewayMarker = path.Join(runtimepaths.PkiDirname, runtimepaths.PkiSubdirRoot, runtimepaths.PkiFileRootCA)
-
 // Reset uses a confined filesystem handle and refuses symlinked identity paths.
 // Databases, vault keys, configuration, logs, and other applications are retained.
 // Callers must stop the Operator before invoking Reset.
@@ -53,7 +50,7 @@ func Reset(directory string) error {
 		return err
 	}
 	defer root.Close()
-	if _, err := root.Stat(gatewayMarker); err == nil {
+	if _, err := root.Stat(runtimepaths.GatewayRuntimeMarker); err == nil {
 		return fmt.Errorf("refusing to reset a gateway runtime: %s", runtime)
 	} else if !os.IsNotExist(err) {
 		return err

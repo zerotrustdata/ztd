@@ -8,6 +8,7 @@
 package serve
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -149,28 +150,56 @@ func TestServeOperatorOptions_CloudProviderValues(t *testing.T) {
 	}
 }
 
-func TestResolveOperatorEndpoint(t *testing.T) {
+func TestResolveOperatorGateway(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    string
-		expected string
+		endpoint string
+		httpPort int
+		wantHost string
+		wantPort int
 	}{
-		{"empty string returns default", "", constants.DefaultEndpoint},
-		{"whitespace only returns default", "   ", constants.DefaultEndpoint},
-		{"tab only returns default", "\t", constants.DefaultEndpoint},
-		{"simple hostname", constants.DefaultEndpoint, constants.DefaultEndpoint},
-		{"ip address", "192.168.1.10", "192.168.1.10"},
-		{"hostname with port", "gateway.local:8080", "gateway.local:8080"},
-		{"leading whitespace trimmed", "  " + constants.DefaultEndpoint, constants.DefaultEndpoint},
-		{"trailing whitespace trimmed", constants.DefaultEndpoint + "  ", constants.DefaultEndpoint},
-		{"surrounding whitespace trimmed", "  10.0.0.1  ", "10.0.0.1"},
-		{"fqdn", "operator.example.com", "operator.example.com"},
+		{"empty string returns default", "", 0, constants.DefaultEndpoint, 0},
+		{"whitespace only returns default", " \t\r\n ", 0, constants.DefaultEndpoint, 0},
+		{"empty keeps flag port", "", 9080, constants.DefaultEndpoint, 9080},
+		{"ip address", "192.168.1.10", 0, "192.168.1.10", 0},
+		{"surrounding whitespace trimmed", "\n\t  10.0.0.1  \r\n", 0, "10.0.0.1", 0},
+		{"fqdn keeps flag port", "operator.example.com", 9080, "operator.example.com", 9080},
+		{"hostname with port", "gateway.local:8080", 0, "gateway.local", 8080},
+		{"endpoint port matches flag", "gateway.local:8080", 8080, "gateway.local", 8080},
+		{"bare ipv6", "::1", 0, "::1", 0},
+		{"bracketed ipv6", "[::1]", 0, "::1", 0},
+		{"bracketed ipv6 with port", "[::1]:8080", 0, "::1", 8080},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := resolveOperatorEndpoint(tt.input)
-			assert.Equal(t, tt.expected, result)
+			host, port, err := resolveOperatorGateway(tt.endpoint, tt.httpPort)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantHost, host)
+			assert.Equal(t, tt.wantPort, port)
+		})
+	}
+}
+
+func TestResolveOperatorGateway_Rejects(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		httpPort int
+	}{
+		{"http scheme", "http://gateway.local:8080", 0},
+		{"https scheme", "https://gateway.local", 0},
+		{"empty host", ":8080", 0},
+		{"non-numeric port", "gateway.local:http", 0},
+		{"port out of range", "gateway.local:70000", 0},
+		{"port zero", "gateway.local:0", 0},
+		{"port conflicts with flag", "gateway.local:8080", 9080},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := resolveOperatorGateway(tt.endpoint, tt.httpPort)
+			require.ErrorIs(t, err, constants.ErrGatewayEndpointInvalid)
 		})
 	}
 }
@@ -195,58 +224,6 @@ func TestResolveWorkingDir(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-// ---------------------------------------------------------------------------
-// resolveOperatorEndpoint — additional edge cases
-// ---------------------------------------------------------------------------
-
-func TestResolveOperatorEndpoint_ReturnsConstantsDefault(t *testing.T) {
-	result := resolveOperatorEndpoint("")
-	assert.Equal(t, constants.DefaultEndpoint, result,
-		"empty endpoint should return constants.DefaultEndpoint, not a hardcoded string")
-}
-
-func TestResolveOperatorEndpoint_NewlineTrimmed(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"leading newline", "\n" + constants.DefaultEndpoint},
-		{"trailing newline", constants.DefaultEndpoint + "\n"},
-		{"carriage return", "\r" + constants.DefaultEndpoint + "\r"},
-		{"mixed newline and tab", "\n\t" + constants.DefaultEndpoint + "\n\t"},
-		{"CRLF", "\r\n" + constants.DefaultEndpoint + "\r\n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := resolveOperatorEndpoint(tt.input)
-			assert.Equal(t, constants.DefaultEndpoint, result)
-		})
-	}
-}
-
-func TestResolveOperatorEndpoint_PreservesInternalWhitespace(t *testing.T) {
-	result := resolveOperatorEndpoint("  local  host  ")
-	assert.Equal(t, "local  host", result,
-		"only leading/trailing whitespace should be trimmed; internal whitespace preserved")
-}
-
-func TestResolveOperatorEndpoint_MixedWhitespaceTypes(t *testing.T) {
-	result := resolveOperatorEndpoint("\t\n\r  10.0.0.1  \r\n\t")
-	assert.Equal(t, "10.0.0.1", result)
-}
-
-func TestResolveOperatorEndpoint_LongEndpoint(t *testing.T) {
-	long := strings.Repeat("a", 1000)
-	result := resolveOperatorEndpoint(long)
-	assert.Equal(t, long, result)
-}
-
-func TestResolveOperatorEndpoint_WhitespaceOnlyWithNewlines(t *testing.T) {
-	result := resolveOperatorEndpoint("\n\r\t  \n\r")
-	assert.Equal(t, constants.DefaultEndpoint, result,
-		"input that is only whitespace (including newlines) should return default")
 }
 
 // ---------------------------------------------------------------------------
@@ -491,4 +468,16 @@ func TestOperatorInstanceIDSeparatesSameHostAndRole(t *testing.T) {
 	assert.NotEqual(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityData}, "/fleet/op-00002"))
 	assert.NotEqual(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityInference}, "/fleet/op-00001"))
 	assert.LessOrEqual(t, len(operatorInstanceID(strings.Repeat("h", 253), constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, "/fleet")), constants.PlatformEnrollmentMaxInstanceIDBytes)
+}
+
+func TestRefuseGatewayRuntime(t *testing.T) {
+	ctx := context.Background()
+	fileSvc, workDir, err := newOperatorRuntimeFileService(ServeOperatorOptions{WorkingDir: t.TempDir()}, testLogger())
+	require.NoError(t, err)
+	require.NoError(t, refuseGatewayRuntime(ctx, fileSvc, workDir))
+
+	require.NoError(t, fileSvc.WriteFile(ctx, constants.GatewayRuntimeMarker, []byte("ca"), constants.PermFilePrivate))
+	err = refuseGatewayRuntime(ctx, fileSvc, workDir)
+	require.ErrorIs(t, err, constants.ErrOperatorGatewayRuntime)
+	assert.Contains(t, err.Error(), "--working-dir")
 }

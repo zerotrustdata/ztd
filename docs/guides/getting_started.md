@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -45,7 +45,7 @@ On Windows, run `pwsh scripts/windows-setup.ps1 --build-only` and follow the nat
 
 ### What setup does
 
-The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22.22.2+, 24.15+, or 26+. Rerunning setup reuses everything already installed.
+The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22.22.2+, 24.15+, or 26+. Rerunning setup reuses everything already installed.
 
 ### What `make quickstart` does
 
@@ -68,6 +68,22 @@ The headless identity drives the CLI and the TUI. The browser console uses passk
 
 **Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'`. Quickstart passes the key file to every `./ztd` call it makes, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Quickstart displays this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
 
+### Configure `.env`
+
+Every `./ztd` command, including the `make` targets, loads `.env` from the working directory (the repo root) at startup. Setup creates it from `.env.example` with every entry commented, so the default flow (`make quickstart`, `make up`, `make gw`) needs no edits. Uncomment and set an entry when you need it:
+
+| Key | Set it when |
+| :--- | :--- |
+| `ZTD_OLLAMA_ENDPOINT` | The approved Ollama provider is not on this host (default `http://127.0.0.1:11434`). Supplies `--inference-ollama-endpoint` for `make gw`, `make operator`, and `./ztd operator model` commands. |
+| `CLOUDFLARE_API_TOKEN` | You route a tunnel hostname with `./ztd gw tunnel route-dns` ([Cloudflare Tunnel](cloudflare_tunnel.md)). |
+
+```bash
+$EDITOR .env
+make gw
+```
+
+`.env` must stay owner-only (`chmod 600 .env`). On Linux and macOS, `./ztd` refuses to start unless `.env` is a regular file (not a symlink) owned by you or root with mode `0600` or `0400`. On every platform it refuses a line that is not `KEY=VALUE` and any key that `.env.example` does not list (only the secret and user_endpoint keys in `protocol/constants/env_vars.json`). A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
+
 ### Step by step
 
 `make quickstart` composes the public CLI commands:
@@ -79,11 +95,11 @@ make build
 ./ztd operator run --all-active --cmd 'echo hello from ztd'
 ```
 
-`make up` builds and starts the Gateway alone. `make gw` starts it with every embedded Operator capability.
+`make up` builds and starts the Gateway alone. `make gw` starts it with every embedded Operator capability. Both listen on loopback (`127.0.0.1`) only, so just this host can reach them. Use `make up-public` or `make gw-public` when Operators on other hosts must enroll; see [Local or LAN-reachable Gateway](#local-or-lan-reachable-gateway).
 
 ### Gateway and Operators track
 
-To run local Operators alongside the Gateway, start the Gateway first, then start each Operator in the foreground with its own working directory:
+To run local Operators alongside the Gateway, start the Gateway first, then start each Operator in the foreground with its own working directory. `./ztd operator start` refuses a working directory that holds a Gateway runtime, so pass `--working-dir` when starting from the repo root:
 
 ```bash
 make up
@@ -120,7 +136,6 @@ The command starts and owns an isolated Gateway and data Operator, submits a gov
 
 ```bash
 make status
-./ztd operator list
 ./ztd tui
 ```
 
@@ -144,7 +159,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
-| Node.js and npm | 22+ | Contributor toolchain and frontend development only; `make build` and `--build-only` setup use committed Console and Evaluation Explorer embeds |
+| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and frontend development only; `make build` and `--build-only` setup use committed Console and Evaluation Explorer embeds |
 
 ---
 
@@ -172,17 +187,17 @@ Additional build targets:
 | `make build-darwin` | macOS: amd64, arm64 |
 | `make build-windows` | Windows: amd64, arm64 |
 
-For cross-compilation:
+For cross-compilation (writes `bin/ztd-<os>-<arch>` only; `./ztd` stays the host binary):
 
 ```bash
-GOOS=linux GOARCH=amd64 make build
-GOOS=darwin GOARCH=arm64 make build
-GOOS=windows GOARCH=amd64 make build
+make build-target GOOS=linux GOARCH=amd64
+make build-target GOOS=darwin GOARCH=arm64
+make build-target GOOS=windows GOARCH=amd64
 ```
 
 ztd is built and distributed natively; container execution is not maintained or supported as a distribution image.
 
-Or download the binary from a running Gateway's bootstrap endpoint:
+Or download the binary from a running Gateway's bootstrap endpoint. The endpoint serves only binaries listed in `bin/ztd-binaries.json`, which `make build-all` writes on the Gateway host; it returns 404 after a plain `make build`:
 
 ```bash
 curl -fSLO http://localhost:8080/.well-known/ztd/bin/ztd-linux-amd64
@@ -193,7 +208,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.0`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.5`, then run both checks there.
 
 Run the checksum check:
 
@@ -217,7 +232,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.0' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.5' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -245,10 +260,12 @@ make gw
 `make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data,inference,observer`) to `--capabilities` on its embedded Operator. The embedded Operator always includes Data. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
 
 ```bash
-make gw MODEL_STORAGE_ROOT=/srv/ollama/models GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'
+make gw MODEL_STORAGE_ROOT=/srv/ollama/models
 ```
 
-Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them. Startup ends with the same output as `gw status`:
+The Inference capability uses `ZTD_OLLAMA_ENDPOINT` from `.env` (see [Configure `.env`](#configure-env)); `GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'` overrides it for one run.
+
+Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them; `gw start` against a running Gateway with different flags lists the differences and exits nonzero. `make gw` ends with the `gw status` output:
 
 ```text
 Gateway  online (PID 29424)
@@ -261,7 +278,7 @@ Operator flags
   OPERATOR ID        CAPABILITY  FLAG                             VALUE
   embedded-operator  inference   --inference-ollama-endpoint      http://192.168.1.2:11434
   embedded-operator  inference   --inference-keep-alive           (default)
-  embedded-operator  provenance  --model-storage-root             /mnt/d/ai/Ollama/models
+  embedded-operator  provenance  --model-storage-root             /srv/ollama/models
   embedded-operator  provenance  --provenance-operator-id         (default)
   embedded-operator  observer    --provider-boundary-observer-id  (default)
 
@@ -269,6 +286,19 @@ Enrollments  users 1 | pending 0 | apps 0 | dashboards 0
 
 Console  https://localhost:8443/console/
 ```
+
+### Local or LAN-reachable Gateway
+
+The Gateway HTTP (8080) and HTTPS (8443) listeners bind `127.0.0.1` by default, so only processes on the Gateway host can reach it. Operators on other hosts get `connection refused` on the bootstrap websocket until the Gateway listens on a reachable interface.
+
+| Target | Listens on | Use when |
+| :--- | :--- | :--- |
+| `make up` | `127.0.0.1` | Gateway and every Operator run on this host |
+| `make gw` | `127.0.0.1` | Single process with the embedded Operator, local use only |
+| `make up-public` | `0.0.0.0` | Operators on other hosts enroll against this Gateway |
+| `make gw-public` | `0.0.0.0` | Embedded Operator plus Operators on other hosts |
+
+The `-public` targets pass `--listen-host 0.0.0.0` to `./ztd gw start` and otherwise behave exactly like `make up` and `make gw`, including `GW_ARGS`, `GW_CAPABILITIES`, and `MODEL_STORAGE_ROOT`. Remote Operators also need ports 8080 and 8443 open through any host firewall. Capabilities and listen host are fixed when the Gateway starts; run `make down` before switching between local and public.
 
 ### Gateway configuration
 
@@ -319,13 +349,13 @@ make down
 
 ## Use the Protocol Library (Go Module)
 
-To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services:
+To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.0
+go get github.com/zerotrustdata/ztd@v1.0.5
 ```
 
-Import in Go code:
+Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:
 
 ```go
 import (
@@ -351,7 +381,7 @@ The first sign-in on a fresh Gateway claims ownership and claims the embedded Op
 
 ### Start a remote operator
 
-To connect an Operator on a remote host to the Gateway:
+To connect an Operator on a remote host to the Gateway, start the Gateway with `make up-public` or `make gw-public` (a Gateway started with `make up` or `make gw` refuses remote connections), then run on the remote host:
 
 ```bash
 ./ztd operator start -e <gateway-hostname>

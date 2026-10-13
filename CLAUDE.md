@@ -19,7 +19,8 @@ It is a polyglot monorepo:
   Gateway at `/console/`. Passkey auth, approvals, and Operator inventory/binding. The browser talks only to the
   Gateway.
 - **`ztd-adapter/`** and **`evaluation-explorer/`** — audited adapter + contract pack for generated observe
-  frontends, and the evaluation explorer SPA (its build is embedded by `make build`).
+  frontends, and the evaluation explorer SPA (`make build` compiles its committed embed; `make explorer-embed`
+  refreshes it).
 
 Full architectural detail lives in `docs/`, not in this file — see "Where to look" below.
 
@@ -93,10 +94,11 @@ runtime) decides whether L2/L3 gate execution or are merely audited. L1, L4, and
 
 ### Ingress paths into the pipeline
 
-MCP (`POST /mcp` or stdio), A2A (`POST /a2a`), governed HTTP dispatch (`POST /api/v1/operators/commands`), direct
-envelope submission (`POST /api/v1/governance/envelopes`), and CLI `operator run`. Direct envelope submission and
-governed HTTP dispatch must never synthesize missing L2/L3 proof — they fail closed at L4 instead. Client-native
-tools, external MCP wrappers, and other side channels are explicitly **outside** the governance boundary.
+MCP (`POST /mcp` or stdio), A2A (`POST /api/v1/a2a/call`), governed HTTP dispatch
+(`POST /api/v1/operators/commands`), direct envelope submission (`POST /api/v1/governance/envelopes`), and CLI
+`operator run`. Direct envelope submission and governed HTTP dispatch must never synthesize missing L2/L3 proof —
+they fail closed at L4 instead. Client-native tools, external MCP wrappers, and other side channels are explicitly
+**outside** the governance boundary.
 
 ### Storage: Local-First Audit Architecture (LFAA)
 
@@ -109,7 +111,7 @@ source of truth over an Operator's local store. All `.ztd/` I/O must go through 
 
 ```text
 cmd/ztd/              Binary entry point
-internal/cli/cmd/     Cobra CLI groups (gw, auth, mcp, operator, vault, test, audit,
+internal/cli/cmd/     Cobra CLI groups (gw, auth, mcp, operator, autochthon, vault, test, audit,
                        report, public, swagger, tui, version, compliance, eval)
 internal/services/    Gateway, outbound Operator, governance (L1-L5), consensus, storage, network,
                        vault, sse, pubsub, mcp (native tool registry), evaluation, compliance
@@ -161,9 +163,9 @@ the linked docs above.
   `internal/constants/paths.go`.
 - A new native MCP tool implements `mcp.NativeTool` and is registered explicitly in `RegisterNativeTools`
   (`internal/services/mcp/native_tool_registry.go`) — never from `init()`, and never copy the tool list into docs.
-- Generated artifacts (protobuf bindings, Gateway OpenAPI, doctrine JSON) change only through their source
-  + generator (`make proto-generate`, `make swagger-generate`, `make doctrines-validate`) — never
-  hand-edited.
+- Generated artifacts (protobuf bindings, Gateway OpenAPI, event/action-type constants) change only through
+  their source + generator (`make proto-generate`, `make swagger-generate`, `make constants-generate`) — never
+  hand-edited. Doctrine JSON is hand-authored source validated by `make doctrines-validate`.
 - Run platform suites only through `./ztd test <suite>` or the matching `make` target — never `go test` directly
   for a platform suite — and never call `t.Parallel()` in a Go integration or E2E test.
 - Go tests get isolated runtime roots from `testutil.TempDir`/`testutil.TestPaths` (never append `.ztd` by hand).

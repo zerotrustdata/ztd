@@ -210,7 +210,7 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 
 ## Relationship to Platform Architecture
 
-- **Private Ingress**: Private Gateway surfaces (`/mcp`, `/a2a`, `/api/v1/governance/envelopes`) never accept anonymous traffic.
+- **Private Ingress**: Private Gateway surfaces (`/mcp`, `/api/v1/a2a/`, `/api/v1/governance/envelopes`) never accept anonymous traffic.
 - **SSE Bridge**: Gateway SSE (`/api/v1/sse/stream`) is session-scoped for owners and CLIs; Public SSE (`/stream`) is served exclusively by the mirror runtime.
 - **Evaluation Integration**: Native evaluation runs persist under `.ztd/data/eval/runs/`. The public-safe projector generates allowlisted projections without exposing internal traces.
 

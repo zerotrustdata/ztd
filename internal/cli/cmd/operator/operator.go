@@ -87,7 +87,7 @@ func Cmd() *cobra.Command {
 
 func operatorModelCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "model", Hidden: true}
-	cmd.PersistentFlags().String(operatorModelOllamaEndpointFlag, "", "Ollama provider endpoint for model maintenance (required, e.g. http://127.0.0.1:11434)")
+	cmd.PersistentFlags().String(operatorModelOllamaEndpointFlag, "", "Ollama provider endpoint for model maintenance (default: ZTD_OLLAMA_ENDPOINT; required, e.g. http://127.0.0.1:11434)")
 	cmd.AddCommand(
 		operatorModelPullCmd(),
 		operatorModelCopyCmd(),
@@ -101,13 +101,14 @@ func operatorModelCmd() *cobra.Command {
 const operatorModelOllamaEndpointFlag = "inference-ollama-endpoint"
 
 // operatorOllamaEndpoint resolves the Ollama provider endpoint from the model
-// maintenance persistent flag. It fails closed when the flag is blank.
+// maintenance persistent flag, else ZTD_OLLAMA_ENDPOINT. It fails closed when
+// both are blank.
 func operatorOllamaEndpoint(cmd *cobra.Command) (string, error) {
 	raw, err := cmd.Flags().GetString(operatorModelOllamaEndpointFlag)
 	if err != nil {
 		return "", fmt.Errorf("operator: model maintenance: %w", err)
 	}
-	endpoint := strings.TrimSpace(raw)
+	endpoint := config.InferenceOllamaEndpoint(raw)
 	if endpoint == "" {
 		return "", fmt.Errorf("operator: model maintenance: %w", constants.ErrInferenceEndpointInvalid)
 	}
@@ -258,7 +259,7 @@ func operatorListCmdWithConfig(configLoader func(string) (*config.Config, error)
 
 			creds, err := auth.LoadCredentials(fileSvc, cfg)
 			if err != nil || creds == nil {
-				return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+				return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 			}
 
 			client, err := clientFactory(fileSvc, cfg)
@@ -370,7 +371,7 @@ func operatorStartCmd() *cobra.Command {
 				CloudMode:                  cloud,
 				CloudProvider:              provider,
 				HeartbeatInterval:          time.Duration(heartbeatInterval) * time.Second,
-				InferenceOllamaEndpoint:    inferenceOllamaEndpoint,
+				InferenceOllamaEndpoint:    config.InferenceOllamaEndpoint(inferenceOllamaEndpoint),
 				InferenceKeepAlive:         inferenceKeepAlive,
 				ProviderBoundaryObserverID: providerBoundaryObserverID,
 
@@ -400,7 +401,7 @@ func operatorStartCmd() *cobra.Command {
 	// Inference (ztdllama) flags. Enable when the operator runs as an
 	// Inference Node calling the configured remote Ollama provider.
 	cmd.Flags().Var(&capabilities, "capabilities", "Comma-separated operator capabilities: data,inference,provenance,observer (repeatable; default: data)")
-	cmd.Flags().StringVar(&inferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Remote Ollama provider endpoint (default: http://127.0.0.1:11434)")
+	cmd.Flags().StringVar(&inferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Remote Ollama provider endpoint (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
 	cmd.Flags().StringVar(&inferenceKeepAlive, "inference-keep-alive", "", fmt.Sprintf("Ollama keep-alive duration (default: %s for infinite)", constants.InferenceDefaultKeepAlive))
 	cmd.Flags().StringVar(&providerBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity pseudonym")
 	cmd.Flags().StringVar(&provenanceOperatorID, "provenance-operator-id", "", "Stable provenance operator identity pseudonym")

@@ -118,7 +118,7 @@ func RunStream(args []string) {
 	if len(hosts) == 0 {
 		fmt.Fprintln(os.Stderr, "[stream] no hosts specified")
 		fmt.Fprintln(os.Stderr, "  Usage: ztd.operator stream [host...] [--hosts file] [flags]")
-		fmt.Fprintln(os.Stderr, "  Run:   ztd.operator stream --help")
+		fmt.Fprintln(os.Stderr, "  Run:   ztd operator stream --help")
 		os.Exit(constants.ExitGeneralError)
 	}
 
@@ -141,7 +141,7 @@ func RunStream(args []string) {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[stream] binary not found at %s\n", binPath)
-		fmt.Fprintf(os.Stderr, "  Run: ./ztd operator build\n")
+		fmt.Fprintf(os.Stderr, "  Build it with:\n./ztd operator build\n")
 		os.Exit(constants.ExitGeneralError)
 	}
 

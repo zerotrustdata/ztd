@@ -268,10 +268,12 @@ help:
 		'' \
 		'Run locally' \
 		'  quickstart                Start a Gateway, sign in, and run a first governed action (QUICKSTART_ARGS)' \
-		'  up                        Build and start the Gateway on this host' \
+		'  up                        Build and start the Gateway on this host (GW_ARGS)' \
+		'  up-public                 Like up, listening on all interfaces for Operators on other hosts' \
 		'  gw                        Start the Gateway with every embedded Operator capability (GW_CAPABILITIES, MODEL_STORAGE_ROOT, GW_ARGS)' \
+		'  gw-public                 Like gw, listening on all interfaces for Operators on other hosts' \
 		'  operator                  Run an outbound Operator in the foreground (OPERATOR_ARGS)' \
-		'  status                    Show Gateway status and the Operator list' \
+		'  status                    Show Gateway status, Operators, and pending enrollments' \
 		'  down                      Stop local Operators, then the host Gateway' \
 		'  stop                      Alias for down' \
 		'' \
@@ -835,8 +837,13 @@ harness-clean:
 # HOST PLATFORM LIFECYCLE
 # =============================================================================
 # These targets run the platform directly on the development host by calling
-# ./ztd and never read .env: pass ./ztd flags through the *_ARGS variables
+# ./ztd, which loads only registry secret and user_endpoint keys from .env
+# (.env.example); pass every other ./ztd flag through the *_ARGS variables
 # (confirm flags with `./ztd gw start --help` and `./ztd operator start --help`).
+# up-public and gw-public run up and gw with the Gateway listeners bound to
+# every interface so Operators on other hosts can enroll; up and gw stay
+# loopback-only.
+GW_LISTEN_ARGS :=
 # One-command first run: build if needed, start or reuse the Gateway, sign in
 # headless, and dispatch a first governed action. Safe to rerun. QUICKSTART_ARGS
 # carries quickstart options, for example
@@ -848,9 +855,7 @@ quickstart:
 .PHONY: up
 up: build
 	@echo "Starting the ztd Gateway on this host..."
-	@./ztd gw start $(GW_ARGS)
-	@echo "Host platform started. Check it with: make status"
-	@echo "Sign in with: ./ztd login (headless) or ./ztd login web (browser passkey)"
+	@./ztd gw start $(GW_LISTEN_ARGS) $(GW_ARGS)
 
 # Gateway whose embedded Operator carries every Operator capability.
 # Capabilities are immutable in a running Gateway, so run `make down` first when
@@ -863,8 +868,13 @@ GW_CAPABILITIES ?= data,inference,observer
 MODEL_STORAGE_ROOT ?=
 .PHONY: gw
 gw: build
-	@./ztd gw start --capabilities $(GW_CAPABILITIES)$(if $(MODEL_STORAGE_ROOT),$(comma)provenance --model-storage-root $(MODEL_STORAGE_ROOT)) $(GW_ARGS)
+	@./ztd gw start --capabilities $(GW_CAPABILITIES)$(if $(MODEL_STORAGE_ROOT),$(comma)provenance --model-storage-root $(MODEL_STORAGE_ROOT)) $(GW_LISTEN_ARGS) $(GW_ARGS)
 	@./ztd gw status
+
+.PHONY: up-public gw-public
+up-public gw-public: GW_LISTEN_ARGS := --listen-host 0.0.0.0
+up-public: up
+gw-public: gw
 
 # Outbound Operator in the foreground (Ctrl+C stops it). OPERATOR_ARGS carries
 # the capability and endpoint flags, for example
@@ -876,7 +886,6 @@ operator: build
 .PHONY: status
 status:
 	@./ztd gw status
-	@./ztd operator list
 
 # Operators first (governed shutdown needs the Gateway), then the Gateway even if
 # no Operator was running. Runtime state in .ztd/ is preserved.

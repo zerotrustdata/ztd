@@ -13,10 +13,10 @@ body:
       label: Which door did you try?
       options:
         - "Look first — OpenDevOps.ai explorer (nothing installed)"
-        - "Protocol only — go get or npm protocol bindings"
-        - "Binary only — installer script / ./ztd --help"
+        - "Run locally — setup script and make quickstart"
         - "Full stack — make gw (Gateway with every embedded Operator capability)"
-        - "A demo (healthcare / finance / dhs / fedramp)"
+        - "Protocol only — go get or the Go examples"
+        - "Release binary — downloaded ztd binary / ./ztd --help"
         - "Other / not sure"
     validations:
       required: true

@@ -89,7 +89,7 @@ func LoadClientAuthContext(fileSvc fs.RuntimeFileService, cfg *config.Config) (*
 		return nil, err
 	}
 	if creds == nil {
-		return nil, fmt.Errorf("%w: local CLI credentials are absent; run './ztd auth enroll user'", constants.ErrNotAuthenticated)
+		return nil, fmt.Errorf("%w: local CLI credentials are absent\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 	missing := make([]string, 0, 2)
 	if creds.CLISessionID == "" {
@@ -99,7 +99,7 @@ func LoadClientAuthContext(fileSvc fs.RuntimeFileService, cfg *config.Config) (*
 		missing = append(missing, "user_id")
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("%w: local CLI credentials are missing %s; run './ztd auth enroll user' or './ztd auth refresh'", constants.ErrNotAuthenticated, strings.Join(missing, ", "))
+		return nil, fmt.Errorf("%w: local CLI credentials are missing %s\nEnroll with:\n./ztd auth enroll user\nor refresh with:\n./ztd auth refresh", constants.ErrNotAuthenticated, strings.Join(missing, ", "))
 	}
 	paths := []string{cfg.CLICertFile(), cfg.CLIKeyFile()}
 	for _, path := range paths {
@@ -112,7 +112,7 @@ func LoadClientAuthContext(fileSvc fs.RuntimeFileService, cfg *config.Config) (*
 			return nil, fmt.Errorf("auth: inspect client identity path: %w", err)
 		}
 		if !exists {
-			return nil, fmt.Errorf("%w: incomplete local CLI identity; run './ztd auth enroll user'", constants.ErrNotAuthenticated)
+			return nil, fmt.Errorf("%w: incomplete local CLI identity\nEnroll with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 		}
 	}
 	cert, err := LoadCLICertificate(fileSvc, cfg)

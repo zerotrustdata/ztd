@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -100,24 +101,90 @@ func TestSecretEnvVars_MatchRegistrySecrets(t *testing.T) {
 	assert.ElementsMatch(t, want, got)
 }
 
-// TestProductionGoEnvReads_UseRegistryKeys asserts no production Go code reads
-// the environment through a raw string literal; every key goes through the
+// TestUserEndpointEnvVars_MatchRegistryUserEndpoints asserts UserEndpointEnvVars
+// lists exactly the registry keys in category "user_endpoint".
+func TestUserEndpointEnvVars_MatchRegistryUserEndpoints(t *testing.T) {
+	var want []string
+	for _, entry := range loadEnvVarRegistry(t) {
+		if entry.Category == "user_endpoint" {
+			want = append(want, entry.Value)
+		}
+	}
+	got := make([]string, 0, len(UserEndpointEnvVars))
+	for _, key := range UserEndpointEnvVars {
+		got = append(got, string(key))
+	}
+	assert.ElementsMatch(t, want, got)
+}
+
+// testHarnessEnvPrefix names in-process test re-exec markers (for example
+// ZTD_TEST_REEXEC), which are exempt from the registry as in check_env.go.
+const testHarnessEnvPrefix = "ZTD_TEST_"
+
+// TestProductionGoEnvReads_UseRegistryKeys asserts no production Go code, and
+// no E2E harness code under test/, reads the environment through a raw string
+// literal or a locally declared string constant; every key goes through the
 // typed constants.EnvVar registry (INV-TYPE-06, INV-ENV-04).
 func TestProductionGoEnvReads_UseRegistryKeys(t *testing.T) {
 	root := repoRoot(t)
-	var offenders []string
+	var files []string
 	for _, dir := range []string{"internal", "cmd"} {
-		files, err := walkProductionGoFiles(filepath.Join(root, dir))
+		found, err := walkProductionGoFiles(filepath.Join(root, dir))
 		require.NoError(t, err)
-		for _, path := range files {
-			offenders = append(offenders, rawEnvReads(t, path, root)...)
+		files = append(files, found...)
+	}
+	harness, err := filepath.Glob(filepath.Join(root, "test", "*", "*.go"))
+	require.NoError(t, err)
+	files = append(files, harness...)
+
+	dirConsts := map[string]map[string]string{}
+	var offenders []string
+	for _, path := range files {
+		dir := filepath.Dir(path)
+		if _, ok := dirConsts[dir]; !ok {
+			dirConsts[dir] = stringConsts(t, dir)
 		}
+		offenders = append(offenders, rawEnvReads(t, path, root, dirConsts[dir])...)
 	}
 	sort.Strings(offenders)
-	assert.Empty(t, offenders, "os.Getenv/os.LookupEnv must take string(constants.EnvVar.<Key>), not a string literal")
+	assert.Empty(t, offenders, "os.Getenv/os.LookupEnv must take string(constants.EnvVar.<Key>), not a string literal or local constant")
 }
 
-func rawEnvReads(t *testing.T, path, root string) []string {
+// stringConsts returns the string-literal constants declared in the Go files
+// of dir, keyed by name.
+func stringConsts(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	require.NoError(t, err)
+	consts := map[string]string{}
+	for _, path := range paths {
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		require.NoError(t, err)
+		ast.Inspect(file, func(n ast.Node) bool {
+			decl, ok := n.(*ast.GenDecl)
+			if !ok || decl.Tok != token.CONST {
+				return true
+			}
+			for _, spec := range decl.Specs {
+				vs := spec.(*ast.ValueSpec)
+				for i, name := range vs.Names {
+					if i >= len(vs.Values) {
+						continue
+					}
+					if lit, ok := vs.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+						if value, err := strconv.Unquote(lit.Value); err == nil {
+							consts[name.Name] = value
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	return consts
+}
+
+func rawEnvReads(t *testing.T, path, root string, consts map[string]string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
@@ -136,19 +203,32 @@ func rawEnvReads(t *testing.T, path, root string) []string {
 		if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "os" {
 			return true
 		}
-		lit, ok := call.Args[0].(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
+		var key string
+		switch arg := call.Args[0].(type) {
+		case *ast.BasicLit:
+			if arg.Kind != token.STRING {
+				return true
+			}
+			if key, err = strconv.Unquote(arg.Value); err != nil {
+				key = arg.Value
+			}
+		case *ast.Ident:
+			value, isConst := consts[arg.Name]
+			if !isConst {
+				return true
+			}
+			key = value
+		default:
 			return true
 		}
-		key, err := strconv.Unquote(lit.Value)
-		if err != nil {
-			key = lit.Value
+		if strings.HasPrefix(key, testHarnessEnvPrefix) {
+			return true
 		}
 		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
 			rel = path
 		}
-		found = append(found, rel+":"+strconv.Itoa(fset.Position(lit.Pos()).Line)+" os."+sel.Sel.Name+"("+strconv.Quote(key)+")")
+		found = append(found, rel+":"+strconv.Itoa(fset.Position(call.Pos()).Line)+" os."+sel.Sel.Name+"("+strconv.Quote(key)+")")
 		return true
 	})
 	return found

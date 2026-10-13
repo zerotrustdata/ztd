@@ -137,7 +137,8 @@ https://localhost:8443/swagger/index.html`,
 			swaggerJSON := filepath.Join(absDocsPath, constants.SwaggerFilename)
 			if _, err := os.Stat(swaggerJSON); os.IsNotExist(err) {
 				cmd.Printf("Swagger documentation not found at %s\n", swaggerJSON)
-				cmd.Println("Run 'ztd swagger init' to generate documentation first.")
+				cmd.Println("Generate the documentation first with:")
+				cmd.Println("ztd swagger init")
 				return fmt.Errorf("%w: %s", constants.ErrPathNotFound, swaggerJSON)
 			}
 
@@ -202,7 +203,8 @@ If no validation tool is installed, the command will suggest installing one of:
 			if _, err := exec.LookPath("swag"); err == nil {
 				cmd.Println("Using swag for basic validation...")
 				// swag doesn't have a direct validate command, but init will fail if there are errors
-				cmd.Println("Note: Run 'ztd swagger init' to check for annotation errors.")
+				cmd.Println("Note: check for annotation errors with:")
+				cmd.Println("ztd swagger init")
 				return nil
 			}
 

@@ -3,8 +3,8 @@ doc_id: gateway
 title: Gateway Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/gw/
@@ -119,11 +119,12 @@ The Gateway binary operates in two distinct execution modes:
 
 The Gateway is configured via CLI flags or an interactive setup wizard:
 - `ztd gw start [--posture <posture>] [--http-port 8080] [--https-port 8443] [--listen-host 127.0.0.1]`: Starts the Gateway. The listeners bind loopback by default; specify `--listen-host 0.0.0.0` when remote Operators or external clients connect.
+- `ztd gw start` against a running Gateway (background start, without `--follow`): compares the startup flags the caller set explicitly among `--capabilities`, `--posture`, `--listen-host`, `--http-port`, `--https-port`, `--model-storage-root`, `--inference-ollama-endpoint`, `--public-base-url`, `--cors-origin`, and `--passkey-rp-id`/`--passkey-rp-name`/`--passkey-rp-origin` with the running launch profile (`gateway_start_running.go`); a `ZTD_OLLAMA_ENDPOINT` value (exported or from `.env`) counts as setting `--inference-ollama-endpoint`. Other flags are not compared. It reuses the Gateway when they match and otherwise lists the differences and fails with `ErrGatewayAlreadyRunning`. Without a launch profile, any of these flags fails the same way (`ErrLaunchProfileMissing`). Stop the Gateway (`ztd gw stop` or `make down`) to change them; `.ztd/` state is kept.
 - `ztd gw setup`: Launches an interactive terminal wizard producing a resolved platform configuration.
 - `ztd gw start -i`: Launches the interactive setup wizard, then boots the Gateway immediately with the confirmed settings.
 - `ztd gw restart`: Reads the persisted launch profile from `.ztd/pids/operator-launch-profile.json` and restarts the process. Fails closed if the profile is missing or invalid.
 - `ztd gw stop`: Gracefully terminates the running Gateway process and flushes SQLite buffers.
-- `ztd gw status`: Emits Gateway health, connected Operator counts, active sessions, and enrollment statistics.
+- `ztd gw status`: Emits Gateway state and PID, the Operator inventory with capabilities, enrollment counts, and the Console URL.
 
 ### Governance Postures
 
@@ -171,21 +172,15 @@ Every transaction entering `POST /api/v1/governance/envelopes` or arriving via M
 
 The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`, and `a2a/call`.
 
-The native tool registry compiles 32 strongly typed tools across seven domains:
-- **Database**: `db_discover_topology`, `db_index_triage`, `db_isolated_read`, `db_query_validate`
-- **Filesystem**: `fs_disk_profile`, `fs_disk_usage`, `fs_file_checksum`, `read_file`, `log_stream_filter`
-- **Network**: `net_endpoint_ping`, `net_http_probe`, `net_socket_audit`, `net_dns_resolve`, `net_ssh_known_hosts`, `tls_cert_inspect`
-- **Process**: `proc_metric_top`, `proc_signal_safe`, `proc_tree`
-- **System**: `sys_oom_detect`, `sys_info`, `sys_env_vars`, `sys_service_status`, `sys_container_status`, `sys_time_clock`
-- **Configuration & Cloud**: `config_diff_mask`, `cloud_metadata`, `k8s_inspect`, `git_ops`
-- **Execution & Audit**: `run_shell_command`, `operator_deploy`, `audit_receipt_list`, `audit_receipt_get`
+The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains.
 
 All tools enforce fail-closed input validation: SQL tools reject multi-statement injection; URLs reject private IP ranges (SSRF prevention); filesystem tools reject directory traversal; command tools restrict metacharacters.
 
 ### Agent Integration and MCP Stdio Bridge
 
 The Gateway provides seamless integration for external AI coding tools (Claude Code, OpenAI Codex, Devin CLI, Gemini CLI, Goose) through `ztd mcp agent`:
-- `ztd mcp agent list`: Displays registered coding agents and tool lockdown levels.
+- `ztd mcp agent list`: Lists the supported agent IDs and display names.
+- `ztd mcp agent show <agent>`: Prints the Stdio Transport MCP client configuration, for tools the launcher does not support.
 - `ztd mcp agent run <agent>`: Launches the specified agent with native tools disabled, proxying all tool traffic through `ztd mcp stdio` to the Gateway's authenticated HTTPS endpoint.
 - `ztd mcp agent verify <agent>`: Validates agent configuration and tool lockdown without executing the agent binary (safe for CI).
 - When an operation requires L3 approval, the stdio bridge opens the browser approval URL, listens for the `approval.completed` event on the Gateway SSE stream, and resumes the pending transaction.

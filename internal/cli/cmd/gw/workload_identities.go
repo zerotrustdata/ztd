@@ -54,6 +54,7 @@ func reportWorkloadIdentities(cmd *cobra.Command) {
 		cmd.Printf("  %s: %s\n", workload.Capability, workload.Directory)
 	}
 	if printed {
-		cmd.Println("Recover each workload with ztd operator reset-identity --working-dir <dir>, then re-enroll it. Working data is preserved.")
+		cmd.Println("Recover each workload, then re-enroll it (working data is preserved). Run:")
+		cmd.Println("ztd operator reset-identity --working-dir <dir>")
 	}
 }

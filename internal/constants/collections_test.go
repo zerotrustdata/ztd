@@ -9,7 +9,11 @@ package constants
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,6 +27,45 @@ type collectionsRegistry struct {
 		Value    string `json:"value"`
 		Governed bool   `json:"_governed"`
 	} `json:"collections"`
+}
+
+// TestCollectionsRegistryMatchesGoConstants asserts collections.json lists
+// exactly the CollectionName constants declared in collections.go, by Go name
+// and value.
+func TestCollectionsRegistryMatchesGoConstants(t *testing.T) {
+	data, err := os.ReadFile("../../protocol/constants/collections.json")
+	require.NoError(t, err)
+	var registry collectionsRegistry
+	require.NoError(t, json.Unmarshal(data, &registry))
+	fromJSON := map[string]string{}
+	for key, entry := range registry.Collections {
+		assert.Equalf(t, key, entry.Value, "collections.json key %s differs from its value", key)
+		fromJSON[entry.GoConst] = entry.Value
+	}
+
+	file, err := parser.ParseFile(token.NewFileSet(), "collections.go", nil, 0)
+	require.NoError(t, err)
+	fromGo := map[string]string{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs := spec.(*ast.ValueSpec)
+			if typ, ok := vs.Type.(*ast.Ident); !ok || typ.Name != "CollectionName" {
+				continue
+			}
+			for i, name := range vs.Names {
+				lit := vs.Values[i].(*ast.BasicLit)
+				value, err := strconv.Unquote(lit.Value)
+				require.NoError(t, err)
+				fromGo[name.Name] = value
+			}
+		}
+	}
+	require.NotEmpty(t, fromGo)
+	assert.Equal(t, fromGo, fromJSON)
 }
 
 // TestCollectionIsGovernedDocumentMatchesRegistry keeps the Go governed

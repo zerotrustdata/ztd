@@ -20,6 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
@@ -178,6 +179,7 @@ const defaultE2ERunRegexp = "^(TestApprovedRestart_|TestAuth_|TestCommandRoundtr
 func realE2ERunner(stdout, stderr io.Writer) e2eCommandRunner {
 	return func(ctx context.Context, name string, args ...string) (int, error) {
 		c := exec.CommandContext(ctx, name, args...)
+		c.Env = config.WithoutUserEnv(os.Environ())
 		c.Stdout = stdout
 		c.Stderr = stderr
 		if err := c.Run(); err != nil {
@@ -247,6 +249,7 @@ type coverageCommandRunner func(name string, args ...string) error
 
 func realCoverageRunner(name string, args ...string) error {
 	coverageCmd := exec.Command(name, args...)
+	coverageCmd.Env = config.WithoutUserEnv(os.Environ())
 	coverageCmd.Stdout = os.Stdout
 	coverageCmd.Stderr = os.Stderr
 	return coverageCmd.Run()
@@ -341,7 +344,8 @@ func testSummaryCmd() *cobra.Command {
 			}
 			if !exists {
 				cmd.Printf("Test vault directory not found at %s\n", fileSvc.Resolve(testVaultRelDir))
-				cmd.Println("Run './ztd test chaos' first to generate test data.")
+				cmd.Println("Generate test data first with:")
+				cmd.Println("./ztd test chaos")
 				return nil
 			}
 
@@ -359,7 +363,8 @@ func testSummaryCmd() *cobra.Command {
 
 			if len(testRuns) == 0 {
 				cmd.Println("No chaos test runs found in test vault.")
-				cmd.Println("Run './ztd test chaos' first to generate test data.")
+				cmd.Println("Generate test data first with:")
+				cmd.Println("./ztd test chaos")
 				return nil
 			}
 

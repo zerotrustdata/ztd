@@ -450,13 +450,16 @@ func (c *EnrollmentCoordinator) Enroll(ctx context.Context, opts EnrollmentOptio
 						// Refresh cannot help: the certificate itself is
 						// revoked. The stale local identity has to be
 						// discarded before a fresh login can enroll.
-						c.out("The local CLI certificate was revoked (for example by 'ztd logout' on another machine).")
-						c.out("Run './ztd logout --local-only' to discard the stale local credentials, then './ztd login' to enroll again.")
+						c.out("The local CLI certificate was revoked (for example by ztd logout on another machine).")
+						c.out("Discard the stale local credentials, then enroll again:")
+						c.out("./ztd logout --local-only")
+						c.out("./ztd login")
 						return nil, fmt.Errorf("local CLI certificate revoked: %w", probeErr)
 					}
 					if errors.Is(probeErr, constants.ErrCLISessionExpired) || errors.Is(probeErr, constants.ErrCLISessionInvalid) {
 						c.out("CLI session %s is %s.", local.Credentials.CLISessionID, probeErr)
-						c.out("Run './ztd auth refresh' to obtain a new session using the still-valid certificate.")
+						c.out("Obtain a new session using the still-valid certificate:")
+						c.out("./ztd auth refresh")
 						return nil, fmt.Errorf("%w: %w", constants.ErrCLISessionRefreshRequired, probeErr)
 					}
 					// Network error or unexpected status — warn and proceed.
@@ -641,7 +644,7 @@ func (c *EnrollmentCoordinator) handleRecovery(ctx context.Context, opts Enrollm
 		// command for an already-enrolled CLI to run via mTLS. The polling
 		// loop below waits for that approval to land.
 		c.out("From an already-enrolled CLI, run:")
-		c.out("  ztd auth approve-recovery %s", token)
+		c.out("ztd auth approve-recovery %s", token)
 		c.out("Then wait for this command to complete.")
 	} else {
 		c.out("Approval URL: %s", approvalURL)

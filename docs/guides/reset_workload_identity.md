@@ -48,18 +48,23 @@ Worker process discovery for reset is supported on Linux. Gateway runtime direct
 
 ## Re-enroll and Start the Operator
 
-After resetting local identities, enroll the CLI identity against the new Gateway instance and approve pending requests:
+After resetting local identities, sign in to the new Gateway instance (`./ztd login web` registers a passkey for the Console):
 
 ```bash
-./ztd auth enroll user -e localhost
-./ztd auth enroll pending
-./ztd auth enroll approve <id> --yes
+./ztd login
 ```
 
-Restart the Operator with its required capabilities and working directory:
+Restart the Operator with its required capabilities and working directory. Its enrollment request appears once it starts:
 
 ```bash
 ./ztd operator start --endpoint localhost --capabilities inference --working-dir ~/.ztd-inference
+```
+
+From another terminal, approve the pending request:
+
+```bash
+./ztd auth enroll pending
+./ztd auth enroll approve <id> --yes
 ```
 
 Verify connection status:

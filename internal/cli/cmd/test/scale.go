@@ -33,6 +33,7 @@ import (
 	sshlib "golang.org/x/crypto/ssh"
 
 	operatorcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/operator"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -41,23 +42,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/pkg/ssh"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
-)
-
-// Environment contract consumed by test/e2e/operator_fleet_e2e_test.go and
-// test/e2e/config_helpers.go. The names must match the scenario's constants.
-const (
-	scaleEnvRuntimeRoot        = "ZTD_E2E_RUNTIME_ROOT"
-	scaleEnvFleetSize          = "ZTD_E2E_FLEET_SIZE"
-	scaleEnvFleetBin           = "ZTD_E2E_FLEET_BIN"
-	scaleEnvFleetDir           = "ZTD_E2E_FLEET_DIR"
-	scaleEnvFleetSoak          = "ZTD_E2E_FLEET_SOAK"
-	scaleEnvFleetConcurrency   = "ZTD_E2E_FLEET_CONCURRENCY"
-	scaleEnvFleetRounds        = "ZTD_E2E_FLEET_ROUNDS"
-	scaleEnvFleetReport        = "ZTD_E2E_FLEET_REPORT"
-	scaleEnvFleetRestartReport = "ZTD_E2E_FLEET_RESTART_REPORT"
-	scaleEnvGatewayHTTPPort    = "ZTD_E2E_GATEWAY_HTTP_PORT"
-	scaleEnvGatewayHTTPSPort   = "ZTD_E2E_GATEWAY_HTTPS_PORT"
-	scaleEnvMasterKeyFile      = "ZTD_E2E_MASTER_KEY_FILE"
 )
 
 const (
@@ -258,26 +242,6 @@ func (c *scaleConfig) hasRemoteHosts() bool {
 	return false
 }
 
-func isLoopbackEndpoint(endpoint string) bool {
-	ep := strings.TrimSpace(endpoint)
-	if idx := strings.Index(ep, "://"); idx != -1 {
-		ep = ep[idx+3:]
-	}
-	host := ep
-	if h, _, err := net.SplitHostPort(ep); err == nil {
-		host = h
-	}
-	host = strings.Trim(host, "[]")
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	if ip != nil && (ip.IsLoopback() || ip.IsUnspecified()) {
-		return true
-	}
-	return false
-}
-
 func (c *scaleConfig) validate() error {
 	switch {
 	case c.Count < 1 || c.Count > scaleMaxCount:
@@ -319,7 +283,7 @@ func (c *scaleConfig) validate() error {
 		if strings.TrimSpace(c.OperatorEndpoint) == "" {
 			return fmt.Errorf("%w: --operator-endpoint is required when remote hosts are targeted: %w", constants.ErrScaleTestInvalidInput, constants.ErrOperatorEndpointInvalid)
 		}
-		if isLoopbackEndpoint(c.OperatorEndpoint) {
+		if netutil.IsLoopbackEndpoint(c.OperatorEndpoint) {
 			return fmt.Errorf("%w: --operator-endpoint cannot be loopback (%s) when remote hosts are targeted: %w", constants.ErrScaleTestInvalidInput, c.OperatorEndpoint, constants.ErrOperatorEndpointInvalid)
 		}
 	}
@@ -498,7 +462,7 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 		return err
 	}
 
-	scenarioEnv := append(scaleScenarioEnv(env, layout, cfg, bin, ports), scaleEnvFleetReport+"="+filepath.Join(layout.Out, "fleet-report.json"), scaleEnvMasterKeyFile+"="+keyPath)
+	scenarioEnv := append(scaleScenarioEnv(env, layout, cfg, bin, ports), string(constants.EnvVar.E2EFleetReport)+"="+filepath.Join(layout.Out, "fleet-report.json"), string(constants.EnvVar.E2EMasterKeyFile)+"="+keyPath)
 	if err := phase("steady state, soak, and fan-out", func() error {
 		return scaleScenario(ctx, deps, scenarioEnv, layout, cfg, scaleFanOutScenario, "scenario-fan-out.log")
 	}); err != nil {
@@ -508,7 +472,7 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 	if cfg.SkipRestart {
 		return nil
 	}
-	restartEnv := append(scenarioEnv, scaleEnvFleetRestartReport+"="+filepath.Join(layout.Out, "restart-report.json"))
+	restartEnv := append(scenarioEnv, string(constants.EnvVar.E2EFleetRestartReport)+"="+filepath.Join(layout.Out, "restart-report.json"))
 	return phase("gateway restart recovery", func() error {
 		return scaleScenario(ctx, deps, restartEnv, layout, cfg, scaleRestartScenario, "scenario-restart.log")
 	})
@@ -532,15 +496,15 @@ func scaleScenario(ctx context.Context, deps scaleDeps, env []string, layout sca
 
 func scaleScenarioEnv(env []string, layout scaleLayout, cfg scaleConfig, bin string, ports scalePorts) []string {
 	return append(append([]string(nil), env...),
-		scaleEnvRuntimeRoot+"="+layout.Run,
-		scaleEnvFleetSize+"="+strconv.Itoa(cfg.Count),
-		scaleEnvFleetBin+"="+bin,
-		scaleEnvFleetDir+"="+layout.Fleet,
-		scaleEnvFleetSoak+"="+cfg.Soak.String(),
-		scaleEnvFleetConcurrency+"="+cfg.FanOutConcurrency,
-		scaleEnvFleetRounds+"="+strconv.Itoa(cfg.Rounds),
-		scaleEnvGatewayHTTPPort+"="+strconv.Itoa(ports.HTTP),
-		scaleEnvGatewayHTTPSPort+"="+strconv.Itoa(ports.HTTPS),
+		string(constants.EnvVar.E2ERuntimeRoot)+"="+layout.Run,
+		string(constants.EnvVar.E2EFleetSize)+"="+strconv.Itoa(cfg.Count),
+		string(constants.EnvVar.E2EFleetBin)+"="+bin,
+		string(constants.EnvVar.E2EFleetDir)+"="+layout.Fleet,
+		string(constants.EnvVar.E2EFleetSoak)+"="+cfg.Soak.String(),
+		string(constants.EnvVar.E2EFleetConcurrency)+"="+cfg.FanOutConcurrency,
+		string(constants.EnvVar.E2EFleetRounds)+"="+strconv.Itoa(cfg.Rounds),
+		string(constants.EnvVar.E2EGatewayHTTPPort)+"="+strconv.Itoa(ports.HTTP),
+		string(constants.EnvVar.E2EGatewayHTTPSPort)+"="+strconv.Itoa(ports.HTTPS),
 	)
 }
 
@@ -621,13 +585,13 @@ func scaleChildEnv(layout scaleLayout) ([]string, error) {
 		goEnv[key] = value
 	}
 	var env []string
-	for _, kv := range os.Environ() {
+	for _, kv := range config.WithoutUserEnv(os.Environ()) {
 		key, _, _ := strings.Cut(kv, "=")
 		switch strings.ToUpper(key) {
 		case "HOME", "USERPROFILE", "GOCACHE", "GOMODCACHE", "GOPATH",
-			scaleEnvRuntimeRoot, scaleEnvFleetSize, scaleEnvFleetBin, scaleEnvFleetDir, scaleEnvFleetSoak,
-			scaleEnvFleetConcurrency, scaleEnvFleetRounds, scaleEnvFleetReport, scaleEnvFleetRestartReport,
-			scaleEnvGatewayHTTPPort, scaleEnvGatewayHTTPSPort, scaleEnvMasterKeyFile,
+			string(constants.EnvVar.E2ERuntimeRoot), string(constants.EnvVar.E2EFleetSize), string(constants.EnvVar.E2EFleetBin), string(constants.EnvVar.E2EFleetDir), string(constants.EnvVar.E2EFleetSoak),
+			string(constants.EnvVar.E2EFleetConcurrency), string(constants.EnvVar.E2EFleetRounds), string(constants.EnvVar.E2EFleetReport), string(constants.EnvVar.E2EFleetRestartReport),
+			string(constants.EnvVar.E2EGatewayHTTPPort), string(constants.EnvVar.E2EGatewayHTTPSPort), string(constants.EnvVar.E2EMasterKeyFile),
 			string(constants.EnvVar.E2EFleetSessions):
 			continue
 		}

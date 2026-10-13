@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // resolveRepoRoot finds the repository root using go list -m, matching the
@@ -32,16 +33,12 @@ func resolveRepoRoot() (string, error) {
 	return filepath.Clean(root), nil
 }
 
-// e2eRuntimeRootEnv names the directory whose .ztd/ tree the suite targets
-// instead of the repository root. Scenarios that run their own isolated
-// Gateway (ztd test scale) set it so the suite never reads
-// the developer's own runtime.
-const e2eRuntimeRootEnv = "ZTD_E2E_RUNTIME_ROOT"
-
 // resolveRuntimeRoot returns the directory holding the .ztd/ tree under test:
-// ZTD_E2E_RUNTIME_ROOT when set, otherwise the repository root.
+// ZTD_E2E_RUNTIME_ROOT when set, otherwise the repository root. Scenarios that
+// run their own isolated Gateway (ztd test scale) set it so the suite never
+// reads the developer's own runtime.
 func resolveRuntimeRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv(e2eRuntimeRootEnv)); root != "" {
+	if root := strings.TrimSpace(os.Getenv(string(constants.EnvVar.E2ERuntimeRoot))); root != "" {
 		return filepath.Clean(root), nil
 	}
 	return resolveRepoRoot()

@@ -34,6 +34,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/version"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 var osExit = os.Exit
@@ -48,7 +49,8 @@ func NewRootCmd(cliVersion string, vi serve.VersionInfo) *cobra.Command {
 		Long: `ztd is a zero-trust execution platform for agentic infrastructure.
 The CLI manages the ztd Gateway (ztdg), ztd Operator (ztdo), and platform setup.
 
-Run 'ztd tui' to launch the Tactical Governance Console (TUI).`,
+Launch the Tactical Governance Console (TUI) with:
+ztd tui`,
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
@@ -133,6 +135,11 @@ func ExecuteWithVersionInfo(vi serve.VersionInfo) {
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
 
+	if err := config.LoadEnvFile(constants.EnvFilename); err != nil {
+		fmt.Fprintf(rootCmd.ErrOrStderr(), "Error: %v\n", err)
+		osExit(1)
+		return
+	}
 	if err := executeRootCmd(rootCmd); err != nil {
 		osExit(1)
 	}

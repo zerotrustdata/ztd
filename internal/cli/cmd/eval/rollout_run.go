@@ -118,7 +118,7 @@ func productionRolloutGates(deps nativeEvalDeps) rolloutGateFactory {
 		return func(cmd *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
 			variant := findVariant(registry, entry.VariantID)
 			if variant == nil {
-				return nil, fmt.Errorf("model %q is not in the registry (run `ztd eval models import %s`): %w", entry.VariantID, entry.ServedModelTag, constants.ErrInferenceModelNotFound)
+				return nil, fmt.Errorf("model %q is not in the registry\nImport it with:\nztd eval models import %s\n%w", entry.VariantID, entry.ServedModelTag, constants.ErrInferenceModelNotFound)
 			}
 			return runRolloutGate(cmd, deps, fileSvc, variant, entry, gate)
 		}

@@ -37,6 +37,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	sshpkg "github.com/zerotrustdata/ztd/internal/pkg/ssh"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/uuid"
@@ -102,26 +103,6 @@ func isLocalTarget(host string) bool {
 
 func isRemoteTarget(host string) bool {
 	return !isLocalTarget(host)
-}
-
-func isLoopbackEndpoint(endpoint string) bool {
-	ep := strings.TrimSpace(endpoint)
-	if ep == "" {
-		return false
-	}
-	if idx := strings.Index(ep, "://"); idx != -1 {
-		ep = ep[idx+3:]
-	}
-	host := ep
-	if h, _, err := net.SplitHostPort(ep); err == nil {
-		host = h
-	}
-	host = strings.Trim(host, "[]")
-	if strings.EqualFold(host, constants.LocalhostHostname) || strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified())
 }
 
 func isWindowsPath(p string) bool {
@@ -465,7 +446,7 @@ type deploymentEventsConnector func(context.Context, fs.RuntimeFileService, *con
 func connectGatewayDeploymentEvents(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (deploymentWatcher, func(), error) {
 	creds, err := auth.LoadCredentials(fileSvc, cfg)
 	if err != nil || creds == nil || creds.CLISessionID == "" {
-		return nil, nil, fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+		return nil, nil, fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 	}
 	httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
 	if err != nil {
@@ -554,7 +535,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each wor
 
 			creds, err := auth.LoadCredentials(fileSvc, cfg)
 			if err != nil || creds == nil {
-				return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+				return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 			}
 
 			hosts, workerEndpoint, err := validateOperatorDeployFlags(
@@ -975,8 +956,9 @@ func useDeployGatewayPorts(cmd *cobra.Command) {
 	if strings.Contains(host, "://") {
 		return
 	}
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+	host, _, err := netutil.SplitEndpoint(host)
+	if err != nil {
+		return
 	}
 	if host == "" {
 		host = constants.LocalhostHostname
@@ -1158,10 +1140,10 @@ func validateOperatorDeployFlags(
 			if workerEndpoint == "" {
 				return "", "", fmt.Errorf("%w: %w: --operator-endpoint is required for remote deployment with --background", constants.ErrMissingRequiredField, constants.ErrOperatorEndpointInvalid)
 			}
-			if isLoopbackEndpoint(workerEndpoint) {
+			if netutil.IsLoopbackEndpoint(workerEndpoint) {
 				return "", "", fmt.Errorf("%w: remote deployment requires a non-loopback --operator-endpoint (got %q)", constants.ErrOperatorEndpointInvalid, workerEndpoint)
 			}
-		} else if workerEndpoint != "" && isLoopbackEndpoint(workerEndpoint) {
+		} else if workerEndpoint != "" && netutil.IsLoopbackEndpoint(workerEndpoint) {
 			return "", "", fmt.Errorf("%w: remote deployment requires a non-loopback --operator-endpoint (got %q)", constants.ErrOperatorEndpointInvalid, workerEndpoint)
 		}
 	} else {

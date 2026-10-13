@@ -279,6 +279,11 @@ const (
 	BinaryImageNameWindows = "ztd.exe"
 )
 
+// GatewayRuntimeMarker is the runtime-relative Gateway root CA certificate.
+// Only a Gateway runtime holds it, so outbound Operator tooling refuses any
+// runtime tree that contains it.
+const GatewayRuntimeMarker = PkiDirname + "/" + PkiSubdirRoot + "/" + PkiFileRootCA
+
 // ZtdBinariesDir is the optional image-baked directory for a complete
 // cross-platform binary manifest. Standard runtime images contain only /ztd;
 // custom distribution images can populate this directory for the Gateway's
@@ -340,6 +345,9 @@ const RuntimeArchiveTimestampLayout = "01021504"
 // Runtime directory constants for the .ztd/ state tree.
 const (
 	PathCurrentDir = "."
+
+	// EnvFilename is the project-root env file (template: .env.example).
+	EnvFilename = ".env"
 
 	RuntimeDirname           = ".ztd"
 	DataDirname              = "data"

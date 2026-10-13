@@ -126,7 +126,7 @@ func (m Model) helpLines() []string {
 	case viewApprovals:
 		lines = append(lines,
 			"j/k, ↓/↑         select a pending L3 transaction",
-			"a, enter         approve it (browser WebAuthn, as 'ztd auth approve')")
+			"a, enter         approve it (browser WebAuthn, as ztd auth approve)")
 	case viewOperators:
 		lines = append(lines,
 			"j/k, ↓/↑         select a connected Operator",

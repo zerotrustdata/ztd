@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
@@ -172,6 +173,14 @@ func TestResolveGatewayFlags_FlagValuesPassThrough(t *testing.T) {
 	assert.Equal(t, "cli-id", result.ConsensusID)
 	assert.Equal(t, "https://cli/consensus", result.ConsensusURL)
 	assert.Equal(t, "/cli/bootstrap.json", result.ConsensusBootstrap)
+}
+
+func TestResolveGatewayFlags_OllamaEndpointFromEnv(t *testing.T) {
+	t.Setenv(string(constants.EnvVar.OllamaEndpoint), "http://10.0.0.2:11434")
+
+	assert.Equal(t, "http://10.0.0.2:11434", resolveGatewayFlags(GatewayFlags{}).InferenceOllamaEndpoint)
+	assert.Equal(t, "http://10.0.0.3:11434",
+		resolveGatewayFlags(GatewayFlags{InferenceOllamaEndpoint: "http://10.0.0.3:11434"}).InferenceOllamaEndpoint)
 }
 
 func TestResolveGatewayFlags_DoctrineDirFlagPassThrough(t *testing.T) {

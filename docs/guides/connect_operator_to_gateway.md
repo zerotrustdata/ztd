@@ -3,8 +3,8 @@ doc_id: connect_operator_to_gateway
 title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - docs/guides/connect_operator_to_gateway.md
   - internal/cli/cmd/operator
@@ -50,17 +50,17 @@ The reference Gateway and Operator are subcommands in the same static `ztd` bina
 
 **Operator host requirements:**
 
-- The `ztd` binary and a writable launch directory. The process creates its `.ztd/` runtime tree below that directory for vault keys and local state. Operator credentials are never written there; they exist only in process memory.
+- The `ztd` binary and a writable working directory. The Operator creates its `.ztd/` runtime tree (vault keys, audit database, ledger) under `--working-dir`, or under the launch directory when the flag is omitted. Operator credentials are never written there; they exist only in process memory.
 - Outbound access to the Gateway on ports 8080 (bootstrap websocket) and 8443 (mTLS pub/sub).
-- A working directory for command execution. Use `--working-dir` to select this directory.
+- A working directory of its own. `--working-dir` selects both where commands run and where the runtime tree lives. Operator start refuses a directory that already holds a Gateway runtime.
 
 No inbound port is required on the Operator host.
 
 ### Endpoint Requirements
 
-Use a bare hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme and without a port suffix. The worker uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. The Operator makes no HTTP requests to the Gateway. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
+Use a hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme. The worker uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. A `host:port` endpoint sets the enrollment port; set the pub/sub port with `--gateway-https-port`. The Operator makes no HTTP requests to the Gateway. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
 
-The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `./ztd gw start --listen-host 0.0.0.0` before connecting Operators from other hosts.
+The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `make up-public` or `make gw-public` (or `./ztd gw start --listen-host 0.0.0.0`) before connecting Operators from other hosts.
 
 ---
 
@@ -100,16 +100,16 @@ On the Operator host, start the worker in the foreground:
 ./ztd operator start --endpoint <gateway-host>
 ```
 
-For a same-host deployment:
+For a same-host deployment, give the Operator its own working directory so it does not share the Gateway's `.ztd/`:
 
 ```bash
-./ztd operator start --endpoint localhost
+./ztd operator start --endpoint localhost --working-dir ~/.ztd-operator
 ```
 
 The Operator executes:
 1. Generates Operator and CLI ECDSA P-256 keys, certificate signing requests (CSRs), and a request token in memory.
 2. Opens a websocket to `ws://<gateway-host>:8080/ws/operator/bootstrap` and sends the enrollment request.
-3. Prints the request ID and approval command, enters `pending_approval`, and holds the socket open.
+3. Prints the request ID and approval command (`Approve on the Gateway host with:` followed by `./ztd auth enroll approve <request-id>` on its own line), signs the completion transcript with both private keys as proof of possession, enters `pending_approval`, and holds the socket open.
 
 ### 4. Inspect and Approve the Request
 
@@ -127,7 +127,7 @@ Compare the component name, hostname, system fingerprint, and key fingerprints w
 
 ### 5. Wait for the Connection
 
-After approval, the Gateway sends the decision over the held socket. The Operator signs the completion transcript with both private keys and receives its credentials, trust bundle, session ID, and runtime limits into memory. The Operator establishes the mTLS pub/sub connection and subscribes to its command channel:
+After approval, the Gateway sends the decision over the held socket and issues the certificates against the completion proof the Operator already sent. The Operator receives its credentials, trust bundle, session ID, and runtime limits into memory. The Operator establishes the mTLS pub/sub connection and subscribes to its command channel:
 
 ```text
 cmd:<operator-id>:<operator-session-id>
@@ -246,7 +246,7 @@ A new Gateway holds the bootstrap socket until an owner exists. Run `./ztd auth 
 
 ### Bootstrap Websocket Does Not Connect
 
-Confirm port 8080 is reachable and that `--listen-host 0.0.0.0` was passed if dialing from a remote host.
+Confirm port 8080 is reachable. `connection refused` from a remote host means the Gateway is not running or listens on loopback only; restart it with `make up-public` or `make gw-public` (`--listen-host 0.0.0.0`).
 
 ### Pub/Sub Connection Fails After Enrollment
 

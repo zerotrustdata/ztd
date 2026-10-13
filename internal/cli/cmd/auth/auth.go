@@ -45,7 +45,9 @@ func Cmd() *cobra.Command {
 		Short: "Authentication and session management",
 		Long: `Manage mTLS enrollment and CLI/web/operator sessions via CSR-based authentication.
 
-Use 'ztd login' and 'ztd logout' to sign in and out.`,
+Sign in and out with:
+ztd login
+ztd logout`,
 	}
 
 	cmd.AddCommand(
@@ -180,9 +182,10 @@ to skip the installer when an administrator has pre-installed the gateway root C
 passkey ceremony still runs and runtime mTLS/trust-bundle errors still fail enrollment.
 
 For the remote operator enrollment path (CSR-only, no passkey, no CLI session),
-use ` + "`auth enroll operator`" + ` instead.
+start the Operator with operator start and approve it with auth enroll approve.
 
-The Gateway must already be running (use './ztd gw start' first).`,
+The Gateway must already be running. Start it with:
+./ztd gw start`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUserEnrollment(cmd, userEnrollmentDeps{
 				configLoader:         configLoader,
@@ -202,7 +205,7 @@ The Gateway must already be running (use './ztd gw start' first).`,
 	cmd.Flags().BoolVar(&rotateCLI, "rotate-cli", false,
 		"Force an mTLS CLI rotation even when the local identity is complete and not expiring.")
 	cmd.Flags().BoolVar(&headless, "headless", false,
-		"Enroll a CLI-only identity without a browser. Skips passkey registration and OS trust installation; recovery approval is delegated to an already-enrolled CLI via 'ztd auth approve-recovery <token>'. The resulting identity is mTLS-only and cannot authenticate to the Console SPA.")
+		"Enroll a CLI-only identity without a browser. Skips passkey registration and OS trust installation; recovery approval is delegated to an already-enrolled CLI by running ztd auth approve-recovery <token>. The resulting identity is mTLS-only and cannot authenticate to the Console SPA.")
 	return cmd
 }
 

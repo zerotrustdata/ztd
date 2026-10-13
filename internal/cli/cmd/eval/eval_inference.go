@@ -333,7 +333,7 @@ func resolveInferenceProbeAppCredentials(fileSvc fs.RuntimeFileService, cfg *con
 
 	cert, err := auth.LoadAppIdentity(fileSvc, cfg, constants.EvaluationAppName)
 	if err != nil {
-		return nil, fmt.Errorf("evaluation: app credential %q not found or invalid; run './ztd auth enroll app %s' to enroll: %w", constants.EvaluationAppName, constants.EvaluationAppName, err)
+		return nil, fmt.Errorf("evaluation: app credential %q not found or invalid\nEnroll with:\n./ztd auth enroll app %s\n%w", constants.EvaluationAppName, constants.EvaluationAppName, err)
 	}
 
 	return cert, nil

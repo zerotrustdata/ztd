@@ -3,8 +3,8 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - docs/guides/build_gateway.md
   - Makefile
@@ -84,14 +84,14 @@ The Makefile provides several build targets:
 
 To intentionally reset Gateway state, use `./ztd gw clean`. This archives the runtime, replaces the CA on the next start, and requires fresh owner and workload enrollment.
 
-The FIPS build claim is limited to linux/amd64. Approved mode is enabled by the build, while strict runtime enforcement is separate and requires `GODEBUG=fips140=only`. Check the built binary with `./ztd version --fips`.
+The FIPS build claim is limited to linux/amd64. Approved mode is enabled by the build, while strict runtime enforcement is separate and requires `GODEBUG=fips140=only`. `make fips-build` installs the binary as `./ztd-fips`; check it with `GODEBUG=fips140=only ./ztd-fips version --fips`.
 
 ### Cross-Compilation
 
 ```bash
-GOOS=linux GOARCH=amd64 make build
-GOOS=darwin GOARCH=arm64 make build
-GOOS=windows GOARCH=amd64 make build
+make build-target GOOS=linux GOARCH=amd64
+make build-target GOOS=darwin GOARCH=arm64
+make build-target GOOS=windows GOARCH=amd64
 ```
 
 ### Run the Gateway
@@ -127,6 +127,8 @@ Choose a stricter posture only after configuring required proofs:
 
 Consensus and notary require an enabled consensus policy, trusted signers, and an available in-process consensus service. Ratify and notary require L3 human authorization for mutations.
 
+Posture, capabilities, ports, listen host, and the other startup settings are fixed while the Gateway runs. `./ztd gw start` against a running Gateway compares the explicitly passed startup flags with its launch profile, lists any differences, and exits nonzero without changing it; stop it with `./ztd gw stop` first.
+
 Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, --endpoint` and `-p, --port` flags select remote discovery and HTTPS endpoints for client enrollment; they do not configure Gateway listening ports.
 
 ---
@@ -136,7 +138,7 @@ Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, 
 Custom Gateway implementations consume the ztd Protocol Library for protobuf schema definitions, SPIFFE workload identity helpers, and JSON protocol constants.
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.0
+go get github.com/zerotrustdata/ztd@v1.0.5
 ```
 
 Import protobuf types and SPIFFE helpers from `github.com/zerotrustdata/ztd/protocol`.

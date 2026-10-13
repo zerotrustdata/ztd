@@ -143,13 +143,13 @@ func TestRunScale_RunsPhasesInOrderAndTearsDown(t *testing.T) {
 	assert.Equal(t, []string{layout.Fleet}, fake.stopped)
 	assert.Equal(t, []string{"local"}, fake.stoppedHosts)
 	assert.Equal(t, "go", fake.calls[4].Name)
-	assert.Contains(t, fake.calls[4].Env, scaleEnvRuntimeRoot+"="+layout.Run)
-	assert.Contains(t, fake.calls[4].Env, scaleEnvFleetDir+"="+layout.Fleet)
+	assert.Contains(t, fake.calls[4].Env, string(constants.EnvVar.E2ERuntimeRoot)+"="+layout.Run)
+	assert.Contains(t, fake.calls[4].Env, string(constants.EnvVar.E2EFleetDir)+"="+layout.Fleet)
 	assert.Contains(t, fake.calls[4].Env, "HOME="+layout.Home)
 	assert.Contains(t, fake.calls[4].Env, "USERPROFILE="+layout.Home)
-	assert.Contains(t, fake.calls[4].Env, scaleEnvGatewayHTTPPort+"=18080")
-	assert.Contains(t, fake.calls[4].Env, scaleEnvGatewayHTTPSPort+"=18443")
-	assert.Contains(t, fake.calls[5].Env, scaleEnvFleetRestartReport+"="+filepath.Join(layout.Out, "restart-report.json"))
+	assert.Contains(t, fake.calls[4].Env, string(constants.EnvVar.E2EGatewayHTTPPort)+"=18080")
+	assert.Contains(t, fake.calls[4].Env, string(constants.EnvVar.E2EGatewayHTTPSPort)+"=18443")
+	assert.Contains(t, fake.calls[5].Env, string(constants.EnvVar.E2EFleetRestartReport)+"="+filepath.Join(layout.Out, "restart-report.json"))
 	assert.FileExists(t, filepath.Join(layout.Out, "scale-summary.json"))
 }
 

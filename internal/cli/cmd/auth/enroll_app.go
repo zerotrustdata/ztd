@@ -52,7 +52,7 @@ func enrollAppCmdWithConfig(
 		Long: `Enroll an application workload with the running Gateway via owner-approved platform enrollment.
 
 Submits a platform enrollment request for the specified application name, prints the approval command,
-and polls until an owner approves the request (via 'ztd auth enroll approve <request-id>'). Upon approval,
+and polls until an owner approves the request (with ztd auth enroll approve <request-id>). Upon approval,
 the certificate and private key are securely stored in the managed runtime PKI directory.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

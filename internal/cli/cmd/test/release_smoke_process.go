@@ -19,6 +19,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 )
 
 // smokeProcessOwner tracks the OS processes the release smoke runner starts
@@ -62,7 +64,7 @@ func (o *smokeProcessOwner) start(name, dir, logPrefix string, argv, env []strin
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(config.WithoutUserEnv(os.Environ()), env...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

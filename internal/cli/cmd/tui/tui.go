@@ -84,14 +84,15 @@ keys switch the main area between views:
 
 Pending approvals and enrollments are listed on connect and whenever the
 Gateway reports a change. Approving a transaction opens the same browser
-WebAuthn page as 'ztd auth approve <tx_hash>' and verifies the result.
+WebAuthn page as ztd auth approve <tx_hash> and verifies the result.
 Enrollment decisions and revocations make the same mTLS requests as
-'ztd auth enroll approve|deny|revoke', stopping an Operator makes the same
-governed shutdown request as 'ztd operator stop <session_id>', and every one
+ztd auth enroll approve|deny|revoke, stopping an Operator makes the same
+governed shutdown request as ztd operator stop <session_id>, and every one
 asks y/N first.
 
 The Gateway must be running and the CLI must be enrolled (ztd auth enroll user)
-before launching the TUI. If the CLI session expires, run 'ztd auth refresh'.
+before launching the TUI. If the CLI session expires, run this command:
+ztd auth refresh
 
 Controls:
   q / Ctrl+C       Quit
@@ -132,7 +133,7 @@ func runTUI(cmd *cobra.Command, deps tuiDeps) error {
 
 	// Verify the gateway is reachable.
 	if err := deps.checkOperatorRunning(cfg); err != nil {
-		return fmt.Errorf("%w — no running gateway was detected; start a local gateway with 'ztd gw start': %w", constants.ErrGatewayNotReachable, err)
+		return fmt.Errorf("%w — no running gateway was detected\nStart a local gateway with:\nztd gw start\n%w", constants.ErrGatewayNotReachable, err)
 	}
 
 	fileSvc, err := deps.fileSvcFactory("", slog.Default())

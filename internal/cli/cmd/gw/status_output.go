@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/spf13/cobra"
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
@@ -21,7 +20,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/network"
 )
 
 func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory authcmd.APIClientFactory, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) error {
@@ -69,10 +67,11 @@ func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory au
 	printOperatorTables(cmd.OutOrStdout(), collectOperatorInventory(client, fileSvc, cfg))
 	fmt.Fprintln(cmd.OutOrStdout())
 	printEnrollmentSummary(cmd.OutOrStdout(), client)
-	origin := network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	if profile, err := serve.ReadLaunchProfile(fileSvc); err == nil && profile.Config.PublicBaseURL != "" {
-		origin = strings.TrimRight(profile.Config.PublicBaseURL, "/")
+	publicBaseURL := ""
+	if profile, err := serve.ReadLaunchProfile(fileSvc); err == nil {
+		publicBaseURL = profile.Config.PublicBaseURL
 	}
+	origin := consoleOriginFor(publicBaseURL)
 	fmt.Fprintln(cmd.OutOrStdout())
 	cmd.Printf("Console  %s/console/\n", origin)
 	return nil

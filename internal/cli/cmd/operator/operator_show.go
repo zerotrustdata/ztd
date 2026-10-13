@@ -45,7 +45,7 @@ func operatorShowCmdWithConfig(
 heartbeat snapshot gathered from the operator host.
 
 The argument may be an operator ID (from the ID column) or an operator
-session ID (from the Session ID column in './ztd operator list').`,
+session ID (from the Session ID column in ./ztd operator list).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")
@@ -60,7 +60,7 @@ session ID (from the Session ID column in './ztd operator list').`,
 
 			creds, err := auth.LoadCredentials(fileSvc, cfg)
 			if err != nil || creds == nil {
-				return fmt.Errorf("%w: Please run './ztd auth enroll user' first", constants.ErrNotAuthenticated)
+				return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 			}
 
 			client, err := clientFactory(fileSvc, cfg)

@@ -290,7 +290,7 @@ Examples:
 				})
 			}
 			if result.Prepared {
-				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Prepared run %s. Execute it with:\n  ./ztd eval runs resume %s --publish --daemon\n", result.RunID, result.RunID)
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Prepared run %s. Execute it with:\n./ztd eval runs resume %s --publish --daemon\n", result.RunID, result.RunID)
 				return err
 			}
 			return nil

@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
@@ -66,12 +67,30 @@ type ServeOperatorOptions struct {
 	MasterKeyFile string
 }
 
-// resolveOperatorEndpoint returns the trimmed endpoint if non-empty, otherwise the default endpoint.
-func resolveOperatorEndpoint(endpoint string) string {
-	if trimmed := strings.TrimSpace(endpoint); trimmed != "" {
-		return trimmed
+// resolveOperatorGateway splits the --endpoint value (host or host:port,
+// default constants.DefaultEndpoint) into the Gateway host to dial and the
+// HTTP discovery port. An endpoint port is the HTTP discovery port and must
+// agree with a non-zero --gateway-http-port. The Operator derives its own
+// http/ws/wss URLs from the host, so a URL scheme is rejected.
+func resolveOperatorGateway(endpoint string, httpPort int) (string, int, error) {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return constants.DefaultEndpoint, httpPort, nil
 	}
-	return constants.DefaultEndpoint
+	if strings.Contains(endpoint, "://") {
+		return "", 0, fmt.Errorf("%w: %q", constants.ErrGatewayEndpointInvalid, endpoint)
+	}
+	host, port, err := netutil.SplitEndpoint(endpoint)
+	if err != nil {
+		return "", 0, err
+	}
+	if port == 0 {
+		return host, httpPort, nil
+	}
+	if httpPort != 0 && httpPort != port {
+		return "", 0, fmt.Errorf("%w: endpoint port %d conflicts with --gateway-http-port %d", constants.ErrGatewayEndpointInvalid, port, httpPort)
+	}
+	return host, port, nil
 }
 
 // resolveWorkingDir returns workingDir if set, otherwise falls back to launchDir.

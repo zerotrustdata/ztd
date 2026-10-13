@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 
 	"github.com/stretchr/testify/require"
@@ -50,7 +51,7 @@ func TestResetPreservesDataAndOtherIdentities(t *testing.T) {
 func TestResetRefusesGateway(t *testing.T) {
 	dir := t.TempDir()
 	cert := write(t, dir, "cli.crt")
-	write(t, dir, gatewayMarker)
+	write(t, dir, constants.GatewayRuntimeMarker)
 	require.ErrorContains(t, Reset(dir), "gateway runtime")
 	_, err := os.Stat(cert)
 	require.NoError(t, err)

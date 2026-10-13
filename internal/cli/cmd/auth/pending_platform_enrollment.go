@@ -44,7 +44,9 @@ component kind, instance ID, hostname, state, creation time, and expiry — neve
 requester tokens, token hashes, CSR PEM, or certificates.
 
 Use request IDs, instance IDs, or hostnames with
-'ztd auth enroll approve <selector>...' or 'ztd auth enroll deny <selector>...'
+one of these commands:
+ztd auth enroll approve <selector>...
+ztd auth enroll deny <selector>...
 to decide specific requests, or pass --all to decide every pending request.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

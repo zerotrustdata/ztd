@@ -3,8 +3,8 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -63,14 +63,16 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-ENV-01 | CLI commands MUST be run from the checkout root. Running from a subdirectory resolves a different `.ztd/` runtime tree. |
 | INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.2). |
 | INV-TROUBLE-ENV-03 | A newly built binary MUST be produced with `make build`, which compiles `cmd/ztd` and places the runnable executable at `./ztd`. |
+| INV-TROUBLE-ENV-04 | Every `./ztd` command loads `.env` from the working directory before it runs (`config.LoadEnvFile`). When every command exits before running with an `.env` error, fix the file rather than the command: on Linux and macOS it MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`, fix with `chmod 600 .env`), and every line MUST be `KEY=VALUE` (`ErrEnvFileMalformed`) naming a `secret` or `user_endpoint` key from `protocol/constants/env_vars.json` (`ErrEnvFileUnknownKey`). Platform configuration goes in command flags, never `.env`. |
 
 ### Gateway startup and vault (`INV-TROUBLE-GW`)
 
 | ID | Rule |
 | :--- | :--- |
-| INV-TROUBLE-GW-01 | The Gateway requires an unlocked vault during startup. On first initialization, `.ztd/vault/` and `.ztd/vault/key` are generated. Lost vault keys make data unrecoverable; MUST NOT overwrite or delete vault keys without explicit data disposal intent. |
+| INV-TROUBLE-GW-01 | The Gateway requires an unlocked vault during startup. On first initialization, `.ztd/vault/vault.header` and the sealed key `.ztd/secrets/vault_key` are generated. Lost vault keys make data unrecoverable; MUST NOT overwrite or delete vault keys without explicit data disposal intent. |
 | INV-TROUBLE-GW-02 | `gw restart` reads the launch profile at `.ztd/pids/operator-launch-profile.json`. If missing or invalid, restart fails closed; start with explicit flags to generate a new launch profile. |
 | INV-TROUBLE-GW-03 | `gw reset` and `gw clean` are destructive commands that move the local `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`; the gateway starts over without it. MUST NOT use either command to repair retained state. `make clean` removes only build artifacts and the Go build cache; it does not reset Gateway runtime state. |
+| INV-TROUBLE-GW-04 | `gw start` against a running Gateway succeeds only when every explicitly set startup flag (capabilities, posture, listen host, ports, model storage root, Ollama endpoint, public base URL, CORS and passkey origins) matches the running launch profile. Otherwise it prints the differences and fails with `ErrGatewayAlreadyRunning`; stop the Gateway (`./ztd gw stop` or `make down`), then rerun the start command. Runtime state in `.ztd/` is kept. |
 
 ### Authentication and trust (`INV-TROUBLE-AUTH`)
 
@@ -86,7 +88,8 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-OP-01 | Outbound Operators connect strictly outbound over mTLS to the Gateway (`cmd:<operator_id>:<operator_session_id>`) and expose NO inbound listening ports. To diagnose an unreachable Operator, check Gateway mTLS port reachability, local CA bundle integrity, and platform enrollment approval status. |
-| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in audit receipts (`.ztd/audit/` or `ztd audit receipts`) and state roots before altering configuration or attempting re-execution. |
+| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in audit receipts (`ztd audit receipts`, `ztd audit events`; stored under `.ztd/data/`) and state roots before altering configuration or attempting re-execution. |
+| INV-TROUBLE-OP-03 | `ztd operator start` and `ztd operator reset-identity` refuse a working directory whose runtime tree holds the Gateway root CA (`constants.GatewayRuntimeMarker`); `operator start` fails with `ErrOperatorGatewayRuntime`. Each executing runtime owns its own audit store and state root, so an outbound Operator on the Gateway host MUST run with `--working-dir` set to a separate directory. |
 
 ## Owned surfaces
 
@@ -94,9 +97,9 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | :--- | :--- | :--- |
 | Go version requirement | `go.mod` | `go 1.27.2` |
 | Platform build target | `Makefile`, `cmd/ztd` | `make build` |
-| Gateway launch profile | `internal/cli/serve/gateway.go` | `.ztd/pids/operator-launch-profile.json` |
-| Vault key path | `internal/constants/paths.go` | `VaultKeyRel` (`vault/key`) |
-| CA trust bundle | `internal/constants/paths.go` | `PKITrustDirRel/ztdg-ca-bundle.pem` |
+| Gateway launch profile | `internal/cli/serve/launch_profile.go` | `.ztd/pids/operator-launch-profile.json` |
+| Vault key path | `internal/constants/paths.go` | `SecretsDirname`/`SecretsFileVaultKey` (`secrets/vault_key`) |
+| CA trust bundle | `internal/constants/paths.go` | `PkiDirname`/`PkiSubdirTrust`/`PkiFileGatewayBundle` (`pki/trust/ztdg-ca-bundle.pem`) |
 | CLI session credentials | `internal/cli/auth/`, `.ztd/auth/` | `ztd auth refresh`, `ztd login cli` |
 | Operator enrollment state | `internal/cli/serve/operator.go` | `ztd operator list`, `ztd operator show` |
 
@@ -119,9 +122,8 @@ make build
 chmod +x ztd
 
 # Validate prerequisites for protocol regeneration
-command -v go
-command -v buf || test -x ./buf
-command -v uv
+command -v go    # buf is installed by make proto-generate
+command -v npm   # protocol/node bindings
 make proto-generate
 ```
 
@@ -182,14 +184,14 @@ eval "$(ssh-agent)" && ssh-add   # or connect with ssh -A
 nc -zv 127.0.0.1 8443
 
 # Reset local Operator identity credentials if certificates or keys are corrupted:
-./ztd operator reset-identity
+./ztd operator reset-identity --working-dir <operator-dir> --yes
 ```
 
 ### Governance Pipeline Diagnosis
 
 ```bash
 # Query recent audit receipts to identify rejection layers (L1-L4):
-./ztd audit receipts --limit 10
+./ztd audit receipts --session <operator-session-id>
 
 # Inspect specific transaction details and state-root commitments:
 ./ztd audit events --limit 20

@@ -79,6 +79,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-REL-VER-06 | The Evaluation Explorer bundle compiles the current release from `VERSION` (`CURRENT_PLATFORM_RELEASE`). After changing `VERSION`, PR preparation MUST rebuild the bundle, refresh Gateway embed (`make explorer-embed`), and commit `internal/services/gateway/explorer/static/`. Stale embeds default the Explorer's release filter to the release current when built. |
 | INV-REL-VER-07 | The console embed (`internal/services/gateway/console/static/`) carries no release string, but `make console-embed-check` MUST pass before PR so committed embeds match `console/` at the release commit. |
 | INV-REL-VER-08 | Current installation examples in `README.md` and `.github/CONTRIBUTING.md` MUST match `VERSION`. Audit prerequisites and startup commands against current `Makefile`. Audit `AGENTS.md` and `CLAUDE.md` for removed paths, commands, and targets. Historical release notes and scoped evidence retain original versions. |
+| INV-REL-VER-09 | The first line of `docs/release_notes/vX.Y.x/vX.Y.Z.md` MUST be `## [X.Y.Z] - YYYY-MM-DD - <Title>`, where `<Title>` is a short title-case phrase naming what the release delivers (for example `Onboarding and Host Configuration`), and `YYYY-MM-DD` is the planned tag date in UTC. A version number alone is not a title, and `Unreleased` is not a date. The `CHANGELOG.md` row carries the same date. |
 
 ### Compliance evidence (`INV-REL-COMP`)
 
@@ -125,7 +126,7 @@ To refresh published runs after correcting asserted tags, execute `ztd public re
 
 1. **Determine change inventory:** Diff `v<prev-tag>..HEAD` to identify all added, changed, removed, fixed, and security-sensitive features.
 2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`, audit affected documents end-to-end against production code, and update stale cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI.
-3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` following the template with Overview, Added, Changed, Removed (when anything is removed), Fixed, Tests, Documentation, Compliance Evidence, and Deferred sections.
+3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then follow the template with Overview, Added, Changed, Removed (when anything is removed), Fixed, Tests, Documentation, Compliance Evidence, and Deferred sections.
 4. **Set version:** Update `VERSION` to `vX.Y.Z\n`.
 5. **Sync protocol specs and npm versions:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Synchronize Go installation examples in `README.md` and `.github/CONTRIBUTING.md` (`INV-REL-VER-08`).
 6. **Regenerate protocol bindings:** When `protocol/proto/ztd/` changed, run `make proto-generate` so generated Go and TypeScript output is current.
@@ -182,6 +183,7 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - Hand-editing compliance projections instead of generating through `ztd compliance release-evidence` (`INV-REL-COMP-01`, `INV-REL-COMP-03`).
 - Leaving README or contributor installation examples pinned to a release other than `VERSION`, or agent instructions pointing to removed commands (`INV-REL-VER-08`).
 - Bumping `VERSION` without rebuilding Explorer embed, leaving release filters on stale versions (`INV-REL-VER-06`).
+- Release notes headed with a bare version number or `Unreleased` instead of a release date and title (`INV-REL-VER-09`).
 - Adding release rows to non-existent `## vX.Y.x` sections instead of creating new minor sections (`INV-REL-VER-04`).
 - Treating `make ci` as release smoke acceptance, or failing to retain maintained runner evidence roots (`INV-REL-SMOKE-01`, `INV-REL-SMOKE-06`).
 - Treating scenario exit status alone as smoke acceptance without verifying signed receipts, governed read-back, and populated worker stores (`INV-REL-SMOKE-02`, `INV-REL-SMOKE-04`).

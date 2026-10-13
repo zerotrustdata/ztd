@@ -12,10 +12,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/pathutil"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -221,8 +223,8 @@ func (c *Config) OperatorHTTPURL() string {
 		if strings.Contains(override, "://") {
 			return override
 		}
-		if _, _, err := net.SplitHostPort(override); err != nil {
-			return fmt.Sprintf("https://%s:%d", override, constants.Ports.OperatorHttps)
+		if host, port, err := netutil.SplitEndpoint(override); err == nil && port == 0 {
+			return fmt.Sprintf("https://%s", net.JoinHostPort(host, strconv.Itoa(constants.Ports.OperatorHttps)))
 		}
 		return fmt.Sprintf("https://%s", override)
 	}
@@ -297,8 +299,8 @@ func (c *Config) OperatorDiscoveryURL() string {
 		if strings.Contains(override, "://") {
 			return override
 		}
-		if _, _, err := net.SplitHostPort(override); err != nil {
-			return fmt.Sprintf("http://%s:%d", override, constants.Ports.OperatorHttp)
+		if host, port, err := netutil.SplitEndpoint(override); err == nil && port == 0 {
+			return fmt.Sprintf("http://%s", net.JoinHostPort(host, strconv.Itoa(constants.Ports.OperatorHttp)))
 		}
 		return fmt.Sprintf("http://%s", override)
 	}

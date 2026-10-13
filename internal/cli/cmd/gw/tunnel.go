@@ -85,7 +85,8 @@ This command:
   3. Routes DNS to the tunnel (creates a CNAME record)
   4. Generates ~/.cloudflared/config.yml with the correct ingress rules
 
-After creating the tunnel, run 'ztd gw tunnel run' to start it.
+After creating the tunnel, start it with:
+ztd gw tunnel run
 
 Prerequisites:
   - cloudflared installed
@@ -198,15 +199,15 @@ Prerequisites:
 			cmd.Println()
 			cmd.Println("Next steps:")
 			cmd.Printf("  1. Start the gateway (if not already running):\n")
-			cmd.Printf("     ztd gw start --public-base-url https://%s --passkey-rp-id %s --passkey-rp-origin https://%s --cors-origin https://%s\n",
+			cmd.Printf("ztd gw start --public-base-url https://%s --passkey-rp-id %s --passkey-rp-origin https://%s --cors-origin https://%s\n",
 				hostname, hostname, hostname, hostname)
 			cmd.Printf("  2. Start the tunnel:\n")
-			cmd.Printf("     ztd gw tunnel run --name %s\n", tunnelName)
+			cmd.Printf("ztd gw tunnel run --name %s\n", tunnelName)
 			cmd.Printf("  3. Verify connectivity:\n")
-			cmd.Printf("     ztd gw tunnel status --hostname %s\n", hostname)
+			cmd.Printf("ztd gw tunnel status --hostname %s\n", hostname)
 			cmd.Println()
 			cmd.Printf("  4. Connect a frontend:\n")
-			cmd.Printf("     ztd gw connect https://your-app.lovable.app\n")
+			cmd.Printf("ztd gw connect https://your-app.lovable.app\n")
 
 			return nil
 		},
@@ -243,7 +244,8 @@ func tunnelRunCmd() *cobra.Command {
 		Long: `Start the Cloudflare tunnel in the foreground. This command blocks
 until interrupted with Ctrl+C or a termination signal.
 
-The tunnel must have been created first with 'ztd gw tunnel create'.
+The tunnel must have been created first with:
+ztd gw tunnel create
 
 The gateway should be running on localhost:8443 (or the port specified in
 config.yml) before starting the tunnel.`,
@@ -348,8 +350,10 @@ This command:
 					cmd.Printf("  Result: UNREACHABLE — %s\n", strings.TrimSpace(string(healthOutput)))
 					cmd.Println()
 					cmd.Println("  Possible causes:")
-					cmd.Println("    - Tunnel is not running (start with 'ztd gw tunnel run')")
-					cmd.Println("    - Gateway is not running (start with 'ztd gw start')")
+					cmd.Println("    - Tunnel is not running. Start it with:")
+					cmd.Println("ztd gw tunnel run")
+					cmd.Println("    - Gateway is not running. Start it with:")
+					cmd.Println("ztd gw start")
 					cmd.Println("    - DNS has not propagated yet")
 				} else {
 					outputStr := strings.TrimSpace(string(healthOutput))

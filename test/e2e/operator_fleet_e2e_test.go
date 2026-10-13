@@ -35,20 +35,11 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// Environment contract for the fleet scenarios. `ztd test scale`
-// (internal/cli/cmd/test/scale.go) deploys the fleet and sets these; the
-// scenarios are opt-in (not part of defaultE2ERunRegexp) and fail closed when
-// their inputs are missing.
+// The fleet scenarios read the ZTD_E2E_FLEET_* test keys in
+// constants.EnvVar. `ztd test scale` (internal/cli/cmd/test/scale.go) deploys
+// the fleet and sets them; the scenarios are opt-in (not part of
+// defaultE2ERunRegexp) and fail closed when required inputs are missing.
 const (
-	fleetSizeEnv          = "ZTD_E2E_FLEET_SIZE"           // required: remote Operators the script deployed
-	fleetBinEnv           = "ZTD_E2E_FLEET_BIN"            // required: ztd binary used for `operator run`
-	fleetDirEnv           = "ZTD_E2E_FLEET_DIR"            // required for restart: local op-NNNNN roots
-	fleetSoakEnv          = "ZTD_E2E_FLEET_SOAK"           // optional: idle soak before fan-out (Go duration)
-	fleetConcurrencyEnv   = "ZTD_E2E_FLEET_CONCURRENCY"    // optional: comma-separated fan-out concurrencies
-	fleetRoundsEnv        = "ZTD_E2E_FLEET_ROUNDS"         // optional: fan-outs per concurrency level
-	fleetReportEnv        = "ZTD_E2E_FLEET_REPORT"         // optional: path for the JSON report
-	fleetRestartReportEnv = "ZTD_E2E_FLEET_RESTART_REPORT" // optional: path for the restart JSON report
-
 	defaultFleetSoak        = 75 * time.Second // longer than OperatorHeartbeatStaleAfter, so a missed heartbeat shows up
 	defaultFleetConcurrency = "16,64"
 	defaultFleetRounds      = 1
@@ -104,15 +95,15 @@ type fleetRunOutput struct {
 // dispatch succeeds, nobody goes stale) does not depend on machine speed.
 func TestOperatorFleet_HoldsUnderFanOut(t *testing.T) {
 	size := requireFleetSize(t)
-	bin := requireFleetEnv(t, fleetBinEnv)
+	bin := requireFleetEnv(t, string(constants.EnvVar.E2EFleetBin))
 	sessions, err := parseFleetSessions(os.Getenv(string(constants.EnvVar.E2EFleetSessions)))
 	require.NoError(t, err)
 	if len(sessions) > 0 {
 		require.Len(t, sessions, size, "cohort must contain exactly the requested fleet size")
 	}
-	soak := fleetDurationEnv(t, fleetSoakEnv, defaultFleetSoak)
+	soak := fleetDurationEnv(t, string(constants.EnvVar.E2EFleetSoak), defaultFleetSoak)
 	concurrencies := fleetConcurrencies(t)
-	rounds := fleetIntEnv(t, fleetRoundsEnv, defaultFleetRounds)
+	rounds := fleetIntEnv(t, string(constants.EnvVar.E2EFleetRounds), defaultFleetRounds)
 
 	// The scale Gateway binds IPv4 loopback. Both in-process API calls and
 	// child CLI dispatches must use that address without resolving localhost.
@@ -201,8 +192,8 @@ type fleetRestartReport struct {
 // asserted beyond the fleetRecoveryWait correctness bound.
 func TestOperatorFleet_RecoversAfterGatewayRestart(t *testing.T) {
 	size := requireFleetSize(t)
-	bin := requireFleetEnv(t, fleetBinEnv)
-	fleetDir := requireFleetEnv(t, fleetDirEnv)
+	bin := requireFleetEnv(t, string(constants.EnvVar.E2EFleetBin))
+	fleetDir := requireFleetEnv(t, string(constants.EnvVar.E2EFleetDir))
 	require.Empty(t, strings.TrimSpace(os.Getenv(string(constants.EnvVar.E2EFleetSessions))),
 		"the restart scenario runs against a dedicated Gateway and does not take a session cohort")
 	root, err := resolveRuntimeRoot()
@@ -211,7 +202,7 @@ func TestOperatorFleet_RecoversAfterGatewayRestart(t *testing.T) {
 	report := fleetRestartReport{Size: size}
 	t.Cleanup(func() {
 		report.GeneratedAt = time.Now().UTC()
-		writeFleetJSON(t, fleetRestartReportEnv, &report)
+		writeFleetJSON(t, string(constants.EnvVar.E2EFleetRestartReport), &report)
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultClientTimeout)
@@ -460,7 +451,7 @@ func runFleetFanOut(t *testing.T, bin string, concurrency, size int, sessions []
 func writeFleetReport(t *testing.T, report *fleetReport) {
 	t.Helper()
 	report.GeneratedAt = time.Now().UTC()
-	writeFleetJSON(t, fleetReportEnv, report)
+	writeFleetJSON(t, string(constants.EnvVar.E2EFleetReport), report)
 }
 
 // writeFleetJSON writes report to the path named by env, if set.
@@ -489,9 +480,9 @@ func requireFleetEnv(t *testing.T, name string) string {
 
 func requireFleetSize(t *testing.T) int {
 	t.Helper()
-	size, err := strconv.Atoi(requireFleetEnv(t, fleetSizeEnv))
-	require.NoError(t, err, "%s must be an integer", fleetSizeEnv)
-	require.Positive(t, size, "%s must be positive", fleetSizeEnv)
+	size, err := strconv.Atoi(requireFleetEnv(t, string(constants.EnvVar.E2EFleetSize)))
+	require.NoError(t, err, "%s must be an integer", string(constants.EnvVar.E2EFleetSize))
+	require.Positive(t, size, "%s must be positive", string(constants.EnvVar.E2EFleetSize))
 	return size
 }
 
@@ -520,15 +511,15 @@ func fleetDurationEnv(t *testing.T, name string, fallback time.Duration) time.Du
 
 func fleetConcurrencies(t *testing.T) []int {
 	t.Helper()
-	raw := strings.TrimSpace(os.Getenv(fleetConcurrencyEnv))
+	raw := strings.TrimSpace(os.Getenv(string(constants.EnvVar.E2EFleetConcurrency)))
 	if raw == "" {
 		raw = defaultFleetConcurrency
 	}
 	var levels []int
 	for _, part := range strings.Split(raw, ",") {
 		level, err := strconv.Atoi(strings.TrimSpace(part))
-		require.NoError(t, err, "%s entries must be integers", fleetConcurrencyEnv)
-		require.Positive(t, level, "%s entries must be positive", fleetConcurrencyEnv)
+		require.NoError(t, err, "%s entries must be integers", string(constants.EnvVar.E2EFleetConcurrency))
+		require.Positive(t, level, "%s entries must be positive", string(constants.EnvVar.E2EFleetConcurrency))
 		levels = append(levels, level)
 	}
 	return levels

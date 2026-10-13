@@ -3,8 +3,8 @@ doc_id: devs
 title: Developer Guidelines
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - go.mod
   - Makefile
@@ -96,7 +96,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-ENV-01 | The Go toolchain MUST satisfy the `go` line in `go.mod` (Go 1.27.2). Setup scripts read that line and check the development toolchain, including Node.js 22.22.2+, 24.15+, or 26+ and `npm`; a fresh `make build` uses committed frontend embeds and does not require Node.js. |
 | INV-ENV-02 | Commands in this guide MUST be run from the repository root unless the owning component guide specifies otherwise. |
 | INV-ENV-03 | CLI behavior MUST be taken from `./ztd <command> --help`. This file MUST NOT grow a flag inventory. |
-| INV-ENV-04 | Environment variables MUST be read only through typed keys in `protocol/constants/env_vars.json`, which assigns each key one of four categories: `secret` (API keys, tokens, client secrets, encryption keys), `user_endpoint` (user-specific endpoint or identity with no universal default), `host` (OS-provided host fact, e.g. `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TZ`, `SSH_AUTH_SOCK`), and `test` (test-harness selector read only by test tooling, e.g. `ZTD_E2E_FLEET_SESSIONS`). Platform configuration (ports, paths, passkey origins, consensus, doctrine, vault paths) is never read from environment variables; it is a typed default in code or an explicit command flag. Every env key MUST be declared with a `category` in `protocol/constants/env_vars.json`; raw-string keys outside the registry are prohibited (`INV-TYPE-06`). Repo-root `.env.example` is verified by `make constants-check`. |
+| INV-ENV-04 | Environment variables MUST be read only through typed keys in `protocol/constants/env_vars.json`, which assigns each key one of four categories: `secret` (API keys, tokens, client secrets, encryption keys), `user_endpoint` (user-specific endpoint or identity with no universal default), `host` (OS-provided host fact, e.g. `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TZ`, `SSH_AUTH_SOCK`), and `test` (test-harness selector read only by test tooling, e.g. `ZTD_E2E_FLEET_SESSIONS`). Platform configuration (ports, paths, passkey origins, consensus, doctrine, vault paths) is never read from environment variables; it is a typed default in code or an explicit command flag. Every env key MUST be declared with a `category` in `protocol/constants/env_vars.json`; raw-string keys outside the registry are prohibited (`INV-TYPE-06`). Every `./ztd` command loads `.env` (`constants.EnvFilename`) from the working directory, the repository root per `INV-ENV-02`, through `config.LoadEnvFile` (`internal/cli/config/env_file.go`) before running the command: a missing file loads nothing; on Linux and macOS the file MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`); only `KEY=VALUE` lines naming `secret` and `user_endpoint` keys are accepted (`ErrEnvFileMalformed`, `ErrEnvFileUnknownKey`); any violation exits the command; an exported variable wins. Repo-root `.env.example` is verified by `make constants-check`. |
 
 ### CLI layout (`INV-CLI`)
 
@@ -257,6 +257,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | Runtime path constants | `internal/constants/paths.go` | Path strings for `.ztd/` runtime state |
 | `.ztd/` file service | `internal/services/fs/file_service.go` | `RuntimeFileService`, `NewRuntimeFileService`, `CreateRuntimeTree` |
 | Trust bundle path | `internal/cli/config/config.go` | `.ztd/pki/trust/ztdg-ca-bundle.pem` |
+| Repo-root `.env` loader | `internal/cli/config/env_file.go`, `internal/cli/cmd/main.go` | `config.LoadEnvFile(constants.EnvFilename)` in `ExecuteWithVersionInfo`; accepted keys are `constants.SecretEnvVars` and `constants.UserEndpointEnvVars` |
 | Mode dependency types | `internal/services/pubsub/mode_deps.go` | `GovernanceCoreDeps`, `GatewayModeDeps`, `OutboundModeDeps`, `NewOutboundModeDeps`, `NewGatewayModeDeps` |
 | Outbound construction | `internal/services/ztdo.go` | Calls `pubsub.NewOutboundModeDeps` |
 | Gateway builder | `internal/services/gateway/gateway_service.go` | Direct `GatewayModeDeps` composite, then `NewGatewayOperatorPubSubService`, `NewPlatformEnrollmentService`, `mcp.NewGatewayService`, `BindMCPGateway`, `initHTTPHandler` |

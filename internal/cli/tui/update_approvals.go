@@ -35,7 +35,7 @@ func (m Model) approveSelected() (tea.Model, tea.Cmd) {
 		return m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "No pending approvals to approve"}), nil
 	}
 	if m.approvalURL == nil || m.openBrowser == nil {
-		return m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Approving from the TUI is unavailable; run 'ztd auth approve " + m.pending[m.pendingSelected].TransactionHash + "'"}), nil
+		return m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Approving from the TUI is unavailable; run ztd auth approve " + m.pending[m.pendingSelected].TransactionHash}), nil
 	}
 	txHash := m.pending[m.pendingSelected].TransactionHash
 	url := m.approvalURL(txHash)
@@ -84,7 +84,7 @@ func (m Model) applyPendingApprovalsMsg(msg PendingApprovalsMsg) Model {
 		}
 		m = m.applyLedgerMsg(LedgerMsg{
 			Level:   LevelWarn,
-			Message: fmt.Sprintf("APPROVAL REQUIRED: %s (tx %s) — press 'a' or run 'ztd auth approve %s'", toolLabel(tx.ToolName), shortHash(tx.TransactionHash), tx.TransactionHash),
+			Message: fmt.Sprintf("APPROVAL REQUIRED: %s (tx %s) — press a or run ztd auth approve %s", toolLabel(tx.ToolName), shortHash(tx.TransactionHash), tx.TransactionHash),
 		})
 	}
 	m.pending = msg.Transactions

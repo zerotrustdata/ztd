@@ -44,7 +44,7 @@ type Adapter struct {
 
 // sessionExpiredDetail is the connection detail shown when the Gateway
 // rejects the CLI session; it names the same recovery as the rest of the CLI.
-const sessionExpiredDetail = "CLI session expired — run 'ztd auth refresh'"
+const sessionExpiredDetail = "CLI session expired — run ztd auth refresh"
 
 func newAdapterWithManager(sessions *sessionManager, sender messageSender) *Adapter {
 	return &Adapter{sessions: sessions, sender: sender}

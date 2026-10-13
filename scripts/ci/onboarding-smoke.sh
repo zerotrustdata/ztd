@@ -22,12 +22,13 @@ fi
 bash scripts/linux-setup.sh -y
 make third-party-notices-check
 
-# The env template currently has no required values for the host-native flow.
-# Preserve the user onboarding step and verify the copied file byte-for-byte;
-# the ztd binary does not implicitly load dotenv files.
-cp .env.example .env
-chmod 600 .env
+# Setup creates the owner-only .env from the template byte-for-byte. Every
+# entry is commented, so ./ztd loads no keys from it.
 cmp .env.example .env
+if [[ "$(stat -c %a .env)" != 600 ]]; then
+    echo "ERROR: setup did not create .env with mode 600" >&2
+    exit 1
+fi
 
 if [[ ! -x ./ztd ]]; then
     echo "ERROR: setup completed without producing ./ztd" >&2

@@ -34,6 +34,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -308,7 +309,7 @@ func (c *OperatorBootstrapClient) observeCreated(ctx context.Context, attempt *o
 		"cli_fingerprint", attempt.fingerprints.CLI,
 		"approval_url", created.ApprovalURL,
 		"expires_at", created.ExpiresAt)
-	fmt.Fprintf(os.Stderr, "Approve with: ztd auth enroll approve %s\n", created.RequestID)
+	fmt.Fprintf(os.Stderr, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, created.RequestID)
 	return c.cfg.Deployment.Record(ctx, models.OperatorDeploymentState{Phase: models.OperatorDeploymentPhasePendingApproval, RequestID: created.RequestID})
 }
 
@@ -450,11 +451,11 @@ func OperatorBootstrapURL(endpoint string, httpPort int) string {
 	case strings.Contains(endpoint, "://"):
 		base = endpoint
 	default:
-		if _, _, err := net.SplitHostPort(endpoint); err != nil {
+		if host, port, err := netutil.SplitEndpoint(endpoint); err == nil && port == 0 {
 			if httpPort == 0 {
 				httpPort = constants.Ports.OperatorHttp
 			}
-			endpoint = net.JoinHostPort(endpoint, strconv.Itoa(httpPort))
+			endpoint = net.JoinHostPort(host, strconv.Itoa(httpPort))
 		}
 		base = "ws://" + endpoint
 	}
