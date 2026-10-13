@@ -314,7 +314,7 @@ third-party-notices-check:
 	@echo "Checking THIRD_PARTY_NOTICES.md against vendor/ and the npm locks..."
 	@tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT && \
 		go run ./internal/tools/thirdpartynotices -repo . -out "$$tmp" && \
-		diff -u THIRD_PARTY_NOTICES.md "$$tmp" || { echo "THIRD_PARTY_NOTICES.md is stale; run 'make third-party-notices'"; exit 1; }
+		diff -u --strip-trailing-cr THIRD_PARTY_NOTICES.md "$$tmp" || { echo "THIRD_PARTY_NOTICES.md is stale; run 'make third-party-notices'"; exit 1; }
 
 .PHONY: website-build
 website-build:
