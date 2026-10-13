@@ -221,7 +221,8 @@ help:
 		'  fips-build                Build the Linux AMD64 FIPS variant' \
 		'  fips-verify               Build and verify the FIPS variant' \
 		'  version-sync              Sync version declarations to VERSION' \
-		'  release                   Tag and push the release in VERSION' \
+		'  release-rehearse          Run the release workflow on main without publishing' \
+		'  release                   Tag and push the release in VERSION (needs a passing rehearsal)' \
 		'' \
 		'Test and quality' \
 		'  test                      Run unit and in-process integration tests' \
@@ -1017,6 +1018,11 @@ release:
 	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
 		echo "Error: HEAD is not origin/main. Push or pull so the release commit is on origin/main, then retry."; exit 1; \
 	fi; \
+	REHEARSALS=$$(gh run list --workflow release-binary.yml --event workflow_dispatch --commit "$$(git rev-parse HEAD)" \
+		--status success --json databaseId --jq length) || exit 1; \
+	if [ "$$REHEARSALS" = "0" ]; then \
+		echo "Error: no successful release rehearsal for $$(git rev-parse --short HEAD). Run make release-rehearse first."; exit 1; \
+	fi; \
 	\
 	go run ./internal/tools/versionsync -write || exit 1; \
 	\
@@ -1036,4 +1042,21 @@ release:
 	echo ""; \
 	echo "Tag $$TAG pushed."; \
 	echo "The GitHub Actions workflows will create the release and upload assets."; \
-	echo "Monitor: gh run watch --workflow=release-binary.yml"
+	echo "Monitor: gh run list --workflow release-binary.yml --branch $$TAG, then gh run watch <id> --exit-status"
+
+# Rehearse the release workflow on origin/main without publishing: preflight,
+# build-all, checksums, cosign signing, staging, and re-verification of the
+# downloaded artifact set. make release requires a successful rehearsal of HEAD.
+.PHONY: release-rehearse
+release-rehearse:
+	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ] || [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: make release-rehearse runs on a clean main checkout."; exit 1; \
+	fi; \
+	git fetch -q origin main || exit 1; \
+	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
+		echo "Error: HEAD is not origin/main. Push or pull, then retry."; exit 1; \
+	fi; \
+	URL=$$(gh workflow run release-binary.yml --ref main -f publish=false 2>&1 | grep -o 'https://[^ ]*/actions/runs/[0-9]*') \
+		|| { echo "Error: could not dispatch release-binary.yml"; exit 1; }; \
+	echo "Rehearsal: $$URL"; \
+	gh run watch "$${URL##*/}" --exit-status

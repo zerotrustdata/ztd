@@ -93,19 +93,17 @@ mapfile -t NAMES < <(scripts/release-artifacts.sh list-binaries)
 printf '%s\n' "${NAMES[@]}" | grep -qx 'ztd-windows-amd64.exe' || fail 'Windows executable suffix missing from catalog output'
 for name in "${NAMES[@]}"; do
 	if [ "$name" = ztd-linux-amd64 ]; then
-		# Static fixture for the script's metadata parser, not a release binary.
+		# Static fixture for the script's `version --json --fips` reader, not a
+		# release binary. Left non-executable: artifact transfer drops the mode.
 		cat > "$BIN/$name" <<'EOF'
 #!/usr/bin/env bash
-if [ "${1:-}" = version ] && [ "${2:-}" = --fips ]; then exit 0; fi
+[ "${1:-}" = version ] && [ "${2:-}" = --json ] && [ "${3:-}" = --fips ] || exit 2
 cat <<'META'
-ztd version v1.0.0
-platform: linux_amd64
-source rev: REVISION_PLACEHOLDER
-source state: clean
+{"version":"v1.0.0","platform":"linux/amd64","source_revision":"REVISION_PLACEHOLDER","source_tree_modified":false,"fips140":{"enabled":true}}
 META
 EOF
 		sed -i "s/REVISION_PLACEHOLDER/$HEAD_SHA/" "$BIN/$name"
-		chmod +x "$BIN/$name"
+		chmod -x "$BIN/$name"
 	else
 		printf 'synthetic fixture artifact for %s\n' "$name" > "$BIN/$name"
 	fi
@@ -120,7 +118,10 @@ done
 jq -n --arg version v1.0.0 --arg revision "$HEAD_SHA" --argjson targets "$TARGETS" \
 	'{schema_version:1,version:$version,source_revision:$revision,targets:$targets}' > "$BIN/ztd-binaries.json"
 scripts/release-artifacts.sh checksums "$BIN" >/dev/null
-scripts/release-artifacts.sh verify "$BIN" 1.0.0 "$HEAD_SHA" >/dev/null
+scripts/release-artifacts.sh verify "$BIN" 1.0.0 "$HEAD_SHA" > "$SCRATCH/verify.out"
+if [ "$(uname -s)/$(uname -m)" = "Linux/x86_64" ]; then
+	grep -qF 'host binary metadata verified' "$SCRATCH/verify.out" || fail 'host binary metadata was not verified'
+fi
 expect_rejection 'source_revision does not match' scripts/release-artifacts.sh verify "$BIN" 1.0.0 "$(printf '0%.0s' {1..40})"
 mv "$BIN/${NAMES[2]}" "$SCRATCH/missing-artifact"
 expect_rejection "missing or empty binary: ${NAMES[2]}" scripts/release-artifacts.sh verify "$BIN" 1.0.0 "$HEAD_SHA"

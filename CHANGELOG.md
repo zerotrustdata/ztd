@@ -12,5 +12,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
-| 1.0.2 | Unreleased | First published 1.0 release: everything in 1.0.0, plus fixes to release verification and the CI deployment lifecycle. | [v1.0.2](docs/release_notes/v1.0.x/v1.0.2.md) |
+| 1.0.3 | Unreleased | First published 1.0 release: everything in 1.0.0, plus fixes to release verification, release rehearsal, and the CI deployment lifecycle. | [v1.0.3](docs/release_notes/v1.0.x/v1.0.3.md) |
 | 1.0.0 | Unreleased | Five-layer governance pipeline (Gateway PDP, outbound Operator PEP, signed local receipts), protocol contracts, browser Console, Gateway-less autochthon, evaluation and signed compliance evidence tooling, and commit-hygiene guards. | [v1.0.0](docs/release_notes/v1.0.x/v1.0.0.md) |

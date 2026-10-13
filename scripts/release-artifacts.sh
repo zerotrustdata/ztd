@@ -128,9 +128,14 @@ cmd_verify() {
 
 	# Build metadata is checked by running the binary only when the host can execute it.
 	# Read the typed `version --json` contract; platform is stamped as GOOS/GOARCH.
+	# Run a private executable copy (digest verified above): artifact transfer
+	# drops the executable bit, and verification must not modify the release set.
 	if [ "$(uname -s)/$(uname -m)" = "Linux/x86_64" ]; then
-		local out
-		out=$("$dir/ztd-linux-amd64" version --json --fips) || die "ztd-linux-amd64 is not in FIPS 140-3 approved mode"
+		local out exe
+		exe=$(mktemp)
+		install -m 0700 "$dir/ztd-linux-amd64" "$exe"
+		out=$("$exe" version --json --fips) || { rm -f "$exe"; die "ztd-linux-amd64 version --json --fips failed (FIPS 140-3 approved mode inactive or binary not executable)"; }
+		rm -f "$exe"
 		[ "$(jq -r '.version' <<<"$out")" = "v${version}" ] || die "ztd-linux-amd64 does not report version v${version}"
 		[ "$(jq -r '.platform' <<<"$out")" = "linux/amd64" ] || die "ztd-linux-amd64 does not report platform linux/amd64"
 		[ "$(jq -r '.source_revision' <<<"$out")" = "$revision" ] || die "ztd-linux-amd64 does not report source revision ${revision}"

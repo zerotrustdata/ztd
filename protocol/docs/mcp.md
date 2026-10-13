@@ -1,7 +1,7 @@
 # Model Context Protocol (MCP) Integration
 
 Last Updated: 2026-10-12
-Version: v1.0.2
+Version: v1.0.3
 
 The ztd Gateway implements native support for the **Model Context Protocol (MCP)**. Autonomous AI agents and coding assistants connect to the Gateway via standardized JSON-RPC 2.0 interfaces. The Gateway acts as a Policy Decision Point (PDP), intercepting every tool invocation, encapsulating it into a strongly typed `GovernanceEnvelope`, subjecting it to the 5-layer governance sequence (L1–L5), and executing it either via host-native tools or by proxying to an authorized downstream MCP server.
 

@@ -141,10 +141,13 @@ To refresh published runs after correcting asserted tags, execute `ztd public re
 ```bash
 # On merged main branch with clean tree:
 git checkout main && git pull
+make release-rehearse
 make release
 ```
 
-`make release` aborts unless the current branch is `main` and `HEAD` equals `origin/main` after a fetch. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. GitHub Actions workflows in `.github/workflows/release-binary.yml` validate the tag, build and sign binaries, create GitHub release, and publish website download assets.
+`make release-rehearse` dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. A rehearsal runs preflight, `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. A tag that fails after the Go module proxy has cached it cannot be reused, so release failures are found in the rehearsal, not on a tag.
+
+`make release` aborts unless the current branch is `main`, `HEAD` equals `origin/main` after a fetch, and a `workflow_dispatch` run of the release workflow on `HEAD` succeeded. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. GitHub Actions workflows in `.github/workflows/release-binary.yml` validate the tag, build and sign binaries, create GitHub release, and publish website download assets.
 
 ### Release Signing
 
@@ -173,6 +176,7 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 
 - Agent running `git commit`, `git push`, or `make release` (`INV-REL-DUTY-01`).
 - Running `make release` from a feature branch or with unmerged changes (`INV-REL-DUTY-02`).
+- Pushing a release tag by hand instead of `make release`, or tagging before `make release-rehearse` passes on that commit.
 - Updating document metadata without auditing entire document against code (`INV-DOC-FMT-02` in [Documentation Guide](docs.md)).
 - Recording a source revision for a Gateway built from a different commit (`INV-REL-COMP-01`).
 - Hand-editing compliance projections instead of generating through `ztd compliance release-evidence` (`INV-REL-COMP-01`, `INV-REL-COMP-03`).
