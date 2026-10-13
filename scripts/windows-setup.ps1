@@ -68,10 +68,11 @@ function Get-GoMinVersion {
     return $line.Line.Substring(3).Trim()
 }
 
-function Parse-MajorMinor {
+function Parse-GoVersion {
     param([string]$Version)
-    if ($Version -match '(\d+)\.(\d+)') {
-        return [Version]"$($Matches[1]).$($Matches[2])"
+    if ($Version -match '(\d+)\.(\d+)(?:\.(\d+))?') {
+        $patch = if ($Matches[3]) { $Matches[3] } else { "0" }
+        return [Version]"$($Matches[1]).$($Matches[2]).$patch"
     }
     return $null
 }
@@ -120,8 +121,8 @@ function Test-Go {
     }
     $goOutput = go version 2>$null
     $have = $null
-    if ($goOutput -match 'go(\d+\.\d+)') {
-        $have = [Version]$Matches[1]
+    if ($goOutput -match 'go(\d+\.\d+(?:\.\d+)?)') {
+        $have = Parse-GoVersion $Matches[1]
     }
     if (-not $have) {
         Write-Host "  go: detected but version unknown" -ForegroundColor Yellow
@@ -501,12 +502,8 @@ function Show-NextSteps {
     }
     Write-Host "Configure (optional): .env  # remote Ollama endpoint, Cloudflare token; ./ztd loads it at startup"
     Write-Host ""
-    Write-Host "Recommended next steps:"
-    Write-Host "  Native gateway:"
-    Write-Host "    $binary gw start"
-    Write-Host ""
-    Write-Host "  Owner enrollment against a running gateway:"
-    Write-Host "    $binary auth enroll user -e localhost"
+    Write-Host "Next:"
+    Write-Host "  make quickstart       # starts a local Gateway, signs you in, and runs your first governed action"
     Write-Host ""
     Write-Host "Docs: docs/guides/getting_started.md"
     if ($Script:PathConfigured) {
@@ -524,7 +521,7 @@ if (-not (Test-Path (Join-Path $Script:RepoRoot "go.mod"))) {
     exit 1
 }
 
-$goMin = [Version](Parse-MajorMinor (Get-GoMinVersion))
+$goMin = Parse-GoVersion (Get-GoMinVersion)
 
 if ($Script:BuildOnly) {
     $totalSteps = 3

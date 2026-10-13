@@ -325,6 +325,21 @@ func operatorListCmdWithConfig(configLoader func(string) (*config.Config, error)
 	return cmd
 }
 
+// resolveOperatorWorkingDir expands a leading ~ and makes a non-blank working
+// directory absolute. cmd.exe, PowerShell, and GNU make on Windows pass ~ to
+// native commands unexpanded, and the Gateway records the directory as the
+// Operator's local_dir, so the CLI resolves it rather than the shell.
+func resolveOperatorWorkingDir(dir string) (string, error) {
+	if strings.TrimSpace(dir) == "" {
+		return "", nil
+	}
+	expanded, err := resolveHomePath(dir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(expanded)
+}
+
 func operatorStartCmd() *cobra.Command {
 	var trustBundle string
 	var workingDir string
@@ -359,6 +374,10 @@ func operatorStartCmd() *cobra.Command {
 			}
 			if err := validateGatewayPort("gateway-https-port", gatewayHTTPSPort); err != nil {
 				return err
+			}
+			workingDir, err := resolveOperatorWorkingDir(workingDir)
+			if err != nil {
+				return fmt.Errorf("operator start: --working-dir: %w", err)
 			}
 			endpoint, _ := cmd.Flags().GetString("endpoint")
 			opts := serve.ServeOperatorOptions{

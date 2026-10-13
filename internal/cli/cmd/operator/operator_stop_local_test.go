@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -176,4 +177,18 @@ func TestTargetedStopFallsBackAfterShutdownFailure(t *testing.T) {
 	require.Len(t, client.PostCalls, 1)
 	require.Equal(t, []bool{false}, signals)
 	require.Contains(t, out.String(), "Stopped local operator PID 123 (TERM)")
+}
+
+func TestLocalOperatorDir(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	cwd := filepath.Join(t.TempDir(), "cwd")
+	start := []string{"ztd", "operator", "start"}
+
+	require.Equal(t, cwd, localOperatorDir(start, cwd))
+	require.Equal(t, filepath.Join(cwd, "ops"), localOperatorDir(append(start, "--working-dir", "ops"), cwd))
+	require.Equal(t, filepath.Join(home, ".ztd-data"), localOperatorDir(append(start, "--working-dir", "~/.ztd-data"), cwd))
+	require.Equal(t, filepath.Join(home, ".ztd-data"), localOperatorDir(append(start, "--working-dir=~/.ztd-data"), cwd))
+	require.Equal(t, filepath.Join(home, "abs"), localOperatorDir(append(start, "--working-dir", filepath.Join(home, "x", "..", "abs")), cwd))
 }

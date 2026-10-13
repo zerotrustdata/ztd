@@ -10,10 +10,8 @@
 package operatorcmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,7 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"golang.org/x/sys/unix"
 )
 
@@ -65,18 +62,12 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 		raw, err = os.ReadFile(filepath.Join(root, "cmdline"))
 		args := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
 		executable, exeErr := os.Readlink(filepath.Join(root, "exe"))
-		if err != nil || exeErr != nil || !isLocalOperatorArgv(args) || filepath.Base(strings.TrimSuffix(executable, " (deleted)")) != "ztd" {
+		if err != nil || exeErr != nil || !isLocalOperatorArgv(args) || !isZtdExecutable(filepath.Base(strings.TrimSuffix(executable, " (deleted)"))) {
 			unix.Close(fd)
 			continue
 		}
 		cwd, _ := os.Readlink(filepath.Join(root, "cwd"))
-		dir := operatorArgValue(args, "--working-dir")
-		if dir == "" {
-			dir = cwd
-		} else if !filepath.IsAbs(dir) {
-			dir = filepath.Join(cwd, dir)
-		}
-		dir = filepath.Clean(dir)
+		dir := localOperatorDir(args, cwd)
 		processes = append(processes, localOperatorProcess{
 			pid: pid, dir: dir, sessionID: localOperatorSessionID(dir),
 			close: func() { unix.Close(fd) },
@@ -113,37 +104,6 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 		})
 	}
 	return processes, nil
-}
-
-// localOperatorSessionID reads the session the worker in dir recorded at
-// enrollment. Each launch resets the record, so it names the live process;
-// "" falls back to hostname and working-directory matching.
-func localOperatorSessionID(dir string) string {
-	fileSvc, err := fs.NewRuntimeFileService(dir, slog.Default())
-	if err != nil {
-		return ""
-	}
-	state, err := readOperatorDeploymentState(context.Background(), fileSvc)
-	if err != nil || state == nil {
-		return ""
-	}
-	return state.OperatorSessionID
-}
-
-func isLocalOperatorArgv(args []string) bool {
-	return len(args) >= 3 && filepath.Base(args[0]) == "ztd" && (args[1] == "operator" || args[1] == "operators") && args[2] == "start"
-}
-
-func operatorArgValue(args []string, flag string) string {
-	for i := 3; i < len(args); i++ {
-		if args[i] == flag && i+1 < len(args) {
-			return args[i+1]
-		}
-		if value, ok := strings.CutPrefix(args[i], flag+"="); ok {
-			return value
-		}
-	}
-	return ""
 }
 
 // waitPIDTermination waits for the process with the given PID to exit, up to timeout.

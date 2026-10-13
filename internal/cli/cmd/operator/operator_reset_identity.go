@@ -32,7 +32,7 @@ func operatorResetIdentityCmdWithDiscovery(discover func() ([]localOperatorProce
 			if strings.TrimSpace(directory) == "" {
 				return fmt.Errorf("--working-dir is required")
 			}
-			dir, err := filepath.Abs(directory)
+			dir, err := resolveOperatorWorkingDir(directory)
 			if err != nil {
 				return err
 			}
