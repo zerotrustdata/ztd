@@ -34,6 +34,7 @@ Desktop.ini
 .claude/
 .devin/
 .gemini/
+.agents/
 GEMINI.md
 .windsurf/
 .local.dev/

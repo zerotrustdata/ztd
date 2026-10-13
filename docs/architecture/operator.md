@@ -3,7 +3,7 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.5
+version: v1.0.6
 last_updated: 2026-10-13
 owners:
   - internal/services/ztdo.go
@@ -129,7 +129,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Operator CLI commands | `internal/cli/cmd/operator/`, `internal/cli/serve/` | `make build && ./ztd operator --help` |
+| Operator CLI commands and process lifecycle | `internal/cli/cmd/operator/`, `internal/cli/serve/` | `make build && ./ztd operator --help` |
 | Operator service implementation | `internal/services/ztdo.go` (`services.ZtdoService`) | `internal/services/ztdo_test.go`, `internal/services/ztdo_integration_test.go` |
 | L4 Warden pre-dispatch pipeline | `internal/services/governance/l4_warden.go` | `internal/services/governance/l4_warden_test.go` |
 | L5 Actuator execution boundary | `internal/services/governance/l5_actuator.go` | `internal/services/governance/l5_actuator_test.go` |
@@ -158,18 +158,23 @@ Each Operator process declares its functional roles through startup flags:
 
 # Inference Operator (Ollama model serving backend)
 ./ztd operator start --endpoint gateway.example --capabilities inference \
-  --inference-ollama-endpoint http://127.0.0.1:11434
+  --inference-ollama-endpoint http://127.0.0.1:11434 \
+  --inference-keep-alive -1
 
 # Provenance Operator (storage-side model weight attestation witness)
 ./ztd operator start --endpoint gateway.example --capabilities provenance \
-  --model-storage-root /srv/ollama/models
+  --model-storage-root /srv/ollama/models \
+  --provenance-operator-id prov-witness-01
 
 # Observer Operator (host hardware telemetry sampling witness)
-./ztd operator start --endpoint gateway.example --capabilities observer
+./ztd operator start --endpoint gateway.example --capabilities observer \
+  --provider-boundary-observer-id obs-telemetry-01
 
 # Multi-capability Operator (combined execution and witness)
 ./ztd operator start --endpoint gateway.example --capabilities data,inference,provenance \
-  --model-storage-root /srv/ollama/models
+  --model-storage-root /srv/ollama/models \
+  --inference-keep-alive 5m \
+  --provenance-operator-id prov-witness-01
 ```
 
 Witness constraints:
