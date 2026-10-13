@@ -101,6 +101,8 @@ make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint
 
 Capabilities are fixed when the Gateway starts. Run `make down` first to change them.
 
+The Gateway listens on loopback by default. To enroll Operators from other hosts, start it with `make up-public` or `make gw-public` and point those Operators at the Gateway host name or LAN address with `--endpoint`.
+
 ### 1. Enroll the owner
 
 Enroll the owner identity:
@@ -319,6 +321,7 @@ The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public r
 | :--- | :--- |
 | `make up` | Starts the Gateway on this host with `ztd gw start` (flags from `GW_ARGS`). Sign in the owner with `./ztd login web` or `./ztd login`. |
 | `make gw` | Starts the Gateway with its embedded Operator carrying capabilities from `GW_CAPABILITIES` (default `data,inference,observer`), then prints `ztd gw status`. Setting `MODEL_STORAGE_ROOT` adds the Provenance capability. |
+| `make up-public` / `make gw-public` | Same as `make up` / `make gw` with the listeners bound to every interface (`--listen-host 0.0.0.0`) so Operators on other hosts can enroll. |
 | `make operator` | Runs one outbound Operator in the foreground. Pass capability and endpoint flags in `OPERATOR_ARGS`. |
 | `make status` | Prints `ztd gw status` and `ztd operator list`. |
 | `make down` | Stops Operators, then the Gateway (`ztd gw stop`). Runtime state in `.ztd/` is preserved. |

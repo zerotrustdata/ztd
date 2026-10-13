@@ -127,7 +127,9 @@ The root `Makefile` provides targets to manage platform processes on the develop
 | :--- | :--- |
 | `make quickstart` | Builds `./ztd`, boots Gateway with data capability, logs in, executes test command, prints next steps |
 | `make up` | Builds `./ztd` and starts Gateway in background (`./ztd gw start`) |
+| `make up-public` | Same as `make up` with `--listen-host 0.0.0.0` so Operators on other hosts can enroll |
 | `make gw` | Starts Gateway with full capabilities (`data,inference,observer`) |
+| `make gw-public` | Same as `make gw` with `--listen-host 0.0.0.0` |
 | `make operator` | Builds `./ztd` and runs Operator in foreground (`./ztd operator start`) |
 | `make status` | Queries Gateway status and lists enrolled Operators |
 | `make down` / `make stop` | Gracefully stops Operators and Gateway, preserving local `.ztd/` state |
