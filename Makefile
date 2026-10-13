@@ -109,7 +109,7 @@ COVERAGE_THRESHOLD := 75
 # Packages excluded from test runs (and implicitly from coverage too).
 # Each pattern is matched against Go import paths.
 TEST_EXCLUDE_PKGS := \
-	/test/ \
+	ztd/test \
 	/cmd/ztd \
 	/internal/constants \
 	/internal/httpclient \
