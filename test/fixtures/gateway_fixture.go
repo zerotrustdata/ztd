@@ -515,19 +515,19 @@ func EnrollClientIdentity(t *testing.T, f *GatewayFixture, userID, organizationI
 	}
 	hResp.Body.Close()
 
-	// Wait for operator session to be persisted in database
-	require.Eventually(t, func() bool {
-		op, err := f.Service.GetDocStore().DocGet(t.Context(), string(constants.CollectionOperators), regResp.OperatorID)
-		if err != nil || op == nil {
-			return false
-		}
-		opDoc, err := models.OperatorDocumentFromStore(op)
-		if err != nil {
-			return false
-		}
-		t.Logf("Operator doc: ID=%s, SessionID=%s, Status=%s, OrgID=%s", opDoc.GetId(), opDoc.GetOperatorSessionId(), opDoc.GetStatus(), opDoc.GetOrganizationId())
-		return opDoc.GetOperatorSessionId() == regResp.OperatorSessionID && opDoc.GetStatus() == string(constants.OperatorStatusActive)
-	}, 5*time.Second, 100*time.Millisecond, "Operator session not persisted")
+	// Enrollment persists the identity synchronously. A remote Operator stays
+	// offline until it subscribes to its command channel; this fixture enrolls
+	// client certificates without starting an outbound Operator.
+	op, err := f.Service.GetDocStore().DocGet(t.Context(), string(constants.CollectionOperators), regResp.OperatorID)
+	require.NoError(t, err)
+	require.NotNil(t, op)
+	opDoc, err := models.OperatorDocumentFromStore(op)
+	require.NoError(t, err)
+	require.Equal(t, regResp.OperatorSessionID, opDoc.GetOperatorSessionId())
+	require.Equal(t, string(constants.OperatorStatusOffline), opDoc.GetStatus())
+	session, err := f.Service.GetDocStore().DocGet(t.Context(), string(constants.CollectionOperatorSessions), regResp.OperatorSessionID)
+	require.NoError(t, err)
+	require.NotNil(t, session, "Operator session must be persisted before enrollment returns")
 
 	cliPrivBytes, err := x509.MarshalECPrivateKey(cliPriv)
 	require.NoError(t, err)

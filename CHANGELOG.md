@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Unreleased
+
+- Fix macOS TCP port selection to detect IPv4 and IPv6 listener conflicts, and keep SSH ProxyCommand processes alive after the handshake.
+- Correct macOS path expectations and exercise Gateway-local integration flows with bootstrapped CLI identities bound to the embedded Operator.
+- Forward shared `ZTD_ARGS` through host lifecycle targets, including status and shutdown, and resolve installed lint tools with macOS Make's exported tool path.
+
 ## v1.0.x
 
 | Version | Date | Description | Notes |

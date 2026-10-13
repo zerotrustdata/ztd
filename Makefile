@@ -276,6 +276,7 @@ help:
 		'  status                    Show Gateway status, Operators, and pending enrollments' \
 		'  down                      Stop local Operators, then the host Gateway' \
 		'  stop                      Alias for down' \
+		'  ZTD_ARGS                  Global CLI flags shared by up, gw, operator, status, and down' \
 		'' \
 		'Maintenance' \
 		'  clean                     Remove build artifacts and Go caches' \
@@ -799,12 +800,12 @@ test-coverage:
 # =============================================================================
 .PHONY: lint
 lint: vulncheck doctrines-validate
-	@golangci-lint run
+	@exec golangci-lint run
 	@echo "All linting and quality checks complete."
 
 .PHONY: vulncheck
 vulncheck:
-	@govulncheck ./...
+	@exec govulncheck ./...
 
 .PHONY: doctrines-validate
 doctrines-validate:
@@ -862,7 +863,7 @@ quickstart:
 .PHONY: up
 up: build
 	@echo "Starting the ztd Gateway on this host..."
-	@./ztd gw start $(GW_LISTEN_ARGS) $(GW_ARGS)
+	@./ztd gw start $(ZTD_ARGS) $(GW_LISTEN_ARGS) $(GW_ARGS)
 
 # Gateway whose embedded Operator carries every Operator capability.
 # Capabilities are immutable in a running Gateway, so run `make down` first when
@@ -875,8 +876,8 @@ GW_CAPABILITIES ?= data,inference,observer
 MODEL_STORAGE_ROOT ?=
 .PHONY: gw
 gw: build
-	@./ztd gw start --capabilities $(GW_CAPABILITIES)$(if $(MODEL_STORAGE_ROOT),$(comma)provenance --model-storage-root $(MODEL_STORAGE_ROOT)) $(GW_LISTEN_ARGS) $(GW_ARGS)
-	@./ztd gw status
+	@./ztd gw start $(ZTD_ARGS) --capabilities $(GW_CAPABILITIES)$(if $(MODEL_STORAGE_ROOT),$(comma)provenance --model-storage-root $(MODEL_STORAGE_ROOT)) $(GW_LISTEN_ARGS) $(GW_ARGS)
+	@./ztd gw status $(ZTD_ARGS)
 
 .PHONY: up-public gw-public
 up-public gw-public: GW_LISTEN_ARGS := --listen-host 0.0.0.0
@@ -888,18 +889,18 @@ gw-public: gw
 #   make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --working-dir ~/.ztd-inference'
 .PHONY: operator
 operator: build
-	@./ztd operator start $(OPERATOR_ARGS)
+	@./ztd operator start $(ZTD_ARGS) $(OPERATOR_ARGS)
 
 .PHONY: status
 status:
-	@./ztd gw status
+	@./ztd gw status $(ZTD_ARGS)
 
 # Operators first (governed shutdown needs the Gateway), then the Gateway even if
 # no Operator was running. Runtime state in .ztd/ is preserved.
 .PHONY: down stop
 down:
-	-@./ztd operator stop
-	@./ztd gw stop
+	-@./ztd operator stop $(ZTD_ARGS)
+	@./ztd gw stop $(ZTD_ARGS)
 
 stop: down
 

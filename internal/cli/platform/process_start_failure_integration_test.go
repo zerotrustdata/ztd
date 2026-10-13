@@ -162,9 +162,11 @@ func TestStartOperator_KeyStoreApprovalExtendsHealthWait(t *testing.T) {
 
 	pm, err := NewProcessManager(fileSvc)
 	require.NoError(t, err)
-	// The budget covers the child's startup, even under a loaded suite, so it
-	// can log the approval marker, but ends well before the child's 8s hold.
-	pm.SetHealthCheckParameters(100*time.Millisecond, 30)
+	// A race-instrumented re-exec can take several seconds to reach TestMain
+	// under full-suite load. Allow that startup time, while keeping the normal
+	// health budget shorter than the child's 20s approval hold. Reaching the
+	// child's denial still proves the marker extended the health wait.
+	pm.SetHealthCheckParameters(100*time.Millisecond, 150)
 
 	opts := minimalStartOpts()
 	var notices bytes.Buffer

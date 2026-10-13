@@ -65,7 +65,7 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		case "keystore-approval":
 			_, _ = fmt.Fprintln(os.Stderr, constants.KeyStoreAwaitingApprovalLog)
-			time.Sleep(8 * time.Second)
+			time.Sleep(20 * time.Second)
 			_, _ = fmt.Fprintln(os.Stderr, "key store approval denied")
 			os.Exit(1)
 		}
