@@ -261,6 +261,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 
 - [Website Runbook](../../website/README.md): Static website build, Build in Public authoring workflow, Releases pages and one-command onboarding scripts, and Cloudflare deployment.
 - [From 936 to 2,000 Operators on one Gateway](../../website/content/posts/enrolling-two-thousand-operators.md): Build in Public field notes on enrollment scale, measurements, and limits.
+- [Going public, and finding out onboarding only worked on Linux](../../website/content/posts/going-public-onboarding-beyond-linux.md): Build in Public field notes on the public repo, the unshipped 1.0.1–1.0.3 tags, and Windows and macOS onboarding.
 - [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md): Operational runbook for developing and building the Evaluation Explorer SPA.
 - [Evaluation Explorer Contract](../../evaluation-explorer/src/contract/CONTRACT.md): Browser view contract, canonical schema validators, and release provenance rules.
 - [Evaluation Campaign README](../../eval/README.md): Evaluation campaign data layout, fixtures, and directory conventions.
