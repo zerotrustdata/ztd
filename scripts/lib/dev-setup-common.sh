@@ -443,7 +443,13 @@ ztd_dev_tool_if_needed() {
     fi
 
     echo "  installing $bin ($pkg; $reason)..."
-    go install "$pkg" || return 1
+    # `go install pkg@version` resolves the toolchain from the tool's go.mod, not
+    # ours, so GOTOOLCHAIN=auto would build with an older local Go. Require ours.
+    local toolchain="${GOTOOLCHAIN:-auto}"
+    if [[ -n "$min_go" ]]; then
+        toolchain="go${min_go}+auto"
+    fi
+    GOTOOLCHAIN="$toolchain" go install "$pkg" || return 1
     hash -d "$bin" 2>/dev/null || hash -r 2>/dev/null || true
 
     local gobin

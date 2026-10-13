@@ -31,6 +31,7 @@ GOTOOLCHAIN ?= auto
 export GOTOOLCHAIN
 TMPDIR ?= /tmp
 .DEFAULT_GOAL := help
+comma := ,
 
 # =============================================================================
 # BUILD VARIABLES
@@ -57,7 +58,7 @@ SOURCE_TREE_HASH ?= $(shell go run ./internal/tools/treehash -mode manifest -bas
 BUILD_ID ?= $(SOURCE_TREE_HASH)
 SOURCE_REVISION ?= unknown
 LDFLAGS = -X main.version=$(VERSION) -X main.buildID=$(BUILD_ID) -X main.buildTime=$(BUILD_TIME) -X main.sourceRevision=$(SOURCE_REVISION) -X main.sourceTreeHash=$(SOURCE_TREE_HASH)
-HOST_ARCH := $(shell go env GOARCH)
+HOST_ARCH := $(shell go env GOARCH 2>/dev/null)
 
 # Platform and architecture lists are emitted by the typed ztd-binary catalog.
 PLATFORMS := $(shell go run ./internal/tools/ztdbinaries -list-targets 2>/dev/null)
@@ -499,15 +500,21 @@ EXPLORER_EMBED := internal/services/gateway/explorer/static
 # bundle also compiles in VERSION and imports ztd-adapter/src. The Go source
 # lister avoids platform-specific find commands during Makefile parsing. It is
 # built once to a fixed path (go build skips the link when current) instead of
-# three `go run` temp builds per make invocation.
+# three `go run` temp builds per make invocation. Goals that only drive an
+# already-built ./ztd need no Go toolchain, so they skip the lister entirely.
+TOOLCHAIN_FREE_GOALS := help status down stop
 SOURCE_FILES_TOOL := $(BIN_DIR)/.tools/sourcefiles$(if $(filter windows,$(HOST_OS)),.exe,)
+ifneq ($(filter-out $(TOOLCHAIN_FREE_GOALS),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))),)
 SOURCE_FILES_BUILD := $(shell go build -o $(SOURCE_FILES_TOOL) ./internal/tools/sourcefiles 2>&1)
 ifneq ($(SOURCE_FILES_BUILD),)
 $(error building $(SOURCE_FILES_TOOL) failed: $(SOURCE_FILES_BUILD))
 endif
-SOURCE_FILES := $(SOURCE_FILES_TOOL) -base .
+source_files = $(shell $(SOURCE_FILES_TOOL) -base . $(1))
+else
+source_files =
+endif
 
-EXPLORER_SOURCES := $(shell $(SOURCE_FILES) -exclude node_modules,dist,tests,e2e evaluation-explorer) $(shell $(SOURCE_FILES) ztd-adapter/src) VERSION
+EXPLORER_SOURCES := $(call source_files,-exclude node_modules$(comma)dist$(comma)tests$(comma)e2e evaluation-explorer) $(call source_files,ztd-adapter/src) VERSION
 
 evaluation-explorer/node_modules/.package-lock.json: evaluation-explorer/package-lock.json
 	@npm ci --prefix evaluation-explorer
@@ -526,7 +533,7 @@ explorer-embed: $(EXPLORER_EMBED)/index.html
 
 CONSOLE_DIST := console/dist
 CONSOLE_EMBED := internal/services/gateway/console/static
-CONSOLE_SOURCES := $(shell $(SOURCE_FILES) -exclude node_modules,dist,tests console)
+CONSOLE_SOURCES := $(call source_files,-exclude node_modules$(comma)dist$(comma)tests console)
 
 $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 	@rm -rf $(CONSOLE_EMBED) && cp -r $(CONSOLE_DIST) $(CONSOLE_EMBED)
@@ -869,7 +876,6 @@ up: build
 # added only when MODEL_STORAGE_ROOT names the local model store. GW_ARGS
 # carries extra flags, for example
 #   make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint http://host:11434'
-comma := ,
 GW_CAPABILITIES ?= data,inference,observer
 MODEL_STORAGE_ROOT ?=
 .PHONY: gw
