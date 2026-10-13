@@ -13,6 +13,8 @@ import { RELEASE_NOTES_PATH, RELEASE_VERSION, releasePath } from './releases.js'
 const NOTES_DIRECTORY = 'docs/release_notes';
 const SERIES = /^v(\d+)\.(\d+)\.x$/;
 const NOTES_FILE = /^v(.+)\.md$/;
+// Release compliance projections (INV-REL-COMP-01) are committed beside the notes but are not release notes.
+const EVIDENCE_FILE = /^v.+-compliance-evidence\.md$/;
 
 // Resolves a link in a release note. Public URLs and anchors pass through, links to other release notes point at
 // their Releases page, and other repository-relative links point at the file as of the release tag. Links that
@@ -49,6 +51,7 @@ export async function prepareReleaseNotes(repositoryDirectory) {
     const seriesMatch = SERIES.exec(series);
     if (!seriesMatch) continue;
     for (const name of (await readdir(join(root, series))).sort()) {
+      if (EVIDENCE_FILE.test(name)) continue;
       const version = NOTES_FILE.exec(name)?.[1];
       if (!version) continue;
       const notePath = `${NOTES_DIRECTORY}/${series}/${name}`;

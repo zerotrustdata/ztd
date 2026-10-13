@@ -61,6 +61,7 @@ test('every committed release note renders into a fragment', async () => {
   assert.ok(fragments.size > 0);
   for (const [path, html] of fragments) {
     assert.match(path, /^_release-notes\/\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?\.html$/);
+    assert.doesNotMatch(path, /compliance-evidence/);
     assert.doesNotMatch(html, /<script|\sstyle=|\son[a-z]+=/i, path);
   }
 });
