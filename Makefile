@@ -1010,6 +1010,14 @@ release:
 	NOTES_FILE="docs/release_notes/v$$MAJOR_MINOR.x/v$$VERSION.md"; \
 	echo "=== release: $$TAG ==="; \
 	\
+	if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then \
+		echo "Error: make release runs on main only."; exit 1; \
+	fi; \
+	git fetch -q origin main --tags || exit 1; \
+	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
+		echo "Error: HEAD is not origin/main. Push or pull so the release commit is on origin/main, then retry."; exit 1; \
+	fi; \
+	\
 	go run ./internal/tools/versionsync -write || exit 1; \
 	\
 	if [ -n "$$(git status --porcelain)" ]; then \

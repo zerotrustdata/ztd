@@ -144,7 +144,7 @@ git checkout main && git pull
 make release
 ```
 
-`make release` runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. GitHub Actions workflows in `.github/workflows/release-binary.yml` validate the tag, build and sign binaries, create GitHub release, and publish website download assets.
+`make release` aborts unless the current branch is `main` and `HEAD` equals `origin/main` after a fetch. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. GitHub Actions workflows in `.github/workflows/release-binary.yml` validate the tag, build and sign binaries, create GitHub release, and publish website download assets.
 
 ### Release Signing
 
