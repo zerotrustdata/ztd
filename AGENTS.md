@@ -16,7 +16,7 @@ This file provides guidance and operational constraints for AI coding agents, au
 - **Go** (`cmd/ztd/`, `internal/`) — The single static `ztd` binary. Runs as Gateway (`ztd gw start`), Operator (`ztd operator start`), CLI, TUI, and evaluation/compliance tooling.
 - **`protocol/`** — Canonical Protobuf contracts (`protocol/proto/ztd/`) plus generated Go and TypeScript bindings and JSON constant registries. Shared wire contract for every service.
 - **`console/`** — Browser frontend: React + TypeScript (Vite) SPA, embedded in the Go binary and served by the Gateway at `/console/`. Handles passkey authentication, human approvals, and Operator inventory/binding. The browser communicates only with the Gateway.
-- **`ztd-adapter/` and `evaluation-explorer/`** — Audited browser adapter + contract pack for generated observe frontends, and the evaluation explorer SPA (embedded during `make build`).
+- **`ztd-adapter/` and `evaluation-explorer/`** — Audited browser adapter + contract pack for generated observe frontends, and the evaluation explorer SPA (its committed embed is compiled by `make build` and refreshed with `make explorer-embed`).
 - **`eval/`** — Evaluation fixtures, campaign schemas, and benchmark datasets.
 
 Full architectural specifications live in `docs/` — see [Where to look before making changes](#where-to-look-before-making-changes).
@@ -39,7 +39,7 @@ make build
 ./ztd test coverage      # Coverage report
 ./ztd test lint          # golangci-lint; make lint also runs vulncheck and doctrine validation
 ./ztd test chaos         # Chaos & fault injection tests
-./ztd test summary       # Test run summary
+./ztd test summary       # Chaos test summary
 ./ztd test public-loop --candidate candidate.json --output evidence.json
 
 # Narrow Go integration tests by package or test name
@@ -90,7 +90,7 @@ Do not conflate these three runtime execution modes:
 
 ### Ingress Paths
 
-- **Supported Ingress**: MCP (`POST /mcp` or stdio), A2A (`POST /a2a`), governed HTTP dispatch (`POST /api/v1/operators/commands`), direct envelope submission (`POST /api/v1/governance/envelopes`), and CLI `operator run`.
+- **Supported Ingress**: MCP (`POST /mcp` or stdio), A2A (`POST /api/v1/a2a/call`), governed HTTP dispatch (`POST /api/v1/operators/commands`), direct envelope submission (`POST /api/v1/governance/envelopes`), and CLI `operator run`.
 - **Fail-Closed Boundary**: Direct envelope submission and governed HTTP dispatch must never synthesize or forge missing L2/L3 proofs; they fail closed at L4 instead.
 - **Out of Scope**: Client-native tools, external MCP wrappers, and unmonitored side channels are explicitly outside the governance boundary.
 
@@ -106,7 +106,7 @@ Each executing runtime (Gateway, each Operator) is strictly authoritative for it
 
 ```text
 cmd/ztd/              Binary entry point
-internal/cli/cmd/     Cobra CLI command groups (gw, auth, mcp, operator, vault, test,
+internal/cli/cmd/     Cobra CLI command groups (gw, auth, mcp, operator, autochthon, vault, test,
                       audit, report, public, swagger, tui, version, compliance, eval)
 internal/services/    Gateway, outbound Operator, governance (L1–L5), consensus, storage, network,
                       vault, SSE, pubsub, MCP native tools, evaluation, compliance
@@ -166,7 +166,7 @@ These rules prevent frequent architectural, security, and runtime regressions:
    - Register tools explicitly in `RegisterNativeTools` (`internal/services/mcp/native_tool_registry.go`). Never register tools inside package `init()`, and never duplicate tool lists into documentation.
 
 7. **Generated Artifacts**:
-   - Protobuf bindings, Gateway OpenAPI specs, and doctrine JSON definitions must only change via their sources and generator commands (`make proto-generate`, `make swagger-generate`, `make doctrines-validate`). Never hand-edit generated files.
+   - Protobuf bindings, Gateway OpenAPI specs, and event/action-type constants must only change via their sources and generator commands (`make proto-generate`, `make swagger-generate`, `make constants-generate`). Never hand-edit generated files. Doctrine JSON is hand-authored source validated by `make doctrines-validate`.
 
 8. **Testing Discipline**:
    - Always execute platform test suites through `./ztd test <suite>` or the corresponding `make` targets — never run bare `go test` for platform suites.

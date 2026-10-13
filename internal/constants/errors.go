@@ -654,6 +654,7 @@ var (
 	ErrConfigHTTPSPortZero     = errors.New("httpsPort cannot be 0 in production")
 	ErrConfigPortsMustDiffer   = errors.New("httpPort and httpsPort must be different")
 	ErrConfigInvalidWorkingDir = errors.New("invalid working directory")
+	ErrGatewayEndpointInvalid  = errors.New("gateway endpoint must be a host or host:port with no URL scheme")
 	ErrOperatorGatewayRuntime  = errors.New("operator working directory holds a gateway runtime")
 	ErrEnvFileInvalid          = errors.New(".env must be a regular file owned by the user or root with mode 0600 or 0400")
 	ErrEnvFileMalformed        = errors.New(".env line is not KEY=VALUE")

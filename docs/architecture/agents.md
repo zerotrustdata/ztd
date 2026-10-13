@@ -189,7 +189,7 @@ flowchart LR
 | **`ztd mcp agent run`** | JSON-RPC over stdio bridge (`ztd mcp stdio`) | Full L1–L5 governance; coordinates L2 consensus and L3 notary suspensions | Embedded Operator or configured downstream MCP/A2A service |
 | **Gateway Downstream Egress** | Upstream MCP `tools/call` | Full L1–L5 pipeline; posture enforcement; produces signed receipts | Downstream subprocess or HTTP MCP server |
 | **Direct Gateway `/mcp`** | JSON-RPC over HTTP with mTLS | Gateway constructs `GovernanceEnvelope`; screens L1–L3; dispatches L4–L5 | Embedded Operator or downstream service |
-| **A2A Ingress (`/a2a`)** | JSON-RPC `a2a/call` with mTLS | Gateway constructs `A2A_CALL` envelope; screens L1–L3; dispatches L4–L5 | Registered downstream A2A service |
+| **A2A Ingress (`/api/v1/a2a/call`)** | JSON-RPC `a2a/call` with mTLS | Gateway constructs `A2A_CALL` envelope; screens L1–L3; dispatches L4–L5 | Registered downstream A2A service |
 | **Governed HTTP Dispatch** | Serialized protobuf at `POST /api/v1/operators/commands` | Derives `action_type`; validates session; no L2/L3 synthesis; fails closed if L3 required | Bound remote Operator PEP |
 | **Direct Envelope** | Canonical `GovernanceEnvelope` at `/api/v1/governance/envelopes` | Validates envelope; verifies pre-existing L2/L3 proofs; no synthesis | Embedded Operator (or remote via dispatch) |
 

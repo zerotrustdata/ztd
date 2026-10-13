@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -70,7 +70,7 @@ The headless identity drives the CLI and the TUI. The browser console uses passk
 
 ### Configure `.env`
 
-Every `./ztd` command, including the `make` targets, loads the repo-root `.env` at startup. Setup creates it from `.env.example` with every entry commented, so the default flow (`make quickstart`, `make up`, `make gw`) needs no edits. Uncomment and set an entry when you need it:
+Every `./ztd` command, including the `make` targets, loads `.env` from the working directory (the repo root) at startup. Setup creates it from `.env.example` with every entry commented, so the default flow (`make quickstart`, `make up`, `make gw`) needs no edits. Uncomment and set an entry when you need it:
 
 | Key | Set it when |
 | :--- | :--- |
@@ -82,7 +82,7 @@ $EDITOR .env
 make gw
 ```
 
-`.env` must stay owner-only (`chmod 600 .env`); `./ztd` refuses to start if it is group- or world-readable, a symlink, or holds a key that `.env.example` does not list. A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
+`.env` must stay owner-only (`chmod 600 .env`). On Linux and macOS, `./ztd` refuses to start unless `.env` is a regular file (not a symlink) owned by you or root with mode `0600` or `0400`. On every platform it refuses a line that is not `KEY=VALUE` and any key that `.env.example` does not list (only the secret and user_endpoint keys in `protocol/constants/env_vars.json`). A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
 
 ### Step by step
 
@@ -99,7 +99,7 @@ make build
 
 ### Gateway and Operators track
 
-To run local Operators alongside the Gateway, start the Gateway first, then start each Operator in the foreground with its own working directory:
+To run local Operators alongside the Gateway, start the Gateway first, then start each Operator in the foreground with its own working directory. `./ztd operator start` refuses a working directory that holds a Gateway runtime, so pass `--working-dir` when starting from the repo root:
 
 ```bash
 make up
@@ -159,7 +159,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
-| Node.js and npm | 22+ | Contributor toolchain and frontend development only; `make build` and `--build-only` setup use committed Console and Evaluation Explorer embeds |
+| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and frontend development only; `make build` and `--build-only` setup use committed Console and Evaluation Explorer embeds |
 
 ---
 
@@ -208,7 +208,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.4`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.5`, then run both checks there.
 
 Run the checksum check:
 
@@ -232,7 +232,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.4' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.5' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -278,7 +278,7 @@ Operator flags
   OPERATOR ID        CAPABILITY  FLAG                             VALUE
   embedded-operator  inference   --inference-ollama-endpoint      http://192.168.1.2:11434
   embedded-operator  inference   --inference-keep-alive           (default)
-  embedded-operator  provenance  --model-storage-root             /mnt/d/ai/Ollama/models
+  embedded-operator  provenance  --model-storage-root             /srv/ollama/models
   embedded-operator  provenance  --provenance-operator-id         (default)
   embedded-operator  observer    --provider-boundary-observer-id  (default)
 
@@ -352,7 +352,7 @@ make down
 To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.4
+go get github.com/zerotrustdata/ztd@v1.0.5
 ```
 
 Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:

@@ -1,7 +1,7 @@
 # Protocol Constants System
 
 Last Updated: 2026-10-12
-Version: v1.0.4
+Version: v1.0.5
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the absolute **Single Source of Truth (SSOT)** for all platform contracts, collection definitions, action types, event registries, route paths, and configuration identifiers.
 
@@ -15,21 +15,23 @@ Code generators synthesize Go types (`internal/constants/*_gen.go`) and TypeScri
 The platform utilizes `internal/tools/constgen` to enforce schema validation and drive code generation across the polyglot monorepo:
 
 ```
-protocol/constants/events.json ──┐
-protocol/constants/status.json ──┼──▶ [ constgen ] ──┬──▶ internal/constants/events_gen.go
-protocol/constants/env_vars.json─┘                   ├──▶ internal/constants/action_types_gen.go
-                                                     └──▶ console/src/generated/events.ts
+protocol/constants/events.json ─────────────────┐
+protocol/constants/status.json ─────────────────┼──▶ [ constgen ] ──┬──▶ internal/constants/events_gen.go
+internal/tools/constgen/operator_hierarchy.json ┘                   ├──▶ internal/constants/action_types_gen.go
+                                                                    └──▶ console/src/generated/events.ts
 ```
+
+Before generating, `constgen` validates `protocol/constants/env_vars.json` (categories, `_go_const`, names, descriptions) and requires every `secret` and `user_endpoint` key to appear in `.env.example` (`internal/tools/constgen/check_env.go`). The env registry produces no generated output.
 
 ### 1.2 Build Automation Targets
 - **`make constants-generate`**: Executes `go run ./internal/tools/constgen -write`. Validates the registry syntax, grammar, and taxonomy, then writes out the formatted Go and TypeScript artifacts.
-- **`make constants-check`**: Executes `go run ./internal/tools/constgen -check`. Runs within CI to ensure committed generated files are byte-for-byte identical to the output derived from the registry JSON files.
+- **`make constants-check`**: Executes `go run ./internal/tools/constgen -check`. Runs within CI to validate the env registry and ensure committed generated files are byte-for-byte identical to the output derived from the registry JSON files.
 
 ---
 
 ## 2. Database Collections (`collections.json`)
 
-The storage architecture defines canonical collection identifiers used across the embedded SQLite database (`ztd.db`). In Go, these are represented by the typed identifier `CollectionName` (`internal/constants/collections.go`).
+The storage architecture defines canonical collection identifiers used across the embedded SQLite database (`ztd.db`). In Go, these are represented by the typed identifier `CollectionName` (`internal/constants/collections.go`). `collections.json` lists exactly the `CollectionName` constants declared in `collections.go`; `TestCollectionsRegistryMatchesGoConstants` fails on drift in either direction.
 
 ### 2.1 Collection Inventory
 
@@ -83,7 +85,7 @@ Read-only projections for dashboard and telemetry consumers query dedicated un-g
 - `observe_agent_states`, `observe_runs`, `observe_evals`, `observe_downloads`
 - `observe_supervisor_states`, `observe_cycle_states`, `observe_assignment_progress`
 - `observe_verification_progress`, `observe_publication_progress`
-- `observe_source_freshness`, `public_feed_outbox`, `eval_campaign_publication_state`
+- `observe_source_freshness`, `eval_campaign_publication_state`
 
 ---
 
@@ -99,18 +101,23 @@ Each entry in `events.json` adheres to a strict schema validated by `constgen`:
   "_go_const": "EventOperatorCommandRequested",
   "value": "ztd.v1.operator.command.requested",
   "kind": "request",
-  "transport": ["governed", "pubsub"],
-  "producers": ["gateway", "cli"],
-  "persistence": "operator.audit_log",
-  "outcomes": [
-    "operator_command_started",
-    "operator_command_completed",
-    "operator_command_failed"
-  ],
+  "transport": ["governed"],
   "governance": {
     "action_type": "EXECUTE_BASH",
-    "payload": "CommandRequested"
-  }
+    "payload": "ztd.operator.v1.CommandRequested"
+  },
+  "producers": ["cli", "mcp"],
+  "persistence": "ephemeral",
+  "outcomes": [
+    "OperatorCommandCompleted",
+    "OperatorCommandFailed",
+    "OperatorCommandCancelled",
+    "OperatorCommandStatusUpdatedQueued",
+    "OperatorCommandStatusUpdatedRunning",
+    "OperatorCommandStatusUpdatedCompleted",
+    "OperatorCommandStatusUpdatedFailed",
+    "OperatorCommandStatusUpdatedCancelled"
+  ]
 }
 ```
 
@@ -125,21 +132,19 @@ Wire event strings must strictly follow the canonical format:
 
 $$\texttt{ztd.v1.} \langle\text{domain}\rangle \texttt{.} \langle\text{entity}\rangle \texttt{.} \langle\text{terminal}\rangle$$
 
-Permitted terminals represent lifecycle states (`requested`, `started`, `received`, `completed`, `failed`, `cancelled`, `timeout`, `recorded`, `granted`, `rejected`, `denied`, `revoked`, `expired`, `acknowledged`, `sent`, `missed`, `bound`, `unbound`, `opened`, `closed`, `established`, `checkpointed`, `exported`, `published`, `rotated`).
+Permitted terminals come from the closed `allowedTerminals` list in `internal/tools/constgen/main.go` and represent lifecycle states, including (`requested`, `started`, `received`, `completed`, `failed`, `cancelled`, `timeout`, `recorded`, `granted`, `rejected`, `denied`, `revoked`, `expired`, `acknowledged`, `sent`, `missed`, `bound`, `unbound`, `opened`, `closed`, `established`, `checkpointed`, `exported`, `published`, `rotated`).
 
 ### 3.3 Dynamic Action Resolution
 The governance engine determines the action class of any governed request via `constants.Registry.ActionFor(event)`. Hand-coded mapping tables are strictly prohibited.
 
 ### 3.4 Hierarchical Go Accessors
-The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation:
+The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`; every other event is referenced by its flat `Event<Name>` constant:
 - `Event.Operator.Command.*`
 - `Event.Operator.FileEdit.*`
 - `Event.Operator.FsList.*`, `Event.Operator.FsRead.*`, `Event.Operator.FsGrep.*`
 - `Event.Operator.Mcp.*`, `Event.Operator.A2a.*`
 - `Event.Operator.NetworkPing.*`, `Event.Operator.PortCheck.*`
 - `Event.Operator.Intent.*`
-- `Event.Platform.Auth.*`, `Event.Platform.Sse.*`, `Event.Platform.Enrollment.*`
-- `Event.Ai.Llm.*`
 
 ---
 
@@ -160,10 +165,12 @@ Action types define the coarse-grained operational classes evaluated by L1 Doctr
 | `ActionTypeMcpCall` | `"MCP_CALL"` | **Yes** | No | Model Context Protocol tool execution |
 | `ActionTypeRestoreFile` | `"RESTORE_FILE"` | **Yes** | No | Git ledger file revision restoration |
 | `ActionTypeShutdown` | `"SHUTDOWN"` | **Yes** | No | Operator shutdown request |
+| `ActionTypeInference` | `"INFERENCE"` | **Yes** | No | Governed model inference |
 | `ActionTypePlatformEnrollmentDecide` | `"PLATFORM_ENROLLMENT_DECIDE"` | **Yes** | **Yes** | Owner decision on workload enrollment |
 | `ActionTypePlatformEnrollmentIssue` | `"PLATFORM_ENROLLMENT_ISSUE"` | **Yes** | **Yes** | Platform certificate issuance |
 | `ActionTypePlatformEnrollmentPersistPolicy` | `"PLATFORM_ENROLLMENT_PERSIST_POLICY"` | **Yes** | **Yes** | Persisting app policy for enrolled node |
 | `ActionTypePlatformEnrollmentCreateSession` | `"PLATFORM_ENROLLMENT_CREATE_SESSION"` | **Yes** | **Yes** | Initial session creation post-enrollment |
+| `ActionTypePlatformEnrollmentRevoke` | `"PLATFORM_ENROLLMENT_REVOKE"` | **Yes** | **Yes** | Platform enrollment revocation |
 | `ActionTypePlatformEnrollmentCreate` | `"PLATFORM_ENROLLMENT_CREATE"` | No | **Yes** | Inbound enrollment CSR submission |
 | `ActionTypeEvalAnswer` | `"EVAL_ANSWER"` | No | No | Evaluation answer submission |
 | `ActionTypeFetchFileDiff` | `"FETCH_FILE_DIFF"` | No | No | Ledger diff inspection |
@@ -178,7 +185,11 @@ Action types define the coarse-grained operational classes evaluated by L1 Doctr
 | `ActionTypeMcpPromptList` | `"MCP_PROMPT_LIST"` | No | No | MCP prompt template listing |
 | `ActionTypeMcpResourceList` | `"MCP_RESOURCE_LIST"` | No | No | MCP resource enumeration |
 | `ActionTypeMcpResourceRead` | `"MCP_RESOURCE_READ"` | No | No | MCP resource data retrieval |
+| `ActionTypeModelProvenanceObservation` | `"MODEL_PROVENANCE_OBSERVATION"` | No | No | Model provenance observation |
+| `ActionTypeOllamaModelInventory` | `"OLLAMA_MODEL_INVENTORY"` | No | No | Ollama model inventory query |
+| `ActionTypeOllamaModelResidency` | `"OLLAMA_MODEL_RESIDENCY"` | No | No | Ollama model residency query |
 | `ActionTypePortCheck` | `"PORT_CHECK"` | No | No | Network TCP port connectivity check |
+| `ActionTypeProviderBoundaryObservation` | `"PROVIDER_BOUNDARY_OBSERVATION"` | No | No | Provider boundary observation |
 
 ### 4.2 Mutation Gating
 Actions where `IsMutation() == true` require full L4 Warden state Merkle root validation, JIT capability minting, git ledger tracking, and L5 signed action receipt generation. Read-only actions bypass ledger attestation and state root mutation checks.
@@ -202,7 +213,7 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
   - `AuthCLISession`: `/api/v1/auth/cli/session`
   - `AuthPlatformEnrollment*`: Workload PKI enrollment routes
   - `Approvals`: `/api/v1/approvals`
-  - `ApprovePage`: `/approve/`
+  - `ApprovePage`: `/api/v1/approve/`
 - **Observe Read Models (User-Scoped, Browser Cookie Authenticated)**:
   - `ObservePrefix`: `/api/v1/observe/`
   - `ObserveBootstrap`: `/api/v1/observe/bootstrap`
@@ -233,9 +244,9 @@ Production Go code accesses the environment solely via typed constants defined o
 - **Host Facts**: `EnvVar.Shell` (`SHELL`), `EnvVar.Lang` (`LANG`), `EnvVar.Term` (`TERM`), `EnvVar.TZ` (`TZ`), `EnvVar.Home` (`HOME`), `EnvVar.User` (`USER`), `EnvVar.SSHAuthSock` (`SSH_AUTH_SOCK`), `EnvVar.XDGRuntimeDir` (`XDG_RUNTIME_DIR`).
 - **Secrets**: `EnvVar.CloudflareAPIToken` (`CLOUDFLARE_API_TOKEN`).
 - **User Endpoints**: `EnvVar.OllamaEndpoint` (`ZTD_OLLAMA_ENDPOINT`), the default for `--inference-ollama-endpoint`.
-- **Test Harness**: `EnvVar.E2EFleetSessions` (`ZTD_E2E_FLEET_SESSIONS`).
+- **Test Harness**: the `EnvVar.E2E*` keys (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, `ZTD_E2E_MASTER_KEY_FILE`, and the `ZTD_E2E_FLEET_*` keys), set by `ztd test scale` and read by the E2E suite under `test/e2e/`.
 
-Raw `os.Getenv("...")` calls with hardcoded strings are prohibited. `config.LoadEnvFile` (`internal/cli/config/env_file.go`) loads secret and user_endpoint keys from the repo-root `.env` into the process environment at CLI startup.
+Raw `os.Getenv("...")` calls with hardcoded strings or locally declared string constants are prohibited, in production Go code and in the `test/` harness; `TestProductionGoEnvReads_UseRegistryKeys` enforces this. In-process `ZTD_TEST_*` re-exec markers are exempt. `config.LoadEnvFile` (`internal/cli/config/env_file.go`) loads secret and user_endpoint keys from the working-directory `.env` (the repository root) into the process environment before every `./ztd` command; an already exported variable wins.
 
 ---
 

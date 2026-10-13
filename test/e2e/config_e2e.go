@@ -46,24 +46,12 @@ type e2eConfig struct {
 // window or the suite fails closed.
 const healthCheckTimeout = 10 * time.Second
 
-// Scenarios whose isolated Gateway listens on non-default ports (ztd test
-// scale) name them here; the suite and the CLI processes it starts then dial
-// those ports on IPv4 loopback instead of the defaults. Use the literal IP
-// because the isolated Gateway does not listen on IPv6 loopback.
-const (
-	e2eGatewayHTTPPortEnv  = "ZTD_E2E_GATEWAY_HTTP_PORT"
-	e2eGatewayHTTPSPortEnv = "ZTD_E2E_GATEWAY_HTTPS_PORT"
-)
-
-// e2eMasterKeyFileEnv names the provisioned master key file that seals the
-// runtime tree's CLI identity key when the host has no OS key store (the scale
-// scenarios on a headless host). Blank selects the OS key store.
-const e2eMasterKeyFileEnv = "ZTD_E2E_MASTER_KEY_FILE"
-
-// e2eMasterKeyFile returns the environment's master key file, or "" for the
-// OS key store.
+// e2eMasterKeyFile returns the provisioned master key file named by
+// ZTD_E2E_MASTER_KEY_FILE, which seals the runtime tree's CLI identity key when
+// the host has no OS key store (the scale scenarios on a headless host), or ""
+// for the OS key store.
 func e2eMasterKeyFile() string {
-	return strings.TrimSpace(os.Getenv(e2eMasterKeyFileEnv))
+	return strings.TrimSpace(os.Getenv(string(constants.EnvVar.E2EMasterKeyFile)))
 }
 
 // e2eMasterKeyArgs returns the global CLI flag that points a child ztd process
@@ -75,11 +63,15 @@ func e2eMasterKeyArgs() []string {
 	return nil
 }
 
-// e2eGatewayPorts returns the Gateway ports named by the environment, or
-// zeros when neither is set. Setting only one of them is an error.
+// e2eGatewayPorts returns the Gateway ports named by ZTD_E2E_GATEWAY_HTTP_PORT
+// and ZTD_E2E_GATEWAY_HTTPS_PORT, or zeros when neither is set. Setting only
+// one of them is an error. Scenarios whose isolated Gateway listens on
+// non-default ports (ztd test scale) set them; the suite and the CLI processes
+// it starts then dial those ports on IPv4 loopback, using the literal IP
+// because the isolated Gateway does not listen on IPv6 loopback.
 func e2eGatewayPorts() (httpPort, httpsPort int, err error) {
-	rawHTTP := strings.TrimSpace(os.Getenv(e2eGatewayHTTPPortEnv))
-	rawHTTPS := strings.TrimSpace(os.Getenv(e2eGatewayHTTPSPortEnv))
+	rawHTTP := strings.TrimSpace(os.Getenv(string(constants.EnvVar.E2EGatewayHTTPPort)))
+	rawHTTPS := strings.TrimSpace(os.Getenv(string(constants.EnvVar.E2EGatewayHTTPSPort)))
 	if rawHTTP == "" && rawHTTPS == "" {
 		return 0, 0, nil
 	}
@@ -90,10 +82,10 @@ func e2eGatewayPorts() (httpPort, httpsPort int, err error) {
 		}
 		return port, nil
 	}
-	if httpPort, err = parse(e2eGatewayHTTPPortEnv, rawHTTP); err != nil {
+	if httpPort, err = parse(string(constants.EnvVar.E2EGatewayHTTPPort), rawHTTP); err != nil {
 		return 0, 0, err
 	}
-	if httpsPort, err = parse(e2eGatewayHTTPSPortEnv, rawHTTPS); err != nil {
+	if httpsPort, err = parse(string(constants.EnvVar.E2EGatewayHTTPSPort), rawHTTPS); err != nil {
 		return 0, 0, err
 	}
 	return httpPort, httpsPort, nil

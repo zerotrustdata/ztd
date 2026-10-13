@@ -19,6 +19,78 @@
       "category": "test",
       "description": "Comma-separated owner Operator session identities selecting the live E2E fleet; unset selects the entire remote registry"
     },
+    "E2ERuntimeRoot": {
+      "_go_const": "EnvVar.E2ERuntimeRoot",
+      "value": "ZTD_E2E_RUNTIME_ROOT",
+      "category": "test",
+      "description": "Directory whose .ztd/ tree the E2E suite targets instead of the repository root; set by ztd test scale for its isolated Gateway"
+    },
+    "E2EFleetSize": {
+      "_go_const": "EnvVar.E2EFleetSize",
+      "value": "ZTD_E2E_FLEET_SIZE",
+      "category": "test",
+      "description": "Number of Operators ztd test scale deployed for the fleet E2E scenarios"
+    },
+    "E2EFleetBin": {
+      "_go_const": "EnvVar.E2EFleetBin",
+      "value": "ZTD_E2E_FLEET_BIN",
+      "category": "test",
+      "description": "ztd binary the fleet E2E scenarios use for operator run"
+    },
+    "E2EFleetDir": {
+      "_go_const": "EnvVar.E2EFleetDir",
+      "value": "ZTD_E2E_FLEET_DIR",
+      "category": "test",
+      "description": "Directory holding the local op-NNNNN Operator roots for the fleet restart scenario"
+    },
+    "E2EFleetSoak": {
+      "_go_const": "EnvVar.E2EFleetSoak",
+      "value": "ZTD_E2E_FLEET_SOAK",
+      "category": "test",
+      "description": "Idle soak before fleet fan-out, as a Go duration"
+    },
+    "E2EFleetConcurrency": {
+      "_go_const": "EnvVar.E2EFleetConcurrency",
+      "value": "ZTD_E2E_FLEET_CONCURRENCY",
+      "category": "test",
+      "description": "Comma-separated fleet fan-out concurrency levels"
+    },
+    "E2EFleetRounds": {
+      "_go_const": "EnvVar.E2EFleetRounds",
+      "value": "ZTD_E2E_FLEET_ROUNDS",
+      "category": "test",
+      "description": "Fleet fan-outs per concurrency level"
+    },
+    "E2EFleetReport": {
+      "_go_const": "EnvVar.E2EFleetReport",
+      "value": "ZTD_E2E_FLEET_REPORT",
+      "category": "test",
+      "description": "Path for the fleet E2E JSON report"
+    },
+    "E2EFleetRestartReport": {
+      "_go_const": "EnvVar.E2EFleetRestartReport",
+      "value": "ZTD_E2E_FLEET_RESTART_REPORT",
+      "category": "test",
+      "description": "Path for the fleet restart E2E JSON report"
+    },
+    "E2EGatewayHTTPPort": {
+      "_go_const": "EnvVar.E2EGatewayHTTPPort",
+      "value": "ZTD_E2E_GATEWAY_HTTP_PORT",
+      "category": "test",
+      "description": "HTTP discovery port of the isolated Gateway the E2E suite dials; set together with ZTD_E2E_GATEWAY_HTTPS_PORT"
+    },
+    "E2EGatewayHTTPSPort": {
+      "_go_const": "EnvVar.E2EGatewayHTTPSPort",
+      "value": "ZTD_E2E_GATEWAY_HTTPS_PORT",
+      "category": "test",
+      "description": "HTTPS/mTLS port of the isolated Gateway the E2E suite dials; set together with ZTD_E2E_GATEWAY_HTTP_PORT"
+    },
+    "E2EMasterKeyFile": {
+      "_go_const": "EnvVar.E2EMasterKeyFile",
+      "value": "ZTD_E2E_MASTER_KEY_FILE",
+      "category": "test",
+      "description": "Provisioned master key file for E2E CLI processes on hosts without an OS key store; blank selects the OS key store"
+    },
     "Shell": {
       "_go_const": "EnvVar.Shell",
       "value": "SHELL",

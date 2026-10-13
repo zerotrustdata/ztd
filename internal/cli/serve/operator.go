@@ -13,9 +13,11 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -66,12 +68,32 @@ type ServeOperatorOptions struct {
 	MasterKeyFile string
 }
 
-// resolveOperatorEndpoint returns the trimmed endpoint if non-empty, otherwise the default endpoint.
-func resolveOperatorEndpoint(endpoint string) string {
-	if trimmed := strings.TrimSpace(endpoint); trimmed != "" {
-		return trimmed
+// resolveOperatorGateway splits the --endpoint value (host or host:port,
+// default constants.DefaultEndpoint) into the Gateway host to dial and the
+// HTTP discovery port. An endpoint port is the HTTP discovery port and must
+// agree with a non-zero --gateway-http-port. The Operator derives its own
+// http/ws/wss URLs from the host, so a URL scheme is rejected.
+func resolveOperatorGateway(endpoint string, httpPort int) (string, int, error) {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return constants.DefaultEndpoint, httpPort, nil
 	}
-	return constants.DefaultEndpoint
+	if strings.Contains(endpoint, "://") {
+		return "", 0, fmt.Errorf("%w: %q", constants.ErrGatewayEndpointInvalid, endpoint)
+	}
+	host, portText, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		// No port: a hostname, IPv4 address, or bare/bracketed IPv6 address.
+		return strings.TrimSuffix(strings.TrimPrefix(endpoint, "["), "]"), httpPort, nil
+	}
+	port, err := strconv.Atoi(portText)
+	if host == "" || err != nil || port < 1 || port > 65535 {
+		return "", 0, fmt.Errorf("%w: %q", constants.ErrGatewayEndpointInvalid, endpoint)
+	}
+	if httpPort != 0 && httpPort != port {
+		return "", 0, fmt.Errorf("%w: endpoint port %d conflicts with --gateway-http-port %d", constants.ErrGatewayEndpointInvalid, port, httpPort)
+	}
+	return host, port, nil
 }
 
 // resolveWorkingDir returns workingDir if set, otherwise falls back to launchDir.

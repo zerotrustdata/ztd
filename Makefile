@@ -273,7 +273,7 @@ help:
 		'  gw                        Start the Gateway with every embedded Operator capability (GW_CAPABILITIES, MODEL_STORAGE_ROOT, GW_ARGS)' \
 		'  gw-public                 Like gw, listening on all interfaces for Operators on other hosts' \
 		'  operator                  Run an outbound Operator in the foreground (OPERATOR_ARGS)' \
-		'  status                    Show Gateway status and the Operator list' \
+		'  status                    Show Gateway status, Operators, and pending enrollments' \
 		'  down                      Stop local Operators, then the host Gateway' \
 		'  stop                      Alias for down' \
 		'' \

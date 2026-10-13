@@ -3,8 +3,8 @@ doc_id: build_operator
 title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - docs/guides/
   - cmd/ztd
@@ -43,8 +43,8 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | ID | Rule |
 | :--- | :--- |
 | INV-BUILD-OP-01 | The reference binary compilation path is `GOOS/GOARCH` Go environment variables passed to `make build` or `make build-<platform>`. The resulting binary embeds the evaluation explorer SPA and carries provenance stamps (version, build ID, build time, platform). |
-| INV-BUILD-OP-02 | The `operator start` command accepts connection parameters (`--endpoint`, `--trust-bundle`) and capability flags (`--capabilities`). Unknown flags do not affect runtime behavior. |
-| INV-BUILD-OP-03 | Multiple Operators on the same host MUST use distinct working directories and capability flags to prevent fingerprint collisions. They share a Gateway endpoint and expose no inbound ports. The Gateway differentiates instances by SHA-256 composite fingerprint. |
+| INV-BUILD-OP-02 | The `operator start` command accepts connection parameters (`--endpoint`, `--trust-bundle`) and capability flags (`--capabilities`). Unknown flags are rejected before startup. |
+| INV-BUILD-OP-03 | Multiple Operators on the same host MUST use distinct working directories to prevent fingerprint collisions. They share a Gateway endpoint and expose no inbound ports. The Gateway differentiates instances by SHA-256 composite fingerprint. |
 | INV-BUILD-OP-04 | The canonical runtime state tree `.ztd/` contains `pki/`, `data/`, `vault/`, and `data/ledger/` subdirectories. It never stores the Operator's enrollment identity on disk; credentials live only in process memory. Auto-initialization occurs on first `operator start`. |
 | INV-BUILD-OP-05 | L1 Doctrine re-execution, L2/L3 posture verification, replay and expiry checks, transaction hash equality, state-root binding, and receipt signing MUST be performed in L4 Warden before L5 Actuator execution. |
 
@@ -57,7 +57,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | Gateway start command and flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Operator list/bind/run/stop commands | `internal/cli/cmd/operator/operator.go` | `./ztd operator --help` |
 | Vault administration | `internal/cli/cmd/vault/` | `./ztd vault --help` |
-| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.0.4` | `go get github.com/zerotrustdata/ztd@v1.0.4` |
+| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.0.5` | `go get github.com/zerotrustdata/ztd@v1.0.5` |
 
 ## Procedures
 
@@ -121,15 +121,15 @@ The enrolled owner reviews and approves the request:
 
 | Option | Behavior |
 | :--- | :--- |
-| `-e, --endpoint <host>` | Gateway host for bootstrap websocket and pub/sub. Default: `localhost`. |
+| `-e, --endpoint <host[:port]>` | Gateway host for bootstrap websocket and pub/sub. A port names the Gateway HTTP discovery port and must match `--gateway-http-port` when both are set; the pub/sub port comes from `--gateway-https-port`. URL schemes are rejected. Default: `localhost`. |
 | `--trust-bundle <path>` | Owner-supplied CA trust bundle to pin Gateway identity. |
-| `--working-dir <path>` | Sets command execution directory and `.ztd/` runtime root. Defaults to current directory. |
+| `--working-dir <path>` | Sets command execution directory and `.ztd/` runtime root. Defaults to current directory. Start refuses a directory that holds a Gateway runtime. |
 | `-c, --cloud` | Enables cloud Operator mode. |
 | `--provider <aws\|gcp\|azure>` | Sets cloud provider recorded in configuration. |
 | `-l, --log <level>` | Sets `info`, `error`, or `debug` logging. |
 | `--heartbeat-interval <seconds>` | How often Operator sends heartbeats (default: 30 seconds). |
 | `--capabilities <list>` | Enables comma-separated set of `data`, `inference`, `provenance`, `observer`. |
-| `--inference-ollama-endpoint <url>` | Approved Ollama provider endpoint. |
+| `--inference-ollama-endpoint <url>` | Approved Ollama provider endpoint (default: `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`). |
 | `--inference-keep-alive <duration>` | Ollama keep-alive duration (default: -1 for infinite). |
 | `--provider-boundary-observer-id <id>` | Stable Observer Operator identity pseudonym. |
 | `--provenance-operator-id <id>` | Stable Provenance Operator identity pseudonym. |

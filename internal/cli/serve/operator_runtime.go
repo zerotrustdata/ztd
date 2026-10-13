@@ -78,7 +78,13 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	}
 	clientIdentity := deps.ClientIdentity
 
-	operatorEndpoint := config.GatewayDialHost(resolveOperatorEndpoint(opts.Endpoint))
+	gatewayHost, httpPort, err := resolveOperatorGateway(opts.Endpoint, opts.HTTPPort)
+	if err != nil {
+		logger.Error("Invalid Gateway endpoint", string(constants.ConnectionStateError), err)
+		return nil, startFailure(constants.ExitConfigError, err)
+	}
+	opts.HTTPPort = httpPort
+	operatorEndpoint := config.GatewayDialHost(gatewayHost)
 	if opts.Endpoint != "" {
 		opts.Endpoint = operatorEndpoint
 	}

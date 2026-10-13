@@ -3,10 +3,11 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
-  - internal/services/operator/
+  - internal/services/ztdo.go
+  - internal/services/operatorcapability/
   - internal/cli/cmd/operator/
   - internal/cli/serve/
   - internal/services/governance/
@@ -76,7 +77,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only operators (`provenance`, `observer` without `data`) MUST reject arbitrary command execution via `ValidateWitnessCommand`. Adding `data` permits governed commands in the same process. |
-| INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST configure an Ollama provider endpoint. |
+| INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
 
 ### Coexistence and Fingerprinting (`INV-OP-FPR`)
 
@@ -128,10 +129,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
 | Operator CLI commands | `internal/cli/cmd/operator/`, `internal/cli/serve/` | `make build && ./ztd operator --help` |
-| Operator service implementation | `internal/services/operator/` | Unit and integration tests in `internal/services/operator/` |
+| Operator service implementation | `internal/services/ztdo.go` (`services.ZtdoService`) | `internal/services/ztdo_test.go`, `internal/services/ztdo_integration_test.go` |
 | L4 Warden pre-dispatch pipeline | `internal/services/governance/l4_warden.go` | `internal/services/governance/l4_warden_test.go` |
 | L5 Actuator execution boundary | `internal/services/governance/l5_actuator.go` | `internal/services/governance/l5_actuator_test.go` |
-| Capability set and witness validation | `internal/models/operator_capabilities.go`, `internal/services/operatorcapability/` | `internal/models/operator_capabilities_test.go` |
+| Capability set and witness validation | `internal/constants/operator_capabilities.go`, `internal/services/operatorcapability/` | `internal/constants/operator_capabilities_test.go` |
 | Operator fingerprint calculation | `internal/cli/serve/operator.go` | `operatorFingerprintOptions` unit tests |
 | Certificate renewal service | `internal/cli/serve/operator_cert_renewal.go` | Integration tests in `internal/cli/serve/` |
 | Git-backed file ledger | `internal/services/storage/ledger.go` | `internal/services/storage/ledger_test.go` |
@@ -195,11 +196,11 @@ The canonical `system_fingerprint` is a SHA-256 hash combining immutable host at
 ### WebSocket Bootstrap Enrollment and In-Memory Lifecycle
 
 `ztd operator start` executes a zero-disk credential enrollment:
-1. Generates an ECDSA P-256 key pair, certificate signing request (CSR), and requester token in process memory.
-2. Connects to the Gateway bootstrap WebSocket (`ws://` or `wss://` on port 8080 at `/ws/operator/bootstrap`).
-3. Sends a `request` frame with the CSR, token hash, system fingerprint, and runtime configuration.
-4. Sends a `complete` frame signing the request ID as proof of possession.
-5. Awaits owner approval. Upon approval, the Gateway issues an X.509 certificate and replies with a `bundle` frame containing certificates, SPIFFE identity, CA roots, and L2 consensus signer public keys.
+1. Generates Operator and CLI ECDSA P-256 key pairs, certificate signing requests (CSRs), and a requester token in process memory.
+2. Connects to the Gateway bootstrap WebSocket at `/ws/operator/bootstrap`: `ws://` on HTTP port 8080, or `wss://` on HTTPS port 8443 when `--trust-bundle` pins the Gateway CA.
+3. Sends a `request` frame with both CSRs, token hash, system fingerprint, and runtime configuration.
+4. On the Gateway's `created` frame, sends a `complete` frame carrying both keys' signatures over the completion transcript (request ID, token hash, instance ID, CSR fingerprints) as proof of possession.
+5. Awaits owner approval. Upon approval, the Gateway sends a `decision` frame, issues the X.509 certificates, and replies with a `bundle` frame containing certificates, SPIFFE identity, CA roots, and L2 consensus signer public keys.
 6. The Operator validates the bundle and holds certificates in memory. No private keys or certificates are written to disk.
 
 ### In-Band Certificate Renewal over mTLS Pub/Sub
@@ -243,7 +244,7 @@ The Operator owns the final two layers of the governance interlock:
 - **State Directory (`.ztd/`)**: Contains SQLite database `data/ztd.db` (audit records, nonces, suspended transactions), encrypted vault storage (`vault/`), and Git file ledger (`data/ledger/`).
 - **Git File Ledger**: Every governed `FILE_EDIT` or `RESTORE_FILE` action creates an encrypted snapshot in Git before and after modification.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
-- **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`). Variables outside the registry are inherited unchanged.
+- **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
 
 ### Autochthon Subsystem
 

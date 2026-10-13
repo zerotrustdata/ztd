@@ -3,8 +3,8 @@ doc_id: scripts
 title: Automation Scripts
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - scripts/
   - internal/services/gateway/scripts/
@@ -99,6 +99,7 @@ pwsh scripts/windows-setup.ps1
 - **Options**: `-y` / `--yes` (unattended installation), `--build-only` (skip Node/explorer, build binary only), `-h` (help).
 - **WSL Isolation**: Rejects binaries resolving under `/mnt/<drive>/` to avoid broken Windows interoperability shims (`INV-SCRIPTS-07`).
 - **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or registry without overwriting existing configurations.
+- **Env File**: After `make build`, setup copies `.env.example` to `.env` (owner-only mode `0600` on Linux and macOS) and keeps an existing `.env`. Every `./ztd` command loads it (`INV-ENV-04` in [Developer Guidelines](../devs/devs.md)).
 
 ## Contributor Toolchain
 
@@ -121,30 +122,34 @@ make dev-check    # Preflight verification; runs before all CI targets
 
 ## Host Lifecycle Targets
 
-The root `Makefile` provides targets to manage platform processes on the development host without requiring Docker:
+The root `Makefile` provides targets to manage platform processes on the development host without requiring Docker. The targets call `./ztd`, which loads only registry `secret` and `user_endpoint` keys from `.env` (`INV-ENV-04`); pass every other flag through `GW_ARGS`, `OPERATOR_ARGS`, or `QUICKSTART_ARGS`:
 
 | Target | Description |
 | :--- | :--- |
 | `make quickstart` | Builds `./ztd`, boots Gateway with data capability, logs in, executes test command, prints next steps |
 | `make up` | Builds `./ztd` and starts Gateway in background (`./ztd gw start`) |
 | `make up-public` | Same as `make up` with `--listen-host 0.0.0.0` so Operators on other hosts can enroll |
-| `make gw` | Starts Gateway with full capabilities (`data,inference,observer`) |
+| `make gw` | Builds `./ztd`, starts Gateway with `GW_CAPABILITIES` (default `data,inference,observer`; `MODEL_STORAGE_ROOT` adds `provenance`), then runs `./ztd gw status` |
 | `make gw-public` | Same as `make gw` with `--listen-host 0.0.0.0` |
-| `make operator` | Builds `./ztd` and runs Operator in foreground (`./ztd operator start`) |
-| `make status` | Queries Gateway status and lists enrolled Operators |
+| `make operator` | Builds `./ztd` and runs Operator in foreground (`./ztd operator start $(OPERATOR_ARGS)`); pass `--working-dir` when the launch directory holds the Gateway runtime, which Operator start refuses |
+| `make status` | Runs `./ztd gw status` (Gateway state, Operator inventory, enrollment counts, Console URL) |
 | `make down` / `make stop` | Gracefully stops Operators and Gateway, preserving local `.ztd/` state |
 
 ## Go Tools Directory
 
 The `internal/tools/` package implements Go-based generators and verification tools:
 
+- `agent_harness`: Typed governed Gateway client shared by `ztd eval` and `ztd test` release smoke; not an agent (`INV-AGT-08` in [AI Agents](agents.md)).
 - `bslheaders`: Verifies BSL 1.1 license headers on all first-party source files (`make bsl-headers-check`).
-- `versionsync`: Synchronizes version declarations across protocol docs and package manifests (`make version-sync`, `make version-sync-check`).
-- `constgen`: Generates Go and TypeScript constant files from `protocol/constants/` (`make constants-generate`, `make constants-check`).
+- `chaos`: Test-only governance event generator behind `./ztd test chaos`; drives the L4/L5 stack in process against a run-local audit store.
+- `constgen`: Generates Go and TypeScript constant files from `protocol/constants/` and checks the environment registry (`make constants-generate`, `make constants-check`).
+- `explorercatalog`: Generates scenario catalogs for the Evaluation Explorer (`make explorer-catalog-generate`, `make explorer-catalog-check`).
 - `jsoncheck`: Validates JSON doctrine schema structures (`make doctrines-validate`).
-- `explorercatalog`: Generates scenario catalogs for the Evaluation Explorer (`make explorer-catalog-generate`).
-- `ztdbinaries`: Maintains cross-compilation target definitions for release distribution.
+- `sourcefiles`: Lists frontend source files as portable `Makefile` dependencies for the incremental console and explorer builds.
+- `thirdpartynotices`: Generates `THIRD_PARTY_NOTICES.md` (`make third-party-notices`, `make third-party-notices-check`).
 - `treehash`: Computes the source-tree digest stamped into release binaries.
+- `versionsync`: Synchronizes version declarations across protocol docs and package manifests (`make version-sync`, `make version-sync-check`).
+- `ztdbinaries`: Maintains cross-compilation target definitions for release distribution.
 
 ## Commit Hygiene and Validation Gate
 

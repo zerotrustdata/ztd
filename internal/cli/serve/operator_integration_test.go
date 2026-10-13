@@ -32,7 +32,7 @@ func TestClassifyConfigLoadError_RealConfigLoadNoPosture_Succeeds(t *testing.T) 
 		Endpoint:   "127.0.0.1",
 		WorkingDir: t.TempDir(),
 	}
-	loadOpts := buildOperatorLoadOptions(opts, resolveOperatorEndpoint(opts.Endpoint), opts.WorkingDir)
+	loadOpts := buildOperatorLoadOptions(opts, opts.Endpoint, opts.WorkingDir)
 	assert.Empty(t, loadOpts.Posture, "precondition: no posture supplied (operator reads posture per-envelope)")
 
 	cfg, err := config.Load(loadOpts)
@@ -50,7 +50,7 @@ func TestClassifyConfigLoadError_RealConfigLoadWithPosture_Succeeds(t *testing.T
 		WorkingDir: t.TempDir(),
 		Posture:    "doctrine",
 	}
-	loadOpts := buildOperatorLoadOptions(opts, resolveOperatorEndpoint(opts.Endpoint), opts.WorkingDir)
+	loadOpts := buildOperatorLoadOptions(opts, opts.Endpoint, opts.WorkingDir)
 	assert.NotEmpty(t, loadOpts.Posture, "precondition: posture supplied (informational)")
 
 	cfg, err := config.Load(loadOpts)

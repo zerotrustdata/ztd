@@ -331,11 +331,13 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   table.pm th,table.pm td{padding:9px 6px}
   .code pre{font-size:12.5px;padding:18px 16px}
 }
+/* reduced motion drops shake, jitter, and slide offsets; fades, pulses, and slowed ambient motion stay */
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
-  .rv{opacity:1;transform:none}
-  .trace .row{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+  .fx-noise{animation:none}
   .glitch::before,.glitch::after{display:none}
+  .rv,.trace .row,.feat:hover{transform:none}
+  .ticker-track{animation-duration:144s}
 }
 </style>
 </head>
@@ -653,12 +655,12 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <button role="tab" aria-selected="false" aria-controls="tp-3" id="tb-3" tabindex="-1">Full platform</button>
       </div>
       <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1">
-<pre><span class="p">$ </span>git clone --depth 1 https://github.com/zerotrustdata/ztd.git
+<pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
 <span class="p">$ </span>bash scripts/linux-setup.sh --build-only
 <span class="p">$ </span>make quickstart
 <span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="git clone --depth 1 https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
+        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-2" aria-labelledby="tb-2" hidden>
 <pre><span class="c"># sign in as the owner with a passkey, then approve workloads</span>
@@ -671,10 +673,11 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div class="code" role="tabpanel" id="tp-3" aria-labelledby="tb-3" hidden>
 <pre><span class="c"># Gateway + embedded Operator with data, inference, and observer capabilities</span>
 <span class="c"># remote Ollama provider: set ZTD_OLLAMA_ENDPOINT in .env</span>
+<span class="p">$ </span>make down   <span class="c"># capabilities are fixed at startup; stop the quickstart Gateway first</span>
 <span class="p">$ </span>make gw
 <span class="p">$ </span>make status
 <span class="c"># then sign in at https://localhost:8443/console/</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="make gw&#10;make status">Copy</button>
+        <button class="btn sm ghost copy" type="button" data-copy="make down&#10;make gw&#10;make status">Copy</button>
       </div>
     </div>
   </div>
@@ -777,12 +780,13 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 <script>
 (function(){
   document.body.classList.remove('no-js');
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* reduced motion slows the grid instead of freezing it; CSS drops the slide offsets */
+  var pace = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? .35 : 1;
   var yr=document.getElementById('yr'); if(yr) yr.textContent=new Date().getFullYear();
 
   /* reveal on scroll */
   var rv=document.querySelectorAll('.rv');
-  if(reduce || !('IntersectionObserver' in window)){ rv.forEach(function(e){e.classList.add('in')}); }
+  if(!('IntersectionObserver' in window)){ rv.forEach(function(e){e.classList.add('in')}); }
   else{
     var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px',threshold:.08});
     rv.forEach(function(e){io.observe(e)});
@@ -812,7 +816,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 
   /* replay trace when it scrolls back into view */
   var trace=document.getElementById('trace');
-  if(trace && !reduce && 'IntersectionObserver' in window){
+  if(trace && 'IntersectionObserver' in window){
     var seen=false;
     new IntersectionObserver(function(es){es.forEach(function(e){
       if(e.isIntersecting && seen){ var h=trace.innerHTML; trace.innerHTML=''; void trace.offsetWidth; trace.innerHTML=h; }
@@ -822,12 +826,14 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 
   /* perspective grid + packets */
   var c=document.getElementById('grid'); if(!c||!c.getContext) return;
-  var x=c.getContext('2d'), W=0,H=0,dpr=1,t0=performance.now(),packets=[],running=true;
+  var x=c.getContext('2d'), W=0,H=0,dpr=1,t0=performance.now(),packets=[],frame=0;
   function size(){dpr=Math.min(window.devicePixelRatio||1,2);W=c.clientWidth;H=c.clientHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)}
   size(); window.addEventListener('resize',size);
   for(var i=0;i<26;i++) packets.push({lane:(Math.random()*2-1),z:Math.random(),s:.0012+Math.random()*.0028,c:Math.random()<.6?'0,240,255':(Math.random()<.5?'255,43,214':'182,255,59')});
+  function schedule(){ if(!frame && !document.hidden) frame=requestAnimationFrame(draw); }
   function draw(now){
-    var t=(now-t0)/1000;
+    frame=0;
+    var t=(now-t0)/1000*pace;
     x.clearRect(0,0,W,H);
     var hy=H*.5, vx=W*.5;
     /* horizon glow */
@@ -844,7 +850,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       x.beginPath(); x.moveTo(vx+i*6,hy); x.lineTo(bx,H); x.stroke();
     }
     /* horizontals scrolling */
-    var off=reduce?0:(t*.35)%1;
+    var off=(t*.35)%1;
     for(var j=0;j<22;j++){
       var p=(j+off)/22, y=hy+Math.pow(p,2.4)*(H-hy);
       x.strokeStyle='rgba(0,240,255,'+(0.02+p*0.16)+')';
@@ -852,7 +858,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     }
     /* packets travelling toward viewer along lanes */
     packets.forEach(function(k){
-      if(!reduce){ k.z+=k.s; if(k.z>1){k.z=0;k.lane=Math.random()*2-1;} }
+      k.z+=k.s*pace; if(k.z>1){k.z=0;k.lane=Math.random()*2-1;}
       var p=Math.pow(k.z,2.4), y=hy+p*(H-hy), px=vx+k.lane*p*W*.9+k.lane*6;
       var len=4+p*40, a=Math.min(1,k.z*1.6)*.75;
       var lg=x.createLinearGradient(px,y-len,px,y);
@@ -861,10 +867,10 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     });
     /* top fade so content reads */
     var tf=x.createLinearGradient(0,0,0,hy); tf.addColorStop(0,'rgba(5,6,10,1)'); tf.addColorStop(1,'rgba(5,6,10,0)'); x.fillStyle=tf; x.fillRect(0,0,W,hy);
-    if(!reduce && running) requestAnimationFrame(draw);
+    schedule();
   }
-  document.addEventListener('visibilitychange',function(){running=!document.hidden; if(running&&!reduce) requestAnimationFrame(draw)});
-  requestAnimationFrame(draw);
+  document.addEventListener('visibilitychange',schedule);
+  schedule();
 })();
 </script>
 </body>

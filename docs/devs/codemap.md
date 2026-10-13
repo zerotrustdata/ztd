@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -110,7 +110,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-PKG-01 | A Cobra group package name MUST match its directory. When that name would collide with an existing import, the package MUST be the directory plus `cmd`: `authcmd`, `operatorcmd`, `vaultcmd`, `testcmd`, `tuicmd`, `compliancecmd`. Where a new group lives is governed by `INV-CLI-01`. |
+| INV-PKG-01 | A Cobra group package name MUST match its directory. When that name would collide with an existing import, the package MUST be the directory plus `cmd`: `authcmd`, `operatorcmd`, `vaultcmd`, `testcmd`, `tuicmd`, `compliancecmd`, `autochthoncmd`. Where a new group lives is governed by `INV-CLI-01`. |
 | INV-PKG-02 | `ztd test public-loop` MUST stay in `internal/cli/cmd/test/public_loop.go` (`package testcmd`). It MUST NOT move into the `public` spectator group. `public restore` MUST be constructed by `eval.PublicRestoreCmdWithConfig` in `internal/cli/cmd/eval/public_restore_cmd.go` and registered on the `public` command in `internal/cli/cmd/public/public.go`. |
 | INV-PKG-03 | `internal/cli/cmd/shared/`, `internal/cli/cmd/gwremote/`, and `internal/cli/cmd/cmdtest/` MUST NOT be registered from `internal/cli/cmd/main.go`. They are shared helper packages, not Cobra groups. |
 
@@ -150,22 +150,22 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `ztd-adapter/` | Audited browser adapter and deterministic contract pack for generated observe frontends. |
 | `evaluation-explorer/` | Evaluation explorer SPA; build artifacts embedded in `internal/services/gateway/explorer/static`. |
 | `examples/` | Runnable Go platform examples, external console app, and MCP client configuration templates. |
-| `release-evidence/` | Immutable release compliance evidence bundles and signatures. |
+| `release-evidence/` | Git-ignored local output of `ztd compliance release-prepare` (`release-evidence/<version>/report-bundle/`). Not committed; procedure: [Release Process](release_process.md). |
 | `docs/` | Architecture, guides, references, developer docs, and release notes. |
-| `scripts/` | Validation, generation, release, onboarding, and build support scripts. Host lifecycle entry points are root Makefile targets (`quickstart`, `up`, `gw`, `operator`, `status`, `down`). `scripts/configure-gateway-lan.ps1` is the Windows-to-WSL Gateway LAN helper. `scripts/ci/` holds onboarding smoke and operator deploy lifecycle workflows. Catalog: [Automation Scripts](../architecture/scripts.md). |
+| `scripts/` | Validation, generation, release, onboarding, and build support scripts. Host lifecycle entry points are root Makefile targets (`quickstart`, `up`, `up-public`, `gw`, `gw-public`, `operator`, `status`, `down`). `scripts/configure-gateway-lan.ps1` is the Windows-to-WSL Gateway LAN helper. `scripts/ci/` holds onboarding smoke and operator deploy lifecycle workflows. Catalog: [Automation Scripts](../architecture/scripts.md). |
 | `website/` | Static site generator and Cloudflare Worker packaging. Source overview is root `README.md`. |
 | `vendor/` | Third-party Go modules. Not a ztd product owner. |
 | `Makefile` | Repository build and host lifecycle orchestration. |
 
 ### Process entry
 
-The executable starts in `cmd/ztd/main.go`. Command registration and process-level error handling reside in `internal/cli/cmd/main.go`. `NewRootCmd` registers public command groups; confirm current inventory with `./ztd --help` rather than duplicating ordering here.
+The executable starts in `cmd/ztd/main.go`. Command registration and process-level error handling reside in `internal/cli/cmd/main.go`. `ExecuteWithVersionInfo` loads the working-directory `.env` through `config.LoadEnvFile` before executing any command and exits on a load error (`INV-ENV-04`). `NewRootCmd` registers public command groups; confirm current inventory with `./ztd --help` rather than duplicating ordering here.
 
 | Path | Owns |
 | :--- | :--- |
 | `internal/cli/serve/gateway.go` | Foreground Gateway startup: paths, `RuntimeFileService`, runtime tree, logging, configuration, `GatewayModeService`, shutdown. Opens `CanonicalDBService` itself only when consensus bootstrap runs, then calls `NewGatewayModeServiceWithDB`. |
 | `internal/cli/serve/launch_profile.go` | Versioned `GatewayLaunchProfile` persisted after a successful managed `gw start`. `gw restart` reads it. |
-| `internal/cli/serve/operator.go` | Foreground outbound Operator: configuration, credentials, platform enrollment, mTLS transport, `ZtdoService`, shutdown. `StartOperator` in `operator_runtime.go` starts service and certificate renewer. |
+| `internal/cli/serve/operator.go` | Foreground outbound Operator: configuration, credentials, platform enrollment, mTLS transport, `ZtdoService`, shutdown. `StartOperator` in `operator_runtime.go` refuses a working directory holding a Gateway runtime (`constants.GatewayRuntimeMarker`, `constants.ErrOperatorGatewayRuntime`), then starts service and certificate renewer. |
 | `internal/cli/serve/platform_enrollment_client.go` | Resumable owner-approved Operator enrollment client. |
 | `internal/cli/serve/operator_cert_renewal.go` | `OperatorCertRenewer`: in-memory Operator certificate and L2 trust renewal over the `renewal:` pub/sub channel. |
 | `internal/cli/serve/cert.go` | CSR generation and certificate bundle logging. |
@@ -178,21 +178,21 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 
 | Group | Package | Path | Alias | Owns |
 | :--- | :--- | :--- | :--- | :--- |
-| `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. |
+| `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. `gateway_start_running.go` decides whether `gw start` reuses a running Gateway by comparing explicitly set startup flags with its launch profile. |
 | `login`, `logout` | `authcmd` | `internal/cli/cmd/auth/` | | Top-level sign-in (`login` defaults to headless `login cli`; `login web` uses browser) and sign-out (`logout`, `logout web`, `logout cli`); shares `auth` package and enrollment runner. |
 | `auth` | `authcmd` | `internal/cli/cmd/auth/` | | User and platform enrollment, sessions, and approvals. |
 | `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving and agent integration. |
-| `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `reset-identity`, binary copy (`cp`, `scp`), streams, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
+| `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
-| `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, reset, export, and import. |
-| `test` | `testcmd` | `internal/cli/cmd/test/` | | Unit, integration, e2e, coverage, lint, chaos, summary, and `public-loop`. |
-| `audit` | `audit` | `internal/cli/cmd/audit/` | | Receipt, event, summary, export, report, and verify queries against a running Gateway. |
-| `report` | `report` | `internal/cli/cmd/report/` | | Deterministic CSV evidence generation and offline verification. |
+| `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
+| `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, and `release-smoke`. |
+| `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Receipt, event, summary, export, report, and verify queries against a running Gateway. |
+| `report` | `report` | `internal/cli/cmd/report/` | `reports` | Deterministic CSV evidence generation and offline verification. |
 | `public` | `public` | `internal/cli/cmd/public/` | | Public spectator feed. `restore` is constructed in eval package (`INV-PKG-02`). |
 | `swagger` | `swagger` | `internal/cli/cmd/swagger/` | | OpenAPI generation, serving, and validation. |
 | `tui` | `tuicmd` | `internal/cli/cmd/tui/` | | Tactical Governance Console. |
 | `version` | `version` | `internal/cli/cmd/version/` | | Build metadata. Optional FIPS module status is `./ztd version --help`. |
-| `compliance` | `compliancecmd` | `internal/cli/cmd/compliance/` | | `ksi`, `ksi-history`, `overlay`, `release-evidence`, `release-prepare`, `evidence`, `evidence-graph`, and `report`. |
+| `compliance` | `compliancecmd` | `internal/cli/cmd/compliance/` | `compliances` | `ksi`, `ksi-history`, `overlay`, `release-evidence`, `release-prepare`, `evidence`, `evidence-graph`, and `report`. |
 | `eval` | `eval` | `internal/cli/cmd/eval/` | | `models`, `campaigns`, `runs`, `rollout`, `formations`, `gates`, `boundary`, `suites`, `backup`, and `restore`. Also constructs `public restore`. |
 
 Files at `internal/cli/cmd/` root are the root command, its tests, and shared file-service and config-load tests. Factory-error tests reside beside the group they cover (`factory_error_<group>_test.go`). Factory rule is `INV-FS-08`.
@@ -206,10 +206,10 @@ Files at `internal/cli/cmd/` root are the root command, its tests, and shared fi
 | `internal/cli/api/` | | Typed CLI HTTP client. |
 | `internal/cli/auth/` | | CLI enrollment, credential staging, key generation, passkey registration, trust bundles, and mTLS clients. `approval.go` owns L3 approval page URL and status verification shared by `auth approve` and TUI; `platform_enrollment.go` owns enrollment fingerprint, issued-identity, and response helpers shared by `auth enroll` and TUI; `operator_binding.go` owns bind/unbind response validation shared by CLI and TUI. |
 | `internal/cli/browserorigin/` | | Frontend-origin validation and normalization. |
-| `internal/cli/config/` | | CLI configuration resolution and endpoint overrides. |
+| `internal/cli/config/` | | CLI configuration resolution and endpoint overrides. `env_file.go` owns `LoadEnvFile` (working-directory `.env`, `secret` and `user_endpoint` keys only; owner and mode checks in `env_file_posix.go`) and `InferenceOllamaEndpoint` (`--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`). |
 | `internal/cli/frontendverify/` | | Frontend connection and running-Gateway verification. |
 | `internal/cli/gateway/` | | Shared Gateway inventory helpers, including completed platform-enrollment filtering used by `gw status` and TUI status view. |
-| `internal/cli/identityreset/` | `identityreset` | Removal of Operator runtime CLI credentials, CLI mTLS pair, and cached Gateway trust (`Reset`). Consumed by `operator reset-identity`. |
+| `internal/cli/identityreset/` | `identityreset` | Removal of Operator runtime CLI credentials, CLI mTLS pair, and cached Gateway trust (`Reset`); refuses a runtime holding `constants.GatewayRuntimeMarker`. Consumed by `operator reset-identity`. |
 | `internal/cli/mcptransport/` | `mcptransport` | Standard JSON-RPC 2.0 stdio framing, dispatch handler, and transport for CLI MCP serving (`mcp stdio`). |
 | `internal/cli/operator/` | | Operator discovery and management helpers: governed command dispatch types, inventory helper `IsConnected`, stop helpers (`CheckStoppable`, `NewStopRequest`, `DecodeStopResponse`) shared by `operator stop` and TUI, and normalized heartbeat parser shared by `operator show` and TUI. |
 | `internal/cli/output/` | | Human-readable and JSON command output. |
@@ -305,7 +305,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `GetBlobStore` | `BlobStoreService` |
 | `GetAuditStore` | `storage.SQLAuditStore` |
 
-`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. Storage architecture: [Storage Architecture](../architecture/storage.md).
+`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalActionReceipt` (`local_receipt.go`) reads one runtime's signed receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
 
 ### Internal services
 
@@ -368,7 +368,7 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | `protocol/node/` | TypeScript protocol package. |
 | `examples/` | Runnable Go examples, external-console app, and MCP client configuration templates. |
 | `protocol/docs/` | Protocol specifications and generated API references. |
-| `internal/tools/constgen/` | Regenerates event and action-type constants from `protocol/constants/events.json` and `protocol/constants/status.json`. `make constants-generate` writes. `make constants-check` verifies. Outputs include `internal/constants/events_gen.go`, `internal/constants/action_types_gen.go`, and `console/src/generated/events.ts`. |
+| `internal/tools/constgen/` | Regenerates event and action-type constants from `protocol/constants/events.json` and `protocol/constants/status.json`. `make constants-generate` writes. `make constants-check` verifies. `check_env.go` also validates `protocol/constants/env_vars.json` and requires every `secret` and `user_endpoint` key in repo-root `.env.example`. Outputs include `internal/constants/events_gen.go`, `internal/constants/action_types_gen.go`, and `console/src/generated/events.ts`. |
 | `protocol/constants/agenttools/` | Agent tool registry JSON (`agent-tool-registry.json`) and `registry.go`. The JSON is checked-in source data; no exporter or root Makefile target regenerates it. |
 
 ### Native tools
@@ -420,7 +420,7 @@ Go module and packaging rules are governed by `INV-ENV-01` and [Developer Guidel
 
 | Target | Owns |
 | :--- | :--- |
-| `make build` | Host binary. Writes `bin/ztd-<os>-<arch>` and repo-root copy. Refreshes explorer and console embeds from `dist/` when built, else uses committed embeds. |
+| `make build` | Host binary. Writes `bin/ztd-<os>-<arch>` and repo-root copy. Compiles committed explorer and console embeds without building frontends; refresh them with `make explorer-embed` and `make console-embed`. |
 | `make proto-generate` | Go and TypeScript binding refresh: `proto-go` and `proto-node` (`INV-PROTO-01`). |
 | `make constants-generate`, `make constants-check` | `internal/tools/constgen` write and verify. |
 | `make explorer-catalog-generate`, `make explorer-catalog-check` | `evaluation-explorer/src/content/scenario-catalog.generated.ts` generation and verification via `internal/tools/explorercatalog`. |
@@ -431,7 +431,7 @@ Go module and packaging rules are governed by `INV-ENV-01` and [Developer Guidel
 | `make doctrines-validate` | Doctrine JSON under `protocol/constants/doctrine/`. |
 | `make swagger-generate` | Gateway OpenAPI from Swagger annotations. |
 
-Other tools under `internal/tools/`: `agent_harness` (shared typed Go client used by evaluation and integration workflows, see `INV-AGT-08` in [AI Agents](../architecture/agents.md)), `bslheaders` (BSL license header check, `make bsl-headers-check`), `chaos`, `constgen`, `explorercatalog` (evaluation-explorer scenario catalog generation, see `make explorer-catalog-generate`), `jsoncheck` (JSON validation behind `make doctrines-validate`), `thirdpartynotices` (`make third-party-notices` and `make third-party-notices-check`), `versionsync` (`make version-sync` and `make version-sync-check`), `ztdbinaries`, `sourcefiles` (portable frontend dependency discovery used by `Makefile`), `terminalmedia`, and `treehash` (source manifest hash used by `Makefile`).
+The Go tools under `internal/tools/` are catalogued in [Automation Scripts](../architecture/scripts.md#go-tools-directory).
 
 ## Procedures
 

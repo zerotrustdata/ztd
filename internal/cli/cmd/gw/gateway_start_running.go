@@ -10,7 +10,9 @@ package gw
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -21,32 +23,43 @@ import (
 )
 
 // startupSetting is one `gw start` flag that is fixed for the lifetime of a
-// Gateway process, with the profile value rendered for comparison.
+// Gateway process, with the profile value rendered for comparison. env names
+// the user_endpoint key that supplies the flag when it is blank.
 type startupSetting struct {
 	flag  string
 	value func(serve.GatewayConfig) string
+	env   constants.EnvVarKey
+}
+
+// requested reports whether the caller asked for this setting: the flag was
+// set, or its env key (exported or loaded from .env) supplies it.
+func (s startupSetting) requested(flags *pflag.FlagSet) bool {
+	if flags.Changed(s.flag) {
+		return true
+	}
+	return s.env != "" && strings.TrimSpace(os.Getenv(string(s.env))) != ""
 }
 
 // startupSettings lists the flags a running Gateway cannot change. Each value
 // is normalized so an explicit default compares equal to the running default.
 var startupSettings = []startupSetting{
-	{"capabilities", func(c serve.GatewayConfig) string { return c.OperatorCapabilities.WithData().String() }},
-	{"posture", func(c serve.GatewayConfig) string { return string(c.Posture) }},
-	{"listen-host", func(c serve.GatewayConfig) string {
+	{flag: "capabilities", value: func(c serve.GatewayConfig) string { return c.OperatorCapabilities.WithData().String() }},
+	{flag: "posture", value: func(c serve.GatewayConfig) string { return string(c.Posture) }},
+	{flag: "listen-host", value: func(c serve.GatewayConfig) string {
 		if c.ListenHost == "" {
 			return constants.LocalhostIP
 		}
 		return c.ListenHost
 	}},
-	{"http-port", func(c serve.GatewayConfig) string { return portOrDefault(c.HTTPPort, constants.Ports.OperatorHttp) }},
-	{"https-port", func(c serve.GatewayConfig) string { return portOrDefault(c.HTTPSPort, constants.Ports.OperatorHttps) }},
-	{"model-storage-root", func(c serve.GatewayConfig) string { return c.ProvenanceOperatorModelStorageRoot }},
-	{"inference-ollama-endpoint", func(c serve.GatewayConfig) string { return c.InferenceOllamaEndpoint }},
-	{"public-base-url", func(c serve.GatewayConfig) string { return c.PublicBaseURL }},
-	{"cors-origin", func(c serve.GatewayConfig) string { return joinOrigins(c.AllowedOrigins) }},
-	{"passkey-rp-id", func(c serve.GatewayConfig) string { return c.PasskeyRpID }},
-	{"passkey-rp-name", func(c serve.GatewayConfig) string { return c.PasskeyRpName }},
-	{"passkey-rp-origin", func(c serve.GatewayConfig) string { return joinOrigins(c.PasskeyRpOrigins) }},
+	{flag: "http-port", value: func(c serve.GatewayConfig) string { return portOrDefault(c.HTTPPort, constants.Ports.OperatorHttp) }},
+	{flag: "https-port", value: func(c serve.GatewayConfig) string { return portOrDefault(c.HTTPSPort, constants.Ports.OperatorHttps) }},
+	{flag: "model-storage-root", value: func(c serve.GatewayConfig) string { return c.ProvenanceOperatorModelStorageRoot }},
+	{flag: "inference-ollama-endpoint", value: func(c serve.GatewayConfig) string { return c.InferenceOllamaEndpoint }, env: constants.EnvVar.OllamaEndpoint},
+	{flag: "public-base-url", value: func(c serve.GatewayConfig) string { return c.PublicBaseURL }},
+	{flag: "cors-origin", value: func(c serve.GatewayConfig) string { return joinOrigins(c.AllowedOrigins) }},
+	{flag: "passkey-rp-id", value: func(c serve.GatewayConfig) string { return c.PasskeyRpID }},
+	{flag: "passkey-rp-name", value: func(c serve.GatewayConfig) string { return c.PasskeyRpName }},
+	{flag: "passkey-rp-origin", value: func(c serve.GatewayConfig) string { return joinOrigins(c.PasskeyRpOrigins) }},
 }
 
 func portOrDefault(port, fallback int) string {
@@ -56,13 +69,14 @@ func portOrDefault(port, fallback int) string {
 	return strconv.Itoa(port)
 }
 
-// runningConfigDeltas compares the startup flags the caller set explicitly
-// with the running Gateway's launch profile. Flags left at their defaults are
-// not compared, so a bare `gw start` reuses whatever Gateway is running.
+// runningConfigDeltas compares the startup settings the caller requested (by
+// flag or env key) with the running Gateway's launch profile. Settings left at
+// their defaults are not compared, so a bare `gw start` reuses whatever
+// Gateway is running.
 func runningConfigDeltas(flags *pflag.FlagSet, requested, running serve.GatewayConfig) []configDelta {
 	var deltas []configDelta
 	for _, setting := range startupSettings {
-		if !flags.Changed(setting.flag) {
+		if !setting.requested(flags) {
 			continue
 		}
 		want, have := setting.value(requested), setting.value(running)
@@ -110,7 +124,7 @@ func reuseRunningGateway(cmd *cobra.Command, fileSvc fs.RuntimeFileService, requ
 func explicitStartupFlags(flags *pflag.FlagSet) []string {
 	var explicit []string
 	for _, setting := range startupSettings {
-		if flags.Changed(setting.flag) {
+		if setting.requested(flags) {
 			explicit = append(explicit, "--"+setting.flag)
 		}
 	}

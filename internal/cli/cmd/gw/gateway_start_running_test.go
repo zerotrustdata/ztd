@@ -118,3 +118,17 @@ func TestGatewayStart_RunningWithoutProfileRejectsExplicitFlags(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
 	assert.Contains(t, out, "--cors-origin")
 }
+
+func TestGatewayStart_RunningWithDifferentEnvOllamaEndpointFails(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	markGatewayRunning(t, fileSvc)
+	writeRunningProfile(t, fileSvc, constants.OperatorCapabilities{constants.OperatorCapabilityData})
+
+	// ZTD_OLLAMA_ENDPOINT (exported or loaded from .env) supplies the flag, so
+	// a changed value is a requested difference even with no flag on the line.
+	t.Setenv(string(constants.EnvVar.OllamaEndpoint), "http://192.0.2.10:11434")
+	out, err := runGatewayStart(t, fileSvc, cfg)
+	require.ErrorIs(t, err, constants.ErrGatewayAlreadyRunning)
+	assert.Contains(t, out, "--inference-ollama-endpoint")
+	assert.Contains(t, out, "proposed: http://192.0.2.10:11434")
+}

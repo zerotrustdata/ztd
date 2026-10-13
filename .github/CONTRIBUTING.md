@@ -21,7 +21,7 @@ Before contributing, review the core platform architecture:
 Feedback and bug reports are described in [Feedback and bug reports](../EARLY_TESTERS.md). The following contributions do not require familiarity with the full platform:
 
 **For anyone (no build required)**
-1. **First Run Report on your OS.** Take any README door (explorer, protocol, binary, full stack) and file the First Run Report issue form with where you got stuck. Reports from Windows, macOS arm64, and Linux arm64 are requested.
+1. **First Run Report on your OS.** Try any door listed in the First Run Report issue form (explorer, run locally, full stack, protocol, release binary) and file the form with where you got stuck. Reports from Windows, macOS arm64, and Linux arm64 are requested.
 2. **Explorer feedback.** Browse [OpenDevOps.ai](https://opendevops.ai) for 10 minutes and file what was clear, what was unclear, and what you wanted to see but could not find.
 3. **README cold read.** Read the README as a first-time reader and report the first sentence that made you want to stop. One sentence is a complete contribution.
 
@@ -40,7 +40,7 @@ Look for issues labeled `first-run`, `good-first-task`, and `docs`. Experienced 
 Choose the smallest environment that fits your work:
 
 - **Gateway only:** clone the repository, then run `make up`. A native build needs Go 1.27.2 and Make. Fresh clones use the committed frontend embeds; Node.js 22.22.2+, 24.15+, or 26+ and npm are needed only to rebuild the Console or Evaluation Explorer. Ollama and model SDKs are not needed for this configuration.
-- **Gateway with every Operator capability:** run `make gw` to start the Gateway with its embedded Operator carrying the capabilities in `GW_CAPABILITIES` (default `data,inference,observer`). Set `MODEL_STORAGE_ROOT` to the local model store to add Provenance, and pass extra `./ztd gw start` flags such as `--inference-ollama-endpoint` through `GW_ARGS`. Run a separate outbound Operator in the foreground with `make operator OPERATOR_ARGS='...'`. Use `make status` and `make down` to inspect and stop the host stack.
+- **Gateway with every Operator capability:** run `make gw` to start the Gateway with its embedded Operator carrying the capabilities in `GW_CAPABILITIES` (default `data,inference,observer`). Set `MODEL_STORAGE_ROOT` to the local model store to add Provenance, set `ZTD_OLLAMA_ENDPOINT` in `.env` when the Ollama provider is not on this host, and pass extra `./ztd gw start` flags through `GW_ARGS`. Run a separate outbound Operator in the foreground with `make operator OPERATOR_ARGS='...'`, including its own `--working-dir` (`./ztd operator start` refuses a directory that holds a Gateway runtime). Use `make status` and `make down` to inspect and stop the host stack.
 
 Linux and macOS contributors can install the complete development toolchain with their platform's setup script; use `--build-only` to skip the contributor toolchain while still building the binary. A direct `make build` on a fresh clone uses committed frontend embeds and does not require Node.js. See the [setup instructions](../docs/guides/getting_started.md#build-locally-native-host).
 

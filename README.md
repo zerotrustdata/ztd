@@ -7,7 +7,7 @@ ztd lets AI systems propose actions without giving them direct control over real
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
 
-The current version is **v1.0.4**. See the [release notes](docs/release_notes/v1.0.x/v1.0.4.md) for changes and validation results.
+The current version is **v1.0.5**. See the [release notes](docs/release_notes/v1.0.x/v1.0.5.md) for changes and validation results.
 
 ## What ztd does
 
@@ -72,7 +72,7 @@ The setup script checks for Git, Make, curl, and Go 1.27.2, builds `./ztd`, and 
 
 The Gateway-only track requires Git, Go 1.27.2, and Make. Fresh clones use the committed Console and Evaluation Explorer embeds. Node.js 22.22.2+, 24.15+, or 26+ and npm are required only to rebuild those frontends. This track has no Ollama or model SDK requirement.
 
-For setup details, see the [Getting Started guide](docs/guides/getting_started.md#native-host-build).
+For setup details, see the [Getting Started guide](docs/guides/getting_started.md#what-setup-does).
 
 To run the Gateway with its embedded Operator carrying the Data, Inference, and Observer capabilities, use `make gw`. When the Ollama provider for the Inference capability is not on this host, uncomment `ZTD_OLLAMA_ENDPOINT` in `.env` and set it ([Configure `.env`](docs/guides/getting_started.md#configure-env)). Set `MODEL_STORAGE_ROOT` to the local model store to add the Provenance capability:
 
@@ -109,7 +109,7 @@ go run ./examples/governance-envelope/
 go run ./examples/workload-identity/
 ```
 
-To use the protocol in your own Go module, run `go get github.com/zerotrustdata/ztd@v1.0.4`, import the packages, then `go mod tidy`. See [Use the Protocol Library](docs/guides/getting_started.md#use-the-protocol-library-go-module).
+To use the protocol in your own Go module, run `go get github.com/zerotrustdata/ztd@v1.0.5`, import the packages, then `go mod tidy`. See [Use the Protocol Library](docs/guides/getting_started.md#use-the-protocol-library-go-module).
 
 ## What is in the repo
 

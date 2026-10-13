@@ -180,7 +180,7 @@ to skip the installer when an administrator has pre-installed the gateway root C
 passkey ceremony still runs and runtime mTLS/trust-bundle errors still fail enrollment.
 
 For the remote operator enrollment path (CSR-only, no passkey, no CLI session),
-use ` + "`auth enroll operator`" + ` instead.
+start the Operator with ` + "`operator start`" + ` and approve it with ` + "`auth enroll approve`" + `.
 
 The Gateway must already be running (use './ztd gw start' first).`,
 		RunE: func(cmd *cobra.Command, args []string) error {

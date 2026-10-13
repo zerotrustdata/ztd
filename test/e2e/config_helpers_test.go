@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestResolveRepoRoot(t *testing.T) {
@@ -56,14 +57,14 @@ func TestResolveRepoRoot(t *testing.T) {
 
 func TestResolveRuntimeRoot(t *testing.T) {
 	t.Run("env override wins and is cleaned", func(t *testing.T) {
-		t.Setenv(e2eRuntimeRootEnv, "/tmp/isolated/../isolated-root/")
+		t.Setenv(string(constants.EnvVar.E2ERuntimeRoot), "/tmp/isolated/../isolated-root/")
 		root, err := resolveRuntimeRoot()
 		require.NoError(t, err)
 		assert.Equal(t, filepath.Clean("/tmp/isolated-root"), root)
 	})
 
 	t.Run("falls back to the repository root", func(t *testing.T) {
-		t.Setenv(e2eRuntimeRootEnv, "")
+		t.Setenv(string(constants.EnvVar.E2ERuntimeRoot), "")
 		want, err := resolveRepoRoot()
 		require.NoError(t, err)
 		got, err := resolveRuntimeRoot()

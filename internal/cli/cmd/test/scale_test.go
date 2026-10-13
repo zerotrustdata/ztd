@@ -156,15 +156,15 @@ func TestScaleScenarioEnv_SetsFleetContract(t *testing.T) {
 	env := scaleScenarioEnv([]string{"A=1"}, layout, cfg, "bin", scalePorts{HTTP: 18080, HTTPS: 18443})
 	assert.Equal(t, []string{
 		"A=1",
-		scaleEnvRuntimeRoot + "=" + layout.Run,
-		scaleEnvFleetSize + "=100",
-		scaleEnvFleetBin + "=bin",
-		scaleEnvFleetDir + "=" + layout.Fleet,
-		scaleEnvFleetSoak + "=1m0s",
-		scaleEnvFleetConcurrency + "=16,64",
-		scaleEnvFleetRounds + "=1",
-		scaleEnvGatewayHTTPPort + "=18080",
-		scaleEnvGatewayHTTPSPort + "=18443",
+		string(constants.EnvVar.E2ERuntimeRoot) + "=" + layout.Run,
+		string(constants.EnvVar.E2EFleetSize) + "=100",
+		string(constants.EnvVar.E2EFleetBin) + "=bin",
+		string(constants.EnvVar.E2EFleetDir) + "=" + layout.Fleet,
+		string(constants.EnvVar.E2EFleetSoak) + "=1m0s",
+		string(constants.EnvVar.E2EFleetConcurrency) + "=16,64",
+		string(constants.EnvVar.E2EFleetRounds) + "=1",
+		string(constants.EnvVar.E2EGatewayHTTPPort) + "=18080",
+		string(constants.EnvVar.E2EGatewayHTTPSPort) + "=18443",
 	}, env)
 }
 

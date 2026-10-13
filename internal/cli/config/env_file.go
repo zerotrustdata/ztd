@@ -48,13 +48,7 @@ func LoadEnvFile(path string) error {
 		return fmt.Errorf("cli config: %s is mode %04o: %w", path, info.Mode().Perm(), err)
 	}
 
-	allowed := make(map[string]bool, len(constants.SecretEnvVars)+len(constants.UserEndpointEnvVars))
-	for _, key := range constants.SecretEnvVars {
-		allowed[string(key)] = true
-	}
-	for _, key := range constants.UserEndpointEnvVars {
-		allowed[string(key)] = true
-	}
+	allowed := userEnvKeys()
 
 	scanner := bufio.NewScanner(f)
 	for n := 1; scanner.Scan(); n++ {
@@ -81,6 +75,34 @@ func LoadEnvFile(path string) error {
 		return fmt.Errorf("cli config: read %s: %w", path, err)
 	}
 	return nil
+}
+
+// userEnvKeys is the set of registry keys an env file may supply: every
+// secret and user_endpoint key.
+func userEnvKeys() map[string]bool {
+	keys := make(map[string]bool, len(constants.SecretEnvVars)+len(constants.UserEndpointEnvVars))
+	for _, key := range constants.SecretEnvVars {
+		keys[string(key)] = true
+	}
+	for _, key := range constants.UserEndpointEnvVars {
+		keys[string(key)] = true
+	}
+	return keys
+}
+
+// WithoutUserEnv returns environ without the secret and user_endpoint keys, so
+// test and smoke child processes run isolated from the developer's .env and
+// shell credentials.
+func WithoutUserEnv(environ []string) []string {
+	withheld := userEnvKeys()
+	env := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		key, _, _ := strings.Cut(kv, "=")
+		if !withheld[key] {
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 func unquoteEnvValue(value string) string {

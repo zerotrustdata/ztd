@@ -3,8 +3,8 @@ doc_id: unified_stack
 title: Unified Stack Guide
 audience: platform operators and evaluators
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - Makefile
   - docs/guides/
@@ -47,7 +47,7 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 
 | ID | Rule |
 | :--- | :--- |
-| INV-STACK-01 | The host stack runs as processes of the `ztd` binary on the Gateway host: `make up` or `./ztd gw start` for the Gateway, and `make operator` or `./ztd operator start` for each outbound Operator. Each Operator MUST run in its own working directory. |
+| INV-STACK-01 | The host stack runs as processes of the `ztd` binary on the Gateway host: `make up` or `./ztd gw start` for the Gateway, and `make operator` or `./ztd operator start` for each outbound Operator. Each Operator MUST run in its own working directory; `./ztd operator start` refuses a working directory that holds a Gateway runtime. |
 | INV-STACK-02 | Operator health is determined by the Gateway registry (`./ztd operator list`), not by process existence. An Operator that has not enrolled or whose heartbeat is `stale` is not ready. |
 | INV-STACK-03 | The Inference Operator MUST enroll with `--capabilities inference` before any scored campaign dispatch reaches the provider. |
 | INV-STACK-04 | Observer and Provenance Operators enroll as separate sessions on the provider host and MUST NOT share the same session. |
@@ -72,7 +72,7 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 - Host ports available: **8080** (HTTP discovery) and **8443** (HTTPS/mTLS API and console). The public spectator and evaluation explorer listen on loopback **8081**, **8082**, and **5173** by default.
 - A browser with WebAuthn support for the owner passkey, or headless enrollment.
 
-`./ztd` loads the repo-root `.env` (template: `.env.example`, mode `0600`) at startup; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
+`./ztd` loads `.env` from the working directory (the repo root; template: `.env.example`, mode `0600`) at startup; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
 
 ### Binary building and version alignment
 
@@ -162,7 +162,7 @@ Use the Operator session ID from `operator list` for a reversible process stop:
 ./ztd operator stop <operator-session-id> --reason "planned maintenance"
 ```
 
-The command targets one active remote Operator owned by the authenticated user. It waits for the Operator's governed shutdown acknowledgement before the Gateway records `stopped`; the embedded Gateway Operator is never a valid target. The workload retains its certificate-backed enrollment and can start again later with its existing credentials.
+The command targets one active remote Operator owned by the authenticated user. It waits for the Operator's governed shutdown acknowledgement before the Gateway records `stopped`; the embedded Gateway Operator is never a valid target. The enrollment is not revoked, but the Operator identity is held in memory only, so the next `./ztd operator start` submits a new enrollment request that needs owner approval.
 
 Use the completed platform enrollment request ID for permanent identity revocation:
 
@@ -272,8 +272,8 @@ Expect `"passed": true` with three role entries (lite, assistant, primary), per-
 | Purpose | Campaign ID | Run ID pattern | Model inventory |
 | :--- | :--- | :--- | :--- |
 | **Init campaign** (one model, single-model gate) | `eval-init-<variant_id>` | `<campaign-id>-<unix>` | `.ztd/eval/inventories/<campaign-id>.json` |
-| **Mini smoke** (one-model end-to-end validation) | `eval-smoke-mini` | `smoke-mini-<unix>` | `.ztd/eval/inventories/eval-smoke-mini.json` |
-| **Full homogeneous run** | `eval-genesis-homogeneous` | `genesis-homogeneous-<seq>` | `.ztd/eval/model-inventory.json` |
+| **Mini smoke** (one-model end-to-end validation) | `eval-smoke-mini` | `eval-smoke-mini-<unix>` | `.ztd/eval/inventories/eval-smoke-mini.json` |
+| **Full homogeneous run** | `eval-genesis-homogeneous` | `eval-genesis-homogeneous-<unix>` | `.ztd/eval/model-inventory.json` |
 
 Single model init campaign:
 
@@ -308,10 +308,10 @@ The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public r
 
 #### Phase C — Monitor execution
 
-`runs start` prints the run ID (`smoke-mini-<unix>`); `./ztd eval runs list --campaign eval-smoke-mini` lists it again. Set `RUN_ID` to it:
+`runs start` prints the run ID (`eval-smoke-mini-<unix>`); `./ztd eval runs list --campaign eval-smoke-mini` lists it again. Set `RUN_ID` to it:
 
 ```bash
-RUN_ID=smoke-mini-<unix>
+RUN_ID=eval-smoke-mini-<unix>
 ./ztd eval runs show "$RUN_ID"
 ./ztd eval runs assignments "$RUN_ID" --failed
 ./ztd eval runs verify "$RUN_ID" --coverage
@@ -326,7 +326,7 @@ RUN_ID=smoke-mini-<unix>
 | `make gw` | Starts the Gateway with its embedded Operator carrying capabilities from `GW_CAPABILITIES` (default `data,inference,observer`), then prints `ztd gw status`. Setting `MODEL_STORAGE_ROOT` adds the Provenance capability. |
 | `make up-public` / `make gw-public` | Same as `make up` / `make gw` with the listeners bound to every interface (`--listen-host 0.0.0.0`) so Operators on other hosts can enroll. |
 | `make operator` | Runs one outbound Operator in the foreground. Pass capability and endpoint flags in `OPERATOR_ARGS`. |
-| `make status` | Prints `ztd gw status` and `ztd operator list`. |
+| `make status` | Prints `ztd gw status`: Gateway health, the Operator inventory, and pending enrollments. |
 | `make down` | Stops Operators, then the Gateway (`ztd gw stop`). Runtime state in `.ztd/` is preserved. |
 
 `make clean` removes build and test artifacts and the Go build cache while preserving `.ztd/` and the repository-root `ztd` binary. `./ztd gw clean` archives `.ztd/` to `.ztd-<MMDDHHMM>` and requires fresh owner and workload enrollment.

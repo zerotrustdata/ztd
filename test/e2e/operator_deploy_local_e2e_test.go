@@ -55,10 +55,10 @@ type deploymentLifecycleReport struct {
 // separately scheduled scale qualification. Cleanup also covers unregistered
 // workers left behind by cancellation, and never uses a global operator stop.
 func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
-	require.NotEmpty(t, os.Getenv(e2eRuntimeRootEnv), "select an isolated Gateway runtime explicitly")
+	require.NotEmpty(t, os.Getenv(string(constants.EnvVar.E2ERuntimeRoot)), "select an isolated Gateway runtime explicitly")
 	n := requireFleetSize(t)
 	require.LessOrEqual(t, n, 4997, "reserve directories for append, denial, and cancellation cases")
-	bin := requireFleetEnv(t, fleetBinEnv)
+	bin := requireFleetEnv(t, string(constants.EnvVar.E2EFleetBin))
 	bin, err := filepath.Abs(bin)
 	require.NoError(t, err)
 	binary, err := os.ReadFile(bin)
@@ -66,7 +66,7 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 	report := deploymentLifecycleReport{Size: n, BinarySHA256: fmt.Sprintf("%x", sha256.Sum256(binary)), DeploySecs: map[string]float64{}}
 	t.Cleanup(func() {
 		report.Passed = !t.Failed()
-		if path := os.Getenv(fleetReportEnv); path != "" {
+		if path := os.Getenv(string(constants.EnvVar.E2EFleetReport)); path != "" {
 			data, err := json.MarshalIndent(report, "", "  ")
 			if assert.NoError(t, err) {
 				assert.NoError(t, os.WriteFile(path, append(data, '\n'), 0o600))

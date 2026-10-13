@@ -210,7 +210,7 @@ sequenceDiagram
 ztd provides five distinct ingress channels:
 
 1. **Model Context Protocol (MCP)**: JSON-RPC 2.0 endpoint at `POST /mcp` and stdio bridge via `ztd mcp stdio`. Translates `tools/call`, `resources/read`, and `prompts/get` into canonical `GovernanceEnvelope` transactions.
-2. **Agent-to-Agent (A2A)**: JSON-RPC endpoint at `POST /a2a` or `/api/v1/a2a/call` for cross-agent skill invocation wrapped in `A2A_CALL` envelopes.
+2. **Agent-to-Agent (A2A)**: JSON-RPC endpoint at `POST /api/v1/a2a/call` for cross-agent skill invocation wrapped in `A2A_CALL` envelopes.
 3. **Governed HTTP Dispatch**: Authenticated applications post registered request event types and serialized protobuf payloads to `POST /api/v1/operators/commands`. The Gateway validates session identity, derives `action_type`, attaches posture, and publishes to the Operator command channel. Fails closed if L3 proofs are required.
 4. **Direct Envelope Submission**: Pre-constructed envelopes submitted via `POST /api/v1/governance/envelopes` with pre-gathered L2/L3 proofs. The Gateway does not synthesize missing proofs; unproved transactions fail closed at L4.
 5. **CLI-Directed Execution**: Enrolled operators bound via `ztd operator bind` receive parallel commands dispatched through `ztd operator run`.

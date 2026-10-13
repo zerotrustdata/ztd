@@ -107,3 +107,13 @@ func TestInferenceOllamaEndpoint(t *testing.T) {
 	t.Setenv(key, "")
 	assert.Empty(t, InferenceOllamaEndpoint(""))
 }
+
+func TestWithoutUserEnv(t *testing.T) {
+	environ := []string{
+		"HOME=/home/u",
+		string(constants.EnvVar.CloudflareAPIToken) + "=token",
+		string(constants.EnvVar.OllamaEndpoint) + "=http://10.0.0.2:11434",
+		"PATH=/usr/bin",
+	}
+	assert.Equal(t, []string{"HOME=/home/u", "PATH=/usr/bin"}, WithoutUserEnv(environ))
+}

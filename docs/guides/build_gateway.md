@@ -3,8 +3,8 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.5
+last_updated: 2026-10-13
 owners:
   - docs/guides/build_gateway.md
   - Makefile
@@ -127,6 +127,8 @@ Choose a stricter posture only after configuring required proofs:
 
 Consensus and notary require an enabled consensus policy, trusted signers, and an available in-process consensus service. Ratify and notary require L3 human authorization for mutations.
 
+Posture, capabilities, ports, listen host, and the other startup settings are fixed while the Gateway runs. `./ztd gw start` against a running Gateway compares the explicitly passed startup flags with its launch profile, lists any differences, and exits nonzero without changing it; stop it with `./ztd gw stop` first.
+
 Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, --endpoint` and `-p, --port` flags select remote discovery and HTTPS endpoints for client enrollment; they do not configure Gateway listening ports.
 
 ---
@@ -136,7 +138,7 @@ Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, 
 Custom Gateway implementations consume the ztd Protocol Library for protobuf schema definitions, SPIFFE workload identity helpers, and JSON protocol constants.
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.4
+go get github.com/zerotrustdata/ztd@v1.0.5
 ```
 
 Import protobuf types and SPIFFE helpers from `github.com/zerotrustdata/ztd/protocol`.
