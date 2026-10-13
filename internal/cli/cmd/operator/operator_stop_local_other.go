@@ -1,4 +1,4 @@
-//go:build !linux && !windows
+//go:build !linux && !windows && !darwin
 
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Use of this source code is governed by the Business Source License

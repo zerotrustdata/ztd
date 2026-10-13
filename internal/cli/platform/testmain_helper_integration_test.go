@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // TestMain detects when the test binary is re-executed by StartOperator as a
@@ -44,6 +46,10 @@ const testReexecEnv = "ZTD_TEST_REEXEC"
 //   - "error": the subprocess writes a startup error to stderr and exits.
 //     This lets tests prove that StartOperator returns the child diagnostic
 //     instead of hiding it behind a log-file pointer.
+//   - "keystore-approval": the subprocess logs that it is waiting for OS key
+//     store approval, holds past the health budget, then reports a denied
+//     approval and exits. This lets tests prove that StartOperator keeps
+//     waiting for the user and tells them why.
 //
 // During normal test runs TestMain delegates to the default test runner.
 func TestMain(m *testing.M) {
@@ -56,6 +62,11 @@ func TestMain(m *testing.M) {
 			time.Sleep(5 * time.Second)
 		case "error":
 			_, _ = fmt.Fprintln(os.Stderr, "gateway child startup diagnostic")
+			os.Exit(1)
+		case "keystore-approval":
+			_, _ = fmt.Fprintln(os.Stderr, constants.KeyStoreAwaitingApprovalLog)
+			time.Sleep(8 * time.Second)
+			_, _ = fmt.Fprintln(os.Stderr, "key store approval denied")
 			os.Exit(1)
 		}
 		os.Exit(0)
