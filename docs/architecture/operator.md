@@ -242,7 +242,7 @@ The Operator owns the final two layers of the governance interlock:
 - **State Directory (`.ztd/`)**: Contains SQLite database `data/ztd.db` (audit records, nonces, suspended transactions), encrypted vault storage (`vault/`), and Git file ledger (`data/ledger/`).
 - **Git File Ledger**: Every governed `FILE_EDIT` or `RESTORE_FILE` action creates an encrypted snapshot in Git before and after modification.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
-- **Environment Scrubbing**: Command subprocesses strip sensitive credentials (`constants.SecretEnvVars`, `CLOUDFLARE_API_TOKEN`, `ZTD_LLM_*`) from execution environments.
+- **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`). Variables outside the registry are inherited unchanged.
 
 ### Autochthon Subsystem
 

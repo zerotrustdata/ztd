@@ -60,7 +60,7 @@ No inbound port is required on the Operator host.
 
 Use a bare hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme and without a port suffix. The worker uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. The Operator makes no HTTP requests to the Gateway. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
 
-The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `./ztd gw start --listen-host 0.0.0.0` before connecting Operators from other hosts.
+The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `make up-public` or `make gw-public` (or `./ztd gw start --listen-host 0.0.0.0`) before connecting Operators from other hosts.
 
 ---
 
@@ -246,7 +246,7 @@ A new Gateway holds the bootstrap socket until an owner exists. Run `./ztd auth 
 
 ### Bootstrap Websocket Does Not Connect
 
-Confirm port 8080 is reachable and that `--listen-host 0.0.0.0` was passed if dialing from a remote host.
+Confirm port 8080 is reachable. `connection refused` from a remote host means the Gateway is not running or listens on loopback only; restart it with `make up-public` or `make gw-public` (`--listen-host 0.0.0.0`).
 
 ### Pub/Sub Connection Fails After Enrollment
 

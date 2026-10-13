@@ -25,25 +25,13 @@ import (
 //   - .env.example (repo root, the single user template) drift: every
 //     secret and user_endpoint key must appear as a commented assignment with
 //     Purpose, Consumer, and Required-for-default-flow lines above it and a
-//     non-empty example value, unless it is exempt (see envExempt). Every ZTD_*
-//     key named in .env.example must be a JSON key or a ZTD_TEST_* key.
-//
-// Exemption rule: a secret or user_endpoint key is exempt from .env.example only
-// when its sole consumer is Go-only infrastructure or test tooling that no
-// supported user flow configures by hand: Cloudflare tunnel DNS. Every exemption MUST name its
-// reason here, MUST still be a JSON key, and MUST be removed when the key stops
-// being exempt.
+//     non-empty example value. Every ZTD_* key named in .env.example must be a
+//     JSON key or a ZTD_TEST_* key.
 
 const (
 	relPathEnvVars    = "protocol/constants/env_vars.json"
 	relPathEnvExample = ".env.example"
 )
-
-// envExempt maps each exempt env key to the reason it is absent from .env.example.
-// See the exemption rule in the file comment.
-var envExempt = map[string]string{
-	"CLOUDFLARE_API_TOKEN": "Cloudflare tunnel DNS routing (Go-only infrastructure)",
-}
 
 var validEnvCategoryNames = map[string]bool{
 	"secret": true, "user_endpoint": true, "host": true, "test": true,
@@ -134,30 +122,12 @@ func checkEnvExample(root string, byValue map[string]envRegistryEntry) []string 
 	}
 
 	for value, entry := range byValue {
-		if !envRequiredInExample(entry, value) {
+		if entry.Category != "secret" && entry.Category != "user_endpoint" {
 			continue
 		}
 		problems = append(problems, checkEnvExampleEntry(lines, value)...)
 	}
-	for value, reason := range envExempt {
-		entry, ok := byValue[value]
-		if !ok {
-			problems = append(problems, fmt.Sprintf("%s: exempt key %s is not in %s (remove the exemption)", "envExempt", value, relPathEnvVars))
-		} else if entry.Category != "secret" && entry.Category != "user_endpoint" {
-			problems = append(problems, fmt.Sprintf("%s: exempt key %s has category %q; only secret and user_endpoint keys may be exempt (%s)", "envExempt", value, entry.Category, reason))
-		}
-	}
 	return problems
-}
-
-// envRequiredInExample reports whether a registry key must appear in .env.example:
-// every secret or user_endpoint key that is not exempt.
-func envRequiredInExample(entry envRegistryEntry, value string) bool {
-	if entry.Category != "secret" && entry.Category != "user_endpoint" {
-		return false
-	}
-	_, exempt := envExempt[value]
-	return !exempt
 }
 
 // checkEnvExampleEntry verifies one required key is a commented assignment with

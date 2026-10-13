@@ -79,7 +79,7 @@ make build
 ./ztd operator run --all-active --cmd 'echo hello from ztd'
 ```
 
-`make up` builds and starts the Gateway alone. `make gw` starts it with every embedded Operator capability.
+`make up` builds and starts the Gateway alone. `make gw` starts it with every embedded Operator capability. Both listen on loopback (`127.0.0.1`) only, so just this host can reach them. Use `make up-public` or `make gw-public` when Operators on other hosts must enroll; see [Local or LAN-reachable Gateway](#local-or-lan-reachable-gateway).
 
 ### Gateway and Operators track
 
@@ -270,6 +270,19 @@ Enrollments  users 1 | pending 0 | apps 0 | dashboards 0
 Console  https://localhost:8443/console/
 ```
 
+### Local or LAN-reachable Gateway
+
+The Gateway HTTP (8080) and HTTPS (8443) listeners bind `127.0.0.1` by default, so only processes on the Gateway host can reach it. Operators on other hosts get `connection refused` on the bootstrap websocket until the Gateway listens on a reachable interface.
+
+| Target | Listens on | Use when |
+| :--- | :--- | :--- |
+| `make up` | `127.0.0.1` | Gateway and every Operator run on this host |
+| `make gw` | `127.0.0.1` | Single process with the embedded Operator, local use only |
+| `make up-public` | `0.0.0.0` | Operators on other hosts enroll against this Gateway |
+| `make gw-public` | `0.0.0.0` | Embedded Operator plus Operators on other hosts |
+
+The `-public` targets pass `--listen-host 0.0.0.0` to `./ztd gw start` and otherwise behave exactly like `make up` and `make gw`, including `GW_ARGS`, `GW_CAPABILITIES`, and `MODEL_STORAGE_ROOT`. Remote Operators also need ports 8080 and 8443 open through any host firewall. Capabilities and listen host are fixed when the Gateway starts; run `make down` before switching between local and public.
+
 ### Gateway configuration
 
 The Gateway starts in Doctrine posture by default (L1 enforced, L2/L3 audited). To specify a different security posture:
@@ -351,7 +364,7 @@ The first sign-in on a fresh Gateway claims ownership and claims the embedded Op
 
 ### Start a remote operator
 
-To connect an Operator on a remote host to the Gateway:
+To connect an Operator on a remote host to the Gateway, start the Gateway with `make up-public` or `make gw-public` (a Gateway started with `make up` or `make gw` refuses remote connections), then run on the remote host:
 
 ```bash
 ./ztd operator start -e <gateway-hostname>

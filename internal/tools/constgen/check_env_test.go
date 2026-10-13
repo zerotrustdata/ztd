@@ -29,9 +29,9 @@ func TestValidateEnvRegistries_CommittedRegistriesAgree(t *testing.T) {
 	require.NoError(t, validateEnvRegistries(repoRootForEnvTest(t)))
 }
 
-// envFixtureRegistry is a self-contained env registry with one non-exempt
-// secret key (required in .env.example) and one host key. Tests mutate copies
-// of it so each assertion targets a single validation rule.
+// envFixtureRegistry is a self-contained env registry with one secret key
+// (required in .env.example) and one host key. Tests mutate copies of it so
+// each assertion targets a single validation rule.
 const envFixtureRegistry = `{
   "env_vars": {
     "ExampleToken": {
@@ -39,12 +39,6 @@ const envFixtureRegistry = `{
       "value": "ZTD_EXAMPLE_TOKEN",
       "category": "secret",
       "description": "Fixture secret read by the fixture consumer"
-    },
-    "CloudflareAPIToken": {
-      "_go_const": "EnvVar.CloudflareAPIToken",
-      "value": "CLOUDFLARE_API_TOKEN",
-      "category": "secret",
-      "description": "Fixture exempt secret (Go-only infrastructure)"
     },
     "Home": {
       "_go_const": "EnvVar.Home",

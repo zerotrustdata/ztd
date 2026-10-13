@@ -81,6 +81,8 @@ make gw GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'
 make status
 ```
 
+`make up` and `make gw` listen on loopback only. To enroll Operators from other hosts, use `make up-public` or `make gw-public`, which listen on all interfaces.
+
 `make status` shows the Gateway and connected Operators. Stop all services with `make down`. Run `./ztd gw start --help` and `./ztd operator start --help` to list every flag.
 
 Sign in as the owner and approve workloads:
