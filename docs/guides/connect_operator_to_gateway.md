@@ -3,8 +3,8 @@ doc_id: connect_operator_to_gateway
 title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - docs/guides/connect_operator_to_gateway.md
   - internal/cli/cmd/operator
@@ -58,7 +58,7 @@ No inbound port is required on the Operator host.
 
 ### Endpoint Requirements
 
-Use a hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme. The worker uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. A `host:port` endpoint sets the enrollment port; set the pub/sub port with `--gateway-https-port`. The Operator makes no HTTP requests to the Gateway. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
+Use a hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme. The worker uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. A `host:port` endpoint sets the enrollment port; set the pub/sub port with `--gateway-https-port`. The Operator uses WebSocket connections for bootstrap and active pub/sub; it does not call the Gateway's ordinary HTTP APIs. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
 
 The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `make up-public` or `make gw-public` (or `./ztd gw start --listen-host 0.0.0.0`) before connecting Operators from other hosts.
 

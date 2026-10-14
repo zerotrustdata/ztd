@@ -3,7 +3,7 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - internal/services/consensus/
@@ -226,7 +226,7 @@ The `--consensus-bootstrap` CLI flag seeds policies and keys at Gateway startup:
 Resolution precedence:
 1. **Per-Member Seeds (`member_seeds`)**: Generates and registers individual Ed25519 key pairs for every member ID. Required for production high-assurance deployments.
 2. **Shared Seed (`seed_hex`)**: Derives a single key pair registered across all members.
-3. **Generated Fallback**: Generates a temporary key pair across members if neither seed is provided.
+3. **Generated Fallback**: Generates one key pair shared across members if neither seed is provided, then seals the private key in the keystore. The generated key persists across restarts.
 
 ### Administrative Enrollment and Lifecycle
 

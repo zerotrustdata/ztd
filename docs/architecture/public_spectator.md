@@ -3,7 +3,7 @@ doc_id: public_spectator
 title: Public Spectator Architecture and Threat Model
 audience: architects and security reviewers
 status: current
-version: v1.0.6
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - internal/services/gateway/public_mirror.go
@@ -106,7 +106,7 @@ ztd strictly separates browser observation into two non-interchangeable modes:
 ```
 
 - **Owner-Local Observe Mode**: An authenticated operator connects to the private Gateway (`https://<gw>:8443/console/`). The browser authenticates via WebAuthn passkeys, receiving a secure session cookie. Every read is scoped to the user's permissions and session bindings.
-- **Public Spectator Mode**: Anonymous internet visitors connect via HTTPS to an external domain routed through Cloudflare to a local `cloudflared` tunnel, which dials the loopback-only public mirror listener (`127.0.0.1:8082`). No credentials are sent, and the private Gateway is physically unreachable.
+- **Public Spectator Mode**: Anonymous internet visitors connect via HTTPS to an external domain routed through Cloudflare to a local `cloudflared` tunnel, which dials the loopback-only public mirror listener (`127.0.0.1:8082`). No credentials are sent, and these requests reach only the mirror's public read surface, not the private Gateway API.
 
 ## Network Path and Listener Isolation
 

@@ -3,7 +3,7 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.0.6
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - docs/guides/getting_started.md
@@ -158,17 +158,18 @@ Or approve all pending requests simultaneously:
 Run the provider-free release smoke test from a built checkout:
 
 ```bash
-smoke_parent="$(mktemp -d)"
-./ztd test release-smoke --root "$smoke_parent/run" --binary "$PWD/ztd"
+smoke_root=".ztd/operators/release-smoke-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+./ztd test release-smoke --root "$smoke_root" --binary "$PWD/ztd"
 ```
 
 On Windows, from PowerShell:
 
 ```powershell
-./ztd test release-smoke --root "$env:TEMP\ztd-smoke\run1" --binary "$PWD\ztd.exe"
+$smokeRoot = ".ztd/operators/release-smoke-$([guid]::NewGuid().ToString('N'))"
+./ztd test release-smoke --root $smokeRoot --binary "$PWD\ztd.exe"
 ```
 
-The command starts and owns an isolated Gateway and data Operator, submits a governed file edit through the Gateway command API, creates and merges a document through the embedded Operator path, verifies exact read-back and signed receipts, exports both runtimes' reports, and stops only its own processes. It requires no model service, provider key, or existing platform runtime. Inspect the `evidence/` and `reports/` outputs under `$smoke_parent/run`, then remove the temporary directory when finished.
+The command starts and owns an isolated Gateway and data Operator, submits a governed file edit through the Gateway command API, creates and merges a document through the embedded Operator path, verifies exact read-back and signed receipts, exports both runtimes' reports, and stops only its own processes. It requires no model service, provider key, or existing platform runtime. Inspect the `evidence/` and `reports/` outputs under `$smoke_root`; the run artifacts remain there for review.
 
 ### Verify the stack is healthy
 

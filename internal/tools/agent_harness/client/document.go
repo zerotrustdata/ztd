@@ -27,11 +27,6 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// ActingAppHarness is the acting_app_id the harness stamps on every document
-// envelope it submits: the enrolled evaluation app identity, so receipts
-// attribute harness-driven document writes to the evaluation workload.
-const ActingAppHarness = constants.EvaluationAppName
-
 // DocumentUpdateFields is the typed field payload for a DOCUMENT_UPDATE.
 // Each implementation matches one collection's update schema. The harness
 // marshals it into the protobuf Struct on DocumentUpdateRequested.
@@ -81,6 +76,7 @@ type DocumentUpdateRequest struct {
 	OperatorID        string
 	OperatorSessionID string
 	RequestorUserID   string // human user who authorized the action
+	ActingAppID       string // enrolled app identity; empty for CLI-only requests
 	Collection        string
 	DocumentID        string
 	Updates           DocumentUpdateFields // field updates (merged when Merge=true, replaced when Merge=false)
@@ -94,6 +90,7 @@ type DocumentDeleteRequest struct {
 	OperatorID        string
 	OperatorSessionID string
 	RequestorUserID   string
+	ActingAppID       string // enrolled app identity; empty for CLI-only requests
 	Collection        string
 	DocumentID        string
 	StateRoot         string
@@ -141,7 +138,7 @@ func (d DocumentResponse) GetBool(field string) (bool, bool) {
 // computed hash and the HTTP response. The envelope carries the canonical
 // EventAppDocumentUpdateRequested event type and DOCUMENT_UPDATE action type
 // so dispatch is deterministic (A.2). Identity fields (RequestorUserID,
-// ActingAppHarness, OperatorID, OperatorSessionID, CLISessionID) are bound into
+// ActingAppID, OperatorID, OperatorSessionID, CLISessionID) are bound into
 // the envelope and included in the transaction hash so they are
 // cryptographically tamper-evident.
 func (c *Client) SubmitDocumentUpdate(ctx context.Context, p Persona, req DocumentUpdateRequest) (txHash string, status int, body []byte, err error) {
@@ -170,7 +167,7 @@ func (c *Client) SubmitDocumentUpdate(ctx context.Context, p Persona, req Docume
 		req.OperatorSessionID,
 		p.CLISessionID,
 		req.RequestorUserID,
-		ActingAppHarness,
+		req.ActingAppID,
 		req.StateRoot,
 		req.TTL,
 	)
@@ -211,7 +208,7 @@ func (c *Client) SubmitDocumentDelete(ctx context.Context, p Persona, req Docume
 		req.OperatorSessionID,
 		p.CLISessionID,
 		req.RequestorUserID,
-		ActingAppHarness,
+		req.ActingAppID,
 		req.StateRoot,
 		req.TTL,
 	)

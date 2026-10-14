@@ -3,7 +3,7 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - internal/cli/cmd/
@@ -178,7 +178,8 @@ eval "$(ssh-agent)" && ssh-add   # or connect with ssh -A; run ssh-keygen -t ed2
 # Inspect detailed status, heartbeat, and capabilities of an Operator
 ./ztd operator show <operator-id>
 
-# If an Operator fails to connect, verify mTLS network reachability to Gateway HTTPS port:
+# If an Operator fails to connect, verify mTLS reachability to the Gateway's resolved HTTPS port.
+# The default is 8443; use the bound port from the Gateway startup guidance or launch profile.
 nc -zv 127.0.0.1 8443
 
 # Reset local Operator identity credentials if certificates or keys are corrupted:

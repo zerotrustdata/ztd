@@ -3,7 +3,7 @@ doc_id: evals
 title: Evaluation Programs
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - internal/services/evaluation/
@@ -18,7 +18,7 @@ related:
   - governance.md
   - ../guides/sovereignty_gauntlet.md
   - ../core/position_paper.md
-when_to_read: Understanding ztd's governance conformance suite, formation-based model campaigns through the governed Inference Operator, provider-boundary observation, model provenance attestation, evidence persistence and verification, and capability selection for embedded or outbound Operators.
+when_to_read: Understanding ztd's governance conformance suite, formation-based model campaigns through the governed Inference Operator, provider-boundary observation, model provenance attestation, evidence persistence and verification, and capability selection for embedded or outbound Operators. Also use this document to distinguish the shipped campaign executor and evidence from the external agent SUT contract groundwork.
 do_not_use_for:
   - Governance five-layer interlock and policy enforcement (governance.md)
   - Gateway HTTP routes and session routing (gateway.md)
@@ -318,9 +318,13 @@ Suites define scenario catalogs and test inputs:
 #### Model-Role Lane (Single-Agent Campaigns)
 - Freezes a campaign targeting exactly one model variant (`INV-EVAL-CAMP-06`).
 - Executes assignments through `CampaignAgentExecutor` in a bounded loop of up to 8 turns.
-- Injects workspace files into an isolated directory under the Data Operator's root (`ScenarioWorkspace`) via governed `FILE_EDIT` actions. Workspace paths follow the Data Operator host, not the CLI: a POSIX working directory keeps POSIX paths, and a drive-letter one (a Windows Operator) uses slash-form paths such as `D:/ztd/workspaces/...`. Run execution rejects a model-driven binding whose working directory is not absolute, belongs to the embedded Operator, or overlaps the ztd project (other than a throwaway Operator at `.ztd/operators/<name>`) before any assignment is marked running (INV-EVAL-CAMP-32): the model runs shell commands there.
+- Requires a dedicated outbound Data Operator with an isolated working directory: the Gateway embedded Operator and any working directory overlapping the ztd project are rejected before an assignment is marked running. `ztd operator deploy --local --background --endpoint <gateway-host>` places the default throwaway Operator under `.ztd/operators/`, which is the sole project-tree exception (`INV-EVAL-CAMP-32`). Workspace files are injected under that Operator's root by governed `FILE_EDIT` actions. Workspace paths follow the Data Operator host, not the CLI: a POSIX working directory keeps POSIX paths, and a drive-letter one (a Windows Operator) uses slash-form paths such as `D:/ztd/workspaces/...`; the model can run shell commands there.
 - Dispatches tool invocations as governed Gateway transactions (`FS_READ`, `FS_LIST`, `FS_GREP`, `FILE_EDIT`, `EXECUTE_BASH`).
-- Seals the complete conversation and tool trajectory as a content-addressed agent trace (`campaign_agent_trace.go`) graded deterministically against scenario gold criteria.
+- Seals the complete conversation and tool trajectory as a content-addressed `agent-trace.v2` JSON evidence envelope (`campaign_agent_trace.go`). It binds the run and model, inference and tool calls, signed tool receipts, the Data Operator key anchor, and the before/after ledger bracket. Import verifies the digest and receipt evidence before deterministic grading. This campaign evidence envelope is separate from the protobuf `AgentTrace` in `eval.proto`, which is the external SUT's scored-turn response contract.
+
+#### External Agent SUT and Seeded Investigations
+
+The repository ships the protobuf scored-turn contract (`ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace`, and `InvestigationSeed`), canonical contract vectors, the HTTPS/SSE client and evidence verifier in `internal/services/evaluation/sut/`, per-persona grading and secondary-judge code, and three seeded-investigation fixtures under `eval/investigations/`. These define an external system under test that applies a seed through its own live services, runs a scored turn, and returns the protobuf trace. The current `ztd eval runs start` campaign path does not invoke that contract or client: model-role assignments run through the built-in `CampaignAgentExecutor`, and formation assignments use the formation executor. Live external-SUT campaign orchestration for those seeded investigations remains deferred; their fixtures, client, and contract do not establish that the end-to-end external SUT workflow has shipped.
 
 ### Scenario Fixtures, Trajectories, and Grading Models
 
@@ -360,7 +364,7 @@ Suites define scenario catalogs and test inputs:
 - **Hand-Editing Frozen Campaign Artifacts**: Modifying JSON files in `.ztd/data/eval/campaigns/` instead of re-freezing via `ztd eval models freeze` (INV-EVAL-CAMP-08).
 - **Running Scored Campaigns with Placeholder Digests**: Launching scored evaluations using unverified model digests derived from tags rather than provider attestation (INV-EVAL-CAMP-01).
 - **Conflating Formation Completion with Answer Quality**: Treating a passing formation assignment as proof of semantic correctness when the direct runner grades structural completion only.
-- **Deploying Redundant Outbound Operators for Local Evaluation**: Requiring separate outbound processes when the Gateway's embedded Operator already carries all necessary capabilities (INV-EVAL-WIT-01).
+- **Using the Gateway Embedded Operator for Model-Role Campaigns**: The embedded Operator may carry evaluation capabilities, but it is not an eligible Data Operator for model-driven assignments because the model can execute shell commands in the bound working directory. Deploy the isolated outbound Data Operator required by `INV-EVAL-CAMP-32`; embedded Observer and Provenance capabilities remain supported where their host and storage match the intended observation boundary (`INV-EVAL-WIT-01`, `INV-EVAL-WIT-02`).
 - **Modifying Verified Evidence During Restore**: Restoring evaluation backups without verifying file digests against the signed backup manifest (INV-EVAL-EVID-05).
 
 ## Links out

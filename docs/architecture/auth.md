@@ -3,8 +3,8 @@ doc_id: auth
 title: Authentication & Authorization Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/auth/
@@ -13,11 +13,11 @@ owners:
   - internal/constants/auth.go
   - internal/models/auth.go
 related:
-  - docs/architecture/gateway.md
-  - docs/architecture/governance.md
-  - docs/architecture/network.md
-  - docs/architecture/operator.md
-  - docs/devs/troubleshooting.md
+  - gateway.md
+  - governance.md
+  - network.md
+  - operator.md
+  - ../devs/troubleshooting.md
 when_to_read: Implementing authentication or authorization logic, reviewing security posture, auditing route admission, or understanding identity binding and session lifecycle.
 do_not_use_for:
   - WebAuthn ceremony mechanics (internal/cli/auth/passkey_enrollment.go)
@@ -236,7 +236,7 @@ Authentication admits a principal to a route. Authorization determines whether t
 | **L4 Warden** | Universal | Nonce reservation, replay prevention, hash integrity, Merkle root, proof verification |
 | **L5 Actuator** | Universal | JIT capability minting, payload rehydration, command dispatch, signed receipts |
 
-Gateway-mode L3 approval requires a WebAuthn assertion; there is no CLI-only approval on the Gateway. Denials are submitted via `POST /api/v1/approvals/respond` with `approved: false`. The Gateway resubmits the suspended envelope with `L3Metadata.denied` set; the executing runtime's L4 rejects it in every posture with `GOVERNANCE_REJECTION_CODE_L3_DENIED`, so the deny is an Operator-signed rejection receipt. The deny needs no proof because it can only stop execution, and `denied` is outside the transaction hash. The response and the `approval.completed` event both carry the signed receipt.
+Gateway-mode L3 approval requires a WebAuthn assertion; there is no CLI-only approval on the Gateway. Denials are submitted via `POST /api/v1/approvals/respond` with `approved: false`. The Gateway resubmits the suspended envelope with `L3Metadata.denied` set; the executing runtime's L4 rejects it in every posture with `GOVERNANCE_REJECTION_CODE_L3_DENIED`, and its L5 signs the rejection receipt. The deny needs no approval proof because it can only stop execution, and `denied` is outside the transaction hash. The response and the `approval.completed` event both carry the signed receipt.
 
 ## Procedures
 

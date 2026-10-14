@@ -34,6 +34,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type fileEditResultsPublisher struct {
+	mockResultsPublisher
+	results []proto.Message
+}
+
+func (m *fileEditResultsPublisher) PublishFileEditResult(_ context.Context, result proto.Message, _ *PubSubCommandMessage) error {
+	m.results = append(m.results, result)
+	return nil
+}
+
 func newFileEditTestService(t *testing.T, cfg *config.Config, logger *slog.Logger) *execution.FileEditService {
 	t.Helper()
 	fileSvc, err := fs.NewRuntimeFileService(cfg.WorkDir, logger)
@@ -441,6 +451,45 @@ func TestPayloadToFsGrepRequest(t *testing.T) {
 }
 
 func TestFileOpsService_HandleFileEditRequest(t *testing.T) {
+	t.Run("publishes failed result for protected runtime path", func(t *testing.T) {
+		t.Parallel()
+		cfg := testutil.NewTestConfig(t)
+		logger := testutil.NewTestLogger()
+		client := pubsubtest.NewMockOperatorPubSubClient()
+		fileEditSvc := newFileEditTestService(t, cfg, logger)
+		results := &fileEditResultsPublisher{}
+		svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{Results: results})
+
+		filePath := filepath.Join(cfg.WorkDir, constants.RuntimeDirname, constants.TmpDirname, "release-smoke", "worker", "start.log")
+		payload, err := proto.Marshal(&operatorv1.FileEditRequested{
+			FilePath:    filePath,
+			Operation:   string(constants.FileOperationWrite),
+			ExecutionId: "exec-protected-file-edit",
+			Content:     "must not be written",
+		})
+		require.NoError(t, err)
+		msg := &PubSubCommandMessage{
+			ID:                "msg-protected-file-edit",
+			EventType:         constants.Event.Operator.FileEdit.Requested,
+			OperatorSessionID: testOperatorSessionID,
+			Payload:           payload,
+		}
+
+		_, err = svc.HandleFileEditRequest(context.Background(), msg)
+		require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
+		require.Len(t, results.results, 1)
+		result, ok := results.results[0].(*operatorv1.FileEditResult)
+		require.True(t, ok, "published result is %T", results.results[0])
+		assert.Equal(t, "exec-protected-file-edit", result.GetExecutionId())
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.GetStatus())
+		assert.Equal(t, filePath, result.GetFilePath())
+		assert.Equal(t, string(constants.FileOperationWrite), result.GetOperation())
+		assert.Equal(t, "validation_error", result.GetErrorType())
+		assert.Contains(t, result.GetErrorMessage(), constants.ErrFileEditProtectedRuntimePath.Error())
+		_, statErr := os.Stat(filePath)
+		assert.ErrorIs(t, statErr, os.ErrNotExist)
+	})
+
 	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
 		t.Parallel()
 		cfg := testutil.NewTestConfig(t)

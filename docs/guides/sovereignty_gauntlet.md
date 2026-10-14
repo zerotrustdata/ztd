@@ -3,8 +3,8 @@ doc_id: sovereignty_gauntlet
 title: Sovereignty and Compliance Verification Guide
 audience: platform operators, compliance auditors, evaluators
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - docs/guides/sovereignty_gauntlet.md
   - internal/cli/cmd/compliance/

@@ -3,7 +3,7 @@ doc_id: protocol
 title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - protocol/
@@ -154,7 +154,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - Uses protobuf field names through protojson, compacts whitespace, and omits proto3 zero-value scalar fields.
    - `UnmarshalCanonical` rejects any payload whose raw bytes differ from its canonical re-encoding.
    - `ConformanceRunRecord`, `ConformanceVerdictSet` and their evidence messages (`ConformanceCaseEvidence`, `ConformanceObservation`, `CanaryManifest`, `ConformanceAnchor`) hold the governance-conformance suite: raw evidence per case and the verdict set, kept as separate messages.
-   - `AgentRole`, `AgentStep`, `ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace` and `InvestigationSeed` are the generic agent system-under-test contract; no product persona or route names appear in them.
+   - `AgentRole`, `AgentStep`, `ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace` and `InvestigationSeed` define the external agent system-under-test (SUT) contract. The SUT consumes a `ScoredTurnRequest` and returns its `AgentTrace`; the contract contains no product persona or route names. This protobuf `AgentTrace` is distinct from the campaign executor's private persisted evidence envelope, whose JSON schema is `agent-trace.v2` (`internal/services/evaluation/campaign_agent_trace.go`). The SUT contract and vectors are present, while campaign runs currently use the built-in governed executor rather than this external SUT exchange.
    - `ContainmentResult` (`verdict`, `breaches`) is the red-team verdict for one attempt, reported apart from model quality.
 3. **Canonicalization Conformance Vectors**:
    - Pinned in `protocol/vectors/`:

@@ -35,6 +35,8 @@ import (
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	operatorcli "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/security"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	govservice "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
@@ -142,6 +144,7 @@ type releaseSmokeRun struct {
 		UserID       string
 		CLISessionID string
 	}
+	anchors                       *oracle.AnchorSet
 	client                        *harness.Client
 	persona                       harness.Persona
 	fileTx, fileName, fileContent string
@@ -159,13 +162,22 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.RunDir == "" {
-				opts.RunDir = filepath.Join(constants.RuntimeDirname, constants.TmpDirname, "release-smoke-"+time.Now().UTC().Format("20060102T150405Z"))
+				opts.RunDir = filepath.Join(constants.RuntimeDirname, constants.OperatorsDirname, "release-smoke-"+time.Now().UTC().Format("20060102T150405Z"))
 			}
 			abs, err := filepath.Abs(opts.RunDir)
 			if err != nil {
 				return fmt.Errorf("resolve smoke root: %w", err)
 			}
+			abs, err = fs.ResolveExistingPath(abs)
+			if err != nil {
+				return fmt.Errorf("resolve smoke root ancestors: %w", err)
+			}
 			opts.RunDir = abs
+			// Both runtimes mutate ordinary files beneath their working roots.
+			// Protected scratch roots would make those governed edits fail.
+			if security.IsProtectedRuntimePath(filepath.Join(abs, "gateway", "smoke-target")) {
+				return fmt.Errorf("smoke root %s must permit governed file edits; use .ztd/operators/: %w", abs, constants.ErrFileEditProtectedRuntimePath)
+			}
 			if opts.ZtdBin == "" {
 				opts.ZtdBin, err = os.Executable()
 				if err != nil {
@@ -189,7 +201,7 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&opts.RunDir, "root", "", "Isolated run and artifact root (default: .ztd/tmp/release-smoke-<UTC timestamp>)")
+	cmd.Flags().StringVar(&opts.RunDir, "root", "", "Isolated run and artifact root (default: .ztd/operators/release-smoke-<UTC timestamp>)")
 	cmd.Flags().StringVar(&opts.ZtdBin, "binary", "", "ztd binary used for the Gateway and Operator (default: running binary)")
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", releaseSmokeDefaultTimeout, "Overall run deadline; owned resources are stopped when it expires")
 	return cmd
@@ -402,6 +414,9 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 	for _, op := range ops {
 		if op.GetOperatorSessionId() == session && op.GetStatus() == string(constants.OperatorStatusActive) {
 			r.workerOperatorID = op.GetId()
+			if err := r.pinReceiptAnchors(ctx, op); err != nil {
+				return fmt.Errorf("pin smoke receipt keys: %w", err)
+			}
 		}
 	}
 	if r.workerOperatorID == "" {
@@ -410,6 +425,34 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 	r.summary.Worker = releaseSmokeWorker{r.workerRoot, session}
 	return nil
 }
+
+// pinReceiptAnchors fixes the receipt trust inputs before any smoke mutation.
+// The Gateway owns its local export; the outbound key must also match enrollment.
+func (r *releaseSmokeRun) pinReceiptAnchors(ctx context.Context, worker *operatorv1.OperatorDocument) error {
+	gatewayFiles, err := fs.NewRuntimeFileService(r.gwRoot, slog.Default())
+	if err != nil {
+		return err
+	}
+	gatewayAnchor, err := oracle.LoadAnchor(ctx, gatewayFiles, releaseSmokeEmbeddedOpID)
+	if err != nil {
+		return err
+	}
+	workerFiles, err := fs.NewRuntimeFileService(r.workerRoot, slog.Default())
+	if err != nil {
+		return err
+	}
+	bound, err := oracle.BoundAnchor(worker)
+	if err != nil {
+		return err
+	}
+	workerAnchor, err := oracle.CheckedBoundAnchor(ctx, workerFiles, worker.GetId(), bound)
+	if err != nil {
+		return err
+	}
+	r.anchors, err = oracle.NewAnchorSet([]*evalv1.ConformanceAnchor{gatewayAnchor, workerAnchor})
+	return err
+}
+
 func (r *releaseSmokeRun) scenarioFileCreate(ctx context.Context) error {
 	token, err := randomSmokeHex(8)
 	if err != nil {
@@ -468,11 +511,14 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if receipt.TransactionId != tx {
 		return fmt.Errorf("receipt transaction %s does not match %s", receipt.TransactionId, tx)
 	}
-	pub, err := r.client.GetTrustedSignerPublicKey(ctx, receipt.SignerKeyId)
+	pub, err := r.anchors.Key(receipt.SignerKeyId, expectedOperator)
 	if err != nil {
 		return err
 	}
 	if err := govservice.VerifyActionReceiptSignature(receipt, pub); err != nil {
+		return err
+	}
+	if err := govservice.VerifyReceiptPersistenceAttestation(receipt, pub); err != nil {
 		return err
 	}
 	runtimeName := "worker"

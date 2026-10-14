@@ -3,7 +3,7 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - internal/services/ztdo.go
@@ -83,7 +83,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, `port`, and canonical `operator_capabilities`. |
+| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, the platform-default Operator HTTPS port, and canonical `operator_capabilities`. |
 | INV-OP-FPR-02 | Issuing an Operator whose `system_fingerprint` matches an existing non-terminated Operator under the same owner MUST terminate the earlier document and deactivate its session. An identity MUST NOT hold duplicate active leases. |
 
 ### Readiness (`INV-OP-READY`)
@@ -104,7 +104,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-WARD-01 | L4 Warden MUST lock nonces in memory (`trackInFlight`) and durably reserve them in SQLite (`ReplayStore`) prior to payload validation. Any failure occurring after reservation MUST release the reservation (`releaseNonceReservation`). |
+| INV-OP-WARD-01 | L4 Warden MUST lock nonces in memory (`trackInFlight`) and durably reserve them in SQLite (`ReplayStore`) prior to payload validation. Validation failures release that reservation, except an explicit human L3 denial (`ErrTxL3Denied`): its nonce stays spent so the denied transaction cannot later execute. |
 | INV-OP-WARD-02 | L4 Warden MUST verify protocol version 2, recompute the canonical transaction hash (`GenerateMessageID`), verify hash equality against both `envelope.TransactionHash` and `envelope.Id`, validate state Merkle root, verify target execution identity (`ExecutesFor`), and enforce posture-required L2 consensus and L3 notary proofs. |
 
 ### L5 Actuator Execution Boundary (`INV-OP-ACT`)
@@ -191,10 +191,10 @@ Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persiste
 Multiple Operator instances can execute concurrently on a single host. Operators are disambiguated by four factors:
 1. `local_dir`: The runtime working directory containing sovereign `.ztd/` state.
 2. `account`: The operating system user running the process.
-3. `port`: The Gateway target port dialed by the instance.
+3. `port`: The platform-default Operator HTTPS port included in the fingerprint.
 4. `operator_capabilities`: The canonical set of enabled capabilities.
 
-The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, `port`, and `capabilities`. Re-enrolling an existing fingerprint deactivates the prior session and replaces the document atomically.
+The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, the platform-default Operator HTTPS port, and `capabilities`. Re-enrolling an existing fingerprint deactivates the prior session and replaces the document atomically.
 
 ### Liveness, Heartbeats, and Staleness Derivation
 
@@ -245,7 +245,7 @@ The Operator owns the final two layers of the governance interlock:
 2. **Durable Replay Reservation**: Confirms TTL expiration (`ExpiresAt`) and reserves the nonce in SQLite (`ReplayStore.ReserveNonce`).
 3. **Stateless Verification**: Decodes the protobuf payload, validates target ownership (`ExecutesFor`), re-runs local L1 Doctrine checks, recomputes the SHA-256 transaction hash, and verifies dual equality (`transaction_hash == envelope.id == recomputed_hash`).
 4. **State Merkle Root Verification**: Validates `envelope.StateMerkleRoot` against the admission snapshot in context.
-5. **Posture Validation**: Evaluates posture-required L2 Consensus signatures and L3 Notary proofs from `envelope.Posture`. If validation fails, the reserved nonce is released immediately.
+5. **Posture Validation**: Evaluates posture-required L2 Consensus signatures and L3 Notary proofs from `envelope.Posture`. Missing or invalid proofs release the reserved nonce; an explicit human L3 denial keeps it spent.
 
 #### L5 Actuator Execution Boundary
 1. **Initial Receipt Logging**: Persists an `EXECUTING` status `ActionReceipt` signed by the Operator's Actuator key.
@@ -286,7 +286,7 @@ The `ztd autochthon` command is an isolated, autonomous runtime observer and for
 - **Executing Unverified Commands**: Treating Gateway delivery as proof of authorization without running the L4 Warden (INV-OP-CONN-02).
 - **Dispatching Commands to Witness Operators**: Sending mutating commands to Provenance or Observer operators lacking the `data` capability (INV-OP-CAP-01).
 - **Persisting Private Keys to Disk**: Writing Operator private keys or enrollment certificates to unencrypted files in `.ztd/` (INV-OP-STOR-02).
-- **Dangling Replay Nonce Reservations**: Failing to release nonces when L4 verification fails (INV-OP-WARD-01).
+- **Dangling Replay Nonce Reservations**: Failing to release a nonce after an ordinary L4 validation failure; explicit human L3 denial is the exception because its nonce remains spent (INV-OP-WARD-01).
 - **Executing Actions Before Initial Receipt Persistence**: Invoking execution handlers before the initial `EXECUTING` receipt and commitment attestation are persisted (INV-OP-ACT-01).
 - **Relying on Gateway Receipt Mirrors as Sovereign Truth**: Treating Gateway-replicated receipts as primary evidence instead of querying the Operator's local SQLite database (INV-OP-STOR-01).
 

@@ -43,6 +43,7 @@ func TestSubmitDocumentUpdate_BuildsCanonicalEnvelope(t *testing.T) {
 		OperatorID:        "op-test-001",
 		OperatorSessionID: "sess-test-001",
 		RequestorUserID:   "user-test-001",
+		ActingAppID:       constants.EvaluationAppName,
 		Collection:        "investigations",
 		DocumentID:        "inv-doc-test-001",
 		Updates: InvestigationUpdate{
@@ -68,7 +69,7 @@ func TestSubmitDocumentUpdate_BuildsCanonicalEnvelope(t *testing.T) {
 	assertJSONField(t, env, "operatorSessionId", req.OperatorSessionID)
 	assertJSONField(t, env, "cliSessionId", "cli-session-test-001")
 	assertJSONField(t, env, "requestorUserId", req.RequestorUserID)
-	assertJSONField(t, env, "actingAppId", ActingAppHarness)
+	assertJSONField(t, env, "actingAppId", req.ActingAppID)
 	assertJSONField(t, env, "stateMerkleRoot", req.StateRoot)
 	assertJSONField(t, env, "id", txHash)
 	assertJSONField(t, env, "transactionHash", txHash)
@@ -103,6 +104,7 @@ func TestSubmitDocumentUpdate_MergeTrueSetsMergeFlag(t *testing.T) {
 	var env map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(receivedBody, &env))
 	assertJSONField(t, env, "actionType", string(constants.ActionTypeDocumentUpdate))
+	assert.NotContains(t, env, "actingAppId", "CLI-only request must omit acting app identity")
 }
 
 func TestSubmitDocumentDelete_BuildsCanonicalEnvelope(t *testing.T) {
@@ -143,7 +145,7 @@ func TestSubmitDocumentDelete_BuildsCanonicalEnvelope(t *testing.T) {
 	assertJSONField(t, env, "operatorSessionId", req.OperatorSessionID)
 	assertJSONField(t, env, "cliSessionId", "cli-session-test-002")
 	assertJSONField(t, env, "requestorUserId", req.RequestorUserID)
-	assertJSONField(t, env, "actingAppId", ActingAppHarness)
+	assert.NotContains(t, env, "actingAppId", "CLI-only request must omit acting app identity")
 	assertJSONField(t, env, "stateMerkleRoot", req.StateRoot)
 	assertJSONField(t, env, "id", txHash)
 	assertJSONField(t, env, "transactionHash", txHash)

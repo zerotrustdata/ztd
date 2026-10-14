@@ -13,8 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestDocumentResponse_GetString_AbsentField(t *testing.T) {
@@ -41,10 +39,6 @@ func TestDocumentResponse_GetString_WrongType(t *testing.T) {
 	assert.False(t, ok, "a number must not read as a string")
 	_, ok = doc.GetBool("case_flag")
 	assert.False(t, ok, "a string must not read as a bool")
-}
-
-func TestActingAppHarness_IsEvaluationApp(t *testing.T) {
-	assert.Equal(t, constants.EvaluationAppName, ActingAppHarness)
 }
 
 func TestInvestigationUpdate_OmitsUnsetFields(t *testing.T) {

@@ -883,19 +883,6 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 	aliasPath := filepath.Join(workDir, "runtime-alias.json")
 	testutil.Symlink(t, protectedPath, aliasPath)
 
-	receipts := make(chan *operatorv1.ActionReceipt, 8)
-	unregisterReceiptCapture := infra.Pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {
-		envelope := &commonv1.GovernanceEnvelope{}
-		if err := protojson.Unmarshal(data, envelope); err != nil {
-			return
-		}
-		receipt := &operatorv1.ActionReceipt{}
-		if err := proto.Unmarshal(envelope.Payload, receipt); err == nil {
-			receipts <- receipt
-		}
-	})
-	t.Cleanup(unregisterReceiptCapture)
-
 	payload, err := proto.Marshal(&operatorv1.FileEditRequested{
 		FilePath:        aliasPath,
 		Operation:       string(constants.FileOperationWrite),
@@ -912,30 +899,21 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 		TargetResource:          aliasPath,
 		RequestorUserID:         userID,
 	})
-	if dispatchErr == nil {
-		require.NotNil(t, result)
-		require.NotNil(t, result.ResultEnvelope)
-		fileResult := &operatorv1.FileEditResult{}
-		require.NoError(t, proto.Unmarshal(result.ResultEnvelope.Payload, fileResult))
-		assert.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, fileResult.Status)
-	}
-
-	var failed *operatorv1.ActionReceipt
-	timer := time.NewTimer(time.Second)
-	defer timer.Stop()
-	for failed == nil {
-		select {
-		case receipt := <-receipts:
-			require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "protected runtime edit must not complete")
-			if receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
-				failed = receipt
-			}
-		case <-timer.C:
-			t.Fatal("signed FAILED receipt was not published")
-		}
-	}
-	require.NoError(t, govsvc.VerifyActionReceiptSignature(failed, pubKey))
-	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(failed, pubKey))
+	require.NoError(t, dispatchErr)
+	require.NotNil(t, result)
+	require.NotNil(t, result.ResultEnvelope)
+	require.NotNil(t, result.Receipt)
+	assert.Equal(t, string(constants.Event.Operator.FileEdit.Failed), result.ResultEnvelope.GetEventType())
+	fileResult := &operatorv1.FileEditResult{}
+	require.NoError(t, proto.Unmarshal(result.ResultEnvelope.Payload, fileResult))
+	assert.Equal(t, executionID, fileResult.GetExecutionId())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, fileResult.GetStatus())
+	assert.Equal(t, "validation_error", fileResult.GetErrorType())
+	assert.Contains(t, fileResult.GetErrorMessage(), constants.ErrFileEditProtectedRuntimePath.Error())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Receipt.GetStatus())
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.Receipt.GetFailureCode())
+	require.NoError(t, govsvc.VerifyActionReceiptSignature(result.Receipt, pubKey))
+	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(result.Receipt, pubKey))
 
 	body, err := os.ReadFile(protectedPath)
 	require.NoError(t, err)

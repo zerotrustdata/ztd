@@ -3,8 +3,8 @@ doc_id: tests
 title: Testing Guide
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/cli/cmd/test/
   - internal/testutil/
@@ -36,7 +36,7 @@ The platform enforces a four-tier test architecture:
 - **Tier 1 (Unit)**: Fast, in-memory, hermetic unit tests that execute without a running platform, external databases, or network listeners. Parallel across packages.
 - **Tier 2 (In-Process Integration)**: In-process integration tests exercising real local SQLite databases, local PKI generation, pub/sub, and the in-process Gateway with race detection on non-Windows hosts. Banned from calling `t.Parallel()`.
 - **Tier 3 (Live Platform E2E)**: End-to-end tests exercising deployed service boundaries, including steady-state platform verification, multi-worker scale, and stateful enrollment topologies.
-- **Tier 4 (External-Service Integration)**: Tests calling live external LLM providers or remote cloud services. Gated behind credentials and explicit targets; not executed by default CI.
+- **Tier 4 (External-Service Integration)**: Tests calling live external LLM providers or remote cloud services. These require dedicated opt-in targets and credentials and do not run in default CI. The repository has no general `ztd test` Tier 4 command; use the owning package's documented target.
 
 ## Quick index
 
@@ -154,8 +154,9 @@ make test-coverage
 # Narrow coverage run by package or verbosity
 ./ztd test coverage --pkg ./internal/services/auth --verbose
 
-# Static analysis and linting
+# Go lint only; Make also runs repository security and doctrine checks
 ./ztd test lint
+# Full Makefile lint target: govulncheck, doctrine validation, temp-path check, golangci-lint
 make lint
 ```
 
@@ -250,7 +251,7 @@ On Linux, `bash scripts/ci/operator-deploy-lifecycle.sh --count 3` starts a fres
 
 ### Run the Release Smoke
 
-Build candidate binaries with `make build`, then execute `./ztd test release-smoke --root <new-private-directory>`. The runner owns an isolated Gateway and data Operator, exercises governed `FILE_EDIT` mutations with exact local read-back and receipts, tests embedded governed document operations, and exports `report all` for both runtime roots. Acceptance requires zero `FAIL` and zero `SKIPPED` rows.
+Build candidate binaries with `make build`, then execute `./ztd test release-smoke --root .ztd/operators/release-smoke-<unique-name>`. The run contains mutable Gateway and Operator working trees, so it must live outside protected runtime scratch paths such as `.ztd/tmp/`; the CLI rejects those roots before startup. The runner owns an isolated Gateway and data Operator, exercises governed `FILE_EDIT` mutations with exact local read-back and receipts, tests embedded governed document operations, and exports `report all` for both runtime roots. Acceptance requires zero `FAIL` and zero `SKIPPED` rows.
 
 ### Profile Integration Tests
 
@@ -287,4 +288,4 @@ Use `testing/synctest` for self-contained timer, timeout, and channel synchroniz
 - [Documentation Guide](docs.md): documentation audit, catalog, and formatting standards.
 - [Release Process](release_process.md): native evaluation acceptance and release verification.
 - [Troubleshooting Guide](troubleshooting.md): diagnostics and recovery procedures.
-- [Console Architecture & Development](../architecture/console.md#test): Vitest, typecheck, ESLint, and embed checks.
+- [Console Architecture & Development](../architecture/console.md#running-tests): Vitest, typecheck, ESLint, and embed checks.

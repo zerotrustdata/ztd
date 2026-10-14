@@ -125,6 +125,17 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 	target, err := fs.fileEdit.OpenFileEditTarget(ctx, editReq.FilePath)
 	if err != nil {
 		fs.logger.Error("File edit path rejected", slog.String("message_id", msg.ID), logging.ErrorKind(err))
+		protoResult := &operatorv1.FileEditResult{
+			ExecutionId:  editReq.ExecutionID,
+			Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			FilePath:     editReq.FilePath,
+			Operation:    string(editReq.Operation),
+			ErrorMessage: err.Error(),
+			ErrorType:    "validation_error",
+		}
+		if publishErr := fs.results.PublishFileEditResult(ctx, protoResult, msg); publishErr != nil {
+			fs.logger.Error("Failed to publish rejected file edit result", logging.ErrorKind(publishErr))
+		}
 		return "", err
 	}
 	defer func() { _ = target.Close() }()

@@ -3,7 +3,7 @@ doc_id: build_apps
 title: Build ztd-Compatible Applications
 audience: application developers and agent framework authors
 status: current
-version: v1.0.0
+version: v1.1.0
 last_updated: 2026-10-14
 owners:
   - docs/guides/build_apps.md

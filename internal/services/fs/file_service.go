@@ -187,9 +187,9 @@ func withinPath(root, candidate string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// resolveExistingPath resolves symlinked ancestors while retaining a suffix
+// ResolveExistingPath resolves symlinked ancestors while retaining a suffix
 // for a file or directory that does not exist yet.
-func resolveExistingPath(path string) (string, error) {
+func ResolveExistingPath(path string) (string, error) {
 	probe := filepath.Clean(path)
 	var suffix []string
 	for {

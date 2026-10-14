@@ -3,8 +3,8 @@ doc_id: agents
 title: AI Agents and the ztd Governance Boundary
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/cli/agent/
   - internal/cli/cmd/mcp/
