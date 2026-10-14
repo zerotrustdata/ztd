@@ -226,6 +226,18 @@ const (
 	// UserRuntimeDirPrefix is systemd's per-user runtime directory, used when
 	// XDG_RUNTIME_DIR is unset.
 	UserRuntimeDirPrefix = "/run/user/"
+	// EphemeralAgentDirname is the owner-only directory, under a harness run
+	// root, that holds the private ssh-agent socket.
+	EphemeralAgentDirname = "agent"
+	// EphemeralAgentSocketFilename is the socket of the private in-process
+	// ssh-agent that multi-process harnesses seal their runtimes under.
+	EphemeralAgentSocketFilename = "agent.sock"
+	// EphemeralAgentNoBusFilename names a socket that never exists; harness
+	// children point the D-Bus session address at it so the Secret Service is
+	// down and the host keyring is never touched.
+	EphemeralAgentNoBusFilename = "no-bus"
+	// UnixSocketPathMax is the longest unix socket path Linux accepts.
+	UnixSocketPathMax = 107
 )
 
 // Secrets filenames for bootstrap and runtime secret material.
@@ -244,7 +256,6 @@ const (
 	SecretsFileConsensusMemberKeyPrefix = "consensus_member_"
 	SecretsFileVaultKey                 = "vault_key"
 	SecretsFileVaultKeyStaged           = "vault_key.rekey"
-	SecretsFileMasterKey                = "ztd_master_key"
 )
 
 // Evaluation target observation constants.

@@ -1276,70 +1276,15 @@ func (g *GatewayService) DeleteSuspendedTransaction(ctx context.Context, txHash 
 // The signed receipt returned by the Gateway is forwarded to the caller so
 // the OOB approval UI can surface the downstream tool result to the user.
 func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
-	if g.envProc == nil {
-		return nil, constants.ErrGatewayNotReady
-	}
 	if proof == nil {
 		return nil, constants.ErrGatewayL3ProofRequired
 	}
-	if userID == "" {
-		return nil, constants.ErrGatewayUserIDRequired
-	}
-
-	if g.suspendedStore == nil {
-		return nil, fmt.Errorf("gateway: resume suspended transaction %s: %w", txHash, constants.ErrSuspendedStoreRequired)
-	}
-
-	tx, ok, err := g.GetSuspendedTransaction(ctx, txHash)
+	tx, err := g.claimSuspended(ctx, txHash, userID)
 	if err != nil {
-		return nil, fmt.Errorf("gateway: resume suspended transaction %s: %w", txHash, err)
-	}
-	if !ok {
-		// The maintenance sweep now owns expiry event recording.
-		// ResumeWithL3Proof cannot positively confirm the not-found reason
-		// (expired vs never-existed vs already-approved), so it returns
-		// ErrTransactionExpired without writing to the audit vault.
-		return nil, fmt.Errorf("gateway: %w", constants.ErrTransactionExpired)
+		return nil, err
 	}
 
-	// Claim the transaction before it executes. The claim keeps the row in place (L3
-	// verification reads it) but guarantees two things: a second resume cannot execute the
-	// same transaction, and the expiry sweep never records transaction.expired for a
-	// transaction whose execution was attempted, even if the delete below fails. Deleting
-	// before execution is not possible: the outbound L3 verifier reads the row during
-	// ProcessEnvelope.
-	if err := g.suspendedStore.ClaimSuspendedTransaction(ctx, txHash); err != nil {
-		if errors.Is(err, constants.ErrSuspendedTransactionNotFound) {
-			return nil, fmt.Errorf("gateway: %w", constants.ErrTransactionExpired)
-		}
-		return nil, fmt.Errorf("gateway: claim suspended transaction %s: %w", txHash, err)
-	}
-
-	// Re-parse the stored envelope JSON so we can attach L3 metadata without
-	// touching the hashed fields.
-	env := &commonv1.GovernanceEnvelope{}
-	if err := protojson.Unmarshal([]byte(tx.Envelope), env); err != nil {
-		return nil, g.releaseAfterFailedResume(ctx, txHash, fmt.Errorf("gateway: decode suspended envelope %s: %w", txHash, err))
-	}
-
-	if env.Governance == nil {
-		env.Governance = &commonv1.GovernanceMetadata{}
-	}
-	env.Governance.L3 = &commonv1.L3Metadata{Proof: proof}
-
-	resubmitted, err := (protojson.MarshalOptions{Multiline: false}).Marshal(env)
-	if err != nil {
-		return nil, g.releaseAfterFailedResume(ctx, txHash, fmt.Errorf("gateway: encode resubmitted envelope %s: %w", txHash, err))
-	}
-
-	// The suspended envelope is Gateway-built, so it keeps its admission
-	// snapshot (INV-GOV-WARD-04): writes while it awaited approval, including
-	// the passkey sign-in and the L3 credential-use record, must not invalidate it.
-	if env.StateMerkleRoot != "" {
-		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, env.StateMerkleRoot)
-	}
-
-	receipt, procErr := g.envProc.ProcessEnvelope(ctx, resubmitted)
+	receipt, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Proof: proof})
 	if procErr != nil {
 		// Keep the suspension in place so the user can retry the proof
 		// without re-issuing the upstream MCP call: release the claim.
@@ -1354,6 +1299,99 @@ func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID s
 		return receipt, fmt.Errorf("gateway: transaction %s executed but its suspended record was not removed: %w", txHash, err)
 	}
 	return receipt, nil
+}
+
+// DenySuspendedTransaction ends a suspended transaction the human declined. The
+// envelope is re-submitted with the L3 deny marker, so the executing Operator's L4
+// rejects it with L3_DENIED and its L5 signs the rejection receipt. The deny is
+// therefore recorded on the executing runtime's own ledger, never only as a
+// Gateway-side delete, and the reserved nonce means the transaction can never run.
+//
+// Any signed governance rejection ends the suspension and is returned: a deny that
+// L4 rejected for another reason first (an expired envelope) still cannot execute.
+// A failure that produced no signed rejection releases the claim, so the deny can be
+// retried. A deny that executed is a platform defect and fails closed.
+func (g *GatewayService) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+	tx, err := g.claimSuspended(ctx, txHash, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	receipt, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Denied: true})
+	if procErr == nil {
+		return receipt, fmt.Errorf("gateway: deny transaction %s: %w", txHash, constants.ErrL3DenyNotRejected)
+	}
+	if !governance.IsGovernanceRejectionReceipt(receipt) {
+		return nil, g.releaseAfterFailedResume(ctx, txHash, fmt.Errorf("gateway: deny transaction %s: %w", txHash, procErr))
+	}
+	if err := g.suspendedStore.DeleteSuspendedTransaction(ctx, txHash); err != nil {
+		return receipt, fmt.Errorf("gateway: transaction %s denied but its suspended record was not removed: %w", txHash, err)
+	}
+	return receipt, nil
+}
+
+// claimSuspended loads a suspended transaction and claims it for one resume or
+// deny. The claim keeps the row in place (L3 verification reads it) but guarantees
+// that a second resume or deny cannot submit the same transaction, and that the
+// expiry sweep never records transaction.expired for a transaction that reached L4,
+// even if the later delete fails. Deleting before submission is not possible: the
+// outbound L3 verifier reads the row during ProcessEnvelope.
+func (g *GatewayService) claimSuspended(ctx context.Context, txHash, userID string) (*models.SuspendedTransaction, error) {
+	if g.envProc == nil {
+		return nil, constants.ErrGatewayNotReady
+	}
+	if userID == "" {
+		return nil, constants.ErrGatewayUserIDRequired
+	}
+	if g.suspendedStore == nil {
+		return nil, fmt.Errorf("gateway: resume suspended transaction %s: %w", txHash, constants.ErrSuspendedStoreRequired)
+	}
+
+	tx, ok, err := g.GetSuspendedTransaction(ctx, txHash)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: resume suspended transaction %s: %w", txHash, err)
+	}
+	if !ok {
+		// The maintenance sweep now owns expiry event recording.
+		// A resume cannot positively confirm the not-found reason
+		// (expired vs never-existed vs already-decided), so it returns
+		// ErrTransactionExpired without writing to the audit vault.
+		return nil, fmt.Errorf("gateway: %w", constants.ErrTransactionExpired)
+	}
+
+	if err := g.suspendedStore.ClaimSuspendedTransaction(ctx, txHash); err != nil {
+		if errors.Is(err, constants.ErrSuspendedTransactionNotFound) {
+			return nil, fmt.Errorf("gateway: %w", constants.ErrTransactionExpired)
+		}
+		return nil, fmt.Errorf("gateway: claim suspended transaction %s: %w", txHash, err)
+	}
+	return tx, nil
+}
+
+// resubmitSuspended re-submits a claimed suspended envelope with l3 attached. The
+// L3 metadata is outside the transaction hash, so the hashed fields are untouched.
+func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.SuspendedTransaction, l3 *commonv1.L3Metadata) (*operatorv1.ActionReceipt, error) {
+	env := &commonv1.GovernanceEnvelope{}
+	if err := protojson.Unmarshal([]byte(tx.Envelope), env); err != nil {
+		return nil, fmt.Errorf("gateway: decode suspended envelope %s: %w", tx.TransactionHash, err)
+	}
+	if env.Governance == nil {
+		env.Governance = &commonv1.GovernanceMetadata{}
+	}
+	env.Governance.L3 = l3
+
+	resubmitted, err := (protojson.MarshalOptions{Multiline: false}).Marshal(env)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: encode resubmitted envelope %s: %w", tx.TransactionHash, err)
+	}
+
+	// The suspended envelope is Gateway-built, so it keeps its admission
+	// snapshot (INV-GOV-WARD-04): writes while it awaited approval, including
+	// the passkey sign-in and the L3 credential-use record, must not invalidate it.
+	if env.StateMerkleRoot != "" {
+		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, env.StateMerkleRoot)
+	}
+	return g.envProc.ProcessEnvelope(ctx, resubmitted)
 }
 
 // releaseAfterFailedResume clears the execution claim of a transaction that did not run so

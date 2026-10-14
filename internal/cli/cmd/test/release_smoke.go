@@ -130,7 +130,8 @@ type releaseSmokeRun struct {
 	opts                                                  releaseSmokeOptions
 	owner                                                 smokeProcessOwner
 	summary                                               releaseSmokeSummary
-	logDir, gwRoot, workerRoot, reportsDir, masterKey     string
+	logDir, gwRoot, workerRoot, reportsDir                string
+	agent                                                 *keystore.EphemeralAgent
 	ports                                                 struct{ http, https int }
 	cleanups                                              []smokeCleanup
 	workerSession                                         string
@@ -273,6 +274,9 @@ func (r *releaseSmokeRun) runCleanups(ctx context.Context) error {
 	if err := r.owner.stopAll(5 * time.Second); err != nil {
 		errs = append(errs, err)
 	}
+	if r.agent != nil {
+		errs = append(errs, r.agent.Close())
+	}
 	return errors.Join(errs...)
 }
 func (r *releaseSmokeRun) phases() []smokePhase {
@@ -290,15 +294,21 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 	r.workerRoot = filepath.Join(r.opts.RunDir, "worker")
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	r.reportsDir = filepath.Join(r.opts.RunDir, "reports")
-	for _, dir := range []string{r.gwRoot, r.workerRoot, r.logDir, r.reportsDir, filepath.Join(r.opts.RunDir, "evidence"), filepath.Join(r.opts.RunDir, "secrets")} {
+	for _, dir := range []string{r.gwRoot, r.workerRoot, r.logDir, r.reportsDir, filepath.Join(r.opts.RunDir, "evidence")} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create %s: %w", dir, err)
 		}
 	}
-	var err error
-	r.masterKey, err = keystore.ProvisionMasterKeyFile(filepath.Join(r.opts.RunDir, "secrets"))
+	// Every runtime this run starts seals its master key under a private
+	// in-memory agent, so the smoke never touches the host key stores and its
+	// runtimes are unreadable once the run ends.
+	runFiles, err := fs.NewRuntimeFileService(r.opts.RunDir, slog.Default())
 	if err != nil {
-		return fmt.Errorf("provision isolated master key: %w", err)
+		return err
+	}
+	r.agent, err = keystore.StartEphemeralAgent(ctx, runFiles, constants.EphemeralAgentDirname)
+	if err != nil {
+		return fmt.Errorf("start isolated key agent: %w", err)
 	}
 	for _, p := range []*int{&r.ports.http, &r.ports.https} {
 		*p, err = freeSmokePort()
@@ -325,7 +335,7 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 }
 func (r *releaseSmokeRun) startGateway(ctx context.Context) error {
 	r.addCleanup("Gateway", func(ctx context.Context) error { _, err := r.ztdGateway(ctx, "gateway-stop", "gw", "stop"); return err })
-	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", "doctrine", "--public-spectator=false", "--master-key-file", r.masterKey)
+	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", "doctrine", "--public-spectator=false")
 	if err != nil {
 		return err
 	}
@@ -352,7 +362,7 @@ func (r *releaseSmokeRun) loginCLI(ctx context.Context) error {
 	}
 	r.identity.UserID = creds.UserID
 	r.identity.CLISessionID = creds.CLISessionID
-	cfg.MasterKeyFile = r.masterKey
+	cfg.Keyring = r.agent.Keyring(fileSvc)
 	cliCert, err := auth.LoadCLICertificate(fileSvc, cfg)
 	if err != nil {
 		return err
@@ -370,7 +380,7 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 		return err
 	}
 	trust := cfg.ResolvedTrustBundlePath()
-	out, err := r.ztd(ctx, "deploy-worker", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", r.workerRoot, "--background", "--approve", "--capabilities", "data", "--trust-bundle", trust, "--master-key-file", r.masterKey, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https))
+	out, err := r.ztd(ctx, "deploy-worker", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", r.workerRoot, "--background", "--approve", "--capabilities", "data", "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https))
 	if err != nil {
 		return err
 	}
@@ -436,7 +446,7 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if err != nil {
 		return err
 	}
-	record, err := storage.ReadLocalActionReceipt(fileSvc, slog.Default(), r.masterKey, tx)
+	record, err := storage.ReadLocalActionReceipt(fileSvc, slog.Default(), keystore.Options{Keyring: r.agent.Keyring(fileSvc)}, tx)
 	if err != nil {
 		return err
 	}
@@ -630,7 +640,7 @@ func (r *releaseSmokeRun) exportReports(ctx context.Context) error {
 	var reportErrs []error
 	for _, target := range []struct{ name, root string }{{"gateway", r.gwRoot}, {"worker", r.workerRoot}} {
 		out := filepath.Join(r.reportsDir, target.name)
-		if _, err := r.ztd(ctx, "report-"+target.name, r.gwRoot, "report", "all", "--runtime-dir", filepath.Join(target.root, constants.RuntimeDirname), "--out", out, "--master-key-file", r.masterKey); err != nil {
+		if _, err := r.ztd(ctx, "report-"+target.name, r.gwRoot, "report", "all", "--runtime-dir", filepath.Join(target.root, constants.RuntimeDirname), "--out", out); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -684,17 +694,17 @@ func (r *releaseSmokeRun) embeddedFileTransactions() []string {
 	return nil
 }
 func (r *releaseSmokeRun) ztdGateway(ctx context.Context, name string, args ...string) (string, error) {
-	return r.ztd(ctx, name, r.gwRoot, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https), "--master-key-file", r.masterKey}, args...)...)
+	return r.ztd(ctx, name, r.gwRoot, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https)}, args...)...)
 }
 func (r *releaseSmokeRun) ztd(ctx context.Context, name, dir string, args ...string) (string, error) {
 	argv := append([]string{r.opts.ZtdBin}, args...)
 	prefix := filepath.Join(r.logDir, name)
-	p, err := r.owner.start(name, dir, prefix, argv, nil)
+	p, err := r.owner.start(name, dir, prefix, argv, r.agent.Env())
 	if err != nil {
 		return "", err
 	}
 	waitErr := r.owner.wait(ctx, p)
-	r.summary.Commands = append(r.summary.Commands, releaseSmokeCommand{Name: name, Argv: redactArgv(argv), ExitCode: smokeExitCode(waitErr), StdoutLog: p.stdoutPath, StderrLog: prefix + ".stderr.log"})
+	r.summary.Commands = append(r.summary.Commands, releaseSmokeCommand{Name: name, Argv: argv, ExitCode: smokeExitCode(waitErr), StdoutLog: p.stdoutPath, StderrLog: prefix + ".stderr.log"})
 	out, readErr := os.ReadFile(p.stdoutPath)
 	if waitErr != nil {
 		return string(out), fmt.Errorf("command %s: %w", name, waitErr)
@@ -711,15 +721,6 @@ func (r *releaseSmokeRun) writeSummary() error {
 		return err
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o600)
-}
-func redactArgv(argv []string) []string {
-	out := append([]string(nil), argv...)
-	for i := 0; i+1 < len(out); i++ {
-		if out[i] == "--master-key-file" {
-			out[i+1] = "<run-master-key>"
-		}
-	}
-	return out
 }
 func parseSmokeDeploySession(out, dir string) (string, error) {
 	for _, line := range strings.Split(out, "\n") {

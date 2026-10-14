@@ -111,6 +111,19 @@ func (m Model) applyApprovalOpenedMsg(msg ApprovalOpenedMsg) Model {
 	return m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: fmt.Sprintf("Opened browser for WebAuthn approval of tx %s: %s", shortHash(msg.TxHash), msg.URL)})
 }
 
+// applyApprovalDeniedMsg reports a human deny. The signed L3_DENIED receipt
+// ends the transaction, so there is no approval to verify; pending approvals
+// are re-listed.
+func (m Model) applyApprovalDeniedMsg(msg ApprovalCompletedMsg) (tea.Model, tea.Cmd) {
+	delete(m.awaitingApproval, msg.TxHash)
+	m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusFailed, TxID: msg.TxHash, Detail: "Denied"})
+	m = m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: fmt.Sprintf("✗ Transaction %s denied (signed L3_DENIED receipt)", shortHash(msg.TxHash))})
+	if m.gw == nil {
+		return m, nil
+	}
+	return m, withTimeout(m.gw.fetchPendingApprovals)
+}
+
 // applyApprovalVerifiedMsg reports the verified outcome and re-lists pending
 // approvals.
 func (m Model) applyApprovalVerifiedMsg(msg ApprovalVerifiedMsg) (tea.Model, tea.Cmd) {

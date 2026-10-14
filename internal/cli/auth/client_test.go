@@ -215,7 +215,7 @@ func newAuthTestEnv(t *testing.T) (fs.RuntimeFileService, *config.Config) {
 		ProjectRoot:   runtimeDir,
 		RuntimeDir:    runtimeDir,
 		Paths:         &config.PathsConfig{Host: "localhost"},
-		MasterKeyFile: keystoretest.ProvisionMasterKeyFile(t),
+		Keyring:     keystoretest.NewMemoryKeyring(),
 	}
 	return fileSvc, cfg
 }

@@ -54,8 +54,9 @@ func (f *fakeDriver) Drive(_ context.Context, a cases.Attempt) (cases.Driven, er
 
 // waitRecord is one call the fake approval stream received.
 type waitRecord struct {
-	txHash string
-	userID string
+	txHash   string
+	userID   string
+	decision client.ApprovalDecision
 }
 
 // fakeApprovals is the approval subscriber and the stream it opens. It records each
@@ -82,9 +83,9 @@ func (f *fakeApprovals) Subscribe(_ context.Context, p client.Persona) (approval
 	return f, nil
 }
 
-func (f *fakeApprovals) Wait(_ context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+func (f *fakeApprovals) Wait(_ context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.ActionReceipt, error) {
 	f.log.add("wait")
-	f.waits = append(f.waits, waitRecord{txHash: txHash, userID: userID})
+	f.waits = append(f.waits, waitRecord{txHash: txHash, userID: userID, decision: decision})
 	if f.onWait != nil {
 		f.onWait()
 	}
@@ -312,6 +313,33 @@ func TestAttendedApproveReturnsOneReceipt(t *testing.T) {
 	require.Len(t, fa.waits, 1)
 	assert.Equal(t, "tx-hash-1", fa.waits[0].txHash, "the wait must watch the suspended transaction")
 	assert.Equal(t, "user-approver", fa.waits[0].userID)
+	assert.Equal(t, client.ApprovalDecisionApprove, fa.waits[0].decision, "row 24 asks the human to approve")
+}
+
+// TestAttendedDenyReturnsSignedRejection checks row 25: the banner asks the human to
+// deny, and the Operator-signed L3_DENIED receipt replaces the suspension as a
+// REJECTION observation.
+func TestAttendedDenyReturnsSignedRejection(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionHash: "tx-hash-1",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+		Signature:       "sig-deny",
+	}
+	inner := &fakeDriver{driven: suspendedDriven("tx-hash-1")}
+	fa := &fakeApprovals{receipt: receipt}
+
+	driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), attendedCase(cases.FaultAttendedDeny))
+	require.NoError(t, err)
+
+	require.Len(t, driven.Observations, 1)
+	obs := driven.Observations[0]
+	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind())
+	assert.Nil(t, obs.GetReceipt(), "a deny is never reported as an executed receipt")
+	assert.True(t, proto.Equal(receipt, obs.GetRejection().GetReceipt()), "the signed deny must be the rejection evidence")
+	require.Len(t, fa.waits, 1)
+	assert.Equal(t, client.ApprovalDecisionDeny, fa.waits[0].decision, "row 25 asks the human to deny")
 }
 
 // TestAttendedWaitErrorIsReturned checks that a failed approval wait is an error,

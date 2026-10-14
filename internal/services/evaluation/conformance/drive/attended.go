@@ -13,6 +13,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -21,8 +22,9 @@ import (
 // approvalStream is one open approval subscription. The driver opens it before the
 // attended call is submitted, waits on it once the call suspends, and closes it.
 type approvalStream interface {
-	// Wait blocks until the human decides on txHash and returns the resumed, signed receipt.
-	Wait(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error)
+	// Wait asks the human for decision on txHash, blocks until the human decides, and
+	// returns the signed receipt: resumed on approve, L3_DENIED rejection on deny.
+	Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.ActionReceipt, error)
 	// Close ends the subscription.
 	Close()
 }
@@ -55,8 +57,8 @@ type bannerStream struct {
 }
 
 // Wait prints the banner for txHash and waits for the human decision.
-func (s bannerStream) Wait(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
-	return s.c.WaitForApproval(ctx, s.sub, txHash, userID)
+func (s bannerStream) Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.ActionReceipt, error) {
+	return s.c.WaitForApproval(ctx, s.sub, txHash, userID, decision)
 }
 
 // Close ends the subscription.
@@ -67,8 +69,9 @@ func (s bannerStream) Close() {
 // Attended wraps the MCP or A2A driver. Cases with Attended=false pass through
 // unchanged. T23 wraps the drivers only for an attended run.
 //
-// The approve or deny decision is the human's. The driver never approves anything
-// itself: it waits for the decision over SSE and reports what the Gateway resumed.
+// The approve or deny decision is the human's. The driver never approves or denies
+// anything itself: the banner asks for the decision the case names, and the driver
+// waits for it over SSE and reports the signed receipt the decision produced.
 type Attended struct {
 	inner          cases.Driver
 	persona        client.Persona
@@ -88,10 +91,9 @@ func NewAttended(inner cases.Driver, c *client.Client, p client.Persona, approve
 
 // Drive subscribes to approvals, then submits the attempt through the inner driver.
 // For an attended case whose submission is suspended, it waits for the human decision
-// and returns the resumed receipt in place of the suspension (row 24, approve). Every
-// other answer is returned as the inner driver gave it. Every attended case in the
-// catalogue is row 24: row 25 (deny) and row 26 (L3 via arguments) are gaps, so there
-// is no deny path here.
+// and returns it in place of the suspension: the resumed receipt on approve (row 24),
+// or the Operator-signed L3_DENIED rejection on deny (row 25). Every other answer is
+// returned as the inner driver gave it.
 func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) {
 	if !a.Case.Attended {
 		return d.inner.Drive(ctx, a)
@@ -121,7 +123,11 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 	if onA2A {
 		a2a.stub.Begin(a.AttemptID)
 	}
-	receipt, waitErr := stream.Wait(ctx, txHash, d.approverUserID)
+	decision := client.ApprovalDecisionApprove
+	if a.Case.Fault == cases.FaultAttendedDeny {
+		decision = client.ApprovalDecisionDeny
+	}
+	receipt, waitErr := stream.Wait(ctx, txHash, d.approverUserID, decision)
 	var waitCalls []*evalv1.ConformanceA2ACall
 	if onA2A {
 		waitCalls = a2a.stub.End(a.AttemptID)
@@ -131,12 +137,25 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 	}
 
 	return cases.Driven{
-		Observations: []*evalv1.ConformanceObservation{{
-			Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
-			Receipt: receipt,
-		}},
-		A2ACalls: append(append([]*evalv1.ConformanceA2ACall{}, driven.A2ACalls...), waitCalls...),
+		Observations: []*evalv1.ConformanceObservation{decisionObservation(receipt)},
+		A2ACalls:     append(append([]*evalv1.ConformanceA2ACall{}, driven.A2ACalls...), waitCalls...),
 	}, nil
+}
+
+// decisionObservation records the signed receipt of a human decision. A governance
+// rejection (the L3_DENIED deny) is a REJECTION, as every ingress reports one; any
+// other receipt is a RECEIPT.
+func decisionObservation(receipt *operatorv1.ActionReceipt) *evalv1.ConformanceObservation {
+	if governance.IsGovernanceRejectionReceipt(receipt) {
+		return &evalv1.ConformanceObservation{
+			Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
+			Rejection: &operatorv1.GovernanceRejection{Error: receipt.GetRejectionCode().String(), Receipt: receipt},
+		}
+	}
+	return &evalv1.ConformanceObservation{
+		Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+		Receipt: receipt,
+	}
 }
 
 // isSuspendedOnly reports whether driven is exactly one SUSPENDED observation.

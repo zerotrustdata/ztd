@@ -57,7 +57,7 @@ func (d *A2A) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) 
 // a2aPayload maps a fault to the skill payload that submits it.
 func a2aPayload(a cases.Attempt) (client.SkillPayload, error) {
 	switch a.Case.Fault {
-	case cases.FaultNone, cases.FaultUnattendedMutation, cases.FaultAttendedApprove:
+	case cases.FaultNone, cases.FaultUnattendedMutation, cases.FaultAttendedApprove, cases.FaultAttendedDeny:
 		return client.MarkerSkillPayload{Marker: a.Marker}, nil
 	case cases.FaultDoctrine:
 		return client.CommandSkillPayload{Cmd: a.Case.Command}, nil

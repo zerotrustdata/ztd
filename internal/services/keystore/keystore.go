@@ -49,17 +49,14 @@ type EncryptedSecret struct {
 	Ciphertext []byte `json:"ciphertext"`
 }
 
-// Options selects where the master key lives. A blank value uses the
+// Options selects where the master key lives. A nil Keyring uses the
 // platform's OS-protected store: the Linux Secret Service or ssh-agent seal,
 // the macOS Keychain, or Windows DPAPI. No unprotected fallback key is
-// generated.
+// generated, and there is no master key file.
 type Options struct {
-	// MasterKeyFile is an absolute path to an operator-provisioned master key
-	// (base64 of 32 random bytes), such as a secret mount, passed via
-	// --master-key-file. It must live outside the runtime directory and is
-	// never written by ztd. A nonblank trimmed value selects the file; blank
-	// means unset and selects the OS keyring.
-	MasterKeyFile string
+	// Keyring is an explicit master key store. Production leaves it nil;
+	// tests pass an isolated in-memory keyring (keystoretest.NewMemoryKeyring).
+	Keyring Keyring
 }
 
 // Keystore provides OS-protected key storage and encryption for platform secrets.
@@ -86,7 +83,7 @@ func NewWithKeyringAndFS(logger *slog.Logger, keyring Keyring, fileSvc fs.Runtim
 	}, nil
 }
 
-const masterKeyProvisioning = "provision an external master key with --master-key-file"
+const masterKeyProvisioning = "unlock the OS key store, or on Linux load an Ed25519 or RSA key into ssh-agent"
 
 // NewWithFS creates a Keystore backed by the master key store that opts
 // selects. It fails closed when no OS-protected store is available.
@@ -94,15 +91,9 @@ func NewWithFS(fileSvc fs.RuntimeFileService, logger *slog.Logger, opts Options)
 	if fileSvc == nil {
 		return nil, fmt.Errorf("keystore: %w: runtime file service", constants.ErrMissingRequiredField)
 	}
-	masterKeyFile := strings.TrimSpace(opts.MasterKeyFile)
-	var keyring Keyring
-	var err error
-	if masterKeyFile != "" {
-		keyring, err = newExternalFileKeyring(fileSvc, masterKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("keystore: %w", err)
-		}
-	} else {
+	keyring := opts.Keyring
+	if keyring == nil {
+		var err error
 		keyring, err = platformKeyring(fileSvc)
 		if err != nil {
 			return nil, fmt.Errorf("keystore: %w: %w (%s)", constants.ErrKeyStoreOSKeyringRequired, err, masterKeyProvisioning)

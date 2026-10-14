@@ -98,7 +98,7 @@ func (m *MCP) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) 
 // mcpCall maps a fault to the tool and arguments that submit it.
 func mcpCall(a cases.Attempt) (string, client.ToolArgs, error) {
 	switch a.Case.Fault {
-	case cases.FaultNone, cases.FaultUnattendedMutation, cases.FaultAttendedApprove:
+	case cases.FaultNone, cases.FaultUnattendedMutation, cases.FaultAttendedApprove, cases.FaultAttendedDeny:
 		argv := cases.MarkerArgv(a)
 		return mcpShellTool, client.ShellCommandArgs{Command: argv[0], Args: argv[1:]}, nil
 	case cases.FaultReadBaseline:

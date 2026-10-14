@@ -66,7 +66,6 @@ type GatewayFlags struct {
 	PKIDir             string
 	SecretsDir         string
 	VaultDir           string
-	MasterKeyFile      string
 	PasskeyRpID        string
 	PasskeyRpName      string
 	PasskeyRpOrigins   []string
@@ -113,7 +112,6 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringVar(&f.PKIDir, "pki-dir", "", fmt.Sprintf("Directory for TLS certificates (default: %s)", constants.DefaultPKIDir))
 	cmd.Flags().StringVar(&f.SecretsDir, "secrets-dir", "", fmt.Sprintf("Directory for platform secrets (default: %s)", constants.DefaultSecretsDir))
 	cmd.Flags().StringVar(&f.VaultDir, "vault-dir", "", fmt.Sprintf("Directory for vault data (default: %s)", constants.DefaultVaultDirDesc))
-	cmd.Flags().StringVar(&f.MasterKeyFile, "master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
 	cmd.Flags().StringVar(&f.PasskeyRpID, "passkey-rp-id", "", "RP ID for passkey operations (default: localhost)")
 	cmd.Flags().StringVar(&f.PasskeyRpName, "passkey-rp-name", "", "RP Name for passkey operations (default: ztd)")
 	cmd.Flags().StringArrayVar(&f.PasskeyRpOrigins, "passkey-rp-origin", nil, "Additional RP origin for passkey operations (repeatable, e.g. http://localhost:8087)")
@@ -144,7 +142,6 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 // flag-only, except that the user_endpoint ZTD_OLLAMA_ENDPOINT supplies
 // --inference-ollama-endpoint when the flag is blank.
 func resolveGatewayFlags(f GatewayFlags) GatewayFlags {
-	f.MasterKeyFile = strings.TrimSpace(f.MasterKeyFile)
 	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint)
 	return f
 }
@@ -168,7 +165,6 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		PKIDir:                             f.PKIDir,
 		SecretsDir:                         f.SecretsDir,
 		VaultDir:                           f.VaultDir,
-		MasterKeyFile:                      f.MasterKeyFile,
 		PasskeyRpID:                        f.PasskeyRpID,
 		PasskeyRpName:                      f.PasskeyRpName,
 		PasskeyRpOrigins:                   f.PasskeyRpOrigins,

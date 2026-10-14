@@ -150,7 +150,7 @@
         },
         "/api/v1/approvals/respond": {
             "post": {
-                "description": "Records a direct deny decision for a suspended transaction owned by the caller. Under ratify or\nnotary posture a CLI caller must present an mTLS client certificate and a web caller must hold a\nregistered passkey. `approved: true` is always rejected with 403: approval requires a WebAuthn\nassertion through `/api/v1/approvals/{txHash}/verify`.",
+                "description": "Denies a suspended transaction owned by the caller. The envelope is re-submitted to its executing\nOperator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and\nL5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to\nthe CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must\npresent an mTLS client certificate and a web caller must hold a registered passkey.\n`approved: true` is always rejected with 403: approval requires a WebAuthn assertion through\n`/api/v1/approvals/{txHash}/verify`.",
                 "consumes": [
                     "application/json"
                 ],
@@ -174,9 +174,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of the deny",
                         "schema": {
-                            "$ref": "#/definitions/models.ApprovalRespondResponse"
+                            "$ref": "#/definitions/operatorv1.ActionReceipt"
                         }
                     },
                     "400": {
@@ -199,6 +199,18 @@
                     },
                     "404": {
                         "description": "Transaction not found or expired",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "The deny produced no signed rejection receipt",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable — runtime vault locked; the deny can be resubmitted",
                         "schema": {
                             "type": "string"
                         }
@@ -3067,20 +3079,6 @@
                 }
             }
         },
-        "models.ApprovalRespondResponse": {
-            "type": "object",
-            "properties": {
-                "approval_id": {
-                    "type": "string"
-                },
-                "approved": {
-                    "type": "boolean"
-                },
-                "success": {
-                    "type": "boolean"
-                }
-            }
-        },
         "models.AuditReceiptsResponse": {
             "type": "object",
             "properties": {
@@ -4888,7 +4886,8 @@
                 20,
                 21,
                 22,
-                23
+                23,
+                24
             ],
             "x-enum-varnames": [
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED",
@@ -4914,7 +4913,8 @@
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER",
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING",
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID",
-                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN"
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED"
             ]
         },
         "operatorv1.GovernedDispatchResult": {

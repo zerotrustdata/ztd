@@ -50,7 +50,7 @@ func newSealedRuntime(t *testing.T) *sealedRuntime {
 	raw, err := rtfs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
 	require.NoError(t, raw.CreateRuntimeTree(context.Background()))
-	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{MasterKeyFile: keystoretest.ProvisionMasterKeyFile(t)})
+	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{Keyring: keystoretest.NewMemoryKeyring()})
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())

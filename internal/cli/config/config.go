@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/pathutil"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
 
@@ -81,10 +82,10 @@ type Config struct {
 	PKIDir      string
 	SecretsDir  string
 	Paths       *PathsConfig
-	// MasterKeyFile is the operator-provisioned master key (--master-key-file)
-	// that seals the client identity keys under the runtime tree. Blank selects
-	// the OS key store; there is no plaintext fallback.
-	MasterKeyFile string
+	// Keyring holds the master key that seals the client identity keys under
+	// the runtime tree. Nil selects the OS key store; tests inject an isolated
+	// in-memory keyring. There is no plaintext fallback.
+	Keyring keystore.Keyring
 }
 
 // Load initializes CLI configuration from the current working directory.
@@ -123,32 +124,7 @@ func Load(projectRoot string) (*Config, error) {
 		PKIDir:      paths.Infra.PkiDir,
 		SecretsDir:  paths.Infra.SecretsDir,
 		Paths:       &pathsCfg,
-
-		MasterKeyFile: MasterKeyFileOverride(),
 	}, nil
-}
-
-// masterKeyFileMu guards masterKeyFileOverride.
-var masterKeyFileMu sync.RWMutex
-
-// masterKeyFileOverride is set by the --master-key-file flag so every Config
-// loaded for the command seals and unseals client identity keys under the same
-// master key as the runtime tree.
-var masterKeyFileOverride string
-
-// SetMasterKeyFileOverride selects the operator-provisioned master key file for
-// client identity keys. A blank path selects the OS key store.
-func SetMasterKeyFileOverride(path string) {
-	masterKeyFileMu.Lock()
-	defer masterKeyFileMu.Unlock()
-	masterKeyFileOverride = strings.TrimSpace(path)
-}
-
-// MasterKeyFileOverride returns the path set by SetMasterKeyFileOverride.
-func MasterKeyFileOverride() string {
-	masterKeyFileMu.RLock()
-	defer masterKeyFileMu.RUnlock()
-	return masterKeyFileOverride
 }
 
 // DefaultTrustBundleRelPath returns the trust bundle path relative to the

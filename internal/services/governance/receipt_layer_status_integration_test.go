@@ -11,15 +11,18 @@ package governance
 
 import (
 	"context"
+	"crypto/ed25519"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -168,4 +171,29 @@ func TestReceiptPostureUndecidedLayerFailsClosedBeforeDispatch(t *testing.T) {
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
 		})
 	}
+}
+
+// TestReceiptPostureDeniedL3IsSignedRejectionAndSpendsTheNonce verifies that a
+// human deny is rejected at L4 with L3_DENIED even when a valid proof would pass,
+// that the runtime signs the rejection, and that the denied transaction can never
+// run afterwards: the same envelope with a valid proof is a replay.
+func TestReceiptPostureDeniedL3IsSignedRejectionAndSpendsTheNonce(t *testing.T) {
+	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
+	actuator, _ := newReceiptPostureActuator(t)
+	env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "ratify")
+	approved := proto.Clone(env.Governance.GetL3()).(*commonv1.L3Metadata)
+	env.Governance.L3 = &commonv1.L3Metadata{Denied: true}
+
+	verified, err := verifier.VerifyEnvelope(context.Background(), env)
+	require.ErrorIs(t, err, constants.ErrTxL3Denied)
+	require.NotNil(t, verified, "a deny must reach L5 as a rejection to sign")
+	receipt, err := actuator.RecordRejectedTransaction(context.Background(), verified, err)
+	require.NoError(t, err)
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
+	assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED, receipt.GetL3Status())
+	assert.NoError(t, VerifyActionReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
+
+	env.Governance.L3 = approved
+	_, err = verifier.VerifyEnvelope(context.Background(), env)
+	require.ErrorIs(t, err, constants.ErrTxTransactionReplay, "a denied transaction must never execute later")
 }

@@ -196,13 +196,6 @@ func TestParseDeploySessionReadsOnlyThisWorker(t *testing.T) {
 	}
 }
 
-func TestRedactArgvHidesMasterKeyPath(t *testing.T) {
-	got := redactArgv([]string{"ztd", "report", "--master-key-file", "/run/secrets/master.key"})
-	if got[3] != "<run-master-key>" || strings.Contains(strings.Join(got, " "), "master.key") {
-		t.Fatalf("key path not redacted: %v", got)
-	}
-}
-
 func TestExecuteRunsCleanupsAndWritesFailedSummary(t *testing.T) {
 	runDir := filepath.Join(testutil.TempDir(t), "new-run")
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: runDir})

@@ -170,7 +170,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if b.db != nil {
 		db = b.db
 	} else {
-		ks, ksErr := keystore.Open(b.fileSvc, logger, keystore.Options{MasterKeyFile: cfg.Gateway.MasterKeyFile})
+		ks, ksErr := keystore.Open(b.fileSvc, logger, keystore.Options{Keyring: cfg.Gateway.Keyring})
 		if ksErr != nil {
 			return nil, fmt.Errorf("gateway: open keystore: %w", ksErr)
 		}

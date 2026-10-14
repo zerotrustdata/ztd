@@ -537,14 +537,26 @@ func (l *tierLoader) fail(err error) {
 	}
 }
 
-// newStubPackage returns an empty, complete package standing in for an import
-// the check does not read from source.
+// newStubPackage returns a complete package standing in for an import the
+// check does not read from source. It is empty except for the seed receiver
+// types of tierSeedMethods, so a method call on one of them resolves.
 func newStubPackage(importPath string) *types.Package {
 	name := path.Base(importPath)
 	if i := strings.IndexByte(name, '.'); i > 0 {
 		name = name[:i] // gopkg.in/yaml.v3 -> yaml
 	}
 	pkg := types.NewPackage(importPath, name)
+	for recv, methods := range tierSeedMethods[importPath] {
+		obj := types.NewTypeName(token.NoPos, pkg, recv, nil)
+		named := types.NewNamed(obj, types.NewStruct(nil, nil), nil)
+		pkg.Scope().Insert(obj)
+		for _, method := range methods {
+			// Arguments and results are not modeled; the type errors at the
+			// call are tolerated and the selection still resolves.
+			sig := types.NewSignatureType(types.NewVar(token.NoPos, pkg, "", types.NewPointer(named)), nil, nil, nil, nil, false)
+			named.AddMethod(types.NewFunc(token.NoPos, pkg, method, sig))
+		}
+	}
 	pkg.MarkComplete()
 	return pkg
 }
@@ -650,18 +662,37 @@ func tierImports(file *ast.File) map[string]string {
 	return imports
 }
 
+// tierSeedMethods are the standard-library methods that open a listener or
+// dial, by import path and receiver type name.
+var tierSeedMethods = map[string]map[string][]string{
+	"net": {
+		"Dialer":       {"Dial", "DialContext"},
+		"ListenConfig": {"Listen", "ListenPacket"},
+	},
+	"crypto/tls": {
+		"Dialer": {"Dial", "DialContext"},
+	},
+	"net/http": {
+		"Server": {"ListenAndServe", "ListenAndServeTLS", "Serve", "ServeTLS"},
+	},
+	"net/http/httptest": {
+		"Server": {"Start", "StartTLS"},
+	},
+}
+
 // tierIsSeed reports whether id is a direct listener or dialer in the standard
-// library. The seed list is the original direct-call list: package-level
-// functions only.
+// library: a package-level function, or a method in tierSeedMethods.
 func tierIsSeed(id tierFuncID) bool {
 	if id.recv != "" {
-		return false
+		return slices.Contains(tierSeedMethods[id.pkg][id.recv], id.name)
 	}
 	switch id.pkg {
 	case "net":
 		return strings.HasPrefix(id.name, "Listen") || strings.HasPrefix(id.name, "Dial")
+	case "crypto/tls":
+		return id.name == "Listen" || id.name == "Dial" || id.name == "DialWithDialer"
 	case "net/http":
-		return id.name == "ListenAndServe" || id.name == "ListenAndServeTLS"
+		return id.name == "ListenAndServe" || id.name == "ListenAndServeTLS" || id.name == "Serve" || id.name == "ServeTLS"
 	case "net/http/httptest":
 		return id.name == "NewServer" || id.name == "NewTLSServer" || id.name == "NewUnstartedServer"
 	}
@@ -919,6 +950,46 @@ func TestTestTiersResolverFollowsHelpersToListeners(t *testing.T) {
 				"internal/drive/a_test.go":      "package drive\n\nimport (\n\t\"example.com/m/internal/prod\"\n\t\"testing\"\n)\n\nfunc TestPort(t *testing.T) {\n\tprod.OpenPort()\n}\n",
 			},
 			want: []string{"prod.OpenPort → net.Listen (INV-TEST-RUN-02)"},
+		},
+		{
+			name: "tls and http package-level listeners and dialers are seeds",
+			files: map[string]string{
+				"internal/drive/a_test.go": "package drive\n\nimport (\n\t\"crypto/tls\"\n\t\"net/http\"\n\t\"testing\"\n)\n\nfunc TestPackageSeeds(t *testing.T) {\n\ttls.Listen(\"tcp\", \"127.0.0.1:0\", nil)\n\ttls.Dial(\"tcp\", \"127.0.0.1:1\", nil)\n\ttls.DialWithDialer(nil, \"tcp\", \"127.0.0.1:1\", nil)\n\thttp.Serve(nil, nil)\n\thttp.ServeTLS(nil, nil, \"\", \"\")\n}\n",
+			},
+			want: []string{
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+			},
+		},
+		{
+			name: "listener and dialer methods are seeds",
+			files: map[string]string{
+				"internal/drive/a_test.go": "package drive\n\nimport (\n\t\"context\"\n\t\"crypto/tls\"\n\t\"net\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"testing\"\n)\n\nfunc TestMethodSeeds(t *testing.T) {\n\tsrv := &http.Server{Addr: \"127.0.0.1:0\"}\n\tgo srv.ListenAndServe()\n\tvar d net.Dialer\n\td.DialContext(context.Background(), \"tcp\", \"127.0.0.1:1\")\n\tvar lc net.ListenConfig\n\tlc.Listen(context.Background(), \"tcp\", \"127.0.0.1:0\")\n\ttd := &tls.Dialer{}\n\ttd.Dial(\"tcp\", \"127.0.0.1:1\")\n\tts := &httptest.Server{}\n\tts.StartTLS()\n}\n",
+			},
+			want: []string{
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+				"socket tests require integration or e2e build tags",
+			},
+		},
+		{
+			name: "server method reached through a module helper is reported",
+			files: map[string]string{
+				"internal/prod/prod.go":    "package prod\n\nimport \"net/http\"\n\ntype Front struct{ *http.Server }\n\nfunc (f *Front) Run() {\n\tf.Serve(nil)\n}\n",
+				"internal/drive/a_test.go": "package drive\n\nimport (\n\t\"example.com/m/internal/prod\"\n\t\"testing\"\n)\n\nfunc TestRun(t *testing.T) {\n\tf := &prod.Front{}\n\tf.Run()\n}\n",
+			},
+			want: []string{"f.Run → http.Server.Serve (INV-TEST-RUN-02)"},
+		},
+		{
+			name: "http.Server Shutdown is not a seed",
+			files: map[string]string{
+				"internal/drive/a_test.go": "package drive\n\nimport (\n\t\"net/http\"\n\t\"testing\"\n)\n\nfunc TestShutdown(t *testing.T) {\n\tsrv := &http.Server{}\n\tsrv.Close()\n}\n",
+			},
 		},
 		{
 			name: "call to an undefined helper is not reported",

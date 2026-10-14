@@ -126,6 +126,7 @@ The console is an untrusted presentation layer with zero cryptographic keys or s
 The Approvals view handles human-in-the-loop decisions:
 
 - `#approve=<tx_hash>`: Deep link that initiates a WebAuthn assertion ceremony over the suspended transaction hash. Successful assertion notifies the Gateway via `/api/v1/approvals/`.
+- **Deny** on a suspended transaction posts `{approval_id, approved: false}` to `POST /api/v1/approvals/respond`. It needs no passkey: the executing runtime's L4 rejects the resubmitted envelope with the signed `L3_DENIED` receipt, which the response returns.
 - `#recovery=<token>`: Reviews an operator or CLI recovery request (`POST /api/v1/auth/cli/recovery/approve`).
 - `#platform-enrollment=<id>`: Owner review of pending workload enrollment requests (`POST /api/v1/auth/platform-enrollments/decision`).
 

@@ -145,9 +145,11 @@ type ConnStatusMsg struct {
 
 // ApprovalCompletedMsg reports an approval.completed event for a suspended
 // L3 transaction. The event alone is not proof: the model verifies the
-// transaction's status over mTLS before reporting it approved.
+// transaction's status over mTLS before reporting it approved. Denied is set
+// when the event carries the Operator-signed L3_DENIED rejection receipt.
 type ApprovalCompletedMsg struct {
 	TxHash string
+	Denied bool
 }
 
 // ApprovalOpenedMsg reports that the browser WebAuthn approval page for a

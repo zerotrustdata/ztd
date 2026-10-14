@@ -34,6 +34,13 @@ import (
 // approval.completed SSE event for the test user and given transaction.
 func sseApproveServer(t *testing.T, txHash string) *httptest.Server {
 	t.Helper()
+	return sseDecisionServer(t, txHash, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED)
+}
+
+// sseDecisionServer serves one approval.completed event whose receipt carries
+// rejection, so a deny is the signed L3_DENIED receipt.
+func sseDecisionServer(t *testing.T, txHash string, rejection operatorv1.GovernanceRejectionCode) *httptest.Server {
+	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
@@ -41,6 +48,7 @@ func sseApproveServer(t *testing.T, txHash string) *httptest.Server {
 			TransactionHash: txHash,
 			SignerKeyId:     "warden-key-approve-test",
 			Signature:       "signature-approve-test",
+			RejectionCode:   rejection,
 		})
 		require.NoError(t, err)
 		eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
@@ -110,6 +118,27 @@ func TestApproveCmd_SSE_HappyPath(t *testing.T) {
 
 	assert.Contains(t, buf.String(), "approved successfully")
 	assert.Contains(t, buf.String(), "txhash123")
+}
+
+func TestApproveCmd_SSE_DenyIsNeverReportedApproved(t *testing.T) {
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+
+	srv := sseDecisionServer(t, "txhash123", operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)
+	t.Cleanup(srv.Close)
+	cmdtest.WithEndpointOverride(t, srv.URL)
+
+	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"status":"approved"}`)}
+	loader := func(string) (*config.Config, error) { return cfg, nil }
+	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
+
+	cmd := approveCmdWithConfig(loader, factory, cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err := cmd.RunE(cmd, []string{"txhash123"})
+	require.ErrorIs(t, err, constants.ErrTxL3Denied)
+	assert.NotContains(t, buf.String(), "approved successfully")
 }
 
 func TestApproveCmd_SSE_Timeout(t *testing.T) {

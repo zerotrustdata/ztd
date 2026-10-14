@@ -25,7 +25,6 @@ var EnvVar = struct {
 	E2EFleetRestartReport EnvVarKey
 	E2EGatewayHTTPPort    EnvVarKey
 	E2EGatewayHTTPSPort   EnvVarKey
-	E2EMasterKeyFile      EnvVarKey
 	Shell                 EnvVarKey
 	Lang                  EnvVarKey
 	Term                  EnvVarKey
@@ -34,6 +33,7 @@ var EnvVar = struct {
 	User                  EnvVarKey
 	SSHAuthSock           EnvVarKey
 	XDGRuntimeDir         EnvVarKey
+	DBusSessionBusAddress EnvVarKey
 	CloudflareAPIToken    EnvVarKey
 }{
 	OllamaEndpoint:        EnvVarKey("ZTD_OLLAMA_ENDPOINT"),
@@ -49,7 +49,6 @@ var EnvVar = struct {
 	E2EFleetRestartReport: EnvVarKey("ZTD_E2E_FLEET_RESTART_REPORT"),
 	E2EGatewayHTTPPort:    EnvVarKey("ZTD_E2E_GATEWAY_HTTP_PORT"),
 	E2EGatewayHTTPSPort:   EnvVarKey("ZTD_E2E_GATEWAY_HTTPS_PORT"),
-	E2EMasterKeyFile:      EnvVarKey("ZTD_E2E_MASTER_KEY_FILE"),
 	Shell:                 EnvVarKey("SHELL"),
 	Lang:                  EnvVarKey("LANG"),
 	Term:                  EnvVarKey("TERM"),
@@ -58,6 +57,7 @@ var EnvVar = struct {
 	User:                  EnvVarKey("USER"),
 	SSHAuthSock:           EnvVarKey("SSH_AUTH_SOCK"),
 	XDGRuntimeDir:         EnvVarKey("XDG_RUNTIME_DIR"),
+	DBusSessionBusAddress: EnvVarKey("DBUS_SESSION_BUS_ADDRESS"),
 	CloudflareAPIToken:    EnvVarKey("CLOUDFLARE_API_TOKEN"),
 }
 

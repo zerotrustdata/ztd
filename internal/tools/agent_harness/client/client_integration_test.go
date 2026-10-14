@@ -570,7 +570,7 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := client.WaitForApproval(ctx, sub, txHash, userID)
+	receipt, err := client.WaitForApproval(ctx, sub, txHash, userID, ApprovalDecisionApprove)
 	require.NoError(t, err)
 	assert.Equal(t, txHash, receipt.GetTransactionHash())
 }

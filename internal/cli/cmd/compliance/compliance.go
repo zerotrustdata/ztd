@@ -46,7 +46,7 @@ evaluation snapshots for historical metrics.`,
 	}
 
 	cmd.AddCommand(
-		complianceKSICmdWithConfig(shared.NewFileSvc),
+		complianceKSICmdWithConfig(shared.NewFileSvc, keystore.Options{}),
 		complianceKSIHistoryCmdWithConfig(shared.NewFileSvc),
 		complianceOverlayCmdWithConfig(shared.NewFileSvc),
 		complianceReleaseEvidenceProjectionCmdWithConfig(loadComplianceReportBundleInput, compliancereport.VerifyComplianceReportBundle, time.Now),
@@ -61,7 +61,7 @@ evaluation snapshots for historical metrics.`,
 
 // complianceKSICmdWithConfig creates the `compliance ksi` subcommand with
 // injectable dependencies for testing.
-func complianceKSICmdWithConfig(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
+func complianceKSICmdWithConfig(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), ksOpts keystore.Options) *cobra.Command {
 	var class string
 	var catalogPath string
 	var scopeID string
@@ -72,7 +72,6 @@ func complianceKSICmdWithConfig(fileSvcFactory func(string, *slog.Logger) (fs.Ru
 	var actionIDs []string
 	var evidenceWindowStartUnixMs int64
 	var evidenceWindowEndUnixMs int64
-	var masterKeyFile string
 
 	cmd := &cobra.Command{
 		Use:   "ksi",
@@ -107,7 +106,7 @@ prove no result was produced from evidence outside the assessment context.`,
 			}
 			// Opened without Initialize so evaluation never generates a master
 			// key. Without a usable key store evaluation fails closed.
-			ks, ksErr := keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{MasterKeyFile: masterKeyFile})
+			ks, ksErr := keystore.NewWithFS(fileSvc, slog.Default(), ksOpts)
 			if ksErr != nil {
 				return fmt.Errorf("%w: open key store: %w", constants.ErrVaultKeyReadFailed, ksErr)
 			}
@@ -144,7 +143,6 @@ prove no result was produced from evidence outside the assessment context.`,
 	cmd.Flags().StringSliceVar(&actionIDs, "action-id", nil, "Allowed evidence action or transaction ID (repeatable)")
 	cmd.Flags().Int64Var(&evidenceWindowStartUnixMs, "evidence-window-start-unix-ms", 0, "Inclusive start of the evidence collection interval in Unix milliseconds (required)")
 	cmd.Flags().Int64Var(&evidenceWindowEndUnixMs, "evidence-window-end-unix-ms", 0, "Inclusive end of the evidence collection interval in Unix milliseconds (required)")
-	cmd.Flags().StringVar(&masterKeyFile, "master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
 	_ = cmd.MarkFlagRequired("scope-id")
 	_ = cmd.MarkFlagRequired("run-id")
 	_ = cmd.MarkFlagRequired("assertion-assessment-id")
@@ -278,12 +276,12 @@ func openVault(ks *keystore.Keystore) (*vault.Vault, func(), error) {
 	return v, v.Lock, nil
 }
 
-// openRuntimeVault opens the runtime key store (the OS key store, or the
-// operator-provisioned master key file when masterKeyFile is set) without
-// initializing a new master key, then unlocks the vault through openVault.
+// openRuntimeVault opens the runtime key store opts selects (zero Options
+// select the OS key store) without initializing a new master key, then
+// unlocks the vault through openVault.
 // Commands that read encrypted runtime content call it and propagate its error.
-func openRuntimeVault(fileSvc fs.RuntimeFileService, masterKeyFile string) (*vault.Vault, func(), error) {
-	ks, err := keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{MasterKeyFile: masterKeyFile})
+func openRuntimeVault(fileSvc fs.RuntimeFileService, opts keystore.Options) (*vault.Vault, func(), error) {
+	ks, err := keystore.NewWithFS(fileSvc, slog.Default(), opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: open key store: %w", constants.ErrVaultKeyReadFailed, err)
 	}

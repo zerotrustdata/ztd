@@ -345,8 +345,12 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 			"tx_id", envelope.Id,
 			"posture", posture.Name(),
 			string(constants.ConnectionStateError), err)
-		// Release nonce reservation on posture validation failure
-		tv.releaseNonceReservation(envelope.Nonce)
+		// A missing or invalid proof can be retried, so its nonce is released.
+		// A human deny is final: the nonce stays spent so the denied
+		// transaction can never execute later on this runtime.
+		if !errors.Is(err, constants.ErrTxL3Denied) {
+			tv.releaseNonceReservation(envelope.Nonce)
+		}
 		stages = append(stages, postureStages...)
 		return reject(err)
 	}
@@ -667,6 +671,12 @@ func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture Governa
 }
 
 func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, posture GovernancePosture) (bool, error) {
+	// A human deny ends the transaction in every posture. It needs no proof:
+	// it can only stop execution, never authorize it.
+	if envelope.Governance.GetL3().GetDenied() {
+		return false, constants.ErrTxL3Denied
+	}
+
 	actionType := constants.ActionType(envelope.ActionType)
 	required := L3Required(actionType, posture)
 

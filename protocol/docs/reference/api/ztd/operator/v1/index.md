@@ -2970,6 +2970,7 @@ bound into the receipt signature.
 | GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING | 21 |  |
 | GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID | 22 |  |
 | GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN | 23 | The L2 proof names a consensus set that is unknown or disabled. |
+| GOVERNANCE_REJECTION_CODE_L3_DENIED | 24 | The human denied the suspended transaction at the L3 approval. |
 
 
 

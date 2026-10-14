@@ -236,7 +236,7 @@ Authentication admits a principal to a route. Authorization determines whether t
 | **L4 Warden** | Universal | Nonce reservation, replay prevention, hash integrity, Merkle root, proof verification |
 | **L5 Actuator** | Universal | JIT capability minting, payload rehydration, command dispatch, signed receipts |
 
-Gateway-mode L3 approval requires a WebAuthn assertion; there is no CLI-only approval on the Gateway. Denials can be submitted via `POST /api/v1/approvals/respond`.
+Gateway-mode L3 approval requires a WebAuthn assertion; there is no CLI-only approval on the Gateway. Denials are submitted via `POST /api/v1/approvals/respond` with `approved: false`. The Gateway resubmits the suspended envelope with `L3Metadata.denied` set; the executing runtime's L4 rejects it in every posture with `GOVERNANCE_REJECTION_CODE_L3_DENIED`, so the deny is an Operator-signed rejection receipt. The deny needs no proof because it can only stop execution, and `denied` is outside the transaction hash. The response and the `approval.completed` event both carry the signed receipt.
 
 ## Procedures
 

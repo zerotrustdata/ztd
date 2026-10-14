@@ -314,9 +314,20 @@ func (c *Client) SubscribeApprovals(ctx context.Context, p Persona) (*auth.Appro
 	return auth.SubscribeApprovals(ctx, sseHTTPClient, c.cfg.PublicBaseURL, p.CLISessionID)
 }
 
-// WaitForApproval prints the human approval banner for txHash, waits on sub for the
-// decision, and returns the resumed, signed receipt.
-func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+// ApprovalDecision is the decision the banner asks the human approver to make.
+type ApprovalDecision int
+
+const (
+	// ApprovalDecisionApprove asks the human to approve the transaction.
+	ApprovalDecisionApprove ApprovalDecision = iota
+	// ApprovalDecisionDeny asks the human to deny the transaction.
+	ApprovalDecisionDeny
+)
+
+// WaitForApproval prints the human approval banner for txHash, asking for decision,
+// waits on sub for the decision, and returns the signed receipt: the resumed
+// receipt on approve, or the L3_DENIED rejection receipt on deny.
+func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.ActionReceipt, error) {
 	// The human approver reaches the gateway from the host, which uses different
 	// host/ports than the harness process (container-internal). Prefer the
 	// host-reachable display URL for the printed link; fall back to PublicBaseURL
@@ -331,7 +342,11 @@ func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscrip
 
 	fmt.Fprintf(os.Stderr, "\n  ╔════════════════════════════════════════════════════════════╗\n")
 	fmt.Fprintf(os.Stderr, "  ║  HUMAN APPROVAL REQUIRED                                    ║\n")
-	fmt.Fprintf(os.Stderr, "  ║  Approve in your console (approval pushed via SSE):        ║\n")
+	if decision == ApprovalDecisionDeny {
+		fmt.Fprintf(os.Stderr, "  ║  DENY this transaction in your console (pushed via SSE):    ║\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "  ║  Approve in your console (approval pushed via SSE):        ║\n")
+	}
 	fmt.Fprintf(os.Stderr, "  ║  %s\n", consoleURL)
 	fmt.Fprintf(os.Stderr, "  ║  Or open this direct link as an alternative:                ║\n")
 	fmt.Fprintf(os.Stderr, "  ║  %s\n", approvalURL)
@@ -341,6 +356,10 @@ func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscrip
 	receipt, err := sub.Wait(ctx, txHash, userID)
 	if err != nil {
 		return nil, err
+	}
+	if receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		fmt.Fprintf(os.Stderr, "  ✗ Human denied transaction %s (signed L3_DENIED receipt)\n\n", txHash)
+		return receipt, nil
 	}
 	fmt.Fprintf(os.Stderr, "  ✓ Human approval confirmed for transaction %s\n\n", txHash)
 	return receipt, nil

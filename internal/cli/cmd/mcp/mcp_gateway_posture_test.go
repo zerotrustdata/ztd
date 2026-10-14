@@ -45,14 +45,6 @@ func TestValidateRequestedPosture(t *testing.T) {
 	}
 }
 
-func TestStartGatewayIfNeeded_RejectsInvalidPostureBeforeAnyWork(t *testing.T) {
-	err := startGatewayIfNeeded(func(string, *slog.Logger) (fs.RuntimeFileService, error) {
-		t.Fatal("file service must not be built for an invalid posture")
-		return nil, nil
-	}, "strict")
-	require.ErrorIs(t, err, constants.ErrInvalidPosture)
-}
-
 func TestResolveGatewayLaunchConfig(t *testing.T) {
 	existing := serve.GatewayConfig{
 		Posture:          ztdconfig.PostureConsensus,

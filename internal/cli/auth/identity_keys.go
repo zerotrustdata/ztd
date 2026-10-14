@@ -37,7 +37,7 @@ func openIdentityKeystore(fileSvc fs.RuntimeFileService, cfg *config.Config, cre
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: config is required to open the identity keystore", constants.ErrInternal)
 	}
-	opts := keystore.Options{MasterKeyFile: cfg.MasterKeyFile}
+	opts := keystore.Options{Keyring: cfg.Keyring}
 	// Every CLI request unseals the identity key, so keystore progress logging
 	// stays below warn level instead of printing on each command.
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))

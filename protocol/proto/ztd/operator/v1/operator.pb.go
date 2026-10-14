@@ -526,6 +526,8 @@ const (
 	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID          GovernanceRejectionCode = 22
 	// The L2 proof names a consensus set that is unknown or disabled.
 	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN GovernanceRejectionCode = 23
+	// The human denied the suspended transaction at the L3 approval.
+	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED GovernanceRejectionCode = 24
 )
 
 // Enum value maps for GovernanceRejectionCode.
@@ -555,6 +557,7 @@ var (
 		21: "GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING",
 		22: "GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID",
 		23: "GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN",
+		24: "GOVERNANCE_REJECTION_CODE_L3_DENIED",
 	}
 	GovernanceRejectionCode_value = map[string]int32{
 		"GOVERNANCE_REJECTION_CODE_UNSPECIFIED":                      0,
@@ -581,6 +584,7 @@ var (
 		"GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING":                 21,
 		"GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID":                 22,
 		"GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN":         23,
+		"GOVERNANCE_REJECTION_CODE_L3_DENIED":                        24,
 	}
 )
 
@@ -13681,7 +13685,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"+RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID\x10\x11\x121\n" +
 	"-RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID\x10\x12\x12*\n" +
 	"&RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED\x10\x13\x12)\n" +
-	"%RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14*\xd6\t\n" +
+	"%RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14*\xff\t\n" +
 	"\x17GovernanceRejectionCode\x12)\n" +
 	"%GOVERNANCE_REJECTION_CODE_UNSPECIFIED\x10\x00\x12*\n" +
 	"&GOVERNANCE_REJECTION_CODE_UNCLASSIFIED\x10\x01\x122\n" +
@@ -13707,7 +13711,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"-GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER\x10\x14\x12.\n" +
 	"*GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING\x10\x15\x12.\n" +
 	"*GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID\x10\x16\x126\n" +
-	"2GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN\x10\x17*\xd4\a\n" +
+	"2GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN\x10\x17\x12'\n" +
+	"#GOVERNANCE_REJECTION_CODE_L3_DENIED\x10\x18*\xd4\a\n" +
 	"\x12IngressRefusalCode\x12$\n" +
 	" INGRESS_REFUSAL_CODE_UNSPECIFIED\x10\x00\x12%\n" +
 	"!INGRESS_REFUSAL_CODE_UNCLASSIFIED\x10\x01\x12+\n" +

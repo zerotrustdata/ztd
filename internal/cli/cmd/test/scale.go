@@ -318,26 +318,23 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 	if err != nil {
 		return err
 	}
-	// Headless hosts have no OS keychain, so the Gateway and deployed Operators
-	// get an explicit key file on their command lines. It lives in the run
-	// Gateway's runtime tmp dir and is removed when the run ends.
+	// Children seal their keys under a private in-process ssh-agent so the run
+	// never touches the host keyring. The agent socket lives in the run
+	// Gateway's runtime dir and closes after teardown stops every child.
 	runFiles, keyErr := fs.NewRuntimeFileService(layout.Run, slog.Default())
 	if keyErr != nil {
 		return fmt.Errorf("%w: %w: %w", constants.ErrScaleTestFailed, constants.ErrFileServiceInit, keyErr)
 	}
-	keyRelDir, keyErr := runFiles.MkdirTemp(ctx, "scale-key-*")
-	if keyErr != nil {
-		return fmt.Errorf("%w: create master key dir: %w", constants.ErrScaleTestFailed, keyErr)
-	}
-	defer func() {
-		if rmErr := runFiles.RemoveAll(context.Background(), keyRelDir); rmErr != nil {
-			slog.Warn("Failed to remove scale master key directory", "path", keyRelDir, "error", rmErr)
-		}
-	}()
-	keyPath, keyErr := keystore.ProvisionMasterKeyFile(runFiles.Resolve(keyRelDir))
+	agent, keyErr := keystore.StartEphemeralAgent(ctx, runFiles, constants.EphemeralAgentDirname)
 	if keyErr != nil {
 		return fmt.Errorf("%w: %w", constants.ErrScaleTestFailed, keyErr)
 	}
+	defer func() {
+		if closeErr := agent.Close(); closeErr != nil {
+			slog.Warn("Failed to close scale ssh-agent", "error", closeErr)
+		}
+	}()
+	env = append(env, agent.Env()...)
 	summary := scaleSummary{
 		Count: cfg.Count, BatchSize: cfg.BatchSize, Parallel: cfg.Parallel,
 		Binary: bin, OS: runtime.GOOS, GatewayHTTPPort: ports.HTTP, GatewayHTTPSPort: ports.HTTPS,
@@ -402,7 +399,6 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 			certMode = "full"
 		}
 		if err := child("gateway-start.log", "gw", "start",
-			"--master-key-file", keyPath,
 			"--listen-host", listenHost,
 			"--cert-mode", certMode,
 			"--posture", "doctrine",
@@ -416,7 +412,7 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 			}
 		}
 		gatewayStarted = true
-		if err := child("auth-enroll.log", "auth", "enroll", "user", "-e", constants.LocalhostIP+":"+httpPort, "-p", httpsPort, "--master-key-file", keyPath, "--headless"); err != nil {
+		if err := child("auth-enroll.log", "auth", "enroll", "user", "-e", constants.LocalhostIP+":"+httpPort, "-p", httpsPort, "--headless"); err != nil {
 			return fmt.Errorf("auth enroll user: %w", err)
 		}
 		return nil
@@ -439,7 +435,6 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 			}
 			deployArgs := []string{
 				"operator", "deploy",
-				"--master-key-file", keyPath,
 				"--hosts", cfg.Hosts,
 				"--dest-dir", layout.Fleet,
 				"--count", strconv.Itoa(batch.Count),
@@ -470,7 +465,7 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 		return err
 	}
 
-	scenarioEnv := append(scaleScenarioEnv(env, layout, cfg, bin, ports), string(constants.EnvVar.E2EFleetReport)+"="+filepath.Join(layout.Out, "fleet-report.json"), string(constants.EnvVar.E2EMasterKeyFile)+"="+keyPath)
+	scenarioEnv := append(scaleScenarioEnv(env, layout, cfg, bin, ports), string(constants.EnvVar.E2EFleetReport)+"="+filepath.Join(layout.Out, "fleet-report.json"))
 	if err := phase("steady state, soak, and fan-out", func() error {
 		return scaleScenario(ctx, deps, scenarioEnv, layout, cfg, scaleFanOutScenario, "scenario-fan-out.log")
 	}); err != nil {
@@ -599,7 +594,7 @@ func scaleChildEnv(layout scaleLayout) ([]string, error) {
 		case "HOME", "USERPROFILE", "GOCACHE", "GOMODCACHE", "GOPATH",
 			string(constants.EnvVar.E2ERuntimeRoot), string(constants.EnvVar.E2EFleetSize), string(constants.EnvVar.E2EFleetBin), string(constants.EnvVar.E2EFleetDir), string(constants.EnvVar.E2EFleetSoak),
 			string(constants.EnvVar.E2EFleetConcurrency), string(constants.EnvVar.E2EFleetRounds), string(constants.EnvVar.E2EFleetReport), string(constants.EnvVar.E2EFleetRestartReport),
-			string(constants.EnvVar.E2EGatewayHTTPPort), string(constants.EnvVar.E2EGatewayHTTPSPort), string(constants.EnvVar.E2EMasterKeyFile),
+			string(constants.EnvVar.E2EGatewayHTTPPort), string(constants.EnvVar.E2EGatewayHTTPSPort),
 			string(constants.EnvVar.E2EFleetSessions):
 			continue
 		}

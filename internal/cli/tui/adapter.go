@@ -14,10 +14,12 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/cli/sse"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // Session is the CLI's authenticated Gateway session. *api.Client satisfies
@@ -312,7 +314,15 @@ func translateEvent(ev sse.Event) []tea.Msg {
 		if err := json.Unmarshal(ev.Raw, &p); err != nil {
 			return []tea.Msg{decodeFailure(innerType, err)}
 		}
-		return []tea.Msg{ApprovalCompletedMsg{TxHash: p.TxHash}}
+		msg := ApprovalCompletedMsg{TxHash: p.TxHash}
+		if p.HasReceipt() {
+			receipt := &operatorv1.ActionReceipt{}
+			if err := protojson.Unmarshal(p.Receipt, receipt); err != nil {
+				return []tea.Msg{decodeFailure(innerType, err)}
+			}
+			msg.Denied = receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED
+		}
+		return []tea.Msg{msg}
 	case innerType == string(constants.EventPlatformApprovalsChanged):
 		// Both subjects are reconciled by the adapter's refresh: transactions
 		// re-list pending approvals, and enrollments re-list enrollments.

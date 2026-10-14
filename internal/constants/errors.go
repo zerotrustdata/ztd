@@ -94,8 +94,6 @@ var (
 	ErrKeyStorePurgeFailed        = errors.New("purge failed with one or more errors")
 	ErrKeyStoreOSKeyringRequired  = errors.New("an OS-protected master key store is required but none is available")
 	ErrKeyStoreVerifyFailed       = errors.New("stored master key could not be read back unchanged")
-	ErrKeyStoreExternalKeyPath    = errors.New("master key file must be an absolute path outside the runtime directory")
-	ErrKeyStoreExternalReadOnly   = errors.New("operator-provisioned master key file is read-only")
 	ErrKeyStoreSecretServiceDown  = errors.New("secret service unavailable")
 	ErrKeyStoreDuplicateKey       = errors.New("multiple master key items found in OS key store")
 
@@ -104,11 +102,10 @@ var (
 	ErrKeyStoreSSHAgentUnavailable = errors.New("ssh-agent unavailable: start one and add an Ed25519 or RSA key (eval \"$(ssh-agent)\" && ssh-add), or forward yours with ssh -A")
 	ErrKeyStoreSSHAgentKeyMissing  = errors.New("ssh-agent does not hold the key that sealed the master key: ssh-add it")
 
-	ErrKeyStoreExternalFileInvalid = errors.New("external master key requires a small regular file with safe ownership and permissions")
-	ErrKeyStoreInvalidSecretName   = errors.New("secret name must be a single non-hidden path component")
-	ErrKeyStoreOrphanedSecrets     = errors.New("secrets are sealed under a master key the selected key store does not hold")
-	ErrKeyStoreSSHAgentUntrusted   = errors.New("ssh-agent socket is served by another user")
-	ErrKeyStoreKeychainFailed      = errors.New("macOS Keychain call failed")
+	ErrKeyStoreInvalidSecretName = errors.New("secret name must be a single non-hidden path component")
+	ErrKeyStoreOrphanedSecrets   = errors.New("secrets are sealed under a master key the selected key store does not hold")
+	ErrKeyStoreSSHAgentUntrusted = errors.New("ssh-agent socket is served by another user")
+	ErrKeyStoreKeychainFailed    = errors.New("macOS Keychain call failed")
 
 	// Ledger errors
 	ErrLedgerRequired       = errors.New("ledger is required")
@@ -389,6 +386,7 @@ var (
 	ErrSuspendedStoreRequired         = errors.New("suspended transaction store is required")
 	ErrSuspendedStoreNotInitialized   = errors.New("suspended transaction store is not initialized")
 	ErrSuspendedTransactionNotFound   = errors.New("suspended transaction not found or expired")
+	ErrL3DenyNotRejected              = errors.New("suspended transaction deny was not rejected by L4")
 	ErrSuspendedTransactionClaimed    = errors.New("suspended transaction is already claimed for execution")
 	ErrStateRootProviderRequired      = errors.New("state root provider is required")
 	ErrTransactionAuditRequired       = errors.New("transaction audit store is required")
@@ -971,6 +969,7 @@ var (
 	ErrConsensusNoSigningMembers       = errors.New("CONSENSUS_NO_SIGNING_MEMBERS: no members with private keys available to sign votes")
 	ErrTxL3ProofMissing                = errors.New("TX_NOTARY_L3_PROOF_MISSING: Notary (L3Notary) WebAuthn proof required but missing")
 	ErrTxL3ProofInvalid                = errors.New("TX_NOTARY_L3_PROOF_INVALID: Notary (L3Notary) WebAuthn proof failed verification")
+	ErrTxL3Denied                      = errors.New("TX_NOTARY_L3_DENIED: the human denied the suspended transaction")
 	ErrTxL3NotaryNotConfigured         = errors.New("TX_NOTARY_L3_NOTARY_MISSING: Notary (L3Notary) required but not configured")
 	ErrTxL3ProofUnmintable             = errors.New("TX_NOTARY_L3_PROOF_UNMINTABLE: posture requires L3 proof but the gateway dispatch path cannot mint human proofs")
 	ErrTxTransactionHashMissing        = errors.New("TX_HASH_MISSING: transaction_hash required")

@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type APIClient interface {
@@ -134,8 +135,13 @@ func subscribeApproval(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *
 // then verifies the approval status via the mTLS status endpoint.
 func waitForApprovalAndVerify(ctx context.Context, cmd *cobra.Command, approvals *auth.ApprovalSubscription, client APIClient, txHash string) error {
 	cmd.Printf("\nWaiting for browser approval (SSE)...\n")
-	if _, err := approvals.Wait(ctx, txHash, ""); err != nil {
+	receipt, err := approvals.Wait(ctx, txHash, "")
+	if err != nil {
 		return fmt.Errorf("approve: %w", err)
+	}
+	// A deny resolves the wait with the Operator-signed L3_DENIED rejection.
+	if receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		return fmt.Errorf("approve: transaction %s: %w", txHash, constants.ErrTxL3Denied)
 	}
 
 	resp, err := client.Get(auth.ApprovalStatusPath(txHash))

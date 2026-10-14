@@ -273,24 +273,25 @@ var rowSpecs = []rowSpec{
 		postures: postureRatifyNotary, action: ActionMutation,
 		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE)}},
 
-	// Rows 23 and 24: the attended approval path on MCP and A2A.
+	// Rows 23 to 25: the attended approval path on MCP and A2A. A deny is the
+	// Operator-signed L3_DENIED rejection.
 	{row: 23, faults: []Fault{FaultUnattendedMutation}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
 		action: ActionMutation, outcomes: []outcome{suspended()}},
 	{row: 24, faults: []Fault{FaultAttendedApprove}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
 		action: ActionMutation, attended: true, outcomes: []outcome{executed()}},
+	{row: 25, faults: []Fault{FaultAttendedDeny}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
+		action: ActionMutation, attended: true,
+		outcomes: []outcome{rejected(operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)}},
 }
 
 // l2Faults is the six L2 faults of rows 18 and 19.
 var l2Faults = []Fault{FaultL2Missing, FaultL2BelowQuorum, FaultL2DuplicateSigner, FaultL2SignatureFlipped, FaultL2NonMember, FaultL2UnknownSet}
 
-// gapSpecs records the cells the ingresses cannot express. Rows 25 and 26 follow
-// the T06 handoff answers: a denied suspension writes no typed receipt, and no
-// tool or skill argument can carry an L3 proof.
+// gapSpecs records the cells the ingresses cannot express. Row 26 follows the T06
+// handoff answer: no tool or skill argument can carry an L3 proof.
 var gapSpecs = []gapSpec{
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressA2A}, reason: "every A2A call is a mutation"},
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressCLI}, reason: "`ztd operator run` sends EXECUTE_BASH only"},
-	{row: 25, fault: FaultAttendedDeny, ingresses: []Ingress{IngressMCP, IngressA2A},
-		reason: "deny path untyped: platform defect, see T06 handoff"},
 	{row: 26, fault: FaultL3ViaArguments, ingresses: []Ingress{IngressMCP, IngressA2A},
 		reason: "no tool or skill argument can carry an L3 proof; the only attachment is ResumeWithL3Proof, fed by the WebAuthn assertion (T06 handoff, answer a)"},
 }

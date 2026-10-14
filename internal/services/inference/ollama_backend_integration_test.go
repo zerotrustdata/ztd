@@ -311,6 +311,27 @@ func TestOllamaBackend_GenerateRejectsStreamWithoutOneTerminalEvent(t *testing.T
 	}
 }
 
+// An empty completion is the served model's answer, not a provider fault: it
+// returns an empty result so the evaluation grades it as a model failure.
+func TestOllamaBackend_GenerateEmptyCompletionReturnsEmptyResult(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := io.WriteString(w, `{"model":"test-model","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}`+"\n")
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+	require.NoError(t, err)
+
+	response, err := backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model"})
+
+	require.NoError(t, err)
+	assert.Empty(t, response.Parts)
+	assert.Equal(t, "stop", response.FinishReason)
+	wantHash, err := models.ComputeInferenceOutputHash(nil, "stop")
+	require.NoError(t, err)
+	assert.Equal(t, wantHash, response.OutputHash)
+}
+
 func TestOllamaBackend_GenerateTerminalEventErrorNamesFailedCondition(t *testing.T) {
 	tests := []struct {
 		name string
@@ -333,11 +354,6 @@ func TestOllamaBackend_GenerateTerminalEventErrorNamesFailedCondition(t *testing
 			body: `{"model":"test-model","message":{"role":"assistant","content":"x"},"done":false}` + "\n" +
 				`{"model":"other-model","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}` + "\n",
 			want: "served model changed",
-		},
-		{
-			name: "empty completion",
-			body: `{"model":"test-model","message":{"role":"assistant","content":""},"done":true,"done_reason":"length"}` + "\n",
-			want: `produced no text, thinking, or tool call (done_reason "length")`,
 		},
 	}
 	for _, tt := range tests {
@@ -432,7 +448,7 @@ func TestOllamaBackend_GenerateAcceptsToolOnlyResponse(t *testing.T) {
 	assert.Equal(t, "tool_calls", response.FinishReason)
 }
 
-func TestOllamaBackend_GenerateRejectsInvalidToolCallsAndEmptyOutput(t *testing.T) {
+func TestOllamaBackend_GenerateRejectsInvalidToolCalls(t *testing.T) {
 	tests := []struct {
 		name         string
 		message      ollamaChatMessage
@@ -442,7 +458,6 @@ func TestOllamaBackend_GenerateRejectsInvalidToolCallsAndEmptyOutput(t *testing.
 		{name: "duplicate argument key", message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{{Function: ollamaToolFunction{Name: "inspect", Arguments: json.RawMessage(`{"path":"a","path":"b"}`)}}}}},
 		{name: "non-object arguments", message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{{Function: ollamaToolFunction{Name: "inspect", Arguments: json.RawMessage(`[]`)}}}}},
 		{name: "missing tool name", message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{{Function: ollamaToolFunction{Arguments: json.RawMessage(`{}`)}}}}},
-		{name: "empty output", message: ollamaChatMessage{Role: "assistant"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

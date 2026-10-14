@@ -545,7 +545,7 @@ func TestGovernedSuspension_MCPAndA2AShareTypedShape(t *testing.T) {
 
 // suspendedCallFixture stores one suspended MCP tools/call and one suspended
 // A2A a2a/call under a ratify posture, returning their transaction hashes.
-func suspendedCallFixture(t *testing.T, g *GatewayService, proc *fakeEnvelopeProcessor, store *fakeSuspendedStore, call func(ctx context.Context, r *http.Request) (string, error)) string {
+func suspendedCallFixture(t *testing.T, proc *fakeEnvelopeProcessor, store *fakeSuspendedStore, call func(ctx context.Context, r *http.Request) (string, error)) string {
 	t.Helper()
 	proc.err = governance.ErrL3ProofMissing
 	ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
@@ -577,7 +577,7 @@ func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForMCPCall(t *testi
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
 	g.posture = &governance.RatifyPosture{}
-	txHash := suspendedCallFixture(t, g, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
+	txHash := suspendedCallFixture(t, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
 		res, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
 		if err != nil {
 			return "", err
@@ -592,7 +592,7 @@ func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForA2ACall(t *testi
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
 	g.posture = &governance.RatifyPosture{}
-	txHash := suspendedCallFixture(t, g, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
+	txHash := suspendedCallFixture(t, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
 		res, err := g.a2aCall(ctx, r, json.RawMessage(`{"skill_name":"test-skill","payload":{}}`))
 		if err != nil {
 			return "", err
@@ -667,6 +667,107 @@ func TestGatewayService_ResumeWithL3Proof_ExpiredTransaction(t *testing.T) {
 	// Attempt to resume a non-existent (expired) transaction
 	_, err := g.ResumeWithL3Proof(context.Background(), "expired-hash", "user-1", proof)
 	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrTransactionExpired)
+}
+
+func l3DeniedRejection() (*operatorv1.ActionReceipt, error) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId:   "tx-l3-denied",
+		TransactionHash: "hash-l3-denied",
+		SignerKeyId:     "warden-key-l3",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+		ResultSummary:   "rejected: L3 denied",
+		Signature:       "sig-l3-denied",
+	}
+	return receipt, governance.WithRejectionReceipt(receipt, constants.ErrTxL3Denied)
+}
+
+func TestDenySuspendedTransaction_ReturnsSignedRejectionForMCPAndA2ACalls(t *testing.T) {
+	calls := map[string]func(g *GatewayService) func(ctx context.Context, r *http.Request) (string, error){
+		"mcp": func(g *GatewayService) func(ctx context.Context, r *http.Request) (string, error) {
+			return func(ctx context.Context, r *http.Request) (string, error) {
+				res, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
+				if err != nil {
+					return "", err
+				}
+				return res.(CallToolResult).Suspension.TxHash, nil
+			}
+		},
+		"a2a": func(g *GatewayService) func(ctx context.Context, r *http.Request) (string, error) {
+			return func(ctx context.Context, r *http.Request) (string, error) {
+				res, err := g.a2aCall(ctx, r, json.RawMessage(`{"skill_name":"test-skill","payload":{}}`))
+				if err != nil {
+					return "", err
+				}
+				return res.(*GovernedSuspension).TxHash, nil
+			}
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			proc := &fakeEnvelopeProcessor{}
+			store := &fakeSuspendedStore{}
+			g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
+			g.posture = &governance.RatifyPosture{}
+			txHash := suspendedCallFixture(t, proc, store, call(g))
+
+			proc.receipt, proc.err = l3DeniedRejection()
+			receipt, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
+			require.NoError(t, err)
+			require.NotNil(t, receipt)
+			assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
+			assert.NotEmpty(t, receipt.GetSignature(), "the deny must be an Operator-signed receipt")
+			assert.Contains(t, string(proc.gotPayload), `"denied":true`, "the deny must reach L4 as the L3 denied marker")
+			assert.NotContains(t, store.txs, txHash, "a signed deny ends the suspension")
+		})
+	}
+}
+
+func TestDenySuspendedTransaction_ExecutionIsNeverADeny(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{}
+	store := &fakeSuspendedStore{}
+	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
+	g.posture = &governance.RatifyPosture{}
+	txHash := suspendedCallFixture(t, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
+		res, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
+		if err != nil {
+			return "", err
+		}
+		return res.(CallToolResult).Suspension.TxHash, nil
+	})
+
+	proc.receipt = &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	proc.err = nil
+	_, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
+	require.ErrorIs(t, err, constants.ErrL3DenyNotRejected)
+}
+
+func TestDenySuspendedTransaction_UnsignedFailureReleasesTheClaim(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{}
+	store := &fakeSuspendedStore{}
+	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
+	g.posture = &governance.RatifyPosture{}
+	txHash := suspendedCallFixture(t, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
+		res, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
+		if err != nil {
+			return "", err
+		}
+		return res.(CallToolResult).Suspension.TxHash, nil
+	})
+
+	proc.receipt = nil
+	proc.err = constants.ErrGatewayNotReady
+	receipt, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
+	require.ErrorIs(t, err, constants.ErrGatewayNotReady)
+	assert.Nil(t, receipt)
+	assert.Contains(t, store.txs, txHash, "an unsigned failure keeps the suspension so the deny can be retried")
+}
+
+func TestDenySuspendedTransaction_ExpiredTransaction(t *testing.T) {
+	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{}), withSuspendedStore(&fakeSuspendedStore{}))
+	_, err := g.DenySuspendedTransaction(context.Background(), "expired-hash", "user-1")
 	require.ErrorIs(t, err, constants.ErrTransactionExpired)
 }
 

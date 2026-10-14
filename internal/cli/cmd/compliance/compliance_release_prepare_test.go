@@ -90,7 +90,7 @@ func newReleasePrepareFixture(t *testing.T) *releasePrepareFixture {
 	fixture.keystore = ks
 	fixture.deps = releasePrepareDeps{
 		fileSvcFactory: fs.NewRuntimeFileService,
-		runtimeVault: func(fileSvc fs.RuntimeFileService, _ string) (*vault.Vault, func(), error) {
+		runtimeVault: func(fileSvc fs.RuntimeFileService) (*vault.Vault, func(), error) {
 			return openVault(fixture.keystore)
 		},
 		signingLoader: loadComplianceReportSigningIdentity,
@@ -339,7 +339,7 @@ func TestRunReleasePrepare_FailsClosedWhenRuntimeVaultCannotUnlock(t *testing.T)
 	fixture := newReleasePrepareFixture(t)
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 0, time.UTC)
 	fixture.seedRuntimeDatabase(t, releasePrepareSignerKey(t), releasePrepareSignerKey(t), []time.Time{commitAt.Add(-time.Second)}, []time.Time{commitAt})
-	fixture.deps.runtimeVault = func(fs.RuntimeFileService, string) (*vault.Vault, func(), error) {
+	fixture.deps.runtimeVault = func(fs.RuntimeFileService) (*vault.Vault, func(), error) {
 		return nil, nil, constants.ErrVaultUnlockFailed
 	}
 

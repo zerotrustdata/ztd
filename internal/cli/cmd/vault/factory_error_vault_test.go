@@ -28,11 +28,11 @@ var (
 	errKeystoreFactory = fmt.Errorf("keystore factory boom")
 )
 
-func failingKeystoreFactory(_ fs.RuntimeFileService, _ keystore.Options, _ bool) (*keystore.Keystore, error) {
+func failingKeystoreFactory(_ fs.RuntimeFileService, _ bool) (*keystore.Keystore, error) {
 	return nil, errKeystoreFactory
 }
 
-func dummyKeystoreFactory(_ fs.RuntimeFileService, _ keystore.Options, _ bool) (*keystore.Keystore, error) {
+func dummyKeystoreFactory(_ fs.RuntimeFileService, _ bool) (*keystore.Keystore, error) {
 	return nil, nil
 }
 

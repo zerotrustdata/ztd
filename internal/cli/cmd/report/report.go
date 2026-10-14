@@ -46,9 +46,6 @@ type reportFlags struct {
 	dataDir    string
 	runtimeDir string
 	ledgerDir  string
-	// masterKeyFile selects an operator-provisioned master key instead of the
-	// OS key store, matching the runtime that wrote the vault.
-	masterKeyFile string
 }
 
 func (f *reportFlags) addFlags(cmd *cobra.Command) {
@@ -56,7 +53,6 @@ func (f *reportFlags) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.dataDir, "data-dir", "", "Data directory (default: "+paths.Infra.DataDir+")")
 	cmd.Flags().StringVar(&f.runtimeDir, "runtime-dir", "", "Runtime directory (default: "+paths.Infra.RuntimeDir+")")
 	cmd.Flags().StringVar(&f.ledgerDir, "ledger-dir", "", "Ledger base directory (default: <runtime-dir>/data/ledger)")
-	cmd.Flags().StringVar(&f.masterKeyFile, "master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
 }
 
 func (f *reportFlags) resolveOptions() (reporting.Options, error) {
@@ -95,7 +91,7 @@ func (f *reportFlags) resolveOptions() (reporting.Options, error) {
 
 	// The keystore is opened without Initialize so a report never generates a
 	// master key. Reports read encrypted stores, so an unusable key store fails the report.
-	ks, err := keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{MasterKeyFile: f.masterKeyFile})
+	ks, err := keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{})
 	if err != nil {
 		return reporting.Options{}, fmt.Errorf("%w: keystore: %w", constants.ErrReportVaultUnavailable, err)
 	}

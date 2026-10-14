@@ -17,6 +17,7 @@ import (
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type requestorNotary struct {
@@ -42,6 +43,26 @@ func TestL4Warden_L3VerifiesRequestorInsteadOfExecutionTarget(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, valid)
 			require.Equal(t, env.RequestorUserId, notary.userID)
+		})
+	}
+}
+
+func TestL4Warden_L3DenyRejectsInEveryPosture(t *testing.T) {
+	postures := []GovernancePosture{&DoctrinePosture{}, &ConsensusPosture{}, &RatifyPosture{}, &NotaryPosture{}}
+	for _, posture := range postures {
+		t.Run(posture.Name(), func(t *testing.T) {
+			notary := &requestorNotary{}
+			warden := &L4Warden{l3Notary: notary, logger: testutil.NewTestLogger()}
+			env := &govtypes.GovernanceEnvelope{
+				OperatorId: "outbound-operator", RequestorUserId: "requesting-user",
+				ActionType: string(constants.ActionTypeExecuteBash),
+				Governance: &commonv1.GovernanceMetadata{L3: &commonv1.L3Metadata{Denied: true}},
+			}
+			valid, err := warden.verifyL3Posture(context.Background(), env, posture)
+			require.ErrorIs(t, err, constants.ErrTxL3Denied)
+			require.False(t, valid)
+			require.Empty(t, notary.userID, "a deny must never reach the notary")
+			require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, ClassifyGovernanceRejection(err))
 		})
 	}
 }

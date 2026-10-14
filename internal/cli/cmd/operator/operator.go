@@ -356,7 +356,6 @@ func operatorStartCmd() *cobra.Command {
 	var providerBoundaryObserverID string
 	var provenanceOperatorID string
 	var provenanceOperatorModelStorageRoot string
-	var masterKeyFile string
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -399,7 +398,6 @@ func operatorStartCmd() *cobra.Command {
 
 				ProvenanceOperatorID:               provenanceOperatorID,
 				ProvenanceOperatorModelStorageRoot: provenanceOperatorModelStorageRoot,
-				MasterKeyFile:                      masterKeyFile,
 			}
 
 			// Run operator (this blocks until shutdown)
@@ -415,7 +413,6 @@ func operatorStartCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&cloud, "cloud", "c", false, "Cloud operator mode")
 	cmd.Flags().StringVar(&provider, "provider", "", "Cloud provider (aws, gcp, azure)")
 	cmd.Flags().StringVarP(&logLevel, "log", "l", "info", "Log level: info, error, debug")
-	cmd.Flags().StringVar(&masterKeyFile, "master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
 	cmd.Flags().IntVar(&heartbeatInterval, "heartbeat-interval", 30, "Heartbeat send interval in seconds (0-300; 0 selects 30; declared to the Gateway at session start, which marks the Operator stale after twice this interval, minimum 60 seconds)")
 	cmd.Flags().IntVar(&gatewayHTTPPort, "gateway-http-port", 0, "Gateway HTTP discovery port to dial (default: platform default)")
 	cmd.Flags().IntVar(&gatewayHTTPSPort, "gateway-https-port", 0, "Gateway HTTPS/mTLS port to dial (default: platform default)")

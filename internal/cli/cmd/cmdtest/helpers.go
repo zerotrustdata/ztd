@@ -59,7 +59,7 @@ func SetupTestConfig(t *testing.T, tmpDir string) (fs.RuntimeFileService, *confi
 
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
-	cfg.MasterKeyFile = keystoretest.ProvisionMasterKeyFile(t)
+	cfg.Keyring = keystoretest.NewMemoryKeyring()
 	require.Equal(t, cfg.RuntimeDir, fileSvc.Resolve(""))
 	require.NoError(t, fileSvc.WriteFile(context.Background(), cfg.DefaultTrustBundleRelPath(), []byte("dummy-trust-bundle"), constants.PermFilePublic))
 	return fileSvc, cfg

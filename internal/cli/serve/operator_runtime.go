@@ -155,7 +155,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 
 	// The store is opened once, before enrollment. The Actuator key presented at
 	// enrollment and the key that signs receipts both come from this open.
-	ks, err := keystore.Open(fileSvc, logger, keystore.Options{MasterKeyFile: cfg.MasterKeyFile})
+	ks, err := keystore.Open(fileSvc, logger, keystore.Options{Keyring: cfg.Keyring})
 	if err != nil {
 		logger.Error("Failed to open keystore", string(constants.ConnectionStateError), err)
 		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrGatewayDatabaseServiceNotConfigured, err))

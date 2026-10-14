@@ -50,7 +50,6 @@ type GatewayConfig struct {
 	PKIDir                             string                         `json:"pki_dir,omitempty"`
 	SecretsDir                         string                         `json:"secrets_dir,omitempty"`
 	VaultDir                           string                         `json:"vault_dir,omitempty"`
-	MasterKeyFile                      string                         `json:"master_key_file,omitempty"`
 	PasskeyRpID                        string                         `json:"passkey_rp_id,omitempty"`
 	PasskeyRpName                      string                         `json:"passkey_rp_name,omitempty"`
 	PasskeyRpOrigins                   []string                       `json:"passkey_rp_origins,omitempty"`
@@ -143,7 +142,6 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 		PKIDir:                             cfg.PKIDir,
 		SecretsDir:                         cfg.SecretsDir,
 		VaultDir:                           cfg.VaultDir,
-		MasterKeyFile:                      cfg.MasterKeyFile,
 		PasskeyRpID:                        cfg.PasskeyRpID,
 		PasskeyRpName:                      cfg.PasskeyRpName,
 		PasskeyRpOrigins:                   cfg.PasskeyRpOrigins,
@@ -165,6 +163,7 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 	if err != nil {
 		return fmt.Errorf("gateway: load configuration: %w", err)
 	}
+	gatewayCfg.Gateway.HTTPPort, gatewayCfg.Gateway.HTTPSPort = config.ResolveGatewayPorts(gatewayCfg.Gateway.HTTPPort, gatewayCfg.Gateway.HTTPSPort)
 	gatewayCfg.Gateway.PublicSpectatorEnabled = cfg.PublicSpectatorEnabled
 	gatewayCfg.Gateway.PublicSpectatorPrivateAddr = cfg.PublicSpectatorPrivateAddr
 	gatewayCfg.Gateway.PublicSpectatorPublicAddr = cfg.PublicSpectatorPublicAddr
@@ -176,7 +175,7 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 
 	var svc *gateway.GatewayModeService
 	if cfg.ConsensusBootstrap != "" {
-		ks, err := keystore.Open(fileSvc, logger, keystore.Options{MasterKeyFile: gatewayCfg.Gateway.MasterKeyFile})
+		ks, err := keystore.Open(fileSvc, logger, keystore.Options{Keyring: gatewayCfg.Gateway.Keyring})
 		if err != nil {
 			return fmt.Errorf("gateway: open keystore: %w", err)
 		}

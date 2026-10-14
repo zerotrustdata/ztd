@@ -112,9 +112,6 @@ func ValidateInferenceProbeResponse(req InferenceProbeRequest, resp *operatorv1.
 	if result.GetResultDigest() == "" || receipt.GetResultSummary() != result.GetResultDigest() {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrInferenceResultDigest)
 	}
-	if len(result.GetParts()) == 0 {
-		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrInferenceProviderResponseInvalid)
-	}
 	if req.CampaignID != "" && result.GetCampaignId() != req.CampaignID {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrInferenceModelRegistryInvalid)
 	}

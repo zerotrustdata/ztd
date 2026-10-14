@@ -61,3 +61,21 @@ func TestGradeHomogeneousScenario_LegacyProviderFailureDetailUnchanged(t *testin
 	require.NoError(t, err)
 	assert.Equal(t, "designated model role was not invoked or assignment did not complete", grading.DeterministicGrades[0].GetDetail())
 }
+
+// An empty reply is the served model's answer (D2): the governed call is on
+// record, so the assignment completes and grades FAIL. It never ends
+// PROVIDER_FAILED or INVALID_EVIDENCE, which would keep it out of the pass rate.
+func TestGradeHomogeneousScenario_EmptyReplyGradesModelFail(t *testing.T) {
+	req := providerFailureGradeRequest()
+	req.ScenarioGold.ContentCheck = &ScenarioContentCheck{ExactToken: "READY"}
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
+		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-1", ResultDigest: "digest-1"}},
+	}
+	lifecycle := agentTraceLifecycle(req, trace)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, lifecycle)
+
+	grading, err := GradeHomogeneousScenario(req, trace, lifecycle)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verdictFromGrades(grading.DeterministicGrades))
+}

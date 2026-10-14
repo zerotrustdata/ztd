@@ -357,6 +357,24 @@ func TestApproveFlow(t *testing.T) {
 		assert.True(t, ok, "a verified approval re-lists pending approvals")
 	})
 
+	t.Run("a deny is reported denied, never verified as approved", func(t *testing.T) {
+		session := &testSession{statusJSON: `{"status":"approved"}`}
+		m := NewModel(Options{Session: session})
+		m.awaitingApproval["tx-1"] = struct{}{}
+
+		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Denied: true})
+		m = model.(Model)
+		assert.Equal(t, StatusFailed, m.pipeline[StageL3].status)
+		assert.NotContains(t, m.awaitingApproval, "tx-1")
+		last := m.ledger[len(m.ledger)-1]
+		assert.Equal(t, LevelWarn, last.level)
+		assert.Contains(t, last.message, "denied")
+		require.NotNil(t, cmd)
+		_, ok := cmd().(PendingApprovalsMsg)
+		assert.True(t, ok, "a deny re-lists pending approvals")
+		assert.NotContains(t, session.requestedPaths(), constants.APIPaths.ApprovalsCLIStatus+"tx-1")
+	})
+
 	t.Run("a non-approved status is reported as a failure", func(t *testing.T) {
 		m := NewModel(Options{Session: &testSession{statusJSON: `{"status":"expired_or_not_found"}`}})
 		_, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1"})

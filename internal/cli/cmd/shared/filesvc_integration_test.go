@@ -33,21 +33,20 @@ const evidenceFileSvcMarker = "ZTD-EVIDENCE-FILESVC-MARKER"
 func TestNewEvidenceFileSvc_SealsEvaluationRecordsWithTheRuntimeVault(t *testing.T) {
 	ctx := context.Background()
 	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
-	masterKeyFile := keystoretest.ProvisionMasterKeyFile(t)
-	config.SetMasterKeyFileOverride(masterKeyFile)
-	t.Cleanup(func() { config.SetMasterKeyFileOverride("") })
+	opts := keystore.Options{Keyring: keystoretest.NewMemoryKeyring()}
+	newEvidenceFileSvc := EvidenceFileSvcFactory(opts)
 
 	t.Run("an initialized vault encrypts and decrypts", func(t *testing.T) {
 		base := testutil.TempDir(t)
 		raw, err := fs.NewRuntimeFileService(base, testutil.NewTestLogger())
 		require.NoError(t, err)
 		require.NoError(t, raw.CreateRuntimeTree(ctx))
-		ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{MasterKeyFile: masterKeyFile})
+		ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), opts)
 		require.NoError(t, err)
 		require.NoError(t, ks.Initialize())
 		require.NoError(t, ks.InitVault())
 
-		files, err := NewEvidenceFileSvc(base, testutil.NewTestLogger())
+		files, err := newEvidenceFileSvc(base, testutil.NewTestLogger())
 		require.NoError(t, err)
 		require.NoError(t, files.WriteFile(ctx, recordPath, []byte(evidenceFileSvcMarker), constants.PermFilePrivate))
 
@@ -64,7 +63,7 @@ func TestNewEvidenceFileSvc_SealsEvaluationRecordsWithTheRuntimeVault(t *testing
 		raw, err := fs.NewRuntimeFileService(base, testutil.NewTestLogger())
 		require.NoError(t, err)
 		require.NoError(t, raw.CreateRuntimeTree(ctx))
-		files, err := NewEvidenceFileSvc(base, testutil.NewTestLogger())
+		files, err := newEvidenceFileSvc(base, testutil.NewTestLogger())
 		require.NoError(t, err)
 
 		err = files.WriteFile(ctx, recordPath, []byte(evidenceFileSvcMarker), constants.PermFilePrivate)

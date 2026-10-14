@@ -31,7 +31,7 @@ func Cmd() *cobra.Command {
 		Long: `Initialize, unlock, re-key, and manage the ztd encryption vault.
 
 The vault key is stored only encrypted under the master key held by the OS key
-store (or --master-key-file). It is never written or printed in the clear.`,
+store. It is never written or printed in the clear.`,
 	}
 
 	cmd.AddCommand(
@@ -49,17 +49,13 @@ type fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)
 
 // keystoreFactory opens the keystore that holds the vault key. create reports
 // whether a missing master key may be generated; only init may create one.
-type keystoreFactory func(fileSvc fs.RuntimeFileService, opts keystore.Options, create bool) (*keystore.Keystore, error)
+type keystoreFactory func(fileSvc fs.RuntimeFileService, create bool) (*keystore.Keystore, error)
 
-func openKeystore(fileSvc fs.RuntimeFileService, opts keystore.Options, create bool) (*keystore.Keystore, error) {
+func openKeystore(fileSvc fs.RuntimeFileService, create bool) (*keystore.Keystore, error) {
 	if create {
-		return keystore.Open(fileSvc, slog.Default(), opts)
+		return keystore.Open(fileSvc, slog.Default(), keystore.Options{})
 	}
-	return keystore.NewWithFS(fileSvc, slog.Default(), opts)
-}
-
-func addMasterKeyFlag(cmd *cobra.Command, path *string) {
-	cmd.Flags().StringVar(path, "master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
+	return keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{})
 }
 
 func vaultInitCmd() *cobra.Command {
@@ -67,8 +63,6 @@ func vaultInitCmd() *cobra.Command {
 }
 
 func vaultInitCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFactory) *cobra.Command {
-	var masterKeyFile string
-
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize a new encryption vault",
@@ -78,7 +72,7 @@ func vaultInitCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFacto
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
-			ks, err := newKeystore(fileSvc, keystore.Options{MasterKeyFile: masterKeyFile}, true)
+			ks, err := newKeystore(fileSvc, true)
 			if err != nil {
 				return fmt.Errorf("vault init: %w", err)
 			}
@@ -91,7 +85,6 @@ func vaultInitCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFacto
 			return nil
 		},
 	}
-	addMasterKeyFlag(cmd, &masterKeyFile)
 	return cmd
 }
 
@@ -100,8 +93,6 @@ func vaultUnlockCmd() *cobra.Command {
 }
 
 func vaultUnlockCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFactory) *cobra.Command {
-	var masterKeyFile string
-
 	cmd := &cobra.Command{
 		Use:   "unlock",
 		Short: "Verify the vault unlocks with the stored key",
@@ -121,7 +112,7 @@ func vaultUnlockCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFac
 				return fmt.Errorf("%w: %s\nInitialize the vault first with:\nztd vault init", constants.ErrVaultNotInitialized, vaultDirAbs)
 			}
 
-			ks, err := newKeystore(fileSvc, keystore.Options{MasterKeyFile: masterKeyFile}, false)
+			ks, err := newKeystore(fileSvc, false)
 			if err != nil {
 				return fmt.Errorf("vault unlock: %w", err)
 			}
@@ -144,7 +135,6 @@ func vaultUnlockCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFac
 			return nil
 		},
 	}
-	addMasterKeyFlag(cmd, &masterKeyFile)
 	return cmd
 }
 
@@ -153,8 +143,6 @@ func vaultRekeyCmd() *cobra.Command {
 }
 
 func vaultRekeyCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFactory) *cobra.Command {
-	var masterKeyFile string
-
 	cmd := &cobra.Command{
 		Use:   "rekey",
 		Short: "Re-key the vault with a new vault key",
@@ -174,7 +162,7 @@ func vaultRekeyCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFact
 				return fmt.Errorf("%w: %s", constants.ErrVaultNotInitialized, vaultDirAbs)
 			}
 
-			ks, err := newKeystore(fileSvc, keystore.Options{MasterKeyFile: masterKeyFile}, false)
+			ks, err := newKeystore(fileSvc, false)
 			if err != nil {
 				return fmt.Errorf("vault rekey: %w", err)
 			}
@@ -186,7 +174,6 @@ func vaultRekeyCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFact
 			return nil
 		},
 	}
-	addMasterKeyFlag(cmd, &masterKeyFile)
 	return cmd
 }
 

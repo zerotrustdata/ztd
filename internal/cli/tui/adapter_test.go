@@ -23,6 +23,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/sse"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestTranslateSSEEvent(t *testing.T) {
@@ -298,6 +300,22 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 		require.NoError(t, err)
 		msgs := translateSSEEvents("", string(frame))
 		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-abc"}}, msgs)
+	})
+
+	t.Run("approval.completed with the L3_DENIED receipt is a deny", func(t *testing.T) {
+		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+			TransactionHash: "tx-denied",
+			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+		})
+		require.NoError(t, err)
+		event, err := json.Marshal(models.ApprovalCompletedEvent{Type: constants.SSEEventTypeApprovalCompleted, UserID: "user-1", TxHash: "tx-denied", Receipt: receipt})
+		require.NoError(t, err)
+		frame, err := json.Marshal(models.SSEPushPayload{UserID: "user-1", CliSessionID: "cli-1", Event: event})
+		require.NoError(t, err)
+		msgs := translateSSEEvents("", string(frame))
+		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-denied", Denied: true}}, msgs)
 	})
 
 	t.Run("transaction approvals.changed produces no message", func(t *testing.T) {

@@ -221,6 +221,11 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		Posture:           posture,
 	})
 	require.NoError(t, err)
+	// LoadGateway only validates; like Gateway start, the fixture resolves a
+	// free port pair so it never collides with a running Gateway.
+	if !opts.AllowTestPortZero {
+		cfg.Gateway.HTTPPort, cfg.Gateway.HTTPSPort = config.ResolveGatewayPorts(cfg.Gateway.HTTPPort, cfg.Gateway.HTTPSPort)
+	}
 	// Integration fixtures serve only local test clients. Keep both Gateway
 	// listeners on loopback so Windows test binaries never request firewall access.
 	cfg.Gateway.ListenHost = "127.0.0.1"

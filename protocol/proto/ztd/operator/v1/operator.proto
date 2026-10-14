@@ -682,6 +682,8 @@ enum GovernanceRejectionCode {
   GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID = 22;
   // The L2 proof names a consensus set that is unknown or disabled.
   GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN = 23;
+  // The human denied the suspended transaction at the L3 approval.
+  GOVERNANCE_REJECTION_CODE_L3_DENIED = 24;
 }
 
 // ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.

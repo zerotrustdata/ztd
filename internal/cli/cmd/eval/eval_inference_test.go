@@ -99,7 +99,7 @@ func evalInferenceCredTestConfig(t *testing.T, base string, trustBundlePEM []byt
 	cfg := &config.Config{
 		RuntimeDir:    base,
 		Paths:         &config.PathsConfig{},
-		MasterKeyFile: keystoretest.ProvisionMasterKeyFile(t),
+		Keyring:       keystoretest.NewMemoryKeyring(),
 	}
 	cfg.Paths.Infra.AppCertDir = appCertDir
 	trustDir := filepath.Join(base, "pki", "trust")

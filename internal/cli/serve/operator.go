@@ -61,10 +61,6 @@ type ServeOperatorOptions struct {
 
 	ProvenanceOperatorID               string
 	ProvenanceOperatorModelStorageRoot string
-
-	// MasterKeyFile is an operator-provisioned master key outside the runtime
-	// directory, required where no OS key store exists.
-	MasterKeyFile string
 }
 
 // resolveOperatorGateway splits the --endpoint value (host or host:port,
@@ -121,7 +117,6 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		HTTPSPort:            opts.HTTPSPort,
 		CloudMode:            opts.CloudMode,
 		CloudProvider:        opts.CloudProvider,
-		MasterKeyFile:        opts.MasterKeyFile,
 		LogLevel:             opts.LogLevel,
 		WorkDir:              effectiveWorkDir,
 		PKIDir:               "",

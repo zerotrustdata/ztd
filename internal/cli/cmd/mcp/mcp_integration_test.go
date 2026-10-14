@@ -22,6 +22,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
@@ -334,5 +337,28 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 		_, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, req, nil)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
+	})
+}
+
+func TestRunMCPAgentRun_NoArgs(t *testing.T) {
+	t.Run("returns error when no args", func(t *testing.T) {
+		err := runMCPAgentRun(nil, false, "", shared.NewFileSvc, authcmd.PanickingEnrollerFactory())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "specify an agent name")
+	})
+
+	t.Run("returns ErrAgentNotFound for unknown agent", func(t *testing.T) {
+		err := runMCPAgentRun([]string{"unknown-agent-xyz"}, false, "", shared.NewFileSvc, authcmd.PanickingEnrollerFactory())
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrAgentNotFound)
+	})
+
+	t.Run("devin returns error for missing gateway or binary", func(t *testing.T) {
+		// Devin is a local CLI agent and goes through launchAgentWithGovernance.
+		// We can't test the full launch path here (requires gateway), but we verify
+		// it does NOT return the old cloud-based error.
+		err := runMCPAgentRun([]string{"devin"}, false, "", cmdtest.FailingFileSvcFactory(constants.ErrNotAuthenticated), authcmd.PanickingEnrollerFactory())
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "cloud-based agent")
 	})
 }

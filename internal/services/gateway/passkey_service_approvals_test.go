@@ -46,6 +46,10 @@ func (m *mockMCPServiceProvider) ResumeWithL3Proof(_ context.Context, _, _ strin
 	return m.receipt, m.err
 }
 
+func (m *mockMCPServiceProvider) DenySuspendedTransaction(_ context.Context, _, _ string) (*operatorv1.ActionReceipt, error) {
+	return m.receipt, m.err
+}
+
 func TestPasskeyService_HandleApprovalAction(t *testing.T) {
 	t.Run("Failure - unauthorized", func(t *testing.T) {
 		s, _, _ := setupTestPasskeyService(t)

@@ -694,11 +694,12 @@ func (b *OllamaBackend) decodeChatStream(
 		return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: terminal event: done event carries no model: %w", constants.ErrInferenceProviderResponseInvalid)
 	case len(parts) == 0 && ollamaPromptFillsContext(terminal.PromptEvalCount, contextLimit):
 		// An over-long prompt that Ollama truncated surfaces as an empty 200;
-		// classify it as overflow before the generic empty-output rejection.
+		// classify it as overflow, not as the model's empty answer.
 		return ollamaChatResponse{}, nil, nil, ollamaContextOverflowError(*terminal.PromptEvalCount, *contextLimit)
-	case len(parts) == 0:
-		return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: terminal event: provider produced no text, thinking, or tool call (done_reason %q): %w", terminal.DoneReason, constants.ErrInferenceProviderResponseInvalid)
 	}
+	// Otherwise an empty completion is the served model's answer (often a
+	// malformed tool call the provider parser dropped). It returns as an empty
+	// result, so the caller grades it rather than blaming the provider.
 	return *terminal, parts, timeToFirstToken, nil
 }
 

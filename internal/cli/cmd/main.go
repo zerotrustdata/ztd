@@ -96,12 +96,6 @@ ztd tui`,
 			if err != nil {
 				return fmt.Errorf("root: get port flag: %w", err)
 			}
-			// A subcommand's own --master-key-file shadows the root flag in
-			// cmd.Flags(); either way the same value seals the client identity
-			// keys, which share the runtime tree's master key.
-			if masterKeyFlag := cmd.Flags().Lookup("master-key-file"); masterKeyFlag != nil {
-				config.SetMasterKeyFileOverride(masterKeyFlag.Value.String())
-			}
 			if endpoint != "" {
 				if port > 0 {
 					if strings.Contains(endpoint, "://") {
@@ -135,7 +129,6 @@ ztd tui`,
 
 	rootCmd.PersistentFlags().StringP("endpoint", "e", "", "Gateway HTTP discovery endpoint (host or host:port) for remote enrollment")
 	rootCmd.PersistentFlags().IntP("port", "p", 0, "Gateway HTTPS/mTLS port (overrides default 8443; use with --endpoint)")
-	rootCmd.PersistentFlags().String("master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. Seals and unseals the CLI and app identity keys under .ztd/. No fallback on failure.")
 	rootCmd.PersistentFlags().Bool("json", false, "Emit machine-readable JSON output (pretty-printed)")
 
 	rootCmd.AddCommand(

@@ -521,7 +521,7 @@ func validateCampaignModelRegistry(req DispatchInferenceRequest) error {
 // request identity and carries internally consistent usage, timing and evidence
 // fields. Any mismatch fails closed.
 func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInferenceRequest) error {
-	if result.GetModel() == "" || result.GetRequestedModel() == "" || len(result.GetParts()) == 0 {
+	if result.GetModel() == "" || result.GetRequestedModel() == "" {
 		return constants.ErrInferenceProviderResponseInvalid
 	}
 	if result.GetProviderAttemptId() != req.ProviderAttemptID ||

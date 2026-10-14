@@ -191,19 +191,24 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 }
 
 // @Summary		Deny a suspended transaction
-// @Description	Records a direct deny decision for a suspended transaction owned by the caller. Under ratify or
-// @Description	notary posture a CLI caller must present an mTLS client certificate and a web caller must hold a
-// @Description	registered passkey. `approved: true` is always rejected with 403: approval requires a WebAuthn
-// @Description	assertion through `/api/v1/approvals/{txHash}/verify`.
+// @Description	Denies a suspended transaction owned by the caller. The envelope is re-submitted to its executing
+// @Description	Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
+// @Description	L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
+// @Description	the CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must
+// @Description	present an mTLS client certificate and a web caller must hold a registered passkey.
+// @Description	`approved: true` is always rejected with 403: approval requires a WebAuthn assertion through
+// @Description	`/api/v1/approvals/{txHash}/verify`.
 // @Tags			approvals
 // @Accept		json
 // @Produce		json
 // @Param		body	body		models.ApprovalRespondRequest	true	"Approval decision"
-// @Success		200		{object}	models.ApprovalRespondResponse
+// @Success		200		{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of the deny"
 // @Failure		400		{string}	string	"Invalid request body"
 // @Failure		401		{string}	string	"Unauthorized"
 // @Failure		403		{string}	string	"Forbidden — approval requested, session not grounded for posture, or transaction belongs to another user"
 // @Failure		404		{string}	string	"Transaction not found or expired"
+// @Failure		500		{string}	string	"The deny produced no signed rejection receipt"
+// @Failure		503		{string}	string	"Service Unavailable — runtime vault locked; the deny can be resubmitted"
 // @Router			/api/v1/approvals/respond [post]
 func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -266,12 +271,36 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := h.orchestrator.DenySuspendedTransaction(r.Context(), req.ApprovalID); err != nil {
-		h.logger.Error("Failed to deny suspended transaction", "error", err, "txHash", req.ApprovalID)
-		h.responder.Error(w, http.StatusInternalServerError, "failed to deny transaction")
+	receipt, err := h.orchestrator.DenySuspendedTransaction(r.Context(), req.ApprovalID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrTransactionExpired):
+			h.responder.Error(w, http.StatusNotFound, "transaction not found or expired")
+		case errors.Is(err, constants.ErrAuditStoreVaultLocked):
+			h.logger.Error("Deny blocked: runtime vault locked", "error", err, "txHash", req.ApprovalID)
+			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
+		default:
+			h.logger.Error("Failed to deny suspended transaction", "error", err, "txHash", req.ApprovalID)
+			h.responder.Error(w, http.StatusInternalServerError, "failed to deny transaction")
+		}
 		return
 	}
-	h.responder.JSON(w, http.StatusOK, models.ApprovalRespondResponse{Success: true, ApprovalID: req.ApprovalID, Approved: false})
+
+	// The deny must produce the signed rejection for the suspended hash. A
+	// mismatch means the Gateway cannot vouch for this deny, so it fails closed.
+	if receipt == nil || receipt.GetTransactionHash() != tx.TransactionHash {
+		h.logger.Error("Deny receipt does not match suspended transaction", "txHash", req.ApprovalID)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
+	if err != nil {
+		h.logger.Error("Failed to encode deny receipt", "error", err, "txHash", req.ApprovalID)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
+		return
+	}
+	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, req.ApprovalID, receiptJSON)
+	h.responder.JSON(w, http.StatusOK, receipt)
 }
 
 // handleCLIApprovalStatus is an mTLS-authenticated endpoint that returns the current

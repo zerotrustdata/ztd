@@ -50,7 +50,8 @@ func TestIdentityKey_WrongMasterKeyFailsClosed(t *testing.T) {
 	_, keyPEM := generateTestCertificateWithSPIFFE(t, "sealed-app", time.Now().Add(time.Hour))
 	require.NoError(t, SealIdentityKey(context.Background(), fileSvc, cfg, cfg.CLIKeyFile(), []byte(keyPEM)))
 
-	cfg.MasterKeyFile = keystoretest.ProvisionMasterKeyFile(t)
+	cfg.Keyring = keystoretest.NewMemoryKeyring()
+	require.NoError(t, cfg.Keyring.StoreMasterKey(bytes.Repeat([]byte{0x5a}, 32)))
 	got, err := UnsealIdentityKey(context.Background(), fileSvc, cfg, cfg.CLIKeyFile())
 
 	require.ErrorIs(t, err, constants.ErrIdentityFileUnseal)
@@ -63,7 +64,7 @@ func TestIdentityKey_MissingMasterKeyFailsClosed(t *testing.T) {
 	_, keyPEM := generateTestCertificateWithSPIFFE(t, "sealed-app", time.Now().Add(time.Hour))
 	require.NoError(t, SealIdentityKey(context.Background(), fileSvc, cfg, cfg.CLIKeyFile(), []byte(keyPEM)))
 
-	cfg.MasterKeyFile = cfg.MasterKeyFile + ".missing"
+	cfg.Keyring = keystoretest.NewMemoryKeyring()
 	got, err := UnsealIdentityKey(context.Background(), fileSvc, cfg, cfg.CLIKeyFile())
 
 	require.ErrorIs(t, err, constants.ErrIdentityFileUnseal)

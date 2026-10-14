@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/pathutil"
 	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -39,7 +40,6 @@ func complianceEvidenceExportCmdWithConfig(fileSvcFactory func(string, *slog.Log
 	var scopePath string
 	var outputDir string
 	var maxRows int
-	var masterKeyFile string
 
 	cmd := &cobra.Command{
 		Use:   "export",
@@ -67,7 +67,7 @@ command.`,
 			if err != nil {
 				return err
 			}
-			v, vaultCleanup, err := openRuntimeVault(fileSvc, masterKeyFile)
+			v, vaultCleanup, err := openRuntimeVault(fileSvc, keystore.Options{})
 			if err != nil {
 				return err
 			}
@@ -90,7 +90,6 @@ command.`,
 	cmd.Flags().StringVar(&scopePath, "scope", "", "Canonical assessment scope selecting the runtime source and evidence window")
 	cmd.Flags().StringVar(&outputDir, "out", "", "Output directory for the operational source package")
 	cmd.Flags().IntVar(&maxRows, "max-rows", constants.ComplianceOperationalExportDefaultMaxRows, "Maximum receipts and commitments to export")
-	cmd.Flags().StringVar(&masterKeyFile, "master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
 	return cmd
 }
 

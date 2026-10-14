@@ -944,7 +944,7 @@ var operatorDeployForwardFlags = []string{
 	"capabilities", "inference-ollama-endpoint", "inference-keep-alive",
 	"provider-boundary-observer-id", "provenance-operator-id", "model-storage-root",
 	"gateway-http-port", "gateway-https-port",
-	"heartbeat-interval", "log", "trust-bundle", "master-key-file",
+	"heartbeat-interval", "log", "trust-bundle",
 }
 
 // operatorDeployPreflightArgs returns the gateway-preflight arguments that probe

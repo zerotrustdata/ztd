@@ -5,11 +5,18 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-//go:build !linux && !darwin
+//go:build integration
 
-package keystore
+package gw
 
-import "os"
+import (
+	"os"
+	"testing"
 
-func openExternalKey(path string) (*os.File, error)      { return os.Open(path) }
-func validateExternalKeyMetadata(info os.FileInfo) error { return nil }
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+)
+
+func TestMain(m *testing.M) {
+	cmdtest.ReexecServingGatewayIfRequested()
+	os.Exit(m.Run())
+}

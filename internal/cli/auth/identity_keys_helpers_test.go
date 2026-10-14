@@ -19,12 +19,12 @@ import (
 )
 
 // sealTestKey seals keyPEM at the absolute runtime path keyPath the way
-// enrollment stores identity keys. It provisions an external master key file on
-// cfg when none is set, so later reads through cfg unseal with the same key.
+// enrollment stores identity keys. It gives cfg an in-memory keyring when none
+// is set, so later reads through cfg unseal with the same master key.
 func sealTestKey(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.Config, keyPath string, keyPEM []byte) {
 	t.Helper()
-	if cfg.MasterKeyFile == "" {
-		cfg.MasterKeyFile = keystoretest.ProvisionMasterKeyFile(t)
+	if cfg.Keyring == nil {
+		cfg.Keyring = keystoretest.NewMemoryKeyring()
 	}
 	require.NoError(t, SealIdentityKey(context.Background(), fileSvc, cfg, keyPath, keyPEM))
 }
