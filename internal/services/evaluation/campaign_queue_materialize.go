@@ -42,7 +42,7 @@ func MaterializeCampaignInventory(req MaterializeCampaignInventoryRequest) (*Mod
 
 	outputPath := req.OutputPath
 	if outputPath == "" {
-		outputPath = campaignInventoryPath(DefaultCampaignInventoryRelDirname, req.CampaignID)
+		outputPath = campaignInventoryPath(req.CampaignID)
 	}
 	outputPath = filepath.ToSlash(outputPath)
 	if req.Context == nil {

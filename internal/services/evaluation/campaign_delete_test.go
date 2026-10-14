@@ -166,7 +166,7 @@ func TestDeleterDeleteCampaignRemovesRunsCampaignAndInventory(t *testing.T) {
 	ctx := context.Background()
 	_, err := f.archiver(false).ArchiveRun(ctx, "run-b", "operator-1")
 	require.NoError(t, err)
-	inventory := campaignInventoryPath(DefaultCampaignInventoryRelDirname, f.req.CampaignID)
+	inventory := campaignInventoryPath(f.req.CampaignID)
 	require.NoError(t, f.files.WriteFile(ctx, inventory, []byte("{}"), constants.PermFilePrivate))
 	publication := newRecordingPublicationStateStore()
 
@@ -279,7 +279,7 @@ func TestDeleterDeleteRunFailsWhileABackupIsInProgress(t *testing.T) {
 func TestDeleterDeleteCampaignPurgesItsRunsFromBackups(t *testing.T) {
 	f := newArchiveFixture(t)
 	ctx := context.Background()
-	inventory := campaignInventoryPath(DefaultCampaignInventoryRelDirname, f.req.CampaignID)
+	inventory := campaignInventoryPath(f.req.CampaignID)
 	require.NoError(t, f.files.WriteFile(ctx, inventory, []byte("{}"), constants.PermFilePrivate))
 	backupDir := f.backUp(t)
 

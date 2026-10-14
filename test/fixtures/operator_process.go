@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/zerotrustdata/ztd/internal/certs"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"

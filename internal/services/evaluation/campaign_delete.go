@@ -181,7 +181,7 @@ func (d *Deleter) DeleteCampaign(ctx context.Context, campaignID string) (*Delet
 	if err := d.files.RemoveAll(ctx, campaignDir); err != nil {
 		return report, fmt.Errorf("evaluation: delete campaign %s: %w", campaignID, err)
 	}
-	if err := d.files.Remove(ctx, campaignInventoryPath(DefaultCampaignInventoryRelDirname, campaignID)); err != nil {
+	if err := d.files.Remove(ctx, campaignInventoryPath(campaignID)); err != nil {
 		return report, fmt.Errorf("evaluation: delete campaign %s: remove inventory: %w", campaignID, err)
 	}
 	return report, nil
@@ -239,6 +239,6 @@ func campaignEvidencePaths(campaignID string) []string {
 		activeEvalLayout().campaignDir(campaignID),
 		archived,
 		archiveManifestPath(archived),
-		campaignInventoryPath(DefaultCampaignInventoryRelDirname, campaignID),
+		campaignInventoryPath(campaignID),
 	}
 }

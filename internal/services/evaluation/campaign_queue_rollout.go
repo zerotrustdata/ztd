@@ -113,7 +113,7 @@ func NewCampaignQueueModel(variant *evalv1.ModelVariant) (CampaignQueueModel, er
 		VariantID:            variant.GetVariantId(),
 		ServedModelTag:       variant.GetServedModelTag(),
 		CampaignID:           campaignID,
-		InventoryFile:        campaignInventoryPath(DefaultCampaignInventoryRelDirname, campaignID),
+		InventoryFile:        campaignInventoryPath(campaignID),
 		ModelRegistryDigest:  freeze.RegistryDigest,
 		HomogeneousCellCount: freeze.HomogeneousCellCount,
 		Status:               QueueStatusPending,

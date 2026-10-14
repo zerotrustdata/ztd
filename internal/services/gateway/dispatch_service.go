@@ -397,54 +397,17 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	resultCh := make(chan *commonv1.GovernanceEnvelope, resultBuffer)
 	overflow := make(chan error, 1)
 
-	handler := func(channel string, data []byte) {
-		resultEnv := &commonv1.GovernanceEnvelope{}
-		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, resultEnv); err != nil {
-			d.logger.Warn("dispatch: failed to unmarshal result envelope", "error", err)
-			return
-		}
-		if resultEnv.Id == txHash {
-			if isShellCommandDispatch(req.EventType) && !isOperatorCommandTerminalResult(resultEnv) {
-				return
-			}
-			if err := constants.ValidateGovernedResultEnvelope(
-				constants.EventType(req.EventType),
-				constants.EventType(resultEnv.GetEventType()),
-				constants.ActionType(resultEnv.GetActionType()),
-			); err != nil {
-				d.logger.Warn("dispatch: reject result envelope", "error", err, "transaction_id", txHash)
-				return
-			}
-			if isEmbedded {
-				// Publish invokes handlers synchronously. Waiting here bounds
-				// the queue and slows the local producer to the consumer's pace,
-				// without depending on goroutine scheduling to avoid overflow.
-				select {
-				case resultCh <- resultEnv:
-				case <-timeoutCtx.Done():
-				}
-				return
-			}
-			select {
-			case resultCh <- resultEnv:
-			default:
-				if req.OnInferenceProgress != nil {
-					select {
-					case overflow <- constants.ErrInferenceProgressBackpressure:
-					default:
-					}
-					d.logger.Warn("dispatch: inference progress channel full, failing closed",
-						"transaction_id", txHash,
-						"event_type", resultEnv.GetEventType())
-					return
-				}
-				d.logger.Warn("dispatch: result channel full, dropping event",
-					"transaction_id", txHash,
-					"event_type", resultEnv.GetEventType())
-			}
-		}
+	router := &dispatchResultRouter{
+		ctx:        timeoutCtx,
+		logger:     d.logger,
+		txHash:     txHash,
+		eventType:  req.EventType,
+		isEmbedded: isEmbedded,
+		progress:   req.OnInferenceProgress != nil,
+		resultCh:   resultCh,
+		overflow:   overflow,
 	}
-	unregister := d.pubsub.RegisterHandler(resultsChannel, handler)
+	unregister := d.pubsub.RegisterHandler(resultsChannel, router.handle)
 	defer unregister()
 
 	// An L4 rejection publishes only a signed FAILED receipt, never a result,
@@ -637,6 +600,68 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 type embeddedOutcome struct {
 	receipt *operatorv1.ActionReceipt
 	err     error
+}
+
+// dispatchResultRouter forwards one dispatch's result envelopes from the
+// Operator's results channel to the waiting Dispatch call.
+type dispatchResultRouter struct {
+	ctx        context.Context
+	logger     *slog.Logger
+	txHash     string
+	eventType  string
+	isEmbedded bool
+	progress   bool
+	resultCh   chan *commonv1.GovernanceEnvelope
+	overflow   chan error
+}
+
+func (r *dispatchResultRouter) handle(_ string, data []byte) {
+	resultEnv := &commonv1.GovernanceEnvelope{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, resultEnv); err != nil {
+		r.logger.Warn("dispatch: failed to unmarshal result envelope", "error", err)
+		return
+	}
+	if resultEnv.Id != r.txHash {
+		return
+	}
+	if isShellCommandDispatch(r.eventType) && !isOperatorCommandTerminalResult(resultEnv) {
+		return
+	}
+	if err := constants.ValidateGovernedResultEnvelope(
+		constants.EventType(r.eventType),
+		constants.EventType(resultEnv.GetEventType()),
+		constants.ActionType(resultEnv.GetActionType()),
+	); err != nil {
+		r.logger.Warn("dispatch: reject result envelope", "error", err, "transaction_id", r.txHash)
+		return
+	}
+	if r.isEmbedded {
+		// Publish invokes handlers synchronously. Waiting here bounds
+		// the queue and slows the local producer to the consumer's pace,
+		// without depending on goroutine scheduling to avoid overflow.
+		select {
+		case r.resultCh <- resultEnv:
+		case <-r.ctx.Done():
+		}
+		return
+	}
+	select {
+	case r.resultCh <- resultEnv:
+	default:
+		if r.progress {
+			select {
+			case r.overflow <- constants.ErrInferenceProgressBackpressure:
+			default:
+			}
+			r.logger.Warn("dispatch: inference progress channel full, failing closed",
+				"transaction_id", r.txHash,
+				"event_type", resultEnv.GetEventType())
+			return
+		}
+		r.logger.Warn("dispatch: result channel full, dropping event",
+			"transaction_id", r.txHash,
+			"event_type", resultEnv.GetEventType())
+	}
 }
 
 // transactionReceiptKind classifies a verified receipt for one transaction.
