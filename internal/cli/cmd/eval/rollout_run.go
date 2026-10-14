@@ -76,7 +76,8 @@ provenance required. A verified run marks the entry verified; a failed entry is
 marked failed and the batch continues. A run in which the provider failed every
 assignment, as when it rejects tool declarations for the model, fails. Stopping
 a run (Ctrl-C or 'ztd eval runs cancel') ends the batch and leaves its entry
-pending.
+pending. The batch holds the queue lock, so 'rollout add', 'remove', 'retry',
+'skip', and a second batch fail until it ends.
 
 --gate-smoke screens each model first with a fast smoke campaign
 (<campaign>-smoke). A smoke pass does not verify the entry; add
@@ -137,6 +138,13 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return err
+	}
+	if !opts.DryRun {
+		held, err := evaluation.LockRolloutQueue(cmd.Context(), fileSvc)
+		if err != nil {
+			return fmt.Errorf("evaluation: rollout run: %w", err)
+		}
+		defer func() { _ = held.Close() }()
 	}
 	queue, err := evaluation.LoadRolloutQueue(cmd.Context(), fileSvc)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,26 @@ func LoadRolloutQueue(ctx context.Context, fileSvc fs.RuntimeFileService) (*Camp
 		return BuildInitCampaignQueue("", nil), nil
 	}
 	return LoadInitCampaignQueueFromRuntime(ctx, fileSvc, DefaultInitCampaignQueueRelPath)
+}
+
+// LockRolloutQueue takes the rollout queue's writer lock. Every queue edit
+// (add and the selector verbs) holds it across its load/modify/save, and
+// rollout run holds it from planning to the end of the batch, so no edit can
+// overwrite an outcome the run records or be overwritten by one. A held lock
+// fails with ErrRuntimeFileLocked and changes nothing. The run's own entry
+// updates (MarkCampaignQueueEntry) happen under its lock and do not retake it.
+func LockRolloutQueue(ctx context.Context, fileSvc fs.RuntimeFileService) (io.Closer, error) {
+	if fileSvc == nil {
+		return nil, fmt.Errorf("evaluation: lock rollout queue: %w", constants.ErrMissingRequiredField)
+	}
+	held, err := fileSvc.TryLock(ctx, constants.EvaluationRolloutQueueLockRelPath, constants.PermFilePrivate)
+	if errors.Is(err, constants.ErrRuntimeFileLocked) {
+		return nil, fmt.Errorf("evaluation: the rollout queue is in use by a rollout run or another queue edit; retry when it finishes: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: lock rollout queue: %w", err)
+	}
+	return held, nil
 }
 
 // SaveRolloutQueue writes the rollout queue. An empty queue removes the file.

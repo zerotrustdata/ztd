@@ -116,7 +116,7 @@ func evalBackupRoots() []string {
 // across a wipe: a restored lease would make a dead run look held.
 func evalBackupTransient(relPath string) bool {
 	switch path.Base(relPath) {
-	case constants.EvaluationRunLeaseFilename, constants.EvaluationActiveRunFilename, constants.EvaluationBackupLockFilename:
+	case constants.EvaluationRunLeaseFilename, constants.EvaluationActiveRunFilename, constants.EvaluationBackupLockFilename, constants.EvaluationRolloutQueueLockFilename:
 		return true
 	}
 	return false

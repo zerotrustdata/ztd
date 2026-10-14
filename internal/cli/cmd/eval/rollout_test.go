@@ -202,6 +202,45 @@ func TestRunRollout_StoppedRunLeavesEntryPendingAndEndsBatch(t *testing.T) {
 	}
 }
 
+func TestRunRollout_HoldsQueueLockForTheBatch(t *testing.T) {
+	env := setupRunEnv(t)
+	env.mustRun(t, "rollout", "add", "qwen3:4b")
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	t.Cleanup(mirror.Close)
+	env.cmd.SetOut(&bytes.Buffer{})
+	env.cmd.SetErr(&bytes.Buffer{})
+
+	var lockErr error
+	gates := func(fs.RuntimeFileService, []*evalv1.ModelVariant) rolloutGateRunner {
+		return func(_ *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
+			_, lockErr = evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
+			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-failed", Gate: gate}, constants.ErrEvalRunVerificationFailed
+		}
+	}
+	require.Error(t, runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates))
+	require.ErrorIs(t, lockErr, constants.ErrRuntimeFileLocked)
+
+	held, err := evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
+	require.NoError(t, err, "the batch releases the queue lock when it ends")
+	require.NoError(t, held.Close())
+}
+
+func TestRolloutAdd_FailsWhileQueueIsLocked(t *testing.T) {
+	env := setupRunEnv(t)
+	held, err := evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
+	require.NoError(t, err)
+
+	_, err = env.run(t, "rollout", "add", "qwen3:4b")
+	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
+	_, err = env.run(t, "rollout", "skip", "qwen3:4b")
+	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
+	require.NoError(t, held.Close())
+
+	queue, err := evaluation.LoadRolloutQueue(context.Background(), env.fileSvc(t))
+	require.NoError(t, err)
+	assert.Empty(t, queue.Models, "a locked add changes nothing")
+}
+
 func TestRolloutRun_PromoteOnPassRequiresGateSmoke(t *testing.T) {
 	env := setupRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")

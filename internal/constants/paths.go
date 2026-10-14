@@ -662,6 +662,8 @@ const (
 	EvaluationBackupDefaultDir                    = EvaluationDirname + "/backups"
 	EvaluationBackupLockFilename                  = "backup.lock"
 	EvaluationBackupLockRelPath                   = EvaluationDirname + "/" + EvaluationBackupLockFilename
+	EvaluationRolloutQueueLockFilename            = "rollout-queue.lock"
+	EvaluationRolloutQueueLockRelPath             = EvaluationDirname + "/" + EvaluationRolloutQueueLockFilename
 	EvaluationModelInventoryPath                  = EvaluationDirname + "/model-inventory.json"
 	EvaluationInitCampaignQueuePath               = EvaluationDirname + "/init-campaign-queue.json"
 	EvaluationCampaignExportDirname               = "export"

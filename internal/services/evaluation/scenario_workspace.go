@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -35,12 +36,28 @@ type ScenarioWorkspace struct {
 	OperatorWorkingDirectory string
 }
 
-// ValidateOperatorWorkingDirectory reports whether a Data Operator's working
-// directory can host scenario workspaces. Run execution checks it before any
-// assignment is marked running, so a bad binding never strands an assignment.
-func ValidateOperatorWorkingDirectory(operatorWorkingDirectory string) error {
-	_, err := cleanOperatorWorkingDirectory(operatorWorkingDirectory)
-	return err
+// ValidateAgentDataOperator reports whether a Data Operator may host
+// model-role scenarios. The model under evaluation runs arbitrary shell
+// commands in the operator working directory, so that directory MUST be
+// disposable: never the Gateway's embedded Operator, whose working directory
+// is the ztd project, and never a directory that is, contains, or sits inside
+// projectRoot. Run execution checks it before any assignment is marked running.
+func ValidateAgentDataOperator(embedded bool, operatorWorkingDirectory, projectRoot string) error {
+	workingDirectory, err := cleanOperatorWorkingDirectory(operatorWorkingDirectory)
+	if err != nil {
+		return err
+	}
+	if embedded {
+		return fmt.Errorf("%w: the embedded Operator runs in the ztd project %q; start a dedicated Data Operator in a disposable directory (ztd operator deploy --local --dest-dir <dir> --background)", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory)
+	}
+	project, ok := cleanOperatorAbsPath(filepath.ToSlash(projectRoot))
+	if !ok {
+		return fmt.Errorf("%w: project root %q is not an absolute path", constants.ErrEvaluationWorkspaceUnavailable, projectRoot)
+	}
+	if pathWithin(workingDirectory, project) || pathWithin(project, workingDirectory) {
+		return fmt.Errorf("%w: operator working directory %q overlaps the ztd project %q; start the Data Operator in a disposable directory outside it", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory, project)
+	}
+	return nil
 }
 
 func cleanOperatorWorkingDirectory(operatorWorkingDirectory string) (string, error) {

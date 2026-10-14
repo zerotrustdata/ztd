@@ -376,6 +376,8 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 			return nil, fmt.Errorf("ollama_backend: generate: %w: model %q", constants.ErrInferenceModelNotFound, req.Model)
 		case ollamaErrorIndicatesCapabilityUnsupported(resp.StatusCode, errorBody):
 			return nil, fmt.Errorf("ollama_backend: generate: %w", constants.ErrInferenceToolsUnsupported)
+		case ollamaCapabilityRejection(resp.StatusCode, errorBody):
+			return nil, fmt.Errorf("ollama_backend: generate: %w", constants.ErrInferenceCapabilityUnsupported)
 		default:
 			return nil, fmt.Errorf("ollama_backend: generate: %w: status %d", constants.ErrInferenceGenerateFailed, resp.StatusCode)
 		}
@@ -817,6 +819,15 @@ func ollamaErrorIndicatesCapabilityUnsupported(statusCode int, body []byte) bool
 		strings.Contains(message, "tools not supported") ||
 		strings.Contains(message, "tool use not supported") ||
 		strings.Contains(message, "function calling not supported")
+}
+
+// ollamaCapabilityRejection reports a 400 rejecting a non-tool capability the
+// request asked for, such as thinking on a model without a thinking template.
+func ollamaCapabilityRejection(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest || len(body) == 0 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(body)), "does not support thinking")
 }
 
 // transportError classifies a failed provider call. Caller cancellation

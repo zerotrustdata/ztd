@@ -135,6 +135,11 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("evaluation: rollout add: %w", err)
 			}
+			held, err := evaluation.LockRolloutQueue(cmd.Context(), fileSvc)
+			if err != nil {
+				return fmt.Errorf("evaluation: rollout add: %w", err)
+			}
+			defer func() { _ = held.Close() }()
 			queue, err := evaluation.LoadRolloutQueue(cmd.Context(), fileSvc)
 			if err != nil {
 				return fmt.Errorf("evaluation: rollout add: %w", err)
@@ -229,6 +234,11 @@ func rolloutSelectorCmd(deps nativeEvalDeps, verb rolloutSelectorVerb) *cobra.Co
 			if err != nil {
 				return err
 			}
+			held, err := evaluation.LockRolloutQueue(cmd.Context(), fileSvc)
+			if err != nil {
+				return fmt.Errorf("evaluation: rollout %s: %w", verb.name, err)
+			}
+			defer func() { _ = held.Close() }()
 			queue, err := evaluation.LoadRolloutQueue(cmd.Context(), fileSvc)
 			if err != nil {
 				return fmt.Errorf("evaluation: rollout %s: %w", verb.name, err)

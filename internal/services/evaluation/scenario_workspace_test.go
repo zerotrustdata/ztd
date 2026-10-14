@@ -67,3 +67,31 @@ func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
 	assert.Equal(t, `/srv/ztd/sub\a.txt`, ws.Resolve(`sub\a.txt`))
 	assert.True(t, ws.Contains(ws.Root+"/x"))
 }
+
+func TestValidateAgentDataOperator(t *testing.T) {
+	cases := []struct {
+		name     string
+		embedded bool
+		wd       string
+		project  string
+		ok       bool
+	}{
+		{name: "dedicated sandbox outside the project", wd: "/srv/eval-sandbox", project: "/srv/ztd", ok: true},
+		{name: "embedded operator", embedded: true, wd: "/srv/eval-sandbox", project: "/srv/ztd"},
+		{name: "project root", wd: "/srv/ztd/", project: "/srv/ztd"},
+		{name: "inside the project", wd: "/srv/ztd/sandbox", project: "/srv/ztd"},
+		{name: "ancestor of the project", wd: "/srv", project: "/srv/ztd"},
+		{name: "relative working directory", wd: "sandbox", project: "/srv/ztd"},
+		{name: "relative project root", wd: "/srv/eval-sandbox", project: "ztd"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateAgentDataOperator(tc.embedded, tc.wd, tc.project)
+			if tc.ok {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, constants.ErrEvaluationWorkspaceUnavailable)
+		})
+	}
+}

@@ -685,6 +685,28 @@ func TestOllamaBackend_GenerateToolsUnsupportedReturnsErrInferenceToolsUnsupport
 	assert.ErrorIs(t, err, constants.ErrInferenceToolsUnsupported)
 }
 
+func TestOllamaBackend_GenerateThinkingUnsupportedReturnsErrInferenceCapabilityUnsupported(t *testing.T) {
+	logger := testutil.NewTestLogger()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"\"gemma3:1b\" does not support thinking"}`))
+	}))
+	defer server.Close()
+
+	backend, err := NewOllamaBackend(server.URL, logger)
+	require.NoError(t, err)
+	resp, err := backend.Generate(context.Background(), models.GenerateRequest{
+		Role:  models.InferenceModelRolePrimary,
+		Model: "gemma3:1b",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, constants.ErrInferenceCapabilityUnsupported)
+	assert.NotErrorIs(t, err, constants.ErrInferenceGenerateFailed)
+}
+
 func TestOllamaBackend_GenerateRequestTimeoutReturnsErrInferenceBackendTimeout(t *testing.T) {
 	logger := testutil.NewTestLogger()
 

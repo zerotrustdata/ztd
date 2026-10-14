@@ -124,18 +124,13 @@ func (r *governedCapabilityProbeRunner) probeToolCallingCapability(ctx context.C
 	req := r.baseProbeRequest(variant, "tools")
 	req.Prompt = "Call probe_echo with message capability-probe-tool"
 	req.Tools = []*operatorv1.InferenceToolDeclaration{ProbeEchoToolDeclaration()}
-	req.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_REQUIRED}
+	// AUTO, as agent scenarios declare it: the inference handler and the Ollama
+	// backend reject every other mode as a capability the provider lacks.
+	req.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO}
 	resp, err := r.dispatchCapabilityProbe(ctx, req)
 	if err != nil {
-		// Only a provider capability rejection means the model cannot take tools;
-		// any other dispatch failure is a failed probe, recorded with its class.
-		class := inference.ClassifyAttemptFailure(err)
-		if class == inference.AttemptFailureCapabilityRejected {
-			//nolint:nilerr // intentional fallback: tool probe rejection recorded as observation verdict
-			return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected tool-call probe"), nil
-		}
-		//nolint:nilerr // intentional fallback: tool probe failure recorded as observation verdict
-		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, fmt.Sprintf("tool-call probe dispatch failed (%s)", class)), nil
+		//nolint:nilerr // intentional fallback: probe dispatch failure recorded as observation verdict
+		return probeDispatchFailure(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, "tool-call", err), nil
 	}
 	if inferenceResultHasToolCall(resp.GetResult(), "probe_echo") {
 		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "tool-call probe returned probe_echo"), nil
@@ -149,8 +144,8 @@ func (r *governedCapabilityProbeRunner) probeStructuredOutputCapability(ctx cont
 	req.ResponseFormat = ProbeStructuredResponseFormat()
 	resp, err := r.dispatchCapabilityProbe(ctx, req)
 	if err != nil {
-		//nolint:nilerr // intentional fallback: structured output rejection recorded as observation verdict
-		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected structured-output probe"), nil
+		//nolint:nilerr // intentional fallback: probe dispatch failure recorded as observation verdict
+		return probeDispatchFailure(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT, "structured-output", err), nil
 	}
 	payload, ok := inferenceResultStructuredJSON(resp.GetResult())
 	if !ok {
@@ -172,13 +167,24 @@ func (r *governedCapabilityProbeRunner) probeThinkingCapability(ctx context.Cont
 	req.Thinking = &operatorv1.InferenceThinkingControl{Mode: &operatorv1.InferenceThinkingControl_Enabled{Enabled: true}}
 	resp, err := r.dispatchCapabilityProbe(ctx, req)
 	if err != nil {
-		//nolint:nilerr // intentional fallback: thinking probe rejection recorded as observation verdict
-		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_THINKING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected thinking probe"), nil
+		//nolint:nilerr // intentional fallback: probe dispatch failure recorded as observation verdict
+		return probeDispatchFailure(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_THINKING, "thinking", err), nil
 	}
 	if inferenceResultHasThinking(resp.GetResult()) || inferenceResultHasText(resp.GetResult(), "capability-probe-thinking") {
 		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_THINKING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "thinking probe returned visible thinking or expected answer text"), nil
 	}
 	return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_THINKING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "thinking probe returned neither thinking nor expected answer"), nil
+}
+
+// probeDispatchFailure records a failed probe dispatch. Only a provider
+// capability rejection means the model lacks the capability (UNSUPPORTED); any
+// other failure, a timeout included, is a failed probe recorded with its class.
+func probeDispatchFailure(kind evalv1.ModelCapabilityKind, probe string, err error) *evalv1.ModelCapabilityObservation {
+	class := inference.ClassifyAttemptFailure(err)
+	if class == inference.AttemptFailureCapabilityRejected {
+		return capabilityObservation(kind, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected "+probe+" probe")
+	}
+	return capabilityObservation(kind, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, fmt.Sprintf("%s probe dispatch failed (%s)", probe, class))
 }
 
 func probeContextLimitCapability(variant *evalv1.ModelVariant) *evalv1.ModelCapabilityObservation {

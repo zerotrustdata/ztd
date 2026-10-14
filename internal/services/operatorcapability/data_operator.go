@@ -21,6 +21,9 @@ type DataOperatorStatus struct {
 	OperatorSessionID string
 	Status            string
 	WorkingDirectory  string
+	// Embedded is true for the Gateway's embedded Operator, whose working
+	// directory is the ztd project the Gateway was started from.
+	Embedded bool
 }
 
 // IsDataOperator reports whether an active remote or configured embedded
@@ -72,8 +75,9 @@ func ActiveDataOperators(operators []*operatorv1.OperatorDocument) []DataOperato
 			OperatorSessionID: op.OperatorSessionId,
 			Status:            op.Status,
 			WorkingDirectory:  wd,
+			Embedded:          constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded,
 		}
-		if constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded {
+		if status.Embedded {
 			embeddedMatches = append(embeddedMatches, status)
 		} else {
 			dedicatedMatches = append(dedicatedMatches, status)
