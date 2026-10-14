@@ -12,12 +12,13 @@ const mirrorOrigin = 'https://mirror.example';
 const firstHash = '1'.repeat(64);
 const latestHash = '2'.repeat(64);
 
-function snapshot(sequence: number, hash: string): FeedSnapshot {
+function snapshot(sequence: number, hash: string, withdrawalDigest = '0'.repeat(64)): FeedSnapshot {
   return {
     protocol_version: '1.0.0',
     source_id: 'public-source',
     high_water_sequence: sequence,
     feed_chain_hash: hash,
+    withdrawal_digest: withdrawalDigest,
     batch_count: sequence,
     generated_at: '2026-09-21T08:00:00Z',
     freshness: 'active',
@@ -162,5 +163,60 @@ describe('feed cache', () => {
 
     expect(storage.cleared).toBe(true);
     expect(requests.some((request) => request.includes('/history?source=public-source&cursor=0&limit=500'))).toBe(true);
+  });
+
+  it('drops a cache holding records the mirror has since withdrawn', async () => {
+    const withdrawnDigest = '7'.repeat(64);
+    const cached = createCachedFeed(mirrorOrigin, snapshot(3, latestHash), [
+      record(1, fixtureCatalogExploratory),
+      record(2, fixtureModelSummaries[0]!),
+      record(3, fixtureModelSummaries[1]!),
+    ]);
+    const storage = new MemoryFeedCache(cached);
+    const requests: string[] = [];
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const target = String(input);
+      requests.push(target);
+      if (target === '/runtime.json') return jsonResponse({ schema_version: '1.0.0', mirror_origin: mirrorOrigin });
+      const url = new URL(target);
+      if (url.pathname === '/bootstrap') {
+        return jsonResponse({
+          protocol_version: '1.0.0',
+          snapshot: snapshot(3, latestHash, withdrawnDigest),
+          source_freshness: 'active',
+          recent_projections: [],
+          proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
+          generated_at: '2026-09-21T08:00:00Z',
+        });
+      }
+      if (url.pathname === '/history') {
+        return jsonResponse({
+          protocol_version: '1.0.0',
+          items: [
+            { ...fixtureCatalogExploratory, sequence: 1, record_type: 'projection' },
+            { ...fixtureModelSummaries[1]!, sequence: 3, record_type: 'projection' },
+          ],
+          has_more: false,
+          limit: 500,
+        });
+      }
+      if (url.pathname === '/snapshot') return jsonResponse(snapshot(3, latestHash, withdrawnDigest));
+      return jsonResponse({}, 404);
+    }) as typeof fetch;
+    const streamFactory: typeof openStream = () => ({ close: () => undefined });
+
+    await startFeed({ fetchImpl, cacheStorage: storage, streamFactory });
+
+    expect(storage.cleared).toBe(true);
+    expect(requests.some((request) => request.includes('/history?source=public-source&cursor=0&limit=500'))).toBe(true);
+    expect(storage.saved?.records.map((saved) => saved.sequence)).toEqual([1, 3]);
+    expect(storage.saved?.snapshot.withdrawal_digest).toBe(withdrawnDigest);
+  });
+
+  it('rejects a cache written before snapshots carried a withdrawal digest', () => {
+    const legacy = snapshot(1, firstHash) as Partial<FeedSnapshot>;
+    delete legacy.withdrawal_digest;
+    const cached = { ...createCachedFeed(mirrorOrigin, snapshot(1, firstHash), [record(1, fixtureCatalogExploratory)]), snapshot: legacy };
+    expect(validateCachedFeed(cached, mirrorOrigin)).toBeNull();
   });
 });

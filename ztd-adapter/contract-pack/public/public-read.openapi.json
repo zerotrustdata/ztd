@@ -463,6 +463,11 @@
         "description": "Pseudonymous source deployment identifier",
         "required": true,
         "type": "string"
+      },
+      "withdrawal_digest": {
+        "description": "SHA-256 over the mirror's sorted withdrawn dataset IDs, the zero hash when none (64-char hex). Present on every mirror read; absent from the publisher's own snapshot. Withdrawal hides records without rewriting the signed chain, so a client discards cached records when this changes.",
+        "required": false,
+        "type": "string"
       }
     },
     "public_proof_catalog": {

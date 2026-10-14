@@ -1363,6 +1363,8 @@ definitions:
         type: string
       source_id:
         type: string
+      withdrawal_digest:
+        type: string
     type: object
   models.PublicProofCatalogPushResponse:
     properties:

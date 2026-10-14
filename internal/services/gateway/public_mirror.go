@@ -356,6 +356,7 @@ type PublicMirrorServer struct {
 type mirrorSSESubscriber struct {
 	sourceID  string
 	ch        chan models.PublicFeedRecord
+	resync    chan struct{}
 	closed    bool
 	truncated bool
 	mu        sync.Mutex
@@ -482,9 +483,26 @@ func (m *PublicMirrorServer) addSSESubscriber(sourceID string) (*mirrorSSESubscr
 	subscriber := &mirrorSSESubscriber{
 		sourceID: sourceID,
 		ch:       make(chan models.PublicFeedRecord, m.maxSSEQueueSize),
+		resync:   make(chan struct{}, 1),
 	}
 	m.sseSubscribers[subscriber] = struct{}{}
 	return subscriber, true
+}
+
+// requestSnapshotResync asks every open stream of one source to send a fresh
+// snapshot, for state changes that append no record (dataset withdrawal).
+func (m *PublicMirrorServer) requestSnapshotResync(sourceID string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for sub := range m.sseSubscribers {
+		if sub.sourceID != sourceID {
+			continue
+		}
+		select {
+		case sub.resync <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (m *PublicMirrorServer) removeSSESubscriber(subscriber *mirrorSSESubscriber) {
@@ -1313,16 +1331,8 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 	state, ok := m.state.Sources[sourceID]
 	if !ok {
 		m.writeJSON(w, http.StatusOK, models.PublicFeedBootstrap{
-			ProtocolVersion: constants.PublicFeedProtocolVersion,
-			Snapshot: models.PublicFeedSnapshot{
-				ProtocolVersion:   constants.PublicFeedProtocolVersion,
-				SourceID:          sourceID,
-				HighWaterSequence: 0,
-				FeedChainHash:     constants.PublicFeedZeroHashHex,
-				BatchCount:        0,
-				GeneratedAt:       time.Now().UTC(),
-				Freshness:         models.CampaignFreshnessSourceOffline,
-			},
+			ProtocolVersion:     constants.PublicFeedProtocolVersion,
+			Snapshot:            offlinePublicMirrorSnapshot(sourceID),
 			SourceFreshness:     models.CampaignFreshnessSourceOffline,
 			RecentProjections:   []models.PublicFeedObject{},
 			ProofCatalogSummary: models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0},
@@ -1345,16 +1355,8 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 	}
 
 	m.writeJSON(w, http.StatusOK, models.PublicFeedBootstrap{
-		ProtocolVersion: constants.PublicFeedProtocolVersion,
-		Snapshot: models.PublicFeedSnapshot{
-			ProtocolVersion:   constants.PublicFeedProtocolVersion,
-			SourceID:          sourceID,
-			HighWaterSequence: state.HighWaterSequence,
-			FeedChainHash:     state.FeedChainHash,
-			BatchCount:        state.BatchCount,
-			GeneratedAt:       time.Now().UTC(),
-			Freshness:         m.sourceFreshness(state),
-		},
+		ProtocolVersion:     constants.PublicFeedProtocolVersion,
+		Snapshot:            m.snapshotLocked(sourceID, state),
 		SourceFreshness:     m.sourceFreshness(state),
 		RecentProjections:   recent,
 		ProofCatalogSummary: summary,
@@ -1379,15 +1381,7 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 
 	state, ok := m.state.Sources[sourceID]
 	if !ok {
-		resp := models.PublicFeedSnapshot{
-			ProtocolVersion:   constants.PublicFeedProtocolVersion,
-			SourceID:          sourceID,
-			HighWaterSequence: 0,
-			FeedChainHash:     constants.PublicFeedZeroHashHex,
-			BatchCount:        0,
-			GeneratedAt:       time.Now().UTC(),
-			Freshness:         models.CampaignFreshnessSourceOffline,
-		}
+		resp := offlinePublicMirrorSnapshot(sourceID)
 		m.writeJSON(w, http.StatusOK, resp)
 		return
 	}
@@ -1402,30 +1396,18 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 			if batch.LastSequence != sequence {
 				continue
 			}
-			m.writeJSON(w, http.StatusOK, models.PublicFeedSnapshot{
-				ProtocolVersion:   constants.PublicFeedProtocolVersion,
-				SourceID:          sourceID,
-				HighWaterSequence: batch.LastSequence,
-				FeedChainHash:     batch.ContentHash,
-				BatchCount:        state.BatchCount - len(state.Batches) + index + 1,
-				GeneratedAt:       time.Now().UTC(),
-				Freshness:         m.sourceFreshness(state),
-			})
+			anchor := m.snapshotLocked(sourceID, state)
+			anchor.HighWaterSequence = batch.LastSequence
+			anchor.FeedChainHash = batch.ContentHash
+			anchor.BatchCount = state.BatchCount - len(state.Batches) + index + 1
+			m.writeJSON(w, http.StatusOK, anchor)
 			return
 		}
 		http.Error(w, constants.ErrPublicFeedSnapshotNotFound.Error(), http.StatusNotFound)
 		return
 	}
 
-	m.writeJSON(w, http.StatusOK, models.PublicFeedSnapshot{
-		ProtocolVersion:   constants.PublicFeedProtocolVersion,
-		SourceID:          sourceID,
-		HighWaterSequence: state.HighWaterSequence,
-		FeedChainHash:     state.FeedChainHash,
-		BatchCount:        state.BatchCount,
-		GeneratedAt:       time.Now().UTC(),
-		Freshness:         m.sourceFreshness(state),
-	})
+	m.writeJSON(w, http.StatusOK, m.snapshotLocked(sourceID, state))
 }
 
 // handleHistory handles GET /history — cursor-paginated page of public
@@ -1619,6 +1601,8 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 			return
 		case <-keepalive.C:
 			sseWriteComment(w, flusher)
+		case <-sub.resync:
+			sseWriteEvent(w, flusher, "snapshot", m.getSnapshotForSSE(sourceID))
 		case rec, open := <-sub.ch:
 			if !open {
 				sseWriteSentinel(w, flusher, "error", "stream closed")
@@ -1783,22 +1767,36 @@ func (m *PublicMirrorServer) getSnapshotForSSE(sourceID string) models.PublicFee
 	defer m.mu.RUnlock()
 	state, ok := m.state.Sources[sourceID]
 	if !ok {
-		return models.PublicFeedSnapshot{
-			ProtocolVersion:   constants.PublicFeedProtocolVersion,
-			SourceID:          sourceID,
-			HighWaterSequence: 0,
-			FeedChainHash:     constants.PublicFeedZeroHashHex,
-			BatchCount:        0,
-			GeneratedAt:       time.Now().UTC(),
-			Freshness:         models.CampaignFreshnessSourceOffline,
-		}
+		return offlinePublicMirrorSnapshot(sourceID)
 	}
+	return m.snapshotLocked(sourceID, state)
+}
+
+// offlinePublicMirrorSnapshot is the snapshot of a source the mirror has
+// never accepted a batch from.
+func offlinePublicMirrorSnapshot(sourceID string) models.PublicFeedSnapshot {
+	return models.PublicFeedSnapshot{
+		ProtocolVersion:   constants.PublicFeedProtocolVersion,
+		SourceID:          sourceID,
+		HighWaterSequence: 0,
+		FeedChainHash:     constants.PublicFeedZeroHashHex,
+		BatchCount:        0,
+		WithdrawalDigest:  constants.PublicFeedZeroHashHex,
+		GeneratedAt:       time.Now().UTC(),
+		Freshness:         models.CampaignFreshnessSourceOffline,
+	}
+}
+
+// snapshotLocked returns the current snapshot of one accepted source. The
+// caller holds m.mu.
+func (m *PublicMirrorServer) snapshotLocked(sourceID string, state *PublicMirrorSourceState) models.PublicFeedSnapshot {
 	return models.PublicFeedSnapshot{
 		ProtocolVersion:   constants.PublicFeedProtocolVersion,
 		SourceID:          sourceID,
 		HighWaterSequence: state.HighWaterSequence,
 		FeedChainHash:     state.FeedChainHash,
 		BatchCount:        state.BatchCount,
+		WithdrawalDigest:  mirrorWithdrawalDigest(state),
 		GeneratedAt:       time.Now().UTC(),
 		Freshness:         m.sourceFreshness(state),
 	}

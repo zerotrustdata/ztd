@@ -22,7 +22,8 @@
       "generated_at": "2026-09-13T00:00:00Z",
       "high_water_sequence": 1,
       "protocol_version": "1.0.0",
-      "source_id": "fixture-source"
+      "source_id": "fixture-source",
+      "withdrawal_digest": "0000000000000000000000000000000000000000000000000000000000000000"
     },
     "source_freshness": "intentionally_stopped"
   },

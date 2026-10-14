@@ -10,31 +10,31 @@
     },
     {
       "path": "fixtures/active.json",
-      "sha256": "cb0788440609fb91fc3fc72641edbe6194368cf2ce0cc946fc651a534457f3ab"
+      "sha256": "bfd47e4960d2e76dca44890bedc9dd92cd4964dbdf029dc15e4821de9053af64"
     },
     {
       "path": "fixtures/delayed.json",
-      "sha256": "1f410f0a4421467c7d823937b6bf5bc470550d5a4e65f9207e1913af90efd541"
+      "sha256": "732bd31d06ee7ed86fa837b1521b5ff1504e7dafe8c8ed3d5951fefa19127ab9"
     },
     {
       "path": "fixtures/intentionally-stopped.json",
-      "sha256": "f949737e4ba788c06c9caae67af4d14f524552f3adc70995efc9ba95b019f5fe"
+      "sha256": "68f29bd27984b802a20cef5d1b2aeff026578194b72fd7d58a18b83c0b57aedc"
     },
     {
       "path": "fixtures/safety-stopped.json",
-      "sha256": "eacc2e5dd26139706de1935ff36838996b78f2d606716e32a33aaf904828bcfd"
+      "sha256": "7d2d7243bc75800813691b73ecf939badba829a8018d673801615f52cc85d479"
     },
     {
       "path": "fixtures/source-offline.json",
-      "sha256": "eada5dd4397f90e1c9ea1768d1346aecef6119188ba38c2845bce5e905f39973"
+      "sha256": "cc0a52f1abc211cb6be5e98e5b3d07da78419fed36414833c1c77cf55a7f3522"
     },
     {
       "path": "fixtures/stale.json",
-      "sha256": "95dff2b2b9d119e82a5f8bfbb7e657e7831f694d35aa1466ebbb59997e04aee7"
+      "sha256": "933ea0a4cf43862293b772cb90de1b33123c3a876c3e10326b1a4ee874e99eee"
     },
     {
       "path": "models.ts",
-      "sha256": "81e5d1c120aef881ec3bf5f16e36c5d5c7c4d83d59dab3ac778b29ca86751cae"
+      "sha256": "1aea65aed78b733d0f4d3465c24f92d15683c892919de2585b2db9c7d2a6d4b1"
     },
     {
       "path": "offline-verifier.md",
@@ -46,7 +46,7 @@
     },
     {
       "path": "public-read.openapi.json",
-      "sha256": "5d755a1eeda068dd02b6dfb3f1c083077d2aa914a52b6d01c5b311141ebfe810"
+      "sha256": "7f8352f5a74a518c6924655c1c66cdb4fb408c182e8e28c4af09eb6a74dc7adc"
     },
     {
       "path": "README.md",

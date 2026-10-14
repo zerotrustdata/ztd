@@ -39,6 +39,7 @@
     "high_water_sequence": {"type": "integer", "required": true, "description": "The last accepted monotonic sequence number"},
     "feed_chain_hash": {"type": "string", "required": true, "description": "Content hash of the last accepted batch (64-char hex)"},
     "batch_count": {"type": "integer", "required": true, "description": "Total number of accepted batches"},
+    "withdrawal_digest": {"type": "string", "required": false, "description": "SHA-256 over the mirror's sorted withdrawn dataset IDs, the zero hash when none (64-char hex). Present on every mirror read; absent from the publisher's own snapshot. Withdrawal hides records without rewriting the signed chain, so a client discards cached records when this changes."},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the snapshot was produced"},
     "freshness": {"type": "string", "required": true, "description": "Source freshness label", "enum": ["active", "delayed", "stale", "intentionally_stopped", "safety_stopped", "source_offline"]}
   },

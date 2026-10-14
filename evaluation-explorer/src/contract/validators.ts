@@ -1048,7 +1048,7 @@ export function isProjectionRecord(value: unknown): asserts value is ProjectionR
 
 export function isFeedSnapshot(value: unknown): asserts value is FeedSnapshot {
   assertObject(value, 'feed_snapshot');
-  rejectUnknown(value, ['protocol_version', 'source_id', 'high_water_sequence', 'feed_chain_hash', 'batch_count', 'generated_at', 'freshness'], 'feed_snapshot');
+  rejectUnknown(value, ['protocol_version', 'source_id', 'high_water_sequence', 'feed_chain_hash', 'batch_count', 'withdrawal_digest', 'generated_at', 'freshness'], 'feed_snapshot');
   assertString(value.protocol_version, 'feed_snapshot.protocol_version');
   assert(value.protocol_version === '1.0.0', 'feed_snapshot.protocol_version', 'expected 1.0.0');
   assertString(value.source_id, 'feed_snapshot.source_id');
@@ -1058,6 +1058,8 @@ export function isFeedSnapshot(value: unknown): asserts value is FeedSnapshot {
   assert(/^[0-9a-f]{64}$/.test(value.feed_chain_hash), 'feed_snapshot.feed_chain_hash', 'expected sha256 hex');
   assertInteger(value.batch_count, 'feed_snapshot.batch_count');
   assert(value.batch_count >= 0, 'feed_snapshot.batch_count', 'must be >= 0');
+  assertString(value.withdrawal_digest, 'feed_snapshot.withdrawal_digest');
+  assert(/^[0-9a-f]{64}$/.test(value.withdrawal_digest), 'feed_snapshot.withdrawal_digest', 'expected sha256 hex');
   assertString(value.generated_at, 'feed_snapshot.generated_at');
   assertEnum(value.freshness, FRESHNESS_STATES, 'feed_snapshot.freshness');
 }
