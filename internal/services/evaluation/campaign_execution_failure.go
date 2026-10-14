@@ -60,7 +60,7 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureVerification
 	case errors.Is(err, constants.ErrEvaluationObservationUnavailable), errors.Is(err, constants.ErrEvaluationReceiptUnavailable):
 		return ExecutionFailureEvidence
-	case errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
+	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
 	default:

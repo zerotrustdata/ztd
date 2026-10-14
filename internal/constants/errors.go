@@ -1393,6 +1393,7 @@ var (
 	ErrEvaluationAssignmentUnresolved      = errors.New("evaluation: assignment has an unresolved running execution")
 	ErrEvaluationAssignmentExecutionFailed = errors.New("evaluation: assignment execution failed")
 	ErrEvaluationRecoveredResultMissing    = errors.New("evaluation: recovered terminal assignment has no persisted result")
+	ErrEvaluationModelUnserved             = errors.New("evaluation: provider served no governed inference for the model")
 	ErrEvaluationCampaignConflict          = errors.New("evaluation: campaign already exists with a different frozen spec")
 	ErrEvaluationPlatformReleaseMismatch   = errors.New("evaluation: executing platform release differs from the release the campaign recorded")
 	ErrEvaluationReleaseRecorded           = errors.New("evaluation: campaign recorded its release at freeze time; the digest-bound release cannot be re-tagged")

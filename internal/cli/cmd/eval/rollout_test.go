@@ -183,3 +183,38 @@ func TestRolloutRun_UntilCannotBeNegative(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
+
+func TestRequireSmokeRunServed_FailsWhenEveryAssignmentFailedAtTheProvider(t *testing.T) {
+	env := setupRunEnv(t)
+	env.prepareRun(t, "eval-a", "run-a-1")
+	ctx := context.Background()
+	store := env.store(t)
+	assignments, err := store.ListAssignments(ctx, "run-a-1")
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(assignments), 2)
+
+	saveLifecycle := func(assignment *evalv1.EvaluationAssignment, lifecycle evalv1.EvaluationAssignmentLifecycleStatus) {
+		result := &evalv1.EvaluationAssignmentResult{
+			SchemaVersion:   evaluation.CampaignSchemaVersion,
+			AssignmentId:    assignment.GetAssignmentId(),
+			RunId:           assignment.GetRunId(),
+			CampaignId:      assignment.GetCampaignId(),
+			Lane:            assignment.GetLane(),
+			LifecycleStatus: lifecycle,
+		}
+		digest, err := evaluation.ComputeAssignmentResultDigest(result)
+		require.NoError(t, err)
+		result.ResultDigest = digest
+		require.NoError(t, store.SaveAssignmentResult(ctx, result))
+	}
+	for _, assignment := range assignments {
+		saveLifecycle(assignment, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED)
+	}
+
+	err = requireSmokeRunServed(ctx, env.fileSvc(t), "run-a-1")
+	require.ErrorIs(t, err, constants.ErrEvaluationModelUnserved)
+	assert.Equal(t, evaluation.ExecutionFailureProvider, evaluation.ClassifyExecutionFailure(err))
+
+	saveLifecycle(assignments[0], evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+	require.NoError(t, requireSmokeRunServed(ctx, env.fileSvc(t), "run-a-1"))
+}

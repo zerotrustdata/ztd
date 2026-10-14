@@ -70,7 +70,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags |
 | `ztd eval runs export` | Export one run's disclosure-safe bundle under the runtime root (`--output-dir`, runtime-relative) |
 | `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json` |
-| `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models |
+| `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models; `--gate-smoke` fails a model when the provider failed every smoke assignment (for example, no tool support) |
 | `ztd eval rollout list` | Inspect queue entries |
 | `ztd eval rollout next` | Show the next pending model |
 | `ztd eval rollout retry` | Reset entries back to pending |

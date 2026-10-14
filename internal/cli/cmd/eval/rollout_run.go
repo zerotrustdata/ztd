@@ -75,8 +75,9 @@ provenance required. A verified run marks the entry verified; a failed entry is
 marked failed and the batch continues.
 
 --gate-smoke screens each model first with a fast smoke campaign
-(<campaign>-smoke). A smoke pass does not verify the entry; add
---promote-on-pass to follow it with the full run.
+(<campaign>-smoke). A smoke run in which the provider failed every assignment,
+as when it rejects tool declarations for the model, fails the gate. A smoke pass
+does not verify the entry; add --promote-on-pass to follow it with the full run.
 
 Examples:
   ztd eval rollout run --until 1
@@ -297,7 +298,33 @@ func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeF
 	if result != nil && result.RunID != "" {
 		run = &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, CampaignID: campaignID, RunID: result.RunID, Gate: gate}
 	}
+	if err == nil && gate == rolloutGateSmoke && run != nil {
+		err = requireSmokeRunServed(cmd.Context(), fileSvc, run.RunID)
+	}
 	return run, err
+}
+
+// requireSmokeRunServed fails the smoke gate when the provider failed every
+// assignment before the model answered, as when the provider rejects tool
+// declarations for the model. Such a run verifies, since its evidence is
+// intact, but a full run of the model can only repeat the same provider
+// failure, so the model is not promoted.
+func requireSmokeRunServed(ctx context.Context, fileSvc fs.RuntimeFileService, runID string) error {
+	store := evaluation.NewStore(fileSvc)
+	assignments, err := store.ListAssignments(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("smoke gate: run %s: %w", runID, err)
+	}
+	results, err := store.LoadAssignmentResults(ctx, runID, assignments)
+	if err != nil {
+		return fmt.Errorf("smoke gate: run %s: %w", runID, err)
+	}
+	for _, result := range results {
+		if result.GetLifecycleStatus() != evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED {
+			return nil
+		}
+	}
+	return fmt.Errorf("smoke gate: run %s: every assignment failed at the provider: %w", runID, constants.ErrEvaluationModelUnserved)
 }
 
 func findVariant(variants []*evalv1.ModelVariant, variantID string) *evalv1.ModelVariant {
