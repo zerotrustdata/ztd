@@ -60,6 +60,7 @@ func TestMCPGatewayEndToEndIntegration(t *testing.T) {
 	_ = pubKey
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.Default(),
 		maxPayloadBytes:   10 * 1024 * 1024, // 10MB
 		envProc:           wrappedProcessor,
@@ -130,6 +131,7 @@ func TestReceiptIntegration(t *testing.T) {
 	_ = pubKey
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.Default(),
 		maxPayloadBytes:   10 * 1024 * 1024, // 10MB
 		envProc:           processor,
@@ -201,6 +203,7 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 	_ = pubKey
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.New(slog.NewTextHandler(os.Stdout, nil)),
 		maxPayloadBytes:   10 * 1024 * 1024,
 		maxFailures:       3, // Lower threshold for faster test
@@ -292,6 +295,7 @@ func TestGatewayErrorCodesIntegration(t *testing.T) {
 			_ = pubKey
 
 			g := &GatewayService{
+				posture:           &governance.DoctrinePosture{},
 				logger:            slog.Default(),
 				maxPayloadBytes:   10 * 1024 * 1024,
 				envProc:           processor,
@@ -334,6 +338,7 @@ func TestNativeToolExecutionIntegration(t *testing.T) {
 	}
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            logger,
 		responder:         response.NewWriter(logger),
 		maxPayloadBytes:   10 * 1024 * 1024,
@@ -417,6 +422,7 @@ func TestReadFieldIntegration(t *testing.T) {
 	}
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            logger,
 		responder:         response.NewWriter(logger),
 		maxPayloadBytes:   10 * 1024 * 1024,
@@ -485,6 +491,7 @@ func TestHandleReadField(t *testing.T) {
 	auditLogger := &integrationTestAuditLogger{logs: []auditLogEntry{}}
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            logger,
 		fieldPathRegistry: fieldPathRegistry,
 		threatScanner:     governance.NewL1Doctrine(),
@@ -616,12 +623,12 @@ func TestNativeToolSingleAudit(t *testing.T) {
 	nativeHandler, _ := NewNativeToolHandler(slog.Default())
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
 		auditStore:        noopAuditEventRecorder{},
 		maxPayloadBytes:   10 * 1024 * 1024,
-		posture:           "doctrine",
 		envProc:           processor,
 	}
 
@@ -663,13 +670,13 @@ func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
 		auditStore:        noopAuditEventRecorder{},
 		scrubbingService:  newTestScrubbingService(t),
 		maxPayloadBytes:   10 * 1024 * 1024,
-		posture:           "doctrine",
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
@@ -697,13 +704,13 @@ func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
 		auditStore:        noopAuditEventRecorder{},
 		scrubbingService:  newTestScrubbingService(t),
 		maxPayloadBytes:   10 * 1024 * 1024,
-		posture:           "doctrine",
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
@@ -727,12 +734,12 @@ func TestAuditReceiptListTool_DispatchNotConfigured(t *testing.T) {
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
 		auditStore:        noopAuditEventRecorder{},
 		maxPayloadBytes:   10 * 1024 * 1024,
-		posture:           "doctrine",
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 

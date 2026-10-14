@@ -10,6 +10,8 @@ package eval
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"path/filepath"
@@ -24,6 +26,7 @@ import (
 	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/run"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -43,13 +46,35 @@ const (
 	conformanceTestCLISession      = "cli-session-1"
 )
 
+// conformanceTestActuatorKey is the outbound Operator's actuator key as bound at enrollment.
+var conformanceTestActuatorKey = hex.EncodeToString(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{9}, ed25519.SeedSize)).Public().(ed25519.PublicKey))
+
+// conformanceTestOutboundDocument is the outbound Operator's active session, which carries its enrollment-bound key.
+func conformanceTestOutboundDocument() *operatorv1.OperatorDocument {
+	return &operatorv1.OperatorDocument{
+		Id:                conformanceTestOperatorID,
+		OperatorSessionId: conformanceTestOutboundSession,
+		Status:            string(constants.OperatorStatusActive),
+		ActuatorPublicKey: conformanceTestActuatorKey,
+		ActuatorKeyId:     conformanceTestActuatorKey,
+	}
+}
+
 // conformanceTestOperators is the Operator inventory of a healthy Gateway: the
 // embedded Operator and one active outbound session.
 func conformanceTestOperators() []*operatorv1.OperatorDocument {
 	return []*operatorv1.OperatorDocument{
 		{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: conformanceTestEmbeddedSession},
-		{Id: conformanceTestOperatorID, OperatorSessionId: conformanceTestOutboundSession, Status: string(constants.OperatorStatusActive)},
+		conformanceTestOutboundDocument(),
 	}
+}
+
+// conformanceTestRuntimeFiles is a fresh runtime root for the roots mapping.
+func conformanceTestRuntimeFiles(t *testing.T) fs.RuntimeFileService {
+	t.Helper()
+	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	return files
 }
 
 // fakeConformancePoster is the CLI driver's poster. The tests here never post.
@@ -177,6 +202,39 @@ func TestConformancePosture_MapsEachGatewayPostureAndRejectsAnyOtherName(t *test
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestConformanceRoots_OutboundRootCarriesTheEnrollmentBoundKeyOnly(t *testing.T) {
+	roots, err := conformanceRoots(conformanceTestRuntimeFiles(t), conformanceTestRuntimeFiles(t), conformanceTestOperatorID, conformanceTestOutboundDocument())
+	require.NoError(t, err)
+
+	assert.Nil(t, roots[cases.ExecutorEmbedded].Bound, "the embedded anchor is read from the Gateway's own export")
+	bound := roots[cases.ExecutorOutbound].Bound
+	require.NotNil(t, bound)
+	assert.Equal(t, conformanceTestOperatorID, bound.GetRuntimeId())
+	assert.Equal(t, conformanceTestActuatorKey, bound.GetKeyId())
+	assert.Equal(t, conformanceTestActuatorKey, bound.GetPublicKeyHex())
+	assert.Empty(t, bound.GetExportSha256(), "the export digest is checked and pinned by run.Run, not by the CLI")
+}
+
+func TestConformanceRoots_RefusesOutboundOperatorWithoutEnrollmentBoundKey(t *testing.T) {
+	unbound := conformanceTestOutboundDocument()
+	unbound.ActuatorPublicKey = ""
+	unbound.ActuatorKeyId = ""
+	tests := []struct {
+		name string
+		doc  *operatorv1.OperatorDocument
+	}{
+		{name: "no outbound document", doc: nil},
+		{name: "outbound document without an actuator key", doc: unbound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			roots, err := conformanceRoots(conformanceTestRuntimeFiles(t), conformanceTestRuntimeFiles(t), conformanceTestOperatorID, tt.doc)
+			assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
+			assert.Nil(t, roots)
 		})
 	}
 }

@@ -160,7 +160,7 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	if err != nil {
 		return err
 	}
-	embedded, outbound, err := conformanceTargets(ctx, gatewayClient, opts.operatorID)
+	embedded, outbound, outboundDoc, err := conformanceTargets(ctx, gatewayClient, opts.operatorID)
 	if err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
-	roots, err := conformanceRoots(gwFiles, operatorFiles, opts.operatorID)
+	roots, err := conformanceRoots(gwFiles, operatorFiles, opts.operatorID, outboundDoc)
 	if err != nil {
 		return err
 	}
@@ -333,27 +333,29 @@ func gatewayPosture(ctx context.Context, client *harnessclient.Client) (evalv1.E
 
 // conformanceTargets selects the two Operator sessions the suite drives. The
 // embedded target is the Gateway's own Operator. The outbound target is the one
-// active session of operatorID.
-func conformanceTargets(ctx context.Context, client *harnessclient.Client, operatorID string) (cliop.Target, cliop.Target, error) {
+// active session of operatorID, and its inventory document comes back too: it
+// carries the actuator key bound at enrollment, which is the outbound anchor.
+func conformanceTargets(ctx context.Context, client *harnessclient.Client, operatorID string) (cliop.Target, cliop.Target, *operatorv1.OperatorDocument, error) {
 	operators, _, err := client.ListOperators(ctx)
 	if err != nil {
-		return cliop.Target{}, cliop.Target{}, fmt.Errorf("evaluation: list operators: %w", err)
+		return cliop.Target{}, cliop.Target{}, nil, fmt.Errorf("evaluation: list operators: %w", err)
 	}
-	embedded, err := singleConformanceTarget(operators, string(constants.DocIDEmbeddedOperator), false)
+	embedded, _, err := singleConformanceTarget(operators, string(constants.DocIDEmbeddedOperator), false)
 	if err != nil {
-		return cliop.Target{}, cliop.Target{}, err
+		return cliop.Target{}, cliop.Target{}, nil, err
 	}
-	outbound, err := singleConformanceTarget(operators, operatorID, true)
+	outbound, outboundDoc, err := singleConformanceTarget(operators, operatorID, true)
 	if err != nil {
-		return cliop.Target{}, cliop.Target{}, err
+		return cliop.Target{}, cliop.Target{}, nil, err
 	}
-	return embedded, outbound, nil
+	return embedded, outbound, outboundDoc, nil
 }
 
 // singleConformanceTarget returns the one session of operatorID that has a
-// session id (and is active when requireActive). Zero sessions is
-// ErrEvaluationTargetUnavailable, and several is ErrEvaluationTargetAmbiguous.
-func singleConformanceTarget(operators []*operatorv1.OperatorDocument, operatorID string, requireActive bool) (cliop.Target, error) {
+// session id (and is active when requireActive), with its inventory document.
+// Zero sessions is ErrEvaluationTargetUnavailable, and several is
+// ErrEvaluationTargetAmbiguous.
+func singleConformanceTarget(operators []*operatorv1.OperatorDocument, operatorID string, requireActive bool) (cliop.Target, *operatorv1.OperatorDocument, error) {
 	var matches []*operatorv1.OperatorDocument
 	for _, op := range operators {
 		if op.GetId() != operatorID || op.GetOperatorSessionId() == "" {
@@ -366,18 +368,20 @@ func singleConformanceTarget(operators []*operatorv1.OperatorDocument, operatorI
 	}
 	switch len(matches) {
 	case 0:
-		return cliop.Target{}, fmt.Errorf("evaluation: operator %s has no matching session: %w", operatorID, constants.ErrEvaluationTargetUnavailable)
+		return cliop.Target{}, nil, fmt.Errorf("evaluation: operator %s has no matching session: %w", operatorID, constants.ErrEvaluationTargetUnavailable)
 	case 1:
-		return cliop.Target{OperatorSessionID: matches[0].GetOperatorSessionId(), OperatorID: operatorID}, nil
+		return cliop.Target{OperatorSessionID: matches[0].GetOperatorSessionId(), OperatorID: operatorID}, matches[0], nil
 	default:
-		return cliop.Target{}, fmt.Errorf("evaluation: operator %s has %d matching sessions: %w", operatorID, len(matches), constants.ErrEvaluationTargetAmbiguous)
+		return cliop.Target{}, nil, fmt.Errorf("evaluation: operator %s has %d matching sessions: %w", operatorID, len(matches), constants.ErrEvaluationTargetAmbiguous)
 	}
 }
 
 // conformanceRoots maps each executor to the runtime it reads and writes. Dir is
 // the runtime directory (.ztd) of each executor: the canary and the FILE_EDIT
 // policy both address paths under it (security.IsEvaluationControlledTargetPath).
-func conformanceRoots(gwFiles, operatorFiles fs.RuntimeFileService, operatorID string) (map[cases.Executor]run.Root, error) {
+// The outbound root carries the key bound at enrollment by outboundDoc; run.Run
+// cross-checks that key against the Operator's export before any case runs.
+func conformanceRoots(gwFiles, operatorFiles fs.RuntimeFileService, operatorID string, outboundDoc *operatorv1.OperatorDocument) (map[cases.Executor]run.Root, error) {
 	gwDir, err := absoluteRuntimeDir(gwFiles)
 	if err != nil {
 		return nil, err
@@ -386,9 +390,13 @@ func conformanceRoots(gwFiles, operatorFiles fs.RuntimeFileService, operatorID s
 	if err != nil {
 		return nil, err
 	}
+	bound, err := oracle.BoundAnchor(outboundDoc)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: conformance run: outbound operator %s anchor: %w", operatorID, err)
+	}
 	return map[cases.Executor]run.Root{
 		cases.ExecutorEmbedded: {Files: gwFiles, Dir: gwDir, RuntimeID: oracle.GatewayRuntimeID},
-		cases.ExecutorOutbound: {Files: operatorFiles, Dir: operatorDir, RuntimeID: operatorID},
+		cases.ExecutorOutbound: {Files: operatorFiles, Dir: operatorDir, RuntimeID: operatorID, Bound: bound},
 	}, nil
 }
 

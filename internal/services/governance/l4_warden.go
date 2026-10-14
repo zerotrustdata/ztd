@@ -415,14 +415,6 @@ func (tv *L4Warden) releaseNonceReservation(nonce string) {
 	}
 }
 
-// isMutation returns true if the action type modifies system state.
-// Uses the strongly-typed intrinsic property from the action definition.
-// Mutation classification is defined in protocol/constants/status.json via the _mutation field.
-// Actions marked as mutations require L3 Notary (human-presence) verification.
-func (tv *L4Warden) isMutation(actionType constants.ActionType) bool {
-	return actionType.IsMutation()
-}
-
 // verifyPreDoctrine performs the structural, identity, and typed-payload checks
 // that run before L1 Doctrine judges the payload. Any error returned here means
 // doctrine never evaluated the transaction, so the caller emits no L1 stage.
@@ -649,10 +641,14 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 	return l2Status, l3Status, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, nil
 }
 
-// l3Required reports whether posture gates this action on an L3 notary proof.
-// Only mutations are gated, and only under postures that require L3.
-func (tv *L4Warden) l3Required(actionType constants.ActionType, posture GovernancePosture) bool {
-	return tv.isMutation(actionType) && posture.RequiresL3Proof()
+// L3Required reports whether posture gates this action on an L3 notary proof.
+// Only mutations are gated, and only under postures that require L3. Mutation
+// classification is owned by the action registry (constants.ActionType.IsMutation).
+//
+// This is the single owner of the L3 gate. L4 verification and the Gateway
+// dispatch refusal both call it.
+func L3Required(actionType constants.ActionType, posture GovernancePosture) bool {
+	return actionType.IsMutation() && posture.RequiresL3Proof()
 }
 
 // l3StatusFor maps the L3 result of one envelope to the status its receipt
@@ -663,7 +659,7 @@ func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture Governa
 	switch {
 	case valid:
 		return operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
-	case tv.l3Required(actionType, posture):
+	case L3Required(actionType, posture):
 		return operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED
 	default:
 		return operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
@@ -672,7 +668,7 @@ func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture Governa
 
 func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, posture GovernancePosture) (bool, error) {
 	actionType := constants.ActionType(envelope.ActionType)
-	required := tv.l3Required(actionType, posture)
+	required := L3Required(actionType, posture)
 
 	hasProof := envelope.Governance != nil && envelope.Governance.L3 != nil && envelope.Governance.L3.Proof != nil
 

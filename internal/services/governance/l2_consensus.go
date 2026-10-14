@@ -44,10 +44,13 @@ func (NoopConsensusPolicyStore) GetConsensusPolicy(context.Context, string) (*L2
 	return nil, nil
 }
 
-// l2Enforced reports whether posture gates this action on L2 consensus votes.
+// L2Enforced reports whether posture gates this action on L2 consensus votes.
 // Bootstrap actions (platform enrollment) are exempt: they bring the consensus
 // tribunal into existence and therefore predate its ability to sign.
-func l2Enforced(actionType constants.ActionType, posture GovernancePosture) bool {
+//
+// This is the single owner of the L2 gate. L4 verification and every Gateway
+// deliberation site call it, so the bootstrap exemption cannot drift per caller.
+func L2Enforced(actionType constants.ActionType, posture GovernancePosture) bool {
 	return posture.RequiresL2Signature() && !actionType.IsBootstrapAction()
 }
 
@@ -59,7 +62,7 @@ func l2StatusFor(actionType constants.ActionType, posture GovernancePosture, val
 	switch {
 	case valid:
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
-	case l2Enforced(actionType, posture):
+	case L2Enforced(actionType, posture):
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED
 	default:
 		return operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
@@ -72,12 +75,12 @@ func l2StatusFor(actionType constants.ActionType, posture GovernancePosture, val
 // posture but verification fails. The posture is read per-envelope from
 // GovernanceEnvelope.Posture by the caller and passed in here.
 //
-// Where l2Enforced is false, L2 votes are still verified when present and
+// Where L2Enforced is false, L2 votes are still verified when present and
 // recorded as audit evidence, but their absence or failure does not reject the
 // envelope.
 func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (bool, error) {
 	actionType := constants.ActionType(envelope.ActionType)
-	enforced := l2Enforced(actionType, posture)
+	enforced := L2Enforced(actionType, posture)
 
 	if envelope.Governance == nil || envelope.Governance.L2 == nil || len(envelope.Governance.L2.Votes) == 0 {
 		if enforced {

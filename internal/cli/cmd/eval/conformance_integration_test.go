@@ -163,6 +163,24 @@ func TestConformanceRun_PassesConfiguredDriversAndRootsToRun(t *testing.T) {
 	assert.Equal(t, oracle.GatewayRuntimeID, captured.Roots[cases.ExecutorEmbedded].RuntimeID)
 	assert.Equal(t, opRuntime.Resolve(""), captured.Roots[cases.ExecutorOutbound].Dir)
 	assert.Equal(t, conformanceTestOperatorID, captured.Roots[cases.ExecutorOutbound].RuntimeID)
+	assert.Nil(t, captured.Roots[cases.ExecutorEmbedded].Bound)
+	require.NotNil(t, captured.Roots[cases.ExecutorOutbound].Bound, "the outbound anchor is the key bound at enrollment")
+	assert.Equal(t, conformanceTestActuatorKey, captured.Roots[cases.ExecutorOutbound].Bound.GetPublicKeyHex())
+}
+
+func TestConformanceRun_OutboundWithoutEnrollmentBoundKeyFailsBeforeAnyCase(t *testing.T) {
+	unbound := &operatorv1.OperatorDocument{Id: conformanceTestOperatorID, OperatorSessionId: conformanceTestOutboundSession, Status: string(constants.OperatorStatusActive)}
+	operators := []*operatorv1.OperatorDocument{
+		{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: conformanceTestEmbeddedSession},
+		unbound,
+	}
+	rig := newServedConformanceRig(t, rigOptions{operators: operators, run: func(context.Context, run.Config) (*evalv1.ConformanceRunRecord, error) {
+		t.Fatal("run called for an outbound Operator with no enrollment-bound key")
+		return nil, nil
+	}})
+
+	_, err := rig.execute(t, rig.runArgs()...)
+	assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
 }
 
 func TestConformanceRun_AttendedWrapsMCPAndA2AOnly(t *testing.T) {

@@ -97,6 +97,8 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	// Execute
@@ -211,7 +213,12 @@ func TestL5ActuatorDivergentGatewayMirrorLeavesLocalRecordsIntact(t *testing.T) 
 		ActionType:        string(constants.ActionTypeExecuteBash),
 		TargetResource:    "localhost",
 	}
-	vt := &VerifiedTransaction{Envelope: envelope, ActionType: constants.ActionTypeExecuteBash}
+	vt := &VerifiedTransaction{
+		Envelope:   envelope,
+		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
+	}
 
 	receipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.NoError(t, err, "a failing gateway mirror is best-effort and must not fail execution")
@@ -270,6 +277,8 @@ func TestL5ActuatorExecuteCommitmentFailureStopsBeforeHandler(t *testing.T) {
 			TargetResource:    "localhost",
 		},
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	receipt, err := actuator.Execute(context.Background(), vt, nil)
@@ -306,7 +315,12 @@ func executeSampleTransaction(t *testing.T, actuator *L5Actuator) *govtypes.Gove
 		ActionType:        string(constants.ActionTypeExecuteBash),
 		TargetResource:    "localhost",
 	}
-	_, err := actuator.Execute(context.Background(), &VerifiedTransaction{Envelope: envelope, ActionType: constants.ActionTypeExecuteBash}, nil)
+	_, err := actuator.Execute(context.Background(), &VerifiedTransaction{
+		Envelope:   envelope,
+		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
+	}, nil)
 	require.NoError(t, err)
 	return envelope
 }

@@ -54,6 +54,8 @@ func TestL5ActuatorRecordRejectedTransactionSignsFailedStageEvidence(t *testing.
 	rejected := &VerifiedTransaction{
 		Envelope:                   envelope,
 		ActionType:                 constants.ActionTypeExecuteBash,
+		L2Status:                   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:                   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{failedStage},
 	}
 
@@ -95,6 +97,8 @@ func TestL5ActuatorExecuteHappyPath(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	// Execute
@@ -168,6 +172,8 @@ func TestL5ActuatorExecuteHandlerError(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	// Execute
@@ -247,6 +253,8 @@ func TestL5ActuatorExecuteCallsReceiptPublisherOnSuccess(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	receipt, err := actuator.Execute(context.Background(), vt, nil)
@@ -297,6 +305,8 @@ func TestL5ActuatorExecuteNilReceiptPublisherDoesNotPanic(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	assert.NotPanics(t, func() {
@@ -326,6 +336,8 @@ func TestL5ActuatorExecuteReceiptPublisherErrorDoesNotFailExecution(t *testing.T
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	receipt, err := actuator.Execute(context.Background(), vt, nil)
@@ -347,6 +359,8 @@ func l5ScrubTestVT(t *testing.T, target string) *VerifiedTransaction {
 			TargetResource:    target,
 		},
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 }
 
@@ -552,6 +566,8 @@ func TestL5Actuator_MintsAndDissolvesCapability(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 		ExpiresAt:  time.Now().Add(5 * time.Minute),
 	}
 
@@ -592,6 +608,8 @@ func TestL5Actuator_CapabilityDissolvedOnHandlerError(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 		ExpiresAt:  time.Now().Add(5 * time.Minute),
 	}
 
@@ -625,6 +643,8 @@ func newFailureTestVT(t *testing.T, hash string) *VerifiedTransaction {
 			TargetResource:    "localhost",
 		},
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 }
 
@@ -649,6 +669,8 @@ func rejectedForeignVT(t *testing.T) *VerifiedTransaction {
 	return &VerifiedTransaction{
 		Envelope:                   envelope,
 		ActionType:                 constants.ActionTypeExecuteBash,
+		L2Status:                   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:                   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{failedStage},
 	}
 }
@@ -766,6 +788,8 @@ func TestL5ActuatorExecuteUnboundEnvelopeFilesUnderRuntimeSession(t *testing.T) 
 				TargetResource:  "localhost",
 			},
 			ActionType: constants.ActionTypeExecuteBash,
+			L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+			L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 		}
 	}
 

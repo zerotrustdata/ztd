@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -43,6 +44,7 @@ func newEndpointTestGatewayService(opts ...endpointTestOption) *GatewayService {
 	logger := slog.Default()
 	_, privKey, _ := ed25519.GenerateKey(rand.Reader)
 	g := &GatewayService{
+		posture:         &governance.DoctrinePosture{},
 		logger:          logger,
 		responder:       response.NewWriter(logger),
 		maxPayloadBytes: 10 * 1024 * 1024,

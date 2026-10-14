@@ -341,8 +341,9 @@ ConformanceA2ACall is one call received by the harness-owned A2A downstream stub
 <a name="ztd-eval-v1-ConformanceAnchor"></a>
 
 ### ConformanceAnchor
-ConformanceAnchor pins one executing runtime&#39;s actuator public key, read
-out of band from that runtime&#39;s pki/Actuator_pub.json export.
+ConformanceAnchor pins one executing runtime&#39;s actuator public key: the
+Gateway&#39;s from its own pki/Actuator_pub.json export, an outbound Operator&#39;s
+from its enrollment binding, cross-checked against that Operator&#39;s export.
 
 
 | Field | Type | Label | Description |

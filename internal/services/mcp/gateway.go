@@ -97,9 +97,9 @@ type GatewayService struct {
 	nativeToolHandler *NativeToolHandler
 	scrubbingService  *scrubbing.ScrubbingService
 	threatScanner     ThreatScanner
-	posture           string // Gateway posture: doctrine, consensus, ratify, or notary
-	a2aDownstreamURL  string // construction-phase (immutable after NewGatewayService)
-	publicBaseURL     string // construction-phase (immutable after NewGatewayService)
+	posture           governance.GovernancePosture // parsed once in NewGatewayService
+	a2aDownstreamURL  string                       // construction-phase (immutable after NewGatewayService)
+	publicBaseURL     string                       // construction-phase (immutable after NewGatewayService)
 	maxPayloadBytes   int64
 
 	envProc                governance.EnvelopeProcessor
@@ -213,10 +213,11 @@ type Dependencies struct {
 }
 
 func NewGatewayService(deps Dependencies) (*GatewayService, error) {
-	// Validate posture parameter
-	_, validPosture := constants.GetGovernancePostureRequirements(deps.Posture)
-	if deps.Posture != "" && !validPosture {
-		return nil, fmt.Errorf("gateway: invalid posture '%s': must be one of doctrine, consensus, ratify, or notary: %w", deps.Posture, constants.ErrGatewayInvalidPosture)
+	// Parse the configured posture once. An empty or unknown name fails construction:
+	// every envelope is stamped with this posture and L2/L3 gating reads it.
+	posture, err := governance.ParseGovernancePosture(deps.Posture)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: parse posture: %w", err)
 	}
 
 	if deps.DownstreamURL != "" && deps.DownstreamCmd != "" {
@@ -266,7 +267,7 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		nativeToolHandler:      nativeToolHandler,
 		scrubbingService:       deps.ScrubbingService,
 		threatScanner:          deps.ThreatScanner,
-		posture:                deps.Posture,
+		posture:                posture,
 		a2aDownstreamURL:       deps.A2ADownstreamURL,
 		publicBaseURL:          deps.PublicBaseURL,
 		maxFailures:            5,
@@ -928,7 +929,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
 		Nonce:           nonce,
 		StateMerkleRoot: stateRoot,
-		Posture:         g.posture,
+		Posture:         g.posture.Name(),
 		Governance:      &commonv1.GovernanceMetadata{},
 	}
 	if opts.investigationID != "" {
@@ -978,12 +979,13 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		return "", nil, "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	// Under any posture that requires L2 signatures (consensus and notary),
-	// send the envelope to the Consensus for L2 deliberation before dispatch.
-	// The Consensus collects signed votes from its members and returns the
-	// envelope with L2 metadata populated. If the deliberator is not configured,
-	// the envelope proceeds without L2 votes and will fail-closed at L4 verification.
-	if (g.posture == "consensus" || g.posture == "notary") && g.l2ConsensusDeliberator != nil {
+	// Under a posture that enforces L2 for this action (consensus and notary; bootstrap
+	// actions are exempt via governance.L2Enforced), send the envelope to the Consensus
+	// for L2 deliberation before dispatch. The Consensus collects signed votes from its
+	// members and returns the envelope with L2 metadata populated. If the deliberator is
+	// not configured, the envelope proceeds without L2 votes and will fail-closed at L4
+	// verification.
+	if governance.L2Enforced(actionType, g.posture) && g.l2ConsensusDeliberator != nil {
 		deliberatedBytes, err := g.l2ConsensusDeliberator.Deliberate(ctx, envelopeBytes)
 		if err != nil {
 			g.logger.Error("L2 consensus deliberation failed", "tx_hash", hash, "error", err)
@@ -1117,7 +1119,7 @@ func (g *GatewayService) suspendGovernedCall(ctx context.Context, r *http.Reques
 		Status:      string(constants.GatewayResponseStatusSuspended),
 		TxHash:      hash,
 		ApprovalURL: approvalURL,
-		Message:     approvalPausedMessage(g.posture, approvalURL),
+		Message:     approvalPausedMessage(g.posture.Name(), approvalURL),
 	}, nil
 }
 

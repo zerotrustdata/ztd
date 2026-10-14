@@ -95,9 +95,14 @@ type BuildEnvelopeParams struct {
 // (ErrTxL1ValidationFailed). Governed request events without a typed proto
 // decode case fail closed with ErrTxPayloadDecoderMissing.
 //
-// L3 gating: the gateway dispatch path cannot mint L3 human proofs. When
-// the posture requires L3 proof (ratify, notary) and the action is a
-// mutation, the builder rejects the envelope early with
+// Check order: posture-missing, doctrine-missing, action-type validation,
+// and posture parsing run first. L1 screening then runs in every posture,
+// before the L3 gate, so a forbidden payload is refused as
+// ErrTxL1ValidationFailed even under ratify and notary.
+//
+// L3 gating: the gateway dispatch path cannot mint L3 human proofs. After
+// L1 passes, when the posture requires L3 proof (ratify, notary) and the
+// action is a mutation, the builder rejects the clean envelope with
 // ErrTxL3ProofUnmintable rather than publishing a mutation that cannot
 // satisfy L3 at the operator.
 func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEnvelope, error) {
@@ -114,19 +119,13 @@ func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEn
 		return nil, fmt.Errorf("gateway: build envelope: %w", err)
 	}
 
-	// L3 gate: the gateway dispatch path cannot mint L3 human proofs.
-	// Reject mutation-classified actions under postures that require L3
-	// before constructing an envelope that cannot satisfy L3 at the
-	// operator.
 	posture, err := governance.ParseGovernancePosture(params.Posture)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: build envelope: %w", err)
 	}
-	if posture.RequiresL3Proof() && actionType.IsMutation() {
-		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrTxL3ProofUnmintable)
-	}
 
-	// L1 screening: decode the typed payload and run doctrine validation.
+	// L1 screening runs in every posture, before the L3 gate: decode the
+	// typed payload and run doctrine validation.
 	decoded, err := governance.DecodePayloadForAction(actionType, params.Payload)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrTxPayloadDecodeFailed)
@@ -138,6 +137,13 @@ func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEn
 		return nil, fmt.Errorf("gateway: build envelope: %w: %s", constants.ErrTxL1ValidationFailed, strings.Join(violations, ", "))
 	}
 	l1Validated := true
+
+	// L3 gate: the gateway dispatch path cannot mint L3 human proofs. Reject
+	// a clean mutation-classified action under postures that require L3
+	// before constructing an envelope that cannot satisfy L3 at the operator.
+	if governance.L3Required(actionType, posture) {
+		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrTxL3ProofUnmintable)
+	}
 
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
@@ -226,11 +232,11 @@ type operatorSessionValidator interface {
 
 // L2ConsensusDeliberator sends an envelope to an L2 consensus service for
 // deliberation and returns the envelope bytes with L2 votes populated. The
-// gateway dispatch path calls this after envelope construction under
-// postures that require L2 signatures (consensus, notary). When the
-// deliberator is nil or the posture does not require L2, deliberation is
-// skipped and the envelope proceeds without L2 votes (failing closed at L4
-// verification under a posture that requires them).
+// gateway dispatch path calls this after envelope construction for actions
+// L4 enforces L2 on (governance.L2Enforced: a posture that requires L2 signatures,
+// consensus or notary, and a non-bootstrap action). When the deliberator is nil
+// or L2 is not enforced for the action, deliberation is skipped and the envelope
+// proceeds without L2 votes (failing closed at L4 verification where L2 is enforced).
 type L2ConsensusDeliberator interface {
 	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
 }
@@ -242,9 +248,10 @@ type L2ConsensusDeliberator interface {
 // The gateway owns the state Merkle root and the governance posture. The
 // dispatch service sets StateMerkleRoot to the gateway's current state root.
 // Under DoctrinePosture, no L2 votes or L3 proofs
-// are required for read-only commands. Under postures that require L2
-// signatures (consensus, notary), the dispatch service deliberates the
-// constructed envelope through l2Deliberator before publish. Mutations under
+// are required for read-only commands. Where governance.L2Enforced holds for
+// the action (consensus, notary, and not a bootstrap action), the dispatch
+// service deliberates the constructed envelope through l2Deliberator before
+// publish. Mutations under
 // postures that require L3 proof (ratify, notary) are rejected at envelope
 // construction because the gateway dispatch path cannot mint human proofs.
 type DispatchService struct {
@@ -346,17 +353,17 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		return nil, fmt.Errorf("dispatch: marshal envelope: %w", err)
 	}
 
-	// 5. Under postures that require L2 signatures (consensus, notary),
+	// 5. Where L4 enforces L2 for this action (governance.L2Enforced),
 	//    deliberate the envelope through the L2 consensus service before
 	//    publish. The deliberator collects signed votes and returns the
 	//    envelope with L2 metadata populated. A nil deliberator skips
-	//    deliberation; the envelope fails closed at L4 verification under
-	//    such postures. A deliberation error fails closed before publish.
+	//    deliberation; the envelope fails closed at L4 verification where
+	//    L2 is enforced. A deliberation error fails closed before publish.
 	posture, perr := governance.ParseGovernancePosture(d.posture)
 	if perr != nil {
 		return nil, fmt.Errorf("dispatch: %w", perr)
 	}
-	if posture.RequiresL2Signature() && d.l2Deliberator != nil {
+	if governance.L2Enforced(actionType, posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)

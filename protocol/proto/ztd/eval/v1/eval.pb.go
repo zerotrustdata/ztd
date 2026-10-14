@@ -10553,8 +10553,9 @@ func (x *PublicLiveEvent) GetMetricDelta() map[string]*PublicLiveMetricValue {
 	return nil
 }
 
-// ConformanceAnchor pins one executing runtime's actuator public key, read
-// out of band from that runtime's pki/Actuator_pub.json export.
+// ConformanceAnchor pins one executing runtime's actuator public key: the
+// Gateway's from its own pki/Actuator_pub.json export, an outbound Operator's
+// from its enrollment binding, cross-checked against that Operator's export.
 type ConformanceAnchor struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RuntimeId     string                 `protobuf:"bytes,1,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"` // "gateway" for the Gateway/embedded executor, else the outbound operator id

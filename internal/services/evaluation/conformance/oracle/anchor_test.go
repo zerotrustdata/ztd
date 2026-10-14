@@ -151,6 +151,58 @@ func TestBoundAnchor(t *testing.T) {
 	}
 }
 
+func TestCheckedBoundAnchor(t *testing.T) {
+	signer := oracletest.NewSigner(t)
+	other := oracletest.NewSigner(t)
+	pubHex := hex.EncodeToString(signer.Pub)
+	otherHex := hex.EncodeToString(other.Pub)
+	shortBound := signer.Anchor("op-1")
+	shortBound.PublicKeyHex = hex.EncodeToString(signer.Pub[:31])
+
+	tests := []struct {
+		name      string
+		runtimeID string
+		bound     *evalv1.ConformanceAnchor
+		body      string
+		missing   bool
+		want      error
+		// names are the key ids a mismatch error must name, so an operator can tell which key the export carries.
+		names []string
+	}{
+		{name: "export equals bound pins the bound key with the export digest", runtimeID: "op-1", bound: signer.Anchor("op-1"), body: exportJSON("ed25519", signer.KeyID, pubHex)},
+		{name: "export names a different key", runtimeID: "op-1", bound: signer.Anchor("op-1"), body: exportJSON("ed25519", other.KeyID, otherHex), want: constants.ErrConformanceAnchorInvalid, names: []string{other.KeyID, signer.KeyID}},
+		{name: "export key id is not hex of its public key", runtimeID: "op-1", bound: signer.Anchor("op-1"), body: exportJSON("ed25519", other.KeyID, pubHex), want: constants.ErrConformanceAnchorInvalid},
+		{name: "export missing", runtimeID: "op-1", bound: signer.Anchor("op-1"), missing: true, want: constants.ErrConformanceAnchorMissing},
+		{name: "bound anchor names another runtime", runtimeID: "op-1", bound: signer.Anchor("op-2"), body: exportJSON("ed25519", signer.KeyID, pubHex), want: constants.ErrConformanceAnchorInvalid},
+		{name: "bound anchor absent", runtimeID: "op-1", bound: nil, body: exportJSON("ed25519", signer.KeyID, pubHex), want: constants.ErrConformanceAnchorInvalid},
+		{name: "bound key is not a full ed25519 key", runtimeID: "op-1", bound: shortBound, body: exportJSON("ed25519", signer.KeyID, pubHex), want: constants.ErrConformanceAnchorInvalid},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := newRuntimeFiles(t)
+			if !tt.missing {
+				writeExport(t, files, tt.body)
+			}
+			anchor, err := CheckedBoundAnchor(context.Background(), files, tt.runtimeID, tt.bound)
+			if tt.want != nil {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, tt.want)
+				for _, name := range tt.names {
+					assert.ErrorContains(t, err, name)
+				}
+				assert.Nil(t, anchor)
+				return
+			}
+			require.NoError(t, err)
+			digest := sha256.Sum256([]byte(tt.body))
+			assert.Equal(t, "op-1", anchor.GetRuntimeId())
+			assert.Equal(t, signer.KeyID, anchor.GetKeyId())
+			assert.Equal(t, pubHex, anchor.GetPublicKeyHex())
+			assert.Equal(t, hex.EncodeToString(digest[:]), anchor.GetExportSha256())
+		})
+	}
+}
+
 func TestNewAnchorSet(t *testing.T) {
 	signer := oracletest.NewSigner(t)
 	other := oracletest.NewSigner(t)

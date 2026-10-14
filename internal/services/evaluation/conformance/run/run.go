@@ -64,8 +64,7 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 
 	anchors := make([]*evalv1.ConformanceAnchor, 0, len(executors))
 	for _, ex := range executors {
-		root := cfg.Roots[ex]
-		anchor, err := oracle.LoadAnchor(ctx, root.Files, root.RuntimeID)
+		anchor, err := executorAnchor(ctx, ex, cfg.Roots[ex])
 		if err != nil {
 			return nil, fmt.Errorf("conformance run: load anchor for %s: %w", ex, err)
 		}
@@ -156,6 +155,28 @@ func usedExecutors(cfg Config, applicable []cases.Case) ([]cases.Executor, error
 		}
 	}
 	return executors, nil
+}
+
+// executorAnchor pins one executor's actuator key. The embedded executor is the
+// Gateway's own runtime, so its key comes from its own PKI export and no bound
+// anchor is accepted. The outbound executor's key was bound at enrollment, and
+// its export only cross-checks that binding, so the Operator cannot choose the
+// key its receipts verify against.
+func executorAnchor(ctx context.Context, ex cases.Executor, root Root) (*evalv1.ConformanceAnchor, error) {
+	switch ex {
+	case cases.ExecutorEmbedded:
+		if root.Bound != nil {
+			return nil, fmt.Errorf("embedded executor takes its anchor from its own export, not an enrollment-bound one: %w", constants.ErrConformanceAnchorInvalid)
+		}
+		return oracle.LoadAnchor(ctx, root.Files, root.RuntimeID)
+	case cases.ExecutorOutbound:
+		if root.Bound == nil {
+			return nil, fmt.Errorf("outbound executor %s has no enrollment-bound anchor: %w", root.RuntimeID, constants.ErrMissingRequiredField)
+		}
+		return oracle.CheckedBoundAnchor(ctx, root.Files, root.RuntimeID, root.Bound)
+	default:
+		return nil, fmt.Errorf("executor %s has no anchor source: %w", ex, constants.ErrConformanceAnchorInvalid)
+	}
 }
 
 // quiesce reads two sentinels in a row on one executor and records both. The

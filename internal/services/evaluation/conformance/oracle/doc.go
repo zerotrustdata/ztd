@@ -15,6 +15,6 @@
 // signature and persistence checks reuse governance.VerifyActionReceipt rather
 // than a second verifier. Callers outside this package (the conformance
 // verifier, the campaign executor, the red-team grader and the SUT client)
-// build anchors with LoadAnchor or BoundAnchor and never trust a key that the
-// receipt itself supplies.
+// build anchors with LoadAnchor, BoundAnchor or CheckedBoundAnchor and never
+// trust a key that the receipt itself supplies.
 package oracle

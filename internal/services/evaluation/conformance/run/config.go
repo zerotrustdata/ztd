@@ -19,9 +19,10 @@ import (
 
 // Root is one executing runtime's file access, as the runner sees it.
 type Root struct {
-	Files     fs.RuntimeFileService // the executor's runtime root
-	Dir       string                // absolute path of that root (to build absolute paths for drivers)
-	RuntimeID string                // oracle.GatewayRuntimeID for embedded; the outbound operator id otherwise
+	Files     fs.RuntimeFileService     // the executor's runtime root
+	Dir       string                    // absolute path of that root (to build absolute paths for drivers)
+	RuntimeID string                    // oracle.GatewayRuntimeID for embedded; the outbound operator id otherwise
+	Bound     *evalv1.ConformanceAnchor // outbound only: the key bound at enrollment (oracle.BoundAnchor); nil for embedded
 }
 
 // Config is everything one conformance run needs from its caller.

@@ -71,8 +71,9 @@ func LoadAnchor(ctx context.Context, files fs.RuntimeFileService, runtimeID stri
 }
 
 // BoundAnchor pins an outbound Operator's actuator key as bound at enrollment
-// (OperatorDocument.actuator_public_key, T00/T01). Used when the executor's
-// runtime root is not readable locally (campaign Data Operator, T25/T28/T30).
+// (OperatorDocument.actuator_public_key, T00/T01). Used for outbound executors
+// whose runtime root is not the Gateway's (campaign Data Operator, T25/T28/T30,
+// and the conformance outbound Operator, which goes through CheckedBoundAnchor).
 func BoundAnchor(doc *operatorv1.OperatorDocument) (*evalv1.ConformanceAnchor, error) {
 	if doc == nil || doc.GetId() == "" {
 		return nil, fmt.Errorf("oracle: bind anchor: empty operator id: %w", constants.ErrConformanceAnchorInvalid)
@@ -84,6 +85,35 @@ func BoundAnchor(doc *operatorv1.OperatorDocument) (*evalv1.ConformanceAnchor, e
 		RuntimeId:    doc.GetId(),
 		KeyId:        doc.GetActuatorKeyId(),
 		PublicKeyHex: doc.GetActuatorPublicKey(),
+	}, nil
+}
+
+// CheckedBoundAnchor pins an outbound Operator's enrollment-bound key after
+// cross-checking it against that Operator's own PKI export, read through its
+// RuntimeFileService. The export must name the same key id and public key as
+// bound, so an Operator that rewrites its export cannot choose the key its
+// receipts verify against. A differing key fails with ErrConformanceAnchorInvalid
+// and a missing export with ErrConformanceAnchorMissing. The result is the bound
+// key with the export's SHA-256 as provenance.
+func CheckedBoundAnchor(ctx context.Context, files fs.RuntimeFileService, runtimeID string, bound *evalv1.ConformanceAnchor) (*evalv1.ConformanceAnchor, error) {
+	if bound == nil || bound.GetRuntimeId() != runtimeID {
+		return nil, fmt.Errorf("oracle: checked bound anchor for %s: bound anchor is not for this runtime: %w", runtimeID, constants.ErrConformanceAnchorInvalid)
+	}
+	if _, err := validateAnchorKey(actuatorAlgorithm, bound.GetKeyId(), bound.GetPublicKeyHex()); err != nil {
+		return nil, fmt.Errorf("oracle: checked bound anchor for %s: %w", runtimeID, err)
+	}
+	export, err := LoadAnchor(ctx, files, runtimeID)
+	if err != nil {
+		return nil, fmt.Errorf("oracle: checked bound anchor for %s: %w", runtimeID, err)
+	}
+	if export.GetKeyId() != bound.GetKeyId() || export.GetPublicKeyHex() != bound.GetPublicKeyHex() {
+		return nil, fmt.Errorf("oracle: checked bound anchor for %s: export key id %s does not match enrollment-bound key id %s: %w", runtimeID, export.GetKeyId(), bound.GetKeyId(), constants.ErrConformanceAnchorInvalid)
+	}
+	return &evalv1.ConformanceAnchor{
+		RuntimeId:    runtimeID,
+		KeyId:        bound.GetKeyId(),
+		PublicKeyHex: bound.GetPublicKeyHex(),
+		ExportSha256: export.GetExportSha256(),
 	}, nil
 }
 

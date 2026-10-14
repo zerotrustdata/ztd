@@ -1285,8 +1285,9 @@ message PublicLiveEvent {
 
 // ---- Governance conformance (suite governance-conformance) ----
 
-// ConformanceAnchor pins one executing runtime's actuator public key, read
-// out of band from that runtime's pki/Actuator_pub.json export.
+// ConformanceAnchor pins one executing runtime's actuator public key: the
+// Gateway's from its own pki/Actuator_pub.json export, an outbound Operator's
+// from its enrollment binding, cross-checked against that Operator's export.
 message ConformanceAnchor {
   string runtime_id = 1;      // "gateway" for the Gateway/embedded executor, else the outbound operator id
   string key_id = 2;

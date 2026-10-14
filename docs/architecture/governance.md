@@ -82,7 +82,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GOV-ENV-01 | All new ingress transactions MUST declare protocol version `"2"` (`GovernanceProtocolVersionV2`). Envelopes with version `"1.0"` or other values MUST fail closed at L4 with `ErrTxProtocolVersionUnsupported`. |
 | INV-GOV-ENV-02 | The canonical transaction hash (`GenerateMessageID`) for protocol version 2 MUST hash the prefix `ztd-tx-v2\|` followed by `action_type\|event_type\|` and the canonical v1 string representation with SHA-256 encoded as lowercase hex. |
-| INV-GOV-ENV-03 | The v1 canonical string MUST serialize fields in strict documented order: `action_type`, `target_resource`, base64-encoded `payload`, `state_merkle_root`, `nonce`, RFC3339 `expires_at`, canonicalized `intent_data`, `requestor_user_id`, `acting_app_id`, `operator_id`, `operator_session_id`, `case_id`, `investigation_id`, `task_id`, `web_session_id`, and `cli_session_id`. Each non-empty field is followed by `\|`; empty or absent fields are omitted together with their delimiter. |
+| INV-GOV-ENV-03 | The v1 canonical string MUST serialize fields in strict documented order: `action_type`, `target_resource`, base64-encoded `payload`, `state_merkle_root`, `nonce`, `expires_at` as fixed six-digit microsecond UTC RFC3339 (`timesvc.FormatTimestamp`), canonicalized `intent_data`, `requestor_user_id`, `acting_app_id`, `operator_id`, `operator_session_id`, `case_id`, `investigation_id`, `task_id`, `web_session_id`, and `cli_session_id`. Each non-empty field is followed by `\|`; empty or absent fields are omitted together with their delimiter. A non-nil `intent_data` writes its delimiter even when it has no fields. |
 | INV-GOV-ENV-04 | `envelope.Id` and `envelope.TransactionHash` MUST both equal the recomputed transaction hash. Any mismatch MUST be rejected at L4 with `ErrTxTransactionIDMismatch` or `ErrTxTransactionHashMismatch`. |
 | INV-GOV-ENV-05 | Posture and L2/L3 governance proofs MUST NOT be included in the transaction hash canonicalization, allowing L2 consensus members to sign before human notary approval and allowing the gateway to set envelope posture without invalidating hashes. |
 
@@ -102,25 +102,25 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GOV-WARD-01 | L4 Warden MUST track nonces in memory (`inFlight`) before stateful operations to prevent race conditions, and MUST durably reserve the nonce in `ReplayStore` before payload validation. |
 | INV-GOV-WARD-02 | Expiry (`envelope.ExpiresAt`) MUST be strictly checked against the clock before nonce reservation. Expired transactions MUST fail closed with `ErrTxTransactionExpired`. |
-| INV-GOV-WARD-03 | Stateless checks MUST run before stateful checks: protocol version, L1 doctrine presence, non-empty ID, event and action agreement (a governed request event MUST map to the envelope `action_type`, otherwise L4 rejects with `ErrTxEventActionMismatch` and a signed `EVENT_ACTION_MISMATCH` receipt; the only event-type refusal before L4 is an event that is not a governed request, `ErrTxEventNotGoverned`), known action type, non-empty payload (except heartbeat and shutdown, whose typed messages have no required fields and marshal to zero bytes when all-default; `PayloadMayBeEmpty` is the single owner of that exemption), typed payload decoding, document collection scope, execution target ownership, L1 doctrine scanning, and dual hash matching. |
+| INV-GOV-WARD-03 | Stateless checks MUST run before stateful checks: protocol version, L1 doctrine presence, non-empty ID, event and action agreement (a governed request event MUST map to the envelope `action_type`, otherwise L4 rejects with `ErrTxEventActionMismatch` and a signed receipt whose `rejection_code` is `GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH`; an event that fails `ValidateGovernedRequest` is refused before L4 with `ErrTxUnknownEventType`, `ErrTxEventNotRequest`, or `ErrTxEventNotGoverned` and carries no receipt), known action type, non-empty payload (except heartbeat and shutdown, whose typed messages have no required fields and marshal to zero bytes when all-default; `PayloadMayBeEmpty` is the single owner of that exemption), typed payload decoding, document collection scope, execution target ownership, L1 doctrine scanning, and dual hash matching. |
 | INV-GOV-WARD-04 | The state Merkle root (`envelope.StateMerkleRoot`) MUST be nonempty and match the admission snapshot in context for Gateway-built transactions, including delivery over the authenticated outbound command channel and resumption of a suspended transaction after L3 approval. That snapshot MUST remain bound by canonical hash and required proof verification; Operators MUST NOT re-fetch it from the Gateway or substitute a local root. Direct submissions without that context MUST match the current local root from `StateRootProvider`; mismatches MUST fail closed with `ErrTxStateRootMismatch`. |
 | INV-GOV-WARD-05 | Any validation failure occurring after nonce reservation MUST release the nonce reservation via `replayStore.ReleaseNonce` so that non-admitted transactions do not leave dangling replay locks. |
 | INV-GOV-WARD-06 | A `DOCUMENT_UPDATE` or `DOCUMENT_DELETE` payload MUST target a collection marked `_governed` in `protocol/constants/collections.json` (`CollectionName.IsGovernedDocument`); any other collection MUST fail closed with `ErrTxDocumentCollectionNotGoverned` before execution. |
-| INV-GOV-WARD-07 | After document collection scope and before doctrine scanning, L4 MUST require `ExecutionTarget.ExecutesFor(envelope.OperatorId)`: an outbound runtime executes only for its own enrolled Operator ID, and the Gateway executes only for the embedded Operator owned by `embedded.Service`. A missing target dependency, empty target on a host action, or foreign target fails closed with `ErrTxTargetOperatorMismatch`. |
+| INV-GOV-WARD-07 | After document collection scope and before doctrine scanning, L4 MUST require `ExecutionTarget.ExecutesFor(envelope.OperatorId)`: an outbound runtime executes only for its own enrolled Operator ID, and the Gateway executes only for the embedded Operator owned by `embedded.Service`. A missing target dependency, empty target on a host action, or foreign target fails closed with `ErrTxTargetOperatorMismatch`. The one exception is an unbound `DOCUMENT_UPDATE` or `DOCUMENT_DELETE` with an empty `operator_id`, which INV-AUTH-ID-05 admits and which skips the `ExecutesFor` check; the target dependency must still be present. |
 | INV-GOV-WARD-08 | Immediately after the `ExecutesFor` check, L4 MUST verify a non-empty `envelope.OperatorSessionId` equals the session `ExecutionTarget.RuntimeIdentity` reports for the runtime, and MUST reject a session claimed without an `operator_id`; a mismatch fails closed with `ErrTxTargetSessionMismatch`. The claim is hashed but proves only what the sender wrote. An empty claim (app record writes, platform enrollment) is admitted and recorded under the runtime's own session. |
 
 ### L5 Actuator and Execution (`INV-GOV-ACT`)
 
 | ID | Rule |
 | :--- | :--- |
-| INV-GOV-ACT-01 | The L5 Actuator MUST enforce fail-closed execution: receipt signing key, non-empty event type, and execution handler MUST be present. When SQL audit is enabled, auditor signing key, key ID, and commitment ledger MUST be present. |
-| INV-GOV-ACT-02 | The Actuator MUST sign and persist an `EXECUTING` status `ActionReceipt` to the audit stores before invoking the execution handler. Failure to sign or persist MUST abort execution without invoking the handler (`ErrL5ActuatorSignReceipt`, `ErrL5ActuatorLogReceipt`). |
-| INV-GOV-ACT-03 | When `SQLAuditStore` is configured, the Actuator MUST append a signed `CommitmentAttestation` to the SQLite hash-chained commitment ledger against the current chain head before execution. |
+| INV-GOV-ACT-01 | The L5 Actuator MUST enforce fail-closed execution: execution handler, receipt signing key, SQL audit store, auditor signing key, auditor key ID, and commitment ledger MUST be present, and the envelope's event type MUST be non-empty. Each check runs before any receipt is signed or the handler runs. |
+| INV-GOV-ACT-02 | The Actuator MUST sign and persist an `EXECUTING` status `ActionReceipt` to the audit stores before invoking the execution handler. Failure to sign or persist MUST abort execution without invoking the handler (`ErrL5ActuatorSignReceipt`, `ErrL5ActuatorCommitmentPersist`). |
+| INV-GOV-ACT-03 | The Actuator MUST append a signed `CommitmentAttestation` to the SQLite hash-chained commitment ledger against the current chain head before execution, in the same immediate write transaction that persists the initial receipt. |
 | INV-GOV-ACT-04 | The Actuator MUST mint a transaction-scoped, single-action `Capability` bound to the transaction hash, action type, target resource, operator ID, session, and expiry before execution, and MUST dissolve the capability immediately after execution completes or fails. |
 | INV-GOV-ACT-05 | The Actuator MUST finalize the `ActionReceipt` with status (`COMPLETED` or `FAILED`), state root after, execution timestamp, and typed `ReceiptFailureCode`. It MUST sign the final receipt, log it, and attach a signed `ReceiptPersistenceAttestation`. |
 | INV-GOV-ACT-06 | Remote receipt publication to the Gateway (`PublishActionReceipt`) is best effort and MUST NOT alter or gate local execution outcome. The executing runtime's local SQLite audit record remains authoritative under LFAA. |
 | INV-GOV-ACT-07 | A governed `FILE_EDIT` or `RESTORE_FILE` MUST NOT write runtime control or evidence state under `.ztd/` except the executing runtime's controlled evaluation target directory. The executing runtime MUST open the target through `RuntimeFileService.OpenFileEditTarget` before any I/O, and all I/O MUST go through the returned `FileEditTarget`. |
-| INV-GOV-ACT-08 | Receipts MUST be filed under a session the executing runtime owns, taken from the L5 `Identity` (the runtime's `ExecutionTarget`), never from an unverified envelope claim. A rejection (`RecordRejectedTransaction`) is always filed under the runtime's own operator and session; the claimed ids stay in the signed receipt's stage evidence, and the rejection receipt is published under the runtime's own identity. A verified envelope that names no session executes under the runtime's own session. Without a resolvable identity the Actuator fails closed (`ErrL5ActuatorRuntimeIdentityMissing`) before anything executes. A rejection receipt that cannot be persisted returns `ErrL5ActuatorRejectionReceiptPersist`, not `ErrL5ActuatorLogReceipt`: nothing executed. The embedded Operator's own session is its claimed operator session, or the Gateway's `EmbeddedOperatorBootstrapSessionID` audit session before the claim. |
+| INV-GOV-ACT-08 | Receipts MUST be filed under a session the executing runtime owns, taken from the L5 `Identity` (the runtime's `ExecutionTarget`), never from an unverified envelope claim. A rejection (`RecordRejectedTransaction`) is always filed under the runtime's own operator and session; the claimed ids stay in the signed receipt's stage evidence, and the rejection receipt is published under the runtime's own identity. A verified envelope that names no session executes under the runtime's own session. Without a resolvable identity the Actuator fails closed (`ErrL5ActuatorRuntimeIdentityMissing`) before anything executes. A rejection receipt that cannot be persisted returns `ErrL5ActuatorRejectionReceiptPersist`, because nothing executed. The embedded Operator's own session is its claimed operator session, or the Gateway's `EmbeddedOperatorBootstrapSessionID` audit session before the claim. |
 | INV-GOV-ACT-09 | A rejection receipt (`RecordRejectedTransaction`) MUST set `ActionReceipt.rejection_code` from `ClassifyGovernanceRejection` (`internal/services/governance/rejection_code.go`), which maps verification sentinels via `errors.Is`. An unmapped error MUST be `GOVERNANCE_REJECTION_CODE_UNCLASSIFIED`, never a guessed layer. `CanonicalizeActionReceipt` MUST bind `rejection_code` into the receipt signature. `rejection_code` MUST be `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` on any receipt that is not a governance rejection. Verifiers MUST attribute a rejection to a layer from the signed `rejection_code`, never from `result_summary`. Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`. |
 | INV-GOV-ACT-10 | Every governed ingress MUST return the executing Operator's signed rejection receipt to the caller as `GovernanceRejection` (`protocol/proto/ztd/operator/v1/operator.proto`): the HTTP body for direct envelope submission and governed dispatch, and the JSON-RPC `error.data` for MCP and A2A. The receipt travels as `*governance.RejectionError` (`internal/services/governance/rejection_code.go`) from `ProcessEnvelope` or the dispatch receipt wait to the response writer. `GovernanceRejection.error` renders only the governance sentinel, never the wrapped chain. An L4 that cannot run (`RUNTIME_VAULT_LOCKED`, `VERIFIER_MISCONFIGURED`) is HTTP 503; every other rejection is HTTP 403. A refusal before L4 carries no receipt and returns a typed `IngressRefusal` (INV-GOV-ACT-11). |
 | INV-GOV-ACT-11 | Every pre-envelope refusal on every ingress MUST be a typed `IngressRefusal{code, error}` (`operator.proto`): the HTTP body for direct envelope submission and governed dispatch, and the JSON-RPC `error.data` for MCP and A2A. `governance.NewIngressRefusal` (`internal/services/governance/ingress_refusal.go`) names the check. An unmapped refusal is `INGRESS_REFUSAL_CODE_UNCLASSIFIED`, and `error` renders only the governance sentinel, never the wrapped chain. |
@@ -132,11 +132,11 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-GOV-EVID-01 | Deterministic stage evidence MUST maintain strict monotonic ordering: `L1_DOCTRINE`, `PROTOCOL_L2`, `L3_NOTARY`, `L4_VERIFICATION`, `RECEIPT_PERSISTENCE`, `COMMITMENT_APPEND`, and `L5_EXECUTION`. |
-| INV-GOV-EVID-02 | Stage parentage MUST bind strictly: L1, L2, and L3 stages declare parent ID equal to the L4 stage ID; L4, receipt persistence, and commitment append declare parent ID equal to the L5 stage ID. |
-| INV-GOV-EVID-03 | Identity fields (`OperatorID`, `OperatorSessionID`, `RequestorUserID`, `ActingAppID`, `CaseID`, `InvestigationID`, `TaskID`) MUST remain identical across all deterministic stages in a transaction. |
+| INV-GOV-EVID-02 | Stage parentage MUST bind strictly: L1, L2, and L3 stages declare parent ID equal to the L4 stage ID; L4, receipt persistence, and commitment append declare parent ID equal to the L5 stage ID. On a rejected transaction no L5 stage exists: the L1, L2, and L3 stages that ran declare the L4 stage ID as parent, and the L4 stage has an empty parent ID. |
+| INV-GOV-EVID-03 | Non-empty identity fields (`OperatorID`, `OperatorSessionID`, `RequestorUserID`, `ActingAppID`, `CaseID`, `InvestigationID`, `TaskID`) MUST be identical across all deterministic stages in a transaction; an empty value is not compared. |
 | INV-GOV-EVID-04 | The final `ReceiptPersistenceAttestation` MUST bind the transaction ID, audit record ID, signer key ID, timestamp, and SHA-256 digest of the final receipt signature, signed by the Actuator's private key. |
 | INV-GOV-EVID-05 | Relayed receipts at the Gateway MUST be verified against both the Actuator public key signature and the persistence attestation before acceptance; invalid attestations MUST cause rejection. |
-| INV-GOV-EVID-06 | On a rejected transaction, the `L1_DOCTRINE` stage MUST be `FAILED` only when doctrine found a violation. It MUST be `VERIFIED` when doctrine passed and a later stateless check (hash or id) failed. It MUST be absent when rejection happened before doctrine ran. |
+| INV-GOV-EVID-06 | On a rejected transaction, the `L1_DOCTRINE` stage MUST be `FAILED` only when doctrine found a violation. It MUST be `VERIFIED` when doctrine passed and a later check failed (transaction hash or ID, state root, or posture). It MUST be absent when rejection happened before doctrine ran. |
 
 ## Owned surfaces
 
@@ -208,7 +208,7 @@ The embedded `canonical_v1` string serializes fields in strict deterministic seq
 3. `payload` (Base64 standard encoding)
 4. `state_merkle_root`
 5. `nonce`
-6. `expires_at` (RFC3339 formatted)
+6. `expires_at` (fixed six-digit microsecond UTC RFC3339)
 7. `intent_data` (recursively sorted keys: `key=val,key2=val2`)
 8. `requestor_user_id`
 9. `acting_app_id`
@@ -220,10 +220,10 @@ The embedded `canonical_v1` string serializes fields in strict deterministic seq
 15. `web_session_id`
 16. `cli_session_id`
 
-Non-empty fields are terminated with `|`. Empty optional fields and their delimiters are omitted. Posture (`posture`), envelope ID (`id`), transaction hash (`transaction_hash`), timestamp (`timestamp`), and governance metadata (`governance`) are excluded from hashing. This guarantees that:
+Non-empty fields are terminated with `|`. Empty optional fields and their delimiters are omitted, except that a non-nil `intent_data` writes its delimiter even when it has no fields. `expires_at` is formatted as fixed six-digit microsecond UTC RFC3339. Posture (`posture`), envelope ID (`id`), transaction hash (`transaction_hash`), timestamp (`timestamp`), governance metadata (`governance`), source component (`source_component`), system fingerprint (`system_fingerprint`), tenant (`tenant_id`), and binding persona (`binding_persona`) are excluded from hashing. Protocol version (`protocol_version`) is not a v1 field: it selects the hash form, and only version 2 is admitted at L4. This guarantees that:
 - L2 consensus members can sign the transaction hash before human L3 notary approval is obtained.
 - The Gateway can stamp the posture into `envelope.Posture` without altering cryptographic signatures.
-- Both `envelope.Id` and `envelope.TransactionHash` MUST match `transaction_hash`.
+- `envelope.Id` and `envelope.TransactionHash` MUST both equal the recomputed hash (`INV-GOV-ENV-04`).
 
 ### Layer 1 (L1) Doctrine: Technical Bedrock
 
@@ -252,9 +252,9 @@ L2 Consensus authenticates machine review by requiring independent affirmative c
 
 L3 Notary provides non-repudiable human-in-the-loop authorization for mutations (`actionType.IsMutation() == true`):
 1. **Mutation Classification**: Action types carry an intrinsic `_mutation` boolean. Read-only actions (`FS_READ`, `FS_LIST`, etc.) bypass L3 enforcement.
-2. **Gateway Mode**: Requires a WebAuthn passkey assertion with challenge matching `transaction_hash`. When CLI callers present `mtls_cert_fingerprint`, the session is verified against local CRL records.
+2. **Gateway Mode**: Requires a WebAuthn passkey assertion with challenge matching `transaction_hash`. When CLI callers present `mtls_cert_fingerprint`, the CLI session is verified, and the certificate is checked against the Gateway's local revoked-certificate records.
 3. **Outbound Operator Mode**: Verifies an approved record in `SuspendedTransactionStore` matching `transaction_hash` and `requestor_user_id` within the 30-minute approval window (`L3ApprovalWindow`), signed with an authorized Ed25519 CLI signature.
-4. **Suspension Mechanics**: On Gateway MCP/A2A ingress, transactions lacking required L3 proofs suspend, persist in `SuspendedTransactionStore`, and return an approval URL. Once approved, execution resumes via `ResumeWithL3Proof`. Direct envelope submissions and HTTP command dispatches do not suspend; they fail closed if proofs are missing.
+4. **Suspension Mechanics**: On Gateway MCP/A2A ingress, the executing Operator's L4 rejects a missing proof with `ErrTxL3ProofMissing`. The Gateway then persists the transaction in `SuspendedTransactionStore` and returns an approval URL instead of a rejection. Once approved, execution resumes via `ResumeWithL3Proof`. Direct envelope submissions do not suspend: L4 fails them closed with `ErrTxL3ProofMissing`. Governed HTTP dispatch does not suspend either: under `ratify` and `notary` it refuses a mutation that passed L1 screening with `ErrTxL3ProofUnmintable` before the envelope exists.
 
 ### Layer 4 (L4) Warden: Pre-Dispatch Verification Pipeline
 
@@ -276,19 +276,19 @@ flowchart TD
 3. **Stateless Validation**: Enforces protocol version 2, validates action type, decodes protobuf payload, confirms target ownership (`ExecutesFor`), evaluates L1 Doctrine, and verifies dual hash equality (`transaction_hash == envelope.Id == recomputed_hash`).
 4. **Stateful Validation**: Validates `envelope.StateMerkleRoot` against the admission snapshot in context.
 5. **Posture Validation**: Evaluates posture-required L2 Consensus votes and L3 Notary proofs from `envelope.Posture`.
-6. **Fail-Closed Nonce Release**: Any validation failure after Step 1 immediately invokes `releaseNonceReservation` so unadmitted transactions do not leave dangling locks. The rejection is recorded by the L5 Actuator as a signed `FAILED` receipt with `failure_code` `GOVERNANCE_REJECTED` and a `rejection_code` (`INV-GOV-ACT-09`). L1 stage evidence on rejection follows `INV-GOV-EVID-06`.
+6. **Fail-Closed Nonce Release**: Any validation failure after Step 1 immediately invokes `releaseNonceReservation` so unadmitted transactions do not leave dangling locks. The rejection is recorded by the L5 Actuator as a signed `FAILED` receipt with `failure_code` `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED` and a `rejection_code` (`INV-GOV-ACT-09`). L1 stage evidence on rejection follows `INV-GOV-EVID-06`.
 
 ### Layer 5 (L5) Actuator: Fail-Closed Execution Boundary
 
 The L5 Actuator owns the execution boundary and enforces zero standing privileges:
-1. **Pre-Execution Invariants**: Verifies `ExecutionHandler`, `SigningKey`, `EventType`, and (when SQL audit is active) `AuditorSigningKey` and `CommitmentLedger`.
+1. **Pre-Execution Invariants**: Verifies `ExecutionHandler`, `SigningKey`, the SQL audit store, `AuditorSigningKey`, `AuditorKeyID`, and `CommitmentLedger`, then the envelope's event type.
 2. **Initial Receipt Logging**: Constructs and signs an initial `ActionReceipt` with status `EXECUTION_STATUS_EXECUTING`, persists to local SQLite audit storage, and sets stage `DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE`.
-3. **Commitment Append**: Appends a signed `CommitmentAttestation` to the SQLite hash-chained commitment ledger under write lock.
+3. **Commitment Append**: Appends a signed `CommitmentAttestation` to the SQLite hash-chained commitment ledger in the same immediate write transaction that persists the initial receipt.
 4. **Payload Rehydration**: Rehydrates scrubbed tokens via local vault keys (`ScrubbingService`).
 5. **JIT Capability Lifecycle**:
    - Mints a single-action capability (`MintCapability`) binding transaction hash, action type, target resource, operator ID, session ID, and expiry.
    - Dispatches execution to `ExecutionHandler.ExecuteVerifiedTransaction`.
-   - Dissolves the capability immediately upon return in a defer-safe block.
+   - Dissolves the capability immediately after the handler returns (`Capability.Dissolve`, called directly rather than deferred).
 6. **Receipt Finalization**: Marks receipt `COMPLETED` or `FAILED`, captures final state root, maps errors to typed `ReceiptFailureCode` (and `rejection_code` for governance rejections), signs final receipt, and attaches a signed `ReceiptPersistenceAttestation`.
 7. **Gateway Relay**: Publishes the final receipt to `receipts:<operator_id>:<operator_session_id>` on a best-effort basis. The local SQLite record remains authoritative under LFAA.
 
@@ -296,9 +296,9 @@ The L5 Actuator owns the execution boundary and enforces zero standing privilege
 
 Every completed or failed transaction that reaches the Actuator generates a deterministic protocol evidence chain (`DeterministicProtocolChain`):
 - **Ordered Stages**: Enforces strict monotonic ordering: `L1_DOCTRINE` -> `PROTOCOL_L2` -> `L3_NOTARY` -> `L4_VERIFICATION` -> `RECEIPT_PERSISTENCE` -> `COMMITMENT_APPEND` -> `L5_EXECUTION`.
-- **Parentage Relationships**: L1, L2, and L3 stages set `ParentStageId` to the L4 stage ID. L4, receipt persistence, and commitment append set `ParentStageId` to the L5 stage ID.
-- **Identity Invariance**: Identity attributes (`OperatorID`, `OperatorSessionID`, `RequestorUserID`, `ActingAppID`, `CaseID`, `InvestigationID`, `TaskID`) remain identical across all stages.
-- **Content Addressing**: Canonical stages serialize into a content reference: `urn:ztd:evidence:stages:sha256:<hex>`.
+- **Parentage Relationships**: L1, L2, and L3 stages set `ParentStageId` to the L4 stage ID. L4, receipt persistence, and commitment append set `ParentStageId` to the L5 stage ID. On a rejected transaction the chain ends at L4, and the L4 stage has an empty `ParentStageId`.
+- **Identity Invariance**: Non-empty identity attributes (`OperatorID`, `OperatorSessionID`, `RequestorUserID`, `ActingAppID`, `CaseID`, `InvestigationID`, `TaskID`) remain identical across all stages.
+- **Content Addressing**: Canonical stages serialize into a content reference: `deterministic-stages:sha256:<hex>`.
 
 ### End-to-End Transaction Lifecycles
 
@@ -311,7 +311,7 @@ Every completed or failed transaction that reaches the Actuator generates a dete
 
 #### Outbound Operator WebSocket Dispatch
 1. Client submits intent to the Gateway.
-2. Gateway constructs envelope, validates L1 Doctrine, verifies mutations under `ratify`/`notary` have L3 proofs, and publishes to `cmd:<operator_id>:<operator_session_id>`.
+2. Gateway constructs envelope, validates L1 Doctrine, and publishes to `cmd:<operator_id>:<operator_session_id>`. The Gateway does not check L3 proofs itself: governed HTTP dispatch screens L1 first in every posture, then refuses mutations under `ratify` and `notary` before the envelope exists (`ErrTxL3ProofUnmintable`), and the executing Operator's L4 verifies the proofs for the rest.
 3. Operator receives envelope, runs L4 Warden, and reserves nonce in its local SQLite replay store.
 4. Operator L5 Actuator executes the command, logs receipts to local SQLite audit store, and appends commitment to local ledger.
 5. Operator relays signed receipt to `receipts:<operator_id>:<operator_session_id>`.

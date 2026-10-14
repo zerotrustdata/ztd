@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
@@ -39,6 +40,7 @@ func newTestMCPController(t *testing.T) *MCPController {
 		AuditStore:       noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 		ScrubbingService: scrubber,
+		Posture:          constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 	return newMCPController(MCPControllerDeps{MCPGateway: g})

@@ -182,6 +182,28 @@ func TestBuildGovernanceEnvelope_NotaryRejectsMutation(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
 }
 
+// TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate proves
+// that L1 screening is the first content check in every posture. A forbidden
+// command is refused as ErrTxL1ValidationFailed under ratify and notary too,
+// where a clean mutation is refused as ErrTxL3ProofUnmintable.
+func TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate(t *testing.T) {
+	postures := []string{
+		constants.PostureDoctrine,
+		constants.PostureConsensus,
+		constants.PostureRatify,
+		constants.PostureNotary,
+	}
+	for _, posture := range postures {
+		t.Run(posture, func(t *testing.T) {
+			params := baseEnvelopeParams(constants.Event.Operator.Command.Requested, maliciousCommandPayload(t), posture, testDoctrine())
+			_, err := BuildGovernanceEnvelope(params)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
+			assert.NotErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
+		})
+	}
+}
+
 // TestBuildGovernanceEnvelope_RatifyAllowsReadOnly proves that under ratify
 // posture, a read-only (non-mutation) action still passes because L3 is not
 // required for reads.
@@ -323,4 +345,82 @@ func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.False(t, published, "envelope must not be published when L2 deliberation fails")
+}
+
+// TestDispatchService_BootstrapActionSkipsL2Deliberation proves that both
+// deliberation sites apply L4's bootstrap exemption: a platform enrollment
+// action is not sent to the L2 deliberator under a posture that requires L2,
+// while a non-bootstrap action under the same posture is. Neither entry point
+// has a cmd-channel subscriber, so each returns ErrDispatchNoDelivery straight
+// after the deliberation gate and never waits for a result.
+func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
+	enrollmentPayload, err := proto.Marshal(&commonv1.PlatformEnrollmentGovernancePayload{})
+	require.NoError(t, err)
+
+	cases := []struct {
+		name            string
+		posture         string
+		event           constants.EventType
+		payload         []byte
+		wantDeliberated bool
+	}{
+		{
+			name:    "notary bootstrap action is not deliberated",
+			posture: constants.PostureNotary,
+			event:   constants.EventPlatformEnrollmentCreateRequested,
+			payload: enrollmentPayload,
+		},
+		{
+			name:    "consensus bootstrap action is not deliberated",
+			posture: constants.PostureConsensus,
+			event:   constants.EventPlatformEnrollmentCreateRequested,
+			payload: enrollmentPayload,
+		},
+		{
+			name:            "notary read is deliberated",
+			posture:         constants.PostureNotary,
+			event:           constants.Event.Operator.FsRead.Requested,
+			payload:         fsReadPayload(t),
+			wantDeliberated: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			broker := NewGatewayWebSocketHandler(logger)
+			newService := func(deliberator L2ConsensusDeliberator) *DispatchService {
+				return NewDispatchService(
+					logger, broker,
+					&stubStateRootProvider{root: "root-abc"},
+					&stubOperatorSessionValidator{op: op},
+					tc.posture,
+					testDoctrine(),
+					deliberator,
+					nil,
+					nil,
+				)
+			}
+
+			dispatchDeliberator := &stubL2Deliberator{}
+			_, err := newService(dispatchDeliberator).Dispatch(context.Background(), DispatchRequest{
+				TargetOperatorSessionID: op.OperatorSessionId,
+				EventType:               string(tc.event),
+				Payload:                 tc.payload,
+				RequestorUserID:         "user-001",
+			})
+			require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
+			assert.Equal(t, tc.wantDeliberated, dispatchDeliberator.called, "Dispatch deliberation")
+
+			publishDeliberator := &stubL2Deliberator{}
+			_, err = newService(publishDeliberator).PublishCommand(context.Background(), PublishCommandRequest{
+				TargetOperatorSessionID: op.OperatorSessionId,
+				EventType:               string(tc.event),
+				Payload:                 tc.payload,
+				RequestorUserID:         "user-001",
+			})
+			require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
+			assert.Equal(t, tc.wantDeliberated, publishDeliberator.called, "PublishCommand deliberation")
+		})
+	}
 }

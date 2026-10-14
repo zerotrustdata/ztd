@@ -459,7 +459,6 @@ var (
 	ErrGatewayNotReady                         = errors.New("ztd Gateway not ready")
 	ErrGatewayL3ProofRequired                  = errors.New("L3 proof required")
 	ErrGatewayUserIDRequired                   = errors.New("user_id required")
-	ErrGatewayInvalidPosture                   = errors.New("invalid posture")
 	ErrGatewayPostureMismatch                  = errors.New("running gateway posture differs from the requested posture")
 	ErrGatewayForbiddenPattern                 = errors.New("forbidden pattern detected")
 	ErrGatewayDownstreamHTTPError              = errors.New("downstream server returned HTTP error")

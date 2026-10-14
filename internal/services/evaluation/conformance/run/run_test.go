@@ -9,6 +9,7 @@ package run
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -86,14 +87,18 @@ func newHarness(t *testing.T) *harness {
 		require.NoError(t, files.MkdirAll(context.Background(), constants.PkiDirname, constants.PermDirPrivate))
 		export := fmt.Sprintf(`{"key_id":%q,"public_key":%q,"algorithm":"ed25519"}`,
 			signer.KeyID, hex.EncodeToString(signer.Pub))
-		require.NoError(t, files.WriteFile(context.Background(),
-			filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename), []byte(export), constants.PermFilePrivate))
+		require.NoError(t, files.WriteFile(context.Background(), actuatorExportPath(), []byte(export), constants.PermFilePrivate))
 		h.heads[ex] = "genesis-" + string(ex)
-		h.roots[ex] = Root{
+		root := Root{
 			Files:     loggingFiles{RuntimeFileService: files, h: h},
 			Dir:       dir,
 			RuntimeID: runtimeID,
 		}
+		if ex == cases.ExecutorOutbound {
+			// The outbound key is bound at enrollment, and its export must match it.
+			root.Bound = signer.Anchor(runtimeID)
+		}
+		h.roots[ex] = root
 	}
 	return h
 }
@@ -292,6 +297,101 @@ func TestRunRecordsFilledHeaderAndAnchors(t *testing.T) {
 	assert.Equal(t, embeddedRuntimeID, record.GetAnchors()[0].GetRuntimeId())
 	assert.Equal(t, outboundRuntimeID, record.GetAnchors()[1].GetRuntimeId())
 	assert.Len(t, record.GetDoctrineCorpusSha256(), 64)
+}
+
+// actuatorExportPath is the actuator export under a runtime root.
+func actuatorExportPath() string {
+	return filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename)
+}
+
+// writeActuatorExport replaces the actuator export of ex's runtime with one that names signer's key.
+func writeActuatorExport(t *testing.T, h *harness, ex cases.Executor, signer oracletest.Signer) {
+	t.Helper()
+	export := fmt.Sprintf(`{"key_id":%q,"public_key":%q,"algorithm":"ed25519"}`, signer.KeyID, hex.EncodeToString(signer.Pub))
+	require.NoError(t, h.roots[ex].Files.WriteFile(context.Background(), actuatorExportPath(), []byte(export), constants.PermFilePrivate))
+}
+
+func TestRunPinsOutboundAnchorToEnrollmentBindingAndExportDigest(t *testing.T) {
+	h := newHarness(t)
+
+	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
+	require.NoError(t, err)
+
+	root := h.roots[cases.ExecutorOutbound]
+	export, err := root.Files.ReadFile(context.Background(), actuatorExportPath())
+	require.NoError(t, err)
+	digest := sha256.Sum256(export)
+	outbound := record.GetAnchors()[1]
+	assert.Equal(t, outboundRuntimeID, outbound.GetRuntimeId())
+	assert.Equal(t, root.Bound.GetKeyId(), outbound.GetKeyId())
+	assert.Equal(t, root.Bound.GetPublicKeyHex(), outbound.GetPublicKeyHex())
+	assert.Equal(t, hex.EncodeToString(digest[:]), outbound.GetExportSha256())
+}
+
+func TestRunRefusesOutboundAnchorThatDoesNotCheckAgainstItsExport(t *testing.T) {
+	other := oracletest.NewSigner(t)
+	tests := []struct {
+		name   string
+		mutate func(t *testing.T, h *harness)
+		want   error
+	}{
+		{name: "export names a key other than the enrollment-bound key", want: constants.ErrConformanceAnchorInvalid, mutate: func(t *testing.T, h *harness) {
+			writeActuatorExport(t, h, cases.ExecutorOutbound, other)
+		}},
+		{name: "export missing", want: constants.ErrConformanceAnchorMissing, mutate: func(t *testing.T, h *harness) {
+			require.NoError(t, h.roots[cases.ExecutorOutbound].Files.Remove(context.Background(), actuatorExportPath()))
+		}},
+		{name: "bound anchor names another runtime", want: constants.ErrConformanceAnchorInvalid, mutate: func(t *testing.T, h *harness) {
+			root := h.roots[cases.ExecutorOutbound]
+			root.Bound = h.signers[cases.ExecutorOutbound].Anchor("op-other")
+			h.roots[cases.ExecutorOutbound] = root
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness(t)
+			tt.mutate(t, h)
+
+			record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
+
+			require.Error(t, err)
+			assert.ErrorIs(t, err, tt.want)
+			assert.Nil(t, record)
+			assert.Empty(t, h.log, "the anchor is checked before any canary seed, sentinel read or drive")
+		})
+	}
+}
+
+func TestRunRequiresEnrollmentBoundAnchorOnlyForOutbound(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(h *harness)
+		want   error
+	}{
+		{name: "outbound root without a bound anchor is refused", want: constants.ErrMissingRequiredField, mutate: func(h *harness) {
+			root := h.roots[cases.ExecutorOutbound]
+			root.Bound = nil
+			h.roots[cases.ExecutorOutbound] = root
+		}},
+		{name: "embedded root with a bound anchor is refused", want: constants.ErrConformanceAnchorInvalid, mutate: func(h *harness) {
+			root := h.roots[cases.ExecutorEmbedded]
+			root.Bound = h.signers[cases.ExecutorEmbedded].Anchor(embeddedRuntimeID)
+			h.roots[cases.ExecutorEmbedded] = root
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness(t)
+			tt.mutate(h)
+
+			record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
+
+			require.Error(t, err)
+			assert.ErrorIs(t, err, tt.want)
+			assert.Nil(t, record)
+			assert.Empty(t, h.log, "the anchor is checked before any canary seed, sentinel read or drive")
+		})
+	}
 }
 
 func TestRunAbortsWhenStackIsNotQuiescent(t *testing.T) {

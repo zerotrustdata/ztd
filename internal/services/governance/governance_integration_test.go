@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -69,6 +70,8 @@ func TestGovernanceFlow(t *testing.T) {
 	vt := &VerifiedTransaction{
 		Envelope:   env,
 		ActionType: constants.ActionTypeFetchLogs,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
 	// 3. L5Actuator Execution

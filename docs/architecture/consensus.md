@@ -95,7 +95,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-RCPT-01 | The L5 ActionReceipt `L2Status` field MUST record `L2_STATUS_REQUIRED_VALID` when L2 is required and verified, `L2_STATUS_REQUIRED_FAILED` when required and failed, or `L2_STATUS_NOT_REQUIRED` when the posture does not require L2. |
+| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 ActionReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, or the action is bootstrap-exempt) and no valid proof is present. L5 never recomputes it from posture. |
 | INV-CON-RCPT-02 | L4 verification MUST produce `DeterministicStageEvidence` for protocol L2 recording stage outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`) and the SHA-256 `L2SignatureDigest` over the vote set. |
 
 ## Owned surfaces
@@ -128,9 +128,9 @@ The active posture governs whether L2 verification gates execution:
 
 | Posture | L2 Gate Status | Receipt `L2Status` Value | Deterministic Stage Outcome |
 | :--- | :--- | :--- | :--- |
-| **`doctrine`** | Non-gating (audited only) | `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
+| **`doctrine`** | Non-gating (audited only) | `L2_STATUS_REQUIRED_VALID` (if valid) or `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
 | **`consensus`** | Strictly required for non-bootstrap | `L2_STATUS_REQUIRED_VALID` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` |
-| **`ratify`** | Non-gating (audited only) | `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
+| **`ratify`** | Non-gating (audited only) | `L2_STATUS_REQUIRED_VALID` (if valid) or `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
 | **`notary`** | Strictly required for non-bootstrap | `L2_STATUS_REQUIRED_VALID` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` |
 
 ### Policy Schema and Validation Rules

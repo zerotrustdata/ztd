@@ -421,7 +421,7 @@ func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
 		withEnvProc(proc),
 		withSuspendedStore(store),
 	)
-	g.posture = constants.PostureNotary
+	g.posture = &governance.NotaryPosture{}
 
 	reqBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{"foo":"bar"}}}`
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(reqBody))
@@ -518,7 +518,7 @@ func TestGovernedSuspension_MCPAndA2AShareTypedShape(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
-	g.posture = constants.PostureNotary
+	g.posture = &governance.NotaryPosture{}
 	ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
 	ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, "operator-session-1")
 	r := httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx)
@@ -576,7 +576,7 @@ func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForMCPCall(t *testi
 	proc := &fakeEnvelopeProcessor{}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
-	g.posture = constants.PostureRatify
+	g.posture = &governance.RatifyPosture{}
 	txHash := suspendedCallFixture(t, g, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
 		res, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
 		if err != nil {
@@ -591,7 +591,7 @@ func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForA2ACall(t *testi
 	proc := &fakeEnvelopeProcessor{}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
-	g.posture = constants.PostureRatify
+	g.posture = &governance.RatifyPosture{}
 	txHash := suspendedCallFixture(t, g, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
 		res, err := g.a2aCall(ctx, r, json.RawMessage(`{"skill_name":"test-skill","payload":{}}`))
 		if err != nil {
@@ -1199,6 +1199,7 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 
 	t.Run("creates service with dependencies", func(t *testing.T) {
 		deps := Dependencies{
+			Posture:          constants.PostureDoctrine,
 			Logger:           slog.Default(),
 			Responder:        response.NewWriter(slog.Default()),
 			SuspendedStore:   &fakeSuspendedStore{},
@@ -1223,6 +1224,7 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 
 	t.Run("initializes field path registry", func(t *testing.T) {
 		deps := Dependencies{
+			Posture:          constants.PostureDoctrine,
 			Logger:           slog.Default(),
 			Responder:        response.NewWriter(slog.Default()),
 			MaxPayloadBytes:  10 * 1024 * 1024,
@@ -1240,6 +1242,7 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 	t.Run("returns error when field path registry factory fails", func(t *testing.T) {
 		factoryErr := fmt.Errorf("simulated registry initialization failure")
 		deps := Dependencies{
+			Posture:          constants.PostureDoctrine,
 			Logger:           slog.Default(),
 			Responder:        response.NewWriter(slog.Default()),
 			MaxPayloadBytes:  10 * 1024 * 1024,
@@ -1261,6 +1264,7 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 
 func TestGatewayService_NilAuditStore_ReturnsError(t *testing.T) {
 	deps := Dependencies{
+		Posture:         constants.PostureDoctrine,
 		Logger:          slog.Default(),
 		Responder:       response.NewWriter(slog.Default()),
 		SuspendedStore:  &fakeSuspendedStore{},
@@ -1384,7 +1388,7 @@ func TestGatewayService_HandleToolsCall_AppCredentialSuspendsOnEmbeddedSession(t
 		withEnvProc(&fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}),
 		withSuspendedStore(store),
 		withAuditStore(recorder))
-	g.posture = constants.PostureNotary
+	g.posture = &governance.NotaryPosture{}
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{}}}`))
 	req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyAppID, "calling-app"))
@@ -1416,7 +1420,7 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 		withEnvProc(proc),
 		withSuspendedStore(store),
 		withEmbeddedSession(fakeEmbeddedSession{err: constants.ErrEmbeddedOperatorUnclaimed}))
-	g.posture = constants.PostureNotary
+	g.posture = &governance.NotaryPosture{}
 
 	t.Run("processGatewayTransaction", func(t *testing.T) {
 		ctx := context.WithValue(context.Background(), constants.ContextKeyAppID, "calling-app")
@@ -1440,6 +1444,7 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 
 func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T) {
 	g, err := NewGatewayService(Dependencies{
+		Posture:         constants.PostureDoctrine,
 		Logger:          slog.Default(),
 		Responder:       response.NewWriter(slog.Default()),
 		AuditStore:      noopAuditEventRecorder{},
@@ -1451,6 +1456,7 @@ func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T)
 
 func TestGatewayService_NewGatewayService_RequiresEmbeddedSession(t *testing.T) {
 	g, err := NewGatewayService(Dependencies{
+		Posture:    constants.PostureDoctrine,
 		Logger:     slog.Default(),
 		Responder:  response.NewWriter(slog.Default()),
 		AuditStore: noopAuditEventRecorder{},
@@ -1750,7 +1756,7 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 func TestGatewayService_Dependencies(t *testing.T) {
 
 	t.Run("envProc nil before initialization", func(t *testing.T) {
-		g := &GatewayService{logger: slog.Default()}
+		g := &GatewayService{logger: slog.Default(), posture: &governance.DoctrinePosture{}}
 		require.Nil(t, g.envProc, "envProc should be nil initially")
 	})
 
@@ -1760,6 +1766,7 @@ func TestGatewayService_Dependencies(t *testing.T) {
 		envProc := &fakeEnvelopeProcessor{}
 		stateRoot := &fakeStateRootProvider{root: "test"}
 		g := &GatewayService{
+			posture:                &governance.DoctrinePosture{},
 			logger:                 slog.Default(),
 			envProc:                envProc,
 			stateRootProvider:      stateRoot,
@@ -1779,6 +1786,7 @@ func TestGatewayService_Dependencies(t *testing.T) {
 
 	t.Run("dispatchMCP returns not-ready error before deps are wired", func(t *testing.T) {
 		g := &GatewayService{
+			posture:         &governance.DoctrinePosture{},
 			logger:          slog.Default(),
 			responder:       response.NewWriter(slog.Default()),
 			maxPayloadBytes: 10 * 1024 * 1024,
@@ -1797,6 +1805,7 @@ func TestGatewayService_Dependencies(t *testing.T) {
 
 	t.Run("dispatchMCP allows initialize without deps", func(t *testing.T) {
 		g := &GatewayService{
+			posture:         &governance.DoctrinePosture{},
 			logger:          slog.Default(),
 			responder:       response.NewWriter(slog.Default()),
 			maxPayloadBytes: 10 * 1024 * 1024,
@@ -1814,6 +1823,7 @@ func TestGatewayService_Dependencies(t *testing.T) {
 
 	t.Run("dispatchMCP allows ping without deps", func(t *testing.T) {
 		g := &GatewayService{
+			posture:         &governance.DoctrinePosture{},
 			logger:          slog.Default(),
 			responder:       response.NewWriter(slog.Default()),
 			maxPayloadBytes: 10 * 1024 * 1024,
@@ -1971,6 +1981,7 @@ func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayServ
 	_, privKey, _ := ed25519.GenerateKey(rand.Reader)
 
 	g := &GatewayService{
+		posture:           &governance.DoctrinePosture{},
 		logger:            slog.Default(),
 		responder:         response.NewWriter(slog.Default()),
 		suspendedStore:    &fakeSuspendedStore{},

@@ -4071,8 +4071,9 @@ export const PublicLiveEventSchema: GenMessage<PublicLiveEvent> = /*@__PURE__*/
   messageDesc(file_ztd_eval_v1_eval, 73);
 
 /**
- * ConformanceAnchor pins one executing runtime's actuator public key, read
- * out of band from that runtime's pki/Actuator_pub.json export.
+ * ConformanceAnchor pins one executing runtime's actuator public key: the
+ * Gateway's from its own pki/Actuator_pub.json export, an outbound Operator's
+ * from its enrollment binding, cross-checked against that Operator's export.
  *
  * @generated from message ztd.eval.v1.ConformanceAnchor
  */
