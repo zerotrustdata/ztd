@@ -52,6 +52,7 @@ cancel, verify, publish, and export, and they can be archived.`,
 		runsCompareCmd(deps),
 		runsArchiveCmd(deps),
 		runsUnarchiveCmd(deps),
+		runsDeleteCmd(deps),
 	)
 	return cmd
 }

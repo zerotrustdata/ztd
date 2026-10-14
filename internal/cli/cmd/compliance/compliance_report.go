@@ -1030,6 +1030,9 @@ func (r *explicitSourceReader) OpenForRead(context.Context, string) (*os.File, e
 func (r *explicitSourceReader) TryLock(context.Context, string, os.FileMode) (io.Closer, error) {
 	return nil, constants.ErrReadOnlyEvidenceSource
 }
+func (r *explicitSourceReader) TryLockShared(context.Context, string, os.FileMode) (io.Closer, error) {
+	return nil, constants.ErrReadOnlyEvidenceSource
+}
 func (r *explicitSourceReader) Remove(context.Context, string) error {
 	return constants.ErrReadOnlyEvidenceSource
 }

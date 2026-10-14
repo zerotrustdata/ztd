@@ -43,3 +43,25 @@ func TestTryLock_CancelledContextReturnsContextError(t *testing.T) {
 	_, err := svc.TryLock(ctx, "run.lock", constants.PermFilePrivate)
 	assert.ErrorIs(t, err, context.Canceled)
 }
+
+func TestTryLockShared_SharesWithSharedHoldersAndExcludesAnExclusiveOne(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	first, err := svc.TryLockShared(ctx, "shared.lock", constants.PermFilePrivate)
+	require.NoError(t, err)
+	second, err := svc.TryLockShared(ctx, "shared.lock", constants.PermFilePrivate)
+	require.NoError(t, err, "shared holders coexist")
+
+	_, err = svc.TryLock(ctx, "shared.lock", constants.PermFilePrivate)
+	assert.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
+
+	require.NoError(t, first.Close())
+	require.NoError(t, second.Close())
+	exclusive, err := svc.TryLock(ctx, "shared.lock", constants.PermFilePrivate)
+	require.NoError(t, err)
+
+	_, err = svc.TryLockShared(ctx, "shared.lock", constants.PermFilePrivate)
+	assert.ErrorIs(t, err, constants.ErrRuntimeFileLocked, "an exclusive holder excludes shared ones")
+	require.NoError(t, exclusive.Close())
+}

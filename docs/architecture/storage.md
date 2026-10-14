@@ -76,7 +76,7 @@ SQLite retry helpers take an explicit context for connection-pool waits, stateme
 This document does not define a general SQLite backup or recovery procedure. The supported lifecycle operations are owned by CLI commands; confirm flags and defaults with `./ztd <command> --help`.
 
 - **Reset host runtime state:** `ztd gw clean` stops services and renames `.ztd/` aside to `.ztd-<MMDDHHMM>` (nothing is deleted) after offering an evaluation-evidence backup, so the Gateway restarts with no databases, vault, or PKI. `make clean` removes build and test artifacts only and does not reset runtime state, trust, or databases.
-- **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`; see [Evaluation Programs](./evals.md).
+- **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`; `ztd eval runs delete` and `ztd eval campaigns delete` purge deleted evidence from the backups too; see [Evaluation Programs](./evals.md).
 - **Verify the audit chain:** `ztd audit verify` walks the hash chain from the latest checkpoint (or genesis) and reports the head sequence and hash.
 
 ## Anti-patterns

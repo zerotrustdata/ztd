@@ -660,6 +660,8 @@ const (
 	EvaluationBackupDirPrefix                     = "eval-backup-"
 	EvaluationBackupTimestampLayout               = "20060102T150405Z"
 	EvaluationBackupDefaultDir                    = EvaluationDirname + "/backups"
+	EvaluationBackupLockFilename                  = "backup.lock"
+	EvaluationBackupLockRelPath                   = EvaluationDirname + "/" + EvaluationBackupLockFilename
 	EvaluationModelInventoryPath                  = EvaluationDirname + "/model-inventory.json"
 	EvaluationInitCampaignQueuePath               = EvaluationDirname + "/init-campaign-queue.json"
 	EvaluationCampaignExportDirname               = "export"

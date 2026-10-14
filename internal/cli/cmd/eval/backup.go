@@ -81,7 +81,8 @@ directory, so only files not already backed up are copied.
 
 The destination must be outside .ztd/ so it survives deleting the runtime tree. Run and lease state is not copied. Runs made by
 ztd eval runs start or resume back up to the default directory
-automatically when they finish. Put a snapshot back with:
+automatically when they finish. A backup cannot run while runs delete or
+campaigns delete is purging the backups. Put a snapshot back with:
 ztd eval restore`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -126,7 +127,9 @@ content are skipped. If any existing file differs, nothing is written unless
 Without <snapshot-dir>, every complete snapshot in eval/backups under the
 project root is merged and restored in one pass: each file comes from the
 newest snapshot that holds it, so evidence a later snapshot no longer lists is
-still recovered. Pass a specific <snapshot-dir> to restore only that snapshot.
+still recovered. Runs and campaigns removed with runs delete or campaigns
+delete are purged from the snapshots and never come back. Pass a specific
+<snapshot-dir> to restore only that snapshot.
 
 Restoring puts host evidence back; it does not rebuild the Gateway mirror. After
 re-enrolling a fresh stack, run this command:

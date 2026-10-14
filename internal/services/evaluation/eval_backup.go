@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -91,6 +92,11 @@ type evalBackupSource struct {
 // service, so no plaintext leaves the runtime and no vault is needed to take or
 // restore a snapshot. A restored snapshot is readable only by a runtime that
 // holds the same vault key.
+//
+// Snapshots and restores hold the runtime's backup lock shared, so any number
+// run at once. Purging deleted evidence holds it exclusively, so a snapshot
+// never captures evidence that is being deleted and never references an
+// object the purge removes.
 type EvalBackup struct {
 	fileSvc fs.RuntimeFileService
 	now     func() time.Time
@@ -110,7 +116,7 @@ func evalBackupRoots() []string {
 // across a wipe: a restored lease would make a dead run look held.
 func evalBackupTransient(relPath string) bool {
 	switch path.Base(relPath) {
-	case constants.EvaluationRunLeaseFilename, constants.EvaluationActiveRunFilename:
+	case constants.EvaluationRunLeaseFilename, constants.EvaluationActiveRunFilename, constants.EvaluationBackupLockFilename:
 		return true
 	}
 	return false
@@ -124,6 +130,11 @@ func (b *EvalBackup) Create(ctx context.Context, outputDir string) (*EvalBackupR
 	if err != nil {
 		return nil, err
 	}
+	held, err := b.sharedLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = held.Close() }()
 	report, err := b.capture(ctx, destRoot)
 	if err != nil {
 		return nil, err
@@ -139,6 +150,11 @@ func (b *EvalBackup) CreateIfChanged(ctx context.Context, outputDir string) (*Ev
 	if err != nil {
 		return nil, err
 	}
+	held, err := b.sharedLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = held.Close() }()
 	previousDir, err := LatestEvalBackupSnapshot(destRoot)
 	if err != nil && !errors.Is(err, constants.ErrEvaluationBackupNone) {
 		return nil, err
@@ -228,6 +244,209 @@ func (b *EvalBackup) commitSnapshot(ctx context.Context, destRoot string, report
 	}
 	report.SnapshotDir = snapshotDir
 	return report, nil
+}
+
+// sharedLock holds the runtime's backup lock for a snapshot or a restore. It
+// fails only while a delete holds the lock to purge the backups.
+func (b *EvalBackup) sharedLock(ctx context.Context) (io.Closer, error) {
+	held, err := b.fileSvc.TryLockShared(ctx, constants.EvaluationBackupLockRelPath, constants.PermFilePrivate)
+	if errors.Is(err, constants.ErrRuntimeFileLocked) {
+		return nil, fmt.Errorf("evaluation: backup: an evaluation delete is purging the backups; retry when it finishes: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: backup: lock: %w", err)
+	}
+	return held, nil
+}
+
+// exclusiveLock holds the runtime's backup lock for purging deleted evidence.
+// It fails while any snapshot or restore holds the lock.
+func (b *EvalBackup) exclusiveLock(ctx context.Context) (io.Closer, error) {
+	held, err := b.fileSvc.TryLock(ctx, constants.EvaluationBackupLockRelPath, constants.PermFilePrivate)
+	if errors.Is(err, constants.ErrRuntimeFileLocked) {
+		return nil, fmt.Errorf("evaluation: backup: a backup or restore is in progress; retry when it finishes: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: backup: lock: %w", err)
+	}
+	return held, nil
+}
+
+// EvalBackupPurgeReport describes what purging deleted evidence removes from a
+// backup directory.
+type EvalBackupPurgeReport struct {
+	// Files counts the manifest entries removed across all snapshots.
+	Files int
+	// Snapshots counts the snapshots rewritten, or removed when nothing else
+	// remained in them.
+	Snapshots int
+	// Objects counts the stored contents that only removed entries referenced.
+	Objects int
+}
+
+// evalBackupPurge is a planned removal of evidence from every complete
+// snapshot in a backup directory. It is planned and applied under the
+// exclusive backup lock, so the plan cannot go stale in between.
+type evalBackupPurge struct {
+	backupRoot string
+	snapshots  []evalBackupSnapshotPurge
+	orphaned   []string
+	report     EvalBackupPurgeReport
+}
+
+// evalBackupSnapshotPurge is one snapshot's share of a purge: its manifest
+// with only the kept files, and the files removed from it.
+type evalBackupSnapshotPurge struct {
+	dir      string
+	manifest EvalBackupManifest
+	dropped  []EvalBackupFile
+}
+
+// planEvalBackupPurge plans removing every file at or beneath the
+// runtime-relative relPaths from each complete snapshot in backupDir. An
+// object only those files reference is removed; content another snapshot or
+// file still lists is kept. A directory with no snapshots has nothing to purge.
+func planEvalBackupPurge(backupDir string, relPaths []string) (*evalBackupPurge, error) {
+	roots := make([]string, 0, len(relPaths))
+	for _, relPath := range relPaths {
+		root := path.Clean(filepath.ToSlash(relPath))
+		if !evalBackupBeneathRoots(root) {
+			return nil, fmt.Errorf("%w: %q", constants.ErrEvaluationBackupPurgePathInvalid, relPath)
+		}
+		roots = append(roots, root)
+	}
+	plan := &evalBackupPurge{}
+	snapshots, err := AllEvalBackupSnapshots(backupDir)
+	if errors.Is(err, constants.ErrEvaluationBackupNone) {
+		return plan, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	plan.backupRoot = filepath.Dir(snapshots[0])
+	referenced := make(map[string]struct{})
+	candidates := make(map[string]struct{})
+	for _, snapshotDir := range snapshots {
+		manifest, err := readEvalBackupManifest(snapshotDir)
+		if err != nil {
+			return nil, err
+		}
+		objects := manifest.SchemaVersion == evalBackupManifestVersionObjects
+		entry := evalBackupSnapshotPurge{dir: snapshotDir, manifest: *manifest}
+		entry.manifest.Files = nil
+		for _, file := range manifest.Files {
+			if evalBackupPathUnder(file.Path, roots) {
+				entry.dropped = append(entry.dropped, file)
+				if objects {
+					candidates[file.SHA256] = struct{}{}
+				}
+				continue
+			}
+			entry.manifest.Files = append(entry.manifest.Files, file)
+			if objects {
+				referenced[file.SHA256] = struct{}{}
+			}
+		}
+		if len(entry.dropped) == 0 {
+			continue
+		}
+		plan.snapshots = append(plan.snapshots, entry)
+		plan.report.Files += len(entry.dropped)
+	}
+	for sha := range candidates {
+		if _, kept := referenced[sha]; !kept {
+			plan.orphaned = append(plan.orphaned, sha)
+		}
+	}
+	sort.Strings(plan.orphaned)
+	plan.report.Snapshots = len(plan.snapshots)
+	plan.report.Objects = len(plan.orphaned)
+	return plan, nil
+}
+
+// apply rewrites each affected snapshot, then removes the orphaned objects.
+// Manifests change first, so an interruption leaves at worst unreferenced
+// content behind, never a manifest that names missing content.
+func (p *evalBackupPurge) apply() error {
+	for _, snapshot := range p.snapshots {
+		if err := snapshot.rewrite(); err != nil {
+			return err
+		}
+	}
+	for _, sha := range p.orphaned {
+		if err := os.Remove(evalBackupObjectPath(p.backupRoot, sha)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("evaluation: backup purge: remove object %s: %w", sha, err)
+		}
+	}
+	return nil
+}
+
+// rewrite replaces the snapshot's manifest with one listing only the kept
+// files, then removes a version 1 snapshot's inline copies of the dropped
+// ones. A snapshot with nothing kept is removed.
+func (s evalBackupSnapshotPurge) rewrite() error {
+	if len(s.manifest.Files) == 0 {
+		if err := os.RemoveAll(s.dir); err != nil {
+			return fmt.Errorf("evaluation: backup purge: remove snapshot %s: %w", s.dir, err)
+		}
+		return nil
+	}
+	raw, err := json.MarshalIndent(s.manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("evaluation: backup purge: encode manifest for %s: %w", s.dir, err)
+	}
+	temp, err := os.CreateTemp(s.dir, ".tmp-*")
+	if err != nil {
+		return fmt.Errorf("evaluation: backup purge: rewrite manifest in %s: %w", s.dir, err)
+	}
+	tempName := temp.Name()
+	_, err = temp.Write(raw)
+	if closeErr := temp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Chmod(tempName, constants.PermFilePrivate)
+	}
+	if err == nil {
+		err = os.Rename(tempName, filepath.Join(s.dir, constants.EvaluationBackupManifestFilename))
+	}
+	if err != nil {
+		_ = os.Remove(tempName)
+		return fmt.Errorf("evaluation: backup purge: rewrite manifest in %s: %w", s.dir, err)
+	}
+	if s.manifest.SchemaVersion != evalBackupManifestVersionInline {
+		return nil
+	}
+	for _, file := range s.dropped {
+		if err := os.Remove(filepath.Join(s.dir, filepath.FromSlash(file.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("evaluation: backup purge: remove %s from %s: %w", file.Path, s.dir, err)
+		}
+	}
+	return nil
+}
+
+// evalBackupPathUnder reports whether relPath is one of roots or beneath one.
+func evalBackupPathUnder(relPath string, roots []string) bool {
+	for _, root := range roots {
+		if relPath == root || strings.HasPrefix(relPath, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// evalBackupBeneathRoots reports whether a clean relative path lies strictly
+// beneath one of the backup roots, so a purge can never take a whole tree.
+func evalBackupBeneathRoots(relPath string) bool {
+	if path.IsAbs(relPath) {
+		return false
+	}
+	for _, root := range evalBackupRoots() {
+		if rest, ok := strings.CutPrefix(relPath, root+"/"); ok && rest != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // evalBackupObjectPath is where the content for sha lives in the object store
@@ -371,6 +590,11 @@ func (b *EvalBackup) Restore(ctx context.Context, snapshotDir string, overwrite 
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: restore: resolve snapshot directory: %w", err)
 	}
+	held, err := b.sharedLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = held.Close() }()
 	manifest, err := readEvalBackupManifest(snapshotDir)
 	if err != nil {
 		return nil, err
@@ -386,9 +610,16 @@ func (b *EvalBackup) Restore(ctx context.Context, snapshotDir string, overwrite 
 
 // RestoreAll restores every file any complete snapshot in backupDir recorded,
 // taking each path from the newest snapshot that holds it. Evidence a later
-// snapshot no longer lists (a deleted run, say) is still recovered, and the
-// work is one pass over the merged set rather than one restore per snapshot.
+// snapshot no longer lists (lost in a wipe after an older snapshot, say) is
+// still recovered, and the work is one pass over the merged set rather than
+// one restore per snapshot. Evidence removed by a Deleter is purged from the
+// backups too, so it is never restored.
 func (b *EvalBackup) RestoreAll(ctx context.Context, backupDir string, overwrite bool) (*EvalRestoreReport, error) {
+	held, err := b.sharedLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = held.Close() }()
 	snapshots, err := AllEvalBackupSnapshots(backupDir)
 	if err != nil {
 		return nil, err

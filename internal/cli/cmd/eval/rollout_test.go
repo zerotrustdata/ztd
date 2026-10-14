@@ -33,10 +33,12 @@ func TestRolloutAdd_QueuesModelsByTag(t *testing.T) {
 	assert.Contains(t, out, "Queued qwen3:4b")
 	assert.Contains(t, out, "1 model(s) in the rollout queue")
 
-	var payload rolloutChangeJSON
+	var payload rolloutAddJSON
 	require.NoError(t, env.runJSON(t, &payload, "rollout", "add", "qwen3:4b"))
 	assert.Equal(t, "add", payload.Action)
 	assert.Empty(t, payload.Models, "qwen3:4b is already in the queue")
+	assert.Empty(t, payload.Skipped)
+	assert.Equal(t, 1, payload.AlreadyQueued)
 	assert.Equal(t, 1, payload.Remaining)
 }
 

@@ -52,6 +52,14 @@ type rolloutListJSON struct {
 	Models []evaluation.CampaignQueueModel `json:"models"`
 }
 
+type rolloutAddJSON struct {
+	Action        string                          `json:"action"`
+	Models        []evaluation.CampaignQueueModel `json:"models"`
+	Skipped       []evaluation.RolloutIntakeSkip  `json:"skipped"`
+	AlreadyQueued int                             `json:"already_queued"`
+	Remaining     int                             `json:"remaining"`
+}
+
 type rolloutChangeJSON struct {
 	Action    string                          `json:"action"`
 	Models    []evaluation.CampaignQueueModel `json:"models"`
@@ -102,6 +110,11 @@ func rolloutAddCmd(deps nativeEvalDeps) *cobra.Command {
 status. New models are ordered by the checked-in intake priority
 (eval/rollout-intake-priority.json), then smallest first.
 
+A model whose tool-calling probe the provider rejected (recorded by
+ztd eval models freeze --probe-capabilities) is skipped, because every scenario
+declares tools. A model that shares a digest with a queued model, or with one
+earlier in the order, is an alias and is skipped. Both are listed.
+
 Examples:
   ztd eval rollout add qwen3:0.6b
   ztd eval rollout add --max-params 4b
@@ -130,22 +143,16 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("evaluation: rollout add: %w", err)
 			}
-			added, err := queue.AddVariants(selected, priority)
+			intake, err := queue.AddVariants(selected, registry, priority)
 			if err != nil {
 				return fmt.Errorf("evaluation: rollout add: %w", err)
 			}
-			if len(added) > 0 {
+			if len(intake.Added) > 0 {
 				if err := evaluation.SaveRolloutQueue(cmd.Context(), fileSvc, queue); err != nil {
 					return fmt.Errorf("evaluation: rollout add: %w", err)
 				}
 			}
-			note := ""
-			if already := len(selected) - len(added); already > 0 {
-				note = fmt.Sprintf("%d selected model(s) were already queued", already)
-			}
-			return writeRolloutChange(cmd, "add", added, len(queue.Models), func(entry evaluation.CampaignQueueModel) string {
-				return fmt.Sprintf("Queued %s (%s)", entry.ServedModelTag, entry.VariantID)
-			}, note)
+			return writeRolloutAdd(cmd, intake, len(queue.Models))
 		},
 	}
 	selector.bindFlags(cmd)
@@ -290,6 +297,37 @@ func writeRolloutChange(cmd *cobra.Command, action string, entries []evaluation.
 	}
 	if note != "" {
 		_, _ = fmt.Fprintln(out, note)
+	}
+	_, err := fmt.Fprintf(out, "%d model(s) in the rollout queue\n", remaining)
+	return err
+}
+
+// writeRolloutAdd reports the queued models and every selected model rollout
+// add left out, with the reason.
+func writeRolloutAdd(cmd *cobra.Command, intake evaluation.RolloutIntake, remaining int) error {
+	if output.JSONEnabled(cmd) {
+		added, skipped := intake.Added, intake.Skipped
+		if added == nil {
+			added = []evaluation.CampaignQueueModel{}
+		}
+		if skipped == nil {
+			skipped = []evaluation.RolloutIntakeSkip{}
+		}
+		return output.WriteJSON(cmd.OutOrStdout(), rolloutAddJSON{Action: "add", Models: added, Skipped: skipped, AlreadyQueued: intake.AlreadyQueued, Remaining: remaining})
+	}
+	out := cmd.OutOrStdout()
+	for _, entry := range intake.Added {
+		_, _ = fmt.Fprintf(out, "Queued %s (%s)\n", entry.ServedModelTag, entry.VariantID)
+	}
+	for _, skip := range intake.Skipped {
+		if skip.Reason == evaluation.RolloutSkipAlias {
+			_, _ = fmt.Fprintf(out, "Skipped %s (%s): alias of %s\n", skip.ServedModelTag, skip.VariantID, skip.AliasOf)
+			continue
+		}
+		_, _ = fmt.Fprintf(out, "Skipped %s (%s): the provider rejected its tool-calling probe\n", skip.ServedModelTag, skip.VariantID)
+	}
+	if intake.AlreadyQueued > 0 {
+		_, _ = fmt.Fprintf(out, "%d selected model(s) were already queued\n", intake.AlreadyQueued)
 	}
 	_, err := fmt.Fprintf(out, "%d model(s) in the rollout queue\n", remaining)
 	return err

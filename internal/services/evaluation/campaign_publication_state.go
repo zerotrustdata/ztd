@@ -27,7 +27,9 @@ type CampaignPublicationState struct {
 }
 
 // CampaignPublicationStateStore persists publication idempotency in the
-// gateway-owned eval state plane.
+// gateway-owned eval state plane. Delete discards the run's publication: the
+// Gateway also withdraws the run from the public mirror and prunes its proof
+// artifacts.
 type CampaignPublicationStateStore interface {
 	Load(ctx context.Context, runID string) (*CampaignPublicationState, error)
 	Save(ctx context.Context, state *CampaignPublicationState) error

@@ -1424,6 +1424,7 @@ var (
 	ErrEvaluationBackupConflict            = errors.New("evaluation: restore would overwrite different existing evidence")
 	ErrEvaluationBackupUnsupportedEntry    = errors.New("evaluation: backup source contains an unsupported entry type")
 	ErrEvaluationBackupNone                = errors.New("evaluation: no backup snapshot found")
+	ErrEvaluationBackupPurgePathInvalid    = errors.New("evaluation: backup purge path is not beneath an evaluation evidence tree")
 	ErrEvaluationEvidenceVaultRequired     = errors.New("evaluation: runtime vault is required to read or write evaluation evidence")
 	ErrEvaluationEvidenceDecryptFailed     = errors.New("evaluation: evaluation evidence cannot be decrypted with the runtime vault")
 	ErrEvaluationEvidenceStreamUnsupported = errors.New("evaluation: evaluation evidence is encrypted and cannot be streamed")

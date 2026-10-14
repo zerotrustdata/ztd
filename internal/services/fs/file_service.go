@@ -73,6 +73,11 @@ type RuntimeFileService interface {
 	// kernel releases it if the process exits.
 	TryLock(ctx context.Context, relPath string, mode os.FileMode) (io.Closer, error)
 
+	// TryLockShared is TryLock for a shared lock: any number of shared holders
+	// coexist, and it returns constants.ErrRuntimeFileLocked only while an
+	// exclusive holder has the lock.
+	TryLockShared(ctx context.Context, relPath string, mode os.FileMode) (io.Closer, error)
+
 	// Remove deletes a file. No-op if file doesn't exist.
 	Remove(ctx context.Context, relPath string) error
 

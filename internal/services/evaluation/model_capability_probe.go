@@ -15,6 +15,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -126,8 +127,15 @@ func (r *governedCapabilityProbeRunner) probeToolCallingCapability(ctx context.C
 	req.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_REQUIRED}
 	resp, err := r.dispatchCapabilityProbe(ctx, req)
 	if err != nil {
-		//nolint:nilerr // intentional fallback: tool probe rejection recorded as observation verdict
-		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected tool-call probe"), nil
+		// Only a provider capability rejection means the model cannot take tools;
+		// any other dispatch failure is a failed probe, recorded with its class.
+		class := inference.ClassifyAttemptFailure(err)
+		if class == inference.AttemptFailureCapabilityRejected {
+			//nolint:nilerr // intentional fallback: tool probe rejection recorded as observation verdict
+			return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected tool-call probe"), nil
+		}
+		//nolint:nilerr // intentional fallback: tool probe failure recorded as observation verdict
+		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, fmt.Sprintf("tool-call probe dispatch failed (%s)", class)), nil
 	}
 	if inferenceResultHasToolCall(resp.GetResult(), "probe_echo") {
 		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "tool-call probe returned probe_echo"), nil

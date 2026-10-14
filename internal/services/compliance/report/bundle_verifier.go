@@ -1863,6 +1863,9 @@ func (r *bundledRuntimeArtifactReader) OpenForRead(context.Context, string) (*os
 func (r *bundledRuntimeArtifactReader) TryLock(context.Context, string, os.FileMode) (io.Closer, error) {
 	return nil, constants.ErrReadOnlyEvidenceSource
 }
+func (r *bundledRuntimeArtifactReader) TryLockShared(context.Context, string, os.FileMode) (io.Closer, error) {
+	return nil, constants.ErrReadOnlyEvidenceSource
+}
 func (r *bundledRuntimeArtifactReader) Remove(context.Context, string) error {
 	return constants.ErrReadOnlyEvidenceSource
 }

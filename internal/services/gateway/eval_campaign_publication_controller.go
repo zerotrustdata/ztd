@@ -8,6 +8,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,19 +22,21 @@ import (
 )
 
 // EvalCampaignPublicationController exposes gateway-owned campaign publication
-// idempotency state to the owner CLI over mTLS.
+// idempotency state to the owner CLI over mTLS. DELETE discards a run's
+// publication: it withdraws the run's dataset from anonymous mirror reads,
+// prunes its proof artifacts, and clears its idempotency state.
 type EvalCampaignPublicationController struct {
 	logger    *slog.Logger
 	responder *response.Writer
 	service   *EvalCampaignPublicationService
-	mirror    func() *PublicMirrorServer
+	spectator func() *PublicSpectatorRuntime
 }
 
 type EvalCampaignPublicationControllerDeps struct {
 	Logger    *slog.Logger
 	Responder *response.Writer
 	Service   *EvalCampaignPublicationService
-	Mirror    func() *PublicMirrorServer
+	Spectator func() *PublicSpectatorRuntime
 }
 
 func newEvalCampaignPublicationController(d EvalCampaignPublicationControllerDeps) *EvalCampaignPublicationController {
@@ -41,7 +44,7 @@ func newEvalCampaignPublicationController(d EvalCampaignPublicationControllerDep
 		logger:    d.Logger,
 		responder: d.Responder,
 		service:   d.Service,
-		mirror:    d.Mirror,
+		spectator: d.Spectator,
 	}
 }
 
@@ -66,18 +69,9 @@ func (c *EvalCampaignPublicationController) handlePublicationState(w http.Respon
 		}
 		c.responder.JSON(w, http.StatusOK, state)
 	case http.MethodDelete:
-		if err := c.service.Delete(r.Context(), runID); err != nil {
+		if err := c.discardPublication(r.Context(), runID); err != nil {
 			c.responder.Error(w, http.StatusInternalServerError, err.Error())
 			return
-		}
-		if c.mirror != nil {
-			mirror := c.mirror()
-			if mirror != nil {
-				if err := mirror.WithdrawCampaignDataset(r.Context(), runID); err != nil {
-					c.responder.Error(w, http.StatusInternalServerError, err.Error())
-					return
-				}
-			}
 		}
 		c.responder.JSON(w, http.StatusOK, map[string]string{"run_id": runID, "status": "discarded"})
 	case http.MethodPut:
@@ -106,4 +100,32 @@ func (c *EvalCampaignPublicationController) handlePublicationState(w http.Respon
 	default:
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
 	}
+}
+
+// discardPublication withdraws one run's dataset from anonymous mirror reads,
+// removes its proof artifacts from the proof catalog and pushes the catalog,
+// then clears its publication idempotency. The signed batch chain is not
+// rewritten. Each step is idempotent, so a failed discard can be retried.
+func (c *EvalCampaignPublicationController) discardPublication(ctx context.Context, runID string) error {
+	var runtime *PublicSpectatorRuntime
+	if c.spectator != nil {
+		runtime = c.spectator()
+	}
+	if mirror := runtime.Mirror(); mirror != nil {
+		if err := mirror.WithdrawCampaignDataset(ctx, runID); err != nil {
+			return err
+		}
+	}
+	if publisher := runtime.Publisher(); publisher != nil && runtime.Running() {
+		removed, err := publisher.PruneProofCatalogForRun(ctx, runID)
+		if err != nil {
+			return err
+		}
+		if removed > 0 {
+			if _, err := publisher.FlushProofPackage(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	return c.service.Delete(ctx, runID)
 }

@@ -80,6 +80,10 @@ func (m *campaignMemoryFileService) TryLock(context.Context, string, os.FileMode
 	return nil, os.ErrInvalid
 }
 
+func (m *campaignMemoryFileService) TryLockShared(context.Context, string, os.FileMode) (io.Closer, error) {
+	return nil, os.ErrInvalid
+}
+
 func (m *campaignMemoryFileService) Resolve(relPath string) string { return relPath }
 func (m *campaignMemoryFileService) Remove(_ context.Context, relPath string) error {
 	delete(m.files, relPath)

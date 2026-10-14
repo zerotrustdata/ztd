@@ -189,6 +189,10 @@ func (s *recordingBundleFileService) TryLock(context.Context, string, os.FileMod
 	panic("unexpected TryLock")
 }
 
+func (s *recordingBundleFileService) TryLockShared(context.Context, string, os.FileMode) (io.Closer, error) {
+	panic("unexpected TryLockShared")
+}
+
 func (s *recordingBundleFileService) Remove(context.Context, string) error {
 	panic("unexpected Remove")
 }

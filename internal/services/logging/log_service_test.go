@@ -84,6 +84,10 @@ func (s *stubFileSvc) TryLock(context.Context, string, os.FileMode) (io.Closer, 
 	panic("unexpected")
 }
 
+func (s *stubFileSvc) TryLockShared(context.Context, string, os.FileMode) (io.Closer, error) {
+	panic("unexpected")
+}
+
 func (s *stubFileSvc) ArchiveRuntime(ctx context.Context, now time.Time) (string, error) {
 	panic("unexpected")
 }

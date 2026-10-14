@@ -43,6 +43,7 @@ runs (ztd eval runs).`,
 		campaignsTagCmd(deps),
 		campaignsArchiveCmd(deps),
 		campaignsUnarchiveCmd(deps),
+		campaignsDeleteCmd(deps),
 	)
 	return cmd
 }

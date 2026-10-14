@@ -966,12 +966,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Logger:    logger,
 			Responder: ls.responder,
 			Service:   NewEvalCampaignPublicationService(ls.docStore),
-			Mirror: func() *PublicMirrorServer {
-				if ls.publicSpectator == nil {
-					return nil
-				}
-				return ls.publicSpectator.Mirror()
-			},
+			Spectator: func() *PublicSpectatorRuntime { return ls.publicSpectator },
 		},
 		ProviderObservationControllerDeps: providerObservationDeps,
 		ModelProvenanceControllerDeps:     modelProvenanceDeps,
