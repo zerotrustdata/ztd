@@ -3,8 +3,8 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.6
+last_updated: 2026-10-14
 owners:
   - internal/services/consensus/
   - internal/services/governance/l2_consensus.go
@@ -249,13 +249,13 @@ flowchart TD
     
     CheckVotes -->|Yes| CheckStores{Stores configured?}
     CheckStores -->|No| CheckReqB{Posture requires L2?}
-    CheckReqB -->|Yes| FailNoStores[Fail: ErrTxL2SignerStoreNotConfigured]
+    CheckReqB -->|Yes| FailNoStores[Fail: ErrTxL2SignerStoreNotConfigured or ErrTxL2ConsensusNotConfigured]
     CheckReqB -->|No| PassNonGating
     
     CheckStores -->|Yes| LoadPolicy[Load policy by l2.ConsensusSetId]
     LoadPolicy --> CheckPolicy{Policy found and enabled?}
     CheckPolicy -->|No| CheckReqC{Posture requires L2?}
-    CheckReqC -->|Yes| FailPolicy[Fail: ErrTxL2ConsensusNotConfigured]
+    CheckReqC -->|Yes| FailPolicy[Fail: ErrTxL2ConsensusSetUnknown]
     CheckReqC -->|No| PassNonGating
     
     CheckPolicy -->|Yes| LoopVotes[Iterate through votes]
@@ -284,7 +284,7 @@ flowchart TD
 ```
 
 1. **Bootstrap Exemption**: If `actionType.IsBootstrapAction()` is true, transactions bypass L2 gating across all postures.
-2. **Presence Checks**: Under `consensus` and `notary`, missing votes or unconfigured policy stores immediately fail closed.
+2. **Presence Checks**: Under `consensus` and `notary`, missing votes or unconfigured stores immediately fail closed. A consensus set that is unknown or disabled fails closed with `ErrTxL2ConsensusSetUnknown`; `ErrTxL2ConsensusNotConfigured` applies only when the consensus policy store is absent.
 3. **Distinctness Enforcement**: If a member key ID was already evaluated and `policy.RequireDistinct` is true, duplicate signatures fail closed with `ErrTxL2DuplicateSigner`.
 4. **Signature Verification**: Verifies Ed25519 signatures against the recomputed transaction hash and decision value.
 5. **Threshold Check**: Increments affirmative counts only when `vote.Decision == true`. If `affirmative < policy.Quorum`, returns `ErrTxL2QuorumNotMet`.
@@ -295,6 +295,7 @@ On the Gateway, policies reside in SQLite. Remote Operators receive the Gateway'
 
 When L4 verification concludes, the Warden emits deterministic stage evidence, and the L5 Actuator embeds the final L2 outcome into the signed `ActionReceipt`:
 - **Deterministic Stage Evidence**: A stage record with `DETERMINISTIC_STAGE_KIND_PROTOCOL_L2` records the outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`).
+- **Rejection Attribution**: A rejected L2 proof produces a signed `FAILED` receipt whose signed `rejection_code` names the L2 check. The enum is defined in `protocol/proto/ztd/operator/v1/operator.proto`.
 - **Signature Digest**: `L2SignatureDigest` computes a SHA-256 digest over the concatenated member signatures in the vote set, binding the cryptographic proof into the audit trail.
 - **Receipt Status**: The signed receipt records `L2Status`: `L2_STATUS_REQUIRED_VALID`, `L2_STATUS_REQUIRED_FAILED`, or `L2_STATUS_NOT_REQUIRED`.
 

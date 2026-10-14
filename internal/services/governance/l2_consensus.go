@@ -94,7 +94,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	if policy == nil || !policy.Enabled {
 		if posture.RequiresL2Signature() && !bootstrapExempt {
 			tv.logger.Error("L2 consensus policy not found or disabled", "consensus_set_id", l2.ConsensusSetId)
-			return false, constants.ErrTxL2ConsensusNotConfigured
+			return false, constants.ErrTxL2ConsensusSetUnknown
 		}
 		return false, nil
 	}

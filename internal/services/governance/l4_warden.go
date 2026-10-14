@@ -255,9 +255,10 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 	// Nonce is now durably reserved in SQLite, safe to release in-flight lock
 	tv.releaseInFlight(envelope.Nonce)
 
-	// 2. Stateless Validation
-	doctrineStart := governanceMonotonicNow()
-	decodedPayload, computedHash, err := tv.verifyStateless(ctx, envelope)
+	// 2. Stateless Validation, split at the L1 Doctrine boundary. Only the doctrine
+	// step produces an L1_DOCTRINE stage: a failure before doctrine ran is not a
+	// doctrine judgment, so it carries no L1 stage.
+	decodedPayload, err := tv.verifyPreDoctrine(ctx, envelope)
 	if err != nil {
 		// The error can embed violating payload content (paths, patterns). The full
 		// reason is carried by the signed rejection receipt, not the plaintext log.
@@ -265,30 +266,45 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 			slog.Any("nonce", envelope.Nonce),
 			slog.Any("action_type", envelope.ActionType),
 			logging.ErrorKind(err))
-		// Release nonce reservation on stateless validation failure
 		tv.releaseNonceReservation(envelope.Nonce)
-		l1Stage := newDeterministicStageEvidence(
-			envelope,
-			operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
-			doctrineStart,
-			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
-		)
-		if tv.doctrine != nil {
-			l1Stage.DoctrineBundleHash = tv.doctrine.DoctrineBundleHash()
-			l1Stage.DoctrineBundleVersion = tv.doctrine.DoctrineBundleVersion()
-		}
-		stages = append(stages, l1Stage)
 		return reject(err)
+	}
+
+	doctrineStart := governanceMonotonicNow()
+	doctrineErr := tv.evaluateDoctrine(decodedPayload)
+	l1Outcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED
+	if doctrineErr != nil {
+		l1Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
 	}
 	l1Stage := newDeterministicStageEvidence(
 		envelope,
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
 		doctrineStart,
-		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED,
+		l1Outcome,
 	)
 	l1Stage.DoctrineBundleHash = tv.doctrine.DoctrineBundleHash()
 	l1Stage.DoctrineBundleVersion = tv.doctrine.DoctrineBundleVersion()
 	stages = []*operatorv1.DeterministicStageEvidence{l1Stage}
+	if doctrineErr != nil {
+		tv.logger.Error("Transaction rejected: STATELESS_VALIDATION_FAILED",
+			slog.Any("nonce", envelope.Nonce),
+			slog.Any("action_type", envelope.ActionType),
+			logging.ErrorKind(doctrineErr))
+		tv.releaseNonceReservation(envelope.Nonce)
+		return reject(doctrineErr)
+	}
+
+	// Doctrine passed, so any failure from here on is a hash-binding failure and the
+	// L1 stage above correctly stays VERIFIED.
+	computedHash, err := tv.verifyTransactionHash(envelope)
+	if err != nil {
+		tv.logger.Error("Transaction rejected: STATELESS_VALIDATION_FAILED",
+			slog.Any("nonce", envelope.Nonce),
+			slog.Any("action_type", envelope.ActionType),
+			logging.ErrorKind(err))
+		tv.releaseNonceReservation(envelope.Nonce)
+		return reject(err)
+	}
 
 	// 3. Stateful Validation (excluding nonce, which is already reserved)
 	err = tv.verifyStateful(ctx, envelope)
@@ -403,97 +419,112 @@ func (tv *L4Warden) isMutation(actionType constants.ActionType) bool {
 	return actionType.IsMutation()
 }
 
-// verifyStateless performs basic structural, hash, and L1 Doctrine checks.
-func (tv *L4Warden) verifyStateless(ctx context.Context, envelope *govtypes.GovernanceEnvelope) (proto.Message, string, error) {
+// verifyPreDoctrine performs the structural, identity, and typed-payload checks
+// that run before L1 Doctrine judges the payload. Any error returned here means
+// doctrine never evaluated the transaction, so the caller emits no L1 stage.
+// On success it returns the decoded payload that doctrine must be given.
+func (tv *L4Warden) verifyPreDoctrine(ctx context.Context, envelope *govtypes.GovernanceEnvelope) (proto.Message, error) {
 	if envelope.ProtocolVersion != govtypes.GovernanceProtocolVersionV2 {
 		tv.logger.Error("Transaction rejected: unsupported protocol version",
 			"protocol_version", envelope.ProtocolVersion)
-		return nil, "", constants.ErrTxProtocolVersionUnsupported
+		return nil, constants.ErrTxProtocolVersionUnsupported
 	}
 	if tv.doctrine == nil {
 		tv.logger.Error("L1Doctrine not configured")
-		return nil, "", constants.ErrTxDoctrineMissing
+		return nil, constants.ErrTxDoctrineMissing
 	}
 
 	if envelope.Id == "" {
-		return nil, "", constants.ErrTxTransactionIDMissing
+		return nil, constants.ErrTxTransactionIDMissing
 	}
 
 	eventType := constants.EventType(envelope.EventType)
 	if _, err := constants.ValidateGovernedRequest(eventType); err == nil {
 		if err := constants.ValidateGovernedEnvelopeFields(eventType, constants.ActionType(envelope.ActionType)); err != nil {
-			return nil, "", err
+			return nil, err
 		}
 	}
 
 	actionType := constants.ActionType(envelope.ActionType)
 	if _, ok := tv.knownActionTypes[actionType]; !ok {
 		tv.logger.Error("Unknown action type", "action_type", envelope.ActionType)
-		return nil, "", constants.ErrTxUnknownActionType
+		return nil, constants.ErrTxUnknownActionType
 	}
 
 	// Heartbeat and Shutdown messages have no required fields and marshal to
 	// zero bytes when all-default — a valid empty proto, not a missing payload.
 	if len(envelope.Payload) == 0 && !PayloadMayBeEmpty(actionType) {
-		return nil, "", constants.ErrTxPayloadMissing
+		return nil, constants.ErrTxPayloadMissing
 	}
 
 	decodedPayload, err := tv.decodePayloadForAction(actionType, envelope.Payload)
 	if err != nil {
 		tv.logger.Error("Failed to decode typed payload", slog.Any("action_type", envelope.ActionType), logging.ErrorKind(err))
 		if errors.Is(err, constants.ErrTxPayloadDecoderMissing) {
-			return nil, "", err
+			return nil, err
 		}
-		return nil, "", constants.ErrTxPayloadDecodeFailed
+		return nil, constants.ErrTxPayloadDecodeFailed
 	}
 	if decodedPayload == nil {
-		return nil, "", constants.ErrTxPayloadDecoderMissing
+		return nil, constants.ErrTxPayloadDecoderMissing
 	}
 
 	if err := verifyDocumentCollection(decodedPayload); err != nil {
 		tv.logger.Error("Document action rejected: collection not governed", "action_type", envelope.ActionType, string(constants.ConnectionStateError), err)
-		return nil, "", err
+		return nil, err
 	}
 
 	// Unbound app document writes are the sole identity exception (INV-AUTH-ID-05).
 	unboundDocument := envelope.OperatorId == "" &&
 		(actionType == constants.ActionTypeDocumentUpdate || actionType == constants.ActionTypeDocumentDelete)
 	if tv.executionTarget == nil || (!unboundDocument && (envelope.OperatorId == "" || !tv.executionTarget.ExecutesFor(envelope.OperatorId))) {
-		return nil, "", fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, envelope.OperatorId)
+		return nil, fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, envelope.OperatorId)
 	}
 	if err := tv.verifyTargetSession(ctx, envelope); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
+	return decodedPayload, nil
+}
+
+// evaluateDoctrine runs L1 Doctrine over the decoded payload. The only error it
+// returns is one wrapping constants.ErrTxL1ValidationFailed, so a non-nil result
+// means doctrine ran and rejected the payload.
+func (tv *L4Warden) evaluateDoctrine(decodedPayload proto.Message) error {
 	if violations := tv.doctrine.ValidatePayload(decodedPayload); len(violations) > 0 {
-		tv.logger.Error("Doctrine (L1Doctrine) validation failed", "action_type", envelope.ActionType, "violation_count", len(violations))
-		return nil, "", fmt.Errorf("%w: %s", constants.ErrTxL1ValidationFailed, strings.Join(violations, ", "))
+		tv.logger.Error("Doctrine (L1Doctrine) validation failed", "violation_count", len(violations))
+		return fmt.Errorf("%w: %s", constants.ErrTxL1ValidationFailed, strings.Join(violations, ", "))
 	}
+	return nil
+}
 
+// verifyTransactionHash recomputes the canonical transaction hash and checks it
+// against both transaction_hash and id. It runs after L1 Doctrine has passed.
+func (tv *L4Warden) verifyTransactionHash(envelope *govtypes.GovernanceEnvelope) (string, error) {
 	computedHash, err := tv.computeTransactionHash(envelope)
 	if err != nil {
-		return nil, "", fmt.Errorf("l4 warden: compute transaction hash: %w", err)
+		return "", fmt.Errorf("l4 warden: compute transaction hash: %w", err)
 	}
 
 	if envelope.TransactionHash == "" {
-		return nil, "", constants.ErrTxTransactionHashMissing
+		return "", constants.ErrTxTransactionHashMissing
 	}
 
 	if envelope.TransactionHash != computedHash {
 		tv.logger.Error("Transaction hash mismatch",
 			"provided", envelope.TransactionHash,
 			"computed", computedHash)
-		return nil, "", constants.ErrTxTransactionHashMismatch
+		return "", constants.ErrTxTransactionHashMismatch
 	}
 
 	if envelope.Id != computedHash {
 		tv.logger.Error("Transaction id mismatch",
 			"provided", envelope.Id,
 			"computed", computedHash)
-		return nil, "", constants.ErrTxTransactionIDMismatch
+		return "", constants.ErrTxTransactionIDMismatch
 	}
 
-	return decodedPayload, computedHash, nil
+	return computedHash, nil
 }
 
 // verifyTargetSession binds the envelope's operator_session_id to the session

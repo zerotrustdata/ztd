@@ -63,25 +63,6 @@ type GatewayWebSocketHandler struct {
 	onCommandSubscribedMu sync.RWMutex
 	onCommandSubscribed   func(operatorID, sessionID, deploymentID string)
 
-	// stateRootProvider supplies the gateway's current state Merkle root for
-	// command intent relay. Nil disables the cmd: relay path (publishes to
-	// cmd: are rejected fail-closed when the relay is not configured).
-	stateRootProvider governance.StateRootProvider
-
-	// sessionValidator resolves operator session IDs for command intent
-	// relay. Nil disables the cmd: relay path.
-	sessionValidator operatorSessionValidator
-
-	// posture is the gateway's governance posture, injected into every
-	// envelope built by the cmd: relay so the operator reads it
-	// per-transaction at L4 verification time.
-	posture string
-
-	// doctrine is the L1 validator the cmd: relay runs against the decoded
-	// typed payload before setting L1.Validated. Nil disables the cmd: relay
-	// path (the relay fails closed without a doctrine to screen against).
-	doctrine *governance.L1Doctrine
-
 	// receiptRelayDeps are wired by SetReceiptRelayDeps for the receipts:
 	// relay path. When set, publishes to receipts: channels from
 	// authorized operators are intercepted, the ActionReceipt signature is
@@ -242,27 +223,6 @@ func NewGatewayWebSocketHandler(logger *slog.Logger) *GatewayWebSocketHandler {
 		patternSubscribers: make(map[string]map[*wsSubscriber]struct{}),
 		handlers:           make(map[string]map[int64]func(string, []byte)),
 	}
-}
-
-// SetCommandRelayDeps wires the StateRootProvider, session validator, gateway
-// posture, and L1 doctrine required for the cmd: command intent relay. When
-// set, publishes to cmd: channels from authorized app workloads are
-// intercepted, transformed into governed GovernanceEnvelopes with the
-// gateway's state root, posture, and L1 screening, and fanned out to
-// subscribers. When nil (the default), the cmd: relay path is disabled and
-// publishes to cmd: are rejected fail-closed. Called once during gateway
-// startup after the auth service, state root service, and L1 doctrine are
-// constructed. The posture is injected into every relayed envelope so the
-// operator reads it per-transaction at L4 verification time instead of from
-// out-of-band config. The doctrine is the L1 validator the relay runs
-// against the decoded typed payload before setting L1.Validated.
-func (b *GatewayWebSocketHandler) SetCommandRelayDeps(stateRootProvider governance.StateRootProvider, sessionValidator operatorSessionValidator, posture string, doctrine *governance.L1Doctrine) {
-	b.mu.Lock()
-	b.stateRootProvider = stateRootProvider
-	b.sessionValidator = sessionValidator
-	b.posture = posture
-	b.doctrine = doctrine
-	b.mu.Unlock()
 }
 
 // SetReceiptRelayDeps wires the SignerStore and ReceiptRecorder required for

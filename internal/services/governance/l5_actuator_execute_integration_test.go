@@ -61,6 +61,7 @@ func TestL5ActuatorRecordRejectedTransactionSignsFailedStageEvidence(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
 	require.Contains(t, receipt.ResultSummary, constants.ErrTxStateRootMismatch.Error())
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH, receipt.RejectionCode, "the signed receipt names the failing check")
 	require.Len(t, receipt.DeterministicStageEvidence, 1)
 	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, receipt.DeterministicStageEvidence[0].Outcome)
 	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed)
@@ -666,6 +667,7 @@ func TestL5ActuatorRejectionReceiptFilesUnderRuntimeSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
 	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, receipt.FailureCode)
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH, receipt.RejectionCode, "a wrapped sentinel still classifies")
 	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed)
 
 	persisted, err := auditStore.GetActionReceipt(vt.Envelope.Id)
@@ -687,6 +689,28 @@ func TestL5ActuatorRejectionReceiptFilesUnderRuntimeSession(t *testing.T) {
 	assert.Equal(t, "test-operator", published.OperatorId, "the receipt is published on the runtime's own receipts channel")
 	assert.Equal(t, "test-operator-session", published.OperatorSessionId)
 	assert.Equal(t, "remote-operator", vt.Envelope.OperatorId, "the rejected envelope is not mutated")
+}
+
+// TestL5ActuatorRejectionCodeIsSignatureBound proves the rejection code is part
+// of the signed bytes: the untouched receipt verifies, and a receipt whose
+// rejection_code is changed after signing fails signature verification.
+func TestL5ActuatorRejectionCodeIsSignatureBound(t *testing.T) {
+	actuator, _ := newCommitmentTestActuator(t)
+	publicKey := actuator.SigningKey.Public().(ed25519.PublicKey)
+	vt := rejectedForeignVT(t)
+
+	receipt, err := actuator.RecordRejectedTransaction(context.Background(), vt, constants.ErrTxStateRootMismatch)
+	require.NoError(t, err)
+	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH, receipt.RejectionCode)
+	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
+
+	tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+	tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
+	assert.Error(t, VerifyActionReceiptSignature(tampered, publicKey), "a changed rejection_code must break the signature")
+
+	cleared := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+	cleared.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
+	assert.Error(t, VerifyActionReceiptSignature(cleared, publicKey), "clearing rejection_code must break the signature")
 }
 
 // TestL5ActuatorRejectionReceiptRequiresRuntimeIdentity proves a runtime with no

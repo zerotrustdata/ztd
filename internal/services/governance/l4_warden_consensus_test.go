@@ -278,7 +278,7 @@ func TestL4Warden_L2VerifiesAgainstEnrollmentBundleTrust(t *testing.T) {
 	}{
 		{name: "bundle signer meets quorum", trust: bundleTrust([]models.OperatorSigner{{KeyID: "test-key", PublicKeyHex: hex.EncodeToString(pub)}})},
 		{name: "member key absent from bundle", trust: bundleTrust(nil), wantErr: ErrL2QuorumNotMet},
-		{name: "no consensus set in bundle", trust: nil, wantErr: ErrL2ConsensusNotConfigured},
+		{name: "no consensus set in bundle", trust: nil, wantErr: ErrL2ConsensusSetUnknown},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -518,7 +518,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				}
 				return env
 			}(),
-			wantErr: ErrL2ConsensusNotConfigured,
+			wantErr: ErrL2ConsensusSetUnknown,
 			wantL2:  false,
 		},
 		{
@@ -533,7 +533,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				}
 				return env
 			}(),
-			wantErr: ErrL2ConsensusNotConfigured,
+			wantErr: ErrL2ConsensusSetUnknown,
 			wantL2:  false,
 		},
 	}

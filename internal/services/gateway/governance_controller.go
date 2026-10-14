@@ -199,20 +199,18 @@ func isAppRecordWrite(a constants.ActionType) bool {
 	return a == constants.ActionTypeDocumentUpdate || a == constants.ActionTypeDocumentDelete
 }
 
-// injectEnvelopePosture sets the gateway's governance posture on an incoming
-// envelope that was built by a client (CLI, BYO app). Clients do not
-// know the gateway's posture — the gateway is the posture authority. Posture
-// is not part of the transaction hash, so injecting it here does not
-// invalidate the client's signature or hash. If the envelope already carries a
-// non-empty posture, it is left unchanged (gateway-internal construction paths
-// set posture at build time).
-func injectEnvelopePosture(body []byte, posture string) ([]byte, error) {
+// stampEnvelopePosture sets the gateway's governance posture on an incoming
+// envelope. The gateway is the sole posture authority: an envelope that
+// arrives with any posture already set is refused, never trusted or
+// rewritten. Posture is not part of the transaction hash, so stamping it does
+// not invalidate the caller's hash.
+func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 	var envelope commonv1.GovernanceEnvelope
 	if err := protojson.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("decode envelope: %w", err)
 	}
 	if envelope.Posture != "" {
-		return body, nil
+		return nil, fmt.Errorf("stamp posture %q: %w", envelope.Posture, constants.ErrEnvelopePostureCallerSupplied)
 	}
 	envelope.Posture = posture
 	reMarshaled, err := protojson.Marshal(&envelope)
@@ -286,15 +284,11 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 		}
 	}
 
-	// Inject the gateway's governance posture into the envelope. The gateway
-	// is the posture authority; clients (CLI, BYO apps) do not know
-	// the gateway's posture and must not set it. Posture is not part of the
-	// transaction hash, so injecting it here does not invalidate the client's
-	// signature. If the envelope already carries a posture (e.g. from a
-	// gateway-internal construction path), leave it unchanged.
-	body, err = injectEnvelopePosture(body, string(c.cfg.Gateway.Posture))
+	// The gateway is the sole posture authority (INV-GOV-POST-02). A caller
+	// never sends posture; one that does is refused.
+	body, err = stampEnvelopePosture(body, string(c.cfg.Gateway.Posture))
 	if err != nil {
-		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("handleGovernanceEnvelope: inject posture: %w", err).Error())
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("handleGovernanceEnvelope: %w", err).Error())
 		return
 	}
 
@@ -355,6 +349,7 @@ var envelopeForbiddenErrors = []error{
 	constants.ErrTxL2SignatureMissing,
 	constants.ErrTxL2SignatureInvalid,
 	constants.ErrTxL2ConsensusNotConfigured,
+	constants.ErrTxL2ConsensusSetUnknown,
 	constants.ErrTxL2QuorumNotMet,
 	constants.ErrTxL2DuplicateSigner,
 	constants.ErrTxL3ProofMissing,

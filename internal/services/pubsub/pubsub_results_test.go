@@ -670,7 +670,7 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
 		assert.Equal(t, "task-1", env.TaskId, "task_id must propagate")
 		assert.Equal(t, "web-1", env.WebSessionId, "web_session_id must propagate")
 		assert.Equal(t, "cli-1", env.CliSessionId, "cli_session_id must propagate")
-		assert.Equal(t, "doctrine", env.Posture, "posture must propagate")
+		assert.Empty(t, env.Posture, "only the gateway sets posture; the operator receipt envelope carries none")
 
 		// The payload must be the marshaled ActionReceipt.
 		var decoded pb.ActionReceipt

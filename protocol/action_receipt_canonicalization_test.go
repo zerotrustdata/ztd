@@ -47,6 +47,9 @@ var actionReceiptStageEvidenceCanonicalizationVectorJSON []byte
 //go:embed vectors/action_receipt_failure_code_canonicalization.json
 var actionReceiptFailureCodeCanonicalizationVectorJSON []byte
 
+//go:embed vectors/action_receipt_rejection_code_canonicalization.json
+var actionReceiptRejectionCodeCanonicalizationVectorJSON []byte
+
 func TestActionReceiptCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
 	var vector actionReceiptCanonicalizationVector
 	require.NoError(t, json.Unmarshal(actionReceiptCanonicalizationVectorJSON, &vector))
@@ -133,6 +136,44 @@ func TestActionReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *t
 		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
 		require.NoError(t, canonicalErr)
 		assert.NotContains(t, string(payload), "failure_code")
+		assert.False(t, ed25519.Verify(publicKey, payload, signature))
+	})
+}
+
+func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector actionReceiptCanonicalizationVector
+	require.NoError(t, json.Unmarshal(actionReceiptRejectionCodeCanonicalizationVectorJSON, &vector))
+	receipt := &operatorv1.ActionReceipt{}
+	require.NoError(t, protojson.Unmarshal(vector.Receipt, receipt))
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, receipt.FailureCode)
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET, receipt.RejectionCode)
+
+	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	require.NoError(t, err)
+	assert.Equal(t, vector.CanonicalUTF8, string(canonical))
+	assert.Contains(t, string(canonical), `"rejection_code":19`)
+
+	publicKey, err := hex.DecodeString(vector.PublicKeyHex)
+	require.NoError(t, err)
+	signature, err := hex.DecodeString(receipt.Signature)
+	require.NoError(t, err)
+	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
+
+	t.Run("rejection code tampering", func(t *testing.T) {
+		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
+		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		require.NoError(t, canonicalErr)
+		assert.False(t, ed25519.Verify(publicKey, payload, signature))
+	})
+
+	t.Run("rejection code removal", func(t *testing.T) {
+		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
+		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		require.NoError(t, canonicalErr)
+		assert.NotContains(t, string(payload), "rejection_code")
 		assert.False(t, ed25519.Verify(publicKey, payload, signature))
 	})
 }

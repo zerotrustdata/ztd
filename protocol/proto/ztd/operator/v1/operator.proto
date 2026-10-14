@@ -53,7 +53,7 @@ enum HeartbeatType {
 // Payload for ztd.v1.operator.command.requested
 message CommandRequested {
   // Shell command string to execute
-  string command = 1 [(ztd.common.v1.forbidden_patterns) = "(^|\\s)sudo(\\s|$),(^|\\s)su(\\s|$),rm -rf /"];
+  string command = 1 [(ztd.common.v1.forbidden_patterns) = "(^|[;&|(]\\s*)sudo(\\s|$),(^|[;&|(]\\s*)su(\\s|$),rm -rf /"];
 
   // Unique execution identifier (correlation key)
   string execution_id = 2;
@@ -638,6 +638,46 @@ enum ReceiptFailureCode {
   RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
 }
 
+// GovernanceRejectionCode names the verification check that rejected a
+// transaction before execution. The L5 actuator stamps it on every
+// GOVERNANCE_REJECTED receipt, so a verifier can attribute a rejection to a
+// layer from signed evidence alone, without parsing result_summary. It is
+// bound into the receipt signature.
+enum GovernanceRejectionCode {
+  // The receipt is not a governance rejection.
+  GOVERNANCE_REJECTION_CODE_UNSPECIFIED = 0;
+  // The rejection error is not mapped to a check. A verifier treats it as a defect.
+  GOVERNANCE_REJECTION_CODE_UNCLASSIFIED = 1;
+  // The runtime vault is locked or absent, so nothing may execute.
+  GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED = 2;
+  // A verifier dependency (doctrine, replay store, signer store, consensus, notary, state root provider) is absent.
+  GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED = 3;
+  // The envelope is structurally incomplete or its typed payload does not decode.
+  GOVERNANCE_REJECTION_CODE_ENVELOPE_MALFORMED = 4;
+  GOVERNANCE_REJECTION_CODE_PROTOCOL_VERSION_UNSUPPORTED = 5;
+  GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH = 6;
+  GOVERNANCE_REJECTION_CODE_EXPIRED = 7;
+  // The nonce was already reserved or is in flight.
+  GOVERNANCE_REJECTION_CODE_REPLAY = 8;
+  GOVERNANCE_REJECTION_CODE_DOCUMENT_COLLECTION_NOT_GOVERNED = 9;
+  GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH = 10;
+  GOVERNANCE_REJECTION_CODE_TARGET_SESSION_MISMATCH = 11;
+  // L1 doctrine found a forbidden pattern in the typed payload.
+  GOVERNANCE_REJECTION_CODE_L1_DOCTRINE = 12;
+  GOVERNANCE_REJECTION_CODE_TRANSACTION_HASH_MISMATCH = 13;
+  GOVERNANCE_REJECTION_CODE_TRANSACTION_ID_MISMATCH = 14;
+  GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH = 15;
+  GOVERNANCE_REJECTION_CODE_POSTURE_MISSING = 16;
+  GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING = 17;
+  GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID = 18;
+  GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET = 19;
+  GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER = 20;
+  GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING = 21;
+  GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID = 22;
+  // The L2 proof names a consensus set that is unknown or disabled.
+  GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN = 23;
+}
+
 // ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
 message ActionReceipt {
   // Original GovernanceEnvelope ID
@@ -687,6 +727,11 @@ message ActionReceipt {
 
   // The registry-derived governance class for the request event.
   string action_type = 17;
+
+  // The verification check that rejected the transaction. Set exactly when
+  // failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the
+  // signature via canonicalization.
+  GovernanceRejectionCode rejection_code = 18;
 }
 
 // CommitmentAttestation is the Auditor's signed record that a verified

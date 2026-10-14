@@ -398,7 +398,6 @@ func (rr *PubSubResultsService) PublishActionReceipt(ctx context.Context, env *c
 		TaskId:            env.TaskId,
 		WebSessionId:      env.WebSessionId,
 		CliSessionId:      env.CliSessionId,
-		Posture:           env.Posture,
 	}
 
 	wire, err := protojson.Marshal(receiptEnv)

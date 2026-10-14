@@ -4,7 +4,7 @@ title: Operator Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.0.6
-last_updated: 2026-10-13
+last_updated: 2026-10-14
 owners:
   - internal/services/ztdo.go
   - internal/services/operatorcapability/
@@ -115,6 +115,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-OP-ACT-02 | When SQL audit is enabled, L5 Actuator MUST append a signed `CommitmentAttestation` to the SQLite commitment ledger in the same transaction as the `EXECUTING` receipt. |
 | INV-OP-ACT-03 | L5 Actuator MUST mint a single-action capability bound to the transaction hash, action type, target resource, operator ID, and session before execution, and MUST dissolve the capability immediately upon handler return. |
 | INV-OP-ACT-04 | L5 Actuator MUST finalize the receipt with status `COMPLETED` or `FAILED`, capture the local state root after execution, sign the receipt, and attach a signed `ReceiptPersistenceAttestation`. |
+| INV-OP-ACT-05 | A transaction rejected by L4 verification MUST be recorded as a signed `FAILED` rejection receipt with `failure_code` `GOVERNANCE_REJECTED` and a signed `rejection_code` naming the failed check. Verifiers MUST attribute the rejection from `rejection_code`, not `result_summary` (`INV-GOV-ACT-09`). |
 
 ### Local-First Audit Storage (`INV-OP-STOR`)
 
@@ -248,6 +249,8 @@ The Operator owns the final two layers of the governance interlock:
 6. **Capability Dissolution**: Dissolves the capability immediately upon return.
 7. **Final Attestation**: Captures the final state root, marks the receipt `COMPLETED` or `FAILED`, signs the receipt, and attaches a signed `ReceiptPersistenceAttestation`.
 8. **Asynchronous Gateway Relay**: Mirrors the receipt to the Gateway `receipts:` channel on a best-effort basis.
+
+A rejected transaction produces a rejection receipt instead of executing. The receipt is `FAILED` with `failure_code` `GOVERNANCE_REJECTED`, and its signed `rejection_code` (`ActionReceipt.rejection_code`, enum `GovernanceRejectionCode` in `protocol/proto/ztd/operator/v1/operator.proto`) names the verification check. Non-rejection receipts carry `GOVERNANCE_REJECTION_CODE_UNSPECIFIED`. Classification is defined in [Governance Architecture](governance.md) (`INV-GOV-ACT-09`).
 
 ### Local State, Native Tools, and Git File Ledger
 

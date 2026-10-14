@@ -145,7 +145,7 @@ func TestGovernanceEnvelope_VerificationErrors_Return403(t *testing.T) {
 		{"unknown action", governance.ErrUnknownActionType},
 		{"missing l2", governance.ErrL2SignatureMissing},
 		{"invalid l2 signature", governance.ErrL2SignatureInvalid},
-		{"unknown l2 signer", governance.ErrL2ConsensusNotConfigured},
+		{"unknown l2 signer", governance.ErrL2ConsensusSetUnknown},
 		{"missing l3 proof", governance.ErrL3ProofMissing},
 		{"invalid l3 proof", governance.ErrL3ProofInvalid},
 		{"l3 notary not configured", governance.ErrL3NotaryNotConfigured},
@@ -224,15 +224,15 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, 1, proc.calls)
 
-	// The handler injects the gateway's posture into the envelope before
+	// The handler stamps the gateway's posture into the envelope before
 	// forwarding to the processor. The test config uses PostureNotary, so the
 	// processor receives the posture field alongside the client's original
-	// fields. Posture is not part of the transaction hash, so this injection
+	// fields. Posture is not part of the transaction hash, so this stamp
 	// does not invalidate the client's signature.
 	var forwarded commonv1.GovernanceEnvelope
 	require.NoError(t, protojson.Unmarshal(proc.gotPayload, &forwarded))
 	require.Equal(t, "tx-abc", forwarded.GetId())
-	require.Equal(t, constants.PostureNotary, forwarded.GetPosture(), "handler must inject gateway posture into the envelope")
+	require.Equal(t, constants.PostureNotary, forwarded.GetPosture(), "handler must stamp gateway posture onto the envelope")
 
 	// Receipt should be returned as JSON. Field names follow protojson.
 	var got actionReceiptJSON
@@ -241,6 +241,25 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 	require.Equal(t, "abc123", got.TransactionHash)
 	require.Equal(t, "deadbeef", got.Signature)
 	require.Equal(t, "Actuator-key-id", got.SignerKeyID)
+}
+
+func TestGovernanceEnvelope_CallerSuppliedPosture_Returns400(t *testing.T) {
+	// Only the gateway sets posture. A caller-supplied one (here a doctrine
+	// downgrade sent to a notary gateway) is refused before processing.
+	for _, posture := range []string{constants.PostureDoctrine, constants.PostureNotary} {
+		proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-posture"}}
+		h := newGovernanceEnvelopeHandler(t, proc)
+
+		body := []byte(`{"id":"tx-posture","posture":"` + posture + `"}`)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(body))
+		w := httptest.NewRecorder()
+
+		h.governanceController.handleGovernanceEnvelope(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code, posture)
+		require.Contains(t, w.Body.String(), constants.ErrEnvelopePostureCallerSupplied.Error(), posture)
+		require.Zero(t, proc.calls, "a caller-supplied posture must never reach the processor")
+	}
 }
 
 func TestGovernanceEnvelope_FailedExecution_StillReturns200(t *testing.T) {

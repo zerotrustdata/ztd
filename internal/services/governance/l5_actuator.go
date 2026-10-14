@@ -279,6 +279,7 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 	receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 	receipt.ResultSummary = w.failedReceiptSummary("rejected", operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejection)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+	receipt.RejectionCode = ClassifyGovernanceRejection(rejection)
 	receipt.ExecutedAtUnixMs = time.Now().UnixMilli()
 	if err := w.signAndLogRejectionReceipt(context.WithoutCancel(ctx), signed, identity, receipt); err != nil {
 		return nil, err
@@ -863,6 +864,7 @@ type canonicalReceipt struct {
 	L3Status                       int32  `json:"l3_status"`
 	DeterministicStageEvidenceHash string `json:"deterministic_stage_evidence_hash,omitempty"`
 	FailureCode                    int32  `json:"failure_code,omitempty"`
+	RejectionCode                  int32  `json:"rejection_code,omitempty"`
 }
 
 func deterministicStageEvidenceHash(stages []*operatorv1.DeterministicStageEvidence) (string, error) {
@@ -909,6 +911,7 @@ func CanonicalizeActionReceipt(r *operatorv1.ActionReceipt) ([]byte, error) {
 		L3Status:                       int32(r.L3Status),
 		DeterministicStageEvidenceHash: stageEvidenceHash,
 		FailureCode:                    int32(r.FailureCode),
+		RejectionCode:                  int32(r.RejectionCode),
 	}
 	payload, err := json.Marshal(canonical)
 	if err != nil {

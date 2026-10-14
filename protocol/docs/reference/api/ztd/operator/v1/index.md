@@ -141,6 +141,7 @@
     - [DeterministicStageKind](#ztd-operator-v1-DeterministicStageKind)
     - [DeterministicStageOutcome](#ztd-operator-v1-DeterministicStageOutcome)
     - [ExecutionStatus](#ztd-operator-v1-ExecutionStatus)
+    - [GovernanceRejectionCode](#ztd-operator-v1-GovernanceRejectionCode)
     - [HeartbeatType](#ztd-operator-v1-HeartbeatType)
     - [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode)
     - [InferenceLoadState](#ztd-operator-v1-InferenceLoadState)
@@ -209,6 +210,7 @@ ActionReceipt is the signed proof of an executing, completed, or failed mutation
 | failure_code | [ReceiptFailureCode](#ztd-operator-v1-ReceiptFailureCode) |  | Typed classification of a FAILED receipt. UNSPECIFIED on non-failed receipts. Bound into the signature via canonicalization. |
 | event_type | [string](#string) |  | The semantic request event that produced this receipt. |
 | action_type | [string](#string) |  | The registry-derived governance class for the request event. |
+| rejection_code | [GovernanceRejectionCode](#ztd-operator-v1-GovernanceRejectionCode) |  | The verification check that rejected the transaction. Set exactly when failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the signature via canonicalization. |
 
 
 
@@ -2863,6 +2865,44 @@ Execution status enum for command and operation results
 | EXECUTION_STATUS_FAILED | 3 |  |
 | EXECUTION_STATUS_CANCELLED | 4 |  |
 | EXECUTION_STATUS_TIMEOUT | 5 |  |
+
+
+
+<a name="ztd-operator-v1-GovernanceRejectionCode"></a>
+
+### GovernanceRejectionCode
+GovernanceRejectionCode names the verification check that rejected a
+transaction before execution. The L5 actuator stamps it on every
+GOVERNANCE_REJECTED receipt, so a verifier can attribute a rejection to a
+layer from signed evidence alone, without parsing result_summary. It is
+bound into the receipt signature.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| GOVERNANCE_REJECTION_CODE_UNSPECIFIED | 0 | The receipt is not a governance rejection. |
+| GOVERNANCE_REJECTION_CODE_UNCLASSIFIED | 1 | The rejection error is not mapped to a check. A verifier treats it as a defect. |
+| GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED | 2 | The runtime vault is locked or absent, so nothing may execute. |
+| GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED | 3 | A verifier dependency (doctrine, replay store, signer store, consensus, notary, state root provider) is absent. |
+| GOVERNANCE_REJECTION_CODE_ENVELOPE_MALFORMED | 4 | The envelope is structurally incomplete or its typed payload does not decode. |
+| GOVERNANCE_REJECTION_CODE_PROTOCOL_VERSION_UNSUPPORTED | 5 |  |
+| GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH | 6 |  |
+| GOVERNANCE_REJECTION_CODE_EXPIRED | 7 |  |
+| GOVERNANCE_REJECTION_CODE_REPLAY | 8 | The nonce was already reserved or is in flight. |
+| GOVERNANCE_REJECTION_CODE_DOCUMENT_COLLECTION_NOT_GOVERNED | 9 |  |
+| GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH | 10 |  |
+| GOVERNANCE_REJECTION_CODE_TARGET_SESSION_MISMATCH | 11 |  |
+| GOVERNANCE_REJECTION_CODE_L1_DOCTRINE | 12 | L1 doctrine found a forbidden pattern in the typed payload. |
+| GOVERNANCE_REJECTION_CODE_TRANSACTION_HASH_MISMATCH | 13 |  |
+| GOVERNANCE_REJECTION_CODE_TRANSACTION_ID_MISMATCH | 14 |  |
+| GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH | 15 |  |
+| GOVERNANCE_REJECTION_CODE_POSTURE_MISSING | 16 |  |
+| GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING | 17 |  |
+| GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID | 18 |  |
+| GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET | 19 |  |
+| GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER | 20 |  |
+| GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING | 21 |  |
+| GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID | 22 |  |
+| GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN | 23 | The L2 proof names a consensus set that is unknown or disabled. |
 
 
 

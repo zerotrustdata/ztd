@@ -3,8 +3,8 @@ doc_id: governance
 title: Governance Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.0.6
+last_updated: 2026-10-14
 owners:
   - internal/services/governance/
   - internal/governance/envelope.go
@@ -72,7 +72,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-GOV-POST-01 | The four canonical governance postures (`doctrine`, `consensus`, `ratify`, `notary`) MUST be parsed via `ParseGovernancePosture` and MUST fail closed on unrecognized names with an error wrapping `ErrInvalidPosture`. Callers MUST propagate that error; neither function panics or degrades to a weaker posture. |
-| INV-GOV-POST-02 | The Gateway MUST inject the configured governance posture into `GovernanceEnvelope.Posture` at construction time. The L4 Warden MUST read posture per-envelope from `envelope.Posture` and fail closed with `ErrEnvelopePostureMissing` if absent. |
+| INV-GOV-POST-02 | The Gateway is the sole posture authority. It MUST set `GovernanceEnvelope.Posture` to its configured posture exactly once, at construction time. No other component (client, Operator, relay) writes it, and Operator-built envelopes such as receipt envelopes carry none. Callers never send posture: direct envelope submission MUST refuse an envelope that carries one with `ErrEnvelopePostureCallerSupplied` (HTTP 400) before L4. The L4 Warden MUST read posture per-envelope from `envelope.Posture` and fail closed with `ErrEnvelopePostureMissing` if absent. |
 | INV-GOV-POST-03 | Posture configuration is immutable for the lifetime of the process. In gateway mode, `--posture` defaults to `doctrine`. In outbound operator mode, posture is authoritative from the received envelope. |
 | INV-GOV-POST-04 | L2 consensus is enforced under `consensus` and `notary` postures (`RequiresL2Signature() == true`). L3 notary proof is enforced for mutation action types under `ratify` and `notary` postures (`RequiresL3Proof() == true`). |
 
@@ -121,6 +121,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-GOV-ACT-06 | Remote receipt publication to the Gateway (`PublishActionReceipt`) is best effort and MUST NOT alter or gate local execution outcome. The executing runtime's local SQLite audit record remains authoritative under LFAA. |
 | INV-GOV-ACT-07 | A governed `FILE_EDIT` or `RESTORE_FILE` MUST NOT write runtime control or evidence state under `.ztd/` except the executing runtime's controlled evaluation target directory. The executing runtime MUST open the target through `RuntimeFileService.OpenFileEditTarget` before any I/O, and all I/O MUST go through the returned `FileEditTarget`. |
 | INV-GOV-ACT-08 | Receipts MUST be filed under a session the executing runtime owns, taken from the L5 `Identity` (the runtime's `ExecutionTarget`), never from an unverified envelope claim. A rejection (`RecordRejectedTransaction`) is always filed under the runtime's own operator and session; the claimed ids stay in the signed receipt's stage evidence, and the rejection receipt is published under the runtime's own identity. A verified envelope that names no session executes under the runtime's own session. Without a resolvable identity the Actuator fails closed (`ErrL5ActuatorRuntimeIdentityMissing`) before anything executes. A rejection receipt that cannot be persisted returns `ErrL5ActuatorRejectionReceiptPersist`, not `ErrL5ActuatorLogReceipt`: nothing executed. The embedded Operator's own session is its claimed operator session, or the Gateway's `EmbeddedOperatorBootstrapSessionID` audit session before the claim. |
+| INV-GOV-ACT-09 | A rejection receipt (`RecordRejectedTransaction`) MUST set `ActionReceipt.rejection_code` from `ClassifyGovernanceRejection` (`internal/services/governance/rejection_code.go`), which maps verification sentinels via `errors.Is`. An unmapped error MUST be `GOVERNANCE_REJECTION_CODE_UNCLASSIFIED`, never a guessed layer. `CanonicalizeActionReceipt` MUST bind `rejection_code` into the receipt signature. `rejection_code` MUST be `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` on any receipt that is not a governance rejection. Verifiers MUST attribute a rejection to a layer from the signed `rejection_code`, never from `result_summary`. Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`. |
 
 ### Audit Trail and Evidence Chain (`INV-GOV-EVID`)
 
@@ -131,6 +132,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-GOV-EVID-03 | Identity fields (`OperatorID`, `OperatorSessionID`, `RequestorUserID`, `ActingAppID`, `CaseID`, `InvestigationID`, `TaskID`) MUST remain identical across all deterministic stages in a transaction. |
 | INV-GOV-EVID-04 | The final `ReceiptPersistenceAttestation` MUST bind the transaction ID, audit record ID, signer key ID, timestamp, and SHA-256 digest of the final receipt signature, signed by the Actuator's private key. |
 | INV-GOV-EVID-05 | Relayed receipts at the Gateway MUST be verified against both the Actuator public key signature and the persistence attestation before acceptance; invalid attestations MUST cause rejection. |
+| INV-GOV-EVID-06 | On a rejected transaction, the `L1_DOCTRINE` stage MUST be `FAILED` only when doctrine found a violation. It MUST be `VERIFIED` when doctrine passed and a later stateless check (hash or id) failed. It MUST be absent when rejection happened before doctrine ran. |
 
 ## Owned surfaces
 
@@ -144,6 +146,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | L3 Notary authorization | `internal/services/governance/l3_notary.go` | Unit tests in `internal/services/governance/l3_notary_test.go` |
 | L4 Warden pre-dispatch pipeline | `internal/services/governance/l4_warden.go` | Unit tests in `internal/services/governance/l4_warden_test.go` |
 | L5 Actuator execution boundary | `internal/services/governance/l5_actuator.go` | Unit tests in `internal/services/governance/l5_actuator_test.go` |
+| Governance rejection classification | `internal/services/governance/rejection_code.go` | Canonicalization tests in `protocol/action_receipt_canonicalization_test.go` |
 | Just-in-time capability lifecycle | `internal/services/governance/capability.go` | Unit tests in `internal/services/governance/capability_test.go` |
 | Deterministic protocol chain verification | `internal/services/governance/protocol_chain.go` | Chain tests in `internal/services/governance/protocol_chain_test.go` |
 | Gateway dispatch envelope construction | `internal/services/gateway/dispatch_service.go` | Unit tests in `internal/services/gateway/dispatch_service_test.go` |
@@ -236,7 +239,7 @@ Governed `FILE_EDIT` and `RESTORE_FILE` actions cannot write runtime control or 
 
 L2 Consensus authenticates machine review by requiring independent affirmative cryptographic votes:
 1. **Vote Format**: Ed25519 signature over the UTF-8 payload `<transaction_hash>|<decision>` (`true` or `false`).
-2. **Policy Evaluation**: The Warden resolves the policy ID from `envelope.Governance.L2.ConsensusSetId`. The policy defines `MemberKeyIDs`, `Quorum`, `RequireDistinct`, and `Enabled`.
+2. **Policy Evaluation**: The Warden resolves the policy ID from `envelope.Governance.L2.ConsensusSetId`. The policy defines `MemberKeyIDs`, `Quorum`, `RequireDistinct`, and `Enabled`. An unknown or disabled consensus set rejects with `ErrTxL2ConsensusSetUnknown`. `ErrTxL2ConsensusNotConfigured` means only that the consensus policy store is absent.
 3. **Distinct Member Verification**: If `RequireDistinct` is true, duplicate votes from the same `signer_key_id` reject the transaction with `ErrTxL2DuplicateSigner`.
 4. **Quorum Evaluation**: Only affirmative (`decision=true`) votes signed by enrolled, trusted members count toward quorum. Negative votes record authenticated dissent.
 5. **Bootstrap Exemption**: Platform bootstrap actions (`actionType.IsBootstrapAction() == true`) are exempt from L2 enforcement across all postures.
@@ -269,7 +272,7 @@ flowchart TD
 3. **Stateless Validation**: Enforces protocol version 2, validates action type, decodes protobuf payload, confirms target ownership (`ExecutesFor`), evaluates L1 Doctrine, and verifies dual hash equality (`transaction_hash == envelope.Id == recomputed_hash`).
 4. **Stateful Validation**: Validates `envelope.StateMerkleRoot` against the admission snapshot in context.
 5. **Posture Validation**: Evaluates posture-required L2 Consensus votes and L3 Notary proofs from `envelope.Posture`.
-6. **Fail-Closed Nonce Release**: Any validation failure after Step 1 immediately invokes `releaseNonceReservation` so unadmitted transactions do not leave dangling locks.
+6. **Fail-Closed Nonce Release**: Any validation failure after Step 1 immediately invokes `releaseNonceReservation` so unadmitted transactions do not leave dangling locks. The rejection is recorded by the L5 Actuator as a signed `FAILED` receipt with `failure_code` `GOVERNANCE_REJECTED` and a `rejection_code` (`INV-GOV-ACT-09`). L1 stage evidence on rejection follows `INV-GOV-EVID-06`.
 
 ### Layer 5 (L5) Actuator: Fail-Closed Execution Boundary
 
@@ -282,7 +285,7 @@ The L5 Actuator owns the execution boundary and enforces zero standing privilege
    - Mints a single-action capability (`MintCapability`) binding transaction hash, action type, target resource, operator ID, session ID, and expiry.
    - Dispatches execution to `ExecutionHandler.ExecuteVerifiedTransaction`.
    - Dissolves the capability immediately upon return in a defer-safe block.
-6. **Receipt Finalization**: Marks receipt `COMPLETED` or `FAILED`, captures final state root, maps errors to typed `ReceiptFailureCode`, signs final receipt, and attaches a signed `ReceiptPersistenceAttestation`.
+6. **Receipt Finalization**: Marks receipt `COMPLETED` or `FAILED`, captures final state root, maps errors to typed `ReceiptFailureCode` (and `rejection_code` for governance rejections), signs final receipt, and attaches a signed `ReceiptPersistenceAttestation`.
 7. **Gateway Relay**: Publishes the final receipt to `receipts:<operator_id>:<operator_session_id>` on a best-effort basis. The local SQLite record remains authoritative under LFAA.
 
 ### Deterministic Protocol Chain and Evidence Graph

@@ -325,14 +325,6 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		return nil, fmt.Errorf("gateway: load doctrine: %w", err)
 	}
 
-	// Wire the pubsub command relay dependencies: the gateway intercepts
-	// app-published command intent on cmd: channels, validates the target
-	// operator session, fetches the current state root, and constructs the
-	// governed GovernanceEnvelope (with L1 screening) before fan-out. This
-	// runs after the L1 doctrine is loaded so the relay has a doctrine to
-	// screen against.
-	wsHandler.SetCommandRelayDeps(stateRootSvc, auth, string(cfg.Gateway.Posture), doctrine)
-
 	actuatorPriv, actuatorKeyID, err := sm.GetActuatorKey()
 	if err != nil {
 		return nil, fmt.Errorf("gateway: load actuator signing key: %w", err)

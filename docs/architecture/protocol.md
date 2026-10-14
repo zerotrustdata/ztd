@@ -4,7 +4,7 @@ title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.0.6
-last_updated: 2026-10-13
+last_updated: 2026-10-14
 owners:
   - protocol/
   - internal/constants/
@@ -143,6 +143,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
 1. **Receipt Canonicalization**:
    - `internal/services/governance.CanonicalizeActionReceipt` formats `ActionReceipt` into deterministic UTF-8 JSON.
    - Keys are sorted lexicographically, floats formatted with consistent precision, and whitespace stripped.
+   - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `ActionReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
    - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
    - `VerifyReceiptPersistenceAttestation` canonicalizes and verifies persistence attestations.
 2. **Evaluation Protojson Canonicalization**:
@@ -153,6 +154,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - Pinned in `protocol/vectors/`:
      - `action_receipt_canonicalization.json`
      - `action_receipt_failure_code_canonicalization.json`
+     - `action_receipt_rejection_code_canonicalization.json`
      - `action_receipt_stage_evidence_canonicalization.json`
      - `receipt_persistence_attestation_canonicalization.json`
      - `compliance/` and `eval/` vectors.
