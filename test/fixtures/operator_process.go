@@ -19,12 +19,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/certs"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/protocol"
@@ -36,20 +36,18 @@ const operatorStopTimeout = 30 * time.Second
 // errOperatorStopped is the cause recorded when a test stops an Operator.
 var errOperatorStopped = errors.New("operator process stopped")
 
-// OperatorHost is one machine an Operator runs on: a runtime root and a master
-// key provisioned outside it. Successive Operator processes on the same host
+// OperatorHost is one machine an Operator runs on: a runtime root and the key
+// store holding its master key. Successive Operator processes on the same host
 // share both, as a restarted Operator on a real machine would.
 type OperatorHost struct {
-	WorkingDir    string
-	MasterKeyFile string
+	WorkingDir string
+	Keyring    keystore.Keyring
 }
 
 // NewOperatorHost provisions an isolated host.
 func NewOperatorHost(t *testing.T) *OperatorHost {
 	t.Helper()
-	masterKeyFile, err := keystore.ProvisionMasterKeyFile(testutil.TempDir(t))
-	require.NoError(t, err)
-	return &OperatorHost{WorkingDir: testutil.TempDir(t), MasterKeyFile: masterKeyFile}
+	return &OperatorHost{WorkingDir: testutil.TempDir(t), Keyring: keystoretest.NewMemoryKeyring()}
 }
 
 // OperatorProcessOptions tunes one Operator process.
@@ -122,7 +120,7 @@ func (w *OperatorWireWitness) LaunchOperator(t *testing.T, host *OperatorHost, o
 		WorkingDir:        host.WorkingDir,
 		LaunchDir:         host.WorkingDir,
 		HeartbeatInterval: opts.HeartbeatInterval,
-		MasterKeyFile:     host.MasterKeyFile,
+		Keyring:           host.Keyring,
 	}
 	deps := serve.OperatorRuntimeDeps{Logger: testutil.NewTestLogger(), ClientIdentity: identity}
 

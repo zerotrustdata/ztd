@@ -27,7 +27,6 @@ func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
 		PKIDir:             "/pki",
 		SecretsDir:         "/secrets",
 		VaultDir:           "/vault",
-		MasterKeyFile:      "/run/secrets/ztd_master_key",
 		PasskeyRpID:        "example.com",
 		PasskeyRpName:      "Example",
 		PasskeyRpOrigins:   []string{"https://example.com"},
@@ -54,7 +53,6 @@ func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
 	assert.Equal(t, "/pki", cfg.PKIDir)
 	assert.Equal(t, "/secrets", cfg.SecretsDir)
 	assert.Equal(t, "/vault", cfg.VaultDir)
-	assert.Equal(t, "/run/secrets/ztd_master_key", cfg.MasterKeyFile)
 	assert.Equal(t, "example.com", cfg.PasskeyRpID)
 	assert.Equal(t, "Example", cfg.PasskeyRpName)
 	assert.Equal(t, []string{"https://example.com"}, cfg.PasskeyRpOrigins)
@@ -84,7 +82,6 @@ func TestGatewayFlagsToServeConfig_EmptyFlags(t *testing.T) {
 	assert.Empty(t, cfg.PKIDir)
 	assert.Empty(t, cfg.SecretsDir)
 	assert.Empty(t, cfg.VaultDir)
-	assert.Empty(t, cfg.MasterKeyFile)
 	assert.Empty(t, cfg.PasskeyRpID)
 	assert.Empty(t, cfg.PasskeyRpName)
 	assert.Nil(t, cfg.PasskeyRpOrigins)
@@ -118,7 +115,6 @@ func TestAddGatewayFlags_RegistersAllFlags(t *testing.T) {
 		{"pki-dir", ""},
 		{"secrets-dir", ""},
 		{"vault-dir", ""},
-		{"master-key-file", ""},
 		{"passkey-rp-id", ""},
 		{"passkey-rp-name", ""},
 		{"rate-limit-rps", "0"},

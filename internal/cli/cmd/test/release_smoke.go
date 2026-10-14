@@ -132,6 +132,7 @@ type releaseSmokeRun struct {
 	summary                                               releaseSmokeSummary
 	logDir, gwRoot, workerRoot, reportsDir                string
 	agent                                                 *keystore.EphemeralAgent
+	childEnv                                              []string // agent env every child ztd inherits
 	ports                                                 struct{ http, https int }
 	cleanups                                              []smokeCleanup
 	workerSession                                         string
@@ -310,6 +311,7 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("start isolated key agent: %w", err)
 	}
+	r.childEnv = r.agent.Env()
 	for _, p := range []*int{&r.ports.http, &r.ports.https} {
 		*p, err = freeSmokePort()
 		if err != nil {
@@ -699,7 +701,7 @@ func (r *releaseSmokeRun) ztdGateway(ctx context.Context, name string, args ...s
 func (r *releaseSmokeRun) ztd(ctx context.Context, name, dir string, args ...string) (string, error) {
 	argv := append([]string{r.opts.ZtdBin}, args...)
 	prefix := filepath.Join(r.logDir, name)
-	p, err := r.owner.start(name, dir, prefix, argv, r.agent.Env())
+	p, err := r.owner.start(name, dir, prefix, argv, r.childEnv)
 	if err != nil {
 		return "", err
 	}

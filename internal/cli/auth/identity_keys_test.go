@@ -8,6 +8,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"

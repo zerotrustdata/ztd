@@ -771,17 +771,14 @@ func TestEnrollDeployedOperatorsApprovesThroughAReadinessDrivenWindow(t *testing
 	}
 }
 
-func TestOperatorDeployMasterKey_OnlyExplicitTargetPathIsForwarded(t *testing.T) {
+func TestOperatorDeploy_HasNoMasterKeyFileFlag(t *testing.T) {
 	cmd := operatorDeployCmd()
+	assert.Nil(t, cmd.Flags().Lookup("master-key-file"), "deployed Operators seal under the target's OS keyring or ssh-agent")
 	args, err := operatorDeployStartArgs(cmd)
 	require.NoError(t, err)
 	for _, arg := range args {
 		assert.NotContains(t, arg, "master-key-file")
 	}
-	require.NoError(t, cmd.Flags().Set("master-key-file", "/target/private/key"))
-	args, err = operatorDeployStartArgs(cmd)
-	require.NoError(t, err)
-	assert.Contains(t, args, "--master-key-file=/target/private/key")
 }
 
 func TestIsWindowsPath_WSLDetection(t *testing.T) {

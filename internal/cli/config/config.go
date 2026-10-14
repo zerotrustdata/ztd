@@ -20,7 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/pathutil"
-	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
 
@@ -85,7 +85,7 @@ type Config struct {
 	// Keyring holds the master key that seals the client identity keys under
 	// the runtime tree. Nil selects the OS key store; tests inject an isolated
 	// in-memory keyring. There is no plaintext fallback.
-	Keyring keystore.Keyring
+	Keyring keyring.Keyring
 }
 
 // Load initializes CLI configuration from the current working directory.

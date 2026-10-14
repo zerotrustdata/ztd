@@ -39,7 +39,6 @@ func TestGatewayConfig_ZeroValue(t *testing.T) {
 	assert.Equal(t, "", cfg.PKIDir)
 	assert.Equal(t, "", cfg.SecretsDir)
 	assert.Equal(t, "", cfg.VaultDir)
-	assert.Equal(t, "", cfg.MasterKeyFile)
 	assert.Equal(t, "", cfg.PasskeyRpID)
 	assert.Equal(t, "", cfg.PasskeyRpName)
 	assert.Equal(t, float64(0), cfg.RateLimitRPS)
@@ -62,7 +61,6 @@ func TestGatewayConfig_FullAssignment(t *testing.T) {
 		PKIDir:              constants.TestPathVarLibPKIDir,
 		SecretsDir:          constants.TestPathVarLibSecretsDir,
 		VaultDir:            constants.TestPathVarLibVaultDir,
-		MasterKeyFile:       "/run/secrets/key",
 		PasskeyRpID:         "localhost",
 		PasskeyRpName:       "ztd",
 		RateLimitRPS:        5.0,
@@ -83,7 +81,6 @@ func TestGatewayConfig_FullAssignment(t *testing.T) {
 	assert.Equal(t, constants.TestPathVarLibPKIDir, cfg.PKIDir)
 	assert.Equal(t, constants.TestPathVarLibSecretsDir, cfg.SecretsDir)
 	assert.Equal(t, constants.TestPathVarLibVaultDir, cfg.VaultDir)
-	assert.Equal(t, "/run/secrets/key", cfg.MasterKeyFile)
 	assert.Equal(t, "localhost", cfg.PasskeyRpID)
 	assert.Equal(t, "ztd", cfg.PasskeyRpName)
 	assert.Equal(t, 5.0, cfg.RateLimitRPS)
@@ -147,7 +144,6 @@ func TestGatewayConfig_AllFieldsExported(t *testing.T) {
 	cfg.PKIDir = constants.TestPathShortPKI
 	cfg.SecretsDir = constants.TestPathShortSecrets
 	cfg.VaultDir = constants.TestPathShortVault
-	cfg.MasterKeyFile = "/run/secrets/key"
 	cfg.PasskeyRpID = "example.com"
 	cfg.PasskeyRpName = "Example"
 	cfg.RateLimitRPS = 10.0
@@ -167,7 +163,6 @@ func TestGatewayConfig_AllFieldsExported(t *testing.T) {
 	assert.Equal(t, constants.TestPathShortPKI, cfg.PKIDir)
 	assert.Equal(t, constants.TestPathShortSecrets, cfg.SecretsDir)
 	assert.Equal(t, constants.TestPathShortVault, cfg.VaultDir)
-	assert.Equal(t, "/run/secrets/key", cfg.MasterKeyFile)
 	assert.Equal(t, "example.com", cfg.PasskeyRpID)
 	assert.Equal(t, "Example", cfg.PasskeyRpName)
 	assert.Equal(t, 10.0, cfg.RateLimitRPS)
@@ -249,7 +244,6 @@ func gatewayConfigToOptions(cfg GatewayConfig) config.GatewayOptions {
 		PKIDir:              cfg.PKIDir,
 		SecretsDir:          cfg.SecretsDir,
 		VaultDir:            cfg.VaultDir,
-		MasterKeyFile:       cfg.MasterKeyFile,
 		PasskeyRpID:         cfg.PasskeyRpID,
 		PasskeyRpName:       cfg.PasskeyRpName,
 		PasskeyRpOrigins:    cfg.PasskeyRpOrigins,
@@ -274,7 +268,6 @@ func TestGatewayConfigToOptions_FullMapping(t *testing.T) {
 		PKIDir:              constants.TestPathShortPKI,
 		SecretsDir:          constants.TestPathShortSecrets,
 		VaultDir:            "/test/vault",
-		MasterKeyFile:       "/run/secrets/key",
 		PasskeyRpID:         "localhost",
 		PasskeyRpName:       "ztd",
 		RateLimitRPS:        5.0,
@@ -296,7 +289,6 @@ func TestGatewayConfigToOptions_FullMapping(t *testing.T) {
 	assert.Equal(t, cfg.PKIDir, opts.PKIDir)
 	assert.Equal(t, cfg.SecretsDir, opts.SecretsDir)
 	assert.Equal(t, cfg.VaultDir, opts.VaultDir)
-	assert.Equal(t, cfg.MasterKeyFile, opts.MasterKeyFile)
 	assert.Equal(t, cfg.PasskeyRpID, opts.PasskeyRpID)
 	assert.Equal(t, cfg.PasskeyRpName, opts.PasskeyRpName)
 	assert.Equal(t, cfg.RateLimitRPS, opts.RateLimitRPS)
@@ -401,7 +393,6 @@ func TestGatewayConfig_FieldCount(t *testing.T) {
 		PKIDir:              constants.TestPathShortPKI,
 		SecretsDir:          constants.TestPathShortSecrets,
 		VaultDir:            constants.TestPathShortVault,
-		MasterKeyFile:       "/run/secrets/key",
 		PasskeyRpID:         "localhost",
 		PasskeyRpName:       "ztd",
 		RateLimitRPS:        5.0,
@@ -435,9 +426,6 @@ func TestGatewayConfig_FieldCount(t *testing.T) {
 		nonZero++
 	}
 	if cfg.VaultDir != "" {
-		nonZero++
-	}
-	if cfg.MasterKeyFile != "" {
 		nonZero++
 	}
 	if cfg.PasskeyRpID != "" {
@@ -474,7 +462,7 @@ func TestGatewayConfig_FieldCount(t *testing.T) {
 		nonZero++
 	}
 
-	assert.Equal(t, 19, nonZero, "all 19 fields should be set and non-zero")
+	assert.Equal(t, 18, nonZero, "all 18 fields should be set and non-zero")
 }
 
 // ---------------------------------------------------------------------------
@@ -648,12 +636,10 @@ func TestGatewayConfig_NegativeRateLimit(t *testing.T) {
 
 func TestGatewayConfig_VaultConfiguration(t *testing.T) {
 	cfg := GatewayConfig{
-		VaultDir:      constants.TestPathVarLibVaultDir,
-		MasterKeyFile: "/run/secrets/key",
+		VaultDir: constants.TestPathVarLibVaultDir,
 	}
 
 	assert.Equal(t, constants.TestPathVarLibVaultDir, cfg.VaultDir)
-	assert.Equal(t, "/run/secrets/key", cfg.MasterKeyFile)
 }
 
 func TestGatewayConfigToOptions_VaultFieldsPreservedInConfigOnly(t *testing.T) {

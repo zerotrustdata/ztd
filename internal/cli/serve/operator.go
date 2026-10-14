@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 )
@@ -49,6 +50,9 @@ type ServeOperatorOptions struct {
 	CloudMode         bool
 	CloudProvider     string
 	HeartbeatInterval time.Duration
+	// Keyring holds the master key. Nil selects the OS key store; in-process
+	// test Operators inject an isolated in-memory keyring.
+	Keyring keyring.Keyring
 
 	Posture string
 
@@ -122,6 +126,7 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		PKIDir:               "",
 		SecretsDir:           "",
 		HeartbeatInterval:    opts.HeartbeatInterval,
+		Keyring:              opts.Keyring,
 		Shell:                os.Getenv(string(constants.EnvVar.Shell)),
 		Lang:                 os.Getenv(string(constants.EnvVar.Lang)),
 		Term:                 os.Getenv(string(constants.EnvVar.Term)),

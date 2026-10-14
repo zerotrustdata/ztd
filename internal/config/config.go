@@ -20,7 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/paths"
-	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 )
 
 // GatewayPosture defines the governance enforcement posture for the Gateway.
@@ -69,7 +69,7 @@ type LoadOptions struct {
 	// Outbound mode requires L3 (human) authorization before sending mutations
 	Posture GatewayPosture
 
-	Keyring keystore.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
+	Keyring keyring.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
 
 	// Working directory
 	WorkDir string // Absolute path of the directory the Operator was launched from (--working-dir or os.Getwd())
@@ -110,27 +110,27 @@ type LoadOptions struct {
 // No outbound authentication is required - the Operator simply starts and listens.
 type GatewayConfig struct {
 	Enabled           bool
-	Posture           GatewayPosture   // Governance enforcement posture (doctrine, consensus, ratify, notary)
-	HTTPPort          int              // Plain HTTP port for bootstrap, PKI discovery and enrollment (default: constants.Ports.OperatorHttp)
-	HTTPSPort         int              // HTTPS port for mTLS API (default: constants.Ports.OperatorHttps)
-	ListenHost        string           // Bind host for HTTP and HTTPS (default: constants.LocalhostIP; 0.0.0.0 must be requested explicitly)
-	DataDir           string           // Root directory for SQLite database (default: .ztd/data in working directory)
-	PKIDir            string           // Directory for TLS certificates (default: .ztd/pki)
-	SecretsDir        string           // Directory for platform secrets (default: .ztd/secrets)
-	VaultDir          string           // Directory for encryption vault (default: .ztd/vault)
-	Keyring           keystore.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
-	PasskeyRpID       string           // RP ID for passkey operations (default: localhost)
-	PasskeyRpName     string           // RP Name for passkey operations (default: ztd)
-	PasskeyRpOrigins  []string         // Additional RP origins for passkey operations (e.g. demo remapped ports)
-	MCPDownstreamURL  string           // URL of the downstream MCP server to proxy discovery and execution to
-	MCPDownstreamCmd  string           // Command of the downstream MCP subprocess (mutually exclusive with MCPDownstreamURL)
-	MCPDownstreamArgs []string         // Arguments for the downstream MCP subprocess
-	A2ADownstreamURL  string           // URL of the downstream A2A server to proxy execution to
-	PublicBaseURL     string           // Public base URL for L3 approval links (e.g., https://localhost:8443)
-	JWKSURL           string           // URL to fetch JWKS for JWT validation
-	JWTRoleClaim      string           // The claim in JWT that contains roles (default: "roles")
-	JWTIssuer         string           // Expected issuer claim in JWT (optional, for multi-audience IdP deployments)
-	JWTAudience       string           // Expected audience claim in JWT (optional, for multi-audience IdP deployments)
+	Posture           GatewayPosture  // Governance enforcement posture (doctrine, consensus, ratify, notary)
+	HTTPPort          int             // Plain HTTP port for bootstrap, PKI discovery and enrollment (default: constants.Ports.OperatorHttp)
+	HTTPSPort         int             // HTTPS port for mTLS API (default: constants.Ports.OperatorHttps)
+	ListenHost        string          // Bind host for HTTP and HTTPS (default: constants.LocalhostIP; 0.0.0.0 must be requested explicitly)
+	DataDir           string          // Root directory for SQLite database (default: .ztd/data in working directory)
+	PKIDir            string          // Directory for TLS certificates (default: .ztd/pki)
+	SecretsDir        string          // Directory for platform secrets (default: .ztd/secrets)
+	VaultDir          string          // Directory for encryption vault (default: .ztd/vault)
+	Keyring           keyring.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
+	PasskeyRpID       string          // RP ID for passkey operations (default: localhost)
+	PasskeyRpName     string          // RP Name for passkey operations (default: ztd)
+	PasskeyRpOrigins  []string        // Additional RP origins for passkey operations (e.g. demo remapped ports)
+	MCPDownstreamURL  string          // URL of the downstream MCP server to proxy discovery and execution to
+	MCPDownstreamCmd  string          // Command of the downstream MCP subprocess (mutually exclusive with MCPDownstreamURL)
+	MCPDownstreamArgs []string        // Arguments for the downstream MCP subprocess
+	A2ADownstreamURL  string          // URL of the downstream A2A server to proxy execution to
+	PublicBaseURL     string          // Public base URL for L3 approval links (e.g., https://localhost:8443)
+	JWKSURL           string          // URL to fetch JWKS for JWT validation
+	JWTRoleClaim      string          // The claim in JWT that contains roles (default: "roles")
+	JWTIssuer         string          // Expected issuer claim in JWT (optional, for multi-audience IdP deployments)
+	JWTAudience       string          // Expected audience claim in JWT (optional, for multi-audience IdP deployments)
 
 	// HTTP server limits
 	MaxPayloadBytes   int64         // Maximum request payload size in bytes (default: 10MB)
@@ -276,7 +276,7 @@ type Config struct {
 	VaultDir string // Directory for encryption vault (default: .ztd/vault)
 	// Keyring holds the master key. Nil selects the OS key store; tests inject
 	// an isolated in-memory keyring.
-	Keyring keystore.Keyring
+	Keyring keyring.Keyring
 
 	// System / process context - injected from Settings at startup, never read again
 	Shell string // SHELL env var value (e.g. /bin/bash)
@@ -333,7 +333,7 @@ type GatewayOptions struct {
 	PKIDir            string
 	SecretsDir        string
 	VaultDir          string
-	Keyring           keystore.Keyring
+	Keyring           keyring.Keyring
 	PasskeyRpID       string
 	PasskeyRpName     string
 	PasskeyRpOrigins  []string

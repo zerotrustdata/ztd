@@ -64,7 +64,6 @@ func TestWriteLaunchProfile_RoundTripPreservesAllFields(t *testing.T) {
 	assert.Equal(t, cfg.PKIDir, profile.Config.PKIDir)
 	assert.Equal(t, cfg.SecretsDir, profile.Config.SecretsDir)
 	assert.Equal(t, cfg.VaultDir, profile.Config.VaultDir)
-	assert.Equal(t, cfg.MasterKeyFile, profile.Config.MasterKeyFile)
 	assert.Equal(t, cfg.PasskeyRpID, profile.Config.PasskeyRpID)
 	assert.Equal(t, cfg.PasskeyRpName, profile.Config.PasskeyRpName)
 	assert.Equal(t, cfg.PasskeyRpOrigins, profile.Config.PasskeyRpOrigins)

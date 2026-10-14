@@ -410,7 +410,6 @@ func runFleetFanOut(t *testing.T, bin string, concurrency, size int, sessions []
 	endpointArgs, err := e2eGatewayEndpointArgs()
 	require.NoError(t, err)
 	args := append([]string{"operator", "run"}, endpointArgs...)
-	args = append(args, e2eMasterKeyArgs()...)
 	if len(sessions) == 0 {
 		args = append(args, "--all-active")
 	} else {
