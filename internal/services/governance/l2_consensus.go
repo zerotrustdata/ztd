@@ -15,6 +15,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // L2ConsensusPolicy is the generic consensus policy consumed by the L4 Warden.
@@ -43,20 +44,40 @@ func (NoopConsensusPolicyStore) GetConsensusPolicy(context.Context, string) (*L2
 	return nil, nil
 }
 
+// l2Enforced reports whether posture gates this action on L2 consensus votes.
+// Bootstrap actions (platform enrollment) are exempt: they bring the consensus
+// tribunal into existence and therefore predate its ability to sign.
+func l2Enforced(actionType constants.ActionType, posture GovernancePosture) bool {
+	return posture.RequiresL2Signature() && !actionType.IsBootstrapAction()
+}
+
+// l2StatusFor maps the L2 result of one envelope to the status its receipt
+// records. A valid proof is REQUIRED_VALID even where L2 is not enforced, because
+// its verified stage is recorded as audit evidence. A failed enforced proof is
+// REQUIRED_FAILED. Everything else is NOT_REQUIRED.
+func l2StatusFor(actionType constants.ActionType, posture GovernancePosture, valid bool) operatorv1.L2Status {
+	switch {
+	case valid:
+		return operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
+	case l2Enforced(actionType, posture):
+		return operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED
+	default:
+		return operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
+	}
+}
+
 // verifyL2Posture verifies L2 (machine consensus) votes against the consensus
 // policy. Returns true if L2 consensus was achieved, false if no L2 votes were
 // present (and not required by posture). Returns an error if L2 is required by
 // posture but verification fails. The posture is read per-envelope from
 // GovernanceEnvelope.Posture by the caller and passed in here.
 //
-// Bootstrap actions (platform enrollment) are exempt from the L2 enforcement
-// gate: they bring the consensus tribunal into existence and therefore predate
-// its ability to sign. L2 votes are still verified when present and recorded as
-// audit evidence, but their absence does not reject a bootstrap envelope.
+// Where l2Enforced is false, L2 votes are still verified when present and
+// recorded as audit evidence, but their absence or failure does not reject the
+// envelope.
 func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (bool, error) {
 	actionType := constants.ActionType(envelope.ActionType)
-	bootstrapExempt := actionType.IsBootstrapAction()
-	enforced := posture.RequiresL2Signature() && !bootstrapExempt
+	enforced := l2Enforced(actionType, posture)
 
 	if envelope.Governance == nil || envelope.Governance.L2 == nil || len(envelope.Governance.L2.Votes) == 0 {
 		if enforced {

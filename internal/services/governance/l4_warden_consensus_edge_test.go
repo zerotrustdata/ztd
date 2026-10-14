@@ -277,11 +277,11 @@ func TestL4Warden_L2VoteOrderingIndependence(t *testing.T) {
 	if errB != nil {
 		t.Fatalf("order B failed: %v", errB)
 	}
-	if !verifiedA.L2Valid {
-		t.Fatal("order A: expected L2Valid=true")
+	if verifiedA.L2Status != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+		t.Fatal("order A: expected L2 status REQUIRED_VALID")
 	}
-	if !verifiedB.L2Valid {
-		t.Fatal("order B: expected L2Valid=true")
+	if verifiedB.L2Status != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+		t.Fatal("order B: expected L2 status REQUIRED_VALID")
 	}
 }
 
@@ -414,8 +414,8 @@ func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 	if err != nil {
 		t.Fatalf("positive control: expected success with 3 distinct keys, got %v", err)
 	}
-	if !verified.L2Valid {
-		t.Fatal("positive control: expected L2Valid=true with 3 distinct keys")
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+		t.Fatal("positive control: expected L2 status REQUIRED_VALID with 3 distinct keys")
 	}
 
 	// Quorum-2 positive control: 2 distinct keys satisfy a 2-of-3 quorum.
@@ -452,8 +452,8 @@ func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 	if err != nil {
 		t.Fatalf("2-of-3 positive control: expected success, got %v", err)
 	}
-	if !verified2.L2Valid {
-		t.Fatal("2-of-3 positive control: expected L2Valid=true")
+	if verified2.L2Status != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+		t.Fatal("2-of-3 positive control: expected L2 status REQUIRED_VALID")
 	}
 }
 

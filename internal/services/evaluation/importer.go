@@ -69,7 +69,7 @@ func (i *EvidenceImporter) Import(ctx context.Context) ([]complianceevidence.Evi
 	if err != nil {
 		return nil, fmt.Errorf("%w: canonicalize conformance verdict set: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
-	scopeID := constants.EvalScopePrefix + record.GetSuiteId()
+	scopeID := complianceevidence.EvalScopeID(record.GetSuiteId())
 	verifiedAt := report.GetVerifiedAt().AsTime()
 	producedAt := record.GetFinishedAt().AsTime()
 	return []complianceevidence.EvidenceNode{

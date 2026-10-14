@@ -188,7 +188,7 @@ flowchart TD
 | **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required | Interactive workflows requiring human sign-off on mutations |
 | **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) | Not Required | High-assurance production environments with full interlock |
 
-The posture is declared at Gateway startup via `--posture` and stamped into `GovernanceEnvelope.Posture`. The executing Operator's L4 Warden evaluates `envelope.Posture` as authoritative.
+The posture is declared at Gateway startup via `--posture` and stamped into `GovernanceEnvelope.Posture`. The executing Operator's L4 Warden evaluates `envelope.Posture` as authoritative. L2 consensus and L3 notary gate execution only where the matrix marks them `Enforced`. The governance conformance suite runs once per posture, on a stack started in that posture ([Governance Conformance Suite](evals.md#governance-conformance-suite)).
 
 ### Canonical Transaction Envelope and Deterministic Hashing
 

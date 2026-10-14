@@ -9,19 +9,26 @@ package report
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/compliance/catalog"
 	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/conformancetest"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -34,25 +41,33 @@ var conformanceGeneratedAt = time.Unix(1_700_000_000, 0).UTC()
 const conformanceAdmissionID = "conformance-admission-1"
 
 // conformanceReplayBodies returns the bundle bodies of a complete conformance
-// source for runID: the protected scope admitting the run, the bundled runtime
-// copy of the canonical record and its digest sidecar, and the source
-// verification report. Replay tests read the record and sidecar; gate tests
-// read all of them.
-func conformanceReplayBodies(t *testing.T, runID string) map[string][]byte {
+// source for runID: the protected scope admitting the run, plus the source
+// bodies of record. Replay tests read the record and sidecar; gate tests read
+// all of them.
+func conformanceReplayBodies(t *testing.T, runID string, record []byte) map[string][]byte {
 	t.Helper()
-	record, err := evalv1.MarshalCanonical(&evalv1.ConformanceRunRecord{RunId: runID, SuiteId: cases.SuiteID, SuiteVersion: cases.SuiteVersion})
-	require.NoError(t, err)
-	digest := sha256.Sum256(record)
 	scope, err := compliancev1.MarshalCanonical(&compliancev1.AssessmentScope{
 		AssessmentAsOf:   timestamppb.New(conformanceGeneratedAt),
 		SourceAdmissions: []*compliancev1.AssessmentSourceAdmission{{AdmissionId: conformanceAdmissionID, RunId: runID, SourceKind: constants.EvaluationSourceKindConformance}},
 	})
 	require.NoError(t, err)
+	bodies := conformanceSourceBodies(t, runID, record, conformanceGeneratedAt)
+	bodies[constants.ComplianceBundleScopeFilename] = scope
+	return bodies
+}
+
+// conformanceSourceBodies returns the runtime and verification bodies of a
+// conformance source for runID: the bundled copy of record, its digest sidecar,
+// and the source verification report. Replay reproduces the report at the
+// protected assessment time, so verifiedAt must be that time.
+func conformanceSourceBodies(t *testing.T, runID string, record []byte, verifiedAt time.Time) map[string][]byte {
+	t.Helper()
+	digest := sha256.Sum256(record)
 	check := evidence.NewVerificationCheckResult(constants.ConformanceVerificationCheck, constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, []string{runID}, nil)
 	verification, err := compliancev1.MarshalCanonical(&compliancev1.ComplianceVerificationReport{
 		ReportId:        runID,
 		Valid:           true,
-		VerifiedAt:      timestamppb.New(conformanceGeneratedAt.Add(-time.Minute)),
+		VerifiedAt:      timestamppb.New(verifiedAt),
 		VerifierId:      constants.ConformanceVerifierID,
 		VerifierVersion: constants.ConformanceVerifierVersion,
 		Checks:          []*compliancev1.VerificationCheckResult{check},
@@ -60,11 +75,19 @@ func conformanceReplayBodies(t *testing.T, runID string) map[string][]byte {
 	require.NoError(t, err)
 	runtimeDir := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname)
 	return map[string][]byte{
-		constants.ComplianceBundleScopeFilename:                          scope,
 		conformanceVerificationBundlePath(runID):                         verification,
 		path.Join(runtimeDir, constants.ConformanceRecordFilename):       record,
 		path.Join(runtimeDir, constants.ConformanceRecordDigestFilename): []byte(hex.EncodeToString(digest[:])),
 	}
+}
+
+// syntheticConformanceRecord is a record with no posture and no cases. Replay
+// rejects it as not a PASS.
+func syntheticConformanceRecord(t *testing.T, runID string) []byte {
+	t.Helper()
+	record, err := evalv1.MarshalCanonical(&evalv1.ConformanceRunRecord{RunId: runID, SuiteId: cases.SuiteID, SuiteVersion: cases.SuiteVersion})
+	require.NoError(t, err)
+	return record
 }
 
 // conformanceSourceVerifier returns a bundle verifier whose manifest and analysis
@@ -96,7 +119,7 @@ func conformanceVerificationBundlePath(runID string) string {
 
 func TestBundleVerifierConformanceReplayFailsWhenRecordByteIsFlipped(t *testing.T) {
 	const runID = "conformance-replay-flipped"
-	bodies := conformanceReplayBodies(t, runID)
+	bodies := conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID))
 	recordPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordFilename)
 	flipped := append([]byte(nil), bodies[recordPath]...)
 	flipped[len(flipped)/2] ^= 0x01
@@ -111,7 +134,7 @@ func TestBundleVerifierConformanceReplayFailsWhenRecordByteIsFlipped(t *testing.
 
 func TestBundleVerifierConformanceReplayFailsWhenReportNamesAnotherRun(t *testing.T) {
 	const runID = "conformance-replay-other"
-	v := conformanceReplayVerifier(conformanceReplayBodies(t, runID))
+	v := conformanceReplayVerifier(conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID)))
 
 	v.replayEvalSourceVerification(context.Background(), runID, &compliancev1.ComplianceVerificationReport{ReportId: "other-run"})
 
@@ -121,7 +144,7 @@ func TestBundleVerifierConformanceReplayFailsWhenReportNamesAnotherRun(t *testin
 
 func TestBundleVerifierConformanceReplayFailsWithoutDigestSidecar(t *testing.T) {
 	const runID = "conformance-replay-no-sidecar"
-	bodies := conformanceReplayBodies(t, runID)
+	bodies := conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID))
 	delete(bodies, path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordDigestFilename))
 	v := conformanceReplayVerifier(bodies)
 
@@ -136,7 +159,7 @@ func TestBundleVerifierConformanceReplayFailsWithoutDigestSidecar(t *testing.T) 
 // a PASS; that replay failure is the only one.
 func TestBundleVerifierConformanceSourceClearsInventoryGate(t *testing.T) {
 	const runID = "conformance-gate-admitted"
-	v := conformanceSourceVerifier(conformanceReplayBodies(t, runID), runID)
+	v := conformanceSourceVerifier(conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID)), runID)
 
 	v.verifyEvalSourceVerificationReports(context.Background())
 
@@ -214,7 +237,7 @@ func TestBundleVerifierConformanceSourceInventoryGateFailsClosed(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			bodies := conformanceReplayBodies(t, runID)
+			bodies := conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID))
 			test.mutate(bodies)
 			v := conformanceSourceVerifier(bodies, runID)
 
@@ -252,4 +275,175 @@ func TestBundleVerifierConformanceRuntimeArtifactRejectsDuplicates(t *testing.T)
 			assertVerificationFailure(t, v.report, constants.ErrEvidenceDuplicateID, bundlePath)
 		})
 	}
+}
+
+// pinnedConformanceRecord returns the bytes of the pinned M4 doctrine record and
+// the run it belongs to.
+func pinnedConformanceRecord(t *testing.T) ([]byte, string) {
+	t.Helper()
+	raw, _ := conformancetest.DoctrineRecord(t)
+	record := &evalv1.ConformanceRunRecord{}
+	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
+	return raw, record.GetRunId()
+}
+
+// conformanceImportedNodes returns the nodes the eval importer replays from the
+// bundled runtime bodies of runID, verified at verifiedAt. The reader maps the
+// run's runtime root onto the bundled copy, as the bundle replay does.
+func conformanceImportedNodes(t *testing.T, bodies map[string][]byte, runID string, verifiedAt time.Time) []evidence.EvidenceNode {
+	t.Helper()
+	reader := &bundledRuntimeArtifactReader{
+		bodies:      bodies,
+		runID:       runID,
+		sourceDir:   constants.ComplianceBundleSourceEvalsDirname,
+		runtimeRoot: filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID),
+	}
+	nodes, err := evaluation.NewEvidenceImporter(reader, runID, func() time.Time { return verifiedAt }).Import(context.Background())
+	require.NoError(t, err)
+	return nodes
+}
+
+// conformanceSignedBundleFixture assembles and signs a complete bundle whose only
+// evidence source is the conformance source for record. The protected scope
+// admits the run, and the analysis is generated from the nodes the eval importer
+// replays from the source bodies. mutateSource, if set, changes the source bodies
+// after generation, so the bundle can carry bytes the analysis was not built from.
+func conformanceSignedBundleFixture(t *testing.T, record []byte, runID string, mutateSource func(bodies map[string][]byte)) (*compliancev1.ComplianceReportBundle, *bundleArtifactReaderStub, *compliancev1.ComplianceReportTrustPolicy, time.Time) {
+	t.Helper()
+	run := &evalv1.ConformanceRunRecord{}
+	require.NoError(t, evalv1.UnmarshalCanonical(record, run))
+	// The bundle is assessed a minute after the run finished. The window opens an
+	// hour before the run started, so the run's evidence is fresh in the window.
+	generatedAt := run.GetFinishedAt().AsTime().Add(time.Minute)
+	request, _ := bundleAssemblyFixture(t)
+	request.GeneratedAt = generatedAt
+	scope := validGenerationScope(run.GetStartedAt().AsTime().Add(-time.Hour), generatedAt)
+	scope.ScopeId = evidence.EvalScopeID(cases.SuiteID)
+	scope.AssessmentAsOf = timestamppb.New(generatedAt)
+	request.ScopeRef = scope.GetScopeId()
+	admission := &compliancev1.AssessmentSourceAdmission{
+		AdmissionId:              conformanceAdmissionID,
+		SourceKind:               constants.EvaluationSourceKindConformance,
+		SourceVersion:            cases.SuiteVersion,
+		SourceScopeId:            scope.GetScopeId(),
+		OwnerRuntimeBoundary:     "gateway-1",
+		AcquisitionBoundary:      "gateway-local-export",
+		RunId:                    runID,
+		VerifierRef:              &compliancev1.VersionedReference{Id: constants.ConformanceVerifierID, Version: constants.ConformanceVerifierVersion},
+		DisclosureClassification: constants.ComplianceBundleProfileRestricted,
+	}
+	scope.SourceAdmissions = []*compliancev1.AssessmentSourceAdmission{admission}
+
+	bodies := conformanceSourceBodies(t, runID, record, generatedAt)
+	nodes := conformanceImportedNodes(t, bodies, runID, generatedAt)
+	for index := range nodes {
+		nodes[index].SourceAdmissionID = admission.GetAdmissionId()
+	}
+	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
+	require.NoError(t, err)
+	generation := GenerationRequest{
+		Scope: scope,
+		Sources: []GenerationSource{{
+			AdmissionID: admission.GetAdmissionId(),
+			Importer:    protectedDecisionImporter{admissionID: admission.GetAdmissionId(), nodes: nodes},
+		}},
+		Assertions: assertions,
+		Frameworks: frameworks,
+		Crosswalks: crosswalks,
+	}
+	generated, err := GenerateComplianceAnalysis(context.Background(), generation)
+	require.NoError(t, err)
+	request.Analysis = generated.Analysis
+	request.Profiles = generated.Profiles
+	request.FrameworkRefs = request.FrameworkRefs[:0]
+	for _, framework := range frameworks.GetFrameworks() {
+		request.FrameworkRefs = append(request.FrameworkRefs, &compliancev1.VersionedReference{Id: framework.GetFrameworkId(), Version: framework.GetFrameworkVersion()})
+	}
+	request.RenderedFormats, err = renderAllFormats(request.Analysis, request.Profile)
+	require.NoError(t, err)
+	controlAssessmentRef := path.Join(constants.ComplianceBundleAssessmentsDirname, constants.ComplianceBundleControlAssessmentsFilename)
+	request.AssessmentRefs = append(request.AssessmentRefs, controlAssessmentRef)
+	request.SourceArtifacts, err = canonicalReportSourceArtifacts(generation, generated)
+	require.NoError(t, err)
+
+	if mutateSource != nil {
+		mutateSource(bodies)
+	}
+	bundlePaths := make([]string, 0, len(bodies))
+	for bundlePath := range bodies {
+		bundlePaths = append(bundlePaths, bundlePath)
+	}
+	sort.Strings(bundlePaths)
+	for _, bundlePath := range bundlePaths {
+		request.SourceArtifacts = append(request.SourceArtifacts, SourceArtifact{BundlePath: bundlePath, Body: bodies[bundlePath], MediaType: conformanceMediaType(bundlePath)})
+	}
+
+	result, err := AssembleBundle(request)
+	require.NoError(t, err)
+	identity := bundleSigningIdentityAtFixture(t, generatedAt)
+	require.NoError(t, SignBundle(result, identity))
+	artifactBodies := make(map[string][]byte, len(result.ArtifactBodies))
+	for _, artifact := range result.ArtifactBodies {
+		artifactBodies[artifact.BundlePath] = append([]byte(nil), artifact.Body...)
+	}
+	publicKey := identity.privateKey.Public().(ed25519.PublicKey)
+	policy := &compliancev1.ComplianceReportTrustPolicy{
+		PolicyId:      "policy-1",
+		PolicyVersion: "1.0.0",
+		TrustedKeys: []*compliancev1.ComplianceReportTrustedKey{{
+			Metadata:         identity.metadata,
+			PublicKey:        hex.EncodeToString(publicKey),
+			AssessmentId:     "assessment-1",
+			AssessorIdentity: "assessor-1",
+			AssessedAt:       timestamppb.New(request.GeneratedAt),
+			AllowedScopeRefs: []string{request.ScopeRef},
+		}},
+	}
+	return result.Bundle, &bundleArtifactReaderStub{bodies: artifactBodies}, policy, request.GeneratedAt.Add(time.Hour)
+}
+
+// conformanceMediaType is the media type of a conformance source body: the
+// digest sidecar is hex text, everything else is canonical JSON.
+func conformanceMediaType(bundlePath string) string {
+	if path.Base(bundlePath) == constants.ConformanceRecordDigestFilename {
+		return constants.MediaTypeText
+	}
+	return constants.MediaTypeJSON
+}
+
+// TestVerifyComplianceReportBundle_AcceptsPinnedDoctrineRecordConformanceSource
+// proves the pinned M4 doctrine record passes the whole bundle verification
+// offline: the source gate admits its bundled copy, replay verifies it to PASS,
+// and the importer reproduces the protected analysis.
+func TestVerifyComplianceReportBundle_AcceptsPinnedDoctrineRecordConformanceSource(t *testing.T) {
+	raw, runID := pinnedConformanceRecord(t)
+	bundle, reader, policy, verifiedAt := conformanceSignedBundleFixture(t, raw, runID, nil)
+
+	report, err := VerifyComplianceReportBundle(context.Background(), BundleVerificationRequest{Bundle: bundle, Reader: reader, TrustPolicy: policy, VerifiedAt: verifiedAt})
+
+	require.NoError(t, err)
+	assert.True(t, report.GetValid())
+	assert.Empty(t, report.GetFailures())
+	for _, check := range report.GetChecks() {
+		assert.Equal(t, compliancev1.VerificationCheckStatus_VERIFICATION_CHECK_STATUS_PASSED, check.GetStatus(), check.GetCheckId())
+	}
+}
+
+// TestVerifyComplianceReportBundle_RejectsPinnedDoctrineRecordWithFlippedByte
+// proves one flipped byte in the bundled record fails the conformance source at
+// replay, against the same bundle that otherwise passes.
+func TestVerifyComplianceReportBundle_RejectsPinnedDoctrineRecordWithFlippedByte(t *testing.T) {
+	raw, runID := pinnedConformanceRecord(t)
+	recordPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordFilename)
+	bundle, reader, policy, verifiedAt := conformanceSignedBundleFixture(t, raw, runID, func(bodies map[string][]byte) {
+		flipped := append([]byte(nil), bodies[recordPath]...)
+		flipped[len(flipped)/2] ^= 0x01
+		bodies[recordPath] = flipped
+	})
+
+	report, err := VerifyComplianceReportBundle(context.Background(), BundleVerificationRequest{Bundle: bundle, Reader: reader, TrustPolicy: policy, VerifiedAt: verifiedAt})
+
+	require.NoError(t, err)
+	assert.False(t, report.GetValid())
+	assertVerificationFailure(t, report, constants.ErrEvalRunVerificationFailed, conformanceVerificationBundlePath(runID))
 }

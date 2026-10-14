@@ -34,8 +34,8 @@ type VerifiedTransaction struct {
 	StateRoot                  string
 	Nonce                      string
 	ExpiresAt                  time.Time
-	L2Valid                    bool // Whether L2 signature was valid (may be false in Doctrine posture)
-	L3Valid                    bool // Whether L3 proof was valid (may be false in Doctrine/Consensus posture)
+	L2Status                   operatorv1.L2Status // Warden's L2 decision; L5 copies it into the receipt
+	L3Status                   operatorv1.L3Status // Warden's L3 decision; L5 copies it into the receipt
 	Posture                    GovernancePosture
 	DeterministicStageEvidence []*operatorv1.DeterministicStageEvidence
 }
@@ -180,9 +180,13 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 		return nil, constants.ErrTxInvalidEnvelope
 	}
 	verificationStart := governanceMonotonicNow()
+	// No posture-gated proof is evaluated before posture verification, so an early
+	// rejection records NOT_REQUIRED for both layers. verifyPosture replaces them.
 	rejected := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionType(envelope.ActionType),
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 	var stages []*operatorv1.DeterministicStageEvidence
 	reject := func(rejection error) (*VerifiedTransaction, error) {
@@ -332,9 +336,9 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 		return reject(err)
 	}
 	rejected.Posture = posture
-	l2Valid, l3Valid, postureStages, err := tv.verifyPosture(ctx, envelope, computedHash, posture)
-	rejected.L2Valid = l2Valid
-	rejected.L3Valid = l3Valid
+	l2Status, l3Status, postureStages, err := tv.verifyPosture(ctx, envelope, computedHash, posture)
+	rejected.L2Status = l2Status
+	rejected.L3Status = l3Status
 	if err != nil {
 		tv.logger.Error("Transaction rejected: POSTURE_VALIDATION_FAILED",
 			"nonce", envelope.Nonce,
@@ -369,8 +373,8 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 		StateRoot:                  envelope.StateMerkleRoot,
 		Nonce:                      envelope.Nonce,
 		ExpiresAt:                  expiresAt,
-		L2Valid:                    l2Valid,
-		L3Valid:                    l3Valid,
+		L2Status:                   l2Status,
+		L3Status:                   l3Status,
 		Posture:                    posture,
 		DeterministicStageEvidence: stages,
 	}, nil
@@ -591,10 +595,13 @@ func (tv *L4Warden) verifyStateful(ctx context.Context, envelope *govtypes.Gover
 	return nil
 }
 
-// verifyPosture performs governance posture-aware checks for L2 and L3.
-// L2 evidence is evaluated before L3, but it gates L3 verification only when
-// the active posture requires L2 consensus.
-func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (bool, bool, []*operatorv1.DeterministicStageEvidence, error) {
+// verifyPosture verifies the L2 and L3 proofs that posture gates and decides the
+// status each layer records. L2 is evaluated before L3, and L2 gates L3 only when
+// the active posture requires L2 consensus. Each stage outcome is derived from
+// its status through the same table ValidateDeterministicProtocolChain reads, so
+// a stage and the receipt status it is checked against cannot disagree.
+func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (operatorv1.L2Status, operatorv1.L3Status, []*operatorv1.DeterministicStageEvidence, error) {
+	actionType := constants.ActionType(envelope.ActionType)
 	l2Start := governanceMonotonicNow()
 	l2Valid, err := tv.verifyL2Posture(ctx, envelope, computedHash, posture)
 	if err != nil {
@@ -605,17 +612,16 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
 		)
 		l2Stage.L2SignatureDigest = l2SignatureDigest(envelope)
-		return false, false, []*operatorv1.DeterministicStageEvidence{l2Stage}, err
+		// L3 is not evaluated once L2 fails. Its status still follows its requirement,
+		// so a required L3 that was never verified is not recorded as satisfied.
+		return operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED, tv.l3StatusFor(actionType, posture, false), []*operatorv1.DeterministicStageEvidence{l2Stage}, err
 	}
-	l2Outcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED
-	if l2Valid {
-		l2Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED
-	}
+	l2Status := l2StatusFor(actionType, posture, l2Valid)
 	l2Stage := newDeterministicStageEvidence(
 		envelope,
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2,
 		l2Start,
-		l2Outcome,
+		deterministicL2StatusOutcome[l2Status],
 	)
 	l2Stage.L2SignatureDigest = l2SignatureDigest(envelope)
 
@@ -629,30 +635,49 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
 		)
 		l3Stage.L3SignatureDigest = humanSignatureDigest(envelope)
-		return l2Valid, false, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, err
+		return l2Status, operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, err
 	}
-	l3Outcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED
-	if l3Valid {
-		l3Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED
-	}
+	l3Status := tv.l3StatusFor(actionType, posture, l3Valid)
 	l3Stage := newDeterministicStageEvidence(
 		envelope,
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY,
 		l3Start,
-		l3Outcome,
+		deterministicL3StatusOutcome[l3Status],
 	)
 	l3Stage.L3SignatureDigest = humanSignatureDigest(envelope)
 
-	return l2Valid, l3Valid, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, nil
+	return l2Status, l3Status, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, nil
+}
+
+// l3Required reports whether posture gates this action on an L3 notary proof.
+// Only mutations are gated, and only under postures that require L3.
+func (tv *L4Warden) l3Required(actionType constants.ActionType, posture GovernancePosture) bool {
+	return tv.isMutation(actionType) && posture.RequiresL3Proof()
+}
+
+// l3StatusFor maps the L3 result of one envelope to the status its receipt
+// records. A valid proof is REQUIRED_VALID even where L3 is not required, because
+// its verified stage is recorded as audit evidence. A required proof that did not
+// verify is REQUIRED_FAILED. Everything else is NOT_REQUIRED.
+func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture GovernancePosture, valid bool) operatorv1.L3Status {
+	switch {
+	case valid:
+		return operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
+	case tv.l3Required(actionType, posture):
+		return operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED
+	default:
+		return operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
+	}
 }
 
 func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, posture GovernancePosture) (bool, error) {
 	actionType := constants.ActionType(envelope.ActionType)
+	required := tv.l3Required(actionType, posture)
 
 	hasProof := envelope.Governance != nil && envelope.Governance.L3 != nil && envelope.Governance.L3.Proof != nil
 
 	if !hasProof {
-		if tv.isMutation(actionType) && posture.RequiresL3Proof() {
+		if required {
 			tv.logger.Error("L3 proof missing but required by posture", "posture", posture.Name())
 			return false, constants.ErrTxL3ProofMissing
 		}
@@ -660,7 +685,7 @@ func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.Gove
 	}
 
 	if tv.l3Notary == nil {
-		if tv.isMutation(actionType) && posture.RequiresL3Proof() {
+		if required {
 			tv.logger.Error("L3 notary not configured but required by posture", "posture", posture.Name())
 			return false, constants.ErrTxL3NotaryNotConfigured
 		}
@@ -675,7 +700,7 @@ func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.Gove
 		envelope.Governance.L3.Proof,
 	)
 
-	if (err != nil || !ok) && tv.isMutation(actionType) && posture.RequiresL3Proof() {
+	if (err != nil || !ok) && required {
 		tv.logger.Error("Notary (L3Notary) verification failed but required by posture", string(constants.ConnectionStateError), err)
 		return false, constants.ErrTxL3ProofInvalid
 	}

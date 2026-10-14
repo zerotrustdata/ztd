@@ -87,7 +87,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Public publisher commands | `internal/cli/cmd/public/` | `./ztd public status`, `./ztd public publish --help` |
 | Disclosure validation | `internal/services/publicdisclosure/validator.go` | `./ztd test unit --pkg ./internal/services/publicdisclosure` |
 | Public spectator runtime | `internal/services/gateway/public_spectator_runtime.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestPublicSpectator` |
-| Evaluation verification | `internal/services/evaluation/` | `./ztd eval boundary verify`, `./ztd eval runs verify` |
+| Evaluation verification | `internal/services/evaluation/` | `./ztd eval runs verify` |
 
 ## Two Browser Modes
 
@@ -149,7 +149,7 @@ Only allowlisted fields and records cross into the public spectator feed.
 - **Verification Status**: Verification label, verification boundary, index-generation hash.
 - **Categorical Environment Labels**: Hardware class label, backend label, quantization policy.
 - **Bounded Diagnostic Detail**: `trajectory_outcome` (closed vocabulary), `guided_retry_count`, public failure sentence, `tools_declared`.
-- **Bounded Model Outputs (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts` (capped at 16 KiB, restricted-text rules enforced).
+- **Bounded Model Outputs (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts` (each text within the 256 KiB record bound, at most 8 role transcripts, restricted-text rules enforced).
 
 ### Prohibited Fields
 

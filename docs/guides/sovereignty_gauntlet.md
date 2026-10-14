@@ -25,7 +25,7 @@ do_not_use_for:
 
 ## Purpose
 
-This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.0.0.
+This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.0.6.
 
 In ztd, sovereignty is established through cryptographic verification at the local host execution boundary:
 - A model can request an action, but cannot directly execute mutations.
@@ -41,7 +41,7 @@ In ztd, sovereignty is established through cryptographic verification at the loc
   - [1. Compliance Pipeline (`ztd compliance`)](#1-compliance-pipeline-ztd-compliance)
   - [2. Evaluation Pipeline (`ztd eval`)](#2-evaluation-pipeline-ztd-eval)
 - [Verification Procedures](#verification-procedures)
-  - [Step 1: Verify Native Execution Boundary](#step-1-verify-native-execution-boundary)
+  - [Step 1: Verify Governance Conformance](#step-1-verify-governance-conformance)
   - [Step 2: Evaluate Key Security Indicators (KSIs)](#step-2-evaluate-key-security-indicators-ksis)
   - [Step 3: Validate Cross-Source Evidence Graph](#step-3-validate-cross-source-evidence-graph)
   - [Step 4: Generate and Verify Compliance Reports](#step-4-generate-and-verify-compliance-reports)
@@ -70,7 +70,7 @@ The `ztd compliance` command suite audits the live platform state against FedRAM
 
 ### 2. Evaluation Pipeline (`ztd eval`)
 
-The `ztd eval` command suite executes native boundary verification, manages model registries, qualifies model formations, and enforces witness attestation during evaluation campaigns.
+The `ztd eval` command suite executes governance conformance verification, manages model registries, qualifies model formations, and enforces witness attestation during evaluation campaigns.
 
 | Subcommand | Function |
 | :--- | :--- |
@@ -86,7 +86,7 @@ The `ztd eval` command suite executes native boundary verification, manages mode
 
 ## Verification Procedures
 
-### Step 1: Verify Native Execution Boundary
+### Step 1: Verify Governance Conformance
 
 Execute the model-independent governance conformance suite against a live native stack to confirm that L1–L5 policy enforcement, replay protection, nonce reservation, and signed receipt generation hold under test conditions. `./ztd eval conformance run --help` lists the start-up order and flags:
 
@@ -96,7 +96,7 @@ Execute the model-independent governance conformance suite against a live native
 
 `./ztd eval conformance verify --run <run-id>` recomputes a persisted run's verdicts offline from its stored record.
 
-The suite verdict must be `PASS`, or `INCOMPLETE` for an unattended run, with zero policy bypasses or unhandled execution exceptions.
+Run the suite once per posture, each on a fresh native stack started in that posture (`./ztd gw start --posture <posture>`, with the start-up order in `./ztd eval conformance run --help`), then aggregate the runs with `./ztd eval conformance report --run <run-id>`. The suite verdict must be `PASS`, or `INCOMPLETE` for an unattended run (its attended cases not run). A `FAIL` or `INVALID_EVIDENCE` verdict fails this step. The coverage cells, outcomes, and catalogue are defined in [Governance Conformance Suite](../architecture/evals.md#governance-conformance-suite).
 
 ### Step 2: Evaluate Key Security Indicators (KSIs)
 
@@ -154,7 +154,7 @@ When validating sovereignty across model inference, verify formation execution a
 Run a strict-witness verification on the resulting campaign run:
 
 ```bash
-./ztd eval runs verify <run-id> --coverage --require-witness --require-observation
+./ztd eval runs verify <run-id> --coverage --require-observation --require-provenance
 ```
 
 Verification requires:
@@ -169,11 +169,11 @@ Verification requires:
 
 A platform deployment achieves sovereignty and compliance acceptance only when:
 
-1. **Boundary Integrity**: `./ztd eval conformance run` exits zero with suite verdict `PASS`, or `INCOMPLETE` for an unattended run.
+1. **Governance Conformance**: each posture's `./ztd eval conformance run` exits zero with suite verdict `PASS`, or `INCOMPLETE` for an unattended run.
 2. **Indicator Compliance**: `./ztd compliance ksi` returns zero non-compliant indicators.
 3. **Graph Consistency**: `./ztd compliance evidence-graph` reports valid signature chains and state linkages across all participating nodes.
 4. **Report Verification**: `./ztd compliance report verify` validates the exported bundle's signatures against trusted signer keys.
-5. **Execution Witnessing**: Model evaluation runs verify with `--require-witness` and `--require-observation`.
+5. **Execution Witnessing**: Model evaluation runs verify with `--require-observation` and `--require-provenance`.
 
 ---
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // TestVerifyEnvelope_ReadsPostureFromEnvelope verifies that the warden reads
@@ -47,7 +48,7 @@ func TestVerifyEnvelope_ReadsPostureFromEnvelope(t *testing.T) {
 		verified, err := verifier.VerifyEnvelope(context.Background(), env)
 		assert.NoError(t, err)
 		assert.NotNil(t, verified)
-		assert.False(t, verified.L3Valid)
+		assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, verified.L3Status)
 		assert.Equal(t, "doctrine", verified.Posture.Name())
 	})
 }
@@ -68,7 +69,7 @@ func TestVerifyEnvelope_ReadOnlyNeedsNoL3UnderAnyPosture(t *testing.T) {
 
 			verified, err := verifier.VerifyEnvelope(context.Background(), env)
 			require.NoError(t, err)
-			assert.False(t, verified.L3Valid)
+			assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, verified.L3Status)
 			assert.Equal(t, posture, verified.Posture.Name())
 		})
 	}
@@ -115,8 +116,8 @@ func TestVerifyEnvelope_RatifyRequiresL3WithoutL2(t *testing.T) {
 			if !assert.NoError(t, err) || !assert.NotNil(t, verified) {
 				return
 			}
-			assert.False(t, verified.L2Valid)
-			assert.True(t, verified.L3Valid)
+			assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, verified.L2Status)
+			assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, verified.L3Status)
 			assert.Equal(t, "ratify", verified.Posture.Name())
 		})
 	}

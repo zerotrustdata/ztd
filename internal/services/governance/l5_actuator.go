@@ -148,7 +148,10 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 		return nil, err
 	}
 
-	receipt := w.buildInitialReceipt(ctx, vt)
+	receipt, err := w.buildInitialReceipt(ctx, vt)
+	if err != nil {
+		return nil, err
+	}
 
 	// The receipt and its commitment are persisted by one write, so both stages
 	// share its start.
@@ -275,7 +278,10 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 	if err != nil {
 		return nil, err
 	}
-	receipt := w.buildInitialReceipt(ctx, vt)
+	receipt, err := w.buildInitialReceipt(ctx, vt)
+	if err != nil {
+		return nil, err
+	}
 	receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 	receipt.ResultSummary = w.failedReceiptSummary("rejected", operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejection)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
@@ -297,33 +303,26 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 }
 
 // buildInitialReceipt constructs the EXECUTING-status receipt with state root and L2/L3 status.
-// Receipt evidence does not depend on the caller staying connected, so the
+// The L2 and L3 status are the Warden's decision, copied as decided. A transaction
+// that reaches L5 undecided is a programming error: no receipt is built and nothing
+// is signed. Receipt evidence does not depend on the caller staying connected, so the
 // state root read ignores ctx cancellation, as the receipt writes do.
-func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransaction) *operatorv1.ActionReceipt {
+func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransaction) (*operatorv1.ActionReceipt, error) {
+	if vt.L2Status == operatorv1.L2Status_L2_STATUS_UNSPECIFIED {
+		w.Logger.Error("Fail-closed: verified transaction has no L2 status", "message_id", vt.Envelope.Id)
+		return nil, fmt.Errorf("L5Actuator: L2 status undecided: %w", constants.ErrMissingRequiredField)
+	}
+	if vt.L3Status == operatorv1.L3Status_L3_STATUS_UNSPECIFIED {
+		w.Logger.Error("Fail-closed: verified transaction has no L3 status", "message_id", vt.Envelope.Id)
+		return nil, fmt.Errorf("L5Actuator: L3 status undecided: %w", constants.ErrMissingRequiredField)
+	}
+
 	stateBefore := ""
 	if w.StateRootProvider != nil {
 		var err error
 		stateBefore, err = w.StateRootProvider.GetCurrentStateRoot(context.WithoutCancel(ctx))
 		if err != nil {
 			w.Logger.Warn("Failed to get state root before execution", string(constants.ConnectionStateError), err)
-		}
-	}
-
-	l2Status := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
-	if vt.Posture != nil && vt.Posture.RequiresL2Signature() {
-		if vt.L2Valid {
-			l2Status = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
-		} else {
-			l2Status = operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED
-		}
-	}
-
-	l3Status := operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
-	if vt.Posture != nil && vt.Posture.RequiresL3Proof() {
-		if vt.L3Valid {
-			l3Status = operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
-		} else {
-			l3Status = operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED
 		}
 	}
 
@@ -346,10 +345,10 @@ func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransa
 		StateRootBefore:            stateBefore,
 		ExecutedAtUnixMs:           time.Now().UnixMilli(),
 		SignerKeyId:                w.KeyID,
-		L2Status:                   l2Status,
-		L3Status:                   l3Status,
+		L2Status:                   vt.L2Status,
+		L3Status:                   vt.L3Status,
 		DeterministicStageEvidence: stages,
-	}
+	}, nil
 }
 
 // signAndLogReceipt signs the initial receipt and persists it. With an audit

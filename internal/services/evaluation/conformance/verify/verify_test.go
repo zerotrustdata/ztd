@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/canary"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/conformancetest"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance/doctrinecorpus"
@@ -858,4 +859,132 @@ func (f *fixture) verifyPersisted(raw []byte, digestHex string) (*evalv1.Conform
 func sha256Hex(raw []byte) string {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// doctrineRecordRunID is the run the pinned doctrine record came from.
+const (
+	doctrineRecordRunID = "fb0d6851-a5ff-4466-a19c-c882eb27aaf3"
+	pinnedCaseID        = "r01-none-direct-doctrine"
+	statusPass          = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+)
+
+// pinnedDoctrineRecord decodes the pinned live doctrine record and returns it with
+// its canonical bytes and the sidecar digest.
+func pinnedDoctrineRecord(t *testing.T) (*evalv1.ConformanceRunRecord, []byte, string) {
+	t.Helper()
+	raw, digest := conformancetest.DoctrineRecord(t)
+	record := &evalv1.ConformanceRunRecord{}
+	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
+	return record, raw, digest
+}
+
+// reencodePinnedRecord canonically re-encodes a mutated record and returns the
+// bytes with their recomputed digest, so verification reaches the per-case checks
+// instead of the digest check.
+func reencodePinnedRecord(t *testing.T, record *evalv1.ConformanceRunRecord) ([]byte, string) {
+	t.Helper()
+	raw, err := evalv1.MarshalCanonical(record)
+	require.NoError(t, err)
+	return raw, sha256Hex(raw)
+}
+
+// assertOnlyCaseNotPass fails unless caseID is the one verdict that is not PASS.
+func assertOnlyCaseNotPass(t *testing.T, set *evalv1.ConformanceVerdictSet, caseID string) {
+	t.Helper()
+	for _, v := range set.GetVerdicts() {
+		if v.GetCaseId() == caseID {
+			assert.NotEqual(t, statusPass, v.GetStatus(), "case %s is the mutated case", caseID)
+			continue
+		}
+		assert.Equal(t, statusPass, v.GetStatus(), "case %s was not mutated", v.GetCaseId())
+	}
+}
+
+func TestVerifyPersistedPinnedDoctrineRecordIsPass(t *testing.T) {
+	record, raw, digest := pinnedDoctrineRecord(t)
+	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
+	require.NoError(t, err)
+	reencoded, err := evalv1.MarshalCanonical(record)
+	require.NoError(t, err)
+	require.Equal(t, raw, reencoded, "the pinned bytes are the canonical encoding of the record")
+
+	set, err := VerifyPersisted(raw, digest)
+	require.NoError(t, err)
+
+	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS, set.GetSuiteVerdict())
+	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, set.GetPosture())
+	assert.Equal(t, doctrineRecordRunID, set.GetRunId())
+	require.Len(t, set.GetVerdicts(), len(applicable), "one verdict per doctrine case in the catalogue")
+	for _, v := range set.GetVerdicts() {
+		assert.Equal(t, statusPass, v.GetStatus(), v.GetCaseId())
+		assert.Equal(t, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNSPECIFIED, v.GetFailureClass(), v.GetCaseId())
+	}
+}
+
+func TestVerifyPersistedPinnedDoctrineRecordFlippedReceiptSignatureIsInvalidEvidenceForItsCase(t *testing.T) {
+	record, _, _ := pinnedDoctrineRecord(t)
+	receipt := caseEvidence(t, record, pinnedCaseID).GetSentinelBefore()
+	sig := []byte(receipt.GetSignature())
+	sig[0] = flipHexDigit(sig[0])
+	receipt.Signature = string(sig)
+	raw, digest := reencodePinnedRecord(t, record)
+
+	set, err := VerifyPersisted(raw, digest)
+	require.NoError(t, err)
+
+	assert.Equal(t, suiteInvalid, set.GetSuiteVerdict())
+	v := verdictOf(t, set, pinnedCaseID)
+	assert.Equal(t, statusInvalid, v.GetStatus())
+	assert.Equal(t, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID, v.GetFailureClass())
+	assertOnlyCaseNotPass(t, set, pinnedCaseID)
+}
+
+func TestVerifyPersistedPinnedDoctrineRecordChangedTargetPathIsTargetMismatch(t *testing.T) {
+	record, _, _ := pinnedDoctrineRecord(t)
+	ev := caseEvidence(t, record, pinnedCaseID)
+	ev.TargetPath = "eval/targets/conformance-" + doctrineRecordRunID + "/" + ev.GetTargetPath()
+	raw, digest := reencodePinnedRecord(t, record)
+
+	set, err := VerifyPersisted(raw, digest)
+	require.NoError(t, err)
+
+	assert.Equal(t, suiteInvalid, set.GetSuiteVerdict())
+	v := verdictOf(t, set, pinnedCaseID)
+	assert.Equal(t, statusInvalid, v.GetStatus())
+	assert.Equal(t, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH, v.GetFailureClass())
+	assertOnlyCaseNotPass(t, set, pinnedCaseID)
+}
+
+func TestVerifyPersistedPinnedDoctrineRecordWithOneCaseRemovedIsNotPass(t *testing.T) {
+	record, _, _ := pinnedDoctrineRecord(t)
+	var kept []*evalv1.ConformanceCaseEvidence
+	for _, ev := range record.GetCases() {
+		if ev.GetCaseId() != pinnedCaseID {
+			kept = append(kept, ev)
+		}
+	}
+	require.Len(t, kept, len(record.GetCases())-1, "the removed case is in the pinned record")
+	record.Cases = kept
+	raw, digest := reencodePinnedRecord(t, record)
+
+	set, err := VerifyPersisted(raw, digest)
+	require.NoError(t, err)
+
+	assert.Equal(t, suiteInvalid, set.GetSuiteVerdict(), "a record missing a catalogue case is not evidence of a PASS")
+	assert.Equal(t, doctrineRecordRunID, set.GetRunId())
+	assert.Empty(t, set.GetVerdicts())
+}
+
+func TestVerifyPersistedPinnedDoctrineRecordByteFlipWithoutRecomputedDigestIsDigestMismatch(t *testing.T) {
+	_, raw, digest := pinnedDoctrineRecord(t)
+	flipped := append([]byte(nil), raw...)
+	flipped[len(flipped)/2] ^= 0x01
+
+	set, err := VerifyPersisted(flipped, digest)
+	require.NoError(t, err)
+
+	assert.Equal(t, suiteInvalid, set.GetSuiteVerdict())
+	require.Len(t, set.GetVerdicts(), 1)
+	assert.Empty(t, set.GetVerdicts()[0].GetCaseId())
+	assert.Equal(t, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH, set.GetVerdicts()[0].GetFailureClass())
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/stretchr/testify/assert"
@@ -37,8 +38,8 @@ func TestL4Warden_Consensus_ValidNonMutationPasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected verification to pass, got %v", err)
 	}
-	if !verified.L2Valid {
-		t.Fatalf("expected L2Valid=true under consensus with valid L2")
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+		t.Fatalf("expected L2 status REQUIRED_VALID under consensus with valid L2, got %s", verified.L2Status)
 	}
 }
 
@@ -56,8 +57,8 @@ func TestL4Warden_Consensus_ValidMutationPassesWithoutL3(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected mutation to pass under consensus without L3, got %v", err)
 	}
-	if verified.L3Valid {
-		t.Fatalf("expected L3Valid=false with no L3 proof")
+	if verified.L3Status != operatorv1.L3Status_L3_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L3 status NOT_REQUIRED with no L3 proof under consensus, got %s", verified.L3Status)
 	}
 }
 
@@ -147,8 +148,8 @@ func TestL4Warden_Consensus_BootstrapActionPassesWithoutL2(t *testing.T) {
 			if verified == nil {
 				t.Fatalf("verified transaction is nil for bootstrap action %s", actionType)
 			}
-			if verified.L2Valid {
-				t.Fatalf("expected L2Valid=false for bootstrap action %s with no L2 votes", actionType)
+			if verified.L2Status != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+				t.Fatalf("expected L2 status NOT_REQUIRED for bootstrap action %s with no L2 votes, got %s", actionType, verified.L2Status)
 			}
 		})
 	}
@@ -176,8 +177,8 @@ func TestL4Warden_Consensus_BootstrapActionWithInvalidL2StillPasses(t *testing.T
 	if verified == nil {
 		t.Fatalf("verified transaction is nil")
 	}
-	if verified.L2Valid {
-		t.Fatalf("expected L2Valid=false for bootstrap action with invalid L2 votes")
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L2 status NOT_REQUIRED for bootstrap action with invalid L2 votes, got %s", verified.L2Status)
 	}
 }
 
@@ -312,7 +313,7 @@ func TestL4Warden_L2VerifiesAgainstEnrollmentBundleTrust(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected verification to pass, got %v", err)
 			}
-			assert.True(t, verified.L2Valid)
+			assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, verified.L2Status)
 		})
 	}
 }
@@ -423,7 +424,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 		verifier *L4Warden
 		env      *govtypes.GovernanceEnvelope
 		wantErr  error
-		wantL2   bool
+		wantL2   operatorv1.L2Status
 	}{
 		{
 			name:     "2-of-2 quorum pass",
@@ -438,7 +439,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				return env
 			}(),
 			wantErr: nil,
-			wantL2:  true,
+			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_VALID,
 		},
 		{
 			name:     "1 valid of quorum-2 fails",
@@ -452,7 +453,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				return env
 			}(),
 			wantErr: ErrL2QuorumNotMet,
-			wantL2:  false,
+			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 		{
 			name:     "duplicate signer with require_distinct",
@@ -467,7 +468,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				return env
 			}(),
 			wantErr: ErrL2DuplicateSigner,
-			wantL2:  false,
+			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 		{
 			name:     "false vote does not count toward quorum",
@@ -482,7 +483,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				return env
 			}(),
 			wantErr: ErrL2QuorumNotMet,
-			wantL2:  false,
+			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 		{
 			// INV-CON-WARD-06: an enrolled member whose trusted signer cannot be
@@ -499,14 +500,14 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				return env
 			}(),
 			wantErr: ErrL2SignatureInvalid,
-			wantL2:  false,
+			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 		{
 			name:     "empty votes under consensus posture",
 			verifier: makeVerifier(allSigners, map[string]*models.ConsensusPolicy{"consensus-1": enabledConsensus2of2}),
 			env:      buildEnv("emptyvotes", "consensus-1", []*commonv1.L2Vote{}),
 			wantErr:  ErrL2SignatureMissing,
-			wantL2:   false,
+			wantL2:   operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 		{
 			name:     "disabled consensus policy",
@@ -521,7 +522,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				return env
 			}(),
 			wantErr: ErrL2ConsensusSetUnknown,
-			wantL2:  false,
+			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 		{
 			name:     "unknown consensus ID",
@@ -536,7 +537,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				return env
 			}(),
 			wantErr: ErrL2ConsensusSetUnknown,
-			wantL2:  false,
+			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 	}
 
@@ -550,7 +551,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			if verified != nil {
-				assert.Equal(t, tc.wantL2, verified.L2Valid)
+				assert.Equal(t, tc.wantL2, verified.L2Status)
 			}
 		})
 	}

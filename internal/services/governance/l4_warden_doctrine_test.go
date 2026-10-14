@@ -54,11 +54,11 @@ func TestL4Warden_Doctrine_ValidMutationPassesWithoutL2L3(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected mutation to pass under doctrine without L2/L3, got %v", err)
 	}
-	if verified.L2Valid {
-		t.Fatalf("expected L2Valid=false under doctrine with no L2 proof")
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L2 status NOT_REQUIRED under doctrine with no L2 proof, got %s", verified.L2Status)
 	}
-	if verified.L3Valid {
-		t.Fatalf("expected L3Valid=false under doctrine with no L3 proof")
+	if verified.L3Status != operatorv1.L3Status_L3_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L3 status NOT_REQUIRED under doctrine with no L3 proof, got %s", verified.L3Status)
 	}
 }
 
@@ -109,8 +109,8 @@ func TestL4Warden_Doctrine_MissingL2DoesNotReject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected non-mutation to pass under doctrine without L2, got %v", err)
 	}
-	if verified.L2Valid {
-		t.Fatalf("expected L2Valid=false with no L2 proof")
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L2 status NOT_REQUIRED with no L2 proof, got %s", verified.L2Status)
 	}
 }
 
@@ -127,8 +127,8 @@ func TestL4Warden_Doctrine_MissingL3DoesNotReject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected mutation to pass under doctrine without L3, got %v", err)
 	}
-	if verified.L3Valid {
-		t.Fatalf("expected L3Valid=false with no L3 proof")
+	if verified.L3Status != operatorv1.L3Status_L3_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L3 status NOT_REQUIRED with no L3 proof, got %s", verified.L3Status)
 	}
 }
 

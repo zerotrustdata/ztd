@@ -120,7 +120,7 @@ func (i *CampaignImporter) Import(ctx context.Context) ([]complianceevidence.Evi
 		SchemaRef:          "ztd.eval.v1.EvaluationVerificationReport",
 		ProducerIdentity:   constants.CampaignVerifierID,
 		ProducedAt:         verifiedAt,
-		ScopeID:            constants.EvalScopePrefix + result.Run.GetCampaignBinding().GetCampaignId(),
+		ScopeID:            complianceevidence.EvalScopeID(result.Run.GetCampaignBinding().GetCampaignId()),
 		RunID:              i.runID,
 		VerificationStatus: complianceevidence.VerificationStatusVerified,
 		VerifierID:         constants.CampaignVerifierID,
