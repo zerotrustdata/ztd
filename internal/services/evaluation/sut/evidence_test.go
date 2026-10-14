@@ -67,11 +67,9 @@ func (f *evidenceFixture) opts(transactionID string) oracletest.ReceiptOpts {
 
 // link signs an execution whose commitment link is prior -> hash, and stores it
 // where the receipt source finds it by transaction id.
-func (f *evidenceFixture) link(transactionID, prior, hash string) *operatorv1.ActionReceipt {
+func (f *evidenceFixture) link(transactionID, prior, hash string) {
 	f.t.Helper()
-	receipt := f.signer.Executed(f.t, f.opts(transactionID), prior, hash)
-	f.receipts.byID[transactionID] = receipt
-	return receipt
+	f.receipts.byID[transactionID] = f.signer.Executed(f.t, f.opts(transactionID), prior, hash)
 }
 
 // sentinel signs an execution for one bracketing sentinel read. The receipt

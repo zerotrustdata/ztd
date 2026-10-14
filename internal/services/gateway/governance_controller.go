@@ -418,7 +418,7 @@ func envelopeErrorCode(err error) (int, error) {
 			return http.StatusServiceUnavailable, sentinel
 		}
 	}
-	if sentinel, code := governance.GovernanceRejectionSentinel(err); sentinel != nil {
+	if code, sentinel := governance.GovernanceRejectionSentinel(err); sentinel != nil {
 		switch code {
 		case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED,
 			operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED:

@@ -57,7 +57,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | Gateway start command and flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Operator list/bind/run/stop commands | `internal/cli/cmd/operator/operator.go` | `./ztd operator --help` |
 | Vault administration | `internal/cli/cmd/vault/` | `./ztd vault --help` |
-| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.0.6` | `go get github.com/zerotrustdata/ztd@v1.0.6` |
+| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.1.0` | `go get github.com/zerotrustdata/ztd@v1.1.0` |
 
 ## Procedures
 

@@ -886,8 +886,8 @@ harness-clean:
 GW_LISTEN_ARGS :=
 # One-command first run: build if needed, start or reuse the Gateway, sign in
 # headless, and dispatch a first governed action. Safe to rerun. QUICKSTART_ARGS
-# carries quickstart options, for example
-#   make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'
+# carries quickstart options: gw start flags go after `--`, for example
+#   make quickstart QUICKSTART_ARGS='-- --log info'
 .PHONY: quickstart
 quickstart:
 	@bash scripts/quickstart.sh $(QUICKSTART_ARGS)

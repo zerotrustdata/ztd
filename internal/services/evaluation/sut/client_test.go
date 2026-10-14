@@ -332,8 +332,9 @@ func progressEvent(attemptID string) *evalv1.ScoredTurnEvent {
 	return &evalv1.ScoredTurnEvent{AttemptId: attemptID, Kind: evalv1.ScoredTurnEventKind_SCORED_TURN_EVENT_KIND_PROGRESS, Detail: "tool call"}
 }
 
-func terminalEvent(attemptID string) *evalv1.ScoredTurnEvent {
-	return &evalv1.ScoredTurnEvent{AttemptId: attemptID, Kind: evalv1.ScoredTurnEventKind_SCORED_TURN_EVENT_KIND_TERMINAL}
+// terminalEvent is the terminal event of the test attempt.
+func terminalEvent() *evalv1.ScoredTurnEvent {
+	return &evalv1.ScoredTurnEvent{AttemptId: testAttemptID, Kind: evalv1.ScoredTurnEventKind_SCORED_TURN_EVENT_KIND_TERMINAL}
 }
 
 // validTrace is a stopped trace for the test attempt that claims the given ids.
@@ -358,7 +359,7 @@ func TestRunTurnPostsAfterStreamConnectsAndContainsClaimedBracket(t *testing.T) 
 	f.link("tx-1", "h-before", "h-1")
 	f.link("tx-2", "h-1", "h-2")
 	rig.sentinel.receipts = []*operatorv1.ActionReceipt{before, after}
-	rig.sut.events = []*evalv1.ScoredTurnEvent{progressEvent(testAttemptID), terminalEvent(testAttemptID)}
+	rig.sut.events = []*evalv1.ScoredTurnEvent{progressEvent(testAttemptID), terminalEvent()}
 	rig.sut.trace = validTrace("tx-1", "tx-2")
 	rig.client.now = steppingClock(time.Unix(1_700_000_000, 0), time.Unix(1_700_000_000, 0).Add(250*time.Millisecond))
 
@@ -383,7 +384,7 @@ func TestRunTurnPostsAfterStreamConnectsAndContainsClaimedBracket(t *testing.T) 
 func TestRunTurnIgnoresStreamEventsAfterTerminal(t *testing.T) {
 	rig := newTurnRig(t)
 	rig.emptyBracket()
-	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent(testAttemptID), progressEvent("attempt-other")}
+	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent(), progressEvent("attempt-other")}
 	rig.sut.trace = validTrace()
 
 	turn, err := rig.client.RunTurn(context.Background(), turnRequest(), rig.fixture.op)
@@ -518,7 +519,7 @@ func TestRunTurnRejectsTraceForAnotherAttemptDuplicateClaimsAndUnspecifiedFinish
 		t.Run(tc.name, func(t *testing.T) {
 			rig := newTurnRig(t)
 			rig.emptyBracket()
-			rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent(testAttemptID)}
+			rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent()}
 			trace := validTrace()
 			tc.mutate(trace)
 			rig.sut.trace = trace
@@ -534,7 +535,7 @@ func TestRunTurnRejectsTraceForAnotherAttemptDuplicateClaimsAndUnspecifiedFinish
 func TestRunTurnRejectsUndecodableTraceBody(t *testing.T) {
 	rig := newTurnRig(t)
 	rig.emptyBracket()
-	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent(testAttemptID)}
+	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent()}
 	rig.sut.traceBody = []byte("not a trace")
 
 	_, err := rig.client.RunTurn(context.Background(), turnRequest(), rig.fixture.op)
@@ -545,7 +546,7 @@ func TestRunTurnRejectsUndecodableTraceBody(t *testing.T) {
 func TestRunTurnFailsWhenTraceFetchIsRefused(t *testing.T) {
 	rig := newTurnRig(t)
 	rig.emptyBracket()
-	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent(testAttemptID)}
+	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent()}
 	rig.sut.traceStatus = http.StatusNotFound
 
 	_, err := rig.client.RunTurn(context.Background(), turnRequest(), rig.fixture.op)
@@ -619,7 +620,7 @@ func TestRunTurnReturnsNoGradeWhenAfterSentinelFails(t *testing.T) {
 	rig := newTurnRig(t)
 	rig.emptyBracket()
 	rig.sentinel.errs = []error{nil, fmt.Errorf("after sentinel submit failed")}
-	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent(testAttemptID)}
+	rig.sut.events = []*evalv1.ScoredTurnEvent{terminalEvent()}
 	rig.sut.trace = validTrace()
 
 	turn, err := rig.client.RunTurn(context.Background(), turnRequest(), rig.fixture.op)

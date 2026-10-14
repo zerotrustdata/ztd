@@ -35,8 +35,8 @@ type evidenceLedger struct {
 	seq        int
 }
 
-func newEvidenceLedger(t testing.TB, signer oracletest.Signer, operatorID string) *evidenceLedger {
-	return &evidenceLedger{t: t, signer: signer, operatorID: operatorID, head: "h-0"}
+func newEvidenceLedger(t testing.TB, signer oracletest.Signer) *evidenceLedger {
+	return &evidenceLedger{t: t, signer: signer, operatorID: evidenceOperatorID, head: "h-0"}
 }
 
 func (l *evidenceLedger) opts(txID, actionType string) oracletest.ReceiptOpts {
@@ -65,7 +65,7 @@ func (l *evidenceLedger) rejected(txID, actionType string) *operatorv1.ActionRec
 func validEvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	t.Helper()
 	signer := oracletest.NewSigner(t)
-	ledger := newEvidenceLedger(t, signer, evidenceOperatorID)
+	ledger := newEvidenceLedger(t, signer)
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	executed := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
 	rejected := ledger.rejected("tx-2", string(constants.ActionTypeExecuteBash))
@@ -178,7 +178,7 @@ func TestVerifyAgentTraceEvidence_RejectsExecutedReceiptOnCallRecordedAsDeny(t *
 
 func TestVerifyAgentTraceEvidence_RejectsUnclaimedExecutionBetweenSentinels(t *testing.T) {
 	signer := oracletest.NewSigner(t)
-	ledger := newEvidenceLedger(t, signer, evidenceOperatorID)
+	ledger := newEvidenceLedger(t, signer)
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	claimed := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
 	_ = ledger.executed("tx-unclaimed", string(constants.ActionTypeExecuteBash))
@@ -201,7 +201,7 @@ func TestVerifyAgentTraceEvidence_RejectsUnclaimedExecutionBetweenSentinels(t *t
 
 func TestVerifyAgentTraceEvidence_RejectsClaimedCallsSwappedInTraceAsLedgerGap(t *testing.T) {
 	signer := oracletest.NewSigner(t)
-	ledger := newEvidenceLedger(t, signer, evidenceOperatorID)
+	ledger := newEvidenceLedger(t, signer)
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	first := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
 	second := ledger.executed("tx-2", string(constants.ActionTypeExecuteBash))

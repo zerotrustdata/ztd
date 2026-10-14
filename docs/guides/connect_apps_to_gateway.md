@@ -4,7 +4,7 @@ title: Connect Apps to Gateway
 audience: application developers and system integrators
 status: current
 version: v1.0.0
-last_updated: 2026-10-12
+last_updated: 2026-10-14
 owners:
   - docs/guides/connect_apps_to_gateway.md
   - internal/services/gateway/
@@ -53,7 +53,7 @@ Port mixing is prohibited. The Gateway fails startup if the HTTP and HTTPS surfa
 
 ## Connectivity Methods
 
-> **Identity keys are sealed.** The CLI key, each app key, and the pending enrollment state under `.ztd/` are sealed under the keystore master key (`--master-key-file` or the OS key store). No PEM private key exists on disk, so no external process, `curl`, or SDK can read them. `ztd` unseals them in process: use `ztd` commands for Gateway requests, and put `ztd mcp stdio` (add `--app <name>` for an app identity) in front of any MCP client. A missing or locked master key fails closed, and a plaintext key file at a sealed path is refused with `ErrIdentityFilePlaintext`. See `docs/architecture/encryption.md` (`INV-ENC-STORE-06`).
+> **Identity keys are sealed.** The CLI key, each app key, and the pending enrollment state under `.ztd/` are sealed under the keystore master key (the OS key store, or an ssh-agent on Linux hosts without one). No PEM private key exists on disk, so no external process, `curl`, or SDK can read them. `ztd` unseals them in process: use `ztd` commands for Gateway requests, and put `ztd mcp stdio` (add `--app <name>` for an app identity) in front of any MCP client. A missing or locked master key fails closed, and a plaintext key file at a sealed path is refused with `ErrIdentityFilePlaintext`. See `docs/architecture/encryption.md` (`INV-ENC-STORE-06`).
 >
 > The HTTP sections below document the wire contract as method, path, and body. Every HTTPS request authenticates with an mTLS client certificate chained to the Gateway CA bundle (`.ztd/pki/trust/ztdg-ca-bundle.pem`); the private key for that certificate must be held by the client process that makes the call.
 

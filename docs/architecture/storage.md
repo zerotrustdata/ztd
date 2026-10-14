@@ -4,7 +4,7 @@ title: Storage Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.0.0
-last_updated: 2026-10-12
+last_updated: 2026-10-14
 owners:
   - internal/services/storage/
   - internal/constants/paths.go
@@ -235,9 +235,8 @@ The runtime tree never holds the master key in plaintext. Where the master key l
 | Secret Service (Linux), Keychain (macOS) | OS keyring, outside the runtime tree | None |
 | ssh-agent seal (Linux) | `.ztd/secrets/.master_key.ssh-agent` | Ciphertext under a key derived from an SSH-agent signature; opens only with the same SSH private key in a trusted agent |
 | DPAPI (Windows) | `.ztd/secrets/.master_key.dpapi` | DPAPI ciphertext; opens only for the same Windows user on the same machine |
-| External file (`--master-key-file`) | Operator-provisioned path outside the runtime root | None; ztd reads the file and never writes, copies, or deletes it |
 
-Copying, backing up, or exfiltrating `.ztd/` therefore yields only ciphertext. The hidden `.master_key.*` names are reserved; secret names cannot be hidden, so no secret operation can touch the seals. Backend selection, sealing, and the external-file checks are owned by [Encryption Architecture](./encryption.md#master-key-and-keyring-providers).
+Copying, backing up, or exfiltrating `.ztd/` therefore yields only ciphertext. The hidden `.master_key.*` names are reserved; secret names cannot be hidden, so no secret operation can touch the seals. Backend selection and sealing are owned by [Encryption Architecture](./encryption.md#master-key-and-keyring-providers). A Gateway initialized on v1.0.x with the removed master key file must be recreated; see [Upgrading a v1.0.x Gateway](./encryption.md#upgrading-a-v10x-gateway).
 
 ## Retention and Maintenance
 

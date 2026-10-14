@@ -24,7 +24,7 @@ func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing
 	trace, _ := validEvidenceTrace(t)
 	// <, > and & are escaped by encoding/json inside nested canonical bytes; the
 	// round trip must survive that.
-	trace.ToolCalls[0].Receipt.ActionReceipt.ResultSummary = "2>&1 <out> & done"
+	trace.ToolCalls[0].Receipt.ResultSummary = "2>&1 <out> & done"
 
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)

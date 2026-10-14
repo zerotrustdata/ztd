@@ -116,11 +116,14 @@ func attendedCase(fault cases.Fault) cases.Attempt {
 	return a
 }
 
+// suspendedTxHash is the transaction suspendedDriven reports as held for approval.
+const suspendedTxHash = "tx-hash-1"
+
 // suspendedDriven is the inner answer for a call the Gateway suspended.
-func suspendedDriven(txHash string) cases.Driven {
+func suspendedDriven() cases.Driven {
 	return cases.Driven{Observations: []*evalv1.ConformanceObservation{{
 		Kind:            evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED,
-		SuspendedTxHash: txHash,
+		SuspendedTxHash: suspendedTxHash,
 	}}}
 }
 
@@ -229,7 +232,7 @@ func TestAttendedInnerErrorIsWrappedAndNoWait(t *testing.T) {
 // without a stream to report the decision.
 func TestAttendedSubscribeErrorSubmitsNothing(t *testing.T) {
 	errSubscribe := errors.New("approval subscription: connect: refused")
-	inner := &fakeDriver{driven: suspendedDriven("tx-hash-1")}
+	inner := &fakeDriver{driven: suspendedDriven()}
 	fa := &fakeApprovals{subscribeErr: errSubscribe}
 
 	driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), attendedCase(cases.FaultAttendedApprove))
@@ -251,7 +254,7 @@ func TestAttendedStreamOrderAndCloseOnEveryPath(t *testing.T) {
 	}{
 		{
 			name:  "approve",
-			inner: suspendedDriven("tx-hash-1"),
+			inner: suspendedDriven(),
 			want:  []string{"subscribe", "drive", "wait", "close"},
 		},
 		{
@@ -266,7 +269,7 @@ func TestAttendedStreamOrderAndCloseOnEveryPath(t *testing.T) {
 		},
 		{
 			name:    "wait error",
-			inner:   suspendedDriven("tx-hash-1"),
+			inner:   suspendedDriven(),
 			waitErr: errors.New("approval wait: sse closed"),
 			want:    []string{"subscribe", "drive", "wait", "close"},
 		},
@@ -294,7 +297,7 @@ func TestAttendedApproveReturnsOneReceipt(t *testing.T) {
 	}
 	innerCalls := []*evalv1.ConformanceA2ACall{{SkillName: "ztd-conformance"}}
 	inner := &fakeDriver{driven: cases.Driven{
-		Observations: suspendedDriven("tx-hash-1").Observations,
+		Observations: suspendedDriven().Observations,
 		A2ACalls:     innerCalls,
 	}}
 	fa := &fakeApprovals{receipt: receipt}
@@ -327,7 +330,7 @@ func TestAttendedDenyReturnsSignedRejection(t *testing.T) {
 		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
 		Signature:       "sig-deny",
 	}
-	inner := &fakeDriver{driven: suspendedDriven("tx-hash-1")}
+	inner := &fakeDriver{driven: suspendedDriven()}
 	fa := &fakeApprovals{receipt: receipt}
 
 	driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), attendedCase(cases.FaultAttendedDeny))
@@ -346,7 +349,7 @@ func TestAttendedDenyReturnsSignedRejection(t *testing.T) {
 // with the cause kept, and no observation is reported for it.
 func TestAttendedWaitErrorIsReturned(t *testing.T) {
 	errWait := errors.New("approval wait: sse closed")
-	inner := &fakeDriver{driven: suspendedDriven("tx-hash-1")}
+	inner := &fakeDriver{driven: suspendedDriven()}
 	fa := &fakeApprovals{waitErr: errWait}
 
 	driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), attendedCase(cases.FaultAttendedApprove))

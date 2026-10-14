@@ -11,7 +11,7 @@ const DOC_NAV = [
   { id: 'purpose', label: 'Purpose' },
   { id: 'programs', label: 'Programs' },
   { id: 'commands', label: 'CLI' },
-  { id: 'boundary', label: 'Native boundary' },
+  { id: 'conformance', label: 'Conformance' },
   { id: 'suites', label: 'Suites' },
   { id: 'campaigns', label: 'Campaigns' },
   { id: 'scenarios', label: 'Scenarios & grading' },
@@ -22,7 +22,7 @@ const DOC_NAV = [
 ] as const;
 
 const CLI_GROUPS = [
-  ['boundary', 'Run, list, show, and verify native execution-boundary suites'],
+  ['conformance', 'Run, verify offline, and report the governance conformance suite'],
   ['models', 'Manage the model catalog and registry; pull and freeze provider inventory'],
   ['suites', 'List, show, export, create, update, and delete scenario suites'],
   ['campaigns', 'Freeze, inspect, assert release identity, and archive campaigns'],
@@ -243,7 +243,7 @@ export function MethodologyView() {
             <p className="docs-eyebrow">Architecture guide</p>
             <h3>Governed execution, real inference, verifiable evidence.</h3>
             <p>
-              ztd has two evaluation programs: a native execution-boundary suite and model campaigns.
+              ztd has two evaluation programs: the governance conformance suite and model campaigns.
               They exercise the Gateway and Operator trust boundary, then persist canonical,
               content-addressed evidence that can be verified without running scored work again.
             </p>
@@ -258,11 +258,11 @@ export function MethodologyView() {
         <DocsSection id="programs" title="Two programs, separate execution paths">
           <div className="docs-program-grid">
             <article className="panel docs-program-card">
-              <div className="docs-program-head"><span>01</span><code>core-execution-boundary@1.0.0</code></div>
-              <h3>Native execution boundary</h3>
-              <p>Proves that one allowed governed mutation succeeds and its doctrine-prohibited equivalent fails closed through the same authenticated Gateway and remote Data Operator path.</p>
+              <div className="docs-program-head"><span>01</span><code>governance-conformance@1.0.0</code></div>
+              <h3>Governance conformance</h3>
+              <p>Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator&apos;s signed receipts and no unclaimed side effect.</p>
               <dl>
-                <div><dt>Uses</dt><dd>Gateway policy admission, Operator execution, signed receipts, and an independent networkless target reader.</dd></div>
+                <div><dt>Uses</dt><dd>Live Gateway and Operator runtimes, signed receipts verified against enrollment-bound keys, a canary file set, and the Operator commitment ledger.</dd></div>
                 <div><dt>Excludes</dt><dd>Model providers, model judges, campaigns, scheduling, and synthetic simulators.</dd></div>
               </dl>
             </article>
@@ -295,22 +295,22 @@ export function MethodologyView() {
           </DocsCard>
         </DocsSection>
 
-        <DocsSection id="boundary" title="Native execution-boundary suite">
-          <DocsCard title="One allowed action, one prohibited equivalent">
-            <p>The suite requires doctrine posture and selects the single dedicated Data Operator, falling back to the Gateway&apos;s embedded Data Operator; several dedicated Data Operators fail closed. The allowed attempt writes a run-specific marker through authenticated Gateway command ingress. The equivalent prohibited attempt takes the same route and must be rejected by L1 without a side effect.</p>
-            <p>It checks independent effect counts, target identity, terminal receipt status and durability, protocol-chain validity, rejection, absence of alternate completed execution, and Gateway L1 attribution.</p>
+        <DocsSection id="conformance" title="Governance conformance suite">
+          <DocsCard title="Every ingress, every posture, one expected outcome">
+            <p>A 26-row case catalogue submits governed faults through direct envelope submission, governed dispatch, the CLI, MCP, and A2A on a live native stack, against both the embedded and an outbound Operator. Each posture is one run on a Gateway started in that posture. Every case expects exactly one typed outcome: a signed receipt, a signed <code>GovernanceRejection</code>, a typed <code>IngressRefusal</code>, or a suspension.</p>
+            <p>Each verdict comes from the executing Operator&apos;s signed receipt, a canary file-set snapshot before and after the case, and the Operator&apos;s commitment-ledger bracket, never from the Gateway&apos;s HTTP response. Attended cases (L3 approve and deny) run only with <code>--attended</code>; otherwise they are recorded as not run.</p>
             <div className="docs-command-row">
-              <Command>./ztd eval boundary run</Command>
-              <Command>./ztd eval boundary verify &lt;run-id&gt;</Command>
-              <Command>./ztd eval boundary show &lt;run-id&gt;</Command>
+              <Command>./ztd eval conformance run</Command>
+              <Command>./ztd eval conformance verify --run &lt;run-id&gt;</Command>
+              <Command>./ztd eval conformance report --run &lt;run-id&gt;</Command>
             </div>
           </DocsCard>
           <div className="docs-split">
             <DocsCard title="Authority boundary">
               <p>The Gateway is the Policy Decision Point: ingress authentication, envelope construction, L1–L3 decisions, and coordination. The selected remote Operator is the Policy Execution Point: L4–L5 execution and authoritative local evidence. A Gateway receipt query is a verified mirror of Operator-authored evidence.</p>
             </DocsCard>
-            <DocsCard title="Independent target observation">
-              <p>The in-process <code>ztd-host-target-reader</code> observer, run by the <code>ztd eval boundary run</code> host process, reads only the controlled target file under <code>.ztd/eval/targets/</code> through the runtime file service. It performs no network I/O and does not mutate target state. It is specific to this suite; it is not the campaign Observer Operator and starts no separate process.</p>
+            <DocsCard title="Sealed, offline-verifiable record">
+              <p>The run persists <code>conformance-record.json</code> with a SHA-256 sidecar, sealed with the runtime vault. <code>verify</code> recomputes every verdict from those bytes and the anchors pinned in the record without contacting the Gateway; any changed byte makes the suite <code>INVALID_EVIDENCE</code>. <code>report</code> builds the case-by-posture coverage table and the L1 doctrine recall report.</p>
             </DocsCard>
           </div>
         </DocsSection>
@@ -383,10 +383,10 @@ export function MethodologyView() {
         <DocsSection id="evidence" title="Evidence, backup, and verification">
           <div className="docs-split">
             <DocsCard title="Persisted evidence">
-              <p>Native runs store <code>report.json</code>, <code>verification.json</code>, and digest-named artifacts in <code>.ztd/data/eval/runs/&lt;run-id&gt;/</code>. Campaign definitions and frozen artifacts live under <code>.ztd/data/eval/campaigns/&lt;campaign-id&gt;/</code>; campaign lifecycle, assignments, formation run evidence, and aggregates are run-scoped. Gateway volumes hold provider observation and provenance windows.</p>
+              <p>Conformance runs store <code>conformance-record.json</code> and its <code>conformance-record.sha256</code> sidecar in <code>.ztd/data/eval/runs/&lt;run-id&gt;/</code>. Campaign definitions and frozen artifacts live under <code>.ztd/data/eval/campaigns/&lt;campaign-id&gt;/</code>; campaign lifecycle, assignments, formation run evidence, and aggregates are run-scoped. Gateway volumes hold provider observation and provenance windows.</p>
             </DocsCard>
             <DocsCard title="Offline and run-scoped checks">
-              <p><code>ztd eval boundary verify</code> and <code>ztd eval runs verify</code> recompute digests, signatures, bindings, verdicts, and metrics without new scored actions. A passing campaign report applies only when its run, campaign, catalog, registry, completed population, and verified population match persisted evidence.</p>
+              <p><code>ztd eval conformance verify</code> and <code>ztd eval runs verify</code> recompute digests, signatures, bindings, verdicts, and metrics without new scored actions. A passing campaign report applies only when its run, campaign, catalog, registry, completed population, and verified population match persisted evidence.</p>
             </DocsCard>
           </div>
           <DocsCard title="Backup and restore">

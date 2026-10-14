@@ -75,24 +75,24 @@ var governanceRejectionCodes = []struct {
 // attribute the rejection to a layer without reading result_summary. An
 // unmapped error is UNCLASSIFIED, never a guessed layer.
 func ClassifyGovernanceRejection(rejection error) operatorv1.GovernanceRejectionCode {
-	_, code := GovernanceRejectionSentinel(rejection)
+	code, _ := GovernanceRejectionSentinel(rejection)
 	return code
 }
 
-// GovernanceRejectionSentinel returns the verification sentinel a rejection
-// error wraps and the check it names. An ingress renders the sentinel, never
+// GovernanceRejectionSentinel returns the check a rejection error names and
+// the verification sentinel it wraps. An ingress renders the sentinel, never
 // the wrapped chain. An unmapped error returns a nil sentinel and
 // UNCLASSIFIED; a nil error returns UNSPECIFIED.
-func GovernanceRejectionSentinel(rejection error) (error, operatorv1.GovernanceRejectionCode) {
+func GovernanceRejectionSentinel(rejection error) (operatorv1.GovernanceRejectionCode, error) {
 	if rejection == nil {
-		return nil, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
+		return operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED, nil
 	}
 	for _, entry := range governanceRejectionCodes {
 		if errors.Is(rejection, entry.sentinel) {
-			return entry.sentinel, entry.code
+			return entry.code, entry.sentinel
 		}
 	}
-	return nil, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
+	return operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED, nil
 }
 
 // RejectionError carries the executing Operator's signed GOVERNANCE_REJECTED
@@ -134,7 +134,7 @@ func RejectionResponse(err error) *operatorv1.GovernanceRejection {
 		return nil
 	}
 	text := rejection.Receipt.GetRejectionCode().String()
-	if sentinel, _ := GovernanceRejectionSentinel(rejection.Err); sentinel != nil {
+	if _, sentinel := GovernanceRejectionSentinel(rejection.Err); sentinel != nil {
 		text = sentinel.Error()
 	}
 	return &operatorv1.GovernanceRejection{Error: text, Receipt: rejection.Receipt}

@@ -48,12 +48,13 @@ else
     ROOT="$(realpath "$ROOT")"
 fi
 mkdir -p "$ROOT/run" "$ROOT/out" "$ROOT/home" "$ROOT/tmp" "$ROOT/bin" "$ROOT/keys"
-# CI runners have neither a Secret Service keyring nor an ssh-agent, so seal
-# this owned Gateway and its CLI identity with a provisioned master key file:
-# 32 random bytes, base64, 0600, outside the runtime root.
-MASTER_KEY="$ROOT/keys/master.key"
-(set -C && head -c 32 /dev/urandom | base64 >"$MASTER_KEY")
-export ZTD_E2E_MASTER_KEY_FILE="$MASTER_KEY"
+# CI runners have neither a Secret Service keyring nor an ssh-agent. The owned
+# Gateway and its CLI identity unlock through a private ssh-agent on a socket
+# under $ROOT/keys, holding one throwaway Ed25519 key. ztd finds the agent via
+# SSH_AUTH_SOCK. The agent starts once cleanup is armed and cleanup() kills it.
+AGENT_SOCK="$ROOT/keys/agent.sock"
+# sun_path holds 104 bytes on macOS and 108 on Linux, including the terminating NUL.
+((${#AGENT_SOCK} < 104)) || { echo "--root is too long for an ssh-agent socket: $AGENT_SOCK" >&2; exit 2; }
 # Copy once so rebuilding the workspace binary cannot change this scenario.
 cp "$BIN" "$ROOT/bin/ztd"
 BIN="$ROOT/bin/ztd"
@@ -131,8 +132,13 @@ cleanup() {
         echo "Operator teardown failed; see $ROOT/out/operator-cleanup.log" >&2
         status=1
     fi
-    if ! (cd "$ROOT/run" && "$BIN" gw stop --master-key-file "$MASTER_KEY") >"$ROOT/out/gateway-stop.log" 2>&1; then
+    if ! (cd "$ROOT/run" && "$BIN" gw stop) >"$ROOT/out/gateway-stop.log" 2>&1; then
         echo "Gateway teardown failed; see $ROOT/out/gateway-stop.log" >&2
+        status=1
+    fi
+    # Stop the agent after the Gateway, which may need it to unseal its identity.
+    if [[ -n "${SSH_AGENT_PID:-}" ]] && ! ssh-agent -k >/dev/null 2>&1; then
+        echo "ssh-agent teardown failed (pid $SSH_AGENT_PID)" >&2
         status=1
     fi
     if ((status != 0)); then
@@ -146,9 +152,15 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+# Start the agent after cleanup is armed, so any later failure stops it.
+ssh-keygen -q -t ed25519 -N '' -f "$ROOT/keys/agent_key"
+AGENT_ENV="$(ssh-agent -s -a "$AGENT_SOCK")" || { echo "ssh-agent failed to start" >&2; exit 1; }
+eval "$AGENT_ENV"
+export SSH_AUTH_SOCK
+ssh-add -q "$ROOT/keys/agent_key"
 (cd "$ROOT/run" && "$BIN" gw start --cert-mode localhost --posture doctrine \
-    --capabilities data --public-spectator=false --log info --master-key-file "$MASTER_KEY") >"$ROOT/out/gateway-start.log" 2>&1
-(cd "$ROOT/run" && "$BIN" login --endpoint localhost --master-key-file "$MASTER_KEY") >"$ROOT/out/owner-login.log" 2>&1
+    --capabilities data --public-spectator=false --log info) >"$ROOT/out/gateway-start.log" 2>&1
+(cd "$ROOT/run" && "$BIN" login --endpoint localhost) >"$ROOT/out/owner-login.log" 2>&1
 cd "$REPO"
 setsid env ZTD_E2E_RUNTIME_ROOT="$ROOT/run" \
 ZTD_E2E_FLEET_SIZE="$COUNT" \

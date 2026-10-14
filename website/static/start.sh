@@ -23,8 +23,6 @@
 #   ZTD_VERSION          Install this X.Y.Z release instead of the latest.
 #   ZTD_OVERWRITE=1      Replace an existing $ZTD_DIR/ztd binary (upgrade). A running Gateway keeps its version
 #                        until it is restarted (./ztd gw restart).
-#   ZTD_MASTER_KEY_FILE  Absolute path to a provisioned master key file, for hosts without an OS key store
-#                        (headless Linux without a Secret Service keyring or ssh-agent). Passed to every command.
 
 set -eu
 
@@ -72,14 +70,10 @@ show_log() {
   fi
 }
 
-# Runs ./ztd with the master key file when one is provisioned. stdin is /dev/null: under `curl | sh` the
-# script itself arrives on stdin, and no ztd command may read it.
+# Runs ./ztd with stdin on /dev/null: under `curl | sh` the script itself arrives on stdin, and no ztd command may
+# read it.
 ztd_cli() {
-  if [ -n "${ZTD_MASTER_KEY_FILE:-}" ]; then
-    ./ztd "$@" --master-key-file "$ZTD_MASTER_KEY_FILE" </dev/null
-  else
-    ./ztd "$@" </dev/null
-  fi
+  ./ztd "$@" </dev/null
 }
 
 # Runs a ztd command with its output captured in $log.
@@ -96,11 +90,9 @@ gateway_online() {
 gateway_start_hint() {
   if grep -qiE 'key ?store|keyring|secret service|ssh-agent|master key' "$log"; then
     echo >&2
-    warn "No usable OS key store for the Gateway vault master key. Either:"
+    warn "No usable OS key store for the Gateway vault master key. Start an ssh-agent with a key loaded:"
     echo "      eval \"\$(ssh-agent)\" && ssh-add    # then rerun the start command" >&2
-    echo "    or provision a key file outside $display_dir and pass it in:" >&2
-    echo "      (umask 077 && head -c 32 /dev/urandom | base64 > \"\$HOME/.ztd-master.key\")" >&2
-    echo "      curl -fsSL $base_url/start.sh | ZTD_MASTER_KEY_FILE=\"\$HOME/.ztd-master.key\" sh" >&2
+    echo "    No SSH key yet? Create one first with: ssh-keygen -t ed25519" >&2
   elif grep -qi 'address already in use' "$log"; then
     echo >&2
     warn "A port the Gateway needs is in use, usually by a Gateway started from another directory."
@@ -119,14 +111,6 @@ main() {
     mingw*|msys*|cygwin*) fail "on Windows, run from PowerShell: irm $base_url/start.ps1 | iex" ;;
     *) fail "unsupported OS: $(uname -s)" ;;
   esac
-  if [ -n "${ZTD_MASTER_KEY_FILE:-}" ]; then
-    case "$ZTD_MASTER_KEY_FILE" in
-      /*) ;;
-      *) fail "ZTD_MASTER_KEY_FILE must be an absolute path: $ZTD_MASTER_KEY_FILE" ;;
-    esac
-    [ -f "$ZTD_MASTER_KEY_FILE" ] || fail "ZTD_MASTER_KEY_FILE not found: $ZTD_MASTER_KEY_FILE"
-  fi
-
   if [ -n "${ZTD_DIR:-}" ]; then
     dir=$ZTD_DIR
   else
@@ -162,7 +146,6 @@ main() {
     fi
     ok "$(awk '/^Installed /' "$log") — SHA-256 verified"
   fi
-  # --version is a root flag and takes no --master-key-file.
   if ./ztd --version </dev/null >"$log" 2>&1; then
     info "$(head -n 1 "$log")"
   else
@@ -210,22 +193,17 @@ main() {
   if captured gw status; then
     console=$(awk '$1 == "Console" { print $2; exit }' "$log")
   fi
-  key=""
-  if [ -n "${ZTD_MASTER_KEY_FILE:-}" ]; then
-    key=" --master-key-file $ZTD_MASTER_KEY_FILE"
-  fi
-
   printf '\n%s%s✓ ztd is running%s %s(%ss)%s\n\n' "$green" "$bold" "$reset" "$dim" "$(($(date +%s) - started))" "$reset"
   case "$display_dir" in
     *[!A-Za-z0-9_./~-]*) cd_target="'$dir'" ;;
     *) cd_target=$display_dir ;;
   esac
   printf '  %scd %s%s\n' "$bold" "$cd_target" "$reset"
-  next_step "./ztd tui$key" "live governance console in the terminal"
-  next_step "./ztd login web$key" "add a passkey, then open ${console:-https://localhost:8443/console/}"
-  printf '  ./ztd gw data audit list --operator-session-id %s%s\n' "${session:-<id>}" "$key"
-  next_step "./ztd mcp agent run claude$key" "put an AI agent behind the Gateway"
-  next_step "./ztd gw stop$key" "stop the Gateway; state in .ztd/ is kept"
+  next_step "./ztd tui" "live governance console in the terminal"
+  next_step "./ztd login web" "add a passkey, then open ${console:-https://localhost:8443/console/}"
+  printf '  ./ztd gw data audit list --operator-session-id %s\n' "${session:-<id>}"
+  next_step "./ztd mcp agent run claude" "put an AI agent behind the Gateway"
+  next_step "./ztd gw stop" "stop the Gateway; state in .ztd/ is kept"
   echo
   printf '  %sDocs: https://github.com/zerotrustdata/ztd/blob/main/docs/guides/getting_started.md%s\n' "$dim" "$reset"
 }

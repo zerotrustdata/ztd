@@ -256,11 +256,11 @@ Build candidate binaries with `make build`, then execute `./ztd test release-smo
 
 ```bash
 # Capture JSON test events for duration analysis
-GOFLAGS=-json ./ztd test integration --pkg ./internal/services/gateway > /tmp/ztd-tests.jsonl
+GOFLAGS=-json ./ztd test integration --pkg ./internal/services/gateway > .ztd/tmp/ztd-tests.jsonl
 
 # Profile CPU usage for specific package tests
-GOFLAGS=-cpuprofile=/tmp/ztd-gateway.cpu ./ztd test integration --pkg ./internal/services/gateway --run '^TestHandleBootstrap'
-go tool pprof -top -cum /tmp/ztd-gateway.cpu
+GOFLAGS=-cpuprofile=$PWD/.ztd/tmp/ztd-gateway.cpu ./ztd test integration --pkg ./internal/services/gateway --run '^TestHandleBootstrap'
+go tool pprof -top -cum .ztd/tmp/ztd-gateway.cpu
 ```
 
 Use `testing/synctest` for self-contained timer, timeout, and channel synchronization tests. Do not wrap `testing/synctest` around real network listeners or subprocesses.

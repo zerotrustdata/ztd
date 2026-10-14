@@ -4,7 +4,7 @@ title: Getting Started
 audience: new users and platform evaluators
 status: current
 version: v1.0.6
-last_updated: 2026-10-13
+last_updated: 2026-10-14
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -52,7 +52,6 @@ irm https://zerotrustdata.io/start.ps1 | iex
 | `ZTD_DIR` | Install and runtime directory (default `~/ztd`). Runtime state lives in `$ZTD_DIR/.ztd/`. In PowerShell, set variables with `$env:ZTD_DIR='...'` before the command. |
 | `ZTD_VERSION` | Install this `X.Y.Z` release instead of the latest. |
 | `ZTD_OVERWRITE=1` | Replace an existing `$ZTD_DIR/ztd` (upgrade). A running Gateway keeps its version until `./ztd gw restart`. |
-| `ZTD_MASTER_KEY_FILE` | Absolute path to a provisioned master key file for hosts without an OS key store; passed to every `./ztd` call. |
 
 To install only the binary into the current directory, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh` (or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell). Binaries, checksums, Sigstore bundles, and release notes for every version are at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
 
@@ -97,9 +96,9 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
 
-**Windows and macOS:** The Gateway seals its vault key with DPAPI on Windows and the Keychain on macOS automatically; no ssh-agent or master key file is needed.
+**Windows and macOS:** The Gateway seals its vault key with DPAPI on Windows and the Keychain on macOS automatically; no ssh-agent is needed.
 
-**Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'` (or `ZTD_MASTER_KEY_FILE=/abs/path/master.key` for `start.sh`). Quickstart and `start.sh` pass the key file to every `./ztd` call they make, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Both display this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
+**Linux without a desktop keyring:** The Gateway seals its vault key with an ssh-agent key when no Secret Service keyring is available. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent with a key loaded before running `make quickstart` or `start.sh`: `eval "$(ssh-agent)" && ssh-add`. Run `ssh-keygen -t ed25519` first if the host has no key. Run the follow-up `./ztd` commands from the same shell, because the same agent key seals the CLI identity. Without a usable agent key, ztd fails closed. See [Encryption Architecture](../architecture/encryption.md#master-key-and-keyring-providers) for the key source order.
 
 ### Configure `.env`
 
@@ -247,7 +246,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.6`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.1.0`, then run both checks there.
 
 Run the checksum check:
 
@@ -271,7 +270,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.6' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.1.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -391,7 +390,7 @@ make down
 To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.6
+go get github.com/zerotrustdata/ztd@v1.1.0
 ```
 
 Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:

@@ -63,7 +63,7 @@ type agentExecutorFixture struct {
 func newAgentExecutorFixture(t *testing.T, turns ...[]*operatorv1.InferenceResponsePart) *agentExecutorFixture {
 	t.Helper()
 	signer := oracletest.NewSigner(t)
-	f := &agentExecutorFixture{t: t, ledger: newEvidenceLedger(t, signer, evidenceOperatorID)}
+	f := &agentExecutorFixture{t: t, ledger: newEvidenceLedger(t, signer)}
 	f.client = &agentLaneClient{fixture: f}
 	f.inference = &agentInferenceFake{fixture: f, turns: turns}
 	f.sentinel = &agentSentinelFake{fixture: f}

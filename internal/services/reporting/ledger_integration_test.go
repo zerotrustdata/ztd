@@ -94,7 +94,7 @@ func TestReportLedgerMerkleRoot_WithCommits(t *testing.T) {
 	ledger := setupTestGitLedger(t)
 
 	// Seed a commit.
-	srcFile := filepath.Join(testutil.TempDir(t), "test-file.txt")
+	srcFile := filepath.Join(testutil.OperatorDir(t), "test-file.txt")
 	seedLedgerCommit(t, ledger, "", srcFile, "hello world")
 
 	outDir := testutil.TempDir(t)
@@ -139,10 +139,10 @@ func TestReportLedgerCommits_WithCommits(t *testing.T) {
 	ledger := setupTestGitLedger(t)
 
 	// Seed two commits with different files.
-	srcFile1 := filepath.Join(testutil.TempDir(t), "file1.txt")
+	srcFile1 := filepath.Join(testutil.OperatorDir(t), "file1.txt")
 	seedLedgerCommit(t, ledger, "", srcFile1, "content 1")
 
-	srcFile2 := filepath.Join(testutil.TempDir(t), "file2.txt")
+	srcFile2 := filepath.Join(testutil.OperatorDir(t), "file2.txt")
 	seedLedgerCommit(t, ledger, "", srcFile2, "content 2")
 
 	outDir := testutil.TempDir(t)

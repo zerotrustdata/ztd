@@ -291,8 +291,8 @@ func TestConformanceReport_RejectsMoreThanFourRunsBeforeTouchingState(t *testing
 	assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
-// conformanceTestAuthError is what sealedTestVault returns for bytes it did not seal.
-var conformanceTestAuthError = errors.New("conformance test: ciphertext does not authenticate")
+// errConformanceTestAuth is what sealedTestVault returns for bytes it did not seal.
+var errConformanceTestAuth = errors.New("conformance test: ciphertext does not authenticate")
 
 // conformanceTestSealedPrefix marks the bytes sealedTestVault seals.
 const conformanceTestSealedPrefix = "sealed:"
@@ -308,7 +308,7 @@ func (sealedTestVault) EncryptWithAAD(plaintext, _ []byte) ([]byte, error) {
 func (sealedTestVault) DecryptWithAAD(ciphertext, _ []byte) ([]byte, error) {
 	body, ok := bytes.CutPrefix(ciphertext, []byte(conformanceTestSealedPrefix))
 	if !ok {
-		return nil, conformanceTestAuthError
+		return nil, errConformanceTestAuth
 	}
 	return body, nil
 }

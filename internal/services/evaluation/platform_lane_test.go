@@ -43,7 +43,7 @@ func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, re
 func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsCompletedReceipt(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	fakeClient := &laneTestClient{
-		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt("tx-1")}),
+		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt()}),
 	}
 	lane := NewCommandLane(fakeClient, client.Persona{CLISessionID: "cli-session-1"})
 	absPath := "/home/op/workspaces/ws-0123456789abcdef/net/network-summary.txt"
@@ -76,7 +76,7 @@ func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotAComple
 	}{
 		{name: "transport error", err: errors.New("transport unavailable")},
 		{name: "no answer"},
-		{name: "rejection", outcome: laneRejectionOutcome(t, http.StatusForbidden, laneRejection("rejected"))},
+		{name: "rejection", outcome: laneRejectionOutcome(t)},
 		{name: "refusal", outcome: laneRefusalOutcome(t, http.StatusBadRequest, &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, Error: "malformed"})},
 		{name: "untyped answer", outcome: laneUntypedOutcome(), typed: constants.ErrIngressResponseUntyped},
 		{name: "suspended for approval", outcome: laneSuspendedOutcome("tx-suspended")},
@@ -113,7 +113,7 @@ func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent
 	})
 	require.NoError(t, err)
 	fakeClient := &laneTestClient{
-		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: payload, Receipt: laneCompletedReceipt("tx-1")}),
+		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: payload, Receipt: laneCompletedReceipt()}),
 	}
 	lane := NewCommandLane(fakeClient, client.Persona{CLISessionID: "cli-session-1"})
 
@@ -136,14 +136,14 @@ func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	failed, err := proto.Marshal(&operatorv1.FsReadResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "no such file"})
 	require.NoError(t, err)
-	completed := laneCompletedReceipt("tx-1")
+	completed := laneCompletedReceipt()
 	tests := []struct {
 		name    string
 		outcome *client.GovernedOutcome
 		err     error
 	}{
 		{name: "transport error", err: errors.New("transport unavailable")},
-		{name: "dispatch rejected", outcome: laneRejectionOutcome(t, http.StatusForbidden, laneRejection("rejected"))},
+		{name: "dispatch rejected", outcome: laneRejectionOutcome(t)},
 		{name: "untyped answer", outcome: laneUntypedOutcome()},
 		{name: "receipt that failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
 		{name: "no result payload", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: completed})},
@@ -182,14 +182,14 @@ func TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome(t *testing
 	}{
 		{
 			name:          "receipt",
-			outcome:       laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: []byte("result"), Receipt: laneCompletedReceipt("tx-1")}),
+			outcome:       laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: []byte("result"), Receipt: laneCompletedReceipt()}),
 			kind:          evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 			transactionID: "tx-1",
 			resultPayload: []byte("result"),
 		},
 		{
 			name:          "governance rejection",
-			outcome:       laneRejectionOutcome(t, http.StatusForbidden, laneRejection("rejected")),
+			outcome:       laneRejectionOutcome(t),
 			kind:          evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
 			transactionID: "tx-rejected",
 		},
@@ -252,9 +252,9 @@ func TestCommandLane_DispatchAgentTool_RequiresOperatorTargetScopeAndPayload(t *
 // model is shown for a denied answer: the typed rejection error, or the refusal
 // code and error. The HTTP status never appears in the text.
 func TestCommandLane_AnswerMessageRendersTypedMessageNotHTTPStatus(t *testing.T) {
-	assert.Equal(t, "rejected", answerMessage(laneRejectionOutcome(t, http.StatusForbidden, laneRejection("rejected"))))
+	assert.Equal(t, "rejected", answerMessage(laneRejectionOutcome(t)))
 	assert.Equal(t, "INGRESS_REFUSAL_CODE_MALFORMED_REQUEST: malformed", answerMessage(laneRefusalOutcome(t, http.StatusBadRequest, &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, Error: "malformed"})))
-	assert.Empty(t, answerMessage(laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt("tx-1")})))
+	assert.Empty(t, answerMessage(laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt()})))
 	assert.Empty(t, answerMessage(nil))
 }
 
@@ -267,8 +267,9 @@ func laneCanonicalBody(t *testing.T, msg proto.Message) []byte {
 	return body
 }
 
-func laneCompletedReceipt(transactionID string) *operatorv1.ActionReceipt {
-	return &operatorv1.ActionReceipt{TransactionId: transactionID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+// laneCompletedReceipt is the receipt of a completed execution of transaction tx-1.
+func laneCompletedReceipt() *operatorv1.ActionReceipt {
+	return &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 }
 
 // laneReceiptOutcome is the typed outcome of a 200 dispatch the Operator answered with a receipt.
@@ -281,11 +282,12 @@ func laneReceiptOutcome(t *testing.T, dispatched *operatorv1.GovernedDispatchRes
 	}
 }
 
-// laneRejectionOutcome is the typed outcome of a signed governance rejection.
-func laneRejectionOutcome(t *testing.T, status int, rejection *operatorv1.GovernanceRejection) *client.GovernedOutcome {
+// laneRejectionOutcome is the typed outcome of a signed governance rejection, answered 403.
+func laneRejectionOutcome(t *testing.T) *client.GovernedOutcome {
 	t.Helper()
+	rejection := laneRejection()
 	return &client.GovernedOutcome{
-		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, HttpStatus: int32(status), Rejection: rejection},
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, HttpStatus: http.StatusForbidden, Rejection: rejection},
 		Body:        laneCanonicalBody(t, rejection),
 	}
 }
@@ -314,6 +316,7 @@ func laneSuspendedOutcome(txHash string) *client.GovernedOutcome {
 	}
 }
 
-func laneRejection(message string) *operatorv1.GovernanceRejection {
-	return &operatorv1.GovernanceRejection{Error: message, Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-rejected"}}
+// laneRejection is the governance rejection the Operator signs for a refused dispatch.
+func laneRejection() *operatorv1.GovernanceRejection {
+	return &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-rejected"}}
 }

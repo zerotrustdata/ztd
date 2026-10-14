@@ -4,7 +4,7 @@ title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
 version: v1.0.6
-last_updated: 2026-10-13
+last_updated: 2026-10-14
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -146,13 +146,10 @@ make proto-generate
 # Validate existing vault header with stored vault key
 ./ztd vault unlock
 
-# Linux over SSH without a desktop keyring: seal the master key with your ssh-agent key
+# Linux over SSH or in a container without a desktop keyring: seal the master key with your ssh-agent key
 # (writes ciphertext to .ztd/secrets/.master_key.ssh-agent, never the key itself)
-eval "$(ssh-agent)" && ssh-add   # or connect with ssh -A
+eval "$(ssh-agent)" && ssh-add   # or connect with ssh -A; run ssh-keygen -t ed25519 first if no key exists
 ./ztd gw start
-
-# Start Gateway with an operator-provisioned master key file outside .ztd/ (container environments)
-./ztd gw start --master-key-file "/run/secrets/ztd_master_key"
 ```
 
 ### CLI Authentication and Session Recovery

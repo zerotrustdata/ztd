@@ -79,7 +79,7 @@ func (l *CommandLane) WriteWorkspaceFile(ctx context.Context, target Target, run
 	if err != nil {
 		return err
 	}
-	if _, err := executedReceipt(outcome); err != nil {
+	if err := requireExecuted(outcome); err != nil {
 		return fmt.Errorf("workspace file write for %s: %w", absPath, err)
 	}
 	return nil
@@ -105,7 +105,7 @@ func (l *CommandLane) ReadWorkspaceFile(ctx context.Context, target Target, runI
 	if err != nil {
 		return "", err
 	}
-	if _, err := executedReceipt(outcome); err != nil {
+	if err := requireExecuted(outcome); err != nil {
 		return "", fmt.Errorf("workspace file read of %s: %w", absPath, err)
 	}
 	resultPayload := outcome.Dispatch.GetResultPayload()
@@ -181,26 +181,25 @@ func (l *CommandLane) dispatchAction(ctx context.Context, scope AgentDispatchSco
 	return outcome, nil
 }
 
-// executedReceipt returns the signed receipt of a governed dispatch that ran to
+// requireExecuted accepts a governed dispatch whose signed receipt ran to
 // completion. Any other answer is ErrEvaluationDispatchFailed: an untyped answer
 // wraps its typed error, and a rejection, refusal, or receipt that did not
 // complete names what the Gateway or Operator reported.
-func executedReceipt(outcome *client.GovernedOutcome) (*operatorv1.ActionReceipt, error) {
+func requireExecuted(outcome *client.GovernedOutcome) error {
 	if err := outcome.Typed(); err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrEvaluationDispatchFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrEvaluationDispatchFailed, err)
 	}
 	if answerKind(outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		reason := answerMessage(outcome)
 		if reason == "" {
 			reason = answerKind(outcome).String()
 		}
-		return nil, fmt.Errorf("%w: governed action was not admitted: %s", constants.ErrEvaluationDispatchFailed, reason)
+		return fmt.Errorf("%w: governed action was not admitted: %s", constants.ErrEvaluationDispatchFailed, reason)
 	}
-	receipt := outcome.Observation.GetReceipt()
-	if receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return nil, fmt.Errorf("%w: governed action ended %s", constants.ErrEvaluationDispatchFailed, receipt.GetStatus())
+	if receipt := outcome.Observation.GetReceipt(); receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("%w: governed action ended %s", constants.ErrEvaluationDispatchFailed, receipt.GetStatus())
 	}
-	return receipt, nil
+	return nil
 }
 
 // answerKind is the typed kind of a governed answer. A missing answer is

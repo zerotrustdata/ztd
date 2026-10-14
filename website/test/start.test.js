@@ -279,42 +279,17 @@ test('ZTD_DIR chooses the install directory and a path with spaces is quoted in 
   assert.ok(result.stdout.includes(`cd '${dir}'`) || result.stdout.includes(`cd '${toPosixPath(dir)}'`) || /cd '.*my ztd'/.test(result.stdout), result.stdout);
 });
 
-test('ZTD_MASTER_KEY_FILE is passed to every ztd command that takes it', (t) => {
-  const fixture = setup(t);
-  const key = join(fixture.root, 'master.key');
-  writeFileSync(key, 'a2V5\n', { mode: 0o600 });
-  const posixKey = toPosixPath(key);
-  const result = runPiped(fixture, { env: { ZTD_MASTER_KEY_FILE: posixKey } });
-
-  assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(ztdCalls(fixture), FRESH_CALLS.map(call => call === '--version' ? call : `${call} --master-key-file ${posixKey}`));
-  assert.ok(result.stdout.includes(`./ztd tui --master-key-file ${posixKey}`), 'next steps carry the key file');
-});
-
-for (const [name, value, message] of [
-  ['relative', 'master.key', /must be an absolute path/],
-  ['missing', '/nonexistent/ztd-master.key', /ZTD_MASTER_KEY_FILE not found/]
-]) {
-  test(`a ${name} ZTD_MASTER_KEY_FILE fails before any download or directory change`, (t) => {
-    const fixture = setup(t);
-    const result = runPiped(fixture, { env: { ZTD_MASTER_KEY_FILE: value } });
-
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, message);
-    assert.deepEqual(curlUrls(fixture), []);
-    assert.equal(existsSync(join(fixture.home, 'ztd')), false);
-  });
-}
-
-test('a Gateway with no usable key store explains the ssh-agent and key file remedies and stops', (t) => {
+test('a Gateway with no usable key store explains the ssh-agent remedy and stops', (t) => {
   const fixture = setup(t, { env: { ZTD_FAKE_START_ERROR: 'an OS-protected master key store is required but none is available' } });
   const result = runPiped(fixture);
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /OS-protected master key store is required/, 'the Gateway error is shown');
   assert.match(result.stderr, /No usable OS key store/);
-  assert.match(result.stderr, /ssh-agent/);
-  assert.match(result.stderr, /ZTD_MASTER_KEY_FILE="\$HOME\/\.ztd-master\.key" sh/);
+  assert.match(result.stderr, /eval "\$\(ssh-agent\)" && ssh-add/);
+  assert.match(result.stderr, /ssh-keygen -t ed25519/);
+  assert.match(result.stderr, /then rerun the start command/);
+  assert.doesNotMatch(result.stdout + result.stderr, /ZTD_MASTER_KEY_FILE|master-key-file/, 'no removed key-file remedy is offered');
   assert.match(result.stderr, /the Gateway did not start/);
   assert.deepEqual(ztdCalls(fixture), ['--version', 'gw status', 'gw start'], 'no login after a failed start');
   assertClean(fixture);

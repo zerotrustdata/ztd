@@ -294,7 +294,7 @@ Each posture is one run on a fresh native stack started in that posture. The pos
 
 ```bash
 ./ztd gw start --posture doctrine --a2a-downstream-url http://127.0.0.1:9911
-./ztd eval conformance run --operator-id ztd-operator --operator-root /tmp/ztd-operator --a2a-stub-listen 127.0.0.1:9911
+./ztd eval conformance run --operator-id ztd-operator --operator-root .ztd/operators/op-00001 --a2a-stub-listen 127.0.0.1:9911
 ./ztd eval conformance verify --run <run-id>
 ./ztd eval conformance report --run <run-id> --run <run-id> --run <run-id> --run <run-id> --markdown
 ```

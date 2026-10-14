@@ -25,7 +25,7 @@ do_not_use_for:
 
 ## Purpose
 
-This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.0.6.
+This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.1.0.
 
 In ztd, sovereignty is established through cryptographic verification at the local host execution boundary:
 - A model can request an action, but cannot directly execute mutations.

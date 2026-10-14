@@ -225,34 +225,6 @@ test('ZTD_DIR and ZTD_VERSION choose the directory and release', { skip }, (t) =
   assert.ok(result.stdout.includes(`cd '${dir.replace("'", "''")}'`), 'the cd hint quotes the path for PowerShell');
 });
 
-test('ZTD_MASTER_KEY_FILE is passed to every ztd command except --version', { skip }, (t) => {
-  const fixture = setup(t);
-  const key = join(fixture.root, 'master.key');
-  writeFileSync(key, 'k');
-  const result = run(fixture, { ZTD_MASTER_KEY_FILE: key });
-
-  assertSessionIntact(fixture, result);
-  assert.doesNotMatch(result.output, /FAILED/);
-  assert.deepEqual(ztdCalls(fixture), FRESH_CALLS.map(call => call === '--version' ? call : `${call} --master-key-file ${key}`));
-  assert.ok(result.stdout.includes(`.\\ztd.exe tui --master-key-file ${key}`));
-});
-
-for (const [label, value, message] of [
-  ['relative', 'master.key', /ZTD_MASTER_KEY_FILE must be an absolute path: master\.key/],
-  ['missing', '/nonexistent/master.key', /ZTD_MASTER_KEY_FILE not found: \/nonexistent\/master\.key/]
-]) {
-  test(`a ${label} ZTD_MASTER_KEY_FILE fails before any download`, { skip }, (t) => {
-    const fixture = setup(t);
-    const result = run(fixture, { ZTD_MASTER_KEY_FILE: value });
-
-    assertSessionIntact(fixture, result);
-    assert.match(result.stdout, /FAILED: ztd start: /);
-    assert.match(result.stdout, message);
-    assert.deepEqual(requests(fixture), [START]);
-    assert.equal(existsSync(join(fixture.home, 'ztd')), false, 'no install directory is created');
-  });
-}
-
 test('an unsupported architecture fails before any download', { skip }, (t) => {
   const fixture = setup(t);
   const result = run(fixture, { PROCESSOR_ARCHITECTURE: 'x86' });
@@ -328,7 +300,8 @@ test('start.ps1 is ASCII, parses cleanly, and keeps all work in one script block
   const source = readFileSync(startScript, 'utf8');
   assert.doesNotMatch(source, /[^\x00-\x7f]/, 'Windows PowerShell 5.1 decodes a charset-less response as Latin-1');
   assert.doesNotMatch(source, /^\s*exit\b/m, 'exit would close the window of a user running irm | iex');
-  const code = source.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+  // .gitattributes checks *.ps1 out with CRLF line endings, so split on either ending.
+  const code = source.split(/\r?\n/).filter(line => line.trim() && !line.startsWith('#'));
   assert.equal(code[0], '& {');
   assert.equal(code.at(-1), '}');
   const result = spawnSync(PWSH, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',

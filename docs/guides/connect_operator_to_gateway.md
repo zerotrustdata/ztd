@@ -156,7 +156,7 @@ With `--trust-bundle`, the Operator enrolls over `wss://` on Gateway HTTPS port 
 Copy the current binary to a local path:
 
 ```bash
-./ztd operator cp /tmp/ztd
+./ztd operator cp /opt/ztd/
 ```
 
 Copy the binary via SCP:

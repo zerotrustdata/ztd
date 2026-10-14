@@ -16,10 +16,14 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+// a2aStubReadHeaderTimeout bounds how long the stub waits for request headers.
+const a2aStubReadHeaderTimeout = 10 * time.Second
 
 // a2aStubResult is the success body the stub answers with. It is the shape
 // mcp.DispatchToA2ADownstream decodes.
@@ -58,7 +62,7 @@ func StartA2AStub(addr string) (*A2AStub, error) {
 		done:     make(chan error, 1),
 		attempts: make(map[string][]*evalv1.ConformanceA2ACall),
 	}
-	s.server = &http.Server{Handler: http.HandlerFunc(s.serve)}
+	s.server = &http.Server{Handler: http.HandlerFunc(s.serve), ReadHeaderTimeout: a2aStubReadHeaderTimeout}
 	go func() { s.done <- s.server.Serve(listener) }()
 	return s, nil
 }

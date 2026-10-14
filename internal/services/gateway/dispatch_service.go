@@ -704,7 +704,7 @@ func (d *DispatchService) verifiedTransactionReceipt(ctx context.Context, receip
 	if d.signerStore == nil || receipt == nil || receipt.GetTransactionId() != txHash {
 		return nil, transactionReceiptNone
 	}
-	kind := transactionReceiptNone
+	var kind transactionReceiptKind
 	switch {
 	case governance.IsGovernanceRejectionReceipt(receipt):
 		kind = transactionReceiptRejected

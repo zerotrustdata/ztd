@@ -22,7 +22,6 @@
 #   ZTD_VERSION          Install this X.Y.Z release instead of the latest.
 #   ZTD_OVERWRITE=1      Replace an existing ztd.exe (upgrade). A running Gateway keeps its version until it is
 #                        restarted (.\ztd.exe gw restart).
-#   ZTD_MASTER_KEY_FILE  Absolute path to a provisioned master key file. Passed to every command.
 #
 # Under `irm | iex` this script runs inside the caller's session, so it never calls exit (that would close the
 # window), restores the caller's location and error preference, and keeps its state inside one script block.
@@ -41,14 +40,12 @@
         else { Write-Host ('  {0,-34} ' -f $command) -NoNewline; Write-Host $description -ForegroundColor DarkGray }
     }
 
-    # Runs .\ztd.exe with the master key file when one is provisioned and returns its exit code and output.
+    # Runs .\ztd.exe and returns its exit code and output.
     # Native stderr must not become a terminating error, so the error preference is relaxed for the call only.
-    function Ztd([switch]$NoKey) {
-        $arguments = @($args)
-        if (-not $NoKey -and $Env:ZTD_MASTER_KEY_FILE) { $arguments += @('--master-key-file', $Env:ZTD_MASTER_KEY_FILE) }
+    function Ztd {
         $previous = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
-        try { $output = (& .\ztd.exe @arguments 2>&1 | ForEach-Object { "$_" }) -join "`n" }
+        try { $output = (& .\ztd.exe @args 2>&1 | ForEach-Object { "$_" }) -join "`n" }
         finally { $ErrorActionPreference = $previous }
         [pscustomobject]@{ Ok = ($LASTEXITCODE -eq 0); Output = $output }
     }
@@ -66,10 +63,6 @@
 
     $architecture = "$Env:PROCESSOR_ARCHITECTURE".ToLower()
     if ($architecture -notin @('amd64', 'arm64')) { Fail "unsupported architecture: $architecture" }
-    if ($Env:ZTD_MASTER_KEY_FILE) {
-        if (-not [System.IO.Path]::IsPathRooted($Env:ZTD_MASTER_KEY_FILE)) { Fail "ZTD_MASTER_KEY_FILE must be an absolute path: $Env:ZTD_MASTER_KEY_FILE" }
-        if (-not (Test-Path $Env:ZTD_MASTER_KEY_FILE -PathType Leaf)) { Fail "ZTD_MASTER_KEY_FILE not found: $Env:ZTD_MASTER_KEY_FILE" }
-    }
     $dir = if ($Env:ZTD_DIR) { $Env:ZTD_DIR } else { Join-Path $HOME 'ztd' }
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
@@ -88,8 +81,7 @@
             catch { Fail "installing the ztd binary failed; nothing else was changed: $_" }
             Ok 'installed ztd.exe - SHA-256 verified'
         }
-        # --version is a root flag and takes no --master-key-file.
-        $result = Ztd -NoKey --version
+        $result = Ztd --version
         if (-not $result.Ok) { ShowLog $result; Fail "$dir\ztd.exe does not run on this host" }
         Info ($result.Output -split "`n")[0]
 
@@ -134,18 +126,17 @@
         $status = Ztd gw status
         if ($status.Ok) { $console = (Field $status 'Console') | Select-Object -Index 1 }
         if (-not $console) { $console = 'https://localhost:8443/console/' }
-        $key = if ($Env:ZTD_MASTER_KEY_FILE) { " --master-key-file $Env:ZTD_MASTER_KEY_FILE" } else { '' }
         if (-not $session) { $session = '<id>' }
 
         Write-Host ''
         Write-Host ("$([char]0x2713) ztd is running ({0}s)" -f [int]((Get-Date) - $started).TotalSeconds) -ForegroundColor Green
         Write-Host ''
         Write-Host ("  cd '{0}'" -f ($dir -replace "'", "''"))
-        NextStep ".\ztd.exe tui$key" 'live governance console in the terminal'
-        NextStep ".\ztd.exe login web$key" "add a passkey, then open $console"
-        Write-Host "  .\ztd.exe gw data audit list --operator-session-id $session$key"
-        NextStep ".\ztd.exe mcp agent run claude$key" 'put an AI agent behind the Gateway'
-        NextStep ".\ztd.exe gw stop$key" 'stop the Gateway; state in .ztd\ is kept'
+        NextStep '.\ztd.exe tui' 'live governance console in the terminal'
+        NextStep '.\ztd.exe login web' "add a passkey, then open $console"
+        Write-Host "  .\ztd.exe gw data audit list --operator-session-id $session"
+        NextStep '.\ztd.exe mcp agent run claude' 'put an AI agent behind the Gateway'
+        NextStep '.\ztd.exe gw stop' 'stop the Gateway; state in .ztd\ is kept'
         Write-Host ''
         Write-Host '  Docs: https://github.com/zerotrustdata/ztd/blob/main/docs/guides/getting_started.md' -ForegroundColor DarkGray
     } finally {

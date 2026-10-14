@@ -96,29 +96,29 @@ var ingressRefusalCodes = []struct {
 // ClassifyIngressRefusal names the pre-envelope check behind err. An unmapped
 // error is UNCLASSIFIED, never a guessed check; a nil error is UNSPECIFIED.
 func ClassifyIngressRefusal(err error) operatorv1.IngressRefusalCode {
-	_, code := IngressRefusalSentinel(err)
+	code, _ := IngressRefusalSentinel(err)
 	return code
 }
 
-// IngressRefusalSentinel returns the sentinel err wraps and its code. Ingresses
+// IngressRefusalSentinel returns the code of the sentinel err wraps, and that sentinel. Ingresses
 // render the sentinel text, never the wrapped chain. An unmapped error returns
 // a nil sentinel and UNCLASSIFIED; a nil error returns UNSPECIFIED.
-func IngressRefusalSentinel(err error) (error, operatorv1.IngressRefusalCode) {
+func IngressRefusalSentinel(err error) (operatorv1.IngressRefusalCode, error) {
 	if err == nil {
-		return nil, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED
+		return operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED, nil
 	}
 	for _, entry := range ingressRefusalCodes {
 		if errors.Is(err, entry.sentinel) {
-			return entry.sentinel, entry.code
+			return entry.code, entry.sentinel
 		}
 	}
-	return nil, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED
+	return operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED, nil
 }
 
 // NewIngressRefusal builds the wire body for a pre-envelope refusal. Error is
 // the sentinel's text; an unmapped error renders constants.ErrInternal.
 func NewIngressRefusal(err error) *operatorv1.IngressRefusal {
-	sentinel, code := IngressRefusalSentinel(err)
+	code, sentinel := IngressRefusalSentinel(err)
 	text := constants.ErrInternal.Error()
 	if sentinel != nil {
 		text = sentinel.Error()

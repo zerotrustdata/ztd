@@ -4,7 +4,7 @@ title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
 version: v1.0.0
-last_updated: 2026-10-12
+last_updated: 2026-10-14
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -259,7 +259,7 @@ Authentication enforces strong cryptographic identity:
 ### Cryptographic Key Custody and Vault Hierarchy
 
 ztd protects sensitive data using a three-tier encryption hierarchy:
-- **Platform Master Key**: 32-byte key held in the OS keyring or protected external key file (`0600` permissions). Never stored in plaintext in the runtime tree.
+- **Platform Master Key**: 32-byte key sealed by the OS key store, or by an ssh-agent key on hosts without one. Never stored in plaintext, and a host with neither fails closed.
 - **Vault Key**: 32-byte key sealed under the master key and stored in `.ztd/secrets/vault_key`.
 - **Key Encryption Key (KEK)**: Derived from the vault key using HKDF-SHA256 with domain-specific salt and info strings.
 - **Data Encryption Key (DEK)**: 256-bit AES key wrapped by the KEK using AES Key Wrap and stored in `.ztd/vault/vault.header`. Encrypts sensitive audit logs, file diffs, and scrubber tokens using AES-256-GCM.

@@ -4,7 +4,7 @@ title: Build ztd-Compatible Applications
 audience: application developers and agent framework authors
 status: current
 version: v1.0.0
-last_updated: 2026-10-12
+last_updated: 2026-10-14
 owners:
   - docs/guides/build_apps.md
   - internal/services/mcp/
@@ -118,7 +118,7 @@ Direct submission requires constructing the complete canonical protojson `Govern
 ./ztd auth enroll user
 ```
 
-Issues the CLI certificate with SPIFFE ID `spiffe://ztd.local/cli/<user_id>/<session_id>`. The private key is sealed under the keystore master key and is never written as PEM, so only `ztd` can use it; pass `--master-key-file` where the host has no OS key store.
+Issues the CLI certificate with SPIFFE ID `spiffe://ztd.local/cli/<user_id>/<session_id>`. The private key is sealed under the keystore master key and is never written as PEM, so only `ztd` can use it. On a Linux host without an OS key store, load a key into an ssh-agent first (see [Encryption Architecture](../architecture/encryption.md#master-key-and-keyring-providers)).
 
 ### Application Workload Credentials
 

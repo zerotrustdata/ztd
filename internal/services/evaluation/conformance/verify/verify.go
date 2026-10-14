@@ -42,6 +42,7 @@ func verifyPersisted(raw []byte, digestHex string, verifyRecord func(*evalv1.Con
 	}
 	record := &evalv1.ConformanceRunRecord{}
 	if err := evalv1.UnmarshalCanonical(raw, record); err != nil {
+		//nolint:nilerr // a non-canonical record is an INVALID_EVIDENCE verdict, not an error
 		return invalidSet(nil), nil
 	}
 	return verifyRecord(record)
@@ -67,6 +68,7 @@ func verifyAgainst(record *evalv1.ConformanceRunRecord, applicable []cases.Case)
 	check, err := newRecordCheck(record, applicable)
 	if err != nil {
 		// A record problem carries no per-case verdicts: the record is not evidence.
+		//nolint:nilerr // a record problem is an INVALID_EVIDENCE verdict, not an error
 		return invalidSet(record), nil
 	}
 
