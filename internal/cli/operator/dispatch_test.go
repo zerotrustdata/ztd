@@ -248,3 +248,14 @@ func TestSummarizeRunWithoutSuccessReportsZeroLatency(t *testing.T) {
 	assert.Zero(t, summary.P99Ms)
 	assert.Zero(t, summary.MaxMs)
 }
+
+func TestDecodeGovernanceRejection(t *testing.T) {
+	body := []byte(`{"error":"TX_DOCTRINE_L1_FAILED","receipt":{"transaction_id":"tx-1","status":"EXECUTION_STATUS_FAILED","failure_code":"RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED","rejection_code":"GOVERNANCE_REJECTION_CODE_L1_DOCTRINE"}}`)
+	rejection := DecodeGovernanceRejection(body)
+	require.NotNil(t, rejection)
+	assert.Equal(t, "tx-1", rejection.GetReceipt().GetTransactionId())
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE, rejection.GetReceipt().GetRejectionCode())
+
+	assert.Nil(t, DecodeGovernanceRejection([]byte(`{"error":"dispatch: no delivery"}`)), "an error body without a receipt is not a rejection")
+	assert.Nil(t, DecodeGovernanceRejection([]byte(`not json`)))
+}

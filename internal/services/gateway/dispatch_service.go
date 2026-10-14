@@ -980,33 +980,48 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 		CliSessionID:            req.CliSessionID,
 	})
 	if err != nil {
-		// Dispatch errors can embed command lines, paths and doctrine violations; the
-		// caller receives the message and the rejection is recorded on the signed receipt.
+		// Dispatch errors can embed command lines, paths and doctrine violations. The
+		// caller receives the signed rejection receipt or the typed sentinel, never
+		// the wrapped chain.
 		c.logger.Error("dispatch: command dispatch failed", logging.ErrorKind(err))
+		status, message := dispatchErrorCode(err)
 		if rejection := governance.RejectionResponse(err); rejection != nil {
-			c.responder.ProtoJSONCanonical(w, classifyDispatchError(err), rejection)
+			c.responder.ProtoJSONCanonical(w, status, rejection)
 			return
 		}
-		c.responder.Error(w, classifyDispatchError(err), err.Error())
+		c.responder.Error(w, status, message)
 		return
 	}
 
 	c.responder.JSON(w, http.StatusOK, result.ToResponse())
 }
 
-// classifyDispatchError maps a dispatch failure to an HTTP status. Governance
+// dispatchErrorCode maps a dispatch failure to an HTTP status and the text a
+// response renders: the typed sentinel, never the wrapped chain. A target
+// operator session that does not resolve (AuthError from
+// ValidateOperatorSession) is 404 with its message: the caller's own
+// credentials were already accepted, so 401 would misreport it. Governance
 // rejections, from Gateway-side envelope construction or the Operator's signed
-// L4 receipt, are 403 like direct envelope submission.
-func classifyDispatchError(err error) int {
-	switch {
-	case errors.Is(err, constants.ErrWitnessCommandNotCapable):
-		return http.StatusUnprocessableEntity
-	case errors.Is(err, constants.ErrDispatchGovernanceRejected):
-		return http.StatusForbidden
-	case errors.Is(err, constants.ErrDispatchResultTimeout):
-		return http.StatusGatewayTimeout
-	case errors.Is(err, constants.ErrDispatchNoDelivery):
-		return http.StatusServiceUnavailable
+// L4 receipt, are 403 like direct envelope submission. Anything else follows
+// envelopeErrorCode, so an unclassified fault is 500 with constants.ErrInternal.
+func dispatchErrorCode(err error) (int, string) {
+	var authErr *AuthError
+	if errors.As(err, &authErr) {
+		return http.StatusNotFound, authErr.Message
 	}
-	return classifyEnvelopeError(err)
+	for _, entry := range []struct {
+		sentinel error
+		status   int
+	}{
+		{constants.ErrWitnessCommandNotCapable, http.StatusUnprocessableEntity},
+		{constants.ErrDispatchGovernanceRejected, http.StatusForbidden},
+		{constants.ErrDispatchResultTimeout, http.StatusGatewayTimeout},
+		{constants.ErrDispatchNoDelivery, http.StatusServiceUnavailable},
+	} {
+		if errors.Is(err, entry.sentinel) {
+			return entry.status, entry.sentinel.Error()
+		}
+	}
+	status, sentinel := envelopeErrorCode(err)
+	return status, sentinel.Error()
 }

@@ -144,6 +144,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - `internal/services/governance.CanonicalizeActionReceipt` formats `ActionReceipt` into deterministic UTF-8 JSON.
    - Keys are sorted lexicographically, floats formatted with consistent precision, and whitespace stripped.
    - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `ActionReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
+   - `GovernanceRejection` (`error`, `receipt`) is the client body for an L4 rejection on every ingress. Ingresses render it with `protojson` proto names, and clients verify `receipt` with `VerifyActionReceiptSignature`.
    - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
    - `VerifyReceiptPersistenceAttestation` canonicalizes and verifies persistence attestations.
 2. **Evaluation Protojson Canonicalization**:

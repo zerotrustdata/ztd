@@ -354,8 +354,8 @@ func TestDispatchController_HandleDispatch_UnknownSession(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusInternalServerError, rr.Code, "unknown operator session must fail closed")
-	assert.Contains(t, rr.Body.String(), "validate operator session")
+	assert.Equal(t, http.StatusNotFound, rr.Code, "unknown operator session must fail closed")
+	assert.Contains(t, rr.Body.String(), constants.ErrGatewayOperatorSessionInvalid.Error())
 }
 
 type boundaryInferenceBackend struct {

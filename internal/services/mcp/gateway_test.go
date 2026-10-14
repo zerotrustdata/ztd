@@ -315,52 +315,67 @@ func TestGatewayService_HandleToolsCall_ErrorMapping(t *testing.T) {
 	}
 }
 
-func TestGatewayService_HandleToolsCall_FailedStageReceiptIncludedInErrorData(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
-		TransactionId:   "tx-blocked-1",
-		TransactionHash: "hash-blocked-1",
-		SignerKeyId:     "warden-key-blocked",
-		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		ResultSummary:   "L1 doctrine rejected: audit integrity violation",
-		Signature:       "sig-blocked-1",
+// TestGatewayService_RejectionReceiptIsErrorData proves MCP tools/call and
+// A2A return the Operator's signed rejection receipt as typed
+// GovernanceRejection error data, with its rejection_code.
+func TestGatewayService_RejectionReceiptIsErrorData(t *testing.T) {
+	cases := []struct {
+		name    string
+		path    string
+		reqBody string
+		handle  func(g *GatewayService, w http.ResponseWriter, r *http.Request)
+	}{
+		{
+			name:    "mcp tools/call",
+			path:    "/mcp",
+			reqBody: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run_shell_command","arguments":{"command":"rm -rf /"}}}`,
+			handle:  (*GatewayService).HandleMCP,
+		},
+		{
+			name:    "mcp a2a/call",
+			path:    "/mcp",
+			reqBody: `{"jsonrpc":"2.0","id":1,"method":"a2a/call","params":{"skill_name":"wipe","payload":{}}}`,
+			handle:  (*GatewayService).HandleMCP,
+		},
+		{
+			name:    "a2a route",
+			path:    constants.APIPaths.A2ACall,
+			reqBody: `{"jsonrpc":"2.0","id":1,"method":"a2a/call","params":{"skill_name":"wipe","payload":{}}}`,
+			handle:  (*GatewayService).HandleA2aCall,
+		},
 	}
-	proc := &fakeEnvelopeProcessor{receipt: receipt, err: governance.ErrL1ValidationFailed}
-	g := newTestGatewayService(t, withEnvProc(proc))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			receipt := &operatorv1.ActionReceipt{
+				TransactionId:   "tx-blocked-1",
+				TransactionHash: "tx-blocked-1",
+				SignerKeyId:     "warden-key-blocked",
+				Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+				FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+				RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE,
+				ResultSummary:   "rejected: L1 doctrine",
+				Signature:       "sig-blocked-1",
+			}
+			verifyErr := fmt.Errorf("%w: destroy_rm_recursive_wide_target", governance.ErrL1ValidationFailed)
+			proc := &fakeEnvelopeProcessor{receipt: receipt, err: governance.WithRejectionReceipt(receipt, verifyErr)}
+			g := newTestGatewayService(t, withEnvProc(proc))
+			w := httptest.NewRecorder()
 
-	reqBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run_shell_command","arguments":{"command":"rm","args":["-rf","/var/cloudsvc"]},"execution_id":"execution-blocked-1","investigation_id":"investigation-blocked-1"}}`
-	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(reqBody))
-	w := httptest.NewRecorder()
+			tc.handle(g, w, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.reqBody)))
 
-	g.HandleMCP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	var resp struct {
-		Error *struct {
-			Code    int             `json:"code"`
-			Message string          `json:"message"`
-			Data    json.RawMessage `json:"data,omitempty"`
-		} `json:"error"`
+			require.Equal(t, http.StatusOK, w.Code)
+			var resp JSONRPCResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			require.NotNil(t, resp.Error)
+			assert.Equal(t, constants.ErrCodeL1ValidationFailed, resp.Error.Code)
+			rejection := &operatorv1.GovernanceRejection{}
+			require.NoError(t, protojson.Unmarshal(resp.Error.Data, rejection))
+			assert.Equal(t, governance.ErrL1ValidationFailed.Error(), rejection.GetError())
+			assert.Equal(t, "tx-blocked-1", rejection.GetReceipt().GetTransactionId())
+			assert.Equal(t, "sig-blocked-1", rejection.GetReceipt().GetSignature())
+			assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE, rejection.GetReceipt().GetRejectionCode())
+		})
 	}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.NotNil(t, resp.Error, "L1 block must produce a JSON-RPC error response")
-	assert.Equal(t, constants.ErrCodeL1ValidationFailed, resp.Error.Code)
-
-	var rcpt struct {
-		ExecutionID     string `json:"execution_id"`
-		TransactionID   string `json:"transaction_id"`
-		TransactionHash string `json:"transaction_hash"`
-		SignerKeyID     string `json:"signer_key_id"`
-		Signature       string `json:"signature"`
-		InvestigationID string `json:"investigation_id"`
-	}
-	require.NotEmpty(t, resp.Error.Data, "L1 block error response must include failed-stage receipt data")
-	require.NoError(t, json.Unmarshal(resp.Error.Data, &rcpt))
-	assert.Equal(t, "execution-blocked-1", rcpt.ExecutionID)
-	assert.Equal(t, "tx-blocked-1", rcpt.TransactionID)
-	assert.Equal(t, "hash-blocked-1", rcpt.TransactionHash)
-	assert.Equal(t, "warden-key-blocked", rcpt.SignerKeyID)
-	assert.Equal(t, "sig-blocked-1", rcpt.Signature)
-	assert.Equal(t, "investigation-blocked-1", rcpt.InvestigationID)
 }
 
 func TestGatewayService_HandleToolsCall_NoFailedStageDataWhenReceiptIsNil(t *testing.T) {

@@ -269,6 +269,30 @@ func TestDispatchService_Dispatch_InvalidOperatorSession(t *testing.T) {
 	assert.Contains(t, err.Error(), "dispatch: validate operator session")
 }
 
+func TestDispatchErrorCode_RendersSentinelNotChain(t *testing.T) {
+	cases := []struct {
+		name    string
+		err     error
+		status  int
+		message string
+	}{
+		{"unresolved target session", fmt.Errorf("dispatch: validate operator session: %w", &AuthError{Message: constants.ErrGatewayOperatorSessionInvalid.Error(), Status: http.StatusUnauthorized}), http.StatusNotFound, constants.ErrGatewayOperatorSessionInvalid.Error()},
+		{"witness capability", fmt.Errorf("dispatch: %w: rm -rf /srv", constants.ErrWitnessCommandNotCapable), http.StatusUnprocessableEntity, constants.ErrWitnessCommandNotCapable.Error()},
+		{"governance rejected", fmt.Errorf("dispatch: %w (transaction tx-1): cat /etc/shadow", constants.ErrDispatchGovernanceRejected), http.StatusForbidden, constants.ErrDispatchGovernanceRejected.Error()},
+		{"result timeout", fmt.Errorf("dispatch: %w after 30s (transaction tx-1)", constants.ErrDispatchResultTimeout), http.StatusGatewayTimeout, constants.ErrDispatchResultTimeout.Error()},
+		{"no delivery", fmt.Errorf("dispatch: %w", constants.ErrDispatchNoDelivery), http.StatusServiceUnavailable, constants.ErrDispatchNoDelivery.Error()},
+		{"build-time doctrine", fmt.Errorf("dispatch: %w: matched rm -rf /", constants.ErrTxL1ValidationFailed), http.StatusForbidden, constants.ErrTxL1ValidationFailed.Error()},
+		{"unclassified fault", fmt.Errorf("dispatch: get state root: %w", errors.New("sqlite: disk I/O error at /var/lib/ztd")), http.StatusInternalServerError, constants.ErrInternal.Error()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, message := dispatchErrorCode(tc.err)
+			assert.Equal(t, tc.status, status)
+			assert.Equal(t, tc.message, message)
+		})
+	}
+}
+
 func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))

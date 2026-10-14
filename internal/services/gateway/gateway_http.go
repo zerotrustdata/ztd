@@ -289,7 +289,7 @@ func readRequestBody(r *http.Request, maxPayloadBytes int64) ([]byte, error) {
 	limited := io.LimitReader(r.Body, maxPayloadBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gateway: %w: %w", constants.ErrRequestBodyRead, err)
 	}
 	if int64(len(data)) > maxPayloadBytes {
 		return nil, fmt.Errorf("gateway: %w (limit %d bytes)", constants.ErrPayloadExceedsLimit, maxPayloadBytes)

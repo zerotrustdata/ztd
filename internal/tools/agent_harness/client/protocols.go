@@ -9,16 +9,12 @@ package client
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // JSONRPCRequest / JSONRPCResponse mirror the Gateway's MCP/A2A ingress shape.
@@ -335,46 +331,12 @@ type a2aCallParams struct {
 	ExecutionID string       `json:"execution_id"`
 }
 
-// a2aCallProtoParams is the JSON-RPC params envelope for a2a/call with a
-// base64-encoded protobuf payload.
-type a2aCallProtoParams struct {
-	SkillName   string `json:"skill_name"`
-	ExecutionID string `json:"execution_id"`
-	Encoding    string `json:"encoding"`
-	ContentType string `json:"content_type"`
-	PayloadB64  string `json:"payload_b64"`
-}
-
 // A2ACall invokes an A2A skill with a typed JSON payload. payload matches
 // the skill's schema; a nil payload is forwarded as JSON null.
 func (c *Client) A2ACall(ctx context.Context, p Persona, skill string, payload SkillPayload, execID string) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/api/a2a/v1/call", "a2a/call", a2aCallParams{
+	return c.rpc(ctx, p, constants.APIPaths.A2ACall, "a2a/call", a2aCallParams{
 		SkillName:   skill,
 		Payload:     payload,
 		ExecutionID: execID,
-	})
-}
-
-// A2ACallProto demonstrates A2A carrying a typed protobuf task payload rather
-// than loose JSON: it marshals an A2ACallRequested, base64-encodes the bytes,
-// and ships them under a content-type marker. The Gateway still wraps it in an
-// A2A_CALL governance envelope; the difference is a deterministic, typed,
-// schema-checked payload instead of free-form JSON.
-func (c *Client) A2ACallProto(ctx context.Context, p Persona, skill string, payloadJSON, execID string) (*JSONRPCResponse, error) {
-	msg := &operatorv1.A2ACallRequested{
-		SkillName:   skill,
-		PayloadJson: payloadJSON,
-		ExecutionId: execID,
-	}
-	raw, err := proto.Marshal(msg)
-	if err != nil {
-		return nil, fmt.Errorf("marshal A2ACallRequested: %w", err)
-	}
-	return c.rpc(ctx, p, "/api/a2a/v1/call", "a2a/call", a2aCallProtoParams{
-		SkillName:   skill,
-		ExecutionID: execID,
-		Encoding:    "protobuf",
-		ContentType: "application/x-protobuf;type=ztd.operator.v1.A2ACallRequested",
-		PayloadB64:  base64.StdEncoding.EncodeToString(raw),
 	})
 }

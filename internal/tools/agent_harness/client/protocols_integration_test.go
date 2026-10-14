@@ -11,7 +11,6 @@ package client
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -641,8 +640,8 @@ func TestA2ACall(t *testing.T) {
 				if r.Method != http.MethodPost {
 					t.Errorf("expected POST, got %s", r.Method)
 				}
-				if r.URL.Path != "/api/a2a/v1/call" {
-					t.Errorf("expected path /api/a2a/v1/call, got %s", r.URL.Path)
+				if r.URL.Path != constants.APIPaths.A2ACall {
+					t.Errorf("expected path %s, got %s", constants.APIPaths.A2ACall, r.URL.Path)
 				}
 
 				var req JSONRPCRequest
@@ -698,82 +697,6 @@ func TestA2ACall(t *testing.T) {
 				t.Error("A2ACall() returned nil response")
 			}
 		})
-	}
-}
-
-func TestA2ACallProto(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
-		}
-		if r.URL.Path != "/api/a2a/v1/call" {
-			t.Errorf("expected path /api/a2a/v1/call, got %s", r.URL.Path)
-		}
-
-		var req JSONRPCRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Errorf("failed to decode request: %v", err)
-		}
-
-		if req.Method != "a2a/call" {
-			t.Errorf("expected method a2a/call, got %s", req.Method)
-		}
-
-		params, ok := req.Params.(map[string]any)
-		if !ok {
-			t.Error("params should be a map")
-		}
-
-		if params["skill_name"] != "test-skill" {
-			t.Errorf("expected skill_name test-skill, got %v", params["skill_name"])
-		}
-
-		if params["encoding"] != "protobuf" {
-			t.Errorf("expected encoding protobuf, got %v", params["encoding"])
-		}
-
-		if params["content_type"] != "application/x-protobuf;type=ztd.operator.v1.A2ACallRequested" {
-			t.Errorf("unexpected content_type: %v", params["content_type"])
-		}
-
-		payloadB64, ok := params["payload_b64"].(string)
-		if !ok {
-			t.Error("payload_b64 should be a string")
-		}
-
-		_, err := base64.StdEncoding.DecodeString(payloadB64)
-		if err != nil {
-			t.Errorf("payload_b64 is not valid base64: %v", err)
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"completed"}}`))
-	})
-
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	cfg := config.Config{
-		MTLSBaseURL: server.URL,
-		Auth:        config.Auth{},
-	}
-
-	client, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-
-	ctx := context.Background()
-	p := Persona{ID: "test-client"}
-
-	resp, err := client.A2ACallProto(ctx, p, "test-skill", `{"input":"data"}`, "exec-123")
-
-	if err != nil {
-		t.Errorf("A2ACallProto() error = %v", err)
-	}
-
-	if resp == nil {
-		t.Error("A2ACallProto() returned nil response")
 	}
 }
 

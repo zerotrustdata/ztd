@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 - Windows one-command onboarding: `irm https://zerotrustdata.io/start.ps1 | iex` (`website/static/start.ps1`) installs, starts a Gateway, signs in, and runs a first governed action; the homepage quick start and Releases pages show it as a first-class option.
+- Governance rejections reach the caller as typed, signed evidence. Every ingress (direct envelope, governed dispatch, MCP, A2A) returns `GovernanceRejection` with the executing Operator's signed rejection receipt and its `rejection_code`. Direct envelope submission returns 503 when the verifier cannot run instead of 500, renders pre-L4 refusals as sentinels only, and returns its 200 receipt as canonical protojson (enums by name) instead of `encoding/json`. Dispatch renders only typed sentinels, and an unresolved target session is 404. A2A suspends only on a missing L3 proof, like MCP. `ztd operator run` prints the transaction ID and rejection code. The agent harness A2A client posts to `/api/v1/a2a/call`.
 
 ## v1.0.x
 

@@ -869,9 +869,9 @@
                         }
                     },
                     "403": {
-                        "description": "Forbidden — governance verification failed",
+                        "description": "Forbidden — governance verification failed; L4 rejections carry the signed receipt",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/operatorv1.GovernanceRejection"
                         }
                     },
                     "405": {
@@ -881,9 +881,9 @@
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable — processor not configured",
+                        "description": "Service Unavailable — processor not configured, or verifier unavailable",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/operatorv1.GovernanceRejection"
                         }
                     }
                 }
@@ -4532,6 +4532,14 @@
                         }
                     ]
                 },
+                "rejection_code": {
+                    "description": "The verification check that rejected the transaction. Set exactly when\nfailure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the\nsignature via canonicalization.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.GovernanceRejectionCode"
+                        }
+                    ]
+                },
                 "result_summary": {
                     "description": "Concise summary of the result (e.g. \"exit code 0\", \"file written\")",
                     "type": "string"
@@ -4722,6 +4730,73 @@
                 "ExecutionStatus_EXECUTION_STATUS_FAILED",
                 "ExecutionStatus_EXECUTION_STATUS_CANCELLED",
                 "ExecutionStatus_EXECUTION_STATUS_TIMEOUT"
+            ]
+        },
+        "operatorv1.GovernanceRejection": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "receipt": {
+                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                }
+            }
+        },
+        "operatorv1.GovernanceRejectionCode": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23
+            ],
+            "x-enum-varnames": [
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_ENVELOPE_MALFORMED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_PROTOCOL_VERSION_UNSUPPORTED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_REPLAY",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_DOCUMENT_COLLECTION_NOT_GOVERNED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_SESSION_MISMATCH",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TRANSACTION_HASH_MISMATCH",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TRANSACTION_ID_MISMATCH",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_POSTURE_MISSING",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN"
             ]
         },
         "operatorv1.InferenceDispatchFailure": {

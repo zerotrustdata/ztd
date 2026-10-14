@@ -250,7 +250,7 @@ The Operator owns the final two layers of the governance interlock:
 7. **Final Attestation**: Captures the final state root, marks the receipt `COMPLETED` or `FAILED`, signs the receipt, and attaches a signed `ReceiptPersistenceAttestation`.
 8. **Asynchronous Gateway Relay**: Mirrors the receipt to the Gateway `receipts:` channel on a best-effort basis.
 
-A rejected transaction produces a rejection receipt instead of executing. The receipt is `FAILED` with `failure_code` `GOVERNANCE_REJECTED`, and its signed `rejection_code` (`ActionReceipt.rejection_code`, enum `GovernanceRejectionCode` in `protocol/proto/ztd/operator/v1/operator.proto`) names the verification check. Non-rejection receipts carry `GOVERNANCE_REJECTION_CODE_UNSPECIFIED`. Classification is defined in [Governance Architecture](governance.md) (`INV-GOV-ACT-09`).
+A rejected transaction produces a rejection receipt instead of executing. The receipt is `FAILED` with `failure_code` `GOVERNANCE_REJECTED`, and its signed `rejection_code` (`ActionReceipt.rejection_code`, enum `GovernanceRejectionCode` in `protocol/proto/ztd/operator/v1/operator.proto`) names the verification check. Non-rejection receipts carry `GOVERNANCE_REJECTION_CODE_UNSPECIFIED`. Classification is defined in [Governance Architecture](governance.md) (`INV-GOV-ACT-09`). Every ingress returns this receipt to the caller as `GovernanceRejection` (`INV-GOV-ACT-10`); `ztd operator run` prints its transaction ID and rejection code.
 
 ### Local State, Native Tools, and Git File Ledger
 

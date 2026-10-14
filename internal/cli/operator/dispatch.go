@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -52,6 +53,9 @@ type RunResult struct {
 	Stdout            string `json:"stdout,omitempty"`
 	Stderr            string `json:"stderr,omitempty"`
 	Error             string `json:"error,omitempty"`
+	// RejectionCode is the signed receipt's rejection_code when the executing
+	// Operator rejected the command at L4.
+	RejectionCode string `json:"rejection_code,omitempty"`
 	// StartedAt is when the dispatch request began; DurationMs is its
 	// monotonic-clock elapsed time through response decoding.
 	StartedAt  time.Time `json:"started_at"`
@@ -157,6 +161,17 @@ func DecodeDispatchResponse(raw []byte) (*DispatchResponse, error) {
 		return nil, fmt.Errorf("%w: decode dispatch response: %w", constants.ErrInvalidJSONResponse, err)
 	}
 	return response, nil
+}
+
+// DecodeGovernanceRejection decodes a dispatch error body as the typed
+// GovernanceRejection the Gateway returns when the executing Operator rejected
+// the command at L4. It returns nil when body carries no signed receipt.
+func DecodeGovernanceRejection(body []byte) *operatorv1.GovernanceRejection {
+	rejection := &operatorv1.GovernanceRejection{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, rejection); err != nil || rejection.GetReceipt() == nil {
+		return nil
+	}
+	return rejection
 }
 
 // ParseCommandResult decodes the governed operator command result from a dispatch

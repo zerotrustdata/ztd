@@ -493,6 +493,14 @@ func dispatchOperatorRunOnce(client authcmd.APIClient, target operatorRunTarget,
 	raw, err := client.Post(constants.APIPaths.OperatorsCommands, request)
 	if err != nil {
 		result.Error = err.Error()
+		var statusErr *api.StatusError
+		if errors.As(err, &statusErr) {
+			if rejection := operator.DecodeGovernanceRejection([]byte(statusErr.Body)); rejection != nil {
+				result.TransactionID = rejection.GetReceipt().GetTransactionId()
+				result.RejectionCode = rejection.GetReceipt().GetRejectionCode().String()
+				result.Error = rejection.GetReceipt().GetResultSummary()
+			}
+		}
 		return result
 	}
 
@@ -541,6 +549,9 @@ func writeOperatorRunText(cmd *cobra.Command, results []operator.RunResult) int 
 		}
 		if !result.Success {
 			failures++
+			if result.RejectionCode != "" {
+				cmd.Printf("  rejected: %s\n", result.RejectionCode)
+			}
 			if result.Error != "" {
 				cmd.Printf("  error: %s\n", result.Error)
 			} else {

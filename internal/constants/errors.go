@@ -25,6 +25,7 @@ var (
 	ErrOperatorCapabilityInvalid          = errors.New("invalid operator capability")
 	ErrProvenanceModelStorageRootRequired = errors.New("provenance capability requires --model-storage-root")
 	ErrInvalidJSONBody                    = errors.New("invalid JSON body")
+	ErrRequestBodyRead                    = errors.New("failed to read request body")
 	ErrUserIDRequired                     = errors.New("user_id required")
 	ErrMethodNotAllowed                   = errors.New("method not allowed")
 	ErrForbidden                          = errors.New("forbidden")

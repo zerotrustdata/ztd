@@ -73,15 +73,7 @@ type fakeEnvelopeProcessor struct {
 	calls      int
 }
 
-// actionReceiptJSON represents the JSON response format for ActionReceipt
 // using protojson field naming conventions.
-type actionReceiptJSON struct {
-	TransactionID   string `json:"transaction_id"`
-	TransactionHash string `json:"transaction_hash"`
-	Signature       string `json:"signature"`
-	SignerKeyID     string `json:"signer_key_id"`
-}
-
 func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	f.calls++
 	f.gotPayload = append([]byte(nil), payload...)
@@ -282,13 +274,14 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 	require.Equal(t, "tx-abc", forwarded.GetId())
 	require.Equal(t, constants.PostureNotary, forwarded.GetPosture(), "handler must stamp gateway posture onto the envelope")
 
-	// Receipt should be returned as JSON. Field names follow protojson.
-	var got actionReceiptJSON
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	require.Equal(t, "tx-abc", got.TransactionID)
-	require.Equal(t, "abc123", got.TransactionHash)
-	require.Equal(t, "deadbeef", got.Signature)
-	require.Equal(t, "Actuator-key-id", got.SignerKeyID)
+	// Receipt is returned as canonical protojson (proto field names).
+	got := &operatorv1.ActionReceipt{}
+	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), got))
+	require.Equal(t, "tx-abc", got.GetTransactionId())
+	require.Equal(t, "abc123", got.GetTransactionHash())
+	require.Equal(t, "deadbeef", got.GetSignature())
+	require.Equal(t, "Actuator-key-id", got.GetSignerKeyId())
+	require.Contains(t, w.Body.String(), `"transaction_id"`)
 }
 
 func TestGovernanceEnvelope_CallerSuppliedPosture_Returns400(t *testing.T) {
@@ -305,7 +298,7 @@ func TestGovernanceEnvelope_CallerSuppliedPosture_Returns400(t *testing.T) {
 		h.governanceController.handleGovernanceEnvelope(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code, posture)
-		require.Contains(t, w.Body.String(), constants.ErrEnvelopePostureCallerSupplied.Error(), posture)
+		require.JSONEq(t, `{"error":"`+constants.ErrEnvelopePostureCallerSupplied.Error()+`"}`, w.Body.String(), posture)
 		require.Zero(t, proc.calls, "a caller-supplied posture must never reach the processor")
 	}
 }
@@ -332,6 +325,7 @@ func TestGovernanceEnvelope_FailedExecution_StillReturns200(t *testing.T) {
 	h.governanceController.handleGovernanceEnvelope(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"status":"EXECUTION_STATUS_FAILED"`, "enums render by name, as canonical protojson")
 }
 
 func TestGovernanceEnvelope_NilReceiptNilError_Returns500(t *testing.T) {
@@ -516,4 +510,21 @@ func TestVerifyEnvelopeIdentityBinding_NoIdentityFields_FailsClosed(t *testing.T
 	require.NoError(t, marshalErr)
 	err := verifyEnvelopeIdentityBinding(req, envelope)
 	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed, "an unbound envelope must fail closed")
+}
+
+// TestGovernanceEnvelope_PreL4Refusal_RendersSentinelOnly proves a refusal
+// raised before L4 (transport identity binding) renders only its sentinel,
+// never the wrapped chain, and never reaches the processor.
+func TestGovernanceEnvelope_PreL4Refusal_RendersSentinelOnly(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-unbound"}}
+	h := newGovernanceEnvelopeHandler(t, proc)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{"id":"tx-unbound"}`)))
+	req.TLS = &tls.ConnectionState{}
+	w := httptest.NewRecorder()
+	h.governanceController.handleGovernanceEnvelope(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.JSONEq(t, `{"error":"`+constants.ErrMTLSRequired.Error()+`"}`, w.Body.String())
+	require.Zero(t, proc.calls)
 }

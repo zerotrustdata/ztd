@@ -19,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -208,7 +209,7 @@ func isAppRecordWrite(a constants.ActionType) bool {
 func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 	var envelope commonv1.GovernanceEnvelope
 	if err := protojson.Unmarshal(body, &envelope); err != nil {
-		return nil, fmt.Errorf("decode envelope: %w", err)
+		return nil, fmt.Errorf("decode envelope: %w: %w", constants.ErrTxInvalidEnvelope, err)
 	}
 	if envelope.Posture != "" {
 		return nil, fmt.Errorf("stamp posture %q: %w", envelope.Posture, constants.ErrEnvelopePostureCallerSupplied)
@@ -270,7 +271,7 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 
 	body, err := readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
 	if err != nil {
-		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("handleGovernanceEnvelope: failed to read request body: %w", err).Error())
+		c.renderEnvelopeError(w, err)
 		return
 	}
 	if len(body) == 0 {
@@ -285,7 +286,7 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 	// Skip identity binding if no TLS is present (test mode)
 	if r.TLS != nil {
 		if err := verifyEnvelopeIdentityBinding(r, body); err != nil {
-			c.responder.Error(w, http.StatusForbidden, fmt.Errorf("handleGovernanceEnvelope: identity binding: %w", err).Error())
+			c.renderEnvelopeError(w, err)
 			return
 		}
 	}
@@ -294,18 +295,13 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 	// never sends posture; one that does is refused.
 	body, err = stampEnvelopePosture(body, string(c.cfg.Gateway.Posture))
 	if err != nil {
-		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("handleGovernanceEnvelope: %w", err).Error())
+		c.renderEnvelopeError(w, err)
 		return
 	}
 
 	receipt, procErr := proc.ProcessEnvelope(r.Context(), body)
 	if procErr != nil {
-		status, code := envelopeErrorCode(procErr)
-		if rejection := governance.RejectionResponse(procErr); rejection != nil {
-			c.responder.ProtoJSONCanonical(w, status, rejection)
-			return
-		}
-		c.responder.Error(w, status, code.Error())
+		c.renderEnvelopeError(w, procErr)
 		return
 	}
 	if receipt == nil {
@@ -315,15 +311,29 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 		return
 	}
 
-	// Receipt is returned as JSON. Execution-failure receipts (status=FAILED)
-	// are still HTTP 200 because they represent a verified, audited outcome
-	// - the caller has cryptographic evidence of the attempt.
-	c.responder.JSON(w, http.StatusOK, receipt)
+	// Receipt is returned as canonical protojson. Execution-failure receipts
+	// (status=FAILED) are still HTTP 200 because they represent a verified,
+	// audited outcome - the caller has cryptographic evidence of the attempt.
+	c.responder.ProtoJSONCanonical(w, http.StatusOK, receipt)
+}
+
+// renderEnvelopeError writes a direct-submission failure: the signed
+// GovernanceRejection for an L4 rejection, otherwise only the typed sentinel.
+func (c *GovernanceController) renderEnvelopeError(w http.ResponseWriter, err error) {
+	c.logger.Warn("governance envelope refused", logging.ErrorKind(err))
+	status, sentinel := envelopeErrorCode(err)
+	if rejection := governance.RejectionResponse(err); rejection != nil {
+		c.responder.ProtoJSONCanonical(w, status, rejection)
+		return
+	}
+	c.responder.Error(w, status, sentinel.Error())
 }
 
 // envelopeBadRequestErrors are caller-side bad input: decode failures and
 // empty or oversized payloads.
 var envelopeBadRequestErrors = []error{
+	constants.ErrRequestBodyRead,
+	constants.ErrEnvelopePostureCallerSupplied,
 	constants.ErrPubSubEmptyPayload,
 	constants.ErrPayloadExceedsLimit,
 	constants.ErrTxInvalidEnvelope,
@@ -333,6 +343,9 @@ var envelopeBadRequestErrors = []error{
 // verification, which carry no rejection code. L4 verification sentinels are
 // classified by governance.GovernanceRejectionSentinel.
 var envelopeForbiddenErrors = []error{
+	constants.ErrMTLSRequired,
+	constants.ErrCertURISANMissing,
+	constants.ErrIdentityBindingFailed,
 	constants.ErrTxOutcomeNotRegistered,
 	constants.ErrTxOutcomeNotAllowed,
 	constants.ErrTxL3ProofUnmintable,
