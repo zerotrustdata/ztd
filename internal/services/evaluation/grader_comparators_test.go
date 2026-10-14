@@ -134,3 +134,70 @@ func graderIntegerObservation(id string, value int64) *evalv1.EvaluationObservat
 		EvidenceRefs:    []*compliancev1.ComplianceEvidenceReference{testEvidenceReference(id)},
 	}
 }
+
+func equalIntegerAssertion(id string, expected int64, observationType string, authority evalv1.EvaluationEvidenceAuthority) *evalv1.EvaluationAssertion {
+	return &evalv1.EvaluationAssertion{
+		AssertionId: id, AssertionVersion: RegistryVersion, Comparator: evalv1.EvaluationComparator_EVALUATION_COMPARATOR_EQUAL,
+		Expected:                 &evalv1.EvaluationValue{Value: &evalv1.EvaluationValue_IntegerValue{IntegerValue: expected}},
+		RequiredObservationTypes: []*compliancev1.VersionedReference{versioned(observationType, RegistryVersion)},
+		RequiredAuthorities:      []evalv1.EvaluationEvidenceAuthority{authority},
+	}
+}
+
+func TestGrader_FailsClosedForMissingContradictoryAndWrongAuthorityEvidence(t *testing.T) {
+	assertion := equalIntegerAssertion("count", 1, "target-count", evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_INDEPENDENT_TARGET_STATE)
+	newObservation := func(id string, count int64, authority evalv1.EvaluationEvidenceAuthority, withEvidence bool) *evalv1.EvaluationObservation {
+		observation := &evalv1.EvaluationObservation{ObservationId: id, ObservationType: versioned("target-count", RegistryVersion), Authority: authority, Value: &evalv1.EvaluationValue{Value: &evalv1.EvaluationValue_IntegerValue{IntegerValue: count}}}
+		if withEvidence {
+			observation.EvidenceRefs = []*compliancev1.ComplianceEvidenceReference{testEvidenceReference(id)}
+		}
+		return observation
+	}
+	tests := []struct {
+		name         string
+		observations []*evalv1.EvaluationObservation
+		want         evalv1.EvaluationVerdictStatus
+	}{
+		{name: "missing observation", want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE},
+		{name: "wrong authority", observations: []*evalv1.EvaluationObservation{newObservation("wrong", 1, evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_GATEWAY_COORDINATION, true)}, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+		{name: "missing evidence reference", observations: []*evalv1.EvaluationObservation{newObservation("unbound", 1, evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_INDEPENDENT_TARGET_STATE, false)}, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+		{name: "contradictory observations", observations: []*evalv1.EvaluationObservation{newObservation("one", 1, evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_INDEPENDENT_TARGET_STATE, true), newObservation("two", 2, evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_INDEPENDENT_TARGET_STATE, true)}, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+	}
+	grader := NewGrader(func() time.Time { return time.Unix(1, 0).UTC() })
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			verdict := grader.Grade("attempt-1", assertion, test.observations)
+			assert.Equal(t, test.want, verdict.Status)
+		})
+	}
+}
+
+func TestGrader_MalformedAssertionIsInvalidEvidenceNotUnavailable(t *testing.T) {
+	grader := NewGrader(func() time.Time { return time.Unix(1, 0).UTC() })
+	observation := &evalv1.EvaluationObservation{
+		ObservationId:   "obs-1",
+		ObservationType: versioned("target-count", RegistryVersion),
+		Authority:       evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_INDEPENDENT_TARGET_STATE,
+		Value:           &evalv1.EvaluationValue{Value: &evalv1.EvaluationValue_IntegerValue{IntegerValue: 1}},
+		EvidenceRefs:    []*compliancev1.ComplianceEvidenceReference{testEvidenceReference("obs-1")},
+	}
+	tests := []struct {
+		name      string
+		assertion *evalv1.EvaluationAssertion
+	}{
+		{name: "no required observation type", assertion: &evalv1.EvaluationAssertion{AssertionId: "a", AssertionVersion: RegistryVersion, Comparator: evalv1.EvaluationComparator_EVALUATION_COMPARATOR_EQUAL, Expected: &evalv1.EvaluationValue{Value: &evalv1.EvaluationValue_IntegerValue{IntegerValue: 1}}, RequiredAuthorities: []evalv1.EvaluationEvidenceAuthority{evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_INDEPENDENT_TARGET_STATE}}},
+		{name: "no required authority", assertion: &evalv1.EvaluationAssertion{AssertionId: "a", AssertionVersion: RegistryVersion, Comparator: evalv1.EvaluationComparator_EVALUATION_COMPARATOR_EQUAL, Expected: &evalv1.EvaluationValue{Value: &evalv1.EvaluationValue_IntegerValue{IntegerValue: 1}}, RequiredObservationTypes: []*compliancev1.VersionedReference{versioned("target-count", RegistryVersion)}}},
+		{name: "missing expected value", assertion: &evalv1.EvaluationAssertion{AssertionId: "a", AssertionVersion: RegistryVersion, Comparator: evalv1.EvaluationComparator_EVALUATION_COMPARATOR_EQUAL, RequiredObservationTypes: []*compliancev1.VersionedReference{versioned("target-count", RegistryVersion)}, RequiredAuthorities: []evalv1.EvaluationEvidenceAuthority{evalv1.EvaluationEvidenceAuthority_EVALUATION_EVIDENCE_AUTHORITY_INDEPENDENT_TARGET_STATE}}},
+		{name: "nil assertion", assertion: nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			verdict := grader.Grade("attempt-1", test.assertion, []*evalv1.EvaluationObservation{observation})
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE, verdict.Status)
+		})
+	}
+}
+
+func testEvidenceReference(id string) *compliancev1.ComplianceEvidenceReference {
+	return &compliancev1.ComplianceEvidenceReference{ArtifactId: id + ":sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ArtifactType: id, Sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+}

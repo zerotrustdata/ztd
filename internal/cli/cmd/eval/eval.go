@@ -175,7 +175,7 @@ func nativeEvalDeployment(cfg *config.Config, authContext *auth.ClientAuthContex
 		DeploymentId:        runID,
 		TopologyRef:         &compliancev1.VersionedReference{Id: evaluation.TopologyID, Version: evaluation.TopologyVersion},
 		ControlledTarget:    target,
-		IndependentObserver: evaluation.RuntimeTargetObserverID,
+		IndependentObserver: constants.EvaluationRuntimeTargetObserverID,
 		RuntimeBoundaries: []*evalv1.EvaluationRuntimeBoundary{
 			{Component: evalv1.EvaluationRuntimeComponent_EVALUATION_RUNTIME_COMPONENT_EVALUATOR, ProcessIdentity: "host-side ztd eval process", RuntimeNamespace: "host workspace", Endpoint: cfg.OperatorHTTPURL(), AuthenticatedIdentity: authContext.UserID},
 			{Component: evalv1.EvaluationRuntimeComponent_EVALUATION_RUNTIME_COMPONENT_GATEWAY, ProcessIdentity: "ztd gateway (host process)", RuntimeNamespace: "host runtime root", PersistentStore: "Gateway runtime root", Endpoint: cfg.OperatorHTTPURL(), AuthenticatedIdentity: authContext.CLISessionID},

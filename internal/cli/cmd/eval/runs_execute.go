@@ -210,7 +210,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: initialize gateway client: %w", err)
 		}
-		lane := evaluation.NewCommandLane(gatewayClient, store, harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}, 0, 0)
+		lane := evaluation.NewCommandLane(gatewayClient, harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID})
 		return evaluation.NewCampaignAgentExecutor(&harnessFormationInferenceDispatcher{client: appClient}, lane, store, deps.now, newID)
 	}
 	controller := controllerFactory(evaluation.NewCampaignAssignmentRouter(buildFormation, buildAgent))

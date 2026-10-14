@@ -154,7 +154,6 @@ const (
 	FileExtCert = ".crt"
 	FileExtKey  = ".key"
 	FileExtJSON = ".json"
-	FileExtText = ".txt"
 
 	// CA and bundle filenames
 	PkiFileRootCA          = "root_ca.crt"
@@ -261,7 +260,6 @@ const (
 	// EvaluationControlledTargetDirname is the controlled target directory,
 	// relative to the runtime root (.ztd/).
 	EvaluationControlledTargetDirname = EvaluationDirname + "/targets"
-	EvaluationTargetFilenamePrefix    = "ztd-eval-"
 	// EvaluationWorkspaceDirname is the directory under the Data Operator's
 	// reported working directory that holds attempt-scoped scenario fixture
 	// workspaces. Names are neutral so the model is not told it is evaluated.

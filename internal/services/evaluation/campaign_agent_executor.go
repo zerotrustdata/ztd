@@ -494,14 +494,15 @@ func (r *agentRun) runFileTool(ctx context.Context, record AgentToolCall, tool s
 	if err != nil || denied {
 		return record, err
 	}
-	if !dispatched.Admitted {
+	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(tool, dispatched)})
 	}
 	return r.decodeFileResult(record, tool, args, dispatched.ResultPayload)
 }
 
 // dispatch submits one governed action and records its policy decision. It
-// returns denied=true with the record already completed for a 403.
+// returns denied=true with the record already completed for a governance
+// rejection or an ingress refusal.
 func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, bool, error) {
 	assignment := r.req.Assignment
 	dispatched, err := r.executor.tools.DispatchAgentTool(ctx, r.target, assignment.GetRunId(), assignment.GetScenarioId(), r.req.AttemptID, action, resource, payload)
@@ -509,9 +510,10 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 		return GovernedToolDispatch{}, false, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
 	record.TransactionID = dispatched.TransactionID
-	if dispatched.Denied {
+	switch answerKind(dispatched.Outcome) {
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
 		record.PolicyDecision = agentPolicyDecisionDeny
-		reason := dispatched.Error
+		reason := answerMessage(dispatched.Outcome)
 		if reason == "" {
 			reason = "governance rejected the action"
 		}
@@ -521,18 +523,18 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 		}
 		*record = completed
 		return dispatched, true, nil
-	}
-	if dispatched.Admitted {
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
 		record.PolicyDecision = agentPolicyDecisionAllow
 	}
 	return dispatched, false, nil
 }
 
 func agentDispatchErrorText(tool string, dispatched GovernedToolDispatch) string {
-	if dispatched.Error != "" {
-		return fmt.Sprintf("ZTD-1607: Tool execution failed for %s: %s", tool, dispatched.Error)
+	reason := answerMessage(dispatched.Outcome)
+	if reason == "" {
+		reason = answerKind(dispatched.Outcome).String()
 	}
-	return fmt.Sprintf("ZTD-1607: Tool execution failed for %s: request rejected with status %d", tool, dispatched.HTTPStatus)
+	return fmt.Sprintf("ZTD-1607: Tool execution failed for %s: %s", tool, reason)
 }
 
 func operatorFailure(status operatorv1.ExecutionStatus, errorType, message string) *agentToolFailure {
@@ -630,7 +632,7 @@ func (r *agentRun) runCommand(ctx context.Context, record AgentToolCall, args ag
 	if err != nil || denied {
 		return record, err
 	}
-	if !dispatched.Admitted {
+	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(agentToolRunCommands, dispatched)})
 	}
 	result := &operatorv1.CommandResult{}

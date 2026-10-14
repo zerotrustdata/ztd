@@ -1398,7 +1398,6 @@ var (
 
 // Native evaluation errors.
 var (
-	ErrEvaluationSuiteUnsupported          = errors.New("evaluation: suite is unsupported")
 	ErrEvaluationTargetUnavailable         = errors.New("evaluation: target operator is unavailable")
 	ErrEvaluationPostureUnsupported        = errors.New("evaluation: governance posture is unsupported")
 	ErrEvaluationObservationUnavailable    = errors.New("evaluation: independent observation is unavailable")
