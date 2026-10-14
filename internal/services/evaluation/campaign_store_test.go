@@ -95,6 +95,10 @@ func (m *campaignMemoryFileService) ArchiveRuntime(context.Context, time.Time) (
 	panic("unexpected ArchiveRuntime")
 }
 
+func (m *campaignMemoryFileService) MkdirTemp(context.Context, string) (string, error) {
+	panic("unexpected MkdirTemp")
+}
+
 func (m *campaignMemoryFileService) RemoveAll(_ context.Context, relPath string) error {
 	if relPath == "" {
 		return nil

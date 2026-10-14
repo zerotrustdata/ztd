@@ -576,10 +576,6 @@ var (
 	ErrPasskeyCredentialInvalidAttestation = errors.New("passkey credential attestation type is not recognized")
 	ErrPasskeyCredentialInvalidTimestamp   = errors.New("passkey credential created_at_unix_ms is zero")
 
-	ErrWindowsCertStoreImport   = errors.New("windows cert store import is only available on Windows")
-	ErrWindowsTempDirCreate     = errors.New("failed to create Windows temp directory")
-	ErrWindowsCertWriteFailed   = errors.New("failed to write certificate to temp file")
-	ErrWindowsPowerShellImport  = errors.New("failed to import certificate via PowerShell")
 	ErrWindowsRegistryOpenKey   = errors.New("failed to open registry key")
 	ErrWindowsRegistryReadValue = errors.New("failed to read registry value")
 

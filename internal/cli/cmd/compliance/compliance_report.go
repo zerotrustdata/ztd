@@ -1043,6 +1043,9 @@ func (r *explicitSourceReader) Remove(context.Context, string) error {
 func (r *explicitSourceReader) RemoveAll(context.Context, string) error {
 	return constants.ErrReadOnlyEvidenceSource
 }
+func (r *explicitSourceReader) MkdirTemp(context.Context, string) (string, error) {
+	return "", constants.ErrReadOnlyEvidenceSource
+}
 func (r *explicitSourceReader) ArchiveRuntime(context.Context, time.Time) (string, error) {
 	return "", constants.ErrReadOnlyEvidenceSource
 }

@@ -108,10 +108,6 @@ const (
 	PathWindowsGitBinSh                   = "C:\\Program Files\\Git\\bin\\sh.exe"
 	PathWindowsMsys64Bash                 = "C:\\msys64\\usr\\bin\\bash.exe"
 	PathWindowsCygwin64Bash               = "C:\\cygwin64\\bin\\bash.exe"
-
-	// Windows temp directory prefixes and filenames for cert store operations
-	WindowsTempCertImportPrefix = "ztd-cert-import-*"
-	WindowsTempCertFilename     = "certificate.pem"
 )
 
 // Operator host-agent staging patterns (os.CreateTemp). The leading dot keeps
@@ -373,6 +369,16 @@ const (
 	BinDirname               = "bin"
 	LogDirname               = "logs"
 
+	// TmpDirname holds scratch files and directories under the runtime dir.
+	// Every throwaway path a runtime creates comes from
+	// RuntimeFileService.MkdirTemp; nothing is staged in the OS temp dir or
+	// the user's home directory.
+	TmpDirname = "tmp"
+
+	// OperatorsDirname holds throwaway local Operators deployed by
+	// `ztd operator deploy --local`, one subdirectory per Operator.
+	OperatorsDirname = "operators"
+
 	// Inference runtime directory names under data/.
 	InferenceDirname                        = "inference"
 	InferenceAttemptsDirname                = "attempts"
@@ -412,6 +418,7 @@ const (
 	AgentConfigDirGemini     = ".gemini"
 	AgentConfigDirGoose      = ".config/goose"
 	AgentConfigFileMCPDevin  = "config.json"
+	AgentConfigFileMCPTemp   = "mcp.json"
 	AgentConfigFileSettings  = "settings.json"
 	AgentConfigFileGooseYAML = "config.yaml"
 )

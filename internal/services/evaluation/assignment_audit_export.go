@@ -14,13 +14,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
@@ -31,6 +32,7 @@ const (
 	AssignmentAuditSliceKind    = "assignment_audit_slice"
 	AssignmentAuditVaultKeyKind = "assignment_audit_vault_key"
 	assignmentAuditSchemaRef    = "ztd.eval.v1.PublicAssignmentAuditSlice"
+	assignmentAuditDBFilename   = "assignment-audit.db"
 )
 
 // AssignmentAuditSliceEvent is one disclosure-approved row written into an
@@ -57,8 +59,9 @@ var assignmentAuditProhibitedKeys = []string{
 
 // BuildAssignmentAuditSlice builds a WAL-checkpointed SQLite audit slice and a
 // fresh vault key that decrypts only that file. Payloads are validated against
-// the public feed allowlist before encryption.
-func BuildAssignmentAuditSlice(assignmentID string, events []AssignmentAuditSliceEvent) (AssignmentAuditSliceArtifacts, error) {
+// the public feed allowlist before encryption. The file is assembled in a
+// runtime scratch directory that is removed before returning.
+func BuildAssignmentAuditSlice(ctx context.Context, files fs.RuntimeFileService, assignmentID string, events []AssignmentAuditSliceEvent) (AssignmentAuditSliceArtifacts, error) {
 	if strings.TrimSpace(assignmentID) == "" {
 		return AssignmentAuditSliceArtifacts{}, fmt.Errorf("evaluation: build assignment audit slice: %w", constants.ErrMissingRequiredField)
 	}
@@ -84,17 +87,15 @@ func BuildAssignmentAuditSlice(assignmentID string, events []AssignmentAuditSlic
 		return AssignmentAuditSliceArtifacts{}, fmt.Errorf("evaluation: build assignment audit slice: marshal vault header: %w", err)
 	}
 
-	tmpFile, err := os.CreateTemp("", "assignment-audit-*.db")
+	scratchDir, err := openAssignmentAuditScratch(ctx, files, "assignment-audit-*")
 	if err != nil {
 		vault.SecureZero(privateKey)
 		vault.SecureZero(dek)
-		return AssignmentAuditSliceArtifacts{}, fmt.Errorf("evaluation: build assignment audit slice: create temp db: %w", err)
+		return AssignmentAuditSliceArtifacts{}, fmt.Errorf("evaluation: build assignment audit slice: %w", err)
 	}
-	dbPath := tmpFile.Name()
-	_ = tmpFile.Close()
-	defer os.Remove(dbPath)
+	defer scratchDir.remove()
 
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(scratchDir.dbPath()), slog.Default())
 	if err != nil {
 		vault.SecureZero(privateKey)
 		vault.SecureZero(dek)
@@ -160,7 +161,7 @@ func BuildAssignmentAuditSlice(assignmentID string, events []AssignmentAuditSlic
 		return AssignmentAuditSliceArtifacts{}, fmt.Errorf("evaluation: build assignment audit slice: close db: %w", err)
 	}
 
-	dbBytes, err := os.ReadFile(dbPath)
+	dbBytes, err := files.ReadFile(ctx, scratchDir.dbRelPath())
 	if err != nil {
 		vault.SecureZero(privateKey)
 		vault.SecureZero(dek)
@@ -179,8 +180,9 @@ func BuildAssignmentAuditSlice(assignmentID string, events []AssignmentAuditSlic
 }
 
 // VerifyAssignmentAuditSlice decrypts event payloads and checks the commitment
-// chain without contacting the public mirror.
-func VerifyAssignmentAuditSlice(dbBytes []byte, vaultKey []byte) error {
+// chain without contacting the public mirror. The file is opened from a
+// runtime scratch directory that is removed before returning.
+func VerifyAssignmentAuditSlice(ctx context.Context, files fs.RuntimeFileService, dbBytes []byte, vaultKey []byte) error {
 	if len(dbBytes) == 0 || len(vaultKey) == 0 {
 		return fmt.Errorf("evaluation: verify assignment audit slice: %w", constants.ErrMissingRequiredField)
 	}
@@ -190,20 +192,16 @@ func VerifyAssignmentAuditSlice(dbBytes []byte, vaultKey []byte) error {
 	}
 	defer vault.SecureZero(privateKey)
 
-	tmpFile, err := os.CreateTemp("", "assignment-audit-verify-*.db")
+	scratchDir, err := openAssignmentAuditScratch(ctx, files, "assignment-audit-verify-*")
 	if err != nil {
-		return fmt.Errorf("evaluation: verify assignment audit slice: create temp db: %w", err)
+		return fmt.Errorf("evaluation: verify assignment audit slice: %w", err)
 	}
-	dbPath := tmpFile.Name()
-	if _, err := tmpFile.Write(dbBytes); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(dbPath)
-		return fmt.Errorf("evaluation: verify assignment audit slice: write temp db: %w", err)
+	defer scratchDir.remove()
+	if err := files.WriteFile(ctx, scratchDir.dbRelPath(), dbBytes, constants.PermFilePrivate); err != nil {
+		return fmt.Errorf("evaluation: verify assignment audit slice: write scratch db: %w", err)
 	}
-	_ = tmpFile.Close()
-	defer os.Remove(dbPath)
 
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(scratchDir.dbPath()), slog.Default())
 	if err != nil {
 		return fmt.Errorf("evaluation: verify assignment audit slice: open db: %w", err)
 	}
@@ -564,5 +562,39 @@ func AssignmentAuditEvidenceBindingsFromHashes(databaseSHA256, vaultKeySHA256 st
 	return []*evalv1.PublicEvidenceBinding{
 		{Sha256: databaseSHA256, SchemaRef: assignmentAuditSchemaRef, Kind: AssignmentAuditSliceKind},
 		{Sha256: vaultKeySHA256, SchemaRef: assignmentAuditSchemaRef, Kind: AssignmentAuditVaultKeyKind},
+	}
+}
+
+// assignmentAuditScratch is the runtime scratch directory holding one slice
+// database while it is built or verified. Removing the directory also removes
+// the SQLite WAL and SHM sidecar files.
+type assignmentAuditScratch struct {
+	files  fs.RuntimeFileService
+	relDir string
+}
+
+func openAssignmentAuditScratch(ctx context.Context, files fs.RuntimeFileService, pattern string) (assignmentAuditScratch, error) {
+	if files == nil {
+		return assignmentAuditScratch{}, fmt.Errorf("scratch db: file service: %w", constants.ErrMissingRequiredField)
+	}
+	relDir, err := files.MkdirTemp(ctx, pattern)
+	if err != nil {
+		return assignmentAuditScratch{}, fmt.Errorf("scratch db: %w", err)
+	}
+	return assignmentAuditScratch{files: files, relDir: relDir}, nil
+}
+
+func (s assignmentAuditScratch) dbRelPath() string {
+	return filepath.Join(s.relDir, assignmentAuditDBFilename)
+}
+
+func (s assignmentAuditScratch) dbPath() string {
+	return s.files.Resolve(s.dbRelPath())
+}
+
+// remove runs on a background context so a cancelled caller still cleans up.
+func (s assignmentAuditScratch) remove() {
+	if err := s.files.RemoveAll(context.Background(), s.relDir); err != nil {
+		slog.Warn("evaluation: remove assignment audit scratch directory", "path", s.relDir, "error", err)
 	}
 }

@@ -8,6 +8,7 @@
 package agent
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,8 +17,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+// newScratchFiles returns a file service over an isolated runtime root, which
+// owns the scratch directories the agent configs are written into.
+func newScratchFiles(t *testing.T) fs.RuntimeFileService {
+	t.Helper()
+	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	require.NoError(t, err)
+	return files
+}
 
 func writeFile(t *testing.T, name, content string) string {
 	t.Helper()
@@ -29,7 +40,7 @@ func writeFile(t *testing.T, name, content string) string {
 func TestPrepare_EveryRegisteredAgentWritesAndVerifies(t *testing.T) {
 	for _, integration := range All() {
 		t.Run(string(integration.ID), func(t *testing.T) {
-			prepared, err := integration.Prepare(testutil.TempDir(t), "/fake/ztd", string(integration.ID), true)
+			prepared, err := integration.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", string(integration.ID), true)
 			require.NoError(t, err)
 			t.Cleanup(prepared.Cleanup)
 
@@ -51,7 +62,7 @@ func TestVerifyIsolated_ReportsTheAgentThatFailsVerification(t *testing.T) {
 	integration := All()[0]
 	integration.VerifyHooks = []VerifyHook{func(VerifyInput) error { return verifyFailure("lockdown drift") }}
 
-	err := integration.VerifyIsolated("/fake/ztd")
+	err := integration.VerifyIsolated(context.Background(), newScratchFiles(t), "/fake/ztd")
 
 	require.ErrorIs(t, err, constants.ErrToolInterceptionVerification)
 	assert.Contains(t, err.Error(), string(integration.ID))
@@ -65,11 +76,11 @@ func TestPrepare_VerifyFalseSkipsHooks(t *testing.T) {
 		VerifyHooks:    []VerifyHook{verifyStrictLaunchFlags},
 	}
 
-	prepared, err := broken.Prepare(testutil.TempDir(t), "/fake/ztd", "broken", false)
+	prepared, err := broken.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", "broken", false)
 	require.NoError(t, err)
 	prepared.Cleanup()
 
-	_, err = broken.Prepare(testutil.TempDir(t), "/fake/ztd", "broken", true)
+	_, err = broken.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", "broken", true)
 	require.ErrorIs(t, err, constants.ErrToolInterceptionVerification)
 }
 
@@ -85,7 +96,7 @@ func TestPrepare_FailureCleansUpTempConfig(t *testing.T) {
 		}},
 	}
 
-	_, err := broken.Prepare(testutil.TempDir(t), "/fake/ztd", "broken", true)
+	_, err := broken.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", "broken", true)
 	require.ErrorIs(t, err, constants.ErrToolInterceptionVerification)
 	require.NotEmpty(t, seen)
 	_, statErr := os.Stat(seen)
@@ -93,7 +104,7 @@ func TestPrepare_FailureCleansUpTempConfig(t *testing.T) {
 }
 
 func TestPrepare_UnknownStrategyFailsClosed(t *testing.T) {
-	_, err := Integration{ID: "bogus", ConfigStrategy: "bogus"}.Prepare(testutil.TempDir(t), "/fake/ztd", "bogus", true)
+	_, err := Integration{ID: "bogus", ConfigStrategy: "bogus"}.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", "bogus", true)
 	require.ErrorIs(t, err, constants.ErrAgentNotSupported)
 }
 

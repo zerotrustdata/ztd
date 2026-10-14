@@ -42,15 +42,16 @@ func TestAgentVerify_PassesForEveryRegisteredAgentWithoutTheAgentInstalled(t *te
 	home := testutil.TempDir(t)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	scratchFactory := agentScratchFileSvcFactory(t)
 
 	for _, integration := range agent.All() {
 		t.Run(string(integration.ID), func(t *testing.T) {
-			cmd := agentVerifyCmd()
+			cmd := agentVerifyCmd(scratchFactory)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
 
-			require.NoError(t, runAgentVerify(cmd, string(integration.ID)))
+			require.NoError(t, runAgentVerify(cmd, string(integration.ID), scratchFactory))
 			assert.Contains(t, out.String(), "PASS "+string(integration.ID))
 		})
 	}
@@ -61,6 +62,7 @@ func TestAgentVerify_PassesForEveryRegisteredAgentWithoutTheAgentInstalled(t *te
 }
 
 func TestAgentVerify_UnknownAgentFailsClosed(t *testing.T) {
-	err := runAgentVerify(agentVerifyCmd(), "cursor")
+	scratchFactory := agentScratchFileSvcFactory(t)
+	err := runAgentVerify(agentVerifyCmd(scratchFactory), "cursor", scratchFactory)
 	require.ErrorIs(t, err, constants.ErrAgentNotFound)
 }

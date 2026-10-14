@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/frontendverify"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 var errFactory = fmt.Errorf("factory boom")
@@ -215,7 +216,7 @@ func TestGatewayCleanCmdWithConfig_TrustInstallerFactoryError(t *testing.T) {
 	cmd := gatewayCleanCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg),
 		cmdtest.FileSvcFactoryFor(fileSvc),
-		func() (systemTrustCleaner, error) {
+		func(fs.RuntimeFileService) (systemTrustCleaner, error) {
 			return nil, errFactory
 
 		},

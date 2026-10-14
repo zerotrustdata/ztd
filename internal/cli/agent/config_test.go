@@ -8,6 +8,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -42,7 +43,7 @@ func TestWriteConfig_Goose_MergesExtensionAndPreservesExistingConfig(t *testing.
 	existing := []byte("provider:\n  name: openai\n  model: gpt-4o\nextensions:\n  existing:\n    enabled: true\n    config:\n      type: stdio\n      name: existing\n      cmd: existing-cmd\n")
 	require.NoError(t, os.WriteFile(existingPath, existing, 0o644))
 
-	configPath, cleanup, err := mustLookup(t, constants.AgentBinaryGoose).WriteConfig(home, "/fake/ztd", "goose")
+	configPath, cleanup, err := mustLookup(t, constants.AgentBinaryGoose).WriteConfig(context.Background(), newScratchFiles(t), home, "/fake/ztd", "goose")
 	require.NoError(t, err)
 	assert.Nil(t, cleanup, "goose config is the user's real config, not a throwaway")
 	assert.Equal(t, existingPath, configPath)
@@ -76,7 +77,7 @@ func TestWriteConfig_Gemini_DisablesBuiltinToolsAndMergesExistingServers(t *test
 	require.NoError(t, os.WriteFile(filepath.Join(geminiDir, "settings.json"),
 		[]byte(`{"mcpServers":{"other":{"command":"other-cmd","args":[]}}}`), 0o644))
 
-	configPath, _, err := mustLookup(t, constants.AgentBinaryGemini).WriteConfig(home, "/fake/ztd", "gemini")
+	configPath, _, err := mustLookup(t, constants.AgentBinaryGemini).WriteConfig(context.Background(), newScratchFiles(t), home, "/fake/ztd", "gemini")
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(configPath)
@@ -95,14 +96,14 @@ func TestWriteConfig_Gemini_RejectsCorruptExistingSettings(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".gemini", "settings.json"), []byte(`{not json`), 0o644))
 
-	_, _, err := mustLookup(t, constants.AgentBinaryGemini).WriteConfig(home, "/fake/ztd", "gemini")
+	_, _, err := mustLookup(t, constants.AgentBinaryGemini).WriteConfig(context.Background(), newScratchFiles(t), home, "/fake/ztd", "gemini")
 	require.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
 func TestWriteConfig_Devin_WritesOnlyTheZTDServer(t *testing.T) {
 	home := testutil.TempDir(t)
 
-	configPath, _, err := mustLookup(t, constants.AgentBinaryDevin).WriteConfig(home, "/fake/ztd", "devin")
+	configPath, _, err := mustLookup(t, constants.AgentBinaryDevin).WriteConfig(context.Background(), newScratchFiles(t), home, "/fake/ztd", "devin")
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(configPath)
@@ -117,9 +118,12 @@ func TestWriteConfig_Devin_WritesOnlyTheZTDServer(t *testing.T) {
 func TestWriteConfig_TempJSON_ListsNativeToolsAndCleansUp(t *testing.T) {
 	for _, id := range []constants.AgentBinary{constants.AgentBinaryClaude, constants.AgentBinaryCodex} {
 		t.Run(string(id), func(t *testing.T) {
-			configPath, cleanup, err := mustLookup(t, id).WriteConfig(testutil.TempDir(t), "/fake/ztd", string(id))
+			files := newScratchFiles(t)
+			configPath, cleanup, err := mustLookup(t, id).WriteConfig(context.Background(), files, testutil.TempDir(t), "/fake/ztd", string(id))
 			require.NoError(t, err)
 			require.NotNil(t, cleanup)
+			_, err = files.Rel(configPath)
+			require.NoError(t, err, "the throwaway config must live under the runtime dir")
 
 			data, err := os.ReadFile(configPath)
 			require.NoError(t, err)
@@ -131,12 +135,15 @@ func TestWriteConfig_TempJSON_ListsNativeToolsAndCleansUp(t *testing.T) {
 			cleanup()
 			_, err = os.Stat(configPath)
 			assert.True(t, errors.Is(err, os.ErrNotExist))
+			scratch, err := files.ReadDir(context.Background(), constants.TmpDirname)
+			require.NoError(t, err)
+			assert.Empty(t, scratch, "cleanup must remove the scratch directory")
 		})
 	}
 }
 
 func TestWriteConfig_UnknownStrategyFailsClosed(t *testing.T) {
-	_, _, err := Integration{ID: "bogus", ConfigStrategy: "bogus"}.WriteConfig(testutil.TempDir(t), "/fake/ztd", "bogus")
+	_, _, err := Integration{ID: "bogus", ConfigStrategy: "bogus"}.WriteConfig(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", "bogus")
 	require.ErrorIs(t, err, constants.ErrAgentNotSupported)
 }
 

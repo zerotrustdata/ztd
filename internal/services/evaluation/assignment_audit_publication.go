@@ -124,7 +124,7 @@ func (c *CampaignPublicationCoordinator) BuildAssignmentAuditBindings(
 	if len(events) == 0 {
 		return nil, nil
 	}
-	artifacts, err := BuildAssignmentAuditSlice(assignment.GetAssignmentId(), events)
+	artifacts, err := BuildAssignmentAuditSlice(ctx, c.files, assignment.GetAssignmentId(), events)
 	if err != nil {
 		return nil, err
 	}

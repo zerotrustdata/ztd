@@ -600,18 +600,18 @@ generated JSON to your agent's MCP settings file.`,
 	cmd.AddCommand(
 		agentListCmd(),
 		agentShowCmd(),
-		agentVerifyCmd(),
+		agentVerifyCmd(shared.NewFileSvc),
 		agentRunCmd(),
 	)
 
 	return cmd
 }
 
-func agentVerifyCmd() *cobra.Command {
+func agentVerifyCmd(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify <agent>",
 		Short: "Verify an agent's launcher config and tool lockdown without starting it",
-		Long: `Write the agent's MCP config into an isolated temporary home directory, compute
+		Long: `Write the agent's MCP config into an isolated scratch home directory under .ztd/tmp/, compute
 its launch arguments, and run the registry's tool-interception checks. The agent
 binary is never started and your real agent config is never touched, so this is
 safe to run in CI without the agent installed.`,
@@ -619,15 +619,20 @@ safe to run in CI without the agent installed.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentVerify(cmd, args[0])
+			return runAgentVerify(cmd, args[0], fileSvcFactory)
 		},
 	}
 }
 
-func runAgentVerify(cmd *cobra.Command, agentID string) error {
+func runAgentVerify(cmd *cobra.Command, agentID string, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) error {
 	integration, err := agent.Lookup(agentID)
 	if err != nil {
 		return fmt.Errorf("mcp: agent verify: %w", err)
+	}
+
+	fileSvc, err := fileSvcFactory("", slog.Default())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
 
 	binaryPath, err := os.Executable()
@@ -635,7 +640,7 @@ func runAgentVerify(cmd *cobra.Command, agentID string) error {
 		return fmt.Errorf("%w: %w", constants.ErrPathNotFound, err)
 	}
 
-	if err := integration.VerifyIsolated(binaryPath); err != nil {
+	if err := integration.VerifyIsolated(cmd.Context(), fileSvc, binaryPath); err != nil {
 		return fmt.Errorf("mcp: agent verify: %w", err)
 	}
 
@@ -1005,7 +1010,7 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 		}
 	}
 
-	_, cleanup, launchArgs, err := prepareAgentLaunch(agentID, agentAppName, verify)
+	_, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), fileSvc, agentID, agentAppName, verify)
 	if err != nil {
 		return err
 	}
@@ -1018,7 +1023,7 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 // prepareAgentLaunch validates the agent binary, writes the agent config, computes launch
 // args, and optionally verifies tool interception. The stdio bridge the agent spawns runs
 // as application appName. Returns configPath, cleanup func, launchArgs.
-func prepareAgentLaunch(agentID, appName string, verify bool) (string, func(), []string, error) {
+func prepareAgentLaunch(ctx context.Context, fileSvc fs.RuntimeFileService, agentID, appName string, verify bool) (string, func(), []string, error) {
 	integration, err := agent.Lookup(agentID)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("mcp: prepare launch: %w", err)
@@ -1038,7 +1043,7 @@ func prepareAgentLaunch(agentID, appName string, verify bool) (string, func(), [
 		return "", nil, nil, fmt.Errorf("mcp: prepare launch: %w", err)
 	}
 
-	prepared, err := integration.Prepare(homeDir, binaryPath, appName, verify)
+	prepared, err := integration.Prepare(ctx, fileSvc, homeDir, binaryPath, appName, verify)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("mcp: prepare launch: %w", err)
 	}

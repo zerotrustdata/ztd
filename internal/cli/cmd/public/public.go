@@ -302,12 +302,12 @@ func Cmd() *cobra.Command {
 		eval.PublicRestoreCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc),
 		publicStatusCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
-		publicVerifyAssignmentCmd(),
+		publicVerifyAssignmentCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 	)
 	return cmd
 }
 
-func publicVerifyAssignmentCmd() *cobra.Command {
+func publicVerifyAssignmentCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory publicFileSvcFactory) *cobra.Command {
 	var dbPath string
 	var vaultKeyPath string
 	cmd := &cobra.Command{
@@ -325,7 +325,15 @@ func publicVerifyAssignmentCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("public-feed: read assignment audit vault key: %w", err)
 			}
-			if err := evaluation.VerifyAssignmentAuditSlice(dbBytes, keyBytes); err != nil {
+			cfg, err := configLoader("")
+			if err != nil {
+				return err
+			}
+			fileSvc, err := fileSvcFactory(cfg.ProjectRoot, slog.Default())
+			if err != nil {
+				return err
+			}
+			if err := evaluation.VerifyAssignmentAuditSlice(cmd.Context(), fileSvc, dbBytes, keyBytes); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Assignment audit slice verified")

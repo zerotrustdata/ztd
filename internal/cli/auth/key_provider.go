@@ -14,9 +14,7 @@ import (
 
 // FileKeyProvider is the production KeyProvider implementation for the
 // EnrollmentCoordinator. It generates exportable file-backed ECDSA P-256
-// keys and CSRs on every platform. Windows Certificate Store import of the
-// signed certificate is handled separately by ImportCertificateToWindowsStore
-// (build-tag resolved) and is not part of key generation.
+// keys and CSRs on every platform.
 type FileKeyProvider struct{}
 
 // GenerateCLIKeyAndCSR generates an ECDSA P-256 key pair and PEM-encoded

@@ -201,6 +201,10 @@ func (s *recordingBundleFileService) ArchiveRuntime(context.Context, time.Time) 
 	panic("unexpected ArchiveRuntime")
 }
 
+func (s *recordingBundleFileService) MkdirTemp(context.Context, string) (string, error) {
+	panic("unexpected MkdirTemp")
+}
+
 func (s *recordingBundleFileService) RemoveAll(_ context.Context, relPath string) error {
 	s.removedPaths = append(s.removedPaths, relPath)
 	for filePath := range s.files {

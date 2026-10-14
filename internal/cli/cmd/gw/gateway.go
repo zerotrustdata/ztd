@@ -993,14 +993,14 @@ type systemTrustCleaner interface {
 // defaultTrustInstallerFactory returns the production SystemTrustInstaller.
 // It is the default injected into gatewayCleanCmdWithConfig; tests pass a
 // mock factory instead.
-func defaultTrustInstallerFactory() (systemTrustCleaner, error) {
-	return platform.NewSystemTrustInstaller(), nil
+func defaultTrustInstallerFactory(fileSvc fs.RuntimeFileService) (systemTrustCleaner, error) {
+	return platform.NewSystemTrustInstaller(fileSvc), nil
 }
 
 func gatewayCleanCmdWithConfig(
 	configLoader func(string) (*config.Config, error),
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
-	trustInstallerFactory func() (systemTrustCleaner, error),
+	trustInstallerFactory func(fs.RuntimeFileService) (systemTrustCleaner, error),
 ) *cobra.Command {
 	var force bool
 	var skipBackup bool
@@ -1058,7 +1058,7 @@ still runs unless --skip-backup is also given).`,
 			// (stub platform) or any trust-store error, proceed with the
 			// runtime wipe (the runtime wipe is the destructive primary
 			// action). Log the error for visibility.
-			trustCleaner, terr := trustInstallerFactory()
+			trustCleaner, terr := trustInstallerFactory(fileSvc)
 			if terr != nil {
 				cmd.Println(fmt.Sprintf("Warning: could not initialize OS trust cleaner (%v). Proceeding with runtime wipe.", terr))
 			} else {

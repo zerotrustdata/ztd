@@ -93,6 +93,9 @@ func (s *stubFileSvc) ArchiveRuntime(ctx context.Context, now time.Time) (string
 }
 func (s *stubFileSvc) Remove(ctx context.Context, relPath string) error    { panic("unexpected") }
 func (s *stubFileSvc) RemoveAll(ctx context.Context, relPath string) error { panic("unexpected") }
+func (s *stubFileSvc) MkdirTemp(ctx context.Context, pattern string) (string, error) {
+	panic("unexpected")
+}
 func (s *stubFileSvc) ReadDir(ctx context.Context, relPath string) ([]os.DirEntry, error) {
 	panic("unexpected")
 }

@@ -1895,6 +1895,9 @@ func (r *bundledRuntimeArtifactReader) Remove(context.Context, string) error {
 func (r *bundledRuntimeArtifactReader) RemoveAll(context.Context, string) error {
 	return constants.ErrReadOnlyEvidenceSource
 }
+func (r *bundledRuntimeArtifactReader) MkdirTemp(context.Context, string) (string, error) {
+	return "", constants.ErrReadOnlyEvidenceSource
+}
 func (r *bundledRuntimeArtifactReader) ArchiveRuntime(context.Context, time.Time) (string, error) {
 	return "", constants.ErrReadOnlyEvidenceSource
 }

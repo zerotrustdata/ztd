@@ -8,6 +8,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // Prepared is a written agent config plus the argv to launch the agent with.
@@ -27,9 +29,10 @@ type Prepared struct {
 
 // Prepare writes the agent config beneath homeDir, computes the launch argv,
 // and (when verify is set) runs the verify hooks. It never starts the agent
-// binary, so `agent run` and `agent verify` share one path.
-func (i Integration) Prepare(homeDir, binaryPath, appName string, verify bool) (Prepared, error) {
-	configPath, cleanup, err := i.WriteConfig(homeDir, binaryPath, appName)
+// binary, so `agent run` and `agent verify` share one path. Throwaway configs
+// are written to a runtime scratch directory owned by files.
+func (i Integration) Prepare(ctx context.Context, files fs.RuntimeFileService, homeDir, binaryPath, appName string, verify bool) (Prepared, error) {
+	configPath, cleanup, err := i.WriteConfig(ctx, files, homeDir, binaryPath, appName)
 	if err != nil {
 		return Prepared{}, fmt.Errorf("agent %s: write config: %w", i.ID, err)
 	}
@@ -53,18 +56,19 @@ func (i Integration) Prepare(homeDir, binaryPath, appName string, verify bool) (
 }
 
 // VerifyIsolated writes the integration's config into a throwaway home
-// directory, computes its launch argv, and runs the verify hooks. The agent
-// binary is never started and the real agent config is never touched, so it is
-// safe to run anywhere. It is the one verification path shared by
-// `ztd mcp agent verify` and the evaluation environment canaries.
-func (i Integration) VerifyIsolated(binaryPath string) error {
-	homeDir, err := os.MkdirTemp("", "ztd-agent-verify-*")
+// directory under the runtime scratch directory, computes its launch argv, and
+// runs the verify hooks. The agent binary is never started and the real agent
+// config is never touched, so it is safe to run anywhere. It is the one
+// verification path shared by `ztd mcp agent verify` and the evaluation
+// environment canaries.
+func (i Integration) VerifyIsolated(ctx context.Context, files fs.RuntimeFileService, binaryPath string) error {
+	homeRelDir, err := files.MkdirTemp(ctx, "agent-verify-*")
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+		return fmt.Errorf("agent %s: verify home: %w", i.ID, err)
 	}
-	defer os.RemoveAll(homeDir)
+	defer removeScratch(files, homeRelDir)
 
-	prepared, err := i.Prepare(homeDir, binaryPath, string(i.ID), true)
+	prepared, err := i.Prepare(ctx, files, files.Resolve(homeRelDir), binaryPath, string(i.ID), true)
 	if err != nil {
 		return err
 	}

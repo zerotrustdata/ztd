@@ -79,7 +79,6 @@ type connectDeps struct {
 // command layer overrides them with stdin-reading implementations.
 func defaultConnectDeps() connectDeps {
 	return connectDeps{
-		trustInstaller:   platform.NewSystemTrustInstaller(),
 		discoveryFetcher: auth.DiscoverLiveTrustBundle,
 		verifier:         frontendverify.NewVerifier(frontendverify.VerifierDeps{}),
 		browserOpener:    platform.OpenBrowser,
@@ -165,10 +164,8 @@ func runGatewayConnect(
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
 	deps connectDeps,
 ) error {
-	// Fill nil deps with production defaults.
-	if deps.trustInstaller == nil {
-		deps.trustInstaller = platform.NewSystemTrustInstaller()
-	}
+	// Fill nil deps with production defaults. The trust installer default
+	// needs the runtime file service and is filled once it exists.
 	if deps.discoveryFetcher == nil {
 		deps.discoveryFetcher = auth.DiscoverLiveTrustBundle
 	}
@@ -218,6 +215,9 @@ func runGatewayConnect(
 	fileSvc, err := fileSvcFactory("", slog.Default())
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+	}
+	if deps.trustInstaller == nil {
+		deps.trustInstaller = platform.NewSystemTrustInstaller(fileSvc)
 	}
 
 	pm, err := platform.NewProcessManager(fileSvc)

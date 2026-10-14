@@ -15,7 +15,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -48,11 +47,11 @@ $store.Close()`
 // requires elevation; a UAC rejection surfaces as a typed install error.
 func (i *SystemTrustInstaller) installPlatform(ctx context.Context, root *x509.Certificate, fingerprint string) error {
 	rootPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: root.Raw})
-	dir, certPath, err := writeTempCert(rootPEM)
+	certPath, cleanup, err := i.stageRootCert(ctx, rootPEM)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer cleanup()
 
 	_, err = i.runner.Run(ctx, nil, "certutil", "-addstore", "-f", "Root", certPath)
 	if err != nil {

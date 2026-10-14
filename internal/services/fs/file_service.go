@@ -84,6 +84,12 @@ type RuntimeFileService interface {
 	// RemoveAll deletes a directory tree. No-op if path doesn't exist.
 	RemoveAll(ctx context.Context, relPath string) error
 
+	// MkdirTemp creates a new private (0700) scratch directory under the
+	// runtime tmp directory, named by pattern as os.MkdirTemp names it, and
+	// returns its runtime-relative path. It is the only way a runtime creates
+	// a throwaway path; the caller removes it with RemoveAll.
+	MkdirTemp(ctx context.Context, pattern string) (string, error)
+
 	// ArchiveRuntime renames the whole runtime directory aside to
 	// .ztd-<MMDDHHMM> rather than deleting it and returns the archive path
 	// ("" if there was no runtime directory). Destructive cleans use this so
@@ -351,6 +357,25 @@ func (fs *localFS) RemoveAll(ctx context.Context, relPath string) error {
 		return fmt.Errorf("%w: %s: %w", constants.ErrDirRemoveFailed, relPath, err)
 	}
 	return nil
+}
+
+// MkdirTemp creates a private scratch directory under the runtime tmp
+// directory and returns its runtime-relative path.
+func (fs *localFS) MkdirTemp(ctx context.Context, pattern string) (string, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+	}
+	tmpRoot := fs.Resolve(constants.TmpDirname)
+	if err := os.MkdirAll(tmpRoot, constants.PermDirPrivate); err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+	}
+	absPath, err := os.MkdirTemp(tmpRoot, pattern)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+	}
+	return filepath.Join(constants.TmpDirname, filepath.Base(absPath)), nil
 }
 
 // ReadDir lists directory entries.

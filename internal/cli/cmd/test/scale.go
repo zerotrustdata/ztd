@@ -319,14 +319,22 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 		return err
 	}
 	// Headless hosts have no OS keychain, so the Gateway and deployed Operators
-	// get an explicit key file on their command lines. It lives outside the run
-	// root and is removed when the run ends.
-	keyDir, keyErr := os.MkdirTemp("", "ztd-scale-key-*")
+	// get an explicit key file on their command lines. It lives in the run
+	// Gateway's runtime tmp dir and is removed when the run ends.
+	runFiles, keyErr := fs.NewRuntimeFileService(layout.Run, slog.Default())
+	if keyErr != nil {
+		return fmt.Errorf("%w: %w: %w", constants.ErrScaleTestFailed, constants.ErrFileServiceInit, keyErr)
+	}
+	keyRelDir, keyErr := runFiles.MkdirTemp(ctx, "scale-key-*")
 	if keyErr != nil {
 		return fmt.Errorf("%w: create master key dir: %w", constants.ErrScaleTestFailed, keyErr)
 	}
-	defer os.RemoveAll(keyDir)
-	keyPath, keyErr := keystore.ProvisionMasterKeyFile(keyDir)
+	defer func() {
+		if rmErr := runFiles.RemoveAll(context.Background(), keyRelDir); rmErr != nil {
+			slog.Warn("Failed to remove scale master key directory", "path", keyRelDir, "error", rmErr)
+		}
+	}()
+	keyPath, keyErr := keystore.ProvisionMasterKeyFile(runFiles.Resolve(keyRelDir))
 	if keyErr != nil {
 		return fmt.Errorf("%w: %w", constants.ErrScaleTestFailed, keyErr)
 	}

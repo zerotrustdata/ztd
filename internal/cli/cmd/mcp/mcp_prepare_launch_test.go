@@ -8,6 +8,8 @@
 package mcp
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,11 +20,29 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // createFakeAgentBinary creates a fake executable named agentName in a temp dir
 // and prepends that dir to PATH so exec.LookPath finds it.
+// newAgentScratchFiles returns a file service over an isolated runtime root,
+// which owns the scratch directories throwaway agent configs are written into.
+func newAgentScratchFiles(t *testing.T) fs.RuntimeFileService {
+	t.Helper()
+	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	require.NoError(t, err)
+	return files
+}
+
+// agentScratchFileSvcFactory is a command file service factory over the same
+// kind of isolated runtime root.
+func agentScratchFileSvcFactory(t *testing.T) func(string, *slog.Logger) (fs.RuntimeFileService, error) {
+	t.Helper()
+	files := newAgentScratchFiles(t)
+	return func(string, *slog.Logger) (fs.RuntimeFileService, error) { return files, nil }
+}
+
 func createFakeAgentBinary(t *testing.T, agentName string) {
 	t.Helper()
 	binDir := testutil.TempDir(t)
@@ -44,7 +64,7 @@ func TestPrepareAgentLaunch_Claude_VerifyTrue(t *testing.T) {
 	t.Setenv("USERPROFILE", tmpHome)
 	createFakeAgentBinary(t, "claude")
 
-	configPath, cleanup, launchArgs, err := prepareAgentLaunch("claude", "claude", true)
+	configPath, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "claude", "claude", true)
 	require.NoError(t, err)
 	defer func() {
 		if cleanup != nil {
@@ -65,7 +85,7 @@ func TestPrepareAgentLaunch_Codex_VerifyTrue(t *testing.T) {
 	t.Setenv("USERPROFILE", tmpHome)
 	createFakeAgentBinary(t, "codex")
 
-	configPath, cleanup, launchArgs, err := prepareAgentLaunch("codex", "codex", true)
+	configPath, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "codex", "codex", true)
 	require.NoError(t, err)
 	defer func() {
 		if cleanup != nil {
@@ -85,7 +105,7 @@ func TestPrepareAgentLaunch_Goose_VerifyTrue(t *testing.T) {
 	t.Setenv("USERPROFILE", tmpHome)
 	createFakeAgentBinary(t, "goose")
 
-	configPath, cleanup, launchArgs, err := prepareAgentLaunch("goose", "goose", true)
+	configPath, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "goose", "goose", true)
 	require.NoError(t, err)
 	defer func() {
 		if cleanup != nil {
@@ -110,7 +130,7 @@ func TestPrepareAgentLaunch_Gemini_VerifyTrue(t *testing.T) {
 	t.Setenv("USERPROFILE", tmpHome)
 	createFakeAgentBinary(t, "gemini")
 
-	configPath, cleanup, launchArgs, err := prepareAgentLaunch("gemini", "gemini", true)
+	configPath, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "gemini", "gemini", true)
 	require.NoError(t, err)
 	defer func() {
 		if cleanup != nil {
@@ -140,7 +160,7 @@ func TestPrepareAgentLaunch_Devin_VerifyTrue(t *testing.T) {
 	t.Setenv("USERPROFILE", tmpHome)
 	createFakeAgentBinary(t, "devin")
 
-	configPath, cleanup, launchArgs, err := prepareAgentLaunch("devin", "devin", true)
+	configPath, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "devin", "devin", true)
 	require.NoError(t, err)
 	defer func() {
 		if cleanup != nil {
@@ -170,7 +190,7 @@ func TestPrepareAgentLaunch_VerifyFalse_SkipsVerification(t *testing.T) {
 	t.Setenv("USERPROFILE", tmpHome)
 	createFakeAgentBinary(t, "claude")
 
-	configPath, cleanup, launchArgs, err := prepareAgentLaunch("claude", "claude", false)
+	configPath, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "claude", "claude", false)
 	require.NoError(t, err)
 	defer func() {
 		if cleanup != nil {
@@ -191,7 +211,7 @@ func TestPrepareAgentLaunch_UnsupportedAgent(t *testing.T) {
 	t.Setenv("USERPROFILE", tmpHome)
 	createFakeAgentBinary(t, "cursor")
 
-	_, _, _, err := prepareAgentLaunch("cursor", "cursor", true)
+	_, _, _, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "cursor", "cursor", true)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrAgentNotFound)
 }
@@ -207,7 +227,7 @@ func TestPrepareAgentLaunch_AgentNotInPath(t *testing.T) {
 	// config is written.
 	t.Setenv("PATH", "")
 
-	_, _, _, err := prepareAgentLaunch("claude", "claude", true)
+	_, _, _, err := prepareAgentLaunch(context.Background(), newAgentScratchFiles(t), "claude", "claude", true)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrAgentNotInPath)
 }
