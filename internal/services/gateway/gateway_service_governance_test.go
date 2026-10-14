@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -30,9 +31,21 @@ func TestGatewayModeService_IsGovernanceReady(t *testing.T) {
 		assert.True(t, ls.IsGovernanceReady(t.Context()))
 	})
 
-	t.Run("Empty posture returns true without signers", func(t *testing.T) {
-		ls := newTestGatewayService(t, testGatewayOpts{})
-		assert.True(t, ls.IsGovernanceReady(t.Context()))
+	t.Run("Empty posture fails construction", func(t *testing.T) {
+		cfg := testutil.NewTestConfig(t)
+		logger := testutil.NewTestLogger()
+		fileSvc := newTestFileSvc(t)
+		cfg.Gateway.DataDir = testutil.TempDir(t)
+		cfg.Gateway.PKIDir = testutil.TempDir(t)
+		cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
+		cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
+		cfg.Gateway.Posture = ""
+		db, err := openTestDB(t, fileSvc, logger)
+		require.NoError(t, err)
+		t.Cleanup(func() { db.Close() })
+
+		_, err = NewGatewayModeServiceWithDB(cfg, fileSvc, logger, db, nil, nil)
+		assert.ErrorIs(t, err, constants.ErrInvalidPosture)
 	})
 
 	t.Run("Notary posture returns false without signers", func(t *testing.T) {

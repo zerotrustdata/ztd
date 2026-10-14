@@ -196,12 +196,14 @@ func ParseCommandResult(response *operatorv1.GovernedDispatchResult) (*operatorv
 // Operator's final receipt. A non-2xx body is decoded by
 // governance.DecodeIngressFailure into a signed rejection or a typed refusal;
 // an untyped body leaves the transport error as the result's error.
-func RunOnce(client CommandPoster, target Target, command, executionID, cliSessionID string) RunResult {
-	result := RunResult{
+func RunOnce(client CommandPoster, target Target, command, executionID, cliSessionID string) (result RunResult) {
+	result = RunResult{
 		OperatorSessionID: target.OperatorSessionID,
 		OperatorID:        target.OperatorID,
 		StartedAt:         time.Now(),
 	}
+	// result is a named return so the deferred stamp lands on the value the
+	// caller receives on every return path.
 	defer func() { result.DurationMs = DurationMs(time.Since(result.StartedAt)) }()
 
 	request, err := BuildExecuteBashDispatchRequest(target.OperatorSessionID, command, executionID, cliSessionID)

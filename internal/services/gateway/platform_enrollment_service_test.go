@@ -190,8 +190,9 @@ func createAndApproveRequestWithFingerprint(t *testing.T, env *platformEnrollmen
 	if operatorCSR != "" {
 		req.SystemFingerprint = fingerprint
 		req.Operator = &models.PlatformOperatorCSRPayload{
-			OperatorCSRPEM: operatorCSR,
-			CLICSRPEM:      cliCSR,
+			OperatorCSRPEM:    operatorCSR,
+			CLICSRPEM:         cliCSR,
+			ActuatorPublicKey: testActuatorPublicKeyHex,
 		}
 	}
 
@@ -995,8 +996,9 @@ func TestPlatformEnrollmentService_FullPlatformOperatorsAwaitApproval(t *testing
 			Hostname:          "operator.local",
 			SystemFingerprint: "host-fingerprint",
 			Operator: &models.PlatformOperatorCSRPayload{
-				OperatorCSRPEM: operatorCSR,
-				CLICSRPEM:      cliCSR,
+				OperatorCSRPEM:    operatorCSR,
+				CLICSRPEM:         cliCSR,
+				ActuatorPublicKey: testActuatorPublicKeyHex,
 			},
 		}
 		response, err := createPlatformEnrollmentRequest(t, env.enrollSvc, context.Background(), req, "https://gateway.local/console")
@@ -1025,8 +1027,9 @@ func TestPlatformEnrollmentService_FullPlatformOperatorsAwaitApproval(t *testing
 		Hostname:          "operator.local",
 		SystemFingerprint: "host-fingerprint",
 		Operator: &models.PlatformOperatorCSRPayload{
-			OperatorCSRPEM: operatorCSR,
-			CLICSRPEM:      cliCSR,
+			OperatorCSRPEM:    operatorCSR,
+			CLICSRPEM:         cliCSR,
+			ActuatorPublicKey: testActuatorPublicKeyHex,
 		},
 	}, "https://gateway.local/console")
 	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentQuotaExceeded)

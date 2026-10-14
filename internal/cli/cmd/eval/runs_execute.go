@@ -233,6 +233,15 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		}
 		controller = controller.WithPublication(publication)
 	}
+	// A model drives every non-platform lane's Data Operator actions, shell
+	// included, so the operator must run in a disposable directory. This is
+	// checked before the anchor: the embedded Operator has no enrollment-bound
+	// key, and the workspace refusal is the actionable error.
+	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
+		if err := evaluation.ValidateAgentDataOperator(dataOperator.Embedded, dataOperator.WorkingDirectory, cfg.ProjectRoot); err != nil {
+			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+	}
 	var dataOperatorDocument *operatorv1.OperatorDocument
 	for _, op := range operators {
 		if op.GetId() == dataOperator.OperatorID && op.GetOperatorSessionId() == dataOperator.OperatorSessionID {
@@ -254,13 +263,6 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ModelRegistryDigest:          spec.GetModelRegistryDigest(),
 		ModelRegistry:                evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
 		DataOperatorAnchor:           dataOperatorAnchor,
-	}
-	// A model drives every non-platform lane's Data Operator actions, shell
-	// included, so the operator must run in a disposable directory.
-	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
-		if err := evaluation.ValidateAgentDataOperator(dataOperator.Embedded, dataOperator.WorkingDirectory, cfg.ProjectRoot); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
-		}
 	}
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)

@@ -68,15 +68,6 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 		return true, ""
 	}
 
-	if call.Command != "" && len(targetValidator.CommandForbiddenTerms) > 0 {
-		cmdLower := strings.ToLower(call.Command)
-		for _, term := range targetValidator.CommandForbiddenTerms {
-			if strings.Contains(cmdLower, strings.ToLower(ws.Render(term))) {
-				return false, fmt.Sprintf("command contains forbidden term %q", term)
-			}
-		}
-	}
-
 	var rawArgs map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(call.ArgumentsJSON), &rawArgs); err != nil {
 		return false, fmt.Sprintf("invalid arguments json: %v", err)

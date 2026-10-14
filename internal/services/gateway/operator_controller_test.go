@@ -11,8 +11,11 @@ package gateway
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -58,8 +61,14 @@ func TestNewOperatorController(t *testing.T) {
 	assert.Equal(t, resp, controller.responder)
 }
 
-func seedStopOperator(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, userID string, operatorType constants.OperatorType, status constants.OperatorStatus) {
+// seedStopOperator stores an active user and its Operator with a freshly
+// generated Actuator key bound, and returns that key's private half so a fake
+// Operator can sign the receipts the dispatch waits for.
+func seedStopOperator(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, userID string, operatorType constants.OperatorType, status constants.OperatorStatus) ed25519.PrivateKey {
 	t.Helper()
+	actuatorPub, actuatorPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	actuatorKeyHex := hex.EncodeToString(actuatorPub)
 	userBytes, err := json.Marshal(&models.User{ID: userID, Status: constants.UserStatusActive})
 	require.NoError(t, err)
 	require.NoError(t, infra.DocStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionUsers), userID, userBytes))
@@ -70,11 +79,14 @@ func seedStopOperator(t *testing.T, infra *TestInfrastructure, operatorID, sessi
 		OperatorSessionId: sessionID,
 		OperatorType:      string(operatorType),
 		Status:            string(status),
+		ActuatorPublicKey: actuatorKeyHex,
+		ActuatorKeyId:     actuatorKeyHex,
 		CreatedAt:         timestamppb.Now(),
 		UpdatedAt:         timestamppb.Now(),
 	})
 	require.NoError(t, err)
 	require.NoError(t, infra.DocStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), operatorID, opBytes))
+	return actuatorPriv
 }
 
 func stopOperatorRequest(t *testing.T, controller *OperatorController, _, sessionID, reason string) *httptest.ResponseRecorder {
@@ -93,7 +105,7 @@ func TestOperatorController_HandleStopOperatorAuthorizationAndDelivery(t *testin
 	dispatch := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 	controller := newOperatorController(OperatorControllerDeps{Cfg: infra.Cfg, Logger: infra.Logger, Reg: infra.Reg, Auth: infra.Auth, Dispatch: dispatch, Responder: infra.Responder})
 
-	seedStopOperator(t, infra, "stop-remote", "stop-remote-session", "stop-owner", constants.OperatorTypeRemote, constants.OperatorStatusActive)
+	remoteActuatorKey := seedStopOperator(t, infra, "stop-remote", "stop-remote-session", "stop-owner", constants.OperatorTypeRemote, constants.OperatorStatusActive)
 	seedStopOperator(t, infra, "stop-other", "stop-other-session", "stop-other-owner", constants.OperatorTypeRemote, constants.OperatorStatusActive)
 	seedStopOperator(t, infra, "stop-embedded", "stop-embedded-session", "stop-owner", constants.OperatorTypeEmbedded, constants.OperatorStatusActive)
 	seedStopOperator(t, infra, "stop-offline", "stop-offline-session", "stop-owner", constants.OperatorTypeRemote, constants.OperatorStatusStopped)
@@ -139,6 +151,8 @@ func TestOperatorController_HandleStopOperatorAuthorizationAndDelivery(t *testin
 	t.Run("acknowledged delivery records reason and stopped state", func(t *testing.T) {
 		channel := pubsub.CmdChannel("stop-remote", "stop-remote-session")
 		resultsChannel := pubsub.ResultsChannel("stop-remote", "stop-remote-session")
+		receiptsChannel := pubsub.ReceiptsChannel("stop-remote", "stop-remote-session")
+		remoteKeyID := hex.EncodeToString(remoteActuatorKey.Public().(ed25519.PublicKey))
 		unregister := infra.Pubsub.RegisterHandler(channel, func(_ string, data []byte) {
 			envelope := &commonv1.GovernanceEnvelope{}
 			require.NoError(t, protojson.Unmarshal(data, envelope))
@@ -151,6 +165,10 @@ func TestOperatorController_HandleStopOperatorAuthorizationAndDelivery(t *testin
 			})
 			require.NoError(t, err)
 			infra.Pubsub.Publish(resultsChannel, wire)
+			// The dispatch completes only on the result plus the Operator's
+			// verified final receipt for the same transaction.
+			receiptWire, _ := buildSignedReceiptEnvelope(t, remoteActuatorKey, remoteKeyID, "stop-remote", "stop-remote-session", "", "", "stop-owner", "", envelope.Id)
+			infra.Pubsub.Publish(receiptsChannel, receiptWire)
 		})
 		t.Cleanup(unregister)
 

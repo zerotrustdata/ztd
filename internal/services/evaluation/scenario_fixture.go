@@ -196,12 +196,10 @@ type ToolArgumentConstraint struct {
 }
 
 // ToolArgumentValidator is the typed argument contract for one tool, keyed by
-// tool name. CommandForbiddenTerms applies to the shell command the Tribunal
-// generated for a run_commands_with_operator call, when the trace has one.
+// tool name.
 type ToolArgumentValidator struct {
-	ToolName              string                   `json:"tool_name"`
-	Arguments             []ToolArgumentConstraint `json:"arguments"`
-	CommandForbiddenTerms []string                 `json:"command_forbidden_terms,omitempty"`
+	ToolName  string                   `json:"tool_name"`
+	Arguments []ToolArgumentConstraint `json:"arguments"`
 }
 
 // ScenarioHintArgument says where one required argument of a hinted tool comes
