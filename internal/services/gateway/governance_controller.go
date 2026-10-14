@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -233,8 +234,13 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 //     payload too large) - no governance state mutated.
 //   - 403 Forbidden: governance verification failed before execution
 //     (expired, replayed, hash mismatch, missing/invalid L2/L3, unknown
-//     action type, or transport-to-envelope identity mismatch) - no state mutated, no receipt produced.
-//   - 503 Service Unavailable: envelope processor not configured.
+//     action type, or transport-to-envelope identity mismatch) - no state
+//     mutated. An L4 rejection returns a GovernanceRejection body carrying
+//     the Operator's signed GOVERNANCE_REJECTED receipt and its
+//     rejection_code; refusals before L4 return a typed error only.
+//   - 503 Service Unavailable: envelope processor not configured, or L4
+//     could not run (vault locked, verifier dependency absent); the latter
+//     also returns a GovernanceRejection.
 //   - 405 Method Not Allowed: non-POST methods.
 //
 // @Summary		Submit governance envelope
@@ -247,9 +253,9 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 // @Param			envelope	body		[]byte		true	"GovernanceEnvelope (protojson)"
 // @Success		200			{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt"
 // @Failure		400			{string}	string			"Bad Request — malformed envelope"
-// @Failure		403			{string}	string			"Forbidden — governance verification failed"
+// @Failure		403			{object}	operatorv1.GovernanceRejection	"Forbidden — governance verification failed; L4 rejections carry the signed receipt"
 // @Failure		405			{string}	string			"Method Not Allowed"
-// @Failure		503			{string}	string			"Service Unavailable — processor not configured"
+// @Failure		503			{object}	operatorv1.GovernanceRejection	"Service Unavailable — processor not configured, or verifier unavailable"
 // @Router			/api/v1/governance/envelopes [post]
 func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -295,6 +301,10 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 	receipt, procErr := proc.ProcessEnvelope(r.Context(), body)
 	if procErr != nil {
 		status, code := envelopeErrorCode(procErr)
+		if rejection := governance.RejectionResponse(procErr); rejection != nil {
+			c.responder.ProtoJSONCanonical(w, status, rejection)
+			return
+		}
 		c.responder.Error(w, status, code.Error())
 		return
 	}
@@ -319,50 +329,19 @@ var envelopeBadRequestErrors = []error{
 	constants.ErrTxInvalidEnvelope,
 }
 
-// envelopeForbiddenErrors are the governance sentinels: caller-side proof
-// failures and rejections.
+// envelopeForbiddenErrors are caller-side refusals raised before L4
+// verification, which carry no rejection code. L4 verification sentinels are
+// classified by governance.GovernanceRejectionSentinel.
 var envelopeForbiddenErrors = []error{
-	constants.ErrTxTransactionIDMissing,
-	constants.ErrTxUnknownEventType,
-	constants.ErrTxEventNotRequest,
-	constants.ErrTxEventNotGoverned,
-	constants.ErrTxEventActionMismatch,
 	constants.ErrTxOutcomeNotRegistered,
 	constants.ErrTxOutcomeNotAllowed,
-	constants.ErrTxUnknownActionType,
-	constants.ErrTxPayloadMissing,
-	constants.ErrTxPayloadDecodeFailed,
-	constants.ErrTxL1ValidationFailed,
-	constants.ErrTxDocumentCollectionNotGoverned,
-	constants.ErrTxTargetOperatorMismatch,
-	constants.ErrTxTargetSessionMismatch,
-	constants.ErrTxTransactionHashMissing,
-	constants.ErrTxTransactionHashMismatch,
-	constants.ErrTxProtocolVersionUnsupported,
-	constants.ErrTxEventTypeMissing,
-	constants.ErrTxTransactionExpired,
-	constants.ErrTxNonceMissing,
-	constants.ErrTxTransactionReplay,
-	constants.ErrTxStateRootMissing,
-	constants.ErrTxStateRootRequired,
-	constants.ErrTxStateRootMismatch,
-	constants.ErrTxL2SignatureMissing,
-	constants.ErrTxL2SignatureInvalid,
-	constants.ErrTxL2ConsensusNotConfigured,
-	constants.ErrTxL2ConsensusSetUnknown,
-	constants.ErrTxL2QuorumNotMet,
-	constants.ErrTxL2DuplicateSigner,
-	constants.ErrTxL3ProofMissing,
-	constants.ErrTxL3ProofInvalid,
 	constants.ErrTxL3ProofUnmintable,
-	constants.ErrTxL3NotaryNotConfigured,
-	constants.ErrTxInFlight,
 }
 
 // classifyEnvelopeError maps a governance verification error to an HTTP status.
 // Caller-side bad input (decode failures, empty/oversized payloads) maps to 400;
-// all governance sentinel errors are 403 (caller-side proof failures);
-// anything else is 500.
+// a verifier that cannot run (vault locked, dependency absent) maps to 503;
+// every other governance rejection is 403; anything else is 500.
 func classifyEnvelopeError(err error) int {
 	status, _ := envelopeErrorCode(err)
 	return status
@@ -380,6 +359,15 @@ func envelopeErrorCode(err error) (int, error) {
 	for _, sentinel := range envelopeBadRequestErrors {
 		if errors.Is(err, sentinel) {
 			return http.StatusBadRequest, sentinel
+		}
+	}
+	if sentinel, code := governance.GovernanceRejectionSentinel(err); sentinel != nil {
+		switch code {
+		case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED,
+			operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED:
+			return http.StatusServiceUnavailable, sentinel
+		default:
+			return http.StatusForbidden, sentinel
 		}
 	}
 	for _, sentinel := range envelopeForbiddenErrors {

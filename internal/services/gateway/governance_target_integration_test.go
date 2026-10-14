@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -78,13 +79,16 @@ func TestGovernanceEnvelope_ForeignOperatorRejectionIsRecordedUnderEmbeddedSessi
 	w := submitForeignOperatorEnvelope(t, svc, env)
 
 	require.Equal(t, http.StatusForbidden, w.Code)
-	require.Contains(t, w.Body.String(), "TX_TARGET_OPERATOR_MISMATCH")
 	require.NotContains(t, w.Body.String(), "AUDIT_SESSION_UNKNOWN", "the response carries the typed code, not the audit store error")
-	require.NotContains(t, w.Body.String(), "session-1", "the response does not echo the claimed session")
+	rejection := &operatorv1.GovernanceRejection{}
+	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), rejection))
+	require.Equal(t, constants.ErrTxTargetOperatorMismatch.Error(), rejection.GetError(), "the error text is the sentinel only, never the chain")
+	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH, rejection.GetReceipt().GetRejectionCode())
 
 	record, err := svc.GetAuditStore().GetActionReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, record, "the rejection evidence must be persisted")
+	require.Equal(t, record.ActionReceipt.GetSignature(), rejection.GetReceipt().GetSignature(), "the response carries the persisted signed receipt")
 	require.Equal(t, embeddedSessionID, record.OperatorSessionID, "the audit row belongs to the embedded Operator's session")
 	require.Equal(t, string(constants.DocIDEmbeddedOperator), record.OperatorID)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, record.Status)

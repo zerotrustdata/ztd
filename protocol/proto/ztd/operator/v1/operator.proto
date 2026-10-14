@@ -734,6 +734,18 @@ message ActionReceipt {
   GovernanceRejectionCode rejection_code = 18;
 }
 
+// GovernanceRejection is the client-facing body every governed ingress
+// (direct envelope submission, governed dispatch, MCP, A2A) returns when the
+// executing Operator rejected a transaction at L4. receipt is the Operator's
+// signed FAILED receipt with failure_code GOVERNANCE_REJECTED; its
+// transaction_id and rejection_code are the authoritative identity and
+// attribution of the rejection. error is the governance sentinel text, for
+// display only.
+message GovernanceRejection {
+  string error = 1;
+  ActionReceipt receipt = 2;
+}
+
 // CommitmentAttestation is the Auditor's signed record that a verified
 // transaction is consistent with the prior ledger of commitments and is
 // authorized to be executed.

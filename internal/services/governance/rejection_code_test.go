@@ -181,3 +181,40 @@ func TestClassifyGovernanceRejectionCoversDirectWardenSentinels(t *testing.T) {
 		})
 	}
 }
+
+func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
+	verifyErr := fmt.Errorf("verify: %w: 3s ago", constants.ErrTxTransactionExpired)
+	rejected := &operatorv1.ActionReceipt{
+		TransactionId: "tx-1",
+		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED,
+	}
+
+	err := WithRejectionReceipt(rejected, verifyErr)
+	require.ErrorIs(t, err, constants.ErrTxTransactionExpired)
+	resp := RejectionResponse(fmt.Errorf("dispatch: %w", err))
+	require.NotNil(t, resp)
+	assert.Equal(t, constants.ErrTxTransactionExpired.Error(), resp.GetError(), "only the sentinel renders, never the chain")
+	assert.Same(t, rejected, resp.GetReceipt())
+
+	executionFailure := &operatorv1.ActionReceipt{
+		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED,
+	}
+	assert.Same(t, verifyErr, WithRejectionReceipt(executionFailure, verifyErr))
+	assert.Same(t, verifyErr, WithRejectionReceipt(nil, verifyErr))
+	assert.NoError(t, WithRejectionReceipt(rejected, nil))
+	assert.Nil(t, RejectionResponse(verifyErr))
+}
+
+func TestRejectionResponseUnmappedErrorRendersReceiptCode(t *testing.T) {
+	rejected := &operatorv1.ActionReceipt{
+		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE,
+	}
+	resp := RejectionResponse(WithRejectionReceipt(rejected, errors.New("relay: rejected")))
+	require.NotNil(t, resp)
+	assert.Equal(t, "GOVERNANCE_REJECTION_CODE_L1_DOCTRINE", resp.GetError())
+}

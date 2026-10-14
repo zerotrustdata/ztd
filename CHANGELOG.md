@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Windows one-command onboarding: `irm https://zerotrustdata.io/start.ps1 | iex` (`website/static/start.ps1`) installs, starts a Gateway, signs in, and runs a first governed action; the homepage quick start and Releases pages show it as a first-class option.
+
 ## v1.0.x
 
 | Version | Date | Description | Notes |

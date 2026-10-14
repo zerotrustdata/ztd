@@ -65,7 +65,13 @@ On Linux or macOS, paste this into a terminal:
 curl -fsSL https://zerotrustdata.io/start.sh | sh
 ```
 
-It installs the release binary into `~/ztd` after verifying its SHA-256 checksum, starts a Gateway on `https://localhost:8443`, signs the CLI in, and runs a first governed action. The installer does not verify the Sigstore signature; see the [release verification steps](docs/guides/getting_started.md#verify-a-release-binary) to verify it manually. It never uses sudo, and rerunning it is safe. Set `ZTD_DIR` to choose another directory, `ZTD_VERSION` to pin a release, and `ZTD_MASTER_KEY_FILE` on Linux hosts without a Secret Service keyring or ssh-agent. To install only the binary, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh`, or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell. Every release binary, checksum, and Sigstore bundle is listed at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
+On Windows, paste this into PowerShell:
+
+```powershell
+irm https://zerotrustdata.io/start.ps1 | iex
+```
+
+Either one installs the release binary into `~/ztd` after verifying its SHA-256 checksum, starts a Gateway on `https://localhost:8443`, signs the CLI in, and runs a first governed action. The installer does not verify the Sigstore signature; see the [release verification steps](docs/guides/getting_started.md#verify-a-release-binary) to verify it manually. It never uses sudo or Administrator, and rerunning it is safe. Set `ZTD_DIR` to choose another directory, `ZTD_VERSION` to pin a release, and `ZTD_MASTER_KEY_FILE` on Linux hosts without a Secret Service keyring or ssh-agent. To install only the binary, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh`, or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell. Every release binary, checksum, and Sigstore bundle is listed at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
 
 ### 2. Build and run from source
 

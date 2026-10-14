@@ -370,12 +370,12 @@ test('a failed installer download stops with the URL', (t) => {
   assert.deepEqual(ztdCalls(fixture), []);
 });
 
-test('Windows shells are pointed at the PowerShell installer before any download', (t) => {
+test('Windows shells are pointed at start.ps1 before any download', (t) => {
   const fixture = setup(t, { os: 'MINGW64_NT-10.0-19045' });
   const result = runPiped(fixture);
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /irm https:\/\/zerotrustdata\.io\/ztd\.ps1 \| iex/);
+  assert.match(result.stderr, /irm https:\/\/zerotrustdata\.io\/start\.ps1 \| iex/);
   assert.deepEqual(curlUrls(fixture), []);
 });
 

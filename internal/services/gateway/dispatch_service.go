@@ -576,7 +576,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 				ResultEnvelope: resultEnv,
 			}, nil
 		case receipt := <-rejectedCh:
-			return nil, fmt.Errorf("dispatch: %w (transaction %s): %s", constants.ErrDispatchGovernanceRejected, txHash, receipt.GetResultSummary())
+			return nil, governance.WithRejectionReceipt(receipt, fmt.Errorf("dispatch: %w (transaction %s): %s", constants.ErrDispatchGovernanceRejected, txHash, receipt.GetResultSummary()))
 		case <-timeoutCtx.Done():
 			return nil, dispatchContextError()
 		}
@@ -983,6 +983,10 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 		// Dispatch errors can embed command lines, paths and doctrine violations; the
 		// caller receives the message and the rejection is recorded on the signed receipt.
 		c.logger.Error("dispatch: command dispatch failed", logging.ErrorKind(err))
+		if rejection := governance.RejectionResponse(err); rejection != nil {
+			c.responder.ProtoJSONCanonical(w, classifyDispatchError(err), rejection)
+			return
+		}
 		c.responder.Error(w, classifyDispatchError(err), err.Error())
 		return
 	}

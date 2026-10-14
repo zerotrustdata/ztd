@@ -40,6 +40,8 @@ echo "smoke: latest release v$version"
 
 page /releases/ "/releases/v$version/"
 page /releases/ "/start.sh | sh"
+page /releases/ "/start.ps1 | iex"
+page /start.ps1 "irm https://zerotrustdata.io/start.ps1 | iex"
 page "/releases/v$version/" "/v/$version/ztd-binaries.json"
 location=$(curl -fsS -o /dev/null -w '%{redirect_url}' "$origin/releases/latest/")
 [ "$location" = "$origin/releases/v$version/" ] || fail "/releases/latest/ redirects to '$location'"

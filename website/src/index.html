@@ -243,7 +243,7 @@ table.pm td:first-child{color:var(--text);font-weight:700}
 .tabs button[aria-selected="true"]{color:var(--cyan);border-bottom-color:var(--cyan);text-shadow:0 0 10px rgba(0,240,255,.5)}
 .tabs button:hover{color:var(--text)}
 .code{position:relative}
-.code pre{margin:0;padding:22px 22px 24px;font-size:14px;line-height:1.9;color:var(--text);overflow-x:auto;white-space:pre}
+.code pre{margin:0;padding:22px 96px 24px 22px;font-size:14px;line-height:1.9;color:var(--text);overflow-x:auto;white-space:pre}
 .code pre .p{color:var(--acid);user-select:none}
 .code pre .c{color:var(--dim)}
 .copy{position:absolute;top:14px;right:14px}
@@ -642,8 +642,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="rv">
       <p class="eyebrow">07 / Quick start</p>
       <h2 id="start-title">First governed action in <em>one command</em></h2>
-      <p class="lede">Paste one line into a terminal. It installs the signed <code>ztd</code> binary into <code>~/ztd</code>, starts a Gateway on localhost, signs in, and runs a first governed action. Rerunning it is safe.</p>
-      <p class="req">Linux or macOS with <code>curl</code>. No root, no sudo, no toolchain: the installer verifies the binary against its published SHA-256 checksum before writing it. On Windows, install the binary from PowerShell with <code>irm https://zerotrustdata.io/ztd.ps1 | iex</code>. Every binary, checksum, and Sigstore bundle is on the <a href="/releases/">Releases</a> page. To build from source instead, you need <code>git</code>, <code>Go 1.27.2</code>, and <code>make</code>.</p>
+      <p class="lede">Install the signed <code>ztd</code> binary, start a Gateway, sign in, and run a first governed action. Safe to rerun.</p>
+      <p class="req">No root, no admin, no toolchain. Checksums verified before install. Binaries and Sigstore bundles: <a href="/releases/">Releases</a>.</p>
       <div class="pk">
         <div><code>./ztd tui</code><span>Watch governance live</span></div>
         <div><code>./ztd login web</code><span>Open the console</span></div>
@@ -651,7 +651,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     </div>
     <div class="panel rv">
       <div class="tabs" role="tablist" aria-label="Install paths">
-        <button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">One command</button>
+        <button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">Linux / macOS</button>
+        <button role="tab" aria-selected="false" aria-controls="tp-w" id="tb-w" tabindex="-1">Windows</button>
         <button role="tab" aria-selected="false" aria-controls="tp-1" id="tb-1" tabindex="-1">From source</button>
         <button role="tab" aria-selected="false" aria-controls="tp-2" id="tb-2" tabindex="-1">Enroll</button>
         <button role="tab" aria-selected="false" aria-controls="tp-3" id="tb-3" tabindex="-1">Full platform</button>
@@ -661,6 +662,12 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 <span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh | sh
 <span class="c"># binary only: curl -fsSL https://zerotrustdata.io/ztd.sh | sh</span></pre>
         <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh | sh">Copy</button>
+      </div>
+      <div class="code" role="tabpanel" id="tp-w" aria-labelledby="tb-w" hidden>
+<pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
+<span class="p">PS&gt; </span>irm https://zerotrustdata.io/start.ps1 | iex
+<span class="c"># binary only: irm https://zerotrustdata.io/ztd.ps1 | iex</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="irm https://zerotrustdata.io/start.ps1 | iex">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
@@ -799,6 +806,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   function sel(t){
     tabs.forEach(function(b){var on=b===t;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;document.getElementById(b.getAttribute('aria-controls')).hidden=!on});
   }
+  var win=document.getElementById('tb-w');
+  if(win&&/win/i.test((navigator.userAgentData&&navigator.userAgentData.platform)||navigator.platform||'')) sel(win);
   tabs.forEach(function(t,i){
     t.addEventListener('click',function(){sel(t)});
     t.addEventListener('keydown',function(e){

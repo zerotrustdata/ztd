@@ -116,7 +116,7 @@ main() {
   done
   case "$(uname -s | tr '[:upper:]' '[:lower:]')" in
     linux|darwin) ;;
-    mingw*|msys*|cygwin*) fail "on Windows, install the binary from PowerShell with: irm $base_url/ztd.ps1 | iex" ;;
+    mingw*|msys*|cygwin*) fail "on Windows, run from PowerShell: irm $base_url/start.ps1 | iex" ;;
     *) fail "unsupported OS: $(uname -s)" ;;
   esac
   if [ -n "${ZTD_MASTER_KEY_FILE:-}" ]; then

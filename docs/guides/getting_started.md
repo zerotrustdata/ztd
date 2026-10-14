@@ -33,17 +33,23 @@ Both roles run from the static `ztd` binary, selected by the `gw` or `operator` 
 
 ## Quick Start
 
-ztd runs natively on the machine as a host binary. On Linux or macOS, one command takes a clean machine to a running Gateway and a first governed action:
+ztd runs natively on the machine as a host binary. One command takes a clean machine to a running Gateway and a first governed action. On Linux or macOS:
 
 ```bash
 curl -fsSL https://zerotrustdata.io/start.sh | sh
 ```
 
-`start.sh` installs the signed release binary into `~/ztd` with the checksum-verified installer, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. It never uses sudo, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. It reads these environment variables:
+On Windows, in PowerShell:
+
+```powershell
+irm https://zerotrustdata.io/start.ps1 | iex
+```
+
+`start.sh` installs the signed release binary into `~/ztd` with the checksum-verified installer, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. `start.ps1` does the same with `ztd.ps1`, installing `ztd.exe` into `~\ztd`; run the follow-up commands as `.\ztd.exe`. Neither uses sudo or Administrator, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. Both read these environment variables:
 
 | Variable | Effect |
 | :--- | :--- |
-| `ZTD_DIR` | Install and runtime directory (default `~/ztd`). Runtime state lives in `$ZTD_DIR/.ztd/`. |
+| `ZTD_DIR` | Install and runtime directory (default `~/ztd`). Runtime state lives in `$ZTD_DIR/.ztd/`. In PowerShell, set variables with `$env:ZTD_DIR='...'` before the command. |
 | `ZTD_VERSION` | Install this `X.Y.Z` release instead of the latest. |
 | `ZTD_OVERWRITE=1` | Replace an existing `$ZTD_DIR/ztd` (upgrade). A running Gateway keeps its version until `./ztd gw restart`. |
 | `ZTD_MASTER_KEY_FILE` | Absolute path to a provisioned master key file for hosts without an OS key store; passed to every `./ztd` call. |

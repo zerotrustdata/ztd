@@ -502,31 +502,13 @@ func (g *GatewayService) handleA2ARequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, err := handler(r.Context(), req.ID, req.Params)
-	if err != nil {
-		var fsErr *failedStageError
-		if errors.As(err, &fsErr) {
-			code, msg := g.mapGatewayError(fsErr.err)
-			if code == 0 && msg == "" {
-				code = -32603
-				msg = fsErr.err.Error()
-			}
-			data, marshalErr := json.Marshal(fsErr.receipt)
-			if marshalErr != nil {
-				g.logger.Error("Failed to marshal failed-stage receipt reference", "error", marshalErr)
-				g.responder.RPCError(w, req.ID, code, msg)
-				return
-			}
-			g.responder.RPCErrorWithData(w, req.ID, code, msg, data)
+	result, dErr := g.wrapDispatch(handler(r.Context(), req.ID, req.Params))
+	if dErr != nil {
+		if len(dErr.data) > 0 {
+			g.responder.RPCErrorWithData(w, req.ID, dErr.code, dErr.message, dErr.data)
 			return
 		}
-		code, msg := g.mapGatewayError(err)
-		// If it's a standard error we don't recognize, use Internal Error
-		if code == 0 && msg == "" {
-			code = -32603
-			msg = err.Error()
-		}
-		g.responder.RPCError(w, req.ID, code, msg)
+		g.responder.RPCError(w, req.ID, dErr.code, dErr.message)
 		return
 	}
 
@@ -606,19 +588,6 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 					},
 				},
 			}, nil
-		}
-		if receipt != nil {
-			return nil, &failedStageError{
-				err: err,
-				receipt: &toolReceiptReference{
-					ExecutionID:     executionID,
-					TransactionID:   receipt.TransactionId,
-					TransactionHash: receipt.TransactionHash,
-					SignerKeyID:     receipt.SignerKeyId,
-					Signature:       receipt.Signature,
-					InvestigationID: investigationID,
-				},
-			}
 		}
 		return nil, err
 	}
@@ -931,19 +900,6 @@ type processGatewayOptions struct {
 	investigationID string
 }
 
-// failedStageError wraps a governance rejection error with the signed
-// failed-stage receipt reference that the Gateway returns in the JSON-RPC
-// error's Data field. Callers (e.g. the agent harness) retain the
-// authoritative execution, transaction, and investigation identity from
-// the error response rather than falling back to synthetic references.
-type failedStageError struct {
-	err     error
-	receipt *toolReceiptReference
-}
-
-func (e *failedStageError) Error() string { return e.err.Error() }
-func (e *failedStageError) Unwrap() error { return e.err }
-
 func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts processGatewayOptions) (hash string, envelopeBytes []byte, stateRoot string, err error) {
 	stateRoot = ""
 	if g.stateRootProvider != nil {
@@ -1128,7 +1084,7 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 
 	receipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
 	if err != nil {
-		if errors.Is(err, governance.ErrL3ProofMissing) || errors.Is(err, governance.ErrL3ProofInvalid) {
+		if errors.Is(err, governance.ErrL3ProofMissing) {
 			userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
 			operatorID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
 			certFingerprint := extractCertFingerprint(r)

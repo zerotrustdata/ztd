@@ -148,9 +148,7 @@ func TestGovernanceEnvelope_VerificationErrors_Return403(t *testing.T) {
 		{"unknown l2 signer", governance.ErrL2ConsensusSetUnknown},
 		{"missing l3 proof", governance.ErrL3ProofMissing},
 		{"invalid l3 proof", governance.ErrL3ProofInvalid},
-		{"l3 notary not configured", governance.ErrL3NotaryNotConfigured},
 		{"state root mismatch", governance.ErrStateRootMismatch},
-		{"state root missing", governance.ErrStateRootMissing},
 		{"state root required", governance.ErrStateRootRequired},
 		{"l1 validation failed", fmt.Errorf("%w: violation", governance.ErrL1ValidationFailed)},
 	}
@@ -174,6 +172,56 @@ func TestGovernanceEnvelope_VerificationErrors_Return403(t *testing.T) {
 			require.NotEmpty(t, body.Error)
 		})
 	}
+}
+
+// TestGovernanceEnvelope_VerifierUnavailable_Returns503 proves an L4 that
+// cannot run (dependency absent, vault locked) is a server condition, not a
+// caller rejection.
+func TestGovernanceEnvelope_VerifierUnavailable_Returns503(t *testing.T) {
+	for _, sentinel := range []error{
+		governance.ErrL3NotaryNotConfigured,
+		governance.ErrStateRootMissing,
+		constants.ErrTxDoctrineMissing,
+		constants.ErrWardenVaultLocked,
+	} {
+		t.Run(sentinel.Error(), func(t *testing.T) {
+			h := newGovernanceEnvelopeHandler(t, &fakeEnvelopeProcessor{err: sentinel})
+			req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{"id":"x"}`)))
+			w := httptest.NewRecorder()
+
+			h.governanceController.handleGovernanceEnvelope(w, req)
+
+			require.Equal(t, http.StatusServiceUnavailable, w.Code)
+		})
+	}
+}
+
+// TestGovernanceEnvelope_Rejection_ReturnsSignedReceipt proves an L4
+// rejection hands the caller the Operator's signed receipt with its typed
+// rejection_code, and renders only the sentinel as error text.
+func TestGovernanceEnvelope_Rejection_ReturnsSignedReceipt(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId: "tx-rejected",
+		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED,
+		Signature:     "sig",
+	}
+	verifyErr := fmt.Errorf("%w: expired 3s ago", governance.ErrTransactionExpired)
+	proc := &fakeEnvelopeProcessor{receipt: receipt, err: governance.WithRejectionReceipt(receipt, verifyErr)}
+	h := newGovernanceEnvelopeHandler(t, proc)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{"id":"x"}`)))
+	w := httptest.NewRecorder()
+	h.governanceController.handleGovernanceEnvelope(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	got := &operatorv1.GovernanceRejection{}
+	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), got))
+	require.Equal(t, governance.ErrTransactionExpired.Error(), got.GetError())
+	require.Equal(t, "tx-rejected", got.GetReceipt().GetTransactionId())
+	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED, got.GetReceipt().GetRejectionCode())
+	require.Equal(t, "sig", got.GetReceipt().GetSignature())
 }
 
 func TestGovernanceEnvelope_DecodeFailure_Returns400(t *testing.T) {

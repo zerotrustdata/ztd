@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // Streamable HTTP transport constants for the unified MCP endpoint.
@@ -228,33 +230,29 @@ func (g *GatewayService) dispatchMCP(r *http.Request, req *JSONRPCRequest) (inte
 
 // wrapDispatch converts a (result, error) pair from a governed handler into the
 // dispatcher's (result, *mcpDispatchError) contract, mapping governance errors
-// to granular JSON-RPC codes. When the handler returns a *failedStageError the
-// wrapped signed receipt reference is marshaled into the dispatch error's data
-// field so HandleMCP can emit it through RPCErrorWithData.
+// to granular JSON-RPC codes. When the error carries the Operator's signed
+// rejection receipt (*governance.RejectionError), the typed
+// GovernanceRejection is the JSON-RPC error data, so the caller holds the
+// signed receipt and its rejection_code.
 func (g *GatewayService) wrapDispatch(result interface{}, err error) (interface{}, *mcpDispatchError) {
-	if err != nil {
-		var fsErr *failedStageError
-		if errors.As(err, &fsErr) {
-			code, msg := g.mapGatewayError(fsErr.err)
-			if code == 0 && msg == "" {
-				code = -32603
-				msg = fsErr.err.Error()
-			}
-			data, marshalErr := json.Marshal(fsErr.receipt)
-			if marshalErr != nil {
-				g.logger.Error("Failed to marshal failed-stage receipt reference", "error", marshalErr)
-				return nil, &mcpDispatchError{code: code, message: msg}
-			}
-			return nil, &mcpDispatchError{code: code, message: msg, data: data}
-		}
-		code, msg := g.mapGatewayError(err)
-		if code == 0 && msg == "" {
-			code = -32603
-			msg = err.Error()
-		}
+	if err == nil {
+		return result, nil
+	}
+	code, msg := g.mapGatewayError(err)
+	if code == 0 && msg == "" {
+		code = -32603
+		msg = err.Error()
+	}
+	rejection := governance.RejectionResponse(err)
+	if rejection == nil {
 		return nil, &mcpDispatchError{code: code, message: msg}
 	}
-	return result, nil
+	data, marshalErr := (protojson.MarshalOptions{UseProtoNames: true}).Marshal(rejection)
+	if marshalErr != nil {
+		g.logger.Error("Failed to marshal governance rejection", "error", marshalErr)
+		return nil, &mcpDispatchError{code: code, message: msg}
+	}
+	return nil, &mcpDispatchError{code: code, message: msg, data: data}
 }
 
 // mcpInitialize builds the initialize handshake response, echoing the client's

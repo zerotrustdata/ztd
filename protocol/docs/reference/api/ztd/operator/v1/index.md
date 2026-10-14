@@ -56,6 +56,7 @@
     - [FsReadResult](#ztd-operator-v1-FsReadResult)
     - [GetRevocationBundleRequested](#ztd-operator-v1-GetRevocationBundleRequested)
     - [GetRevocationBundleResult](#ztd-operator-v1-GetRevocationBundleResult)
+    - [GovernanceRejection](#ztd-operator-v1-GovernanceRejection)
     - [HeartbeatRequested](#ztd-operator-v1-HeartbeatRequested)
     - [HeartbeatResult](#ztd-operator-v1-HeartbeatResult)
     - [InferenceCompletion](#ztd-operator-v1-InferenceCompletion)
@@ -1232,6 +1233,28 @@ for L1-L5 verification before the gateway persists them via DocSet.
 | bundle_json | [string](#string) |  |  |
 | signature | [string](#string) |  |  |
 | error | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-GovernanceRejection"></a>
+
+### GovernanceRejection
+GovernanceRejection is the client-facing body every governed ingress
+(direct envelope submission, governed dispatch, MCP, A2A) returns when the
+executing Operator rejected a transaction at L4. receipt is the Operator&#39;s
+signed FAILED receipt with failure_code GOVERNANCE_REJECTED; its
+transaction_id and rejection_code are the authoritative identity and
+attribution of the rejection. error is the governance sentinel text, for
+display only.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [string](#string) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
 
 
 

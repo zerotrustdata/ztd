@@ -74,13 +74,67 @@ var governanceRejectionCodes = []struct {
 // attribute the rejection to a layer without reading result_summary. An
 // unmapped error is UNCLASSIFIED, never a guessed layer.
 func ClassifyGovernanceRejection(rejection error) operatorv1.GovernanceRejectionCode {
+	_, code := GovernanceRejectionSentinel(rejection)
+	return code
+}
+
+// GovernanceRejectionSentinel returns the verification sentinel a rejection
+// error wraps and the check it names. An ingress renders the sentinel, never
+// the wrapped chain. An unmapped error returns a nil sentinel and
+// UNCLASSIFIED; a nil error returns UNSPECIFIED.
+func GovernanceRejectionSentinel(rejection error) (error, operatorv1.GovernanceRejectionCode) {
 	if rejection == nil {
-		return operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
+		return nil, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
 	}
 	for _, entry := range governanceRejectionCodes {
 		if errors.Is(rejection, entry.sentinel) {
-			return entry.code
+			return entry.sentinel, entry.code
 		}
 	}
-	return operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
+	return nil, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
+}
+
+// RejectionError carries the executing Operator's signed GOVERNANCE_REJECTED
+// receipt alongside the verification error that produced it, so every
+// ingress can hand the caller the signed evidence (operatorv1.GovernanceRejection)
+// instead of text. It unwraps to the verification error.
+type RejectionError struct {
+	Receipt *operatorv1.ActionReceipt
+	Err     error
+}
+
+func (e *RejectionError) Error() string { return e.Err.Error() }
+func (e *RejectionError) Unwrap() error { return e.Err }
+
+// WithRejectionReceipt wraps err in a *RejectionError when receipt is a
+// GOVERNANCE_REJECTED receipt; otherwise it returns err unchanged.
+func WithRejectionReceipt(receipt *operatorv1.ActionReceipt, err error) error {
+	if err == nil || !IsGovernanceRejectionReceipt(receipt) {
+		return err
+	}
+	return &RejectionError{Receipt: receipt, Err: err}
+}
+
+// IsGovernanceRejectionReceipt reports whether receipt records an L4
+// governance rejection.
+func IsGovernanceRejectionReceipt(receipt *operatorv1.ActionReceipt) bool {
+	return receipt != nil &&
+		receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED &&
+		receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+}
+
+// RejectionResponse returns the typed client body for err when it carries a
+// signed rejection receipt, and nil otherwise. error renders only the
+// governance sentinel, never the wrapped chain; an unmapped error renders the
+// receipt's rejection code.
+func RejectionResponse(err error) *operatorv1.GovernanceRejection {
+	var rejection *RejectionError
+	if !errors.As(err, &rejection) {
+		return nil
+	}
+	text := rejection.Receipt.GetRejectionCode().String()
+	if sentinel, _ := GovernanceRejectionSentinel(rejection.Err); sentinel != nil {
+		text = sentinel.Error()
+	}
+	return &operatorv1.GovernanceRejection{Error: text, Receipt: rejection.Receipt}
 }
