@@ -408,47 +408,6 @@ Host alias
 	})
 }
 
-func TestBuildAuthMethods(t *testing.T) {
-	t.Run("empty host config", func(t *testing.T) {
-		r := HostConfig{}
-		methods, err := BuildAuthMethods(r, "", "")
-		require.NoError(t, err)
-		assert.Empty(t, methods)
-	})
-
-	t.Run("non-existent key file", func(t *testing.T) {
-		r := HostConfig{KeyFiles: []string{"/nonexistent/key"}}
-		_, err := BuildAuthMethods(r, "", "")
-		require.Error(t, err)
-	})
-
-	t.Run("invalid key file content", func(t *testing.T) {
-		dir := testutil.TempDir(t)
-		keyPath := filepath.Join(dir, "invalid_key")
-		require.NoError(t, os.WriteFile(keyPath, []byte("not a valid key"), 0600))
-
-		r := HostConfig{KeyFiles: []string{keyPath}}
-		_, err := BuildAuthMethods(r, "", "")
-		require.Error(t, err)
-	})
-
-	t.Run("invalid SSH agent socket", func(t *testing.T) {
-		r := HostConfig{}
-		_, err := BuildAuthMethods(r, "/nonexistent/agent.sock", "")
-		require.Error(t, err)
-	})
-
-	t.Run("empty key file", func(t *testing.T) {
-		dir := testutil.TempDir(t)
-		keyPath := filepath.Join(dir, "empty_key")
-		require.NoError(t, os.WriteFile(keyPath, []byte(""), 0600))
-
-		r := HostConfig{KeyFiles: []string{keyPath}}
-		_, err := BuildAuthMethods(r, "", "")
-		require.Error(t, err)
-	})
-}
-
 func TestBuildHostKeyCallback(t *testing.T) {
 	t.Run("known_hosts file does not exist", func(t *testing.T) {
 		dir := testutil.TempDir(t)

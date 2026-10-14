@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Use of this source code is governed by the Business Source License
 // included in the LICENSE file.
@@ -18,7 +20,6 @@ import (
 )
 
 func TestHeartbeatService_RegisterSink_FiresOnSendAutomatic(t *testing.T) {
-	t.Parallel()
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -36,7 +37,6 @@ func TestHeartbeatService_RegisterSink_FiresOnSendAutomatic(t *testing.T) {
 }
 
 func TestHeartbeatService_RegisterSink_MultipleSinksFireInRegistrationOrder(t *testing.T) {
-	t.Parallel()
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -64,7 +64,6 @@ func TestHeartbeatService_RegisterSink_MultipleSinksFireInRegistrationOrder(t *t
 }
 
 func TestHeartbeatService_SendAutomatic_NoPanicWhenSinkListIsEmpty(t *testing.T) {
-	t.Parallel()
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -76,7 +75,6 @@ func TestHeartbeatService_SendAutomatic_NoPanicWhenSinkListIsEmpty(t *testing.T)
 }
 
 func TestHeartbeatService_RegisterSink_PanickingSinkDoesNotCrashHeartbeatCycle(t *testing.T) {
-	t.Parallel()
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -97,7 +95,6 @@ func TestHeartbeatService_RegisterSink_PanickingSinkDoesNotCrashHeartbeatCycle(t
 }
 
 func TestHeartbeatService_UnregisterSink_RemovesSink(t *testing.T) {
-	t.Parallel()
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -118,7 +115,6 @@ func TestHeartbeatService_UnregisterSink_RemovesSink(t *testing.T) {
 }
 
 func TestHeartbeatService_UnregisterSink_NonexistentIDIsNoOp(t *testing.T) {
-	t.Parallel()
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()

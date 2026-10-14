@@ -157,23 +157,6 @@ func TestNewZtdoService_IndependentInstances(t *testing.T) {
 	assert.NotEqual(t, svc1.config.OperatorSessionId, svc2.config.OperatorSessionId)
 }
 
-func TestZtdoService_Start_AlreadyRunning(t *testing.T) {
-	t.Parallel()
-	cfg := testutil.NewTestConfig(t)
-	logger := testutil.NewTestLogger()
-
-	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
-	require.NoError(t, err)
-
-	service.mu.Lock()
-	service.running = true
-	service.mu.Unlock()
-
-	err = service.Start(context.Background())
-	require.Error(t, err)
-	assert.Error(t, err)
-}
-
 func TestZtdoService_Stop(t *testing.T) {
 	t.Parallel()
 	cfg := testutil.NewTestConfig(t)

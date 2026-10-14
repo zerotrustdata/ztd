@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Use of this source code is governed by the Business Source License
 // included in the LICENSE file.

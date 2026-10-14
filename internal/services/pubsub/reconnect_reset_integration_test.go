@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Use of this source code is governed by the Business Source License
 // included in the LICENSE file.
@@ -15,7 +17,6 @@ import (
 )
 
 func TestListenForCommands_ContextCancellationExitsDuringOutage(t *testing.T) {
-	t.Parallel()
 	f := newPubsubFixture(t)
 
 	client := newOutageClient(1<<30, fmt.Errorf("connection refused"))

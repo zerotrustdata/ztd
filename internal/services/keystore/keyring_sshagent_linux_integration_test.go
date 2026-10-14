@@ -60,3 +60,12 @@ func TestDialSSHAgent_UnsetAuthSockUsesUserAgentSocket(t *testing.T) {
 	_, err = sealingKey(ag)
 	require.NoError(t, err)
 }
+
+func TestDialSSHAgent_NoUserAgentFailsUnavailable(t *testing.T) {
+	runtimeDir := testutil.TempDir(t)
+	t.Setenv(string(constants.EnvVar.SSHAuthSock), "")
+	t.Setenv(string(constants.EnvVar.XDGRuntimeDir), runtimeDir)
+
+	_, _, err := dialSSHAgent()
+	require.ErrorIs(t, err, constants.ErrKeyStoreSSHAgentUnavailable)
+}

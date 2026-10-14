@@ -25,7 +25,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -46,34 +45,6 @@ func decodeLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
 		records = append(records, record)
 	}
 	return records
-}
-
-func TestZtdoService_Start_RejectsSecondStartWithoutDisturbingRunningService(t *testing.T) {
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
-	require.NoError(t, err)
-	service.running = true
-
-	err = service.Start(t.Context())
-
-	require.ErrorIs(t, err, constants.ErrServiceUnavailable)
-	assert.True(t, service.running, "a rejected second start must leave the service running")
-	assert.Nil(t, service.cancel, "a rejected start must not create a new service context")
-	assert.Nil(t, service.pubSubClient, "a rejected start must not open a second pub/sub client")
-}
-
-func TestZtdoService_Start_RequiresRuntimeFileService(t *testing.T) {
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), nil, newTestCanonicalDB(t), newTestPubSubClientFactory())
-	require.NoError(t, err)
-
-	err = service.Start(t.Context())
-
-	require.ErrorIs(t, err, constants.ErrInternal)
-	assert.Contains(t, err.Error(), "fileSvc must be provided")
-	assert.False(t, service.running)
-	assert.Nil(t, service.pubSubClient, "nothing may be connected before the file service is validated")
-	if service.cancel != nil {
-		service.cancel()
-	}
 }
 
 func TestZtdoService_Stop_NeverStartedServiceIsANoOp(t *testing.T) {

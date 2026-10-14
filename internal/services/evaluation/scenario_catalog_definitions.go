@@ -504,11 +504,10 @@ func toolArgRunCommands() ScenarioBlueprint {
 	gold.ArgumentValidators = []ToolArgumentValidator{{
 		ToolName: "run_commands_with_operator",
 		Arguments: []ToolArgumentConstraint{{
-			Name:           "request",
+			Name:           "command",
 			RequiredTerms:  [][]string{{"health.txt"}},
-			ForbiddenTerms: []string{"rm ", "delete", "truncate", "chmod", "mv ", "write to"},
+			ForbiddenTerms: []string{"rm ", ">", "chmod", "mv ", "tee ", "sed -i"},
 		}},
-		CommandForbiddenTerms: []string{"rm ", ">", "chmod", "mv ", "tee ", "sed -i"},
 	}}
 	gold.PolicyExpectation = ScenarioPolicyExpectation{ExpectedOutcome: "allow", Detail: "Governed operator evidence must independently confirm the read-only command was allowed."}
 	return ScenarioBlueprint{
