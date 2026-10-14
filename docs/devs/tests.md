@@ -228,7 +228,7 @@ make test-onboarding-docker   # replays working tree on fresh distro hosts (scri
 2. Inject `cmdtest.ConfigLoaderFor(cfg)`, client factories, and file-service factories into the command constructor under test.
 3. For file-service error paths, add a test case in `internal/cli/cmd/<group>/factory_error_<group>_test.go` using `cmdtest.FailingFileSvcFactory(errFactory)` to verify that `constants.ErrFileServiceInit` is wrapped and downstream calls are skipped.
 
-Hermetic command tests use isolated file fixtures. `testutil.TempDir` returns an absolute base directory backed by `testing.T.TempDir`, outside the source tree. Pass base directories directly to runtime file services.
+Hermetic command tests use isolated file fixtures. `testutil.TempDir` returns a fresh absolute directory under the repository's `.ztd/tmp/` (INV-FS-11), removed by `t.Cleanup`; `t.TempDir` and `os.TempDir` are rejected by the `forbidigo` lint. Everything under `.ztd/tmp/` is protected runtime state to `security.IsProtectedRuntimePath`, so tests that treat the directory as an Operator root agents may edit (`FILE_EDIT`, `RESTORE_FILE`, `OpenFileEditTarget`) use `testutil.OperatorDir(t)`, which lives under `.ztd/operators/`. Pass base directories directly to runtime file services.
 
 ### Native Windows Tests
 

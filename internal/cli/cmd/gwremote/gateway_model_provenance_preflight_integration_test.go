@@ -279,8 +279,10 @@ func TestPreflightModelProvenanceContext_SSEReadyBeforeDispatch(t *testing.T) {
 		case constants.APIPaths.SSEStream:
 			w.Header().Set("Content-Type", "text/event-stream")
 			require.NotEmpty(t, r.Header.Get(constants.HeaderCLISessionID))
-			w.(http.Flusher).Flush()
+			// Mirror SSEController: the subscription is live before the
+			// header flush that clients treat as stream readiness.
 			close(connected)
+			w.(http.Flusher).Flush()
 			for {
 				select {
 				case data := <-events:

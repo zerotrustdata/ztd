@@ -39,7 +39,7 @@ func (e *batchCountingCampaignFeedExporter) ExportBatch(_ context.Context, recor
 }
 
 func TestPublishRunCatchUpExportsAssignmentsInOneBatch(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &batchCountingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)

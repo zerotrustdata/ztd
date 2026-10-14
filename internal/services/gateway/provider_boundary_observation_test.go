@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -48,7 +49,7 @@ func (l *mutableProviderBoundaryOperatorLister) ListOperatorsForObservation(cont
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_SubscribesToOwnerScopedObserver(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -76,7 +77,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_SubscribesToOwner
 
 func TestProviderBoundaryObservationCoordinator_NotifyAttemptBegin_FailsWithoutCmdSubscriber(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	op := &operatorv1.OperatorDocument{
@@ -108,7 +109,7 @@ func TestProviderBoundaryObservationCoordinator_NotifyAttemptBegin_FailsWithoutC
 
 func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_FailsWithoutCmdSubscriber(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -136,7 +137,7 @@ func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_FailsWi
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReSubscribesOnSessionChange(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -215,7 +216,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReSubscribesOnSes
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_LogsNotFound(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 
@@ -271,7 +272,7 @@ func duplicateObserverOperators() []*operatorv1.OperatorDocument {
 func newDuplicateObserverCoordinator(t *testing.T) (*ProviderBoundaryObservationCoordinator, *GatewayWebSocketHandler) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -297,7 +298,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReportsAmbiguousW
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_FingerprintBreaksTieBetweenLiveObservers(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -320,7 +321,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_FingerprintBreaks
 
 func TestProviderBoundaryObservationCoordinator_IngestAfterDispatchContextCanceled(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -385,7 +386,7 @@ func TestProviderBoundaryObservationCoordinator_IngestAfterDispatchContextCancel
 
 func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_EmbeddedObserverUsesProcessor(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)

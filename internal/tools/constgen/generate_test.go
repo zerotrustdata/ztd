@@ -18,6 +18,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 const (
@@ -55,7 +57,7 @@ func newConstgenRoot(t *testing.T) string {
 	t.Helper()
 	repo, err := findRepoRoot()
 	require.NoError(t, err)
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	for _, rel := range []string{eventsRel, statusRel, hierarchyRel} {
 		data, err := os.ReadFile(filepath.Join(repo, rel))
 		require.NoError(t, err)
@@ -84,7 +86,7 @@ func seedGenerated(t *testing.T, root string, out generationOutputs) {
 }
 
 func TestLoadOperatorHierarchy_ParsesPathMapping(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeFile(t, filepath.Join(root, hierarchyRel), `{"EventOperatorHeartbeat":"Heartbeat","EventOperatorCommandRequested":"Command.Requested"}`)
 
 	got, err := loadOperatorHierarchy(root)
@@ -98,14 +100,14 @@ func TestLoadOperatorHierarchy_ParsesPathMapping(t *testing.T) {
 
 func TestLoadOperatorHierarchy_ReportsMissingAndMalformedFiles(t *testing.T) {
 	t.Run("missing file", func(t *testing.T) {
-		_, err := loadOperatorHierarchy(t.TempDir())
+		_, err := loadOperatorHierarchy(testutil.TempDir(t))
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, os.ErrNotExist)
 		assert.Contains(t, err.Error(), "read operator_hierarchy.json")
 	})
 	t.Run("malformed json", func(t *testing.T) {
-		root := t.TempDir()
+		root := testutil.TempDir(t)
 		writeFile(t, filepath.Join(root, hierarchyRel), `{"EventOperatorHeartbeat":`)
 
 		_, err := loadOperatorHierarchy(root)
@@ -114,7 +116,7 @@ func TestLoadOperatorHierarchy_ReportsMissingAndMalformedFiles(t *testing.T) {
 		assert.Contains(t, err.Error(), "decode operator_hierarchy.json")
 	})
 	t.Run("values that are not strings", func(t *testing.T) {
-		root := t.TempDir()
+		root := testutil.TempDir(t)
 		writeFile(t, filepath.Join(root, hierarchyRel), `{"EventOperatorHeartbeat":["Heartbeat"]}`)
 
 		_, err := loadOperatorHierarchy(root)
@@ -160,14 +162,14 @@ func TestGenerateAll_ProducesParseableGoAndEveryRegistryEvent(t *testing.T) {
 }
 
 func TestGenerateAll_FailsWhenOperatorHierarchyIsMissing(t *testing.T) {
-	_, err := generateAll(t.TempDir(), registryFile{}, nil)
+	_, err := generateAll(testutil.TempDir(t), registryFile{}, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "operator_hierarchy.json")
 }
 
 func TestGenerateAll_FailsWhenGovernedEventNamesUnknownActionType(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeFile(t, filepath.Join(root, hierarchyRel), `{}`)
 	reg := registryFile{Events: map[string]eventEntry{
 		"Command": {

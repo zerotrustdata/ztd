@@ -62,7 +62,6 @@ const (
 	PathDev                                                   = "/dev"
 	PathVar                                                   = "/var"
 	PathVarLogDmesg                                           = "/var/log/dmesg"
-	PathTmp                                                   = "/tmp"
 	PathHome                                                  = "/home"
 	PathEtcHostname                                           = "/etc/hostname"
 	PathEtcMachineID                                          = "/etc/machine-id"

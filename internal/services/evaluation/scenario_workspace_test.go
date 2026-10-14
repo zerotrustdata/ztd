@@ -82,6 +82,11 @@ func TestValidateAgentDataOperator(t *testing.T) {
 		{name: "project root", wd: "/srv/ztd/", project: "/srv/ztd"},
 		{name: "inside the project", wd: "/srv/ztd/sandbox", project: "/srv/ztd"},
 		{name: "ancestor of the project", wd: "/srv", project: "/srv/ztd"},
+		{name: "throwaway operator under the project runtime", wd: "/srv/ztd/.ztd/operators/op-00001", project: "/srv/ztd", ok: true},
+		{name: "windows throwaway operator under the project runtime", wd: `D:\ztd\.ztd\operators\eval`, project: `D:\ztd`, ok: true},
+		{name: "runtime operators dir itself", wd: "/srv/ztd/.ztd/operators", project: "/srv/ztd"},
+		{name: "nested below a throwaway operator", wd: "/srv/ztd/.ztd/operators/op-00001/sub", project: "/srv/ztd"},
+		{name: "elsewhere in the runtime tree", wd: "/srv/ztd/.ztd/tmp/op", project: "/srv/ztd"},
 		{name: "relative working directory", wd: "sandbox", project: "/srv/ztd"},
 		{name: "relative project root", wd: "/srv/eval-sandbox", project: "ztd"},
 	}

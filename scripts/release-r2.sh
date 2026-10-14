@@ -37,6 +37,8 @@ die() {
 }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/scratch.sh
+. "$ROOT/scripts/lib/scratch.sh"
 [ -x "$ROOT/website/node_modules/.bin/wrangler" ] || die "wrangler not installed; run npm ci in website/"
 
 if [ -n "${ZTD_R2_PERSIST_TO:-}" ]; then
@@ -92,31 +94,33 @@ cmd_upload() {
 }
 
 cmd_promote() {
-	local version=$2 artifact key pointer want got
+	local version=$2 artifact key scratch pointer want got
 	release_set "$1"
 	for artifact in "${ARTIFACTS[@]}"; do
 		key="v$version/$(basename "$artifact")"
 		got=$(remote_digest "$key") || die "$BUCKET/$key is missing; not promoting"
 		[ "$got" = "$(sha256sum "$artifact" | cut -d' ' -f1)" ] || die "$BUCKET/$key does not match the release set; not promoting"
 	done
-	pointer=$(mktemp)
+	scratch=$(ztd_scratch_dir "$ROOT" ztd-r2-promote) || die "cannot create scratch dir"
+	pointer="$scratch/latest.json"
 	printf '{"version": "%s"}\n' "$version" >"$pointer"
 	want=$(sha256sum "$pointer" | cut -d' ' -f1)
 	r2 put "$BUCKET/latest.json" --file "$pointer" --content-type application/json >/dev/null
-	rm -f "$pointer"
+	rm -rf "$scratch"
 	got=$(remote_digest latest.json)
 	[ "$got" = "$want" ] || die "$BUCKET/latest.json does not match the promoted version"
 	echo "promoted $BUCKET/latest.json to $version"
 }
 
 cmd_check() {
-	local probe key want got
-	probe=$(mktemp)
+	local scratch probe key want got
+	scratch=$(ztd_scratch_dir "$ROOT" ztd-r2-check) || die "cannot create scratch dir"
+	probe="$scratch/probe.txt"
 	key="_preflight/${GITHUB_RUN_ID:-local}-$$-$(date +%s)"
 	printf 'release credential check %s\n' "$key" >"$probe"
 	want=$(sha256sum "$probe" | cut -d' ' -f1)
-	r2 put "$BUCKET/$key" --file "$probe" --content-type text/plain >/dev/null || { rm -f "$probe"; die "cannot write $BUCKET/$key; check CLOUDFLARE_API_TOKEN has R2 object read/write on $BUCKET"; }
-	rm -f "$probe"
+	r2 put "$BUCKET/$key" --file "$probe" --content-type text/plain >/dev/null || { rm -rf "$scratch"; die "cannot write $BUCKET/$key; check CLOUDFLARE_API_TOKEN has R2 object read/write on $BUCKET"; }
+	rm -rf "$scratch"
 	got=$(remote_digest "$key") || die "cannot read back $BUCKET/$key"
 	r2 delete "$BUCKET/$key" >/dev/null || die "cannot delete $BUCKET/$key"
 	[ "$got" = "$want" ] || die "$BUCKET/$key read back a different object"

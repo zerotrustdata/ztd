@@ -181,7 +181,7 @@ The enrolled owner reviews and approves the request:
 
 `ztd operator cp <target>` copies the running binary to a local path. `ztd operator scp <user@host:path>` copies via SCP.
 
-`ztd operator deploy --local --dest-dir <dir> --count N --capabilities data --background --approve --trust-bundle <gateway-ca.pem> --endpoint <gateway-host>` deploys isolated Operators on this system. Replace `--local` with `--hosts <host[,host...]>` for SSH deployment.
+`ztd operator deploy --local --count N --capabilities data --background --approve --trust-bundle <gateway-ca.pem> --endpoint <gateway-host>` deploys isolated Operators on this system under `.ztd/operators/` (pass `--dest-dir <dir>` to place them elsewhere). Replace `--local` with `--hosts <host[,host...]>` for SSH deployment.
 
 ## Anti-patterns
 

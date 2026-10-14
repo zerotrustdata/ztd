@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -126,7 +127,7 @@ func TestValidateObservationWindow_RejectsInvalidBindings(t *testing.T) {
 
 func TestWindowStore_SaveLoadRoundTrip(t *testing.T) {
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := NewWindowStore(fileSvc)
 	require.NoError(t, err)
 
@@ -161,7 +162,7 @@ func TestWindowStore_SaveLoadRoundTrip(t *testing.T) {
 
 func TestProcMeminfoCollector_CollectFromFixture(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	meminfoPath := filepath.Join(dir, "meminfo")
 	require.NoError(t, os.WriteFile(meminfoPath, []byte("MemTotal:       8192 kB\nMemAvailable:    4096 kB\n"), 0o644))
 
@@ -174,7 +175,7 @@ func TestProcMeminfoCollector_CollectFromFixture(t *testing.T) {
 
 func TestProcMeminfoCollector_ReturnsUnavailableForMissingTotal(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	meminfoPath := filepath.Join(dir, "meminfo")
 	require.NoError(t, os.WriteFile(meminfoPath, []byte("MemAvailable: 4096 kB\n"), 0o644))
 
@@ -203,7 +204,7 @@ func TestParseMeminfoKB(t *testing.T) {
 
 func TestWindowStore_LoadRejectsPathHostileAttemptID(t *testing.T) {
 	t.Parallel()
-	store, err := NewWindowStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+	store, err := NewWindowStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 
 	_, err = store.Load(context.Background(), "a/b")

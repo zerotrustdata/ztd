@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -62,7 +63,7 @@ func (s *stubModelProvenanceOperatorLister) ListOperatorsForProvenance(context.C
 
 func TestModelProvenanceObservationCoordinator_EnsureOperator_SubscribesToProvenanceOperator(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -90,7 +91,7 @@ func TestModelProvenanceObservationCoordinator_EnsureOperator_SubscribesToProven
 
 func TestModelProvenanceObservationCoordinator_PreflightCommandDelivery_FailsWithoutCmdSubscriber(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -118,7 +119,7 @@ func TestModelProvenanceObservationCoordinator_PreflightCommandDelivery_FailsWit
 
 func TestModelProvenanceObservationCoordinator_PreflightCommandDelivery_EmbeddedOperatorUsesProcessor(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -145,7 +146,7 @@ func TestModelProvenanceObservationCoordinator_PreflightCommandDelivery_Embedded
 
 func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
@@ -187,7 +188,7 @@ func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t
 
 func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCmdSubscriber(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	op := &operatorv1.OperatorDocument{
@@ -239,7 +240,7 @@ func TestModelProvenanceObservationCoordinator_PreflightStorageAttestation(t *te
 		t.Run(scenario, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-				store, err := model_provenance.NewWindowStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+				store, err := model_provenance.NewWindowStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 				require.NoError(t, err)
 				op := &operatorv1.OperatorDocument{Id: "prov-1", OperatorSessionId: "sess-prov-1", Status: string(constants.OperatorStatusActive),
 					OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}}}

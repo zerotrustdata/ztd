@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestMain(m *testing.M) {
@@ -40,7 +41,7 @@ func TestMain(m *testing.M) {
 func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
 	executable, err := os.Executable()
 	require.NoError(t, err)
-	workerPath := filepath.Join(t.TempDir(), "ztd")
+	workerPath := filepath.Join(testutil.TempDir(t), "ztd")
 	require.NoError(t, os.Link(executable, workerPath))
 	child := exec.Command(workerPath, "operator", "start", "--working-dir=/tmp/ztd-stop-test")
 	child.Env = append(os.Environ(), "ZTD_STOP_TEST_WORKER=1")

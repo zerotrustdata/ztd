@@ -18,10 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, constants.RuntimeDirname, constants.CliKeyFilename)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
 	require.NoError(t, os.WriteFile(path, []byte("old-key"), constants.PermFilePrivate))
@@ -29,7 +31,7 @@ func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
 	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]localOperatorProcess, error) {
 		return []localOperatorProcess{
 			{pid: 123, dir: dir, close: func() { closed++ }, wait: func(time.Duration) (bool, error) { return selectedSignals > 0, nil }, signal: func(bool) error { selectedSignals++; return nil }},
-			{pid: 456, dir: t.TempDir(), close: func() { closed++ }, wait: func(time.Duration) (bool, error) { t.Fatal("unrelated worker waited on"); return false, nil }, signal: func(bool) error { otherSignals++; return nil }},
+			{pid: 456, dir: testutil.TempDir(t), close: func() { closed++ }, wait: func(time.Duration) (bool, error) { t.Fatal("unrelated worker waited on"); return false, nil }, signal: func(bool) error { otherSignals++; return nil }},
 		}, nil
 	})
 	cmd.SetArgs([]string{"--working-dir", dir, "--yes"})
@@ -43,7 +45,7 @@ func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
 }
 
 func TestResetIdentityDeclinedDoesNotDiscoverOrDelete(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]localOperatorProcess, error) {
 		t.Fatal("discovery before confirmation")
 		return nil, nil

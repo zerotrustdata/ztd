@@ -24,7 +24,7 @@ func TestCampaignMirrorReconcileRunTimeout_ScalesWithAssignmentCount(t *testing.
 }
 
 func TestCampaignMirrorReconciler_ReconcileVerifiedQueuePresenceOnlyReportsMissing(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}

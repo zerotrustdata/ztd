@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // writeSuiteFile renders a custom suite carved from the default suite to a
@@ -32,7 +33,7 @@ func writeSuiteFile(t *testing.T, id, version string, scenarioIDs ...string) str
 	require.Len(t, custom.Scenarios, len(scenarioIDs))
 	body, err := evaluation.EncodeScenarioSuite(custom)
 	require.NoError(t, err)
-	path := filepath.Join(t.TempDir(), id+".json")
+	path := filepath.Join(testutil.TempDir(t), id+".json")
 	require.NoError(t, os.WriteFile(path, body, 0o600))
 	return path
 }

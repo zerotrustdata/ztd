@@ -17,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestParseModulesTxt(t *testing.T) {
@@ -61,7 +63,7 @@ func TestParseModulesTxtRejectsMalformedModuleLine(t *testing.T) {
 }
 
 func TestCollectGoModulesReadsLicenseFiles(t *testing.T) {
-	repo := t.TempDir()
+	repo := testutil.TempDir(t)
 	vendor := filepath.Join(repo, "vendor")
 	modRoot := filepath.Join(vendor, "example.com", "lib")
 	require.NoError(t, os.MkdirAll(modRoot, 0o755))

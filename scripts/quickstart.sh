@@ -9,7 +9,8 @@
 # ztd quickstart: from a checkout to a running Gateway, a signed-in CLI, and a
 # first governed action in one command. Every step reuses what already exists
 # (binary, running Gateway, CLI identity), so rerunning it is safe and fast.
-# It only composes the public CLI; it never touches .ztd/ directly.
+# It only composes the public CLI; it never touches .ztd/ runtime state (its command log
+# is scratch under .ztd/tmp).
 # Run via `make quickstart`. See docs/guides/getting_started.md.
 
 set -euo pipefail
@@ -55,8 +56,11 @@ KEY_ARGS=()
 if [[ -n "$MASTER_KEY_FILE" ]]; then
     KEY_ARGS=(--master-key-file "$MASTER_KEY_FILE")
 fi
-LOG="$(mktemp "${TMPDIR:-/tmp}/ztd-quickstart.XXXXXX")"
-trap 'rm -f "$LOG"' EXIT
+# shellcheck source=lib/scratch.sh
+. "${SCRIPT_DIR}/lib/scratch.sh"
+SCRATCH="$(ztd_scratch_dir "$REPO_ROOT" ztd-quickstart)"
+LOG="$SCRATCH/commands.log"
+trap 'rm -rf "$SCRATCH"' EXIT
 
 # usage: ztd_cli <ztd arguments...>
 ztd_cli() {

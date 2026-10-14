@@ -15,11 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 func TestMaterializeCampaignInventory_WritesInventoryFile(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	fileSvc, err := fs.NewRuntimeFileService(root, nil)
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))

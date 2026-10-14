@@ -220,6 +220,8 @@ The `envelope` and `tool_arguments` columns are vault-encrypted BLOBs (INV-STOR-
 
 RuntimeFileService ([internal/services/fs/](../../internal/services/fs/)) is the canonical abstraction for paths and file operations inside the `.ztd/` runtime tree. The audit store uses it to establish and verify its data directory before opening the resolved SQLite path. The file ledger uses it for runtime directories and ledger files. File operations outside the runtime tree (host targets, governed mutations) access those paths directly outside the abstraction boundary.
 
+Scratch space is `.ztd/tmp/`: `RuntimeFileService.MkdirTemp` creates a private (`0700`) directory there and returns its runtime-relative path. Throwaway local Operators deployed with `ztd operator deploy --local` default to `.ztd/operators/<name>`, each with its own isolated runtime root. Nothing is staged in the OS temp directory or the user's home directory (INV-FS-11 in [devs.md](../devs/devs.md)).
+
 All SQLite services resolve their database paths through RuntimeFileService before opening them. Under default configuration, relative database paths resolve beneath `.ztd/data/`. The abstraction owns file permissions and directory creation; the SQLite layer does not. `WriteFile` writes atomically through a temporary file in the target directory and a rename; on Windows it clears the read-only attribute on an existing destination before the rename and restores the previous mode if the rename fails.
 
 ## Key Material at Rest

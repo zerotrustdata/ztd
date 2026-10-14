@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -25,7 +26,7 @@ import (
 // directory that holds the generated module already created.
 func newCatalogRoot(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, outputRelPath)), 0o755))
 	return root
 }
@@ -259,7 +260,7 @@ func TestRun_CheckReportsMissingModule(t *testing.T) {
 }
 
 func TestRun_WriteFailsWhenOutputDirectoryIsMissing(t *testing.T) {
-	err := run([]string{"-write"}, t.TempDir(), &bytes.Buffer{}, &bytes.Buffer{})
+	err := run([]string{"-write"}, testutil.TempDir(t), &bytes.Buffer{}, &bytes.Buffer{})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, os.ErrNotExist)

@@ -39,7 +39,9 @@ for port in 8080 8443; do
     fi
 done
 if [[ -z "$ROOT" ]]; then
-    ROOT="$(mktemp -d -t ztd-deploy-lifecycle.XXXXXXXX)"
+    # shellcheck source=../lib/scratch.sh
+    . "$REPO/scripts/lib/scratch.sh"
+    ROOT="$(ztd_scratch_dir "$REPO" ztd-deploy-lifecycle)"
 else
     [[ ! -e "$ROOT" ]] || { echo "--root must be a new directory" >&2; exit 2; }
     mkdir -p "$ROOT"

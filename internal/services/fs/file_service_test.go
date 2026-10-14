@@ -71,7 +71,7 @@ func TestWriteFile_CreatesFileWithCorrectContent(t *testing.T) {
 
 func TestOpenFileEditTargetProtectsRuntimeAndResolvesSymlinks(t *testing.T) {
 	ctx := context.Background()
-	baseDir := testutil.TempDir(t)
+	baseDir := testutil.OperatorDir(t)
 	require.NoError(t, paths.InitWithBase(baseDir))
 	svc, err := NewRuntimeFileService(baseDir, testutil.NewVerboseTestLogger(t))
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestOpenFileEditTargetProtectsRuntimeAndResolvesSymlinks(t *testing.T) {
 // protected runtime state must not redirect the write.
 func TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation(t *testing.T) {
 	ctx := context.Background()
-	baseDir := testutil.TempDir(t)
+	baseDir := testutil.OperatorDir(t)
 	require.NoError(t, paths.InitWithBase(baseDir))
 	svc, err := NewRuntimeFileService(baseDir, testutil.NewVerboseTestLogger(t))
 	require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation(t *testing.T) {
 
 func TestOpenFileEditTargetRequiresExistingEvaluationTargetDirectory(t *testing.T) {
 	ctx := context.Background()
-	baseDir := testutil.TempDir(t)
+	baseDir := testutil.OperatorDir(t)
 	require.NoError(t, paths.InitWithBase(baseDir))
 	svc, err := NewRuntimeFileService(baseDir, testutil.NewVerboseTestLogger(t))
 	require.NoError(t, err)
@@ -508,7 +508,7 @@ func TestRelFromAbs_Success(t *testing.T) {
 
 func TestRelFromAbs_OutsidePathReturnsError(t *testing.T) {
 	svc := setupTestFS(t)
-	outside := filepath.Join(os.TempDir(), "outside-ztd", "cert.pem")
+	outside := filepath.Join(testutil.TempDir(t), "outside-ztd", "cert.pem")
 	_, err := svc.RelFromAbs(outside)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, constants.ErrPathValidation))

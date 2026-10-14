@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestStopLocalOperatorEscalation(t *testing.T) {
@@ -180,10 +181,10 @@ func TestTargetedStopFallsBackAfterShutdownFailure(t *testing.T) {
 }
 
 func TestLocalOperatorDir(t *testing.T) {
-	home := filepath.Join(t.TempDir(), "home")
+	home := filepath.Join(testutil.TempDir(t), "home")
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	cwd := filepath.Join(t.TempDir(), "cwd")
+	cwd := filepath.Join(testutil.TempDir(t), "cwd")
 	start := []string{"ztd", "operator", "start"}
 
 	require.Equal(t, cwd, localOperatorDir(start, cwd))

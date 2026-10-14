@@ -32,7 +32,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("read non-existent file returns error", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		nonExistent := filepath.Join(tmpDir, "does-not-exist.txt")
 
 		req := &models.FileEditRequest{
@@ -52,7 +52,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("write without content returns error", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 
 		req := &models.FileEditRequest{
@@ -74,7 +74,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("write to non-existent file without create flag", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "does-not-exist.txt")
 		content := "test"
 
@@ -97,7 +97,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("replace without old_content returns error", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		os.WriteFile(testFile, []byte("content"), 0644)
 
@@ -121,7 +121,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("replace old_content not found in file", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		os.WriteFile(testFile, []byte("existing content"), 0644)
 
@@ -146,7 +146,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("insert without position returns error", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		os.WriteFile(testFile, []byte("content"), 0644)
 
@@ -170,7 +170,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("insert position out of range", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		os.WriteFile(testFile, []byte("Line 1\nLine 2"), 0644)
 
@@ -195,7 +195,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("delete without line range returns error", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		os.WriteFile(testFile, []byte("content"), 0644)
 
@@ -218,7 +218,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("delete invalid line range", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		os.WriteFile(testFile, []byte("Line 1\nLine 2"), 0644)
 
@@ -243,7 +243,7 @@ func TestFileEditService_ValidationErrors(t *testing.T) {
 
 	t.Run("delete with start_line greater than end_line", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		os.WriteFile(testFile, []byte("Line 1\nLine 2\nLine 3"), 0644)
 
@@ -276,7 +276,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("read empty file", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "empty.txt")
 		os.WriteFile(testFile, []byte(""), 0644)
 
@@ -297,7 +297,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("write empty content", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "empty-write.txt")
 
 		req := &models.FileEditRequest{
@@ -319,7 +319,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("insert at beginning (position 1)", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "insert-begin.txt")
 		os.WriteFile(testFile, []byte("Line 1\nLine 2"), 0644)
 
@@ -347,7 +347,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("insert at end", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "insert-end.txt")
 		os.WriteFile(testFile, []byte("Line 1\nLine 2"), 0644)
 
@@ -374,7 +374,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("delete entire file content", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "delete-all.txt")
 		os.WriteFile(testFile, []byte("Line 1\nLine 2\nLine 3"), 0644)
 
@@ -398,7 +398,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("read beyond file end returns empty", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "short.txt")
 		os.WriteFile(testFile, []byte("Line 1\nLine 2"), 0644)
 
@@ -423,7 +423,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("replace with multiline content", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "multiline.txt")
 		os.WriteFile(testFile, []byte("Line 1\nOld Block\nOld Content\nLine 4"), 0644)
 
@@ -452,7 +452,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("file with special characters", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "special.txt")
 
 		content := "Special: ñ, é, ü, 日本語, 🚀, <xml>, {\"json\": true}"
@@ -477,7 +477,7 @@ func TestFileEditService_EdgeCaseOperations(t *testing.T) {
 
 	t.Run("write to deeply nested directory", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		nestedPath := filepath.Join(tmpDir, "a", "b", "c", "d", "e", "test.txt")
 		content := "nested content"
 
@@ -508,7 +508,7 @@ func TestFileEditService_PermissionsAndStats(t *testing.T) {
 
 	t.Run("read with stats collection", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "stats.txt")
 		content := "Line 1\nLine 2\nLine 3"
 		os.WriteFile(testFile, []byte(content), 0644)
@@ -537,7 +537,7 @@ func TestFileEditService_PermissionsAndStats(t *testing.T) {
 
 	t.Run("handle read-only file write failure", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		// Create a regular file, then target a path that treats it as a directory.
 		// Writing to a path whose parent component is a file (not a dir) is
 		// structurally impossible - os.MkdirAll will fail even as root.
@@ -564,7 +564,7 @@ func TestFileEditService_PermissionsAndStats(t *testing.T) {
 
 	t.Run("large file operation", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "large.txt")
 
 		// Create 10MB file

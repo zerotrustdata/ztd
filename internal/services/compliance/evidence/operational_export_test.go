@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -28,7 +29,7 @@ func TestExportOperationalEvidence_PreservesReceiptsPersistenceAndCommitments(t 
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: "tx-1", PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), SignerKeyId: "signer-1"}
 	receiptBody, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: "tx-1", ExecutedAtUnixMs: executedAt.UnixMilli(), FinalPersistenceAttestation: attestation})
 	require.NoError(t, err)
-	outputDir := t.TempDir()
+	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 		Receipts:    []storage.OperationalReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: receiptBody}},
 		Commitments: []storage.OperationalCommitmentSource{{Sequence: 1, TransactionID: "tx-1", CommittedAt: executedAt.Add(2 * time.Second), Body: []byte(`{"transactionId":"tx-1"}`)}},
@@ -83,7 +84,7 @@ func TestExportOperationalEvidence_RecordsUnavailablePersistenceWithoutInventing
 		WindowStart:          executedAt.Add(-time.Minute),
 		WindowEnd:            executedAt.Add(time.Minute),
 		MaxRows:              10,
-		OutputDir:            t.TempDir(),
+		OutputDir:            testutil.TempDir(t),
 	})
 	require.NoError(t, err)
 	assert.Zero(t, inventory.PersistenceCount)

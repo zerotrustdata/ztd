@@ -131,7 +131,7 @@ func writeComplianceAssessmentScopeForTest(t *testing.T, scopeID string, runIDs 
 	}
 	body, err := compliancev1.MarshalCanonical(scope)
 	require.NoError(t, err)
-	scopePath := filepath.Join(t.TempDir(), constants.ComplianceBundleScopeFilename)
+	scopePath := filepath.Join(testutil.TempDir(t), constants.ComplianceBundleScopeFilename)
 	require.NoError(t, os.WriteFile(scopePath, body, constants.PermFilePrivate))
 	return scopePath
 }
@@ -170,7 +170,7 @@ func exportComplianceReportForTest(t *testing.T, fileSvc fs.RuntimeFileService) 
 	t.Helper()
 	cmd := complianceReportExportCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 	require.NoError(t, cmd.Flags().Set("report-id", "report-1"))
-	require.NoError(t, cmd.Flags().Set("out", filepath.Join(t.TempDir(), "report-bundle")))
+	require.NoError(t, cmd.Flags().Set("out", filepath.Join(testutil.TempDir(t), "report-bundle")))
 	var output bytes.Buffer
 	cmd.SetOut(&output)
 	require.NoError(t, cmd.RunE(cmd, nil))
@@ -221,7 +221,7 @@ func TestComplianceReportExportCmd_RequiresReportIDAndOutput(t *testing.T) {
 }
 
 func TestBuildStandaloneReportSources_ProtectsReplayableLedgerAndBuildConfigurationBytes(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	commitsPath := filepath.Join(root, constants.LedgerCommitsFilename)
 	statePath := filepath.Join(root, constants.LedgerStateFilename)
 	buildPath := filepath.Join(root, constants.BuildConfigAttestationsFilename)
@@ -263,7 +263,7 @@ func TestBuildOperationalReportSources_BindsProtectedAdmissionAndBundlePaths(t *
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
 	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
-	sourceDir := t.TempDir()
+	sourceDir := testutil.TempDir(t)
 	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{Receipts: []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: time.UnixMilli(receipt.GetExecutedAtUnixMs()), Body: receiptBody}}}, evidence.OperationalExportRequest{
 		ScopeID:              "scope-1",
 		AdmissionID:          "source-1",
@@ -321,7 +321,7 @@ type standaloneAttestationRecord struct {
 }
 
 func TestBuildStandaloneReportSources_ProtectsEveryPlatformSourceClass(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	scopeID := "scope-1"
 	verifiedAt := time.Date(2026, 9, 6, 10, 30, 0, 0, time.UTC)
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -672,7 +672,7 @@ func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *
 	assert.Equal(t, evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT, inventory.GetModelProvenancePolicy())
 	trustBody, err := compliancev1.MarshalCanonical(policy)
 	require.NoError(t, err)
-	trustPath := filepath.Join(t.TempDir(), constants.ComplianceReportTrustPolicyTestFilename)
+	trustPath := filepath.Join(testutil.TempDir(t), constants.ComplianceReportTrustPolicyTestFilename)
 	require.NoError(t, os.WriteFile(trustPath, trustBody, constants.PermFilePublic))
 	verifyCmd := complianceReportVerifyCmdWithConfig(loadComplianceReportBundleInput, compliancereport.VerifyComplianceReportBundle, func() time.Time { return assessmentAsOf.Add(time.Minute) })
 	require.NoError(t, verifyCmd.Flags().Set("trust-policy", trustPath))
@@ -1154,8 +1154,8 @@ func TestLoadComplianceReportBundleInput_RejectsMalformedAndOversizedInputs(t *t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			bundleRoot := t.TempDir()
-			trustRoot := t.TempDir()
+			bundleRoot := testutil.TempDir(t)
+			trustRoot := testutil.TempDir(t)
 			bundlePath := filepath.Join(bundleRoot, constants.ComplianceBundleManifestPath)
 			trustPath := filepath.Join(trustRoot, constants.ComplianceReportTrustPolicyTestFilename)
 			require.NoError(t, os.WriteFile(bundlePath, test.bundleBody, constants.PermFilePublic))
@@ -1174,7 +1174,7 @@ func TestLoadComplianceReportBundleInput_RejectsMalformedAndOversizedInputs(t *t
 }
 
 func TestComplianceBundleRootReader_ReadFileRejectsOversizedArtifactAndPreservesCancellation(t *testing.T) {
-	rootPath := t.TempDir()
+	rootPath := testutil.TempDir(t)
 	artifactPath := filepath.Join(rootPath, constants.ComplianceBundleAnalysisPath)
 	require.NoError(t, os.WriteFile(artifactPath, bytes.Repeat([]byte("x"), int(constants.ComplianceBundleMaxArtifactBytes)+1), constants.PermFilePublic))
 	root, err := os.OpenRoot(rootPath)
@@ -1192,7 +1192,7 @@ func TestComplianceBundleRootReader_ReadFileRejectsOversizedArtifactAndPreserves
 }
 
 func TestComplianceBundleRootReader_ReadFileRejectsDirectory(t *testing.T) {
-	rootPath := t.TempDir()
+	rootPath := testutil.TempDir(t)
 	require.NoError(t, os.Mkdir(filepath.Join(rootPath, constants.TestNestedDirname), constants.PermDirPrivate))
 	root, err := os.OpenRoot(rootPath)
 	require.NoError(t, err)
@@ -1204,7 +1204,7 @@ func TestComplianceBundleRootReader_ReadFileRejectsDirectory(t *testing.T) {
 }
 
 func TestComplianceBundleRootReader_ListsNestedUnexpectedArtifact(t *testing.T) {
-	rootPath := t.TempDir()
+	rootPath := testutil.TempDir(t)
 	nestedPath := filepath.Join(rootPath, constants.TestNestedDirname)
 	require.NoError(t, os.Mkdir(nestedPath, constants.PermDirPrivate))
 	require.NoError(t, os.WriteFile(filepath.Join(nestedPath, constants.ComplianceBundleUnexpectedTestPath), []byte(`{}`), constants.PermFilePublic))
@@ -1219,7 +1219,7 @@ func TestComplianceBundleRootReader_ListsNestedUnexpectedArtifact(t *testing.T) 
 }
 
 func TestComplianceBundleRootReader_RejectsSymlinkEntries(t *testing.T) {
-	rootPath := t.TempDir()
+	rootPath := testutil.TempDir(t)
 	targetPath := filepath.Join(rootPath, constants.ComplianceBundleAnalysisPath)
 	require.NoError(t, os.WriteFile(targetPath, []byte(`{}`), constants.PermFilePublic))
 	testutil.Symlink(t, constants.ComplianceBundleAnalysisPath, filepath.Join(rootPath, constants.ComplianceBundleUnexpectedTestPath))
@@ -1233,8 +1233,8 @@ func TestComplianceBundleRootReader_RejectsSymlinkEntries(t *testing.T) {
 }
 
 func TestLoadComplianceReportBundleInput_RejectsInBundleAndReusedTrustPaths(t *testing.T) {
-	bundleRoot := t.TempDir()
-	externalRoot := t.TempDir()
+	bundleRoot := testutil.TempDir(t)
+	externalRoot := testutil.TempDir(t)
 	bundlePath := filepath.Join(bundleRoot, constants.ComplianceBundleManifestPath)
 	inBundleTrustPath := filepath.Join(bundleRoot, constants.ComplianceBundleUnexpectedTestPath)
 	externalTrustPath := filepath.Join(externalRoot, constants.ComplianceReportTrustPolicyTestFilename)
@@ -1261,7 +1261,7 @@ func TestLoadComplianceReportBundleInput_RejectsInBundleAndReusedTrustPaths(t *t
 }
 
 func TestComplianceBundleRootReader_RejectsDirectoryDepthLimit(t *testing.T) {
-	rootPath := t.TempDir()
+	rootPath := testutil.TempDir(t)
 	currentPath := rootPath
 	for range constants.ComplianceBundleMaxDirectoryDepth + 1 {
 		currentPath = filepath.Join(currentPath, constants.TestNestedDirname)

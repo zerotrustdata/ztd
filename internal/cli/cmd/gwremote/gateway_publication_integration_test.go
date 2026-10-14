@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestHTTPCampaignMirrorProbe_DatasetPresentFromBootstrap(t *testing.T) {
@@ -102,7 +103,7 @@ func TestPublishJSONLViaGateway_ExportsRecords(t *testing.T) {
 	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
-	recordsPath := filepath.Join(t.TempDir(), "records.jsonl")
+	recordsPath := filepath.Join(testutil.TempDir(t), "records.jsonl")
 	recordLine, err := json.Marshal(models.PublicFeedRecordInput{
 		RecordType:  models.PublicFeedRecordTypeProjection,
 		RecordBytes: `{"schema_version":"1.3.0","kind":"catalog_snapshot","dataset_id":"campaign-a","quality_state":"live_in_progress","observed_at":"2026-09-21T00:00:00Z"}`,

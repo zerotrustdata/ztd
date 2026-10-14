@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -29,7 +30,7 @@ import (
 func TestCampaignProviderObservationReader_BuildPublicBenchmarkObservations(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	attempt := &operatorv1.InferenceProviderAttemptRecord{
 		ProviderAttemptId: "attempt-1",
 		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
@@ -128,7 +129,7 @@ func TestBuildToolScorecardObservations_FailingToolSelection(t *testing.T) {
 func TestBuildPublicBenchmarkObservations_AllUnavailableGPUMetrics(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	attempt := &operatorv1.InferenceProviderAttemptRecord{
 		ProviderAttemptId: "attempt-unavail",
 		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
@@ -214,7 +215,7 @@ func TestMarshalAssignmentResultProjectionEnvelope_IncludesToolScorecard(t *test
 func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_InterimMissingWindow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	reader, err := NewCampaignProviderObservationReader(fileSvc)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
@@ -247,7 +248,7 @@ func (s *stubProviderObservationRemote) Load(_ context.Context, providerAttemptI
 func TestCampaignProviderObservationReaderWithRemote_LoadsGatewayEvidenceOnLocalMiss(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	attempt := &operatorv1.InferenceProviderAttemptRecord{
 		ProviderAttemptId: "attempt-remote",
 		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
@@ -292,7 +293,7 @@ func TestCampaignProviderObservationReaderWithRemote_LoadsGatewayEvidenceOnLocal
 func TestCampaignProviderObservationReader_CaptureAssignmentEvidencePersistsGatewayEvidence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	attempt := &operatorv1.InferenceProviderAttemptRecord{
 		ProviderAttemptId: "attempt-captured",
 		TransactionId:     "transaction-captured",
@@ -333,7 +334,7 @@ func TestCampaignProviderObservationReader_CaptureAssignmentEvidencePersistsGate
 func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_StrictMissingWindow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	reader, err := NewCampaignProviderObservationReader(fileSvc)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{

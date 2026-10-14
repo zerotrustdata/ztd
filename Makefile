@@ -29,7 +29,6 @@ export PATH := $(GO_BIN_DIR):$(USER_HOME_POSIX)/.local/bin:/usr/bin:$(PATH)
 endif
 GOTOOLCHAIN ?= auto
 export GOTOOLCHAIN
-TMPDIR ?= /tmp
 .DEFAULT_GOAL := help
 comma := ,
 
@@ -317,9 +316,9 @@ third-party-notices:
 
 third-party-notices-check:
 	@echo "Checking THIRD_PARTY_NOTICES.md against vendor/ and the npm locks..."
-	@tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT && \
-		go run ./internal/tools/thirdpartynotices -repo . -out "$$tmp" && \
-		diff -u --strip-trailing-cr THIRD_PARTY_NOTICES.md "$$tmp" || { echo "THIRD_PARTY_NOTICES.md is stale; run 'make third-party-notices'"; exit 1; }
+	@scratch=$$(. scripts/lib/scratch.sh && ztd_scratch_dir "$(CURDIR)" ztd-notices) && trap 'rm -rf "$$scratch"' EXIT && \
+		go run ./internal/tools/thirdpartynotices -repo . -out "$$scratch/THIRD_PARTY_NOTICES.md" && \
+		diff -u --strip-trailing-cr THIRD_PARTY_NOTICES.md "$$scratch/THIRD_PARTY_NOTICES.md" || { echo "THIRD_PARTY_NOTICES.md is stale; run 'make third-party-notices'"; exit 1; }
 
 .PHONY: website-build
 website-build:
@@ -831,6 +830,8 @@ test-coverage:
 # =============================================================================
 .PHONY: lint
 lint: vulncheck doctrines-validate
+	@if grep -rnE --include='*.go' 'os\.(MkdirTemp|CreateTemp)\(""' cmd internal test; then \
+		echo "error: empty-dir os.MkdirTemp/os.CreateTemp falls back to the OS temp dir; use testutil.TempDir or fs.RuntimeFileService (INV-FS-11)"; exit 1; fi
 	@exec golangci-lint run
 	@echo "All linting and quality checks complete."
 

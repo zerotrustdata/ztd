@@ -17,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestValidateCommittedEventRegistry(t *testing.T) {
@@ -346,7 +348,7 @@ func TestCheckGrammar_ValidatesTerminalSegmentAgainstClosedList(t *testing.T) {
 }
 
 func TestFindRepoRoot_WalksUpFromNestedDirectory(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeFile(t, filepath.Join(root, eventsRel), `{"events":{}}`)
 	nested := filepath.Join(root, "internal", "tools", "constgen")
 	require.NoError(t, os.MkdirAll(nested, 0o755))
@@ -363,9 +365,13 @@ func TestFindRepoRoot_WalksUpFromNestedDirectory(t *testing.T) {
 }
 
 func TestFindRepoRoot_FailsWhenNoAncestorHoldsTheEventsRegistry(t *testing.T) {
-	t.Chdir(t.TempDir())
+	// Only the filesystem root is guaranteed to have no registry ancestor: test
+	// scratch lives inside the repository (INV-FS-11).
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Chdir(filepath.VolumeName(wd) + string(filepath.Separator))
 
-	_, err := findRepoRoot()
+	_, err = findRepoRoot()
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "could not find protocol/constants/events.json")
@@ -373,13 +379,13 @@ func TestFindRepoRoot_FailsWhenNoAncestorHoldsTheEventsRegistry(t *testing.T) {
 
 func TestLoadRegistry_ReportsMissingAndMalformedFiles(t *testing.T) {
 	t.Run("missing file", func(t *testing.T) {
-		_, err := loadRegistry(filepath.Join(t.TempDir(), "absent.json"))
+		_, err := loadRegistry(filepath.Join(testutil.TempDir(t), "absent.json"))
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
 	t.Run("malformed json names the file", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "events.json")
+		path := filepath.Join(testutil.TempDir(t), "events.json")
 		writeFile(t, path, `{"events": {`)
 
 		_, err := loadRegistry(path)
@@ -388,7 +394,7 @@ func TestLoadRegistry_ReportsMissingAndMalformedFiles(t *testing.T) {
 		assert.Contains(t, err.Error(), "decode "+path)
 	})
 	t.Run("governance block decodes into typed fields", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "events.json")
+		path := filepath.Join(testutil.TempDir(t), "events.json")
 		writeFile(t, path, `{"events":{"A":{"_go_const":"EventA","value":"ztd.v1.a.b.requested","governance":{"action_type":"X","payload":"P"},"reserved":true}}}`)
 
 		got, err := loadRegistry(path)

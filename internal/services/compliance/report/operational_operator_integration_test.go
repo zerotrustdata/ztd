@@ -161,7 +161,7 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	admission.VerifierRef = &compliancev1.VersionedReference{Id: "operational-export", Version: "1.0.0"}
 	admission.DisclosureClassification = constants.ComplianceBundleProfileRestricted
 
-	sourceDir := t.TempDir()
+	sourceDir := testutil.TempDir(t)
 	_, err = evidence.ExportOperationalEvidence(ctx, snapshot, evidence.OperationalExportRequest{
 		ScopeID:              scope.GetScopeId(),
 		AdmissionID:          admission.GetAdmissionId(),

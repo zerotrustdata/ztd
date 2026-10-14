@@ -18,11 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestCleanupReportsRecordedIdentitiesWithoutScanningHome(t *testing.T) {
-	t.Chdir(t.TempDir())
-	home := t.TempDir()
+	t.Chdir(testutil.TempDir(t))
+	home := testutil.TempDir(t)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	known := filepath.Join(home, "custom-operator")
@@ -48,8 +49,8 @@ func TestCleanupReportsRecordedIdentitiesWithoutScanningHome(t *testing.T) {
 }
 
 func TestCleanupReportsDefaultDataIdentityWithoutRegistry(t *testing.T) {
-	t.Chdir(t.TempDir())
-	home := t.TempDir()
+	t.Chdir(testutil.TempDir(t))
+	home := testutil.TempDir(t)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	dir := filepath.Join(home, constants.OllamaZTDWorkloadsDirPath, "data")

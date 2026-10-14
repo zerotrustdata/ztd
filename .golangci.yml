@@ -44,6 +44,7 @@ linters:
     - nolintlint
     - sloglint
     - gosec
+    - forbidigo
     
     # Test Helpers (relaxed for gradual compliance)
     # - testifylint  # Disabled for gradual compliance (157 style issues - code is functionally correct)
@@ -53,6 +54,13 @@ linters:
     # Performance
     # - prealloc  # Disabled for gradual compliance (6 issues)
   settings:
+    forbidigo:
+      forbid:
+        # INV-FS-11: scratch lives under <repo>/.ztd/tmp via testutil.TempDir, never the OS temp dir.
+        - pattern: ^os\.TempDir$
+          msg: use testutil.TempDir in tests or fs.RuntimeFileService.MkdirTemp at runtime (INV-FS-11)
+        - pattern: ^(t|b|tb|f)\.TempDir$
+          msg: use testutil.TempDir(t) so test scratch stays under .ztd/tmp (INV-FS-11)
     gocritic:
       disabled-checks:
         - appendCombine

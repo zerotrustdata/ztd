@@ -152,7 +152,7 @@ func TestStateRootUnchangedReadsDoNoFlushWork(t *testing.T) {
 }
 
 func BenchmarkStateRootCalculation(b *testing.B) {
-	baseDir := b.TempDir()
+	baseDir := testutil.TempDir(b)
 	fileSvc, err := fs.NewRuntimeFileService(baseDir, testutil.NewTestLogger())
 	require.NoError(b, err)
 	require.NoError(b, fileSvc.CreateRuntimeTree(context.Background()))
@@ -179,7 +179,7 @@ func BenchmarkStateRootCalculation(b *testing.B) {
 }
 
 func BenchmarkStateRootLargeDataset(b *testing.B) {
-	baseDir := b.TempDir()
+	baseDir := testutil.TempDir(b)
 	fileSvc, err := fs.NewRuntimeFileService(baseDir, testutil.NewTestLogger())
 	require.NoError(b, err)
 	require.NoError(b, fileSvc.CreateRuntimeTree(context.Background()))

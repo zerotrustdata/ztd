@@ -37,16 +37,13 @@ func TestResolveRepoRoot(t *testing.T) {
 	})
 
 	t.Run("error outside any module", func(t *testing.T) {
-		// Run resolveRepoRoot from a temp directory with no go.mod to exercise
-		// the error-wrapping path deterministically. resolveRepoRoot shells out
-		// to `go list -m`, which fails outside a module. t.TempDir() creates a
-		// directory under the system temp root, which has no go.mod ancestor.
-		tmpDir := t.TempDir()
-
-		// resolveRepoRoot uses the process cwd, so change into the temp dir.
+		// Run resolveRepoRoot from the filesystem root to exercise the
+		// error-wrapping path deterministically. resolveRepoRoot shells out to
+		// `go list -m`, which fails outside a module; test scratch lives inside
+		// the module (INV-FS-11), so only the filesystem root has no go.mod ancestor.
 		origDir, err := os.Getwd()
 		require.NoError(t, err)
-		require.NoError(t, os.Chdir(tmpDir))
+		require.NoError(t, os.Chdir(filepath.VolumeName(origDir)+string(filepath.Separator)))
 		t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 		_, err = resolveRepoRoot()

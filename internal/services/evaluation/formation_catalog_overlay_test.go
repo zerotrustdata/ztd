@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestMarshalAndLoadFormationCatalogOverlayRoundTrips(t *testing.T) {
@@ -27,7 +28,7 @@ func TestMarshalAndLoadFormationCatalogOverlayRoundTrips(t *testing.T) {
 	data, err := MarshalFormationCatalogOverlay(overlay)
 	require.NoError(t, err)
 
-	path := filepath.Join(t.TempDir(), "formation-catalog-overlay.json")
+	path := filepath.Join(testutil.TempDir(t), "formation-catalog-overlay.json")
 	require.NoError(t, os.WriteFile(path, data, 0o644))
 
 	loaded, err := LoadFormationCatalogOverlayFile(path)
@@ -39,7 +40,7 @@ func TestMarshalAndLoadFormationCatalogOverlayRoundTrips(t *testing.T) {
 }
 
 func TestLoadFormationCatalogOverlayFileMissingWrapsNotExist(t *testing.T) {
-	_, err := LoadFormationCatalogOverlayFile(filepath.Join(t.TempDir(), "does-not-exist.json"))
+	_, err := LoadFormationCatalogOverlayFile(filepath.Join(testutil.TempDir(t), "does-not-exist.json"))
 	assert.ErrorIs(t, err, fs.ErrNotExist)
 }
 

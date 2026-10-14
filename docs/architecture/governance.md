@@ -235,7 +235,7 @@ L1 Doctrine performs static verification on raw intent without network dependenc
 
 ### FILE_EDIT Runtime State Protection
 
-Governed `FILE_EDIT` and `RESTORE_FILE` actions cannot write runtime control or evidence state under `.ztd/`. The sole writable runtime subtree is the controlled evaluation target directory `.ztd/eval/targets/`.
+Governed `FILE_EDIT` and `RESTORE_FILE` actions cannot write runtime control or evidence state under `.ztd/`. The writable runtime subtrees are the controlled evaluation target directory `.ztd/eval/targets/` and the working trees of throwaway Operators hosted at `.ztd/operators/<name>/`. `.ztd/operators/` and each `<name>` directory stay protected, and so does the hosted Operator's own nested `.ztd/`.
 1. **L1 Lexical Screen**: Gateway and Operator L1 reject file paths for which `security.IsProtectedRuntimePath` is true. The check is lexical, case-insensitive, and treats `/` and `\` as path separators.
 2. **Execution Confinement**: The executing runtime opens the target via `RuntimeFileService.OpenFileEditTarget`. It resolves symlinks, confirms the path lies outside protected state, and roots all I/O inside an `os.Root` boundary.
 

@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/compliance/catalog"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 )
 
@@ -339,7 +340,7 @@ func TestExportBundle_WritesReplayablePlaintextBundle(t *testing.T) {
 	result, fileSvc := persistedBundleFixture(t)
 	// ExportBundle returns a canonical path; macOS temp dirs sit under the
 	// /var -> /private/var symlink.
-	tempDir, err := filepath.EvalSymlinks(t.TempDir())
+	tempDir, err := filepath.EvalSymlinks(testutil.TempDir(t))
 	require.NoError(t, err)
 	outDir := filepath.Join(tempDir, "export")
 
@@ -364,7 +365,7 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 	reportID := result.Bundle.GetManifest().GetReportId()
 
 	t.Run("existing output directory", func(t *testing.T) {
-		outDir := t.TempDir()
+		outDir := testutil.TempDir(t)
 		_, err := ExportBundle(context.Background(), fileSvc, reportID, outDir)
 		assert.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		entries, readErr := os.ReadDir(outDir)
@@ -372,7 +373,7 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 		assert.Empty(t, entries)
 	})
 	t.Run("output inside the runtime root", func(t *testing.T) {
-		runtimeDir := t.TempDir()
+		runtimeDir := testutil.TempDir(t)
 		store := newRecordingBundleFileService()
 		store.runtimeDir = runtimeDir
 		sealed, err := evaluation.NewEvidenceFileService(store, func() (evaluation.EvidenceVault, error) { return sealingBundleVault{}, nil })
@@ -386,13 +387,13 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 		assert.NoDirExists(t, outDir)
 	})
 	t.Run("file service that does not open sealed bundles", func(t *testing.T) {
-		outDir := filepath.Join(t.TempDir(), "export")
+		outDir := filepath.Join(testutil.TempDir(t), "export")
 		_, err := ExportBundle(context.Background(), newRecordingBundleFileService(), reportID, outDir)
 		assert.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		assert.NoDirExists(t, outDir)
 	})
 	t.Run("unknown report", func(t *testing.T) {
-		outDir := filepath.Join(t.TempDir(), "export")
+		outDir := filepath.Join(testutil.TempDir(t), "export")
 		_, err := ExportBundle(context.Background(), fileSvc, "missing-report", outDir)
 		assert.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		assert.NoDirExists(t, outDir)

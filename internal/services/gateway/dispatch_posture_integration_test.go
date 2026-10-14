@@ -85,7 +85,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			infra := setupTestInfrastructure(t, false)
 			seedActiveUser(t, infra, userID)
 			seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
-			targetDir := testutil.TempDir(t)
+			targetDir := testutil.OperatorDir(t)
 			targetPath := filepath.Join(targetDir, constants.TestEvaluationTargetFilename)
 			require.NoError(t, os.WriteFile(targetPath, []byte(seed), constants.PermFilePrivate))
 			pubKey := startFileEditOperator(t, infra, operatorID, sessionID, targetDir)

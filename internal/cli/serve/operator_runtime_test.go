@@ -16,12 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestRefuseModelStoreRuntime(t *testing.T) {
 	t.Parallel()
 
-	tmp := t.TempDir()
+	tmp := testutil.TempDir(t)
 	modelsDir := filepath.Join(tmp, "models")
 	nestedRuntime := filepath.Join(modelsDir, constants.RuntimeDirname)
 	deepNestedRuntime := filepath.Join(modelsDir, "sub", "worker", constants.RuntimeDirname)

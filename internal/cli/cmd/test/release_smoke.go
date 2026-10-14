@@ -157,7 +157,7 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.RunDir == "" {
-				opts.RunDir = filepath.Join(".local.dev", "release-smoke", time.Now().UTC().Format("20060102T150405Z"))
+				opts.RunDir = filepath.Join(constants.RuntimeDirname, constants.TmpDirname, "release-smoke-"+time.Now().UTC().Format("20060102T150405Z"))
 			}
 			abs, err := filepath.Abs(opts.RunDir)
 			if err != nil {
@@ -187,7 +187,7 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&opts.RunDir, "root", "", "Isolated run and artifact root (default: .local.dev/release-smoke/<UTC timestamp>)")
+	cmd.Flags().StringVar(&opts.RunDir, "root", "", "Isolated run and artifact root (default: .ztd/tmp/release-smoke-<UTC timestamp>)")
 	cmd.Flags().StringVar(&opts.ZtdBin, "binary", "", "ztd binary used for the Gateway and Operator (default: running binary)")
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", releaseSmokeDefaultTimeout, "Overall run deadline; owned resources are stopped when it expires")
 	return cmd

@@ -727,7 +727,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 	infra := setupTestInfrastructure(t, false)
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
-	targetDir := testutil.TempDir(t)
+	targetDir := testutil.OperatorDir(t)
 	targetPath := filepath.Join(targetDir, constants.TestEvaluationTargetFilename)
 	require.NoError(t, os.WriteFile(targetPath, []byte(seed), constants.PermFilePrivate))
 	pubKey := startFileEditOperator(t, infra, operatorID, sessionID, targetDir)
@@ -874,7 +874,7 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 	infra := setupTestInfrastructure(t, false)
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
-	workDir := testutil.TempDir(t)
+	workDir := testutil.OperatorDir(t)
 	pubKey := startFileEditOperator(t, infra, operatorID, sessionID, workDir)
 
 	protectedPath := filepath.Join(workDir, constants.RuntimeDirname, constants.DataDirname, "protected.json")
@@ -956,11 +956,11 @@ func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 	ctx := t.Context()
 	logger := testutil.NewTestLogger()
 	fileSvc := newTestFileSvc(t)
-	workDir := testutil.TempDir(t)
+	workDir := testutil.OperatorDir(t)
 
 	cfg := testutil.NewTestConfig(t)
-	cfg.Gateway.DataDir = testutil.TempDir(t)
-	cfg.Gateway.PKIDir = testutil.TempDir(t)
+	cfg.Gateway.DataDir = testutil.OperatorDir(t)
+	cfg.Gateway.PKIDir = testutil.OperatorDir(t)
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
 	cfg.Gateway.Posture = config.PostureDoctrine
@@ -1043,7 +1043,7 @@ func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBefo
 	})
 	t.Cleanup(unregister)
 
-	targetPath := filepath.Join(testutil.TempDir(t), constants.TestEvaluationTargetFilename)
+	targetPath := filepath.Join(testutil.OperatorDir(t), constants.TestEvaluationTargetFilename)
 	payload, err := proto.Marshal(&operatorv1.FileEditRequested{
 		FilePath:    targetPath,
 		Operation:   string(constants.FileOperationWrite),

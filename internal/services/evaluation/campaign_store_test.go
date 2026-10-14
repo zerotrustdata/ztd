@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -25,6 +26,7 @@ import (
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	ztdfs "github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -37,6 +39,16 @@ func newCampaignMemoryFileService() *campaignMemoryFileService {
 	return &campaignMemoryFileService{files: make(map[string][]byte)}
 }
 
+// newCampaignRuntimeFileService is a real runtime file service for paths that
+// need disk-backed scratch (assignment-audit SQLite), which the memory fake
+// cannot host.
+func newCampaignRuntimeFileService(t *testing.T) ztdfs.RuntimeFileService {
+	t.Helper()
+	files, err := ztdfs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	require.NoError(t, err)
+	return files
+}
+
 func (m *campaignMemoryFileService) MkdirAll(_ context.Context, relPath string, _ os.FileMode) error {
 	m.files[relPath] = nil
 	return nil
@@ -47,7 +59,7 @@ func (m *campaignMemoryFileService) CreateRuntimeTree(context.Context) error { r
 func (m *campaignMemoryFileService) ReadFile(_ context.Context, relPath string) ([]byte, error) {
 	body, ok := m.files[relPath]
 	if !ok {
-		return nil, os.ErrNotExist
+		return nil, fmt.Errorf("%w: %s", constants.ErrNotFound, relPath)
 	}
 	return append([]byte(nil), body...), nil
 }

@@ -352,7 +352,7 @@ func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T
 		"eval",
 	} {
 		t.Run(bad, func(t *testing.T) {
-			snapshot := t.TempDir()
+			snapshot := testutil.TempDir(t)
 			raw, err := json.Marshal(EvalBackupManifest{
 				SchemaVersion: evalBackupManifestVersionInline,
 				Files:         []EvalBackupFile{{Path: bad, Size: 1, SHA256: digest}},

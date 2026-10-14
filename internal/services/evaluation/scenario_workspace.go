@@ -48,14 +48,21 @@ func ValidateAgentDataOperator(embedded bool, operatorWorkingDirectory, projectR
 		return err
 	}
 	if embedded {
-		return fmt.Errorf("%w: the embedded Operator runs in the ztd project %q; start a dedicated Data Operator in a disposable directory (ztd operator deploy --local --dest-dir <dir> --background)", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory)
+		return fmt.Errorf("%w: the embedded Operator runs in the ztd project %q; start a dedicated Data Operator (ztd operator deploy --local --background)", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory)
 	}
 	project, ok := cleanOperatorAbsPath(filepath.ToSlash(projectRoot))
 	if !ok {
 		return fmt.Errorf("%w: project root %q is not an absolute path", constants.ErrEvaluationWorkspaceUnavailable, projectRoot)
 	}
+	// The one sanctioned location inside the project is a throwaway Operator
+	// directly under <project>/.ztd/operators/; anything else that overlaps
+	// the project would let scenario fixtures touch ztd source or state.
+	operators := path.Join(project, constants.RuntimeDirname, constants.OperatorsDirname)
+	if path.Dir(workingDirectory) == operators {
+		return nil
+	}
 	if pathWithin(workingDirectory, project) || pathWithin(project, workingDirectory) {
-		return fmt.Errorf("%w: operator working directory %q overlaps the ztd project %q; start the Data Operator in a disposable directory outside it", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory, project)
+		return fmt.Errorf("%w: operator working directory %q overlaps the ztd project %q; start the Data Operator under %s/<name> or in a disposable directory outside the project", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory, project, operators)
 	}
 	return nil
 }

@@ -36,8 +36,8 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestBuildOperatorCommand_Default(t *testing.T) {
-	got := buildOperatorCommand("/tmp/.ztd-stream-1234", 12345, 12346)
-	assert.Equal(t, "/tmp/.ztd-stream-1234 operator start --endpoint 127.0.0.1 --gateway-http-port 12345 --gateway-https-port 12346", got)
+	got := buildOperatorCommand("/home/user/.ztd/tmp/.ztd-stream-1234", 12345, 12346)
+	assert.Equal(t, "/home/user/.ztd/tmp/.ztd-stream-1234 operator start --endpoint 127.0.0.1 --gateway-http-port 12345 --gateway-https-port 12346", got)
 }
 
 // ---------------------------------------------------------------------------
@@ -878,6 +878,6 @@ func TestHumanBytes_Negative(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBuildOperatorCommand_CustomPorts(t *testing.T) {
-	got := buildOperatorCommand("/tmp/.ztd-stream-abcdef", 8080, 8443)
-	assert.Equal(t, "/tmp/.ztd-stream-abcdef operator start --endpoint 127.0.0.1 --gateway-http-port 8080 --gateway-https-port 8443", got)
+	got := buildOperatorCommand("/home/user/.ztd/tmp/.ztd-stream-abcdef", 8080, 8443)
+	assert.Equal(t, "/home/user/.ztd/tmp/.ztd-stream-abcdef operator start --endpoint 127.0.0.1 --gateway-http-port 8080 --gateway-https-port 8443", got)
 }

@@ -67,7 +67,7 @@ func (s *sequenceTrackingCampaignFeedExporter) ExportBatch(_ context.Context, re
 }
 
 func TestCampaignPublicationCoordinatorExportFeedRecordsBatches(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &sequenceTrackingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
 	requests := make([]campaignFeedPublishRequest, 0, 3)
@@ -86,7 +86,7 @@ func TestCampaignPublicationCoordinatorExportFeedRecordsBatches(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinatorIdempotentLifecyclePublish(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	savePublicRunIdentity(t, store, "run-1", "campaign-1")
 	exporter := &recordingCampaignFeedExporter{}
@@ -106,7 +106,7 @@ func TestCampaignPublicationCoordinatorIdempotentLifecyclePublish(t *testing.T) 
 }
 
 func TestCampaignPublicationCoordinatorPublishRunCatchUp(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -138,7 +138,7 @@ func TestCampaignPublicationCoordinatorPublishRunCatchUp(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinatorPublishRunCompletion(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -179,7 +179,7 @@ func TestCampaignPublicationCoordinatorPublishRunCompletion(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	publicationState := NewMemoryCampaignPublicationStateStore()
@@ -304,7 +304,7 @@ func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinatorForceRepublish(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -346,7 +346,7 @@ func TestCampaignPublicationCoordinatorForceRepublish(t *testing.T) {
 }
 
 func TestCampaignControllerWithPublicationPublishesQueuedAssignments(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -371,7 +371,7 @@ func TestCampaignControllerWithPublicationPublishesQueuedAssignments(t *testing.
 }
 
 func TestCampaignPublicationCoordinatorPublishAssignmentLifecycles(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -403,7 +403,7 @@ func TestCampaignPublicationCoordinatorPublishAssignmentLifecycles(t *testing.T)
 func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesRemoteObservationWindows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	req := testCampaignInitRequest(t)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -493,7 +493,7 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesRemoteObservat
 func TestCampaignPublicationCoordinatorPublishAssignmentResultFailedAssignmentWithoutInferences(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	req := testCampaignInitRequest(t)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -644,7 +644,7 @@ func evaluationSummaries(t *testing.T, records []CampaignPublicFeedRecord) []eva
 // Before the fix, later aggregate revisions re-emitted verifier_state
 // not_applicable and erased the published result.
 func TestPublishRunCatchUpPreservesBoundVerificationState(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -679,7 +679,7 @@ func TestPublishRunCatchUpPreservesBoundVerificationState(t *testing.T) {
 // later execute/publish when additional assignments settle and the bound
 // population no longer matches the persisted report.
 func TestPublishRunAggregatesIgnoresStalePartialVerificationOnInProgressRun(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 
@@ -732,7 +732,7 @@ func TestPublishRunAggregatesIgnoresStalePartialVerificationOnInProgressRun(t *t
 // catch-up; a persisted report whose population binding no longer matches run
 // evidence fails closed instead of publishing a downgrade.
 func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -752,7 +752,7 @@ func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T)
 }
 
 func TestPublishRunAggregatesProjectsBoundFailure(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -793,7 +793,7 @@ func TestResetFeedPublicationIdempotencyPreservesAuditProofKeys(t *testing.T) {
 }
 
 func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
@@ -890,7 +890,7 @@ func completedHeterogeneousFormationCampaign(t *testing.T, store *Store) *evalv1
 }
 
 func TestCampaignPublicationCoordinatorPublishRunCompletion_HeterogeneousFormationAssignments(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)

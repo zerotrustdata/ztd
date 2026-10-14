@@ -33,7 +33,7 @@ import (
 // only directory structure present is what bootstrap() created.
 func setupBootstrapLedger(t *testing.T) (*GitLedgerService, string) {
 	t.Helper()
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 
 	fileSvc := newTestFileSvc(t, tempDir)
 	ledgerDir := fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname))
@@ -255,7 +255,7 @@ func TestBootstrap_InitGitRepoIdempotent(t *testing.T) {
 // (bootstrap must be safe to run on an existing structure).
 func TestBootstrap_ReconstructionOverExistingDir(t *testing.T) {
 	t.Parallel()
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 
 	fileSvc := newTestFileSvc(t, tempDir)
 
@@ -322,12 +322,12 @@ func TestBootstrap_BootstrapFailureOnUnwritableBaseDir(t *testing.T) {
 	// Create a file to block directory creation — os.MkdirAll will fail because
 	// the path component is a file, not a directory. This is cross-platform,
 	// unlike chmod 0555 which doesn't prevent writes on Windows.
-	blocker := filepath.Join(testutil.TempDir(t), "blocker")
+	blocker := filepath.Join(testutil.OperatorDir(t), "blocker")
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0644))
 
 	_, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 	fileSvc := newTestFileSvc(t, tempDir)
 	require.NoError(t, err)
 	vHeader, _, err := vault.NewVaultHeader(privKey)
@@ -432,7 +432,7 @@ func TestBootstrap_MutationWorksImmediatelyAfterConstruction(t *testing.T) {
 	t.Parallel()
 	svc, _ := setupBootstrapLedger(t)
 	// Host files live outside the runtime .ztd/ tree; mirror writes are governed FILE_EDIT targets.
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 
 	// No mutations have been performed yet. Directly do a file write.
 	testFile := filepath.Join(tempDir, "immediate_write.txt")
@@ -460,7 +460,7 @@ func TestBootstrap_DiffStatWorksImmediatelyAfterConstruction(t *testing.T) {
 	t.Parallel()
 	svc, _ := setupBootstrapLedger(t)
 	// Host files live outside the runtime .ztd/ tree; mirror writes are governed FILE_EDIT targets.
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 
 	// First mutation: create a file
 	testFile := filepath.Join(tempDir, "diffstat_immediate.txt")

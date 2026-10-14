@@ -19,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -40,7 +41,7 @@ func (s *recordingProviderObservationRemote) Load(_ context.Context, providerAtt
 func TestFallbackProviderObservationStores_DelegateLocalWrites(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	localWindows, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	localAttempts, err := inference.NewAttemptStore(fileSvc)
@@ -80,7 +81,7 @@ func TestFallbackProviderObservationStores_DelegateLocalWrites(t *testing.T) {
 func TestFallbackProviderObservationStores_LoadRemoteOnLocalMiss(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	localWindows, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	localAttempts, err := inference.NewAttemptStore(fileSvc)
@@ -116,7 +117,7 @@ func TestFallbackProviderObservationStores_LoadRemoteOnLocalMiss(t *testing.T) {
 func TestBindProviderBoundaryObservationRefs_AttachesComplianceRef(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	window := &evalv1.ProviderBoundaryObservationWindow{

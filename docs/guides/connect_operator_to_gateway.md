@@ -173,19 +173,17 @@ Deploy and start workers over SSH:
 
 ### Connect Many Operators
 
-Deploy up to 5000 Operators per host with `--count`:
+Deploy up to 5000 Operators per host with `--count`. With `--local` alone, the Operators land in `.ztd/operators/op-00001` onward under the project runtime tree:
 
 ```bash
-./ztd operator deploy --local --endpoint localhost \
-  --dest-dir .local/tmp/operator-fleet --count 10 \
+./ztd operator deploy --local --endpoint localhost --count 10 \
   --capabilities data --trust-bundle "$PWD/.ztd/pki/trust/ztdg-ca-bundle.pem" --background --approve
 ```
 
 Add more workers without replacing existing instances:
 
 ```bash
-./ztd operator deploy --local --endpoint localhost \
-  --dest-dir .local/tmp/operator-fleet --start-index 11 --count 100 \
+./ztd operator deploy --local --endpoint localhost --start-index 11 --count 100 \
   --capabilities data --trust-bundle "$PWD/.ztd/pki/trust/ztdg-ca-bundle.pem" --background --approve
 ```
 

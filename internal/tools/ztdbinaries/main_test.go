@@ -21,10 +21,11 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/ztdbinaries"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestGenerate_WritesChecksumsAndValidatedManifest(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	for _, target := range ztdbinaries.Targets() {
 		require.NoError(t, os.WriteFile(filepath.Join(root, target.Filename), []byte("binary-"+target.Filename), constants.PermFileExecutable))
 	}
@@ -42,7 +43,7 @@ func TestGenerate_WritesChecksumsAndValidatedManifest(t *testing.T) {
 }
 
 func TestGenerate_RejectsInvalidProvenanceAndMissingArtifact(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	err := generate(root, "", "build-1", "2026-09-23T00:00:00Z", "revision", "tree")
 	assert.Error(t, err)
 	err = generate(root, "2.1.12", "build-1", "invalid", "revision", "tree")
@@ -72,7 +73,7 @@ func TestFormatTargets_ListsEveryCataloguedPlatformAsSpaceTerminatedTokens(t *te
 }
 
 func TestGenerate_ChecksumFilesUseSha256SumFormatOfArtifactBytes(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeArtifacts(t, root)
 
 	require.NoError(t, generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree"))
@@ -87,7 +88,7 @@ func TestGenerate_ChecksumFilesUseSha256SumFormatOfArtifactBytes(t *testing.T) {
 }
 
 func TestGenerate_ManifestRecordsProvenanceSizesAndDigests(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeArtifacts(t, root)
 
 	require.NoError(t, generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "abc123", "treehash"))
@@ -108,7 +109,7 @@ func TestGenerate_ManifestRecordsProvenanceSizesAndDigests(t *testing.T) {
 }
 
 func TestGenerate_PublishesManifestAtomicallyWithoutLeavingStagingFile(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeArtifacts(t, root)
 
 	require.NoError(t, generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree"))
@@ -120,7 +121,7 @@ func TestGenerate_PublishesManifestAtomicallyWithoutLeavingStagingFile(t *testin
 }
 
 func TestGenerate_AllowsEmptySourceRevision(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeArtifacts(t, root)
 
 	require.NoError(t, generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "", "tree"))
@@ -142,7 +143,7 @@ func TestGenerate_RejectsBlankProvenanceFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
+			root := testutil.TempDir(t)
 			writeArtifacts(t, root)
 
 			err := generate(root, tt.version, tt.buildID, "2026-09-23T00:00:00Z", "revision", tt.treeHash)
@@ -156,7 +157,7 @@ func TestGenerate_RejectsBlankProvenanceFields(t *testing.T) {
 }
 
 func TestGenerate_RejectsNonRFC3339BuildTime(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeArtifacts(t, root)
 
 	err := generate(root, "2.1.12", "build-1", "2026-09-23 00:00:00", "revision", "tree")
@@ -166,7 +167,7 @@ func TestGenerate_RejectsNonRFC3339BuildTime(t *testing.T) {
 }
 
 func TestGenerate_ReportsFirstMissingArtifactByFilename(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	targets := ztdbinaries.Targets()
 	missing := targets[len(targets)-1]
 	for _, target := range targets[:len(targets)-1] {
@@ -183,7 +184,7 @@ func TestGenerate_ReportsFirstMissingArtifactByFilename(t *testing.T) {
 }
 
 func TestGenerate_RejectsEmptyArtifactBecauseManifestRequiresPositiveSize(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeArtifacts(t, root)
 	empty := ztdbinaries.Targets()[0]
 	require.NoError(t, os.WriteFile(filepath.Join(root, empty.Filename), nil, constants.PermFileExecutable))
@@ -198,14 +199,14 @@ func TestGenerate_RejectsEmptyArtifactBecauseManifestRequiresPositiveSize(t *tes
 }
 
 func TestGenerate_FailsWhenArtifactDirectoryDoesNotExist(t *testing.T) {
-	err := generate(filepath.Join(t.TempDir(), "absent"), "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree")
+	err := generate(filepath.Join(testutil.TempDir(t), "absent"), "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree")
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestGenerate_DefaultsBuildTime(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	for _, target := range ztdbinaries.Targets() {
 		require.NoError(t, os.WriteFile(filepath.Join(root, target.Filename), []byte("binary"), constants.PermFileExecutable))
 	}

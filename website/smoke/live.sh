@@ -13,7 +13,10 @@
 set -eu
 
 origin="${ZTD_SMOKE_ORIGIN:-https://zerotrustdata.io}"
-work=$(mktemp -d)
+root=$(cd "$(dirname "$0")/../.." && pwd)
+# shellcheck source=../../scripts/lib/scratch.sh
+. "$root/scripts/lib/scratch.sh"
+work=$(ztd_scratch_dir "$root" ztd-website-smoke)
 dir="$work/ztd"
 
 cleanup() {

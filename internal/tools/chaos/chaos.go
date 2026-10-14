@@ -99,7 +99,8 @@ func pickCategory(r *rand.Rand) category {
 
 func buildGoodActorEnvelope(id int, stateRoot string, privKey ed25519.PrivateKey, keyID string, sessionID string) (*govpkg.GovernanceEnvelope, error) {
 	payload, err := proto.Marshal(&operatorv1.FsListRequested{
-		Path:        fmt.Sprintf("%s/chaos-%d", constants.PathTmp, id),
+		// Targets are relative to the per-run work dir, never the OS temp dir.
+		Path:        fmt.Sprintf("chaos-%d", id),
 		ExecutionId: fmt.Sprintf("exec-good-%d", id),
 	})
 	if err != nil {
@@ -135,7 +136,7 @@ func buildPromptInjEnvelope(id int, stateRoot string, privKey ed25519.PrivateKey
 
 func buildFileMutationEnvelope(id int, stateRoot string, privKey ed25519.PrivateKey, keyID string, sessionID string) (*govpkg.GovernanceEnvelope, error) {
 	payload, err := proto.Marshal(&operatorv1.FileEditRequested{
-		FilePath:    fmt.Sprintf("%s/chaos-edit-%d.txt", constants.PathTmp, id),
+		FilePath:    fmt.Sprintf("chaos-edit-%d.txt", id),
 		Content:     fmt.Sprintf("chaos was here at %d", time.Now().UnixNano()),
 		ExecutionId: fmt.Sprintf("exec-edit-%d", id),
 	})

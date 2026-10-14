@@ -15,7 +15,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SCRATCH="$(mktemp -d)"
+# shellcheck source=lib/scratch.sh
+. "$SCRIPT_DIR/lib/scratch.sh"
+SCRATCH="$(ztd_scratch_dir "$SOURCE_ROOT" ztd-onboarding-test)"
 trap 'rm -rf "$SCRATCH"' EXIT
 
 fail() {
@@ -384,7 +386,7 @@ make_fake_repo() {
 	local repo=$1 state=$2
 	mkdir -p "$repo/scripts/lib" "$state"
 	cp "$SCRIPT_DIR/quickstart.sh" "$repo/scripts/"
-	cp "$SCRIPT_DIR/lib/dev-setup-common.sh" "$repo/scripts/lib/"
+	cp "$SCRIPT_DIR/lib/dev-setup-common.sh" "$SCRIPT_DIR/lib/scratch.sh" "$repo/scripts/lib/"
 	cat >"$repo/ztd" <<'STUB'
 #!/bin/sh
 STATE="${ZTD_STUB_STATE:?}"

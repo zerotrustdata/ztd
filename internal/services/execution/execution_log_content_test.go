@@ -74,7 +74,7 @@ func TestExecuteCommand_LogsNoExecutionContent(t *testing.T) {
 	logger, logs := debugLogger()
 	svc := NewExecutionService(testutil.NewTestConfig(t), logger)
 
-	workDir := t.TempDir()
+	workDir := testutil.TempDir(t)
 	result, err := svc.ExecuteCommand(context.Background(), &models.ExecutionRequestPayload{
 		ExecutionID:      "exec-3",
 		CaseID:           "case-3",

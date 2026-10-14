@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -120,43 +121,55 @@ func preFlightCheck(ctx context.Context, r ssh.HostConfig, sshAuthSock, sshPassp
 	return nil
 }
 
-func generateRemotePath() (string, error) {
+func generateRemoteName() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generate remote path: %w", err)
+		return "", fmt.Errorf("generate remote name: %w", err)
 	}
-	return fmt.Sprintf("%s/%s%x", constants.PathTmp, constants.StreamTempBinaryPrefix, b), nil
+	return fmt.Sprintf("%s%x", constants.StreamTempBinaryPrefix, b), nil
 }
 
-func uploadBinaryViaSFTP(client *sshlib.Client, binaryData []byte, remotePath string) error {
+// uploadBinaryViaSFTP stages the binary as name inside the remote runtime
+// scratch dir. The returned path is set as soon as the remote file may exist,
+// so callers can remove it even when the upload fails part way.
+func uploadBinaryViaSFTP(client *sshlib.Client, binaryData []byte, name string) (string, error) {
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
-		return fmt.Errorf("ssh: sftp client: %w", err)
+		return "", fmt.Errorf("ssh: sftp client: %w", err)
 	}
 	defer sftpClient.Close()
 
+	scratchDir, err := ssh.MkdirRemoteScratch(sftpClient)
+	if err != nil {
+		return "", err
+	}
+	remotePath := path.Join(scratchDir, name)
+
 	dstFile, err := sftpClient.Create(remotePath)
 	if err != nil {
-		return fmt.Errorf("ssh: sftp create: %w", err)
+		return "", fmt.Errorf("ssh: sftp create: %w", err)
 	}
 
 	if _, err := io.Copy(dstFile, bytes.NewReader(binaryData)); err != nil {
 		_ = dstFile.Close()
-		return fmt.Errorf("ssh: sftp write: %w", err)
+		return remotePath, fmt.Errorf("ssh: sftp write: %w", err)
 	}
 
 	if err := dstFile.Close(); err != nil {
-		return fmt.Errorf("ssh: sftp close: %w", err)
+		return remotePath, fmt.Errorf("ssh: sftp close: %w", err)
 	}
 
 	if err := sftpClient.Chmod(remotePath, constants.PermFileExecutable); err != nil {
-		return fmt.Errorf("ssh: sftp chmod: %w", err)
+		return remotePath, fmt.Errorf("ssh: sftp chmod: %w", err)
 	}
 
-	return nil
+	return remotePath, nil
 }
 
 func removeRemoteBinary(client *sshlib.Client, remotePath string) {
+	if remotePath == "" {
+		return
+	}
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
 		return
@@ -401,7 +414,7 @@ func streamToHost(
 
 		stopKeepalive := ssh.StartKeepalive(ctx, client, constants.SSHKeepaliveInterval, constants.SSHKeepaliveMaxMissed)
 
-		remotePath, err := generateRemotePath()
+		remoteName, err := generateRemoteName()
 		if err != nil {
 			stopKeepalive()
 			_ = client.Close()
@@ -409,6 +422,7 @@ func streamToHost(
 			return
 		}
 
+		var remotePath string
 		cleanup := func(httpFwd, httpsFwd *tunnelForwarder) {
 			stopKeepalive()
 			if httpFwd != nil {
@@ -422,7 +436,8 @@ func streamToHost(
 		}
 
 		// Upload binary via SFTP
-		if err := uploadBinaryViaSFTP(client, opts.BinaryData, remotePath); err != nil {
+		remotePath, err = uploadBinaryViaSFTP(client, opts.BinaryData, remoteName)
+		if err != nil {
 			lastErr = err
 			cleanup(nil, nil)
 			if retryCount < constants.SSHMaxRetries && isTransientError(err) {

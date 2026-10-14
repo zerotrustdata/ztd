@@ -39,7 +39,7 @@ func TestEnrollOperator_PresentsActuatorKey(t *testing.T) {
 
 	deployment, err := NewOperatorDeploymentRecorder(newTestFileSvc(t), "")
 	require.NoError(t, err)
-	_, err = enrollOperator(ctx, ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, t.TempDir(), nil, actuatorKeyHex, deployment, testLogger())
+	_, err = enrollOperator(ctx, ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, testutil.TempDir(t), nil, actuatorKeyHex, deployment, testLogger())
 	require.Error(t, err)
 
 	reqs := mg.received()
@@ -61,7 +61,7 @@ func TestEnrollOperator_RefusesMissingActuatorKey(t *testing.T) {
 			deployment, err := NewOperatorDeploymentRecorder(newTestFileSvc(t), "")
 			require.NoError(t, err)
 
-			_, err = enrollOperator(enrollContext(t), ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, t.TempDir(), nil, keyHex, deployment, testLogger())
+			_, err = enrollOperator(enrollContext(t), ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, testutil.TempDir(t), nil, keyHex, deployment, testLogger())
 			assert.ErrorIs(t, err, constants.ErrOperatorActuatorKeyInvalid)
 			assert.Equal(t, 0, mg.dials())
 		})

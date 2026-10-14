@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // testWorkerFingerprints are the CSR fingerprints every mock worker records.
@@ -190,9 +191,9 @@ func (m *mockRemoteDeployClient) ExecuteAgent(ctx context.Context, req models.De
 func deployTestRoot(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS != "windows" {
-		return filepath.Join(t.TempDir(), "fleet")
+		return filepath.Join(testutil.TempDir(t), "fleet")
 	}
-	t.Chdir(t.TempDir())
+	t.Chdir(testutil.TempDir(t))
 	return "fleet"
 }
 
@@ -463,6 +464,14 @@ func TestOperatorDeployLocalBatchSharesBinaryAndPreservesEarlierBatch(t *testing
 	dirs := operatorDeployDirs(root, 5000)
 	require.Len(t, dirs, 5000)
 	assert.Equal(t, filepath.ToSlash(filepath.Join(root, "op-05000")), filepath.ToSlash(dirs[4999]))
+}
+
+func TestOperatorDeployLocalDefaultsToProjectOperatorsDir(t *testing.T) {
+	out, err := runOperatorDeploy(t, &cmdtest.MockAPIClient{}, "--local")
+	require.NoError(t, err, out)
+	assert.Contains(t, filepath.ToSlash(out), "/"+constants.RuntimeDirname+"/"+constants.OperatorsDirname+"/op-00001",
+		"--local without --dest-dir stages under the project runtime tree")
+	assert.NotContains(t, out, "~")
 }
 
 func TestOperatorDeployRejectsUnsafeBatchesAndRoles(t *testing.T) {
@@ -818,10 +827,10 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 		assert.Empty(t, workerEndpoint)
 	})
 
-	t.Run("local only without dest-dir fails", func(t *testing.T) {
+	t.Run("local with hosts without dest-dir fails", func(t *testing.T) {
 		cmd := operatorDeployCmd()
-		require.NoError(t, cmd.ParseFlags([]string{"--local"}))
-		_, _, err := validateOperatorDeployFlags(cmd, true, "", "~", 1, 1, 1, false, "", false)
+		require.NoError(t, cmd.ParseFlags([]string{"--local", "--hosts", "remote1"}))
+		_, _, err := validateOperatorDeployFlags(cmd, true, "remote1", "~", 1, 1, 1, false, "", false)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	})

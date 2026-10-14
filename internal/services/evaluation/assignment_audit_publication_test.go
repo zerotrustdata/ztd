@@ -64,7 +64,7 @@ func TestCollectAssignmentAuditEventsFromBodies(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil).
@@ -137,7 +137,7 @@ func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings(t *testing.
 }
 
 func TestCampaignPublicationCoordinator_FlushesDeferredProofBatch(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil).
@@ -174,7 +174,7 @@ func TestCollectAssignmentAuditEventsFromBodies_EmptyBodiesReturnsNil(t *testing
 }
 
 func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings_EmptyLiveRequests(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil).

@@ -18,10 +18,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestProvisionMasterKeyFile_WritesPrivateBase64Key(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	path, err := ProvisionMasterKeyFile(dir)
 	require.NoError(t, err)
@@ -41,9 +42,9 @@ func TestProvisionMasterKeyFile_WritesPrivateBase64Key(t *testing.T) {
 }
 
 func TestProvisionMasterKeyFile_FreshKeyEachCall(t *testing.T) {
-	first, err := ProvisionMasterKeyFile(t.TempDir())
+	first, err := ProvisionMasterKeyFile(testutil.TempDir(t))
 	require.NoError(t, err)
-	second, err := ProvisionMasterKeyFile(t.TempDir())
+	second, err := ProvisionMasterKeyFile(testutil.TempDir(t))
 	require.NoError(t, err)
 
 	a, err := os.ReadFile(first)
@@ -54,7 +55,7 @@ func TestProvisionMasterKeyFile_FreshKeyEachCall(t *testing.T) {
 }
 
 func TestProvisionMasterKeyFile_RefusesToOverwrite(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path, err := ProvisionMasterKeyFile(dir)
 	require.NoError(t, err)
 	before, err := os.ReadFile(path)

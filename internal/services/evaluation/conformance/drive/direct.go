@@ -24,8 +24,9 @@ import (
 // malformedBody is the truncated JSON that row 17 submits as a malformed request.
 const malformedBody = `{"id":`
 
-// unknownEventType is the event_type that row 17 submits as unknown.
-const unknownEventType = "ztd.v1.conformance.unknown"
+// unknownEventType is the event_type that row 17 submits as unknown: inside
+// the wire namespace, so the refusal comes from the registry lookup.
+const unknownEventType = constants.EventWireNamespace + "conformance.unknown"
 
 // L2Source supplies a valid L2 proof for a final envelope (T18). Nil under
 // postures that do not require L2.

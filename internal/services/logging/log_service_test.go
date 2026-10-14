@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // stubFileSvc is a minimal RuntimeFileService stub for LogService unit tests.
@@ -125,7 +126,7 @@ var _ fs.RuntimeFileService = (*stubFileSvc)(nil)
 // can return a writable handle for OpenForAppend / OpenForRead.
 func makeTempFile(t *testing.T) *os.File {
 	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "logservice-*.log")
+	f, err := os.CreateTemp(testutil.TempDir(t), "logservice-*.log")
 	require.NoError(t, err)
 	return f
 }
@@ -264,7 +265,7 @@ func readAll(r *os.File) (string, error) {
 // TestLogService_StderrRedirectedToLogWritesOnce covers the background Gateway,
 // whose stderr is ztd.log itself: each record must be written once, not twice.
 func TestLogService_StderrRedirectedToLogWritesOnce(t *testing.T) {
-	path := filepath.Join(t.TempDir(), constants.ZtdLogFilename)
+	path := filepath.Join(testutil.TempDir(t), constants.ZtdLogFilename)
 	handle, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, constants.PermFilePrivate)
 	require.NoError(t, err)
 	stderr, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, constants.PermFilePrivate)
@@ -285,7 +286,7 @@ func TestLogService_StderrRedirectedToLogWritesOnce(t *testing.T) {
 // TestLogService_SeparateStderrReceivesRecords covers a foreground Gateway:
 // records go to both ztd.log and the terminal.
 func TestLogService_SeparateStderrReceivesRecords(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	handle, err := os.Create(filepath.Join(dir, constants.ZtdLogFilename))
 	require.NoError(t, err)
 	stderrPath := filepath.Join(dir, "stderr")

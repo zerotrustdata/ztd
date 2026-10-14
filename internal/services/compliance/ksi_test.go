@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 )
 
@@ -376,7 +377,7 @@ func TestLoadKSICatalog_FileNotFound(t *testing.T) {
 
 // TestLoadKSICatalog_InvalidJSON returns a parse error for malformed JSON.
 func TestLoadKSICatalog_InvalidJSON(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := testutil.TempDir(t)
 	path := filepath.Join(tmpDir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0644))
 
@@ -387,7 +388,7 @@ func TestLoadKSICatalog_InvalidJSON(t *testing.T) {
 
 // TestLoadKSICatalog_ValidationFailure returns a validation error for structurally invalid catalogs.
 func TestLoadKSICatalog_ValidationFailure(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := testutil.TempDir(t)
 	path := filepath.Join(tmpDir, "invalid.json")
 	// Valid JSON but missing required fields (no version)
 	catalog := KSICatalog{Source: "test", KSIs: []KSI{{ID: "KSI-X-01", Title: "X", Category: KSICategoryCMT}}}

@@ -36,7 +36,7 @@ Build the binary, then specify an isolated directory for the retained run:
 
 ```bash
 make build
-./ztd test release-smoke --root .local.dev/release-smoke/<unique-run-name>
+./ztd test release-smoke --root .ztd/tmp/release-smoke-<unique-run-name>
 ```
 
 The runner does not contact external LLM providers and requires zero model credentials. It:
@@ -47,7 +47,7 @@ The runner does not contact external LLM providers and requires zero model crede
 5. Performs a second embedded `FILE_EDIT` to generate real Gateway-local file-mutation and ledger evidence.
 6. Stops its owned processes and exports reports to the run root. Process cleanup uses Unix process groups (`syscall.Setpgid`, `syscall.Kill`) and Windows Job Objects (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) to ensure no orphan Gateway or Operator processes persist.
 
-Use a new, non-existent directory for every run; an existing path is rejected. When `--root` is omitted, the default is `.local.dev/release-smoke/<UTC timestamp>`.
+Use a new, non-existent directory for every run; an existing path is rejected. When `--root` is omitted, the default is `.ztd/tmp/release-smoke-<UTC timestamp>`.
 
 ## Acceptance and retained evidence
 

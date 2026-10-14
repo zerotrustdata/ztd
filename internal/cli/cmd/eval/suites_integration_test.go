@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestSuitesList_ShowsBuiltinSuites(t *testing.T) {
@@ -134,11 +135,11 @@ func TestSuites_BuiltinsAreProtectedAndBadFilesRejected(t *testing.T) {
 	_, err = env.run(t, "suites", "create", writeSuiteFile(t, evaluation.SmokeSuiteID, "1.0.0", "instruction-exact-format"))
 	require.ErrorIs(t, err, constants.ErrEvaluationSuiteBuiltin)
 
-	bad := filepath.Join(t.TempDir(), "bad.json")
+	bad := filepath.Join(testutil.TempDir(t), "bad.json")
 	require.NoError(t, os.WriteFile(bad, []byte(`{"schema_version":"1.0.0","id":"bad","version":"1","scenarios":[],"oops":true}`), 0o600))
 	_, err = env.run(t, "suites", "create", bad)
 	require.ErrorIs(t, err, constants.ErrEvaluationSuiteInvalid)
 
-	_, err = env.run(t, "suites", "create", filepath.Join(t.TempDir(), "missing.json"))
+	_, err = env.run(t, "suites", "create", filepath.Join(testutil.TempDir(t), "missing.json"))
 	require.Error(t, err)
 }

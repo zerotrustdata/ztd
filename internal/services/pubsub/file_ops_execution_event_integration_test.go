@@ -29,7 +29,7 @@ import (
 // TestHandleFsListRequest_RecordsExecutionEvent verifies that an fs list writes its
 // execution event to the real audit store, keyed by execution_id, with the output.
 func TestHandleFsListRequest_RecordsExecutionEvent(t *testing.T) {
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -57,7 +57,7 @@ func TestHandleFsListRequest_RecordsExecutionEvent(t *testing.T) {
 }
 
 func TestHandleFsListRequest_PublishesEntryPath(t *testing.T) {
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("hello"), 0o600))
 	require.NoError(t, os.Mkdir(filepath.Join(tmpDir, "sub"), 0o700))
 
@@ -173,7 +173,7 @@ func TestHandleFsReadRequest_UnrecordedReadIsFailed(t *testing.T) {
 // mutation whose diff resolves from that ledger.
 func TestHandleRestoreFileRequest_RecordsFileMutation(t *testing.T) {
 	ctx := context.Background()
-	workDir := testutil.TempDir(t)
+	workDir := testutil.OperatorDir(t)
 	hostFile := filepath.Join(workDir, "notes.txt")
 	const sessionID = "sess-restore"
 
@@ -182,7 +182,7 @@ func TestHandleRestoreFileRequest_RecordsFileMutation(t *testing.T) {
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	store := storagetest.NewTestAuditStore(t, sessionID)
 	ledger := storagetest.NewTestLedger(t)
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.OperatorDir(t))
 	handler, err := storage.NewHistoryHandler(store, ledger, logger, fileSvc, workDir)
 	require.NoError(t, err)
 	svc, err := NewHistoryService(cfg, logger, client, handler, mustNewScrubbingSvc(t, logger), store)

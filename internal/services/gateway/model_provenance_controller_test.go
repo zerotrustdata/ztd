@@ -56,7 +56,7 @@ func TestModelProvenanceControllerHandleModelProvenance_UnavailableWithoutStore(
 func TestModelProvenanceControllerHandleModelProvenance_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	logger := testutil.NewTestLogger()
@@ -74,7 +74,7 @@ func TestModelProvenanceControllerHandleModelProvenance_NotFound(t *testing.T) {
 func TestModelProvenanceControllerHandleModelProvenance_ReturnsWindow(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	digest := strings.Repeat("a", 64)

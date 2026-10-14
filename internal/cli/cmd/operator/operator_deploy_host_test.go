@@ -34,14 +34,14 @@ import (
 )
 
 func TestExecuteDeployHostPrepare(t *testing.T) {
-	tempHome := t.TempDir()
+	tempHome := testutil.TempDir(t)
 	t.Setenv("HOME", tempHome)
 	t.Setenv("USERPROFILE", tempHome) // os.UserHomeDir on Windows
 
 	ctx := context.Background()
 
 	t.Run("creates and resolves dirs including home expansion", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		relDir := filepath.Join(tempDir, "relative", "sub")
 		homeDir := "~/ztd-test-deploy"
 
@@ -80,7 +80,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
-		_, err := ExecuteDeployHostPrepare(cancelCtx, []string{t.TempDir()})
+		_, err := ExecuteDeployHostPrepare(cancelCtx, []string{testutil.TempDir(t)})
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -89,8 +89,8 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("copies binary atomically and sets executable permissions", func(t *testing.T) {
-		srcDir := t.TempDir()
-		destDir := t.TempDir()
+		srcDir := testutil.TempDir(t)
+		destDir := testutil.TempDir(t)
 
 		srcFile := filepath.Join(srcDir, "source-bin")
 		content := []byte("#!/bin/sh\necho test\n")
@@ -110,21 +110,21 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 	})
 
 	t.Run("missing source", func(t *testing.T) {
-		destDir := t.TempDir()
+		destDir := testutil.TempDir(t)
 		err := ExecuteDeployHostInstall(ctx, "", filepath.Join(destDir, "bin"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "source path required")
 	})
 
 	t.Run("missing target", func(t *testing.T) {
-		srcDir := t.TempDir()
+		srcDir := testutil.TempDir(t)
 		err := ExecuteDeployHostInstall(ctx, filepath.Join(srcDir, "bin"), "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "target path required")
 	})
 
 	t.Run("source file does not exist", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		err := ExecuteDeployHostInstall(ctx, filepath.Join(tempDir, "nonexistent"), filepath.Join(tempDir, "target"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "open source binary")
@@ -142,7 +142,7 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("creates hard link via staging", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		binDir := filepath.Join(tempDir, "bin")
 		destDir := filepath.Join(tempDir, "dest")
 		require.NoError(t, os.MkdirAll(binDir, constants.PermDirPrivate))
@@ -162,7 +162,7 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	})
 
 	t.Run("default binary name ztd", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		binDir := filepath.Join(tempDir, "bin")
 		destDir := filepath.Join(tempDir, "dest")
 		require.NoError(t, os.MkdirAll(binDir, constants.PermDirPrivate))
@@ -194,7 +194,7 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	})
 
 	t.Run("source binary not found", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		err := ExecuteDeployHostLink(ctx, tempDir, filepath.Join(tempDir, "dest"), "ztd")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
@@ -216,7 +216,7 @@ func TestExecuteDeployHostStart(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("starts worker detached and writes operator.pid and start.log", func(t *testing.T) {
-		workingDir := t.TempDir()
+		workingDir := testutil.TempDir(t)
 		mockWorker := filepath.Join(workingDir, "ztd")
 		script := "#!/bin/sh\necho \"worker running\"\nsleep 30\n"
 		require.NoError(t, os.WriteFile(mockWorker, []byte(script), constants.PermFileExecutable))
@@ -259,7 +259,7 @@ func TestExecuteDeployHostStart(t *testing.T) {
 	})
 
 	t.Run("binary not found", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		_, err := ExecuteDeployHostStart(ctx, tempDir, "nonexistent-bin", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
@@ -268,7 +268,7 @@ func TestExecuteDeployHostStart(t *testing.T) {
 	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
-		_, err := ExecuteDeployHostStart(cancelCtx, t.TempDir(), "ztd", nil)
+		_, err := ExecuteDeployHostStart(cancelCtx, testutil.TempDir(t), "ztd", nil)
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -337,9 +337,9 @@ func TestExecuteDeployHostStop(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("discovery mock handles matches and escalates TERM to KILL", func(t *testing.T) {
-		destDir := t.TempDir()
+		destDir := testutil.TempDir(t)
 		workingDir := filepath.Join(destDir, "worker-1")
-		otherDir := t.TempDir()
+		otherDir := testutil.TempDir(t)
 		require.NoError(t, os.MkdirAll(workingDir, constants.PermDirPrivate))
 		require.NoError(t, os.MkdirAll(otherDir, constants.PermDirPrivate))
 
@@ -416,7 +416,7 @@ func TestExecuteDeployHostStop(t *testing.T) {
 			defaultLocalOperatorDiscoverer = origDiscoverer
 		})
 
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		workerDir := filepath.Join(tempDir, "worker")
 		require.NoError(t, os.MkdirAll(workerDir, constants.PermDirPrivate))
 
@@ -452,7 +452,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("dispatches prepare action", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		req := models.DeployHostRequest{
 			Action: models.DeployHostActionPrepare,
 			Dirs:   []string{filepath.Join(tempDir, "dir1")},
@@ -463,7 +463,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 	})
 
 	t.Run("dispatches install action with target", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		src := filepath.Join(tempDir, "src")
 		target := filepath.Join(tempDir, "target")
 		require.NoError(t, os.WriteFile(src, []byte("data"), constants.PermFileExecutable))
@@ -481,7 +481,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 	})
 
 	t.Run("dispatches install action with DestDir fallback", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		src := filepath.Join(tempDir, "src")
 		destDir := filepath.Join(tempDir, "dest")
 		require.NoError(t, os.WriteFile(src, []byte("data"), constants.PermFileExecutable))
@@ -500,7 +500,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 	})
 
 	t.Run("dispatches link action", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		binDir := filepath.Join(tempDir, "bin")
 		destDir := filepath.Join(tempDir, "dest")
 		require.NoError(t, os.MkdirAll(binDir, constants.PermDirPrivate))
@@ -556,7 +556,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 
 		req := models.DeployHostRequest{
 			Action:     models.DeployHostActionStop,
-			WorkingDir: t.TempDir(),
+			WorkingDir: testutil.TempDir(t),
 		}
 		resp, err := ExecuteDeployHost(ctx, req, nil)
 		require.NoError(t, err)
@@ -575,7 +575,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 
 func TestOperatorDeployHostCmd_Protocol(t *testing.T) {
 	t.Run("valid json request on stdin returns json response on stdout", func(t *testing.T) {
-		tempDir := t.TempDir()
+		tempDir := testutil.TempDir(t)
 		req := models.DeployHostRequest{
 			Action: models.DeployHostActionPrepare,
 			Dirs:   []string{filepath.Join(tempDir, "sub")},

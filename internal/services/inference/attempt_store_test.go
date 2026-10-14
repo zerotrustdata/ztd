@@ -25,12 +25,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestAttemptStore_BeginCompleteAndRejectDuplicate(t *testing.T) {
 	t.Parallel()
-	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -54,7 +55,7 @@ func TestAttemptStore_BeginCompleteAndRejectDuplicate(t *testing.T) {
 
 func TestAttemptStore_ImportPersistsSynthesizedRemoteRecord(t *testing.T) {
 	t.Parallel()
-	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 	ctx := context.Background()
 	record := &operatorv1.InferenceProviderAttemptRecord{
@@ -73,7 +74,7 @@ func TestAttemptStore_ImportPersistsSynthesizedRemoteRecord(t *testing.T) {
 
 func TestAttemptStore_FailMarksTerminalState(t *testing.T) {
 	t.Parallel()
-	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -94,7 +95,7 @@ func TestAttemptStore_RejectsPathHostileAttemptID(t *testing.T) {
 	for _, attemptID := range []string{"../escape", "a/b", `a\b`, "..", "a\x00b"} {
 		t.Run(attemptID, func(t *testing.T) {
 			t.Parallel()
-			store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+			store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 			require.NoError(t, err)
 			ctx := context.Background()
 
@@ -111,7 +112,7 @@ func TestAttemptStore_RejectsPathHostileAttemptID(t *testing.T) {
 
 func TestAttemptStore_FailRejectsUnknownClass(t *testing.T) {
 	t.Parallel()
-	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, store.Begin(ctx, &operatorv1.InferenceProviderAttemptRecord{ProviderAttemptId: "attempt-3", TransactionId: "tx-3"}))
@@ -143,7 +144,7 @@ func TestClassifyAttemptFailure_NeverCarriesErrorText(t *testing.T) {
 // bytes are content: they are bound by digest and never written to disk.
 func TestAttemptStore_RawResponseIsBoundByDigestAndNeverWritten(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, root))
 	require.NoError(t, err)
 	ctx := context.Background()

@@ -49,6 +49,9 @@ type execReply struct {
 type execSSHServer struct {
 	addr    string
 	hostKey sshlib.PublicKey
+	// loginDir is the SFTP working directory, standing in for the remote
+	// user's home so remote scratch lands inside the test root.
+	loginDir string
 
 	mu               sync.Mutex
 	commands         []string
@@ -242,7 +245,7 @@ func (s *execSSHServer) handleSession(channel sshlib.Channel, requests <-chan *s
 			var payload struct{ Subsystem string }
 			if err := sshlib.Unmarshal(req.Payload, &payload); err == nil && payload.Subsystem == "sftp" {
 				_ = req.Reply(true, nil)
-				server, err := sftp.NewServer(channel)
+				server, err := sftp.NewServer(channel, sftp.WithServerWorkingDirectory(s.loginDir))
 				if err == nil {
 					_ = server.Serve()
 				}
