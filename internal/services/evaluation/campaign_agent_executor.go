@@ -20,7 +20,8 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -37,7 +38,6 @@ const (
 	// or command output cannot exceed the per-message text bound.
 	agentToolResultMaxBytes = 64 * 1024
 	agentCallSiteTurn       = "agent:turn"
-	agentCallSiteCommand    = "agent:command"
 )
 
 // AgentToolDispatcher is the governed Data Operator surface the agent executor
@@ -56,15 +56,17 @@ type AgentToolDispatcher interface {
 type CampaignAgentExecutor struct {
 	inference  FormationInferenceDispatcher
 	tools      AgentToolDispatcher
+	sentinel   cases.Sentinel
 	traceStore AgentTraceStore
 	catalog    *agentToolCatalog
 	now        func() time.Time
 	newID      func(string) string
 }
 
-// NewCampaignAgentExecutor constructs the homogeneous agent executor.
-func NewCampaignAgentExecutor(inference FormationInferenceDispatcher, tools AgentToolDispatcher, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
-	if inference == nil || tools == nil || traceStore == nil || newID == nil {
+// NewCampaignAgentExecutor constructs the homogeneous agent executor. The
+// sentinel reads the ledger on the Data Operator before and after each attempt.
+func NewCampaignAgentExecutor(inference FormationInferenceDispatcher, tools AgentToolDispatcher, sentinel cases.Sentinel, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
+	if inference == nil || tools == nil || sentinel == nil || traceStore == nil || newID == nil {
 		return nil, fmt.Errorf("evaluation: agent executor: %w", constants.ErrMissingRequiredField)
 	}
 	registry, err := LoadAgentToolRegistry()
@@ -78,7 +80,7 @@ func NewCampaignAgentExecutor(inference FormationInferenceDispatcher, tools Agen
 	if now == nil {
 		now = time.Now
 	}
-	return &CampaignAgentExecutor{inference: inference, tools: tools, traceStore: traceStore, catalog: catalog, now: now, newID: newID}, nil
+	return &CampaignAgentExecutor{inference: inference, tools: tools, sentinel: sentinel, traceStore: traceStore, catalog: catalog, now: now, newID: newID}, nil
 }
 
 // agentRun is the per-assignment state of one tool loop.
@@ -95,20 +97,34 @@ type agentRun struct {
 
 // ExecuteAssignment runs one homogeneous assignment to a terminal result. A
 // provider failure is recorded in the trace and graded; a harness failure
-// (workspace materialization, Gateway 5xx, trace persistence) is returned as an
-// assignment execution error and never graded against the model.
+// (workspace materialization, ledger sentinel reads, Gateway 5xx, trace
+// persistence) is returned as an assignment execution error and never graded
+// against the model.
 func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
 	run, err := e.newRun(req)
 	if err != nil {
 		return nil, err
 	}
 	assignment := req.Assignment
+	sentinelPath := run.workspace.SentinelPath()
+	if err := e.tools.WriteWorkspaceFile(ctx, run.target, assignment.GetRunId(), assignment.GetScenarioId(), req.AttemptID, sentinelPath, req.AttemptID); err != nil {
+		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: write ledger sentinel file", err)
+	}
 	if err := materializeScenarioWorkspace(ctx, e.tools, run.target, assignment.GetRunId(), assignment.GetScenarioId(), req.AttemptID, run.workspace, req.ScenarioInput.WorkspaceFiles); err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: materialize workspace", err)
+	}
+	before, err := e.sentinel.Read(ctx, cases.ExecutorOutbound, sentinelPath)
+	if err != nil {
+		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read opening ledger sentinel", err)
 	}
 	if err := run.loop(ctx); err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment", err)
 	}
+	after, err := e.sentinel.Read(ctx, cases.ExecutorOutbound, sentinelPath)
+	if err != nil {
+		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read closing ledger sentinel", err)
+	}
+	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{ActionReceipt: before}, After: AgentTraceReceipt{ActionReceipt: after}}
 	persistCtx := assignmentPersistContext(ctx)
 	body, err := SealAgentTrace(run.trace)
 	if err != nil {
@@ -150,7 +166,7 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	binding := req.Binding
 	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" || req.AttemptID == "" ||
 		binding.InferenceOperatorSessionID == "" || binding.DataOperatorID == "" || binding.DataOperatorSessionID == "" ||
-		binding.ModelRegistryDigest == "" || len(binding.ModelRegistry) == 0 {
+		binding.ModelRegistryDigest == "" || len(binding.ModelRegistry) == 0 || binding.DataOperatorAnchor == nil {
 		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: candidate variant, attempt, and execution binding: %w", constants.ErrMissingRequiredField)
 	}
 	workspace, err := NewScenarioWorkspace(binding.DataOperatorWorkingDirectory, assignment.GetRunId(), req.AttemptID)
@@ -179,6 +195,7 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 			DataOperatorID:      binding.DataOperatorID,
 			DataSessionID:       binding.DataOperatorSessionID,
 			Workspace:           AgentTraceWorkspace(workspace),
+			DataOperatorAnchor:  &AgentTraceAnchor{ConformanceAnchor: binding.DataOperatorAnchor},
 			ModelCalls:          []AgentModelCall{},
 			ToolCalls:           []AgentToolCall{},
 		},
@@ -509,6 +526,9 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 	if err != nil {
 		return GovernedToolDispatch{}, false, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
+	if receipt := answerReceipt(dispatched.Outcome); receipt != nil {
+		record.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+	}
 	record.TransactionID = dispatched.TransactionID
 	switch answerKind(dispatched.Outcome) {
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
@@ -527,6 +547,19 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 		record.PolicyDecision = agentPolicyDecisionAllow
 	}
 	return dispatched, false, nil
+}
+
+// answerReceipt is the signed receipt a governed answer carries: the executed
+// receipt, or the receipt of a governance rejection. A refusal carries none.
+func answerReceipt(outcome *client.GovernedOutcome) *operatorv1.ActionReceipt {
+	switch answerKind(outcome) {
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
+		return outcome.Observation.GetReceipt()
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION:
+		return outcome.Observation.GetRejection().GetReceipt()
+	default:
+		return nil
+	}
 }
 
 func agentDispatchErrorText(tool string, dispatched GovernedToolDispatch) string {
@@ -609,12 +642,12 @@ func (r *agentRun) decodeFileResult(record AgentToolCall, tool string, args agen
 	}
 }
 
-// runCommand turns the model's request into exactly one command with a
-// same-model governed inference, then runs it as a governed EXECUTE_BASH.
+// runCommand runs the command the model wrote in its arguments as one governed
+// EXECUTE_BASH. The model is the only author of the command.
 func (r *agentRun) runCommand(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
-	command, failure := r.generateCommand(ctx, record.LoopTurn, args)
-	if failure != nil {
-		return r.fail(record, *failure)
+	command := strings.TrimSpace(args.String("command"))
+	if command == "" {
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required"})
 	}
 	record.Command = command
 	payload, err := proto.Marshal(&operatorv1.CommandRequested{
@@ -660,48 +693,6 @@ func (r *agentRun) runCommand(ctx context.Context, record AgentToolCall, args ag
 	return r.succeed(record, answer)
 }
 
-func (r *agentRun) generateCommand(ctx context.Context, turn int, args agentToolArguments) (string, *agentToolFailure) {
-	var prompt strings.Builder
-	fmt.Fprintf(&prompt, "Working directory: %s\nRequest: %s\n", r.workspace.OperatorWorkingDirectory, args.String("request"))
-	if guidelines := args.String("guidelines"); guidelines != "" {
-		fmt.Fprintf(&prompt, "Guidelines: %s\n", guidelines)
-	}
-	messages := []*operatorv1.InferenceMessage{
-		agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM,
-			"Translate the operator request into exactly one POSIX shell command for a Linux host. Reply with only the command on a single line: no explanation, no code fences."),
-		agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, prompt.String()),
-	}
-	result, call, ok := r.infer(ctx, agentModelCallPurposeCommand, turn, messages, nil)
-	if !ok {
-		return "", &agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command generation failed"}
-	}
-	text, _ := agentResponseParts(result)
-	call.Text = text
-	r.trace.ModelCalls = append(r.trace.ModelCalls, call)
-	command := extractGeneratedCommand(text)
-	if command == "" {
-		return "", &agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: no command could be generated for the request"}
-	}
-	return command, nil
-}
-
-// extractGeneratedCommand returns the first command line of a command
-// generation reply, dropping code fences and inline backticks.
-func extractGeneratedCommand(text string) string {
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "```") {
-			continue
-		}
-		line = strings.TrimSpace(strings.Trim(line, "`"))
-		line = strings.TrimSpace(strings.TrimPrefix(line, "$ "))
-		if line != "" {
-			return line
-		}
-	}
-	return ""
-}
-
 func truncateToolText(text string) string {
 	if len(text) <= agentToolResultMaxBytes {
 		return text
@@ -732,7 +723,9 @@ func agentTraceLifecycle(req AssignmentExecutionRequest, trace *AgentTrace) eval
 }
 
 // ImportAssignmentResultFromAgentTrace materializes one terminal homogeneous
-// assignment result from a sealed agent trace.
+// assignment result from a sealed agent trace. A trace whose tool calls the
+// Data Operator's signed evidence does not back is INVALID_EVIDENCE: it carries
+// no grades and the model is not graded on it.
 func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, traceEvidence *compliancev1.ComplianceEvidenceReference, now time.Time, newID func(string) string) (*evalv1.EvaluationAssignmentResult, error) {
 	if req.Assignment == nil || trace == nil {
 		return nil, fmt.Errorf("evaluation: import agent trace: %w", constants.ErrMissingRequiredField)
@@ -755,11 +748,9 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	if req.AttemptID == "" {
 		req.AttemptID = trace.EvaluationAttemptID
 	}
-	lifecycle := agentTraceLifecycle(req, trace)
-	grading, err := GradeHomogeneousScenario(req, trace, lifecycle)
-	if err != nil {
-		return nil, err
-	}
+	// Verification comes before grading: a trace the Data Operator's signed
+	// evidence does not back is never graded against the model.
+	evidenceErr := VerifyAgentTraceEvidence(trace)
 	modelInferences, scoredSpan := modelInferenceRecordsFromAgentTrace(req.Assignment, trace, newID)
 	assignmentID := req.Assignment.GetAssignmentId()
 	result := &evalv1.EvaluationAssignmentResult{
@@ -768,23 +759,33 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 		RunId:                    req.Assignment.GetRunId(),
 		CampaignId:               req.Assignment.GetCampaignId(),
 		Lane:                     req.Assignment.GetLane(),
-		LifecycleStatus:          lifecycle,
 		ModelInferences:          modelInferences,
 		ToolCalls:                []*evalv1.ToolCallRecord{},
 		GovernedActions:          []*evalv1.GovernedActionBinding{},
 		PolicyDecisions:          []*evalv1.PolicyDecisionRecord{},
-		DeterministicGrades:      grading.DeterministicGrades,
-		SemanticGrades:           grading.SemanticGrades,
-		DecomposedScores:         grading.DecomposedScores,
 		ToolCallsCaptured:        true,
-		GovernedActionsCaptured:  true,
+		GovernedActionsCaptured:  evidenceErr == nil,
 		PolicyDecisionsCaptured:  true,
 		ScoredInferenceSpanNanos: scoredSpan,
-		TrajectoryOutcome:        grading.Trajectory.Outcome,
-		GuidedRetryCount:         grading.Trajectory.GuidedRetryCount,
-		FailureReason:            grading.Trajectory.FailureReason,
-		PublicFailureReason:      grading.Trajectory.PublicFailureReason,
 		CompletedAt:              timestamppb.New(now),
+	}
+	if evidenceErr != nil {
+		result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+		result.InvalidEvidenceDetail = evidenceErr.Error()
+	} else {
+		lifecycle := agentTraceLifecycle(req, trace)
+		grading, err := GradeHomogeneousScenario(req, trace, lifecycle)
+		if err != nil {
+			return nil, err
+		}
+		result.LifecycleStatus = lifecycle
+		result.DeterministicGrades = grading.DeterministicGrades
+		result.SemanticGrades = grading.SemanticGrades
+		result.DecomposedScores = grading.DecomposedScores
+		result.TrajectoryOutcome = grading.Trajectory.Outcome
+		result.GuidedRetryCount = grading.Trajectory.GuidedRetryCount
+		result.FailureReason = grading.Trajectory.FailureReason
+		result.PublicFailureReason = grading.Trajectory.PublicFailureReason
 	}
 	for _, call := range trace.ToolCalls {
 		record := &evalv1.ToolCallRecord{
@@ -798,16 +799,19 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 			ErrorType:       call.ErrorType,
 			GuidanceShown:   call.ShowedGuidance(),
 		}
-		if call.TransactionID != "" {
-			receipt := agentReceiptReference(call.TransactionID)
-			record.GovernedBindingRef = receipt
+		if evidenceErr == nil && call.Receipt != nil {
+			ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call)
+			if err != nil {
+				return nil, err
+			}
+			record.GovernedBindingRef = ref
 			result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
 				BindingId:         call.CallID,
 				AssignmentId:      assignmentID,
 				TransactionId:     call.TransactionID,
 				OperatorId:        trace.DataOperatorID,
 				OperatorSessionId: trace.DataSessionID,
-				ReceiptRef:        agentReceiptReference(call.TransactionID),
+				ReceiptRef:        ref,
 				PolicyDecision:    call.PolicyDecision,
 			})
 		}
@@ -833,14 +837,6 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	return result, nil
 }
 
-func agentReceiptReference(transactionID string) *compliancev1.ComplianceEvidenceReference {
-	return &compliancev1.ComplianceEvidenceReference{
-		ArtifactId:   transactionID,
-		ArtifactType: string(complianceevidence.ArtifactTypeEvalReceipt),
-		SchemaRef:    "ztd.operator.v1.ActionReceipt",
-	}
-}
-
 func agentArgumentsHash(arguments string) string {
 	sum := sha256.Sum256([]byte(arguments))
 	return hex.EncodeToString(sum[:])
@@ -854,8 +850,8 @@ func agentToolCallOutcome(success bool) evalv1.EvaluationVerdictStatus {
 }
 
 // modelInferenceRecordsFromAgentTrace maps every governed agent inference to
-// a SCORED_CHAIN record: turns and command generation both answer the scored
-// turn. The scored span is the summed generation time.
+// a SCORED_CHAIN record: each one answers a scored turn of the tool loop. The
+// scored span is the summed generation time.
 func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment, trace *AgentTrace, newID func(string) string) ([]*evalv1.ModelInferenceRecord, *uint64) {
 	homogeneous := assignment.GetHomogeneous()
 	records := make([]*evalv1.ModelInferenceRecord, 0, len(trace.ModelCalls))
@@ -866,10 +862,6 @@ func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment
 			usage = evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
 		}
 		retryCount := call.RetryCount
-		callSite := agentCallSiteTurn
-		if call.Purpose == agentModelCallPurposeCommand {
-			callSite = agentCallSiteCommand
-		}
 		record := &evalv1.ModelInferenceRecord{
 			InferenceRecordId:       newID("inference"),
 			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
@@ -878,7 +870,7 @@ func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment
 			EvaluationAttemptId:     trace.EvaluationAttemptID,
 			ModelRole:               homogeneous.GetDesignatedRole(),
 			AgentPersona:            trace.DesignatedRole,
-			CallSite:                callSite,
+			CallSite:                agentCallSiteTurn,
 			ModelVariant:            homogeneous.GetCandidateVariant(),
 			UsageAvailability:       usage,
 			PromptTokens:            call.PromptTokens,
@@ -891,9 +883,6 @@ func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment
 			ResultDigest:            call.ResultDigest,
 			ToolsDeclared:           call.ToolsDeclared,
 			ToolsDeclaredReported:   true,
-		}
-		if call.TransactionID != "" {
-			record.GovernedReceiptRef = agentReceiptReference(call.TransactionID)
 		}
 		span += call.GenerationDurationNanos
 		records = append(records, record)

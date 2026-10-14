@@ -486,9 +486,16 @@ type storedConformance struct {
 
 // verifyStoredConformanceRun verifies the persisted bytes of one run. It is the
 // only path from stored evidence to a verdict set in this command group.
+//
+// A sealed record or sidecar that fails authentication under the open vault was
+// changed on disk, so it is the digest-mismatch verdict for the run. A locked vault
+// is ErrVaultLocked, not a decrypt failure. Every other load error stays an error.
 func verifyStoredConformanceRun(ctx context.Context, store *evaluation.Store, runID string) (storedConformance, error) {
 	raw, digest, err := store.LoadConformanceRecordRaw(ctx, runID)
 	if err != nil {
+		if errors.Is(err, constants.ErrEvaluationEvidenceDecryptFailed) {
+			return storedConformance{verdicts: verify.SealedRecordTamperedSet(runID)}, nil
+		}
 		return storedConformance{}, fmt.Errorf("evaluation: load conformance record %s: %w", runID, err)
 	}
 	verdicts, err := verify.VerifyPersisted(raw, digest)

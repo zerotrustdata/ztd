@@ -2479,6 +2479,7 @@ AgentRole is the generic function a step performs in an agent pipeline.
 | CONFORMANCE_FAILURE_CLASS_UNTYPED_OUTCOME | 13 |  |
 | CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING | 14 |  |
 | CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH | 15 |  |
+| CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH | 16 | recorded target is not the attempt&#39;s canary case file |
 
 
 

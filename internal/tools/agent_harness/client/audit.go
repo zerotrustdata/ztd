@@ -20,7 +20,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -196,28 +195,6 @@ func (c *Client) AuditReceipts(ctx context.Context, operatorSessionID string) ([
 		return nil, body, fmt.Errorf("audit receipts: %w", err)
 	}
 	return receipts, body, nil
-}
-
-func (c *Client) AuditReceiptRecords(ctx context.Context, operatorSessionID string) ([]*models.ActionReceiptRecord, []byte, error) {
-	if operatorSessionID == "" {
-		return nil, nil, constants.ErrMissingRequiredField
-	}
-	u := c.cfg.MTLSBaseURL + constants.APIPaths.AuditReceipts + "?" + url.Values{"operator_session_id": {operatorSessionID}}.Encode()
-	status, body, err := c.doWithCLI(ctx, c.auditorPersona(), http.MethodGet, u, nil)
-	if err != nil {
-		return nil, body, err
-	}
-	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return nil, body, fmt.Errorf("%w: audit receipt list returned status %d", constants.ErrHTTPStatusError, status)
-	}
-	response := &models.AuditReceiptsResponse{}
-	if err := json.Unmarshal(body, response); err != nil {
-		return nil, body, fmt.Errorf("%w: decode audit receipt records: %v", constants.ErrInvalidJSONResponse, err)
-	}
-	if !response.Success || response.Receipts == nil {
-		return nil, body, fmt.Errorf("%w: audit receipt list is incomplete", constants.ErrInvalidJSONResponse)
-	}
-	return response.Receipts, body, nil
 }
 
 // ExportReceipts pulls the full export bundle for archival alongside the report.

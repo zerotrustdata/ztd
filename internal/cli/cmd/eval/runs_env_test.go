@@ -125,6 +125,8 @@ func testRunOperators() []*operatorv1.OperatorDocument {
 			OperatorType:            string(constants.OperatorTypeRemote),
 			RuntimeConfig:           &operatorv1.OperatorRuntimeConfig{},
 			LatestHeartbeatSnapshot: &operatorv1.HeartbeatResult{Environment: &operatorv1.EnvironmentDetails{Pwd: testDataOperatorWorkingDirectory}},
+			ActuatorPublicKey:       testDataOperatorActuatorKey,
+			ActuatorKeyId:           testDataOperatorActuatorKey,
 		},
 	}
 }

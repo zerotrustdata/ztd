@@ -4,9 +4,10 @@ title: Evaluation Programs
 audience: maintainers and coding agents
 status: current
 version: v1.0.6
-last_updated: 2026-10-13
+last_updated: 2026-10-14
 owners:
   - internal/services/evaluation/
+  - internal/services/evaluation/conformance/
   - internal/cli/cmd/eval/
   - eval/
 related:
@@ -17,7 +18,7 @@ related:
   - governance.md
   - ../guides/sovereignty_gauntlet.md
   - ../core/position_paper.md
-when_to_read: Understanding ztd's native execution-boundary test suite, formation-based model campaigns through the governed Inference Operator, provider-boundary observation, model provenance attestation, evidence persistence and verification, and capability selection for embedded or outbound Operators.
+when_to_read: Understanding ztd's governance conformance suite, formation-based model campaigns through the governed Inference Operator, provider-boundary observation, model provenance attestation, evidence persistence and verification, and capability selection for embedded or outbound Operators.
 do_not_use_for:
   - Governance five-layer interlock and policy enforcement (governance.md)
   - Gateway HTTP routes and session routing (gateway.md)
@@ -30,7 +31,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines ztd's platform evaluation programs: the native execution-boundary test suite and model campaign evaluations across single models (model-role lane) and heterogeneous formations (system lane). The native suite verifies zero-trust governance interlocks without external models or synthetic simulators. Model campaigns execute single models or three-role formations through the governed Inference Operator PEP, capture provider-boundary hardware telemetry and storage-side weight attestation, and persist canonical evidence under the Local-First Audit Architecture (LFAA) for deterministic, offline verification.
+Defines ztd's platform evaluation programs: the governance conformance suite and model campaign evaluations across single models (model-role lane) and heterogeneous formations (system lane). The conformance suite verifies zero-trust governance interlocks without models, model judges, campaigns, or synthetic simulators. Model campaigns execute single models or three-role formations through the governed Inference Operator PEP, capture provider-boundary hardware telemetry and storage-side weight attestation, and persist canonical evidence under the Local-First Audit Architecture (LFAA) for deterministic, offline verification.
 
 ## Quick index
 
@@ -38,6 +39,7 @@ Defines ztd's platform evaluation programs: the native execution-boundary test s
 - [Quick index](#quick-index)
 - [Invariants](#invariants)
   - [Program Definitions (`INV-EVAL-PROG`)](#program-definitions-inv-eval-prog)
+  - [Governance Conformance (`INV-EVAL-CONF`)](#governance-conformance-inv-eval-conf)
   - [Campaign Structure (`INV-EVAL-CAMP`)](#campaign-structure-inv-eval-camp)
   - [Witness Separation (`INV-EVAL-WIT`)](#witness-separation-inv-eval-wit)
   - [Evidence Storage (`INV-EVAL-EVID`)](#evidence-storage-inv-eval-evid)
@@ -48,7 +50,7 @@ Defines ztd's platform evaluation programs: the native execution-boundary test s
   - [Evaluation Programs Overview](#evaluation-programs-overview)
   - [Evaluation CLI Architecture](#evaluation-cli-architecture)
   - [Executing a Formation Campaign](#executing-a-formation-campaign)
-  - [Native Execution-Boundary Suite](#native-execution-boundary-suite)
+  - [Governance Conformance Suite](#governance-conformance-suite)
   - [Scenario Suites and Catalog Management](#scenario-suites-and-catalog-management)
   - [Model Campaign Architecture: System Lane and Model-Role Lane](#model-campaign-architecture-system-lane-and-model-role-lane)
   - [Scenario Fixtures, Trajectories, and Grading Models](#scenario-fixtures-trajectories-and-grading-models)
@@ -65,10 +67,23 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-EVAL-PROG-01 | The native execution-boundary suite (`core-execution-boundary@1.0.0`) MUST NOT use model providers, model judges, campaigns, scheduling, or synthetic simulators. |
+| INV-EVAL-PROG-01 | The governance conformance suite (`governance-conformance@1.0.0`) MUST NOT use model providers, model judges, campaigns, scheduling, or synthetic simulators. |
 | INV-EVAL-PROG-02 | Model campaigns MUST route scored model inference exclusively through governed dispatch to the selected Inference Operator session. The campaign CLI and the Gateway MUST NOT call model providers directly. |
 | INV-EVAL-PROG-03 | All evaluation run evidence MUST persist under `.ztd/data/eval/runs/<run-id>/`, separate from campaign definitions and frozen scenario artifacts under `.ztd/data/eval/campaigns/<campaign-id>/`. |
-| INV-EVAL-PROG-04 | Campaign verification (`ztd eval runs verify`) and conformance verification (`ztd eval conformance verify`) MUST recompute bindings and signatures deterministically from persisted evidence without executing new scored actions. |
+| INV-EVAL-PROG-04 | Campaign verification (`ztd eval runs verify`) MUST recompute bindings and signatures deterministically from persisted evidence without executing new scored actions. Conformance verification (`ztd eval conformance verify`) MUST recompute every verdict from the persisted record and its pinned anchors without executing new actions or contacting the Gateway. |
+
+### Governance Conformance (`INV-EVAL-CONF`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-EVAL-CONF-01 | Cases are data. Each `cases.Case` MUST state its ingress, fault, postures, and one `cases.Expect` per submission. Each catalogue row 1 to 26 MUST have a case or a `cases.Gap` that states its reason. `cases.Validate` MUST reject a catalogue with a duplicate case id, an unknown posture, ingress, or action, a wrong expectation count, an undefined code, or a doctrine case whose command L1 does not block offline, and `run.Run` MUST validate before it drives any case. (Covered conditions 1 and 2.) |
+| INV-EVAL-CONF-02 | The verdict authority MUST be the executing runtime's signed `ActionReceipt`, verified by `oracle.VerifyReceipt` against that runtime's actuator key. `oracle.LoadAnchor` MUST read the key from the runtime's own PKI export (`pki/Actuator_pub.json`) through its `RuntimeFileService`. The run record MUST pin the key id, public key, and export SHA-256 (`ConformanceAnchor`); `verify` does not re-hash the export. A verdict MUST NOT derive from the Gateway signer endpoint, an HTTP status, or error text. (Condition 3.) |
+| INV-EVAL-CONF-03 | The stage chain MUST be recomputed from the receipt by `governance.ValidateDeterministicProtocolChain` (INV-GOV-EVID-01 to -03: order, parentage, identity, posture outcomes) and the persistence attestation MUST be verified by `governance.VerifyActionReceipt` (INV-GOV-EVID-04), both called from `oracle.VerifyReceipt`. The oracle MUST NOT substitute a stage flag for the recomputed chain. (Condition 4.) |
+| INV-EVAL-CONF-04 | Ledger bracket: `run.quiesce` MUST read two harness sentinel `FS_READ` receipts per executor before the first case, and `run.driveCase` MUST read two around each case. `oracle.VerifyBracket` MUST find the commitment links between the sentinels equal to the case's claimed `EXECUTED` receipts: one for `EXECUTED`, none for any other outcome. An extra link MUST fail the case with `UNCLAIMED_EXECUTION`. A stack that is not quiescent MUST abort the run without a record. (Condition 5.) |
+| INV-EVAL-CONF-05 | Canary: `canary.Seed` MUST create the canary root `eval/targets/conformance-<run-id>/` (relative to the runtime root) through `RuntimeFileService`, and `canary.Snapshot` MUST run before and after each case (`run.driveCase`). An `EXECUTED` file mutation MUST change only its target `cases/<attempt-id>.txt` (`canary.TargetRel`) to its marker (`canary.ExactlyWrote`). An `EXECUTED` A2A mutation MUST leave the set byte-identical and produce one stub call carrying the marker. Every other outcome MUST leave the set byte-identical with no stub call (`verify.checkEffect`). (Condition 6.) |
+| INV-EVAL-CONF-06 | `verify.VerifyPersisted` MUST compute every verdict from the stored record bytes, their SHA-256 sidecar, the anchors pinned in the record, and the catalogue compiled into the binary. It MUST NOT contact the Gateway or read a store: the CLI loads the bytes (`verifyStoredConformanceRun`). A changed record or sidecar byte MUST yield suite `INVALID_EVIDENCE` with class `RECORD_DIGEST_MISMATCH` (`verify.digestMismatchSet`), including a sealed file that fails vault authentication (`verify.SealedRecordTamperedSet`). A verdict set MUST carry only case id, status, and a fixed `ConformanceFailureClass` (INV-EVAL-EVID-08). (Condition 7.) |
+| INV-EVAL-CONF-07 | Every oracle and verifier check MUST have a negative-control test that fails on forged, missing, extra, or reordered evidence. Examples: `TestVerifyAgainstNegativeMutations` and `TestVerifyPersistedEveryFlippedBitIsInvalidEvidence` (`verify`), `TestVerifyReceipt` and `TestVerifyBracket` (`oracle`), and one `TestValidateRejects*` per `cases.Validate` check. (Condition 8.) |
+| INV-EVAL-CONF-08 | The posture MUST be read from the Gateway health endpoint (`/api/v1/health`) by `gatewayPosture` and recorded in the run record. A run MUST execute only the cases that `cases.Applicable` returns for its posture, and `verify` MUST reject a record whose case set differs (`checkCaseSet`). Each posture MUST have one run, executed on a stack started in that posture; `report.Build` rejects two runs for one posture. An attended case that an unattended run did not run MUST verdict `UNAVAILABLE`, so the suite is `INCOMPLETE` and its report cell is `PARTIAL`, never `COVERED` (`report.cellFor`). |
 
 ### Campaign Structure (`INV-EVAL-CAMP`)
 
@@ -105,7 +120,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-EVAL-EVID-01 | Native run evidence (`report.json`, `verification.json`, digest-named artifacts) and campaign run evidence MUST persist under `.ztd/data/eval/runs/<run-id>/`. |
+| INV-EVAL-EVID-01 | Conformance run evidence (`conformance-record.json` and its `conformance-record.sha256` sidecar) and campaign run evidence MUST persist under `.ztd/data/eval/runs/<run-id>/`. |
 | INV-EVAL-EVID-02 | Provider-boundary observation windows MUST be stored under the Gateway volume at `data/inference/provider-observer/windows/`. Model provenance attestation windows MUST be stored under `data/inference/model-provenance/windows/`. |
 | INV-EVAL-EVID-04 | Public-safe campaign projections MUST omit principal, Operator, session, credential, endpoint, path, raw target, envelope, receipt, audit, and evidence body fields. Private prompts, gold criteria, and execution identifiers MUST NOT cross the public boundary. |
 | INV-EVAL-EVID-05 | `ztd eval backup` MUST write only to destinations outside the runtime tree, copying `.ztd/data/eval/` and `.ztd/eval/` with a SHA-256 manifest. `ztd eval restore` MUST verify every file against the manifest before writing. Evidence is backed up in its encrypted form (INV-EVAL-EVID-07), so a restored snapshot is readable only by a runtime that holds the same vault key. Backups and restores hold the runtime's backup lock shared, so they never run during a delete that purges the backups (INV-EVAL-CAMP-30). |
@@ -126,7 +141,16 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Native execution-boundary suite | `internal/services/evaluation/` | `ztd eval conformance run`, `ztd eval conformance verify` |
+| Governance conformance: oracle | `internal/services/evaluation/conformance/oracle/` | `./ztd test unit --pkg ./internal/services/evaluation/conformance/oracle` |
+| Governance conformance: oracle test builder | `internal/services/evaluation/conformance/oracle/oracletest/` | `./ztd test unit --pkg ./internal/services/evaluation/conformance/oracle/oracletest` |
+| Governance conformance: cases and catalogue | `internal/services/evaluation/conformance/cases/` | `./ztd test unit --pkg ./internal/services/evaluation/conformance/cases` |
+| Governance conformance: canary | `internal/services/evaluation/conformance/canary/` | `./ztd test unit --pkg ./internal/services/evaluation/conformance/canary` |
+| Governance conformance: drivers | `internal/services/evaluation/conformance/drive/` | `./ztd test integration --pkg ./internal/services/evaluation/conformance/drive` |
+| Governance conformance: runner | `internal/services/evaluation/conformance/run/` | `./ztd test unit --pkg ./internal/services/evaluation/conformance/run` |
+| Governance conformance: offline verifier | `internal/services/evaluation/conformance/verify/` | `./ztd test unit --pkg ./internal/services/evaluation/conformance/verify`, `./ztd eval conformance verify --run <run-id>` |
+| Governance conformance: coverage and recall report | `internal/services/evaluation/conformance/report/` | `./ztd test unit --pkg ./internal/services/evaluation/conformance/report`, `./ztd eval conformance report --run <run-id>` |
+| Governance conformance: record store and compliance admission | `internal/services/evaluation/conformance_store.go`, `internal/services/evaluation/conformance_compliance.go` | `./ztd test unit --pkg ./internal/services/evaluation --run TestConformance` |
+| Governance conformance: CLI group | `internal/cli/cmd/eval/conformance.go` | `./ztd test unit --pkg ./internal/cli/cmd/eval --run TestConformance` |
 | Campaign controller and scheduler | `internal/services/evaluation/campaign_controller.go` | `ztd eval runs start`, `resume`, `verify` |
 | Model-role agent executor | `internal/services/evaluation/campaign_agent_executor.go` | `ztd eval runs start` on model-role campaigns |
 | Formation executor (direct runner) | `internal/services/evaluation/campaign_formation_execution.go` | `ztd eval runs start` on formation campaigns |
@@ -152,7 +176,7 @@ Evaluation programs instantiate the **Confidential Edge Execution with Governed 
 
 | Program | Suite / Catalog | Core Verification Focus | Excluded Components |
 | :--- | :--- | :--- | :--- |
-| **Execution-Boundary Suite** | `core-execution-boundary@1.0.0` | Proves one allowed governed mutation succeeds and one doctrine-prohibited equivalent fails closed through real Gateway and Data Operator runtimes. | No models, no model judges, no synthetic simulators. |
+| **Governance Conformance Suite** | `governance-conformance@1.0.0` | Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator's signed receipts and no unclaimed side effect, through real Gateway and Operator runtimes. | No models, no model judges, no campaigns, no scheduling, no synthetic simulators. |
 | **Formation Campaign** (System Lane) | `default-suite@1.2.0`, `smoke-suite@1.2.0`, or custom suite | Evaluates three-role heterogeneous formations (`lite`, `assistant`, `primary`) executing sequentially through governed Inference Operator sessions. | Direct provider calls, model judges, tool execution. |
 | **Model-Role Campaign** (Model Lane) | `default-suite@1.2.0`, `smoke-suite@1.2.0`, or custom suite | Evaluates a single model acting as an autonomous agent in a bounded tool-calling loop (up to 8 turns) against scenario gold criteria. | Heterogeneous formation roles. |
 
@@ -200,29 +224,77 @@ make gw MODEL_STORAGE_ROOT=~/.ollama/models
 ./ztd eval runs export <run-id>
 ```
 
-### Native Execution-Boundary Suite
+### Governance Conformance Suite
 
-The native suite (`core-execution-boundary@1.0.0`) runs under `doctrine` posture without inference dependencies:
+The governance conformance suite (`governance-conformance@1.0.0`, `cases.SuiteID` and `cases.SuiteVersion`) submits governed faults through each ingress of a live native stack and checks each outcome against the executing Operator's signed evidence. It runs no models, model judges, campaigns, or schedulers. Each case states one exact expected outcome. The verdict comes from the Operator's receipt, never from the Gateway's response.
+
+A behaviour is covered only when every condition of `INV-EVAL-CONF-01` to `INV-EVAL-CONF-08` holds. Each coverage cell takes one of five states from `report.cellFor`:
+
+| State | Meaning |
+| :--- | :--- |
+| `COVERED` | Every case in the cell PASSes. |
+| `PARTIAL` | Every case in the cell PASSes except attended cases that an unattended run did not run. |
+| `MISSING` | No verified run for the posture, a suite verdict of `INVALID_EVIDENCE`, or a case that FAILs or is `INVALID_EVIDENCE`. The reason lists the failure classes. |
+| `NOT_EXPRESSIBLE` | A catalogue gap: the ingress cannot express the fault. The reason is the gap's reason. |
+| `NOT_APPLICABLE` | The row has no case for the posture. |
+
+Each submission ends in one outcome. The verifier accepts an outcome only with the evidence below (`verify/case.go`, `oracle.Classify`):
+
+| Outcome | Required evidence |
+| :--- | :--- |
+| `EXECUTED` | A `COMPLETED` receipt that verifies against the anchor, with a completed `L5_EXECUTION` stage and one `COMMITMENT_APPEND` link. `L2Status` and `L3Status` match the expectation. The bracket holds exactly that link. The canary effect matches (`INV-EVAL-CONF-05`). |
+| `REJECTED{code}` | A signed `FAILED` receipt with `failure_code` `GOVERNANCE_REJECTED` and `rejection_code` equal to `code`. No `L5_EXECUTION` or commitment stage. The bracket holds no link. The canary is byte-identical. |
+| `REFUSED_PRE_ENVELOPE{code}` | An `IngressRefusal` with code `code` and no receipt. The bracket holds no link. The canary is byte-identical. |
+| `SUSPENDED` | An approval-pending observation that carries the transaction hash and no receipt. The bracket holds no link. The canary is byte-identical. |
+
+The ingresses, the driver that reaches each one, and the executor that signs for it:
+
+| Ingress | Executor | Driver | Route |
+| :--- | :--- | :--- | :--- |
+| `DIRECT` | embedded | `drive.NewDirect` | `POST /api/v1/governance/envelopes` |
+| `DISPATCH_EMBEDDED` | embedded | `drive.NewDispatch` | `POST /api/v1/operators/commands` |
+| `DISPATCH_OUTBOUND` | outbound | `drive.NewDispatch` | `POST /api/v1/operators/commands` |
+| `MCP` | embedded | `drive.NewMCP` | `POST /mcp`, `tools/call` |
+| `A2A` | embedded | `drive.NewA2A` | `POST /api/v1/a2a/call` |
+| `CLI` | outbound | `drive.NewCLI` (`operator.RunOnce`) | `POST /api/v1/operators/commands` with the CLI identity |
+
+The embedded executor is the Gateway's own Operator (`oracle.GatewayRuntimeID`). The outbound executor is the Operator named by `--operator-id`.
+
+The catalogue is data in `cases/catalogue.go`: `rowSpecs` holds rows 1 to 26, and `gapSpecs` holds the cells an ingress cannot express. It expands to 429 cases: 279 on `DIRECT`, 35 on `DISPATCH_EMBEDDED`, 35 on `DISPATCH_OUTBOUND`, 30 on `MCP`, 26 on `A2A`, and 24 on `CLI`. Per posture: doctrine 113, consensus 104, ratify 106, notary 106. Row 13 expands over the 49 doctrine attack entries, and row 14 over the first entry of each of the five corpus categories. There are 6 gaps: row 2 on `A2A` (every A2A call is a mutation) and `CLI` (the CLI sends only `EXECUTE_BASH`), and rows 25 and 26 on `MCP` and `A2A` (no typed deny path; no argument carries an L3 proof). Four cases are attended: row 24 on `MCP` and `A2A` under ratify and notary.
+
+| Package | Owns |
+| :--- | :--- |
+| `oracle` | Anchors (`LoadAnchor`, `BoundAnchor`, `AnchorSet`), receipt verification (`VerifyReceipt`), outcome classification (`Classify`), and the ledger bracket (`VerifyBracket`). |
+| `oracle/oracletest` | Test-only builder of signed receipts with stages. |
+| `cases` | Case, gap, and expectation types; `Catalogue`, `Applicable`, and `Validate`; marker commands. |
+| `canary` | Canary seed, `Snapshot`, `Diff`, and `ExactlyWrote`, all through `RuntimeFileService`. |
+| `drive` | One driver per ingress, envelope fault mutators, the `Sentinel`, the `Attended` wrapper, and the A2A stub. Drivers report what each ingress answered and decide nothing. |
+| `run` | Evidence capture and record assembly (`Run`). It writes no verdicts. |
+| `verify` | Offline verdicts from the record bytes (`VerifyPersisted`). |
+| `report` | Coverage cells and L1 recall (`Build`, `Markdown`). |
+
+`ztd eval conformance run` executes these steps (`run.Run`, `cli/cmd/eval/conformance.go`):
+1. `gatewayPosture` reads the posture from `/api/v1/health`. `conformanceTargets` selects the embedded Operator and the single active session of `--operator-id`.
+2. `run.Run` validates the catalogue, loads one anchor per executor, seeds one canary root per executor, and takes the quiescence pair (two sentinel reads) per executor. A non-quiescent stack aborts the run.
+3. For each applicable case in catalogue order, `run.driveCase` snapshots the canary, reads the sentinel, drives the case through its ingress while capturing HTTP exchanges, reads the sentinel again, and snapshots the canary again.
+4. `Store.SaveConformanceRecord` persists the record. `verifyStoredConformanceRun` then verifies the stored bytes with `verify.VerifyPersisted`, and `writeConformanceVerdicts` prints the verdicts.
+
+The record is `.ztd/data/eval/runs/<run-id>/conformance-record.json` (`constants.ConformanceRecordFilename`, canonical protojson), with `conformance-record.sha256` (`constants.ConformanceRecordDigestFilename`) holding the lower-case hex SHA-256 of the record bytes. Both files are sealed with the runtime vault and written read-only, and the store refuses to overwrite a run's record. The record pins each executor's anchor (key id, public key, export SHA-256), the canary root, and the quiescence pairs. For each case it holds the observations, sentinel receipts, canary manifests, A2A stub calls, and HTTP exchanges. It also pins the doctrine corpus SHA-256 and the attended flag. A run that errors at any step writes no record.
+
+`ztd eval conformance verify --run <run-id>` loads the stored bytes and calls `verify.VerifyPersisted`. It needs only the Gateway runtime root: no network call and no CLI identity. The catalogue is the one compiled into the binary, so a record whose doctrine corpus digest differs from the binary's is `INVALID_EVIDENCE` with no case verdicts. A sealed file that fails vault authentication yields the digest-mismatch verdict (`verify.SealedRecordTamperedSet`). A locked vault fails the command instead. Output prints the run id, posture, and suite verdict, then one line per non-PASS case (`<case-id> <status> <failure-class>`). `--json` prints the canonical verdict set.
+
+`run` and `verify` exit zero only for suite verdict `PASS`, or for `INCOMPLETE` from an unattended run. Any other verdict exits non-zero.
+
+Attended cases (row 24) need a human. `ztd eval conformance run --attended --approver-user-id <user-id>` runs them. Without `--attended`, they are recorded as not run. `drive.Attended` wraps the MCP and A2A drivers. It opens the approval SSE stream (`/api/v1/sse/stream`, `since_id=0`) before it submits the call, so no decision is missed. On suspension it prints the approval banner, with the console URL and a direct link, and waits for an `approval.completed` event for the transaction. The wait is event-driven and times out after three minutes (`auth.ApprovalSSETimeout`). The approver decides in the console or on the link, and the driver never approves. An unattended run records each attended case as `NOT_RUN_ATTENDED`: its verdict is `UNAVAILABLE`, the suite verdict is `INCOMPLETE`, and its cells report `PARTIAL`.
+
+Each posture is one run on a fresh native stack started in that posture. The posture is an immutable Gateway setting (`ztd gw start --posture <posture>`), and `run` reads it from `/api/v1/health`. Start the Gateway with `--a2a-downstream-url` pointing at the A2A stub address before `run`. `ztd eval conformance report` then aggregates one run per posture, at most four. It verifies each run from its stored bytes first and rejects two runs for one posture. The recall table counts, per corpus category, posture, and ingress, the rows 13 and 14 L1 rejections that PASS, and binds each posture's signed L1 stages to one doctrine bundle hash. JSON is the default output, and `--markdown` prints the coverage and recall tables.
 
 ```bash
-./ztd eval conformance run --help
-./ztd eval conformance verify --help
-./ztd eval conformance report --help
+./ztd gw start --posture doctrine --a2a-downstream-url http://127.0.0.1:9911
+./ztd eval conformance run --operator-id ztd-operator --operator-root /tmp/ztd-operator --a2a-stub-listen 127.0.0.1:9911
+./ztd eval conformance verify --run <run-id>
+./ztd eval conformance report --run <run-id> --run <run-id> --run <run-id> --run <run-id> --markdown
 ```
-
-`ztd eval conformance run` drives the suite against a live native stack and persists the record. Its flags:
-- `--operator-id` and `--operator-root` select the outbound Operator, which every posture requires.
-- `--a2a-stub-listen` is the address the A2A stub listens on, and it must match the Gateway's `--a2a-downstream-url`.
-- `--attended` runs the attended cases and needs `--approver-user-id`, the user who approves them.
-
-`ztd eval conformance verify --run` recomputes one persisted run's verdicts offline. `ztd eval conformance report --run` builds the coverage report from one run per posture, at most four.
-
-Execution steps:
-1. Resolves the active Data Operator (`SelectDataOperator`).
-2. Allowed Attempt: Submits a governed file edit writing a unique marker file to `.ztd/eval/targets/ztd-eval-<run-id>.txt` via the Gateway command ingress. Confirms signed `ActionReceipt` persistence and commitment ledger append.
-3. Prohibited Attempt: Submits an equivalent malicious payload (e.g. attempting to overwrite protected runtime state or execute unauthorized binaries). Confirms immediate L1 Doctrine rejection (`ErrTxL1ValidationFailed`) with zero side effects.
-4. Independent Observation: Reads the target marker file using an independent in-process host target reader (`ztd-host-target-reader`).
-5. Offline Verification: `ztd eval conformance verify` re-computes all signatures, validates Merkle roots, checks deterministic stages, and confirms verdicts without executing new code.
 
 ### Scenario Suites and Catalog Management
 
@@ -271,7 +343,7 @@ Suites define scenario catalogs and test inputs:
 ### Evidence Persistence, Backups, and Offline Verification
 
 - **Evidence Layout**:
-  - Run records: `.ztd/data/eval/runs/<run-id>/` (`report.json`, `verification.json`, `assignments/<assignment-id>-formation-run.json` for formation evidence, and `assignments/<assignment-id>-agent-trace.json` for model-role traces).
+  - Run records: `.ztd/data/eval/runs/<run-id>/` (`conformance-record.json` and `conformance-record.sha256` for conformance runs; `run.json`, `campaign-verification.json`, `assignments/<assignment-id>-formation-run.json` for formation evidence, and `assignments/<assignment-id>-agent-trace.json` for model-role traces).
   - Campaign records: `.ztd/data/eval/campaigns/<campaign-id>/` (`campaign_spec.json`, frozen artifacts).
   - Witness windows: `data/inference/provider-observer/windows/` and `data/inference/model-provenance/windows/`.
 - **Backup & Restore**:

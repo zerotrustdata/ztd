@@ -653,8 +653,8 @@ type evalSourceInventory struct {
 	verificationReport   *compliancev1.ComplianceVerificationReport
 	campaignReport       *evalv1.EvaluationVerificationReport
 	campaignInventory    *evalv1.CampaignComplianceSourceInventory
-	report               bool
-	evidence             bool
+	record               bool
+	digest               bool
 	runtimeArtifacts     int
 	runtimeArtifactPaths map[string]struct{}
 }
@@ -822,12 +822,8 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 				}
 				inventory.runtimeArtifactPaths[runtimePath] = struct{}{}
 				inventory.runtimeArtifacts++
-			}
-			if !campaign && len(parts) == 5 && parts[4] == constants.EvaluationReportFilename {
-				inventory.report = true
-			}
-			if !campaign && len(parts) == 6 && parts[4] == constants.EvaluationEvidenceDirname {
-				inventory.evidence = true
+			} else {
+				v.markConformanceRuntimeArtifact(bundlePath, parts, inventory)
 			}
 		default:
 			v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "eval source path is unsupported")
@@ -842,11 +838,38 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 			v.replayCampaignSourceVerification(ctx, key, inventory)
 			continue
 		}
-		if inventory.verificationReport == nil || !inventory.report || !inventory.evidence {
+		if inventory.verificationReport == nil || !inventory.record || !inventory.digest {
 			v.fail(constants.ErrEvalRunVerificationFailed, key, "eval evidence run lacks a complete protected runtime source inventory")
 			continue
 		}
 		v.replayEvalSourceVerification(ctx, inventory.admission.GetRunId(), inventory.verificationReport)
+	}
+}
+
+// markConformanceRuntimeArtifact admits one runtime file of a conformance
+// source: its record or its digest sidecar, each exactly once, at the top of the
+// runtime tree. Any other runtime path, including a legacy report.json or
+// evidence/ tree, fails closed.
+func (v *bundleVerifier) markConformanceRuntimeArtifact(bundlePath string, parts []string, inventory *evalSourceInventory) {
+	if len(parts) != 5 {
+		v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "conformance eval runtime path is unsupported")
+		return
+	}
+	switch parts[4] {
+	case constants.ConformanceRecordFilename:
+		if inventory.record {
+			v.fail(constants.ErrEvidenceDuplicateID, bundlePath, "conformance eval record is duplicated")
+			return
+		}
+		inventory.record = true
+	case constants.ConformanceRecordDigestFilename:
+		if inventory.digest {
+			v.fail(constants.ErrEvidenceDuplicateID, bundlePath, "conformance eval record digest is duplicated")
+			return
+		}
+		inventory.digest = true
+	default:
+		v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "conformance eval runtime path is unsupported")
 	}
 }
 

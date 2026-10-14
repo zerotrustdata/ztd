@@ -267,6 +267,9 @@ const (
 	// EvaluationWorkspacePrefix prefixes the per-attempt workspace directory,
 	// which is completed by a digest of the run and attempt identity.
 	EvaluationWorkspacePrefix = "ws-"
+	// EvaluationWorkspaceSentinelSuffix suffixes a workspace directory name to
+	// name the harness-owned sentinel file that sits beside it.
+	EvaluationWorkspaceSentinelSuffix = ".sentinel"
 	// EvaluationConformanceCanaryPrefix prefixes a conformance run's canary root
 	// under EvaluationControlledTargetDirname.
 	EvaluationConformanceCanaryPrefix = "conformance-"
@@ -678,8 +681,6 @@ const (
 	EvaluationModelSummariesJSONLFilename         = "model_summaries.jsonl"
 	EvaluationAssignmentsCSVFilename              = "assignments.csv"
 	EvaluationModelSummariesCSVFilename           = "model_summaries.csv"
-	EvaluationReportFilename                      = "report.json"
-	EvaluationVerificationFilename                = "verification.json"
 	ConformanceRecordFilename                     = "conformance-record.json" // canonical protojson
 	ConformanceRecordDigestFilename               = "conformance-record.sha256"
 	ConformanceVerdictSetFilename                 = "conformance-verdicts.json" // canonical protojson

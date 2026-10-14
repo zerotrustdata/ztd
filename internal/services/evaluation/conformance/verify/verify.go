@@ -129,6 +129,16 @@ func digestMismatchSet(raw []byte) *evalv1.ConformanceVerdictSet {
 	return set
 }
 
+// SealedRecordTamperedSet is the verdict for a record or digest sidecar whose
+// sealed bytes fail authentication under the open runtime vault. The stored bytes
+// changed, the same fact digestMismatchSet reports. The bytes cannot be decoded,
+// so the caller names the run.
+func SealedRecordTamperedSet(runID string) *evalv1.ConformanceVerdictSet {
+	set := digestMismatchSet(nil)
+	set.RunId = runID
+	return set
+}
+
 // invalidSet is the suite verdict for a record that fails a record check. It
 // carries no case verdicts.
 func invalidSet(record *evalv1.ConformanceRunRecord) *evalv1.ConformanceVerdictSet {

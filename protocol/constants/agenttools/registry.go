@@ -5,8 +5,9 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-// Package agenttoolsconstants embeds the frozen agent tool registry (tool
-// schemas plus model-visible guidance vectors). It is never hand-edited.
+// Package agenttoolsconstants embeds the agent tool registry (tool schemas plus
+// model-visible guidance vectors). It is checked-in source data, edited by hand;
+// no exporter regenerates it.
 package agenttoolsconstants
 
 import (

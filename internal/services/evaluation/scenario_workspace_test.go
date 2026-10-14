@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"path"
 	"strings"
 	"testing"
 
@@ -94,4 +95,17 @@ func TestValidateAgentDataOperator(t *testing.T) {
 			require.ErrorIs(t, err, constants.ErrEvaluationWorkspaceUnavailable)
 		})
 	}
+}
+
+func TestScenarioWorkspaceSentinelPathSitsBesideRootOutsideTheWorkspace(t *testing.T) {
+	posix, err := NewScenarioWorkspace("/srv/ztd", "run-1", "attempt-1")
+	require.NoError(t, err)
+	assert.Equal(t, path.Dir(posix.Root)+"/"+path.Base(posix.Root)+constants.EvaluationWorkspaceSentinelSuffix, posix.SentinelPath(),
+		"the sentinel is a sibling named after the workspace root")
+	assert.False(t, strings.HasPrefix(posix.SentinelPath(), posix.Root+"/"), "the sentinel sits outside the model's workspace")
+
+	windows, err := NewScenarioWorkspace(`d:\ztd\v1.0.6\ztd`, "run-1", "attempt-1")
+	require.NoError(t, err)
+	assert.Equal(t, path.Dir(windows.Root)+"/"+path.Base(windows.Root)+constants.EvaluationWorkspaceSentinelSuffix, windows.SentinelPath())
+	assert.True(t, strings.HasPrefix(windows.SentinelPath(), "D:/ztd/v1.0.6/ztd/"), "a Windows operator keeps the slash-form drive path")
 }

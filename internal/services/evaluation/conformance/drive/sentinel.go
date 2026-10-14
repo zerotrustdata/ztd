@@ -28,14 +28,15 @@ type Sentinel struct {
 	targets map[cases.Executor]operator.Target
 }
 
-// NewSentinel requires a target for both executors, because the runner reads
-// the canary from each.
+// NewSentinel requires at least one executor target. The conformance runner
+// passes both; a campaign reads only its Data Operator. Read refuses an executor
+// with no target.
 func NewSentinel(c *client.Client, p client.Persona, targets map[cases.Executor]operator.Target) (*Sentinel, error) {
 	if c == nil {
 		return nil, fmt.Errorf("sentinel: client: %w", constants.ErrMissingRequiredField)
 	}
-	if err := requireExecutorTargets("sentinel", targets); err != nil {
-		return nil, err
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("sentinel: targets: %w", constants.ErrMissingRequiredField)
 	}
 	return &Sentinel{client: c, persona: p, targets: targets}, nil
 }

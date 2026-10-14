@@ -8,14 +8,17 @@
 package verify
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/canary"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -93,7 +96,13 @@ func (r *recordCheck) verifyCase(c cases.Case, ev *evalv1.ConformanceCaseEvidenc
 		return failed(c.ID, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_LEDGER_GAP), nil
 	}
 
-	// 7. The canary set changed exactly as the last executed expectation says.
+	// 7. The recorded target is the attempt's own canary-relative case file. The
+	// verifier recomputes it from attempt_id and never trusts the recorded path.
+	if ev.GetTargetPath() != canary.TargetRel(ev.GetAttemptId()) {
+		return failed(c.ID, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH), nil
+	}
+
+	// 8. The canary set changed exactly as the last executed expectation says.
 	return r.checkEffect(c.ID, effectOf(c), ev)
 }
 
@@ -243,13 +252,29 @@ func (r *recordCheck) checkEffect(caseID string, effect cases.Effect, ev *evalv1
 		if !delta.Empty() {
 			return failed(caseID, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_CANARY_DELTA), nil
 		}
-		if marker == "" || len(calls) != 1 || !strings.Contains(calls[0].GetPayloadJson(), marker) {
+		if marker == "" || len(calls) != 1 || !a2aCarriesMarker(calls[0].GetPayloadJson(), marker) {
 			return failed(caseID, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING), nil
 		}
 	default:
 		return nil, fmt.Errorf("conformance verify: case %s: unknown effect %q: %w", caseID, effect, constants.ErrConformanceCatalogueInvalid)
 	}
 	return passed(caseID), nil
+}
+
+// a2aCarriesMarker reports whether an A2A stub payload is exactly the marker skill
+// payload that names marker. The payload decodes strictly: an unknown field,
+// trailing data or text that is not JSON does not carry the marker.
+func a2aCarriesMarker(payloadJSON, marker string) bool {
+	dec := json.NewDecoder(strings.NewReader(payloadJSON))
+	dec.DisallowUnknownFields()
+	var payload client.MarkerSkillPayload
+	if err := dec.Decode(&payload); err != nil {
+		return false
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return false
+	}
+	return payload.Marker == marker
 }
 
 // classifyReceipt verifies a receipt against runtime's pinned anchor and classifies
@@ -298,7 +323,8 @@ func invalidEvidenceClass(class evalv1.ConformanceFailureClass) bool {
 	case evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID,
-		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE:
+		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE,
+		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH:
 		return true
 	default:
 		return false

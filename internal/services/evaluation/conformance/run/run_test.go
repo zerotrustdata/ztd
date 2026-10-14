@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/canary"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -48,6 +50,7 @@ type harness struct {
 	sink *[]client.Exchange // the recorder's current sink, nil outside a drive
 
 	drivenIDs []string                // attempt IDs handed to a driver, in order
+	attempts  []cases.Attempt         // attempts handed to a driver, in order
 	driveErr  error                   // returned by every driver when set
 	extraLink map[cases.Executor]bool // commit an unclaimed link after the first sentinel read
 	forged    map[cases.Executor]bool // return a receipt whose signature does not verify
@@ -157,6 +160,7 @@ type driver struct {
 func (d driver) Drive(_ context.Context, a cases.Attempt) (cases.Driven, error) {
 	d.h.log = append(d.h.log, "drive:"+a.AttemptID)
 	d.h.drivenIDs = append(d.h.drivenIDs, a.AttemptID)
+	d.h.attempts = append(d.h.attempts, a)
 	if d.h.driveErr != nil {
 		return cases.Driven{}, d.h.driveErr
 	}
@@ -249,6 +253,25 @@ func TestRunOrdersEachCaseBetweenCanarySnapshotsAndSentinels(t *testing.T) {
 	require.NotEmpty(t, record.GetCases())
 	assert.Equal(t, expectedLog(record), h.log)
 	assert.Len(t, record.GetQuiescence(), 2)
+}
+
+func TestRunAttemptTargetRelIsCanaryRelativeCaseFile(t *testing.T) {
+	h := newHarness(t)
+
+	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
+	require.NoError(t, err)
+
+	require.NotEmpty(t, h.attempts)
+	for _, a := range h.attempts {
+		assert.Equal(t, canary.TargetRel(a.AttemptID), a.TargetRel, "attempt %s", a.AttemptID)
+		assert.False(t, strings.HasPrefix(a.TargetRel, canaryRoot()), "attempt %s target is root-prefixed: %s", a.AttemptID, a.TargetRel)
+	}
+	for _, c := range record.GetCases() {
+		if isNotRun(c) {
+			continue
+		}
+		assert.Equal(t, canary.TargetRel(c.GetAttemptId()), c.GetTargetPath(), "case %s", c.GetCaseId())
+	}
 }
 
 func TestRunRecordsFilledHeaderAndAnchors(t *testing.T) {

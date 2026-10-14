@@ -50,8 +50,8 @@ type nativeEvalDeps struct {
 }
 
 // adaptNewID adapts a fallible ID generator to the evaluation framework's
-// infallible func(string) string seams (evaluation.NewRunner,
-// NewCampaignController, and friends), which predate error-aware ID
+// infallible func(string) string seams
+// (NewCampaignController and friends), which predate error-aware ID
 // generation and cannot propagate errors. An OS random-source failure
 // (practically impossible) yields a visibly-invalid ID rather than a
 // silent empty string or a panic (INV-CODE-06).

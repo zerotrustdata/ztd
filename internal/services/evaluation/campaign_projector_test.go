@@ -110,6 +110,7 @@ func TestAssignmentTerminalOutcome_EveryTerminalLifecycleHasItsOwnOutcome(t *tes
 		{"partial", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PARTIAL, nil, TerminalOutcomeGraderFailed},
 		{"escalated", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_ESCALATED, nil, TerminalOutcomeEscalated},
 		{"policy rejected", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_POLICY_REJECTED, nil, TerminalOutcomeInvalidEvidence},
+		{"invalid evidence", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, nil, TerminalOutcomeInvalidEvidence},
 		{"stopped", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED, nil, TerminalOutcomeStopped},
 	}
 	for _, tt := range tests {

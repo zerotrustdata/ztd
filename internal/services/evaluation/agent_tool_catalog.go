@@ -74,6 +74,7 @@ type agentToolSpec struct {
 }
 
 var agentToolArgumentCatalog = map[string]agentToolArgument{
+	"command":               {agentToolArgString, "The single shell command to run in the working directory."},
 	"content":               {agentToolArgString, "Full file content to write."},
 	"create_backup":         {agentToolArgBoolean, "Keep a backup copy of the previous file content."},
 	"create_if_missing":     {agentToolArgBoolean, "Create the file when it does not exist."},
@@ -81,7 +82,6 @@ var agentToolArgumentCatalog = map[string]agentToolArgument{
 	"end_line":              {agentToolArgInteger, "Last 1-based line to return (inclusive)."},
 	"expected_output_lines": {agentToolArgInteger, "Approximate number of output lines you expect."},
 	"file_path":             {agentToolArgString, "Absolute file path on the operator host."},
-	"guidelines":            {agentToolArgString, "Constraints the generated command must respect."},
 	"includes":              {agentToolArgStringList, "File name globs to search, for example *.log."},
 	"justification":         {agentToolArgString, "Why this action is needed for the investigation."},
 	"limit":                 {agentToolArgInteger, "Maximum number of entries to return."},
@@ -106,7 +106,7 @@ var agentToolSpecs = []agentToolSpec{
 	{Name: agentToolFileWrite, Operator: true, Description: "Overwrite a file on an operator host with new content."},
 	{Name: agentToolFileUpdate, Operator: true, Description: "Replace an exact text span in an existing file on an operator host."},
 	{Name: agentToolFileCreate, Operator: true, Description: "Create a new file on an operator host."},
-	{Name: agentToolRunCommands, Operator: true, Description: "Run one shell command on an operator host. Describe what you need in request; a single command is generated and executed under governance."},
+	{Name: agentToolRunCommands, Operator: true, Description: "Run one shell command on an operator host under governance. Pass the single command in command; use request for its purpose."},
 	{Name: agentToolInvestigationCtx, Description: "Read the current investigation's history trail, status, or prior operator actions."},
 	{Name: agentToolCommandConstraints, Description: "Describe the constraints governed commands must satisfy before you run one."},
 }

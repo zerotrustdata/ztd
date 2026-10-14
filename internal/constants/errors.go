@@ -1404,7 +1404,6 @@ var (
 	ErrEvaluationReportPersistFailed       = errors.New("evaluation: report persistence failed")
 	ErrEvaluationTargetAmbiguous           = errors.New("evaluation: target operator selection is ambiguous")
 	ErrEvaluationDispatchFailed            = errors.New("evaluation: governed dispatch failed")
-	ErrEvaluationReceiptUnavailable        = errors.New("evaluation: canonical receipt is unavailable")
 	ErrEvaluationAssignmentUnresolved      = errors.New("evaluation: assignment has an unresolved running execution")
 	ErrEvaluationAssignmentExecutionFailed = errors.New("evaluation: assignment execution failed")
 	ErrEvaluationRecoveredResultMissing    = errors.New("evaluation: recovered terminal assignment has no persisted result")

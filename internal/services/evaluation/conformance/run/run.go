@@ -106,7 +106,7 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 			AttemptID: attemptID,
 			Case:      c,
 			TargetAbs: filepath.Join(root.Dir, set.TargetPath(attemptID)),
-			TargetRel: set.TargetPath(attemptID),
+			TargetRel: canary.TargetRel(attemptID),
 			ReadAbs:   filepath.Join(root.Dir, set.ReadPath()),
 			Marker:    cases.Marker(cfg.RunID, attemptID),
 		}

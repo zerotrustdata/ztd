@@ -48,6 +48,7 @@ func TestInvalidEvidenceClassSeparatesForgeryFromBehaviour(t *testing.T) {
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE,
+		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH,
 	}
 	for _, class := range invalid {
 		assert.True(t, invalidEvidenceClass(class), class.String())
@@ -64,6 +65,29 @@ func TestInvalidEvidenceClassSeparatesForgeryFromBehaviour(t *testing.T) {
 	}
 	for _, class := range behaviour {
 		assert.False(t, invalidEvidenceClass(class), class.String())
+	}
+}
+
+func TestA2ACarriesMarkerOnlyForExactStrictMarkerPayload(t *testing.T) {
+	const marker = "ztd-conformance run-1 attempt-1\n"
+	tests := []struct {
+		name    string
+		payload string
+		want    bool
+	}{
+		{"marker payload with a JSON-escaped newline", `{"marker":"ztd-conformance run-1 attempt-1\n"}`, true},
+		{"different marker", `{"marker":"ztd-conformance run-1 attempt-2\n"}`, false},
+		{"marker without its trailing newline", `{"marker":"ztd-conformance run-1 attempt-1"}`, false},
+		{"extra field beside the marker", `{"marker":"ztd-conformance run-1 attempt-1\n","extra":true}`, false},
+		{"unknown key in place of marker", `{"text":"ztd-conformance run-1 attempt-1\n"}`, false},
+		{"trailing data after the marker payload", `{"marker":"ztd-conformance run-1 attempt-1\n"}{}`, false},
+		{"text containing the marker but not JSON", "marker=ztd-conformance run-1 attempt-1\n", false},
+		{"empty payload", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, a2aCarriesMarker(tt.payload, marker))
+		})
 	}
 }
 

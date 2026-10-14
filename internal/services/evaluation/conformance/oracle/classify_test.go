@@ -135,10 +135,22 @@ func TestClassify(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "executed with an empty prior commitment hash",
+			name: "executed genesis commitment (empty prior hash)",
+			build: func(t *testing.T) *operatorv1.ActionReceipt {
+				return signer.Executed(t, verifyOpts("op-1"), "", "hash-1")
+			},
+			want: Outcome{
+				Kind:       OutcomeExecuted,
+				L2Status:   operatorv1.L2Status_L2_STATUS_REQUIRED_VALID,
+				L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
+				Commitment: &Link{Prior: "", Hash: "hash-1", TransactionID: "tx-1"},
+			},
+		},
+		{
+			name: "executed with an empty commitment hash",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
-				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).PriorCommitmentHash = ""
+				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).CommitmentHash = ""
 				signer.Resign(t, receipt)
 				return receipt
 			},

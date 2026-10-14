@@ -499,7 +499,7 @@ func toolArgRunCommands() ScenarioBlueprint {
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"HEALTHY"}}}
 	gold.PromptHint = hint([]string{"run_commands_with_operator"},
-		hintArg("run_commands_with_operator", "request", sourceWorkspace, ""),
+		hintArg("run_commands_with_operator", "command", sourceWorkspace, ""),
 	)
 	gold.ArgumentValidators = []ToolArgumentValidator{{
 		ToolName: "run_commands_with_operator",

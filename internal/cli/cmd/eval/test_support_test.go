@@ -8,7 +8,10 @@
 package eval
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -26,6 +29,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+// testDataOperatorActuatorKey is the enrollment-bound actuator key the data-op
+// fixture documents carry, so oracle.BoundAnchor admits them.
+var testDataOperatorActuatorKey = hex.EncodeToString(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize)).Public().(ed25519.PublicKey))
 
 func writeTestFrozenInventory(t *testing.T, root string, variants ...*evalv1.ModelVariant) {
 	t.Helper()
@@ -109,6 +116,8 @@ func campaignOrchestrateOperators() []*operatorv1.OperatorDocument {
 			Status:            string(constants.OperatorStatusActive),
 			OperatorType:      string(constants.OperatorTypeRemote),
 			RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{},
+			ActuatorPublicKey: testDataOperatorActuatorKey,
+			ActuatorKeyId:     testDataOperatorActuatorKey,
 		},
 	}
 }

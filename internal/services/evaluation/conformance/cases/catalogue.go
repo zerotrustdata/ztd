@@ -228,7 +228,13 @@ var rowSpecs = []rowSpec{
 	{row: 17, faults: []Fault{FaultUnknownEventType}, ingresses: []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound},
 		postures: postureDoctrine, action: ActionMutation,
 		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNKNOWN_EVENT_TYPE)}},
-	{row: 17, faults: []Fault{FaultMissingField}, ingresses: []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound},
+	// Row 17 missing_field: DIRECT decodes the envelope, so the L4 payload-decode check
+	// rejects it with a signed receipt. Governed dispatch builds the envelope itself and
+	// refuses before one exists.
+	{row: 17, faults: []Fault{FaultMissingField}, ingresses: []Ingress{IngressDirect},
+		postures: postureDoctrine, action: ActionMutation,
+		outcomes: []outcome{rejected(operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_ENVELOPE_MALFORMED)}},
+	{row: 17, faults: []Fault{FaultMissingField}, ingresses: []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound},
 		postures: postureDoctrine, action: ActionMutation,
 		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD)}},
 

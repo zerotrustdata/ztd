@@ -387,7 +387,7 @@ func TestInspectRunListClassifiesEveryPersistedCandidate(t *testing.T) {
 		},
 	}))
 	saveConformanceRecordForInventory(t, ctx, store, "unsupported-run", "unsupported-suite", "1.0.0")
-	require.NoError(t, files.WriteFile(ctx, filepath.Join(evaluationRunDir("incomplete-run"), constants.EvaluationVerificationFilename), []byte("{}"), constants.PermFileReadOnly))
+	require.NoError(t, files.WriteFile(ctx, filepath.Join(evaluationRunDir("incomplete-run"), "stray-verification.json"), []byte("{}"), constants.PermFileReadOnly))
 	require.NoError(t, files.WriteFile(ctx, activeEvalLayout().runStatePath("malformed-run"), []byte("{}"), constants.PermFileReadOnly))
 	require.NoError(t, files.WriteFile(ctx, filepath.Join(evaluationRunDir("missing-sidecar-run"), constants.ConformanceRecordFilename), []byte("{}"), constants.PermFileReadOnly))
 	saveConformanceRecordForInventory(t, ctx, store, "ambiguous-run", cases.SuiteID, cases.SuiteVersion)

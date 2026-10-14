@@ -110,6 +110,50 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 	}
 }
 
+// TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal pins the
+// missing_field body fault per ingress: DIRECT reaches L4 and is rejected by the
+// signed payload-decode check, while governed dispatch refuses before an envelope exists.
+func TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal(t *testing.T) {
+	cs, _ := mustCatalogue(t)
+	pinned := map[Ingress]Expect{
+		IngressDirect: {
+			Kind:          ExpectRejected,
+			RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_ENVELOPE_MALFORMED,
+			Effect:        EffectNone,
+		},
+		IngressDispatchEmbedded: {
+			Kind:        ExpectRefused,
+			RefusalCode: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD,
+			Effect:      EffectNone,
+		},
+		IngressDispatchOutbound: {
+			Kind:        ExpectRefused,
+			RefusalCode: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD,
+			Effect:      EffectNone,
+		},
+	}
+	seen := make(map[Ingress]bool, len(pinned))
+	for _, c := range cs {
+		if c.Fault != FaultMissingField {
+			continue
+		}
+		want, ok := pinned[c.Ingress]
+		if !ok {
+			t.Errorf("case %s: missing_field on %s is not pinned", c.ID, c.Ingress)
+			continue
+		}
+		seen[c.Ingress] = true
+		if len(c.Expect) != 1 || c.Expect[0] != want {
+			t.Errorf("case %s: expect %+v, want [%+v]", c.ID, c.Expect, want)
+		}
+	}
+	for ingress := range pinned {
+		if !seen[ingress] {
+			t.Errorf("no missing_field case on %s", ingress)
+		}
+	}
+}
+
 func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
 	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
 	if err != nil {

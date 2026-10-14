@@ -109,9 +109,16 @@ func (s *Set) ReadPath() string {
 	return path.Join(s.Root, s.Files[0])
 }
 
-// TargetPath is the case target file for attemptID. It does not exist after Seed.
+// TargetRel is the case target file for attemptID, relative to the canary root.
+// It needs no Set state, so the verifier recomputes it from an attempt ID alone.
+// It does not exist after Seed. Callers must validate attemptID first.
+func TargetRel(attemptID string) string {
+	return path.Join(constants.EvaluationCanaryTargetDirname, attemptID+".txt")
+}
+
+// TargetPath is the case target file for attemptID under the canary root.
 func (s *Set) TargetPath(attemptID string) string {
-	return path.Join(s.Root, constants.EvaluationCanaryTargetDirname, attemptID+".txt")
+	return path.Join(s.Root, TargetRel(attemptID))
 }
 
 // Snapshot lists every entry under root, sorted by path.

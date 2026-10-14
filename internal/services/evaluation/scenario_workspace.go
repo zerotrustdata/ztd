@@ -89,6 +89,12 @@ func (w ScenarioWorkspace) Render(text string) string {
 	return strings.ReplaceAll(text, ScenarioWorkspaceToken, w.Root)
 }
 
+// SentinelPath is the harness-owned file the attempt's ledger sentinels read.
+// It sits next to the workspace root, outside the model's workspace.
+func (w ScenarioWorkspace) SentinelPath() string {
+	return path.Join(path.Dir(w.Root), path.Base(w.Root)+constants.EvaluationWorkspaceSentinelSuffix)
+}
+
 // FilePath returns the absolute path of one workspace-relative fixture path.
 func (w ScenarioWorkspace) FilePath(relPath string) (string, error) {
 	if err := validateWorkspaceRelPath(relPath); err != nil {

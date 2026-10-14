@@ -10,6 +10,7 @@ package canary
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
@@ -108,6 +109,32 @@ func TestTargetPathIsCaseFileUnderRoot(t *testing.T) {
 	set := &Set{Root: "eval/targets/conformance-run-1", Files: []string{"alpha.txt"}}
 
 	assert.Equal(t, "eval/targets/conformance-run-1/cases/attempt-1.txt", set.TargetPath("attempt-1"))
+}
+
+func TestTargetRelIsCaseFileRelativeToCanaryRoot(t *testing.T) {
+	set := &Set{Root: "eval/targets/conformance-run-1", Files: []string{"alpha.txt"}}
+
+	assert.Equal(t, "cases/attempt-1.txt", TargetRel("attempt-1"))
+	assert.Equal(t, path.Join(set.Root, TargetRel("attempt-1")), set.TargetPath("attempt-1"))
+}
+
+func TestSnapshotRecordsTargetWriteAtTargetRel(t *testing.T) {
+	ctx := context.Background()
+	files := newFiles(t)
+	set := seedRun(t, files, "run-target-rel")
+	before := snapshot(t, files, set.Root)
+	content := []byte("granted write\n")
+
+	require.NoError(t, files.WriteFile(ctx, set.TargetPath("attempt-1"), content, constants.PermFilePrivate))
+	after := snapshot(t, files, set.Root)
+
+	var recorded []string
+	for _, entry := range after.GetEntries() {
+		recorded = append(recorded, entry.GetPath())
+	}
+	assert.Contains(t, recorded, TargetRel("attempt-1"))
+	assert.Equal(t, []string{TargetRel("attempt-1")}, Diff(before, after).Added)
+	assert.True(t, ExactlyWrote(before, after, TargetRel("attempt-1"), content))
 }
 
 func TestSnapshotWithoutChangeProducesEmptyDelta(t *testing.T) {

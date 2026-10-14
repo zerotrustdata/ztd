@@ -13,8 +13,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,6 +33,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/run"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/vault"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -220,6 +223,40 @@ func TestConformanceVerify_FlippedByteIsInvalidEvidenceAndExitsNonZero(t *testin
 			assert.Contains(t, out, "CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH")
 		})
 	}
+}
+
+func TestConformanceVerify_FlippedByteInRealSealedRecordIsDigestMismatchVerdict(t *testing.T) {
+	ctx := context.Background()
+	sealed, _ := cmdtest.NewEvidenceCmdTestEnv(t)
+	record := &evalv1.ConformanceRunRecord{RunId: conformanceTestRunID, Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE}
+	require.NoError(t, evaluation.NewStore(sealed).SaveConformanceRecord(ctx, record))
+
+	// One ciphertext byte changes on disk, under the sealing layer.
+	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, conformanceTestRunID, constants.ConformanceRecordFilename)
+	raw := evaluation.SealedFiles(sealed)
+	ciphertext, err := raw.ReadFile(ctx, recordPath)
+	require.NoError(t, err)
+	flipped := bytes.Clone(ciphertext)
+	flipped[len(flipped)/2] ^= 0x01
+	require.NoError(t, raw.WriteFile(ctx, recordPath, flipped, constants.PermFilePrivate))
+
+	rig := newConformanceRig(t, rigOptions{})
+	rig.deps.fileSvcFactory = func(string, *slog.Logger) (fs.RuntimeFileService, error) { return sealed, nil }
+	out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	assert.Contains(t, out, "CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE")
+	assert.Contains(t, out, "CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH", "the open vault refuses the changed ciphertext")
+
+	// The same bytes under a locked vault are a locked-vault error, never a tamper verdict.
+	locked, err := vault.NewVault(&vault.VaultConfig{FileSvc: raw, Logger: testutil.NewTestLogger()})
+	require.NoError(t, err)
+	lockedFiles, err := evaluation.NewEvidenceFileService(raw, func() (evaluation.EvidenceVault, error) { return locked, nil })
+	require.NoError(t, err)
+	rig.deps.fileSvcFactory = func(string, *slog.Logger) (fs.RuntimeFileService, error) { return lockedFiles, nil }
+	out, err = rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
+	require.ErrorIs(t, err, constants.ErrVaultLocked)
+	assert.NotContains(t, out, "Suite: ", "no verdicts are printed for a run the vault cannot open")
+	assert.NotContains(t, out, "RECORD_DIGEST_MISMATCH", "a locked vault is not evidence that the bytes changed")
 }
 
 func TestConformanceVerify_JSONEmitsCanonicalVerdictSet(t *testing.T) {

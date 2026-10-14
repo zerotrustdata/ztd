@@ -9,6 +9,7 @@ package compliance
 
 import (
 	"encoding/json"
+	"path"
 	"testing"
 	"time"
 
@@ -85,14 +86,18 @@ func oscalTestAnalysis() *compliancev1.ComplianceAnalysis {
 			{AssessmentId: "framework-assessment:sha256:" + metricDigest, ScopeId: "scope-1", FrameworkRef: &compliancev1.VersionedReference{Id: "fedramp-20x", Version: "CR26-2026-06-24"}, ControlId: "KSI-MLA-07", Status: "not_satisfied", Responsibility: "shared", AssertionAssessmentRefs: []string{secondAssessmentID}, EvidenceLevel: "L2"},
 		},
 		EvidenceResources: []*compliancev1.ComplianceEvidenceReference{
-			{ArtifactId: receiptID, ArtifactType: "action-receipt", Sha256: receiptDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.ActionReceipt", ProducerIdentity: "gateway", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ReceiptEvidenceVerifierID, VerifierVersion: constants.ReceiptEvidenceVerifierVersion, BundlePath: constants.EvaluationReportFilename},
-			{ArtifactId: metricID, ArtifactType: "eval-metric", Sha256: metricDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.eval.v1.EvaluationMetric", ProducerIdentity: "policy_outcome@1.0.0", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ConformanceVerifierID, VerifierVersion: constants.ConformanceVerifierVersion, BundlePath: constants.EvaluationReportFilename},
+			{ArtifactId: receiptID, ArtifactType: "action-receipt", Sha256: receiptDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.ActionReceipt", ProducerIdentity: "gateway", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ReceiptEvidenceVerifierID, VerifierVersion: constants.ReceiptEvidenceVerifierVersion, BundlePath: oscalTestRecordBundlePath},
+			{ArtifactId: metricID, ArtifactType: "eval-metric", Sha256: metricDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.eval.v1.EvaluationMetric", ProducerIdentity: "policy_outcome@1.0.0", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ConformanceVerifierID, VerifierVersion: constants.ConformanceVerifierVersion, BundlePath: oscalTestRecordBundlePath},
 		},
 		EvidenceGraphValid: true,
 	}
 }
 
 // TestOSCALExporter_GenerateAssessmentResults asserts canonical assertion observations, framework findings, and evidence resources.
+// oscalTestRecordBundlePath is a conformance record bundle path. The fixtures
+// that use it need an evidence bundle path only; nothing reads the body.
+var oscalTestRecordBundlePath = path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, "run-1", constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordFilename)
+
 func TestOSCALExporter_GenerateAssessmentResults(t *testing.T) {
 	analysis := oscalTestAnalysis()
 	results, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(analysis)
@@ -312,7 +317,7 @@ func TestOSCALExporter_GenerateAssessmentResultsFromCanonicalAnalysis_ResolvesEv
 			VerificationStatus: "verified",
 			VerifierId:         constants.ReceiptEvidenceVerifierID,
 			VerifierVersion:    constants.ReceiptEvidenceVerifierVersion,
-			BundlePath:         constants.EvaluationReportFilename,
+			BundlePath:         oscalTestRecordBundlePath,
 		}},
 		EvidenceGraphValid: true,
 	}

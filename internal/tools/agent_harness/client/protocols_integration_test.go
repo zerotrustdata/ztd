@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -163,35 +162,6 @@ func TestHealth_ReturnsTypedPostureAndRecordsExchange(t *testing.T) {
 	assert.JSONEq(t, `{"status":"ok","mode":"gateway","version":"2.1.8","pid":1,"governance_ready":true,"posture":"doctrine"}`, string(raw))
 	require.Len(t, exchanges, 1)
 	assert.Equal(t, constants.APIPaths.Health, exchanges[0].URL[len(server.URL):])
-}
-
-func TestAuditReceiptRecords_ReturnsCanonicalTypedRecords(t *testing.T) {
-	expected := &models.ActionReceiptRecord{
-		TransactionID: "tx-1", OperatorID: "operator-1", OperatorSessionID: "session-1",
-		ActionReceipt: &operatorv1.ActionReceipt{TransactionId: "tx-1"},
-	}
-	body, err := json.Marshal(models.AuditReceiptsResponse{Success: true, Receipts: []*models.ActionReceiptRecord{expected}})
-	require.NoError(t, err)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, constants.APIPaths.AuditReceipts, r.URL.Path)
-		assert.Equal(t, "session-1", r.URL.Query().Get("operator_session_id"))
-		assert.Equal(t, "cli-1", r.Header.Get(constants.HeaderCLISessionID))
-		w.Header().Set("Content-Type", "application/json")
-		_, writeErr := w.Write(body)
-		require.NoError(t, writeErr)
-	}))
-	t.Cleanup(server.Close)
-	client, err := New(config.Config{MTLSBaseURL: server.URL, CLISessionID: "cli-1"})
-	require.NoError(t, err)
-
-	records, raw, err := client.AuditReceiptRecords(context.Background(), "session-1")
-
-	require.NoError(t, err)
-	require.Len(t, records, 1)
-	assert.Equal(t, expected.TransactionID, records[0].TransactionID)
-	assert.Equal(t, expected.ActionReceipt.TransactionId, records[0].ActionReceipt.TransactionId)
-	assert.Equal(t, body, raw)
 }
 
 func TestMCPToolsList(t *testing.T) {

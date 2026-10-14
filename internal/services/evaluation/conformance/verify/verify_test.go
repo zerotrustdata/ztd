@@ -10,15 +10,19 @@ package verify
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/canary"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance/doctrinecorpus"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -124,8 +128,13 @@ func canaryEntry(path, content string) *evalv1.CanaryEntry {
 	return &evalv1.CanaryEntry{Path: path, Sha256: hex.EncodeToString(sum[:]), Size: int64(len(content))}
 }
 
-func targetPath(c cases.Case) string {
-	return "targets/" + c.ID + ".txt"
+// markerPayloadJSON is the A2A stub payload that names marker: the harness marker
+// skill payload, JSON-encoded, so a newline in the marker is the escape \n.
+func markerPayloadJSON(t *testing.T, marker string) string {
+	t.Helper()
+	raw, err := json.Marshal(client.MarkerSkillPayload{Marker: marker})
+	require.NoError(t, err)
+	return string(raw)
 }
 
 func (f *fixture) evidence(c cases.Case) *evalv1.ConformanceCaseEvidence {
@@ -134,7 +143,9 @@ func (f *fixture) evidence(c cases.Case) *evalv1.ConformanceCaseEvidence {
 	signer := f.signerFor(executor)
 	runtime := runtimeFor(executor)
 	expect := c.Expect[0]
-	marker := "ztd-conformance " + fixtureRunID + " " + c.ID
+	attemptID := "attempt-" + c.ID
+	marker := cases.Marker(fixtureRunID, attemptID)
+	targetRel := canary.TargetRel(attemptID)
 
 	before := signer.Executed(f.t, receiptOpts(c.ID, runtime, "before", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 		"prior-"+c.ID, "h0-"+c.ID)
@@ -169,16 +180,16 @@ func (f *fixture) evidence(c cases.Case) *evalv1.ConformanceCaseEvidence {
 	var calls []*evalv1.ConformanceA2ACall
 	switch effectOf(c) {
 	case cases.EffectTargetMarker:
-		canaryAfter.Entries = append(canaryAfter.Entries, canaryEntry(targetPath(c), marker))
+		canaryAfter.Entries = append(canaryAfter.Entries, canaryEntry(targetRel, marker))
 	case cases.EffectA2AStubCall:
-		calls = []*evalv1.ConformanceA2ACall{{SkillName: "stub", PayloadJson: `{"text":"` + marker + `"}`}}
+		calls = []*evalv1.ConformanceA2ACall{{SkillName: "stub", PayloadJson: markerPayloadJSON(f.t, marker)}}
 	}
 
 	return &evalv1.ConformanceCaseEvidence{
 		CaseId:         c.ID,
-		AttemptId:      "attempt-" + c.ID,
+		AttemptId:      attemptID,
 		Executor:       string(executor),
-		TargetPath:     targetPath(c),
+		TargetPath:     targetRel,
 		Marker:         marker,
 		Observations:   observations,
 		SentinelBefore: before,
@@ -522,6 +533,31 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING,
 		},
 		{
+			name: "target path is root-prefixed as the canary recorded it",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				ev := caseEvidence(t, rec, caseDirect)
+				ev.TargetPath = rec.GetCanaryRoot() + "/" + ev.GetTargetPath()
+			},
+			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH,
+		},
+		{
+			name: "target path names another attempt's case file",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				caseEvidence(t, rec, caseDirect).TargetPath = canary.TargetRel("attempt-" + caseRejected)
+			},
+			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH,
+		},
+		{
+			name: "target path missing",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				caseEvidence(t, rec, caseDirect).TargetPath = ""
+			},
+			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH,
+		},
+		{
 			name: "canary changed by a rejected case",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				ev := caseEvidence(t, rec, caseRejected)
@@ -543,6 +579,61 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			name: "missing A2A call",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				caseEvidence(t, rec, caseAttended).A2ACalls = nil
+			},
+			wantSuite: suiteFail, wantCase: caseAttended, wantStatus: statusFail,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING,
+		},
+		{
+			name: "A2A payload names a different marker",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
+					SkillName:   "stub",
+					PayloadJson: markerPayloadJSON(t, cases.Marker(fixtureRunID, "attempt-"+caseRejected)),
+				}}
+			},
+			wantSuite: suiteFail, wantCase: caseAttended, wantStatus: statusFail,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING,
+		},
+		{
+			name: "A2A payload marker lacks the trailing newline",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
+					SkillName:   "stub",
+					PayloadJson: markerPayloadJSON(t, "ztd-conformance "+fixtureRunID+" attempt-"+caseAttended),
+				}}
+			},
+			wantSuite: suiteFail, wantCase: caseAttended, wantStatus: statusFail,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING,
+		},
+		{
+			name: "A2A payload carries an extra field",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
+					SkillName:   "stub",
+					PayloadJson: `{"marker":"ztd-conformance ` + fixtureRunID + ` attempt-` + caseAttended + `\n","extra":true}`,
+				}}
+			},
+			wantSuite: suiteFail, wantCase: caseAttended, wantStatus: statusFail,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING,
+		},
+		{
+			name: "A2A payload carries trailing data after the marker payload",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
+					SkillName:   "stub",
+					PayloadJson: markerPayloadJSON(t, cases.Marker(fixtureRunID, "attempt-"+caseAttended)) + ` {}`,
+				}}
+			},
+			wantSuite: suiteFail, wantCase: caseAttended, wantStatus: statusFail,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING,
+		},
+		{
+			name: "A2A payload is text that contains the marker but is not JSON",
+			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
+					SkillName:   "stub",
+					PayloadJson: "marker=" + cases.Marker(fixtureRunID, "attempt-"+caseAttended),
+				}}
 			},
 			wantSuite: suiteFail, wantCase: caseAttended, wantStatus: statusFail,
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING,
@@ -690,6 +781,26 @@ func TestVerifyPersistedDigestMismatchNamesTheDigestClass(t *testing.T) {
 	require.Len(t, set.GetVerdicts(), 1)
 	assert.Empty(t, set.GetVerdicts()[0].GetCaseId())
 	assert.Equal(t, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH, set.GetVerdicts()[0].GetFailureClass())
+}
+
+func TestSealedRecordTamperedSetIsTheDigestMismatchVerdictForTheCallerRun(t *testing.T) {
+	f := newFixture(t)
+	raw, err := evalv1.MarshalCanonical(f.record())
+	require.NoError(t, err)
+
+	set := SealedRecordTamperedSet("run-sealed")
+
+	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE, set.GetSuiteVerdict())
+	assert.Equal(t, "run-sealed", set.GetRunId(), "the bytes do not decode, so the caller names the run")
+	require.Len(t, set.GetVerdicts(), 1)
+	assert.Empty(t, set.GetVerdicts()[0].GetCaseId())
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE, set.GetVerdicts()[0].GetStatus())
+	assert.Equal(t, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH, set.GetVerdicts()[0].GetFailureClass())
+
+	decodable := digestMismatchSet(raw)
+	require.Equal(t, fixtureRunID, decodable.GetRunId())
+	assert.True(t, proto.Equal(SealedRecordTamperedSet(fixtureRunID), decodable), "the sealed-record verdict has the digest-mismatch shape")
+	assert.False(t, proto.Equal(SealedRecordTamperedSet("run-other"), decodable), "a different run id is a different verdict set")
 }
 
 func TestVerifyPersistedNonCanonicalRecordIsInvalidEvidence(t *testing.T) {

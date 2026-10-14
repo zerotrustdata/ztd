@@ -8,29 +8,30 @@
 package evaluation
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const agentTraceSchemaVersion = "agent-trace.v1"
+const agentTraceSchemaVersion = "agent-trace.v2"
 
-// Agent model call purposes. A turn is one scored step of the tool loop; a
-// command call turns a run_commands_with_operator request into the exact
-// command the Data Operator executes.
-const (
-	agentModelCallPurposeTurn    = "agent_turn"
-	agentModelCallPurposeCommand = "command_generation"
-)
+// agentModelCallPurposeTurn is the purpose of every governed agent inference.
+// Each one is a scored step of the tool loop.
+const agentModelCallPurposeTurn = "agent_turn"
 
 // Policy decisions recorded on a governed tool call.
 const (
@@ -82,6 +83,9 @@ type AgentToolCall struct {
 	ActionType     string `json:"action_type,omitempty"`
 	TransactionID  string `json:"transaction_id,omitempty"`
 	PolicyDecision string `json:"policy_decision,omitempty"`
+	// Receipt is the signed receipt the Gateway answered the dispatch with: the
+	// executed receipt, or a governance rejection's receipt. A refusal has none.
+	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
 	// Seeded marks a prior failing call replayed from the scenario seed for
 	// trajectory analysis only; it is never persisted.
 	Seeded bool `json:"-"`
@@ -122,6 +126,85 @@ type AgentTrace struct {
 	// (capability_unsupported, backend_timeout, ...) when the provider
 	// classified the failure. Traces sealed before it existed omit it.
 	ProviderFailureClass string `json:"provider_failure_class,omitempty"`
+	// DataOperatorAnchor pins the Data Operator's actuator key as bound at
+	// enrollment. VerifyAgentTraceEvidence checks every receipt against it.
+	DataOperatorAnchor *AgentTraceAnchor `json:"data_operator_anchor,omitempty"`
+	// Bracket holds the harness sentinel receipts read before and after the
+	// attempt. Import fails closed when it is missing.
+	Bracket *AgentTraceBracket `json:"bracket,omitempty"`
+}
+
+// AgentTraceReceipt is a signed ActionReceipt carried in the trace as
+// canonical protojson. It is decoded strictly; unknown fields fail.
+type AgentTraceReceipt struct{ *operatorv1.ActionReceipt }
+
+// MarshalJSON writes the receipt as canonical protojson.
+func (r AgentTraceReceipt) MarshalJSON() ([]byte, error) {
+	if r.ActionReceipt == nil {
+		return nil, fmt.Errorf("evaluation: encode agent trace receipt: %w", constants.ErrMissingRequiredField)
+	}
+	return evalv1.MarshalCanonical(r.ActionReceipt)
+}
+
+// UnmarshalJSON decodes canonical protojson strictly.
+func (r *AgentTraceReceipt) UnmarshalJSON(b []byte) error {
+	receipt := &operatorv1.ActionReceipt{}
+	if err := unmarshalAgentTraceCanonical(b, receipt); err != nil {
+		return fmt.Errorf("evaluation: decode agent trace receipt: %w", err)
+	}
+	r.ActionReceipt = receipt
+	return nil
+}
+
+// AgentTraceAnchor is the Data Operator's pinned actuator key, carried in the
+// trace as canonical protojson like a receipt.
+type AgentTraceAnchor struct{ *evalv1.ConformanceAnchor }
+
+// MarshalJSON writes the anchor as canonical protojson.
+func (a AgentTraceAnchor) MarshalJSON() ([]byte, error) {
+	if a.ConformanceAnchor == nil {
+		return nil, fmt.Errorf("evaluation: encode agent trace anchor: %w", constants.ErrMissingRequiredField)
+	}
+	return evalv1.MarshalCanonical(a.ConformanceAnchor)
+}
+
+// UnmarshalJSON decodes canonical protojson strictly.
+func (a *AgentTraceAnchor) UnmarshalJSON(b []byte) error {
+	anchor := &evalv1.ConformanceAnchor{}
+	if err := unmarshalAgentTraceCanonical(b, anchor); err != nil {
+		return fmt.Errorf("evaluation: decode agent trace anchor: %w", err)
+	}
+	a.ConformanceAnchor = anchor
+	return nil
+}
+
+// AgentTraceBracket is the pair of harness sentinels around the attempt.
+type AgentTraceBracket struct {
+	Before AgentTraceReceipt `json:"before"`
+	After  AgentTraceReceipt `json:"after"`
+}
+
+// unmarshalAgentTraceCanonical decodes one canonical protojson value embedded in
+// the trace. encoding/json HTML-escapes <, > and & in the bytes it writes for
+// a nested value, so the trace holds those characters escaped while protojson
+// writes them raw. The value is therefore compared with the trace's own
+// encoding of its canonical form. Any other spelling still fails.
+func unmarshalAgentTraceCanonical(encoded []byte, message proto.Message) error {
+	if err := (protojson.UnmarshalOptions{}).Unmarshal(encoded, message); err != nil {
+		return fmt.Errorf("%w: unmarshal canonical protojson: %w", constants.ErrEvidenceArtifactMalformed, err)
+	}
+	canonical, err := evalv1.MarshalCanonical(message)
+	if err != nil {
+		return err
+	}
+	expected, err := json.Marshal(json.RawMessage(canonical))
+	if err != nil {
+		return fmt.Errorf("evaluation: encode canonical protojson: %w", err)
+	}
+	if !bytes.Equal(encoded, expected) {
+		return fmt.Errorf("%w: input is not canonical protojson", constants.ErrEvidenceArtifactMalformed)
+	}
+	return nil
 }
 
 // ScenarioWorkspace returns the workspace the trace ran in.

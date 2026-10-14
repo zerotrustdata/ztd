@@ -109,16 +109,23 @@ func TestSentinelReadErrorsOnNonReceiptOutcomes(t *testing.T) {
 	}
 }
 
-// TestNewSentinelRequiresEveryExecutorTarget checks that construction fails when
-// a target or the client is missing.
-func TestNewSentinelRequiresEveryExecutorTarget(t *testing.T) {
+// TestNewSentinelRequiresATargetAndRefusesAnUntargetedExecutor checks that
+// construction fails with no target or no client, and that a sentinel built for
+// one executor refuses to read from the other.
+func TestNewSentinelRequiresATargetAndRefusesAnUntargetedExecutor(t *testing.T) {
 	_, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
 	persona := testIdentity().Persona
 
-	_, err := NewSentinel(c, persona, map[cases.Executor]operator.Target{
+	_, err := NewSentinel(c, persona, map[cases.Executor]operator.Target{})
+	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "no targets: %v", err)
+
+	s, err := NewSentinel(c, persona, map[cases.Executor]operator.Target{
 		cases.ExecutorEmbedded: testDispatchTargets()[cases.ExecutorEmbedded],
 	})
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "missing outbound: %v", err)
+	require.NoError(t, err)
+	receipt, err := s.Read(context.Background(), cases.ExecutorOutbound, "/tmp/canary.txt")
+	assert.Nil(t, receipt)
+	assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "untargeted executor: %v", err)
 
 	_, err = NewSentinel(nil, persona, testDispatchTargets())
 	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "nil client: %v", err)

@@ -58,7 +58,7 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailurePosture
 	case errors.Is(err, constants.ErrEvalRunVerificationFailed):
 		return ExecutionFailureVerification
-	case errors.Is(err, constants.ErrEvaluationObservationUnavailable), errors.Is(err, constants.ErrEvaluationReceiptUnavailable):
+	case errors.Is(err, constants.ErrEvaluationObservationUnavailable):
 		return ExecutionFailureEvidence
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:

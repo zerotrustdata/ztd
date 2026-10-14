@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/run"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -229,6 +231,140 @@ func TestConformanceReport_RejectsMoreThanFourRunsBeforeTouchingState(t *testing
 	}
 	_, err := rig.execute(t, args...)
 	assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+// conformanceTestAuthError is what sealedTestVault returns for bytes it did not seal.
+var conformanceTestAuthError = errors.New("conformance test: ciphertext does not authenticate")
+
+// conformanceTestSealedPrefix marks the bytes sealedTestVault seals.
+const conformanceTestSealedPrefix = "sealed:"
+
+// sealedTestVault seals by prefixing and opens only what it sealed, so a stored
+// byte that changed no longer authenticates.
+type sealedTestVault struct{}
+
+func (sealedTestVault) EncryptWithAAD(plaintext, _ []byte) ([]byte, error) {
+	return append([]byte(conformanceTestSealedPrefix), plaintext...), nil
+}
+
+func (sealedTestVault) DecryptWithAAD(ciphertext, _ []byte) ([]byte, error) {
+	body, ok := bytes.CutPrefix(ciphertext, []byte(conformanceTestSealedPrefix))
+	if !ok {
+		return nil, conformanceTestAuthError
+	}
+	return body, nil
+}
+
+// lockedTestVault is a runtime vault that is locked: every call fails as the
+// real vault's calls do.
+type lockedTestVault struct{}
+
+func (lockedTestVault) EncryptWithAAD([]byte, []byte) ([]byte, error) {
+	return nil, constants.ErrVaultLocked
+}
+
+func (lockedTestVault) DecryptWithAAD([]byte, []byte) ([]byte, error) {
+	return nil, constants.ErrVaultLocked
+}
+
+func openSealedTestVault() (evaluation.EvidenceVault, error) {
+	return sealedTestVault{}, nil
+}
+
+// conformanceTestRunDir is the run directory of conformanceTestRunID under the runtime.
+func conformanceTestRunDir() string {
+	return filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, conformanceTestRunID)
+}
+
+// storedRunRig is a verify rig over one run that the evidence file service sealed
+// with sealedTestVault. mutate then changes the stored bytes, and open is the
+// runtime vault the verify command opens.
+func storedRunRig(t *testing.T, open evaluation.EvidenceVaultProvider, mutate func(context.Context, fs.RuntimeFileService) error) conformanceRig {
+	t.Helper()
+	ctx := context.Background()
+	rig := newConformanceRig(t, rigOptions{})
+	raw, err := fs.NewRuntimeFileService(rig.gwRoot, testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, raw.CreateRuntimeTree(ctx))
+	sealer, err := evaluation.NewEvidenceFileService(raw, openSealedTestVault)
+	require.NoError(t, err)
+	record := &evalv1.ConformanceRunRecord{RunId: conformanceTestRunID, Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE}
+	require.NoError(t, evaluation.NewStore(sealer).SaveConformanceRecord(ctx, record))
+	if mutate != nil {
+		require.NoError(t, mutate(ctx, raw))
+	}
+	reader, err := evaluation.NewEvidenceFileService(raw, open)
+	require.NoError(t, err)
+	rig.deps.fileSvcFactory = func(string, *slog.Logger) (fs.RuntimeFileService, error) { return reader, nil }
+	return rig
+}
+
+// replaceStoredRunFile overwrites one stored file of the run with body.
+func replaceStoredRunFile(name string, body []byte) func(context.Context, fs.RuntimeFileService) error {
+	return func(ctx context.Context, raw fs.RuntimeFileService) error {
+		return raw.WriteFile(ctx, filepath.Join(conformanceTestRunDir(), name), body, constants.PermFilePrivate)
+	}
+}
+
+// removeStoredRunFile deletes one stored file of the run.
+func removeStoredRunFile(name string) func(context.Context, fs.RuntimeFileService) error {
+	return func(ctx context.Context, raw fs.RuntimeFileService) error {
+		return raw.Remove(ctx, filepath.Join(conformanceTestRunDir(), name))
+	}
+}
+
+func TestConformanceVerify_SealedBytesThatFailAuthenticationAreTheDigestMismatchVerdict(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(context.Context, fs.RuntimeFileService) error
+	}{
+		{name: "record ciphertext changed on disk", mutate: replaceStoredRunFile(constants.ConformanceRecordFilename, []byte("changed"))},
+		{name: "digest sidecar ciphertext changed on disk", mutate: replaceStoredRunFile(constants.ConformanceRecordDigestFilename, []byte("changed"))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rig := storedRunRig(t, openSealedTestVault, tt.mutate)
+			out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
+			require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "a changed sealed byte fails the exit rule")
+			assert.Contains(t, out, "Run: "+conformanceTestRunID)
+			assert.Contains(t, out, "CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE")
+			assert.Contains(t, out, "CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH")
+		})
+	}
+}
+
+func TestConformanceVerify_UnchangedSealedRecordIsNotTheDigestMismatchVerdict(t *testing.T) {
+	rig := storedRunRig(t, openSealedTestVault, nil)
+
+	out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "an empty record is not a passing run")
+	assert.Contains(t, out, "Run: "+conformanceTestRunID, "the record decrypted and was verified")
+	assert.NotContains(t, out, "RECORD_DIGEST_MISMATCH")
+}
+
+func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *testing.T) {
+	lockedOpen := func() (evaluation.EvidenceVault, error) { return lockedTestVault{}, nil }
+	unreadableOpen := func() (evaluation.EvidenceVault, error) { return nil, constants.ErrVaultKeyReadFailed }
+	tests := []struct {
+		name    string
+		open    evaluation.EvidenceVaultProvider
+		mutate  func(context.Context, fs.RuntimeFileService) error
+		wantErr error
+	}{
+		{name: "vault locked over the sealed record", open: lockedOpen, wantErr: constants.ErrVaultLocked},
+		{name: "vault key unreadable", open: unreadableOpen, wantErr: constants.ErrVaultKeyReadFailed},
+		{name: "record file missing", open: openSealedTestVault, mutate: removeStoredRunFile(constants.ConformanceRecordFilename), wantErr: constants.ErrNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rig := storedRunRig(t, tt.open, tt.mutate)
+			out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.NotErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "no verdict set is computed, so the exit rule never runs")
+			assert.NotContains(t, out, "Suite: ", "no verdicts are printed")
+			assert.NotContains(t, out, "RECORD_DIGEST_MISMATCH")
+		})
+	}
 }
 
 func TestConformanceVerdictError_PassesOnlyPassOrUnattendedIncomplete(t *testing.T) {

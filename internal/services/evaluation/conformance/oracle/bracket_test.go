@@ -36,6 +36,21 @@ func TestVerifyBracket(t *testing.T) {
 			before: before, after: linkOutcome("tx-after", "h-1", "h-9"),
 		},
 		{
+			name:   "genesis opening sentinel (empty prior) on a fresh ledger",
+			before: linkOutcome("tx-before", "", "h-1"), after: linkOutcome("tx-after", "h-1", "h-9"),
+		},
+		{
+			name:   "closing sentinel with an empty prior does not follow the opening sentinel",
+			before: before, after: linkOutcome("tx-after", "", "h-9"),
+			want: constants.ErrConformanceUnclaimedExecution,
+		},
+		{
+			name:   "claimed outcome with an empty prior does not connect",
+			before: before, after: linkOutcome("tx-after", "h-2", "h-9"),
+			claimed: []Outcome{linkOutcome("tx-a", "", "h-2")},
+			want:    constants.ErrConformanceLedgerGap,
+		},
+		{
 			name:   "zero claimed with an unclaimed execution between sentinels",
 			before: before, after: linkOutcome("tx-after", "h-2", "h-9"),
 			want: constants.ErrConformanceUnclaimedExecution,

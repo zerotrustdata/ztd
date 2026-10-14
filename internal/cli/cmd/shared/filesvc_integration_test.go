@@ -32,7 +32,7 @@ const evidenceFileSvcMarker = "ZTD-EVIDENCE-FILESVC-MARKER"
 // runtime vault, and fails closed when the root has no vault.
 func TestNewEvidenceFileSvc_SealsEvaluationRecordsWithTheRuntimeVault(t *testing.T) {
 	ctx := context.Background()
-	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.EvaluationReportFilename)
+	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
 	masterKeyFile := keystoretest.ProvisionMasterKeyFile(t)
 	config.SetMasterKeyFileOverride(masterKeyFile)
 	t.Cleanup(func() { config.SetMasterKeyFileOverride("") })

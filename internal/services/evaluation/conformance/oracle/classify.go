@@ -112,8 +112,10 @@ func stagesByKind(receipt *operatorv1.ActionReceipt) (map[operatorv1.Determinist
 }
 
 // commitmentLink returns the ledger step an executed receipt took. Every
-// executed receipt appends exactly one commitment, so a missing or unlinked
-// commitment stage is unclassifiable.
+// executed receipt appends exactly one commitment, so a missing commitment
+// stage or hash is unclassifiable. An empty prior hash is the runtime's first
+// commitment (the ledger's genesis rule); VerifyBracket rejects it anywhere a
+// prior link is expected.
 func commitmentLink(receipt *operatorv1.ActionReceipt, commit *operatorv1.DeterministicStageEvidence) (*Link, error) {
 	if commit == nil {
 		return nil, unclassifiable("executed receipt has no commitment-append stage")
@@ -121,8 +123,8 @@ func commitmentLink(receipt *operatorv1.ActionReceipt, commit *operatorv1.Determ
 	if commit.GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED {
 		return nil, unclassifiable("commitment-append stage is not completed")
 	}
-	if commit.GetCommitmentHash() == "" || commit.GetPriorCommitmentHash() == "" {
-		return nil, unclassifiable("commitment-append stage names no commitment link")
+	if commit.GetCommitmentHash() == "" {
+		return nil, unclassifiable("commitment-append stage names no commitment hash")
 	}
 	return &Link{
 		Prior:         commit.GetPriorCommitmentHash(),
