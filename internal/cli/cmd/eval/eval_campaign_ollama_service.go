@@ -18,6 +18,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -68,7 +69,7 @@ func (d *harnessOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx con
 	if len(payload) == 0 {
 		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w", constants.ErrMissingRequiredField)
 	}
-	status, response, body, err := d.client.DispatchCommand(ctx, d.persona, harnessclient.DispatchCommandRequest{
+	outcome, err := d.client.DispatchCommand(ctx, d.persona, harnessclient.DispatchCommandRequest{
 		TargetOperatorSessionID: request.TargetOperatorSessionID,
 		ActionType:              string(actionType),
 		Payload:                 payload,
@@ -82,30 +83,31 @@ func (d *harnessOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx con
 		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w", err)
 	}
 	result := &evaluation.OllamaModelCommandDispatchResult{
-		Status:       status,
-		Success:      response != nil && response.Success,
+		Status:       int(outcome.Observation.GetHttpStatus()),
+		Success:      outcome.Observation.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		ActionType:   actionType,
-		ResponseBody: body,
+		ResponseBody: outcome.Body,
 	}
-	if response == nil || len(response.ResultPayload) == 0 {
+	resultPayload := outcome.Dispatch.GetResultPayload()
+	if len(resultPayload) == 0 {
 		return result, nil
 	}
 	switch actionType {
 	case constants.ActionTypeOllamaModelInventory:
 		inventoryResult := &operatorv1.OllamaModelInventoryResult{}
-		if err := proto.Unmarshal(response.ResultPayload, inventoryResult); err != nil {
+		if err := proto.Unmarshal(resultPayload, inventoryResult); err != nil {
 			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode inventory result: %w", err)
 		}
 		result.InventoryResult = inventoryResult
 	case constants.ActionTypeOllamaModelResidency:
 		residencyResult := &operatorv1.OllamaModelResidencyResult{}
-		if err := proto.Unmarshal(response.ResultPayload, residencyResult); err != nil {
+		if err := proto.Unmarshal(resultPayload, residencyResult); err != nil {
 			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode residency result: %w", err)
 		}
 		result.ResidencyResult = residencyResult
 	default:
 		commandResult := &operatorv1.CommandResult{}
-		if err := proto.Unmarshal(response.ResultPayload, commandResult); err != nil {
+		if err := proto.Unmarshal(resultPayload, commandResult); err != nil {
 			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode command result: %w", err)
 		}
 		result.CommandResult = commandResult

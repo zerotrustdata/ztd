@@ -49,14 +49,13 @@ func TestClient_StateRoot(t *testing.T) {
 			usePublicBase: true,
 		},
 		{
-			name:          "state_root field",
+			name:          "legacy state_root field only is missing the required root",
 			responseBody:  `{"state_root": "def456"}`,
-			expectedRoot:  "def456",
-			wantErr:       false,
+			wantErr:       true,
 			usePublicBase: true,
 		},
 		{
-			name:          "both fields (state_merkle_root takes precedence)",
+			name:          "state_merkle_root read, state_root ignored",
 			responseBody:  `{"state_merkle_root": "abc123", "state_root": "def456"}`,
 			expectedRoot:  "abc123",
 			wantErr:       false,
@@ -65,22 +64,19 @@ func TestClient_StateRoot(t *testing.T) {
 		{
 			name:          "empty response",
 			responseBody:  `{}`,
-			expectedRoot:  "",
-			wantErr:       false,
+			wantErr:       true,
 			usePublicBase: true,
 		},
 		{
 			name:          "invalid JSON",
 			responseBody:  `invalid`,
-			wantErr:       false, // stateRoot is lenient - returns empty string on invalid JSON
-			expectedRoot:  "",
+			wantErr:       true,
 			usePublicBase: true,
 		},
 		{
 			name:         "server error",
 			responseBody: `{"error": "internal error"}`,
-			wantErr:      false, // stateRoot is lenient - doesn't check status codes
-			expectedRoot: "",
+			wantErr:      true,
 			setupServer: func(s *httptest.Server) {
 				s.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)

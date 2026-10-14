@@ -157,7 +157,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		require.NoError(t, err)
 		root, err := svc.GetStateRootSvc().GetCurrentStateRoot(t.Context())
 		require.NoError(t, err)
-		env := &commonv1.GovernanceEnvelope{ProtocolVersion: govtypes.GovernanceProtocolVersionV2, Timestamp: timestamppb.Now(), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)), SourceComponent: commonv1.Component_COMPONENT_AGENT, ActingAppId: "test-app", RequestorUserId: bootstrap.UserID, EventType: string(constants.EventAppDocumentUpdateRequested), ActionType: string(constants.ActionTypeDocumentUpdate), TargetResource: string(constants.CollectionInvestigations) + "/audit-document", Payload: payload, StateMerkleRoot: root, Nonce: []string{"create-nonce", "merge-nonce"}[index]}
+		env := &commonv1.GovernanceEnvelope{ProtocolVersion: govtypes.GovernanceProtocolVersionV2, Timestamp: timestamppb.Now(), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)), SourceComponent: commonv1.Component_COMPONENT_AGENT, ActingAppId: "test-app", EventType: string(constants.EventAppDocumentUpdateRequested), ActionType: string(constants.ActionTypeDocumentUpdate), TargetResource: string(constants.CollectionInvestigations) + "/audit-document", Payload: payload, StateMerkleRoot: root, Nonce: []string{"create-nonce", "merge-nonce"}[index]}
 		env.Id, err = govtypes.GenerateMessageID(env)
 		require.NoError(t, err)
 		env.TransactionHash = env.Id
@@ -196,8 +196,12 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 	require.NoError(t, err)
 	var doc clientpkg.DocumentResponse
 	require.NoError(t, json.Unmarshal(docBytes, &doc))
-	require.Equal(t, "merged", doc.GetString("case_title"))
-	require.Equal(t, "open", doc.GetString("status"))
+	title, ok := doc.GetString("case_title")
+	require.True(t, ok)
+	require.Equal(t, "merged", title)
+	status, ok := doc.GetString("status")
+	require.True(t, ok)
+	require.Equal(t, "open", status)
 
 	loader := func(string) (*clicfg.Config, error) { //nolint:unparam // The loader contract returns an error; this fixture exercises success.
 		return cliConfig, nil

@@ -17,36 +17,45 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
-	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
-	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestSubmitEnvelope(t *testing.T) {
+func TestSubmitEnvelope_ReturnsTypedOutcomeAndRecordsPath(t *testing.T) {
 	tests := []struct {
 		name         string
 		responseCode int
-		responseBody string
-		wantErr      bool
+		responseBody []byte
+		wantKind     evalv1.ConformanceObservationKind
 	}{
 		{
-			name:         "successful submission",
+			name:         "accepted receipt",
 			responseCode: http.StatusOK,
-			responseBody: `{"status": "accepted"}`,
-			wantErr:      false,
+			responseBody: canonicalBody(t, outcomeReceipt("tx-1")),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		},
 		{
-			name:         "server error",
-			responseCode: http.StatusInternalServerError,
-			responseBody: `{"error": "internal error"}`,
-			wantErr:      false, // SubmitEnvelope doesn't check status codes
+			name:         "governance rejection",
+			responseCode: http.StatusForbidden,
+			responseBody: canonicalBody(t, outcomeRejection("tx-1")),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
 		},
 		{
-			name:         "bad request",
+			name:         "ingress refusal",
 			responseCode: http.StatusBadRequest,
-			responseBody: `{"error": "invalid envelope"}`,
-			wantErr:      false,
+			responseBody: canonicalBody(t, outcomeRefusal(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST)),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL,
+		},
+		{
+			name:         "server error text is untyped",
+			responseCode: http.StatusInternalServerError,
+			responseBody: []byte(`{"error": "internal error"}`),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		},
 	}
 
@@ -61,48 +70,19 @@ func TestSubmitEnvelope(t *testing.T) {
 				}
 
 				w.WriteHeader(tt.responseCode)
-				w.Write([]byte(tt.responseBody))
+				_, _ = w.Write(tt.responseBody)
 			})
 
 			server := httptest.NewServer(handler)
 			defer server.Close()
 
-			cfg := config.Config{
-				MTLSBaseURL: server.URL,
-				Auth:        config.Auth{},
-			}
+			client, err := New(config.Config{MTLSBaseURL: server.URL, Auth: config.Auth{}})
+			require.NoError(t, err)
 
-			client, err := New(cfg)
-			if err != nil {
-				t.Fatalf("New() failed: %v", err)
-			}
-
-			ctx := context.Background()
-			p := Persona{ID: "test-client"}
-
-			// Create a minimal envelope
-			envelope := &commonv1.GovernanceEnvelope{
-				Id:              "test-id",
-				TransactionHash: "test-hash",
-				ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
-				ActionType:      "TEST_ACTION",
-			}
-
-			status, body, err := client.SubmitEnvelope(ctx, p, envelope)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SubmitEnvelope() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr {
-				if status != tt.responseCode {
-					t.Errorf("status = %d, want %d", status, tt.responseCode)
-				}
-				if string(body) != tt.responseBody {
-					t.Errorf("body = %s, want %s", string(body), tt.responseBody)
-				}
-			}
+			outcome, err := client.SubmitEnvelope(context.Background(), Persona{ID: "test-client"}, outcomeEnvelope())
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantKind, outcome.Observation.GetKind())
+			assert.Equal(t, tt.responseBody, outcome.Body)
 		})
 	}
 }
@@ -112,8 +92,8 @@ func TestSubmitMaximal(t *testing.T) {
 		name         string
 		maximal      MaximalEnvelope
 		responseCode int
-		responseBody string
-		wantErr      bool
+		responseBody []byte
+		wantKind     evalv1.ConformanceObservationKind
 		verifyFields bool
 	}{
 		{
@@ -126,8 +106,8 @@ func TestSubmitMaximal(t *testing.T) {
 				StateRoot:      "root-abc",
 			},
 			responseCode: http.StatusOK,
-			responseBody: `{"status": "accepted"}`,
-			wantErr:      false,
+			responseBody: canonicalBody(t, outcomeReceipt("tx-1")),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 			verifyFields: true,
 		},
 		{
@@ -141,8 +121,8 @@ func TestSubmitMaximal(t *testing.T) {
 				TTL:            10 * time.Minute,
 			},
 			responseCode: http.StatusOK,
-			responseBody: `{"status": "accepted"}`,
-			wantErr:      false,
+			responseBody: canonicalBody(t, outcomeReceipt("tx-1")),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 			verifyFields: true,
 		},
 		{
@@ -155,8 +135,8 @@ func TestSubmitMaximal(t *testing.T) {
 				StateRoot:      "root-abc",
 			},
 			responseCode: http.StatusInternalServerError,
-			responseBody: `{"error": "internal error"}`,
-			wantErr:      false,
+			responseBody: []byte(`{"error": "internal error"}`),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		},
 	}
 
@@ -179,55 +159,32 @@ func TestSubmitMaximal(t *testing.T) {
 				}
 
 				w.WriteHeader(tt.responseCode)
-				w.Write([]byte(tt.responseBody))
+				_, _ = w.Write(tt.responseBody)
 			})
 
 			server := httptest.NewServer(handler)
 			defer server.Close()
 
-			cfg := config.Config{
-				MTLSBaseURL: server.URL,
-				Auth:        config.Auth{},
-			}
+			client, err := New(config.Config{MTLSBaseURL: server.URL, Auth: config.Auth{}})
+			require.NoError(t, err)
 
-			client, err := New(cfg)
-			if err != nil {
-				t.Fatalf("New() failed: %v", err)
-			}
+			txHash, outcome, err := client.SubmitMaximal(context.Background(), Persona{ID: "test-client"}, tt.maximal)
+			require.NoError(t, err)
+			assert.NotEmpty(t, txHash)
+			assert.Equal(t, tt.wantKind, outcome.Observation.GetKind())
+			assert.Equal(t, tt.responseBody, outcome.Body)
 
-			ctx := context.Background()
-			p := Persona{ID: "test-client"}
-
-			txHash, status, body, err := client.SubmitMaximal(ctx, p, tt.maximal)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SubmitMaximal() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr {
-				if txHash == "" {
-					t.Error("txHash should not be empty")
+			if tt.verifyFields {
+				// Verify the envelope was sent with correct fields
+				bodyStr := string(receivedEnvelope)
+				if tt.maximal.OperatorID != "" && !contains(bodyStr, tt.maximal.OperatorID) {
+					t.Error("envelope should contain OperatorID")
 				}
-				if status != tt.responseCode {
-					t.Errorf("status = %d, want %d", status, tt.responseCode)
+				if tt.maximal.ToolName != "" && !contains(bodyStr, tt.maximal.ToolName) {
+					t.Error("envelope should contain ToolName")
 				}
-				if string(body) != tt.responseBody {
-					t.Errorf("body = %s, want %s", string(body), tt.responseBody)
-				}
-
-				if tt.verifyFields {
-					// Verify the envelope was sent with correct fields
-					bodyStr := string(receivedEnvelope)
-					if tt.maximal.OperatorID != "" && !contains(bodyStr, tt.maximal.OperatorID) {
-						t.Error("envelope should contain OperatorID")
-					}
-					if tt.maximal.ToolName != "" && !contains(bodyStr, tt.maximal.ToolName) {
-						t.Error("envelope should contain ToolName")
-					}
-					if tt.maximal.StateRoot != "" && !contains(bodyStr, tt.maximal.StateRoot) {
-						t.Error("envelope should contain StateRoot")
-					}
+				if tt.maximal.StateRoot != "" && !contains(bodyStr, tt.maximal.StateRoot) {
+					t.Error("envelope should contain StateRoot")
 				}
 			}
 		})
@@ -237,7 +194,7 @@ func TestSubmitMaximal(t *testing.T) {
 func TestSubmitMaximal_DefaultTTL(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "accepted"}`))
+		_, _ = w.Write(canonicalBody(t, outcomeReceipt("tx-1")))
 	})
 
 	server := httptest.NewServer(handler)
@@ -265,7 +222,7 @@ func TestSubmitMaximal_DefaultTTL(t *testing.T) {
 		TTL:            0, // Should use default 5 minutes
 	}
 
-	txHash, _, _, err := client.SubmitMaximal(ctx, p, maximal)
+	txHash, _, err := client.SubmitMaximal(ctx, p, maximal)
 
 	if err != nil {
 		t.Fatalf("SubmitMaximal() failed: %v", err)

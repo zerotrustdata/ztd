@@ -8,7 +8,10 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -332,4 +335,45 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 		assert.NotNil(t, c.cliHTTP, "cliHTTP should be built when CLIAuth differs from Auth")
 		assert.NotNil(t, c.cliTLS, "cliTLS should be built when CLIAuth differs from Auth")
 	})
+}
+
+func TestStateRoot_DecodesGatewayField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state_merkle_root":"root-abc"}`))
+	}))
+	defer server.Close()
+
+	client, err := New(config.Config{MTLSBaseURL: server.URL})
+	require.NoError(t, err)
+	root, err := client.stateRoot(context.Background(), server.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "root-abc", root)
+}
+
+func TestStateRoot_FailsClosedOnBadBody(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"malformed JSON", `{"state_merkle_root":`},
+		{"field name the Gateway never writes", `{"state_root":"root-abc"}`},
+		{"empty root after a successful decode", `{"state_merkle_root":""}`},
+		{"root field has the wrong JSON type", `{"state_merkle_root":42}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client, err := New(config.Config{MTLSBaseURL: server.URL})
+			require.NoError(t, err)
+			root, err := client.stateRoot(context.Background(), server.URL)
+			require.Error(t, err)
+			assert.Empty(t, root)
+		})
+	}
 }

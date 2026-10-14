@@ -10,97 +10,85 @@ package client
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseReceipts(t *testing.T) {
 	tests := []struct {
-		name     string
-		body     []byte
-		wantLen  int
-		wantZero bool
+		name    string
+		body    []byte
+		wantLen int
+		wantErr bool
 	}{
 		{
-			name:     "wrapped receipts",
-			body:     []byte(`{"receipts":[{"transaction_id":"tx1"},{"transaction_id":"tx2"}]}`),
-			wantLen:  2,
-			wantZero: false,
+			name:    "wrapped receipts",
+			body:    []byte(`{"success":true,"receipts":[{"transaction_id":"tx1"},{"transaction_id":"tx2"}]}`),
+			wantLen: 2,
 		},
 		{
-			name:     "bare array",
-			body:     []byte(`[{"transaction_id":"tx1"},{"transaction_id":"tx2"}]`),
-			wantLen:  2,
-			wantZero: false,
+			name:    "empty wrapped array",
+			body:    []byte(`{"success":true,"receipts":[]}`),
+			wantLen: 0,
 		},
 		{
-			name:     "empty wrapped array",
-			body:     []byte(`{"receipts":[]}`),
-			wantLen:  0,
-			wantZero: false,
+			name:    "single receipt wrapped",
+			body:    []byte(`{"receipts":[{"transaction_id":"tx1","status":"completed"}]}`),
+			wantLen: 1,
 		},
 		{
-			name:     "empty bare array",
-			body:     []byte(`[]`),
-			wantLen:  0,
-			wantZero: false,
+			name:    "bare array is not the Gateway shape",
+			body:    []byte(`[{"transaction_id":"tx1"}]`),
+			wantErr: true,
 		},
 		{
-			name:     "invalid JSON",
-			body:     []byte(`invalid json`),
-			wantLen:  0,
-			wantZero: true,
+			name:    "missing receipts field",
+			body:    []byte(`{"other":"data"}`),
+			wantErr: true,
 		},
 		{
-			name:     "empty body",
-			body:     []byte{},
-			wantLen:  0,
-			wantZero: true,
+			name:    "invalid JSON",
+			body:    []byte(`invalid json`),
+			wantErr: true,
 		},
 		{
-			name:     "nil body",
-			body:     nil,
-			wantLen:  0,
-			wantZero: true,
+			name:    "empty body",
+			body:    []byte{},
+			wantErr: true,
 		},
 		{
-			name:     "wrapped with empty receipts field",
-			body:     []byte(`{"other":"data"}`),
-			wantLen:  0,
-			wantZero: false,
+			name:    "nil body",
+			body:    nil,
+			wantErr: true,
 		},
 		{
-			name:     "single receipt wrapped",
-			body:     []byte(`{"receipts":[{"transaction_id":"tx1","status":"completed"}]}`),
-			wantLen:  1,
-			wantZero: false,
-		},
-		{
-			name:     "malformed receipt object",
-			body:     []byte(`[{"transaction_id":"tx1"},{"invalid}]`),
-			wantLen:  0,
-			wantZero: true, // invalid JSON object
+			name:    "malformed receipt row fails the whole list",
+			body:    []byte(`{"receipts":[{"transaction_id":"tx1"},{"executed_at":"not-a-time"}]}`),
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseReceipts(tt.body)
+			result, err := parseReceipts(tt.body)
 
-			if tt.wantZero && result != nil {
-				t.Errorf("parseReceipts() should return nil for invalid input, got %v", result)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Nil(t, result, "a failed decode must not return receipts")
+				return
 			}
-			if !tt.wantZero && result == nil {
-				t.Error("parseReceipts() returned nil unexpectedly")
-			}
-			if !tt.wantZero && len(result) != tt.wantLen {
-				t.Errorf("parseReceipts() length = %d, want %d", len(result), tt.wantLen)
-			}
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Len(t, result, tt.wantLen)
 		})
 	}
 }
 
 func TestParseReceipts_RawField(t *testing.T) {
 	body := []byte(`{"receipts":[{"transaction_id":"tx1","status":"completed"}]}`)
-	result := parseReceipts(body)
+	result, err := parseReceipts(body)
+	require.NoError(t, err)
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 receipt, got %d", len(result))

@@ -144,13 +144,22 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 	operatorID, operatorSessionID, requestorUserID := seedOperatorForDispatch(t, infra)
 	cliSessionID, cliCert := seedCLISessionForDispatch(t, infra, requestorUserID)
 
+	// The simulated operator's Actuator key is bound on its document, so the
+	// final receipt it signs verifies against the operator's bound key.
+	actuatorPub, actuatorPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	actuatorKeyID := hex.EncodeToString(actuatorPub)
+	bindOperatorActuatorKey(t, infra, operatorID, actuatorKeyID)
+
 	// Register a simulated operator on the cmd channel. The operator
 	// unmarshals the command, asserts the envelope carries the gateway's
 	// state root and targets the right session, then publishes a result
-	// envelope on the results channel with Id == command TransactionHash.
+	// envelope on the results channel with Id == command TransactionHash,
+	// and its signed final receipt on the receipts channel.
 	broker := infra.Pubsub
 	cmdChannel := pubsub.CmdChannel(operatorID, operatorSessionID)
 	resultsChannel := pubsub.ResultsChannel(operatorID, operatorSessionID)
+	simulatedOperator := &operatorv1.OperatorDocument{Id: operatorID, OperatorSessionId: operatorSessionID}
 
 	operatorDone := make(chan struct{})
 	var receivedCmd *commonv1.GovernanceEnvelope
@@ -171,11 +180,13 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 		assert.Equal(t, string(constants.ActionTypeFsRead), cmdEnv.ActionType, "action type must be FS_READ")
 		assert.Equal(t, requestorUserID, cmdEnv.RequestorUserId, "envelope must carry the requestor user ID from mTLS context")
 
-		// Publish a correlated result envelope on the results channel.
+		// Publish a correlated result envelope on the results channel, then
+		// the signed final receipt on the receipts channel.
 		resultEnv := dispatchTestResultEnvelope(cmdEnv, nil)
 		resultWire, err := protojson.Marshal(resultEnv)
 		require.NoError(t, err)
 		broker.Publish(resultsChannel, resultWire)
+		publishDispatchTestReceipt(t, broker, simulatedOperator, cmdEnv, actuatorPriv, actuatorKeyID)
 	})
 	t.Cleanup(unregisterOperator)
 
@@ -208,11 +219,13 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code, "dispatch HTTP response body: %s", rr.Body.String())
 
-	var resp DispatchResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp), "response body: %s", rr.Body.String())
-	assert.True(t, resp.Success, "dispatch must succeed")
-	assert.NotEmpty(t, resp.TransactionID, "response must carry the transaction ID")
-	assert.Equal(t, string(constants.ActionTypeFsRead), resp.ActionType, "response action type must echo FS_READ")
+	resp := &operatorv1.GovernedDispatchResult{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), resp), "response body: %s", rr.Body.String())
+	assert.NotEmpty(t, resp.GetTransactionId(), "response must carry the transaction ID")
+	assert.Equal(t, string(constants.ActionTypeFsRead), resp.GetActionType(), "response action type must echo FS_READ")
+	require.NotNil(t, resp.GetReceipt(), "the 200 body must carry the executing Operator's final receipt")
+	assert.NoError(t, govsvc.VerifyActionReceiptSignature(resp.GetReceipt(), actuatorPub), "the receipt must verify against the operator's actuator key")
+	assert.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(resp.GetReceipt(), actuatorPub))
 
 	// The simulated operator must have received the command.
 	select {
@@ -221,7 +234,7 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 		t.Fatal("simulated operator did not receive the command on the cmd channel")
 	}
 	require.NotNil(t, receivedCmd)
-	assert.Equal(t, resp.TransactionID, receivedCmd.Id, "response transaction ID must match the dispatched envelope Id")
+	assert.Equal(t, resp.GetTransactionId(), receivedCmd.Id, "response transaction ID must match the dispatched envelope Id")
 }
 
 // TestDispatchController_HandleDispatch_UnknownSession verifies that
@@ -243,6 +256,8 @@ func TestDispatchService_ShutdownPublishesReceiptThenAcknowledgementBeforeCancel
 	require.NoError(t, err)
 	keyID := hex.EncodeToString(publicKey)
 	require.NoError(t, infra.SignerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{ID: keyID, PublicKey: keyID, AddedAt: time.Now().UTC(), Enabled: true}))
+	// The final receipt is accepted only under the Operator's bound Actuator key.
+	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
 	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)
 	require.NoError(t, err)

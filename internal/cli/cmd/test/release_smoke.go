@@ -41,6 +41,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	harness "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -408,14 +409,14 @@ func (r *releaseSmokeRun) scenarioFileCreate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	status, resp, body, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: r.workerSession, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: r.fileName})
+	outcome, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: r.workerSession, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: r.fileName})
 	if err != nil {
 		return err
 	}
-	if status < 200 || status >= 300 || resp == nil || !resp.Success || resp.TransactionID == "" {
-		return fmt.Errorf("governed FILE_EDIT failed: status=%d response=%s", status, strings.TrimSpace(string(body)))
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
+		return fmt.Errorf("governed FILE_EDIT failed: status=%d response=%s", outcome.Observation.GetHttpStatus(), strings.TrimSpace(string(outcome.Body)))
 	}
-	r.fileTx = resp.TransactionID
+	r.fileTx = outcome.Dispatch.GetTransactionId()
 	if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, r.fileTx); err != nil {
 		return fmt.Errorf("FILE_EDIT receipt: %w", err)
 	}
@@ -532,7 +533,13 @@ func (r *releaseSmokeRun) scenarioDocument(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if doc == nil || doc.GetString("case_title") != title || doc.GetString("case_id") != caseID || doc.GetString("status") != closed {
+	if doc == nil {
+		return fmt.Errorf("document merge read-back lost the document")
+	}
+	gotTitle, okTitle := doc.GetString("case_title")
+	gotCaseID, okCaseID := doc.GetString("case_id")
+	gotStatus, okStatus := doc.GetString("status")
+	if !okTitle || !okCaseID || !okStatus || gotTitle != title || gotCaseID != caseID || gotStatus != closed {
 		return fmt.Errorf("document merge read-back lost or changed fields: %#v", doc)
 	}
 	r.recordScenario("document-merge", []string{createTx, mergeTx})
@@ -553,14 +560,14 @@ func (r *releaseSmokeRun) scenarioEmbeddedFile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	status, resp, body, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: session, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: name})
+	outcome, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: session, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: name})
 	if err != nil {
 		return err
 	}
-	if status < 200 || status >= 300 || resp == nil || !resp.Success || resp.TransactionID == "" {
-		return fmt.Errorf("embedded governed FILE_EDIT failed: status=%d response=%s", status, strings.TrimSpace(string(body)))
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
+		return fmt.Errorf("embedded governed FILE_EDIT failed: status=%d response=%s", outcome.Observation.GetHttpStatus(), strings.TrimSpace(string(outcome.Body)))
 	}
-	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, resp.TransactionID); err != nil {
+	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, outcome.Dispatch.GetTransactionId()); err != nil {
 		return fmt.Errorf("embedded FILE_EDIT receipt: %w", err)
 	}
 	out, err := r.ztdGateway(ctx, "embedded-file-read-back", "--json", "operator", "run", session, "--cmd", "cat -- "+name, "--timeout", "60")
@@ -579,7 +586,7 @@ func (r *releaseSmokeRun) scenarioEmbeddedFile(ctx context.Context) error {
 	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, result.Results[0].TransactionID); err != nil {
 		return fmt.Errorf("embedded read-back receipt: %w", err)
 	}
-	r.recordScenario("embedded-file-create", []string{resp.TransactionID, result.Results[0].TransactionID})
+	r.recordScenario("embedded-file-create", []string{outcome.Dispatch.GetTransactionId(), result.Results[0].TransactionID})
 	return nil
 }
 

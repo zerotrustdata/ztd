@@ -229,10 +229,14 @@ func TestGetDocument_ReturnsDocument(t *testing.T) {
 	doc, _, err := client.GetDocument(context.Background(), Persona{ID: "test"}, "investigations", "inv-get-001")
 	require.NoError(t, err)
 	require.NotNil(t, doc)
-	assert.Equal(t, "Found Investigation", doc.GetString("case_title"))
-	assert.Equal(t, "open", doc.GetString("status"))
-	assert.Equal(t, "inv-get-001", doc.GetString("id"))
-	assert.True(t, doc.GetBool("case_flag"))
+	for field, want := range map[string]string{"case_title": "Found Investigation", "status": "open", "id": "inv-get-001"} {
+		got, ok := doc.GetString(field)
+		require.True(t, ok, field)
+		assert.Equal(t, want, got, field)
+	}
+	flag, ok := doc.GetBool("case_flag")
+	require.True(t, ok)
+	assert.True(t, flag)
 }
 
 func TestGetDocument_ReturnsNilOn404(t *testing.T) {

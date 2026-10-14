@@ -682,6 +682,8 @@ const (
 	EvaluationModelSummariesCSVFilename           = "model_summaries.csv"
 	EvaluationReportFilename                      = "report.json"
 	EvaluationVerificationFilename                = "verification.json"
+	ConformanceRecordFilename                     = "conformance-record.json" // canonical protojson
+	ConformanceRecordDigestFilename               = "conformance-record.sha256"
 	EvaluationCampaignSpecFilename                = "campaign-spec.json"
 	EvaluationCampaignReleaseTagFilename          = "release-tag.json"
 	EvaluationHeterogeneousStackSetFilename       = "heterogeneous-stack-set.json"

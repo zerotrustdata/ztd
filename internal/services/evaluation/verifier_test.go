@@ -27,6 +27,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
@@ -182,7 +183,7 @@ func buildValidVerifierFixture(t *testing.T) *verifierFixture {
 	}
 	dispatchReqBody, err := json.Marshal(dispatchReq)
 	require.NoError(t, err)
-	dispatchRespBody, err := json.Marshal(client.DispatchCommandResponse{Success: true, TransactionID: fix.receipt.TransactionId})
+	dispatchRespBody, err := response.MarshalProtoJSONCanonical(&operatorv1.GovernedDispatchResult{TransactionId: fix.receipt.TransactionId, Receipt: fix.receipt})
 	require.NoError(t, err)
 	signerRespBody, err := json.Marshal(models.TrustedSigner{
 		ID:        fix.signerKeyID,
@@ -219,7 +220,8 @@ func buildValidVerifierFixture(t *testing.T) *verifierFixture {
 	}
 	prohibDispatchReqBody, err := json.Marshal(prohibDispatchReq)
 	require.NoError(t, err)
-	prohibDispatchRespBody := []byte(`{"error":"` + constants.ErrTxL1ValidationFailed.Error() + `"}`)
+	prohibDispatchRespBody, err := response.MarshalProtoJSONCanonical(&operatorv1.GovernanceRejection{Error: constants.ErrTxL1ValidationFailed.Error(), Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-l1-rejected"}})
+	require.NoError(t, err)
 	prohibitedExchanges := []client.Exchange{
 		{Method: "POST", URL: "https://localhost:8443" + constants.APIPaths.OperatorsCommands, ReqBody: prohibDispatchReqBody, Status: 400, RespBody: prohibDispatchRespBody},
 	}
@@ -963,7 +965,8 @@ func TestVerifier_MutationMatrix(t *testing.T) {
 			}
 			prohibDispatchReqBody, err := json.Marshal(prohibDispatchReq)
 			require.NoError(t, err)
-			prohibDispatchRespBody := []byte(`{"error":"` + constants.ErrTxL1ValidationFailed.Error() + `"}`)
+			prohibDispatchRespBody, err := response.MarshalProtoJSONCanonical(&operatorv1.GovernanceRejection{Error: constants.ErrTxL1ValidationFailed.Error(), Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-l1-rejected"}})
+			require.NoError(t, err)
 			prohibitedExchanges := []client.Exchange{
 				{Method: "POST", URL: "https://localhost:8443" + constants.APIPaths.OperatorsCommands, ReqBody: prohibDispatchReqBody, Status: 400, RespBody: prohibDispatchRespBody},
 			}
@@ -1007,7 +1010,8 @@ func TestVerifier_MutationMatrix(t *testing.T) {
 			prohibDispatchReqBody, err := json.Marshal(prohibDispatchReq)
 			require.NoError(t, err)
 			// Rejection without L1 marker
-			prohibDispatchRespBody := []byte(`{"error":"some other error"}`)
+			prohibDispatchRespBody, err := response.MarshalProtoJSONCanonical(&operatorv1.GovernanceRejection{Error: "some other error", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-other-rejected"}})
+			require.NoError(t, err)
 			prohibitedExchanges := []client.Exchange{
 				{Method: "POST", URL: "https://localhost:8443" + constants.APIPaths.OperatorsCommands, ReqBody: prohibDispatchReqBody, Status: 400, RespBody: prohibDispatchRespBody},
 			}

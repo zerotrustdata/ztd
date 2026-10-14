@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -42,11 +46,33 @@ func TestSubmitEnvelope_MarshalError(t *testing.T) {
 
 	// Since we can't easily cause a marshal error with valid protobuf,
 	// we'll just verify the call doesn't panic with nil
-	_, _, err = client.SubmitEnvelope(ctx, p, envelope)
+	_, err = client.SubmitEnvelope(ctx, p, envelope)
 
 	// This will fail with network error since we're using a fake URL,
 	// but that's expected - we're just testing it doesn't panic
 	_ = err
+}
+
+func TestSubmitMaximal_EnvelopeEventTypeResolvesInRegistry(t *testing.T) {
+	env, txHash, err := buildMaximalEnvelope(Persona{ID: "test-client"}, MaximalEnvelope{
+		OperatorID:     "op-123",
+		ToolName:       "fs_list",
+		ArgumentsJSON:  `{"path":"."}`,
+		TargetResource: "localhost",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, txHash, env.GetTransactionHash())
+
+	action, err := constants.ValidateGovernedRequest(constants.EventType(env.GetEventType()))
+	require.NoError(t, err)
+	assert.Equal(t, ActionMcpCall, string(action))
+}
+
+func TestSubmitMaximal_RejectsUnregisteredMcpEventSpelling(t *testing.T) {
+	// The event type SubmitMaximal used before this change is not in the registry.
+	_, err := constants.ValidateGovernedRequest(constants.EventType("operator.mcp.call.requested"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrTxUnknownEventType)
 }
 
 func TestActionConstants(t *testing.T) {

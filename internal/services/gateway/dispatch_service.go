@@ -205,11 +205,11 @@ type DispatchRequest struct {
 	OnInferenceProgress func(*operatorv1.InferenceProgressEvent) error
 }
 
-// DispatchResult is the output of a successful command dispatch. For
-// inference dispatches, Receipt carries the verified final signed
-// ActionReceipt and InferenceResult carries the verified complete result;
-// the digest, receipt signature, and receipt persistence attestation were
-// verified before Dispatch returned.
+// DispatchResult is the output of a successful command dispatch. Receipt
+// always carries the executing Operator's verified final signed
+// ActionReceipt: its signature and persistence attestation were verified
+// before Dispatch returned. For inference dispatches, InferenceResult carries
+// the verified complete result and its digest was verified too.
 type DispatchResult struct {
 	TransactionID   string
 	ResultEnvelope  *commonv1.GovernanceEnvelope
@@ -706,20 +706,27 @@ func (d *DispatchService) verifiedTransactionReceipt(ctx context.Context, receip
 	default:
 		return nil, transactionReceiptNone
 	}
-	pubKey, err := d.signerStore.ReceiptSignerKey(ctx, operatorID, receipt)
-	if err != nil {
-		d.logger.Warn("dispatch: receipt signer not bound to executing operator", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), "error", err)
-		return nil, transactionReceiptNone
-	}
-	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
-		d.logger.Warn("dispatch: receipt signature invalid", "transaction_id", txHash, "error", err)
-		return nil, transactionReceiptNone
-	}
-	if err := governance.VerifyReceiptPersistenceAttestation(receipt, pubKey); err != nil {
-		d.logger.Warn("dispatch: receipt persistence attestation invalid", "transaction_id", txHash, "error", err)
+	if err := d.verifyBoundReceipt(ctx, operatorID, receipt); err != nil {
+		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), "error", err)
 		return nil, transactionReceiptNone
 	}
 	return receipt, kind
+}
+
+// verifyBoundReceipt verifies a receipt's signature and persistence attestation
+// against the Actuator key bound to the executing Operator (INV-GW-GOV-06).
+func (d *DispatchService) verifyBoundReceipt(ctx context.Context, operatorID string, receipt *operatorv1.ActionReceipt) error {
+	pubKey, err := d.signerStore.ReceiptSignerKey(ctx, operatorID, receipt)
+	if err != nil {
+		return fmt.Errorf("resolve signer: %w", err)
+	}
+	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
+		return fmt.Errorf("signature: %w", err)
+	}
+	if err := governance.VerifyReceiptPersistenceAttestation(receipt, pubKey); err != nil {
+		return fmt.Errorf("persistence attestation: %w", err)
+	}
+	return nil
 }
 
 // deliverCommand hands a signed command envelope to its target Operator. The
@@ -785,14 +792,7 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	if d.signerStore == nil {
 		return nil, fmt.Errorf("dispatch: %w: receipt signer store not configured", constants.ErrInferenceReceiptVerify)
 	}
-	pubKey, err := d.signerStore.ReceiptSignerKey(ctx, cmdEnv.GetOperatorId(), receipt)
-	if err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceReceiptVerify, err)
-	}
-	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceReceiptVerify, err)
-	}
-	if err := governance.VerifyReceiptPersistenceAttestation(receipt, pubKey); err != nil {
+	if err := d.verifyBoundReceipt(ctx, cmdEnv.GetOperatorId(), receipt); err != nil {
 		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceReceiptVerify, err)
 	}
 

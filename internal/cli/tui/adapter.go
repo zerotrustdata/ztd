@@ -130,7 +130,10 @@ func (a *Adapter) runSession(ctx context.Context, gw *gateway, generation uint64
 		switch ev.Type {
 		case string(constants.EventPlatformApprovalsChanged):
 			var p models.ApprovalsChangedPayload
-			_ = json.Unmarshal(ev.Data, &p)
+			if err := json.Unmarshal(ev.Data, &p); err != nil {
+				a.sender.Send(decodeFailure(ev.Type, err))
+				return
+			}
 			if p.Subject == models.ApprovalsChangedEnrollments {
 				signal(enrollmentsChanged)
 			} else {
@@ -212,6 +215,12 @@ func translateSSEEvents(eventType, data string) []tea.Msg {
 	return translateEvent(ev)
 }
 
+// decodeFailure reports a malformed SSE payload as a warning line. The event is
+// dropped rather than rendered from the zero value of a failed decode.
+func decodeFailure(eventType string, err error) LedgerMsg {
+	return LedgerMsg{Level: LevelWarn, Message: fmt.Sprintf("Malformed %s event: %v", eventType, err), Time: timeNow()}
+}
+
 // translateEvent maps a decoded Gateway event to tea.Msg values.
 func translateEvent(ev sse.Event) []tea.Msg {
 	innerType, payload := ev.Type, ev.Data
@@ -220,11 +229,15 @@ func translateEvent(ev sse.Event) []tea.Msg {
 	// Stream sentinels
 	case innerType == "error":
 		var p models.SSEErrorEvent
-		_ = json.Unmarshal(ev.Raw, &p)
+		if err := json.Unmarshal(ev.Raw, &p); err != nil {
+			return []tea.Msg{decodeFailure(innerType, err)}
+		}
 		return []tea.Msg{LedgerMsg{Level: LevelWarn, Message: "Event stream error: " + p.Reason, Time: timeNow()}}
 	case innerType == "truncated":
 		var p models.SSETruncationEvent
-		_ = json.Unmarshal(ev.Raw, &p)
+		if err := json.Unmarshal(ev.Raw, &p); err != nil {
+			return []tea.Msg{decodeFailure(innerType, err)}
+		}
 		return []tea.Msg{LedgerMsg{Level: LevelWarn, Message: fmt.Sprintf("Event replay truncated at %d events (cursor %d)", p.Limit, p.SinceID), Time: timeNow()}}
 
 	// Operator approvals requested
@@ -234,7 +247,9 @@ func translateEvent(ev sse.Event) []tea.Msg {
 			TxHash     string `json:"tx_hash"`
 			Command    string `json:"command"`
 		}
-		_ = json.Unmarshal(payload, &p)
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return []tea.Msg{decodeFailure(innerType, err)}
+		}
 		txID := firstNonEmpty(p.TxHash, p.ApprovalID)
 		cmd := firstNonEmpty(p.Command, txID)
 		return []tea.Msg{
@@ -246,7 +261,9 @@ func translateEvent(ev sse.Event) []tea.Msg {
 			ApprovalID string `json:"approval_id"`
 			FilePath   string `json:"file_path"`
 		}
-		_ = json.Unmarshal(payload, &p)
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return []tea.Msg{decodeFailure(innerType, err)}
+		}
 		targetPath := firstNonEmpty(p.FilePath, p.ApprovalID)
 		return []tea.Msg{
 			PipelineMsg{Stage: StageL3, Status: StatusWaiting, TxID: p.ApprovalID, Detail: "File edit approval requested: " + targetPath},
@@ -257,7 +274,9 @@ func translateEvent(ev sse.Event) []tea.Msg {
 			ApprovalID string `json:"approval_id"`
 			IntentName string `json:"intent_name"`
 		}
-		_ = json.Unmarshal(payload, &p)
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return []tea.Msg{decodeFailure(innerType, err)}
+		}
 		intent := firstNonEmpty(p.IntentName, p.ApprovalID)
 		return []tea.Msg{
 			PipelineMsg{Stage: StageL3, Status: StatusWaiting, TxID: p.ApprovalID, Detail: "Intent approval requested: " + intent},
@@ -269,7 +288,9 @@ func translateEvent(ev sse.Event) []tea.Msg {
 			TxHash     string `json:"tx_hash"`
 			ToolName   string `json:"tool_name"`
 		}
-		_ = json.Unmarshal(payload, &p)
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return []tea.Msg{decodeFailure(innerType, err)}
+		}
 		txID := firstNonEmpty(p.TxHash, p.ApprovalID)
 		tool := firstNonEmpty(p.ToolName, "transaction")
 		return []tea.Msg{
@@ -281,14 +302,16 @@ func translateEvent(ev sse.Event) []tea.Msg {
 	case innerType == string(constants.EventOperatorHeartbeatReceived):
 		var p models.OperatorHeartbeatReceivedPayload
 		if err := json.Unmarshal(payload, &p); err != nil {
-			return nil
+			return []tea.Msg{decodeFailure(innerType, err)}
 		}
 		return []tea.Msg{OperatorHeartbeatMsg{Heartbeat: p}}
 	// approval.completed is a flat event (models.ApprovalCompletedEvent),
 	// the same shape auth.WaitForApprovalSSE consumes.
 	case innerType == constants.SSEEventTypeApprovalCompleted:
 		var p models.ApprovalCompletedEvent
-		_ = json.Unmarshal(ev.Raw, &p)
+		if err := json.Unmarshal(ev.Raw, &p); err != nil {
+			return []tea.Msg{decodeFailure(innerType, err)}
+		}
 		return []tea.Msg{ApprovalCompletedMsg{TxHash: p.TxHash}}
 	case innerType == string(constants.EventPlatformApprovalsChanged):
 		// Both subjects are reconciled by the adapter's refresh: transactions

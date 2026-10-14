@@ -533,6 +533,29 @@ definitions:
     x-enum-varnames:
     - UserStatusActive
     - UserStatusDisabled
+  gateway.OperatorCommandRequest:
+    properties:
+      case_id:
+        type: string
+      cli_session_id:
+        type: string
+      event_type:
+        type: string
+      investigation_id:
+        type: string
+      payload:
+        items:
+          type: integer
+        type: array
+      target_operator_session_id:
+        type: string
+      target_resource:
+        type: string
+      task_id:
+        type: string
+      web_session_id:
+        type: string
+    type: object
   models.ActionReceiptRecord:
     properties:
       acting_app_id:
@@ -1837,6 +1860,13 @@ definitions:
     - ExecutionStatus_EXECUTION_STATUS_FAILED
     - ExecutionStatus_EXECUTION_STATUS_CANCELLED
     - ExecutionStatus_EXECUTION_STATUS_TIMEOUT
+  operatorv1.GovernanceRejection:
+    properties:
+      error:
+        type: string
+      receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
+    type: object
   operatorv1.GovernanceRejectionCode:
     enum:
     - 0
@@ -1890,6 +1920,26 @@ definitions:
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN
+  operatorv1.GovernedDispatchResult:
+    properties:
+      action_type:
+        type: string
+      event_type:
+        type: string
+      inference_result:
+        $ref: '#/definitions/operatorv1.InferenceResult'
+      receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
+      result_payload:
+        description: |-
+          result_payload is the proto-marshaled terminal operator result for event_type
+          (for example FsReadResult), the same bytes the dispatch response carries today.
+        items:
+          type: integer
+        type: array
+      transaction_id:
+        type: string
+    type: object
   operatorv1.InferenceDispatchFailure:
     properties:
       code:
@@ -3945,6 +3995,61 @@ paths:
       summary: Get observe run detail
       tags:
       - observe
+  /api/v1/operators/commands:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Constructs a governed envelope for the target Operator session, waits for the
+        terminal result and the Operator's verified final receipt, and returns both.
+      parameters:
+      - description: Dispatch request (JSON)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/gateway.OperatorCommandRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Terminal result with the verified final ActionReceipt
+          schema:
+            $ref: '#/definitions/operatorv1.GovernedDispatchResult'
+        "400":
+          description: Bad Request — malformed request or unknown event type
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "403":
+          description: Forbidden — GovernanceRejection carrying the signed L4 receipt;
+            IngressRefusal when refused before L4
+          schema:
+            $ref: '#/definitions/operatorv1.GovernanceRejection'
+        "404":
+          description: Not Found — target operator session does not resolve
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "422":
+          description: Unprocessable Entity — target cannot run the command
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "503":
+          description: Service Unavailable — GovernanceRejection or IngressRefusal,
+            per the failing check
+          schema:
+            $ref: '#/definitions/operatorv1.GovernanceRejection'
+        "504":
+          description: Gateway Timeout — no terminal result and receipt before the
+            deadline
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+      summary: Dispatch governed operator command
+      tags:
+      - operators
   /api/v1/operators/validate:
     post:
       consumes:

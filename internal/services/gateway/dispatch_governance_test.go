@@ -10,6 +10,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"fmt"
 	"log/slog"
 	"testing"
@@ -240,6 +241,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			broker := NewGatewayWebSocketHandler(logger)
 			deliberator := &stubL2Deliberator{}
+			actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
 			svc := NewDispatchService(
 				logger, broker,
 				&stubStateRootProvider{root: "root-abc"},
@@ -247,12 +249,13 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 				tc.posture,
 				testDoctrine(),
 				deliberator,
-				nil,
+				&stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}},
 				nil,
 			)
 
-			// Register an operator handler that publishes a result so the
-			// dispatch completes (or fails before publish depending on posture).
+			// Register an operator handler that publishes a result and its
+			// signed final receipt so the dispatch completes (or fails before
+			// publish depending on posture).
 			cmdChannel := pubsub.CmdChannel(op.Id, op.OperatorSessionId)
 			resultsChannel := pubsub.ResultsChannel(op.Id, op.OperatorSessionId)
 			unreg := broker.RegisterHandler(cmdChannel, func(_ string, data []byte) {
@@ -265,6 +268,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 					return
 				}
 				broker.Publish(resultsChannel, resultWire)
+				publishDispatchTestReceipt(t, broker, op, cmdEnv, actuatorPriv, actuatorKeyID)
 			})
 			defer unreg()
 

@@ -32,7 +32,7 @@ import (
 type laneClient interface {
 	Health(context.Context) (*models.HealthResponse, []byte, error)
 	DiscoverRemoteOperator(context.Context) (*operatorv1.OperatorDocument, []byte, error)
-	DispatchCommand(context.Context, client.Persona, client.DispatchCommandRequest) (int, *client.DispatchCommandResponse, []byte, error)
+	DispatchCommand(context.Context, client.Persona, client.DispatchCommandRequest) (*client.GovernedOutcome, error)
 	GetActionReceipt(context.Context, string, ...client.Persona) (*operatorv1.ActionReceipt, []byte, error)
 	GetTrustedSignerPublicKey(context.Context, string) (ed25519.PublicKey, error)
 	AuditReceiptRecords(context.Context, string) ([]*models.ActionReceiptRecord, []byte, error)
@@ -144,18 +144,15 @@ func (l *CommandLane) WriteWorkspaceFile(ctx context.Context, target Target, run
 		return fmt.Errorf("%w: workspace file write requires operator target, scenario identity, and path", constants.ErrMissingRequiredField)
 	}
 	request := ExecutionRequest{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target, TargetResource: absPath, Marker: content}
-	status, response, _, err := l.dispatch(ctx, request, content)
+	outcome, err := l.dispatch(ctx, request, content)
 	if err != nil {
 		return err
 	}
-	if status != http.StatusOK || response == nil || !response.Success {
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return fmt.Errorf("%w: workspace file write rejected for %s", constants.ErrEvaluationDispatchFailed, absPath)
 	}
-	if response.TransactionID == "" {
+	if outcome.Dispatch.GetTransactionId() == "" {
 		return fmt.Errorf("%w: governed dispatch response is incomplete", constants.ErrEvaluationDispatchFailed)
-	}
-	if _, err := l.pollReceipt(ctx, response.TransactionID); err != nil {
-		return err
 	}
 	return nil
 }
@@ -176,18 +173,19 @@ func (l *CommandLane) ReadWorkspaceFile(ctx context.Context, target Target, runI
 		return "", fmt.Errorf("%w: marshal filesystem read request: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
 	request := ExecutionRequest{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target, TargetResource: absPath}
-	status, response, _, err := l.dispatchAction(ctx, request, constants.ActionTypeFsRead, payload)
+	outcome, err := l.dispatchAction(ctx, request, constants.ActionTypeFsRead, payload)
 	if err != nil {
 		return "", err
 	}
-	if status != http.StatusOK || response == nil || !response.Success {
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return "", fmt.Errorf("%w: workspace file read rejected for %s", constants.ErrEvaluationDispatchFailed, absPath)
 	}
-	if len(response.ResultPayload) == 0 {
+	resultPayload := outcome.Dispatch.GetResultPayload()
+	if len(resultPayload) == 0 {
 		return "", fmt.Errorf("%w: governed read response carries no result for %s", constants.ErrEvaluationDispatchFailed, absPath)
 	}
 	result := &operatorv1.FsReadResult{}
-	if err := proto.Unmarshal(response.ResultPayload, result); err != nil {
+	if err := proto.Unmarshal(resultPayload, result); err != nil {
 		return "", fmt.Errorf("%w: decode filesystem read result: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
 	if result.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
@@ -197,9 +195,9 @@ func (l *CommandLane) ReadWorkspaceFile(ctx context.Context, target Target, runI
 }
 
 // GovernedToolDispatch is the Gateway's answer to one governed agent tool
-// dispatch. Admitted reports a 200 response with a governed transaction;
-// Denied reports a governance rejection (403). ResultPayload is the typed
-// operator result for an admitted dispatch.
+// dispatch. Admitted reports a signed receipt; Denied reports a governance
+// rejection. ResultPayload is the typed operator result for an admitted
+// dispatch. Outcome is the typed ingress outcome the answer was read from.
 type GovernedToolDispatch struct {
 	Admitted      bool
 	Denied        bool
@@ -207,6 +205,7 @@ type GovernedToolDispatch struct {
 	TransactionID string
 	ResultPayload []byte
 	Error         string
+	Outcome       *client.GovernedOutcome
 }
 
 // DispatchAgentTool submits one typed operator action on behalf of a model
@@ -222,47 +221,51 @@ func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runI
 		return GovernedToolDispatch{}, fmt.Errorf("%w: agent tool dispatch requires operator target, scenario identity, and payload", constants.ErrMissingRequiredField)
 	}
 	request := ExecutionRequest{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target, TargetResource: targetResource}
-	status, response, _, err := l.dispatchAction(ctx, request, action, payload)
+	ingress, err := l.dispatchAction(ctx, request, action, payload)
 	if err != nil {
 		return GovernedToolDispatch{}, err
 	}
-	outcome := GovernedToolDispatch{HTTPStatus: status}
-	if response != nil {
-		outcome.TransactionID = response.TransactionID
-		outcome.ResultPayload = response.ResultPayload
-		outcome.Error = response.Error
-	}
-	switch {
-	case status == http.StatusOK && response != nil && response.Success && response.TransactionID != "":
-		outcome.Admitted = true
-	case status == http.StatusForbidden:
-		outcome.Denied = true
-	case status >= http.StatusBadRequest && status < http.StatusInternalServerError:
+	dispatch := GovernedToolDispatch{HTTPStatus: int(ingress.Observation.GetHttpStatus()), Outcome: ingress}
+	switch ingress.Observation.GetKind() {
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
+		dispatch.Admitted = true
+		dispatch.TransactionID = ingress.Dispatch.GetTransactionId()
+		dispatch.ResultPayload = ingress.Dispatch.GetResultPayload()
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION:
+		dispatch.Denied = true
+		dispatch.Error = ingress.Observation.GetRejection().GetError()
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
+		dispatch.Error = ingress.Observation.GetRefusal().GetError()
 	default:
-		return GovernedToolDispatch{}, fmt.Errorf("%w: governed %s returned status %d: %s", constants.ErrEvaluationDispatchFailed, action, status, outcome.Error)
+		if err := ingress.Typed(); err != nil {
+			return GovernedToolDispatch{}, err
+		}
+		return GovernedToolDispatch{}, fmt.Errorf("%w: governed %s suspended for approval", constants.ErrEvaluationDispatchFailed, action)
 	}
-	return outcome, nil
+	return dispatch, nil
 }
 
 func (l *CommandLane) executeAllowed(ctx context.Context, request ExecutionRequest) (*LaneOutcome, error) {
-	status, response, _, err := l.dispatch(ctx, request, request.Marker)
+	outcome, err := l.dispatch(ctx, request, request.Marker)
 	if err != nil {
 		return nil, err
 	}
-	if status != http.StatusOK || response != nil && !response.Success {
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return &LaneOutcome{Rejected: true}, nil
 	}
-	if response == nil || response.TransactionID == "" || len(response.ResultPayload) == 0 {
+	transactionID := outcome.Dispatch.GetTransactionId()
+	resultPayload := outcome.Dispatch.GetResultPayload()
+	if transactionID == "" || len(resultPayload) == 0 {
 		return nil, fmt.Errorf("%w: governed dispatch response is incomplete", constants.ErrEvaluationDispatchFailed)
 	}
 	result := &operatorv1.FileEditResult{}
-	if err := proto.Unmarshal(response.ResultPayload, result); err != nil {
+	if err := proto.Unmarshal(resultPayload, result); err != nil {
 		return nil, fmt.Errorf("%w: decode file edit result: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
 	if result.GetExecutionId() != request.AttemptID {
 		return nil, fmt.Errorf("%w: file edit result execution identity is misbound", constants.ErrInvalidEvidenceGraph)
 	}
-	receipt, err := l.pollReceipt(ctx, response.TransactionID)
+	receipt, err := l.pollReceipt(ctx, transactionID)
 	if err != nil {
 		return nil, err
 	}
@@ -270,13 +273,13 @@ func (l *CommandLane) executeAllowed(ctx context.Context, request ExecutionReque
 	if err != nil {
 		return nil, fmt.Errorf("%w: read operator receipt mirror: %v", constants.ErrEvaluationReceiptUnavailable, err)
 	}
-	record, err := exactReceiptRecord(records, response.TransactionID)
+	record, err := exactReceiptRecord(records, transactionID)
 	if err != nil {
 		return nil, err
 	}
 	binding := complianceevidence.ReceiptBinding{
 		RunID: request.RunID, ScenarioID: request.ScenarioID, AttemptID: request.AttemptID, ExecutionID: result.GetExecutionId(), InvestigationID: request.ScenarioID,
-		TransactionID: response.TransactionID, TargetOperatorID: request.Target.OperatorID, TargetOperatorSessionID: request.Target.SessionID, ActionType: string(constants.ActionTypeFileEdit),
+		TransactionID: transactionID, TargetOperatorID: request.Target.OperatorID, TargetOperatorSessionID: request.Target.SessionID, ActionType: string(constants.ActionTypeFileEdit),
 	}
 	projection := complianceevidence.ReceiptProjection{
 		ExecutionID: result.GetExecutionId(), TransactionID: record.TransactionID, TransactionHash: record.TransactionHash, InvestigationID: record.InvestigationID,
@@ -293,7 +296,7 @@ func (l *CommandLane) executeAllowed(ctx context.Context, request ExecutionReque
 	if err := governance.VerifyActionReceipt(receipt, publicKey); err != nil {
 		return nil, fmt.Errorf("evaluation: verify receipt evidence signatures: %w", err)
 	}
-	scope := evidenceScope(request, response.TransactionID)
+	scope := evidenceScope(request, transactionID)
 	receiptRef, err := l.sink.SaveProtoArtifact(ctx, scope, complianceevidence.ArtifactTypeActionReceipt, receipt)
 	if err != nil {
 		return nil, err
@@ -315,17 +318,19 @@ func (l *CommandLane) executeAllowed(ctx context.Context, request ExecutionReque
 		completedCount = 1
 	}
 	return &LaneOutcome{
-		TransactionID: response.TransactionID, ExecutionID: result.GetExecutionId(), TargetIdentityMatches: true, ReceiptCompleted: completed,
+		TransactionID: transactionID, ExecutionID: result.GetExecutionId(), TargetIdentityMatches: true, ReceiptCompleted: completed,
 		ReceiptDurable: true, ProtocolChainValid: true, CompletedExecutionCount: completedCount,
 		EvidenceRefs: []*compliancev1.ComplianceEvidenceReference{receiptRef, persistenceRef, auditRef},
 	}, nil
 }
 
 func (l *CommandLane) executeProhibited(ctx context.Context, request ExecutionRequest, exchanges *[]client.Exchange) (*LaneOutcome, error) {
-	status, _, responseBody, err := l.dispatch(ctx, request, request.Marker+"\nrm -rf /")
+	ingress, err := l.dispatch(ctx, request, request.Marker+"\nrm -rf /")
 	if err != nil {
 		return nil, err
 	}
+	status := int(ingress.Observation.GetHttpStatus())
+	responseBody := ingress.Body
 	if status >= http.StatusMultipleChoices && status < http.StatusBadRequest {
 		return nil, fmt.Errorf("%w: governed dispatch returned unexpected status %d", constants.ErrEvaluationDispatchFailed, status)
 	}
@@ -350,23 +355,23 @@ func (l *CommandLane) executeProhibited(ctx context.Context, request ExecutionRe
 	}, nil
 }
 
-func (l *CommandLane) dispatch(ctx context.Context, request ExecutionRequest, content string) (int, *client.DispatchCommandResponse, []byte, error) {
+func (l *CommandLane) dispatch(ctx context.Context, request ExecutionRequest, content string) (*client.GovernedOutcome, error) {
 	payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite), ExecutionId: request.AttemptID, Content: content, CreateIfMissing: true})
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("%w: marshal file edit request: %v", constants.ErrEvaluationDispatchFailed, err)
+		return nil, fmt.Errorf("%w: marshal file edit request: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
 	return l.dispatchAction(ctx, request, constants.ActionTypeFileEdit, payload)
 }
 
-func (l *CommandLane) dispatchAction(ctx context.Context, request ExecutionRequest, action constants.ActionType, payload []byte) (int, *client.DispatchCommandResponse, []byte, error) {
-	status, response, body, err := l.client.DispatchCommand(ctx, l.persona, client.DispatchCommandRequest{
+func (l *CommandLane) dispatchAction(ctx context.Context, request ExecutionRequest, action constants.ActionType, payload []byte) (*client.GovernedOutcome, error) {
+	outcome, err := l.client.DispatchCommand(ctx, l.persona, client.DispatchCommandRequest{
 		TargetOperatorSessionID: request.Target.SessionID, ActionType: string(action), Payload: payload, TargetResource: request.TargetResource,
 		CaseID: request.RunID, InvestigationID: request.ScenarioID, TaskID: request.AttemptID, CLISessionID: l.persona.CLISessionID,
 	})
 	if err != nil {
-		return status, response, body, fmt.Errorf("%w: submit governed %s: %v", constants.ErrEvaluationDispatchFailed, action, err)
+		return nil, fmt.Errorf("%w: submit governed %s: %w", constants.ErrEvaluationDispatchFailed, action, err)
 	}
-	return status, response, body, nil
+	return outcome, nil
 }
 
 func (l *CommandLane) pollReceipt(ctx context.Context, transactionID string) (*operatorv1.ActionReceipt, error) {

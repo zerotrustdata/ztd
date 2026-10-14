@@ -268,15 +268,14 @@ func (c *Client) stateRoot(ctx context.Context, baseURL string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	var h struct {
-		StateMerkleRoot string `json:"state_merkle_root"`
-		StateRoot       string `json:"state_root"`
+	var h models.StateResponse
+	if err := json.Unmarshal(body, &h); err != nil {
+		return "", fmt.Errorf("state root: decode response: %w", err)
 	}
-	_ = json.Unmarshal(body, &h)
-	if h.StateMerkleRoot != "" {
-		return h.StateMerkleRoot, nil
+	if h.StateMerkleRoot == "" {
+		return "", fmt.Errorf("state root: %w", constants.ErrMissingRequiredField)
 	}
-	return h.StateRoot, nil // tolerate either field name
+	return h.StateMerkleRoot, nil
 }
 
 // RegisterSigner registers an Ed25519 public key as a trusted L2/principal

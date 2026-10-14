@@ -9,6 +9,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"testing"
 	"testing/synctest"
@@ -34,6 +35,7 @@ func (f embeddedEnvelopeProcessorFunc) ProcessEnvelope(ctx context.Context, wire
 
 func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T) {
 	logger := testutil.NewTestLogger()
+	actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
 	broker := NewGatewayWebSocketHandler(logger)
 	op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityObserver})}}
 	called := false
@@ -49,9 +51,12 @@ func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T
 		payload, err := protojson.Marshal(completion)
 		require.NoError(t, err)
 		broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), payload)
-		return &operatorv1.ActionReceipt{}, nil
+		receipt := &operatorv1.ActionReceipt{TransactionId: env.Id, TransactionHash: env.TransactionHash, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+		signTestReceipt(t, receipt, actuatorPriv, actuatorKeyID)
+		return receipt, nil
 	})
-	svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, processor)
+	signers := &stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}}
+	svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, signers, processor)
 	payload, err := proto.Marshal(&operatorv1.CommandRequested{Command: "echo hello", ExecutionId: "execution"})
 	require.NoError(t, err)
 	result, err := svc.Dispatch(t.Context(), DispatchRequest{TargetOperatorSessionID: op.OperatorSessionId, RequestorUserID: "user", EventType: string(constants.Event.Operator.Command.Requested), Payload: payload})
@@ -258,6 +263,7 @@ func TestEmbeddedDispatchDeadlineWhileAwaitingProcessor(t *testing.T) {
 // the dispatch returns that result, as for an outbound Operator. Without an
 // executed L5 stage the same error still fails the dispatch.
 func TestEmbeddedDispatchReturnsHandlerFailureResult(t *testing.T) {
+	actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
 	for _, tc := range []struct {
 		name     string
 		executed bool
@@ -281,9 +287,11 @@ func TestEmbeddedDispatchReturnsHandlerFailureResult(t *testing.T) {
 						Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
 					}}
 				}
+				signTestReceipt(t, receipt, actuatorPriv, actuatorKeyID)
 				return receipt, constants.ErrFileEditContentRequired
 			})
-			svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, processor)
+			signers := &stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}}
+			svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, signers, processor)
 			payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: "/tmp/ztd-eval/a.txt", Operation: string(constants.FileOperationWrite), ExecutionId: "execution"})
 			require.NoError(t, err)
 			result, err := svc.Dispatch(t.Context(), DispatchRequest{TargetOperatorSessionID: op.OperatorSessionId, RequestorUserID: "user", EventType: string(constants.EventOperatorFileEditRequested), Payload: payload, Timeout: 5 * time.Second})

@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
@@ -34,9 +35,7 @@ import (
 type laneTestClient struct {
 	health           *models.HealthResponse
 	discovered       *operatorv1.OperatorDocument
-	dispatchStatus   int
-	dispatchResponse *client.DispatchCommandResponse
-	dispatchRaw      []byte
+	dispatchOutcome  *client.GovernedOutcome
 	dispatchErr      error
 	receipts         []*operatorv1.ActionReceipt
 	receiptErr       error
@@ -58,11 +57,16 @@ func (c *laneTestClient) DiscoverRemoteOperator(context.Context) (*operatorv1.Op
 	return c.discovered, nil, nil
 }
 
-func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, request client.DispatchCommandRequest) (int, *client.DispatchCommandResponse, []byte, error) {
+func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, request client.DispatchCommandRequest) (*client.GovernedOutcome, error) {
 	c.dispatchRequests = append(c.dispatchRequests, request)
 	requestBody, _ := json.Marshal(request)
-	c.record(client.Exchange{Method: http.MethodPost, ReqBody: requestBody, Status: c.dispatchStatus, RespBody: append(json.RawMessage(nil), c.dispatchRaw...)})
-	return c.dispatchStatus, c.dispatchResponse, c.dispatchRaw, c.dispatchErr
+	exchange := client.Exchange{Method: http.MethodPost, ReqBody: requestBody}
+	if c.dispatchOutcome != nil {
+		exchange.Status = int(c.dispatchOutcome.Observation.GetHttpStatus())
+		exchange.RespBody = append(json.RawMessage(nil), c.dispatchOutcome.Body...)
+	}
+	c.record(exchange)
+	return c.dispatchOutcome, c.dispatchErr
 }
 
 func (c *laneTestClient) GetActionReceipt(context.Context, string, ...client.Persona) (*operatorv1.ActionReceipt, []byte, error) {
@@ -201,9 +205,8 @@ func TestCommandLane_AllowedAttemptVerifiesAndPersistsBoundEvidence(t *testing.T
 	require.NoError(t, err)
 	auditRaw = append(auditRaw, '\n')
 	fakeClient := &laneTestClient{
-		dispatchStatus:   http.StatusOK,
-		dispatchResponse: &client.DispatchCommandResponse{Success: true, TransactionID: receipt.TransactionId, ActionType: string(constants.ActionTypeFileEdit), ResultPayload: resultPayload},
-		dispatchRaw:      []byte(`{"success":true}`), receipts: []*operatorv1.ActionReceipt{receipt}, records: []*models.ActionReceiptRecord{record}, auditRaw: auditRaw, publicKey: publicKey,
+		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: receipt.TransactionId, ActionType: string(constants.ActionTypeFileEdit), ResultPayload: resultPayload, Receipt: receipt}),
+		receipts:        []*operatorv1.ActionReceipt{receipt}, records: []*models.ActionReceiptRecord{record}, auditRaw: auditRaw, publicKey: publicKey,
 	}
 	sink := &laneTestArtifactSink{}
 	lane := NewCommandLane(fakeClient, sink, client.Persona{CLISessionID: "cli-session-1", UserID: "user-1"}, time.Millisecond, time.Second)
@@ -245,23 +248,21 @@ func TestCommandLane_ObservedPlatformOutcomesRemainVerdictInputs(t *testing.T) {
 	tests := []struct {
 		name           string
 		request        ExecutionRequest
-		status         int
-		response       *client.DispatchCommandResponse
-		raw            []byte
+		outcome        *client.GovernedOutcome
 		records        []*models.ActionReceiptRecord
 		wantRejected   bool
 		wantAttributed bool
 		wantCount      int64
 	}{
-		{name: "allowed non-success response is rejected outcome", request: laneExecutionRequest(false), status: http.StatusInternalServerError, response: &client.DispatchCommandResponse{}, raw: []byte(`{"error":"rejected"}`), wantRejected: true},
-		{name: "prohibited correlated L1 rejection", request: laneExecutionRequest(true), status: http.StatusInternalServerError, response: &client.DispatchCommandResponse{}, raw: []byte(`{"error":"` + constants.ErrTxL1ValidationFailed.Error() + `"}`), wantRejected: true, wantAttributed: true},
-		{name: "prohibited non-rejection is platform defect", request: laneExecutionRequest(true), status: http.StatusOK, response: &client.DispatchCommandResponse{Success: true}, raw: []byte(`{"success":true}`)},
+		{name: "allowed rejection is rejected outcome", request: laneExecutionRequest(false), outcome: laneRejectionOutcome(t, http.StatusForbidden, laneRejection("rejected")), wantRejected: true},
+		{name: "prohibited correlated L1 rejection", request: laneExecutionRequest(true), outcome: laneL1RejectionOutcome(t), wantRejected: true, wantAttributed: true},
+		{name: "prohibited non-rejection is platform defect", request: laneExecutionRequest(true), outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-2", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-2"}})},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			auditRaw, err := json.Marshal(&models.AuditReceiptsResponse{Success: true, Receipts: test.records})
 			require.NoError(t, err)
-			fakeClient := &laneTestClient{dispatchStatus: test.status, dispatchResponse: test.response, dispatchRaw: test.raw, records: test.records, auditRaw: auditRaw}
+			fakeClient := &laneTestClient{dispatchOutcome: test.outcome, records: test.records, auditRaw: auditRaw}
 			lane := NewCommandLane(fakeClient, &laneTestArtifactSink{}, client.Persona{CLISessionID: "cli-session-1"}, time.Millisecond, time.Second)
 			outcome, err := lane.Execute(context.Background(), test.request)
 			require.NoError(t, err)
@@ -284,7 +285,7 @@ func TestCommandLane_ProhibitedAttemptCountsOnlyCorrelatedCompletedReceipts(t *t
 	}
 	auditRaw, err := json.Marshal(&models.AuditReceiptsResponse{Success: true, Receipts: records})
 	require.NoError(t, err)
-	fakeClient := &laneTestClient{dispatchStatus: http.StatusInternalServerError, dispatchResponse: &client.DispatchCommandResponse{}, dispatchRaw: []byte(`{"error":"` + constants.ErrTxL1ValidationFailed.Error() + `"}`), records: records, auditRaw: auditRaw}
+	fakeClient := &laneTestClient{dispatchOutcome: laneL1RejectionOutcome(t), records: records, auditRaw: auditRaw}
 	lane := NewCommandLane(fakeClient, &laneTestArtifactSink{}, client.Persona{}, time.Millisecond, time.Second)
 
 	outcome, err := lane.Execute(context.Background(), request)
@@ -303,7 +304,7 @@ func TestCommandLane_FailsClosedForUnavailableOrInvalidReceiptEvidence(t *testin
 		record := laneReceiptRecord(request, receipt)
 		auditRaw, marshalErr := json.Marshal(&models.AuditReceiptsResponse{Success: true, Receipts: []*models.ActionReceiptRecord{record}})
 		require.NoError(t, marshalErr)
-		return &laneTestClient{dispatchStatus: http.StatusOK, dispatchResponse: &client.DispatchCommandResponse{Success: true, TransactionID: receipt.TransactionId, ResultPayload: resultPayload}, dispatchRaw: []byte(`{"success":true}`), receipts: []*operatorv1.ActionReceipt{receipt}, records: []*models.ActionReceiptRecord{record}, auditRaw: auditRaw, publicKey: publicKey}
+		return &laneTestClient{dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: receipt.TransactionId, ResultPayload: resultPayload, Receipt: receipt}), receipts: []*operatorv1.ActionReceipt{receipt}, records: []*models.ActionReceiptRecord{record}, auditRaw: auditRaw, publicKey: publicKey}
 	}
 	tests := []struct {
 		name    string
@@ -338,7 +339,7 @@ func TestCommandLane_ProhibitedCompletedRecordWithoutCanonicalReceiptIsInvalidEv
 	records := []*models.ActionReceiptRecord{{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 	auditRaw, err := json.Marshal(&models.AuditReceiptsResponse{Success: true, Receipts: records})
 	require.NoError(t, err)
-	fakeClient := &laneTestClient{dispatchStatus: http.StatusInternalServerError, dispatchResponse: &client.DispatchCommandResponse{}, dispatchRaw: []byte(`{"error":"` + constants.ErrTxL1ValidationFailed.Error() + `"}`), records: records, auditRaw: auditRaw}
+	fakeClient := &laneTestClient{dispatchOutcome: laneL1RejectionOutcome(t), records: records, auditRaw: auditRaw}
 	lane := NewCommandLane(fakeClient, &laneTestArtifactSink{}, client.Persona{}, time.Millisecond, time.Second)
 
 	outcome, err := lane.Execute(context.Background(), request)
@@ -407,12 +408,10 @@ func artifactTypes(artifacts []laneTestArtifact) []string {
 // and only return once a completed receipt confirms it landed, so a
 // scenario's expected file_read_on_operator/recursive_grep_search target
 // exists before the chat request is sent.
-func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndWaitsForReceipt(t *testing.T) {
+func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsSignedReceipt(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	fakeClient := &laneTestClient{
-		dispatchStatus:   http.StatusOK,
-		dispatchResponse: &client.DispatchCommandResponse{Success: true, TransactionID: "tx-1"},
-		receipts:         []*operatorv1.ActionReceipt{{TransactionId: "tx-1", FinalPersistenceAttestation: &operatorv1.ReceiptPersistenceAttestation{TransactionId: "tx-1"}}},
+		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1"}}),
 	}
 	lane := NewCommandLane(fakeClient, &laneTestArtifactSink{}, client.Persona{CLISessionID: "cli-session-1"}, time.Millisecond, time.Second)
 	absPath := "/home/op/workspaces/ws-0123456789abcdef/net/network-summary.txt"
@@ -434,12 +433,12 @@ func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndWaitsForReceip
 	assert.Equal(t, content, fileEdit.Content)
 	assert.True(t, fileEdit.CreateIfMissing)
 	assert.Equal(t, string(constants.FileOperationWrite), fileEdit.Operation)
-	assert.Equal(t, 1, fakeClient.receiptCalls)
+	assert.Zero(t, fakeClient.receiptCalls, "the receipt is read from the typed dispatch outcome, not polled")
 }
 
 func TestCommandLane_WriteWorkspaceFile_FailsClosedOnRejectedDispatch(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
-	fakeClient := &laneTestClient{dispatchStatus: http.StatusOK, dispatchResponse: &client.DispatchCommandResponse{Success: false}}
+	fakeClient := &laneTestClient{dispatchOutcome: laneRejectionOutcome(t, http.StatusForbidden, laneRejection("rejected"))}
 	lane := NewCommandLane(fakeClient, &laneTestArtifactSink{}, client.Persona{}, time.Millisecond, time.Second)
 
 	err := lane.WriteWorkspaceFile(context.Background(), target, "run-1", "tool-arg-file-path", "attempt-1", "/home/op/workspaces/ws-0123456789abcdef/net/network-summary.txt", "upstream_host=payments.internal.example")
@@ -464,8 +463,7 @@ func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent
 	})
 	require.NoError(t, err)
 	fakeClient := &laneTestClient{
-		dispatchStatus:   http.StatusOK,
-		dispatchResponse: &client.DispatchCommandResponse{Success: true, TransactionID: "tx-1", ResultPayload: payload},
+		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: payload, Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1"}}),
 	}
 	lane := NewCommandLane(fakeClient, &laneTestArtifactSink{}, client.Persona{CLISessionID: "cli-session-1"}, time.Millisecond, time.Second)
 
@@ -488,17 +486,18 @@ func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	failed, err := proto.Marshal(&operatorv1.FsReadResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "no such file"})
 	require.NoError(t, err)
+	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1"}
 	tests := []struct {
-		name     string
-		response *client.DispatchCommandResponse
+		name    string
+		outcome *client.GovernedOutcome
 	}{
-		{"dispatch rejected", &client.DispatchCommandResponse{Success: false}},
-		{"no result payload", &client.DispatchCommandResponse{Success: true, TransactionID: "tx-1"}},
-		{"operator read failed", &client.DispatchCommandResponse{Success: true, TransactionID: "tx-1", ResultPayload: failed}},
+		{"dispatch rejected", laneRejectionOutcome(t, http.StatusForbidden, laneRejection("rejected"))},
+		{"no result payload", laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: receipt})},
+		{"operator read failed", laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: failed, Receipt: receipt})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lane := NewCommandLane(&laneTestClient{dispatchStatus: http.StatusOK, dispatchResponse: tt.response}, &laneTestArtifactSink{}, client.Persona{}, time.Millisecond, time.Second)
+			lane := NewCommandLane(&laneTestClient{dispatchOutcome: tt.outcome}, &laneTestArtifactSink{}, client.Persona{}, time.Millisecond, time.Second)
 
 			_, err := lane.ReadWorkspaceFile(context.Background(), target, "run-1", "environment-canary", "attempt-1", "/home/op/workspaces/ws-0123456789abcdef/missing.txt")
 
@@ -513,4 +512,42 @@ func TestCommandLane_ReadWorkspaceFile_RequiresOperatorTargetAndPath(t *testing.
 	_, err := lane.ReadWorkspaceFile(context.Background(), Target{}, "run-1", "scenario-1", "attempt-1", "")
 
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+}
+
+// laneCanonicalBody renders msg with the canonical protojson marshaller, the
+// bytes the Gateway writes for the same answer.
+func laneCanonicalBody(t *testing.T, msg proto.Message) []byte {
+	t.Helper()
+	body, err := response.MarshalProtoJSONCanonical(msg)
+	require.NoError(t, err)
+	return body
+}
+
+// laneReceiptOutcome is the typed outcome of a 200 dispatch the Operator completed.
+func laneReceiptOutcome(t *testing.T, dispatched *operatorv1.GovernedDispatchResult) *client.GovernedOutcome {
+	t.Helper()
+	return &client.GovernedOutcome{
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, HttpStatus: http.StatusOK, Receipt: dispatched.GetReceipt()},
+		Dispatch:    dispatched,
+		Body:        laneCanonicalBody(t, dispatched),
+	}
+}
+
+// laneRejectionOutcome is the typed outcome of a signed governance rejection.
+func laneRejectionOutcome(t *testing.T, status int, rejection *operatorv1.GovernanceRejection) *client.GovernedOutcome {
+	t.Helper()
+	return &client.GovernedOutcome{
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, HttpStatus: int32(status), Rejection: rejection},
+		Body:        laneCanonicalBody(t, rejection),
+	}
+}
+
+// laneL1RejectionOutcome is the typed outcome of a rejection at L1 doctrine.
+func laneL1RejectionOutcome(t *testing.T) *client.GovernedOutcome {
+	t.Helper()
+	return laneRejectionOutcome(t, http.StatusForbidden, laneRejection(constants.ErrTxL1ValidationFailed.Error()))
+}
+
+func laneRejection(message string) *operatorv1.GovernanceRejection {
+	return &operatorv1.GovernanceRejection{Error: message, Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-rejected"}}
 }

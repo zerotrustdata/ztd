@@ -1498,6 +1498,82 @@
                 }
             }
         },
+        "/api/v1/operators/commands": {
+            "post": {
+                "description": "Constructs a governed envelope for the target Operator session, waits for the\nterminal result and the Operator's verified final receipt, and returns both.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operators"
+                ],
+                "summary": "Dispatch governed operator command",
+                "parameters": [
+                    {
+                        "description": "Dispatch request (JSON)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/gateway.OperatorCommandRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Terminal result with the verified final ActionReceipt",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.GovernedDispatchResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request — malformed request or unknown event type",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden — GovernanceRejection carrying the signed L4 receipt; IngressRefusal when refused before L4",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.GovernanceRejection"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found — target operator session does not resolve",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity — target cannot run the command",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable — GovernanceRejection or IngressRefusal, per the failing check",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.GovernanceRejection"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout — no terminal result and receipt before the deadline",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/operators/validate": {
             "post": {
                 "description": "Validates the exact active operator-session, CLI-session, and user binding. The Gateway is authoritative; callers authenticate with an enrolled application mTLS certificate.",
@@ -2814,6 +2890,41 @@
                 "UserStatusActive",
                 "UserStatusDisabled"
             ]
+        },
+        "gateway.OperatorCommandRequest": {
+            "type": "object",
+            "properties": {
+                "case_id": {
+                    "type": "string"
+                },
+                "cli_session_id": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "investigation_id": {
+                    "type": "string"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "target_operator_session_id": {
+                    "type": "string"
+                },
+                "target_resource": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "web_session_id": {
+                    "type": "string"
+                }
+            }
         },
         "models.ActionReceiptRecord": {
             "type": "object",
@@ -4739,6 +4850,17 @@
                 "ExecutionStatus_EXECUTION_STATUS_TIMEOUT"
             ]
         },
+        "operatorv1.GovernanceRejection": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "receipt": {
+                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                }
+            }
+        },
         "operatorv1.GovernanceRejectionCode": {
             "type": "integer",
             "format": "int32",
@@ -4794,6 +4916,33 @@
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID",
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN"
             ]
+        },
+        "operatorv1.GovernedDispatchResult": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "inference_result": {
+                    "$ref": "#/definitions/operatorv1.InferenceResult"
+                },
+                "receipt": {
+                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                },
+                "result_payload": {
+                    "description": "result_payload is the proto-marshaled terminal operator result for event_type\n(for example FsReadResult), the same bytes the dispatch response carries today.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "transaction_id": {
+                    "type": "string"
+                }
+            }
         },
         "operatorv1.InferenceDispatchFailure": {
             "type": "object",

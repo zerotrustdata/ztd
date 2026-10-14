@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -52,6 +53,10 @@ type PasskeyRegistrarOptions struct {
 	// output is testable from the coordinator layer. Defaults to a no-op
 	// stub when nil, mirroring the coordinator's own OutputFunc default.
 	Out OutputFunc
+
+	// Logger receives debug lines for SSE events the registrar skips. Defaults
+	// to slog.Default() when nil.
+	Logger *slog.Logger
 }
 
 // passkeyRegistrar is the hardened implementation of the PasskeyRegistrar
@@ -66,6 +71,7 @@ type passkeyRegistrar struct {
 	browser        func(string) error
 	out            OutputFunc
 	programFactory func(enrollModel) programRunner
+	logger         *slog.Logger
 }
 
 // programRunner is the subset of *tea.Program used by Register. Tests inject
@@ -93,12 +99,17 @@ func newPasskeyRegistrar(fileSvc fs.RuntimeFileService, cfg *config.Config, opts
 	if out == nil {
 		out = func(string, ...any) {} // no-op default; coordinator wires its own
 	}
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	r := &passkeyRegistrar{
 		fileSvc: fileSvc,
 		cfg:     cfg,
 		timeout: timeout,
 		browser: browser,
 		out:     out,
+		logger:  logger,
 	}
 	r.programFactory = func(m enrollModel) programRunner { return tea.NewProgram(m) }
 	return r
@@ -324,7 +335,10 @@ func (r *passkeyRegistrar) monitorPasskeyRegistration(ctx context.Context, sseCl
 			var inner struct {
 				Type string `json:"type"`
 			}
-			_ = json.Unmarshal(envelope.Event, &inner)
+			if err := json.Unmarshal(envelope.Event, &inner); err != nil {
+				r.logger.Debug("passkey enrollment: skipping SSE event with undecodable inner event", "error", err)
+				return
+			}
 			innerType = inner.Type
 		}
 

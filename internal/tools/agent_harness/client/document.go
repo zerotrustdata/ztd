@@ -107,28 +107,32 @@ type DocumentDeleteRequest struct {
 // (string, number, bool, etc.) that the caller unmarshals as needed.
 type DocumentResponse map[string]json.RawMessage
 
-// GetString extracts a string field from a DocumentResponse. Returns "" if
-// the field is absent or not a JSON string.
-func (d DocumentResponse) GetString(field string) string {
+// GetString extracts a string field from a DocumentResponse. The bool is false
+// when the field is absent or not a JSON string.
+func (d DocumentResponse) GetString(field string) (string, bool) {
 	raw, ok := d[field]
 	if !ok {
-		return ""
+		return "", false
 	}
 	var s string
-	_ = json.Unmarshal(raw, &s)
-	return s
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", false
+	}
+	return s, true
 }
 
-// GetBool extracts a bool field from a DocumentResponse. Returns false if the
-// field is absent or not a JSON bool.
-func (d DocumentResponse) GetBool(field string) bool {
+// GetBool extracts a bool field from a DocumentResponse. The bool is false when
+// the field is absent or not a JSON bool.
+func (d DocumentResponse) GetBool(field string) (bool, bool) {
 	raw, ok := d[field]
 	if !ok {
-		return false
+		return false, false
 	}
 	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return false, false
+	}
+	return b, true
 }
 
 // SubmitDocumentUpdate builds a GovernanceEnvelope wrapping a

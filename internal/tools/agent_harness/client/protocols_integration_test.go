@@ -26,6 +26,14 @@ import (
 )
 
 func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *testing.T) {
+	dispatched := &operatorv1.GovernedDispatchResult{
+		TransactionId: "tx-1",
+		EventType:     string(constants.EventOperatorFileEditRequested),
+		ActionType:    "FILE_EDIT",
+		ResultPayload: []byte("result"),
+		Receipt:       outcomeReceipt("tx-1"),
+	}
+	responseBody := canonicalBody(t, dispatched)
 	var received DispatchCommandRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -33,7 +41,7 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 		assert.Equal(t, "cli-1", r.Header.Get(constants.HeaderCLISessionID))
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`{"success":true,"transaction_id":"tx-1","action_type":"FILE_EDIT","result_payload":"cmVzdWx0"}`))
+		_, err := w.Write(responseBody)
 		require.NoError(t, err)
 	}))
 	defer server.Close()
@@ -51,16 +59,18 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 		TaskID:                  "attempt-1",
 		CLISessionID:            "cli-1",
 	}
-	status, response, raw, err := client.DispatchCommand(context.Background(), Persona{ID: "evaluation", CLISessionID: "cli-1"}, request)
+	outcome, err := client.DispatchCommand(context.Background(), Persona{ID: "evaluation", CLISessionID: "cli-1"}, request)
 
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, status)
+	require.NoError(t, outcome.Typed())
+	assert.Equal(t, int32(http.StatusOK), outcome.Observation.GetHttpStatus())
 	assert.Equal(t, "session-1", received.TargetOperatorSessionID)
 	assert.Equal(t, "FILE_EDIT", received.ActionType)
 	assert.Equal(t, string(constants.EventOperatorFileEditRequested), received.EventType)
-	assert.Equal(t, "tx-1", response.TransactionID)
-	assert.Equal(t, []byte("result"), response.ResultPayload)
-	assert.JSONEq(t, `{"success":true,"transaction_id":"tx-1","action_type":"FILE_EDIT","result_payload":"cmVzdWx0"}`, string(raw))
+	require.NotNil(t, outcome.Dispatch)
+	assert.Equal(t, "tx-1", outcome.Dispatch.GetTransactionId())
+	assert.Equal(t, []byte("result"), outcome.Dispatch.GetResultPayload())
+	assert.Equal(t, responseBody, outcome.Body)
 	require.Len(t, exchanges, 1)
 	assert.Equal(t, constants.APIPaths.OperatorsCommands, exchanges[0].URL[len(server.URL):])
 }
@@ -101,11 +111,12 @@ func TestDispatchCommand_ResolvesEventTypeForGovernedActions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			responseBody := canonicalBody(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: outcomeReceipt("tx-1")})
 			var received DispatchCommandRequest
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 				w.Header().Set("Content-Type", "application/json")
-				_, err := w.Write([]byte(`{"success":true,"transaction_id":"tx-1"}`))
+				_, err := w.Write(responseBody)
 				require.NoError(t, err)
 			}))
 			t.Cleanup(server.Close)
@@ -120,9 +131,10 @@ func TestDispatchCommand_ResolvesEventTypeForGovernedActions(t *testing.T) {
 				Payload:                 []byte("payload"),
 				CLISessionID:            "cli-1",
 			}
-			status, _, _, err := client.DispatchCommand(context.Background(), Persona{ID: "evaluation", CLISessionID: "cli-1"}, request)
+			outcome, err := client.DispatchCommand(context.Background(), Persona{ID: "evaluation", CLISessionID: "cli-1"}, request)
 			require.NoError(t, err)
-			assert.Equal(t, http.StatusOK, status)
+			require.NoError(t, outcome.Typed())
+			assert.Equal(t, int32(http.StatusOK), outcome.Observation.GetHttpStatus())
 			assert.Equal(t, tt.wantEventType, received.EventType)
 			assert.Equal(t, tt.wantAction, received.ActionType)
 		})
@@ -700,7 +712,7 @@ func TestA2ACall(t *testing.T) {
 	}
 }
 
-func TestRPC(t *testing.T) {
+func TestRPC_DecodesEnvelopeStrictly(t *testing.T) {
 	tests := []struct {
 		name         string
 		responseBody string
@@ -709,22 +721,25 @@ func TestRPC(t *testing.T) {
 		{
 			name:         "successful RPC",
 			responseBody: `{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`,
-			wantErr:      false,
 		},
 		{
 			name:         "RPC error",
 			responseBody: `{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}`,
-			wantErr:      false,
 		},
 		{
 			name:         "invalid JSON response",
 			responseBody: `invalid json`,
-			wantErr:      false, // rpc() is lenient
+			wantErr:      true,
 		},
 		{
 			name:         "empty response",
 			responseBody: ``,
-			wantErr:      false,
+			wantErr:      true,
+		},
+		{
+			name:         "unknown envelope field",
+			responseBody: `{"jsonrpc":"2.0","id":1,"result":{},"extra":true}`,
+			wantErr:      true,
 		},
 	}
 
@@ -750,15 +765,15 @@ func TestRPC(t *testing.T) {
 			ctx := context.Background()
 			p := Persona{ID: "test-client"}
 
-			resp, err := client.rpc(ctx, p, "/test", "test.method", map[string]any{})
+			resp, err := client.rpcResponse(ctx, p, "/test", "test.method", map[string]any{})
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("rpc() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("rpcResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if !tt.wantErr && resp == nil {
-				t.Error("rpc() returned nil response")
+				t.Error("rpcResponse() returned nil response")
 			}
 		})
 	}

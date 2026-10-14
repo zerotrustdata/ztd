@@ -165,10 +165,10 @@ func TestCrossEnrollment_GatewayAsOperator_ApproveAndActivate(t *testing.T) {
 	// be first in the list. This proves the gateway-as-operator executes
 	// governed commands through the full L4/L5 chain.
 	resp := dispatchFsReadToOperator(t, ctx, active.OperatorSessionId)
-	assert.NotEmpty(t, resp.TransactionID, "dispatch response must carry a transaction ID")
-	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.EventType,
+	assert.NotEmpty(t, resp.GetTransactionId(), "dispatch response must carry a transaction ID")
+	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.GetEventType(),
 		"dispatch response event type must be the fs.read completed event")
-	assert.NotEmpty(t, resp.ResultPayload, "dispatch response must carry the operator result payload")
+	assert.NotEmpty(t, resp.GetResultPayload(), "dispatch response must carry the operator result payload")
 
 	// Decode the result payload as FsReadResult and assert the operator
 	// read /etc/hostname successfully. The content is the file's bytes
@@ -176,7 +176,7 @@ func TestCrossEnrollment_GatewayAsOperator_ApproveAndActivate(t *testing.T) {
 	// executed on the gateway-as-operator, not in the primary gateway
 	// process or the primary operator process.
 	var fsReadResult operatorv1.FsReadResult
-	require.NoError(t, proto.Unmarshal(resp.ResultPayload, &fsReadResult),
+	require.NoError(t, proto.Unmarshal(resp.GetResultPayload(), &fsReadResult),
 		"unmarshal FsReadResult from response payload")
 	assert.Equal(t, constants.PathEtcHostname, fsReadResult.Path,
 		"result path must match the requested path")
@@ -185,7 +185,7 @@ func TestCrossEnrollment_GatewayAsOperator_ApproveAndActivate(t *testing.T) {
 	assert.NotEmpty(t, fsReadResult.Content, "fs.read result content must not be empty")
 	assert.Greater(t, fsReadResult.SizeBytes, int64(0), "fs.read result size must be positive")
 	t.Logf("command roundtrip succeeded against gateway-as-operator: txn=%s content_size=%d",
-		resp.TransactionID, fsReadResult.SizeBytes)
+		resp.GetTransactionId(), fsReadResult.SizeBytes)
 }
 
 // TestCrossEnrollment_GatewayAsOperator_Denial verifies that denying the
@@ -323,11 +323,11 @@ func TestCrossEnrollment_GatewayAsOperator_RestartDuringPending(t *testing.T) {
 	// gateway-as-operator. This proves the full L4/L5 verification and
 	// execution chain works after restart-during-pending enrollment.
 	resp := dispatchFsReadToOperator(t, ctx, active.OperatorSessionId)
-	assert.NotEmpty(t, resp.TransactionID, "dispatch response must carry a transaction ID")
-	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.EventType,
+	assert.NotEmpty(t, resp.GetTransactionId(), "dispatch response must carry a transaction ID")
+	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.GetEventType(),
 		"dispatch response event type must be the fs.read completed event")
 	t.Logf("command roundtrip succeeded after restart-during-pending: txn=%s",
-		resp.TransactionID)
+		resp.GetTransactionId())
 }
 
 // dispatchFsReadToOperator dispatches one FS_READ command for /etc/hostname to a
@@ -336,7 +336,7 @@ func TestCrossEnrollment_GatewayAsOperator_RestartDuringPending(t *testing.T) {
 // so cross-enrollment tests prove the gateway-as-operator specifically executes
 // the command. It is not retried: the operator was discovered active, so its
 // command subscription is established.
-func dispatchFsReadToOperator(t *testing.T, ctx context.Context, operatorSessionID string) dispatchResponseJSON {
+func dispatchFsReadToOperator(t *testing.T, ctx context.Context, operatorSessionID string) *operatorv1.GovernedDispatchResult {
 	t.Helper()
 	return e2eClient.dispatchFsReadToSession(t, ctx, operatorSessionID)
 }
