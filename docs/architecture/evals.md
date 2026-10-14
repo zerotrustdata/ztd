@@ -68,7 +68,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-EVAL-PROG-01 | The native execution-boundary suite (`core-execution-boundary@1.0.0`) MUST NOT use model providers, model judges, campaigns, scheduling, or synthetic simulators. |
 | INV-EVAL-PROG-02 | Model campaigns MUST route scored model inference exclusively through governed dispatch to the selected Inference Operator session. The campaign CLI and the Gateway MUST NOT call model providers directly. |
 | INV-EVAL-PROG-03 | All evaluation run evidence MUST persist under `.ztd/data/eval/runs/<run-id>/`, separate from campaign definitions and frozen scenario artifacts under `.ztd/data/eval/campaigns/<campaign-id>/`. |
-| INV-EVAL-PROG-04 | Campaign verification (`ztd eval runs verify`) and native boundary verification (`ztd eval boundary verify`) MUST recompute bindings and signatures deterministically from persisted evidence without executing new scored actions. |
+| INV-EVAL-PROG-04 | Campaign verification (`ztd eval runs verify`) and conformance verification (`ztd eval conformance verify`) MUST recompute bindings and signatures deterministically from persisted evidence without executing new scored actions. |
 
 ### Campaign Structure (`INV-EVAL-CAMP`)
 
@@ -126,7 +126,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Native execution-boundary suite | `internal/services/evaluation/` | `ztd eval boundary run`, `ztd eval boundary verify` |
+| Native execution-boundary suite | `internal/services/evaluation/` | `ztd eval conformance run`, `ztd eval conformance verify` |
 | Campaign controller and scheduler | `internal/services/evaluation/campaign_controller.go` | `ztd eval runs start`, `resume`, `verify` |
 | Model-role agent executor | `internal/services/evaluation/campaign_agent_executor.go` | `ztd eval runs start` on model-role campaigns |
 | Formation executor (direct runner) | `internal/services/evaluation/campaign_formation_execution.go` | `ztd eval runs start` on formation campaigns |
@@ -159,7 +159,7 @@ Evaluation programs instantiate the **Confidential Edge Execution with Governed 
 ### Evaluation CLI Architecture
 
 The `ztd eval` command tree organizes platform evaluation across ten subcommands:
-- `ztd eval boundary …`: Run, list, verify, and inspect native execution-boundary test suites.
+- `ztd eval conformance …`: Run, verify, and report the governance conformance suite.
 - `ztd eval models …`: Catalog management: list, show, add, remove, import, freeze, pull, and diff model variants.
 - `ztd eval suites …`: Manage scenario suites: list, show, export, create, update, and delete.
 - `ztd eval campaigns …`: Freeze, inspect, tag platform release identity, archive, unarchive, and delete campaigns.
@@ -205,17 +205,24 @@ make gw MODEL_STORAGE_ROOT=~/.ollama/models
 The native suite (`core-execution-boundary@1.0.0`) runs under `doctrine` posture without inference dependencies:
 
 ```bash
-./ztd eval boundary run
-./ztd eval boundary verify <run-id>
-./ztd eval boundary show <run-id> --json
+./ztd eval conformance run --help
+./ztd eval conformance verify --help
+./ztd eval conformance report --help
 ```
+
+`ztd eval conformance run` drives the suite against a live native stack and persists the record. Its flags:
+- `--operator-id` and `--operator-root` select the outbound Operator, which every posture requires.
+- `--a2a-stub-listen` is the address the A2A stub listens on, and it must match the Gateway's `--a2a-downstream-url`.
+- `--attended` runs the attended cases and needs `--approver-user-id`, the user who approves them.
+
+`ztd eval conformance verify --run` recomputes one persisted run's verdicts offline. `ztd eval conformance report --run` builds the coverage report from one run per posture, at most four.
 
 Execution steps:
 1. Resolves the active Data Operator (`SelectDataOperator`).
 2. Allowed Attempt: Submits a governed file edit writing a unique marker file to `.ztd/eval/targets/ztd-eval-<run-id>.txt` via the Gateway command ingress. Confirms signed `ActionReceipt` persistence and commitment ledger append.
 3. Prohibited Attempt: Submits an equivalent malicious payload (e.g. attempting to overwrite protected runtime state or execute unauthorized binaries). Confirms immediate L1 Doctrine rejection (`ErrTxL1ValidationFailed`) with zero side effects.
 4. Independent Observation: Reads the target marker file using an independent in-process host target reader (`ztd-host-target-reader`).
-5. Offline Verification: `ztd eval boundary verify` re-computes all signatures, validates Merkle roots, checks deterministic stages, and confirms verdicts without executing new code.
+5. Offline Verification: `ztd eval conformance verify` re-computes all signatures, validates Merkle roots, checks deterministic stages, and confirms verdicts without executing new code.
 
 ### Scenario Suites and Catalog Management
 

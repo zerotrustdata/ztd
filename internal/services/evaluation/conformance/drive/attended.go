@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -43,7 +44,24 @@ func (ca clientApprovals) Subscribe(ctx context.Context, p client.Persona) (appr
 	if err != nil {
 		return nil, err
 	}
-	return sub, nil
+	return bannerStream{c: ca.c, sub: sub}, nil
+}
+
+// bannerStream is the harness approval stream. Its Wait prints the approval banner
+// before it waits on the shared subscription.
+type bannerStream struct {
+	c   *client.Client
+	sub *auth.ApprovalSubscription
+}
+
+// Wait prints the banner for txHash and waits for the human decision.
+func (s bannerStream) Wait(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+	return s.c.WaitForApproval(ctx, s.sub, txHash, userID)
+}
+
+// Close ends the subscription.
+func (s bannerStream) Close() {
+	s.sub.Close()
 }
 
 // Attended wraps the MCP or A2A driver. Cases with Attended=false pass through

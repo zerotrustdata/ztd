@@ -37,11 +37,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // mcpCmd is the parent command for MCP stdio operations.
@@ -473,7 +472,22 @@ func proxySessionToGateway(session *gatewayConn, req JSONRPCRequest) (JSONRPCRes
 // SSE event from the gateway. The event carries the resumed transaction's signed
 // receipt, which becomes the tools/call result; the request is not re-sent. SSE
 // credentials are required — there is no polling fallback.
+//
+// Only tools/call can suspend, so only it opens the approval stream. It opens the
+// stream before the call is forwarded, so an approval completed while the call is
+// in flight is already held by the subscription when Wait runs. A subscribe failure
+// fails the call before anything is forwarded.
 func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gatewayConn, req JSONRPCRequest, logger *slog.Logger) (JSONRPCResponse, error) {
+	var approvals *auth.ApprovalSubscription
+	if req.Method == "tools/call" && session.sseClient != nil && session.sseBaseURL != "" && session.cliSessionID != "" {
+		sub, err := auth.SubscribeApprovals(ctx, session.sseClient, session.sseBaseURL, session.cliSessionID)
+		if err != nil {
+			return JSONRPCResponse{}, fmt.Errorf("L3 approval: subscribe: %w", err)
+		}
+		defer sub.Close()
+		approvals = sub
+	}
+
 	resp, err := proxySessionToGateway(session, req)
 	if err != nil {
 		return resp, err
@@ -493,7 +507,7 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 		logger.Info("L3 approval required, waiting for user to authorize...", "url", suspension.ApprovalURL)
 	}
 
-	if session.sseClient == nil || session.sseBaseURL == "" || session.cliSessionID == "" {
+	if approvals == nil {
 		return resp, fmt.Errorf("L3 approval: %w", constants.ErrNotAuthenticated)
 	}
 	if session.openBrowser == nil {
@@ -507,7 +521,7 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 		fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", suspension.ApprovalURL)
 	}
 
-	receiptJSON, err := auth.WaitForApprovalSSE(ctx, session.sseClient, session.sseBaseURL, session.cliSessionID, suspension.TxHash)
+	receipt, err := approvals.Wait(ctx, suspension.TxHash, "")
 	if err != nil {
 		if logger != nil {
 			logger.Warn("L3 approval SSE wait ended", "error", err)
@@ -515,12 +529,9 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 		return resp, err
 	}
 
-	receipt := &operatorv1.ActionReceipt{}
-	if err := protojson.Unmarshal(receiptJSON, receipt); err != nil {
-		return resp, fmt.Errorf("L3 approval: decode resumed receipt: %w", err)
-	}
-	if receipt.GetTransactionHash() != suspension.TxHash {
-		return resp, fmt.Errorf("L3 approval: receipt transaction %s does not match %s: %w", receipt.GetTransactionHash(), suspension.TxHash, constants.ErrActionReceiptMissing)
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
+	if err != nil {
+		return resp, fmt.Errorf("L3 approval: encode resumed receipt: %w", err)
 	}
 	if logger != nil {
 		logger.Info("L3 approval completed, returning the resumed receipt")

@@ -23,7 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestProxyToGatewayWithRetry(t *testing.T) {
+func TestL3ApprovalProxyToGatewayWithRetry(t *testing.T) {
 	t.Run("SSE credentials missing returns ErrNotAuthenticated", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -55,6 +55,9 @@ func TestProxyToGatewayWithRetry(t *testing.T) {
 
 		sseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
+			// The Gateway flushes the 200 before any event, so the subscription connects.
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
 			<-r.Context().Done()
 		}))
 		defer sseServer.Close()

@@ -12,12 +12,12 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,8 +29,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestClient_StateRoot(t *testing.T) {
@@ -537,6 +535,9 @@ func approvalCompletedSSE(t *testing.T, w http.ResponseWriter, userID, txHash st
 	envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
 	require.NoError(t, err)
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+	// Flush like the gateway does, so a handler that holds the stream open still
+	// delivers the 200 and the frame.
+	w.(http.Flusher).Flush()
 }
 
 func TestClient_ApprovalSubscription_Success(t *testing.T) {
@@ -569,212 +570,9 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(ctx, txHash, userID)
+	receipt, err := client.WaitForApproval(ctx, sub, txHash, userID)
 	require.NoError(t, err)
 	assert.Equal(t, txHash, receipt.GetTransactionHash())
-}
-
-func TestClient_ApprovalSubscription_ReturnsResumedReceiptFromCompletionEvent(t *testing.T) {
-	const userID = "test-user-resumed-receipt"
-	const txHash = "tx-resumed-receipt-001"
-
-	statusRequests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
-			statusRequests++
-			w.Header().Set("Content-Type", "application/json")
-			require.NoError(t, json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
-				Status: string(constants.SuspendedTxStatusExpiredOrNotFound),
-			}))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-	require.NoError(t, err)
-	defer sub.Close()
-
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.NoError(t, err)
-	assert.Zero(t, statusRequests)
-
-	want := &operatorv1.ActionReceipt{}
-	require.NoError(t, protojson.Unmarshal(resumedReceiptJSON(t, txHash), want))
-	assert.True(t, proto.Equal(want, receipt), "the approval must return the event's signed receipt")
-}
-
-// TestClient_ApprovalSubscription_DeliversApprovalPublishedAfterSubscribeReturns proves
-// the subscribe-before-submit contract: the gateway releases the approval only after
-// SubscribeApprovals has returned, and the approval is in the backlog before Wait runs.
-func TestClient_ApprovalSubscription_DeliversApprovalPublishedAfterSubscribeReturns(t *testing.T) {
-	const userID = "test-user-published-after-subscribe"
-	const txHash = "tx-published-after-subscribe-001"
-
-	release := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		w.(http.Flusher).Flush()
-		<-release
-		approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
-		w.(http.Flusher).Flush()
-		<-r.Context().Done()
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-	require.NoError(t, err)
-	defer sub.Close()
-
-	// The next recorded approval closes this channel, so the test can wait for it without polling.
-	sub.mu.Lock()
-	recorded := sub.arrived
-	sub.mu.Unlock()
-	close(release)
-	select {
-	case <-recorded:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the approval published after SubscribeApprovals returned was not recorded")
-	}
-
-	sub.mu.Lock()
-	_, inBacklog := sub.completed[approvalKey{txHash: txHash, userID: userID}]
-	sub.mu.Unlock()
-	require.True(t, inBacklog, "the approval must be held for Wait before Wait is called")
-
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.NoError(t, err)
-	want := &operatorv1.ActionReceipt{}
-	require.NoError(t, protojson.Unmarshal(resumedReceiptJSON(t, txHash), want))
-	assert.True(t, proto.Equal(want, receipt), "the approval published after subscribe must be returned")
-}
-
-// TestClient_ApprovalSubscription_IgnoresApprovalsForOtherTransactionAndUser checks that
-// approvals for another transaction, or for the same transaction tagged with another
-// user, never satisfy Wait. The other-user frame carries a receipt that fails strict
-// protojson decoding, so using it would fail the wait.
-func TestClient_ApprovalSubscription_IgnoresApprovalsForOtherTransactionAndUser(t *testing.T) {
-	const userID = "test-user-ignored-frames"
-	const txHash = "tx-ignored-frames-001"
-	const otherTxHash = "tx-ignored-frames-other"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		approvalCompletedSSE(t, w, userID, otherTxHash, resumedReceiptJSON(t, otherTxHash))
-		approvalCompletedSSE(t, w, "some-other-user", txHash, json.RawMessage(`{"transaction_hash":"`+txHash+`","not_a_receipt_field":1}`))
-		approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-	require.NoError(t, err)
-	defer sub.Close()
-
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.NoError(t, err)
-	assert.Equal(t, txHash, receipt.GetTransactionHash())
-}
-
-// TestClient_ApprovalSubscription_FailsClosedWhenStreamDrops checks that a live
-// stream that ends before the approval arrives fails Wait at once, instead of
-// reconnecting live-only and losing an approval completed in the gap.
-func TestClient_ApprovalSubscription_FailsClosedWhenStreamDrops(t *testing.T) {
-	const userID = "test-user-dropped-stream"
-	const txHash = "tx-dropped-stream-001"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		approvalCompletedSSE(t, w, userID, "tx-dropped-stream-other", resumedReceiptJSON(t, "tx-dropped-stream-other"))
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-	require.NoError(t, err)
-	defer sub.Close()
-
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.Error(t, err)
-	assert.Nil(t, receipt)
-	assert.NotErrorIs(t, err, constants.ErrApprovalSSETimeout)
-}
-
-func TestClient_ApprovalSubscription_FailsClosedWhenReceiptTransactionDoesNotMatchEvent(t *testing.T) {
-	const userID = "test-user-mismatched-receipt"
-	const txHash = "tx-matched-event-001"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, "different-transaction-hash"))
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-	require.NoError(t, err)
-	defer sub.Close()
-
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-
-	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
-	assert.Nil(t, receipt)
-}
-
-func TestClient_ApprovalSubscription_FailsClosedWhenReceiptIsNotProtojson(t *testing.T) {
-	const userID = "test-user-malformed-receipt"
-	const txHash = "tx-malformed-receipt-001"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		approvalCompletedSSE(t, w, userID, txHash, json.RawMessage(`{"transaction_hash":"`+txHash+`","not_a_receipt_field":1}`))
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-	require.NoError(t, err)
-	defer sub.Close()
-
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-
-	require.Error(t, err, "a receipt with unknown fields must fail strict protojson decoding")
-	assert.Nil(t, receipt)
 }
 
 func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
@@ -816,7 +614,7 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
-	if err != constants.ErrApprovalSSETimeout {
+	if !errors.Is(err, constants.ErrApprovalSSETimeout) {
 		t.Errorf("expected ErrApprovalSSETimeout, got %v", err)
 	}
 	// The SSE subscription must carry the persona's CLI session ID as a header
@@ -824,99 +622,6 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 	if sseCLISessionID != "cli-test-session" {
 		t.Errorf("SSE subscription X-ZTD-CLI-Session-ID header: got %q, want %q", sseCLISessionID, "cli-test-session")
 	}
-}
-
-// TestClient_ApprovalSubscription_ReturnsConnectFailureWithoutRetry checks that a
-// first connection the gateway rejects is returned as an error after one request, with
-// no retry loop.
-func TestClient_ApprovalSubscription_ReturnsConnectFailureWithoutRetry(t *testing.T) {
-	tests := []struct {
-		name    string
-		status  int
-		wantErr error
-	}{
-		{name: "server error", status: http.StatusInternalServerError},
-		{name: "cli session rejected", status: http.StatusUnauthorized, wantErr: constants.ErrCLISessionRefreshRequired},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var requests atomic.Int32
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests.Add(1)
-				w.WriteHeader(tt.status)
-			}))
-			t.Cleanup(srv.Close)
-
-			client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-			require.NoError(t, err)
-
-			sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-			require.Error(t, err)
-			assert.Nil(t, sub)
-			if tt.wantErr != nil {
-				assert.ErrorIs(t, err, tt.wantErr)
-			}
-			assert.Equal(t, int32(1), requests.Load(), "a failed first connection must not be retried")
-		})
-	}
-}
-
-func TestClient_ApprovalSubscription_FailsClosedWhenCompletionEventOmitsReceipt(t *testing.T) {
-	const userID = "test-user-status-err"
-	const txHash = "tx-status-err-456"
-
-	statusRequests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			w.Header().Set("Content-Type", "text/event-stream")
-			eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-				Type:   constants.SSEEventTypeApprovalCompleted,
-				UserID: userID,
-				TxHash: txHash,
-			})
-			if err != nil {
-				t.Fatalf("marshal event: %v", err)
-			}
-			envelope := models.SSEPushPayload{
-				UserID: userID,
-				Event:  eventPayload,
-			}
-			envelopeJSON, err := json.Marshal(envelope)
-			if err != nil {
-				t.Fatalf("marshal envelope: %v", err)
-			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
-			statusRequests++
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
-				Status: string(constants.SuspendedTxStatusExpiredOrNotFound),
-				TxHash: txHash,
-			})
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer srv.Close()
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-
-	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test"})
-	require.NoError(t, err)
-	defer sub.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	receipt, err := sub.Wait(ctx, txHash, userID)
-	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
-	assert.Nil(t, receipt)
-	assert.Zero(t, statusRequests)
 }
 
 func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
@@ -971,4 +676,45 @@ func TestMCPToolsCallWithCLI_FallsBackToDoWhenNoCLIHTTP(t *testing.T) {
 	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, "fs_list", FSPathArgs{Path: "."})
 	require.NoError(t, err)
 	assert.True(t, sawRequest, "server should have received the fallback request")
+}
+
+func TestStateRoot_DecodesGatewayField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state_merkle_root":"root-abc"}`))
+	}))
+	defer server.Close()
+
+	client, err := New(config.Config{MTLSBaseURL: server.URL})
+	require.NoError(t, err)
+	root, err := client.stateRoot(context.Background(), server.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "root-abc", root)
+}
+
+func TestStateRoot_FailsClosedOnBadBody(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"malformed JSON", `{"state_merkle_root":`},
+		{"field name the Gateway never writes", `{"state_root":"root-abc"}`},
+		{"empty root after a successful decode", `{"state_merkle_root":""}`},
+		{"root field has the wrong JSON type", `{"state_merkle_root":42}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client, err := New(config.Config{MTLSBaseURL: server.URL})
+			require.NoError(t, err)
+			root, err := client.stateRoot(context.Background(), server.URL)
+			require.Error(t, err)
+			assert.Empty(t, root)
+		})
+	}
 }

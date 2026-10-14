@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -74,22 +75,69 @@ func approvalCompletedFrame(t *testing.T, userID, txHash, receiptTxHash string) 
 	return fmt.Sprintf("event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
 }
 
-func TestProxySessionToGatewayWithRetry(t *testing.T) {
-	t.Run("SSE approval returns the resumed receipt with one tools/call", func(t *testing.T) {
-		attempts := 0
+// approvalStreamServer serves the approval stream as the Gateway does: it flushes the
+// 200 before any event, writes each frame received on frames and flushes it, then
+// sends on written once the frame is on the wire. It holds the stream open until the
+// client disconnects and counts every connection.
+func approvalStreamServer(t *testing.T, frames <-chan string, written chan<- struct{}, connections *atomic.Int32) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connections.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		for {
+			select {
+			case frame := <-frames:
+				fmt.Fprint(w, frame)
+				w.(http.Flusher).Flush()
+				written <- struct{}{}
+			case <-r.Context().Done():
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// publishDuringCall puts frame on the approval stream from inside a Gateway handler and
+// waits until the stream has flushed it, so the approval is on the wire before the
+// suspended response returns. It reports false when no stream took the frame, which
+// means the bridge did not subscribe before it forwarded the call.
+func publishDuringCall(frames chan<- string, written <-chan struct{}, frame string) bool {
+	select {
+	case frames <- frame:
+	case <-time.After(5 * time.Second):
+		return false
+	}
+	select {
+	case <-written:
+		return true
+	case <-time.After(5 * time.Second):
+		return false
+	}
+}
+
+func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
+	t.Run("approval completed while the call is in flight still returns the resumed receipt", func(t *testing.T) {
+		var attempts, connections atomic.Int32
+		frames := make(chan string)
+		written := make(chan struct{}, 1)
+		sseServer := approvalStreamServer(t, frames, written, &connections)
+		frame := approvalCompletedFrame(t, "user-sse-success", "tx-sse-success", "tx-sse-success")
+
 		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			attempts++
+			attempts.Add(1)
+			if !publishDuringCall(frames, written, frame) {
+				http.Error(w, "approval stream not subscribed before the call", http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(suspendedCallResponse("tx-sse-success"))
 		}))
 		defer gatewayServer.Close()
-
-		sseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprint(w, approvalCompletedFrame(t, "user-sse-success", "tx-sse-success", "tx-sse-success"))
-		}))
-		defer sseServer.Close()
 
 		conn := &gatewayConn{
 			openBrowser:  func(string) error { return nil },
@@ -104,7 +152,8 @@ func TestProxySessionToGatewayWithRetry(t *testing.T) {
 
 		resp, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, req, nil)
 		require.NoError(t, err)
-		assert.Equal(t, 1, attempts, "the approved call must not be re-sent")
+		assert.Equal(t, int32(1), attempts.Load(), "the approved call must not be re-sent")
+		assert.Equal(t, int32(1), connections.Load(), "the call must subscribe once")
 		result, ok := resp.Result.(mcp.CallToolResult)
 		require.True(t, ok, "the approved call must return a CallToolResult")
 		assert.Nil(t, result.Suspension)
@@ -115,18 +164,22 @@ func TestProxySessionToGatewayWithRetry(t *testing.T) {
 	})
 
 	t.Run("SSE receipt for another transaction fails closed", func(t *testing.T) {
+		var connections atomic.Int32
+		frames := make(chan string)
+		written := make(chan struct{}, 1)
+		sseServer := approvalStreamServer(t, frames, written, &connections)
+		frame := approvalCompletedFrame(t, "user-sse-mismatch", "tx-sse-mismatch", "tx-other")
+
 		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !publishDuringCall(frames, written, frame) {
+				http.Error(w, "approval stream not subscribed before the call", http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(suspendedCallResponse("tx-sse-mismatch"))
 		}))
 		defer gatewayServer.Close()
-
-		sseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprint(w, approvalCompletedFrame(t, "user-sse-mismatch", "tx-sse-mismatch", "tx-other"))
-		}))
-		defer sseServer.Close()
 
 		conn := &gatewayConn{
 			openBrowser:  func(string) error { return nil },
@@ -143,6 +196,8 @@ func TestProxySessionToGatewayWithRetry(t *testing.T) {
 	})
 
 	t.Run("suspension without a transaction hash fails closed", func(t *testing.T) {
+		var connections atomic.Int32
+		sseServer := approvalStreamServer(t, make(chan string), make(chan struct{}, 1), &connections)
 		unhashed := suspendedCallResponse("")
 		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -156,7 +211,7 @@ func TestProxySessionToGatewayWithRetry(t *testing.T) {
 			client:       &http.Client{Timeout: 5 * time.Second},
 			gatewayURL:   gatewayServer.URL,
 			sseClient:    &http.Client{Timeout: 5 * time.Second},
-			sseBaseURL:   "http://unused.invalid",
+			sseBaseURL:   sseServer.URL,
 			cliSessionID: "cli-no-hash",
 		}
 
@@ -166,20 +221,15 @@ func TestProxySessionToGatewayWithRetry(t *testing.T) {
 	})
 
 	t.Run("SSE timeout returns error without polling retries", func(t *testing.T) {
-		attempts := 0
+		var attempts, connections atomic.Int32
+		sseServer := approvalStreamServer(t, make(chan string), make(chan struct{}, 1), &connections)
 		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			attempts++
+			attempts.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(suspendedCallResponse("tx-sse-timeout"))
 		}))
 		defer gatewayServer.Close()
-
-		sseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/event-stream")
-			<-r.Context().Done()
-		}))
-		defer sseServer.Close()
 
 		conn := &gatewayConn{
 			openBrowser:  func(string) error { return nil },
@@ -197,9 +247,72 @@ func TestProxySessionToGatewayWithRetry(t *testing.T) {
 
 		_, err := proxySessionToGatewayWithRetryContext(ctx, conn, req, nil)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrApprovalSSETimeout)
 		assert.Contains(t, err.Error(), "timed out")
 		// Only the initial proxy attempt — no polling retries
-		assert.Equal(t, 1, attempts)
+		assert.Equal(t, int32(1), attempts.Load())
+	})
+
+	t.Run("approval stream refusing the subscription forwards nothing", func(t *testing.T) {
+		var attempts, connections atomic.Int32
+		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(suspendedCallResponse("tx-refused"))
+		}))
+		defer gatewayServer.Close()
+
+		refusingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			connections.Add(1)
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer refusingServer.Close()
+
+		conn := &gatewayConn{
+			openBrowser:  func(string) error { return nil },
+			client:       &http.Client{Timeout: 5 * time.Second},
+			gatewayURL:   gatewayServer.URL,
+			sseClient:    &http.Client{Timeout: 5 * time.Second},
+			sseBaseURL:   refusingServer.URL,
+			cliSessionID: "cli-refused",
+		}
+
+		_, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/call"}, nil)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
+		assert.Equal(t, int32(1), connections.Load())
+		assert.Zero(t, attempts.Load(), "a call without a working approval stream must not be forwarded")
+	})
+
+	t.Run("requests other than tools/call do not open the approval stream", func(t *testing.T) {
+		var connections atomic.Int32
+		refusingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			connections.Add(1)
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer refusingServer.Close()
+
+		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", ID: float64(1), Result: map[string]string{"status": "listed"}})
+		}))
+		defer gatewayServer.Close()
+
+		conn := &gatewayConn{
+			openBrowser:  func(string) error { return nil },
+			client:       &http.Client{Timeout: 5 * time.Second},
+			gatewayURL:   gatewayServer.URL,
+			sseClient:    &http.Client{Timeout: 5 * time.Second},
+			sseBaseURL:   refusingServer.URL,
+			cliSessionID: "cli-list",
+		}
+
+		resp, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/list"}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "2.0", resp.JSONRPC)
+		assert.Zero(t, connections.Load(), "a request that cannot suspend must not subscribe")
 	})
 
 	t.Run("SSE credentials missing returns ErrNotAuthenticated", func(t *testing.T) {

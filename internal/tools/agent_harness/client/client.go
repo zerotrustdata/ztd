@@ -21,15 +21,13 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
-	ssepkg "github.com/zerotrustdata/ztd/internal/cli/sse"
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // Persona is the identity Agent Harness wears for a given exchange. This is the ONLY
@@ -299,48 +297,12 @@ func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex, role string)
 	return nil
 }
 
-// approvalWaitTimeout bounds how long Wait blocks for a human decision. The
-// gateway's approval request TTL is 2 minutes; this allows a small grace period.
-const approvalWaitTimeout = 3 * time.Minute
-
-// approvalBacklogLimit bounds the completed approvals an ApprovalSubscription keeps
-// for transactions that Wait has not asked for yet. The oldest is dropped first.
-const approvalBacklogLimit = 64
-
-// approvalKey identifies one completed approval: the transaction and the user it is tagged with.
-type approvalKey struct {
-	txHash string
-	userID string
-}
-
-// ApprovalSubscription is a live subscription to approval.completed events on the
-// gateway SSE stream. SubscribeApprovals returns only after the gateway has registered
-// the listener, so an approval that completes after that point is delivered whether
-// Wait runs before or after it. Nothing is replayed and nothing polls.
-type ApprovalSubscription struct {
-	client *Client
-	cancel context.CancelFunc
-	done   chan struct{}
-
-	// dropErr is why the live stream ended after it connected. It is written on the
-	// SSE stream goroutine before done is closed and read only after done is closed.
-	dropErr error
-
-	mu        sync.Mutex
-	completed map[approvalKey]models.ApprovalCompletedEvent
-	order     []approvalKey
-	arrived   chan struct{} // closed and replaced each time an approval is recorded
-}
-
-// SubscribeApprovals opens the gateway SSE stream live-only (since_id=0 carries no
-// replay) and returns once the gateway has registered the listener. Call it before the
-// attended call is submitted, then Wait for the decision. A connection failure before
-// the stream connects is returned as an error; the subscription does not retry. The
-// caller owns the subscription and must Close it.
-func (c *Client) SubscribeApprovals(ctx context.Context, p Persona) (*ApprovalSubscription, error) {
-	// Prefer the CLI-cert TLS config so the SSE subscription is authenticated
-	// with the same identity as the notary submit; fall back to the operator
-	// cert when no CLI cert is configured.
+// SubscribeApprovals opens the approval subscription for the persona's CLI session. It
+// prefers the CLI-cert TLS config, so the SSE subscription is authenticated with the same
+// identity as the notary submit, and falls back to the operator cert when no CLI cert is
+// configured. It returns once the gateway has registered the listener, so it must run
+// before the attended call is submitted.
+func (c *Client) SubscribeApprovals(ctx context.Context, p Persona) (*auth.ApprovalSubscription, error) {
 	sseTLS := c.cliTLS
 	if sseTLS == nil {
 		sseTLS = c.tlsCfg
@@ -349,118 +311,17 @@ func (c *Client) SubscribeApprovals(ctx context.Context, p Persona) (*ApprovalSu
 		Timeout:   0,
 		Transport: &http.Transport{TLSClientConfig: sseTLS.Clone()},
 	}
-
-	sseURL := fmt.Sprintf("%s%s?since_id=0",
-		c.cfg.PublicBaseURL,
-		constants.APIPaths.SSEStream)
-
-	sseClient := ssepkg.NewClient(sseURL, sseHTTPClient)
-	if p.CLISessionID != "" {
-		sseClient.SetHeader(constants.HeaderCLISessionID, p.CLISessionID)
-	}
-
-	subCtx, cancel := context.WithCancel(ctx)
-	sub := &ApprovalSubscription{
-		client:    c,
-		cancel:    cancel,
-		done:      make(chan struct{}),
-		completed: make(map[approvalKey]models.ApprovalCompletedEvent),
-		arrived:   make(chan struct{}),
-	}
-
-	// ready carries exactly one result: nil once the listener is registered, or the
-	// reason the first connection failed. The fields below are touched only by the
-	// goroutine running sseClient.Run.
-	ready := make(chan error, 1)
-	var established bool
-	var connectErr error
-	sseClient.SetOnConnect(func() {
-		if !established {
-			established = true
-			ready <- nil
-		}
-	})
-	sseClient.SetOnDisconnect(func(err error) {
-		if established {
-			// A reconnect is live-only until an event id has been seen, so an approval
-			// completed during the gap would be lost. The subscription ends instead and
-			// Wait fails closed.
-			sub.dropErr = err
-			cancel()
-			return
-		}
-		// A failed first connection is not retried: stop Run's backoff wait.
-		connectErr = err
-		cancel()
-	})
-	go func() {
-		defer close(sub.done)
-		sseClient.Run(subCtx, sub.record)
-		if !established {
-			if connectErr == nil {
-				connectErr = ctx.Err()
-			}
-			if connectErr == nil {
-				connectErr = context.Canceled
-			}
-			ready <- connectErr
-		}
-	}()
-
-	if err := <-ready; err != nil {
-		sub.Close()
-		return nil, fmt.Errorf("approval subscription: connect: %w", err)
-	}
-	return sub, nil
+	return auth.SubscribeApprovals(ctx, sseHTTPClient, c.cfg.PublicBaseURL, p.CLISessionID)
 }
 
-// record decodes one SSE frame and keeps its approval.completed event. It runs on the
-// SSE stream goroutine.
-func (s *ApprovalSubscription) record(eventType, data string) {
-	var envelope models.SSEPushPayload
-	if err := json.Unmarshal([]byte(data), &envelope); err != nil {
-		return
-	}
-	var event models.ApprovalCompletedEvent
-	if err := json.Unmarshal(envelope.Event, &event); err != nil {
-		return
-	}
-	// When the server omits the event: field (R14), eventType is empty.
-	// Extract the type from the inner payload instead.
-	innerType := eventType
-	if innerType == "" {
-		innerType = event.Type
-	}
-	if innerType != constants.SSEEventTypeApprovalCompleted {
-		return
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := approvalKey{txHash: event.TxHash, userID: event.UserID}
-	if _, seen := s.completed[key]; !seen {
-		s.order = append(s.order, key)
-		if len(s.order) > approvalBacklogLimit {
-			delete(s.completed, s.order[0])
-			s.order = s.order[1:]
-		}
-	}
-	s.completed[key] = event
-	close(s.arrived)
-	s.arrived = make(chan struct{})
-}
-
-// Wait prints the approval banner for txHash and blocks until the approval.completed
-// event for txHash and userID arrives. An event recorded before Wait was called is
-// returned from the backlog. It returns the event's signed receipt after strict
-// protojson decoding and a transaction hash check. It returns constants.ErrApprovalSSETimeout
-// when ctx or the approval wait timeout ends first.
-func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+// WaitForApproval prints the human approval banner for txHash, waits on sub for the
+// decision, and returns the resumed, signed receipt.
+func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string) (*operatorv1.ActionReceipt, error) {
 	// The human approver reaches the gateway from the host, which uses different
 	// host/ports than the harness process (container-internal). Prefer the
 	// host-reachable display URL for the printed link; fall back to PublicBaseURL
 	// so non-demo invocations keep working.
-	cfg := s.client.cfg
+	cfg := c.cfg
 	displayBase := cfg.ApprovalDisplayURL
 	if displayBase == "" {
 		displayBase = cfg.PublicBaseURL
@@ -477,61 +338,10 @@ func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) 
 	fmt.Fprintf(os.Stderr, "  ║  Transaction: %s\n", txHash)
 	fmt.Fprintf(os.Stderr, "  ╚════════════════════════════════════════════════════════════╝\n\n")
 
-	waitCtx, cancel := context.WithTimeout(ctx, approvalWaitTimeout)
-	defer cancel()
-
-	key := approvalKey{txHash: txHash, userID: userID}
-	for {
-		s.mu.Lock()
-		event, ok := s.completed[key]
-		arrived := s.arrived
-		s.mu.Unlock()
-		if ok {
-			receipt, err := approvalReceipt(event, txHash)
-			if err != nil {
-				return nil, err
-			}
-			fmt.Fprintf(os.Stderr, "  ✓ Human approval confirmed for transaction %s\n\n", txHash)
-			return receipt, nil
-		}
-		select {
-		case <-arrived:
-		case <-s.done:
-			s.mu.Lock()
-			event, ok = s.completed[key]
-			s.mu.Unlock()
-			if ok {
-				continue
-			}
-			if s.dropErr != nil {
-				return nil, fmt.Errorf("human approval: approval stream dropped: %w", s.dropErr)
-			}
-			return nil, fmt.Errorf("human approval: %w", constants.ErrSSEStreamClosed)
-		case <-waitCtx.Done():
-			return nil, constants.ErrApprovalSSETimeout
-		}
+	receipt, err := sub.Wait(ctx, txHash, userID)
+	if err != nil {
+		return nil, err
 	}
-}
-
-// Close ends the subscription and waits for its SSE stream to stop. The owner calls it
-// exactly once.
-func (s *ApprovalSubscription) Close() {
-	s.cancel()
-	<-s.done
-}
-
-// approvalReceipt decodes the resumed, signed receipt carried by an approval.completed
-// event and checks that it belongs to txHash.
-func approvalReceipt(event models.ApprovalCompletedEvent, txHash string) (*operatorv1.ActionReceipt, error) {
-	if !event.HasReceipt() {
-		return nil, fmt.Errorf("human approval: %w", constants.ErrActionReceiptMissing)
-	}
-	receipt := &operatorv1.ActionReceipt{}
-	if err := protojson.Unmarshal(event.Receipt, receipt); err != nil {
-		return nil, fmt.Errorf("human approval: decode resumed receipt: %w", err)
-	}
-	if receipt.GetTransactionHash() != txHash {
-		return nil, fmt.Errorf("human approval: receipt transaction %s does not match %s: %w", receipt.GetTransactionHash(), txHash, constants.ErrActionReceiptMissing)
-	}
+	fmt.Fprintf(os.Stderr, "  ✓ Human approval confirmed for transaction %s\n\n", txHash)
 	return receipt, nil
 }

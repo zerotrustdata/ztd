@@ -24,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
@@ -208,4 +209,33 @@ func TestL3GarbageProofExecutesUnderDoctrine(t *testing.T) {
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
 	assert.Equal(t, a.Marker, string(written))
+}
+
+// TestAttendedA2AStubCallsDuringWaitAreAttributed checks that the A2A downstream
+// calls made after the approval belong to the attempt. The fake approval wait
+// posts to the live stub the way the Gateway does, after the inner drive returned.
+func TestAttendedA2AStubCallsDuringWaitAreAttributed(t *testing.T) {
+	g := &fakeA2AGateway{callBody: a2aResultBody(t, mcp.GovernedSuspension{ID: "s-1", Status: "PENDING", TxHash: "tx-hash-1"})}
+	a2a, stub := newFakeA2A(t, g)
+	// A suspended call never reaches the downstream, so the fake Gateway does not forward it.
+	g.downstream = nil
+	a := a2aAttempt(cases.Case{ID: "row-24-a2a", Fault: cases.FaultAttendedApprove, Action: cases.ActionMutation, Attended: true, Ingress: cases.IngressA2A})
+
+	fa := &fakeApprovals{
+		receipt: &operatorv1.ActionReceipt{TransactionHash: "tx-hash-1"},
+		onWait: func() {
+			assert.Equal(t, http.StatusOK, postDownstream(t, stub, `{"skill_name":"ztd-conformance","payload":{"marker":"marker-1"}}`))
+		},
+	}
+	d := NewAttended(a2a, nil, testIdentity().Persona, "user-approver")
+	d.approvals = fa
+
+	driven, err := d.Drive(context.Background(), a)
+	require.NoError(t, err)
+	require.Len(t, driven.Observations, 1)
+	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, driven.Observations[0].GetKind())
+	require.Len(t, driven.A2ACalls, 1, "the call made during the wait must be attributed to the attempt")
+	assert.Equal(t, "ztd-conformance", driven.A2ACalls[0].GetSkillName())
+	assert.JSONEq(t, `{"marker":"marker-1"}`, driven.A2ACalls[0].GetPayloadJson())
+	assert.Len(t, g.recorded(), 1, "the inner drive sent exactly one a2a/call")
 }

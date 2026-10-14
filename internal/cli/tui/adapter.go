@@ -306,7 +306,7 @@ func translateEvent(ev sse.Event) []tea.Msg {
 		}
 		return []tea.Msg{OperatorHeartbeatMsg{Heartbeat: p}}
 	// approval.completed is a flat event (models.ApprovalCompletedEvent),
-	// the same shape auth.WaitForApprovalSSE consumes.
+	// the same shape auth.ApprovalSubscription.Wait consumes.
 	case innerType == constants.SSEEventTypeApprovalCompleted:
 		var p models.ApprovalCompletedEvent
 		if err := json.Unmarshal(ev.Raw, &p); err != nil {

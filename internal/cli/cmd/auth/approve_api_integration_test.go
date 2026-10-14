@@ -62,6 +62,8 @@ func sseApproveServer(t *testing.T, txHash string) *httptest.Server {
 
 // sseNoEventServer returns an httptest.Server that accepts SSE connections
 // but never sends any events, causing the client to block until context cancel.
+// It flushes the 200 before it waits, as the Gateway does, so the subscription
+// connects and the wait is what times out.
 // The server registers its own cleanup to ensure the handler unblocks before
 // Close is called, which is necessary on Windows where the TCP stack does not
 // promptly notify the server of client-side connection closure.
@@ -70,6 +72,8 @@ func sseNoEventServer(t *testing.T) *httptest.Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
 		select {
 		case <-r.Context().Done():
 		case <-ctx.Done():
