@@ -294,30 +294,62 @@ func (g *GatewayService) mcpInitialize(params json.RawMessage) InitializeResult 
 	}
 }
 
-// listToolsResult returns the tool catalog. With no downstream MCP server
-// configured it returns the native tools compiled into the Operator; otherwise
-// it proxies tools/list to the downstream server.
-func (g *GatewayService) listToolsResult(ctx context.Context) (interface{}, error) {
+// listToolsResult returns the tool catalog: the native tools compiled into the
+// Operator, then, when a downstream MCP server is configured, the downstream's
+// tools. Each downstream entry is passed through byte for byte; only its name
+// is read. A downstream entry whose name matches a native tool is dropped,
+// because tools/call runs the native tool for that name. A downstream error or
+// a malformed downstream result is returned as an error; the list never falls
+// back to native tools alone.
+func (g *GatewayService) listToolsResult(ctx context.Context) (toolsListResponse, error) {
+	var nativeTools []NativeTool
+	if g.nativeToolHandler != nil {
+		nativeTools = g.nativeToolHandler.registry.List()
+	}
+	tools := make([]json.RawMessage, 0, len(nativeTools))
+	native := make(map[string]bool, len(nativeTools))
+	for _, nt := range nativeTools {
+		native[nt.Name()] = true
+		raw, err := json.Marshal(Tool{
+			Name:        nt.Name(),
+			Description: nt.Description(),
+			InputSchema: nt.InputSchema(),
+		})
+		if err != nil {
+			return toolsListResponse{}, fmt.Errorf("mcp_endpoint: encode native tool %q: %w", nt.Name(), err)
+		}
+		tools = append(tools, raw)
+	}
 	if !g.hasDownstream() {
-		var nativeTools []NativeTool
-		if g.nativeToolHandler != nil {
-			nativeTools = g.nativeToolHandler.registry.List()
-		}
-		tools := make([]Tool, 0, len(nativeTools))
-		for _, nt := range nativeTools {
-			tools = append(tools, Tool{
-				Name:        nt.Name(),
-				Description: nt.Description(),
-				InputSchema: nt.InputSchema(),
-			})
-		}
-		return ToolsListResult{Tools: tools}, nil
+		return toolsListResponse{Tools: tools}, nil
 	}
 	raw, err := g.proxyListMethod(ctx, "tools/list")
 	if err != nil {
-		return nil, err
+		return toolsListResponse{}, err
 	}
-	return raw, nil
+	var downstream toolsListResponse
+	if err := json.Unmarshal(raw, &downstream); err != nil {
+		return toolsListResponse{}, fmt.Errorf("mcp_endpoint: decode downstream tools/list result: %w: %w", constants.ErrInvalidJSONResponse, err)
+	}
+	if downstream.Tools == nil {
+		return toolsListResponse{}, fmt.Errorf("mcp_endpoint: downstream tools/list result has no tools array: %w", constants.ErrInvalidJSONResponse)
+	}
+	for _, entry := range downstream.Tools {
+		var head struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(entry, &head); err != nil {
+			return toolsListResponse{}, fmt.Errorf("mcp_endpoint: decode downstream tool entry: %w: %w", constants.ErrInvalidJSONResponse, err)
+		}
+		if head.Name == "" {
+			return toolsListResponse{}, fmt.Errorf("mcp_endpoint: downstream tool entry has no name: %w", constants.ErrInvalidJSONResponse)
+		}
+		if native[head.Name] {
+			continue
+		}
+		tools = append(tools, entry)
+	}
+	return toolsListResponse{Tools: tools}, nil
 }
 
 // listResourcesResult returns the resource catalog (empty with no downstream).

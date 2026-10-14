@@ -1393,6 +1393,7 @@ var (
 	ErrJSONRPCVersionInvalid       = errors.New("json-rpc version must be 2.0")
 	ErrJSONRPCMethodRequired       = errors.New("json-rpc method required")
 	ErrJSONRPCMethodNotFound       = errors.New("json-rpc method not found")
+	ErrJSONRPCErrorResponse        = errors.New("json-rpc error response")
 )
 
 // Native evaluation errors.

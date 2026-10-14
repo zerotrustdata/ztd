@@ -569,16 +569,16 @@ func buildEvaluationReportSources(ctx context.Context, fileSvc fs.RuntimeFileSer
 			return nil, nil, fmt.Errorf("%w: eval run %s is unsupported: %s", constants.ErrUnsupportedVerifier, runID, inventory.Reason)
 		case evaluation.RunKindMalformed:
 			return nil, nil, fmt.Errorf("%w: eval run %s is malformed: %s", constants.ErrEvidenceArtifactMalformed, runID, inventory.Reason)
-		case evaluation.RunKindNative:
+		case evaluation.RunKindConformance:
 		default:
 			return nil, nil, fmt.Errorf("%w: eval run %s has unknown inventory disposition %q", constants.ErrUnsupportedVerifier, runID, inventory.Kind)
 		}
-		if admission.GetSourceKind() != constants.EvaluationSourceKindNative || admission.GetSourceVersion() != constants.EvaluationSourceVersion || admission.GetVerifierRef().GetId() != constants.EvalRunVerifierID || admission.GetVerifierRef().GetVersion() != constants.EvalRunVerifierVersion {
-			return nil, nil, fmt.Errorf("%w: native eval run %s does not match protected source admission %s", constants.ErrEvidenceScopeMismatch, runID, admission.GetAdmissionId())
+		if admission.GetSourceKind() != constants.EvaluationSourceKindConformance || admission.GetSourceVersion() != constants.EvaluationSourceVersion || admission.GetVerifierRef().GetId() != constants.ConformanceVerifierID || admission.GetVerifierRef().GetVersion() != constants.ConformanceVerifierVersion {
+			return nil, nil, fmt.Errorf("%w: conformance eval run %s does not match protected source admission %s", constants.ErrEvidenceScopeMismatch, runID, admission.GetAdmissionId())
 		}
 		runtimeRoot := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID)
 		bundleRoot := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID)
-		report, err := evaluation.NewVerifier(fileSvc, evaluation.NewRegistry(), func() time.Time { return verifiedAt }).Verify(ctx, runID)
+		report, _, err := evaluation.VerifyConformanceSource(ctx, fileSvc, runID, verifiedAt)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: verify eval run %s: %w", constants.ErrEvalRunVerificationFailed, runID, err)
 		}
@@ -783,7 +783,7 @@ func buildEvaluationSelectionDiagnostics(ctx context.Context, store *evaluation.
 		code := "evaluation_candidate_" + string(candidate.Kind)
 		severity := "info"
 		message := "evaluation candidate is " + string(candidate.Kind)
-		if selected[candidate.RunID] == nil && (candidate.Kind == evaluation.RunKindNative || candidate.Kind == evaluation.RunKindCampaign) {
+		if selected[candidate.RunID] == nil && (candidate.Kind == evaluation.RunKindConformance || candidate.Kind == evaluation.RunKindCampaign) {
 			inWindow, timeKnown, windowErr := evaluationCandidateInWindow(ctx, store, candidate, scope.GetAssessmentWindowStart().AsTime(), scope.GetAssessmentWindowEnd().AsTime())
 			if windowErr != nil {
 				return nil, nil, windowErr
@@ -826,32 +826,36 @@ func buildEvaluationSelectionDiagnostics(ctx context.Context, store *evaluation.
 }
 
 func evaluationCandidateInWindow(ctx context.Context, store *evaluation.Store, candidate evaluation.RunInventoryEntry, windowStart, windowEnd time.Time) (bool, bool, error) {
-	var run *evalv1.EvaluationRun
+	var started, completed *timestamppb.Timestamp
 	switch candidate.Kind {
-	case evaluation.RunKindNative:
-		report, err := store.LoadReport(ctx, candidate.RunID)
+	case evaluation.RunKindConformance:
+		raw, _, err := store.LoadConformanceRecordRaw(ctx, candidate.RunID)
 		if err != nil {
-			return false, false, fmt.Errorf("%w: load native eval candidate %s: %w", constants.ErrEvalRunVerificationFailed, candidate.RunID, err)
+			return false, false, fmt.Errorf("%w: load conformance eval candidate %s: %w", constants.ErrEvalRunVerificationFailed, candidate.RunID, err)
 		}
-		run = report.GetRun()
+		record := &evalv1.ConformanceRunRecord{}
+		if err := evalv1.UnmarshalCanonical(raw, record); err != nil {
+			return false, false, fmt.Errorf("%w: decode conformance eval candidate %s: %v", constants.ErrEvidenceArtifactMalformed, candidate.RunID, err)
+		}
+		started, completed = record.GetStartedAt(), record.GetFinishedAt()
 	case evaluation.RunKindCampaign:
 		loaded, err := store.LoadRun(ctx, candidate.RunID)
 		if err != nil {
 			return false, false, fmt.Errorf("%w: load campaign eval candidate %s: %w", constants.ErrEvalRunVerificationFailed, candidate.RunID, err)
 		}
-		run = loaded
+		started, completed = loaded.GetStartedAt(), loaded.GetCompletedAt()
 	default:
 		return false, false, nil
 	}
-	if run.GetStartedAt() == nil && run.GetCompletedAt() == nil {
+	if started == nil && completed == nil {
 		return false, false, nil
 	}
 	var startedAt, completedAt time.Time
-	if run.GetStartedAt() != nil {
-		startedAt = run.GetStartedAt().AsTime()
+	if started != nil {
+		startedAt = started.AsTime()
 	}
-	if run.GetCompletedAt() != nil {
-		completedAt = run.GetCompletedAt().AsTime()
+	if completed != nil {
+		completedAt = completed.AsTime()
 	}
 	if startedAt.IsZero() {
 		startedAt = completedAt

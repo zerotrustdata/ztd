@@ -58,17 +58,8 @@ func (s *Store) SaveConformanceRecord(ctx context.Context, record *evalv1.Confor
 // LoadConformanceRecordRaw returns the persisted bytes and digest unparsed, for
 // verify.VerifyPersisted.
 func (s *Store) LoadConformanceRecordRaw(ctx context.Context, runID string) (raw []byte, digestHex string, err error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, "", fmt.Errorf("%w: file service and canonical run ID are required", constants.ErrConformanceRecordInvalid)
+	if s == nil {
+		return nil, "", fmt.Errorf("%w: store is required", constants.ErrConformanceRecordInvalid)
 	}
-	runDir := evaluationRunDir(runID)
-	raw, err = s.files.ReadFile(ctx, filepath.Join(runDir, constants.ConformanceRecordFilename))
-	if err != nil {
-		return nil, "", fmt.Errorf("evaluation: read conformance record: %w", err)
-	}
-	digest, err := s.files.ReadFile(ctx, filepath.Join(runDir, constants.ConformanceRecordDigestFilename))
-	if err != nil {
-		return nil, "", fmt.Errorf("evaluation: read conformance record digest: %w", err)
-	}
-	return raw, string(digest), nil
+	return readConformanceRecordRaw(ctx, s.files, runID)
 }

@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -522,7 +523,7 @@ func (s *Store) LoadAssignmentResult(ctx context.Context, runID, assignmentID st
 type RunKind string
 
 const (
-	RunKindNative      RunKind = "native"
+	RunKindConformance RunKind = "conformance"
 	RunKindCampaign    RunKind = "campaign"
 	RunKindIncomplete  RunKind = "incomplete"
 	RunKindUnsupported RunKind = "unsupported"
@@ -540,39 +541,46 @@ func (s *Store) InspectRun(ctx context.Context, runID string) (RunInventoryEntry
 		return RunInventoryEntry{}, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
 	}
 	entry := RunInventoryEntry{RunID: runID}
-	nativeMarker, err := s.files.FileExists(ctx, filepath.Join(s.layout.runDir(runID), constants.EvaluationReportFilename))
+	conformanceMarker, err := s.files.FileExists(ctx, filepath.Join(s.layout.runDir(runID), constants.ConformanceRecordFilename))
 	if err != nil {
-		return RunInventoryEntry{}, fmt.Errorf("evaluation: inspect native run marker: %w", err)
+		return RunInventoryEntry{}, fmt.Errorf("evaluation: inspect conformance run marker: %w", err)
 	}
 	campaignMarker, err := s.files.FileExists(ctx, s.layout.runStatePath(runID))
 	if err != nil {
 		return RunInventoryEntry{}, fmt.Errorf("evaluation: inspect campaign run marker: %w", err)
 	}
-	if nativeMarker && campaignMarker {
+	if conformanceMarker && campaignMarker {
 		entry.Kind = RunKindMalformed
-		entry.Reason = "native and campaign markers are both present"
+		entry.Reason = "conformance and campaign markers are both present"
 		return entry, nil
 	}
-	if !nativeMarker && !campaignMarker {
+	if !conformanceMarker && !campaignMarker {
 		entry.Kind = RunKindIncomplete
-		entry.Reason = "native and campaign markers are both missing"
+		entry.Reason = "conformance and campaign markers are both missing"
 		return entry, nil
 	}
-	if nativeMarker {
-		report, loadErr := s.LoadReport(ctx, runID)
+	if conformanceMarker {
+		// Inventory only classifies: the verifier runs at compliance admission.
+		raw, _, loadErr := readConformanceRecordRaw(ctx, s.files, runID)
 		if loadErr != nil {
 			entry.Kind = RunKindMalformed
-			entry.Reason = "native evaluation report is malformed"
-			//nolint:nilerr // intentional fallback: unreadable report is classified as RunKindMalformed
+			entry.Reason = "conformance record or digest is unreadable"
+			//nolint:nilerr // intentional fallback: unreadable record is classified as RunKindMalformed
 			return entry, nil
 		}
-		run := report.GetRun()
-		if report.GetSchemaVersion() != RegistryVersion || run == nil || run.GetSchemaVersion() != RegistryVersion || run.GetSuiteRef().GetId() != CoreExecutionBoundarySuiteID || run.GetSuiteRef().GetVersion() != CoreExecutionBoundarySuiteVersion {
+		record := &evalv1.ConformanceRunRecord{}
+		if decodeErr := evalv1.UnmarshalCanonical(raw, record); decodeErr != nil {
+			entry.Kind = RunKindMalformed
+			entry.Reason = "conformance record is malformed"
+			//nolint:nilerr // intentional fallback: undecodable record is classified as RunKindMalformed
+			return entry, nil
+		}
+		if record.GetSuiteId() != cases.SuiteID || record.GetSuiteVersion() != cases.SuiteVersion {
 			entry.Kind = RunKindUnsupported
-			entry.Reason = "native evaluation suite or schema is unsupported"
+			entry.Reason = "conformance suite is unsupported"
 			return entry, nil
 		}
-		entry.Kind = RunKindNative
+		entry.Kind = RunKindConformance
 		return entry, nil
 	}
 	run, loadErr := s.LoadRun(ctx, runID)

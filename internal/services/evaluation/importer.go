@@ -10,29 +10,30 @@ package evaluation
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/verify"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 type EvidenceImporter struct {
-	reader complianceevidence.ArtifactReader
-	runID  string
-	now    func() time.Time
+	reader          complianceevidence.ArtifactReader
+	runID           string
+	now             func() time.Time
+	verifyPersisted conformanceVerifier
 }
 
 func NewEvidenceImporter(reader complianceevidence.ArtifactReader, runID string, now func() time.Time) *EvidenceImporter {
 	if now == nil {
 		now = time.Now
 	}
-	return &EvidenceImporter{reader: reader, runID: runID, now: now}
+	return &EvidenceImporter{reader: reader, runID: runID, now: now, verifyPersisted: verify.VerifyPersisted}
 }
 
 func (i *EvidenceImporter) SourceID() string {
-	return constants.EvaluationSourceKindNative
+	return constants.EvaluationSourceKindConformance
 }
 
 // RunID returns the run ID this importer is bound to.
@@ -43,45 +44,59 @@ func (i *EvidenceImporter) RunID() string {
 	return i.runID
 }
 
+// Import verifies the persisted conformance record and returns its two
+// evidence nodes: the record itself and the suite verdict set derived from it.
 func (i *EvidenceImporter) Import(ctx context.Context) ([]complianceevidence.EvidenceNode, error) {
-	if i == nil || i.reader == nil || !complianceevidence.ValidPathElement(i.runID) || i.now == nil {
-		return nil, fmt.Errorf("%w: native evaluation importer is incomplete", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil || !complianceevidence.ValidPathElement(i.runID) || i.now == nil || i.verifyPersisted == nil {
+		return nil, fmt.Errorf("%w: conformance evaluation importer is incomplete", constants.ErrInvalidEvidenceGraph)
 	}
-	verification, err := NewVerifier(i.reader, NewRegistry(), i.now).Verify(ctx, i.runID)
+	raw, digest, err := readConformanceRecordRaw(ctx, i.reader, i.runID)
 	if err != nil {
 		return nil, err
 	}
-	if !verification.GetValid() {
-		return nil, fmt.Errorf("%w: native evaluation run %s has %d verification failures", constants.ErrEvalRunVerificationFailed, i.runID, len(verification.GetFailures()))
-	}
-	reportBody, err := i.reader.ReadFile(ctx, filepath.Join(evaluationRunDir(i.runID), constants.EvaluationReportFilename))
+	report, set, err := verifyConformanceRecord(raw, digest, i.runID, i.now(), i.verifyPersisted)
 	if err != nil {
 		return nil, err
 	}
-	report := &evalv1.EvaluationReport{}
-	if err := evalv1.UnmarshalCanonical(reportBody, report); err != nil {
-		return nil, fmt.Errorf("%w: native evaluation report: %v", constants.ErrEvidenceArtifactMalformed, err)
+	if !report.GetValid() {
+		return nil, fmt.Errorf("%w: conformance run %s is not admitted: suite verdict %s", constants.ErrEvalRunVerificationFailed, i.runID, set.GetSuiteVerdict().String())
 	}
-	scopeID := constants.EvalScopePrefix + report.GetRun().GetSuiteRef().GetId()
-	nodes := make([]complianceevidence.EvidenceNode, 0, len(report.GetEvidenceRefs())+1)
-	reportID := complianceevidence.ContentAddress(complianceevidence.ArtifactTypeEvalManifest, reportBody)
-	_, reportDigest, _ := complianceevidence.ParseContentAddress(reportID)
-	nodes = append(nodes, complianceevidence.EvidenceNode{ArtifactID: reportID, ArtifactType: complianceevidence.ArtifactTypeEvalManifest, SHA256: reportDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.eval.v1.EvaluationReport", ProducerIdentity: GraderID, ProducedAt: report.GetRun().GetCompletedAt().AsTime(), ScopeID: scopeID, RunID: i.runID, VerificationStatus: complianceevidence.VerificationStatusVerified, VerifierID: constants.EvalRunVerifierID, VerifierVersion: constants.EvalRunVerifierVersion, VerifiedAt: verification.GetVerifiedAt().AsTime(), BundlePath: constants.EvaluationReportFilename, CanonicalBytes: reportBody})
-	seen := make(map[string]bool)
-	for _, reference := range report.GetEvidenceRefs() {
-		if reference == nil || seen[reference.GetArtifactId()] {
-			continue
-		}
-		seen[reference.GetArtifactId()] = true
-		artifactType, digest, ok := complianceevidence.ParseContentAddress(reference.GetArtifactId())
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", constants.ErrEvidenceArtifactMalformed, reference.GetArtifactId())
-		}
-		body, err := i.reader.ReadFile(ctx, filepath.Join(evaluationEvidenceDir(i.runID), digest+constants.FileExtJSON))
-		if err != nil {
-			return nil, err
-		}
-		nodes = append(nodes, complianceevidence.EvidenceNode{ArtifactID: reference.GetArtifactId(), ArtifactType: artifactType, SHA256: digest, MediaType: reference.GetMediaType(), SchemaRef: reference.GetSchemaRef(), ProducerIdentity: GraderID, ProducedAt: report.GetRun().GetCompletedAt().AsTime(), ScopeID: scopeID, RunID: reference.GetRunId(), AttemptID: reference.GetAttemptId(), ScenarioID: reference.GetScenarioId(), TransactionID: reference.GetTransactionId(), VerificationStatus: complianceevidence.VerificationStatusVerified, VerifierID: constants.EvalRunVerifierID, VerifierVersion: constants.EvalRunVerifierVersion, VerifiedAt: verification.GetVerifiedAt().AsTime(), BundlePath: filepath.Join(constants.EvaluationEvidenceDirname, digest+constants.FileExtJSON), CanonicalBytes: body})
+	record := &evalv1.ConformanceRunRecord{}
+	if err := evalv1.UnmarshalCanonical(raw, record); err != nil {
+		return nil, fmt.Errorf("%w: conformance run record: %v", constants.ErrEvidenceArtifactMalformed, err)
 	}
-	return nodes, nil
+	setBody, err := evalv1.MarshalCanonical(set)
+	if err != nil {
+		return nil, fmt.Errorf("%w: canonicalize conformance verdict set: %w", constants.ErrEvidenceArtifactMalformed, err)
+	}
+	scopeID := constants.EvalScopePrefix + record.GetSuiteId()
+	verifiedAt := report.GetVerifiedAt().AsTime()
+	producedAt := record.GetFinishedAt().AsTime()
+	return []complianceevidence.EvidenceNode{
+		conformanceEvidenceNode(complianceevidence.ArtifactTypeEvalManifest, "ztd.eval.v1.ConformanceRunRecord", constants.ConformanceRecordFilename, raw, scopeID, producedAt, verifiedAt, i.runID),
+		conformanceEvidenceNode(complianceevidence.ArtifactTypeEvalMetric, "ztd.eval.v1.ConformanceVerdictSet", constants.ConformanceVerdictSetFilename, setBody, scopeID, producedAt, verifiedAt, i.runID),
+	}, nil
+}
+
+// conformanceEvidenceNode builds one verified node over canonical protojson bytes.
+func conformanceEvidenceNode(artifactType complianceevidence.ArtifactType, schemaRef, bundlePath string, body []byte, scopeID string, producedAt, verifiedAt time.Time, runID string) complianceevidence.EvidenceNode {
+	artifactID := complianceevidence.ContentAddress(artifactType, body)
+	_, digest, _ := complianceevidence.ParseContentAddress(artifactID)
+	return complianceevidence.EvidenceNode{
+		ArtifactID:         artifactID,
+		ArtifactType:       artifactType,
+		SHA256:             digest,
+		MediaType:          constants.MediaTypeJSON,
+		SchemaRef:          schemaRef,
+		ProducerIdentity:   constants.ConformanceVerifierID,
+		ProducedAt:         producedAt,
+		ScopeID:            scopeID,
+		RunID:              runID,
+		VerificationStatus: complianceevidence.VerificationStatusVerified,
+		VerifierID:         constants.ConformanceVerifierID,
+		VerifierVersion:    constants.ConformanceVerifierVersion,
+		VerifiedAt:         verifiedAt,
+		BundlePath:         bundlePath,
+		CanonicalBytes:     body,
+	}
 }

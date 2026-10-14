@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1414,11 +1415,12 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("rejects event and action_type mismatch before verification", func(t *testing.T) {
+	t.Run("rejects event and action_type mismatch in L4 with a signed receipt", func(t *testing.T) {
 		t.Parallel()
 		req := &operatorv1.FsListRequested{Path: ".", ExecutionId: "exec-mismatch"}
 		payload, _ := proto.Marshal(req)
 		env := &govpkg.GovernanceEnvelope{
+			Id:              "tx-mismatch",
 			ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
 			Timestamp:       timestamppb.Now(),
 			ExpiresAt:       timestamppb.New(time.Now().Add(time.Hour)),
@@ -1432,9 +1434,39 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
-		_, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrTxEventActionMismatch)
+		var rejection *governance.RejectionError
+		require.ErrorAs(t, err, &rejection, "the mismatch must be an L4 rejection carrying a receipt")
+		require.NotNil(t, receipt)
+		assert.Same(t, rejection.Receipt, receipt)
+		assert.True(t, governance.IsGovernanceRejectionReceipt(receipt))
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH, receipt.GetRejectionCode())
+		assert.NotEmpty(t, receipt.GetSignature(), "the L4 rejection receipt must be signed by the Actuator")
+	})
+
+	t.Run("refuses a registered event that is not governed before L4", func(t *testing.T) {
+		t.Parallel()
+		env := &govpkg.GovernanceEnvelope{
+			Id:              "tx-not-governed",
+			ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
+			Timestamp:       timestamppb.Now(),
+			ExpiresAt:       timestamppb.New(time.Now().Add(time.Hour)),
+			EventType:       string(constants.EventOperatorAuditAiRecordRequested),
+			ActionType:      string(constants.ActionTypeFsList),
+			TargetResource:  "localhost",
+			StateMerkleRoot: "test-state-root",
+			Nonce:           "nonce-not-governed",
+			Posture:         constants.PostureDoctrine,
+		}
+		envelopeBytes, _ := protojson.Marshal(env)
+
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		require.ErrorIs(t, err, constants.ErrTxEventNotGoverned)
+		assert.Nil(t, receipt, "a pre-L4 refusal has no action to sign, so it carries no receipt")
+		var rejection *governance.RejectionError
+		assert.False(t, errors.As(err, &rejection), "a pre-L4 refusal must not be an L4 rejection")
 	})
 
 	t.Run("rejects when transaction verifier not configured", func(t *testing.T) {

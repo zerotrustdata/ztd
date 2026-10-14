@@ -175,7 +175,7 @@ Every transaction entering `POST /api/v1/governance/envelopes` or arriving via M
 
 ### Model Context Protocol (MCP) Endpoint and Native Tools
 
-The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`, and `a2a/call`.
+The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`, and `a2a/call`. With a downstream MCP server configured, `tools/list` returns the native tools followed by the downstream's tools, and a native tool wins a name collision (the downstream entry is dropped).
 
 The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains.
 

@@ -48,8 +48,7 @@ var noop = Mutator{Apply: func(context.Context, *commonv1.GovernanceEnvelope, ca
 //   - id_mismatch: transaction id mismatch (transaction_hash still valid)
 //   - expired: transaction expired (step 1, before nonce reservation)
 //   - protocol_version: protocol version unsupported (verifyPreDoctrine)
-//   - event_action_mismatch: event/action mismatch (verifyPreDoctrine, and the
-//     gateway process path runs the same field check before L4)
+//   - event_action_mismatch: event/action mismatch (verifyPreDoctrine)
 //   - wrong_target: target session mismatch (verifyPreDoctrine, verifyTargetSession)
 //   - stale_state_root: state root mismatch (verifyStateful)
 //   - caller_posture: refused at the gateway handler (stampEnvelopePosture)

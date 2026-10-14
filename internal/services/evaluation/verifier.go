@@ -67,7 +67,7 @@ func (v *Verifier) Verify(ctx context.Context, runID string) (*compliancev1.Comp
 	if v != nil && v.now != nil {
 		verifiedAt = v.now().UTC()
 	}
-	result := &compliancev1.ComplianceVerificationReport{ReportId: runID, VerifiedAt: timestamppb.New(verifiedAt), VerifierId: constants.EvalRunVerifierID, VerifierVersion: constants.EvalRunVerifierVersion}
+	result := &compliancev1.ComplianceVerificationReport{ReportId: runID, VerifiedAt: timestamppb.New(verifiedAt), VerifierId: constants.ConformanceVerifierID, VerifierVersion: constants.ConformanceVerifierVersion}
 	fail := func(code error, subject, reason string) {
 		result.Failures = append(result.Failures, &compliancev1.VerificationFailure{Code: code.Error(), SubjectRef: subject, Reason: reason})
 	}
@@ -95,7 +95,7 @@ func finalizeVerification(result *compliancev1.ComplianceVerificationReport) *co
 		return left < right
 	})
 	result.Valid = len(result.Failures) == 0
-	result.Checks = []*compliancev1.VerificationCheckResult{complianceevidence.NewVerificationCheckResult(constants.EvalRunVerificationCheck, constants.EvalRunVerifierID, constants.EvalRunVerifierVersion, []string{result.GetReportId()}, result.GetFailures())}
+	result.Checks = []*compliancev1.VerificationCheckResult{complianceevidence.NewVerificationCheckResult(constants.ConformanceVerificationCheck, constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, []string{result.GetReportId()}, result.GetFailures())}
 	return result
 }
 

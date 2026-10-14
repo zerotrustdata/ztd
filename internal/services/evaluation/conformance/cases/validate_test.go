@@ -118,7 +118,7 @@ func TestValidateRejectsBadRejectionAndRefusalCodes(t *testing.T) {
 		return indexOf(t, base, row(3), func(c Case) bool { return c.Ingress == IngressDirect })
 	}
 	refusedIdx := func(t *testing.T, base []Case) int {
-		return indexOf(t, base, row(9))
+		return indexOf(t, base, row(11))
 	}
 
 	tests := []struct {

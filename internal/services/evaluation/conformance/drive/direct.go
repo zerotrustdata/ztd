@@ -50,7 +50,7 @@ func NewDirect(c *client.Client, p client.Persona, embedded operator.Target, l2 
 	for _, set := range sets {
 		for fault, m := range set {
 			if _, dup := merged[fault]; dup {
-				return nil, fmt.Errorf("direct: fault %q has a mutator in two sets", fault)
+				return nil, fmt.Errorf("direct: fault %q has a mutator in two sets: %w", fault, constants.ErrAlreadyExists)
 			}
 			merged[fault] = m
 		}
@@ -74,10 +74,20 @@ func (d *Direct) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, erro
 		return cases.Driven{}, fmt.Errorf("direct %s: %w", a.Case.Fault, err)
 	}
 
-	if applied, err := applyBodyFault(env, a.Case.Fault); err != nil {
+	m, hasMutator := d.mutators[a.Case.Fault]
+	bodyFault := isBodyFault(a.Case.Fault)
+	if !hasMutator && !bodyFault {
+		return cases.Driven{}, fmt.Errorf("direct %s: %w", a.Case.Fault, constants.ErrConformanceIngressUnsupported)
+	}
+	// The L2 proof is taken over the valid baseline, before the fault: every
+	// non-L2 fault trips an L4 check that runs before verifyPosture, and the
+	// deliberation endpoint refuses an envelope the fault has already broken.
+	if err := d.attachL2(ctx, env, hasMutator && m.SetsL2); err != nil {
 		return cases.Driven{}, fmt.Errorf("direct %s: %w", a.Case.Fault, err)
-	} else if applied {
-		if err := d.attachL2(ctx, env, false); err != nil {
+	}
+
+	if bodyFault {
+		if err := applyBodyFault(env, a.Case.Fault); err != nil {
 			return cases.Driven{}, fmt.Errorf("direct %s: %w", a.Case.Fault, err)
 		}
 		wire, err := protojson.Marshal(env)
@@ -86,16 +96,8 @@ func (d *Direct) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, erro
 		}
 		return d.submitBodies(ctx, a, wire)
 	}
-
-	m, ok := d.mutators[a.Case.Fault]
-	if !ok {
-		return cases.Driven{}, fmt.Errorf("direct %s: %w", a.Case.Fault, constants.ErrConformanceIngressUnsupported)
-	}
 	if err := m.Apply(ctx, env, a); err != nil {
 		return cases.Driven{}, fmt.Errorf("direct %s: mutate: %w", a.Case.Fault, err)
-	}
-	if err := d.attachL2(ctx, env, m.SetsL2); err != nil {
-		return cases.Driven{}, fmt.Errorf("direct %s: %w", a.Case.Fault, err)
 	}
 
 	count := 1
@@ -122,7 +124,7 @@ func (d *Direct) submitBodies(ctx context.Context, a cases.Attempt, body []byte)
 	return cases.Driven{Observations: []*evalv1.ConformanceObservation{Observe(outcome)}}, nil
 }
 
-// attachL2 writes governance.l2 from the L2 source over the final hash. It is
+// attachL2 writes governance.l2 from the L2 source over the baseline hash. It is
 // skipped when the mutator wrote L2 itself or when no source is configured.
 func (d *Direct) attachL2(ctx context.Context, env *commonv1.GovernanceEnvelope, setsL2 bool) error {
 	if d.l2 == nil || setsL2 {
@@ -139,17 +141,19 @@ func (d *Direct) attachL2(ctx context.Context, env *commonv1.GovernanceEnvelope,
 	return nil
 }
 
-// applyBodyFault applies a row 17 body fault that changes the envelope rather
-// than one property of it. It reports whether the fault is a body fault.
-func applyBodyFault(env *commonv1.GovernanceEnvelope, fault cases.Fault) (bool, error) {
+// isBodyFault reports whether fault is a row 17 body fault: one that changes
+// the envelope rather than one property of it.
+func isBodyFault(fault cases.Fault) bool {
+	return fault == cases.FaultUnknownEventType || fault == cases.FaultMissingField
+}
+
+// applyBodyFault applies a row 17 body fault and rehashes.
+func applyBodyFault(env *commonv1.GovernanceEnvelope, fault cases.Fault) error {
 	switch fault {
 	case cases.FaultUnknownEventType:
 		env.EventType = unknownEventType
-		return true, Rehash(env)
 	case cases.FaultMissingField:
 		env.Payload = nil
-		return true, Rehash(env)
-	default:
-		return false, nil
 	}
+	return Rehash(env)
 }

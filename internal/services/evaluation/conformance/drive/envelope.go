@@ -101,7 +101,13 @@ func Payload(a cases.Attempt) (constants.ActionType, constants.EventType, proto.
 			&operatorv1.DocumentUpdateRequested{Collection: ungovernedCollection, DocumentId: a.AttemptID}, nil
 	case a.Case.Action == cases.ActionMutation:
 		return constants.ActionTypeFileEdit, constants.EventOperatorFileEditRequested,
-			&operatorv1.FileEditRequested{FilePath: a.TargetAbs, Operation: string(constants.FileOperationWrite), Content: a.Marker, ExecutionId: a.AttemptID}, nil
+			&operatorv1.FileEditRequested{
+				FilePath:        a.TargetAbs,
+				Operation:       string(constants.FileOperationWrite),
+				Content:         a.Marker,
+				ExecutionId:     a.AttemptID,
+				CreateIfMissing: true,
+			}, nil
 	case a.Case.Action == cases.ActionRead:
 		return constants.ActionTypeFsRead, constants.EventOperatorFilesystemReadRequested,
 			&operatorv1.FsReadRequested{Path: a.ReadAbs, ExecutionId: a.AttemptID}, nil

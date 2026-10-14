@@ -29,7 +29,7 @@ import (
 // is returned.
 func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) {
 	if cfg.Sentinel == nil || cfg.Posture == nil || cfg.Recorder == nil || cfg.Now == nil {
-		return nil, fmt.Errorf("conformance run: config incomplete: %w", constants.ErrConformanceRecordInvalid)
+		return nil, fmt.Errorf("conformance run: config incomplete: %w", constants.ErrMissingRequiredField)
 	}
 	started := cfg.Now()
 

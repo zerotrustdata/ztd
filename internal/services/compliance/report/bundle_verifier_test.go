@@ -1996,7 +1996,7 @@ func TestBundleVerifier_SourceVerificationRejectsMalformedTimestamps(t *testing.
 		verificationErr error
 		source          string
 	}{
-		{name: "eval source verification timestamp", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.EvalRunVerifierID, verifierVersion: constants.EvalRunVerifierVersion, verificationErr: constants.ErrEvalRunVerificationFailed, source: "eval"},
+		{name: "eval source verification timestamp", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.ConformanceVerifierID, verifierVersion: constants.ConformanceVerifierVersion, verificationErr: constants.ErrEvalRunVerificationFailed, source: "eval"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -2030,7 +2030,7 @@ func TestBundleVerifier_SourceVerificationRejectsReportsWithoutAnalysisEvidenceR
 		verifierID      string
 		verifierVersion string
 	}{
-		{name: "eval source", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.EvalRunVerifierID, verifierVersion: constants.EvalRunVerifierVersion},
+		{name: "eval source", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.ConformanceVerifierID, verifierVersion: constants.ConformanceVerifierVersion},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

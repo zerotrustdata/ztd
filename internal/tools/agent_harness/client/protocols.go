@@ -266,6 +266,14 @@ type CommandSkillPayload struct {
 
 func (CommandSkillPayload) isSkillPayload() {}
 
+// MarkerSkillPayload is the conformance skill payload that names the marker the
+// A2A downstream records.
+type MarkerSkillPayload struct {
+	Marker string `json:"marker"`
+}
+
+func (MarkerSkillPayload) isSkillPayload() {}
+
 // ---- MCP params envelopes ---------------------------------------------------
 
 // toolsCallParams is the JSON-RPC params envelope for tools/call.

@@ -44,7 +44,7 @@ func TestComplianceEvidenceGraphVerifyCmdWithConfig_RecordsImporterFailureAndFai
 	assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 	assert.False(t, report.Valid)
 	require.Len(t, report.ImporterErrors, 1)
-	assert.Equal(t, "native-evaluation", report.ImporterErrors[0].SourceID)
+	assert.Equal(t, "governance-conformance", report.ImporterErrors[0].SourceID)
 	assert.Equal(t, "missing-eval-run", report.ImporterErrors[0].RunID)
 	assert.NotEmpty(t, report.ImporterErrors[0].Error)
 }

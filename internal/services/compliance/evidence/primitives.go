@@ -350,8 +350,8 @@ func ValidateVerificationReport(body []byte, reportID, verifierID, verifierVersi
 	}
 	var expectedCheckID string
 	switch {
-	case verifierID == constants.EvalRunVerifierID && verifierVersion == constants.EvalRunVerifierVersion:
-		expectedCheckID = constants.EvalRunVerificationCheck
+	case verifierID == constants.ConformanceVerifierID && verifierVersion == constants.ConformanceVerifierVersion:
+		expectedCheckID = constants.ConformanceVerificationCheck
 	default:
 		return nil, fmt.Errorf("%w: protected source verifier is unsupported", constants.ErrReportVerificationFailed)
 	}

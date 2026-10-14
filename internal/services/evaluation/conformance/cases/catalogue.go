@@ -169,13 +169,15 @@ var rowSpecs = []rowSpec{
 		postures: postureRatifyNotary, action: ActionRead,
 		outcomes: []outcome{rejected(operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH)}},
 
-	// Row 9 is provisional: T15 probes it and the tracker pins the code.
+	// Row 9 is pinned from the T15 probe: the CLI certificate binds the
+	// cli_session_id, so the wrong operator_session_id reaches L4, which signs
+	// TARGET_SESSION_MISMATCH under every posture.
 	{row: 9, faults: []Fault{FaultWrongTarget}, ingresses: []Ingress{IngressDirect},
 		postures: postureDoctrineConsensus, action: ActionMutation,
-		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED)}},
+		outcomes: []outcome{rejected(operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_SESSION_MISMATCH)}},
 	{row: 9, faults: []Fault{FaultWrongTarget}, ingresses: []Ingress{IngressDirect},
 		postures: postureRatifyNotary, action: ActionRead,
-		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED)}},
+		outcomes: []outcome{rejected(operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_SESSION_MISMATCH)}},
 
 	{row: 10, faults: []Fault{FaultStaleStateRoot}, ingresses: []Ingress{IngressDirect},
 		postures: postureDoctrineConsensus, action: ActionMutation,

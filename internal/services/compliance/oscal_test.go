@@ -86,7 +86,7 @@ func oscalTestAnalysis() *compliancev1.ComplianceAnalysis {
 		},
 		EvidenceResources: []*compliancev1.ComplianceEvidenceReference{
 			{ArtifactId: receiptID, ArtifactType: "action-receipt", Sha256: receiptDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.ActionReceipt", ProducerIdentity: "gateway", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ReceiptEvidenceVerifierID, VerifierVersion: constants.ReceiptEvidenceVerifierVersion, BundlePath: constants.EvaluationReportFilename},
-			{ArtifactId: metricID, ArtifactType: "eval-metric", Sha256: metricDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.eval.v1.EvaluationMetric", ProducerIdentity: "policy_outcome@1.0.0", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.EvalRunVerifierID, VerifierVersion: constants.EvalRunVerifierVersion, BundlePath: constants.EvaluationReportFilename},
+			{ArtifactId: metricID, ArtifactType: "eval-metric", Sha256: metricDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.eval.v1.EvaluationMetric", ProducerIdentity: "policy_outcome@1.0.0", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ConformanceVerifierID, VerifierVersion: constants.ConformanceVerifierVersion, BundlePath: constants.EvaluationReportFilename},
 		},
 		EvidenceGraphValid: true,
 	}

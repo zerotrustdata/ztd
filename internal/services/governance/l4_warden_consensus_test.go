@@ -485,7 +485,9 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 			wantL2:  false,
 		},
 		{
-			name:     "unknown signer ignored, quorum-1 passes",
+			// INV-CON-WARD-06: an enrolled member whose trusted signer cannot be
+			// resolved fails closed even though member-1 alone meets quorum.
+			name:     "member with unresolvable signer rejects despite quorum",
 			verifier: makeVerifier(partialSigners, map[string]*models.ConsensusPolicy{"consensus-2": enabledConsensus1of2}),
 			env: func() *govtypes.GovernanceEnvelope {
 				env := buildEnv("unknownsigner", "consensus-2", nil)
@@ -496,8 +498,8 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				}
 				return env
 			}(),
-			wantErr: nil,
-			wantL2:  true,
+			wantErr: ErrL2SignatureInvalid,
+			wantL2:  false,
 		},
 		{
 			name:     "empty votes under consensus posture",

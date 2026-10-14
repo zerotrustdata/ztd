@@ -262,13 +262,16 @@ func TestDirectDriveMissingFieldDropsPayloadAndRehashes(t *testing.T) {
 	require.NoError(t, governance.VerifyTransactionHash(env, env.GetTransactionHash()))
 }
 
-// fakeL2 counts its calls and returns one fixed set of votes.
+// fakeL2 counts its calls, keeps the hash-check result of each envelope it was
+// asked to prove, and returns one fixed set of votes.
 type fakeL2 struct {
-	calls int
+	calls    int
+	hashErrs []error
 }
 
-func (f *fakeL2) Proof(_ context.Context, _ *commonv1.GovernanceEnvelope) (*commonv1.L2Metadata, error) {
+func (f *fakeL2) Proof(_ context.Context, env *commonv1.GovernanceEnvelope) (*commonv1.L2Metadata, error) {
 	f.calls++
+	f.hashErrs = append(f.hashErrs, governance.VerifyTransactionHash(env, env.GetTransactionHash()))
 	return &commonv1.L2Metadata{ConsensusSetId: "set-1"}, nil
 }
 
@@ -283,6 +286,23 @@ func TestDirectDriveAttachesL2WithoutChangingHash(t *testing.T) {
 	env := decodeRecorded(t, g, 0)
 	assert.Equal(t, "set-1", env.GetGovernance().GetL2().GetConsensusSetId())
 	require.NoError(t, governance.VerifyTransactionHash(env, env.GetTransactionHash()))
+}
+
+// TestDirectDriveTakesL2OverBaseline checks that the L2 proof is requested for
+// the valid baseline, before a hash-breaking fault is applied.
+func TestDirectDriveTakesL2OverBaseline(t *testing.T) {
+	for _, fault := range []cases.Fault{cases.FaultPayloadTampered, cases.FaultMissingField} {
+		t.Run(string(fault), func(t *testing.T) {
+			g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusOK, body: receiptBody(t)}}}
+			l2 := &fakeL2{}
+			d := newFakeDirect(t, g, l2, BaseMutators())
+
+			_, err := d.Drive(context.Background(), testAttempt(fault, cases.ActionMutation))
+			require.NoError(t, err)
+			require.Len(t, l2.hashErrs, 1)
+			require.NoError(t, l2.hashErrs[0], "L2 source saw a broken envelope")
+		})
+	}
 }
 
 func TestDirectDriveSkipsL2ForMutatorThatSetsIt(t *testing.T) {
@@ -305,7 +325,7 @@ func TestNewDirectRejectsFaultInTwoSets(t *testing.T) {
 	_, err = NewDirect(c, testIdentity().Persona, testIdentity().Target, nil, BaseMutators(), MutatorSet{
 		cases.FaultExpired: {},
 	})
-	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrAlreadyExists))
 }
 
 func TestNewDirectRejectsNilClient(t *testing.T) {

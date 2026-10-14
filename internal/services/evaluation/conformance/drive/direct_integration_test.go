@@ -32,9 +32,9 @@ import (
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
-// integrationRows are the DIRECT doctrine rows the Tier 2 test drives, plus the
-// first row-13 corpus entry.
-var integrationRows = map[int]bool{1: true, 3: true, 4: true, 6: true, 8: true, 10: true, 11: true, 13: true}
+// integrationRows are the DIRECT doctrine rows the Tier 2 test drives. Row 13
+// contributes its first corpus entry only.
+var integrationRows = map[int]bool{1: true, 3: true, 4: true, 6: true, 8: true, 10: true, 11: true, 12: true, 13: true, 15: true}
 
 // directFixture is one live Gateway with its CLI identity and a DIRECT driver.
 type directFixture struct {
@@ -87,9 +87,17 @@ func (fx *directFixture) attemptFor(t *testing.T, c cases.Case) cases.Attempt {
 	require.NoError(t, err)
 	runID, err := uuid.NewString()
 	require.NoError(t, err)
-	dir := filepath.Join(fx.workDir, "test-results", "conformance-direct", runID)
+	results := filepath.Join(fx.workDir, "test-results")
+	parent := filepath.Join(results, "conformance-direct")
+	dir := filepath.Join(parent, runID)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+		// The work directory is the package directory: drop the parents once
+		// empty so no run leaves directories in the source tree.
+		_ = os.Remove(parent)
+		_ = os.Remove(results)
+	})
 	return cases.Attempt{
 		RunID:     runID,
 		AttemptID: attemptID,
@@ -151,11 +159,11 @@ func assertObservation(t *testing.T, want cases.Expect, got *evalv1.ConformanceO
 		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, got.GetKind(), "answer: %s", answerText(got))
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.GetReceipt().GetStatus(), "answer: %s", answerText(got))
 	case cases.ExpectRejected:
-		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, got.GetKind())
-		assert.Equal(t, want.RejectionCode, got.GetRejection().GetReceipt().GetRejectionCode())
+		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, got.GetKind(), "answer: %s", answerText(got))
+		assert.Equal(t, want.RejectionCode, got.GetRejection().GetReceipt().GetRejectionCode(), "answer: %s", answerText(got))
 	case cases.ExpectRefused:
-		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, got.GetKind())
-		assert.Equal(t, want.RefusalCode, got.GetRefusal().GetCode())
+		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, got.GetKind(), "answer: %s", answerText(got))
+		assert.Equal(t, want.RefusalCode, got.GetRefusal().GetCode(), "answer: %s", answerText(got))
 	default:
 		t.Fatalf("unexpected expectation kind %q", want.Kind)
 	}

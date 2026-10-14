@@ -36,6 +36,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
@@ -97,13 +98,13 @@ func writeComplianceAssessmentScopeForTest(t *testing.T, scopeID string, runIDs 
 	for index, runID := range runIDs {
 		admissions = append(admissions, &compliancev1.AssessmentSourceAdmission{
 			AdmissionId:              fmt.Sprintf("source-%d", index+1),
-			SourceKind:               constants.EvaluationSourceKindNative,
+			SourceKind:               constants.EvaluationSourceKindConformance,
 			SourceVersion:            constants.EvaluationSourceVersion,
 			SourceScopeId:            scopeID,
 			OwnerRuntimeBoundary:     "evaluation-owner",
 			AcquisitionBoundary:      "owner-local-run",
 			RunId:                    runID,
-			VerifierRef:              &compliancev1.VersionedReference{Id: constants.EvalRunVerifierID, Version: constants.EvalRunVerifierVersion},
+			VerifierRef:              &compliancev1.VersionedReference{Id: constants.ConformanceVerifierID, Version: constants.ConformanceVerifierVersion},
 			DisclosureClassification: constants.ComplianceBundleProfileRestricted,
 		})
 	}
@@ -600,23 +601,17 @@ func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *
 	require.NoError(t, err)
 	scheduleComplianceFormationRun(t, context.Background(), controller, req)
 	assessmentAsOf := time.Now().UTC()
-	require.NoError(t, evaluation.NewStore(fileSvc).SaveReport(context.Background(), &evalv1.EvaluationReport{
-		SchemaVersion: evaluation.RegistryVersion,
-		Run: &evalv1.EvaluationRun{
-			SchemaVersion: evaluation.RegistryVersion,
-			RunId:         "unsupported-candidate",
-			SuiteRef:      &compliancev1.VersionedReference{Id: "unsupported-suite", Version: "1.0.0"},
-		},
+	require.NoError(t, evaluation.NewStore(fileSvc).SaveConformanceRecord(context.Background(), &evalv1.ConformanceRunRecord{
+		RunId:        "unsupported-candidate",
+		SuiteId:      "unsupported-suite",
+		SuiteVersion: "1.0.0",
 	}))
-	require.NoError(t, evaluation.NewStore(fileSvc).SaveReport(context.Background(), &evalv1.EvaluationReport{
-		SchemaVersion: evaluation.RegistryVersion,
-		Run: &evalv1.EvaluationRun{
-			SchemaVersion: evaluation.RegistryVersion,
-			RunId:         "outside-window-candidate",
-			SuiteRef:      &compliancev1.VersionedReference{Id: evaluation.CoreExecutionBoundarySuiteID, Version: evaluation.CoreExecutionBoundarySuiteVersion},
-			StartedAt:     timestamppb.New(time.Unix(1_600_000_000, 0).UTC()),
-			CompletedAt:   timestamppb.New(time.Unix(1_600_000_100, 0).UTC()),
-		},
+	require.NoError(t, evaluation.NewStore(fileSvc).SaveConformanceRecord(context.Background(), &evalv1.ConformanceRunRecord{
+		RunId:        "outside-window-candidate",
+		SuiteId:      cases.SuiteID,
+		SuiteVersion: cases.SuiteVersion,
+		StartedAt:    timestamppb.New(time.Unix(1_600_000_000, 0).UTC()),
+		FinishedAt:   timestamppb.New(time.Unix(1_600_000_100, 0).UTC()),
 	}))
 	require.NoError(t, fileSvc.MkdirAll(context.Background(), path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "incomplete-candidate"), constants.PermDirStandard))
 	scopeID := constants.EvalScopePrefix + req.CampaignID
@@ -661,7 +656,7 @@ func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *
 	require.Contains(t, selectionDiagnostics, "unsupported-candidate")
 	assert.Equal(t, "evaluation_candidate_unsupported", selectionDiagnostics["unsupported-candidate"].GetCode())
 	assert.Equal(t, "warning", selectionDiagnostics["unsupported-candidate"].GetSeverity())
-	assert.Equal(t, "evaluation candidate is unsupported: native evaluation suite or schema is unsupported", selectionDiagnostics["unsupported-candidate"].GetMessage())
+	assert.Equal(t, "evaluation candidate is unsupported: conformance suite is unsupported", selectionDiagnostics["unsupported-candidate"].GetMessage())
 	require.Contains(t, selectionDiagnostics, "incomplete-candidate")
 	assert.Equal(t, "evaluation_candidate_incomplete", selectionDiagnostics["incomplete-candidate"].GetCode())
 	assert.Equal(t, "warning", selectionDiagnostics["incomplete-candidate"].GetSeverity())

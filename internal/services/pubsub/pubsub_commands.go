@@ -772,10 +772,9 @@ func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []
 		return nil, fmt.Errorf("%w: %w", constants.ErrTxInvalidEnvelope, err)
 	}
 
-	if err := constants.ValidateGovernedEnvelopeFields(
-		constants.EventType(envelope.EventType),
-		constants.ActionType(envelope.ActionType),
-	); err != nil {
+	// Only an event that is not a registered governed request is refused before L4.
+	// An event/action mismatch is an L4 rejection with a signed receipt.
+	if _, err := constants.ValidateGovernedRequest(constants.EventType(envelope.EventType)); err != nil {
 		return nil, err
 	}
 
@@ -849,21 +848,6 @@ func gatewayDispatchedVerificationContext(parent context.Context, env *govpkg.Go
 
 // handleGovernanceEnvelope processes a GovernanceEnvelope using the TransactionVerifier, Consensus and Actuator services.
 func (rs *OperatorPubSubService) handleGovernanceEnvelope(env *govpkg.GovernanceEnvelope) {
-	if _, err := constants.ValidateGovernedRequest(constants.EventType(env.EventType)); err == nil {
-		if err := constants.ValidateGovernedEnvelopeFields(
-			constants.EventType(env.EventType),
-			constants.ActionType(env.ActionType),
-		); err != nil {
-			// The rejection reason is recorded on the signed receipt or blocked-transaction
-			// event; the plaintext log must not carry payload content.
-			rs.logger.Error("Governed envelope field validation failed",
-				logging.ErrorKind(err),
-				slog.String("message_id", env.Id))
-			rs.logBlockedTransaction(rs.ctx, env, err)
-			return
-		}
-	}
-
 	var verified *governance.VerifiedTransaction
 
 	// Strict transaction verification (P0: fail-closed gate before any dispatch)

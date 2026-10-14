@@ -1126,7 +1126,7 @@ func TestVerifier_MutationMatrix(t *testing.T) {
 		// 32. substituted verification.json or mismatched final verification reference
 		{name: "substituted verification json", mutate: func(t *testing.T, fix *verifierFixture) {
 			fakeVerification := &compliancev1.ComplianceVerificationReport{
-				ReportId: vRunID, Valid: true, VerifierId: constants.EvalRunVerifierID, VerifierVersion: constants.EvalRunVerifierVersion,
+				ReportId: vRunID, Valid: true, VerifierId: constants.ConformanceVerifierID, VerifierVersion: constants.ConformanceVerifierVersion,
 				VerifiedAt: timestamppb.New(fix.now()),
 			}
 			body, err := compliancev1.MarshalCanonical(fakeVerification)
@@ -1210,7 +1210,7 @@ func TestVerifier_ImportedEvidenceUsesNativeArtifacts(t *testing.T) {
 	assert.Equal(t, vRunID, importer.RunID())
 	for _, node := range nodes {
 		assert.Equal(t, complianceevidence.VerificationStatusVerified, node.VerificationStatus)
-		assert.Equal(t, constants.EvalRunVerifierID, node.VerifierID)
+		assert.Equal(t, constants.ConformanceVerifierID, node.VerifierID)
 	}
 }
 

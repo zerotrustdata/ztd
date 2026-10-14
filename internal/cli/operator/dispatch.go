@@ -72,6 +72,9 @@ type RunResult struct {
 	Receipt   *operatorv1.ActionReceipt       `json:"-"`
 	Rejection *operatorv1.GovernanceRejection `json:"-"`
 	Refusal   *operatorv1.IngressRefusal      `json:"-"`
+	// TransportErr is the Post error when the Gateway sent no HTTP answer, so
+	// callers can tell an unreachable Gateway from an untyped response.
+	TransportErr error `json:"-"`
 	// StartedAt is when the dispatch request began; DurationMs is its
 	// monotonic-clock elapsed time through response decoding.
 	StartedAt  time.Time `json:"started_at"`
@@ -211,9 +214,11 @@ func RunOnce(client CommandPoster, target Target, command, executionID, cliSessi
 	if err != nil {
 		result.Error = err.Error()
 		var statusErr *api.StatusError
-		if errors.As(err, &statusErr) {
-			applyIngressFailure(&result, []byte(statusErr.Body))
+		if !errors.As(err, &statusErr) {
+			result.TransportErr = err
+			return result
 		}
+		applyIngressFailure(&result, []byte(statusErr.Body))
 		return result
 	}
 

@@ -609,7 +609,7 @@ const (
 // from the ComplianceBundle* constants which describe the generated report
 // bundle layout.
 const (
-	EvalRunVerificationCheck                      = "eval_evidence_graph"
+	ConformanceVerificationCheck                  = "conformance_verdict_set"
 	AssertionGraderID                             = "assertion_assessment"
 	AssertionGraderVersion                        = "2.2.0"
 	FrameworkGraderID                             = "framework_assessment"
@@ -684,6 +684,7 @@ const (
 	EvaluationVerificationFilename                = "verification.json"
 	ConformanceRecordFilename                     = "conformance-record.json" // canonical protojson
 	ConformanceRecordDigestFilename               = "conformance-record.sha256"
+	ConformanceVerdictSetFilename                 = "conformance-verdicts.json" // canonical protojson
 	EvaluationCampaignSpecFilename                = "campaign-spec.json"
 	EvaluationCampaignReleaseTagFilename          = "release-tag.json"
 	EvaluationHeterogeneousStackSetFilename       = "heterogeneous-stack-set.json"
@@ -691,9 +692,9 @@ const (
 	EvaluationScenarioArtifactsDirname            = "scenario-artifacts"
 	EvaluationRunStateFilename                    = "run.json"
 	EvaluationEvidenceDirname                     = "evidence"
-	EvalRunVerifierID                             = "ztd-native-evaluation-verifier"
-	EvalRunVerifierVersion                        = "1.0.0"
-	EvaluationSourceKindNative                    = "native-evaluation"
+	ConformanceVerifierID                         = "ztd-governance-conformance-verifier"
+	ConformanceVerifierVersion                    = "1.0.0"
+	EvaluationSourceKindConformance               = "governance-conformance"
 	EvaluationSourceKindCampaign                  = "campaign-evaluation"
 	EvaluationSourceVersion                       = "1.0.0"
 	CampaignVerifierID                            = "ztd-campaign-verifier"

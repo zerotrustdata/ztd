@@ -136,6 +136,16 @@ type ToolsListResult struct {
 	Tools []Tool `json:"tools"`
 }
 
+// toolsListResponse is the "tools/list" result the Gateway returns when a
+// downstream may be configured. Each entry is raw JSON: native tools are
+// marshaled from Tool, and downstream entries are passed through as the
+// downstream sent them, so fields Tool does not model (title, annotations,
+// outputSchema, rich JSON Schema) reach the client unchanged. Only a
+// downstream entry's name is read, to match it against the native tools.
+type toolsListResponse struct {
+	Tools []json.RawMessage `json:"tools"`
+}
+
 // Tool represents an MCP tool.
 type Tool struct {
 	Name        string       `json:"name"`

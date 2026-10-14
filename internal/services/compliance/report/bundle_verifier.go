@@ -678,15 +678,15 @@ func (v *bundleVerifier) verifyEvaluationSelectionDiagnostics() {
 	selectedEvalAdmissions := make(map[string]string)
 	for _, admission := range scope.GetSourceAdmissions() {
 		admissions[admission.GetAdmissionId()] = admission
-		if admission.GetSourceKind() == constants.EvaluationSourceKindNative {
-			selectedEvalAdmissions[admission.GetAdmissionId()] = "evaluation_candidate_native"
+		if admission.GetSourceKind() == constants.EvaluationSourceKindConformance {
+			selectedEvalAdmissions[admission.GetAdmissionId()] = "evaluation_candidate_conformance"
 		}
 		if admission.GetSourceKind() == constants.EvaluationSourceKindCampaign {
 			selectedEvalAdmissions[admission.GetAdmissionId()] = "evaluation_candidate_campaign"
 		}
 	}
 	expectedSeverity := map[string]string{
-		"evaluation_candidate_native":         "info",
+		"evaluation_candidate_conformance":    "info",
 		"evaluation_candidate_campaign":       "info",
 		"evaluation_candidate_incomplete":     "warning",
 		"evaluation_candidate_unsupported":    "warning",
@@ -754,7 +754,7 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 	inventories := make(map[string]*evalSourceInventory)
 	for _, admission := range scope.GetSourceAdmissions() {
 		_, hasEvalManifest := evalAdmissions[admission.GetAdmissionId()]
-		if hasEvalManifest && (admission.GetSourceKind() == constants.EvaluationSourceKindNative || admission.GetSourceKind() == constants.EvaluationSourceKindCampaign) {
+		if hasEvalManifest && (admission.GetSourceKind() == constants.EvaluationSourceKindConformance || admission.GetSourceKind() == constants.EvaluationSourceKindCampaign) {
 			key := admission.GetRunId()
 			if admission.GetSourceKind() == constants.EvaluationSourceKindCampaign {
 				key = admission.GetAdmissionId()
@@ -788,11 +788,11 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 					inventory.campaignReport = report
 				}
 			} else {
-				inventory.verificationReport = v.verifySourceVerificationReport(bundlePath, body, inventory.admission.GetRunId(), constants.EvalRunVerifierID, constants.EvalRunVerifierVersion, constants.ErrEvalRunVerificationFailed, "eval")
+				inventory.verificationReport = v.verifySourceVerificationReport(bundlePath, body, inventory.admission.GetRunId(), constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, constants.ErrEvalRunVerificationFailed, "eval")
 			}
 		case constants.CampaignSourceInventoryFilename:
 			if !campaign {
-				v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "native eval source cannot carry a campaign inventory")
+				v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "conformance eval source cannot carry a campaign inventory")
 				continue
 			}
 			manifest := &evalv1.CampaignComplianceSourceInventory{}
@@ -1752,7 +1752,7 @@ func (v *bundleVerifier) replayEvalSourceVerification(ctx context.Context, runID
 		v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, err.Error())
 		return
 	}
-	replayed, err := evaluation.NewVerifier(reader, evaluation.NewRegistry(), func() time.Time { return assessmentAsOf }).Verify(ctx, runID)
+	replayed, _, err := evaluation.VerifyConformanceSource(ctx, reader, runID, assessmentAsOf)
 	if err != nil {
 		v.fail(constants.ErrEvalRunVerificationFailed, bundlePath, err.Error())
 		return
