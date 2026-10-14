@@ -310,13 +310,15 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), executedAssignmentLine(executedAssignment, result))
 		}
 	}
-	if stopped && !opts.JSONOutput {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Stopped after %d assignment(s): cancel requested\n", executed)
-	}
 
 	summary, err = controller.RunSummary(cmd.Context(), opts.RunID)
 	if err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	// A stop is not completion: a caller that verifies or promotes on success
+	// would otherwise accept the executed subset as the run.
+	if stopped && summary.QueuedCount > 0 {
+		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
 		if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, selected.OperatorSessionID, spec); err != nil {

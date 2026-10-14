@@ -68,6 +68,16 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 	}
 }
 
+// ProviderFailureClass returns the inference attempt failure class an error
+// carries, or "" when the provider did not classify it.
+func ProviderFailureClass(err error) inference.AttemptFailureClass {
+	class := inference.ClassifyAttemptFailure(err)
+	if class == inference.AttemptFailureInternal {
+		return ""
+	}
+	return class
+}
+
 // BuildExecutorFailureAssignmentResult materializes one terminal assignment
 // result when production chat execution fails before a canonical trace import.
 // The grade detail is the failure class, never the error text.

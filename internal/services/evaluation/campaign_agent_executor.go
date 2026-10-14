@@ -306,6 +306,7 @@ func (r *agentRun) infer(ctx context.Context, purpose string, turn int, messages
 	result, call, err := r.dispatchInference(ctx, purpose, turn, messages, tools)
 	if err != nil {
 		r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
+		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
 		return nil, AgentModelCall{}, false
 	}
 	return result, call, true

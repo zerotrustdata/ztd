@@ -104,6 +104,11 @@ func (s *ModelSelector) maxParameters() (uint64, error) {
 	if maxParams == 0 {
 		return 0, fmt.Errorf("evaluation: model selector: --max-params must be greater than zero: %w", constants.ErrEvaluationFlagsInvalid)
 	}
+	// A bare number counts single parameters, so "4" selects nothing; the
+	// caller meant a unit.
+	if trimmed := strings.TrimSpace(s.MaxParams); !strings.ContainsAny(strings.ToLower(trimmed[len(trimmed)-1:]), "bmk") {
+		return 0, fmt.Errorf("evaluation: model selector: --max-params %q needs a unit: b, m, or k (for example 4b or 350m): %w", s.MaxParams, constants.ErrEvaluationFlagsInvalid)
+	}
 	return maxParams, nil
 }
 

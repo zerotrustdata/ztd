@@ -1824,6 +1824,106 @@ definitions:
     - ExecutionStatus_EXECUTION_STATUS_FAILED
     - ExecutionStatus_EXECUTION_STATUS_CANCELLED
     - ExecutionStatus_EXECUTION_STATUS_TIMEOUT
+  operatorv1.InferenceDispatchFailure:
+    properties:
+      code:
+        $ref: '#/definitions/operatorv1.InferenceDispatchFailureCode'
+      error:
+        type: string
+    type: object
+  operatorv1.InferenceDispatchFailureCode:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 22
+    - 23
+    - 24
+    - 25
+    - 26
+    - 27
+    - 28
+    - 29
+    - 30
+    - 31
+    - 32
+    - 33
+    - 34
+    - 35
+    - 36
+    - 37
+    - 38
+    - 39
+    - 40
+    - 41
+    - 42
+    - 43
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CANCELED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH
   operatorv1.InferenceDispatchRequest:
     properties:
       acting_app_id:
@@ -3323,55 +3423,55 @@ paths:
           description: Bad Request — malformed body, unknown field, missing messages,
             invalid role, or acting_app_id identity mismatch
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "401":
           description: Unauthorized — missing delegated user identity
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "403":
           description: Forbidden — not an app workload, model override denied, or
             governance rejection
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "404":
           description: Not Found — no inference-capable operator session
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "405":
           description: Method Not Allowed
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "409":
           description: Conflict — multiple inference-capable operators; explicit target
             required
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "413":
           description: Request Entity Too Large — body exceeds the payload limit
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "422":
           description: Unprocessable Entity — context overflow, unsupported tools,
             or target operator session is not inference-capable
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "500":
           description: Internal Error
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "502":
           description: Bad Gateway — provider or receipt verification failure
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "503":
           description: Service Unavailable — command delivered to no operator subscribers
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "504":
           description: Gateway Timeout — request deadline exceeded; remote provider
             outcome unknown
           schema:
-            type: string
+            $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
       summary: Dispatch a governed inference request
       tags:
       - inference

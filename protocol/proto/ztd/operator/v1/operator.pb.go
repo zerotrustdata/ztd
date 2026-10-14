@@ -846,6 +846,183 @@ func (InferenceProviderAttemptStatus) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{13}
 }
 
+// InferenceDispatchFailureCode is the typed classification of a failed
+// POST /api/v1/inference/dispatch. Each code names one centralized public
+// sentinel, so a caller classifies the failure (a provider that rejects tool
+// declarations, a backend timeout, a governance rejection) without parsing
+// the error text.
+type InferenceDispatchFailureCode int32
+
+const (
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED                InferenceDispatchFailureCode = 0
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL                   InferenceDispatchFailureCode = 1
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN            InferenceDispatchFailureCode = 2
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT             InferenceDispatchFailureCode = 3
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND         InferenceDispatchFailureCode = 4
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS         InferenceDispatchFailureCode = 5
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE       InferenceDispatchFailureCode = 6
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID               InferenceDispatchFailureCode = 7
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED          InferenceDispatchFailureCode = 8
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED  InferenceDispatchFailureCode = 9
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID            InferenceDispatchFailureCode = 10
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID               InferenceDispatchFailureCode = 11
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL         InferenceDispatchFailureCode = 12
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID        InferenceDispatchFailureCode = 13
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID InferenceDispatchFailureCode = 14
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED     InferenceDispatchFailureCode = 15
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED          InferenceDispatchFailureCode = 16
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW           InferenceDispatchFailureCode = 17
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID          InferenceDispatchFailureCode = 18
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED      InferenceDispatchFailureCode = 19
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID     InferenceDispatchFailureCode = 20
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID   InferenceDispatchFailureCode = 21
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED        InferenceDispatchFailureCode = 22
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY                InferenceDispatchFailureCode = 23
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED             InferenceDispatchFailureCode = 24
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY             InferenceDispatchFailureCode = 25
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH     InferenceDispatchFailureCode = 26
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST              InferenceDispatchFailureCode = 27
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH          InferenceDispatchFailureCode = 28
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH      InferenceDispatchFailureCode = 29
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID      InferenceDispatchFailureCode = 30
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE              InferenceDispatchFailureCode = 31
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT      InferenceDispatchFailureCode = 32
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT       InferenceDispatchFailureCode = 33
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE        InferenceDispatchFailureCode = 34
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED     InferenceDispatchFailureCode = 35
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT            InferenceDispatchFailureCode = 36
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED            InferenceDispatchFailureCode = 37
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND            InferenceDispatchFailureCode = 38
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID  InferenceDispatchFailureCode = 39
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CANCELED                   InferenceDispatchFailureCode = 40
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED        InferenceDispatchFailureCode = 41
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE      InferenceDispatchFailureCode = 42
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH     InferenceDispatchFailureCode = 43
+)
+
+// Enum value maps for InferenceDispatchFailureCode.
+var (
+	InferenceDispatchFailureCode_name = map[int32]string{
+		0:  "INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED",
+		1:  "INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL",
+		2:  "INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN",
+		3:  "INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT",
+		4:  "INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND",
+		5:  "INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS",
+		6:  "INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE",
+		7:  "INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID",
+		8:  "INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED",
+		9:  "INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED",
+		10: "INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID",
+		11: "INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID",
+		12: "INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL",
+		13: "INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID",
+		14: "INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID",
+		15: "INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED",
+		16: "INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED",
+		17: "INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW",
+		18: "INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID",
+		19: "INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED",
+		20: "INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID",
+		21: "INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
+		22: "INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED",
+		23: "INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY",
+		24: "INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED",
+		25: "INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY",
+		26: "INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH",
+		27: "INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST",
+		28: "INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH",
+		29: "INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH",
+		30: "INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID",
+		31: "INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE",
+		32: "INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT",
+		33: "INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT",
+		34: "INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE",
+		35: "INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED",
+		36: "INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT",
+		37: "INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED",
+		38: "INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND",
+		39: "INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID",
+		40: "INFERENCE_DISPATCH_FAILURE_CODE_CANCELED",
+		41: "INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED",
+		42: "INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE",
+		43: "INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH",
+	}
+	InferenceDispatchFailureCode_value = map[string]int32{
+		"INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED":                0,
+		"INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL":                   1,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN":            2,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT":             3,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND":         4,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS":         5,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE":       6,
+		"INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID":               7,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED":          8,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED":  9,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID":            10,
+		"INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID":               11,
+		"INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL":         12,
+		"INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID":        13,
+		"INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID": 14,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED":     15,
+		"INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED":          16,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW":           17,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID":          18,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED":      19,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID":     20,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID":   21,
+		"INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED":        22,
+		"INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY":                23,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED":             24,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY":             25,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH":     26,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST":              27,
+		"INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH":          28,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH":      29,
+		"INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID":      30,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE":              31,
+		"INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT":      32,
+		"INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT":       33,
+		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE":        34,
+		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED":     35,
+		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT":            36,
+		"INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED":            37,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND":            38,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID":  39,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CANCELED":                   40,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED":        41,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE":      42,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH":     43,
+	}
+)
+
+func (x InferenceDispatchFailureCode) Enum() *InferenceDispatchFailureCode {
+	p := new(InferenceDispatchFailureCode)
+	*p = x
+	return p
+}
+
+func (x InferenceDispatchFailureCode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (InferenceDispatchFailureCode) Descriptor() protoreflect.EnumDescriptor {
+	return file_ztd_operator_v1_operator_proto_enumTypes[14].Descriptor()
+}
+
+func (InferenceDispatchFailureCode) Type() protoreflect.EnumType {
+	return &file_ztd_operator_v1_operator_proto_enumTypes[14]
+}
+
+func (x InferenceDispatchFailureCode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use InferenceDispatchFailureCode.Descriptor instead.
+func (InferenceDispatchFailureCode) EnumDescriptor() ([]byte, []int) {
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{14}
+}
+
 // Payload for ztd.v1.operator.command.requested
 type CommandRequested struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -11424,20 +11601,77 @@ func (x *InferenceDispatchRequest) GetSeed() int32 {
 	return 0
 }
 
+// InferenceDispatchFailure is the protocol-owned error body for a non-2xx
+// POST /api/v1/inference/dispatch. Error is a public-safe centralized
+// sentinel; code classifies it, and is UNSPECIFIED for request faults the
+// handler rejects before dispatch (method, identity, body size).
+type InferenceDispatchFailure struct {
+	state         protoimpl.MessageState       `protogen:"open.v1"`
+	Error         string                       `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	Code          InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InferenceDispatchFailure) Reset() {
+	*x = InferenceDispatchFailure{}
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InferenceDispatchFailure) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InferenceDispatchFailure) ProtoMessage() {}
+
+func (x *InferenceDispatchFailure) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InferenceDispatchFailure.ProtoReflect.Descriptor instead.
+func (*InferenceDispatchFailure) Descriptor() ([]byte, []int) {
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{124}
+}
+
+func (x *InferenceDispatchFailure) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *InferenceDispatchFailure) GetCode() InferenceDispatchFailureCode {
+	if x != nil {
+		return x.Code
+	}
+	return InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED
+}
+
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure
 // frame for a streaming dispatch that already started NDJSON delivery.
 // Reason is a public-safe centralized sentinel; it never carries raw
-// prompts, model output, or receipt bodies.
+// prompts, model output, or receipt bodies. Code classifies it.
 type InferenceDispatchStreamFailure struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	state         protoimpl.MessageState       `protogen:"open.v1"`
+	Reason        string                       `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	Code          InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InferenceDispatchStreamFailure) Reset() {
 	*x = InferenceDispatchStreamFailure{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11449,7 +11683,7 @@ func (x *InferenceDispatchStreamFailure) String() string {
 func (*InferenceDispatchStreamFailure) ProtoMessage() {}
 
 func (x *InferenceDispatchStreamFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11462,7 +11696,7 @@ func (x *InferenceDispatchStreamFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchStreamFailure.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchStreamFailure) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{124}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *InferenceDispatchStreamFailure) GetReason() string {
@@ -11470,6 +11704,13 @@ func (x *InferenceDispatchStreamFailure) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *InferenceDispatchStreamFailure) GetCode() InferenceDispatchFailureCode {
+	if x != nil {
+		return x.Code
+	}
+	return InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED
 }
 
 // InferenceDispatchStreamFrame is one NDJSON line in a streaming dispatch
@@ -11492,7 +11733,7 @@ type InferenceDispatchStreamFrame struct {
 
 func (x *InferenceDispatchStreamFrame) Reset() {
 	*x = InferenceDispatchStreamFrame{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11504,7 +11745,7 @@ func (x *InferenceDispatchStreamFrame) String() string {
 func (*InferenceDispatchStreamFrame) ProtoMessage() {}
 
 func (x *InferenceDispatchStreamFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11517,7 +11758,7 @@ func (x *InferenceDispatchStreamFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchStreamFrame.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchStreamFrame) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{125}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *InferenceDispatchStreamFrame) GetFrame() isInferenceDispatchStreamFrame_Frame {
@@ -11596,7 +11837,7 @@ type InferenceDispatchResponse struct {
 
 func (x *InferenceDispatchResponse) Reset() {
 	*x = InferenceDispatchResponse{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11608,7 +11849,7 @@ func (x *InferenceDispatchResponse) String() string {
 func (*InferenceDispatchResponse) ProtoMessage() {}
 
 func (x *InferenceDispatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11621,7 +11862,7 @@ func (x *InferenceDispatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchResponse.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchResponse) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{126}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *InferenceDispatchResponse) GetTransactionId() string {
@@ -11655,7 +11896,7 @@ type PasskeyRegisterChallengeResult_RelyingParty struct {
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) Reset() {
 	*x = PasskeyRegisterChallengeResult_RelyingParty{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11667,7 +11908,7 @@ func (x *PasskeyRegisterChallengeResult_RelyingParty) String() string {
 func (*PasskeyRegisterChallengeResult_RelyingParty) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11708,7 +11949,7 @@ type PasskeyRegisterChallengeResult_UserInfo struct {
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) Reset() {
 	*x = PasskeyRegisterChallengeResult_UserInfo{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11720,7 +11961,7 @@ func (x *PasskeyRegisterChallengeResult_UserInfo) String() string {
 func (*PasskeyRegisterChallengeResult_UserInfo) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11767,7 +12008,7 @@ type PasskeyRegisterChallengeResult_PublicKeyCredentialParameters struct {
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) Reset() {
 	*x = PasskeyRegisterChallengeResult_PublicKeyCredentialParameters{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11779,7 +12020,7 @@ func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) String() 
 func (*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11819,7 +12060,7 @@ type PasskeyRegisterChallengeResult_AuthenticatorSelection struct {
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) Reset() {
 	*x = PasskeyRegisterChallengeResult_AuthenticatorSelection{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11831,7 +12072,7 @@ func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) String() string 
 func (*PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12882,9 +13123,13 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x06_top_kB\x16\n" +
 	"\x14_parallel_tool_callsB\x10\n" +
 	"\x0e_context_limitB\a\n" +
-	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"8\n" +
+	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"s\n" +
+	"\x18InferenceDispatchFailure\x12\x14\n" +
+	"\x05error\x18\x01 \x01(\tR\x05error\x12A\n" +
+	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\"{\n" +
 	"\x1eInferenceDispatchStreamFailure\x12\x16\n" +
-	"\x06reason\x18\x01 \x01(\tR\x06reason\"\x89\x02\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\x12A\n" +
+	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\"\x89\x02\n" +
 	"\x1cInferenceDispatchStreamFrame\x12E\n" +
 	"\bprogress\x18\x01 \x01(\v2'.ztd.operator.v1.InferenceProgressEventH\x00R\bprogress\x12L\n" +
 	"\n" +
@@ -12987,7 +13232,53 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_UNSPECIFIED\x10\x00\x121\n" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_IN_PROGRESS\x10\x01\x12/\n" +
 	"+INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED\x10\x02\x12,\n" +
-	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x032\xb8\x03\n" +
+	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x03*\xac\x13\n" +
+	"\x1cInferenceDispatchFailureCode\x12/\n" +
+	"+INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
+	"(INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL\x10\x01\x123\n" +
+	"/INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN\x10\x02\x122\n" +
+	".INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT\x10\x03\x126\n" +
+	"2INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND\x10\x04\x126\n" +
+	"2INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS\x10\x05\x128\n" +
+	"4INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE\x10\x06\x120\n" +
+	",INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID\x10\a\x125\n" +
+	"1INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED\x10\b\x12=\n" +
+	"9INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED\x10\t\x123\n" +
+	"/INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID\x10\n" +
+	"\x120\n" +
+	",INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID\x10\v\x126\n" +
+	"2INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL\x10\f\x127\n" +
+	"3INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID\x10\r\x12>\n" +
+	":INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID\x10\x0e\x12:\n" +
+	"6INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED\x10\x0f\x125\n" +
+	"1INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED\x10\x10\x124\n" +
+	"0INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x11\x125\n" +
+	"1INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID\x10\x12\x129\n" +
+	"5INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED\x10\x13\x12:\n" +
+	"6INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID\x10\x14\x12<\n" +
+	"8INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID\x10\x15\x127\n" +
+	"3INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED\x10\x16\x12/\n" +
+	"+INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY\x10\x17\x122\n" +
+	".INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED\x10\x18\x122\n" +
+	".INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY\x10\x19\x12:\n" +
+	"6INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH\x10\x1a\x121\n" +
+	"-INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST\x10\x1b\x125\n" +
+	"1INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH\x10\x1c\x129\n" +
+	"5INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH\x10\x1d\x129\n" +
+	"5INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID\x10\x1e\x121\n" +
+	"-INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE\x10\x1f\x129\n" +
+	"5INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT\x10 \x128\n" +
+	"4INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT\x10!\x127\n" +
+	"3INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE\x10\"\x12:\n" +
+	"6INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED\x10#\x123\n" +
+	"/INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT\x10$\x123\n" +
+	"/INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED\x10%\x123\n" +
+	"/INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND\x10&\x12=\n" +
+	"9INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID\x10'\x12,\n" +
+	"(INFERENCE_DISPATCH_FAILURE_CODE_CANCELED\x10(\x127\n" +
+	"3INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED\x10)\x129\n" +
+	"5INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE\x10*\x12:\n" +
+	"6INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH\x10+2\xb8\x03\n" +
 	"\x0fOperatorService\x12S\n" +
 	"\x0eExecuteCommand\x12!.ztd.operator.v1.CommandRequested\x1a\x1e.ztd.operator.v1.CommandResult\x12X\n" +
 	"\rCancelCommand\x12'.ztd.operator.v1.CommandCancelRequested\x1a\x1e.ztd.operator.v1.CommandResult\x12N\n" +
@@ -13007,8 +13298,8 @@ func file_ztd_operator_v1_operator_proto_rawDescGZIP() []byte {
 	return file_ztd_operator_v1_operator_proto_rawDescData
 }
 
-var file_ztd_operator_v1_operator_proto_enumTypes = make([]protoimpl.EnumInfo, 14)
-var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 132)
+var file_ztd_operator_v1_operator_proto_enumTypes = make([]protoimpl.EnumInfo, 15)
+var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 133)
 var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(ExecutionStatus)(0),                                                 // 0: ztd.operator.v1.ExecutionStatus
 	(L3Status)(0),                                                        // 1: ztd.operator.v1.L3Status
@@ -13024,252 +13315,256 @@ var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(InferenceLoadState)(0),                                              // 11: ztd.operator.v1.InferenceLoadState
 	(InferenceRetryClassification)(0),                                    // 12: ztd.operator.v1.InferenceRetryClassification
 	(InferenceProviderAttemptStatus)(0),                                  // 13: ztd.operator.v1.InferenceProviderAttemptStatus
-	(*CommandRequested)(nil),                                             // 14: ztd.operator.v1.CommandRequested
-	(*CommandCancelRequested)(nil),                                       // 15: ztd.operator.v1.CommandCancelRequested
-	(*FileEditRequested)(nil),                                            // 16: ztd.operator.v1.FileEditRequested
-	(*FsListRequested)(nil),                                              // 17: ztd.operator.v1.FsListRequested
-	(*FsReadRequested)(nil),                                              // 18: ztd.operator.v1.FsReadRequested
-	(*HeartbeatRequested)(nil),                                           // 19: ztd.operator.v1.HeartbeatRequested
-	(*FsGrepRequested)(nil),                                              // 20: ztd.operator.v1.FsGrepRequested
-	(*CheckPortRequested)(nil),                                           // 21: ztd.operator.v1.CheckPortRequested
-	(*FetchLogsRequested)(nil),                                           // 22: ztd.operator.v1.FetchLogsRequested
-	(*FetchHistoryRequested)(nil),                                        // 23: ztd.operator.v1.FetchHistoryRequested
-	(*FetchFileHistoryRequested)(nil),                                    // 24: ztd.operator.v1.FetchFileHistoryRequested
-	(*FetchFileDiffRequested)(nil),                                       // 25: ztd.operator.v1.FetchFileDiffRequested
-	(*RestoreFileRequested)(nil),                                         // 26: ztd.operator.v1.RestoreFileRequested
-	(*DirectCommandAuditRequested)(nil),                                  // 27: ztd.operator.v1.DirectCommandAuditRequested
-	(*DirectCommandResultAuditRequested)(nil),                            // 28: ztd.operator.v1.DirectCommandResultAuditRequested
-	(*AuditMsgRequested)(nil),                                            // 29: ztd.operator.v1.AuditMsgRequested
-	(*DocumentUpdateRequested)(nil),                                      // 30: ztd.operator.v1.DocumentUpdateRequested
-	(*DocumentDeleteRequested)(nil),                                      // 31: ztd.operator.v1.DocumentDeleteRequested
-	(*SignCertificateRequested)(nil),                                     // 32: ztd.operator.v1.SignCertificateRequested
-	(*SignCertificateResult)(nil),                                        // 33: ztd.operator.v1.SignCertificateResult
-	(*RevokeCertificateRequested)(nil),                                   // 34: ztd.operator.v1.RevokeCertificateRequested
-	(*RevokeCertificateResult)(nil),                                      // 35: ztd.operator.v1.RevokeCertificateResult
-	(*GetRevocationBundleRequested)(nil),                                 // 36: ztd.operator.v1.GetRevocationBundleRequested
-	(*GetRevocationBundleResult)(nil),                                    // 37: ztd.operator.v1.GetRevocationBundleResult
-	(*CreateDeviceLinkRequested)(nil),                                    // 38: ztd.operator.v1.CreateDeviceLinkRequested
-	(*DeviceLink)(nil),                                                   // 39: ztd.operator.v1.DeviceLink
-	(*DeviceLinkResult)(nil),                                             // 40: ztd.operator.v1.DeviceLinkResult
-	(*ListDeviceLinksRequested)(nil),                                     // 41: ztd.operator.v1.ListDeviceLinksRequested
-	(*ListDeviceLinksResult)(nil),                                        // 42: ztd.operator.v1.ListDeviceLinksResult
-	(*DeleteDeviceLinkRequested)(nil),                                    // 43: ztd.operator.v1.DeleteDeviceLinkRequested
-	(*TerminateOperatorRequested)(nil),                                   // 44: ztd.operator.v1.TerminateOperatorRequested
-	(*TerminateOperatorResult)(nil),                                      // 45: ztd.operator.v1.TerminateOperatorResult
-	(*ListOperatorSlotsRequested)(nil),                                   // 46: ztd.operator.v1.ListOperatorSlotsRequested
-	(*ListOperatorSlotsResult)(nil),                                      // 47: ztd.operator.v1.ListOperatorSlotsResult
-	(*BindOperatorsRequested)(nil),                                       // 48: ztd.operator.v1.BindOperatorsRequested
-	(*BindOperatorsResult)(nil),                                          // 49: ztd.operator.v1.BindOperatorsResult
-	(*UnbindOperatorsRequested)(nil),                                     // 50: ztd.operator.v1.UnbindOperatorsRequested
-	(*UnbindOperatorsResult)(nil),                                        // 51: ztd.operator.v1.UnbindOperatorsResult
-	(*SetTargetContextRequested)(nil),                                    // 52: ztd.operator.v1.SetTargetContextRequested
-	(*SetTargetContextResult)(nil),                                       // 53: ztd.operator.v1.SetTargetContextResult
-	(*OperatorRuntimeConfig)(nil),                                        // 54: ztd.operator.v1.OperatorRuntimeConfig
-	(*OperatorDocument)(nil),                                             // 55: ztd.operator.v1.OperatorDocument
-	(*ShutdownRequested)(nil),                                            // 56: ztd.operator.v1.ShutdownRequested
-	(*EvalAnswerRequested)(nil),                                          // 57: ztd.operator.v1.EvalAnswerRequested
-	(*McpCallRequested)(nil),                                             // 58: ztd.operator.v1.McpCallRequested
-	(*A2ACallRequested)(nil),                                             // 59: ztd.operator.v1.A2aCallRequested
-	(*McpResourceListRequested)(nil),                                     // 60: ztd.operator.v1.McpResourceListRequested
-	(*McpResourceReadRequested)(nil),                                     // 61: ztd.operator.v1.McpResourceReadRequested
-	(*McpPromptListRequested)(nil),                                       // 62: ztd.operator.v1.McpPromptListRequested
-	(*McpPromptGetRequested)(nil),                                        // 63: ztd.operator.v1.McpPromptGetRequested
-	(*DeterministicStageEvidence)(nil),                                   // 64: ztd.operator.v1.DeterministicStageEvidence
-	(*ReceiptPersistenceAttestation)(nil),                                // 65: ztd.operator.v1.ReceiptPersistenceAttestation
-	(*ActionReceipt)(nil),                                                // 66: ztd.operator.v1.ActionReceipt
-	(*CommitmentAttestation)(nil),                                        // 67: ztd.operator.v1.CommitmentAttestation
-	(*CommandResult)(nil),                                                // 68: ztd.operator.v1.CommandResult
-	(*FsEntry)(nil),                                                      // 69: ztd.operator.v1.FsEntry
-	(*FsListResult)(nil),                                                 // 70: ztd.operator.v1.FsListResult
-	(*FsReadResult)(nil),                                                 // 71: ztd.operator.v1.FsReadResult
-	(*FsGrepMatch)(nil),                                                  // 72: ztd.operator.v1.FsGrepMatch
-	(*FsGrepResult)(nil),                                                 // 73: ztd.operator.v1.FsGrepResult
-	(*FileEditResult)(nil),                                               // 74: ztd.operator.v1.FileEditResult
-	(*ExecutionStatusUpdate)(nil),                                        // 75: ztd.operator.v1.ExecutionStatusUpdate
-	(*PortCheckEntry)(nil),                                               // 76: ztd.operator.v1.PortCheckEntry
-	(*PortCheckResult)(nil),                                              // 77: ztd.operator.v1.PortCheckResult
-	(*OllamaModelInventoryRequested)(nil),                                // 78: ztd.operator.v1.OllamaModelInventoryRequested
-	(*ProviderModelInventoryEntry)(nil),                                  // 79: ztd.operator.v1.ProviderModelInventoryEntry
-	(*OllamaModelInventoryResult)(nil),                                   // 80: ztd.operator.v1.OllamaModelInventoryResult
-	(*OllamaModelResidencyRequested)(nil),                                // 81: ztd.operator.v1.OllamaModelResidencyRequested
-	(*OllamaModelResidencyModel)(nil),                                    // 82: ztd.operator.v1.OllamaModelResidencyModel
-	(*OllamaModelResidencyResult)(nil),                                   // 83: ztd.operator.v1.OllamaModelResidencyResult
-	(*FetchLogsResult)(nil),                                              // 84: ztd.operator.v1.FetchLogsResult
-	(*AuditWebSession)(nil),                                              // 85: ztd.operator.v1.AuditWebSession
-	(*AuditFileMutation)(nil),                                            // 86: ztd.operator.v1.AuditFileMutation
-	(*AuditEvent)(nil),                                                   // 87: ztd.operator.v1.AuditEvent
-	(*FetchHistoryResult)(nil),                                           // 88: ztd.operator.v1.FetchHistoryResult
-	(*FileHistoryEntry)(nil),                                             // 89: ztd.operator.v1.FileHistoryEntry
-	(*FetchFileHistoryResult)(nil),                                       // 90: ztd.operator.v1.FetchFileHistoryResult
-	(*RestoreFileResult)(nil),                                            // 91: ztd.operator.v1.RestoreFileResult
-	(*FileDiffEntry)(nil),                                                // 92: ztd.operator.v1.FileDiffEntry
-	(*FetchFileDiffResult)(nil),                                          // 93: ztd.operator.v1.FetchFileDiffResult
-	(*HeartbeatResult)(nil),                                              // 94: ztd.operator.v1.HeartbeatResult
-	(*SystemIdentity)(nil),                                               // 95: ztd.operator.v1.SystemIdentity
-	(*NetworkInterface)(nil),                                             // 96: ztd.operator.v1.NetworkInterface
-	(*NetworkInfo)(nil),                                                  // 97: ztd.operator.v1.NetworkInfo
-	(*VersionInfo)(nil),                                                  // 98: ztd.operator.v1.VersionInfo
-	(*UptimeInfo)(nil),                                                   // 99: ztd.operator.v1.UptimeInfo
-	(*PerformanceMetrics)(nil),                                           // 100: ztd.operator.v1.PerformanceMetrics
-	(*OSDetails)(nil),                                                    // 101: ztd.operator.v1.OSDetails
-	(*UserDetails)(nil),                                                  // 102: ztd.operator.v1.UserDetails
-	(*DiskDetails)(nil),                                                  // 103: ztd.operator.v1.DiskDetails
-	(*MemoryDetails)(nil),                                                // 104: ztd.operator.v1.MemoryDetails
-	(*EnvironmentDetails)(nil),                                           // 105: ztd.operator.v1.EnvironmentDetails
-	(*FingerprintDetails)(nil),                                           // 106: ztd.operator.v1.FingerprintDetails
-	(*PasskeyCredential)(nil),                                            // 107: ztd.operator.v1.PasskeyCredential
-	(*PasskeyRegisterChallengeRequested)(nil),                            // 108: ztd.operator.v1.PasskeyRegisterChallengeRequested
-	(*PasskeyRegisterChallengeResult)(nil),                               // 109: ztd.operator.v1.PasskeyRegisterChallengeResult
-	(*AttestationResponse)(nil),                                          // 110: ztd.operator.v1.AttestationResponse
-	(*PasskeyRegisterVerifyRequested)(nil),                               // 111: ztd.operator.v1.PasskeyRegisterVerifyRequested
-	(*PasskeyRegisterVerifyResult)(nil),                                  // 112: ztd.operator.v1.PasskeyRegisterVerifyResult
-	(*PasskeyAuthChallengeRequested)(nil),                                // 113: ztd.operator.v1.PasskeyAuthChallengeRequested
-	(*PasskeyAuthChallengeResult)(nil),                                   // 114: ztd.operator.v1.PasskeyAuthChallengeResult
-	(*AssertionResponse)(nil),                                            // 115: ztd.operator.v1.AssertionResponse
-	(*PasskeyAuthVerifyRequested)(nil),                                   // 116: ztd.operator.v1.PasskeyAuthVerifyRequested
-	(*PasskeyAuthVerifyResult)(nil),                                      // 117: ztd.operator.v1.PasskeyAuthVerifyResult
-	(*ListPasskeyCredentialsRequested)(nil),                              // 118: ztd.operator.v1.ListPasskeyCredentialsRequested
-	(*ListPasskeyCredentialsResult)(nil),                                 // 119: ztd.operator.v1.ListPasskeyCredentialsResult
-	(*RevokePasskeyCredentialRequested)(nil),                             // 120: ztd.operator.v1.RevokePasskeyCredentialRequested
-	(*RevokePasskeyCredentialResult)(nil),                                // 121: ztd.operator.v1.RevokePasskeyCredentialResult
-	(*InferenceToolCall)(nil),                                            // 122: ztd.operator.v1.InferenceToolCall
-	(*InferenceToolResult)(nil),                                          // 123: ztd.operator.v1.InferenceToolResult
-	(*InferenceMessagePart)(nil),                                         // 124: ztd.operator.v1.InferenceMessagePart
-	(*InferenceMessage)(nil),                                             // 125: ztd.operator.v1.InferenceMessage
-	(*InferenceToolDeclaration)(nil),                                     // 126: ztd.operator.v1.InferenceToolDeclaration
-	(*InferenceResponseFormat)(nil),                                      // 127: ztd.operator.v1.InferenceResponseFormat
-	(*InferenceToolChoice)(nil),                                          // 128: ztd.operator.v1.InferenceToolChoice
-	(*InferenceThinkingControl)(nil),                                     // 129: ztd.operator.v1.InferenceThinkingControl
-	(*InferenceResponsePart)(nil),                                        // 130: ztd.operator.v1.InferenceResponsePart
-	(*InferenceModelVariant)(nil),                                        // 131: ztd.operator.v1.InferenceModelVariant
-	(*InferenceRequested)(nil),                                           // 132: ztd.operator.v1.InferenceRequested
-	(*InferenceProviderAttemptRecord)(nil),                               // 133: ztd.operator.v1.InferenceProviderAttemptRecord
-	(*InferenceResult)(nil),                                              // 134: ztd.operator.v1.InferenceResult
-	(*InferenceProgressEvent)(nil),                                       // 135: ztd.operator.v1.InferenceProgressEvent
-	(*InferenceCompletion)(nil),                                          // 136: ztd.operator.v1.InferenceCompletion
-	(*InferenceDispatchRequest)(nil),                                     // 137: ztd.operator.v1.InferenceDispatchRequest
-	(*InferenceDispatchStreamFailure)(nil),                               // 138: ztd.operator.v1.InferenceDispatchStreamFailure
-	(*InferenceDispatchStreamFrame)(nil),                                 // 139: ztd.operator.v1.InferenceDispatchStreamFrame
-	(*InferenceDispatchResponse)(nil),                                    // 140: ztd.operator.v1.InferenceDispatchResponse
-	nil,                                                                  // 141: ztd.operator.v1.CommandRequested.EnvironmentEntry
-	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 142: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 143: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 144: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 145: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
-	(*structpb.Struct)(nil),                                              // 146: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),                                        // 147: google.protobuf.Timestamp
+	(InferenceDispatchFailureCode)(0),                                    // 14: ztd.operator.v1.InferenceDispatchFailureCode
+	(*CommandRequested)(nil),                                             // 15: ztd.operator.v1.CommandRequested
+	(*CommandCancelRequested)(nil),                                       // 16: ztd.operator.v1.CommandCancelRequested
+	(*FileEditRequested)(nil),                                            // 17: ztd.operator.v1.FileEditRequested
+	(*FsListRequested)(nil),                                              // 18: ztd.operator.v1.FsListRequested
+	(*FsReadRequested)(nil),                                              // 19: ztd.operator.v1.FsReadRequested
+	(*HeartbeatRequested)(nil),                                           // 20: ztd.operator.v1.HeartbeatRequested
+	(*FsGrepRequested)(nil),                                              // 21: ztd.operator.v1.FsGrepRequested
+	(*CheckPortRequested)(nil),                                           // 22: ztd.operator.v1.CheckPortRequested
+	(*FetchLogsRequested)(nil),                                           // 23: ztd.operator.v1.FetchLogsRequested
+	(*FetchHistoryRequested)(nil),                                        // 24: ztd.operator.v1.FetchHistoryRequested
+	(*FetchFileHistoryRequested)(nil),                                    // 25: ztd.operator.v1.FetchFileHistoryRequested
+	(*FetchFileDiffRequested)(nil),                                       // 26: ztd.operator.v1.FetchFileDiffRequested
+	(*RestoreFileRequested)(nil),                                         // 27: ztd.operator.v1.RestoreFileRequested
+	(*DirectCommandAuditRequested)(nil),                                  // 28: ztd.operator.v1.DirectCommandAuditRequested
+	(*DirectCommandResultAuditRequested)(nil),                            // 29: ztd.operator.v1.DirectCommandResultAuditRequested
+	(*AuditMsgRequested)(nil),                                            // 30: ztd.operator.v1.AuditMsgRequested
+	(*DocumentUpdateRequested)(nil),                                      // 31: ztd.operator.v1.DocumentUpdateRequested
+	(*DocumentDeleteRequested)(nil),                                      // 32: ztd.operator.v1.DocumentDeleteRequested
+	(*SignCertificateRequested)(nil),                                     // 33: ztd.operator.v1.SignCertificateRequested
+	(*SignCertificateResult)(nil),                                        // 34: ztd.operator.v1.SignCertificateResult
+	(*RevokeCertificateRequested)(nil),                                   // 35: ztd.operator.v1.RevokeCertificateRequested
+	(*RevokeCertificateResult)(nil),                                      // 36: ztd.operator.v1.RevokeCertificateResult
+	(*GetRevocationBundleRequested)(nil),                                 // 37: ztd.operator.v1.GetRevocationBundleRequested
+	(*GetRevocationBundleResult)(nil),                                    // 38: ztd.operator.v1.GetRevocationBundleResult
+	(*CreateDeviceLinkRequested)(nil),                                    // 39: ztd.operator.v1.CreateDeviceLinkRequested
+	(*DeviceLink)(nil),                                                   // 40: ztd.operator.v1.DeviceLink
+	(*DeviceLinkResult)(nil),                                             // 41: ztd.operator.v1.DeviceLinkResult
+	(*ListDeviceLinksRequested)(nil),                                     // 42: ztd.operator.v1.ListDeviceLinksRequested
+	(*ListDeviceLinksResult)(nil),                                        // 43: ztd.operator.v1.ListDeviceLinksResult
+	(*DeleteDeviceLinkRequested)(nil),                                    // 44: ztd.operator.v1.DeleteDeviceLinkRequested
+	(*TerminateOperatorRequested)(nil),                                   // 45: ztd.operator.v1.TerminateOperatorRequested
+	(*TerminateOperatorResult)(nil),                                      // 46: ztd.operator.v1.TerminateOperatorResult
+	(*ListOperatorSlotsRequested)(nil),                                   // 47: ztd.operator.v1.ListOperatorSlotsRequested
+	(*ListOperatorSlotsResult)(nil),                                      // 48: ztd.operator.v1.ListOperatorSlotsResult
+	(*BindOperatorsRequested)(nil),                                       // 49: ztd.operator.v1.BindOperatorsRequested
+	(*BindOperatorsResult)(nil),                                          // 50: ztd.operator.v1.BindOperatorsResult
+	(*UnbindOperatorsRequested)(nil),                                     // 51: ztd.operator.v1.UnbindOperatorsRequested
+	(*UnbindOperatorsResult)(nil),                                        // 52: ztd.operator.v1.UnbindOperatorsResult
+	(*SetTargetContextRequested)(nil),                                    // 53: ztd.operator.v1.SetTargetContextRequested
+	(*SetTargetContextResult)(nil),                                       // 54: ztd.operator.v1.SetTargetContextResult
+	(*OperatorRuntimeConfig)(nil),                                        // 55: ztd.operator.v1.OperatorRuntimeConfig
+	(*OperatorDocument)(nil),                                             // 56: ztd.operator.v1.OperatorDocument
+	(*ShutdownRequested)(nil),                                            // 57: ztd.operator.v1.ShutdownRequested
+	(*EvalAnswerRequested)(nil),                                          // 58: ztd.operator.v1.EvalAnswerRequested
+	(*McpCallRequested)(nil),                                             // 59: ztd.operator.v1.McpCallRequested
+	(*A2ACallRequested)(nil),                                             // 60: ztd.operator.v1.A2aCallRequested
+	(*McpResourceListRequested)(nil),                                     // 61: ztd.operator.v1.McpResourceListRequested
+	(*McpResourceReadRequested)(nil),                                     // 62: ztd.operator.v1.McpResourceReadRequested
+	(*McpPromptListRequested)(nil),                                       // 63: ztd.operator.v1.McpPromptListRequested
+	(*McpPromptGetRequested)(nil),                                        // 64: ztd.operator.v1.McpPromptGetRequested
+	(*DeterministicStageEvidence)(nil),                                   // 65: ztd.operator.v1.DeterministicStageEvidence
+	(*ReceiptPersistenceAttestation)(nil),                                // 66: ztd.operator.v1.ReceiptPersistenceAttestation
+	(*ActionReceipt)(nil),                                                // 67: ztd.operator.v1.ActionReceipt
+	(*CommitmentAttestation)(nil),                                        // 68: ztd.operator.v1.CommitmentAttestation
+	(*CommandResult)(nil),                                                // 69: ztd.operator.v1.CommandResult
+	(*FsEntry)(nil),                                                      // 70: ztd.operator.v1.FsEntry
+	(*FsListResult)(nil),                                                 // 71: ztd.operator.v1.FsListResult
+	(*FsReadResult)(nil),                                                 // 72: ztd.operator.v1.FsReadResult
+	(*FsGrepMatch)(nil),                                                  // 73: ztd.operator.v1.FsGrepMatch
+	(*FsGrepResult)(nil),                                                 // 74: ztd.operator.v1.FsGrepResult
+	(*FileEditResult)(nil),                                               // 75: ztd.operator.v1.FileEditResult
+	(*ExecutionStatusUpdate)(nil),                                        // 76: ztd.operator.v1.ExecutionStatusUpdate
+	(*PortCheckEntry)(nil),                                               // 77: ztd.operator.v1.PortCheckEntry
+	(*PortCheckResult)(nil),                                              // 78: ztd.operator.v1.PortCheckResult
+	(*OllamaModelInventoryRequested)(nil),                                // 79: ztd.operator.v1.OllamaModelInventoryRequested
+	(*ProviderModelInventoryEntry)(nil),                                  // 80: ztd.operator.v1.ProviderModelInventoryEntry
+	(*OllamaModelInventoryResult)(nil),                                   // 81: ztd.operator.v1.OllamaModelInventoryResult
+	(*OllamaModelResidencyRequested)(nil),                                // 82: ztd.operator.v1.OllamaModelResidencyRequested
+	(*OllamaModelResidencyModel)(nil),                                    // 83: ztd.operator.v1.OllamaModelResidencyModel
+	(*OllamaModelResidencyResult)(nil),                                   // 84: ztd.operator.v1.OllamaModelResidencyResult
+	(*FetchLogsResult)(nil),                                              // 85: ztd.operator.v1.FetchLogsResult
+	(*AuditWebSession)(nil),                                              // 86: ztd.operator.v1.AuditWebSession
+	(*AuditFileMutation)(nil),                                            // 87: ztd.operator.v1.AuditFileMutation
+	(*AuditEvent)(nil),                                                   // 88: ztd.operator.v1.AuditEvent
+	(*FetchHistoryResult)(nil),                                           // 89: ztd.operator.v1.FetchHistoryResult
+	(*FileHistoryEntry)(nil),                                             // 90: ztd.operator.v1.FileHistoryEntry
+	(*FetchFileHistoryResult)(nil),                                       // 91: ztd.operator.v1.FetchFileHistoryResult
+	(*RestoreFileResult)(nil),                                            // 92: ztd.operator.v1.RestoreFileResult
+	(*FileDiffEntry)(nil),                                                // 93: ztd.operator.v1.FileDiffEntry
+	(*FetchFileDiffResult)(nil),                                          // 94: ztd.operator.v1.FetchFileDiffResult
+	(*HeartbeatResult)(nil),                                              // 95: ztd.operator.v1.HeartbeatResult
+	(*SystemIdentity)(nil),                                               // 96: ztd.operator.v1.SystemIdentity
+	(*NetworkInterface)(nil),                                             // 97: ztd.operator.v1.NetworkInterface
+	(*NetworkInfo)(nil),                                                  // 98: ztd.operator.v1.NetworkInfo
+	(*VersionInfo)(nil),                                                  // 99: ztd.operator.v1.VersionInfo
+	(*UptimeInfo)(nil),                                                   // 100: ztd.operator.v1.UptimeInfo
+	(*PerformanceMetrics)(nil),                                           // 101: ztd.operator.v1.PerformanceMetrics
+	(*OSDetails)(nil),                                                    // 102: ztd.operator.v1.OSDetails
+	(*UserDetails)(nil),                                                  // 103: ztd.operator.v1.UserDetails
+	(*DiskDetails)(nil),                                                  // 104: ztd.operator.v1.DiskDetails
+	(*MemoryDetails)(nil),                                                // 105: ztd.operator.v1.MemoryDetails
+	(*EnvironmentDetails)(nil),                                           // 106: ztd.operator.v1.EnvironmentDetails
+	(*FingerprintDetails)(nil),                                           // 107: ztd.operator.v1.FingerprintDetails
+	(*PasskeyCredential)(nil),                                            // 108: ztd.operator.v1.PasskeyCredential
+	(*PasskeyRegisterChallengeRequested)(nil),                            // 109: ztd.operator.v1.PasskeyRegisterChallengeRequested
+	(*PasskeyRegisterChallengeResult)(nil),                               // 110: ztd.operator.v1.PasskeyRegisterChallengeResult
+	(*AttestationResponse)(nil),                                          // 111: ztd.operator.v1.AttestationResponse
+	(*PasskeyRegisterVerifyRequested)(nil),                               // 112: ztd.operator.v1.PasskeyRegisterVerifyRequested
+	(*PasskeyRegisterVerifyResult)(nil),                                  // 113: ztd.operator.v1.PasskeyRegisterVerifyResult
+	(*PasskeyAuthChallengeRequested)(nil),                                // 114: ztd.operator.v1.PasskeyAuthChallengeRequested
+	(*PasskeyAuthChallengeResult)(nil),                                   // 115: ztd.operator.v1.PasskeyAuthChallengeResult
+	(*AssertionResponse)(nil),                                            // 116: ztd.operator.v1.AssertionResponse
+	(*PasskeyAuthVerifyRequested)(nil),                                   // 117: ztd.operator.v1.PasskeyAuthVerifyRequested
+	(*PasskeyAuthVerifyResult)(nil),                                      // 118: ztd.operator.v1.PasskeyAuthVerifyResult
+	(*ListPasskeyCredentialsRequested)(nil),                              // 119: ztd.operator.v1.ListPasskeyCredentialsRequested
+	(*ListPasskeyCredentialsResult)(nil),                                 // 120: ztd.operator.v1.ListPasskeyCredentialsResult
+	(*RevokePasskeyCredentialRequested)(nil),                             // 121: ztd.operator.v1.RevokePasskeyCredentialRequested
+	(*RevokePasskeyCredentialResult)(nil),                                // 122: ztd.operator.v1.RevokePasskeyCredentialResult
+	(*InferenceToolCall)(nil),                                            // 123: ztd.operator.v1.InferenceToolCall
+	(*InferenceToolResult)(nil),                                          // 124: ztd.operator.v1.InferenceToolResult
+	(*InferenceMessagePart)(nil),                                         // 125: ztd.operator.v1.InferenceMessagePart
+	(*InferenceMessage)(nil),                                             // 126: ztd.operator.v1.InferenceMessage
+	(*InferenceToolDeclaration)(nil),                                     // 127: ztd.operator.v1.InferenceToolDeclaration
+	(*InferenceResponseFormat)(nil),                                      // 128: ztd.operator.v1.InferenceResponseFormat
+	(*InferenceToolChoice)(nil),                                          // 129: ztd.operator.v1.InferenceToolChoice
+	(*InferenceThinkingControl)(nil),                                     // 130: ztd.operator.v1.InferenceThinkingControl
+	(*InferenceResponsePart)(nil),                                        // 131: ztd.operator.v1.InferenceResponsePart
+	(*InferenceModelVariant)(nil),                                        // 132: ztd.operator.v1.InferenceModelVariant
+	(*InferenceRequested)(nil),                                           // 133: ztd.operator.v1.InferenceRequested
+	(*InferenceProviderAttemptRecord)(nil),                               // 134: ztd.operator.v1.InferenceProviderAttemptRecord
+	(*InferenceResult)(nil),                                              // 135: ztd.operator.v1.InferenceResult
+	(*InferenceProgressEvent)(nil),                                       // 136: ztd.operator.v1.InferenceProgressEvent
+	(*InferenceCompletion)(nil),                                          // 137: ztd.operator.v1.InferenceCompletion
+	(*InferenceDispatchRequest)(nil),                                     // 138: ztd.operator.v1.InferenceDispatchRequest
+	(*InferenceDispatchFailure)(nil),                                     // 139: ztd.operator.v1.InferenceDispatchFailure
+	(*InferenceDispatchStreamFailure)(nil),                               // 140: ztd.operator.v1.InferenceDispatchStreamFailure
+	(*InferenceDispatchStreamFrame)(nil),                                 // 141: ztd.operator.v1.InferenceDispatchStreamFrame
+	(*InferenceDispatchResponse)(nil),                                    // 142: ztd.operator.v1.InferenceDispatchResponse
+	nil,                                                                  // 143: ztd.operator.v1.CommandRequested.EnvironmentEntry
+	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 144: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 145: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 146: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 147: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	(*structpb.Struct)(nil),                                              // 148: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),                                        // 149: google.protobuf.Timestamp
 }
 var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
-	141, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
-	146, // 1: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
-	39,  // 2: ztd.operator.v1.DeviceLinkResult.link:type_name -> ztd.operator.v1.DeviceLink
-	39,  // 3: ztd.operator.v1.ListDeviceLinksResult.links:type_name -> ztd.operator.v1.DeviceLink
-	55,  // 4: ztd.operator.v1.ListOperatorSlotsResult.operators:type_name -> ztd.operator.v1.OperatorDocument
-	147, // 5: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
-	147, // 6: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
-	147, // 7: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
-	147, // 8: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
-	147, // 9: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	94,  // 10: ztd.operator.v1.OperatorDocument.latest_heartbeat_snapshot:type_name -> ztd.operator.v1.HeartbeatResult
-	54,  // 11: ztd.operator.v1.OperatorDocument.runtime_config:type_name -> ztd.operator.v1.OperatorRuntimeConfig
-	147, // 12: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
+	143, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
+	148, // 1: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
+	40,  // 2: ztd.operator.v1.DeviceLinkResult.link:type_name -> ztd.operator.v1.DeviceLink
+	40,  // 3: ztd.operator.v1.ListDeviceLinksResult.links:type_name -> ztd.operator.v1.DeviceLink
+	56,  // 4: ztd.operator.v1.ListOperatorSlotsResult.operators:type_name -> ztd.operator.v1.OperatorDocument
+	149, // 5: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
+	149, // 6: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
+	149, // 7: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
+	149, // 8: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
+	149, // 9: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	95,  // 10: ztd.operator.v1.OperatorDocument.latest_heartbeat_snapshot:type_name -> ztd.operator.v1.HeartbeatResult
+	55,  // 11: ztd.operator.v1.OperatorDocument.runtime_config:type_name -> ztd.operator.v1.OperatorRuntimeConfig
+	149, // 12: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
 	4,   // 13: ztd.operator.v1.DeterministicStageEvidence.kind:type_name -> ztd.operator.v1.DeterministicStageKind
 	5,   // 14: ztd.operator.v1.DeterministicStageEvidence.outcome:type_name -> ztd.operator.v1.DeterministicStageOutcome
 	0,   // 15: ztd.operator.v1.ActionReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
 	2,   // 16: ztd.operator.v1.ActionReceipt.l2_status:type_name -> ztd.operator.v1.L2Status
 	1,   // 17: ztd.operator.v1.ActionReceipt.l3_status:type_name -> ztd.operator.v1.L3Status
-	64,  // 18: ztd.operator.v1.ActionReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
-	65,  // 19: ztd.operator.v1.ActionReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
+	65,  // 18: ztd.operator.v1.ActionReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
+	66,  // 19: ztd.operator.v1.ActionReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
 	6,   // 20: ztd.operator.v1.ActionReceipt.failure_code:type_name -> ztd.operator.v1.ReceiptFailureCode
 	0,   // 21: ztd.operator.v1.CommandResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 22: ztd.operator.v1.FsListResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	69,  // 23: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
+	70,  // 23: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
 	0,   // 24: ztd.operator.v1.FsReadResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 25: ztd.operator.v1.FsGrepResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	72,  // 26: ztd.operator.v1.FsGrepResult.matches:type_name -> ztd.operator.v1.FsGrepMatch
+	73,  // 26: ztd.operator.v1.FsGrepResult.matches:type_name -> ztd.operator.v1.FsGrepMatch
 	0,   // 27: ztd.operator.v1.FileEditResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 28: ztd.operator.v1.ExecutionStatusUpdate.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 29: ztd.operator.v1.PortCheckResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	76,  // 30: ztd.operator.v1.PortCheckResult.results:type_name -> ztd.operator.v1.PortCheckEntry
+	77,  // 30: ztd.operator.v1.PortCheckResult.results:type_name -> ztd.operator.v1.PortCheckEntry
 	0,   // 31: ztd.operator.v1.OllamaModelInventoryResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	79,  // 32: ztd.operator.v1.OllamaModelInventoryResult.entries:type_name -> ztd.operator.v1.ProviderModelInventoryEntry
+	80,  // 32: ztd.operator.v1.OllamaModelInventoryResult.entries:type_name -> ztd.operator.v1.ProviderModelInventoryEntry
 	0,   // 33: ztd.operator.v1.OllamaModelResidencyResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	82,  // 34: ztd.operator.v1.OllamaModelResidencyResult.models:type_name -> ztd.operator.v1.OllamaModelResidencyModel
-	86,  // 35: ztd.operator.v1.AuditEvent.file_mutations:type_name -> ztd.operator.v1.AuditFileMutation
-	85,  // 36: ztd.operator.v1.FetchHistoryResult.web_session:type_name -> ztd.operator.v1.AuditWebSession
-	87,  // 37: ztd.operator.v1.FetchHistoryResult.events:type_name -> ztd.operator.v1.AuditEvent
-	89,  // 38: ztd.operator.v1.FetchFileHistoryResult.history:type_name -> ztd.operator.v1.FileHistoryEntry
-	92,  // 39: ztd.operator.v1.FetchFileDiffResult.diffs:type_name -> ztd.operator.v1.FileDiffEntry
-	92,  // 40: ztd.operator.v1.FetchFileDiffResult.diff:type_name -> ztd.operator.v1.FileDiffEntry
-	95,  // 41: ztd.operator.v1.HeartbeatResult.system_identity:type_name -> ztd.operator.v1.SystemIdentity
-	97,  // 42: ztd.operator.v1.HeartbeatResult.network_info:type_name -> ztd.operator.v1.NetworkInfo
-	98,  // 43: ztd.operator.v1.HeartbeatResult.version_info:type_name -> ztd.operator.v1.VersionInfo
-	99,  // 44: ztd.operator.v1.HeartbeatResult.uptime_info:type_name -> ztd.operator.v1.UptimeInfo
-	100, // 45: ztd.operator.v1.HeartbeatResult.performance_metrics:type_name -> ztd.operator.v1.PerformanceMetrics
-	101, // 46: ztd.operator.v1.HeartbeatResult.os_details:type_name -> ztd.operator.v1.OSDetails
-	102, // 47: ztd.operator.v1.HeartbeatResult.user_details:type_name -> ztd.operator.v1.UserDetails
-	103, // 48: ztd.operator.v1.HeartbeatResult.disk_details:type_name -> ztd.operator.v1.DiskDetails
-	104, // 49: ztd.operator.v1.HeartbeatResult.memory_details:type_name -> ztd.operator.v1.MemoryDetails
-	105, // 50: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
-	106, // 51: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
-	96,  // 52: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
-	142, // 53: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	143, // 54: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	144, // 55: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	145, // 56: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
-	110, // 57: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
-	107, // 58: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
-	115, // 59: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
-	107, // 60: ztd.operator.v1.ListPasskeyCredentialsResult.credentials:type_name -> ztd.operator.v1.PasskeyCredential
-	122, // 61: ztd.operator.v1.InferenceMessagePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
-	123, // 62: ztd.operator.v1.InferenceMessagePart.tool_result:type_name -> ztd.operator.v1.InferenceToolResult
+	83,  // 34: ztd.operator.v1.OllamaModelResidencyResult.models:type_name -> ztd.operator.v1.OllamaModelResidencyModel
+	87,  // 35: ztd.operator.v1.AuditEvent.file_mutations:type_name -> ztd.operator.v1.AuditFileMutation
+	86,  // 36: ztd.operator.v1.FetchHistoryResult.web_session:type_name -> ztd.operator.v1.AuditWebSession
+	88,  // 37: ztd.operator.v1.FetchHistoryResult.events:type_name -> ztd.operator.v1.AuditEvent
+	90,  // 38: ztd.operator.v1.FetchFileHistoryResult.history:type_name -> ztd.operator.v1.FileHistoryEntry
+	93,  // 39: ztd.operator.v1.FetchFileDiffResult.diffs:type_name -> ztd.operator.v1.FileDiffEntry
+	93,  // 40: ztd.operator.v1.FetchFileDiffResult.diff:type_name -> ztd.operator.v1.FileDiffEntry
+	96,  // 41: ztd.operator.v1.HeartbeatResult.system_identity:type_name -> ztd.operator.v1.SystemIdentity
+	98,  // 42: ztd.operator.v1.HeartbeatResult.network_info:type_name -> ztd.operator.v1.NetworkInfo
+	99,  // 43: ztd.operator.v1.HeartbeatResult.version_info:type_name -> ztd.operator.v1.VersionInfo
+	100, // 44: ztd.operator.v1.HeartbeatResult.uptime_info:type_name -> ztd.operator.v1.UptimeInfo
+	101, // 45: ztd.operator.v1.HeartbeatResult.performance_metrics:type_name -> ztd.operator.v1.PerformanceMetrics
+	102, // 46: ztd.operator.v1.HeartbeatResult.os_details:type_name -> ztd.operator.v1.OSDetails
+	103, // 47: ztd.operator.v1.HeartbeatResult.user_details:type_name -> ztd.operator.v1.UserDetails
+	104, // 48: ztd.operator.v1.HeartbeatResult.disk_details:type_name -> ztd.operator.v1.DiskDetails
+	105, // 49: ztd.operator.v1.HeartbeatResult.memory_details:type_name -> ztd.operator.v1.MemoryDetails
+	106, // 50: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
+	107, // 51: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
+	97,  // 52: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
+	144, // 53: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	145, // 54: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	146, // 55: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	147, // 56: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	111, // 57: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
+	108, // 58: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
+	116, // 59: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
+	108, // 60: ztd.operator.v1.ListPasskeyCredentialsResult.credentials:type_name -> ztd.operator.v1.PasskeyCredential
+	123, // 61: ztd.operator.v1.InferenceMessagePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
+	124, // 62: ztd.operator.v1.InferenceMessagePart.tool_result:type_name -> ztd.operator.v1.InferenceToolResult
 	8,   // 63: ztd.operator.v1.InferenceMessage.role:type_name -> ztd.operator.v1.InferenceMessageRole
-	124, // 64: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
+	125, // 64: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
 	9,   // 65: ztd.operator.v1.InferenceToolChoice.mode:type_name -> ztd.operator.v1.InferenceToolChoiceMode
-	122, // 66: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
+	123, // 66: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
 	7,   // 67: ztd.operator.v1.InferenceRequested.role:type_name -> ztd.operator.v1.ModelRole
-	125, // 68: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
-	126, // 69: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	127, // 70: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	128, // 71: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	129, // 72: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	131, // 73: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	126, // 68: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
+	127, // 69: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	128, // 70: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	129, // 71: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	130, // 72: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	132, // 73: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
 	12,  // 74: ztd.operator.v1.InferenceProviderAttemptRecord.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
 	13,  // 75: ztd.operator.v1.InferenceProviderAttemptRecord.status:type_name -> ztd.operator.v1.InferenceProviderAttemptStatus
-	130, // 76: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	131, // 76: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
 	10,  // 77: ztd.operator.v1.InferenceResult.timing_source:type_name -> ztd.operator.v1.InferenceTimingSource
 	11,  // 78: ztd.operator.v1.InferenceResult.load_state:type_name -> ztd.operator.v1.InferenceLoadState
 	12,  // 79: ztd.operator.v1.InferenceResult.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
-	130, // 80: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	66,  // 81: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	134, // 82: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
+	131, // 80: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	67,  // 81: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	135, // 82: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
 	7,   // 83: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
-	125, // 84: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
-	126, // 85: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	127, // 86: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	128, // 87: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	129, // 88: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	131, // 89: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
-	135, // 90: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
-	140, // 91: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
-	138, // 92: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
-	134, // 93: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	66,  // 94: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	14,  // 95: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
-	15,  // 96: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
-	16,  // 97: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
-	17,  // 98: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
-	18,  // 99: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
-	68,  // 100: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
-	68,  // 101: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
-	68,  // 102: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
-	68,  // 103: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
-	68,  // 104: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
-	100, // [100:105] is the sub-list for method output_type
-	95,  // [95:100] is the sub-list for method input_type
-	95,  // [95:95] is the sub-list for extension type_name
-	95,  // [95:95] is the sub-list for extension extendee
-	0,   // [0:95] is the sub-list for field type_name
+	126, // 84: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
+	127, // 85: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	128, // 86: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	129, // 87: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	130, // 88: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	132, // 89: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	14,  // 90: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	14,  // 91: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	136, // 92: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
+	142, // 93: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
+	140, // 94: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
+	135, // 95: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
+	67,  // 96: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	15,  // 97: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
+	16,  // 98: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
+	17,  // 99: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
+	18,  // 100: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
+	19,  // 101: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
+	69,  // 102: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
+	69,  // 103: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
+	69,  // 104: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
+	69,  // 105: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
+	69,  // 106: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
+	102, // [102:107] is the sub-list for method output_type
+	97,  // [97:102] is the sub-list for method input_type
+	97,  // [97:97] is the sub-list for extension type_name
+	97,  // [97:97] is the sub-list for extension extendee
+	0,   // [0:97] is the sub-list for field type_name
 }
 
 func init() { file_ztd_operator_v1_operator_proto_init() }
@@ -13295,7 +13590,7 @@ func file_ztd_operator_v1_operator_proto_init() {
 	file_ztd_operator_v1_operator_proto_msgTypes[120].OneofWrappers = []any{}
 	file_ztd_operator_v1_operator_proto_msgTypes[121].OneofWrappers = []any{}
 	file_ztd_operator_v1_operator_proto_msgTypes[123].OneofWrappers = []any{}
-	file_ztd_operator_v1_operator_proto_msgTypes[125].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[126].OneofWrappers = []any{
 		(*InferenceDispatchStreamFrame_Progress)(nil),
 		(*InferenceDispatchStreamFrame_Completion)(nil),
 		(*InferenceDispatchStreamFrame_Failure)(nil),
@@ -13305,8 +13600,8 @@ func file_ztd_operator_v1_operator_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztd_operator_v1_operator_proto_rawDesc), len(file_ztd_operator_v1_operator_proto_rawDesc)),
-			NumEnums:      14,
-			NumMessages:   132,
+			NumEnums:      15,
+			NumMessages:   133,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -76,7 +76,7 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	invoked := trace.RoleInvoked() && g.completed()
 	grades = append(grades, g.newGrade("role-invoked", basisStructural, invoked,
 		"designated model role invoked with governed inference evidence",
-		"designated model role was not invoked or assignment did not complete"))
+		g.notInvokedDetail()))
 	grades = append(grades, g.newGrade("governed-inference", basisStructural, trace.HasGovernedModelCalls(),
 		"at least one governed inference call is recorded",
 		"no governed inference calls are recorded"))
@@ -127,6 +127,16 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			PublicFailureReason: pubReason,
 		},
 	}, nil
+}
+
+// notInvokedDetail leads a provider failure with its attempt class, so a
+// model the provider cannot serve reads as that, not as a content failure.
+func (g homogeneousGrader) notInvokedDetail() string {
+	trace := g.view.Trace
+	if g.lifecycle == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED && trace.ProviderFailureClass != "" {
+		return fmt.Sprintf("designated model role was not invoked: %s (%s)", trace.ProviderFailure, trace.ProviderFailureClass)
+	}
+	return "designated model role was not invoked or assignment did not complete"
 }
 
 func (g homogeneousGrader) newGrade(criterionID string, basis evalv1.GradeBasis, passed bool, passDetail, failDetail string) *evalv1.DeterministicGrade {

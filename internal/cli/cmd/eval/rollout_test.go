@@ -12,6 +12,7 @@ package eval
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -166,6 +167,39 @@ func TestRunRollout_FailedGateMarksEntryFailedAndContinues(t *testing.T) {
 	assert.Equal(t, "run-failed", queue.Models[0].VerifiedRunID)
 }
 
+func TestRunRollout_StoppedRunLeavesEntryPendingAndEndsBatch(t *testing.T) {
+	env := setupRunEnv(t)
+	second := testQwenVariant()
+	second.VariantId, second.ServedModelTag = "qwen3-8b", "qwen3:8b"
+	second.ModelDigest = repeatTestHex('8')
+	writeTestFrozenInventory(t, env.root, testQwenVariant(), second)
+	env.mustRun(t, "rollout", "add", "qwen3:4b")
+	env.mustRun(t, "rollout", "add", "qwen3:8b")
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	t.Cleanup(mirror.Close)
+	env.cmd.SetOut(&bytes.Buffer{})
+	env.cmd.SetErr(&bytes.Buffer{})
+
+	started := 0
+	gates := func(fs.RuntimeFileService, []*evalv1.ModelVariant) rolloutGateRunner {
+		return func(_ *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
+			started++
+			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-stopped", Gate: gate}, constants.ErrEvaluationRunStopped
+		}
+	}
+	err := runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates)
+	require.ErrorIs(t, err, constants.ErrEvaluationRunStopped)
+	assert.Equal(t, 1, started, "a stop ends the batch before the next entry starts")
+
+	queue, err := evaluation.LoadRolloutQueue(context.Background(), env.fileSvc(t))
+	require.NoError(t, err)
+	require.Len(t, queue.Models, 2)
+	for _, model := range queue.Models {
+		assert.Equal(t, evaluation.QueueStatusPending, model.Status)
+		assert.Empty(t, model.VerifiedRunID)
+	}
+}
+
 func TestRolloutRun_PromoteOnPassRequiresGateSmoke(t *testing.T) {
 	env := setupRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
@@ -184,7 +218,7 @@ func TestRolloutRun_UntilCannotBeNegative(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
-func TestRequireSmokeRunServed_FailsWhenEveryAssignmentFailedAtTheProvider(t *testing.T) {
+func TestRequireRunServed_FailsWhenEveryAssignmentFailedAtTheProvider(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	ctx := context.Background()
@@ -211,10 +245,32 @@ func TestRequireSmokeRunServed_FailsWhenEveryAssignmentFailedAtTheProvider(t *te
 		saveLifecycle(assignment, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED)
 	}
 
-	err = requireSmokeRunServed(ctx, env.fileSvc(t), "run-a-1")
-	require.ErrorIs(t, err, constants.ErrEvaluationModelUnserved)
-	assert.Equal(t, evaluation.ExecutionFailureProvider, evaluation.ClassifyExecutionFailure(err))
+	// One assignment sealed a trace carrying the attempt class; the others
+	// failed before a trace existed.
+	traceBody, err := evaluation.SealAgentTrace(&evaluation.AgentTrace{
+		RunID: "run-a-1", AssignmentID: assignments[0].GetAssignmentId(), EvaluationAttemptID: "attempt-1",
+		ProviderFailure:      string(evaluation.ExecutionFailureProvider),
+		ProviderFailureClass: "capability_unsupported",
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, "run-a-1", assignments[0].GetAssignmentId(), traceBody))
+
+	servedErr := requireRunServed(ctx, env.fileSvc(t), rolloutGateFull, "run-a-1")
+	require.ErrorIs(t, servedErr, constants.ErrEvaluationModelUnserved)
+	assert.Equal(t, evaluation.ExecutionFailureProvider, evaluation.ClassifyExecutionFailure(servedErr))
+	assert.Contains(t, servedErr.Error(), "(capability_unsupported)")
+
+	// The queue note names the attempt class, not just provider_failure.
+	env.mustRun(t, "rollout", "add", "qwen3:4b")
+	queue, err := evaluation.LoadInitCampaignQueueFromRuntime(ctx, env.fileSvc(t), evaluation.DefaultInitCampaignQueueRelPath)
+	require.NoError(t, err)
+	require.Len(t, queue.Models, 1)
+	require.NoError(t, markRolloutFailure(ctx, env.fileSvc(t), queue.Models[0], []rolloutRunSuccess{{RunID: "run-a-1"}}, fmt.Errorf("full gate: %w", servedErr)))
+	queue, err = evaluation.LoadInitCampaignQueueFromRuntime(ctx, env.fileSvc(t), evaluation.DefaultInitCampaignQueueRelPath)
+	require.NoError(t, err)
+	assert.Equal(t, evaluation.QueueStatusFailed, queue.Models[0].Status)
+	assert.Equal(t, "run run-a-1: failed: provider_failure (capability_unsupported)", queue.Models[0].Notes)
 
 	saveLifecycle(assignments[0], evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
-	require.NoError(t, requireSmokeRunServed(ctx, env.fileSvc(t), "run-a-1"))
+	require.NoError(t, requireRunServed(ctx, env.fileSvc(t), rolloutGateFull, "run-a-1"))
 }

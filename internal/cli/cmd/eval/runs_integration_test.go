@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -372,6 +373,25 @@ func TestRunsResume_DefaultsLimitToOne(t *testing.T) {
 
 	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, NoAutoBind: true})
 	require.NoError(t, err)
+	assert.Equal(t, 1, executed)
+}
+
+func TestRunsResume_StopWithQueuedAssignmentsIsAnError(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	interrupts := make(chan os.Signal)
+	env.deps.runControl.notifyInterrupts = func() (<-chan os.Signal, func()) { return interrupts, func() {} }
+
+	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{
+		RunID:      runID,
+		Daemon:     true,
+		NoAutoBind: true,
+		ResultOutput: func(*evalv1.EvaluationAssignmentResult) {
+			interrupts <- os.Interrupt
+		},
+	})
+	require.ErrorIs(t, err, constants.ErrEvaluationRunStopped)
 	assert.Equal(t, 1, executed)
 }
 

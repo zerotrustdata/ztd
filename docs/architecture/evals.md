@@ -85,6 +85,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-EVAL-CAMP-20 | Campaign evidence digests MUST use the Go canonical JSON encoder (`MarshalCanonicalJSONObject`) pinned by `protocol/vectors/eval/canonical_json_numbers.json`. |
 | INV-EVAL-CAMP-24 | Every `DeterministicGrade` MUST state one `GradeBasis` (`OBSERVATION`, `DERIVED`, or `STRUCTURAL`). `tallyDeterministicGrades` counts only `OBSERVATION` grades; a failed `STRUCTURAL` grade marks the verdict `INVALID_EVIDENCE`. |
 | INV-EVAL-CAMP-27 | A campaign states the platform release that froze it (`EvaluationCampaignSpec.platform_release` and `source_revision`). `StartRun` fails with `ErrEvaluationPlatformReleaseMismatch` when a recorded release differs from the executing binary build. |
+| INV-EVAL-CAMP-28 | `ztd eval rollout run` MUST NOT mark a queue entry verified, or promote it from the `--gate-smoke` gate with `--promote-on-pass`, when the run stopped with assignments still queued (`ErrEvaluationRunStopped`) or when every assignment ended `PROVIDER_FAILED` (`ErrEvaluationModelUnserved`). Such a run's evidence still verifies, but it does not cover the model. A stopped run ends the batch and leaves its entry pending; an unserved model marks the entry failed with class `provider_failure`. |
 
 ### Witness Separation (`INV-EVAL-WIT`)
 
@@ -163,6 +164,8 @@ The `ztd eval` command tree organizes platform evaluation across ten subcommands
 - `ztd eval gates …`: Run pre-campaign acceptance gates (inference latency, capability probing).
 - `ztd eval backup`: Archive evaluation evidence to an external directory with a SHA-256 manifest.
 - `ztd eval restore [dir]`: Verify and restore evaluation evidence into `.ztd/` from complete snapshots.
+
+`ztd eval runs start` and `ztd eval runs resume` stop after the current assignment on the first interrupt or on `ztd eval runs cancel`, and exit with `ErrEvaluationRunStopped` while assignments remain queued, so `runs start` does not verify a partial run. `ztd eval rollout run --gate-smoke` screens each model with `smoke-suite` before the full run; `--promote-on-pass` follows a smoke pass with the full run in the same batch.
 
 `ztd eval runs resume` executes queued assignments. It fails closed if an assignment remains in `running` without a terminal persisted result; cancel that run and create a new one rather than retrying an ambiguous attempt. Archived runs also cannot resume.
 

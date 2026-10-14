@@ -118,6 +118,10 @@ type AgentTrace struct {
 	FinalOutput          string              `json:"final_output"`
 	ToolTurnLimitReached bool                `json:"tool_turn_limit_reached"`
 	ProviderFailure      string              `json:"provider_failure,omitempty"`
+	// ProviderFailureClass is the inference attempt failure class
+	// (capability_unsupported, backend_timeout, ...) when the provider
+	// classified the failure. Traces sealed before it existed omit it.
+	ProviderFailureClass string `json:"provider_failure_class,omitempty"`
 }
 
 // ScenarioWorkspace returns the workspace the trace ran in.

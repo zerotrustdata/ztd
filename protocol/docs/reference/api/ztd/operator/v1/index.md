@@ -59,6 +59,7 @@
     - [HeartbeatRequested](#ztd-operator-v1-HeartbeatRequested)
     - [HeartbeatResult](#ztd-operator-v1-HeartbeatResult)
     - [InferenceCompletion](#ztd-operator-v1-InferenceCompletion)
+    - [InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure)
     - [InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest)
     - [InferenceDispatchResponse](#ztd-operator-v1-InferenceDispatchResponse)
     - [InferenceDispatchStreamFailure](#ztd-operator-v1-InferenceDispatchStreamFailure)
@@ -141,6 +142,7 @@
     - [DeterministicStageOutcome](#ztd-operator-v1-DeterministicStageOutcome)
     - [ExecutionStatus](#ztd-operator-v1-ExecutionStatus)
     - [HeartbeatType](#ztd-operator-v1-HeartbeatType)
+    - [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode)
     - [InferenceLoadState](#ztd-operator-v1-InferenceLoadState)
     - [InferenceMessageRole](#ztd-operator-v1-InferenceMessageRole)
     - [InferenceProviderAttemptStatus](#ztd-operator-v1-InferenceProviderAttemptStatus)
@@ -1300,6 +1302,25 @@ instead of at the dispatch deadline.
 
 
 
+<a name="ztd-operator-v1-InferenceDispatchFailure"></a>
+
+### InferenceDispatchFailure
+InferenceDispatchFailure is the protocol-owned error body for a non-2xx
+POST /api/v1/inference/dispatch. Error is a public-safe centralized
+sentinel; code classifies it, and is UNSPECIFIED for request faults the
+handler rejects before dispatch (method, identity, body size).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [string](#string) |  |  |
+| code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
+
+
+
+
+
+
 <a name="ztd-operator-v1-InferenceDispatchRequest"></a>
 
 ### InferenceDispatchRequest
@@ -1379,12 +1400,13 @@ the gateway&#39;s standard typed error envelope with a public-safe code.
 InferenceDispatchStreamFailure is the protocol-owned terminal failure
 frame for a streaming dispatch that already started NDJSON delivery.
 Reason is a public-safe centralized sentinel; it never carries raw
-prompts, model output, or receipt bodies.
+prompts, model output, or receipt bodies. Code classifies it.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | reason | [string](#string) |  |  |
+| code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
 
 
 
@@ -2854,6 +2876,64 @@ Heartbeat type enum
 | HEARTBEAT_TYPE_UNSPECIFIED | 0 |  |
 | HEARTBEAT_TYPE_AUTOMATIC | 1 |  |
 | HEARTBEAT_TYPE_MANUAL | 2 |  |
+
+
+
+<a name="ztd-operator-v1-InferenceDispatchFailureCode"></a>
+
+### InferenceDispatchFailureCode
+InferenceDispatchFailureCode is the typed classification of a failed
+POST /api/v1/inference/dispatch. Each code names one centralized public
+sentinel, so a caller classifies the failure (a provider that rejects tool
+declarations, a backend timeout, a governance rejection) without parsing
+the error text.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED | 0 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL | 1 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN | 2 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT | 3 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND | 4 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS | 5 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE | 6 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID | 7 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED | 8 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED | 9 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID | 10 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID | 11 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL | 12 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID | 13 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID | 14 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED | 15 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED | 16 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW | 17 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID | 18 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED | 19 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID | 20 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID | 21 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED | 22 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY | 23 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED | 24 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY | 25 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH | 26 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST | 27 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH | 28 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH | 29 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID | 30 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE | 31 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT | 32 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT | 33 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE | 34 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED | 35 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT | 36 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED | 37 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND | 38 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID | 39 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CANCELED | 40 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED | 41 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE | 42 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH | 43 |  |
 
 
 
