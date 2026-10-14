@@ -38,6 +38,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 type fakeEnvelopeProcessor struct {
@@ -166,7 +167,7 @@ func suspendableEnvelope(t *testing.T, operatorSessionID string) []byte {
 	return wire
 }
 
-func TestGatewayService_HandleToolsCall_ReturnsAuthoritativeReceiptReference(t *testing.T) {
+func TestGatewayService_HandleToolsCall_ReturnsSignedReceiptProtojson(t *testing.T) {
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-1",
 		TransactionHash: "hash-1",
@@ -182,7 +183,17 @@ func TestGatewayService_HandleToolsCall_ReturnsAuthoritativeReceiptReference(t *
 	g.HandleMCP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"tool result"}],"receipt":{"execution_id":"execution-1","transaction_id":"tx-1","transaction_hash":"hash-1","signer_key_id":"warden-key-1","signature":"signature-1","investigation_id":"investigation-1"}}}`, w.Body.String())
+	var resp struct {
+		Result struct {
+			Content []TextContent   `json:"content"`
+			Receipt json.RawMessage `json:"receipt"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "tool result", resp.Result.Content[0].Text)
+	var decoded operatorv1.ActionReceipt
+	require.NoError(t, protojson.Unmarshal(resp.Result.Receipt, &decoded), "receipt must be strict protojson")
+	assert.True(t, proto.Equal(receipt, &decoded), "the wire receipt must be the executing Operator's signed receipt")
 }
 
 func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *testing.T) {
@@ -202,16 +213,10 @@ func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *t
 	g.HandleMCP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	var resp struct {
-		Result struct {
-			Receipt *struct {
-				InvestigationID string `json:"investigation_id"`
-			} `json:"receipt"`
-		} `json:"result"`
-	}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.NotNil(t, resp.Result.Receipt, "receipt projection must be present")
-	assert.NotEmpty(t, resp.Result.Receipt.InvestigationID, "gateway must generate an investigation ID when the client omits one")
+	require.NotNil(t, proc.gotPayload, "envelope payload must be captured")
+	var env commonv1.GovernanceEnvelope
+	require.NoError(t, protojson.Unmarshal(proc.gotPayload, &env), "payload must be a GovernanceEnvelope")
+	assert.NotEmpty(t, env.GetInvestigationId(), "gateway must generate an investigation ID when the client omits one")
 }
 
 func TestGatewayService_HandleToolsCall_BindsInvestigationIDIntoGovernanceEnvelope(t *testing.T) {
@@ -309,8 +314,13 @@ func TestGatewayService_HandleToolsCall_ErrorMapping(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, w.Code)
 
-			expectedJSON := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"error":{"code":%d,"message":"%s"}}`, tc.expectedCode, tc.GatewayErr.Error())
-			require.JSONEq(t, expectedJSON, w.Body.String())
+			var resp JSONRPCResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			require.NotNil(t, resp.Error)
+			require.Equal(t, tc.expectedCode, resp.Error.Code)
+			refusal := decodeRefusal(t, resp.Error.Data)
+			require.Equal(t, governance.ClassifyIngressRefusal(tc.GatewayErr), refusal.GetCode())
+			require.Equal(t, resp.Error.Message, refusal.GetError())
 		})
 	}
 }
@@ -399,7 +409,8 @@ func TestGatewayService_HandleToolsCall_NoFailedStageDataWhenReceiptIsNil(t *tes
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Error)
 	assert.Equal(t, constants.ErrCodeL1ValidationFailed, resp.Error.Code)
-	assert.Empty(t, resp.Error.Data, "error response must not include data when no receipt was produced")
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE,
+		decodeRefusal(t, resp.Error.Data).GetCode(), "a governed error without a receipt must carry an IngressRefusal")
 }
 
 func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
@@ -430,10 +441,179 @@ func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
 		require.JSONEq(t, `{"foo":"bar"}`, string(tx.ToolArguments))
 	}
 	approvalURL := fmt.Sprintf("https://localhost:%d/approve/%s", constants.Ports.OperatorHttps, txHash)
-	textJSON, err := json.Marshal(approvalPausedMessage(constants.PostureNotary, approvalURL))
+	expected := CallToolResult{
+		Content: []TextContent{{Type: "text", Text: approvalPausedMessage(constants.PostureNotary, approvalURL)}},
+		Suspension: &GovernedSuspension{
+			ID:          txHash,
+			Status:      string(constants.GatewayResponseStatusSuspended),
+			TxHash:      txHash,
+			ApprovalURL: approvalURL,
+			Message:     approvalPausedMessage(constants.PostureNotary, approvalURL),
+		},
+	}
+	expectedJSON, err := json.Marshal(expected)
 	require.NoError(t, err)
-	expectedJSON := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":%s}]}}`, textJSON)
-	require.JSONEq(t, expectedJSON, w.Body.String())
+	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"result":`+string(expectedJSON)+`}`, w.Body.String())
+}
+
+func TestCallToolSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId:   "tx-call-1",
+		TransactionHash: "hash-call-1",
+		SignerKeyId:     "warden-key-call-1",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		ResultSummary:   "tool result",
+		Signature:       "signature-call-1",
+	}
+	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{receipt: receipt}))
+	params := json.RawMessage(`{"name":"test-tool","arguments":{},"execution_id":"execution-1","investigation_id":"investigation-1"}`)
+
+	res, err := g.callTool(context.Background(), httptest.NewRequest(http.MethodPost, "/mcp", nil), params)
+	require.NoError(t, err)
+	result, ok := res.(CallToolResult)
+	require.True(t, ok)
+	assert.False(t, result.IsError)
+	assert.Nil(t, result.Suspension)
+
+	var decoded operatorv1.ActionReceipt
+	require.NoError(t, protojson.Unmarshal(result.Receipt, &decoded), "receipt must be strict protojson")
+	assert.True(t, proto.Equal(receipt, &decoded))
+	canonical, err := response.MarshalProtoJSONCanonical(receipt)
+	require.NoError(t, err)
+	assert.Equal(t, canonical, []byte(result.Receipt), "the embedded receipt must be the canonical bytes")
+}
+
+func TestA2ACallSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId:   "tx-a2a-1",
+		TransactionHash: "hash-a2a-1",
+		SignerKeyId:     "warden-key-a2a-1",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		ResultSummary:   "a2a result",
+		Signature:       "signature-a2a-1",
+	}
+	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{receipt: receipt}))
+	params := json.RawMessage(`{"skill_name":"test-skill","payload":{"arg":"val"}}`)
+
+	res, err := g.a2aCall(context.Background(), httptest.NewRequest(http.MethodPost, "/api/v1/a2a/call", nil), params)
+	require.NoError(t, err)
+	success, ok := res.(A2ASuccessResponse)
+	require.True(t, ok)
+
+	var decoded operatorv1.ActionReceipt
+	require.NoError(t, protojson.Unmarshal(success.Result, &decoded), "result must be strict protojson")
+	assert.True(t, proto.Equal(receipt, &decoded))
+	canonical, err := response.MarshalProtoJSONCanonical(receipt)
+	require.NoError(t, err)
+	assert.Equal(t, canonical, []byte(success.Result), "the result must be the canonical receipt bytes")
+}
+
+func TestEncodeActionReceipt_FailsClosedOnNilReceipt(t *testing.T) {
+	encoded, err := encodeActionReceipt(nil)
+	require.ErrorIs(t, err, constants.ErrInternal)
+	assert.Nil(t, encoded, "a governed success must never be returned without its receipt")
+}
+
+func TestGovernedSuspension_MCPAndA2AShareTypedShape(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}
+	store := &fakeSuspendedStore{}
+	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
+	g.posture = constants.PostureNotary
+	ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
+	ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, "operator-session-1")
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx)
+
+	mcpRes, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
+	require.NoError(t, err)
+	mcpSuspension := mcpRes.(CallToolResult).Suspension
+	require.NotNil(t, mcpSuspension, "a missing L3 proof must suspend the MCP call")
+
+	a2aRes, err := g.a2aCall(ctx, r, json.RawMessage(`{"skill_name":"test-skill","payload":{}}`))
+	require.NoError(t, err)
+	a2aSuspension, ok := a2aRes.(*GovernedSuspension)
+	require.True(t, ok, "a2a suspension must be the typed GovernedSuspension")
+
+	require.NotEmpty(t, mcpSuspension.TxHash)
+	assert.Equal(t, mcpSuspension.TxHash, mcpSuspension.ID)
+	assert.Equal(t, string(constants.GatewayResponseStatusSuspended), mcpSuspension.Status)
+	assert.Contains(t, mcpSuspension.ApprovalURL, mcpSuspension.TxHash)
+	assert.Equal(t, mcpSuspension.Message, mcpRes.(CallToolResult).Content[0].Text)
+	assert.Equal(t, mcpSuspension.Status, a2aSuspension.Status, "MCP and A2A must share the suspension shape")
+	assert.Equal(t, approvalPausedMessage(constants.PostureNotary, a2aSuspension.ApprovalURL), a2aSuspension.Message)
+	assert.Equal(t, approvalPausedMessage(constants.PostureNotary, mcpSuspension.ApprovalURL), mcpSuspension.Message)
+}
+
+// suspendedCallFixture stores one suspended MCP tools/call and one suspended
+// A2A a2a/call under a ratify posture, returning their transaction hashes.
+func suspendedCallFixture(t *testing.T, g *GatewayService, proc *fakeEnvelopeProcessor, store *fakeSuspendedStore, call func(ctx context.Context, r *http.Request) (string, error)) string {
+	t.Helper()
+	proc.err = governance.ErrL3ProofMissing
+	ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
+	ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, "operator-session-1")
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx)
+	hash, err := call(ctx, r)
+	require.NoError(t, err)
+	require.Contains(t, store.txs, hash, "the call must be stored as a suspension")
+	return hash
+}
+
+func invalidL3ProofRejection(t *testing.T) (*operatorv1.ActionReceipt, error) {
+	t.Helper()
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId:   "tx-l3-invalid",
+		TransactionHash: "hash-l3-invalid",
+		SignerKeyId:     "warden-key-l3",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID,
+		ResultSummary:   "rejected: L3 proof invalid",
+		Signature:       "sig-l3-invalid",
+	}
+	return receipt, governance.WithRejectionReceipt(receipt, governance.ErrL3ProofInvalid)
+}
+
+func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForMCPCall(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{}
+	store := &fakeSuspendedStore{}
+	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
+	g.posture = constants.PostureRatify
+	txHash := suspendedCallFixture(t, g, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
+		res, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
+		if err != nil {
+			return "", err
+		}
+		return res.(CallToolResult).Suspension.TxHash, nil
+	})
+	assertInvalidProofRejectionKeepsSuspension(t, g, proc, store, txHash)
+}
+
+func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForA2ACall(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{}
+	store := &fakeSuspendedStore{}
+	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
+	g.posture = constants.PostureRatify
+	txHash := suspendedCallFixture(t, g, proc, store, func(ctx context.Context, r *http.Request) (string, error) {
+		res, err := g.a2aCall(ctx, r, json.RawMessage(`{"skill_name":"test-skill","payload":{}}`))
+		if err != nil {
+			return "", err
+		}
+		return res.(*GovernedSuspension).TxHash, nil
+	})
+	assertInvalidProofRejectionKeepsSuspension(t, g, proc, store, txHash)
+}
+
+func assertInvalidProofRejectionKeepsSuspension(t *testing.T, g *GatewayService, proc *fakeEnvelopeProcessor, store *fakeSuspendedStore, txHash string) {
+	t.Helper()
+	rejection, procErr := invalidL3ProofRejection(t)
+	proc.receipt = rejection
+	proc.err = procErr
+
+	receipt, err := g.ResumeWithL3Proof(context.Background(), txHash, "user-1", &commonv1.L3Proof{CredentialId: "cred-bad"})
+	require.ErrorIs(t, err, governance.ErrL3ProofInvalid)
+	require.NotNil(t, receipt, "an invalid proof must return the signed rejection receipt")
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID, receipt.GetRejectionCode())
+	assert.NotEmpty(t, receipt.GetSignature(), "the rejection receipt must be signed")
+	assert.Contains(t, store.txs, txHash, "a rejected proof keeps the suspension so it can be retried")
 }
 
 func TestGatewayService_ResumeWithL3Proof(t *testing.T) {
@@ -845,16 +1025,12 @@ func TestGatewayService_MapGatewayError(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			code, msg := g.mapGatewayError(tt.err)
-			require.Equal(t, tt.wantCode, code)
-			require.NotEmpty(t, msg)
+			require.Equal(t, tt.wantCode, g.mapGatewayError(tt.err))
 		}
 	})
 
 	t.Run("unknown error maps to internal error", func(t *testing.T) {
-		code, msg := g.mapGatewayError(fmt.Errorf("unknown error"))
-		require.Equal(t, -32603, code) // Internal error code
-		require.Contains(t, msg, "unknown error")
+		require.Equal(t, -32603, g.mapGatewayError(fmt.Errorf("unknown error"))) // Internal error code
 	})
 }
 
@@ -1445,7 +1621,9 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
-		require.Contains(t, resp.Error.Message, "payload too large")
+		require.Equal(t, constants.ErrPayloadExceedsLimit.Error(), resp.Error.Message)
+		require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_PAYLOAD_TOO_LARGE,
+			decodeRefusal(t, resp.Error.Data).GetCode())
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
@@ -1464,7 +1642,9 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
-		require.Contains(t, resp.Error.Message, constants.JSONRPCErrorMessageParseError)
+		require.Equal(t, constants.ErrInvalidJSONBody.Error(), resp.Error.Message)
+		require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST,
+			decodeRefusal(t, resp.Error.Data).GetCode())
 	})
 
 	t.Run("invalid JSON-RPC version", func(t *testing.T) {
@@ -1483,7 +1663,9 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
-		require.Contains(t, resp.Error.Message, "jsonrpc version must be 2.0")
+		require.Equal(t, constants.ErrJSONRPCVersionInvalid.Error(), resp.Error.Message)
+		require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST,
+			decodeRefusal(t, resp.Error.Data).GetCode())
 	})
 
 	t.Run("missing method", func(t *testing.T) {
@@ -1540,7 +1722,9 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
-		require.Contains(t, resp.Error.Message, "handler error")
+		require.Equal(t, constants.ErrInternal.Error(), resp.Error.Message)
+		require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			decodeRefusal(t, resp.Error.Data).GetCode())
 	})
 
 	t.Run("successful request", func(t *testing.T) {

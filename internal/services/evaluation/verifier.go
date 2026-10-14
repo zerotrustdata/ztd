@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -317,7 +318,7 @@ func (v *Verifier) verifySemantics(state *verificationState, fail func(error, st
 		v.requireBoolean(observationByType[allowed.GetAttemptId()+":target-identity-matches"], true, fail)
 		v.requireBoolean(observationByType[allowed.GetAttemptId()+":terminal-receipt-completed"], completed, fail)
 		v.requireBoolean(observationByType[allowed.GetAttemptId()+":receipt-durable"], receipt.GetFinalPersistenceAttestation() != nil, fail)
-		chainValid := complianceevidence.VerifyReceiptEvidenceSignatures(receipt, signerKey) == nil
+		chainValid := governance.VerifyActionReceipt(receipt, signerKey) == nil
 		v.requireBoolean(observationByType[allowed.GetAttemptId()+":protocol-chain-valid"], chainValid, fail)
 		if !chainValid {
 			fail(constants.ErrInvalidEvidenceGraph, receipt.GetTransactionId(), "receipt or persistence signature is invalid")

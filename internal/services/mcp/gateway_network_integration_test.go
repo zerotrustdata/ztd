@@ -23,8 +23,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestGatewayService_HandleToolsList(t *testing.T) {
@@ -134,7 +136,9 @@ func TestGatewayService_HandleToolsList(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
-		require.Contains(t, resp.Error.Message, "failed to query downstream")
+		require.Equal(t, constants.ErrGatewayDownstreamUnavailable.Error(), resp.Error.Message)
+		require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE,
+			decodeRefusal(t, resp.Error.Data).GetCode())
 	})
 
 	t.Run("proxies to downstream with valid request", func(t *testing.T) {
@@ -310,7 +314,9 @@ func TestGatewayService_HandleResourcesList(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
-		require.Contains(t, resp.Error.Message, "failed to query downstream")
+		require.Equal(t, constants.ErrGatewayDownstreamUnavailable.Error(), resp.Error.Message)
+		require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE,
+			decodeRefusal(t, resp.Error.Data).GetCode())
 	})
 
 	t.Run("method not allowed", func(t *testing.T) {

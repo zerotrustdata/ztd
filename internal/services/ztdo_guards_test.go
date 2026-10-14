@@ -49,7 +49,7 @@ func decodeLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
 }
 
 func TestZtdoService_Start_RejectsSecondStartWithoutDisturbingRunningService(t *testing.T) {
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 	service.running = true
 
@@ -62,7 +62,7 @@ func TestZtdoService_Start_RejectsSecondStartWithoutDisturbingRunningService(t *
 }
 
 func TestZtdoService_Start_RequiresRuntimeFileService(t *testing.T) {
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), nil, newTestPubSubClientFactory())
+	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), nil, newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
 	err = service.Start(t.Context())
@@ -78,7 +78,7 @@ func TestZtdoService_Start_RequiresRuntimeFileService(t *testing.T) {
 
 func TestZtdoService_Stop_NeverStartedServiceIsANoOp(t *testing.T) {
 	logger, buf := capturingLogger()
-	service, err := NewZtdoService(testutil.NewTestConfig(t), logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	service, err := NewZtdoService(testutil.NewTestConfig(t), logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
 	require.NoError(t, service.Stop(t.Context()))
@@ -90,7 +90,7 @@ func TestZtdoService_Stop_NeverStartedServiceIsANoOp(t *testing.T) {
 }
 
 func TestZtdoService_Stop_CancelsServiceContextAndMarksStopped(t *testing.T) {
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 	service.ctx, service.cancel = context.WithCancel(t.Context())
 	service.running = true

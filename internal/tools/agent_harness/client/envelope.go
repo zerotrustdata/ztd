@@ -191,6 +191,7 @@ func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope
 		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
 		OperatorId:        m.OperatorID,
 		OperatorSessionId: m.OperatorSessionID,
+		RequestorUserId:   p.UserID,
 		ActionType:        ActionMcpCall,
 		TargetResource:    m.TargetResource,
 		EventType:         "operator.mcp.call.requested",

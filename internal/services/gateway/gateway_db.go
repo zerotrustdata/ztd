@@ -16,6 +16,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/ed25519"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -197,6 +198,22 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 		running: true,
 	}
 
+	// The schema and Actuator key come first: the SignerStore binds the
+	// Gateway's own Actuator key as the embedded Operator's receipt key, and
+	// that key is created by the secret manager's app settings initialization.
+	if err := svc.initSchema(fileSvc, ks); err != nil {
+		cancel()
+		closeAfterAuditStore()
+		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBSchemaInit, err)
+	}
+	actuatorPriv, actuatorKeyID, err := svc.sm.GetActuatorKey()
+	if err != nil {
+		cancel()
+		closeAfterAuditStore()
+		return nil, fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
+	}
+	actuatorPub := actuatorPriv.Public().(ed25519.PublicKey)
+
 	// Initialize extracted services with the same db connection
 	s := &stores{
 		DocStore:     NewDocumentStoreService(db, logger),
@@ -209,15 +226,9 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	}
 	s.SuspendedStore = suspendedStore
 	s.AppPolicyStore = NewAppPolicyStoreService(db, logger, s.DocStore)
-	s.SignerStore = NewSignerStoreService(db, logger, s.DocStore)
+	s.SignerStore = NewSignerStoreService(db, logger, s.DocStore, actuatorPub, actuatorKeyID)
 	s.ConsensusStore = NewConsensusStoreService(db, logger, s.DocStore, s.SignerStore)
 	svc.stores = s
-
-	if err := svc.initSchema(fileSvc, ks); err != nil {
-		cancel()
-		closeAfterAuditStore()
-		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBSchemaInit, err)
-	}
 
 	// Initialize state root if missing
 	if err := svc.initStateRoot(); err != nil {

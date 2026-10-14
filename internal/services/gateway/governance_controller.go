@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/config"
@@ -89,9 +90,16 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 	// BYO client.
 	var envelope commonv1.GovernanceEnvelope
 	if err := protojson.Unmarshal(envelopeBody, &envelope); err != nil {
-		// If we can't parse the envelope, let the downstream processor handle the parsing/decode error
-		//nolint:nilerr // intentional fallback: unparseable envelope delegated to downstream processor
-		return nil
+		return fmt.Errorf("identity binding: decode envelope: %w: %w", constants.ErrTxInvalidEnvelope, err)
+	}
+
+	// The requestor is the human the envelope acts for, and it must be the user
+	// the auth middleware authenticated for this request. A certificate kind that
+	// carries no user leaves the context value empty, so any non-empty requestor
+	// is refused for it.
+	authenticatedUserID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	if envelope.GetRequestorUserId() != authenticatedUserID {
+		return fmt.Errorf("%w: requestor_user_id does not match the authenticated principal", constants.ErrIdentityBindingFailed)
 	}
 
 	cliSessionID := envelope.GetCliSessionId()
@@ -117,15 +125,17 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 	// in-process, not through this endpoint. A cli_session_id claim alone is
 	// not an Operator binding.
 	if operatorSessionID == "" && operatorID == "" {
-		if isAppRecordWrite(actionType) && actingAppID != "" && isAppComponent(sourceComponent) {
-			for _, uri := range cert.URIs {
-				if wid.MatchesApp(uri.String(), actingAppID) {
-					return nil
-				}
-			}
+		if isAppRecordWrite(actionType) && actingAppID != "" && isAppComponent(sourceComponent) && certBindsApp(wid, cert.URIs, actingAppID) {
+			return nil
 		}
 		return fmt.Errorf("%w: action %q requires operator_id or operator_session_id binding, or a document write with an acting_app_id matching the app certificate",
 			constants.ErrIdentityBindingFailed, actionType)
+	}
+
+	// An Operator-bound envelope may still name an acting app. That app must be
+	// the one the certificate proves; a free acting_app_id claim is refused.
+	if actingAppID != "" && !certBindsApp(wid, cert.URIs, actingAppID) {
+		return fmt.Errorf("%w: acting_app_id %q does not match the certificate app identity", constants.ErrIdentityBindingFailed, actingAppID)
 	}
 
 	// The auth middleware has already verified the certificate and resolved
@@ -201,6 +211,17 @@ func isAppRecordWrite(a constants.ActionType) bool {
 	return a == constants.ActionTypeDocumentUpdate || a == constants.ActionTypeDocumentDelete
 }
 
+// certBindsApp reports whether one of the certificate's URI SANs is the app
+// SPIFFE ID for appID.
+func certBindsApp(wid *protocol.WorkloadIdentity, uris []*url.URL, appID string) bool {
+	for _, uri := range uris {
+		if wid.MatchesApp(uri.String(), appID) {
+			return true
+		}
+	}
+	return false
+}
+
 // stampEnvelopePosture sets the gateway's governance posture on an incoming
 // envelope. The gateway is the sole posture authority: an envelope that
 // arrives with any posture already set is refused, never trusted or
@@ -232,17 +253,18 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 //   - 200 OK: envelope verified and executed (receipt body); receipt.status
 //     reflects whether the underlying handler succeeded or failed.
 //   - 400 Bad Request: malformed envelope (decode failure, empty body,
-//     payload too large) - no governance state mutated.
+//     payload too large) - no governance state mutated. Body is an
+//     IngressRefusal.
 //   - 403 Forbidden: governance verification failed before execution
 //     (expired, replayed, hash mismatch, missing/invalid L2/L3, unknown
 //     action type, or transport-to-envelope identity mismatch) - no state
 //     mutated. An L4 rejection returns a GovernanceRejection body carrying
 //     the Operator's signed GOVERNANCE_REJECTED receipt and its
-//     rejection_code; refusals before L4 return a typed error only.
+//     rejection_code; refusals before L4 return an IngressRefusal.
 //   - 503 Service Unavailable: envelope processor not configured, or L4
 //     could not run (vault locked, verifier dependency absent); the latter
-//     also returns a GovernanceRejection.
-//   - 405 Method Not Allowed: non-POST methods.
+//     returns a GovernanceRejection, the former an IngressRefusal.
+//   - 405 Method Not Allowed: non-POST methods, IngressRefusal body.
 //
 // @Summary		Submit governance envelope
 // @Description	Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,
@@ -253,18 +275,18 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 // @Produce		json
 // @Param			envelope	body		[]byte		true	"GovernanceEnvelope (protojson)"
 // @Success		200			{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt"
-// @Failure		400			{string}	string			"Bad Request — malformed envelope"
-// @Failure		403			{object}	operatorv1.GovernanceRejection	"Forbidden — governance verification failed; L4 rejections carry the signed receipt"
-// @Failure		405			{string}	string			"Method Not Allowed"
-// @Failure		503			{object}	operatorv1.GovernanceRejection	"Service Unavailable — processor not configured, or verifier unavailable"
+// @Failure		400			{object}	operatorv1.IngressRefusal	"Bad Request — malformed envelope"
+// @Failure		403			{object}	operatorv1.IngressRefusal	"Forbidden — IngressRefusal when refused before L4 (identity binding, outcome, L3 proof unmintable); GovernanceRejection carrying the signed receipt when L4 rejects"
+// @Failure		405			{object}	operatorv1.IngressRefusal	"Method Not Allowed"
+// @Failure		503			{object}	operatorv1.IngressRefusal	"Service Unavailable — IngressRefusal when the processor is not configured; GovernanceRejection carrying the signed receipt when L4 cannot run"
 // @Router			/api/v1/governance/envelopes [post]
 func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		c.renderEnvelopeError(w, fmt.Errorf("governance envelope: %s: %w", r.Method, constants.ErrMethodNotAllowed))
 		return
 	}
 	if c.envProc == nil {
-		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrEnvelopeProcessorNotInit.Error())
+		c.renderEnvelopeError(w, fmt.Errorf("governance envelope: %w", constants.ErrEnvelopeProcessorNotInit))
 		return
 	}
 	proc := c.envProc
@@ -275,7 +297,7 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 		return
 	}
 	if len(body) == 0 {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
+		c.renderEnvelopeError(w, fmt.Errorf("governance envelope: empty body: %w", constants.ErrInvalidJSONBody))
 		return
 	}
 
@@ -283,12 +305,9 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 	// Extract mTLS certificate URI SANs and verify they match the envelope's
 	// internal identity claims. This prevents an Agent cert from impersonating
 	// another workload's envelope.
-	// Skip identity binding if no TLS is present (test mode)
-	if r.TLS != nil {
-		if err := verifyEnvelopeIdentityBinding(r, body); err != nil {
-			c.renderEnvelopeError(w, err)
-			return
-		}
+	if err := verifyEnvelopeIdentityBinding(r, body); err != nil {
+		c.renderEnvelopeError(w, err)
+		return
 	}
 
 	// The gateway is the sole posture authority (INV-GOV-POST-02). A caller
@@ -307,7 +326,7 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 	if receipt == nil {
 		// Defensive: a nil receipt with nil error should never happen, but if
 		// the processor regresses, do not mask the failure.
-		c.responder.Error(w, http.StatusInternalServerError, constants.ErrNilReceipt.Error())
+		c.renderEnvelopeError(w, fmt.Errorf("governance envelope: %w", constants.ErrNilReceipt))
 		return
 	}
 
@@ -318,15 +337,16 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 }
 
 // renderEnvelopeError writes a direct-submission failure: the signed
-// GovernanceRejection for an L4 rejection, otherwise only the typed sentinel.
+// GovernanceRejection for an L4 rejection, otherwise the typed IngressRefusal
+// for a refusal before an envelope exists.
 func (c *GovernanceController) renderEnvelopeError(w http.ResponseWriter, err error) {
 	c.logger.Warn("governance envelope refused", logging.ErrorKind(err))
-	status, sentinel := envelopeErrorCode(err)
+	status, _ := envelopeErrorCode(err)
 	if rejection := governance.RejectionResponse(err); rejection != nil {
 		c.responder.ProtoJSONCanonical(w, status, rejection)
 		return
 	}
-	c.responder.Error(w, status, sentinel.Error())
+	c.responder.ProtoJSONCanonical(w, status, governance.NewIngressRefusal(err))
 }
 
 // envelopeBadRequestErrors are caller-side bad input: decode failures and
@@ -337,6 +357,19 @@ var envelopeBadRequestErrors = []error{
 	constants.ErrPubSubEmptyPayload,
 	constants.ErrPayloadExceedsLimit,
 	constants.ErrTxInvalidEnvelope,
+	constants.ErrInvalidJSONBody,
+}
+
+// envelopeMethodNotAllowedErrors are requests that use a method the endpoint
+// does not accept.
+var envelopeMethodNotAllowedErrors = []error{
+	constants.ErrMethodNotAllowed,
+}
+
+// envelopeUnavailableErrors are server conditions where the endpoint cannot
+// serve the request at all.
+var envelopeUnavailableErrors = []error{
+	constants.ErrEnvelopeProcessorNotInit,
 }
 
 // envelopeForbiddenErrors are caller-side refusals raised before L4
@@ -345,6 +378,7 @@ var envelopeBadRequestErrors = []error{
 var envelopeForbiddenErrors = []error{
 	constants.ErrMTLSRequired,
 	constants.ErrCertURISANMissing,
+	constants.ErrURISANMismatch,
 	constants.ErrIdentityBindingFailed,
 	constants.ErrTxOutcomeNotRegistered,
 	constants.ErrTxOutcomeNotAllowed,
@@ -361,8 +395,8 @@ func classifyEnvelopeError(err error) int {
 }
 
 // envelopeErrorCode returns the HTTP status and the typed sentinel that
-// identifies err. The sentinel, never the wrapped chain, is what a response
-// renders: a chain can carry internal audit or store failure text, such as a
+// identifies err. A response renders the sentinel, never the wrapped chain:
+// a chain can carry internal audit or store failure text, such as a
 // rejection receipt that could not be persisted. An unclassified error is a
 // 500 with constants.ErrInternal.
 func envelopeErrorCode(err error) (int, error) {
@@ -372,6 +406,16 @@ func envelopeErrorCode(err error) (int, error) {
 	for _, sentinel := range envelopeBadRequestErrors {
 		if errors.Is(err, sentinel) {
 			return http.StatusBadRequest, sentinel
+		}
+	}
+	for _, sentinel := range envelopeMethodNotAllowedErrors {
+		if errors.Is(err, sentinel) {
+			return http.StatusMethodNotAllowed, sentinel
+		}
+	}
+	for _, sentinel := range envelopeUnavailableErrors {
+		if errors.Is(err, sentinel) {
+			return http.StatusServiceUnavailable, sentinel
 		}
 	}
 	if sentinel, code := governance.GovernanceRejectionSentinel(err); sentinel != nil {

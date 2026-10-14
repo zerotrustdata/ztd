@@ -25,7 +25,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // sseApproveServer returns an httptest.Server that serves a single
@@ -34,10 +36,18 @@ func sseApproveServer(t *testing.T, txHash string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
+		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+			TransactionId:   "transaction-approve-test",
+			TransactionHash: txHash,
+			SignerKeyId:     "warden-key-approve-test",
+			Signature:       "signature-approve-test",
+		})
+		require.NoError(t, err)
 		eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-			Type:   constants.SSEEventTypeApprovalCompleted,
-			UserID: "user-test",
-			TxHash: txHash,
+			Type:    constants.SSEEventTypeApprovalCompleted,
+			UserID:  "user-test",
+			TxHash:  txHash,
+			Receipt: receipt,
 		})
 		require.NoError(t, err)
 		envelope := models.SSEPushPayload{

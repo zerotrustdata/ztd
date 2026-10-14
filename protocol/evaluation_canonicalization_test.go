@@ -61,6 +61,12 @@ var boundVerificationReportVectorJSON []byte
 //go:embed vectors/eval/canonical_json_numbers.json
 var canonicalJSONValuesVectorJSON []byte
 
+//go:embed vectors/eval/scored_turn_request.json
+var scoredTurnRequestVectorJSON []byte
+
+//go:embed vectors/eval/agent_trace.json
+var agentTraceVectorJSON []byte
+
 func TestEvaluationReportCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(evaluationCanonicalizationVectorJSON, &vector))
@@ -282,6 +288,70 @@ func TestPublicLiveEventCanonicalizationMatchesCrossLanguageVector(t *testing.T)
 	assert.True(t, proto.Equal(event, reparsed))
 	require.NotNil(t, reparsed.Completed, "decoding keeps a zero count present")
 	require.NotNil(t, reparsed.GetMetricDelta()["pass"].Value)
+}
+
+func TestScoredTurnRequestCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector evaluationCanonicalizationVector
+	require.NoError(t, json.Unmarshal(scoredTurnRequestVectorJSON, &vector))
+	assert.Equal(t, "ScoredTurnRequest", vector.MessageType)
+
+	request := &evalv1.ScoredTurnRequest{}
+	encoded := []byte(vector.CanonicalJSON)
+	require.NoError(t, evalv1.UnmarshalCanonical(encoded, request))
+
+	canonical, err := evalv1.MarshalCanonical(request)
+	require.NoError(t, err)
+	assert.Equal(t, encoded, canonical)
+	assert.Equal(t, evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE, request.GetLane())
+	assert.Equal(t, evalv1.AgentRole_AGENT_ROLE_REVIEWER, request.GetDesignatedRole())
+	assert.Equal(t, int32(2), request.GetSeed().GetHistory()[0].GetExitCode())
+	assert.Equal(t, uint64(600000), request.GetWallClockLimitMs())
+}
+
+func TestAgentTraceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector evaluationCanonicalizationVector
+	require.NoError(t, json.Unmarshal(agentTraceVectorJSON, &vector))
+	assert.Equal(t, "AgentTrace", vector.MessageType)
+
+	trace := &evalv1.AgentTrace{}
+	encoded := []byte(vector.CanonicalJSON)
+	require.NoError(t, evalv1.UnmarshalCanonical(encoded, trace))
+
+	canonical, err := evalv1.MarshalCanonical(trace)
+	require.NoError(t, err)
+	assert.Equal(t, encoded, canonical)
+
+	// Every output oneof member appears exactly once across the steps.
+	outputs := map[string]int{}
+	graderPresent := false
+	for _, step := range trace.GetSteps() {
+		switch step.GetOutput().(type) {
+		case *evalv1.AgentStep_Router:
+			outputs["router"]++
+		case *evalv1.AgentStep_Responder:
+			outputs["responder"]++
+		case *evalv1.AgentStep_Candidate:
+			outputs["candidate"]++
+		case *evalv1.AgentStep_Vote:
+			outputs["vote"]++
+		case *evalv1.AgentStep_Risk:
+			outputs["risk"]++
+		case *evalv1.AgentStep_Review:
+			outputs["review"]++
+		case *evalv1.AgentStep_Memory:
+			outputs["memory"]++
+		case *evalv1.AgentStep_Title:
+			outputs["title"]++
+		}
+		if step.GetCallClass() == evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_GRADER {
+			graderPresent = true
+		}
+	}
+	for _, name := range []string{"router", "responder", "candidate", "vote", "risk", "review", "memory", "title"} {
+		assert.Equal(t, 1, outputs[name], "output %q must appear exactly once", name)
+	}
+	assert.True(t, graderPresent, "trace must include a GRADER step")
+	assert.Equal(t, evalv1.AgentFinishReason_AGENT_FINISH_REASON_STOPPED, trace.GetFinishReason())
 }
 
 func TestEvaluationProtocolRegistersNativeRecordSet(t *testing.T) {

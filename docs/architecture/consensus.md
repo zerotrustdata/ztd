@@ -89,6 +89,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-CON-WARD-03 | Quorum evaluation MUST count only affirmative (`decision=true`) votes signed by enabled `TrustedSigner` keys belonging to enrolled policy members. Negative votes (`decision=false`) authenticate dissent but do not count toward quorum. |
 | INV-CON-WARD-04 | Bootstrap action types (`actionType.IsBootstrapAction()`) MUST be exempt from L2 gating across all postures, permitting initial enrollment transactions to succeed before consensus signers exist. |
 | INV-CON-WARD-05 | Under `consensus` and `notary` postures, missing L2 votes, disabled policies, or unmet quorums MUST reject the transaction with a fatal error. Under `doctrine` and `ratify` postures, L2 votes are evaluated for deterministic audit evidence without gating transaction admission. |
+| INV-CON-WARD-06 | Under `consensus` and `notary` postures, a vote from an enrolled member whose signature fails verification, or whose trusted signer cannot be resolved, MUST reject the transaction with `ErrTxL2SignatureInvalid` (`L2_SIGNATURE_INVALID`), even when the other votes meet quorum. Votes from non-members are ignored. |
 
 ### Receipt and Audit Evidence (`INV-CON-RCPT`)
 
@@ -267,7 +268,8 @@ flowchart TD
     SeenCheck -->|Yes & RequireDistinct=false| NextVote
     
     SeenCheck -->|No| VerifySig{Verify Ed25519 signature over hash|decision}
-    VerifySig -->|Invalid| NextVote
+    VerifySig -->|Invalid & enforced| FailSig[Fail: ErrTxL2SignatureInvalid]
+    VerifySig -->|Invalid & not enforced| NextVote
     VerifySig -->|Valid| RecordSeen[Mark seen=true]
     RecordSeen --> DecisionCheck{vote.Decision == true?}
     DecisionCheck -->|Yes| IncQuorum[affirmative++]
@@ -286,7 +288,7 @@ flowchart TD
 1. **Bootstrap Exemption**: If `actionType.IsBootstrapAction()` is true, transactions bypass L2 gating across all postures.
 2. **Presence Checks**: Under `consensus` and `notary`, missing votes or unconfigured stores immediately fail closed. A consensus set that is unknown or disabled fails closed with `ErrTxL2ConsensusSetUnknown`; `ErrTxL2ConsensusNotConfigured` applies only when the consensus policy store is absent.
 3. **Distinctness Enforcement**: If a member key ID was already evaluated and `policy.RequireDistinct` is true, duplicate signatures fail closed with `ErrTxL2DuplicateSigner`.
-4. **Signature Verification**: Verifies Ed25519 signatures against the recomputed transaction hash and decision value.
+4. **Signature Verification**: Verifies Ed25519 signatures against the recomputed transaction hash and decision value. Under `consensus` and `notary`, a member vote whose signature fails, or whose trusted signer cannot be resolved, fails closed with `ErrTxL2SignatureInvalid` even when the other votes meet quorum (INV-CON-WARD-06). Under `doctrine` and `ratify` the vote is skipped and the transaction is not gated.
 5. **Threshold Check**: Increments affirmative counts only when `vote.Decision == true`. If `affirmative < policy.Quorum`, returns `ErrTxL2QuorumNotMet`.
 
 On the Gateway, policies reside in SQLite. Remote Operators receive the Gateway's configured consensus policy and member public keys in their in-memory enrollment bundle, served via `governance.L2TrustStore`.

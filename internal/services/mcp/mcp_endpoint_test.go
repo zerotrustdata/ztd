@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // endpointTestOption is a functional option for configuring a test GatewayService for endpoint tests.
@@ -219,7 +220,9 @@ func TestHandleMCP_InvalidJSONRPCVersion(t *testing.T) {
 
 	require.NotNil(t, resp.Error)
 	require.Equal(t, -32600, resp.Error.Code)
-	require.Contains(t, resp.Error.Message, "jsonrpc version must be 2.0")
+	require.Equal(t, constants.ErrJSONRPCVersionInvalid.Error(), resp.Error.Message)
+	require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST,
+		decodeRefusal(t, resp.Error.Data).GetCode())
 }
 
 func TestHandleMCP_MissingMethod(t *testing.T) {
@@ -319,7 +322,9 @@ func TestHandleMCP_InvalidJSON(t *testing.T) {
 
 	require.NotNil(t, resp.Error)
 	require.Equal(t, constants.JSONRPCErrorCodeParseError, resp.Error.Code)
-	require.Contains(t, resp.Error.Message, constants.JSONRPCErrorMessageParseError)
+	require.Equal(t, constants.ErrInvalidJSONBody.Error(), resp.Error.Message)
+	require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST,
+		decodeRefusal(t, resp.Error.Data).GetCode())
 }
 
 func TestHandleMCP_ToolsList(t *testing.T) {

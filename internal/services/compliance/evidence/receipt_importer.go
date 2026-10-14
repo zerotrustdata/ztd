@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -174,7 +175,7 @@ func verifyAssessedReceiptSignature(ctx context.Context, trust AssessedSignerSou
 		return "", "", "", time.Time{}, fmt.Errorf("%w: resolve signer %s: %w", constants.ErrEvidenceTrustNotAssessed, receipt.GetSignerKeyId(), err)
 	}
 	status := VerificationStatusVerified
-	if err := VerifyReceiptSignature(receipt, publicKey); err != nil {
+	if err := governance.VerifyActionReceiptSignature(receipt, publicKey); err != nil {
 		status = VerificationStatusFailed
 	}
 	return status, constants.ReceiptEvidenceVerifierID, constants.ReceiptEvidenceVerifierVersion, nowFunc(), nil
@@ -189,7 +190,7 @@ func verifyAssessedPersistence(ctx context.Context, trust AssessedSignerSource, 
 		return "", "", "", time.Time{}, fmt.Errorf("%w: resolve signer %s: %w", constants.ErrEvidenceTrustNotAssessed, receipt.GetSignerKeyId(), err)
 	}
 	status := VerificationStatusVerified
-	if VerifyReceiptSignature(receipt, publicKey) != nil || VerifyReceiptPersistence(receipt, publicKey) != nil {
+	if governance.VerifyActionReceipt(receipt, publicKey) != nil {
 		status = VerificationStatusFailed
 	}
 	return status, constants.ReceiptEvidenceVerifierID, constants.ReceiptEvidenceVerifierVersion, nowFunc(), nil

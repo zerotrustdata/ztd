@@ -94,6 +94,7 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 		actingAppID       string
 		source            commonv1.Component
 		expectErr         bool
+		wantErr           error // nil means ErrURISANMismatch
 	}{
 		{
 			name:              "CLI session match",
@@ -143,6 +144,7 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 			actingAppID: "app-1",
 			source:      commonv1.Component_COMPONENT_AGENT,
 			expectErr:   true,
+			wantErr:     constants.ErrIdentityBindingFailed,
 		},
 		{
 			name:        "Non-app component skips App check",
@@ -201,8 +203,11 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 			})
 			err := verifyEnvelopeIdentityBinding(req, envelope)
 			if tc.expectErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "certificate URI SAN does not match envelope identity claims")
+				wantErr := tc.wantErr
+				if wantErr == nil {
+					wantErr = constants.ErrURISANMismatch
+				}
+				require.ErrorIs(t, err, wantErr)
 			} else {
 				require.NoError(t, err)
 			}

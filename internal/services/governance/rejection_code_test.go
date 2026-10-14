@@ -122,6 +122,7 @@ var directWardenSentinels = []struct {
 	{"verifyL2Posture", constants.ErrTxL2ConsensusNotConfigured},
 	{"verifyL2Posture", constants.ErrTxL2ConsensusSetUnknown},
 	{"verifyL2Posture", constants.ErrTxL2DuplicateSigner},
+	{"verifyL2Posture", constants.ErrTxL2SignatureInvalid},
 	{"verifyL2Posture", constants.ErrTxL2QuorumNotMet},
 	// verifyPosture / verifyL3Posture
 	{"verifyL3Posture", constants.ErrTxL3ProofMissing},

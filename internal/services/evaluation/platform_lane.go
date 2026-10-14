@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -289,7 +290,7 @@ func (l *CommandLane) executeAllowed(ctx context.Context, request ExecutionReque
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: resolve receipt signer: %w", err)
 	}
-	if err := complianceevidence.VerifyReceiptEvidenceSignatures(receipt, publicKey); err != nil {
+	if err := governance.VerifyActionReceipt(receipt, publicKey); err != nil {
 		return nil, fmt.Errorf("evaluation: verify receipt evidence signatures: %w", err)
 	}
 	scope := evidenceScope(request, response.TransactionID)

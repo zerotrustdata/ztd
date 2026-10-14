@@ -57,6 +57,7 @@
     - [GetRevocationBundleRequested](#ztd-operator-v1-GetRevocationBundleRequested)
     - [GetRevocationBundleResult](#ztd-operator-v1-GetRevocationBundleResult)
     - [GovernanceRejection](#ztd-operator-v1-GovernanceRejection)
+    - [GovernedDispatchResult](#ztd-operator-v1-GovernedDispatchResult)
     - [HeartbeatRequested](#ztd-operator-v1-HeartbeatRequested)
     - [HeartbeatResult](#ztd-operator-v1-HeartbeatResult)
     - [InferenceCompletion](#ztd-operator-v1-InferenceCompletion)
@@ -79,6 +80,7 @@
     - [InferenceToolChoice](#ztd-operator-v1-InferenceToolChoice)
     - [InferenceToolDeclaration](#ztd-operator-v1-InferenceToolDeclaration)
     - [InferenceToolResult](#ztd-operator-v1-InferenceToolResult)
+    - [IngressRefusal](#ztd-operator-v1-IngressRefusal)
     - [ListDeviceLinksRequested](#ztd-operator-v1-ListDeviceLinksRequested)
     - [ListDeviceLinksResult](#ztd-operator-v1-ListDeviceLinksResult)
     - [ListOperatorSlotsRequested](#ztd-operator-v1-ListOperatorSlotsRequested)
@@ -151,6 +153,7 @@
     - [InferenceRetryClassification](#ztd-operator-v1-InferenceRetryClassification)
     - [InferenceTimingSource](#ztd-operator-v1-InferenceTimingSource)
     - [InferenceToolChoiceMode](#ztd-operator-v1-InferenceToolChoiceMode)
+    - [IngressRefusalCode](#ztd-operator-v1-IngressRefusalCode)
     - [L2Status](#ztd-operator-v1-L2Status)
     - [L3Status](#ztd-operator-v1-L3Status)
     - [ModelRole](#ztd-operator-v1-ModelRole)
@@ -1261,6 +1264,28 @@ display only.
 
 
 
+<a name="ztd-operator-v1-GovernedDispatchResult"></a>
+
+### GovernedDispatchResult
+GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
+receipt is the executing Operator&#39;s signed final ActionReceipt. Failures are
+GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| transaction_id | [string](#string) |  |  |
+| event_type | [string](#string) |  |  |
+| action_type | [string](#string) |  |  |
+| result_payload | [bytes](#bytes) |  | result_payload is the proto-marshaled terminal operator result for event_type (for example FsReadResult), the same bytes the dispatch response carries today. |
+| inference_result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+
+
+
+
+
+
 <a name="ztd-operator-v1-HeartbeatRequested"></a>
 
 ### HeartbeatRequested
@@ -1761,6 +1786,23 @@ InferenceToolResult carries a tool continuation value. result_json is a canonica
 
 
 
+<a name="ztd-operator-v1-IngressRefusal"></a>
+
+### IngressRefusal
+IngressRefusal is the body of every pre-envelope refusal: the HTTP body on the
+direct and dispatch ingresses, and JSON-RPC error.data on MCP and A2A.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| code | [IngressRefusalCode](#ztd-operator-v1-IngressRefusalCode) |  |  |
+| error | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="ztd-operator-v1-ListDeviceLinksRequested"></a>
 
 ### ListDeviceLinksRequested
@@ -2138,6 +2180,8 @@ persists it; every other component reads it through this contract.
 | operator_cert_chain | [string](#string) |  | Chain of operator certificates for zero-trust verification. |
 | termination_reason | [string](#string) |  | Reason for operator termination (e.g., &#34;user_requested&#34;, &#34;max_duration_exceeded&#34;). |
 | stale_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Instant after which an active remote Operator that stays silent reads as stale: its last sign of life plus the stale window for its declared heartbeat interval. The Gateway derives it on every read and never stores it; it is unset for an Operator that cannot read as stale. |
+| actuator_public_key | [string](#string) |  | actuator_public_key is the hex Ed25519 public key of this Operator&#39;s L5 Actuator, bound once at enrollment over the authenticated bootstrap channel. Receipts executed by this Operator verify only against this key. |
+| actuator_key_id | [string](#string) |  | actuator_key_id equals actuator_public_key (key_id == hex(pub)). |
 
 
 
@@ -3079,6 +3123,39 @@ InferenceMessageRole identifies the semantic role of one ordered conversation tu
 | INFERENCE_TOOL_CHOICE_MODE_AUTO | 1 |  |
 | INFERENCE_TOOL_CHOICE_MODE_NONE | 2 |  |
 | INFERENCE_TOOL_CHOICE_MODE_REQUIRED | 3 |  |
+
+
+
+<a name="ztd-operator-v1-IngressRefusalCode"></a>
+
+### IngressRefusalCode
+IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
+exists. It is the pre-envelope counterpart of GovernanceRejectionCode. A refusal
+never carries a receipt, because nothing was executed or rejected by L4.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| INGRESS_REFUSAL_CODE_UNSPECIFIED | 0 |  |
+| INGRESS_REFUSAL_CODE_UNCLASSIFIED | 1 |  |
+| INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED | 2 |  |
+| INGRESS_REFUSAL_CODE_PAYLOAD_TOO_LARGE | 3 |  |
+| INGRESS_REFUSAL_CODE_MALFORMED_REQUEST | 4 |  |
+| INGRESS_REFUSAL_CODE_MISSING_FIELD | 5 |  |
+| INGRESS_REFUSAL_CODE_UNKNOWN_EVENT_TYPE | 6 |  |
+| INGRESS_REFUSAL_CODE_EVENT_ACTION_MISMATCH | 7 |  |
+| INGRESS_REFUSAL_CODE_PAYLOAD_DECODE_FAILED | 8 |  |
+| INGRESS_REFUSAL_CODE_MTLS_REQUIRED | 9 |  |
+| INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED | 10 |  |
+| INGRESS_REFUSAL_CODE_CALLER_SUPPLIED_POSTURE | 11 |  |
+| INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND | 12 |  |
+| INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE | 13 |  |
+| INGRESS_REFUSAL_CODE_L1_DOCTRINE | 14 |  |
+| INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE | 15 |  |
+| INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE | 16 |  |
+| INGRESS_REFUSAL_CODE_GATEWAY_MISCONFIGURED | 17 |  |
+| INGRESS_REFUSAL_CODE_EMBEDDED_OPERATOR_UNCLAIMED | 18 |  |
+| INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED | 19 |  |
+| INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE | 20 |  |
 
 
 

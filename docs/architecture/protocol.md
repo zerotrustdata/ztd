@@ -145,12 +145,17 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - Keys are sorted lexicographically, floats formatted with consistent precision, and whitespace stripped.
    - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `ActionReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
    - `GovernanceRejection` (`error`, `receipt`) is the client body for an L4 rejection on every ingress. Ingresses render it with `protojson` proto names, and clients verify `receipt` with `VerifyActionReceiptSignature`.
+   - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body on the direct and dispatch ingresses, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
+   - `GovernedDispatchResult` (`transaction_id`, `event_type`, `action_type`, `result_payload`, `inference_result`, `receipt`) is the HTTP 200 body of governed dispatch.
    - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
    - `VerifyReceiptPersistenceAttestation` canonicalizes and verifies persistence attestations.
 2. **Evaluation Protojson Canonicalization**:
    - Evaluation messages use `MarshalCanonical` and `UnmarshalCanonical` (`protocol/proto/ztd/eval/v1/canonical.go`).
    - Uses protobuf field names through protojson, compacts whitespace, and omits proto3 zero-value scalar fields.
    - `UnmarshalCanonical` rejects any payload whose raw bytes differ from its canonical re-encoding.
+   - `ConformanceRunRecord`, `ConformanceVerdictSet` and their evidence messages (`ConformanceCaseEvidence`, `ConformanceObservation`, `CanaryManifest`, `ConformanceAnchor`) hold the governance-conformance suite: raw evidence per case and the verdict set, kept as separate messages.
+   - `AgentRole`, `AgentStep`, `ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace` and `InvestigationSeed` are the generic agent system-under-test contract; no product persona or route names appear in them.
+   - `ContainmentResult` (`verdict`, `breaches`) is the red-team verdict for one attempt, reported apart from model quality.
 3. **Canonicalization Conformance Vectors**:
    - Pinned in `protocol/vectors/`:
      - `action_receipt_canonicalization.json`

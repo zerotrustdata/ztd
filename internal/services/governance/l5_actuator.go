@@ -847,6 +847,15 @@ func VerifyReceiptPersistenceAttestation(receipt *operatorv1.ActionReceipt, publ
 	return nil
 }
 
+// VerifyActionReceipt verifies a receipt's signature and its final-persistence
+// attestation against the executing runtime's actuator public key.
+func VerifyActionReceipt(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
+	if err := VerifyActionReceiptSignature(receipt, publicKey); err != nil {
+		return err
+	}
+	return VerifyReceiptPersistenceAttestation(receipt, publicKey)
+}
+
 // canonicalReceipt is the typed representation for ActionReceipt canonicalization.
 // This ensures strict typing and deterministic JSON marshaling for signing/verification.
 type canonicalReceipt struct {

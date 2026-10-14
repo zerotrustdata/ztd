@@ -104,7 +104,7 @@ func TestL4Warden_Notary_FailClosedProofs(t *testing.T) {
 		{name: "missing state root", mutate: func(env *govtypes.GovernanceEnvelope) { env.StateMerkleRoot = ""; rehash(t, env) }, want: ErrStateRootRequired},
 		{name: "missing l2", mutate: func(env *govtypes.GovernanceEnvelope) { env.Governance.L2 = nil }, want: ErrL2SignatureMissing},
 		{name: "non-member signer", mutate: func(env *govtypes.GovernanceEnvelope) { env.Governance.L2.Votes[0].SignerKeyId = "" }, want: ErrL2QuorumNotMet},
-		{name: "invalid l2 signature", mutate: func(env *govtypes.GovernanceEnvelope) { env.Governance.L2.Votes[0].ConsensusSignature = "deadbeef" }, want: ErrL2QuorumNotMet},
+		{name: "invalid l2 signature", mutate: func(env *govtypes.GovernanceEnvelope) { env.Governance.L2.Votes[0].ConsensusSignature = "deadbeef" }, want: ErrL2SignatureInvalid},
 	}
 
 	for _, tc := range tests {

@@ -19,7 +19,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/certs"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	pubsubtest "github.com/zerotrustdata/ztd/internal/services/pubsub/pubsubtest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -47,6 +50,26 @@ func newTestFileSvc(t *testing.T) fs.RuntimeFileService {
 	return fileSvc
 }
 
+// newTestCanonicalDB opens the canonical database in its own runtime root, the
+// way StartOperator does: an initialized keystore over an in-memory keyring,
+// then OpenCanonicalDBService. Close is registered on cleanup; Close is
+// idempotent, so a service that takes ownership and closes it first is safe.
+func newTestCanonicalDB(t *testing.T) *gateway.CanonicalDBService {
+	t.Helper()
+	logger := testutil.NewTestLogger()
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), logger)
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+	ks, err := keystore.NewWithKeyringAndFS(logger, keystoretest.NewMemoryKeyring(), fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, ks.Initialize())
+	require.NoError(t, ks.EnforcePermissions())
+	db, err := gateway.OpenCanonicalDBService(logger, ks, fileSvc)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
 func newTestPubSubClientFactory() PubSubClientFactory {
 	return func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
 		return pubsubtest.NewMockOperatorPubSubClient(), nil
@@ -59,7 +82,7 @@ func TestNewZtdoService_InitialState(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
 	before := time.Now().UTC()
-	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	after := time.Now().UTC()
 
 	require.NoError(t, err)
@@ -83,11 +106,21 @@ func TestNewZtdoService_InitialState(t *testing.T) {
 	assert.Nil(t, service.evidence)
 }
 
+func TestNewZtdoService_RequiresCanonicalDB(t *testing.T) {
+	t.Parallel()
+	cfg := testutil.NewTestConfig(t)
+
+	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), nil, newTestPubSubClientFactory())
+
+	assert.Nil(t, service)
+	assert.ErrorIs(t, err, constants.ErrGatewayDatabaseServiceNotConfigured)
+}
+
 func TestNewZtdoService_RequiresPubSubClientFactory(t *testing.T) {
 	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 
-	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), nil)
+	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), nil)
 
 	assert.Nil(t, service)
 	assert.ErrorIs(t, err, constants.ErrInternal)
@@ -100,7 +133,7 @@ func TestNewZtdoService_PreservesConfig(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	fileSvc := newTestFileSvc(t)
 
-	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), fileSvc, newTestPubSubClientFactory())
+	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), fileSvc, newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
 	assert.Equal(t, 42, service.config.MaxConcurrentTasks)
@@ -114,10 +147,10 @@ func TestNewZtdoService_IndependentInstances(t *testing.T) {
 	cfg2 := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
-	svc1, err := NewZtdoService(cfg1, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	svc1, err := NewZtdoService(cfg1, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
-	svc2, err := NewZtdoService(cfg2, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	svc2, err := NewZtdoService(cfg2, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
 	assert.NotEqual(t, svc1.config.OperatorID, svc2.config.OperatorID)
@@ -129,7 +162,7 @@ func TestZtdoService_Start_AlreadyRunning(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
-	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
 	service.mu.Lock()
@@ -146,7 +179,7 @@ func TestZtdoService_Stop(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
-	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
 	// Manually set running to true to test Stop()
@@ -168,7 +201,7 @@ func TestZtdoService_ConcurrentStateAccess(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
-	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestPubSubClientFactory())
+	service, err := NewZtdoService(cfg, logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 
 	done := make(chan struct{}, 20)

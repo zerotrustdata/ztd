@@ -71,7 +71,7 @@ type GatewayWebSocketHandler struct {
 	// out to subscribers. When nil (the default), the receipts: relay path
 	// is disabled and publishes to receipts: are rejected fail-closed.
 	receiptRelayMu       sync.RWMutex
-	receiptSignerStore   governance.SignerStore
+	receiptSignerStore   ReceiptSignerResolver
 	receiptAuditRecorder ReceiptRecorder
 
 	// certRenewal answers Operator requests on renewal: channels, wired by
@@ -234,7 +234,7 @@ func NewGatewayWebSocketHandler(logger *slog.Logger) *GatewayWebSocketHandler {
 // subscribers. When nil (the default), the receipts: relay path is disabled
 // and publishes to receipts: are rejected fail-closed. Called once during
 // gateway startup after the SignerStore and AuditStore are constructed.
-func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore governance.SignerStore, recorder ReceiptRecorder) {
+func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore ReceiptSignerResolver, recorder ReceiptRecorder) {
 	b.receiptRelayMu.Lock()
 	b.receiptSignerStore = signerStore
 	b.receiptAuditRecorder = recorder
@@ -659,24 +659,19 @@ func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 		return
 	}
 
-	// 4. Verify the receipt signature. Look up the signer's public key via
-	// the SignerStore, canonicalize the receipt, decode the hex signature,
-	// and verify with ed25519. Fail-closed if the key is not found or the
-	// signature is invalid.
+	// 4. Verify the receipt signature. The verification key is the one bound
+	// to the executing Operator (the envelope's operator_id, already bound to
+	// this channel above), never the key id the receipt declares. Fail-closed
+	// if no key is bound or the signature is invalid.
 	// Broker callbacks carry no request context, so the signer lookup runs
 	// under Background; it is a bounded local read with no caller to cancel.
-	pubKey, err := signerStore.GetTrustedSigner(context.Background(), receipt.SignerKeyId)
+	pubKey, err := signerStore.ReceiptSignerKey(context.Background(), env.OperatorId, receipt)
 	if err != nil {
-		b.logger.Warn("PubSub receipts: relay: failed to look up trusted signer",
+		b.logger.Warn("PubSub receipts: relay: receipt signer not bound to executing operator",
 			"channel", channel,
+			"operator_id", env.OperatorId,
 			"signer_key_id", receipt.SignerKeyId,
 			"error", err.Error())
-		return
-	}
-	if pubKey == nil {
-		b.logger.Warn("PubSub receipts: relay: unknown signer key id",
-			"channel", channel,
-			"signer_key_id", receipt.SignerKeyId)
 		return
 	}
 	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {

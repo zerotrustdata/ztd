@@ -78,8 +78,9 @@ func (o *PasskeyOrchestrator) ListSuspendedTransactions(ctx context.Context, use
 
 // EmitApprovalCompletedSSE publishes an approval.completed SSE event scoped to
 // the specific CLI session that submitted the transaction, so the waiting CLI
-// client receives real-time notification without polling.
-func (o *PasskeyOrchestrator) EmitApprovalCompletedSSE(userID, cliSessionID, txHash string, receipt *models.ApprovalReceiptReference) {
+// client receives real-time notification without polling. The receipt is the
+// canonical signed ActionReceipt of the resumed transaction.
+func (o *PasskeyOrchestrator) EmitApprovalCompletedSSE(userID, cliSessionID, txHash string, receipt json.RawMessage) {
 	if userID == "" || cliSessionID == "" {
 		o.logger.Warn("approval: skipping SSE emission due to missing parameters", "user_id", userID, "cli_session_id", cliSessionID, "tx_hash", txHash)
 		return

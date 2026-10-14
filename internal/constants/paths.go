@@ -269,6 +269,12 @@ const (
 	// EvaluationWorkspacePrefix prefixes the per-attempt workspace directory,
 	// which is completed by a digest of the run and attempt identity.
 	EvaluationWorkspacePrefix = "ws-"
+	// EvaluationConformanceCanaryPrefix prefixes a conformance run's canary root
+	// under EvaluationControlledTargetDirname.
+	EvaluationConformanceCanaryPrefix = "conformance-"
+	// EvaluationCanaryTargetDirname holds per-case target files inside a canary root.
+	// It is created empty at seed time.
+	EvaluationCanaryTargetDirname = "cases"
 )
 
 // Local binary names for the ztd CLI executable.

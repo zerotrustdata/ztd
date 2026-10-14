@@ -24,6 +24,7 @@ import (
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -52,10 +53,10 @@ func (c *inflightClient) Post(string, interface{}) ([]byte, error) {
 	return c.postResp, nil
 }
 
-func fanoutTargets(n int) []operatorRunTarget {
-	targets := make([]operatorRunTarget, n)
+func fanoutTargets(n int) []operator.Target {
+	targets := make([]operator.Target, n)
 	for i := range targets {
-		targets[i] = operatorRunTarget{OperatorID: fmt.Sprintf("op-%d", i), OperatorSessionID: fmt.Sprintf("session-%d", i)}
+		targets[i] = operator.Target{OperatorID: fmt.Sprintf("op-%d", i), OperatorSessionID: fmt.Sprintf("session-%d", i)}
 	}
 	return targets
 }

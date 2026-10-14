@@ -452,6 +452,12 @@ message OperatorDocument {
   // heartbeat interval. The Gateway derives it on every read and never stores
   // it; it is unset for an Operator that cannot read as stale.
   google.protobuf.Timestamp stale_at = 35;
+  // actuator_public_key is the hex Ed25519 public key of this Operator's L5
+  // Actuator, bound once at enrollment over the authenticated bootstrap channel.
+  // Receipts executed by this Operator verify only against this key.
+  string actuator_public_key = 36;
+  // actuator_key_id equals actuator_public_key (key_id == hex(pub)).
+  string actuator_key_id = 37;
 }
 
 message ShutdownRequested {
@@ -744,6 +750,54 @@ message ActionReceipt {
 message GovernanceRejection {
   string error = 1;
   ActionReceipt receipt = 2;
+}
+
+// IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
+// exists. It is the pre-envelope counterpart of GovernanceRejectionCode. A refusal
+// never carries a receipt, because nothing was executed or rejected by L4.
+enum IngressRefusalCode {
+  INGRESS_REFUSAL_CODE_UNSPECIFIED = 0;
+  INGRESS_REFUSAL_CODE_UNCLASSIFIED = 1;
+  INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED = 2;
+  INGRESS_REFUSAL_CODE_PAYLOAD_TOO_LARGE = 3;
+  INGRESS_REFUSAL_CODE_MALFORMED_REQUEST = 4;
+  INGRESS_REFUSAL_CODE_MISSING_FIELD = 5;
+  INGRESS_REFUSAL_CODE_UNKNOWN_EVENT_TYPE = 6;
+  INGRESS_REFUSAL_CODE_EVENT_ACTION_MISMATCH = 7;
+  INGRESS_REFUSAL_CODE_PAYLOAD_DECODE_FAILED = 8;
+  INGRESS_REFUSAL_CODE_MTLS_REQUIRED = 9;
+  INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED = 10;
+  INGRESS_REFUSAL_CODE_CALLER_SUPPLIED_POSTURE = 11;
+  INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND = 12;
+  INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE = 13;
+  INGRESS_REFUSAL_CODE_L1_DOCTRINE = 14;
+  INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE = 15;
+  INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE = 16;
+  INGRESS_REFUSAL_CODE_GATEWAY_MISCONFIGURED = 17;
+  INGRESS_REFUSAL_CODE_EMBEDDED_OPERATOR_UNCLAIMED = 18;
+  INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED = 19;
+  INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE = 20;
+}
+
+// IngressRefusal is the body of every pre-envelope refusal: the HTTP body on the
+// direct and dispatch ingresses, and JSON-RPC error.data on MCP and A2A.
+message IngressRefusal {
+  IngressRefusalCode code = 1;
+  string error = 2;
+}
+
+// GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
+// receipt is the executing Operator's signed final ActionReceipt. Failures are
+// GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
+message GovernedDispatchResult {
+  string transaction_id = 1;
+  string event_type = 2;
+  string action_type = 3;
+  // result_payload is the proto-marshaled terminal operator result for event_type
+  // (for example FsReadResult), the same bytes the dispatch response carries today.
+  bytes result_payload = 4;
+  InferenceResult inference_result = 5;
+  ActionReceipt receipt = 6;
 }
 
 // CommitmentAttestation is the Auditor's signed record that a verified

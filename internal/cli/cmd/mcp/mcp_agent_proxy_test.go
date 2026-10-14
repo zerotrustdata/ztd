@@ -64,26 +64,3 @@ func TestAgentVerify_UnknownAgentFailsClosed(t *testing.T) {
 	err := runAgentVerify(agentVerifyCmd(), "cursor")
 	require.ErrorIs(t, err, constants.ErrAgentNotFound)
 }
-
-func TestExtractURLFromText_FindsApproveURL(t *testing.T) {
-	text := `Transaction pending approval: https://ztd.local/approve/abc123 please review`
-	url := extractURLFromText(text)
-	assert.Contains(t, url, "https://ztd.local/approve/abc123")
-}
-
-func TestExtractURLFromText_FindsGenericURL(t *testing.T) {
-	text := `Check this out: https://example.com/page`
-	url := extractURLFromText(text)
-	assert.Equal(t, "https://example.com/page", url)
-}
-
-func TestExtractURLFromText_ReturnsEmptyForNoURL(t *testing.T) {
-	text := `No URL here`
-	url := extractURLFromText(text)
-	assert.Empty(t, url)
-}
-
-func TestExtractURLFromText_ReturnsEmptyForEmptyString(t *testing.T) {
-	url := extractURLFromText("")
-	assert.Empty(t, url)
-}

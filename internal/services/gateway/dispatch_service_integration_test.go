@@ -325,7 +325,10 @@ func handlerCount(broker *GatewayWebSocketHandler, channel string) int {
 	return len(broker.handlers[channel])
 }
 
-func TestDispatchController_HandleDispatch_UnknownSession(t *testing.T) {
+// TestDispatch_UnknownSession_ReturnsIngressRefusal proves a dispatch that
+// names no operator session is refused as OPERATOR_SESSION_NOT_FOUND through
+// the real router, before any envelope exists.
+func TestDispatch_UnknownSession_ReturnsIngressRefusal(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 
 	// Seed a CLI session for mTLS auth, but target a nonexistent operator.
@@ -355,7 +358,61 @@ func TestDispatchController_HandleDispatch_UnknownSession(t *testing.T) {
 	h.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusNotFound, rr.Code, "unknown operator session must fail closed")
-	assert.Contains(t, rr.Body.String(), constants.ErrGatewayOperatorSessionInvalid.Error())
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal), "response body: %s", rr.Body.String())
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND, refusal.GetCode())
+	assert.Contains(t, refusal.GetError(), constants.ErrGatewayOperatorSessionInvalid.Error())
+}
+
+// TestDispatch_DoctrineViolation_ReturnsIngressRefusal proves an EXECUTE_BASH
+// whose command matches a doctrine prohibition is refused L1_DOCTRINE with 403
+// at build time: no receipt is returned and nothing reaches the operator's
+// command channel.
+func TestDispatch_DoctrineViolation_ReturnsIngressRefusal(t *testing.T) {
+	h, _, infra := setupTestHTTPHandler(t)
+	h.dispatchController = newDispatchController(DispatchControllerDeps{
+		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil),
+		Responder:   infra.Responder,
+		Logger:      infra.Logger,
+	})
+	h.router = h.buildPublicRouter()
+	operatorID, operatorSessionID, requestorUserID := seedOperatorForDispatch(t, infra)
+	cliSessionID, cliCert := seedCLISessionForDispatch(t, infra, requestorUserID)
+	published := make(chan struct{}, 1)
+	unregister := infra.Pubsub.RegisterHandler(pubsub.CmdChannel(operatorID, operatorSessionID), func(_ string, _ []byte) {
+		published <- struct{}{}
+	})
+	t.Cleanup(unregister)
+
+	payload, err := proto.Marshal(&operatorv1.CommandRequested{
+		Command:     "rm -rf /",
+		ExecutionId: "exec-doctrine-bash",
+	})
+	require.NoError(t, err)
+	body, err := json.Marshal(OperatorCommandRequest{
+		TargetOperatorSessionID: operatorSessionID,
+		EventType:               string(constants.Event.Operator.Command.Requested),
+		Payload:                 payload,
+	})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.OperatorsCommands, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderCLISessionID, cliSessionID)
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cliCert}}
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code, "response body: %s", rr.Body.String())
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal), "response body: %s", rr.Body.String())
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE, refusal.GetCode())
+	assert.Equal(t, constants.ErrTxL1ValidationFailed.Error(), refusal.GetError())
+	select {
+	case <-published:
+		t.Fatal("doctrine-prohibited command reached the operator command channel")
+	default:
+	}
 }
 
 type boundaryInferenceBackend struct {
@@ -474,6 +531,23 @@ func seedInferenceOperator(t *testing.T, infra *TestInfrastructure, userID, oper
 	require.NoError(t, infra.OperatorSessionSvc.PersistOperatorSession(t.Context(), sessionID, userID, op.OrganizationId, operatorID, "mTLS"))
 }
 
+// bindOperatorActuatorKey binds keyID as the Actuator key on the seeded
+// OperatorDocument, as enrollment does (INV-GW-GOV-06).
+func bindOperatorActuatorKey(t *testing.T, infra *TestInfrastructure, operatorID, keyID string) {
+	t.Helper()
+	collection := marshaler.CollectionName(constants.CollectionOperators)
+	doc, err := infra.DocStore.DocGet(t.Context(), collection, operatorID)
+	require.NoError(t, err)
+	require.NotNil(t, doc, "seed the Operator before binding its Actuator key")
+	op, err := models.OperatorDocumentFromStore(doc)
+	require.NoError(t, err)
+	op.ActuatorPublicKey = keyID
+	op.ActuatorKeyId = keyID
+	body, err := models.MarshalOperatorDocument(op)
+	require.NoError(t, err)
+	require.NoError(t, infra.DocStore.DocSet(t.Context(), collection, operatorID, body))
+}
+
 type boundaryTamperingResultsService struct {
 	*pubsub.PubSubResultsService
 }
@@ -509,12 +583,7 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 	pubKey, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := hex.EncodeToString(pubKey)
-	require.NoError(t, infra.SignerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{
-		ID:        keyID,
-		PublicKey: keyID,
-		AddedAt:   time.Now().UTC(),
-		Enabled:   true,
-	}))
+	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
 	resultsSvc, err := pubsub.NewPubSubResultsService(&remoteCfg, infra.Logger, client, scrubbingSvc)
@@ -571,12 +640,7 @@ func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, 
 	pubKey, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := hex.EncodeToString(pubKey)
-	require.NoError(t, infra.SignerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{
-		ID:        keyID,
-		PublicKey: keyID,
-		AddedAt:   time.Now().UTC(),
-		Enabled:   true,
-	}))
+	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
 	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)

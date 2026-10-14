@@ -10,7 +10,7 @@
 package operator
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -20,7 +20,9 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -33,14 +35,16 @@ type DispatchRequest struct {
 	CliSessionID            string `json:"cli_session_id,omitempty"`
 }
 
-// DispatchResponse mirrors gateway.DispatchResponse for CLI decoding.
-type DispatchResponse struct {
-	Success       bool   `json:"success"`
-	TransactionID string `json:"transaction_id"`
-	EventType     string `json:"event_type,omitempty"`
-	ActionType    string `json:"action_type,omitempty"`
-	ResultPayload []byte `json:"result_payload,omitempty"`
-	Error         string `json:"error,omitempty"`
+// CommandPoster posts a JSON body to a Gateway API path and returns the raw
+// 2xx body, or an *api.StatusError carrying the non-2xx body.
+type CommandPoster interface {
+	Post(path string, body any) ([]byte, error)
+}
+
+// Target names the Operator session a run dispatches to.
+type Target struct {
+	OperatorSessionID string
+	OperatorID        string
 }
 
 // RunResult is the decoded outcome for one operator session dispatch.
@@ -56,6 +60,18 @@ type RunResult struct {
 	// RejectionCode is the signed receipt's rejection_code when the executing
 	// Operator rejected the command at L4.
 	RejectionCode string `json:"rejection_code,omitempty"`
+	// RefusalCode is the IngressRefusal code when the Gateway refused the
+	// request before an envelope was built.
+	RefusalCode string `json:"refusal_code,omitempty"`
+	// SignerKeyID, ReceiptStatus come from the executing Operator's verified
+	// final receipt on success.
+	SignerKeyID   string `json:"signer_key_id,omitempty"`
+	ReceiptStatus string `json:"receipt_status,omitempty"`
+	// Receipt, Rejection and Refusal are the typed bodies behind the fields
+	// above, for callers that need the signed evidence itself.
+	Receipt   *operatorv1.ActionReceipt       `json:"-"`
+	Rejection *operatorv1.GovernanceRejection `json:"-"`
+	Refusal   *operatorv1.IngressRefusal      `json:"-"`
 	// StartedAt is when the dispatch request began; DurationMs is its
 	// monotonic-clock elapsed time through response decoding.
 	StartedAt  time.Time `json:"started_at"`
@@ -151,46 +167,110 @@ func BuildExecuteBashDispatchRequest(operatorSessionID, command, executionID, cl
 	}, nil
 }
 
-// DecodeDispatchResponse unmarshals the gateway dispatch JSON response.
-func DecodeDispatchResponse(raw []byte) (*DispatchResponse, error) {
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("%w: empty dispatch response", constants.ErrInvalidJSONResponse)
-	}
-	response := &DispatchResponse{}
-	if err := json.Unmarshal(raw, response); err != nil {
-		return nil, fmt.Errorf("%w: decode dispatch response: %w", constants.ErrInvalidJSONResponse, err)
-	}
-	return response, nil
-}
-
-// DecodeGovernanceRejection decodes a dispatch error body as the typed
-// GovernanceRejection the Gateway returns when the executing Operator rejected
-// the command at L4. It returns nil when body carries no signed receipt.
-func DecodeGovernanceRejection(body []byte) *operatorv1.GovernanceRejection {
-	rejection := &operatorv1.GovernanceRejection{}
-	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, rejection); err != nil || rejection.GetReceipt() == nil {
-		return nil
-	}
-	return rejection
-}
-
 // ParseCommandResult decodes the governed operator command result from a dispatch
 // response. The gateway blocks until a terminal command.completed/failed event
 // arrives; an empty payload after success indicates a protocol mismatch.
-func ParseCommandResult(response *DispatchResponse) (*operatorv1.CommandResult, error) {
+func ParseCommandResult(response *operatorv1.GovernedDispatchResult) (*operatorv1.CommandResult, error) {
 	if response == nil {
 		return nil, fmt.Errorf("%w: dispatch response is nil", constants.ErrMissingRequiredField)
 	}
-	if len(response.ResultPayload) == 0 {
+	if len(response.GetResultPayload()) == 0 {
 		return nil, fmt.Errorf(
 			"operator dispatch: empty command result payload (event_type=%s action_type=%s)",
-			response.EventType,
-			response.ActionType,
+			response.GetEventType(),
+			response.GetActionType(),
 		)
 	}
 	result := &operatorv1.CommandResult{}
-	if err := proto.Unmarshal(response.ResultPayload, result); err != nil {
+	if err := proto.Unmarshal(response.GetResultPayload(), result); err != nil {
 		return nil, fmt.Errorf("operator dispatch: decode command result: %w", err)
 	}
 	return result, nil
+}
+
+// RunOnce dispatches one EXECUTE_BASH command and decodes the typed outcome.
+// A 2xx body is the GovernedDispatchResult, which carries the executing
+// Operator's final receipt. A non-2xx body is decoded by
+// governance.DecodeIngressFailure into a signed rejection or a typed refusal;
+// an untyped body leaves the transport error as the result's error.
+func RunOnce(client CommandPoster, target Target, command, executionID, cliSessionID string) RunResult {
+	result := RunResult{
+		OperatorSessionID: target.OperatorSessionID,
+		OperatorID:        target.OperatorID,
+		StartedAt:         time.Now(),
+	}
+	defer func() { result.DurationMs = DurationMs(time.Since(result.StartedAt)) }()
+
+	request, err := BuildExecuteBashDispatchRequest(target.OperatorSessionID, command, executionID, cliSessionID)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+
+	raw, err := client.Post(constants.APIPaths.OperatorsCommands, request)
+	if err != nil {
+		result.Error = err.Error()
+		var statusErr *api.StatusError
+		if errors.As(err, &statusErr) {
+			applyIngressFailure(&result, []byte(statusErr.Body))
+		}
+		return result
+	}
+
+	response := &operatorv1.GovernedDispatchResult{}
+	if err := protojson.Unmarshal(raw, response); err != nil {
+		result.Error = fmt.Errorf("operator dispatch: decode governed dispatch result: %w: %w", constants.ErrInvalidJSONResponse, err).Error()
+		return result
+	}
+	result.TransactionID = response.GetTransactionId()
+	result.Receipt = response.GetReceipt()
+	if result.Receipt == nil {
+		result.Error = fmt.Errorf("operator dispatch: %w: dispatch result carries no receipt", constants.ErrMissingRequiredField).Error()
+		return result
+	}
+	result.SignerKeyID = result.Receipt.GetSignerKeyId()
+	result.ReceiptStatus = result.Receipt.GetStatus().String()
+
+	commandResult, err := ParseCommandResult(response)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	result.ExitCode = commandResult.GetReturnCode()
+	result.Stdout = commandResult.GetStdout()
+	result.Stderr = commandResult.GetStderr()
+	if commandResult.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		result.Error = commandResult.GetError()
+		if result.Error == "" {
+			result.Error = "dispatch failed"
+		}
+		return result
+	}
+	result.Success = true
+	return result
+}
+
+// applyIngressFailure records a non-2xx dispatch body on result. A signed
+// rejection sets the transaction and rejection code; a typed refusal sets the
+// refusal code. An untyped body changes nothing, so the transport error stays.
+func applyIngressFailure(result *RunResult, body []byte) {
+	rejection, refusal, err := governance.DecodeIngressFailure(body)
+	if err != nil {
+		return
+	}
+	switch {
+	case rejection != nil:
+		result.Rejection = rejection
+		result.TransactionID = rejection.GetReceipt().GetTransactionId()
+		result.RejectionCode = rejection.GetReceipt().GetRejectionCode().String()
+		if summary := rejection.GetReceipt().GetResultSummary(); summary != "" {
+			result.Error = summary
+		}
+	case refusal != nil:
+		result.Refusal = refusal
+		result.RefusalCode = refusal.GetCode().String()
+		if refusal.GetError() != "" {
+			result.Error = refusal.GetError()
+		}
+	}
 }

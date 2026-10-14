@@ -269,26 +269,105 @@ func TestDispatchService_Dispatch_InvalidOperatorSession(t *testing.T) {
 	assert.Contains(t, err.Error(), "dispatch: validate operator session")
 }
 
-func TestDispatchErrorCode_RendersSentinelNotChain(t *testing.T) {
+func TestDispatchErrorCode_RendersRefusalNotChain(t *testing.T) {
 	cases := []struct {
 		name    string
 		err     error
 		status  int
+		code    operatorv1.IngressRefusalCode
 		message string
 	}{
-		{"unresolved target session", fmt.Errorf("dispatch: validate operator session: %w", &AuthError{Message: constants.ErrGatewayOperatorSessionInvalid.Error(), Status: http.StatusUnauthorized}), http.StatusNotFound, constants.ErrGatewayOperatorSessionInvalid.Error()},
-		{"witness capability", fmt.Errorf("dispatch: %w: rm -rf /srv", constants.ErrWitnessCommandNotCapable), http.StatusUnprocessableEntity, constants.ErrWitnessCommandNotCapable.Error()},
-		{"governance rejected", fmt.Errorf("dispatch: %w (transaction tx-1): cat /etc/shadow", constants.ErrDispatchGovernanceRejected), http.StatusForbidden, constants.ErrDispatchGovernanceRejected.Error()},
-		{"result timeout", fmt.Errorf("dispatch: %w after 30s (transaction tx-1)", constants.ErrDispatchResultTimeout), http.StatusGatewayTimeout, constants.ErrDispatchResultTimeout.Error()},
-		{"no delivery", fmt.Errorf("dispatch: %w", constants.ErrDispatchNoDelivery), http.StatusServiceUnavailable, constants.ErrDispatchNoDelivery.Error()},
-		{"build-time doctrine", fmt.Errorf("dispatch: %w: matched rm -rf /", constants.ErrTxL1ValidationFailed), http.StatusForbidden, constants.ErrTxL1ValidationFailed.Error()},
-		{"unclassified fault", fmt.Errorf("dispatch: get state root: %w", errors.New("sqlite: disk I/O error at /var/lib/ztd")), http.StatusInternalServerError, constants.ErrInternal.Error()},
+		{
+			name:    "unresolved target session",
+			err:     fmt.Errorf("dispatch: validate operator session: %w", &AuthError{Message: constants.ErrGatewayOperatorSessionInvalid.Error(), Status: http.StatusUnauthorized}),
+			status:  http.StatusNotFound,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND,
+			message: constants.ErrGatewayOperatorSessionInvalid.Error(),
+		},
+		{
+			name:    "witness capability",
+			err:     fmt.Errorf("dispatch: %w: rm -rf /srv", constants.ErrWitnessCommandNotCapable),
+			status:  http.StatusUnprocessableEntity,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE,
+			message: constants.ErrWitnessCommandNotCapable.Error(),
+		},
+		{
+			name:    "governance rejected after envelope",
+			err:     fmt.Errorf("dispatch: %w (transaction tx-1): cat /etc/shadow", constants.ErrDispatchGovernanceRejected),
+			status:  http.StatusForbidden,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrDispatchGovernanceRejected.Error(),
+		},
+		{
+			name:    "result timeout after envelope",
+			err:     fmt.Errorf("dispatch: %w after 30s (transaction tx-1)", constants.ErrDispatchResultTimeout),
+			status:  http.StatusGatewayTimeout,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrDispatchResultTimeout.Error(),
+		},
+		{
+			name:    "no delivery after envelope",
+			err:     fmt.Errorf("dispatch: %w", constants.ErrDispatchNoDelivery),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrDispatchNoDelivery.Error(),
+		},
+		{
+			name:    "build-time doctrine",
+			err:     fmt.Errorf("dispatch: %w: matched rm -rf /", constants.ErrTxL1ValidationFailed),
+			status:  http.StatusForbidden,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE,
+			message: constants.ErrTxL1ValidationFailed.Error(),
+		},
+		{
+			name:    "state root unavailable",
+			err:     fmt.Errorf("dispatch: state root: %w: %w", constants.ErrIngressStateRootUnavailable, errors.New("sqlite: disk I/O error at /var/lib/ztd")),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE,
+			message: constants.ErrIngressStateRootUnavailable.Error(),
+		},
+		{
+			name:    "l2 vote quorum not met",
+			err:     fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, constants.ErrTxL2QuorumNotMet),
+			status:  http.StatusForbidden,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED,
+			message: constants.ErrIngressL2DeliberationFailed.Error(),
+		},
+		{
+			name:    "l2 signer store not configured is a server condition",
+			err:     fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, constants.ErrTxL2SignerStoreNotConfigured),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED,
+			message: constants.ErrIngressL2DeliberationFailed.Error(),
+		},
+		{
+			name:    "l2 deliberator unavailable",
+			err:     fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, errors.New("consensus unreachable at 10.0.0.5")),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED,
+			message: constants.ErrIngressL2DeliberationFailed.Error(),
+		},
+		{
+			name:    "vault locked without a receipt is a server condition with an unclassified refusal",
+			err:     fmt.Errorf("dispatch: %w", constants.ErrWardenVaultLocked),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrInternal.Error(),
+		},
+		{
+			name:    "unclassified fault",
+			err:     fmt.Errorf("dispatch: get state root: %w", errors.New("sqlite: disk I/O error at /var/lib/ztd")),
+			status:  http.StatusInternalServerError,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrInternal.Error(),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			status, message := dispatchErrorCode(tc.err)
+			status, refusal := dispatchErrorCode(tc.err)
 			assert.Equal(t, tc.status, status)
-			assert.Equal(t, tc.message, message)
+			assert.Equal(t, tc.code, refusal.GetCode())
+			assert.Equal(t, tc.message, refusal.GetError())
 		})
 	}
 }
@@ -315,7 +394,8 @@ func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
 		Payload:                 []byte("payload"),
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dispatch: get state root")
+	assert.Contains(t, err.Error(), "dispatch: state root")
+	assert.ErrorIs(t, err, constants.ErrIngressStateRootUnavailable)
 }
 
 func TestDispatchService_Dispatch_ZeroDeliveryFailsClosed(t *testing.T) {
@@ -617,9 +697,12 @@ func TestDispatchController_HandleDispatch_MethodNotAllowed(t *testing.T) {
 	ctrl.HandleDispatch(rr, req)
 
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal))
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED, refusal.GetCode())
 }
 
-func TestDispatchController_HandleDispatch_InvalidJSON(t *testing.T) {
+func TestDispatch_InvalidJSON_ReturnsIngressRefusal(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	resp := response.NewWriter(logger)
 	ctrl := newDispatchController(DispatchControllerDeps{
@@ -633,6 +716,10 @@ func TestDispatchController_HandleDispatch_InvalidJSON(t *testing.T) {
 	ctrl.HandleDispatch(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal))
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, refusal.GetCode())
+	assert.Equal(t, constants.ErrInvalidJSONBody.Error(), refusal.GetError())
 }
 
 func TestDispatchController_HandleDispatch_ValidationFails(t *testing.T) {
@@ -651,6 +738,9 @@ func TestDispatchController_HandleDispatch_ValidationFails(t *testing.T) {
 	ctrl.HandleDispatch(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal))
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD, refusal.GetCode())
 }
 
 func TestDispatchController_HandleDispatch_WitnessCommandRejectedAsUnprocessableEntity(t *testing.T) {

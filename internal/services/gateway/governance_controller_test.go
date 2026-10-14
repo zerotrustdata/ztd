@@ -319,11 +319,23 @@ func TestVerifyEnvelopeIdentityBinding_ReplacementCLISessionUsesAuthenticatedCon
 		CliSessionId:      "replacement-cli-session",
 		OperatorId:        "op-1",
 		OperatorSessionId: "sess-1",
-		ActingAppId:       "test-app",
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 	})
 	require.NoError(t, err)
 	require.NoError(t, verifyEnvelopeIdentityBinding(req, envelope))
+
+	// The same authenticated session cannot claim an acting app its CLI
+	// certificate does not prove.
+	withApp, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
+		ActionType:        string(constants.ActionTypeDocumentUpdate),
+		CliSessionId:      "replacement-cli-session",
+		OperatorId:        "op-1",
+		OperatorSessionId: "sess-1",
+		ActingAppId:       "test-app",
+		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
+	})
+	require.NoError(t, err)
+	require.ErrorIs(t, verifyEnvelopeIdentityBinding(req, withApp), constants.ErrIdentityBindingFailed)
 }
 
 func TestVerifyEnvelopeIdentityBinding_AuthenticatedContextRejectsClaimMismatch(t *testing.T) {

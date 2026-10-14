@@ -115,7 +115,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Gateway auth middleware | `internal/services/gateway/gateway_auth.go` | Route classification, web-session cookie validation, and admission logic |
 | CLI enrollment state machine | `internal/cli/auth/enrollment.go`, `internal/cli/auth/` | Decision matrix, credential store, and session binding |
 | Browser passkey ceremonies | `internal/services/gateway/passkey_service_http.go` | WebAuthn registration and assertion handling |
-| Envelope identity binding | `internal/services/gateway/governance_controller.go` (`verifyEnvelopeIdentityBinding`) | `./ztd test unit --pkg ./internal/services/gateway --run IdentityBinding` |
+| Envelope identity binding | `internal/services/gateway/governance_controller.go` (`verifyEnvelopeIdentityBinding`) | `./ztd test integration --pkg ./internal/services/gateway --run 'TestVerifyEnvelopeIdentityBinding\|TestGovernanceEnvelope'` |
 | Workload enrollment flow | `internal/services/gateway/platform_enrollment_service.go`, `platform_enrollment_controller.go`, `internal/services/pubsub/platform_enrollment_handlers.go` | CSR submission, approval, certificate issuance |
 | Direct approval response | `internal/services/gateway/passkey_service_approvals.go` (`handleApprovalRespond`) | Route classification in `gateway_auth.go` |
 | Identity models | `internal/models/auth.go` | User, CLI session, operator, application identity types |

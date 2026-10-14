@@ -253,147 +253,63 @@ func TestTool(t *testing.T) {
 	})
 }
 
-func TestIsL3ApprovalResponse(t *testing.T) {
-	t.Run("detects L3 approval response via structured approval_url field", func(t *testing.T) {
+func TestL3SuspensionDecodesTypedSuspension(t *testing.T) {
+	t.Run("returns the typed suspension of a suspended tools/call", func(t *testing.T) {
 		resp := JSONRPCResponse{
-			Result: map[string]interface{}{
-				"approval_url": "https://example.com/approve/123",
-			},
-		}
-		assert.True(t, isL3ApprovalResponse(resp))
-	})
-
-	t.Run("does not detect L3 approval via content text without approval_url field", func(t *testing.T) {
-		resp := JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      float64(1),
 			Result: map[string]interface{}{
 				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "Execution paused. Please visit https://example.com/approve/123 to authorize",
-					},
+					map[string]interface{}{"type": "text", "text": "paused"},
+				},
+				"suspension": map[string]interface{}{
+					"id":           "tx-1",
+					"status":       "SUSPENDED",
+					"tx_hash":      "tx-1",
+					"approval_url": "https://example.com/api/v1/approve/tx-1",
+					"message":      "paused",
 				},
 			},
 		}
-		assert.False(t, isL3ApprovalResponse(resp))
+		suspension, err := l3Suspension(resp)
+		require.NoError(t, err)
+		require.NotNil(t, suspension)
+		assert.Equal(t, "tx-1", suspension.TxHash)
+		assert.Equal(t, "https://example.com/api/v1/approve/tx-1", suspension.ApprovalURL)
 	})
 
-	t.Run("does not detect non-approval response", func(t *testing.T) {
+	t.Run("returns nil for a completed call", func(t *testing.T) {
 		resp := JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      float64(1),
+			Result: map[string]interface{}{
+				"content": []interface{}{map[string]interface{}{"type": "text", "text": "done"}},
+			},
+		}
+		suspension, err := l3Suspension(resp)
+		require.NoError(t, err)
+		assert.Nil(t, suspension)
+	})
+
+	t.Run("ignores approval URLs that appear only in text", func(t *testing.T) {
+		resp := JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      float64(1),
 			Result: map[string]interface{}{
 				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "Command executed successfully",
-					},
+					map[string]interface{}{"type": "text", "text": "Please visit https://example.com/api/v1/approve/tx-1"},
 				},
 			},
 		}
-		assert.False(t, isL3ApprovalResponse(resp))
+		suspension, err := l3Suspension(resp)
+		require.NoError(t, err)
+		assert.Nil(t, suspension, "text is never a suspension: only the typed suspension field suspends")
 	})
 
-	t.Run("handles nil result", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: nil,
-		}
-		assert.False(t, isL3ApprovalResponse(resp))
-	})
-
-	t.Run("handles non-map result", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: "string result",
-		}
-		assert.False(t, isL3ApprovalResponse(resp))
-	})
-}
-
-func TestExtractApprovalURL(t *testing.T) {
-	t.Run("extracts URL from structured approval_url field", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: map[string]interface{}{
-				"approval_url": "https://example.com/api/v1/approve/abc123",
-			},
-		}
-		url := extractApprovalURL(resp)
-		assert.Equal(t, "https://example.com/api/v1/approve/abc123", url)
-	})
-
-	t.Run("extracts URL from content text with approval path", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: map[string]interface{}{
-				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "Execution paused. Please visit https://example.com/api/v1/approve/123 to authorize",
-					},
-				},
-			},
-		}
-		url := extractApprovalURL(resp)
-		assert.Equal(t, "https://example.com/api/v1/approve/123", url)
-	})
-
-	t.Run("handles URL at end of string", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: map[string]interface{}{
-				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "Please visit https://example.com/api/v1/approve/456",
-					},
-				},
-			},
-		}
-		url := extractApprovalURL(resp)
-		assert.Equal(t, "https://example.com/api/v1/approve/456", url)
-	})
-
-	t.Run("handles nil result", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: nil,
-		}
-		url := extractApprovalURL(resp)
-		assert.Empty(t, url)
-	})
-
-	t.Run("handles response without URL", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: map[string]interface{}{
-				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "No URL here",
-					},
-				},
-			},
-		}
-		url := extractApprovalURL(resp)
-		assert.Empty(t, url)
-	})
-
-	t.Run("extracts URL from marshaled JSON as fallback", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: map[string]interface{}{
-				"message": "Visit https://example.com/api/v1/approve/789 for approval",
-			},
-		}
-		url := extractApprovalURL(resp)
-		assert.Equal(t, "https://example.com/api/v1/approve/789", url)
-	})
-
-	t.Run("prefers structured approval_url over text content", func(t *testing.T) {
-		resp := JSONRPCResponse{
-			Result: map[string]interface{}{
-				"approval_url": "https://example.com/api/v1/approve/structured",
-				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "Visit https://example.com/api/v1/approve/text instead",
-					},
-				},
-			},
-		}
-		url := extractApprovalURL(resp)
-		assert.Equal(t, "https://example.com/api/v1/approve/structured", url)
+	t.Run("returns nil when the response has no result", func(t *testing.T) {
+		suspension, err := l3Suspension(JSONRPCResponse{JSONRPC: "2.0", ID: float64(1)})
+		require.NoError(t, err)
+		assert.Nil(t, suspension)
 	})
 }
 
@@ -430,44 +346,6 @@ func generateTestCerts(t *testing.T) (certPath, keyPath, caPath string) {
 	require.NoError(t, os.WriteFile(keyPath, keyPEM, constants.PermFilePublic))
 
 	return certPath, keyPath, certPath
-}
-
-func TestExtractURLFromText(t *testing.T) {
-	t.Run("extracts approval URL with correct prefix", func(t *testing.T) {
-		text := "Please visit https://ztd.local/api/v1/approve/abc123 to authorize"
-		url := extractURLFromText(text)
-		assert.Contains(t, url, "https://")
-		assert.Contains(t, url, "/approve/")
-	})
-
-	t.Run("extracts generic HTTPS URL when approval prefix not found", func(t *testing.T) {
-		text := "Visit https://example.com/authorize for more info"
-		url := extractURLFromText(text)
-		assert.Equal(t, "https://example.com/authorize", url)
-	})
-
-	t.Run("handles text without URL", func(t *testing.T) {
-		text := "No URL in this text"
-		url := extractURLFromText(text)
-		assert.Empty(t, url)
-	})
-
-	t.Run("handles empty string", func(t *testing.T) {
-		url := extractURLFromText("")
-		assert.Empty(t, url)
-	})
-
-	t.Run("extracts URL from text with quotes", func(t *testing.T) {
-		text := `URL is "https://ztd.local/api/v1/approve/xyz" in quotes`
-		url := extractURLFromText(text)
-		assert.Contains(t, url, "https://")
-	})
-
-	t.Run("extracts URL from text with apostrophe", func(t *testing.T) {
-		text := "URL is 'https://ztd.local/api/v1/approve/abc' in apostrophes"
-		url := extractURLFromText(text)
-		assert.Contains(t, url, "https://")
-	})
 }
 
 func TestPrintMCPConfigStdio(t *testing.T) {

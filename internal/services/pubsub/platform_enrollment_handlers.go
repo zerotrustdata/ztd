@@ -10,6 +10,7 @@ package pubsub
 import (
 	"context"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -349,6 +350,14 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 	if err != nil {
 		return nil, "", "", "", "", "", err
 	}
+	actuatorPub, err := req.Operator.ActuatorKey()
+	if err != nil {
+		return nil, "", "", "", "", "", fmt.Errorf("operator actuator key: %w", err)
+	}
+	actuatorKeyHex := hex.EncodeToString(actuatorPub)
+	if err := h.refuseActuatorKeyChange(ctx, operatorID, actuatorKeyHex); err != nil {
+		return nil, "", "", "", "", "", err
+	}
 	operatorSessionID, err := uuid.NewString()
 	if err != nil {
 		return nil, "", "", "", "", "", err
@@ -387,6 +396,10 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		OperatorSessionId: operatorSessionID,
 		OperatorType:      string(constants.OperatorTypeRemote),
 		SystemFingerprint: req.SystemFingerprint,
+		// The Actuator key bound at enrollment. Receipts from this Operator
+		// verify against it alone (SignerStoreService.ReceiptSignerKey in the Gateway).
+		ActuatorPublicKey: actuatorKeyHex,
+		ActuatorKeyId:     actuatorKeyHex,
 		Claimed:           true,
 		ClaimedAt:         timestamppb.New(now),
 		CreatedAt:         timestamppb.New(now),
@@ -437,6 +450,28 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 // Operator (provider-boundary observer, provenance, inference) became ambiguous.
 // The new document is persisted first so a failure here leaves a redundant
 // lease, never zero; a retried issuance supersedes whatever it left behind.
+// refuseActuatorKeyChange refuses to rebind a stored Operator document to a
+// different Actuator key. Rotation is re-enrollment: it mints a new
+// operator_id, so the new key binds to a new document and the superseded
+// document keeps its own key.
+func (h *PlatformEnrollmentHandler) refuseActuatorKeyChange(ctx context.Context, operatorID, actuatorKeyHex string) error {
+	doc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionOperators), operatorID)
+	if err != nil {
+		return fmt.Errorf("load operator %s actuator binding: %w", operatorID, err)
+	}
+	if doc == nil {
+		return nil
+	}
+	stored, err := models.OperatorDocumentFromStore(doc)
+	if err != nil {
+		return fmt.Errorf("decode operator %s actuator binding: %w", operatorID, err)
+	}
+	if stored.GetActuatorPublicKey() != "" && stored.GetActuatorPublicKey() != actuatorKeyHex {
+		return fmt.Errorf("operator %s: %w", operatorID, constants.ErrOperatorActuatorKeyChanged)
+	}
+	return nil
+}
+
 func (h *PlatformEnrollmentHandler) supersedeOperatorLeases(ctx context.Context, ownerID, systemFingerprint, replacementID string) error {
 	if systemFingerprint == "" {
 		return nil

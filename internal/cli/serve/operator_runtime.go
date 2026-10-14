@@ -9,7 +9,9 @@ package serve
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,7 +29,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 )
 
@@ -149,6 +153,36 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	}
 	cfg.Version = vi.Version
 
+	// The store is opened once, before enrollment. The Actuator key presented at
+	// enrollment and the key that signs receipts both come from this open.
+	ks, err := keystore.Open(fileSvc, logger, keystore.Options{MasterKeyFile: cfg.MasterKeyFile})
+	if err != nil {
+		logger.Error("Failed to open keystore", string(constants.ConnectionStateError), err)
+		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrGatewayDatabaseServiceNotConfigured, err))
+	}
+	canonicalDB, err := gateway.OpenCanonicalDBService(logger, ks, fileSvc)
+	if err != nil {
+		logger.Error("Failed to open canonical database", string(constants.ConnectionStateError), err)
+		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrGatewayDatabaseServiceNotConfigured, err))
+	}
+	// Until the service takes ownership, this function closes the database on
+	// every error return. Once NewZtdoService succeeds, ZtdoService.Stop closes it.
+	dbOwnedByService := false
+	defer func() {
+		if !dbOwnedByService {
+			if closeErr := canonicalDB.Close(); closeErr != nil {
+				logger.Error("Failed to close canonical database", "error", closeErr)
+			}
+		}
+	}()
+
+	actuatorPriv, _, err := canonicalDB.GetSecretManager().GetActuatorKey()
+	if err != nil {
+		logger.Error("Failed to read Actuator key", string(constants.ConnectionStateError), err)
+		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err))
+	}
+	actuatorPublicKeyHex := hex.EncodeToString(actuatorPriv.Public().(ed25519.PublicKey))
+
 	// An owner-supplied CA is read, never persisted, and wins over the
 	// trust delivered in the bundle.
 	var explicitTrust []byte
@@ -160,7 +194,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		}
 	}
 
-	identity, err := enrollOperator(ctx, opts, cfg, operatorEndpoint, effectiveWorkDir, explicitTrust, deployment, logger)
+	identity, err := enrollOperator(ctx, opts, cfg, operatorEndpoint, effectiveWorkDir, explicitTrust, actuatorPublicKeyHex, deployment, logger)
 	if err != nil {
 		logger.Error("Operator enrollment failed", string(constants.ConnectionStateError), err)
 		fmt.Fprintf(os.Stderr, "Enrollment failed: %v\n", err)
@@ -201,7 +235,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		logger.Info("Cloud Operator mode enabled", "provider", cfg.CloudProvider)
 	}
 
-	ztdoService, err := services.NewZtdoService(cfg, logger, tlsConfig, l2Trust, fileSvc, func(baseURL, serverName string, logger *slog.Logger, tlsConfig *certs.TLSConfig) (pubsub.PubSubClient, error) {
+	ztdoService, err := services.NewZtdoService(cfg, logger, tlsConfig, l2Trust, fileSvc, canonicalDB, func(baseURL, serverName string, logger *slog.Logger, tlsConfig *certs.TLSConfig) (pubsub.PubSubClient, error) {
 		client, err := pubsub.NewOperatorPubSubClient(baseURL, serverName, logger, tlsConfig)
 		if err != nil {
 			return nil, err
@@ -213,6 +247,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		logger.Error("Failed to create Operator service", string(constants.ConnectionStateError), err)
 		return nil, startFailure(exitcode.FromError(err), err)
 	}
+	dbOwnedByService = true
 
 	if err := ztdoService.SetCommandSubscriptionObserver(deployment.CommandSubscriptionChanged); err != nil {
 		logger.Error("Failed to configure deployment observer", "error", err)
@@ -251,7 +286,9 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 
 // enrollOperator obtains the Operator's in-memory identity over the Gateway
 // bootstrap websocket. Every start enrolls: no identity survives the process.
-func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.Config, endpoint, workDir string, explicitTrust []byte, deployment *OperatorDeploymentRecorder, logger *slog.Logger) (*OperatorIdentity, error) {
+// actuatorPublicKeyHex is the hex Ed25519 key of this Operator's Actuator, which
+// the Gateway binds to the Operator at enrollment.
+func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.Config, endpoint, workDir string, explicitTrust []byte, actuatorPublicKeyHex string, deployment *OperatorDeploymentRecorder, logger *slog.Logger) (*OperatorIdentity, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("resolve hostname: %w", err)
@@ -266,6 +303,7 @@ func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.
 		Hostname:           hostname,
 		RuntimeConfig:      runtimeConfig,
 		FingerprintOptions: operatorFingerprintOptions(opts, workDir, auth.ResolveCurrentAccount()),
+		ActuatorPublicKey:  actuatorPublicKeyHex,
 		TrustBundlePEM:     explicitTrust,
 		TLSServerName:      cfg.TLSServerName,
 		Deployment:         deployment,

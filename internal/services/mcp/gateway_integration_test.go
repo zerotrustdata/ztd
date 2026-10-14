@@ -264,13 +264,15 @@ func TestGatewayErrorCodesIntegration(t *testing.T) {
 			name:          "L2 signature invalid",
 			errorToReturn: governance.ErrL2SignatureInvalid,
 			expectedCode:  -32006,
-			expectedMsg:   "TX_QUORUM_L2_SIG_INVALID",
+			// No signed receipt reaches the ingress, so the refusal is UNCLASSIFIED.
+			expectedMsg: constants.ErrInternal.Error(),
 		},
 		{
 			name:          "L3 proof invalid",
 			errorToReturn: governance.ErrL3ProofInvalid,
 			expectedCode:  -32007,
-			expectedMsg:   "TX_NOTARY_L3_PROOF_INVALID",
+			// No signed receipt reaches the ingress, so the refusal is UNCLASSIFIED.
+			expectedMsg: constants.ErrInternal.Error(),
 		},
 		{
 			name:          "Invalid envelope",

@@ -256,7 +256,7 @@ type DispatchService struct {
 	posture           string
 	doctrine          *governance.L1Doctrine
 	l2Deliberator     L2ConsensusDeliberator
-	signerStore       governance.SignerStore
+	signerStore       ReceiptSignerResolver
 }
 
 // NewDispatchService creates a DispatchService wired to the gateway's in-process
@@ -271,7 +271,7 @@ type DispatchService struct {
 // signerStore resolves the operator's actuator public key for inference
 // completion receipt verification; a nil store fails inference dispatch
 // closed.
-func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHandler, stateRootProvider governance.StateRootProvider, auth operatorSessionValidator, posture string, doctrine *governance.L1Doctrine, l2Deliberator L2ConsensusDeliberator, signerStore governance.SignerStore, embeddedProcessor governance.EnvelopeProcessor) *DispatchService {
+func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHandler, stateRootProvider governance.StateRootProvider, auth operatorSessionValidator, posture string, doctrine *governance.L1Doctrine, l2Deliberator L2ConsensusDeliberator, signerStore ReceiptSignerResolver, embeddedProcessor governance.EnvelopeProcessor) *DispatchService {
 	return &DispatchService{
 		embeddedProcessor: embeddedProcessor,
 		logger:            logger,
@@ -312,7 +312,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	// 2. Fetch the gateway's current state root.
 	stateRoot, err := d.stateRootProvider.GetCurrentStateRoot(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("dispatch: get state root: %w", err)
+		return nil, fmt.Errorf("dispatch: state root: %w: %w", constants.ErrIngressStateRootUnavailable, err)
 	}
 
 	// 3. Build the GovernanceEnvelope via the shared construction helper.
@@ -359,7 +359,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	if posture.RequiresL2Signature() && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
-			return nil, fmt.Errorf("dispatch: l2 deliberation: %w", derr)
+			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)
 		}
 		wire = deliberated
 	}
@@ -442,16 +442,28 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 
 	// An L4 rejection publishes only a signed FAILED receipt, never a result,
 	// so the wait also ends on the Operator's verified GOVERNANCE_REJECTED
-	// receipt for this transaction. Inference maps rejections from its own
-	// signed completion instead.
+	// receipt for this transaction. Every other non-inference dispatch also
+	// waits for the verified final receipt (COMPLETED, or FAILED at L5), which
+	// the executing Operator publishes on the same channel after its result.
+	// Inference maps rejections and its final receipt from its own signed
+	// completion instead.
 	rejectedCh := make(chan *operatorv1.ActionReceipt, 1)
+	finalCh := make(chan *operatorv1.ActionReceipt, 1)
 	if actionType != constants.ActionTypeInference {
 		unregisterReceipts := d.pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, operatorSessionID), func(_ string, data []byte) {
-			if receipt := d.governanceRejectionReceipt(timeoutCtx, data, operatorID, operatorSessionID, txHash); receipt != nil {
-				select {
-				case rejectedCh <- receipt:
-				default:
-				}
+			receipt, kind := d.verifiedTransactionReceipt(timeoutCtx, receiptFromReceiptsMessage(data, operatorID, operatorSessionID), operatorID, txHash)
+			var out chan *operatorv1.ActionReceipt
+			switch kind {
+			case transactionReceiptRejected:
+				out = rejectedCh
+			case transactionReceiptFinal:
+				out = finalCh
+			default:
+				return
+			}
+			select {
+			case out <- receipt:
+			default:
 			}
 		})
 		defer unregisterReceipts()
@@ -462,7 +474,8 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    so no result can ever arrive.
 	cmdChannel := pubsub.CmdChannel(operatorID, operatorSessionID)
 	var delivered int
-	var embeddedDone chan error
+	var embeddedDone chan embeddedOutcome
+	var finalReceipt *operatorv1.ActionReceipt
 	if isEmbedded {
 		// The embedded Operator runs in-process and emits results while
 		// ProcessEnvelope is still executing, so it must run beside the wait
@@ -471,7 +484,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		if d.embeddedProcessor == nil {
 			return nil, fmt.Errorf("dispatch embedded operator: %w", constants.ErrDispatchNoDelivery)
 		}
-		embeddedDone = make(chan error, 1)
+		embeddedDone = make(chan embeddedOutcome, 1)
 		defer func() {
 			cancel()
 			if embeddedDone != nil {
@@ -480,35 +493,48 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		}()
 		go func() {
 			receipt, perr := d.embeddedProcessor.ProcessEnvelope(timeoutCtx, wire)
-			if embeddedHandlerFailed(receipt, txHash) {
+			if executionFailedReceipt(receipt, txHash) {
 				// The handler ran and published its typed failure result,
 				// which is the outcome, exactly as from an outbound Operator.
 				perr = nil
 			}
-			embeddedDone <- perr
+			embeddedDone <- embeddedOutcome{receipt: receipt, err: perr}
 		}()
 		delivered = 1
 	} else {
 		delivered = d.pubsub.Publish(cmdChannel, wire)
 	}
-	// awaitEmbedded reports a processing failure before any final result is
-	// returned, so an embedded command refused or broken before or around its
-	// handler is never reported as a result. A handler's own failure is not a
-	// processing failure (embeddedHandlerFailed): its typed result is returned.
+	// settleEmbedded takes the embedded Operator's outcome. A processing
+	// failure ends the dispatch before any final result is returned, so an
+	// embedded command refused or broken before or around its handler is never
+	// reported as a result. A handler's own failure is not a processing failure
+	// (executionFailedReceipt): its typed result is returned. For a
+	// non-inference dispatch the receipt ProcessEnvelope returns is verified by
+	// the same verifier as a receipts-channel receipt.
+	settleEmbedded := func(outcome embeddedOutcome) error {
+		embeddedDone = nil
+		if timeoutCtx.Err() != nil {
+			return dispatchContextError()
+		}
+		if outcome.err != nil {
+			return fmt.Errorf("dispatch embedded operator: %w", outcome.err)
+		}
+		if actionType != constants.ActionTypeInference {
+			if receipt, kind := d.verifiedTransactionReceipt(timeoutCtx, outcome.receipt, operatorID, txHash); kind == transactionReceiptFinal {
+				finalReceipt = receipt
+			}
+		}
+		return nil
+	}
+	// awaitEmbedded waits for the embedded Operator's outcome before an
+	// inference result is verified.
 	awaitEmbedded := func() error {
 		if embeddedDone == nil {
 			return nil
 		}
 		select {
-		case perr := <-embeddedDone:
-			embeddedDone = nil
-			if timeoutCtx.Err() != nil {
-				return dispatchContextError()
-			}
-			if perr != nil {
-				return fmt.Errorf("dispatch embedded operator: %w", perr)
-			}
-			return nil
+		case outcome := <-embeddedDone:
+			return settleEmbedded(outcome)
 		case <-timeoutCtx.Done():
 			return dispatchContextError()
 		}
@@ -526,17 +552,29 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    Timeout explicitly (inference sets its provider-aware deadline);
 	//    zero applies DispatchTimeout.
 	var progressEvents []*operatorv1.InferenceProgressEvent
+	// A non-inference dispatch succeeds only once it holds both the terminal
+	// result envelope and the verified final receipt, in either order.
+	var terminalResult *commonv1.GovernanceEnvelope
+	completed := func() *DispatchResult {
+		if terminalResult == nil || finalReceipt == nil {
+			return nil
+		}
+		return &DispatchResult{
+			TransactionID:  txHash,
+			ResultEnvelope: terminalResult,
+			Receipt:        finalReceipt,
+		}
+	}
 	for {
 		select {
 		case overflowErr := <-overflow:
 			return nil, fmt.Errorf("dispatch: %w", overflowErr)
-		case perr := <-embeddedDone:
-			embeddedDone = nil
-			if timeoutCtx.Err() != nil {
-				return nil, dispatchContextError()
+		case outcome := <-embeddedDone:
+			if err := settleEmbedded(outcome); err != nil {
+				return nil, err
 			}
-			if perr != nil {
-				return nil, fmt.Errorf("dispatch embedded operator: %w", perr)
+			if result := completed(); result != nil {
+				return result, nil
 			}
 		case resultEnv := <-resultCh:
 			if actionType == constants.ActionTypeInference {
@@ -563,18 +601,22 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 				}
 				return result, nil
 			}
-			if err := awaitEmbedded(); err != nil {
-				return nil, err
-			}
 			if isShellCommandDispatch(req.EventType) {
 				if payload := operatorCommandResultPayload(resultEnv); len(payload) > 0 {
 					resultEnv.Payload = payload
 				}
 			}
-			return &DispatchResult{
-				TransactionID:  txHash,
-				ResultEnvelope: resultEnv,
-			}, nil
+			if terminalResult == nil {
+				terminalResult = resultEnv
+			}
+			if result := completed(); result != nil {
+				return result, nil
+			}
+		case receipt := <-finalCh:
+			finalReceipt = receipt
+			if result := completed(); result != nil {
+				return result, nil
+			}
 		case receipt := <-rejectedCh:
 			return nil, governance.WithRejectionReceipt(receipt, fmt.Errorf("dispatch: %w (transaction %s): %s", constants.ErrDispatchGovernanceRejected, txHash, receipt.GetResultSummary()))
 		case <-timeoutCtx.Done():
@@ -583,14 +625,36 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	}
 }
 
-// embeddedHandlerFailed reports whether an embedded ProcessEnvelope outcome is
-// an executed handler's own failure: the final receipt for txHash is FAILED,
-// is not a governance rejection, and records a failed L5 execution stage. The
-// handler publishes its typed failure result before returning, so the dispatch
-// reports that result, as it does for an outbound Operator, instead of turning
-// an ordinary execution failure (a missing file, a non-zero exit) into a
-// transport error. Every refusal before execution still fails the dispatch.
-func embeddedHandlerFailed(receipt *operatorv1.ActionReceipt, txHash string) bool {
+// embeddedOutcome is what the in-process ProcessEnvelope call hands back to the
+// dispatch wait loop: its final receipt and its processing error.
+type embeddedOutcome struct {
+	receipt *operatorv1.ActionReceipt
+	err     error
+}
+
+// transactionReceiptKind classifies a verified receipt for one transaction.
+type transactionReceiptKind int
+
+const (
+	// transactionReceiptNone is a receipt the dispatch does not wait on, or one
+	// that failed verification. It never ends the wait.
+	transactionReceiptNone transactionReceiptKind = iota
+	// transactionReceiptRejected is the Operator's signed L4 GOVERNANCE_REJECTED
+	// receipt. It ends the wait as a rejection.
+	transactionReceiptRejected
+	// transactionReceiptFinal is the Operator's signed final receipt: COMPLETED,
+	// or FAILED at L5 execution. Success needs it alongside the terminal result.
+	transactionReceiptFinal
+)
+
+// executionFailedReceipt reports whether a receipt is an executed handler's own
+// failure: the final receipt for txHash is FAILED, is not a governance
+// rejection, and records a failed L5 execution stage. The handler publishes its
+// typed failure result before its receipt, so the dispatch reports that result,
+// as it does for an outbound Operator, instead of turning an ordinary execution
+// failure (a missing file, a non-zero exit) into a transport error. Every
+// refusal before execution still fails the dispatch.
+func executionFailedReceipt(receipt *operatorv1.ActionReceipt, txHash string) bool {
 	if receipt == nil || receipt.GetTransactionId() != txHash ||
 		receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED ||
 		receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
@@ -604,14 +668,11 @@ func embeddedHandlerFailed(receipt *operatorv1.ActionReceipt, txHash string) boo
 	return false
 }
 
-// governanceRejectionReceipt returns the receipt in a receipts-channel message
-// when it is a FAILED, GOVERNANCE_REJECTED receipt for txHash from the target
-// Operator session, signed by a trusted signer. Anything else returns nil, so
-// an unverifiable receipt never ends the wait.
-func (d *DispatchService) governanceRejectionReceipt(ctx context.Context, data []byte, operatorID, operatorSessionID, txHash string) *operatorv1.ActionReceipt {
-	if d.signerStore == nil {
-		return nil
-	}
+// receiptFromReceiptsMessage decodes a receipts-channel message into the
+// ActionReceipt it carries. A message that is not a receipt recorded by the
+// target Operator session returns nil. Decoding alone never ends the wait:
+// verifiedTransactionReceipt must accept the receipt first.
+func receiptFromReceiptsMessage(data []byte, operatorID, operatorSessionID string) *operatorv1.ActionReceipt {
 	env := &commonv1.GovernanceEnvelope{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, env); err != nil ||
 		env.GetEventType() != string(constants.Event.Operator.Receipt.Recorded) ||
@@ -622,21 +683,43 @@ func (d *DispatchService) governanceRejectionReceipt(ctx context.Context, data [
 	if err := proto.Unmarshal(env.GetPayload(), receipt); err != nil {
 		return nil
 	}
-	if receipt.GetTransactionId() != txHash ||
-		receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED ||
-		receipt.GetFailureCode() != operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
-		return nil
+	return receipt
+}
+
+// verifiedTransactionReceipt verifies a receipt the executing Operator signed
+// for txHash and classifies it. It is the one verifier for both the
+// receipts-channel and the embedded paths. The receipt must be for txHash, must
+// be a rejection or a final receipt, and must verify with the signer bound to
+// operatorID: ReceiptSignerKey, then the receipt signature, then the persistence
+// attestation. Anything else returns transactionReceiptNone, so an unverifiable
+// receipt never ends the wait.
+func (d *DispatchService) verifiedTransactionReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, operatorID, txHash string) (*operatorv1.ActionReceipt, transactionReceiptKind) {
+	if d.signerStore == nil || receipt == nil || receipt.GetTransactionId() != txHash {
+		return nil, transactionReceiptNone
 	}
-	pubKey, err := d.signerStore.GetTrustedSigner(ctx, receipt.GetSignerKeyId())
-	if err != nil || pubKey == nil {
-		d.logger.Warn("dispatch: rejection receipt signer not trusted", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId())
-		return nil
+	kind := transactionReceiptNone
+	switch {
+	case governance.IsGovernanceRejectionReceipt(receipt):
+		kind = transactionReceiptRejected
+	case receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED || executionFailedReceipt(receipt, txHash):
+		kind = transactionReceiptFinal
+	default:
+		return nil, transactionReceiptNone
+	}
+	pubKey, err := d.signerStore.ReceiptSignerKey(ctx, operatorID, receipt)
+	if err != nil {
+		d.logger.Warn("dispatch: receipt signer not bound to executing operator", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), "error", err)
+		return nil, transactionReceiptNone
 	}
 	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
-		d.logger.Warn("dispatch: rejection receipt signature invalid", "transaction_id", txHash, "error", err)
-		return nil
+		d.logger.Warn("dispatch: receipt signature invalid", "transaction_id", txHash, "error", err)
+		return nil, transactionReceiptNone
 	}
-	return receipt
+	if err := governance.VerifyReceiptPersistenceAttestation(receipt, pubKey); err != nil {
+		d.logger.Warn("dispatch: receipt persistence attestation invalid", "transaction_id", txHash, "error", err)
+		return nil, transactionReceiptNone
+	}
+	return receipt, kind
 }
 
 // deliverCommand hands a signed command envelope to its target Operator. The
@@ -702,12 +785,9 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	if d.signerStore == nil {
 		return nil, fmt.Errorf("dispatch: %w: receipt signer store not configured", constants.ErrInferenceReceiptVerify)
 	}
-	pubKey, err := d.signerStore.GetTrustedSigner(ctx, receipt.SignerKeyId)
+	pubKey, err := d.signerStore.ReceiptSignerKey(ctx, cmdEnv.GetOperatorId(), receipt)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceReceiptVerify, err)
-	}
-	if pubKey == nil {
-		return nil, fmt.Errorf("dispatch: %w: unknown signer key id %q", constants.ErrInferenceReceiptVerify, receipt.SignerKeyId)
 	}
 	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
 		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceReceiptVerify, err)
@@ -815,35 +895,25 @@ func inferenceReceiptFailureError(receipt *operatorv1.ActionReceipt) error {
 	}
 }
 
-// DispatchResponse is the typed JSON response for POST /api/v1/operators/commands.
-// ResultPayload carries the operator's proto-marshaled result payload (e.g.
-// FsReadResult) so the caller can inspect the execution outcome. It is
-// base64-encoded in JSON per protojson/encoding/json conventions for []byte.
-type DispatchResponse struct {
-	Success       bool   `json:"success"`
-	TransactionID string `json:"transaction_id"`
-	EventType     string `json:"event_type,omitempty"`
-	ActionType    string `json:"action_type,omitempty"`
-	ResultPayload []byte `json:"result_payload,omitempty"`
-	Error         string `json:"error,omitempty"`
-}
-
-// ToResponse converts a DispatchResult to a DispatchResponse.
-func (r *DispatchResult) ToResponse() DispatchResponse {
-	resp := DispatchResponse{
-		Success:       true,
-		TransactionID: r.TransactionID,
+// GovernedDispatchResult builds the 200 body for a dispatch. The receipt is the
+// executing Operator's verified final ActionReceipt for every event type, and
+// result_payload is the terminal operator result (for example FsReadResult).
+func (r *DispatchResult) GovernedDispatchResult() *operatorv1.GovernedDispatchResult {
+	out := &operatorv1.GovernedDispatchResult{
+		TransactionId:   r.TransactionID,
+		InferenceResult: r.InferenceResult,
+		Receipt:         r.Receipt,
 	}
 	if r.ResultEnvelope != nil {
-		resp.EventType = r.ResultEnvelope.EventType
-		resp.ActionType = r.ResultEnvelope.ActionType
+		out.EventType = r.ResultEnvelope.GetEventType()
+		out.ActionType = r.ResultEnvelope.GetActionType()
 		if isOperatorCommandTerminalResult(r.ResultEnvelope) {
-			resp.ResultPayload = operatorCommandResultPayload(r.ResultEnvelope)
+			out.ResultPayload = operatorCommandResultPayload(r.ResultEnvelope)
 		} else {
-			resp.ResultPayload = r.ResultEnvelope.Payload
+			out.ResultPayload = r.ResultEnvelope.GetPayload()
 		}
 	}
-	return resp
+	return out
 }
 
 func isShellCommandDispatch(eventType string) bool {
@@ -912,7 +982,7 @@ func (r *OperatorCommandRequest) Validate() error {
 		return constants.ErrTxUnknownEventType
 	}
 	if len(r.Payload) == 0 {
-		return constants.ErrTxPayloadMissing
+		return fmt.Errorf("%w: %w", constants.ErrMissingRequiredField, constants.ErrTxPayloadMissing)
 	}
 	if _, err := constants.ValidateGovernedRequest(constants.EventType(r.EventType)); err != nil {
 		return err
@@ -945,20 +1015,43 @@ func newDispatchController(d DispatchControllerDeps) *DispatchController {
 }
 
 // HandleDispatch is the HTTP handler for POST /api/v1/operators/commands.
+//
+// A 200 is the GovernedDispatchResult: the terminal result and the executing
+// Operator's verified final ActionReceipt. Failures are a GovernanceRejection
+// carrying the signed L4 receipt, or an IngressRefusal before envelope
+// construction completes.
+//
+// @Summary		Dispatch governed operator command
+// @Description	Constructs a governed envelope for the target Operator session, waits for the
+// @Description	terminal result and the Operator's verified final receipt, and returns both.
+// @Tags			operators
+// @Accept			json
+// @Produce		json
+// @Param			request	body		OperatorCommandRequest	true	"Dispatch request (JSON)"
+// @Success		200		{object}	operatorv1.GovernedDispatchResult	"Terminal result with the verified final ActionReceipt"
+// @Failure		400		{object}	operatorv1.IngressRefusal	"Bad Request — malformed request or unknown event type"
+// @Failure		403		{object}	operatorv1.GovernanceRejection	"Forbidden — GovernanceRejection carrying the signed L4 receipt; IngressRefusal when refused before L4"
+// @Failure		404		{object}	operatorv1.IngressRefusal	"Not Found — target operator session does not resolve"
+// @Failure		405		{object}	operatorv1.IngressRefusal	"Method Not Allowed"
+// @Failure		422		{object}	operatorv1.IngressRefusal	"Unprocessable Entity — target cannot run the command"
+// @Failure		503		{object}	operatorv1.GovernanceRejection	"Service Unavailable — GovernanceRejection or IngressRefusal, per the failing check"
+// @Failure		504		{object}	operatorv1.IngressRefusal	"Gateway Timeout — no terminal result and receipt before the deadline"
+// @Router			/api/v1/operators/commands [post]
 func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		c.responder.ProtoJSONCanonical(w, http.StatusMethodNotAllowed, governance.NewIngressRefusal(constants.ErrMethodNotAllowed))
 		return
 	}
 
 	var req OperatorCommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.responder.Error(w, http.StatusBadRequest, "invalid JSON body")
+		err = fmt.Errorf("dispatch: decode request: %w: %w", constants.ErrInvalidJSONBody, err)
+		c.responder.ProtoJSONCanonical(w, http.StatusBadRequest, governance.NewIngressRefusal(err))
 		return
 	}
 
 	if err := req.Validate(); err != nil {
-		c.responder.Error(w, http.StatusBadRequest, err.Error())
+		c.responder.ProtoJSONCanonical(w, http.StatusBadRequest, governance.NewIngressRefusal(err))
 		return
 	}
 
@@ -984,44 +1077,88 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 		// caller receives the signed rejection receipt or the typed sentinel, never
 		// the wrapped chain.
 		c.logger.Error("dispatch: command dispatch failed", logging.ErrorKind(err))
-		status, message := dispatchErrorCode(err)
+		status, refusal := dispatchErrorCode(err)
 		if rejection := governance.RejectionResponse(err); rejection != nil {
 			c.responder.ProtoJSONCanonical(w, status, rejection)
 			return
 		}
-		c.responder.Error(w, status, message)
+		c.responder.ProtoJSONCanonical(w, status, refusal)
 		return
 	}
 
-	c.responder.JSON(w, http.StatusOK, result.ToResponse())
+	c.responder.ProtoJSONCanonical(w, http.StatusOK, result.GovernedDispatchResult())
 }
 
-// dispatchErrorCode maps a dispatch failure to an HTTP status and the text a
-// response renders: the typed sentinel, never the wrapped chain. A target
-// operator session that does not resolve (AuthError from
-// ValidateOperatorSession) is 404 with its message: the caller's own
+// dispatchErrorCode maps a dispatch failure to an HTTP status and the
+// IngressRefusal a response renders: a code and the typed sentinel, never the
+// wrapped chain. A target operator session that does not resolve (AuthError
+// from ValidateOperatorSession) is 404 with its message: the caller's own
 // credentials were already accepted, so 401 would misreport it. Governance
 // rejections, from Gateway-side envelope construction or the Operator's signed
 // L4 receipt, are 403 like direct envelope submission. Anything else follows
-// envelopeErrorCode, so an unclassified fault is 500 with constants.ErrInternal.
-func dispatchErrorCode(err error) (int, string) {
+// envelopeErrorCode, so an unclassified fault is 500 with constants.ErrInternal
+// and UNCLASSIFIED.
+func dispatchErrorCode(err error) (int, *operatorv1.IngressRefusal) {
 	var authErr *AuthError
 	if errors.As(err, &authErr) {
-		return http.StatusNotFound, authErr.Message
+		return http.StatusNotFound, &operatorv1.IngressRefusal{
+			Code:  operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND,
+			Error: authErr.Message,
+		}
 	}
+	if errors.Is(err, constants.ErrWitnessCommandNotCapable) {
+		return http.StatusUnprocessableEntity, governance.NewIngressRefusal(err)
+	}
+	// These fail after the envelope exists. Their statuses are kept, and they
+	// carry no refusal code: the conformance suite grades them as failed cases.
 	for _, entry := range []struct {
 		sentinel error
 		status   int
 	}{
-		{constants.ErrWitnessCommandNotCapable, http.StatusUnprocessableEntity},
 		{constants.ErrDispatchGovernanceRejected, http.StatusForbidden},
 		{constants.ErrDispatchResultTimeout, http.StatusGatewayTimeout},
 		{constants.ErrDispatchNoDelivery, http.StatusServiceUnavailable},
 	} {
 		if errors.Is(err, entry.sentinel) {
-			return entry.status, entry.sentinel.Error()
+			return entry.status, &operatorv1.IngressRefusal{
+				Code:  operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+				Error: entry.sentinel.Error(),
+			}
 		}
 	}
-	status, sentinel := envelopeErrorCode(err)
-	return status, sentinel.Error()
+	// The wrapper sentinel names the check, so its code is rendered directly
+	// rather than read from the first classifier entry the chain matches.
+	if errors.Is(err, constants.ErrIngressStateRootUnavailable) {
+		return http.StatusServiceUnavailable, &operatorv1.IngressRefusal{
+			Code:  operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE,
+			Error: constants.ErrIngressStateRootUnavailable.Error(),
+		}
+	}
+	if errors.Is(err, constants.ErrIngressL2DeliberationFailed) {
+		status := http.StatusServiceUnavailable
+		for _, outcome := range dispatchL2OutcomeErrors {
+			if errors.Is(err, outcome) {
+				status = http.StatusForbidden
+				break
+			}
+		}
+		return status, &operatorv1.IngressRefusal{
+			Code:  operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED,
+			Error: constants.ErrIngressL2DeliberationFailed.Error(),
+		}
+	}
+	status, _ := envelopeErrorCode(err)
+	return status, governance.NewIngressRefusal(err)
+}
+
+// dispatchL2OutcomeErrors are the L2 vote and quorum outcomes. Deliberation
+// that reaches one is a refused envelope (403). Any other deliberation failure,
+// including a consensus or signer store that is not configured, is a server
+// condition (503), matching VERIFIER_MISCONFIGURED at L4.
+var dispatchL2OutcomeErrors = []error{
+	constants.ErrTxL2SignatureMissing,
+	constants.ErrTxL2SignatureInvalid,
+	constants.ErrTxL2QuorumNotMet,
+	constants.ErrTxL2DuplicateSigner,
+	constants.ErrTxL2ConsensusSetUnknown,
 }

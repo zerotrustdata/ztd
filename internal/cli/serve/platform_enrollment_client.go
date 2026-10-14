@@ -75,6 +75,9 @@ type OperatorBootstrapClientConfig struct {
 	// records for the issued Operator (operatorRuntimeConfig).
 	RuntimeConfig      json.RawMessage
 	FingerprintOptions auth.FingerprintOptions
+	// ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5
+	// Actuator. The Gateway binds it to the Operator at enrollment.
+	ActuatorPublicKey string
 	// TrustBundlePEM, when set, is the owner-supplied CA a wss:// bootstrap
 	// URL must chain to; otherwise the system roots apply.
 	TrustBundlePEM []byte
@@ -98,6 +101,9 @@ func NewOperatorBootstrapClient(cfg OperatorBootstrapClientConfig) (*OperatorBoo
 	if cfg.URL == "" || cfg.InstanceID == "" || cfg.Hostname == "" || len(cfg.RuntimeConfig) == 0 ||
 		cfg.Deployment == nil || cfg.Logger == nil {
 		return nil, fmt.Errorf("%w: operator bootstrap requires a URL, instance ID, hostname, runtime config, deployment recorder, and logger", constants.ErrInternal)
+	}
+	if _, err := models.DecodeActuatorPublicKey(cfg.ActuatorPublicKey); err != nil {
+		return nil, fmt.Errorf("operator bootstrap: actuator key: %w", err)
 	}
 	var tlsCfg *tls.Config
 	if len(cfg.TrustBundlePEM) > 0 {
@@ -201,8 +207,9 @@ func (c *OperatorBootstrapClient) newAttempt() (*operatorBootstrapAttempt, error
 				DeploymentID:      c.cfg.Deployment.LaunchID(),
 				TokenHash:         models.PlatformEnrollmentTokenHash(token),
 				Operator: &models.PlatformOperatorCSRPayload{
-					OperatorCSRPEM: operatorCSR,
-					CLICSRPEM:      cliCSR,
+					OperatorCSRPEM:    operatorCSR,
+					CLICSRPEM:         cliCSR,
+					ActuatorPublicKey: c.cfg.ActuatorPublicKey,
 				},
 			},
 			RuntimeConfig: c.cfg.RuntimeConfig,

@@ -34,7 +34,7 @@ func TestNewZtdoService_NilTLSConfig(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
-	_, err := NewZtdoService(cfg, logger, nil, newTestL2Trust(t), nil, newTestPubSubClientFactory())
+	_, err := NewZtdoService(cfg, logger, nil, newTestL2Trust(t), nil, nil, newTestPubSubClientFactory())
 	assert.ErrorIs(t, err, constants.ErrInternal)
 }
 
@@ -42,7 +42,7 @@ func TestNewZtdoService_NilL2Trust(t *testing.T) {
 	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 
-	_, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), nil, newTestFileSvc(t), newTestPubSubClientFactory())
+	_, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), nil, newTestFileSvc(t), nil, newTestPubSubClientFactory())
 	assert.ErrorIs(t, err, constants.ErrInternal)
 }
 

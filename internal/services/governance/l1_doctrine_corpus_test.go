@@ -8,46 +8,20 @@
 package governance
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/services/governance/doctrinecorpus"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const doctrineCorpusPath = "testdata/doctrine_corpus.json"
-
-const (
-	corpusExpectBlock = "block"
-	corpusExpectAllow = "allow"
-)
-
-// doctrineCorpus is the versioned adversarial corpus for L1 EXECUTE_BASH screening.
-type doctrineCorpus struct {
-	Version string                `json:"version"`
-	Policy  string                `json:"policy"`
-	Entries []doctrineCorpusEntry `json:"entries"`
-}
-
-type doctrineCorpusEntry struct {
-	ID       string `json:"id"`
-	Category string `json:"category"`
-	Command  string `json:"command"`
-	Expect   string `json:"expect"`
-}
-
-func loadDoctrineCorpus(t *testing.T) doctrineCorpus {
+func loadDoctrineCorpus(t *testing.T) *doctrinecorpus.Corpus {
 	t.Helper()
-	raw, err := os.ReadFile(doctrineCorpusPath)
-	require.NoError(t, err, "read doctrine corpus")
-	var corpus doctrineCorpus
-	require.NoError(t, json.Unmarshal(raw, &corpus), "parse doctrine corpus")
-	require.NotEmpty(t, corpus.Policy, "corpus must document its policy")
-	require.NotEmpty(t, corpus.Entries, "corpus must not be empty")
+	corpus, err := doctrinecorpus.Load()
+	require.NoError(t, err, "load doctrine corpus")
 	return corpus
 }
 
@@ -55,20 +29,15 @@ func TestL1DoctrineCorpus_WellFormed(t *testing.T) {
 	t.Parallel()
 	corpus := loadDoctrineCorpus(t)
 
-	seen := make(map[string]struct{}, len(corpus.Entries))
+	benign := 0
 	for _, e := range corpus.Entries {
-		require.NotEmpty(t, e.ID, "entry id")
-		require.NotContains(t, seen, e.ID, "duplicate corpus id")
-		seen[e.ID] = struct{}{}
-		require.NotEmpty(t, e.Command, "entry %s command", e.ID)
-		require.Contains(t, []string{corpusExpectBlock, corpusExpectAllow}, e.Expect, "entry %s expect", e.ID)
-		require.NotEmpty(t, e.Category, "entry %s category", e.ID)
-		if e.Category == "benign" {
-			require.Equal(t, corpusExpectAllow, e.Expect, "benign entry %s must expect allow", e.ID)
-		} else {
-			require.Equal(t, corpusExpectBlock, e.Expect, "malicious entry %s must expect block", e.ID)
+		if e.Category == doctrinecorpus.CategoryBenign {
+			benign++
 		}
 	}
+	require.Len(t, corpus.Entries, 70, "corpus entry count")
+	require.Len(t, corpus.Attacks(), 49, "corpus attack count")
+	require.Equal(t, 21, benign, "corpus benign count")
 }
 
 // TestL1DoctrineCorpus_ExecuteBashScreening runs every corpus command through the
@@ -80,15 +49,15 @@ func TestL1DoctrineCorpus_ExecuteBashScreening(t *testing.T) {
 	doctrine := NewL1Doctrine()
 
 	var misses, falsePositives []string
-	perCategory := map[string]int{}
+	perCategory := map[doctrinecorpus.Category]int{}
 	for _, e := range corpus.Entries {
 		perCategory[e.Category]++
 		violations := doctrine.ValidatePayload(&operatorv1.CommandRequested{Command: e.Command})
 		blocked := len(violations) > 0
 		switch {
-		case e.Expect == corpusExpectBlock && !blocked:
+		case e.Expect == doctrinecorpus.ExpectBlock && !blocked:
 			misses = append(misses, fmt.Sprintf("  MISS [%s] %s: %q", e.Category, e.ID, e.Command))
-		case e.Expect == corpusExpectAllow && blocked:
+		case e.Expect == doctrinecorpus.ExpectAllow && blocked:
 			falsePositives = append(falsePositives, fmt.Sprintf("  FALSE POSITIVE [%s] %s: %q -> %s",
 				e.Category, e.ID, e.Command, strings.Join(violations, "; ")))
 		}

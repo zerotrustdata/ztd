@@ -56,9 +56,10 @@ func (NoopConsensusPolicyStore) GetConsensusPolicy(context.Context, string) (*L2
 func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (bool, error) {
 	actionType := constants.ActionType(envelope.ActionType)
 	bootstrapExempt := actionType.IsBootstrapAction()
+	enforced := posture.RequiresL2Signature() && !bootstrapExempt
 
 	if envelope.Governance == nil || envelope.Governance.L2 == nil || len(envelope.Governance.L2.Votes) == 0 {
-		if posture.RequiresL2Signature() && !bootstrapExempt {
+		if enforced {
 			tv.logger.Error("L2 votes missing but required by posture", "posture", posture.Name())
 			return false, constants.ErrTxL2SignatureMissing
 		}
@@ -68,7 +69,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	l2 := envelope.Governance.L2
 
 	if tv.signerStore == nil {
-		if posture.RequiresL2Signature() && !bootstrapExempt {
+		if enforced {
 			tv.logger.Error("Signer store not configured but required by posture", "posture", posture.Name())
 			return false, constants.ErrTxL2SignerStoreNotConfigured
 		}
@@ -76,7 +77,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	}
 
 	if tv.consensusPolicyStore == nil {
-		if posture.RequiresL2Signature() && !bootstrapExempt {
+		if enforced {
 			tv.logger.Error("Consensus policy store not configured but required by posture", "posture", posture.Name())
 			return false, constants.ErrTxL2ConsensusNotConfigured
 		}
@@ -85,14 +86,14 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 
 	policy, err := tv.consensusPolicyStore.GetConsensusPolicy(ctx, l2.ConsensusSetId)
 	if err != nil {
-		if posture.RequiresL2Signature() && !bootstrapExempt {
+		if enforced {
 			tv.logger.Error("Failed to load L2 consensus policy", "consensus_set_id", l2.ConsensusSetId, string(constants.ConnectionStateError), err)
 			return false, fmt.Errorf("l4 warden: verify L2 posture: %w", err)
 		}
 		return false, nil
 	}
 	if policy == nil || !policy.Enabled {
-		if posture.RequiresL2Signature() && !bootstrapExempt {
+		if enforced {
 			tv.logger.Error("L2 consensus policy not found or disabled", "consensus_set_id", l2.ConsensusSetId)
 			return false, constants.ErrTxL2ConsensusSetUnknown
 		}
@@ -114,7 +115,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 		if seen[vote.SignerKeyId] {
 			if policy.RequireDistinct {
 				tv.logger.Error("Duplicate signer in vote set with require_distinct", "key_id", vote.SignerKeyId)
-				if posture.RequiresL2Signature() && !bootstrapExempt {
+				if enforced {
 					return false, constants.ErrTxL2DuplicateSigner
 				}
 				return false, nil
@@ -124,15 +125,24 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 		pubKey, err := tv.signerStore.GetTrustedSigner(ctx, vote.SignerKeyId)
 		if err != nil {
 			tv.logger.Error("Failed to load trusted signer", "key_id", vote.SignerKeyId, string(constants.ConnectionStateError), err)
-			continue
+			if enforced {
+				return false, fmt.Errorf("l4 warden: verify L2 vote %s: %w: %w", vote.SignerKeyId, constants.ErrTxL2SignatureInvalid, err)
+			}
+			return false, nil
 		}
 		if pubKey == nil {
 			tv.logger.Error("Consensus (L2) signer key not found in trusted signers", "key_id", vote.SignerKeyId)
-			continue
+			if enforced {
+				return false, fmt.Errorf("l4 warden: verify L2 vote %s: %w", vote.SignerKeyId, constants.ErrTxL2SignatureInvalid)
+			}
+			return false, nil
 		}
 		if !tv.verifyL2Signature(pubKey, vote.ConsensusSignature, computedHash, vote.Decision) {
 			tv.logger.Error("L2 signature verification failed", "key_id", vote.SignerKeyId)
-			continue
+			if enforced {
+				return false, fmt.Errorf("l4 warden: verify L2 vote %s: %w", vote.SignerKeyId, constants.ErrTxL2SignatureInvalid)
+			}
+			return false, nil
 		}
 		seen[vote.SignerKeyId] = true
 		if vote.Decision {
@@ -141,7 +151,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	}
 
 	if affirmative < policy.Quorum {
-		if posture.RequiresL2Signature() && !bootstrapExempt {
+		if enforced {
 			tv.logger.Error("L2 quorum not met", "affirmative", affirmative, "quorum", policy.Quorum, "posture", posture.Name())
 			return false, constants.ErrTxL2QuorumNotMet
 		}

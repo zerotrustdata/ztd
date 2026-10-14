@@ -116,6 +116,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-OP-ACT-03 | L5 Actuator MUST mint a single-action capability bound to the transaction hash, action type, target resource, operator ID, and session before execution, and MUST dissolve the capability immediately upon handler return. |
 | INV-OP-ACT-04 | L5 Actuator MUST finalize the receipt with status `COMPLETED` or `FAILED`, capture the local state root after execution, sign the receipt, and attach a signed `ReceiptPersistenceAttestation`. |
 | INV-OP-ACT-05 | A transaction rejected by L4 verification MUST be recorded as a signed `FAILED` rejection receipt with `failure_code` `GOVERNANCE_REJECTED` and a signed `rejection_code` naming the failed check. Verifiers MUST attribute the rejection from `rejection_code`, not `result_summary` (`INV-GOV-ACT-09`). |
+| INV-OP-ACT-06 | The outbound Operator MUST load its Actuator key and export `pki/Actuator_pub.json` at startup, fatal on failure, and MUST present its Actuator public key in the bootstrap enrollment request (`PlatformOperatorCSRPayload.actuator_public_key`). The Gateway binds that key to the Operator document at enrollment. A presented key that differs from an already-bound non-empty key MUST be refused with `ErrOperatorActuatorKeyChanged`. Rotation is re-enrollment, which mints a new `operator_id` and a new binding. Malformed keys (non-hex, not `ed25519.PublicKeySize` bytes) MUST be refused with `ErrOperatorActuatorKeyInvalid`. The enrolled key and the receipt-signing key MUST come from one store open: `StartOperator` opens the keystore and canonical database once, before enrollment, and `ZtdoService` MUST receive that database and never open its own. |
 
 ### Local-First Audit Storage (`INV-OP-STOR`)
 
@@ -203,6 +204,12 @@ The canonical `system_fingerprint` is a SHA-256 hash combining immutable host at
 - **Recovery**: Receiving a fresh heartbeat immediately restores derived status to `active`. Heartbeats cannot revive `stopped` or `terminated` Operators.
 
 ### WebSocket Bootstrap Enrollment and In-Memory Lifecycle
+
+Startup order in `StartOperator`:
+1. Opens the keystore and the canonical database (`ztd.db`) once, before enrollment.
+2. Reads the Actuator key from that database's secret manager and derives its hex Ed25519 public key.
+3. Enrolls, presenting the Actuator public key in the bootstrap request.
+4. Starts `ZtdoService` with the same open database. The service never opens a second one, and `ZtdoService.Stop` closes it.
 
 `ztd operator start` executes a zero-disk credential enrollment:
 1. Generates Operator and CLI ECDSA P-256 key pairs, certificate signing requests (CSRs), and a requester token in process memory.

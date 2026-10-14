@@ -8,6 +8,7 @@
 package models
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -214,6 +215,29 @@ type PlatformAppCSRPayload struct {
 type PlatformOperatorCSRPayload struct {
 	OperatorCSRPEM string `json:"operator_csr_pem"`
 	CLICSRPEM      string `json:"cli_csr_pem"`
+	// ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5 Actuator.
+	ActuatorPublicKey string `json:"actuator_public_key"`
+}
+
+// ActuatorKey decodes the presented Actuator public key. It fails with
+// constants.ErrOperatorActuatorKeyInvalid unless the key is exactly
+// ed25519.PublicKeySize bytes of hex.
+func (p *PlatformOperatorCSRPayload) ActuatorKey() (ed25519.PublicKey, error) {
+	return DecodeActuatorPublicKey(p.ActuatorPublicKey)
+}
+
+// DecodeActuatorPublicKey decodes a hex Ed25519 Actuator public key. Anything
+// other than exactly ed25519.PublicKeySize bytes of hex is
+// constants.ErrOperatorActuatorKeyInvalid.
+func DecodeActuatorPublicKey(keyHex string) (ed25519.PublicKey, error) {
+	pub, err := hex.DecodeString(keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrOperatorActuatorKeyInvalid, err)
+	}
+	if len(pub) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("%w: public key size %d", constants.ErrOperatorActuatorKeyInvalid, len(pub))
+	}
+	return ed25519.PublicKey(pub), nil
 }
 
 type PlatformEnrollmentCSRFingerprints struct {

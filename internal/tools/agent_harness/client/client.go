@@ -28,6 +28,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // Persona is the identity Agent Harness wears for a given exchange. This is the ONLY
@@ -302,8 +304,8 @@ func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex, role string)
 // approval: it prints the approval URL, subscribes to the gateway's SSE stream
 // for the approval.completed event matching txHash, and blocks until the human
 // completes the WebAuthn ceremony in their browser. The completion event carries
-// the authoritative resumed-receipt reference, which this method validates and
-// returns on success.
+// the executing Operator's signed receipt of the resumed transaction. This method
+// decodes it with strict protojson, checks that it belongs to txHash, and returns it.
 //
 // SSE routing is via the X-ZTD-CLI-Session-ID header set from Persona.CLISessionID;
 // user_id is bound by the mTLS cert and stamped into context by the auth
@@ -314,7 +316,7 @@ func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex, role string)
 // printed for the human is built from ApprovalDisplayURL when set — the
 // host-reachable address — so the host browser can actually open it; it falls
 // back to PublicBaseURL when ApprovalDisplayURL is empty.
-func (c *Client) WaitForHumanApproval(ctx context.Context, p Persona, txHash, userID string) (int, []byte, error) {
+func (c *Client) WaitForHumanApproval(ctx context.Context, p Persona, txHash, userID string) (*operatorv1.ActionReceipt, error) {
 	// The human approver reaches the gateway from the host, which uses different
 	// host/ports than the harness process (container-internal). Prefer the
 	// host-reachable display URL for the printed link; fall back to PublicBaseURL
@@ -363,7 +365,8 @@ func (c *Client) WaitForHumanApproval(ctx context.Context, p Persona, txHash, us
 
 	approved := make(chan struct{}, 1)
 	var once sync.Once
-	var approvalReceipt *models.ApprovalReceiptReference
+	var approvalReceipt json.RawMessage
+	var approvalHasReceipt bool
 	done := make(chan struct{})
 
 	go func() {
@@ -390,6 +393,7 @@ func (c *Client) WaitForHumanApproval(ctx context.Context, p Persona, txHash, us
 				return
 			}
 			once.Do(func() {
+				approvalHasReceipt = event.HasReceipt()
 				approvalReceipt = event.Receipt
 				close(approved)
 			})
@@ -402,17 +406,20 @@ func (c *Client) WaitForHumanApproval(ctx context.Context, p Persona, txHash, us
 		<-done
 	case <-waitCtx.Done():
 		<-done
-		return 0, nil, constants.ErrApprovalSSETimeout
+		return nil, constants.ErrApprovalSSETimeout
 	}
 
-	if approvalReceipt == nil || approvalReceipt.ExecutionID == "" || approvalReceipt.TransactionID == "" || approvalReceipt.TransactionHash != txHash || approvalReceipt.SignerKeyID == "" || approvalReceipt.Signature == "" || approvalReceipt.InvestigationID == "" {
-		return 0, nil, constants.ErrApprovalReceiptReferenceInvalid
+	if !approvalHasReceipt {
+		return nil, fmt.Errorf("human approval: %w", constants.ErrActionReceiptMissing)
 	}
-	body, err := json.Marshal(approvalReceipt)
-	if err != nil {
-		return 0, nil, fmt.Errorf("human approval: encode receipt reference: %w", err)
+	receipt := &operatorv1.ActionReceipt{}
+	if err := protojson.Unmarshal(approvalReceipt, receipt); err != nil {
+		return nil, fmt.Errorf("human approval: decode resumed receipt: %w", err)
+	}
+	if receipt.GetTransactionHash() != txHash {
+		return nil, fmt.Errorf("human approval: receipt transaction %s does not match %s: %w", receipt.GetTransactionHash(), txHash, constants.ErrActionReceiptMissing)
 	}
 
 	fmt.Fprintf(os.Stderr, "  ✓ Human approval confirmed for transaction %s\n\n", txHash)
-	return http.StatusOK, body, nil
+	return receipt, nil
 }

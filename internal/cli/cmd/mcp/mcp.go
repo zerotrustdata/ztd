@@ -21,7 +21,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 	"time"
 
@@ -41,6 +40,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // mcpCmd is the parent command for MCP stdio operations.
@@ -99,19 +100,6 @@ type InitializeResult struct {
 type ServerInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
-}
-
-// ApprovalResult represents a tool call result requiring L3 approval.
-type ApprovalResult struct {
-	ApprovalURL string    `json:"approval_url,omitempty"`
-	Content     []Content `json:"content,omitempty"`
-}
-
-// Content represents a content item in an MCP response.
-type Content struct {
-	Type string      `json:"type"`
-	Text string      `json:"text,omitempty"`
-	Data interface{} `json:"data,omitempty"`
 }
 
 // ─── stdio: governed proxy (the only supported mode) ────────────────────────
@@ -482,22 +470,27 @@ func proxySessionToGateway(session *gatewayConn, req JSONRPCRequest) (JSONRPCRes
 
 // proxySessionToGatewayWithRetryContext handles L3 approval responses by opening
 // the browser for WebAuthn authorization and waiting for the approval.completed
-// SSE event from the gateway. Once received, it re-sends the original request
-// and returns the result. SSE credentials are required — there is no polling
-// fallback.
+// SSE event from the gateway. The event carries the resumed transaction's signed
+// receipt, which becomes the tools/call result; the request is not re-sent. SSE
+// credentials are required — there is no polling fallback.
 func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gatewayConn, req JSONRPCRequest, logger *slog.Logger) (JSONRPCResponse, error) {
 	resp, err := proxySessionToGateway(session, req)
 	if err != nil {
 		return resp, err
 	}
 
-	if !isL3ApprovalResponse(resp) {
+	suspension, err := l3Suspension(resp)
+	if err != nil {
+		return resp, err
+	}
+	if suspension == nil {
 		return resp, nil
 	}
-
-	approvalURL := extractApprovalURL(resp)
+	if suspension.TxHash == "" || suspension.ApprovalURL == "" {
+		return resp, fmt.Errorf("L3 approval: suspension: %w", constants.ErrMissingRequiredField)
+	}
 	if logger != nil {
-		logger.Info("L3 approval required, waiting for user to authorize...", "url", approvalURL)
+		logger.Info("L3 approval required, waiting for user to authorize...", "url", suspension.ApprovalURL)
 	}
 
 	if session.sseClient == nil || session.sseBaseURL == "" || session.cliSessionID == "" {
@@ -507,92 +500,53 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 		return resp, fmt.Errorf("L3 approval: browser opener: %w", constants.ErrMissingRequiredField)
 	}
 
-	if err := session.openBrowser(approvalURL); err != nil {
+	if err := session.openBrowser(suspension.ApprovalURL); err != nil {
 		if logger != nil {
 			logger.Warn("Failed to auto-open browser", "error", err)
 		}
-		fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", approvalURL)
+		fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", suspension.ApprovalURL)
 	}
 
-	txHash := extractTxHashFromApprovalURL(approvalURL)
-	if err := auth.WaitForApprovalSSE(ctx, session.sseClient, session.sseBaseURL, session.cliSessionID, txHash); err != nil {
+	receiptJSON, err := auth.WaitForApprovalSSE(ctx, session.sseClient, session.sseBaseURL, session.cliSessionID, suspension.TxHash)
+	if err != nil {
 		if logger != nil {
 			logger.Warn("L3 approval SSE wait ended", "error", err)
 		}
 		return resp, err
 	}
 
-	retryResp, err := proxySessionToGateway(session, req)
-	if err != nil {
-		return resp, err
+	receipt := &operatorv1.ActionReceipt{}
+	if err := protojson.Unmarshal(receiptJSON, receipt); err != nil {
+		return resp, fmt.Errorf("L3 approval: decode resumed receipt: %w", err)
+	}
+	if receipt.GetTransactionHash() != suspension.TxHash {
+		return resp, fmt.Errorf("L3 approval: receipt transaction %s does not match %s: %w", receipt.GetTransactionHash(), suspension.TxHash, constants.ErrActionReceiptMissing)
 	}
 	if logger != nil {
-		logger.Info("L3 approval completed, proceeding with execution")
+		logger.Info("L3 approval completed, returning the resumed receipt")
 	}
-	return retryResp, nil
+	return JSONRPCResponse{
+		JSONRPC: constants.JSONRPCVersion,
+		ID:      resp.ID,
+		Result:  mcp.ReceiptCallToolResult(receipt, receiptJSON),
+	}, nil
 }
 
-// extractTxHashFromApprovalURL extracts the transaction hash from an approval
-// URL path (e.g., "https://ztd.local:8443/api/v1/approve/abc123" -> "abc123").
-func extractTxHashFromApprovalURL(approvalURL string) string {
-	if approvalURL == "" {
-		return ""
-	}
-	parsed, err := url.Parse(approvalURL)
-	if err != nil {
-		return ""
-	}
-	path := strings.TrimPrefix(parsed.Path, constants.APIPaths.ApprovePagePrefix)
-	// Remove any trailing query or fragment
-	if idx := strings.IndexAny(path, "?#"); idx >= 0 {
-		path = path[:idx]
-	}
-	return path
-}
-
-func isL3ApprovalResponse(resp JSONRPCResponse) bool {
+// l3Suspension decodes the typed suspension of a tools/call result. It returns nil
+// when the call was not suspended for L3 approval.
+func l3Suspension(resp JSONRPCResponse) (*mcp.GovernedSuspension, error) {
 	if resp.Result == nil {
-		return false
+		return nil, nil
 	}
-	// Try to unmarshal as ApprovalResult
 	resultBytes, err := json.Marshal(resp.Result)
 	if err != nil {
-		return false
+		return nil, fmt.Errorf("mcp: encode tool result: %w", err)
 	}
-	var approvalResult ApprovalResult
-	if err := json.Unmarshal(resultBytes, &approvalResult); err != nil {
-		return false
+	var result mcp.CallToolResult
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("mcp: decode tool result: %w", err)
 	}
-	return approvalResult.ApprovalURL != ""
-}
-
-func extractApprovalURL(resp JSONRPCResponse) string {
-	if resp.Result == nil {
-		return ""
-	}
-
-	// Try to unmarshal as ApprovalResult
-	resultBytes, err := json.Marshal(resp.Result)
-	if err != nil {
-		return ""
-	}
-	var approvalResult ApprovalResult
-	if err := json.Unmarshal(resultBytes, &approvalResult); err == nil {
-		if approvalResult.ApprovalURL != "" {
-			return approvalResult.ApprovalURL
-		}
-		// Check content array for approval URL
-		for _, item := range approvalResult.Content {
-			if item.Text != "" {
-				if url := extractURLFromText(item.Text); url != "" {
-					return url
-				}
-			}
-		}
-	}
-
-	// Fallback to text extraction from entire result
-	return extractURLFromText(string(resultBytes))
+	return result.Suspension, nil
 }
 
 // ─── agent show config printers ─────────────────────────────────────────────
@@ -1116,16 +1070,4 @@ func runMCPAgentRun(args []string, verify bool, posture string, fileSvcFactory f
 		return fmt.Errorf("mcp: agent run: %w", err)
 	}
 	return launchAgentWithGovernance(string(integration.ID), args[1:], verify, posture, fileSvcFactory, enrollerFactory)
-}
-
-func extractURLFromText(text string) string {
-	urlPattern := regexp.MustCompile(`https://[^\s"']+` + regexp.QuoteMeta(constants.APIPaths.ApprovePagePrefix) + `[^\s"']*`)
-	if matches := urlPattern.FindStringSubmatch(text); len(matches) > 0 {
-		return matches[0]
-	}
-	genericURLPattern := regexp.MustCompile(`https://[^\s"']+`)
-	if matches := genericURLPattern.FindStringSubmatch(text); len(matches) > 0 {
-		return matches[0]
-	}
-	return ""
 }

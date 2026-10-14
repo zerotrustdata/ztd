@@ -150,7 +150,7 @@ Persisted Event             Ephemeral Event
 | `ztd.v1.inference.model.provenance.preflight.updated` | ephemeral | `model_provenance_controller.go` | Progress updates during storage-side model attestation |
 | `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
 | `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
-| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed L3 approval |
+| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed L3 approval. Its `receipt` field is the canonical protojson signed `ActionReceipt` of the resumed transaction (`INV-GOV-ACT-13`) |
 | `passkey.registered` | ephemeral | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed passkey registration |
 
 ## Observe Producers

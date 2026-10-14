@@ -277,7 +277,7 @@ func TestL4Warden_L2VerifiesAgainstEnrollmentBundleTrust(t *testing.T) {
 		wantErr error
 	}{
 		{name: "bundle signer meets quorum", trust: bundleTrust([]models.OperatorSigner{{KeyID: "test-key", PublicKeyHex: hex.EncodeToString(pub)}})},
-		{name: "member key absent from bundle", trust: bundleTrust(nil), wantErr: ErrL2QuorumNotMet},
+		{name: "member key absent from bundle", trust: bundleTrust(nil), wantErr: ErrL2SignatureInvalid},
 		{name: "no consensus set in bundle", trust: nil, wantErr: ErrL2ConsensusSetUnknown},
 	}
 	for _, tc := range tests {

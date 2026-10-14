@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -298,7 +299,7 @@ func TestL4Warden_L2VoteOrderingIndependence(t *testing.T) {
 //
 // This test would have caught the vacuous quorum bug: under the old single-key
 // config (same pub registered for all members), the forged-votes case below
-// would have passed instead of returning ErrL2QuorumNotMet.
+// would have passed instead of returning ErrL2SignatureInvalid.
 func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 	t.Parallel()
 	pub1, priv1, err := ed25519.GenerateKey(nil)
@@ -386,8 +387,8 @@ func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 
 	// Negative case: forge all 3 votes with member-1's private key. Each vote
 	// carries the correct SignerKeyId, but the signatures for member-2 and
-	// member-3 will not verify against their distinct registered public keys,
-	// so only member-1's affirmative vote counts -> quorum 3 not met.
+	// member-3 will not verify against their distinct registered public keys.
+	// A forged member vote rejects the transaction (INV-CON-WARD-06).
 	forgedEnv := buildEnv("forged", nil)
 	fHash := forgedEnv.TransactionHash
 	forgedEnv.Governance.L2.Votes = []*commonv1.L2Vote{
@@ -396,8 +397,8 @@ func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 		signL2Vote(priv1, "member-3", fHash, true),
 	}
 	_, err = makeWarden().VerifyEnvelope(context.Background(), forgedEnv)
-	if !errors.Is(err, ErrL2QuorumNotMet) {
-		t.Fatalf("expected ErrL2QuorumNotMet when one key forges all votes with per-member keys, got %v", err)
+	if !errors.Is(err, ErrL2SignatureInvalid) {
+		t.Fatalf("expected ErrL2SignatureInvalid when one key forges member votes with per-member keys, got %v", err)
 	}
 
 	// Positive control: sign each vote with the correct member's distinct key.
@@ -453,5 +454,232 @@ func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 	}
 	if !verified2.L2Valid {
 		t.Fatal("2-of-3 positive control: expected L2Valid=true")
+	}
+}
+
+// errSignerLookup is the trusted-signer lookup failure used by
+// TestVerifyL2Posture_VoteFaults.
+var errSignerLookup = errors.New("trusted signer store unavailable")
+
+// erroringSignerStore fails every trusted-signer lookup.
+type erroringSignerStore struct{}
+
+func (erroringSignerStore) GetTrustedSigner(context.Context, string) (ed25519.PublicKey, error) {
+	return nil, errSignerLookup
+}
+
+// corruptSignature changes the first hex nibble of a vote's signature, so the
+// signature still decodes but no longer verifies.
+func corruptSignature(vote *commonv1.L2Vote) *commonv1.L2Vote {
+	sig := []byte(vote.ConsensusSignature)
+	if sig[0] == '0' {
+		sig[0] = '1'
+	} else {
+		sig[0] = '0'
+	}
+	vote.ConsensusSignature = string(sig)
+	return vote
+}
+
+// TestVerifyL2Posture_VoteFaults pins how a faulty vote is classified: a member
+// vote that fails verification or whose signer cannot be resolved rejects the
+// transaction under an L2-enforcing posture, even when other votes meet quorum
+// (INV-CON-WARD-06). Non-member votes are ignored.
+func TestVerifyL2Posture_VoteFaults(t *testing.T) {
+	t.Parallel()
+	pub1, priv1, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	pub2, priv2, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	pub3, priv3, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	_, outsiderPriv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	allSigners := &FailClosedSignerStore{Signers: map[string]ed25519.PublicKey{
+		"member-1": pub1,
+		"member-2": pub2,
+		"member-3": pub3,
+	}}
+	policy := &models.ConsensusPolicy{
+		ID:              "fault-consensus",
+		MemberAppIDs:    []string{"member-1", "member-2", "member-3"},
+		Quorum:          2,
+		RequireDistinct: true,
+		Enabled:         true,
+	}
+	consensusStore := &consensusStoreTestAdapter{Inner: &governancetest.SimpleConsensusStore{Consensus: map[string]*models.ConsensusPolicy{"fault-consensus": policy}}}
+
+	newWarden := func(signers SignerStore) *L4Warden {
+		return NewL4Warden(
+			testutil.NewTestLogger(),
+			testutil.NewStatefulMockReplayStore(),
+			testutil.NewMockStateRootProvider("root-1"),
+			signers,
+			consensusStore,
+			testutil.NewConfigurableMockL3Notary(true),
+			NewL1Doctrine(),
+			constants.AllActionTypes,
+			nil,
+			&testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"},
+			&governancetest.UnlockedVault{},
+		)
+	}
+
+	tests := []struct {
+		name      string
+		posture   string
+		signers   SignerStore
+		votes     func(hash string) []*commonv1.L2Vote
+		wantOK    bool
+		wantErr   error
+		wantCode  operatorv1.GovernanceRejectionCode
+		wantCause error
+	}{
+		{
+			name:    "consensus: forged member vote rejects despite quorum",
+			posture: "consensus",
+			signers: allSigners,
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{
+					signL2Vote(priv1, "member-1", h, true),
+					signL2Vote(priv2, "member-2", h, true),
+					corruptSignature(signL2Vote(priv3, "member-3", h, true)),
+				}
+			},
+			wantErr:  ErrL2SignatureInvalid,
+			wantCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID,
+		},
+		{
+			name:    "consensus: forged member vote first still rejects",
+			posture: "consensus",
+			signers: allSigners,
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{
+					corruptSignature(signL2Vote(priv1, "member-1", h, true)),
+					signL2Vote(priv2, "member-2", h, true),
+					signL2Vote(priv3, "member-3", h, true),
+				}
+			},
+			wantErr:  ErrL2SignatureInvalid,
+			wantCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID,
+		},
+		{
+			name:    "doctrine: forged member vote is audited, not gated",
+			posture: "doctrine",
+			signers: allSigners,
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{
+					signL2Vote(priv1, "member-1", h, true),
+					signL2Vote(priv2, "member-2", h, true),
+					corruptSignature(signL2Vote(priv3, "member-3", h, true)),
+				}
+			},
+			wantOK: false,
+		},
+		{
+			name:    "consensus: non-member vote with one valid member fails quorum",
+			posture: "consensus",
+			signers: allSigners,
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{
+					signL2Vote(priv1, "member-1", h, true),
+					signL2Vote(outsiderPriv, "outsider", h, true),
+				}
+			},
+			wantErr:  ErrL2QuorumNotMet,
+			wantCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET,
+		},
+		{
+			name:    "consensus: non-member vote ignored when members meet quorum",
+			posture: "consensus",
+			signers: allSigners,
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{
+					signL2Vote(priv1, "member-1", h, true),
+					signL2Vote(priv2, "member-2", h, true),
+					signL2Vote(outsiderPriv, "outsider", h, true),
+				}
+			},
+			wantOK: true,
+		},
+		{
+			name:    "consensus: member with no trusted signer rejects",
+			posture: "consensus",
+			signers: &FailClosedSignerStore{Signers: map[string]ed25519.PublicKey{"member-1": pub1, "member-2": pub2}},
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{
+					signL2Vote(priv1, "member-1", h, true),
+					signL2Vote(priv2, "member-2", h, true),
+					signL2Vote(priv3, "member-3", h, true),
+				}
+			},
+			wantErr:  ErrL2SignatureInvalid,
+			wantCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID,
+		},
+		{
+			name:    "consensus: trusted signer lookup error rejects and keeps its cause",
+			posture: "consensus",
+			signers: erroringSignerStore{},
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{signL2Vote(priv1, "member-1", h, true)}
+			},
+			wantErr:   ErrL2SignatureInvalid,
+			wantCode:  operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID,
+			wantCause: errSignerLookup,
+		},
+		{
+			name:    "doctrine: trusted signer lookup error is audited, not gated",
+			posture: "doctrine",
+			signers: erroringSignerStore{},
+			votes: func(h string) []*commonv1.L2Vote {
+				return []*commonv1.L2Vote{signL2Vote(priv1, "member-1", h, true)}
+			},
+			wantOK: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), priv1, "consensus")
+			env.Governance.L2.ConsensusSetId = "fault-consensus"
+			env.Governance.L2.Votes = tc.votes(env.TransactionHash)
+			posture, err := NewGovernancePosture(tc.posture)
+			if err != nil {
+				t.Fatalf("NewGovernancePosture(%s): %v", tc.posture, err)
+			}
+
+			ok, err := newWarden(tc.signers).verifyL2Posture(context.Background(), env, env.TransactionHash, posture)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("expected %v, got %v", tc.wantErr, err)
+				}
+				if ok {
+					t.Fatal("rejected vote set must not report L2 consensus")
+				}
+				if code := ClassifyGovernanceRejection(err); code != tc.wantCode {
+					t.Fatalf("expected rejection code %v, got %v", tc.wantCode, code)
+				}
+				if tc.wantCause != nil && !errors.Is(err, tc.wantCause) {
+					t.Fatalf("expected error to wrap %v, got %v", tc.wantCause, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if ok != tc.wantOK {
+				t.Fatalf("expected L2 consensus=%v, got %v", tc.wantOK, ok)
+			}
+		})
 	}
 }

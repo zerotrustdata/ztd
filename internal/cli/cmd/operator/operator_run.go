@@ -134,7 +134,7 @@ authenticated user and be active.`,
 			if err != nil {
 				return fmt.Errorf("operator run: %w", err)
 			}
-			var targets []operatorRunTarget
+			var targets []operator.Target
 			if allActive {
 				targets, err = activeOperatorRunTargets(operators)
 			} else {
@@ -400,12 +400,7 @@ func listUserOperators(client authcmd.APIClient, userID string) ([]*operatorv1.O
 	return slotResp.Operators, nil
 }
 
-type operatorRunTarget struct {
-	OperatorID        string
-	OperatorSessionID string
-}
-
-func resolveOperatorRunTargets(operators []*operatorv1.OperatorDocument, sessionIDs []string) ([]operatorRunTarget, error) {
+func resolveOperatorRunTargets(operators []*operatorv1.OperatorDocument, sessionIDs []string) ([]operator.Target, error) {
 	bySession := make(map[string]*operatorv1.OperatorDocument, len(operators))
 	for _, op := range operators {
 		if op.OperatorSessionId != "" {
@@ -413,7 +408,7 @@ func resolveOperatorRunTargets(operators []*operatorv1.OperatorDocument, session
 		}
 	}
 
-	targets := make([]operatorRunTarget, 0, len(sessionIDs))
+	targets := make([]operator.Target, 0, len(sessionIDs))
 	for _, sessionID := range sessionIDs {
 		op, ok := bySession[sessionID]
 		if !ok {
@@ -422,7 +417,7 @@ func resolveOperatorRunTargets(operators []*operatorv1.OperatorDocument, session
 		if constants.OperatorStatus(op.Status) != constants.OperatorStatusActive {
 			return nil, fmt.Errorf("operator run: operator session %s is not active (status=%s)", sessionID, op.Status)
 		}
-		targets = append(targets, operatorRunTarget{
+		targets = append(targets, operator.Target{
 			OperatorID:        op.Id,
 			OperatorSessionID: op.OperatorSessionId,
 		})
@@ -431,13 +426,13 @@ func resolveOperatorRunTargets(operators []*operatorv1.OperatorDocument, session
 }
 
 // activeOperatorRunTargets selects every active operator session in the list.
-func activeOperatorRunTargets(operators []*operatorv1.OperatorDocument) ([]operatorRunTarget, error) {
-	var targets []operatorRunTarget
+func activeOperatorRunTargets(operators []*operatorv1.OperatorDocument) ([]operator.Target, error) {
+	var targets []operator.Target
 	for _, op := range operators {
 		if op.OperatorSessionId == "" || constants.OperatorStatus(op.Status) != constants.OperatorStatusActive {
 			continue
 		}
-		targets = append(targets, operatorRunTarget{OperatorID: op.Id, OperatorSessionID: op.OperatorSessionId})
+		targets = append(targets, operator.Target{OperatorID: op.Id, OperatorSessionID: op.OperatorSessionId})
 	}
 	if len(targets) == 0 {
 		return nil, fmt.Errorf("operator run: %w", constants.ErrOperatorRunNoActiveOperators)
@@ -447,7 +442,7 @@ func activeOperatorRunTargets(operators []*operatorv1.OperatorDocument) ([]opera
 
 // dispatchOperatorRun dispatches to every target with at most concurrency
 // requests in flight. Results keep target order.
-func dispatchOperatorRun(client authcmd.APIClient, targets []operatorRunTarget, command, cliSessionID string, concurrency int) []operator.RunResult {
+func dispatchOperatorRun(client authcmd.APIClient, targets []operator.Target, command, cliSessionID string, concurrency int) []operator.RunResult {
 	results := make([]operator.RunResult, len(targets))
 	if concurrency < 1 {
 		concurrency = 1
@@ -471,73 +466,18 @@ func dispatchOperatorRun(client authcmd.APIClient, targets []operatorRunTarget, 
 	return results
 }
 
-func dispatchOperatorRunOnce(client authcmd.APIClient, target operatorRunTarget, command, cliSessionID string) (result operator.RunResult) {
-	result = operator.RunResult{
-		OperatorSessionID: target.OperatorSessionID,
-		OperatorID:        target.OperatorID,
-		StartedAt:         time.Now(),
-	}
-	defer func() { result.DurationMs = operator.DurationMs(time.Since(result.StartedAt)) }()
-
+// dispatchOperatorRunOnce dispatches one command to target through the shared
+// operator.RunOnce, which the conformance driver also uses.
+func dispatchOperatorRunOnce(client authcmd.APIClient, target operator.Target, command, cliSessionID string) operator.RunResult {
 	requestID, err := uuid.NewString()
 	if err != nil {
-		result.Error = err.Error()
-		return result
-	}
-	request, err := operator.BuildExecuteBashDispatchRequest(target.OperatorSessionID, command, requestID, cliSessionID)
-	if err != nil {
-		result.Error = err.Error()
-		return result
-	}
-
-	raw, err := client.Post(constants.APIPaths.OperatorsCommands, request)
-	if err != nil {
-		result.Error = err.Error()
-		var statusErr *api.StatusError
-		if errors.As(err, &statusErr) {
-			if rejection := operator.DecodeGovernanceRejection([]byte(statusErr.Body)); rejection != nil {
-				result.TransactionID = rejection.GetReceipt().GetTransactionId()
-				result.RejectionCode = rejection.GetReceipt().GetRejectionCode().String()
-				result.Error = rejection.GetReceipt().GetResultSummary()
-			}
-		}
-		return result
-	}
-
-	response, err := operator.DecodeDispatchResponse(raw)
-	if err != nil {
-		result.Error = err.Error()
-		return result
-	}
-	result.TransactionID = response.TransactionID
-	result.Success = response.Success
-	if response.Error != "" {
-		result.Error = response.Error
-	}
-	if !response.Success {
-		if result.Error == "" {
-			result.Error = "dispatch failed"
-		}
-		return result
-	}
-
-	commandResult, err := operator.ParseCommandResult(response)
-	if err != nil {
-		result.Error = err.Error()
-		result.Success = false
-		return result
-	}
-
-	result.ExitCode = commandResult.GetReturnCode()
-	result.Stdout = commandResult.GetStdout()
-	result.Stderr = commandResult.GetStderr()
-	if commandResult.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		result.Success = false
-		if result.Error == "" {
-			result.Error = commandResult.GetError()
+		return operator.RunResult{
+			OperatorSessionID: target.OperatorSessionID,
+			OperatorID:        target.OperatorID,
+			Error:             err.Error(),
 		}
 	}
-	return result
+	return operator.RunOnce(client, target, command, requestID, cliSessionID)
 }
 
 func writeOperatorRunText(cmd *cobra.Command, results []operator.RunResult) int {
@@ -547,10 +487,19 @@ func writeOperatorRunText(cmd *cobra.Command, results []operator.RunResult) int 
 		if result.TransactionID != "" {
 			cmd.Printf("  transaction: %s\n", result.TransactionID)
 		}
+		if result.ReceiptStatus != "" {
+			cmd.Printf("  receipt: %s\n", result.ReceiptStatus)
+		}
+		if result.SignerKeyID != "" {
+			cmd.Printf("  signer key: %s\n", result.SignerKeyID)
+		}
 		if !result.Success {
 			failures++
 			if result.RejectionCode != "" {
 				cmd.Printf("  rejected: %s\n", result.RejectionCode)
+			}
+			if result.RefusalCode != "" {
+				cmd.Printf("  refused: %s\n", result.RefusalCode)
 			}
 			if result.Error != "" {
 				cmd.Printf("  error: %s\n", result.Error)

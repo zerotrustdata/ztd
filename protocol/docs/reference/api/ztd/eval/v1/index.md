@@ -4,8 +4,25 @@
 ## Table of Contents
 
 - [ztd/eval/v1/eval.proto](#ztd_eval_v1_eval-proto)
+    - [AgentStep](#ztd-eval-v1-AgentStep)
+    - [AgentTrace](#ztd-eval-v1-AgentTrace)
     - [CampaignComplianceSourceArtifact](#ztd-eval-v1-CampaignComplianceSourceArtifact)
     - [CampaignComplianceSourceInventory](#ztd-eval-v1-CampaignComplianceSourceInventory)
+    - [CanaryEntry](#ztd-eval-v1-CanaryEntry)
+    - [CanaryManifest](#ztd-eval-v1-CanaryManifest)
+    - [CandidateOutput](#ztd-eval-v1-CandidateOutput)
+    - [CandidateVote](#ztd-eval-v1-CandidateVote)
+    - [ConformanceA2ACall](#ztd-eval-v1-ConformanceA2ACall)
+    - [ConformanceAnchor](#ztd-eval-v1-ConformanceAnchor)
+    - [ConformanceCaseEvidence](#ztd-eval-v1-ConformanceCaseEvidence)
+    - [ConformanceExchange](#ztd-eval-v1-ConformanceExchange)
+    - [ConformanceObservation](#ztd-eval-v1-ConformanceObservation)
+    - [ConformanceQuiescence](#ztd-eval-v1-ConformanceQuiescence)
+    - [ConformanceRunRecord](#ztd-eval-v1-ConformanceRunRecord)
+    - [ConformanceVerdict](#ztd-eval-v1-ConformanceVerdict)
+    - [ConformanceVerdictSet](#ztd-eval-v1-ConformanceVerdictSet)
+    - [ContainmentBreach](#ztd-eval-v1-ContainmentBreach)
+    - [ContainmentResult](#ztd-eval-v1-ContainmentResult)
     - [DecomposedScoreRecord](#ztd-eval-v1-DecomposedScoreRecord)
     - [DeterministicGrade](#ztd-eval-v1-DeterministicGrade)
     - [EscalationRecord](#ztd-eval-v1-EscalationRecord)
@@ -34,6 +51,8 @@
     - [HeterogeneousAssignmentTarget](#ztd-eval-v1-HeterogeneousAssignmentTarget)
     - [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition)
     - [HomogeneousAssignmentTarget](#ztd-eval-v1-HomogeneousAssignmentTarget)
+    - [InvestigationSeed](#ztd-eval-v1-InvestigationSeed)
+    - [MemoryOutput](#ztd-eval-v1-MemoryOutput)
     - [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding)
     - [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation)
     - [ModelInferenceRecord](#ztd-eval-v1-ModelInferenceRecord)
@@ -75,11 +94,30 @@
     - [PublicToolScoreDimensionRequirement](#ztd-eval-v1-PublicToolScoreDimensionRequirement)
     - [PublicVerificationMetadata](#ztd-eval-v1-PublicVerificationMetadata)
     - [RecoveryRecord](#ztd-eval-v1-RecoveryRecord)
+    - [ResponderOutput](#ztd-eval-v1-ResponderOutput)
+    - [ReviewOutput](#ztd-eval-v1-ReviewOutput)
+    - [RiskOutput](#ztd-eval-v1-RiskOutput)
     - [RoleAssignment](#ztd-eval-v1-RoleAssignment)
+    - [RouterOutput](#ztd-eval-v1-RouterOutput)
+    - [ScoredTurnEvent](#ztd-eval-v1-ScoredTurnEvent)
+    - [ScoredTurnRequest](#ztd-eval-v1-ScoredTurnRequest)
+    - [SeedHistoryEvent](#ztd-eval-v1-SeedHistoryEvent)
+    - [SeedTurn](#ztd-eval-v1-SeedTurn)
     - [SemanticGrade](#ztd-eval-v1-SemanticGrade)
+    - [TitleOutput](#ztd-eval-v1-TitleOutput)
     - [ToolCallRecord](#ztd-eval-v1-ToolCallRecord)
     - [ToolDecisionRecord](#ztd-eval-v1-ToolDecisionRecord)
+    - [VoteOutput](#ztd-eval-v1-VoteOutput)
   
+    - [AgentFinishReason](#ztd-eval-v1-AgentFinishReason)
+    - [AgentReviewVerdict](#ztd-eval-v1-AgentReviewVerdict)
+    - [AgentRiskLevel](#ztd-eval-v1-AgentRiskLevel)
+    - [AgentRole](#ztd-eval-v1-AgentRole)
+    - [ConformanceFailureClass](#ztd-eval-v1-ConformanceFailureClass)
+    - [ConformanceObservationKind](#ztd-eval-v1-ConformanceObservationKind)
+    - [ConformanceSuiteVerdict](#ztd-eval-v1-ConformanceSuiteVerdict)
+    - [ContainmentBreachClass](#ztd-eval-v1-ContainmentBreachClass)
+    - [ContainmentVerdict](#ztd-eval-v1-ContainmentVerdict)
     - [EvaluationAssignmentLifecycleStatus](#ztd-eval-v1-EvaluationAssignmentLifecycleStatus)
     - [EvaluationAttemptStatus](#ztd-eval-v1-EvaluationAttemptStatus)
     - [EvaluationCallClassification](#ztd-eval-v1-EvaluationCallClassification)
@@ -120,6 +158,7 @@
     - [PublicToolScoreDimension](#ztd-eval-v1-PublicToolScoreDimension)
     - [PublicUnavailableReason](#ztd-eval-v1-PublicUnavailableReason)
     - [PublicVerificationProvenance](#ztd-eval-v1-PublicVerificationProvenance)
+    - [ScoredTurnEventKind](#ztd-eval-v1-ScoredTurnEventKind)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -129,6 +168,55 @@
 <p align="right"><a href="#top">Top</a></p>
 
 ## ztd/eval/v1/eval.proto
+
+
+
+<a name="ztd-eval-v1-AgentStep"></a>
+
+### AgentStep
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| index | [uint32](#uint32) |  |  |
+| role | [AgentRole](#ztd-eval-v1-AgentRole) |  |  |
+| persona_label | [string](#string) |  | the SUT&#39;s own name for the step, display only |
+| resolved_tier | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  |  |
+| model_tag | [string](#string) |  |  |
+| model_digest | [string](#string) |  |  |
+| call_class | [EvaluationCallClassification](#ztd-eval-v1-EvaluationCallClassification) |  |  |
+| router | [RouterOutput](#ztd-eval-v1-RouterOutput) |  |  |
+| responder | [ResponderOutput](#ztd-eval-v1-ResponderOutput) |  |  |
+| candidate | [CandidateOutput](#ztd-eval-v1-CandidateOutput) |  |  |
+| vote | [VoteOutput](#ztd-eval-v1-VoteOutput) |  |  |
+| risk | [RiskOutput](#ztd-eval-v1-RiskOutput) |  |  |
+| review | [ReviewOutput](#ztd-eval-v1-ReviewOutput) |  |  |
+| memory | [MemoryOutput](#ztd-eval-v1-MemoryOutput) |  |  |
+| title | [TitleOutput](#ztd-eval-v1-TitleOutput) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-AgentTrace"></a>
+
+### AgentTrace
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| attempt_id | [string](#string) |  |  |
+| steps | [AgentStep](#ztd-eval-v1-AgentStep) | repeated |  |
+| claimed_transaction_ids | [string](#string) | repeated |  |
+| eval_divergences | [string](#string) | repeated |  |
+| finish_reason | [AgentFinishReason](#ztd-eval-v1-AgentFinishReason) |  |  |
+| final_reply | [string](#string) |  |  |
+
+
+
 
 
 
@@ -164,6 +252,287 @@
 | provider_observation_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 | model_provenance_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 | artifacts | [CampaignComplianceSourceArtifact](#ztd-eval-v1-CampaignComplianceSourceArtifact) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-CanaryEntry"></a>
+
+### CanaryEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| path | [string](#string) |  | relative to the canary root, forward slashes |
+| sha256 | [string](#string) |  |  |
+| size | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-CanaryManifest"></a>
+
+### CanaryManifest
+CanaryManifest lists every entry under the canary root, sorted by path. A
+directory is listed with an empty sha256 and size -1.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| entries | [CanaryEntry](#ztd-eval-v1-CanaryEntry) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-CandidateOutput"></a>
+
+### CandidateOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| command | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-CandidateVote"></a>
+
+### CandidateVote
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| voter_label | [string](#string) |  |  |
+| candidate_label | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceA2ACall"></a>
+
+### ConformanceA2ACall
+ConformanceA2ACall is one call received by the harness-owned A2A downstream stub.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| skill_name | [string](#string) |  |  |
+| payload_json | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceAnchor"></a>
+
+### ConformanceAnchor
+ConformanceAnchor pins one executing runtime&#39;s actuator public key, read
+out of band from that runtime&#39;s pki/Actuator_pub.json export.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| runtime_id | [string](#string) |  | &#34;gateway&#34; for the Gateway/embedded executor, else the outbound operator id |
+| key_id | [string](#string) |  |  |
+| public_key_hex | [string](#string) |  |  |
+| export_sha256 | [string](#string) |  | sha256 of the raw export file bytes |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceCaseEvidence"></a>
+
+### ConformanceCaseEvidence
+ConformanceCaseEvidence is the raw evidence for one case. It holds no verdict.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| case_id | [string](#string) |  |  |
+| attempt_id | [string](#string) |  |  |
+| executor | [string](#string) |  | &#34;embedded&#34; or &#34;outbound&#34; |
+| target_path | [string](#string) |  | relative to the canary root |
+| marker | [string](#string) |  |  |
+| observations | [ConformanceObservation](#ztd-eval-v1-ConformanceObservation) | repeated | two for the replay case, else one |
+| sentinel_before | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| sentinel_after | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| canary_before | [CanaryManifest](#ztd-eval-v1-CanaryManifest) |  |  |
+| canary_after | [CanaryManifest](#ztd-eval-v1-CanaryManifest) |  |  |
+| a2a_calls | [ConformanceA2ACall](#ztd-eval-v1-ConformanceA2ACall) | repeated | calls the stub received during this case |
+| exchanges | [ConformanceExchange](#ztd-eval-v1-ConformanceExchange) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceExchange"></a>
+
+### ConformanceExchange
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| method | [string](#string) |  |  |
+| url | [string](#string) |  |  |
+| status | [int32](#int32) |  |  |
+| request_body | [bytes](#bytes) |  |  |
+| response_body | [bytes](#bytes) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceObservation"></a>
+
+### ConformanceObservation
+ConformanceObservation is what one drive of one ingress returned. Exactly
+one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
+set, matching kind.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [ConformanceObservationKind](#ztd-eval-v1-ConformanceObservationKind) |  |  |
+| http_status | [int32](#int32) |  |  |
+| receipt | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| rejection | [ztd.operator.v1.GovernanceRejection](#ztd-operator-v1-GovernanceRejection) |  |  |
+| refusal | [ztd.operator.v1.IngressRefusal](#ztd-operator-v1-IngressRefusal) |  |  |
+| suspended_tx_hash | [string](#string) |  |  |
+| untyped_body | [bytes](#bytes) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceQuiescence"></a>
+
+### ConformanceQuiescence
+ConformanceQuiescence is the pre-run check: two consecutive sentinels on one
+executor whose commitment links must be adjacent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| executor | [string](#string) |  |  |
+| first | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| second | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceRunRecord"></a>
+
+### ConformanceRunRecord
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| run_id | [string](#string) |  |  |
+| suite_id | [string](#string) |  |  |
+| suite_version | [string](#string) |  |  |
+| posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  |  |
+| anchors | [ConformanceAnchor](#ztd-eval-v1-ConformanceAnchor) | repeated |  |
+| canary_root | [string](#string) |  | runtime-relative root of the canary set |
+| quiescence | [ConformanceQuiescence](#ztd-eval-v1-ConformanceQuiescence) | repeated |  |
+| cases | [ConformanceCaseEvidence](#ztd-eval-v1-ConformanceCaseEvidence) | repeated |  |
+| doctrine_corpus_sha256 | [string](#string) |  |  |
+| attended | [bool](#bool) |  |  |
+| started_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| finished_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceVerdict"></a>
+
+### ConformanceVerdict
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| case_id | [string](#string) |  |  |
+| status | [EvaluationVerdictStatus](#ztd-eval-v1-EvaluationVerdictStatus) |  | PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for NOT_RUN_ATTENDED |
+| failure_class | [ConformanceFailureClass](#ztd-eval-v1-ConformanceFailureClass) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceVerdictSet"></a>
+
+### ConformanceVerdictSet
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| run_id | [string](#string) |  |  |
+| posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  |  |
+| suite_verdict | [ConformanceSuiteVerdict](#ztd-eval-v1-ConformanceSuiteVerdict) |  |  |
+| verdicts | [ConformanceVerdict](#ztd-eval-v1-ConformanceVerdict) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ContainmentBreach"></a>
+
+### ContainmentBreach
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| breach_class | [ContainmentBreachClass](#ztd-eval-v1-ContainmentBreachClass) |  |  |
+| detail | [string](#string) |  | path, tx id or location; never the token itself |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ContainmentResult"></a>
+
+### ContainmentResult
+ContainmentResult is the red-team verdict for one attempt. It is reported
+apart from model quality and never changes a quality grade.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| goal_id | [string](#string) |  |  |
+| verdict | [ContainmentVerdict](#ztd-eval-v1-ContainmentVerdict) |  |  |
+| breaches | [ContainmentBreach](#ztd-eval-v1-ContainmentBreach) | repeated | empty unless BREACHED |
+| invalid_evidence_detail | [string](#string) |  | set only for INVALID_EVIDENCE |
 
 
 
@@ -317,6 +686,8 @@ EvaluationAssignmentResult is the private terminal result for one assignment.
 | guided_retry_count | [uint32](#uint32) |  |  |
 | failure_reason | [string](#string) |  | Private one-sentence failure reason (may quote the hint values and the start of the model output). Empty when the scenario passed. |
 | public_failure_reason | [string](#string) |  | Public-safe failure reason built only from public fields. |
+| containment | [ContainmentResult](#ztd-eval-v1-ContainmentResult) |  | Set only for CONTAINMENT-category scenarios. |
+| invalid_evidence_detail | [string](#string) |  | Set only when lifecycle_status is INVALID_EVIDENCE: what failed to verify. |
 
 
 
@@ -816,6 +1187,41 @@ HeterogeneousStackDefinition binds Primary, Assistant, and Lite slots.
 | ----- | ---- | ----- | ----------- |
 | candidate_variant | [ModelVariant](#ztd-eval-v1-ModelVariant) |  |  |
 | designated_role | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-InvestigationSeed"></a>
+
+### InvestigationSeed
+InvestigationSeed is the prior state of a case, applied by the SUT through
+its own live services before the scored turn.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| case_title | [string](#string) |  |  |
+| case_description | [string](#string) |  |  |
+| prior_turns | [SeedTurn](#ztd-eval-v1-SeedTurn) | repeated |  |
+| history | [SeedHistoryEvent](#ztd-eval-v1-SeedHistoryEvent) | repeated |  |
+| case_memory | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-MemoryOutput"></a>
+
+### MemoryOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| memory_text | [string](#string) |  |  |
 
 
 
@@ -1727,6 +2133,55 @@ exactly one of value and unavailable_reason is set.
 
 
 
+<a name="ztd-eval-v1-ResponderOutput"></a>
+
+### ResponderOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| reply | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ReviewOutput"></a>
+
+### ReviewOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| verdict | [AgentReviewVerdict](#ztd-eval-v1-AgentReviewVerdict) |  |  |
+| command | [string](#string) |  | the command after review |
+
+
+
+
+
+
+<a name="ztd-eval-v1-RiskOutput"></a>
+
+### RiskOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| subject_kind | [string](#string) |  | &#34;command&#34;, &#34;file&#34; or &#34;error&#34; |
+| subject | [string](#string) |  |  |
+| risk | [AgentRiskLevel](#ztd-eval-v1-AgentRiskLevel) |  |  |
+| blocked | [bool](#bool) |  |  |
+
+
+
+
+
+
 <a name="ztd-eval-v1-RoleAssignment"></a>
 
 ### RoleAssignment
@@ -1737,6 +2192,101 @@ RoleAssignment binds one designated responsibility to one frozen variant.
 | ----- | ---- | ----- | ----------- |
 | designated_role | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  |  |
 | variant_id | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-RouterOutput"></a>
+
+### RouterOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| complexity | [string](#string) |  |  |
+| intent | [string](#string) |  |  |
+| posture | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ScoredTurnEvent"></a>
+
+### ScoredTurnEvent
+ScoredTurnEvent is one event on the turn&#39;s event stream. The client stops
+reading at the first TERMINAL event and then fetches the AgentTrace once.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| attempt_id | [string](#string) |  |  |
+| kind | [ScoredTurnEventKind](#ztd-eval-v1-ScoredTurnEventKind) |  |  |
+| detail | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ScoredTurnRequest"></a>
+
+### ScoredTurnRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| campaign_id | [string](#string) |  |  |
+| run_id | [string](#string) |  |  |
+| attempt_id | [string](#string) |  |  |
+| model_registry | [ModelVariant](#ztd-eval-v1-ModelVariant) | repeated |  |
+| lane | [EvaluationLane](#ztd-eval-v1-EvaluationLane) |  | SYSTEM or MODEL_ROLE only |
+| designated_role | [AgentRole](#ztd-eval-v1-AgentRole) |  | required when lane is MODEL_ROLE |
+| seed | [InvestigationSeed](#ztd-eval-v1-InvestigationSeed) |  |  |
+| workspace_root | [string](#string) |  |  |
+| data_operator_session_id | [string](#string) |  |  |
+| user_message | [string](#string) |  |  |
+| tool_turn_limit | [uint32](#uint32) |  |  |
+| wall_clock_limit_ms | [uint64](#uint64) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-SeedHistoryEvent"></a>
+
+### SeedHistoryEvent
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| event_type | [string](#string) |  | COMMAND_COMPLETED, COMMAND_FAILED or FILE_EDIT_COMPLETED; the SUT maps it to its own event types |
+| summary | [string](#string) |  |  |
+| command | [string](#string) |  |  |
+| exit_code | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-SeedTurn"></a>
+
+### SeedTurn
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| role | [string](#string) |  | &#34;user&#34; or &#34;assistant&#34; |
+| text | [string](#string) |  |  |
 
 
 
@@ -1757,6 +2307,21 @@ RoleAssignment binds one designated responsibility to one frozen variant.
 | judge_variant_id | [string](#string) |  |  |
 | grader_call_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | detail | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-TitleOutput"></a>
+
+### TitleOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| title | [string](#string) |  |  |
 
 
 
@@ -1808,7 +2373,173 @@ RoleAssignment binds one designated responsibility to one frozen variant.
 
 
 
+
+<a name="ztd-eval-v1-VoteOutput"></a>
+
+### VoteOutput
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| votes | [CandidateVote](#ztd-eval-v1-CandidateVote) | repeated |  |
+| rounds | [uint32](#uint32) |  |  |
+| consensus_reached | [bool](#bool) |  |  |
+| selected_command | [string](#string) |  |  |
+
+
+
+
+
  
+
+
+<a name="ztd-eval-v1-AgentFinishReason"></a>
+
+### AgentFinishReason
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| AGENT_FINISH_REASON_UNSPECIFIED | 0 |  |
+| AGENT_FINISH_REASON_STOPPED | 1 |  |
+| AGENT_FINISH_REASON_TOOL_TURN_LIMIT | 2 |  |
+| AGENT_FINISH_REASON_WALL_CLOCK_LIMIT | 3 |  |
+| AGENT_FINISH_REASON_ERROR | 4 |  |
+
+
+
+<a name="ztd-eval-v1-AgentReviewVerdict"></a>
+
+### AgentReviewVerdict
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| AGENT_REVIEW_VERDICT_UNSPECIFIED | 0 |  |
+| AGENT_REVIEW_VERDICT_APPROVE | 1 |  |
+| AGENT_REVIEW_VERDICT_REVISE | 2 |  |
+| AGENT_REVIEW_VERDICT_SWAP | 3 |  |
+
+
+
+<a name="ztd-eval-v1-AgentRiskLevel"></a>
+
+### AgentRiskLevel
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| AGENT_RISK_LEVEL_UNSPECIFIED | 0 |  |
+| AGENT_RISK_LEVEL_LOW | 1 |  |
+| AGENT_RISK_LEVEL_MEDIUM | 2 |  |
+| AGENT_RISK_LEVEL_HIGH | 3 |  |
+
+
+
+<a name="ztd-eval-v1-AgentRole"></a>
+
+### AgentRole
+AgentRole is the generic function a step performs in an agent pipeline.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| AGENT_ROLE_UNSPECIFIED | 0 |  |
+| AGENT_ROLE_ROUTER | 1 | classifies complexity, intent, posture |
+| AGENT_ROLE_RESPONDER | 2 | writes the user-facing reply |
+| AGENT_ROLE_CANDIDATE_GENERATOR | 3 | proposes a command candidate |
+| AGENT_ROLE_CANDIDATE_VOTER | 4 | votes on candidates / reports consensus |
+| AGENT_ROLE_RISK_ANALYST | 5 | rates command / file / error risk |
+| AGENT_ROLE_REVIEWER | 6 | approves, revises or swaps the chosen command |
+| AGENT_ROLE_MEMORY_WRITER | 7 | writes case memory after the turn |
+| AGENT_ROLE_TITLE_WRITER | 8 | writes the case title after the turn |
+
+
+
+<a name="ztd-eval-v1-ConformanceFailureClass"></a>
+
+### ConformanceFailureClass
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONFORMANCE_FAILURE_CLASS_UNSPECIFIED | 0 |  |
+| CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH | 1 |  |
+| CONFORMANCE_FAILURE_CLASS_CODE_MISMATCH | 2 |  |
+| CONFORMANCE_FAILURE_CLASS_L2_STATUS_MISMATCH | 3 |  |
+| CONFORMANCE_FAILURE_CLASS_L3_STATUS_MISMATCH | 4 |  |
+| CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID | 5 |  |
+| CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN | 6 |  |
+| CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID | 7 |  |
+| CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE | 8 |  |
+| CONFORMANCE_FAILURE_CLASS_LEDGER_GAP | 9 |  |
+| CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION | 10 |  |
+| CONFORMANCE_FAILURE_CLASS_CANARY_DELTA | 11 |  |
+| CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING | 12 |  |
+| CONFORMANCE_FAILURE_CLASS_UNTYPED_OUTCOME | 13 |  |
+| CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING | 14 |  |
+| CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH | 15 |  |
+
+
+
+<a name="ztd-eval-v1-ConformanceObservationKind"></a>
+
+### ConformanceObservationKind
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED | 0 |  |
+| CONFORMANCE_OBSERVATION_KIND_RECEIPT | 1 | success: signed receipt returned |
+| CONFORMANCE_OBSERVATION_KIND_REJECTION | 2 | GovernanceRejection returned |
+| CONFORMANCE_OBSERVATION_KIND_REFUSAL | 3 | IngressRefusal returned |
+| CONFORMANCE_OBSERVATION_KIND_SUSPENDED | 4 | approval pending, tx hash returned |
+| CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED | 5 | attended case skipped in an unattended run |
+| CONFORMANCE_OBSERVATION_KIND_UNTYPED | 6 | anything else: always a failure |
+
+
+
+<a name="ztd-eval-v1-ConformanceSuiteVerdict"></a>
+
+### ConformanceSuiteVerdict
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONFORMANCE_SUITE_VERDICT_UNSPECIFIED | 0 |  |
+| CONFORMANCE_SUITE_VERDICT_PASS | 1 |  |
+| CONFORMANCE_SUITE_VERDICT_FAIL | 2 |  |
+| CONFORMANCE_SUITE_VERDICT_INCOMPLETE | 3 |  |
+| CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE | 4 |  |
+
+
+
+<a name="ztd-eval-v1-ContainmentBreachClass"></a>
+
+### ContainmentBreachClass
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONTAINMENT_BREACH_CLASS_UNSPECIFIED | 0 |  |
+| CONTAINMENT_BREACH_CLASS_UNCLAIMED_EXECUTION | 1 | a ledger link no verified tool-call receipt claims |
+| CONTAINMENT_BREACH_CLASS_CANARY_MODIFIED | 2 | a canary file differs from its seeded bytes |
+| CONTAINMENT_BREACH_CLASS_TOKEN_EXFILTRATED | 3 | the exfil token left in a payload or the reply |
+
+
+
+<a name="ztd-eval-v1-ContainmentVerdict"></a>
+
+### ContainmentVerdict
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONTAINMENT_VERDICT_UNSPECIFIED | 0 |  |
+| CONTAINMENT_VERDICT_CONTAINED | 1 |  |
+| CONTAINMENT_VERDICT_BREACHED | 2 |  |
+| CONTAINMENT_VERDICT_INVALID_EVIDENCE | 3 |  |
+
 
 
 <a name="ztd-eval-v1-EvaluationAssignmentLifecycleStatus"></a>
@@ -1830,6 +2561,7 @@ RoleAssignment binds one designated responsibility to one frozen variant.
 | EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED | 9 |  |
 | EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_POLICY_REJECTED | 10 |  |
 | EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_UNAVAILABLE | 11 |  |
+| EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE | 12 | The attempt&#39;s governed tool evidence failed verification (a receipt that does not verify against the Data Operator anchor, or a ledger bracket that does not connect). The model is never graded on such an attempt. |
 
 
 
@@ -2075,6 +2807,7 @@ derivable from, so catalog lint can prove a prompt is answerable.
 | EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY | 7 |  |
 | EVALUATION_SCENARIO_CATEGORY_RECOVERY | 8 |  |
 | EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE | 9 |  |
+| EVALUATION_SCENARIO_CATEGORY_CONTAINMENT | 10 |  |
 
 
 
@@ -2428,6 +3161,19 @@ The release measured by a campaign is independent of verifier provenance.
 | PUBLIC_VERIFICATION_PROVENANCE_UNSPECIFIED | 0 |  |
 | PUBLIC_VERIFICATION_PROVENANCE_BOUND | 1 |  |
 | PUBLIC_VERIFICATION_PROVENANCE_LEGACY_UNBOUND | 2 |  |
+
+
+
+<a name="ztd-eval-v1-ScoredTurnEventKind"></a>
+
+### ScoredTurnEventKind
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SCORED_TURN_EVENT_KIND_UNSPECIFIED | 0 |  |
+| SCORED_TURN_EVENT_KIND_PROGRESS | 1 |  |
+| SCORED_TURN_EVENT_KIND_TERMINAL | 2 |  |
 
 
  

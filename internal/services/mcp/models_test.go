@@ -1394,8 +1394,8 @@ func TestSysServiceStatusModelsJSON(t *testing.T) {
 }
 
 func TestA2AModelsJSON(t *testing.T) {
-	t.Run("A2ASuspensionResponse marshalling", func(t *testing.T) {
-		res := A2ASuspensionResponse{
+	t.Run("GovernedSuspension marshalling", func(t *testing.T) {
+		res := GovernedSuspension{
 			ID:          "id1",
 			Status:      string(constants.GatewayResponseStatusSuspended),
 			TxHash:      "hash1",

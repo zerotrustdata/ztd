@@ -9,6 +9,7 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 | `eval/base-model-inventory.json` | **Default genesis program inventory** — 75 init-campaign models (75 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 5,625 cells total) |
 | `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); currently 47 entries and does not yet list `gemma4:12b`, `glm-5.3-air`, or `qwen2.5:1b-rlcd` |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
+| `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
 
 The base inventory is the canonical 75-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are a reference provider snapshot; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
 

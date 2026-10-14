@@ -455,13 +455,14 @@ func (g *GatewayService) recordSuccess() {
 
 func (g *GatewayService) handleA2ARequest(w http.ResponseWriter, r *http.Request, method string, handler func(ctx context.Context, id interface{}, params json.RawMessage) (interface{}, error)) {
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		g.responder.ProtoJSONCanonical(w, http.StatusMethodNotAllowed,
+			governance.NewIngressRefusal(fmt.Errorf("a2a request: %w", constants.ErrMethodNotAllowed)))
 		return
 	}
 
 	if g.isCircuitOpen() {
 		g.logger.Warn("MCP downstream circuit is open, rejecting request", "method", method, "url", g.downstreamURL)
-		g.responder.RPCError(w, nil, -32603, "downstream MCP server is temporarily unavailable (circuit open)")
+		g.writeDispatchError(w, nil, g.rpcRefusal(-32603, fmt.Errorf("a2a request: %w", constants.ErrGatewayDownstreamUnavailable)))
 		return
 	}
 
@@ -472,43 +473,38 @@ func (g *GatewayService) handleA2ARequest(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			maxMB := g.maxPayloadBytes / (1024 * 1024)
-			g.responder.RPCError(w, nil, -32600, fmt.Sprintf("request payload too large (max %dMB)", maxMB))
+			g.writeDispatchError(w, nil, g.rpcRefusal(-32600, fmt.Errorf("a2a request: read body: %w", constants.ErrPayloadExceedsLimit)))
 			return
 		}
-		g.responder.RPCError(w, nil, -32603, "failed to read request body")
+		g.writeDispatchError(w, nil, g.rpcRefusal(-32603, fmt.Errorf("a2a request: read body: %w", constants.ErrRequestBodyRead)))
 		return
 	}
 
 	var req JSONRPCRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		g.responder.RPCError(w, nil, constants.JSONRPCErrorCodeParseError, constants.JSONRPCErrorMessageParseError+": invalid JSON")
+		g.writeDispatchError(w, nil, g.rpcRefusal(constants.JSONRPCErrorCodeParseError, fmt.Errorf("a2a request: decode: %w", constants.ErrInvalidJSONBody)))
 		return
 	}
 
 	// Validate JSON-RPC 2.0
 	if req.JSONRPC != "2.0" {
-		g.responder.RPCError(w, req.ID, -32600, "invalid request: jsonrpc version must be 2.0")
+		g.writeDispatchError(w, req.ID, g.rpcRefusal(-32600, fmt.Errorf("a2a request: %w", constants.ErrJSONRPCVersionInvalid)))
 		return
 	}
 
 	if req.Method == "" {
-		g.responder.RPCError(w, req.ID, -32600, "invalid request: method required")
+		g.writeDispatchError(w, req.ID, g.rpcRefusal(-32600, fmt.Errorf("a2a request: %w", constants.ErrJSONRPCMethodRequired)))
 		return
 	}
 
 	if req.Method != method {
-		g.responder.RPCError(w, req.ID, -32601, fmt.Sprintf("method not found: expected %s, got %s", method, req.Method))
+		g.writeDispatchError(w, req.ID, g.rpcRefusal(-32601, fmt.Errorf("a2a request: %w", constants.ErrJSONRPCMethodNotFound)))
 		return
 	}
 
 	result, dErr := g.wrapDispatch(handler(r.Context(), req.ID, req.Params))
 	if dErr != nil {
-		if len(dErr.data) > 0 {
-			g.responder.RPCErrorWithData(w, req.ID, dErr.code, dErr.message, dErr.data)
-			return
-		}
-		g.responder.RPCError(w, req.ID, dErr.code, dErr.message)
+		g.writeDispatchError(w, req.ID, dErr)
 		return
 	}
 
@@ -571,27 +567,34 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 	receipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
 	if err != nil {
 		if errors.Is(err, governance.ErrL3ProofMissing) {
-			userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
-			operatorID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
-			certFingerprint := extractCertFingerprint(r)
-
-			if err := g.StoreSuspendedTransaction(ctx, hash, envelopeBytes, callParams.Name, callParams.Arguments, userID, operatorID, certFingerprint); err != nil {
+			suspension, err := g.suspendGovernedCall(ctx, r, hash, envelopeBytes, callParams.Name, callParams.Arguments)
+			if err != nil {
 				return nil, err
 			}
-
-			approvalURL := fmt.Sprintf("%s/approve/%s", g.publicBaseURL, hash)
 			return CallToolResult{
 				Content: []TextContent{
 					{
 						Type: "text",
-						Text: approvalPausedMessage(g.posture, approvalURL),
+						Text: suspension.Message,
 					},
 				},
+				Suspension: suspension,
 			}, nil
 		}
 		return nil, err
 	}
 
+	receiptJSON, err := encodeActionReceipt(receipt)
+	if err != nil {
+		return nil, err
+	}
+	return ReceiptCallToolResult(receipt, receiptJSON), nil
+}
+
+// ReceiptCallToolResult builds the tools/call result of a completed governed call:
+// the receipt summary as text, the signed receipt bytes, and IsError unless the
+// receipt reports COMPLETED. receiptJSON must be the canonical encoding of receipt.
+func ReceiptCallToolResult(receipt *operatorv1.ActionReceipt, receiptJSON json.RawMessage) CallToolResult {
 	mcpRes := CallToolResult{
 		Content: []TextContent{
 			{
@@ -599,19 +602,12 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 				Text: receipt.ResultSummary,
 			},
 		},
-		Receipt: &toolReceiptReference{
-			ExecutionID:     executionID,
-			TransactionID:   receipt.TransactionId,
-			TransactionHash: receipt.TransactionHash,
-			SignerKeyID:     receipt.SignerKeyId,
-			Signature:       receipt.Signature,
-			InvestigationID: investigationID,
-		},
+		Receipt: receiptJSON,
 	}
 	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 		mcpRes.IsError = true
 	}
-	return mcpRes, nil
+	return mcpRes
 }
 
 // handleReadField processes the read_field tool with governed access controls
@@ -1004,11 +1000,11 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 // @Tags			a2a
 // @Accept			json
 // @Produce		json
-// @Success		200	{object}	mcp.A2ASuccessResponse,mcp.A2ASuspensionResponse
+// @Success		200	{object}	mcp.A2ASuccessResponse,mcp.GovernedSuspension
 // @Router			/api/v1/a2a/call [post]
 func (g *GatewayService) HandleA2aCall(w http.ResponseWriter, r *http.Request) {
 	if g.envProc == nil {
-		g.responder.RPCError(w, nil, -32603, constants.ErrGatewayNotReady.Error())
+		g.writeDispatchError(w, nil, g.rpcRefusal(-32603, fmt.Errorf("a2a call: %w", constants.ErrGatewayNotReady)))
 		return
 	}
 	g.handleA2ARequest(w, r, "a2a/call", func(ctx context.Context, id interface{}, params json.RawMessage) (interface{}, error) {
@@ -1085,67 +1081,93 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 	receipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
 	if err != nil {
 		if errors.Is(err, governance.ErrL3ProofMissing) {
-			userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
-			operatorID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
-			certFingerprint := extractCertFingerprint(r)
-
-			if err := g.StoreSuspendedTransaction(ctx, hash, envelopeBytes, req.SkillName, req.Payload, userID, operatorID, certFingerprint); err != nil {
+			suspension, err := g.suspendGovernedCall(ctx, r, hash, envelopeBytes, req.SkillName, req.Payload)
+			if err != nil {
 				return nil, err
 			}
-
-			approvalURL := fmt.Sprintf("%s/approve/%s", g.publicBaseURL, hash)
-			return A2ASuspensionResponse{
-				ID:          hash,
-				Status:      string(constants.GatewayResponseStatusSuspended),
-				TxHash:      hash,
-				ApprovalURL: approvalURL,
-				Message:     approvalPausedMessage(g.posture, approvalURL),
-			}, nil
+			return suspension, nil
 		}
 		return nil, err
 	}
 
+	receiptJSON, err := encodeActionReceipt(receipt)
+	if err != nil {
+		return nil, err
+	}
 	return A2ASuccessResponse{
 		ID:     hash,
-		Result: receipt,
+		Result: receiptJSON,
 	}, nil
 }
 
-// mapGatewayError maps governance verification errors to granular JSON-RPC codes.
-func (g *GatewayService) mapGatewayError(err error) (int, string) {
-	if err == nil {
-		return 0, ""
+// suspendGovernedCall stores a call that awaits L3 approval and returns the typed
+// suspension shared by MCP tools/call and A2A a2a/call.
+func (g *GatewayService) suspendGovernedCall(ctx context.Context, r *http.Request, hash string, envelopeBytes []byte, targetResource string, arguments json.RawMessage) (*GovernedSuspension, error) {
+	userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	operatorID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
+	certFingerprint := extractCertFingerprint(r)
+
+	if err := g.StoreSuspendedTransaction(ctx, hash, envelopeBytes, targetResource, arguments, userID, operatorID, certFingerprint); err != nil {
+		return nil, err
 	}
 
-	msg := err.Error()
+	approvalURL := fmt.Sprintf("%s/approve/%s", g.publicBaseURL, hash)
+	return &GovernedSuspension{
+		ID:          hash,
+		Status:      string(constants.GatewayResponseStatusSuspended),
+		TxHash:      hash,
+		ApprovalURL: approvalURL,
+		Message:     approvalPausedMessage(g.posture, approvalURL),
+	}, nil
+}
+
+// encodeActionReceipt renders the executing Operator's signed receipt as canonical
+// protojson, the same bytes the direct and dispatch ingresses write. A missing
+// receipt is an error: a governed success never returns without its receipt.
+func encodeActionReceipt(receipt *operatorv1.ActionReceipt) (json.RawMessage, error) {
+	if receipt == nil {
+		return nil, fmt.Errorf("gateway: encode action receipt: %w", constants.ErrInternal)
+	}
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: encode action receipt: %w", err)
+	}
+	return receiptJSON, nil
+}
+
+// mapGatewayError maps governance verification errors to granular JSON-RPC codes.
+func (g *GatewayService) mapGatewayError(err error) int {
+	if err == nil {
+		return 0
+	}
 
 	switch {
 	case errors.Is(err, governance.ErrInvalidEnvelope),
 		errors.Is(err, governance.ErrTransactionIDMissing),
 		errors.Is(err, governance.ErrPayloadMissing),
 		errors.Is(err, governance.ErrUnknownActionType):
-		return constants.ErrCodeInvalidEnvelope, msg
+		return constants.ErrCodeInvalidEnvelope
 
 	case errors.Is(err, governance.ErrPayloadDecodeFailed):
-		return constants.ErrCodePayloadDecodeFailed, msg
+		return constants.ErrCodePayloadDecodeFailed
 
 	case errors.Is(err, governance.ErrTransactionHashMissing),
 		errors.Is(err, governance.ErrTransactionHashMismatch):
-		return constants.ErrCodeHashMismatch, msg
+		return constants.ErrCodeHashMismatch
 
 	case errors.Is(err, governance.ErrTransactionExpired):
-		return constants.ErrCodeExpired, msg
+		return constants.ErrCodeExpired
 
 	case errors.Is(err, governance.ErrTransactionReplay):
-		return constants.ErrCodeReplay, msg
+		return constants.ErrCodeReplay
 
 	case errors.Is(err, governance.ErrStateRootMissing),
 		errors.Is(err, governance.ErrStateRootRequired),
 		errors.Is(err, governance.ErrStateRootMismatch):
-		return constants.ErrCodeStateMismatch, msg
+		return constants.ErrCodeStateMismatch
 
 	case errors.Is(err, governance.ErrL1ValidationFailed):
-		return constants.ErrCodeL1ValidationFailed, msg
+		return constants.ErrCodeL1ValidationFailed
 
 	case errors.Is(err, governance.ErrL2SignatureMissing),
 		errors.Is(err, governance.ErrL2SignatureInvalid),
@@ -1153,15 +1175,15 @@ func (g *GatewayService) mapGatewayError(err error) (int, string) {
 		errors.Is(err, governance.ErrL2ConsensusSetUnknown),
 		errors.Is(err, governance.ErrL2QuorumNotMet),
 		errors.Is(err, governance.ErrL2DuplicateSigner):
-		return constants.ErrCodeL2SignatureInvalid, msg
+		return constants.ErrCodeL2SignatureInvalid
 
 	case errors.Is(err, governance.ErrL3ProofInvalid),
 		errors.Is(err, governance.ErrL3NotaryNotConfigured):
-		return constants.ErrCodeL3ProofInvalid, msg
+		return constants.ErrCodeL3ProofInvalid
 	}
 
 	// Map other Gateway errors back to JSON-RPC error
-	return -32603, msg
+	return -32603
 }
 
 // extractCertFingerprint extracts the SHA-256 fingerprint of the client certificate from an HTTP request.

@@ -15,13 +15,10 @@ import (
 	"net/url"
 	"strings"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/response"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // handleApprovalAction dispatches approval sub-actions (challenge, verify) based on
@@ -170,10 +167,17 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	receiptRef, err := approvalReceiptReference(suspendedTx, receipt)
+	// The resumed transaction must produce the receipt for the suspended hash. A
+	// mismatch means the Gateway cannot vouch for this approval, so it fails closed.
+	if receipt == nil || receipt.GetTransactionHash() != suspendedTx.TransactionHash {
+		h.logger.Error("Resumed receipt does not match suspended transaction", "txHash", txHash)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	if err != nil {
-		h.logger.Error("Failed to construct approval receipt reference", "error", err, "txHash", txHash)
-		h.responder.Error(w, http.StatusInternalServerError, err.Error())
+		h.logger.Error("Failed to encode approval receipt", "error", err, "txHash", txHash)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
 		return
 	}
 
@@ -181,7 +185,7 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 	if sseUserID == "" {
 		sseUserID = suspendedTx.UserID
 	}
-	h.orchestrator.EmitApprovalCompletedSSE(sseUserID, suspendedTx.SubmitterCLISessionID, txHash, receiptRef)
+	h.orchestrator.EmitApprovalCompletedSSE(sseUserID, suspendedTx.SubmitterCLISessionID, txHash, receiptJSON)
 
 	h.responder.JSON(w, http.StatusOK, receipt)
 }
@@ -268,42 +272,6 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 		return
 	}
 	h.responder.JSON(w, http.StatusOK, models.ApprovalRespondResponse{Success: true, ApprovalID: req.ApprovalID, Approved: false})
-}
-
-func approvalReceiptReference(suspendedTx *models.SuspendedTransaction, receipt *operatorv1.ActionReceipt) (*models.ApprovalReceiptReference, error) {
-	if suspendedTx == nil || receipt == nil {
-		return nil, constants.ErrApprovalReceiptReferenceInvalid
-	}
-
-	envelope := &commonv1.GovernanceEnvelope{}
-	if err := protojson.Unmarshal(suspendedTx.Envelope, envelope); err != nil {
-		return nil, fmt.Errorf("approval: decode suspended envelope: %w", err)
-	}
-	// Suspension covers every Gateway ingress that awaits L3 (MCP and A2A
-	// calls), so the payload decodes by its action type.
-	decoded, err := governance.DecodePayloadForAction(constants.ActionType(envelope.GetActionType()), envelope.Payload)
-	if err != nil {
-		return nil, fmt.Errorf("approval: decode suspended request: %w", err)
-	}
-	request, ok := decoded.(interface{ GetExecutionId() string })
-	if !ok {
-		return nil, constants.ErrApprovalReceiptReferenceInvalid
-	}
-
-	ref := &models.ApprovalReceiptReference{
-		ExecutionID:     request.GetExecutionId(),
-		TransactionID:   receipt.TransactionId,
-		TransactionHash: receipt.TransactionHash,
-		SignerKeyID:     receipt.SignerKeyId,
-		Signature:       receipt.Signature,
-		InvestigationID: envelope.InvestigationId,
-		Status:          int32(receipt.Status),
-		ResultSummary:   receipt.ResultSummary,
-	}
-	if ref.ExecutionID == "" || ref.TransactionID == "" || ref.TransactionHash == "" || ref.TransactionHash != suspendedTx.TransactionHash || ref.SignerKeyID == "" || ref.Signature == "" || ref.InvestigationID == "" {
-		return nil, constants.ErrApprovalReceiptReferenceInvalid
-	}
-	return ref, nil
 }
 
 // handleCLIApprovalStatus is an mTLS-authenticated endpoint that returns the current

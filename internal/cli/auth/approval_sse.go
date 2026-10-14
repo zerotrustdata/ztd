@@ -27,7 +27,8 @@ const ApprovalSSETimeout = 3 * time.Minute
 
 // WaitForApprovalSSE subscribes to the gateway's SSE stream scoped to the given
 // CLI session and blocks until an approval.completed event with a matching txHash
-// arrives or the context expires. The httpClient must be configured with mTLS
+// arrives or the context expires. It returns the event's canonical signed receipt
+// of the resumed transaction; a completion event without a receipt is an error. The httpClient must be configured with mTLS
 // certificates. The baseURL should be the gateway's public HTTPS URL (e.g.,
 // cfg.OperatorPublicURL()) to ensure TLS ServerName matches the cert SAN.
 //
@@ -37,7 +38,7 @@ const ApprovalSSETimeout = 3 * time.Minute
 //
 // If txHash is empty, the first approval.completed event for the session is
 // accepted (useful for backward compatibility but not recommended).
-func WaitForApprovalSSE(ctx context.Context, httpClient *http.Client, baseURL, cliSessionID, txHash string) error {
+func WaitForApprovalSSE(ctx context.Context, httpClient *http.Client, baseURL, cliSessionID, txHash string) (json.RawMessage, error) {
 	sseURL := fmt.Sprintf("%s%s?since_id=0",
 		baseURL,
 		constants.APIPaths.SSEStream)
@@ -50,6 +51,7 @@ func WaitForApprovalSSE(ctx context.Context, httpClient *http.Client, baseURL, c
 
 	approved := make(chan struct{}, 1)
 	var once sync.Once
+	var receipt json.RawMessage
 	done := make(chan struct{})
 
 	go func() {
@@ -68,7 +70,12 @@ func WaitForApprovalSSE(ctx context.Context, httpClient *http.Client, baseURL, c
 				return
 			}
 
-			once.Do(func() { close(approved) })
+			once.Do(func() {
+				if event.HasReceipt() {
+					receipt = event.Receipt
+				}
+				close(approved)
+			})
 		})
 	}()
 
@@ -76,9 +83,12 @@ func WaitForApprovalSSE(ctx context.Context, httpClient *http.Client, baseURL, c
 	case <-approved:
 		cancel()
 		<-done
-		return nil
+		if receipt == nil {
+			return nil, fmt.Errorf("L3 approval: %w", constants.ErrActionReceiptMissing)
+		}
+		return receipt, nil
 	case <-waitCtx.Done():
 		<-done
-		return constants.ErrApprovalSSETimeout
+		return nil, constants.ErrApprovalSSETimeout
 	}
 }

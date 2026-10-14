@@ -25,7 +25,11 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestClient_StateRoot(t *testing.T) {
@@ -506,6 +510,38 @@ func TestClient_do_Verbose(t *testing.T) {
 	}
 }
 
+// resumedReceiptJSON returns the canonical signed receipt of txHash's resumed
+// transaction, as the Gateway embeds it in approval.completed.
+func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
+	t.Helper()
+	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+		TransactionId:   "transaction-" + txHash,
+		TransactionHash: txHash,
+		SignerKeyId:     "warden-key-resumed",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		ResultSummary:   "resumed result",
+		Signature:       "signature-resumed",
+	})
+	require.NoError(t, err)
+	return receiptJSON
+}
+
+// approvalCompletedSSE serves one approval.completed SSE frame carrying receipt.
+func approvalCompletedSSE(t *testing.T, w http.ResponseWriter, userID, txHash string, receipt json.RawMessage) {
+	t.Helper()
+	w.Header().Set("Content-Type", "text/event-stream")
+	eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
+		Type:    constants.SSEEventTypeApprovalCompleted,
+		UserID:  userID,
+		TxHash:  txHash,
+		Receipt: receipt,
+	})
+	require.NoError(t, err)
+	envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
+	require.NoError(t, err)
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+}
+
 func TestClient_WaitForHumanApproval_Success(t *testing.T) {
 	const userID = "test-user-approval"
 	const txHash = "tx-success-001"
@@ -513,28 +549,7 @@ func TestClient_WaitForHumanApproval_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			w.Header().Set("Content-Type", "text/event-stream")
-			eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-				Type:   constants.SSEEventTypeApprovalCompleted,
-				UserID: userID,
-				TxHash: txHash,
-				Receipt: &models.ApprovalReceiptReference{
-					ExecutionID: "execution-success-001", TransactionID: "transaction-success-001", TransactionHash: txHash,
-					SignerKeyID: "warden-key-success-001", Signature: "signature-success-001", InvestigationID: "investigation-success-001",
-				},
-			})
-			if err != nil {
-				t.Fatalf("marshal event: %v", err)
-			}
-			envelope := models.SSEPushPayload{
-				UserID: userID,
-				Event:  eventPayload,
-			}
-			envelopeJSON, err := json.Marshal(envelope)
-			if err != nil {
-				t.Fatalf("marshal envelope: %v", err)
-			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+			approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
@@ -561,15 +576,12 @@ func TestClient_WaitForHumanApproval_Success(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	status, body, err := client.WaitForHumanApproval(ctx, Persona{ID: "test"}, txHash, userID)
+	receipt, err := client.WaitForHumanApproval(ctx, Persona{ID: "test"}, txHash, userID)
 	if err != nil {
 		t.Fatalf("WaitForHumanApproval() error = %v", err)
 	}
-	if status != http.StatusOK {
-		t.Errorf("expected status 200, got %d", status)
-	}
-	if len(body) == 0 {
-		t.Error("expected non-empty body")
+	if receipt.GetTransactionHash() != txHash {
+		t.Errorf("receipt transaction hash = %q, want %q", receipt.GetTransactionHash(), txHash)
 	}
 }
 
@@ -577,33 +589,11 @@ func TestClient_WaitForHumanApproval_ReturnsResumedReceiptFromCompletionEvent(t 
 	const userID = "test-user-resumed-receipt"
 	const txHash = "tx-resumed-receipt-001"
 
-	expectedReceipt := models.ApprovalReceiptReference{
-		ExecutionID:     "execution-resumed-1",
-		TransactionID:   "transaction-resumed-1",
-		TransactionHash: txHash,
-		InvestigationID: "investigation-resumed-1",
-		SignerKeyID:     "warden-key-resumed-1",
-		Signature:       "signature-resumed-1",
-	}
-	type completionEvent struct {
-		Type    string                          `json:"type"`
-		UserID  string                          `json:"user_id"`
-		TxHash  string                          `json:"tx_hash"`
-		Receipt models.ApprovalReceiptReference `json:"receipt"`
-	}
-
 	statusRequests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			w.Header().Set("Content-Type", "text/event-stream")
-			eventPayload, err := json.Marshal(completionEvent{
-				Type: constants.SSEEventTypeApprovalCompleted, UserID: userID, TxHash: txHash, Receipt: expectedReceipt,
-			})
-			require.NoError(t, err)
-			envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
-			require.NoError(t, err)
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+			approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
 			statusRequests++
 			w.Header().Set("Content-Type", "application/json")
@@ -619,19 +609,13 @@ func TestClient_WaitForHumanApproval_ReturnsResumedReceiptFromCompletionEvent(t 
 	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
 	require.NoError(t, err)
 
-	status, body, err := client.WaitForHumanApproval(context.Background(), Persona{ID: "test"}, txHash, userID)
+	receipt, err := client.WaitForHumanApproval(context.Background(), Persona{ID: "test"}, txHash, userID)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, status)
 	assert.Zero(t, statusRequests)
 
-	var receipt Receipt
-	require.NoError(t, json.Unmarshal(body, &receipt))
-	assert.Equal(t, expectedReceipt.ExecutionID, receipt.ExecutionID)
-	assert.Equal(t, expectedReceipt.TransactionID, receipt.TransactionID)
-	assert.Equal(t, expectedReceipt.TransactionHash, receipt.TransactionHash)
-	assert.Equal(t, expectedReceipt.InvestigationID, receipt.InvestigationID)
-	assert.Equal(t, expectedReceipt.SignerKeyID, receipt.SignerKeyID)
-	assert.Equal(t, expectedReceipt.Signature, receipt.Signature)
+	want := &operatorv1.ActionReceipt{}
+	require.NoError(t, protojson.Unmarshal(resumedReceiptJSON(t, txHash), want))
+	assert.True(t, proto.Equal(want, receipt), "the approval must return the event's signed receipt")
 }
 
 func TestClient_WaitForHumanApproval_FailsClosedWhenReceiptTransactionDoesNotMatchEvent(t *testing.T) {
@@ -643,31 +627,39 @@ func TestClient_WaitForHumanApproval_FailsClosedWhenReceiptTransactionDoesNotMat
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-			Type:   constants.SSEEventTypeApprovalCompleted,
-			UserID: userID,
-			TxHash: txHash,
-			Receipt: &models.ApprovalReceiptReference{
-				ExecutionID: "execution-mismatched-receipt-1", TransactionID: "transaction-mismatched-receipt-1", TransactionHash: "different-transaction-hash",
-				SignerKeyID: "warden-key-mismatched-receipt-1", Signature: "signature-mismatched-receipt-1", InvestigationID: "investigation-mismatched-receipt-1",
-			},
-		})
-		require.NoError(t, err)
-		envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
-		require.NoError(t, err)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+		approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, "different-transaction-hash"))
 	}))
 	t.Cleanup(srv.Close)
 
 	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
 	require.NoError(t, err)
 
-	status, body, err := client.WaitForHumanApproval(context.Background(), Persona{ID: "test"}, txHash, userID)
+	receipt, err := client.WaitForHumanApproval(context.Background(), Persona{ID: "test"}, txHash, userID)
 
-	require.ErrorIs(t, err, constants.ErrApprovalReceiptReferenceInvalid)
-	assert.Zero(t, status)
-	assert.Empty(t, body)
+	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
+	assert.Nil(t, receipt)
+}
+
+func TestClient_WaitForHumanApproval_FailsClosedWhenReceiptIsNotProtojson(t *testing.T) {
+	const userID = "test-user-malformed-receipt"
+	const txHash = "tx-malformed-receipt-001"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		approvalCompletedSSE(t, w, userID, txHash, json.RawMessage(`{"transaction_hash":"`+txHash+`","not_a_receipt_field":1}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
+	require.NoError(t, err)
+
+	receipt, err := client.WaitForHumanApproval(context.Background(), Persona{ID: "test"}, txHash, userID)
+
+	require.Error(t, err, "a receipt with unknown fields must fail strict protojson decoding")
+	assert.Nil(t, receipt)
 }
 
 func TestClient_WaitForHumanApproval_TimeoutNoMatchingEvent(t *testing.T) {
@@ -722,7 +714,7 @@ func TestClient_WaitForHumanApproval_TimeoutNoMatchingEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	_, _, err = client.WaitForHumanApproval(ctx, Persona{ID: "test", CLISessionID: "cli-test-session"}, expectedTxHash, userID)
+	_, err = client.WaitForHumanApproval(ctx, Persona{ID: "test", CLISessionID: "cli-test-session"}, expectedTxHash, userID)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -790,9 +782,9 @@ func TestClient_WaitForHumanApproval_FailsClosedWhenCompletionEventOmitsReceipt(
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	status, _, err := client.WaitForHumanApproval(ctx, Persona{ID: "test"}, txHash, userID)
-	require.ErrorIs(t, err, constants.ErrApprovalReceiptReferenceInvalid)
-	assert.Zero(t, status)
+	receipt, err := client.WaitForHumanApproval(ctx, Persona{ID: "test"}, txHash, userID)
+	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
+	assert.Nil(t, receipt)
 	assert.Zero(t, statusRequests)
 }
 

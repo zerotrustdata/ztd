@@ -866,6 +866,9 @@ var (
 	ErrReceiptPersistenceSignatureMismatch  = errors.New("receipt persistence signature digest mismatch")
 	ErrReceiptPersistenceAttestationInvalid = errors.New("receipt persistence attestation signature invalid")
 	ErrTrustedSignerKeyNotFound             = errors.New("trusted signer public key not found")
+	ErrOperatorActuatorKeyInvalid           = errors.New("operator actuator public key invalid")
+	ErrOperatorActuatorKeyChanged           = errors.New("operator actuator public key differs from bound key")
+	ErrReceiptSignerNotBound                = errors.New("receipt signer is not the executing operator's bound actuator key")
 	ErrL5ActuatorRehydrate                  = errors.New("L5Actuator: failed to rehydrate payload")
 	ErrPKICSRSignatureCheck                 = errors.New("pki: CSR signature check failed")
 	ErrPKIInvalidCurve                      = errors.New("pki: CSR public key must use P-256 curve")
@@ -1100,8 +1103,7 @@ var (
 	ErrSSEStreamClosed = errors.New("SSE stream closed by server")
 
 	// SSE approval errors
-	ErrApprovalSSETimeout              = errors.New("L3 approval: timed out waiting for SSE event")
-	ErrApprovalReceiptReferenceInvalid = errors.New("L3 approval completed without a valid receipt reference")
+	ErrApprovalSSETimeout = errors.New("L3 approval: timed out waiting for SSE event")
 
 	// Browser errors
 	ErrBrowserURLEmpty = errors.New("browser URL cannot be empty")
@@ -1381,6 +1383,16 @@ var (
 	// receipt from the target Operator's L4. A rejected transaction publishes
 	// no result, so the receipt is the terminal outcome.
 	ErrDispatchGovernanceRejected = errors.New("dispatch: operator governance rejected the transaction")
+
+	// Ingress errors. A pre-envelope refusal carries no receipt; JSON-RPC
+	// envelope errors are rendered by the MCP and A2A ingresses.
+	ErrIngressStateRootUnavailable = errors.New("ingress state root unavailable")
+	ErrIngressL2DeliberationFailed = errors.New("ingress L2 deliberation failed")
+	ErrIngressResponseUntyped      = errors.New("ingress response is not a typed outcome")
+	ErrJSONRPCBatchUnsupported     = errors.New("json-rpc batch requests are not supported")
+	ErrJSONRPCVersionInvalid       = errors.New("json-rpc version must be 2.0")
+	ErrJSONRPCMethodRequired       = errors.New("json-rpc method required")
+	ErrJSONRPCMethodNotFound       = errors.New("json-rpc method not found")
 )
 
 // Native evaluation errors.
@@ -1465,4 +1477,37 @@ var (
 	ErrAutochthonRunning       = errors.New("autochthon already running on this root")
 	ErrAutochthonAnchorMissing = errors.New("autochthon tally does not contain the anchor")
 	ErrAutochthonAnchorFormat  = errors.New("autochthon anchor must be <lines>:<64 lowercase hex>")
+
+	// Governance conformance errors
+	ErrConformanceAnchorMissing         = errors.New("conformance anchor export missing")
+	ErrConformanceAnchorInvalid         = errors.New("conformance anchor export invalid")
+	ErrConformanceAnchorUnknown         = errors.New("conformance receipt signer has no pinned anchor")
+	ErrConformanceReceiptUnclassifiable = errors.New("conformance receipt outcome unclassifiable")
+	ErrConformanceLedgerGap             = errors.New("conformance ledger bracket does not connect")
+	ErrConformanceUnclaimedExecution    = errors.New("conformance ledger bracket holds an unclaimed execution")
+	ErrConformanceStackNotQuiescent     = errors.New("conformance stack not quiescent")
+	ErrConformanceCatalogueInvalid      = errors.New("conformance catalogue invalid")
+	ErrConformanceRecordInvalid         = errors.New("conformance run record invalid")
+	ErrConformanceRecordDigestMismatch  = errors.New("conformance run record digest mismatch")
+	ErrConformanceCanaryInvalid         = errors.New("conformance canary set invalid")
+	ErrConformanceIngressUnsupported    = errors.New("conformance ingress cannot express this case")
+	ErrConformancePostureUnknown        = errors.New("conformance posture unknown")
+
+	// Agent system-under-test errors
+	ErrSUTTurnFailed          = errors.New("agent sut turn failed")
+	ErrSUTTraceInvalid        = errors.New("agent sut trace invalid")
+	ErrSUTClaimedTxUnverified = errors.New("agent sut claimed transaction has no verified receipt")
+
+	// Campaign tool evidence errors
+	ErrCampaignToolEvidenceInvalid = errors.New("campaign tool evidence invalid")
+
+	// Red-team containment errors
+	ErrRedTeamGoalInvalid = errors.New("red-team goal invalid")
+
+	// Seeded investigation errors
+	ErrInvestigationScenarioInvalid = errors.New("investigation scenario invalid")
+	ErrInvestigationSeedFailed      = errors.New("investigation seed failed")
+
+	// Secondary judge errors
+	ErrJudgeResponseInvalid = errors.New("evaluation judge response invalid")
 )

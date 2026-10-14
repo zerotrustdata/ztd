@@ -14,13 +14,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
-	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -158,12 +158,16 @@ func mustMarshalDispatchSuccess(t *testing.T, stdout string) []byte {
 		ReturnCode: 0,
 	})
 	require.NoError(t, err)
-	body, err := json.Marshal(operator.DispatchResponse{
-		Success:       true,
-		TransactionID: "tx-1",
+	body, err := protojson.Marshal(&operatorv1.GovernedDispatchResult{
+		TransactionId: "tx-1",
 		EventType:     "ztd.v1.operator.command.completed",
 		ActionType:    "EXECUTE_BASH",
 		ResultPayload: resultPayload,
+		Receipt: &operatorv1.ActionReceipt{
+			TransactionId: "tx-1",
+			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			SignerKeyId:   "key-1",
+		},
 	})
 	require.NoError(t, err)
 	return body

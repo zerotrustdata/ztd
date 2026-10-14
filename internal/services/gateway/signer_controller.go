@@ -8,7 +8,6 @@
 package gateway
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -117,11 +116,7 @@ func (c *SignerController) handleGovernanceSignerByID(w http.ResponseWriter, r *
 			return
 		}
 		if doc == nil {
-			c.responder.JSON(w, http.StatusOK, models.TrustedSigner{
-				ID:        id,
-				PublicKey: hex.EncodeToString(pubKey),
-				Enabled:   true,
-			})
+			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
 			return
 		}
 		c.responder.JSON(w, http.StatusOK, doc.ForWire())

@@ -865,25 +865,25 @@
                     "400": {
                         "description": "Bad Request — malformed envelope",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
                         }
                     },
                     "403": {
-                        "description": "Forbidden — governance verification failed; L4 rejections carry the signed receipt",
+                        "description": "Forbidden — IngressRefusal when refused before L4 (identity binding, outcome, L3 proof unmintable); GovernanceRejection carrying the signed receipt when L4 rejects",
                         "schema": {
-                            "$ref": "#/definitions/operatorv1.GovernanceRejection"
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
                         }
                     },
                     "405": {
                         "description": "Method Not Allowed",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable — processor not configured, or verifier unavailable",
+                        "description": "Service Unavailable — IngressRefusal when the processor is not configured; GovernanceRejection carrying the signed receipt when L4 cannot run",
                         "schema": {
-                            "$ref": "#/definitions/operatorv1.GovernanceRejection"
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
                         }
                     }
                 }
@@ -3885,6 +3885,10 @@
         "models.PlatformOperatorCSRPayload": {
             "type": "object",
             "properties": {
+                "actuator_public_key": {
+                    "description": "ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5 Actuator.",
+                    "type": "string"
+                },
                 "cli_csr_pem": {
                     "type": "string"
                 },
@@ -4735,17 +4739,6 @@
                 "ExecutionStatus_EXECUTION_STATUS_TIMEOUT"
             ]
         },
-        "operatorv1.GovernanceRejection": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "type": "string"
-                },
-                "receipt": {
-                    "$ref": "#/definitions/operatorv1.ActionReceipt"
-                }
-            }
-        },
         "operatorv1.GovernanceRejectionCode": {
             "type": "integer",
             "format": "int32",
@@ -5347,6 +5340,67 @@
                     "type": "string"
                 }
             }
+        },
+        "operatorv1.IngressRefusal": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/operatorv1.IngressRefusalCode"
+                },
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.IngressRefusalCode": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20
+            ],
+            "x-enum-varnames": [
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_PAYLOAD_TOO_LARGE",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_UNKNOWN_EVENT_TYPE",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_EVENT_ACTION_MISMATCH",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_PAYLOAD_DECODE_FAILED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_MTLS_REQUIRED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_CALLER_SUPPLIED_POSTURE",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_GATEWAY_MISCONFIGURED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_EMBEDDED_OPERATOR_UNCLAIMED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED",
+                "IngressRefusalCode_INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE"
+            ]
         },
         "operatorv1.L2Status": {
             "type": "integer",
