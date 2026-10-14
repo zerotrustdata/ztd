@@ -12,7 +12,7 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-const scenarioVersion = "1.1.0"
+const scenarioVersion = "1.2.0"
 
 var (
 	rolesLite             = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -540,7 +540,7 @@ func techLogParse() ScenarioBlueprint {
 		"Lite extracts checkout-api or retains the actual incorrect outcome.",
 		"Homogeneous lane scores the designated role analysis against the synthetic log.",
 		"Heterogeneous lane scores the final analysis against the same inline content.",
-		[]string{"model_inference", "semantic_grade"},
+		[]string{"model_inference"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"checkout-api"}}}
 	return ScenarioBlueprint{
@@ -548,7 +548,7 @@ func techLogParse() ScenarioBlueprint {
 		EligibleRoles:     rolesLite,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS,
 		PublicDescription: "Extract the failing service from a synthetic error log.",
-		GradingMethod:     gradingSemanticJudge,
+		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"log-analysis"},
 		Input: ScenarioInputFixture{
@@ -701,7 +701,7 @@ func routeHandoffAssistant() ScenarioBlueprint {
 		"Lite is not eligible for this scenario.",
 		"Homogeneous lane verifies the designated role correlation against the seeded handoff.",
 		"Heterogeneous lane verifies the correlation carried through the seeded handoff turn.",
-		[]string{"model_inference", "semantic_grade"},
+		[]string{"model_inference"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"rotation", "rotated", "certificate", "cert"}, {"4F2A", "serial", "08:02"}}}
 	return ScenarioBlueprint{
@@ -709,7 +709,7 @@ func routeHandoffAssistant() ScenarioBlueprint {
 		EligibleRoles:     rolesAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION,
 		PublicDescription: "Take a handoff from Primary and complete the detailed correlation.",
-		GradingMethod:     gradingSemanticJudge,
+		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"assistant-handoff", "delegation"},
 		Input: ScenarioInputFixture{
@@ -941,7 +941,7 @@ func recoveryToolFailure() ScenarioBlueprint {
 		"Lite is not eligible for this scenario.",
 		"Homogeneous lane verifies recovery handling after tool failure.",
 		"Heterogeneous lane verifies recovery handling in the system pipeline.",
-		[]string{"model_inference", "semantic_grade", "tool_call", "recovery"},
+		[]string{"model_inference", "tool_call", "recovery"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"not found", "does not exist", "doesn't exist", "missing", "unavailable", "no such file"}}}
 	gold.PromptHint = hint([]string{"file_read_on_operator"},
@@ -959,7 +959,7 @@ func recoveryToolFailure() ScenarioBlueprint {
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY,
 		PublicDescription: "Recover when a requested workspace file is missing.",
-		GradingMethod:     gradingSemanticJudge,
+		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyGuided,
 		AllowedTools:      []string{"file_read_on_operator", "list_files_and_directories_with_detailed_metadata", "recursive_grep_search"},
 		ExpectedTools:     []string{"file_read_on_operator"},
@@ -1020,7 +1020,7 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 		"Lite is not eligible for this scenario.",
 		"Homogeneous lane verifies the designated role final response structure.",
 		"Heterogeneous lane verifies the final customer-visible response structure.",
-		[]string{"model_inference", "semantic_grade", "final_response"},
+		[]string{"model_inference", "final_response"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"checkout-api"}, {"confidence"}}}
 	return ScenarioBlueprint{
@@ -1028,7 +1028,7 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 		EligibleRoles:     rolesPrimary,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE,
 		PublicDescription: "Deliver an evidence-backed diagnosis with confidence, action, and customer-safe communication.",
-		GradingMethod:     gradingSemanticJudge,
+		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"final-response", "diagnosis", "customer-communication"},
 		Input: ScenarioInputFixture{

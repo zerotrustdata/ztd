@@ -10,6 +10,7 @@ package evaluation
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -58,8 +59,13 @@ func validateScenarioContract(blueprint ScenarioBlueprint, registry *AgentToolRe
 	if err := validateTrajectoryPolicyShape(blueprint); err != nil {
 		return err
 	}
-	if blueprint.GradingMethod != evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE && !contentCheckHasConstraint(blueprint.Gold.ContentCheck) {
-		return scenarioContractError(blueprint, "scenario has no content check and is not judge-graded, so it cannot fail")
+	// No executor records judge evidence, so a judge-graded scenario can only
+	// ever terminate GRADER_FAILED.
+	if blueprint.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE || slices.Contains(blueprint.Gold.RequiredEvidenceTypes, "semantic_grade") {
+		return scenarioContractError(blueprint, "scenario requires a semantic judge, which no executor provides")
+	}
+	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) {
+		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
 	if err := validateArgumentValidators(blueprint, registry); err != nil {
 		return err

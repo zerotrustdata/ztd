@@ -1408,6 +1408,7 @@ var (
 	ErrDataOperatorNotBound                = errors.New("evaluation: data-operator session is not bound to the CLI session; run './ztd operator bind'")
 	ErrEvaluationScenarioRolesUnassigned   = errors.New("evaluation: scenario has no valid eligible roles")
 	ErrEvaluationScenarioContractInvalid   = errors.New("evaluation: scenario contract is invalid")
+	ErrEvaluationCatalogRequiresJudge      = errors.New("evaluation: frozen catalog contains semantic-judge scenarios, which no executor can grade; freeze a new campaign from the current catalog")
 	ErrEvaluationSuiteInvalid              = errors.New("evaluation: suite definition is invalid")
 	ErrEvaluationSuiteBuiltin              = errors.New("evaluation: built-in suites are read-only")
 	ErrEvaluationSuiteExists               = errors.New("evaluation: suite already exists")
