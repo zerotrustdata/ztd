@@ -9,8 +9,8 @@
 
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useActiveDatasetId } from '../state/dataset';
-import { CURRENT_PLATFORM_RELEASE, releaseLabel } from '../content/release';
+import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
+import { releaseLabel } from '../content/release';
 import { recordKey, useStoreState } from '../state/store';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { RunFailuresSection } from '../components/RunFailuresSection';
@@ -49,7 +49,7 @@ export function EvaluationDetailView() {
   // active dataset rather than erroring.
   const runId = routeRun ?? routeDataset;
   const datasetParam = routeRun ? routeDataset : undefined;
-  const activeDatasetId = useActiveDatasetId(datasetParam ?? params.get('dataset') ?? undefined, params.get('release') ?? CURRENT_PLATFORM_RELEASE);
+  const activeDatasetId = useActiveDatasetId(datasetParam ?? params.get('dataset') ?? undefined, useSelectedRelease());
 
   const run = useStoreState((state) =>
     runId ? state.evaluations.get(recordKey(activeDatasetId, runId)) : undefined,

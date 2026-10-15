@@ -7,6 +7,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { evalStore, recordKey } from '../src/state/store';
 import { EvaluationsView } from '../src/views/EvaluationsView';
+import { CURRENT_PLATFORM_RELEASE, defaultViewRelease } from '../src/content/release';
 import type { SnapshotRecord } from '../src/contract/types';
 import { VIEW_SCHEMA_VERSION } from '../src/contract/types';
 
@@ -20,7 +21,7 @@ describe('campaign release selection', () => {
   beforeEach(() => {
     evalStore.loadFixtures([
       { run_id: 'run-current', release: currentRelease, release_basis: 'recorded', source_revision: 'abc123' },
-      { run_id: 'run-older', release: 'v2.2.6', release_basis: 'asserted' },
+      { run_id: 'run-older', release: 'v0.9.0', release_basis: 'asserted' },
       { run_id: 'run-unknown' },
     ].map((identity) => ({
       schema_version: VIEW_SCHEMA_VERSION, kind: 'evaluation_summary', dataset_id: `ds-live-${identity.run_id}`,
@@ -31,7 +32,7 @@ describe('campaign release selection', () => {
     })) as SnapshotRecord[], []);
   });
 
-  it('defaults to the build release and keeps older and unknown runs out', () => {
+  it('defaults to the newest release and keeps older and unknown runs out', () => {
     render(<MemoryRouter><EvaluationsView /></MemoryRouter>);
     expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentRelease);
     expect(screen.getByRole('link', { name: 'run-current' })).toBeInTheDocument();
@@ -40,18 +41,26 @@ describe('campaign release selection', () => {
     expect(screen.getByText(`${currentRelease} (recorded)`)).toBeInTheDocument();
   });
 
+  it('defaults to the newest feed release when the build release has no records', () => {
+    evalStore.getState().evaluations.delete(recordKey('ds-live-run-current', 'run-current'));
+    render(<MemoryRouter><EvaluationsView /></MemoryRouter>);
+    expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue('v0.9.0');
+    expect(screen.getByRole('link', { name: 'run-older' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'run-unknown' })).not.toBeInTheDocument();
+  });
+
   it('persists all releases in the URL and labels assertions and unknown data', () => {
     render(<MemoryRouter><EvaluationsView /><Location /></MemoryRouter>);
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by release' }), { target: { value: 'all' } });
     expect(screen.getByTestId('location')).toHaveTextContent('release=all');
     expect(screen.getByRole('link', { name: 'run-older' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'run-unknown' })).toBeInTheDocument();
-    expect(screen.getByText('v2.2.6 (asserted)')).toBeInTheDocument();
+    expect(screen.getByText('v0.9.0 (asserted)')).toBeInTheDocument();
     expect(screen.getByText('Unknown release')).toBeInTheDocument();
   });
 
   it('honors a release link without changing it to the current release', () => {
-    render(<MemoryRouter initialEntries={['/evaluations?release=v2.2.6']}><EvaluationsView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/evaluations?release=v0.9.0']}><EvaluationsView /></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'run-older' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'run-current' })).not.toBeInTheDocument();
   });
@@ -63,5 +72,16 @@ describe('campaign release selection', () => {
     render(<MemoryRouter><EvaluationsView /></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'run-current' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Filter by quality' })).toHaveValue('all');
+  });
+});
+
+describe('defaultViewRelease', () => {
+  it('orders releases numerically and ignores unattributed records', () => {
+    expect(defaultViewRelease([
+      { release: 'v1.9.0', release_basis: 'recorded' },
+      { release: 'v1.10.0', release_basis: 'asserted' },
+      { release: 'v9.0.0' },
+    ])).toBe('v1.10.0');
+    expect(defaultViewRelease([])).toBe(CURRENT_PLATFORM_RELEASE);
   });
 });

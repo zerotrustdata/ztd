@@ -9,12 +9,12 @@ import { VIEW_SCHEMA_VERSION } from '../src/contract/types';
 import { CURRENT_PLATFORM_RELEASE } from '../src/content/release';
 
 describe('useActiveDatasetId', () => {
-  it('selects only the build release by default without inferring historical identity', () => {
+  it('selects only the requested release without inferring historical identity', () => {
     evalStore.loadFixtures([], []);
     const summaries = evalStore.getState().evaluations;
     for (const [run, identity] of [
       ['current', { release: CURRENT_PLATFORM_RELEASE, release_basis: 'recorded' }],
-      ['older', { release: 'v2.2.6', release_basis: 'asserted' }],
+      ['older', { release: 'v0.9.0', release_basis: 'asserted' }],
       ['unknown', {}],
     ] as const) {
       summaries.set(`ds-live-${run}:${run}`, {
@@ -26,16 +26,16 @@ describe('useActiveDatasetId', () => {
         verifier_state: 'not_run', headline_metrics: {}, ...identity,
       });
     }
-    expect(renderHook(() => useActiveDatasetId(undefined)).result.current).toBe('ds-live-current');
+    expect(renderHook(() => useActiveDatasetId(undefined, CURRENT_PLATFORM_RELEASE)).result.current).toBe('ds-live-current');
     summaries.delete('ds-live-current:current');
-    expect(renderHook(() => useActiveDatasetId(undefined)).result.current).toBe('');
-    expect(renderHook(() => useActiveDatasetId(undefined, 'v2.2.6')).result.current).toBe('ds-live-older');
-    expect(renderHook(() => useActiveDatasetId('ds-live-unknown')).result.current).toBe('ds-live-unknown');
+    expect(renderHook(() => useActiveDatasetId(undefined, CURRENT_PLATFORM_RELEASE)).result.current).toBe('');
+    expect(renderHook(() => useActiveDatasetId(undefined, 'v0.9.0')).result.current).toBe('ds-live-older');
+    expect(renderHook(() => useActiveDatasetId('ds-live-unknown', CURRENT_PLATFORM_RELEASE)).result.current).toBe('ds-live-unknown');
   });
 
   it('honors explicit ds-live route ids without a catalog snapshot', () => {
     const { result } = renderHook(() =>
-      useActiveDatasetId('ds-live-smoke-campaign-1789575779'),
+      useActiveDatasetId('ds-live-smoke-campaign-1789575779', CURRENT_PLATFORM_RELEASE),
     );
     expect(result.current).toBe('ds-live-smoke-campaign-1789575779');
   });
@@ -226,7 +226,7 @@ describe('useActiveDatasetId', () => {
       headline_metrics: {},
     });
 
-    const { result } = renderHook(() => useActiveDatasetId('ds-custom-run'));
+    const { result } = renderHook(() => useActiveDatasetId('ds-custom-run', CURRENT_PLATFORM_RELEASE));
     expect(result.current).toBe('ds-custom-run');
   });
 });

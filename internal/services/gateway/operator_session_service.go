@@ -14,12 +14,9 @@ import (
 	"log/slog"
 	"time"
 
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 )
 
@@ -187,63 +184,4 @@ func (s *OperatorSessionService) GetActiveSessionForUser(ctx context.Context, us
 	}
 	session.ID = selected.ID
 	return &session, nil
-}
-
-// GetActiveDataOperatorSessionForUser returns the operator session binding for
-// the user's active governed tool Operator as recorded in the operator
-// registry. Registry state wins over stale operator_sessions rows after Operator
-// rebuilds or remote Operator re-enrollment.
-func (s *OperatorSessionService) GetActiveDataOperatorSessionForUser(ctx context.Context, userID string) (*models.OperatorSession, error) {
-	if userID == "" {
-		return nil, nil
-	}
-	userIDVal, err := json.Marshal(userID)
-	if err != nil {
-		return nil, fmt.Errorf("marshal user_id filter: %w", err)
-	}
-	activeStatus, err := json.Marshal(string(constants.OperatorStatusActive))
-	if err != nil {
-		return nil, fmt.Errorf("marshal status filter: %w", err)
-	}
-	docs, err := s.db.DocQuery(
-		ctx, marshaler.CollectionName(constants.CollectionOperators),
-		[]models.DocFilter{
-			{Field: "user_id", Op: "==", Value: userIDVal},
-			{Field: "status", Op: "==", Value: activeStatus},
-		},
-		"created_at DESC",
-		0,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query active operators for user %s: %w", userID, err)
-	}
-	var fallback, embeddedFallback *operatorv1.OperatorDocument
-	for _, doc := range docs {
-		operator, err := models.OperatorDocumentFromStore(doc)
-		if err != nil {
-			return nil, fmt.Errorf("unmarshal operator document: %w", err)
-		}
-		if fallback == nil && operatorcapability.IsDedicatedDataOperator(operator) {
-			fallback = operator
-		}
-		if embeddedFallback == nil && operatorcapability.IsDataOperator(operator) {
-			embeddedFallback = operator
-		}
-	}
-	if fallback != nil {
-		return dataOperatorSession(fallback), nil
-	}
-	if embeddedFallback != nil {
-		return dataOperatorSession(embeddedFallback), nil
-	}
-	return nil, nil
-}
-
-func dataOperatorSession(operator *operatorv1.OperatorDocument) *models.OperatorSession {
-	return &models.OperatorSession{
-		ID:         operator.OperatorSessionId,
-		UserID:     operator.UserId,
-		OperatorID: operator.Id,
-		IsActive:   true,
-	}
 }

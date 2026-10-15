@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/uuid"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // CLIRefreshControllerDeps groups all dependencies for CLIRefreshController.
@@ -282,30 +283,30 @@ func (c *CLIRefreshController) registryOperatorBinding(ctx context.Context, user
 	if err != nil {
 		return "", "", false, err
 	}
-	// A dedicated data Operator is the preferred primary binding; the Gateway's
-	// embedded one is the fallback.
-	for _, op := range operators {
-		if !operatorcapability.IsDedicatedDataOperator(op) {
-			continue
-		}
+	// The Gateway's embedded Operator is always a Data operator, so it is the
+	// default primary binding; a dedicated Data Operator is the fallback.
+	for _, op := range defaultDataOperatorOrder(operators) {
 		validated, validateErr := c.auth.ValidateOperatorSession(ctx, op.OperatorSessionId)
 		if validateErr == nil && validated.UserId == userID {
 			return validated.OperatorSessionId, validated.Id, true, nil
 		}
 	}
-	var embeddedSessionID string
-	for _, op := range operators {
-		if op.Id == string(constants.DocIDEmbeddedOperator) && constants.OperatorStatus(op.Status) == constants.OperatorStatusActive && op.OperatorSessionId != "" {
-			embeddedSessionID = op.OperatorSessionId
-		}
-	}
-	if embeddedSessionID != "" {
-		validated, validateErr := c.auth.ValidateOperatorSession(ctx, embeddedSessionID)
-		if validateErr == nil && validated.UserId == userID {
-			return validated.OperatorSessionId, validated.Id, true, nil
-		}
-	}
 	return "", "", false, nil
+}
+
+// defaultDataOperatorOrder returns the active Data sessions in default-binding
+// order: the embedded Operator first, then dedicated Data Operators.
+func defaultDataOperatorOrder(operators []*operatorv1.OperatorDocument) []*operatorv1.OperatorDocument {
+	var embedded, dedicated []*operatorv1.OperatorDocument
+	for _, op := range operators {
+		switch {
+		case operatorcapability.IsDedicatedDataOperator(op):
+			dedicated = append(dedicated, op)
+		case operatorcapability.IsDataOperator(op):
+			embedded = append(embedded, op)
+		}
+	}
+	return append(embedded, dedicated...)
 }
 
 // writeRefreshError maps a typed refresh/session error to the appropriate

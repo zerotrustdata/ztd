@@ -2,18 +2,19 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { useSearchParams } from 'react-router-dom';
-import { CURRENT_PLATFORM_RELEASE } from '../content/release';
+import { compareReleasesDescending, CURRENT_PLATFORM_RELEASE } from '../content/release';
+import { useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 
 export function ReleaseSelector() {
   const [params, setParams] = useSearchParams();
-  const selected = params.get('release') ?? CURRENT_PLATFORM_RELEASE;
+  const selected = useSelectedRelease();
   const releases = useStoreState((state) => Array.from(new Set([
     CURRENT_PLATFORM_RELEASE,
     ...(selected === 'all' ? [] : [selected]),
     ...Array.from(state.evaluations.values()).flatMap((record) => record.release ? [record.release] : []),
     ...Array.from(state.catalogs.values()).flatMap((record) => record.release ? [record.release] : []),
-  ])).sort().reverse());
+  ])).sort(compareReleasesDescending));
 
   return (
     <select aria-label="Filter by release" value={selected} onChange={(event) => {

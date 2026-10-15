@@ -18,8 +18,7 @@ import { ScenarioContextCard } from '../components/ScenarioContextCard';
 import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection } from '../components/TaskPromptSection';
 import { UnifiedGradeBadges } from '../components/UnifiedGradeBadges';
 import { SCENARIO_TASK_BY_ID } from '../content/scenario-task';
-import { useActiveDatasetId } from '../state/dataset';
-import { CURRENT_PLATFORM_RELEASE } from '../content/release';
+import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { recordKey, useStoreState } from '../state/store';
 import {
   CopyButton,
@@ -220,7 +219,7 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
 export function AssignmentDetailView() {
   const { assignmentId, runId, datasetId: routeDataset } = useParams();
   const [params] = useSearchParams();
-  const activeDatasetId = useActiveDatasetId(routeDataset ?? params.get('dataset') ?? undefined, params.get('release') ?? CURRENT_PLATFORM_RELEASE);
+  const activeDatasetId = useActiveDatasetId(routeDataset ?? params.get('dataset') ?? undefined, useSelectedRelease());
 
   const assignment = useStoreState((state) =>
     assignmentId ? state.assignments.get(recordKey(activeDatasetId, assignmentId)) : undefined,
