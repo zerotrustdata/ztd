@@ -2,6 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { RELEASES_PATH } from './src/layout.js';
+import { BUY_PATH, paymentLink } from './src/payments.js';
 import { RELEASE_NOTES_PATH, RELEASE_VERSION, listReleases, readManifest, releasePath, renderReleasePage, renderReleasesIndex } from './src/releases.js';
 
 const RELEASE_PATH = /^(?:ztd-(?:linux-(?:amd64|arm64|386)|darwin-(?:amd64|arm64)|windows-(?:amd64|arm64)\.exe)(?:\.sha256|\.sigstore\.json)?|checksums-sha256\.txt|ztd-binaries\.json)$/;
@@ -180,6 +181,11 @@ export default {
     if (url.hostname === WWW_HOSTNAME) {
       url.hostname = 'zerotrustdata.io';
       return withSecurityHeaders(Response.redirect(url, 301));
+    }
+    const buy = BUY_PATH.exec(url.pathname);
+    if (buy) {
+      const target = paymentLink(buy[1]);
+      return withSecurityHeaders(target ? Response.redirect(target, 303) : notFound());
     }
     if (url.pathname === `/${LATEST_POINTER}`) {
       return withSecurityHeaders(await latestPointerResponse(request, env));

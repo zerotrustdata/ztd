@@ -48,9 +48,8 @@ import (
 // HTTP 200 with a well-formed JSON-RPC response body.
 func TestUniversalGateway_MultiProtocolAutoDetection(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          "universal-autodetect",
-		Posture:           config.PostureNotary,
-		AllowTestPortZero: true,
+		TestName: "universal-autodetect",
+		Posture:  config.PostureNotary,
 	})
 
 	identity := fixtures.BootstrapCLIIdentity(t, f, "test-fingerprint")
@@ -121,9 +120,8 @@ func TestUniversalGateway_MultiProtocolAutoDetection(t *testing.T) {
 // the authenticated user.
 func TestUniversalGateway_OOBSuspensionAndApproval(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          "universal-suspension",
-		Posture:           config.PostureNotary,
-		AllowTestPortZero: true,
+		TestName: "universal-suspension",
+		Posture:  config.PostureNotary,
 	})
 
 	identity := fixtures.BootstrapCLIIdentity(t, f, "test-fingerprint")

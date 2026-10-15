@@ -50,6 +50,8 @@ GEMINI.md
 *.logs
 /logs/
 .cache/
+# Wrangler's account cache (written to the cwd when wrangler runs outside website/)
+.cloudflare/
 .nyc_output/
 .vitest-cache/
 .coverage

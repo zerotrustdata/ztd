@@ -1,5 +1,13 @@
 [
   {
+    "slug": "the-day-my-evals-deleted-the-repo",
+    "title": "The day my evals deleted the repo",
+    "date": "2026-10-14",
+    "description": "An eval bug wiped the repo root, git saved the day, and I found out my own evals were skipping the L1–L5 pipeline that would have stopped it.",
+    "author": "Danny",
+    "tags": ["Engineering", "Evaluations"]
+  },
+  {
     "slug": "going-public-onboarding-beyond-linux",
     "title": "Going public, and finding out onboarding only worked on Linux",
     "date": "2026-10-13",

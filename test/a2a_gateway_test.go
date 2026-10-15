@@ -70,9 +70,8 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 	defer downstreamServer.Close()
 
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		A2ADownstreamURL:  downstreamServer.URL,
-		AllowTestPortZero: true,
+		TestName:         t.Name(),
+		A2ADownstreamURL: downstreamServer.URL,
 	})
 	fixture.WaitForReady(t)
 
@@ -154,8 +153,7 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 // so it is not part of the shared cross-protocol error-case table.
 func TestA2AGateway_APIKeyRejected(t *testing.T) {
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		AllowTestPortZero: true,
+		TestName: t.Name(),
 	})
 	fixture.WaitForReady(t)
 

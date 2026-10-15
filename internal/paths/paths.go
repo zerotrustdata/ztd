@@ -134,7 +134,6 @@ var Infra struct {
 var (
 	GatewayIDPath       = constants.RuntimeDirname + "/" + constants.DataDirname + "/" + constants.GatewayIDFilename
 	ActuatorPubJSONPath = constants.RuntimeDirname + "/" + constants.PkiDirname + "/" + constants.ActuatorPubJSONFilename
-	ActuatorPubPEMPath  = constants.RuntimeDirname + "/" + constants.PkiDirname + "/" + constants.ActuatorPubPEMFilename
 	NetworkIdentityPath = constants.RuntimeDirname + "/" + constants.PkiDirname + "/" + constants.NetworkIdentityFilename
 	PeerCertPath        = constants.RuntimeDirname + "/" + constants.PkiDirname + "/" + constants.PeerSubdir + "/" + constants.PeerCertFilename
 	PeerKeyPath         = constants.RuntimeDirname + "/" + constants.PkiDirname + "/" + constants.PeerSubdir + "/" + constants.PeerKeyFilename

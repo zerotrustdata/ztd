@@ -97,9 +97,8 @@ func rawJSONToBool(t *testing.T, raw json.RawMessage) bool {
 // Untouched fields (case_id, user_id, case_flag, status) must survive the merge.
 func TestProcessEnvelope_ConcurrentInvestigationTitleMergePreservesFields(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          "governed-doc-merge",
-		Posture:           config.PostureDoctrine,
-		AllowTestPortZero: true,
+		TestName: "governed-doc-merge",
+		Posture:  config.PostureDoctrine,
 	})
 
 	ctx := context.Background()

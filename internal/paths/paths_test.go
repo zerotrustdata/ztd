@@ -25,7 +25,6 @@ func restoreInfra(t *testing.T) {
 	snapshot := Infra
 	gwID := GatewayIDPath
 	actJSON := ActuatorPubJSONPath
-	actPEM := ActuatorPubPEMPath
 	netID := NetworkIdentityPath
 	peerCert := PeerCertPath
 	peerKey := PeerKeyPath
@@ -35,7 +34,6 @@ func restoreInfra(t *testing.T) {
 		Infra = snapshot
 		GatewayIDPath = gwID
 		ActuatorPubJSONPath = actJSON
-		ActuatorPubPEMPath = actPEM
 		NetworkIdentityPath = netID
 		PeerCertPath = peerCert
 		PeerKeyPath = peerKey

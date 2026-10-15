@@ -30,8 +30,7 @@ import (
 // released by the user-created event, so workloads never poll for bootstrap.
 func TestBootstrapStatusWait_ReleasesOnFirstUserCreated(t *testing.T) {
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		AllowTestPortZero: true,
+		TestName: t.Name(),
 	})
 	fixture.WaitForReady(t)
 

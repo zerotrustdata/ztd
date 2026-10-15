@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import worker, { releaseKey } from '../worker.js';
+import PAYMENT_LINKS from '../src/payment-links.json' with { type: 'json' };
 
 const noAssets = { fetch: async () => { throw new Error('unexpected asset lookup'); } };
 
@@ -359,7 +360,8 @@ test('release pages answer HEAD without a body and reject other methods', async 
   assert.equal(post.headers.get('allow'), 'GET, HEAD');
 });
 
-test('a malformed manifest or a missing latest manifest is a 503, never a partial page', async () => {
+test('a malformed manifest or a missing latest manifest is a 503, never a partial page', async t => {
+  t.mock.method(console, 'error', () => {});
   const cases = {
     malformed: { ...RELEASE_SETS, 'v2.3.2/ztd-binaries.json': '{not json' },
     wrongVersion: { ...RELEASE_SETS, 'v2.3.2/ztd-binaries.json': manifest('2.3.1') },
@@ -380,4 +382,19 @@ test('release-note fragments are not served as pages of their own', async () => 
   const response = await page('/_release-notes/2.3.2.html', { ASSETS: noAssets, RELEASES: releaseBucket(RELEASE_SETS) });
   assert.equal(response.status, 404);
   assert.equal(await response.text(), 'not found');
+});
+
+test('unknown /buy/ SKUs return 404 without touching assets', async () => {
+  const response = await worker.fetch(new Request('https://zerotrustdata.io/buy/nonexistent'), { ASSETS: noAssets });
+  assert.equal(response.status, 404);
+  assert.equal(response.headers.get('x-frame-options'), 'DENY');
+});
+
+test('every configured /buy/ SKU redirects 303 to its live Payment Link without touching assets', async () => {
+  for (const [sku, url] of Object.entries(PAYMENT_LINKS)) {
+    const response = await worker.fetch(new Request(`https://zerotrustdata.io/buy/${sku}`), { ASSETS: noAssets });
+    assert.equal(response.status, 303, sku);
+    assert.equal(response.headers.get('location'), url, sku);
+    assert.equal(response.headers.get('x-frame-options'), 'DENY', sku);
+  }
 });

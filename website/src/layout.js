@@ -7,6 +7,8 @@
 export const ORIGIN = 'https://zerotrustdata.io';
 export const JOURNAL_PATH = '/build-in-public/';
 export const RELEASES_PATH = '/releases/';
+export const TERMS_PATH = '/terms/';
+export const OEM_TERMS_PATH = '/terms/oem/';
 export const REPOSITORY_URL = 'https://github.com/zerotrustdata/ztd';
 
 export const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -53,7 +55,7 @@ ${article ? `<meta name="author" content="${escape(article.author)}"><meta prope
 </div></header>
 ${article ? '<progress class="reading-progress" max="100" value="0" aria-label="Reading progress" hidden></progress>' : ''}
 <main id="main" class="shell">${content}</main>
-<footer class="site-footer shell"><a class="footer-brand" href="/">Zero Trust Data<span>A model can ask. The host decides.</span></a><div><a href="${RELEASES_PATH}">Releases ↗</a><a href="${JOURNAL_PATH}feed.xml">RSS feed ↗</a><a href="mailto:danny@zerotrustdata.io">Get in touch ↗</a><a href="${REPOSITORY_URL}">Source ↗</a></div><p>© 2026 Lateralus Labs, LLC.</p></footer>
+<footer class="site-footer shell"><a class="footer-brand" href="/">Zero Trust Data<span>A model can ask. The host decides.</span></a><div><a href="${RELEASES_PATH}">Releases ↗</a><a href="${JOURNAL_PATH}feed.xml">RSS feed ↗</a><a href="mailto:danny@zerotrustdata.io">Get in touch ↗</a><a href="${TERMS_PATH}">Terms ↗</a><a href="${REPOSITORY_URL}">Source ↗</a></div><p>© 2026 Lateralus Labs, LLC.</p></footer>
 </body>
 </html>\n`;
 }

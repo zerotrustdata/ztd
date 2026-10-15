@@ -75,9 +75,8 @@ func doToolsCall(t *testing.T, client *http.Client, httpsPort int, sessionID str
 // client identity twice (same user + fingerprint) succeeds without error.
 func TestL2Consensus_IdempotentEnrollment(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          "consensus-idempotent",
-		Posture:           config.PostureConsensus,
-		AllowTestPortZero: true,
+		TestName: "consensus-idempotent",
+		Posture:  config.PostureConsensus,
 	})
 
 	// First enrollment
@@ -98,9 +97,8 @@ func TestL2Consensus_IdempotentEnrollment(t *testing.T) {
 // rejects a malformed CSR with an appropriate error.
 func TestL2Consensus_MalformedCSR(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          "consensus-malformed-csr",
-		Posture:           config.PostureConsensus,
-		AllowTestPortZero: true,
+		TestName: "consensus-malformed-csr",
+		Posture:  config.PostureConsensus,
 	})
 
 	// Enroll a valid identity first to get an mTLS client for the enrollment endpoint
@@ -137,7 +135,6 @@ func TestL2Consensus_QuorumReached(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName:                 "consensus-quorum-reached",
 		Posture:                  config.PostureConsensus,
-		AllowTestPortZero:        true,
 		ConsensusID:              "quorum-consensus",
 		ConsensusNMembers:        3,
 		ConsensusQuorum:          2,
@@ -178,7 +175,6 @@ func TestL2Consensus_QuorumNotReached(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName:                 "consensus-quorum-not-reached",
 		Posture:                  config.PostureConsensus,
-		AllowTestPortZero:        true,
 		ConsensusID:              "no-quorum-consensus",
 		ConsensusNMembers:        3,
 		ConsensusQuorum:          2,
@@ -210,10 +206,9 @@ func TestL2Consensus_QuorumNotReached(t *testing.T) {
 func TestL2Consensus_VetoByMITRE(t *testing.T) {
 	// Single-member consensus (quorum 1) so a single false vote blocks.
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          "consensus-veto",
-		Posture:           config.PostureConsensus,
-		AllowTestPortZero: true,
-		ConsensusID:       "veto-consensus",
+		TestName:    "consensus-veto",
+		Posture:     config.PostureConsensus,
+		ConsensusID: "veto-consensus",
 	})
 
 	identity := fixtures.BootstrapCLIIdentity(t, f, "fp-veto")
@@ -243,9 +238,8 @@ func TestL2Consensus_VetoByMITRE(t *testing.T) {
 // pipeline, and verifies the receipt is recorded in the audit store.
 func TestL2Consensus_L1ToL5Walkthrough(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          "consensus-l1-l5",
-		Posture:           config.PostureConsensus,
-		AllowTestPortZero: true,
+		TestName: "consensus-l1-l5",
+		Posture:  config.PostureConsensus,
 	})
 
 	// The fixture auto-wires a 1-member consensus for consensus posture.

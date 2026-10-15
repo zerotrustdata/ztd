@@ -337,7 +337,6 @@ const (
 	// Gateway-specific filenames
 	GatewayIDFilename       = "gateway-id"
 	ActuatorPubJSONFilename = "Actuator_pub.json"
-	ActuatorPubPEMFilename  = "Actuator_pub.pem"
 	NetworkIdentityFilename = "network-identity.json"
 
 	// Operator-specific filenames
