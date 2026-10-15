@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -63,8 +64,9 @@ type PublicResourceSummary struct {
 }
 
 type PublicAssignmentRecordExtensions struct {
-	BenchmarkObservations *PublicBenchmarkObservations `json:"benchmark_observations,omitempty"`
-	ResourceSummary       *PublicResourceSummary       `json:"resource_summary,omitempty"`
+	RoleTranscripts       []publicdisclosure.RoleTranscript `json:"role_transcripts,omitempty"`
+	BenchmarkObservations *PublicBenchmarkObservations      `json:"benchmark_observations,omitempty"`
+	ResourceSummary       *PublicResourceSummary            `json:"resource_summary,omitempty"`
 }
 
 type PublicAssignmentBuildInput struct {

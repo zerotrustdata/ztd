@@ -126,3 +126,10 @@ npx vitest run tests/contract-conformance.test.ts tests/descriptor-sync.test.ts 
 ```
 
 The focused suite validates fixtures and historical records, asserts kind coverage and descriptor parity, and exercises lifecycle 1.0.0 and result 1.0.0/1.1.0/1.2.0 boundaries. The shared failed-result and live-event vectors verify zero preservation across Go and TypeScript; malformed wire data fails closed.
+
+
+## Assignment evidence presentation and source retention
+
+The Go publisher and exporter populate the existing `role_transcripts` extension from persisted, digest-checked agent traces for both initial and verified terminal projections. The transcript schema is unchanged. Missing source traces without a trace evidence reference remain absent; a missing referenced trace, invalid source digest, restricted transcript, or exceeded record bound returns an error. The browser states that absent transcripts were not published, rather than inferring that the model produced no response.
+
+The client retains validated original assignment projection envelopes alongside normalized view records. Assignment JSON and original source JSON are inspectable and downloadable; no decoder allowlist is relaxed. Assignment event history retains every distinct ingested event ID and is cleared with dataset/source reinitialization, independently of the global Live display buffer and its event grouping. It represents retained public feed evidence, not all local runtime audit events. Empty and unavailable activity families remain visible with their published availability reasons.

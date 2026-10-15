@@ -75,7 +75,8 @@ type EvidenceVaultProvider func(keys fs.RuntimeFileService) (EvidenceVault, erro
 // missing or locked vault, or a file that does not authenticate, is an error.
 //
 // The exceptions are by code path, not by name: ExportRun writes its
-// disclosure-safe public projection (INV-EVAL-EVID-04) through SealedFiles,
+// disclosure-safe public projection, including bounded allowlisted model/tool
+// transcripts (INV-EVAL-EVID-04), through SealedFiles,
 // and "compliance report export" writes an owner-chosen plaintext copy of a
 // report bundle outside the runtime root, because those are meant to be
 // opened by people and tools outside ztd.

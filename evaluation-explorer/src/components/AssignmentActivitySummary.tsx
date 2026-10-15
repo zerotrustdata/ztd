@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import type { ReactNode } from 'react';
-import { activityFamilyHasObservedRecords, activityFamilySummaryText } from '../contract/activity-family';
+import { activityFamilySummaryText } from '../contract/activity-family';
 import type {
   PublicActivityFamily,
   PublicAssignmentActivity,
@@ -153,12 +153,12 @@ function GovernedActionRecord({ record }: { record: PublicGovernedActionActivity
 }
 
 function ActivityFamily<T>({ title, family, renderRecord }: { title: string; family: PublicActivityFamily<T> | undefined; renderRecord: (record: T, index: number) => ReactNode }) {
-  if (!activityFamilyHasObservedRecords(family)) return null;
-  const records = family!.availability === 'observed' ? family!.records : [];
+  const records = family?.availability === 'observed' ? family.records : [];
   return (
     <details className="activity-family" open>
-      <summary><span>{title}</span><span className="activity-availability">{activityFamilySummaryText(family!)}</span></summary>
-      <ol>{records.map((record, index) => <li key={`${title}-${index}`}>{renderRecord(record, index)}</li>)}</ol>
+      <summary><span>{title}</span><span className="activity-availability">{family ? activityFamilySummaryText(family) : 'Not published'}</span></summary>
+      {records.length > 0 ? <ol>{records.map((record, index) => <li key={`${title}-${index}`}>{renderRecord(record, index)}</li>)}</ol> :
+        <p className="panel-note">{family?.availability === 'observed' ? 'The source recorded this activity family and reported zero records.' : 'No records are available for this activity family.'}</p>}
     </details>
   );
 }
@@ -179,13 +179,13 @@ export function AssignmentActivitySummary({ activity }: { activity: PublicAssign
   return (
     <section className="assignment-activity">
       <h2>What happened</h2>
-      {activity ? <div className="activity-families">
-        <ActivityFamily title="Model activity" family={activity.model_activity} renderRecord={(record) => <ModelRecord record={record as PublicModelActivityRecord} />} />
-        <ActivityFamily title="Tool decisions" family={activity.tool_decisions} renderRecord={(record) => <ToolDecisionRecord record={record as PublicToolDecisionActivityRecord} />} />
-        <ActivityFamily title="Tool calls" family={inLoopTurnOrder(activity.tool_calls)} renderRecord={(record) => <ToolCallRecord record={record as PublicToolCallActivityRecord} />} />
-        <ActivityFamily title="Policy decisions" family={activity.policy_decisions} renderRecord={(record) => <PolicyRecord record={record as PublicPolicyDecisionActivityRecord} />} />
-        <ActivityFamily title="Governed actions" family={activity.governed_actions} renderRecord={(record) => <GovernedActionRecord record={record as PublicGovernedActionActivityRecord} />} />
-      </div> : null}
+      <div className="activity-families">
+        <ActivityFamily title="Model activity" family={activity?.model_activity} renderRecord={(record) => <ModelRecord record={record as PublicModelActivityRecord} />} />
+        <ActivityFamily title="Tool decisions" family={activity?.tool_decisions} renderRecord={(record) => <ToolDecisionRecord record={record as PublicToolDecisionActivityRecord} />} />
+        <ActivityFamily title="Tool calls" family={activity ? inLoopTurnOrder(activity.tool_calls) : undefined} renderRecord={(record) => <ToolCallRecord record={record as PublicToolCallActivityRecord} />} />
+        <ActivityFamily title="Policy decisions" family={activity?.policy_decisions} renderRecord={(record) => <PolicyRecord record={record as PublicPolicyDecisionActivityRecord} />} />
+        <ActivityFamily title="Governed actions" family={activity?.governed_actions} renderRecord={(record) => <GovernedActionRecord record={record as PublicGovernedActionActivityRecord} />} />
+      </div>
     </section>
   );
 }

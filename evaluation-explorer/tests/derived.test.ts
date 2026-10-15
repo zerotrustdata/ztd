@@ -13,6 +13,7 @@ import type {
 } from '../src/contract/types';
 import {
   assignmentEvidenceChain,
+  assignmentLifecycleEvents,
   assignmentMetricEntries,
   assignmentMetricFormatter,
   assignmentSecuritySignals,
@@ -830,5 +831,16 @@ describe('recentCampaignRows', () => {
     ]);
     expect(row?.startedAt).toBe('2026-09-17T12:00:00Z');
     expect(row?.elapsedSeconds).toBe(630);
+  });
+});
+
+
+describe('assignment event completeness', () => {
+  it('retains distinct planned, scored, result and verified event IDs while removing exact duplicates', () => {
+    const event: LiveEvent = { schema_version: '1.3.0', kind: 'stage_updated', dataset_id: 'ds-events', run_id: 'run-events',
+      assignment_id: 'assignment-events', role: 'primary', quality_state: 'live_in_progress', event_id: 'planned',
+      observed_at: '2026-10-15T00:00:00Z', lifecycle_status: 'running', completed: 0, total: 1 };
+    const scored = { ...event, event_id: 'scored', observed_at: '2026-10-15T00:00:01Z' };
+    expect(assignmentLifecycleEvents('assignment-events', [scored, event, scored]).map((row) => row.event_id)).toEqual(['planned', 'scored']);
   });
 });

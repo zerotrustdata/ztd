@@ -268,9 +268,13 @@ export function assignmentLifecycleEvents(
   assignmentId: string,
   events: LiveEvent[],
 ): LiveEvent[] {
-  return dedupeStreamEvents(events.filter((event) => event.assignment_id === assignmentId)).sort(
-    compareStreamEventsOldestFirst,
-  );
+  // Assignment evidence retains distinct event IDs, including planned/scored
+  // role invocations and unverified/verified results that the live stream folds.
+  const byId = new Map<string, LiveEvent>();
+  for (const event of events) {
+    if (event.assignment_id === assignmentId && !byId.has(event.event_id)) byId.set(event.event_id, event);
+  }
+  return [...byId.values()].sort(compareStreamEventsOldestFirst);
 }
 
 /** Live stream rows, newest first. Progress is restamped in observed_at order

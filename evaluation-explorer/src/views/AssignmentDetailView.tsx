@@ -9,9 +9,9 @@
 
 import type { ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { activityFamilyHasObservedRecords } from '../contract/activity-family';
 import type { AssignmentResult, MetricValue } from '../contract/types';
 import { TOOL_SCORE_DIMENSIONS } from '../contract/types';
+import { AssignmentEvidenceData } from '../components/AssignmentEvidenceData';
 import { AssignmentActivitySummary } from '../components/AssignmentActivitySummary';
 import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../components/AssignmentAuditProofRow';
 import { EvidenceBindingsPanel } from '../components/EvidenceBindingsPanel';
@@ -101,10 +101,6 @@ function formatClockSpeed(value: number): string {
 
 function terminalLabel(status: AssignmentResult['terminal_status']): string {
   return status.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
-}
-
-function hasObservedActivity(activity: AssignmentResult['activity_summary']): boolean {
-  return Boolean(activity && Object.values(activity).some((family) => activityFamilyHasObservedRecords(family)));
 }
 
 function toolActionSummaries(activity: AssignmentResult['activity_summary']): string[] {
@@ -206,9 +202,9 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
         </p>
       ) : null}
 
-      {transcripts.length > 0 ? (
-        <RoleTranscripts transcripts={transcripts} variantId={assignment.variant_id} />
-      ) : hasResponse ? (
+      {assignment.terminal_status === 'completed' ? <FailureTrajectoryMeta assignment={assignment} /> : null}
+      {transcripts.length > 0 ? <RoleTranscripts transcripts={transcripts} variantId={assignment.variant_id} /> : null}
+      {hasResponse && !transcripts.some((transcript) => transcript.response === assignment.model_response) ? (
         <div className="model-response-block">
           <div className="model-response-header">
             <span className="model-response-label">
@@ -219,10 +215,10 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
           </div>
           <pre className="model-response-text"><code>{assignment.model_response}</code></pre>
         </div>
-      ) : toolActions.length > 0 ? (
+      ) : transcripts.length > 0 ? null : toolActions.length > 0 ? (
         <div className="model-response-block model-response-tool-only">
           <div className="model-response-header">
-            <span className="model-response-label">No free-text reply — the model acted via tool calls</span>
+            <span className="model-response-label">Tool activity was published; the response transcript is unavailable</span>
             <span className="model-response-variant">{assignment.variant_id}</span>
           </div>
           <ul className="model-response-tool-list">
@@ -232,11 +228,16 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
           </ul>
           <p className="model-response-tool-verdict">Result: {verdict}</p>
         </div>
-      ) : !assignment.failure_output ? (
+      ) : (
         <p className="model-response-empty">
-          No free-text response or tool activity was captured for this assignment. Result: {verdict}.
+          Response and tool transcript were not published for this assignment. This does not establish that
+          the model produced no response or made no tool calls. Result: {verdict}.
         </p>
-      ) : null}
+      )}
+      {!isFailure && assignment.failure_output ? <div className="model-response-block">
+        <h3>Captured failure output</h3>
+        <pre className="model-response-text"><code>{assignment.failure_output}</code></pre>
+      </div> : null}
     </PanelSection>
   );
 }
@@ -419,9 +420,12 @@ export function AssignmentDetailView() {
     assignmentId
       ? assignmentLifecycleEvents(
           assignmentId,
-          state.events.filter((event) => event.dataset_id === activeDatasetId && event.run_id === runId),
+          (state.assignmentEvents.get(recordKey(activeDatasetId, assignmentId)) ?? []).filter((event) => event.run_id === runId),
         )
       : [],
+  );
+  const sourceRecord = useStoreState((state) =>
+    assignmentId ? state.assignmentSources.get(recordKey(activeDatasetId, assignmentId)) : undefined,
   );
   const siblingAssignments = useStoreState((state) =>
     assignment ? siblingRepetitions(assignment, Array.from(state.assignments.values())) : [],
@@ -439,7 +443,7 @@ export function AssignmentDetailView() {
   const tone = assignmentVerdictTone(assignment.terminal_status, assignment.verification_disposition);
   const category = assignment.scenario_summary?.category ?? assignment.scenario_category;
   const gradeChips = assignmentGradeChips(assignment);
-  const observedActivity = hasObservedActivity(assignment.activity_summary);
+  const publishedActivity = Boolean(assignment.activity_summary);
   const transcripts = assignment.role_transcripts ?? [];
   const hasScores = visibleToolScoreDimensions(assignment).length > 0 || decomposedScores(assignment).length > 0;
   const groups = measureGroups(assignment);
@@ -457,9 +461,9 @@ export function AssignmentDetailView() {
   const chainTargets: Partial<Record<EvidenceChainStep['key'], string>> = {
     scenario: task ? SECTION.task : undefined,
     model: SECTION.trail,
-    tool_calls: transcripts.length > 0 ? SECTION.trail : observedActivity ? SECTION.governance : undefined,
-    policy: observedActivity ? SECTION.governance : undefined,
-    governed_actions: observedActivity ? SECTION.governance : undefined,
+    tool_calls: transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
+    policy: publishedActivity ? SECTION.governance : undefined,
+    governed_actions: publishedActivity ? SECTION.governance : undefined,
     graded: hasScores ? SECTION.scores : task ? SECTION.criteria : undefined,
     verified: hasProof ? SECTION.proof : undefined,
     audit_slice: hasAuditSlice ? SECTION.proof : undefined,
@@ -582,9 +586,10 @@ export function AssignmentDetailView() {
           <TaskProvidedSection task={task} className="assignment-task-provided" />
         </Anchor> : null}
         <ModelResponseSection assignment={assignment} />
-        {observedActivity ? <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor> : null}
+        <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>
         {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" /></Anchor> : null}
         <ScoresSection assignment={assignment} />
+        <AssignmentEvidenceData assignment={assignment} events={lifecycleEvents} source={sourceRecord} />
       </DetailLayout>
     </div>
   );

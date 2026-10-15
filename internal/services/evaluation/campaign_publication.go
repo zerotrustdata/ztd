@@ -248,7 +248,12 @@ func (c *CampaignPublicationCoordinator) buildAssignmentResultPublishRequest(
 	if err != nil {
 		return campaignFeedPublishRequest{}, err
 	}
+	transcripts, err := BuildPublicAssignmentTranscripts(ctx, c.store, assignment, result)
+	if err != nil {
+		return campaignFeedPublishRequest{}, err
+	}
 	extensions := PublicAssignmentRecordExtensions{
+		RoleTranscripts:       transcripts,
 		BenchmarkObservations: benchmark,
 		ResourceSummary:       resources,
 	}
@@ -416,7 +421,12 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 				return 0, err
 			}
 			key := AssignmentVerifiedResultIdempotencyKey(runID, assignment.GetAssignmentId())
+			transcripts, err := BuildPublicAssignmentTranscripts(ctx, c.store, assignment, result)
+			if err != nil {
+				return 0, err
+			}
 			extensions := PublicAssignmentRecordExtensions{
+				RoleTranscripts:       transcripts,
 				BenchmarkObservations: benchmark,
 				ResourceSummary:       resources,
 			}

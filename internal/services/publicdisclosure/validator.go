@@ -318,7 +318,7 @@ func walkStrings(value json.RawMessage) error {
 				continue
 			}
 			if key == "role_transcripts" {
-				if err := validateRoleTranscripts(child); err != nil {
+				if err := ValidateRoleTranscripts(child); err != nil {
 					return err
 				}
 				continue
@@ -355,15 +355,16 @@ func RestrictedModelText(text string) bool {
 	return strings.Contains(text, "BEGIN PRIVATE KEY") || strings.Contains(text, "spiffe://")
 }
 
-type roleTranscript struct {
+// RoleTranscript is the existing bounded public model/tool transcript contract.
+type RoleTranscript struct {
 	Role         string                   `json:"role"`
 	Response     string                   `json:"response,omitempty"`
 	FinishReason string                   `json:"finish_reason,omitempty"`
 	TraceDigest  string                   `json:"trace_digest,omitempty"`
-	ToolCalls    []roleTranscriptToolCall `json:"tool_calls,omitempty"`
+	ToolCalls    []RoleTranscriptToolCall `json:"tool_calls,omitempty"`
 }
 
-type roleTranscriptToolCall struct {
+type RoleTranscriptToolCall struct {
 	ToolName        string `json:"tool_name"`
 	ArgumentsJSON   string `json:"arguments_json,omitempty"`
 	ArgumentsHash   string `json:"arguments_hash,omitempty"`
@@ -374,11 +375,14 @@ type roleTranscriptToolCall struct {
 	ResultRedaction string `json:"result_redaction,omitempty"`
 }
 
-// validateRoleTranscripts enforces the closed role_transcripts schema: known
+// ValidateRoleTranscripts enforces the closed role_transcripts schema: known
 // roles only, digests as SHA-256 hex, identifiers bounded, and every captured
 // model/tool text held to the same rules as model_response.
-func validateRoleTranscripts(raw json.RawMessage) error {
-	var transcripts []roleTranscript
+func ValidateRoleTranscripts(raw json.RawMessage) error {
+	if len(raw) > maxRecordBytes {
+		return fmt.Errorf("role transcript bounds: %w", constants.ErrEvidenceArtifactTooLarge)
+	}
+	var transcripts []RoleTranscript
 	if err := decodeStrict(raw, &transcripts); err != nil {
 		return schemaError(err.Error())
 	}

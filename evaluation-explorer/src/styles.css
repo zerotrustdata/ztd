@@ -2232,6 +2232,7 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
 .evidence-aside .detail-row { grid-template-columns: 1fr; gap: 2px; }
 .evidence-panel dl { margin: 0; }
 .evidence-panel .terminal-pill, .data-table-wrap .terminal-pill, .sibling-list .terminal-pill { padding: 3px 8px; font-size: var(--fs-label); }
+.data-table .terminal-pill { min-width: max-content; white-space: nowrap; overflow-wrap: normal; }
 .evidence-panel .detail-row dd { overflow-wrap: anywhere; }
 .outcome-bar { display: flex; gap: 2px; height: 6px; border-radius: 4px; overflow: hidden; margin: 6px 0; }
 .outcome-segment-ok { background: var(--tone-ok); }
@@ -2870,3 +2871,35 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
   word-break: break-all;
 }
 /* ===== end role transcripts ===== */
+
+.assignment-json,
+.assignment-event-list details {
+  min-width: 0;
+  margin-block: 12px;
+}
+.assignment-json summary,
+.assignment-event-list summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.assignment-json-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block: 10px;
+}
+.assignment-event-list {
+  padding-left: 22px;
+}
+.assignment-event-list time {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--muted);
+}
+.assignment-json .model-response-text,
+.assignment-event-list .model-response-text,
+.transcript-field-label code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

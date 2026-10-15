@@ -241,11 +241,24 @@ func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
 	report.CampaignDigest = spec.GetCampaignDigest()
 	report.CatalogDigest = spec.GetCatalogDigest()
 	report.ModelRegistryDigest = spec.GetModelRegistryDigest()
+	// A verified revision must preserve the transcript added by initial publication.
+	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignments[0].GetAssignmentId(), EvaluationAttemptID: "attempt-verified-transcript", DesignatedRole: "primary", FinalOutput: "Verified revision preserves this response."}
+	traceBody, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(context.Background(), run.GetRunId(), assignments[0].GetAssignmentId(), traceBody))
 	before := len(exporter.records)
 	count, err := coordinator.PublishRunVerification(context.Background(), run.GetRunId(), report)
 	require.NoError(t, err)
 	assert.Greater(t, count, 0)
 	assert.Greater(t, len(exporter.records), before)
+
+	foundTranscript := false
+	for _, record := range exporter.records[before:] {
+		if strings.Contains(record.RecordBytes, trace.FinalOutput) {
+			foundTranscript = true
+		}
+	}
+	require.True(t, foundTranscript, "verified result revision must retain the saved transcript")
 
 	var summary evaluationSummaryRecord
 	for _, record := range exporter.records[len(exporter.records)-count:] {

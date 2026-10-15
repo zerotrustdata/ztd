@@ -57,6 +57,16 @@ Resume a prepared or interrupted run, or catch up publication for an existing ru
 
 The Go `CampaignPublicationCoordinator` in the evaluation service projects canonical campaign state into public-safe explorer records and publishes them through the real `ztd public` publisher. The explorer's TypeScript `campaign-adapter` decodes those envelopes from the mirror. No separate projector script is involved.
 
+## Assignment evidence and publication repair
+
+Assignment Details shows the saved role's final response, every recorded tool call in execution order, exact arguments, resolved commands, tool results, outcomes, and trace digest through the existing bounded `role_transcripts` contract. Tool results start expanded. Distinct legacy response text also remains visible. Publication and JSONL/SQLite exports build transcripts from the digest-checked assignment agent trace; the verified result revision includes the same transcript instead of replacing it with a summary-only record. Missing referenced traces, digest failures, restricted transcript text, and oversized records fail publication rather than silently dropping the evidence.
+
+The page shows every activity family, distinguishing zero observed records, unavailable evidence, and scenario inapplicability. Assignment event history retains every distinct loaded event ID independently of the Live page's 500-event buffer and its grouping of planned/scored invocations or result/verified revisions. The public mirror's own retention still bounds what history can be loaded. “Assignment feed events” exposes each loaded event's fields and downloads the event array. “Published assignment data” exposes the normalized assignment and the validated original public source record, including projection fields that summary components do not display. These public feed records and the existing feed-only audit slice are not the complete Operator audit ledger.
+
+Older signed records do not gain transcripts when the frontend is rebuilt. After deploying the rebuilt binary, republish affected runs from their retained source evidence with `./ztd eval runs publish <run-id> --force`; confirm the latest result and verified-result records contain `role_transcripts`. This appends new signed projections and does not rewrite source evidence or old signed batches. A genuinely absent historical trace cannot be reconstructed from token counts. The page reports that the transcript was not published, without claiming the model generated no output.
+
+The current disclosure policy still excludes private prompts, intermediate reasoning, runtime identity metadata, receipts, anchors, and provider payloads. Full synthetic execution evidence requires a separately reviewed expansion of that policy and an artifact path for evidence larger than the public record limit; the transcript repair does not remove the existing disclosure validator.
+
 ## Optional disposable public-feed reset
 
 This reset removes the host `.ztd/public-feed` and `.ztd/public-mirror` state, creates a new local public signing chain, and republishes the selected seed. It does not remove evaluation report roots. Obtain explicit owner confirmation immediately before running it, then use one of:

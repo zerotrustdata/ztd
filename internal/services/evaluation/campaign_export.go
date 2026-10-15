@@ -25,6 +25,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -120,6 +121,7 @@ type CampaignExportAssignmentRecord struct {
 	RecordType            string                                   `json:"record_type"`
 	Projection            *evalv1.PublicAssignmentResultProjection `json:"projection"`
 	BenchmarkObservations *PublicBenchmarkObservations             `json:"benchmark_observations,omitempty"`
+	RoleTranscripts       []publicdisclosure.RoleTranscript        `json:"role_transcripts,omitempty"`
 	ResourceSummary       *PublicResourceSummary                   `json:"resource_summary,omitempty"`
 }
 
@@ -145,11 +147,12 @@ func (record CampaignExportAssignmentRecord) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("evaluation: marshal assignment export projection: %w", err)
 	}
 	type exportRecord struct {
-		SchemaVersion         string                       `json:"schema_version"`
-		RecordType            string                       `json:"record_type"`
-		Projection            json.RawMessage              `json:"projection"`
-		BenchmarkObservations *PublicBenchmarkObservations `json:"benchmark_observations,omitempty"`
-		ResourceSummary       json.RawMessage              `json:"resource_summary,omitempty"`
+		SchemaVersion         string                            `json:"schema_version"`
+		RecordType            string                            `json:"record_type"`
+		Projection            json.RawMessage                   `json:"projection"`
+		BenchmarkObservations *PublicBenchmarkObservations      `json:"benchmark_observations,omitempty"`
+		RoleTranscripts       []publicdisclosure.RoleTranscript `json:"role_transcripts,omitempty"`
+		ResourceSummary       json.RawMessage                   `json:"resource_summary,omitempty"`
 	}
 	resource, err := marshalExportResourceSummary(record.ResourceSummary)
 	if err != nil {
@@ -161,16 +164,18 @@ func (record CampaignExportAssignmentRecord) MarshalJSON() ([]byte, error) {
 		Projection:            projection,
 		BenchmarkObservations: record.BenchmarkObservations,
 		ResourceSummary:       resource,
+		RoleTranscripts:       record.RoleTranscripts,
 	})
 }
 
 func (record *CampaignExportAssignmentRecord) UnmarshalJSON(body []byte) error {
 	var raw struct {
-		SchemaVersion         string                       `json:"schema_version"`
-		RecordType            string                       `json:"record_type"`
-		Projection            json.RawMessage              `json:"projection"`
-		BenchmarkObservations *PublicBenchmarkObservations `json:"benchmark_observations,omitempty"`
-		ResourceSummary       json.RawMessage              `json:"resource_summary,omitempty"`
+		SchemaVersion         string                            `json:"schema_version"`
+		RecordType            string                            `json:"record_type"`
+		Projection            json.RawMessage                   `json:"projection"`
+		BenchmarkObservations *PublicBenchmarkObservations      `json:"benchmark_observations,omitempty"`
+		RoleTranscripts       []publicdisclosure.RoleTranscript `json:"role_transcripts,omitempty"`
+		ResourceSummary       json.RawMessage                   `json:"resource_summary,omitempty"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return err
@@ -188,6 +193,7 @@ func (record *CampaignExportAssignmentRecord) UnmarshalJSON(body []byte) error {
 	record.Projection = projection
 	record.BenchmarkObservations = raw.BenchmarkObservations
 	record.ResourceSummary = resource
+	record.RoleTranscripts = raw.RoleTranscripts
 	return nil
 }
 
@@ -543,7 +549,11 @@ func (e *CampaignExporter) buildAssignmentExportRecord(
 	if verified {
 		verificationStatus = "verified"
 	}
-	record := CampaignExportAssignmentRecord{SchemaVersion: campaignExportSchemaVersion, RecordType: publicMessageTypeAssignmentResult}
+	transcripts, err := BuildPublicAssignmentTranscripts(ctx, store, assignment, result)
+	if err != nil {
+		return CampaignExportAssignmentRecord{}, err
+	}
+	record := CampaignExportAssignmentRecord{SchemaVersion: campaignExportSchemaVersion, RecordType: publicMessageTypeAssignmentResult, RoleTranscripts: transcripts}
 	artifacts, artifactsErr := store.LoadScenarioArtifacts(ctx, run.GetCampaignBinding().GetCampaignId(), catalog)
 	if artifactsErr == nil {
 		scenario, resolveErr := ResolvePublicScenarioContext(ctx, store, run, catalog, assignment, artifacts)
@@ -552,6 +562,7 @@ func (e *CampaignExporter) buildAssignmentExportRecord(
 				Release:    release,
 				Assignment: assignment, Result: result, ScenarioContext: scenario,
 				ObservationReader: observationReader, VerificationStatus: verificationStatus,
+				Extensions:           PublicAssignmentRecordExtensions{RoleTranscripts: transcripts},
 				VerificationMetadata: exportVerificationMetadata(report, verified),
 			})
 			if composeErr != nil {

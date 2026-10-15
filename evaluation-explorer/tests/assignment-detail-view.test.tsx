@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { AssignmentResult, EvaluationSummary, SnapshotRecord } from '../src/contract/types';
+import type { AssignmentResult, EvaluationSummary, SnapshotRecord, LiveEvent } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { AssignmentDetailView } from '../src/views/AssignmentDetailView';
 import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
@@ -53,8 +53,8 @@ function assignmentResult(partial: Partial<AssignmentResult> = {}): AssignmentRe
   };
 }
 
-function renderAssignment(records: AssignmentResult[]): void {
-  evalStore.loadFixtures([evaluationSummary(), ...records] as SnapshotRecord[], []);
+function renderAssignment(records: AssignmentResult[], events: LiveEvent[] = []): void {
+  evalStore.loadFixtures([evaluationSummary(), ...records] as SnapshotRecord[], events);
   render(
     <MemoryRouter initialEntries={[`/evaluations/${DATASET_ID}/${RUN_ID}/assignments/${ASSIGNMENT_ID}`]}>
       <Routes>
@@ -97,7 +97,7 @@ describe('AssignmentDetailView', () => {
     expect(screen.queryByText('Stage timeline not published for this assignment.')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Resource observations' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Assignment context' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'What happened' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What happened' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Timeline' })).not.toBeInTheDocument();
   });
 
@@ -310,7 +310,7 @@ describe('AssignmentDetailView', () => {
     ]);
 
     expect(screen.getByRole('heading', { name: 'What the model did' })).toBeInTheDocument();
-    expect(screen.getByText('No free-text reply — the model acted via tool calls')).toBeInTheDocument();
+    expect(screen.getByText('Tool activity was published; the response transcript is unavailable')).toBeInTheDocument();
     expect(screen.getByText(/Considered but did not select run_commands_with_operator — Pass/)).toBeInTheDocument();
     expect(screen.getByText(/Result: Completed · not verified/)).toBeInTheDocument();
     expect(screen.queryByText(/No free-text response or tool activity was captured/)).not.toBeInTheDocument();
@@ -329,7 +329,7 @@ describe('AssignmentDetailView', () => {
     // Missingness is stated once, inside the failure diagnosis, not repeated in the hero.
     expect(screen.getAllByText('no_scored_calls')).toHaveLength(1);
     expect(screen.getByRole('alert')).toHaveTextContent('no_scored_calls');
-    expect(screen.getByText(/No free-text response or tool activity was captured/)).toBeInTheDocument();
+    expect(screen.getByText(/Response and tool transcript were not published/)).toBeInTheDocument();
     expect(screen.getByText(/Result: Model failed\./)).toBeInTheDocument();
   });
 
@@ -638,14 +638,15 @@ describe('AssignmentDetailView', () => {
       expect(screen.getByText('Tool calls (1)')).toBeInTheDocument();
       expect(screen.getByText('read_file')).toBeInTheDocument();
       expect(screen.getByText(/"path": "\/tmp\/retry.conf"/)).toBeInTheDocument();
-      expect(screen.getByText(`sha256 ${'b'.repeat(12)}…`)).toBeInTheDocument();
+      expect(screen.getByText(`sha256 ${'b'.repeat(64)}`)).toBeInTheDocument();
       expect(screen.getByText('cat /tmp/retry.conf')).toBeInTheDocument();
       expect(screen.getByText(/Succeeded/)).toBeInTheDocument();
       expect(screen.getByText(/"content": "retries=3"/)).toBeInTheDocument();
+      expect(document.querySelector('.transcript-result')).toHaveAttribute('open');
       expect(screen.getByText('retries=3')).toBeInTheDocument();
       expect(screen.getByText('c'.repeat(64))).toBeInTheDocument();
-      // Transcript supersedes the legacy single-response block; single role gets no role heading.
-      expect(screen.queryByText('legacy response')).not.toBeInTheDocument();
+      // Preserve differing legacy text alongside the transcript; neither source is hidden.
+      expect(screen.getByText('legacy response')).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Primary' })).not.toBeInTheDocument();
     });
 
@@ -689,5 +690,33 @@ describe('AssignmentDetailView', () => {
       expect(screen.getByText('legacy response')).toBeInTheDocument();
       expect(screen.queryByText(/Tool calls \(/)).not.toBeInTheDocument();
     });
+  });
+});
+
+
+describe('assignment evidence completeness', () => {
+  it('identifies unpublished responses without claiming the model produced nothing', () => {
+    renderAssignment([assignmentResult()]);
+    expect(screen.getByText(/Response and tool transcript were not published/)).toBeInTheDocument();
+    expect(screen.queryByText(/No free-text response or tool activity was captured/)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Published assignment data' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download assignment JSON' })).toHaveAttribute('download', 'assignment-1.json');
+  });
+});
+
+
+describe('assignment event evidence', () => {
+  it('renders an older assignment event after later assignments fill the live buffer', () => {
+    const events: LiveEvent[] = Array.from({ length: 505 }, (_, index) => ({
+      schema_version: '1.3.0', kind: 'stage_updated', dataset_id: DATASET_ID, run_id: RUN_ID,
+      assignment_id: index === 0 ? ASSIGNMENT_ID : `other-assignment-${index}`, event_id: `event-${index}`,
+      quality_state: 'live_in_progress', observed_at: new Date(1700000000000 + index).toISOString(),
+      lifecycle_status: 'running', stage_label: index === 0 ? 'Original model invocation' : 'Later assignment', completed: 0, total: 505,
+    }));
+    renderAssignment([assignmentResult()], events);
+    expect(evalStore.getState().events.some((event) => event.event_id === 'event-0')).toBe(false);
+    expect(document.querySelector('.assignment-event-list')).toHaveTextContent('Original model invocation');
+    expect(document.querySelector('.assignment-event-list')).not.toHaveTextContent('Later assignment');
+    expect(screen.getByRole('link', { name: 'Download feed events JSON' })).toBeInTheDocument();
   });
 });

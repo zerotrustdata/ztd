@@ -37,7 +37,7 @@ function ToolCall({ call, index }: { call: RoleTranscriptToolCall; index: number
         <div className="transcript-field">
           <div className="transcript-field-label">
             Arguments
-            {call.arguments_hash ? <code title="sha256 of the exact arguments recorded in the trace">sha256 {call.arguments_hash.slice(0, 12)}…</code> : null}
+            {call.arguments_hash ? <code title="sha256 of the exact arguments recorded in the trace">sha256 {call.arguments_hash}</code> : null}
             <CopyButton text={call.arguments_json} label={`${call.tool_name} arguments`} />
           </div>
           <pre className="model-response-text"><code>{prettyJSON(call.arguments_json)}</code></pre>
@@ -45,18 +45,18 @@ function ToolCall({ call, index }: { call: RoleTranscriptToolCall; index: number
       ) : null}
       {call.command ? (
         <div className="transcript-field">
-          <div className="transcript-field-label">Resolved command</div>
+          <div className="transcript-field-label">Resolved command<CopyButton text={call.command} label={`${call.tool_name} command`} /></div>
           <pre className="model-response-text"><code>{call.command}</code></pre>
         </div>
       ) : null}
       {call.result_json || call.result_redaction ? (
-        <details className="transcript-field transcript-result">
+        <details className="transcript-field transcript-result" open>
           <summary className="transcript-field-label">
             Tool result
             {call.result_redaction === 'truncated' ? <small>truncated for publication; full result bound by trace digest</small> : null}
             {call.result_redaction === 'restricted' ? <small>withheld: restricted content</small> : null}
           </summary>
-          {call.result_json ? <pre className="model-response-text"><code>{prettyJSON(call.result_json)}</code></pre> : null}
+          {call.result_json ? <><CopyButton text={call.result_json} label={`${call.tool_name} result`} /><pre className="model-response-text"><code>{prettyJSON(call.result_json)}</code></pre></> : null}
         </details>
       ) : null}
     </li>
@@ -89,7 +89,7 @@ function Transcript({ transcript, variantId, showRole }: { transcript: RoleTrans
         </div>
       ) : null}
       {toolCalls.length === 0 && !transcript.response ? (
-        <p className="model-response-empty">No response text or tool calls were recorded for this role.</p>
+        <p className="model-response-empty">This published role transcript contains no response text or tool calls.</p>
       ) : null}
       {transcript.finish_reason || transcript.trace_digest ? (
         <p className="transcript-provenance">

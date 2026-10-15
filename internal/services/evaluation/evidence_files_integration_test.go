@@ -361,16 +361,18 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	}
 	assert.True(t, foundPrompt, "the frozen prompt round-trips through the encrypted store")
 
-	// Agent trace: model text, tool arguments, command, tool result, final answer.
+	// Agent traces keep private model-call text and error context encrypted.
+	// Only the existing allowlisted model/tool transcript is public on export.
+	publicAnswer := "Public synthetic checkout diagnosis."
 	trace := &AgentTrace{
 		RunID: req.RunID, AssignmentID: completed.GetAssignmentId(), EvaluationAttemptID: "attempt-1", CampaignID: campaignID,
 		ScenarioID: "scenario-1", DesignatedRole: "primary", ServedModelTag: "qwen3:4b",
 		ModelCalls: []AgentModelCall{{ProviderAttemptID: "pa-1", TransactionID: "tx-1", Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "thinking about " + evidenceMarker}},
 		ToolCalls: []AgentToolCall{{
-			CallID: "tx-2", ModelCallID: "pa-1", ToolName: "run_commands_with_operator", ArgumentsJSON: `{"command":"cat ` + evidenceMarker + `"}`,
-			Command: "cat " + evidenceMarker, ResultJSON: `{"stdout":"` + evidenceMarker + `"}`, Error: "no such file " + evidenceMarker, IsOperatorTool: true, LoopTurn: 1,
+			CallID: "tx-2", ModelCallID: "pa-1", ToolName: "run_commands_with_operator", ArgumentsJSON: `{"command":"cat public-synthetic.txt"}`,
+			Command: "cat public-synthetic.txt", ResultJSON: `{"stdout":"public synthetic evidence"}`, Error: "no such file " + evidenceMarker, IsOperatorTool: true, LoopTurn: 1,
 		}},
-		FinalOutput:     "the answer is " + evidenceMarker,
+		FinalOutput:     publicAnswer,
 		ProviderFailure: string(ClassifyExecutionFailure(fmt.Errorf("model echoed %s", evidenceMarker))),
 	}
 	traceBody, err := SealAgentTrace(trace)
@@ -391,13 +393,16 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(exchangeBody), evidenceMarker, "the exchange evidence round-trips through the encrypted store")
 
-	// The export bundle is public by design and must carry none of it.
+	// The export carries allowlisted public transcripts; private model-call
+	// text, errors, prompts, grading details, and exchange evidence stay sealed.
 	exportReport, err := NewCampaignExporter(func() time.Time { return time.Unix(1_700_000_100, 0).UTC() }).ExportRun(ctx, store, rt.files, req.RunID, constants.EvaluationCampaignExportDirname)
 	require.NoError(t, err)
 	require.NotEmpty(t, exportReport.Files)
 	exportedAssignments, err := rt.raw.ReadFile(ctx, filepath.Join(constants.EvaluationCampaignExportDirname, constants.EvaluationAssignmentsJSONLFilename))
 	require.NoError(t, err)
 	assert.Contains(t, string(exportedAssignments), completed.GetAssignmentId(), "the export is a readable bundle, not ciphertext")
+	assert.Contains(t, string(exportedAssignments), publicAnswer, "allowlisted final response is available in the public export")
+	assert.Contains(t, string(exportedAssignments), "public synthetic evidence", "allowlisted tool result is available in the public export")
 
 	scanned := assertNoPlaintextAnywhere(t, rt.raw.Resolve(""), evidenceMarker, prompt)
 	assert.Greater(t, scanned, 10, "the walk covered the evaluation records, vault, and export")

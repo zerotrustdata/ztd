@@ -2,8 +2,8 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { EvalStore } from '../src/state/store';
-import { allFixtureSnapshotRecords, fixtureLiveEvents } from '../src/fixtures/fixtures';
+import { EvalStore, recordKey } from '../src/state/store';
+import { allFixtureSnapshotRecords, fixtureLiveEvents, fixtureCampaignResultEnvelope } from '../src/fixtures/fixtures';
 import { LIVE_EVENT_STORE_LIMIT } from '../src/constants';
 import type { LiveEvent } from '../src/contract/types';
 
@@ -634,5 +634,44 @@ describe('EvalStore', () => {
     expect(indexed?.native_result?.scenarios).toHaveLength(2);
     expect(indexed?.native_result?.scenarios.flatMap((scenario) => scenario.verdicts)).toHaveLength(2);
     expect(store.getAssignments('native-run-1', 'native-core-execution-boundary')).toHaveLength(0);
+  });
+});
+
+
+describe('assignment history retention', () => {
+  it('keeps assignment events after the live feed rolls past 500 records and resets them with the dataset', () => {
+    const store = new EvalStore();
+    const events: LiveEvent[] = Array.from({ length: LIVE_EVENT_STORE_LIMIT + 5 }, (_, index) => ({
+      schema_version: '1.3.0', kind: 'stage_updated', dataset_id: 'ds-history',
+      run_id: 'run-history', assignment_id: 'assignment-history', role: 'primary', event_id: `history-${index}`,
+      quality_state: 'live_in_progress', observed_at: new Date(1700000000000 + index).toISOString(),
+      lifecycle_status: 'running', completed: 0, total: 1,
+    }));
+    store.loadFixtures([], events);
+    expect(store.getState().events).toHaveLength(1);
+    expect(store.getState().assignmentEvents.get(recordKey('ds-history', 'assignment-history'))).toHaveLength(events.length);
+    store.loadFixtures([], events.map((event, index) => ({ ...event, assignment_id: `assignment-${index}` })));
+    expect(store.getState().events).toHaveLength(LIVE_EVENT_STORE_LIMIT);
+    expect(store.getState().assignmentEvents.get(recordKey('ds-history', 'assignment-0'))).toHaveLength(1);
+    store.loadFixtures([], []);
+    expect(store.getState().assignmentEvents.size).toBe(0);
+  });
+});
+
+
+describe('assignment source evidence', () => {
+  it('preserves the validated source envelope and rejects unknown fields before indexing source data', () => {
+    const store = new EvalStore();
+    const record_bytes = JSON.stringify(fixtureCampaignResultEnvelope);
+    store.acceptProjection({ sequence: 1, record_type: 'projection', record_bytes });
+    expect(store.getState().assignments.size).toBe(1);
+    expect([...store.getState().assignmentSources.values()][0]?.record_bytes).toBe(record_bytes);
+    store.acceptProjection({ sequence: 2, record_type: 'projection', record_bytes: JSON.stringify({ ...fixtureCampaignResultEnvelope,
+      record: { ...fixtureCampaignResultEnvelope.record, private_prompt: 'must never be indexed' },
+    }) });
+    expect(store.getState().errors.length).toBeGreaterThan(0);
+    expect([...store.getState().assignmentSources.values()][0]?.record_bytes).toBe(record_bytes);
+    store.loadFixtures([], []);
+    expect(store.getState().assignmentSources.size).toBe(0);
   });
 });
