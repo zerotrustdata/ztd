@@ -268,7 +268,7 @@ func TestConformanceVerify_FlippedByteInRealSealedRecordIsDigestMismatchVerdict(
 	// The same bytes under a locked vault are a locked-vault error, never a tamper verdict.
 	locked, err := vault.NewVault(&vault.VaultConfig{FileSvc: raw, Logger: testutil.NewTestLogger()})
 	require.NoError(t, err)
-	lockedFiles, err := evaluation.NewEvidenceFileService(raw, func() (evaluation.EvidenceVault, error) { return locked, nil })
+	lockedFiles, err := evaluation.NewEvidenceFileService(raw, func(fs.RuntimeFileService) (evaluation.EvidenceVault, error) { return locked, nil })
 	require.NoError(t, err)
 	rig.deps.fileSvcFactory = func(string, *slog.Logger) (fs.RuntimeFileService, error) { return lockedFiles, nil }
 	out, err = rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)

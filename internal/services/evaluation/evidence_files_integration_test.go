@@ -47,14 +47,27 @@ type sealedRuntime struct {
 
 func newSealedRuntime(t *testing.T) *sealedRuntime {
 	t.Helper()
+	return newSealedRuntimeWithKeyring(t, keystoretest.NewMemoryKeyring())
+}
+
+// newSealedRuntimeWithKeyring is newSealedRuntime over a given OS key store, so
+// several runtimes share one as the runtimes on a host do.
+func newSealedRuntimeWithKeyring(t *testing.T, keyring keystore.Keyring) *sealedRuntime {
+	t.Helper()
 	raw, err := rtfs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
 	require.NoError(t, raw.CreateRuntimeTree(context.Background()))
-	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{Keyring: keystoretest.NewMemoryKeyring()})
+	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{Keyring: keyring})
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
-	files, err := NewEvidenceFileService(raw, func() (EvidenceVault, error) { return ks.OpenVault() })
+	files, err := NewEvidenceFileService(raw, func(keys rtfs.RuntimeFileService) (EvidenceVault, error) {
+		keyStore, err := keystore.NewWithFS(keys, testutil.NewTestLogger(), keystore.Options{Keyring: keyring})
+		if err != nil {
+			return nil, err
+		}
+		return keyStore.OpenVault()
+	})
 	require.NoError(t, err)
 	return &sealedRuntime{raw: raw, files: files}
 }
@@ -152,7 +165,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 
 	t.Run("a locked vault refuses to write and writes nothing", func(t *testing.T) {
 		rt := newSealedRuntime(t)
-		locked, err := NewEvidenceFileService(rt.raw, func() (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
+		locked, err := NewEvidenceFileService(rt.raw, func(rtfs.RuntimeFileService) (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
 		require.NoError(t, err)
 
 		err = locked.WriteFile(ctx, sealedPath, []byte(evidenceMarker), constants.PermFilePrivate)
@@ -166,7 +179,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 	t.Run("a locked vault refuses to read", func(t *testing.T) {
 		rt := newSealedRuntime(t)
 		require.NoError(t, rt.files.WriteFile(ctx, sealedPath, []byte(evidenceMarker), constants.PermFilePrivate))
-		locked, err := NewEvidenceFileService(rt.raw, func() (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
+		locked, err := NewEvidenceFileService(rt.raw, func(rtfs.RuntimeFileService) (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
 		require.NoError(t, err)
 
 		body, err := locked.ReadFile(ctx, sealedPath)
@@ -177,7 +190,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 
 	t.Run("an unavailable vault is a typed error, never a plaintext write", func(t *testing.T) {
 		rt := newSealedRuntime(t)
-		unavailable, err := NewEvidenceFileService(rt.raw, func() (EvidenceVault, error) { return nil, constants.ErrVaultNotInitialized })
+		unavailable, err := NewEvidenceFileService(rt.raw, func(rtfs.RuntimeFileService) (EvidenceVault, error) { return nil, constants.ErrVaultNotInitialized })
 		require.NoError(t, err)
 
 		err = unavailable.WriteFile(ctx, sealedPath, []byte(evidenceMarker), constants.PermFilePrivate)
@@ -393,9 +406,11 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 }
 
 // TestEvalBackup_CarriesCiphertextOnly proves a backup leaves the runtime in
-// its encrypted form and restores into a runtime that holds the same vault.
+// its encrypted form, key chain included, and restores into any runtime whose
+// OS key store holds the master key that sealed that key chain.
 func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
-	rt := newSealedRuntime(t)
+	keyring := keystoretest.NewMemoryKeyring()
+	rt := newSealedRuntimeWithKeyring(t, keyring)
 	ctx := context.Background()
 	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
 	require.NoError(t, rt.files.WriteFile(ctx, recordPath, []byte(`{"detail":"`+evidenceMarker+`"}`), constants.PermFilePrivate))
@@ -414,10 +429,21 @@ func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(restored), evidenceMarker)
 
-	// A runtime with a different vault cannot read the restored evidence.
+	// A reinstalled runtime has a new vault on the same host key store: the
+	// restore opens the snapshot's vault and reseals the evidence under its own.
+	reinstalled := newSealedRuntimeWithKeyring(t, keyring)
+	_, err = NewEvalBackup(reinstalled.files, time.Now).Restore(ctx, report.SnapshotDir, false)
+	require.NoError(t, err)
+	restored, err = reinstalled.files.ReadFile(ctx, recordPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(restored), evidenceMarker)
+	assertNoPlaintextAnywhere(t, reinstalled.raw.Resolve(""), evidenceMarker)
+
+	// A host whose key store never held the master key cannot open the snapshot.
 	other := newSealedRuntime(t)
 	_, err = NewEvalBackup(other.files, time.Now).Restore(ctx, report.SnapshotDir, false)
+	require.True(t, errors.Is(err, constants.ErrEvaluationBackupKeyChainInvalid), "a key chain the key store cannot open restores nothing: %v", err)
+	exists, err := other.files.FileExists(ctx, recordPath)
 	require.NoError(t, err)
-	_, err = other.files.ReadFile(ctx, recordPath)
-	require.True(t, errors.Is(err, constants.ErrEvaluationEvidenceDecryptFailed), "evidence backed up under one vault is unreadable under another")
+	assert.False(t, exists)
 }

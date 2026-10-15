@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
@@ -59,14 +60,30 @@ func setupRunEnv(t *testing.T) *runEnv {
 	paths.Host = server.URL
 	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
 	require.NoError(t, err)
-	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, Keyring: keystoretest.NewMemoryKeyring()}
+	keyring := keystoretest.NewMemoryKeyring()
+	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, Keyring: keyring}
+	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, ks.Initialize())
+	require.NoError(t, ks.InitVault())
 
 	control := newFakeProcessControl()
 	fixedNow := time.Unix(1789657337, 0).UTC()
 	deps := nativeEvalDeps{
 		configLoader: func(string) (*config.Config, error) { return cfg, nil },
 		fileSvcFactory: func(string, *slog.Logger) (fs.RuntimeFileService, error) {
-			return fs.NewRuntimeFileService(root, slog.Default())
+			files, err := fs.NewRuntimeFileService(root, slog.Default())
+			if err != nil {
+				return nil, err
+			}
+			return evaluation.NewEvidenceFileService(files, func(keys fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
+				keyStore, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, keys)
+				if err != nil {
+					return nil, err
+				}
+				return keyStore.OpenVault()
+			})
 		},
 		createRuntimeTree: func(context.Context, fs.RuntimeFileService) error { return nil },
 		clientFactory:     harnessclient.New,

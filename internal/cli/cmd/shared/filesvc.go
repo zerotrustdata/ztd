@@ -26,7 +26,8 @@ var NewFileSvc = fs.NewRuntimeFileService
 // rest with the runtime vault, which is opened from the runtime key store the
 // first time a record is read or written; a missing or locked vault fails the
 // read or write and there is no plaintext fallback. Commands that never touch
-// evaluation evidence never open the vault.
+// evaluation evidence never open the vault. A restore opens a backup
+// snapshot's vault the same way, from the key chain the snapshot carries.
 var NewEvidenceFileSvc = EvidenceFileSvcFactory(keystore.Options{})
 
 // EvidenceFileSvcFactory returns an evidence file service factory whose vault
@@ -38,8 +39,8 @@ func EvidenceFileSvcFactory(opts keystore.Options) func(baseDir string, logger *
 		if err != nil {
 			return nil, err
 		}
-		return evaluation.NewEvidenceFileService(files, func() (evaluation.EvidenceVault, error) {
-			ks, err := keystore.NewWithFS(files, logger, opts)
+		return evaluation.NewEvidenceFileService(files, func(keys fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
+			ks, err := keystore.NewWithFS(keys, logger, opts)
 			if err != nil {
 				return nil, fmt.Errorf("%w: open key store: %w", constants.ErrVaultKeyReadFailed, err)
 			}

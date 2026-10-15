@@ -55,7 +55,7 @@ func TestCampaignExporter_ReleaseProvenanceMatchesTheCampaign(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.release, report.Release)
 			assert.Equal(t, tc.basis, report.ReleaseBasis)
-			body, err := f.files.ReadFile(ctx, filepath.Join(report.OutputDir, constants.EvaluationRunSummaryFilename))
+			body, err := SealedFiles(f.files).ReadFile(ctx, filepath.Join(report.OutputDir, constants.EvaluationRunSummaryFilename))
 			require.NoError(t, err)
 			var summary struct {
 				Release        string       `json:"release"`

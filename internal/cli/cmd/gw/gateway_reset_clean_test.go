@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 )
 
 func TestGatewayCleanCmd_ConfirmYesProceedsPastPrompt(t *testing.T) {
@@ -327,7 +328,8 @@ func TestGatewayCleanCmd_OffersBackupBeforeArchiving(t *testing.T) {
 		{name: "skip-backup opts out", skipBackup: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+			keyring := keystoretest.NewMemoryKeyring()
+			fileSvc, cfg := cmdtest.NewEvidenceCmdTestEnvWithKeyring(t, keyring)
 			evidence := constants.EvaluationDataPath + "/" + constants.EvaluationRunsDirname + "/run-1/report.json"
 			require.NoError(t, fileSvc.WriteFile(context.Background(), evidence, []byte(`{"ok":true}`), constants.PermFilePrivate))
 			cmd := gatewayCleanCmdWithConfig(
@@ -349,8 +351,8 @@ func TestGatewayCleanCmd_OffersBackupBeforeArchiving(t *testing.T) {
 			snapshots, _ := filepath.Glob(filepath.Join(backupDir, constants.EvaluationBackupDirPrefix+"*"))
 			if tc.wantBackup {
 				require.Len(t, snapshots, 1)
-				// Restore into a fresh runtime so the check holds for any snapshot layout.
-				fresh, _ := cmdtest.NewCmdTestEnv(t)
+				// Restore into a fresh runtime with its own vault on the same host key store.
+				fresh, _ := cmdtest.NewEvidenceCmdTestEnvWithKeyring(t, keyring)
 				_, err := evaluation.NewEvalBackup(fresh, time.Now).Restore(context.Background(), snapshots[0], false)
 				require.NoError(t, err)
 				restored, err := fresh.ReadFile(context.Background(), evidence)

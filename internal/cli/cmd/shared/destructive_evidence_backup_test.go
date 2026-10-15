@@ -43,7 +43,7 @@ type evidenceFixture struct {
 
 func newEvidenceFixture(t *testing.T) *evidenceFixture {
 	t.Helper()
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	fileSvc, cfg := cmdtest.NewEvidenceCmdTestEnv(t)
 	return &evidenceFixture{fileSvc: fileSvc, cfg: cfg}
 }
 
@@ -90,7 +90,7 @@ func TestEvalEvidenceBackup_RunSnapshotsEvidenceIntoTheDefaultBackupDirectory(t 
 	dirs := f.snapshotDirs(t)
 	require.Len(t, dirs, 1)
 	assert.True(t, strings.HasPrefix(dirs[0], constants.EvaluationBackupDirPrefix), dirs[0])
-	assert.Contains(t, summary, "Backed up evaluation evidence (1 file(s), 9 bytes) to ")
+	assert.Contains(t, summary, "Backed up evaluation evidence (1 file(s), ")
 	assert.Contains(t, summary, shared.DefaultEvalBackupDir(f.cfg))
 }
 

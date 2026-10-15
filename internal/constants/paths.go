@@ -213,6 +213,16 @@ const (
 	// no platform stores the master key in the clear.
 	MasterKeyDPAPIFilename    = ".master_key.dpapi"
 	MasterKeySSHAgentFilename = ".master_key.ssh-agent"
+
+	// Runtime-relative vault key chain: the vault header, the vault key sealed
+	// under the master key, and the sealed master key blob a Windows DPAPI or
+	// Linux ssh-agent key store keeps in the secrets directory. With the OS key
+	// store (or the user's SSH key) they open the runtime vault; none holds key
+	// material in the clear.
+	VaultHeaderRelPath       = VaultDirname + "/" + VaultHeaderFilename
+	VaultKeyRelPath          = SecretsDirname + "/" + SecretsFileVaultKey
+	MasterKeyDPAPIRelPath    = SecretsDirname + "/" + MasterKeyDPAPIFilename
+	MasterKeySSHAgentRelPath = SecretsDirname + "/" + MasterKeySSHAgentFilename
 )
 
 // Per-user ssh-agent sockets that systemd user units serve under
