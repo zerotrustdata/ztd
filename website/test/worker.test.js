@@ -360,7 +360,8 @@ test('release pages answer HEAD without a body and reject other methods', async 
   assert.equal(post.headers.get('allow'), 'GET, HEAD');
 });
 
-test('a malformed manifest or a missing latest manifest is a 503, never a partial page', async () => {
+test('a malformed manifest or a missing latest manifest is a 503, never a partial page', async t => {
+  t.mock.method(console, 'error', () => {});
   const cases = {
     malformed: { ...RELEASE_SETS, 'v2.3.2/ztd-binaries.json': '{not json' },
     wrongVersion: { ...RELEASE_SETS, 'v2.3.2/ztd-binaries.json': manifest('2.3.1') },
