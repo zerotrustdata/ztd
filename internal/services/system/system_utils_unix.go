@@ -119,9 +119,7 @@ func GetDiskTotalGB() float64 {
 	return math.Round(float64(total)/(1024*1024*1024)*10) / 10
 }
 
-func GetEnvironmentDetails(lang, term, tz string) models.HeartbeatEnvironment {
-	pwd, _ := os.Getwd()
-
+func GetEnvironmentDetails(pwd, lang, term, tz string) models.HeartbeatEnvironment {
 	initSystem := detectInitSystem()
 
 	return models.HeartbeatEnvironment{

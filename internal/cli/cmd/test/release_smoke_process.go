@@ -115,10 +115,15 @@ func (p *smokeOwnedProcess) closeLogs() {
 
 // wait blocks until the owned process exits or ctx ends. When ctx ends first
 // the process group is stopped before the error is returned, so cancellation
-// never leaves an owned child behind.
+// never leaves an owned child behind. When the process exits and nothing else
+// remains in its group, the log handles are released immediately; a group that
+// outlives its leader (gw start leaving a Gateway) keeps them until stop.
 func (o *smokeProcessOwner) wait(ctx context.Context, p *smokeOwnedProcess) error {
 	select {
 	case <-p.exited:
+		if !p.group.exists() {
+			p.closeLogs()
+		}
 		if p.waitErr != nil {
 			return fmt.Errorf("release smoke: %s exited: %w", p.name, p.waitErr)
 		}

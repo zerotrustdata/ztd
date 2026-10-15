@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/security"
@@ -316,6 +317,11 @@ func TestZtdCommandFailurePropagatesWithExitCode(t *testing.T) {
 	}
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: testutil.TempDir(t), ZtdBin: bin})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
+	t.Cleanup(func() {
+		if err := r.owner.stopAll(2 * time.Second); err != nil {
+			t.Errorf("stop owned processes: %v", err)
+		}
+	})
 	_, err := r.ztd(context.Background(), "always-fails", r.opts.RunDir, args...)
 	if err == nil {
 		t.Fatal("expected command failure")

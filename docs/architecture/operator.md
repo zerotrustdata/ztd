@@ -148,7 +148,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 The platform supports two distinct Operator deployments:
 
 1. **Remote Governed Operator (`operator_type: remote`)**: An outbound daemon started via `ztd operator start`. It enrolls with the Gateway over WebSocket, runs with dedicated local state in `.ztd/`, maintains an in-memory mTLS identity, and executes tasks on target servers, virtual machines, or developer workstations.
-2. **Embedded Operator (`operator_type: embedded`)**: An in-process substrate running inside the Gateway daemon (`ztd gw start`). It always carries the `data` and `inference` capabilities (`WithEmbeddedBaseline()`), is the default Data and Inference Operator, shares the Gateway's local runtime tree, and executes tasks targeting the Gateway host itself from its disposable working directory `.ztd/operators/embedded-operator`, never the ztd project root.
+2. **Embedded Operator (`operator_type: embedded`)**: An in-process substrate running inside the Gateway daemon (`ztd gw start`). It always carries the `data` and `inference` capabilities (`WithEmbeddedBaseline()`), is the default Data and Inference Operator, shares the Gateway's local runtime tree, and executes tasks targeting the Gateway host itself from its disposable working directory `.ztd/operators/embedded-operator`, never the ztd project root. Every Operator heartbeat reports its configured execution directory (`WorkDir`) as `pwd`, not the host process cwd, so Data Operator binding sees where commands actually run.
 
 ### Capabilities Model and Enforcement Boundaries
 

@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -118,11 +117,11 @@ func (hs *HeartbeatService) notifySinks() {
 
 // Build constructs a complete Heartbeat payload of the given type.
 func (hs *HeartbeatService) Build(heartbeatType models.HeartbeatType) *models.Heartbeat {
-	pwd, err := os.Getwd()
-	if err != nil {
-		hs.logger.Warn("[HEARTBEAT] Failed to get working directory", "error", err)
-		pwd = ""
-	}
+	// Report the directory the Operator executes in, not the host process
+	// cwd: the embedded Operator runs in its own runtime directory while the
+	// Gateway process sits in the project, and Data Operator binding checks
+	// (evaluation scenario workspaces) trust this value.
+	pwd := hs.config.WorkDir
 
 	heartbeat := &models.Heartbeat{
 		EventType:         constants.Event.Operator.Heartbeat,
@@ -170,7 +169,7 @@ func (hs *HeartbeatService) Build(heartbeatType models.HeartbeatType) *models.He
 		UserDetails:   system.GetUserDetails(hs.config.Shell),
 		DiskDetails:   system.GetDiskDetails(),
 		MemoryDetails: system.GetMemoryDetails(),
-		Environment:   system.GetEnvironmentDetails(hs.config.Lang, hs.config.Term, hs.config.TZ),
+		Environment:   system.GetEnvironmentDetails(pwd, hs.config.Lang, hs.config.Term, hs.config.TZ),
 		FingerprintDetails: &models.HeartbeatFingerprintDetails{
 			OS:           constants.Platform(runtime.GOOS),
 			Architecture: runtime.GOARCH,
