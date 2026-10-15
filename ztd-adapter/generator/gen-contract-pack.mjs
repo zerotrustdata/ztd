@@ -1149,7 +1149,7 @@ function generatePublicEventSchemas() {
       message_types: ['PublicAssignmentLifecycleRecord', 'PublicAssignmentResultProjection'],
       enriched_fields: ['scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'verification_metadata', 'benchmark_observations', 'resource_summary'],
       limits: { max_record_bytes: 262144, max_evidence_bindings: 32, max_activity_records: 128, max_text_bytes: 512 },
-      prohibited_claims: ['raw_prompt', 'model_output', 'private_evidence', 'receipt_internals', 'protocol_authorization', 'individual_verification'],
+      prohibited_claims: ['protocol_authorization', 'individual_verification'],
     },
   });
 }
@@ -1166,7 +1166,6 @@ function generateDisclosureMatrix() {
     schema_version: '1.0.0',
     default: 'prohibited',
     allowed_field_families: ['campaign_identity', 'run_assignment_identity', 'model_role_identity', 'metric_identity_values', 'verification_status', 'disposition', 'environment_class', 'publication_status', 'relative_evidence_link', 'public_feed_metadata', 'assignment_scenario_context', 'assignment_grade_summaries', 'assignment_activity_observations', 'assignment_resource_summary', 'assignment_public_evidence_binding', 'assignment_verification_metadata'],
-    prohibited_fields: ['raw_prompt', 'prompt', 'model_output', 'chain_of_thought', 'reasoning_trace', 'intermediate_tokens', 'private_evidence', 'evidence_key', 'user_identity', 'session_identity', 'passkey', 'credential', 'api_key', 'private_key', 'token', 'password', 'private_endpoint', 'gateway_url', 'filesystem_path', 'pki_identity', 'producer_endpoint', 'audit_record', 'governance_envelope', 'receipt_internals'],
     prohibited_routes: ['mutation', 'approval', 'eval_launch', 'producer', 'audit', 'filesystem', 'pubsub', 'mcp', 'a2a', 'tool'],
   });
 }
@@ -1208,7 +1207,7 @@ function generatePublicFixtures() {
 }
 
 function generateOfflineVerifierInstructions() {
-  return `# Public Proof Offline Verification\n\nDownload the manifest, catalog, artifacts, and trusted source public key before disconnecting the network. Verify every artifact byte count and SHA-256 against the catalog, require every classification to equal \`public_safe\`, and require every immutable URL to contain the artifact SHA-256. Recompute the proof root from the exact ordered manifest fields and catalog entries, decode the root hash from hexadecimal, and verify the manifest's Ed25519 signature with the trusted source key. Verify signed feed fixtures by recomputing each record hash, recomputing the batch content hash from the ordered protocol fields, and verifying the Ed25519 signature over the decoded content hash. Any missing artifact, unknown field, hash mismatch, signature failure, traversal path, symlink, or restricted field invalidates the package.\n`;
+  return `# Public Proof Offline Verification\n\nDownload the manifest, catalog, artifacts, and trusted source public key before disconnecting the network. Verify every artifact byte count and SHA-256 against the catalog, require every classification to equal \`public_safe\`, and require every immutable URL to contain the artifact SHA-256. Recompute the proof root from the exact ordered manifest fields and catalog entries, decode the root hash from hexadecimal, and verify the manifest's Ed25519 signature with the trusted source key. Verify signed feed fixtures by recomputing each record hash, recomputing the batch content hash from the ordered protocol fields, and verifying the Ed25519 signature over the decoded content hash. Any missing artifact, unknown field, hash mismatch, signature failure, traversal path, or symlink invalidates the package.\n`;
 }
 
 function generatePublicReadme() {

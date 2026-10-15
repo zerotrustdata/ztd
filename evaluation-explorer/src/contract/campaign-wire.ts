@@ -29,7 +29,7 @@ import {
   PUBLIC_TOOL_SCORE_DIMENSION_VALUES,
   type PublicReleaseBasis,
 } from './proto-enums.generated';
-import { assertReleaseProvenance, assertRoleTranscripts, ValidationError } from './validators';
+import { assertReleaseProvenance, assertRoleTranscripts, assertString as assertVerbatimText, ValidationError } from './validators';
 
 export const CAMPAIGN_LIFECYCLE_SCHEMA_VERSION = '1.0.0' as const;
 export const CAMPAIGN_RESULT_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0'] as const;
@@ -542,7 +542,7 @@ function assertGradeSummaries(value: unknown, path: string): void {
     assertEnum(grade.grading_method, GRADING_METHODS, `${gradePath}.grading_method`);
     assertOptionalString(grade.judge_variant_id, `${gradePath}.judge_variant_id`);
     assertEnum(grade.explanation_code, EXPLANATION_CODES, `${gradePath}.explanation_code`);
-    assertOptionalString(grade.detail, `${gradePath}.detail`);
+    if (grade.detail !== undefined) assertVerbatimText(grade.detail, `${gradePath}.detail`);
   }
 }
 
@@ -667,7 +667,7 @@ function assertBenchmarkObservations(value: unknown, path: string): void {
       assertString(grade.criterion_id, `${gradePath}.criterion_id`);
       assertString(grade.status, `${gradePath}.status`);
       assertEnum(grade.explanation_code, EXPLANATION_CODES, `${gradePath}.explanation_code`);
-      assertOptionalString(grade.detail, `${gradePath}.detail`);
+      if (grade.detail !== undefined) assertVerbatimText(grade.detail, `${gradePath}.detail`);
     }
   }
   if (value.tool_scorecard !== undefined) {
@@ -696,8 +696,8 @@ function assertExtensions(value: Record<string, unknown>, path: string): void {
     rejectUnknown(value.resource_summary, ['latency_ms', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'retries'], `${path}.resource_summary`);
     for (const [key, metric] of Object.entries(value.resource_summary)) assertMetric(metric, `${path}.resource_summary.${key}`);
   }
-  if (value.model_response !== undefined) assert(typeof value.model_response === 'string', `${path}.model_response`, 'expected string');
-  if (value.failure_output !== undefined) assert(typeof value.failure_output === 'string', `${path}.failure_output`, 'expected string');
+  if (value.model_response !== undefined) assertVerbatimText(value.model_response, `${path}.model_response`);
+  if (value.failure_output !== undefined) assertVerbatimText(value.failure_output, `${path}.failure_output`);
   if (value.role_transcripts !== undefined) assertRoleTranscripts(value.role_transcripts, `${path}.role_transcripts`);
 }
 

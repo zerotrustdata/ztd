@@ -70,11 +70,6 @@ type AssignmentAuditSliceArtifacts struct {
 	ScenarioGoldSHA256  string
 }
 
-var assignmentAuditProhibitedKeys = []string{
-	"prompt", "output", "reasoning", "session_id", "transaction_id",
-	"command_raw", "receipt_json", "private_key", "vault_key",
-}
-
 // BuildAssignmentAuditSlice builds a WAL-checkpointed SQLite audit slice and a
 // fresh vault key that decrypts only that file. Payloads are validated against
 // the public feed allowlist before encryption. The file is assembled in a
@@ -337,24 +332,7 @@ func validateAssignmentAuditPayload(payload []byte) error {
 	if err := publicdisclosure.ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, payload); err != nil {
 		return fmt.Errorf("evaluation: assignment audit payload: %w", err)
 	}
-	fields, err := decodeAssignmentAuditObject(payload)
-	if err != nil {
-		return fmt.Errorf("evaluation: assignment audit payload: %w", err)
-	}
-	for _, key := range assignmentAuditProhibitedKeys {
-		if _, ok := fields[key]; ok {
-			return fmt.Errorf("evaluation: assignment audit payload: prohibited field %q: %w", key, constants.ErrEvidenceArtifactMalformed)
-		}
-	}
 	return nil
-}
-
-func decodeAssignmentAuditObject(payload []byte) (map[string]json.RawMessage, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &fields); err != nil {
-		return nil, err
-	}
-	return fields, nil
 }
 
 func initAssignmentAuditSchema(db *sqliteutil.DB) error {

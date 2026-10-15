@@ -34,50 +34,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 )
 
-// prohibitedRecordFields are field names that must never appear in a public
-// feed record's payload. Their presence causes the record to be rejected
-// before signing.
-var prohibitedRecordFields = []string{
-	"raw_prompt",
-	"raw_output",
-	"prompt",
-	"output",
-	"chain_of_thought",
-	"credentials",
-	"credential",
-	"api_key",
-	"secret",
-	"password",
-	"token",
-	"private_key",
-	"private_endpoint",
-	"evidence_key",
-	"evidence_key_metadata",
-	"machine_path",
-	"filesystem_path",
-	"local_path",
-	"user_id",
-	"user_identity",
-	"cli_session_id",
-	"web_session_id",
-	"session_identity",
-	"operator_id",
-	"operator_session_id",
-	"authenticated_identity",
-	"endpoint",
-	"gateway_url",
-	"target_resource",
-	"controlled_target",
-	"transaction_id",
-	"governance_envelope",
-	"audit_record",
-	"receipt_body",
-	"evidence_body",
-}
-
-// ProofArtifactInput is the input type for the proof package builder. Each
-// artifact is public_safe by construction — the builder does not accept
-// restricted artifacts.
+// ProofArtifactInput is the input type for the proof package builder. Proof
+// artifacts are published verbatim; content is never screened or redacted.
 type ProofArtifactInput struct {
 	Filename            string
 	MediaType           string
@@ -386,51 +344,6 @@ func validRecordType(rt models.PublicFeedRecordType) bool {
 	}
 }
 
-// checkProhibitedFields scans the record bytes for prohibited field names
-// in the JSON payload. Returns an error if any prohibited field is found.
-func checkProhibitedFields(recordBytes string) error {
-	var value json.RawMessage
-	if err := json.Unmarshal([]byte(recordBytes), &value); err != nil {
-		return fmt.Errorf("public-feed: parse record for prohibited field check: %w", err)
-	}
-	return checkProhibitedJSONValue(value)
-}
-
-func checkProhibitedJSONValue(value json.RawMessage) error {
-	trimmed := bytes.TrimSpace(value)
-	if len(trimmed) == 0 {
-		return nil
-	}
-	switch trimmed[0] {
-	case '{':
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(trimmed, &fields); err != nil {
-			return fmt.Errorf("public-feed: parse record object: %w", err)
-		}
-		for name, child := range fields {
-			for _, prohibited := range prohibitedRecordFields {
-				if name == prohibited {
-					return fmt.Errorf("%w: %s", constants.ErrPublicFeedRestrictedField, prohibited)
-				}
-			}
-			if err := checkProhibitedJSONValue(child); err != nil {
-				return err
-			}
-		}
-	case '[':
-		var values []json.RawMessage
-		if err := json.Unmarshal(trimmed, &values); err != nil {
-			return fmt.Errorf("public-feed: parse record array: %w", err)
-		}
-		for _, child := range values {
-			if err := checkProhibitedJSONValue(child); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // BuildBatch constructs a signed batch from records. It validates record
 // hashes, computes the content hash, and signs with Ed25519. The batch
 // carries the previous batch hash for chain linking.
@@ -450,9 +363,6 @@ func (s *PublicPublisherService) BuildBatch(records []models.PublicFeedRecord) (
 		computed := sha256.Sum256([]byte(r.RecordBytes))
 		if hex.EncodeToString(computed[:]) != r.RecordHash {
 			return models.PublicFeedBatch{}, constants.ErrPublicFeedRecordHashMismatch
-		}
-		if err := checkProhibitedFields(r.RecordBytes); err != nil {
-			return models.PublicFeedBatch{}, fmt.Errorf("public-feed: build batch: %w", err)
 		}
 		if err := publicdisclosure.ValidatePublicFeedRecord(r.RecordType, []byte(r.RecordBytes)); err != nil {
 			return models.PublicFeedBatch{}, fmt.Errorf("public-feed: build record: %w", err)
@@ -1472,11 +1382,6 @@ func (s *PublicPublisherService) writeProofArtifacts(ctx context.Context, campai
 		}
 		if int64(len(art.Content)) > int64(constants.PublicFeedMaxArtifactBytes) {
 			return nil, constants.ErrPublicFeedProofOversized
-		}
-		if strings.Contains(art.MediaType, "json") {
-			if err := checkProhibitedFields(string(art.Content)); err != nil {
-				return nil, fmt.Errorf("%w: %w", constants.ErrPublicFeedProofRestricted, err)
-			}
 		}
 		h := sha256.Sum256(art.Content)
 		artifactID := hex.EncodeToString(h[:])

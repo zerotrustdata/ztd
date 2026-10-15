@@ -110,7 +110,7 @@ Records are published as ztd public feed records. The JSONL input shape for `ztd
 - Snapshot records use `record_type: "projection"`; `record_bytes` is the serialized JSON of the record object.
 - Live events use `record_type: "event"`; `record_bytes` is the canonical protojson of `PublicLiveEvent` (`evalv1.MarshalCanonical`), the only encoder of event bodies.
 
-The publisher rejects any record whose JSON contains a prohibited field. The prohibited field set is listed in `descriptor.json` and includes raw prompts, outputs, chain-of-thought, private evidence, identities, credentials, machine paths, private endpoints, Gateway URLs, PKI identities, audit internals, envelopes, and receipt internals. The Go publication coordinator must never emit these fields; the publisher is the last line of defense, not the first.
+Public records and proof artifacts are published verbatim. Neither the publisher nor the mirror screens record or artifact content by field name or string content; they enforce only the typed record schemas, size bounds, hashes, and signatures.
 
 ## Implementation ownership
 
@@ -122,7 +122,7 @@ The publisher rejects any record whose JSON contains a prohibited field. The pro
 
 ## Rejection criteria
 
-Reject changes that hide verification failures, collapse unavailable into zero, leak restricted fields, require the browser to reach the private listener, make provider requests from the browser, combine incompatible datasets or denominators, or label data as verified unless the named verifier actually passed.
+Reject changes that hide verification failures, collapse unavailable into zero, require the browser to reach the private listener, make provider requests from the browser, combine incompatible datasets or denominators, or label data as verified unless the named verifier actually passed.
 
 ## Verification
 

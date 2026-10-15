@@ -62,11 +62,11 @@
     },
     {
       "path": "public/disclosure-matrix.json",
-      "sha256": "fa9489fe8cb8bfd3f80d79babebdb71bf57667cbddbdc3af7250482bd473a7be"
+      "sha256": "81a9a82312bd0d0ee438be8426635c37bd74637fa9eb35a0144c5f4f7e862f43"
     },
     {
       "path": "public/event-schemas.json",
-      "sha256": "1d1a8c5f2a0ad2be51a661664a9ebbae77fbbcdf811127eda718942a86fdefcb"
+      "sha256": "9f6ad93b4f661193f7f20073279a8e3f751d474800910ede97618a1662d18d6d"
     },
     {
       "path": "public/fixtures/active.json",
@@ -94,7 +94,7 @@
     },
     {
       "path": "public/manifest.json",
-      "sha256": "1c1d117d0f52e5704f3ac6334ab2c60fec593c122f7c5c38cc1c05a56061bb31"
+      "sha256": "ee13c82bf9870808da778006e83dabfbdfde5e85b915077330163c558384df1a"
     },
     {
       "path": "public/models.ts",
@@ -102,7 +102,7 @@
     },
     {
       "path": "public/offline-verifier.md",
-      "sha256": "ab648a2ca10e547a6e5167d0736b79ff1ac6c94685dc3d0e247e0ec4bbe9db82"
+      "sha256": "691e044e86c2ebb94faa22db81f596a31d3d3d512690c0015622900160f4d084"
     },
     {
       "path": "public/proof-schemas.json",

@@ -319,8 +319,7 @@ func publicFeedProofPublishErrorStatus(err error) (int, string) {
 		errors.Is(err, constants.ErrPublicFeedProofNotVerified),
 		errors.Is(err, constants.ErrPublicFeedBatchEmpty),
 		errors.Is(err, constants.ErrPublicFeedProofOversized),
-		errors.Is(err, constants.ErrPublicFeedProofPathTraversal),
-		errors.Is(err, constants.ErrPublicFeedProofRestricted):
+		errors.Is(err, constants.ErrPublicFeedProofPathTraversal):
 		return http.StatusBadRequest, err.Error()
 	default:
 		return http.StatusInternalServerError, err.Error()
@@ -365,8 +364,7 @@ func publicFeedExportBatchErrorStatus(err error) (int, string) {
 		errors.Is(err, constants.ErrPublicFeedSequenceOutOfOrder),
 		errors.Is(err, constants.ErrPublicFeedRecordHashMismatch),
 		errors.Is(err, constants.ErrPublicFeedRecordTypeInvalid),
-		errors.Is(err, constants.ErrPublicFeedRecordSchemaInvalid),
-		errors.Is(err, constants.ErrPublicFeedRestrictedField):
+		errors.Is(err, constants.ErrPublicFeedRecordSchemaInvalid):
 		return http.StatusBadRequest, err.Error()
 	default:
 		return http.StatusInternalServerError, err.Error()

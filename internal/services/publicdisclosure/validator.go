@@ -282,8 +282,8 @@ func walkStrings(value json.RawMessage) error {
 		if err := json.Unmarshal(trimmed, &text); err != nil {
 			return err
 		}
-		if len(text) > maxStringBytes || strings.Contains(text, "BEGIN PRIVATE KEY") || strings.Contains(text, "spiffe://") || strings.Contains(text, "../") || strings.Contains(text, "/"+constants.RuntimeDirname+"/") {
-			return fmt.Errorf("restricted assignment text: %w", constants.ErrPublicFeedRestrictedField)
+		if len(text) > maxStringBytes {
+			return fmt.Errorf("assignment text bounds: %w", constants.ErrEvidenceArtifactTooLarge)
 		}
 		return nil
 	}

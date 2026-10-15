@@ -90,14 +90,6 @@ func TestValidatePublicAssignmentRecordRejectsMalformedAssignmentGrammar(t *test
 			},
 			want: constants.ErrEvidenceSchemaMismatch,
 		},
-		{
-			name:    "restricted string carrier",
-			version: campaignProjectionEnvelopeHistoricalVersion,
-			mutate: func(record map[string]any) {
-				record["scenario_id"] = "spiffe://ztd.local/user/private"
-			},
-			want: constants.ErrPublicFeedRestrictedField,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

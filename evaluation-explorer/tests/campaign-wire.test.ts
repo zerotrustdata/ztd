@@ -242,6 +242,31 @@ describe('campaign projection wire contract', () => {
     ).not.toThrow();
   });
 
+  it('accepts multiline grader detail exceeding 128 bytes on benchmark and semantic grades', () => {
+    const record = fixtureCampaignResultEnvelope.record as CampaignResultRecord;
+    const detail = 'Expected the model to read ../run.log before answering.\nObserved: no tool call; answered from prior.\n'.repeat(8);
+    const decoded = decodeCampaignProjectionEnvelope({
+      ...fixtureCampaignResultEnvelope,
+      record: {
+        ...record,
+        benchmark_observations: {
+          ...record.benchmark_observations,
+          grade_summaries: [{ criterion_id: 'reads-log', status: 'fail', explanation_code: 'PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_FAILED', detail }],
+        },
+        semantic_grade_summaries: [{
+          criterion_id: 'reads-log',
+          status: 'EVALUATION_VERDICT_STATUS_FAIL',
+          grading_method: 'EVALUATION_GRADING_METHOD_DETERMINISTIC',
+          explanation_code: 'PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_FAILED',
+          detail,
+        }],
+      },
+    });
+    const decodedRecord = decoded.record as CampaignResultRecord;
+    expect(decodedRecord.benchmark_observations?.grade_summaries?.[0]?.detail).toBe(detail);
+    expect(decodedRecord.semantic_grade_summaries?.[0]?.detail).toBe(detail);
+  });
+
   describe('role_transcripts', () => {
     const record = fixtureCampaignResultEnvelope.record as CampaignResultRecord;
     const toolCall = {

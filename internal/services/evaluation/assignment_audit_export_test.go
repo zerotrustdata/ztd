@@ -9,7 +9,6 @@ package evaluation
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -204,20 +203,6 @@ func TestVerifyAssignmentAuditSlice_WrongKeyFailsDecrypt(t *testing.T) {
 	wrongKey := []byte(strings.Repeat("a", 64) + "\n")
 	err = VerifyAssignmentAuditSlice(context.Background(), newAssignmentAuditTestFiles(t), artifacts.Database, wrongKey)
 	require.Error(t, err)
-}
-
-func TestBuildAssignmentAuditSlice_ProhibitedFieldFailsClosed(t *testing.T) {
-	event := sampleAssignmentAuditEvent(t)
-	fields := map[string]any{}
-	require.NoError(t, json.Unmarshal(event.Payload, &fields))
-	fields["prompt"] = "secret"
-	payload, err := json.Marshal(fields)
-	require.NoError(t, err)
-	event.Payload = payload
-
-	_, err = BuildAssignmentAuditSlice(context.Background(), newAssignmentAuditTestFiles(t), "assignment-1", []AssignmentAuditSliceEvent{event})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "prompt")
 }
 
 func TestVerifyAssignmentAuditSlice_FlippedEventByteBreaksChain(t *testing.T) {

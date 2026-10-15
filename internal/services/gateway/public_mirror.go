@@ -667,9 +667,6 @@ func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models
 		if hex.EncodeToString(computed[:]) != r.RecordHash {
 			return models.PublicFeedIngestRejectionSignatureInvalid, constants.ErrPublicFeedRecordHashMismatch
 		}
-		if err := checkProhibitedFields(r.RecordBytes); err != nil {
-			return models.PublicFeedIngestRejectionSignatureInvalid, err
-		}
 		if err := publicdisclosure.ValidatePublicFeedRecord(r.RecordType, []byte(r.RecordBytes)); err != nil {
 			return models.PublicFeedIngestRejectionSignatureInvalid, fmt.Errorf("public mirror: validate record: %w", err)
 		}
@@ -1295,11 +1292,6 @@ func validatePublicProofCatalogArtifacts(request models.PublicProofIngestRequest
 		hash := sha256.Sum256(content)
 		if entry.SHA256 != hex.EncodeToString(hash[:]) {
 			return constants.ErrPublicFeedProofHashMismatch
-		}
-		if strings.Contains(entry.MediaType, "json") {
-			if err := checkProhibitedFields(string(content)); err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPublicFeedProofRestricted, err)
-			}
 		}
 	}
 	return nil

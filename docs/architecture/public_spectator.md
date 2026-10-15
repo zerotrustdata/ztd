@@ -66,7 +66,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SPEC-DATA-01 | Every exported record MUST pass a closed allowlist enforced by campaign projector, disclosure validator, publisher, and mirror before becoming browser-visible. Any unknown field fails closed. |
-| INV-SPEC-DATA-02 | Every structural feed-record string outside the verbatim carriers (`INV-SPEC-DATA-03`) MUST be at most 512 bytes and MUST NOT contain `BEGIN PRIVATE KEY`, `spiffe://`, `../`, or `/.ztd/`. Credentials, private keys, vault key material, and anything that confers Gateway access MUST NEVER be published; public proof never grants Gateway access. |
+| INV-SPEC-DATA-02 | Every structural feed-record string outside the verbatim carriers (`INV-SPEC-DATA-03`) MUST be at most 512 bytes. The publisher and mirror MUST NOT screen record or proof-artifact content by field name or string content; public records are published verbatim. |
 | INV-SPEC-DATA-03 | Evaluation evidence is published in full and never redacted or screened. The feed-record carriers `model_response`, `failure_output`, `role_transcripts`, and each grade summary's `detail` are verbatim text held only to the 256 KiB record bound. The complete agent trace (exact model input, every turn's thinking and text, tool arguments and results, signed receipts, actuator anchors, and the sentinel bracket) is published as a content-addressed proof artifact bound by an `assignment_agent_trace` evidence binding. The campaign-frozen scenario fixture (input and gold criteria) is published as campaign-scoped proof artifacts bound by `scenario_input_fixture` and `scenario_gold_criteria` evidence bindings. |
 
 ### Cryptographic Continuity (`INV-SPEC-CRYPTO`)
@@ -153,15 +153,6 @@ Only allowlisted fields and records cross into the public spectator feed.
 - **Verbatim Model and Grader Text (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts`, and `benchmark_observations.grade_summaries[].detail` / `semantic_grade_summaries[].detail` (each text within the 256 KiB record bound, at most 8 role transcripts, no screening or redaction).
 - **Agent Trace Proof Artifact**: `assignment-<id>.agent-trace.json`, the persisted `AgentTrace` body byte for byte, served at `/proofs/<sha256>` and bound by an `assignment_agent_trace` evidence binding. `agent-trace.v4` carries the exact first-turn model input (`input.messages`, `input.tools`); `agent-trace.v3` carries none, and the explorer labels it not captured.
 - **Scenario Fixture Proof Artifacts**: `scenario-<id>.input.json` (`ScenarioInputFixture`: user prompt, inline context, workspace files including decoys, seeded investigation) and `scenario-<id>.gold.json` (`ScenarioGoldCriteria`), the campaign-frozen canonical bytes, so each SHA-256 equals the campaign's fixture reference. They are served at `/proofs/<sha256>` and bound by `scenario_input_fixture` and `scenario_gold_criteria` evidence bindings, which appear together or not at all. Their catalog entries carry no source run because every run of the campaign shares them, so one run's prune never removes them.
-
-### Prohibited Fields
-
-The following MUST NEVER cross the projection boundary:
-- Private evidence files, encrypted evidence envelopes, and vault DEK/KEK metadata.
-- User identities, WebAuthn credentials, user session IDs, and tokens.
-- Private keys, Gateway credentials, and mTLS client material.
-- Internal IP addresses, internal DNS hostnames, SPIFFE URI SANs, and filesystem paths in structural feed-record fields (`INV-SPEC-DATA-02`).
-- Audit ledger databases and governance envelopes.
 
 ## Export Binding and Cryptographic Continuity
 

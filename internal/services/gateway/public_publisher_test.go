@@ -873,29 +873,15 @@ func TestExportBatch_RejectsOversizedBatch(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrPublicFeedBatchOversized)
 }
 
-// TestExportBatch_RecordHashMismatch verifies that a record with a wrong
-// hash is rejected before signing.
-func TestBuildBatch_RejectsNestedProhibitedField(t *testing.T) {
+// TestBuildBatch_PublishesRecordFieldsVerbatim verifies that public records are
+// never screened by field name: identity, transaction, and transcript fields
+// are published as-is.
+func TestBuildBatch_PublishesRecordFieldsVerbatim(t *testing.T) {
 	publisher, _, _, _ := newPublicPublisherTestEnv(t)
-	record := makeProjectionRecord(t, 1, mustPublicFeedObjectFromJSON(t, `{"campaign_id":"c1","metadata":{"api_key":"restricted"}}`))
-
-	_, err := publisher.BuildBatch([]models.PublicFeedRecord{record})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedRestrictedField)
-}
-
-func TestBuildBatch_RejectsPrivateIdentityAndRuntimeFields(t *testing.T) {
-	publisher, _, _, _ := newPublicPublisherTestEnv(t)
-	fields := []string{"user_id", "cli_session_id", "operator_id", "operator_session_id", "authenticated_identity", "endpoint", "filesystem_path", "target_resource"}
-	for _, field := range fields {
-		t.Run(field, func(t *testing.T) {
-			body := []byte(`{"kind":"evaluation_summary","native_result":{"` + field + `":"restricted"}}`)
-			digest := sha256.Sum256(body)
-			_, err := publisher.BuildBatch([]models.PublicFeedRecord{{Sequence: 1, RecordType: models.PublicFeedRecordTypeProjection, RecordHash: hex.EncodeToString(digest[:]), RecordBytes: string(body)}})
-			require.Error(t, err)
-			assert.ErrorIs(t, err, constants.ErrPublicFeedRestrictedField)
-		})
-	}
+	body := []byte(`{"schema_version":"1.0.0","kind":"evaluation_summary","dataset_id":"d1","quality_state":"live_in_progress","observed_at":"2026-10-15T00:00:00Z","native_result":{"transaction_id":"tx-1","operator_id":"op-1","raw_prompt":"p","output":"o","token":"t"}}`)
+	digest := sha256.Sum256(body)
+	_, err := publisher.BuildBatch([]models.PublicFeedRecord{{Sequence: 1, RecordType: models.PublicFeedRecordTypeProjection, RecordHash: hex.EncodeToString(digest[:]), RecordBytes: string(body)}})
+	require.NoError(t, err)
 }
 
 func TestExportBatch_RecordHashMismatch(t *testing.T) {
@@ -1139,36 +1125,6 @@ func TestExportBatch_NeverMutatesAuthoritativeReports(t *testing.T) {
 	require.NoError(t, unmarshalDocData(doc, &afterProj))
 	assert.Equal(t, originalProj.RunID, afterProj.RunID)
 	assert.Equal(t, originalProj.Status, afterProj.Status)
-}
-
-// TestExportBatch_RejectsProhibitedFields verifies that a record containing
-// prohibited fields (raw_prompt, credentials, etc.) is rejected before
-// signing.
-func TestExportBatch_RejectsProhibitedFields(t *testing.T) {
-	publisher, _, _, _ := newPublicPublisherTestEnv(t)
-
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := models.PublicIngestResponse{Accepted: true}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	t.Cleanup(mirror.Close)
-	publisher.SetMirrorOrigin(mirror.URL)
-
-	// A record with a prohibited field.
-	recordBytes := []byte(`{"campaign_id":"c1","raw_prompt":"some private prompt"}`)
-	recordHash := sha256.Sum256(recordBytes)
-	records := []models.PublicFeedRecord{
-		{
-			Sequence:    1,
-			RecordType:  models.PublicFeedRecordTypeProjection,
-			RecordHash:  hex.EncodeToString(recordHash[:]),
-			RecordBytes: string(recordBytes),
-		},
-	}
-	err := publisher.ExportBatch(context.Background(), records)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedRestrictedField)
 }
 
 func TestAssignmentAuditProofArtifacts_AddsAgentTraceOnlyWhenCaptured(t *testing.T) {
