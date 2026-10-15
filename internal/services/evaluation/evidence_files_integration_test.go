@@ -321,11 +321,9 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 
 	binding := CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              req.Inventory.ToModelRegistryFreeze().Variants,
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 	}
 	completed, executedFirst, err := controller.ExecuteNextAssignment(ctx, req.RunID, binding, req.ScenarioArtifacts)
 	require.NoError(t, err)

@@ -272,11 +272,9 @@ func TestPublishedCatalogCarriesTheObservedEnvironmentOnlyOnceTheRunIsComplete(t
 		saveObservationWindow(t, files, "attempt-"+assignment.GetAssignmentId(), capacitySample(1, testVRAMBytes, reported))
 	}
 	binding := CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}
 	catalogs := func() []map[string]json.RawMessage {
 		var out []map[string]json.RawMessage

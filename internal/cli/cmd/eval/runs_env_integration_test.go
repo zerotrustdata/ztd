@@ -91,7 +91,7 @@ func setupRunEnv(t *testing.T) *runEnv {
 			return &auth.ClientAuthContext{UserID: "user-1", CLISessionID: "cli-1", OperatorID: "operator-1"}, nil
 		},
 		bindClientFactory: func(*config.Config) evalBindClient { return &fakeBindClient{bound: []string{testDataSession}} },
-		formationRunnerFactory: func(campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error) {
+		formationRunnerFactory: func(context.Context, campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error) {
 			harness, err := evaluation.NewFormationHarness(func() time.Time { return fixedNow }, func(prefix string) string { return prefix + "-attempt" })
 			if err != nil {
 				return nil, err

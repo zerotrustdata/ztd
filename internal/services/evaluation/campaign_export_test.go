@@ -60,11 +60,9 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	_, executed, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              req.Inventory.ToModelRegistryFreeze().Variants,
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	require.True(t, executed)
@@ -226,11 +224,9 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, executed, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, CampaignExecutionBinding{
-			InferenceOperatorSessionID: "inf-session",
-			DataOperatorID:             "data-op",
-			DataOperatorSessionID:      "data-session",
-			ModelRegistryDigest:        req.Inventory.RegistryDigest,
-			ModelRegistry:              req.Inventory.ToModelRegistryFreeze().Variants,
+			Topology:            testOperatorTopology("inf-session", "data-session"),
+			ModelRegistryDigest: req.Inventory.RegistryDigest,
+			ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 		}, req.ScenarioArtifacts)
 		require.NoError(t, err)
 		require.True(t, executed)

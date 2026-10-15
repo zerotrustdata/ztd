@@ -27,7 +27,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const agentTraceSchemaVersion = "agent-trace.v2"
+const agentTraceSchemaVersion = "agent-trace.v3"
 
 // agentModelCallPurposeTurn is the purpose of every governed agent inference.
 // Each one is a scored step of the tool loop.
@@ -45,7 +45,11 @@ type AgentTraceWorkspace struct {
 	OperatorWorkingDirectory string `json:"operator_working_directory"`
 }
 
-// AgentModelCall is one governed inference the agent executor dispatched.
+// AgentModelCall is one governed inference the agent executor dispatched. A
+// call the Inference Operator executed carries its signed receipt: COMPLETED
+// with the result digest as result_summary, or FAILED when the provider
+// failed after the Operator committed the execution (Error then names the
+// failure). Either way the execution sits on the Inference runtime's ledger.
 type AgentModelCall struct {
 	ProviderAttemptID       string   `json:"provider_attempt_id"`
 	TransactionID           string   `json:"transaction_id"`
@@ -63,6 +67,14 @@ type AgentModelCall struct {
 	RetryCount              uint32   `json:"retry_count"`
 	Text                    string   `json:"text,omitempty"`
 	ToolCallCount           int      `json:"tool_call_count"`
+	// Error is the public failure of a call that did not complete.
+	Error   string             `json:"error,omitempty"`
+	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
+}
+
+// Completed reports whether the call returned a governed result.
+func (c AgentModelCall) Completed() bool {
+	return c.TransactionID != "" && c.Error == ""
 }
 
 // AgentToolCall is one tool call the model made and what it returned. An
@@ -102,20 +114,22 @@ func (c AgentToolCall) ShowedGuidance() bool {
 // Grading and verification both read only this envelope and the frozen
 // scenario fixture.
 type AgentTrace struct {
-	SchemaVersion        string              `json:"schema_version"`
-	EvidenceDigest       string              `json:"evidence_digest"`
-	RunID                string              `json:"run_id"`
-	AssignmentID         string              `json:"assignment_id"`
-	EvaluationAttemptID  string              `json:"evaluation_attempt_id"`
-	CampaignID           string              `json:"campaign_id"`
-	ScenarioID           string              `json:"scenario_id"`
-	DesignatedRole       string              `json:"designated_role"`
-	ServedModelTag       string              `json:"served_model_tag"`
-	ModelDigest          string              `json:"model_digest"`
-	ModelRegistryDigest  string              `json:"model_registry_digest"`
-	InferenceSessionID   string              `json:"inference_session_id"`
-	DataOperatorID       string              `json:"data_operator_id"`
-	DataSessionID        string              `json:"data_session_id"`
+	SchemaVersion       string `json:"schema_version"`
+	EvidenceDigest      string `json:"evidence_digest"`
+	RunID               string `json:"run_id"`
+	AssignmentID        string `json:"assignment_id"`
+	EvaluationAttemptID string `json:"evaluation_attempt_id"`
+	CampaignID          string `json:"campaign_id"`
+	ScenarioID          string `json:"scenario_id"`
+	DesignatedRole      string `json:"designated_role"`
+	ServedModelTag      string `json:"served_model_tag"`
+	ModelDigest         string `json:"model_digest"`
+	ModelRegistryDigest string `json:"model_registry_digest"`
+	// Inference and Data are the runtimes the roles executed on. When one
+	// Operator holds both capabilities they name the same runtime, whose
+	// ledger bracket must then account for both roles' executions.
+	Inference            AgentTraceRuntime   `json:"inference"`
+	Data                 AgentTraceRuntime   `json:"data"`
 	Workspace            AgentTraceWorkspace `json:"workspace"`
 	ModelCalls           []AgentModelCall    `json:"model_calls"`
 	ToolCalls            []AgentToolCall     `json:"tool_calls"`
@@ -126,12 +140,32 @@ type AgentTrace struct {
 	// (capability_unsupported, backend_timeout, ...) when the provider
 	// classified the failure. Traces sealed before it existed omit it.
 	ProviderFailureClass string `json:"provider_failure_class,omitempty"`
-	// DataOperatorAnchor pins the Data Operator's actuator key as bound at
-	// enrollment. VerifyAgentTraceEvidence checks every receipt against it.
-	DataOperatorAnchor *AgentTraceAnchor `json:"data_operator_anchor,omitempty"`
-	// Bracket holds the harness sentinel receipts read before and after the
-	// attempt. Import fails closed when it is missing.
+	// Bracket holds the harness sentinel receipts read on the Data runtime
+	// before and after the attempt. Import fails closed when it is missing.
 	Bracket *AgentTraceBracket `json:"bracket,omitempty"`
+}
+
+// AgentTraceRuntime is one Operator runtime a role executed on, with its
+// actuator key pinned as bound at enrollment. VerifyAgentTraceEvidence checks
+// each receipt against the anchor of the runtime that signed it.
+type AgentTraceRuntime struct {
+	OperatorID string            `json:"operator_id"`
+	SessionID  string            `json:"session_id"`
+	Anchor     *AgentTraceAnchor `json:"anchor,omitempty"`
+}
+
+// agentTraceRuntime records one topology runtime in the trace.
+func agentTraceRuntime(runtime CampaignOperatorRuntime) AgentTraceRuntime {
+	traced := AgentTraceRuntime{OperatorID: runtime.OperatorID, SessionID: runtime.OperatorSessionID}
+	if runtime.Anchor != nil {
+		traced.Anchor = &AgentTraceAnchor{ConformanceAnchor: runtime.Anchor}
+	}
+	return traced
+}
+
+// SharedRuntime reports whether both roles executed on one runtime.
+func (t *AgentTrace) SharedRuntime() bool {
+	return t != nil && t.Inference.OperatorID == t.Data.OperatorID
 }
 
 // AgentTraceReceipt is a signed ActionReceipt carried in the trace as
@@ -156,8 +190,8 @@ func (r *AgentTraceReceipt) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// AgentTraceAnchor is the Data Operator's pinned actuator key, carried in the
-// trace as canonical protojson like a receipt.
+// AgentTraceAnchor is one runtime's pinned actuator key, carried in the trace
+// as canonical protojson like a receipt.
 type AgentTraceAnchor struct{ *evalv1.ConformanceAnchor }
 
 // MarshalJSON writes the anchor as canonical protojson.
@@ -221,14 +255,14 @@ func (t *AgentTrace) RoleInvoked() bool {
 	return t != nil && t.DesignatedRole != "" && t.HasGovernedModelCalls()
 }
 
-// HasGovernedModelCalls reports whether any recorded inference carries a
+// HasGovernedModelCalls reports whether any recorded inference completed as a
 // governed transaction.
 func (t *AgentTrace) HasGovernedModelCalls() bool {
 	if t == nil {
 		return false
 	}
 	for _, call := range t.ModelCalls {
-		if call.Purpose == agentModelCallPurposeTurn && call.TransactionID != "" {
+		if call.Purpose == agentModelCallPurposeTurn && call.Completed() {
 			return true
 		}
 	}

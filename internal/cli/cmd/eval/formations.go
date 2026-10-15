@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
-	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -575,7 +575,7 @@ func formationsSmokeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 registry digests and exact Operator sessions. Use --all to batch-run every sovereign
 execution topology in sequence. This is a governed smoke path, not a scored campaign assignment.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sessions, err := resolveOperatorSessions(cmd, deps, constants.OperatorCapabilityInference, constants.OperatorCapabilityData)
+			topology, err := resolveOperatorTopology(cmd, deps)
 			if err != nil {
 				return fmt.Errorf("evaluation: formations smoke: %w", err)
 			}
@@ -613,7 +613,7 @@ execution topology in sequence. This is a governed smoke path, not a scored camp
 				if !output.JSONEnabled(cmd) {
 					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "=== START Formation %s ===\n", fID)
 				}
-				result, runID, err := runFormationSmoke(cmd, deps, sessions, fID, initialState)
+				result, runID, err := runFormationSmoke(cmd, deps, topology, fID, initialState)
 				if err != nil {
 					hasFailure = true
 					summaries = append(summaries, smokeSummaryItem{
@@ -626,7 +626,7 @@ execution topology in sequence. This is a governed smoke path, not a scored camp
 					}
 					continue
 				}
-				batchResults = append(batchResults, formationRunResultJSON(result, sessions, runID))
+				batchResults = append(batchResults, formationRunResultJSON(result, topology, runID))
 				summaries = append(summaries, smokeSummaryItem{
 					FormationID: fID,
 					Passed:      result.Passed,
@@ -676,7 +676,7 @@ execution topology in sequence. This is a governed smoke path, not a scored camp
 	return jsonLeaf(cmd)
 }
 
-func runFormationSmoke(cmd *cobra.Command, deps nativeEvalDeps, sessions operatorSessions, formationID, initialState string) (*evaluation.FormationRunResult, string, error) {
+func runFormationSmoke(cmd *cobra.Command, deps nativeEvalDeps, topology evaluation.CampaignOperatorTopology, formationID, initialState string) (*evaluation.FormationRunResult, string, error) {
 	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return nil, "", err
@@ -711,11 +711,7 @@ func runFormationSmoke(cmd *cobra.Command, deps nativeEvalDeps, sessions operato
 	if err != nil {
 		return nil, "", fmt.Errorf("evaluation: formations smoke: %w", err)
 	}
-	appClient, err := inferenceEvalAppClient(fileSvc, cfg, authContext, deps.clientFactory)
-	if err != nil {
-		return nil, "", fmt.Errorf("evaluation: formations smoke: %w", err)
-	}
-	_, err = operatorcapability.SelectDataOperator(operators)
+	appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
 	if err != nil {
 		return nil, "", fmt.Errorf("evaluation: formations smoke: %w", err)
 	}
@@ -723,7 +719,7 @@ func runFormationSmoke(cmd *cobra.Command, deps nativeEvalDeps, sessions operato
 	if err != nil {
 		return nil, "", fmt.Errorf("evaluation: formations smoke: %w", err)
 	}
-	endpoint, err := resolveCampaignOllamaEndpoint(operators, sessions.InferenceSessionID)
+	endpoint, err := resolveCampaignOllamaEndpoint(operators, topology.Inference.OperatorSessionID)
 	if err != nil {
 		return nil, "", fmt.Errorf("evaluation: formations smoke: %w", err)
 	}
@@ -752,8 +748,8 @@ func runFormationSmoke(cmd *cobra.Command, deps nativeEvalDeps, sessions operato
 			AssignmentID:        assignmentID,
 			EvaluationAttemptID: evaluationAttemptID,
 			ModelRegistryDigest: freeze.RegistryDigest,
-			InferenceSessionID:  sessions.InferenceSessionID,
-			DataSessionID:       sessions.DataSessionID,
+			InferenceSessionID:  topology.Inference.OperatorSessionID,
+			DataSessionID:       topology.Data.OperatorSessionID,
 		},
 		Variants:               freeze.Variants,
 		ProvenancePreflight:    gatewayFormationProvenancePreflight{fileSvc: fileSvc, cfg: cfg},
@@ -819,7 +815,7 @@ func (d *harnessFormationInferenceDispatcher) DispatchInference(ctx context.Cont
 	return response, nil
 }
 
-func formationRunResultJSON(result *evaluation.FormationRunResult, sessions operatorSessions, runID string) formationRunJSON {
+func formationRunResultJSON(result *evaluation.FormationRunResult, topology evaluation.CampaignOperatorTopology, runID string) formationRunJSON {
 	roles := make([]formationRunRoleJSON, 0, len(result.Roles))
 	for _, role := range result.Roles {
 		roles = append(roles, formationRunRoleJSON{
@@ -840,7 +836,7 @@ func formationRunResultJSON(result *evaluation.FormationRunResult, sessions oper
 		PeakVRAMMiB:          result.PeakVRAMMiB,
 		MutationIntercepted:  result.MutationIntercepted,
 		AllPolicyLayersValid: result.AllPolicyLayersValid,
-		InferenceSessionID:   sessions.InferenceSessionID,
+		InferenceSessionID:   topology.Inference.OperatorSessionID,
 		RunID:                runID,
 		Roles:                roles,
 	}
@@ -868,16 +864,18 @@ type campaignFormationRunnerInputs struct {
 	Operators   []*operatorv1.OperatorDocument
 	Spec        *evalv1.EvaluationCampaignSpec
 	Options     campaignFormationProductionOptions
+	// Out receives app identity enrollment progress.
+	Out io.Writer
 }
 
 // campaignFormationRunnerFactory builds the runner campaign execution
 // dispatches every bound formation through.
-type campaignFormationRunnerFactory func(campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error)
+type campaignFormationRunnerFactory func(context.Context, campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error)
 
 // newProductionCampaignFormationRunner is the direct formation runner over the
 // governed inference and model-command paths.
-func newProductionCampaignFormationRunner(in campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error) {
-	productionDeps, err := buildCampaignFormationProductionDeps(in.Deps, in.Config, in.FileSvc, in.AuthContext, in.Operators, in.Spec.GetModelRegistry(), in.Spec.GetModelRegistryDigest(), in.Options)
+func newProductionCampaignFormationRunner(ctx context.Context, in campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error) {
+	productionDeps, err := buildCampaignFormationProductionDeps(ctx, in.Out, in.Deps, in.Config, in.FileSvc, in.AuthContext, in.Operators, in.Spec.GetModelRegistry(), in.Spec.GetModelRegistryDigest(), in.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -888,6 +886,8 @@ func newProductionCampaignFormationRunner(in campaignFormationRunnerInputs) (eva
 // observation, allocation, and release dependencies every campaign formation
 // run uses, whichever runner executes the roles.
 func buildCampaignFormationProductionDeps(
+	ctx context.Context,
+	out io.Writer,
 	deps nativeEvalDeps,
 	cfg *config.Config,
 	fileSvc fs.RuntimeFileService,
@@ -897,7 +897,7 @@ func buildCampaignFormationProductionDeps(
 	registryDigest string,
 	opts campaignFormationProductionOptions,
 ) (evaluation.FormationProductionDependencies, error) {
-	appClient, err := inferenceEvalAppClient(fileSvc, cfg, authContext, deps.clientFactory)
+	appClient, err := inferenceEvalAppClient(ctx, out, deps, fileSvc, cfg, authContext)
 	if err != nil {
 		return evaluation.FormationProductionDependencies{}, fmt.Errorf("evaluation: campaign formation dependencies: %w", err)
 	}

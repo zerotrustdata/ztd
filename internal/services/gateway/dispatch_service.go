@@ -829,7 +829,10 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	}
 
 	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return nil, fmt.Errorf("dispatch: %w: %s", inferenceReceiptFailureError(receipt), receipt.ResultSummary)
+		// The verified FAILED receipt rides with the error: its commitment is
+		// on the Operator's ledger, so evidence verification must be able to
+		// claim it.
+		return nil, governance.WithFailedReceipt(receipt, fmt.Errorf("dispatch: %w: %s", inferenceReceiptFailureError(receipt), receipt.ResultSummary))
 	}
 
 	result := completion.GetResult()

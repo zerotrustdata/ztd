@@ -133,18 +133,12 @@ Approve the Data Operator request first, then the Inference Operator request, or
 ./ztd auth enroll approve <inference-operator-request-id> --yes
 ```
 
-The evaluation CLI dispatches inference with a separate host application identity, `ztd-eval`, and fails closed without it. Enroll it in a second terminal:
-
-```bash
-./ztd auth enroll app ztd-eval
-```
-
-Then approve its pending request from the first terminal:
-
-```bash
-./ztd auth enroll pending
-./ztd auth enroll approve <request-id> --yes
-```
+The evaluation CLI dispatches inference with a separate host application identity, `ztd-eval`. When that identity is
+missing, expired, or untrusted, the first eval command that needs it enrolls it: it submits the platform enrollment
+request and approves that exact request (matched by request ID and app CSR fingerprint) with the authenticated owner's
+CLI identity. The Gateway still enforces owner authority, so a CLI that is not the owner fails closed. To enroll it
+ahead of time instead, run `./ztd auth enroll app ztd-eval` and approve the request with `./ztd auth enroll approve
+<request-id> --yes`.
 
 ### 3. Verify readiness
 

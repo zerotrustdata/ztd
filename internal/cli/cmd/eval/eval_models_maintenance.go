@@ -10,7 +10,6 @@ package eval
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
 
@@ -39,11 +38,12 @@ func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (g
 	if err != nil {
 		return governedModelMaintenanceEnv{}, err
 	}
-	sessions, err := resolveOperatorSessionsFrom(operators, constants.OperatorCapabilityInference)
+	inference, err := evaluation.SelectInferenceOperator(operators, "")
 	if err != nil {
 		return governedModelMaintenanceEnv{}, err
 	}
-	endpoint, err := evaluation.GovernedInferenceOllamaEndpoint(operators, sessions.InferenceSessionID)
+	inferenceSessionID := inference.OperatorSessionID
+	endpoint, err := evaluation.GovernedInferenceOllamaEndpoint(operators, inferenceSessionID)
 	if err != nil {
 		return governedModelMaintenanceEnv{}, err
 	}
@@ -52,7 +52,6 @@ func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (g
 		return governedModelMaintenanceEnv{}, err
 	}
 	prefixedNewID := adaptNewID(deps.newID)
-	inferenceSessionID := sessions.InferenceSessionID
 	return governedModelMaintenanceEnv{
 		Maintenance: evaluation.OllamaModelMaintenanceContext{
 			TargetOperatorSessionID: inferenceSessionID,
@@ -62,7 +61,7 @@ func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (g
 		},
 		ModelDispatcher: modelDispatcher,
 		ResolveProbeRunner: func() (evaluation.GovernedCapabilityProbeRunner, error) {
-			appClient, err := inferenceEvalAppClient(fileSvc, cfg, authContext, deps.clientFactory)
+			appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
 			if err != nil {
 				return nil, err
 			}

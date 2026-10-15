@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -165,11 +166,14 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	variant := homogeneous.Homogeneous.GetCandidateVariant()
 	binding := req.Binding
 	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" || req.AttemptID == "" ||
-		binding.InferenceOperatorSessionID == "" || binding.DataOperatorID == "" || binding.DataOperatorSessionID == "" ||
-		binding.ModelRegistryDigest == "" || len(binding.ModelRegistry) == 0 || binding.DataOperatorAnchor == nil {
+		binding.ModelRegistryDigest == "" || len(binding.ModelRegistry) == 0 {
 		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: candidate variant, attempt, and execution binding: %w", constants.ErrMissingRequiredField)
 	}
-	workspace, err := NewScenarioWorkspace(binding.DataOperatorWorkingDirectory, assignment.GetRunId(), req.AttemptID)
+	topology := binding.Topology
+	if err := topology.ValidateAnchored(); err != nil {
+		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", err)
+	}
+	workspace, err := NewScenarioWorkspace(topology.DataWorkingDirectory, assignment.GetRunId(), req.AttemptID)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +184,7 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 		variant:   variant,
 		registry:  binding.ModelRegistry,
 		workspace: workspace,
-		target:    Target{OperatorID: binding.DataOperatorID, SessionID: binding.DataOperatorSessionID},
+		target:    Target{OperatorID: topology.Data.OperatorID, SessionID: topology.Data.OperatorSessionID},
 		trace: &AgentTrace{
 			RunID:               assignment.GetRunId(),
 			AssignmentID:        assignment.GetAssignmentId(),
@@ -191,11 +195,9 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 			ServedModelTag:      variant.GetServedModelTag(),
 			ModelDigest:         variant.GetModelDigest(),
 			ModelRegistryDigest: binding.ModelRegistryDigest,
-			InferenceSessionID:  binding.InferenceOperatorSessionID,
-			DataOperatorID:      binding.DataOperatorID,
-			DataSessionID:       binding.DataOperatorSessionID,
+			Inference:           agentTraceRuntime(topology.Inference),
+			Data:                agentTraceRuntime(topology.Data),
 			Workspace:           AgentTraceWorkspace(workspace),
-			DataOperatorAnchor:  &AgentTraceAnchor{ConformanceAnchor: binding.DataOperatorAnchor},
 			ModelCalls:          []AgentModelCall{},
 			ToolCalls:           []AgentToolCall{},
 		},
@@ -207,14 +209,14 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 func (r *agentRun) loop(ctx context.Context) error {
 	messages := r.conversation()
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
-		result, call, ok := r.infer(ctx, agentModelCallPurposeTurn, turn, messages, r.executor.catalog.Declarations())
-		if !ok {
+		result, call := r.infer(ctx, agentModelCallPurposeTurn, turn, messages, r.executor.catalog.Declarations())
+		if call == nil {
 			return nil
 		}
 		text, toolCalls := agentResponseParts(result)
 		call.Text = text
 		call.ToolCallCount = len(toolCalls)
-		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
+		modelCallID := call.ProviderAttemptID
 		if len(toolCalls) == 0 {
 			r.trace.FinalOutput = text
 			return nil
@@ -225,7 +227,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 		}
 		results := make([]*operatorv1.InferenceMessage, 0, len(toolCalls))
 		for _, toolCall := range toolCalls {
-			executed, err := r.runTool(ctx, turn, call.ProviderAttemptID, toolCall)
+			executed, err := r.runTool(ctx, turn, modelCallID, toolCall)
 			if err != nil {
 				return err
 			}
@@ -316,29 +318,48 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, []*operator
 	return strings.TrimSpace(formationCollectInferenceText(result)), calls
 }
 
-// infer dispatches one governed inference for the designated model. A
-// provider failure is a scored outcome, not an execution error: it is
-// recorded on the trace and reported as ok=false so the caller stops the turn.
-func (r *agentRun) infer(ctx context.Context, purpose string, turn int, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, bool) {
+// infer dispatches one governed inference for the designated model and records
+// it on the trace whenever the Inference runtime executed it, so its ledger
+// commitment is always claimed. A provider failure is a scored outcome, not an
+// execution error: it is recorded on the trace and reported as a nil call so
+// the caller stops the turn.
+func (r *agentRun) infer(ctx context.Context, purpose string, turn int, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
 	result, call, err := r.dispatchInference(ctx, purpose, turn, messages, tools)
 	if err != nil {
 		r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
-		return nil, AgentModelCall{}, false
+		call.Error = r.trace.ProviderFailure
 	}
-	return result, call, true
+	if err == nil || call.Receipt != nil {
+		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
+	}
+	if err != nil {
+		return nil, nil
+	}
+	return result, &r.trace.ModelCalls[len(r.trace.ModelCalls)-1]
 }
 
 // dispatchInference dispatches one governed inference for the designated model
-// and records its telemetry. Every agent call answers the scored turn.
+// and records its telemetry. Every agent call answers the scored turn. The
+// returned call carries the Inference runtime's signed receipt whenever the
+// runtime executed the dispatch, including when err reports its failure.
 func (r *agentRun) dispatchInference(ctx context.Context, purpose string, turn int, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
 	attemptID := r.executor.newID("agent-inference")
+	call := AgentModelCall{
+		ProviderAttemptID: attemptID,
+		Purpose:           purpose,
+		LoopTurn:          turn,
+		ToolsDeclared:     []string{},
+	}
+	for _, tool := range tools {
+		call.ToolsDeclared = append(call.ToolsDeclared, tool.GetName())
+	}
 	probe := InferenceProbeRequest{
 		ProviderAttemptID:       attemptID,
 		Role:                    r.role,
 		Model:                   r.variant.GetServedModelTag(),
 		ModelDigest:             r.variant.GetModelDigest(),
-		TargetOperatorSessionID: r.trace.InferenceSessionID,
+		TargetOperatorSessionID: r.trace.Inference.SessionID,
 		Messages:                messages,
 		Tools:                   tools,
 		CampaignID:              r.trace.CampaignID,
@@ -350,7 +371,7 @@ func (r *agentRun) dispatchInference(ctx context.Context, purpose string, turn i
 	}
 	dispatch, err := BuildInferenceProbeDispatchRequest(probe)
 	if err != nil {
-		return nil, AgentModelCall{}, err
+		return nil, call, err
 	}
 	dispatch.RunId = r.trace.RunID
 	dispatch.AssignmentId = r.trace.AssignmentID
@@ -358,32 +379,30 @@ func (r *agentRun) dispatchInference(ctx context.Context, purpose string, turn i
 	dispatch.ScenarioId = r.trace.ScenarioID
 	response, err := r.executor.inference.DispatchInference(ctx, dispatch)
 	if err != nil {
-		return nil, AgentModelCall{}, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
-	}
-	if err := ValidateInferenceProbeResponse(probe, response); err != nil {
-		return nil, AgentModelCall{}, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
+		if receipt := governance.FailedReceipt(err); receipt != nil {
+			call.TransactionID = receipt.GetTransactionId()
+			call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+		}
+		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
 	}
 	result := response.GetResult()
+	call.TransactionID = response.GetTransactionId()
+	if receipt := response.GetReceipt(); receipt != nil {
+		call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+	}
+	call.ResultDigest = result.GetResultDigest()
+	if err := ValidateInferenceProbeResponse(probe, response); err != nil {
+		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
+	}
 	if result.GetPromptTokens() < 0 || result.GetCompletionTokens() < 0 {
-		return nil, AgentModelCall{}, fmt.Errorf("%s inference turn %d: negative token usage: %w", purpose, turn, constants.ErrInferenceProviderResponseInvalid)
+		return nil, call, fmt.Errorf("%s inference turn %d: negative token usage: %w", purpose, turn, constants.ErrInferenceProviderResponseInvalid)
 	}
-	call := AgentModelCall{
-		ProviderAttemptID: attemptID,
-		TransactionID:     response.GetTransactionId(),
-		Purpose:           purpose,
-		LoopTurn:          turn,
-		ToolsDeclared:     []string{},
-		ResultDigest:      result.GetResultDigest(),
-		UsageReported:     result.GetUsageReported(),
-		PromptTokens:      uint32(result.GetPromptTokens()),
-		CompletionTokens:  uint32(result.GetCompletionTokens()),
-		FinishReason:      result.GetFinishReason(),
-		LoadState:         operatorLoadStateToEvaluation(result.GetLoadState()).String(),
-		RetryCount:        result.GetRetryCount(),
-	}
-	for _, tool := range tools {
-		call.ToolsDeclared = append(call.ToolsDeclared, tool.GetName())
-	}
+	call.UsageReported = result.GetUsageReported()
+	call.PromptTokens = uint32(result.GetPromptTokens())
+	call.CompletionTokens = uint32(result.GetCompletionTokens())
+	call.FinishReason = result.GetFinishReason()
+	call.LoadState = operatorLoadStateToEvaluation(result.GetLoadState()).String()
+	call.RetryCount = result.GetRetryCount()
 	if result.TimeToFirstTokenNs != nil && *result.TimeToFirstTokenNs > 0 {
 		call.TTFTNanos = uint64(*result.TimeToFirstTokenNs)
 	}
@@ -809,8 +828,8 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 				BindingId:         call.CallID,
 				AssignmentId:      assignmentID,
 				TransactionId:     call.TransactionID,
-				OperatorId:        trace.DataOperatorID,
-				OperatorSessionId: trace.DataSessionID,
+				OperatorId:        trace.Data.OperatorID,
+				OperatorSessionId: trace.Data.SessionID,
 				ReceiptRef:        ref,
 				PolicyDecision:    call.PolicyDecision,
 			})

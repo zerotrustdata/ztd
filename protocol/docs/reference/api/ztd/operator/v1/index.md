@@ -1358,13 +1358,18 @@ instead of at the dispatch deadline.
 InferenceDispatchFailure is the protocol-owned error body for a non-2xx
 POST /api/v1/inference/dispatch. Error is a public-safe centralized
 sentinel; code classifies it, and is UNSPECIFIED for request faults the
-handler rejects before dispatch (method, identity, body size).
+handler rejects before dispatch (method, identity, body size). Receipt is
+the executing Operator&#39;s verified signed FAILED receipt when the dispatch
+reached it: a governance rejection, or a failed execution whose commitment
+the Operator&#39;s ledger holds. It is absent for every failure that ended
+before the Operator signed an outcome.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | error | [string](#string) |  |  |
 | code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
 
 
 

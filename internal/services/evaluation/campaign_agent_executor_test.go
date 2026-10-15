@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -45,25 +46,40 @@ type agentAnswer struct {
 }
 
 // agentExecutorFixture wires the real executor, the real command lane, and the
-// evidence ledger double. Only the Gateway client, the inference Operator, the
+// evidence ledger doubles. Only the Gateway client, the inference Operator, the
 // sentinel, and the trace store are fakes, and each fake records into one log.
+// ledger is the Data runtime's ledger; inferenceLedger is the Inference
+// runtime's, and is ledger itself when both roles share one runtime.
 type agentExecutorFixture struct {
-	t         *testing.T
-	ledger    *evidenceLedger
-	log       []string
-	client    *agentLaneClient
-	inference *agentInferenceFake
-	sentinel  *agentSentinelFake
-	traces    *agentTraceStoreFake
-	executor  *CampaignAgentExecutor
-	req       AssignmentExecutionRequest
-	workspace ScenarioWorkspace
+	t               *testing.T
+	ledger          *evidenceLedger
+	inferenceLedger *evidenceLedger
+	log             []string
+	client          *agentLaneClient
+	inference       *agentInferenceFake
+	sentinel        *agentSentinelFake
+	traces          *agentTraceStoreFake
+	executor        *CampaignAgentExecutor
+	req             AssignmentExecutionRequest
+	workspace       ScenarioWorkspace
 }
 
+// newAgentExecutorFixture runs the Inference and Data roles on distinct runtimes.
 func newAgentExecutorFixture(t *testing.T, turns ...[]*operatorv1.InferenceResponsePart) *agentExecutorFixture {
 	t.Helper()
-	signer := oracletest.NewSigner(t)
-	f := &agentExecutorFixture{t: t, ledger: newEvidenceLedger(t, signer)}
+	return newAgentExecutorFixtureOnRuntimes(t, false, turns...)
+}
+
+// newAgentExecutorFixtureOnRuntimes runs the Inference and Data roles on
+// distinct runtimes, or, when shared, on one runtime whose ledger records both
+// roles' executions, as the Gateway's embedded data,inference Operator does.
+func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*operatorv1.InferenceResponsePart) *agentExecutorFixture {
+	t.Helper()
+	f := &agentExecutorFixture{t: t, ledger: newEvidenceLedger(t, oracletest.NewSigner(t))}
+	f.inferenceLedger = newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
+	if shared {
+		f.inferenceLedger = f.ledger
+	}
 	f.client = &agentLaneClient{fixture: f}
 	f.inference = &agentInferenceFake{fixture: f, turns: turns}
 	f.sentinel = &agentSentinelFake{fixture: f}
@@ -101,13 +117,13 @@ func newAgentExecutorFixture(t *testing.T, turns ...[]*operatorv1.InferenceRespo
 		},
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC,
 		Binding: CampaignExecutionBinding{
-			InferenceOperatorSessionID:   "infer-session-1",
-			DataOperatorID:               evidenceOperatorID,
-			DataOperatorSessionID:        evidenceSessionID,
-			DataOperatorWorkingDirectory: agentTestWorkingDirectory,
-			ModelRegistryDigest:          registryDigest,
-			ModelRegistry:                registry,
-			DataOperatorAnchor:           signer.Anchor(evidenceOperatorID),
+			Topology: CampaignOperatorTopology{
+				Inference:            f.inferenceLedger.campaignRuntime(),
+				Data:                 f.ledger.campaignRuntime(),
+				DataWorkingDirectory: agentTestWorkingDirectory,
+			},
+			ModelRegistryDigest: registryDigest,
+			ModelRegistry:       registry,
 		},
 	}
 	f.workspace, err = NewScenarioWorkspace(agentTestWorkingDirectory, "run-1", "attempt-1")
@@ -163,31 +179,47 @@ func (c *agentLaneClient) DispatchCommand(_ context.Context, _ client.Persona, r
 	}, nil
 }
 
-// agentInferenceFake answers each governed inference with the next scripted turn.
+// agentInferenceFake is the Inference runtime: each governed inference appends
+// one commitment to the fixture's inference ledger and answers with the next
+// scripted turn and its signed receipt. Turns are numbered from 1.
 type agentInferenceFake struct {
 	fixture  *agentExecutorFixture
 	turns    [][]*operatorv1.InferenceResponsePart
 	requests []*operatorv1.InferenceDispatchRequest
+	// failTurn, when set, makes that turn's provider fail after the runtime
+	// executed it, so the error carries the runtime's FAILED receipt.
+	failTurn int
+	// foreignTurn, when set, has another caller execute on the Inference
+	// runtime during that turn, a commitment the trace cannot claim.
+	foreignTurn int
 }
 
 func (f *agentInferenceFake) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 	f.requests = append(f.requests, req)
 	f.fixture.log = append(f.fixture.log, "infer")
-	turn := len(f.requests) - 1
-	if turn >= len(f.turns) {
+	turn := len(f.requests)
+	if turn > len(f.turns) {
 		return nil, fmt.Errorf("agent test inference: unscripted turn %d", turn)
 	}
-	digest := fmt.Sprintf("digest-%d", turn)
+	ledger := f.fixture.inferenceLedger
+	if turn == f.foreignTurn {
+		ledger.executed(fmt.Sprintf("tx-foreign-%d", turn), string(constants.ActionTypeExecuteBash))
+	}
+	txID := fmt.Sprintf("tx-inference-%d", turn)
+	if turn == f.failTurn {
+		return nil, governance.WithFailedReceipt(ledger.inferenceFailed(txID), errors.New("agent test inference: provider unreachable"))
+	}
 	return &operatorv1.InferenceDispatchResponse{
+		TransactionId: txID,
 		Result: &operatorv1.InferenceResult{
 			ProviderAttemptId:   req.GetProviderAttemptId(),
 			RequestedModel:      req.GetModel(),
 			CampaignId:          req.GetCampaignId(),
 			ModelRegistryDigest: req.GetModelRegistryDigest(),
-			ResultDigest:        digest,
-			Parts:               f.turns[turn],
+			ResultDigest:        evidenceResultDigest(txID),
+			Parts:               f.turns[turn-1],
 		},
-		Receipt: &operatorv1.ActionReceipt{ResultSummary: digest},
+		Receipt: ledger.inference(txID),
 	}, nil
 }
 
@@ -439,12 +471,108 @@ func TestCampaignAgentExecutor_RequiresLedgerSentinelToConstruct(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
-func TestCampaignAgentExecutor_RequiresDataOperatorAnchorToStart(t *testing.T) {
-	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
-	f.req.Binding.DataOperatorAnchor = nil
+func TestCampaignAgentExecutor_RequiresEachRoleAnchorToStart(t *testing.T) {
+	for _, role := range []string{"inference", "data"} {
+		t.Run(role, func(t *testing.T) {
+			f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
+			if role == "inference" {
+				f.req.Binding.Topology.Inference.Anchor = nil
+			} else {
+				f.req.Binding.Topology.Data.Anchor = nil
+			}
+
+			_, err := f.execute()
+
+			assert.ErrorIs(t, err, constants.ErrConformanceAnchorMissing)
+			assert.Empty(t, f.client.requests, "no governed action runs without both runtimes' pinned keys")
+			assert.Empty(t, f.inference.requests)
+		})
+	}
+}
+
+func TestCampaignAgentExecutor_SharedRuntimeMustPinOneKeyToStart(t *testing.T) {
+	f := newAgentExecutorFixtureOnRuntimes(t, true, runCommandTurns(agentTestCommand)...)
+	f.req.Binding.Topology.Inference.Anchor = oracletest.NewSigner(t).Anchor(evidenceOperatorID)
 
 	_, err := f.execute()
 
-	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
-	assert.Empty(t, f.client.requests, "no governed action runs without a pinned Data Operator key")
+	assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
+	assert.Empty(t, f.client.requests)
+}
+
+// The run that motivated per-role runtimes: the embedded Operator held both
+// capabilities, so every inference committed inside the Data sentinel bracket.
+// On either topology the trace claims every commitment its bracket holds.
+func TestCampaignAgentExecutor_EvidenceVerifiesOnEachOperatorTopology(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared runtime %t", shared), func(t *testing.T) {
+			f := newAgentExecutorFixtureOnRuntimes(t, shared, runCommandTurns(agentTestCommand)...)
+
+			result, err := f.execute()
+
+			require.NoError(t, err)
+			assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
+			assert.Empty(t, result.GetInvalidEvidenceDetail())
+			assert.NotEmpty(t, result.GetDeterministicGrades())
+			trace := f.storedTrace()
+			assert.Equal(t, shared, trace.SharedRuntime())
+			assert.Equal(t, f.inferenceLedger.operatorID, trace.Inference.OperatorID)
+			assert.Equal(t, f.ledger.operatorID, trace.Data.OperatorID)
+			require.Len(t, trace.ModelCalls, 2)
+			for _, call := range trace.ModelCalls {
+				require.NotNil(t, call.Receipt, "every executed model turn keeps its signed receipt")
+				assert.Equal(t, call.TransactionID, call.Receipt.GetTransactionId())
+				assert.True(t, call.Completed())
+			}
+			require.NoError(t, VerifyAgentTraceEvidence(trace))
+		})
+	}
+}
+
+func TestCampaignAgentExecutor_ProviderFailureKeepsFailedReceiptAndVerifies(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared runtime %t", shared), func(t *testing.T) {
+			f := newAgentExecutorFixtureOnRuntimes(t, shared, runCommandTurns(agentTestCommand)...)
+			f.inference.failTurn = 2
+
+			result, err := f.execute()
+
+			require.NoError(t, err, "a provider failure is a scored outcome, not a harness failure")
+			assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, result.GetLifecycleStatus())
+			assert.Empty(t, result.GetInvalidEvidenceDetail())
+			trace := f.storedTrace()
+			require.Len(t, trace.ModelCalls, 2, "the failed turn is recorded because its runtime committed it")
+			failed := trace.ModelCalls[1]
+			assert.False(t, failed.Completed())
+			assert.NotEmpty(t, failed.Error)
+			assert.Equal(t, "tx-inference-2", failed.TransactionID)
+			require.NotNil(t, failed.Receipt)
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Receipt.GetStatus())
+			require.NoError(t, VerifyAgentTraceEvidence(trace))
+		})
+	}
+}
+
+func TestCampaignAgentExecutor_SharedRuntimeExecutionTheTraceDoesNotClaimIsInvalidEvidence(t *testing.T) {
+	f := newAgentExecutorFixtureOnRuntimes(t, true, runCommandTurns(agentTestCommand)...)
+	f.inference.foreignTurn = 2
+
+	result, err := f.execute()
+
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus())
+	assert.NotEmpty(t, result.GetInvalidEvidenceDetail())
+	assert.Empty(t, result.GetDeterministicGrades())
+	assert.ErrorIs(t, VerifyAgentTraceEvidence(f.storedTrace()), constants.ErrConformanceUnclaimedExecution)
+}
+
+func TestCampaignAgentExecutor_DistinctRuntimesKeepInferenceLedgerOutOfDataBracket(t *testing.T) {
+	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
+	f.inference.foreignTurn = 2
+
+	result, err := f.execute()
+
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(),
+		"another caller on the Inference runtime is outside the Data bracket")
 }

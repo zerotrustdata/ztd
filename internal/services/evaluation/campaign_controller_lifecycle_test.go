@@ -152,11 +152,9 @@ func TestCampaignControllerCancelRunStopsEveryAssignmentWithoutAResult(t *testin
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	binding := CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        f.req.Inventory.RegistryDigest,
-		ModelRegistry:              f.req.Inventory.ToModelRegistryFreeze().Variants,
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: f.req.Inventory.RegistryDigest,
+		ModelRegistry:       f.req.Inventory.ToModelRegistryFreeze().Variants,
 	}
 	_, executed, err := f.controller.ExecuteNextAssignment(ctx, "run-a", binding, f.req.ScenarioArtifacts)
 	require.NoError(t, err)

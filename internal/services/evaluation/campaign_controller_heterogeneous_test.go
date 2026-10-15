@@ -83,11 +83,9 @@ func TestCampaignController_ScheduleAndExecuteHeterogeneousAssignment(t *testing
 	assert.Greater(t, count, 0)
 
 	binding := CampaignExecutionBinding{
-		InferenceOperatorSessionID: req.InferenceOperatorSessionID,
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      req.DataOperatorSessionID,
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(variants),
+		Topology:            testOperatorTopology(req.InferenceOperatorSessionID, req.DataOperatorSessionID),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
 	}
 	result, ok, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, binding, req.ScenarioArtifacts)
 	require.NoError(t, err)
@@ -146,11 +144,9 @@ func TestCampaignController_ScheduleAndExecuteFormationCatalogAssignment(t *test
 	assert.Equal(t, 5*StandardScenarioCount, count)
 
 	binding := CampaignExecutionBinding{
-		InferenceOperatorSessionID: req.InferenceOperatorSessionID,
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      req.DataOperatorSessionID,
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(variants),
+		Topology:            testOperatorTopology(req.InferenceOperatorSessionID, req.DataOperatorSessionID),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
 	}
 	result, ok, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, binding, req.ScenarioArtifacts)
 	require.NoError(t, err)

@@ -1826,10 +1826,15 @@ enum InferenceDispatchFailureCode {
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
 // POST /api/v1/inference/dispatch. Error is a public-safe centralized
 // sentinel; code classifies it, and is UNSPECIFIED for request faults the
-// handler rejects before dispatch (method, identity, body size).
+// handler rejects before dispatch (method, identity, body size). Receipt is
+// the executing Operator's verified signed FAILED receipt when the dispatch
+// reached it: a governance rejection, or a failed execution whose commitment
+// the Operator's ledger holds. It is absent for every failure that ended
+// before the Operator signed an outcome.
 message InferenceDispatchFailure {
   string error = 1;
   InferenceDispatchFailureCode code = 2;
+  ActionReceipt receipt = 3;
 }
 
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure

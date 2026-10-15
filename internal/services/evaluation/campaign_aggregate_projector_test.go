@@ -503,11 +503,9 @@ func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
 	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
 	require.NoError(t, err)
 	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 

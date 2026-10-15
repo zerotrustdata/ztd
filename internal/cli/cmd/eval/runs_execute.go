@@ -27,8 +27,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
-	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -139,19 +137,24 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, err
 	}
-	sessions, err := resolveOperatorSessionsFrom(operators, constants.OperatorCapabilityInference, constants.OperatorCapabilityData)
+	topology, err := evaluation.ResolveCampaignOperatorTopology(operators, "")
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
-	authContext, err = evalBindDataOperator(cmd, gatewayDeps, cfg, fileSvc, authContext, operators, sessions.DataSessionID, !opts.NoAutoBind)
-	if err != nil {
-		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	// A model drives every non-platform lane's Data Operator actions, shell
+	// included, so the operator must run in a disposable directory, and every
+	// governed receipt is verified against its runtime's enrollment-bound key.
+	// The workspace is checked first because its refusal is the actionable
+	// error. A platform run reads no receipts, so it needs no anchors.
+	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
+		if err := evaluation.ValidateAgentDataOperator(topology.DataWorkingDirectory, cfg.ProjectRoot); err != nil {
+			return 0, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+		if topology, err = topology.WithAnchors(operators); err != nil {
+			return 0, fmt.Errorf("evaluation: run execute: %w", err)
+		}
 	}
-	selected, err := evaluation.SelectInferenceOperator(operators, sessions.InferenceSessionID)
-	if err != nil {
-		return 0, err
-	}
-	dataOperator, err := operatorcapability.SelectDataOperator(operators)
+	authContext, err = evalBindDataOperator(cmd, gatewayDeps, cfg, fileSvc, authContext, operators, topology.Data.OperatorSessionID, !opts.NoAutoBind)
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
@@ -169,7 +172,8 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	}
 	newID := adaptNewID(deps.newID)
 	buildFormation := func() (evaluation.CampaignAssignmentExecutor, error) {
-		runner, err := deps.formationRunnerFactory(campaignFormationRunnerInputs{
+		runner, err := deps.formationRunnerFactory(cmd.Context(), campaignFormationRunnerInputs{
+			Out:         cmd.ErrOrStderr(),
 			Deps:        deps,
 			Config:      cfg,
 			FileSvc:     fileSvc,
@@ -177,8 +181,8 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 			Operators:   operators,
 			Spec:        spec,
 			Options: campaignFormationProductionOptions{
-				InferenceSessionID: selected.OperatorSessionID,
-				DataSessionID:      dataOperator.OperatorSessionID,
+				InferenceSessionID: topology.Inference.OperatorSessionID,
+				DataSessionID:      topology.Data.OperatorSessionID,
 			},
 		})
 		if err != nil {
@@ -206,7 +210,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	// identity, and each tool call is a governed Data Operator action under
 	// the bound CLI session.
 	buildAgent := func() (evaluation.CampaignAssignmentExecutor, error) {
-		appClient, err := inferenceEvalAppClient(fileSvc, cfg, authContext, deps.clientFactory)
+		appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
 		if err != nil {
 			return nil, err
 		}
@@ -217,7 +221,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		persona := harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
 		lane := evaluation.NewCommandLane(gatewayClient, persona)
 		sentinel, err := drive.NewSentinel(gatewayClient, persona, map[cases.Executor]cliop.Target{
-			cases.ExecutorOutbound: {OperatorID: dataOperator.OperatorID, OperatorSessionID: dataOperator.OperatorSessionID},
+			cases.ExecutorOutbound: {OperatorID: topology.Data.OperatorID, OperatorSessionID: topology.Data.OperatorSessionID},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
@@ -233,36 +237,10 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		}
 		controller = controller.WithPublication(publication)
 	}
-	// A model drives every non-platform lane's Data Operator actions, shell
-	// included, so the operator must run in a disposable directory. This is
-	// checked before the anchor because the workspace refusal is the
-	// actionable error.
-	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
-		if err := evaluation.ValidateAgentDataOperator(dataOperator.WorkingDirectory, cfg.ProjectRoot); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
-		}
-	}
-	var dataOperatorDocument *operatorv1.OperatorDocument
-	for _, op := range operators {
-		if op.GetId() == dataOperator.OperatorID && op.GetOperatorSessionId() == dataOperator.OperatorSessionID {
-			dataOperatorDocument = op
-			break
-		}
-	}
-	dataOperatorAnchor, anchorErr := oracle.BoundAnchor(dataOperatorDocument)
-	// The anchor verifies the receipts of model-driven lanes. A platform run
-	// never reads them, so it does not need the key.
-	if anchorErr != nil && summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
-		return 0, fmt.Errorf("evaluation: run execute: data operator anchor: %w", anchorErr)
-	}
 	executionBinding := evaluation.CampaignExecutionBinding{
-		InferenceOperatorSessionID:   selected.OperatorSessionID,
-		DataOperatorID:               dataOperator.OperatorID,
-		DataOperatorSessionID:        dataOperator.OperatorSessionID,
-		DataOperatorWorkingDirectory: dataOperator.WorkingDirectory,
-		ModelRegistryDigest:          spec.GetModelRegistryDigest(),
-		ModelRegistry:                evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
-		DataOperatorAnchor:           dataOperatorAnchor,
+		Topology:            topology,
+		ModelRegistryDigest: spec.GetModelRegistryDigest(),
+		ModelRegistry:       evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
 	}
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
@@ -272,17 +250,17 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 			if runErr == nil {
 				return
 			}
-			cleanupErr := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, selected.OperatorSessionID, spec)
+			cleanupErr := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec)
 			if cleanupErr == nil {
 				return
 			}
 			runErr = errors.Join(runErr, fmt.Errorf("evaluation: run execute: release provider models: %w", cleanupErr))
 		}()
-		endpoint, err := resolveCampaignOllamaEndpoint(operators, selected.OperatorSessionID)
+		endpoint, err := resolveCampaignOllamaEndpoint(operators, topology.Inference.OperatorSessionID)
 		if err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
-		if err := releaseResidentProviderModels(cmd, deps, opts, cfg, authContext, selected.OperatorSessionID, endpoint); err != nil {
+		if err := releaseResidentProviderModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID, endpoint); err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 	}
@@ -350,7 +328,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
-		if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, selected.OperatorSessionID, spec); err != nil {
+		if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec); err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 		if publication != nil {

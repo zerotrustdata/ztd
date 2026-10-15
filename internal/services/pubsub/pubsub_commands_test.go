@@ -1391,7 +1391,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrTxEventActionMismatch)
-		var rejection *governance.RejectionError
+		var rejection *governance.ReceiptError
 		require.ErrorAs(t, err, &rejection, "the mismatch must be an L4 rejection carrying a receipt")
 		require.NotNil(t, receipt)
 		assert.Same(t, rejection.Receipt, receipt)
@@ -1419,7 +1419,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.ErrorIs(t, err, constants.ErrTxEventNotGoverned)
 		assert.Nil(t, receipt, "a pre-L4 refusal has no action to sign, so it carries no receipt")
-		var rejection *governance.RejectionError
+		var rejection *governance.ReceiptError
 		assert.False(t, errors.As(err, &rejection), "a pre-L4 refusal must not be an L4 rejection")
 	})
 
