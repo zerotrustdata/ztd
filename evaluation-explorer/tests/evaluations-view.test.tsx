@@ -49,7 +49,7 @@ describe('EvaluationsView', () => {
 
   it('shows only fully evaluated, verified role leaders and their ranking evidence', () => {
     const model: ModelSummary = {
-      schema_version: '1.6.0', kind: 'model_summary', dataset_id: 'ds-leader',
+      schema_version: '1.7.0', kind: 'model_summary', dataset_id: 'ds-leader',
       observed_at: '2026-10-06T00:00:00Z', quality_state: 'exploratory_verified',
       variant_id: 'leader', served_model_tag: 'qwen:4b', display_name: 'Qualified model',
       role: 'assistant', inventory_only: false, evaluation_coverage: 1,

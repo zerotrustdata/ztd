@@ -225,6 +225,102 @@ describe('adaptCampaignProjectionEnvelope', () => {
     });
   });
 
+  it('adapts a containment assignment that ends with INVALID_EVIDENCE', () => {
+    const context = createCampaignAdaptContext();
+    const lifecycle = (status: string) => ({
+      schema_version: '1.0.0',
+      message_type: 'PublicAssignmentLifecycleRecord',
+      idempotency_key: `run-1:assign-1:lifecycle:${status}`,
+      record: {
+        assignment_id: 'assign-1',
+        run_id: 'run-1',
+        scenario_id: 'containment-ledger-breach',
+        scenario_category: 'EVALUATION_SCENARIO_CATEGORY_CONTAINMENT',
+        lane: 'EVALUATION_LANE_SYSTEM',
+        lifecycle_status: status,
+        repetition: 1,
+        designated_role: 'MODEL_CAMPAIGN_ROLE_PRIMARY',
+        variant_id: 'qwen3-4b',
+        observed_at: '2026-10-15T14:00:00.000Z',
+      },
+    });
+    adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED'), context);
+    // A terminal lifecycle record defers its event to the result projection.
+    expect(adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE'), context)).toEqual([]);
+
+    const records = adaptCampaignProjectionEnvelope(
+      {
+        schema_version: '1.0.0',
+        message_type: 'PublicAssignmentResultProjection',
+        idempotency_key: 'run-1:assign-1:result',
+        record: {
+          assignment_id: 'assign-1',
+          run_id: 'run-1',
+          scenario_id: 'containment-ledger-breach',
+          lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE',
+          summary_status: 'EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE',
+          result_digest: '0'.repeat(64),
+          verification_status: 'unverified',
+          completed_at: '2026-10-15T14:00:05Z',
+        },
+      },
+      context,
+    );
+    for (const record of records) expect(() => decodeViewRecord(record.kind, record)).not.toThrow();
+    expect(records.find((record) => record.kind === 'assignment_result')).toMatchObject({
+      scenario_category: 'containment',
+      evaluation_unit: 'system',
+      terminal_status: 'invalid_evidence',
+    });
+  });
+
+  it('carries the outcome on the terminal event: an INVALID_EVIDENCE lifecycle is invalid_evidence, never a model failure', () => {
+    const context = createCampaignAdaptContext();
+    const records = adaptCampaignProjectionEnvelope(
+      {
+        schema_version: '1.0.0',
+        message_type: 'PublicAssignmentResultProjection',
+        idempotency_key: 'run-1:assign-1:result',
+        record: {
+          assignment_id: 'assign-1',
+          run_id: 'run-1',
+          scenario_id: 'containment-ledger-breach',
+          lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE',
+          summary_status: 'EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE',
+          result_digest: '0'.repeat(64),
+          verification_status: 'unverified',
+          completed_at: '2026-10-15T14:00:05Z',
+        },
+      },
+      context,
+    );
+    expect(records.find((record) => record.kind === 'assignment_failed')).toMatchObject({
+      lifecycle_status: 'failed',
+      terminal_status: 'invalid_evidence',
+    });
+  });
+
+  it('rejects a PASS verdict on a lifecycle that did not complete', () => {
+    expect(() => adaptCampaignProjectionEnvelope(
+      {
+        schema_version: '1.0.0',
+        message_type: 'PublicAssignmentResultProjection',
+        idempotency_key: 'run-1:assign-1:result',
+        record: {
+          assignment_id: 'assign-1',
+          run_id: 'run-1',
+          scenario_id: 'instruction-exact-format',
+          lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE',
+          summary_status: 'EVALUATION_VERDICT_STATUS_PASS',
+          result_digest: '0'.repeat(64),
+          verification_status: 'unverified',
+          completed_at: '2026-10-15T14:00:05Z',
+        },
+      },
+      createCampaignAdaptContext(),
+    )).toThrow(ValidationError);
+  });
+
   it('reports finished assignments against the full queued matrix size', () => {
     const context = createCampaignAdaptContext();
     for (const assignmentId of ['assign-1', 'assign-2', 'assign-3', 'assign-4']) {

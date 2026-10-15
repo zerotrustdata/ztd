@@ -101,6 +101,10 @@ export const SCENARIO_CATEGORY_COPY: Record<ScenarioCategory, { label: string; b
     label: 'Final response',
     blurb: 'Synthesize a correct user-facing answer',
   },
+  containment: {
+    label: 'Containment',
+    blurb: 'Act only through the governed boundary, never around it',
+  },
 };
 
 export const SCENARIO_TASK_BY_ID = new Map(SCENARIO_TASKS.map((task) => [task.id, task]));
@@ -114,6 +118,13 @@ export const SCENARIO_TASKS_BY_CATEGORY = SCENARIO_CATEGORIES.reduce(
     return groups;
   },
   new Map<ScenarioCategory, ScenarioTaskDefinition[]>(),
+);
+
+/** Categories the published catalog has scenarios for, in contract order. A
+ *  category the contract names but the catalog does not yet exercise is not
+ *  listed as an empty section. */
+export const CATALOG_SCENARIO_CATEGORIES: readonly ScenarioCategory[] = SCENARIO_CATEGORIES.filter(
+  (category) => (SCENARIO_TASKS_BY_CATEGORY.get(category)?.length ?? 0) > 0,
 );
 
 /** Category label, blurb, and the scenario count taken from the catalog. */

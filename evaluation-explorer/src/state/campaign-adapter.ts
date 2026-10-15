@@ -6,6 +6,7 @@
 // and methodology snapshots are published only by the Go projector.
 
 import {
+  PUBLIC_UNAVAILABLE_REASONS,
   VIEW_SCHEMA_VERSION,
   type AssignmentResult,
   type BenchmarkObservations,
@@ -15,14 +16,17 @@ import {
   type LiveEventKind,
   type MetricValue,
   type ModelRole,
+  type NativeResultStatus,
   type PublicActivityFamily,
   type PublicGovernedActionActivityRecord,
   type PublicModelActivityRecord,
+  type PublicGradeExplanationCode as PublicGradeExplanationCodeView,
   type PublicHintArgumentSource,
   type PublicPolicyDecisionActivityRecord,
   type PublicPromptHint,
   type PublicToolCallActivityRecord,
   type PublicToolDecisionActivityRecord,
+  type PublicToolOutcome,
   type PublicTrajectoryOutcome,
   type PublicTrajectoryPolicy,
   type PublicUnavailableReason,
@@ -30,9 +34,34 @@ import {
   type ScenarioCategory,
   type SnapshotRecord,
   type TerminalStatus,
+  type ToolScoreDimension,
   type VerifierState,
 } from '../contract/types';
-import { normalizeActivityFamily, type WireActivityFamily } from '../contract/activity-family';
+import {
+  normalizeActivityFamily,
+  wireUnavailableReasonToView,
+  type WireActivityFamily,
+  type WireUnavailableReason,
+} from '../contract/activity-family';
+import type {
+  EvaluationAssignmentLifecycleStatus,
+  EvaluationGradingMethod,
+  EvaluationHintArgumentSource,
+  EvaluationLane,
+  EvaluationLoadState,
+  EvaluationPolicyDecisionOutcome,
+  EvaluationScenarioCategory,
+  EvaluationTrajectoryOutcome,
+  EvaluationTrajectoryPolicy,
+  EvaluationUsageAvailability,
+  EvaluationVerdictStatus,
+  ModelCampaignRole,
+  PublicEvidenceSource,
+  PublicFinishState,
+  PublicGradeExplanationCode,
+  PublicReceiptStatus,
+  PublicToolScoreDimension,
+} from '../contract/proto-enums.generated';
 import {
   decodeCampaignProjectionEnvelope,
   mapCampaignRelease,
@@ -402,7 +431,7 @@ function mapScenarioSummary(value: WireScenarioSummary | undefined): AssignmentR
   return {
     scenario_id: value.scenario_id,
     scenario_version: value.scenario_version,
-    category: requiredScenarioCategory(value.category),
+    category: SCENARIO_CATEGORY_TO_VIEW[value.category],
     public_description: value.public_description,
     grading_method: mapGradingMethod(value.grading_method),
     allowed_tools: value.allowed_tools ?? [],
@@ -477,7 +506,7 @@ function mapActivityFamily<W, T>(family: WireActivityFamily<W>, mapRecord: (reco
 
 function mapModelActivityRecord(record: WireModelActivityRecord): PublicModelActivityRecord {
   return {
-    model_role: requiredModelRole(record.model_role),
+    model_role: MODEL_ROLE_TO_VIEW[record.model_role],
     agent_persona: record.agent_persona,
     variant_id: record.variant_id,
     usage_availability: mapUsageAvailability(record.usage_availability),
@@ -568,26 +597,119 @@ function mapDecimalStringMetric(value: string | undefined): MetricValue<number> 
   return value === undefined ? undefined : { value: Number(value) };
 }
 
-function mapGradingMethod(value: string): 'deterministic' | 'semantic_judge' { return value.endsWith('SEMANTIC_JUDGE') ? 'semantic_judge' : 'deterministic'; }
-function mapNativeResultStatus(value: string): 'pass' | 'fail' | 'unavailable' | 'unsupported' | 'invalid_evidence' { return normalizeEnumToken(value).replace('VERDICT_STATUS_', '').toLowerCase() as ReturnType<typeof mapNativeResultStatus>; }
-function mapExplanationCode(value: string): NonNullable<AssignmentResult['semantic_grade_summaries']>[number]['explanation_code'] { return normalizeEnumToken(value).replace(/^PUBLIC_/, '').replace(/^GRADE_EXPLANATION_CODE_/, '').toLowerCase() as NonNullable<AssignmentResult['semantic_grade_summaries']>[number]['explanation_code']; }
-function mapToolScoreDimensionName(value: string): NonNullable<AssignmentResult['scenario_summary']>['tool_score_dimensions'][number]['dimension'] { return normalizeEnumToken(value).replace(/^PUBLIC_/, '').replace(/^TOOL_SCORE_DIMENSION_/, '').toLowerCase() as NonNullable<AssignmentResult['scenario_summary']>['tool_score_dimensions'][number]['dimension']; }
-function mapUnavailableReason(value: string): PublicUnavailableReason {
-  return normalizeEnumToken(value).replace(/^PUBLIC_/, '').replace(/^UNAVAILABLE_REASON_/, '').toLowerCase() as PublicUnavailableReason;
+// Wire-to-view enum maps. Each is keyed by the generated protobuf enum type, so
+// a value added to eval.proto fails the typecheck here until the view names it.
+const GRADING_METHOD_TO_VIEW: Record<EvaluationGradingMethod, 'deterministic' | 'semantic_judge'> = {
+  EVALUATION_GRADING_METHOD_DETERMINISTIC: 'deterministic',
+  EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE: 'semantic_judge',
+};
+const VERDICT_STATUS_TO_VIEW: Record<EvaluationVerdictStatus, NativeResultStatus> = {
+  EVALUATION_VERDICT_STATUS_PASS: 'pass',
+  EVALUATION_VERDICT_STATUS_FAIL: 'fail',
+  EVALUATION_VERDICT_STATUS_UNAVAILABLE: 'unavailable',
+  EVALUATION_VERDICT_STATUS_UNSUPPORTED: 'unsupported',
+  EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE: 'invalid_evidence',
+};
+const EXPLANATION_CODE_TO_VIEW: Record<PublicGradeExplanationCode, PublicGradeExplanationCodeView> = {
+  PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_PASSED: 'criterion_passed',
+  PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_FAILED: 'criterion_failed',
+  PUBLIC_GRADE_EXPLANATION_CODE_EVIDENCE_UNAVAILABLE: 'evidence_unavailable',
+  PUBLIC_GRADE_EXPLANATION_CODE_UNSUPPORTED: 'unsupported',
+  PUBLIC_GRADE_EXPLANATION_CODE_INVALID_EVIDENCE: 'invalid_evidence',
+  PUBLIC_GRADE_EXPLANATION_CODE_GRADER_UNAVAILABLE: 'grader_unavailable',
+};
+const TOOL_SCORE_DIMENSION_TO_VIEW: Record<PublicToolScoreDimension, ToolScoreDimension> = {
+  PUBLIC_TOOL_SCORE_DIMENSION_TOOL_RECOGNITION: 'tool_recognition',
+  PUBLIC_TOOL_SCORE_DIMENSION_TOOL_SELECTION: 'tool_selection',
+  PUBLIC_TOOL_SCORE_DIMENSION_ARGUMENT_SCHEMA: 'argument_schema',
+  PUBLIC_TOOL_SCORE_DIMENSION_ARGUMENT_SEMANTICS: 'argument_semantics',
+  PUBLIC_TOOL_SCORE_DIMENSION_PERMISSION_COMPLIANCE: 'permission_compliance',
+  PUBLIC_TOOL_SCORE_DIMENSION_RESULT_INTERPRETATION: 'result_interpretation',
+  PUBLIC_TOOL_SCORE_DIMENSION_FOLLOW_UP_DECISION: 'follow_up_decision',
+  PUBLIC_TOOL_SCORE_DIMENSION_UNNECESSARY_TOOL_CALLS: 'unnecessary_tool_calls',
+  PUBLIC_TOOL_SCORE_DIMENSION_LOOPING: 'looping',
+  PUBLIC_TOOL_SCORE_DIMENSION_RECOVERY: 'recovery',
+};
+const USAGE_AVAILABILITY_TO_VIEW: Record<EvaluationUsageAvailability, PublicModelActivityRecord['usage_availability']> = {
+  EVALUATION_USAGE_AVAILABILITY_REPORTED: 'reported',
+  EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE: 'unavailable',
+};
+const FINISH_STATE_TO_VIEW: Record<PublicFinishState, PublicModelActivityRecord['finish_state']> = {
+  PUBLIC_FINISH_STATE_STOP: 'stop',
+  PUBLIC_FINISH_STATE_LENGTH: 'length',
+  PUBLIC_FINISH_STATE_TOOL_CALL: 'tool_call',
+  PUBLIC_FINISH_STATE_ERROR: 'error',
+  PUBLIC_FINISH_STATE_UNAVAILABLE: 'unavailable',
+};
+const LOAD_STATE_TO_VIEW: Record<EvaluationLoadState, PublicModelActivityRecord['load_state']> = {
+  EVALUATION_LOAD_STATE_COLD: 'cold',
+  EVALUATION_LOAD_STATE_WARM: 'warm',
+  EVALUATION_LOAD_STATE_UNAVAILABLE: 'unavailable',
+};
+const POLICY_OUTCOME_TO_VIEW: Record<EvaluationPolicyDecisionOutcome, PublicToolOutcome> = {
+  EVALUATION_POLICY_DECISION_OUTCOME_ALLOW: 'allow',
+  EVALUATION_POLICY_DECISION_OUTCOME_DENY: 'deny',
+  EVALUATION_POLICY_DECISION_OUTCOME_REFUSED: 'refused',
+};
+const TRAJECTORY_POLICY_TO_VIEW: Record<EvaluationTrajectoryPolicy, PublicTrajectoryPolicy> = {
+  EVALUATION_TRAJECTORY_POLICY_ANSWER: 'answer',
+  EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE: 'first_choice',
+  EVALUATION_TRAJECTORY_POLICY_GUIDED: 'guided',
+  EVALUATION_TRAJECTORY_POLICY_GOVERNED: 'governed',
+};
+const TRAJECTORY_OUTCOME_TO_VIEW: Record<EvaluationTrajectoryOutcome, PublicTrajectoryOutcome> = {
+  EVALUATION_TRAJECTORY_OUTCOME_DIRECT: 'direct',
+  EVALUATION_TRAJECTORY_OUTCOME_RECOVERED: 'recovered',
+  EVALUATION_TRAJECTORY_OUTCOME_YIELDED_TO_DENIAL: 'yielded_to_denial',
+  EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL: 'no_tool_call',
+  EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL: 'wrong_tool',
+  EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS: 'wrong_arguments',
+  EVALUATION_TRAJECTORY_OUTCOME_IGNORED_GUIDANCE: 'ignored_guidance',
+  EVALUATION_TRAJECTORY_OUTCOME_ABANDONED_AFTER_ERROR: 'abandoned_after_error',
+  EVALUATION_TRAJECTORY_OUTCOME_CIRCUMVENTED_DENIAL: 'circumvented_denial',
+  EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED: 'loop_exhausted',
+  EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION: 'provider_rejected_tool_declaration',
+};
+const HINT_ARGUMENT_SOURCE_TO_VIEW: Record<EvaluationHintArgumentSource, PublicHintArgumentSource> = {
+  EVALUATION_HINT_ARGUMENT_SOURCE_PROMPT: 'prompt',
+  EVALUATION_HINT_ARGUMENT_SOURCE_SEED: 'seed',
+  EVALUATION_HINT_ARGUMENT_SOURCE_WORKSPACE: 'workspace',
+  EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT: 'operator_context',
+  EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED: 'model_authored',
+};
+const RECEIPT_STATUS_TO_VIEW: Record<PublicReceiptStatus, PublicGovernedActionActivityRecord['receipt_status']> = {
+  PUBLIC_RECEIPT_STATUS_UNAVAILABLE: 'unavailable',
+  PUBLIC_RECEIPT_STATUS_REPORTED: 'reported',
+};
+const EVIDENCE_SOURCE_TO_VIEW: Record<PublicEvidenceSource, PublicGovernedActionActivityRecord['evidence_source']> = {
+  PUBLIC_EVIDENCE_SOURCE_APPLICATION_REPORTED: 'application_reported',
+  PUBLIC_EVIDENCE_SOURCE_BOUND_PUBLIC_PROOF: 'bound_public_proof',
+};
+
+function mapGradingMethod(value: EvaluationGradingMethod): 'deterministic' | 'semantic_judge' { return GRADING_METHOD_TO_VIEW[value]; }
+function mapNativeResultStatus(value: EvaluationVerdictStatus): NativeResultStatus { return VERDICT_STATUS_TO_VIEW[value]; }
+function mapExplanationCode(value: PublicGradeExplanationCode): PublicGradeExplanationCodeView { return EXPLANATION_CODE_TO_VIEW[value]; }
+function mapToolScoreDimensionName(value: PublicToolScoreDimension): ToolScoreDimension { return TOOL_SCORE_DIMENSION_TO_VIEW[value]; }
+/** A metric's unavailable reason arrives as the protobuf name or, from
+ *  view-shaped producers, already as the view token. */
+function mapUnavailableReason(value: WireMetric['unavailable_reason'] & string): PublicUnavailableReason {
+  return (PUBLIC_UNAVAILABLE_REASONS as readonly string[]).includes(value)
+    ? (value as PublicUnavailableReason)
+    : wireUnavailableReasonToView(value as WireUnavailableReason);
 }
-function mapUsageAvailability(value: string): 'reported' | 'unavailable' { return normalizeEnumToken(value).replace(/^EVALUATION_/, '').replace(/^USAGE_AVAILABILITY_/, '').toLowerCase() as ReturnType<typeof mapUsageAvailability>; }
-function mapFinishState(value: string): PublicModelActivityRecord['finish_state'] { return normalizeEnumToken(value).replace(/^PUBLIC_/, '').replace(/^FINISH_STATE_/, '').toLowerCase() as PublicModelActivityRecord['finish_state']; }
-function mapLoadState(value: string): PublicModelActivityRecord['load_state'] { return normalizeEnumToken(value).replace(/^EVALUATION_/, '').replace(/^LOAD_STATE_/, '').toLowerCase() as PublicModelActivityRecord['load_state']; }
-function mapSemanticOutcome(value: string): PublicToolDecisionActivityRecord['outcome'] { return mapNativeResultStatus(value); }
-function mapExecutionOutcome(value: string): PublicToolCallActivityRecord['execution_outcome'] { return mapNativeResultStatus(value); }
-function mapToolOutcome(value: string): 'allow' | 'deny' | 'refused' { return normalizeEnumToken(value).replace(/^EVALUATION_/, '').replace(/^POLICY_DECISION_OUTCOME_/, '').toLowerCase() as ReturnType<typeof mapToolOutcome>; }
-function mapReportedPolicyOutcome(value: string): 'allow' | 'deny' | 'refused' { return mapToolOutcome(value); }
-function mapTrajectoryPolicy(value: string): PublicTrajectoryPolicy { return normalizeEnumToken(value).replace(/^TRAJECTORY_POLICY_/, '').toLowerCase() as PublicTrajectoryPolicy; }
-function mapTrajectoryOutcome(value: string): PublicTrajectoryOutcome { return normalizeEnumToken(value).replace(/^TRAJECTORY_OUTCOME_/, '').toLowerCase() as PublicTrajectoryOutcome; }
-function mapHintArgumentSource(value: string): PublicHintArgumentSource { return normalizeEnumToken(value).replace(/^HINT_ARGUMENT_SOURCE_/, '').toLowerCase() as PublicHintArgumentSource; }
-function mapReceiptStatus(value: string): 'unavailable' | 'reported' { return normalizeEnumToken(value).replace(/^PUBLIC_/, '').replace(/^RECEIPT_STATUS_/, '').toLowerCase() as ReturnType<typeof mapReceiptStatus>; }
-function mapEvidenceSource(value: string): 'application_reported' | 'bound_public_proof' { return normalizeEnumToken(value).replace(/^PUBLIC_/, '').replace(/^EVIDENCE_SOURCE_/, '').toLowerCase() as ReturnType<typeof mapEvidenceSource>; }
-function mapVerificationState(value: string): VerifierState {
+function mapUsageAvailability(value: EvaluationUsageAvailability): PublicModelActivityRecord['usage_availability'] { return USAGE_AVAILABILITY_TO_VIEW[value]; }
+function mapFinishState(value: PublicFinishState): PublicModelActivityRecord['finish_state'] { return FINISH_STATE_TO_VIEW[value]; }
+function mapLoadState(value: EvaluationLoadState): PublicModelActivityRecord['load_state'] { return LOAD_STATE_TO_VIEW[value]; }
+function mapSemanticOutcome(value: EvaluationVerdictStatus): PublicToolDecisionActivityRecord['outcome'] { return mapNativeResultStatus(value); }
+function mapExecutionOutcome(value: EvaluationVerdictStatus): PublicToolCallActivityRecord['execution_outcome'] { return mapNativeResultStatus(value); }
+function mapToolOutcome(value: EvaluationPolicyDecisionOutcome): PublicToolOutcome { return POLICY_OUTCOME_TO_VIEW[value]; }
+function mapReportedPolicyOutcome(value: EvaluationPolicyDecisionOutcome): PublicToolOutcome { return mapToolOutcome(value); }
+function mapTrajectoryPolicy(value: EvaluationTrajectoryPolicy): PublicTrajectoryPolicy { return TRAJECTORY_POLICY_TO_VIEW[value]; }
+function mapTrajectoryOutcome(value: EvaluationTrajectoryOutcome): PublicTrajectoryOutcome { return TRAJECTORY_OUTCOME_TO_VIEW[value]; }
+function mapHintArgumentSource(value: EvaluationHintArgumentSource): PublicHintArgumentSource { return HINT_ARGUMENT_SOURCE_TO_VIEW[value]; }
+function mapReceiptStatus(value: PublicReceiptStatus): PublicGovernedActionActivityRecord['receipt_status'] { return RECEIPT_STATUS_TO_VIEW[value]; }
+function mapEvidenceSource(value: PublicEvidenceSource): PublicGovernedActionActivityRecord['evidence_source'] { return EVIDENCE_SOURCE_TO_VIEW[value]; }
+function mapVerificationState(value: EvaluationVerdictStatus): VerifierState {
   const status = mapNativeResultStatus(value);
   if (status === 'pass') return 'passed';
   if (status === 'fail' || status === 'invalid_evidence') return 'failed';
@@ -689,157 +811,113 @@ function mapVerificationDisposition(status?: string): VerifierState {
   }
 }
 
-const LIFECYCLE_TOKEN_PREFIX = 'ASSIGNMENT_LIFECYCLE_STATUS_';
-const VERDICT_TOKEN_PREFIX = 'VERDICT_STATUS_';
+/** How a lifecycle reaches its terminal outcome: directly, through the
+ *  verdict (COMPLETED), or not at all because the assignment is still live. */
+type LifecycleTerminal = TerminalStatus | 'by_verdict' | 'non_terminal';
 
-function lifecycleToken(value: string): string {
-  const normalized = normalizeEnumToken(value);
-  if (!normalized.startsWith(LIFECYCLE_TOKEN_PREFIX)) {
-    throw new ValidationError(`unknown assignment lifecycle status: ${value}`, 'lifecycle_status');
-  }
-  return normalized.slice(LIFECYCLE_TOKEN_PREFIX.length);
-}
+/**
+ * Mirrors the Go projector's AssignmentTerminalOutcome. Every lifecycle is
+ * named; the map is keyed by the generated protobuf type, so a new lifecycle
+ * fails the typecheck rather than reaching the feed as a model failure.
+ */
+const LIFECYCLE_TO_TERMINAL: Record<EvaluationAssignmentLifecycleStatus, LifecycleTerminal> = {
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED: 'non_terminal',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING: 'non_terminal',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED: 'by_verdict',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED: 'execution_failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PARTIAL: 'grader_failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_ESCALATED: 'escalated',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED: 'stopped',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED: 'provider_failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED: 'grader_failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_POLICY_REJECTED: 'invalid_evidence',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_UNAVAILABLE: 'invalid_evidence',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE: 'invalid_evidence',
+};
 
-function verdictToken(value: string | undefined): string {
-  const normalized = normalizeEnumToken(value);
-  if (!normalized.startsWith(VERDICT_TOKEN_PREFIX)) {
-    throw new ValidationError(`unknown verdict status: ${value ?? '(missing)'}`, 'summary_status');
-  }
-  return normalized.slice(VERDICT_TOKEN_PREFIX.length);
-}
+/** The outcome of a COMPLETED assignment, from its verdict. */
+const VERDICT_TO_TERMINAL: Record<EvaluationVerdictStatus, TerminalStatus> = {
+  EVALUATION_VERDICT_STATUS_PASS: 'completed',
+  EVALUATION_VERDICT_STATUS_FAIL: 'model_failed',
+  EVALUATION_VERDICT_STATUS_UNAVAILABLE: 'invalid_evidence',
+  EVALUATION_VERDICT_STATUS_UNSUPPORTED: 'invalid_evidence',
+  EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE: 'invalid_evidence',
+};
+
+/** The view lifecycle. Every terminal that is neither COMPLETED nor STOPPED is
+ *  a failed lifecycle; its reason is carried by the terminal status. */
+const LIFECYCLE_TO_VIEW: Record<EvaluationAssignmentLifecycleStatus, LifecycleStatus> = {
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED: 'queued',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING: 'running',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED: 'completed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED: 'failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PARTIAL: 'failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_ESCALATED: 'failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED: 'stopped',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED: 'failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED: 'failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_POLICY_REJECTED: 'failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_UNAVAILABLE: 'failed',
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE: 'failed',
+};
+
+/** The explorer's category ids are the lowercase enum suffixes, except the
+ *  proto singular TOOL_ARGUMENT, which the public contract spells plural. */
+const SCENARIO_CATEGORY_TO_VIEW: Record<EvaluationScenarioCategory, ScenarioCategory> = {
+  EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE: 'instruction_adherence',
+  EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION: 'tool_selection',
+  EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT: 'tool_arguments',
+  EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS: 'technical_analysis',
+  EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION: 'routing_delegation',
+  EVALUATION_SCENARIO_CATEGORY_VERIFICATION: 'verification',
+  EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY: 'security_policy',
+  EVALUATION_SCENARIO_CATEGORY_RECOVERY: 'recovery',
+  EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE: 'final_response',
+  EVALUATION_SCENARIO_CATEGORY_CONTAINMENT: 'containment',
+};
+
+const MODEL_ROLE_TO_VIEW: Record<ModelCampaignRole, ModelRole> = {
+  MODEL_CAMPAIGN_ROLE_PRIMARY: 'primary',
+  MODEL_CAMPAIGN_ROLE_ASSISTANT: 'assistant',
+  MODEL_CAMPAIGN_ROLE_LITE: 'lite',
+};
+
+/** The platform lane carries no evaluation unit. */
+const LANE_TO_VIEW: Record<EvaluationLane, EvaluationUnit | undefined> = {
+  EVALUATION_LANE_PLATFORM: undefined,
+  EVALUATION_LANE_MODEL_ROLE: 'model',
+  EVALUATION_LANE_SYSTEM: 'system',
+};
 
 /**
  * Maps a terminal result to its outcome. Every wire value is named; a value
  * this function does not know is a contract violation, never a model failure.
  */
-function mapTerminalStatus(lifecycleValue: string, summaryStatus: string | undefined): TerminalStatus {
-  const lifecycle = lifecycleToken(lifecycleValue);
-  const verdict = verdictToken(summaryStatus);
-  if (verdict === 'PASS' && lifecycle !== 'COMPLETED') {
+function mapTerminalStatus(lifecycle: EvaluationAssignmentLifecycleStatus, verdict: EvaluationVerdictStatus): TerminalStatus {
+  if (verdict === 'EVALUATION_VERDICT_STATUS_PASS' && lifecycle !== 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED') {
     throw new ValidationError(`verdict PASS contradicts lifecycle ${lifecycle}`, 'summary_status');
   }
-  switch (lifecycle) {
-    case 'STOPPED':
-      return 'stopped';
-    case 'GRADER_FAILED':
-    case 'PARTIAL':
-      return 'grader_failed';
-    case 'PROVIDER_FAILED':
-      return 'provider_failed';
-    case 'FAILED':
-      return 'execution_failed';
-    case 'ESCALATED':
-      return 'escalated';
-    case 'POLICY_REJECTED':
-    case 'UNAVAILABLE':
-      return 'invalid_evidence';
-    case 'QUEUED':
-    case 'RUNNING':
-      throw new ValidationError(`result projection carries a non-terminal lifecycle: ${lifecycle}`, 'lifecycle_status');
-    case 'COMPLETED':
-      break;
-    default:
-      throw new ValidationError(`unknown assignment lifecycle status: ${lifecycle}`, 'lifecycle_status');
+  const terminal = LIFECYCLE_TO_TERMINAL[lifecycle];
+  if (terminal === 'non_terminal') {
+    throw new ValidationError(`result projection carries a non-terminal lifecycle: ${lifecycle}`, 'lifecycle_status');
   }
-  switch (verdict) {
-    case 'PASS':
-      return 'completed';
-    case 'FAIL':
-      return 'model_failed';
-    case 'INVALID_EVIDENCE':
-    case 'UNAVAILABLE':
-    case 'UNSUPPORTED':
-      return 'invalid_evidence';
-    default:
-      throw new ValidationError(`unknown verdict status: ${verdict}`, 'summary_status');
-  }
+  return terminal === 'by_verdict' ? VERDICT_TO_TERMINAL[verdict] : terminal;
 }
 
-function mapLifecycleStatus(value: string): LifecycleStatus {
-  switch (lifecycleToken(value)) {
-    case 'QUEUED':
-      return 'queued';
-    case 'RUNNING':
-      return 'running';
-    case 'COMPLETED':
-      return 'completed';
-    case 'STOPPED':
-      return 'stopped';
-    case 'FAILED':
-    case 'PARTIAL':
-    case 'ESCALATED':
-    case 'PROVIDER_FAILED':
-    case 'GRADER_FAILED':
-    case 'POLICY_REJECTED':
-    case 'UNAVAILABLE':
-      return 'failed';
-    default:
-      throw new ValidationError(`unknown assignment lifecycle status: ${value}`, 'lifecycle_status');
-  }
+function mapLifecycleStatus(value: EvaluationAssignmentLifecycleStatus): LifecycleStatus {
+  return LIFECYCLE_TO_VIEW[value];
 }
 
-function mapScenarioCategory(value?: string): ScenarioCategory | undefined {
-  if (!value) return undefined;
-  const normalized = normalizeEnumToken(value);
-  if (normalized.startsWith('SCENARIO_CATEGORY_')) {
-    return mapScenarioCategoryToken(normalized.slice('SCENARIO_CATEGORY_'.length));
-  }
-  return mapScenarioCategoryToken(normalized);
+function mapScenarioCategory(value?: EvaluationScenarioCategory): ScenarioCategory | undefined {
+  return value === undefined ? undefined : SCENARIO_CATEGORY_TO_VIEW[value];
 }
 
-function mapScenarioCategoryToken(token: string): ScenarioCategory | undefined {
-  switch (token) {
-    case 'INSTRUCTION_ADHERENCE':
-      return 'instruction_adherence';
-    case 'TOOL_SELECTION':
-      return 'tool_selection';
-    case 'TOOL_ARGUMENT':
-      return 'tool_arguments';
-    case 'TECHNICAL_ANALYSIS':
-      return 'technical_analysis';
-    case 'ROUTING_DELEGATION':
-      return 'routing_delegation';
-    case 'VERIFICATION':
-      return 'verification';
-    case 'SECURITY_POLICY':
-      return 'security_policy';
-    case 'RECOVERY':
-      return 'recovery';
-    case 'FINAL_RESPONSE':
-      return 'final_response';
-    default:
-      return undefined;
-  }
+function mapModelRole(value?: ModelCampaignRole): ModelRole | undefined {
+  return value === undefined ? undefined : MODEL_ROLE_TO_VIEW[value];
 }
 
-function requiredScenarioCategory(value: string): ScenarioCategory {
-  const category = mapScenarioCategory(value);
-  if (category === undefined) throw new ValidationError(`unknown scenario category: ${value}`, 'scenario_category');
-  return category;
-}
-
-function requiredModelRole(value: string): ModelRole {
-  const role = mapModelRole(value);
-  if (role === undefined) throw new ValidationError(`unknown model role: ${value}`, 'model_role');
-  return role;
-}
-
-function mapModelRole(value?: string): ModelRole | undefined {
-  if (!value) return undefined;
-  const normalized = normalizeEnumToken(value);
-  if (normalized.startsWith('ROLE_')) {
-    const role = normalized.slice('ROLE_'.length).toLowerCase();
-    if (role === 'primary' || role === 'assistant' || role === 'lite') return role;
-  }
-  return undefined;
-}
-
-function mapEvaluationUnit(value?: string): EvaluationUnit | undefined {
-  if (!value) return undefined;
-  const normalized = normalizeEnumToken(value);
-  if (normalized === 'LANE_MODEL_ROLE') return 'model';
-  if (normalized === 'LANE_SYSTEM') return 'system';
-  return undefined;
+function mapEvaluationUnit(value?: EvaluationLane): EvaluationUnit | undefined {
+  return value === undefined ? undefined : LANE_TO_VIEW[value];
 }
 
 function unavailableMetricReason(value: string[] | undefined): string | undefined {
@@ -851,13 +929,3 @@ function metaKey(runId: string, assignmentId: string): string {
   return `${runId}:${assignmentId}`;
 }
 
-function normalizeEnumToken(value?: string): string {
-  if (!value) return '';
-  if (value.startsWith('EVALUATION_')) {
-    return value.slice('EVALUATION_'.length);
-  }
-  if (value.startsWith('MODEL_CAMPAIGN_')) {
-    return value.slice('MODEL_CAMPAIGN_'.length);
-  }
-  return value;
-}

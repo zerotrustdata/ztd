@@ -119,7 +119,7 @@ type methodologySnapshotRecord struct {
 }
 
 const (
-	explorerViewSchemaVersion = "1.6.0"
+	explorerViewSchemaVersion = "1.7.0"
 	campaignSourceRevision    = "ztd-eval-campaign"
 )
 
@@ -1142,7 +1142,7 @@ type summaryVerificationMetadataRecord struct {
 }
 
 // evaluationSummaryRecord is the typed explorer evaluation_summary wire shape
-// for schema 1.6.0.
+// for schema 1.7.0.
 type evaluationSummaryRecord struct {
 	CampaignRelease
 	SchemaVersion          string                             `json:"schema_version"`
