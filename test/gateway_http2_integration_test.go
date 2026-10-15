@@ -28,7 +28,7 @@ import (
 
 func TestGateway_HTTPSNegotiatesHTTP2(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName: "gateway-http2", Posture: config.PostureDoctrine, AllowTestPortZero: true,
+		TestName: "gateway-http2", Posture: config.PostureDoctrine,
 	})
 	identity := fixtures.EnrollClientIdentity(t, f, "http2-user", "http2-org", "http2-fingerprint", "http2-host")
 	client := fixtures.CreateMTLSClient(t, f, identity)

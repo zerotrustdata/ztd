@@ -58,8 +58,7 @@ func mustMarshal(v interface{}) json.RawMessage {
 func TestMCPGateway_EndToEnd(t *testing.T) {
 	// Create gateway fixture with default mock downstream server
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		AllowTestPortZero: true,
+		TestName: t.Name(),
 	})
 
 	// Wait for gateway to be ready
@@ -245,10 +244,9 @@ done
 
 	// Create gateway fixture with subprocess downstream configuration
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		AllowTestPortZero: true,
-		DownstreamCmd:     downstreamCmd,
-		DownstreamArgs:    []string{scriptPath},
+		TestName:       t.Name(),
+		DownstreamCmd:  downstreamCmd,
+		DownstreamArgs: []string{scriptPath},
 	})
 
 	fixture.WaitForReady(t)

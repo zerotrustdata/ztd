@@ -84,7 +84,7 @@ var errorCases = []errorCase{
 			return []byte(`{invalid json`)
 		},
 		wantCode:        constants.JSONRPCErrorCodeParseError,
-		wantMsgContains: constants.JSONRPCErrorMessageParseError,
+		wantMsgContains: constants.ErrInvalidJSONBody.Error(),
 	},
 	{
 		name: "missing_tool_or_skill_name",
@@ -132,7 +132,7 @@ var errorCases = []errorCase{
 // dedicated per-protocol error-case tests were replaced by this single
 // table-driven test. Per the JSON-RPC 2.0 spec, errors are returned with
 // HTTP 200 and the error in the response body. The malformed-JSON case
-// asserts the typed parse-error code constant.
+// asserts the typed parse-error code and the ErrInvalidJSONBody refusal.
 func TestGatewayProtocols_MalformedRequestsReturnJSONRPCErrors(t *testing.T) {
 	downstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

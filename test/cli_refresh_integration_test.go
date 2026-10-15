@@ -41,8 +41,7 @@ import (
 // the gateway volume."
 func TestCLIRefresh_ExpiredSessionRecoverable(t *testing.T) {
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		AllowTestPortZero: true,
+		TestName: t.Name(),
 	})
 	fixture.WaitForReady(t)
 

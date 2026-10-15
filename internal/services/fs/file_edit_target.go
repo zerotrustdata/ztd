@@ -92,12 +92,7 @@ func (fs *localFS) OpenFileEditTarget(ctx context.Context, path, workDir string)
 	if err != nil {
 		return nil, fmt.Errorf("file edit: resolve symlink destination: %w", err)
 	}
-	resolvedRuntime, err := ResolveExistingPath(fs.runtimeDir)
-	if err != nil {
-		return nil, fmt.Errorf("file edit: resolve runtime directory: %w", err)
-	}
-
-	if security.IsEvaluationControlledTargetPath(path) || security.IsEvaluationControlledTargetPath(resolvedPath) || withinPath(resolvedRuntime, resolvedPath) {
+	if security.IsEvaluationControlledTargetPath(path) || security.IsEvaluationControlledTargetPath(resolvedPath) {
 		return fs.openEvaluationTarget(path, absPath, resolvedPath)
 	}
 	if security.IsProtectedRuntimePath(resolvedPath) {

@@ -73,7 +73,6 @@ func newBoundaryRigWithLeafTTL(t *testing.T, policy fixtures.OwnerPolicy, leafTT
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName:            t.Name(),
 		Posture:             config.PostureDoctrine,
-		AllowTestPortZero:   true,
 		OperatorLeafCertTTL: leafTTL,
 	})
 	f.WaitForReady(t)
@@ -152,8 +151,10 @@ func TestOperatorTransportBoundary_IdentityNeverTouchesDisk(t *testing.T) {
 	leaf, err := op.Leaf()
 	require.NoError(t, err)
 
-	// The identity and its L2 signer trust live in memory only, so the
-	// Operator writes no file at all under pki/.
+	// The identity and its L2 signer trust live in memory only. The one file
+	// under pki/ is the Actuator public-key export (INV-OP-ACT-06), which the
+	// conformance oracle pins to verify receipts; it carries no identity.
+	actuatorExport := filepath.Join(constants.RuntimeDirname, constants.PkiDirname, constants.ActuatorPubJSONFilename)
 	pemMarker := []byte("-----BEGIN ")
 	var violations []string
 	err = filepath.WalkDir(host.WorkingDir, func(path string, d fs.DirEntry, walkErr error) error {
@@ -167,7 +168,7 @@ func TestOperatorTransportBoundary_IdentityNeverTouchesDisk(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if strings.Contains("/"+filepath.ToSlash(rel), "/"+constants.PkiDirname+"/") {
+		if rel != actuatorExport && strings.Contains("/"+filepath.ToSlash(rel), "/"+constants.PkiDirname+"/") {
 			violations = append(violations, rel+": file under pki/")
 		}
 		data, err := os.ReadFile(path)

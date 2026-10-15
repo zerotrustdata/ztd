@@ -47,9 +47,8 @@ import (
 func TestOperatorRun_ExecutesThroughGovernedPipeline(t *testing.T) {
 	ctx := t.Context()
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		Posture:           config.PostureDoctrine,
-		AllowTestPortZero: true,
+		TestName: t.Name(),
+		Posture:  config.PostureDoctrine,
 	})
 	fixture.WaitForReady(t)
 

@@ -11,10 +11,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -41,18 +39,6 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 		err = ExportActuatorPublicKey(fileSvc, pubKey, "test-Actuator-key", logger)
 		require.NoError(t, err)
 
-		pemRel := filepath.Join(constants.PkiDirname, constants.ActuatorPubPEMFilename)
-		pemData, err := fileSvc.ReadFile(context.Background(), pemRel)
-		require.NoError(t, err)
-
-		block, rest := pem.Decode(pemData)
-		require.NotNil(t, block, "failed to decode PEM block")
-		require.Empty(t, rest, "unexpected trailing data after PEM block")
-		require.Equal(t, "PUBLIC KEY", block.Type)
-		parsedKey, err := x509.ParsePKIXPublicKey(block.Bytes)
-		require.NoError(t, err)
-		require.Equal(t, pubKey, parsedKey)
-
 		jsonRel := filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename)
 		jsonData, err := fileSvc.ReadFile(context.Background(), jsonRel)
 		require.NoError(t, err)
@@ -74,9 +60,9 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 		err = ExportActuatorPublicKey(fileSvc, pubKey, "key-id", nil)
 		require.NoError(t, err)
 
-		pemRel := filepath.Join(constants.PkiDirname, constants.ActuatorPubPEMFilename)
-		_, err = fileSvc.ReadFile(context.Background(), pemRel)
-		require.NoError(t, err, "PEM file should be created even with nil logger")
+		jsonRel := filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename)
+		_, err = fileSvc.ReadFile(context.Background(), jsonRel)
+		require.NoError(t, err, "JSON export should be created even with nil logger")
 	})
 
 	t.Run("OverwriteExisting", func(t *testing.T) {
@@ -116,8 +102,8 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 		err = ExportActuatorPublicKey(fileSvc, pubKey, "key-id", logger)
 		require.NoError(t, err)
 
-		pemRel := filepath.Join(constants.PkiDirname, constants.ActuatorPubPEMFilename)
-		info, err := fileSvc.Stat(context.Background(), pemRel)
+		jsonRel := filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename)
+		info, err := fileSvc.Stat(context.Background(), jsonRel)
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
 			assert.True(t, info.Mode().Perm() == constants.PermFilePrivate)

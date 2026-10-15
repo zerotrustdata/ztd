@@ -44,8 +44,7 @@ import (
 // proxied over mTLS to the governed MCP endpoint.
 func TestMCPStdio_ToolsListReachesGateway(t *testing.T) {
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName:          t.Name(),
-		AllowTestPortZero: true,
+		TestName: t.Name(),
 	})
 	fixture.WaitForReady(t)
 

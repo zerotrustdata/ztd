@@ -381,3 +381,9 @@ test('release-note fragments are not served as pages of their own', async () => 
   assert.equal(response.status, 404);
   assert.equal(await response.text(), 'not found');
 });
+
+test('unknown /buy/ SKUs return 404 without touching assets', async () => {
+  const response = await worker.fetch(new Request('https://zerotrustdata.io/buy/nonexistent'), { ASSETS: noAssets });
+  assert.equal(response.status, 404);
+  assert.equal(response.headers.get('x-frame-options'), 'DENY');
+});

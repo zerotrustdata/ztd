@@ -39,7 +39,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -75,14 +74,13 @@ type GatewayFixture struct {
 
 // GatewayFixtureOptions configures the gateway fixture.
 type GatewayFixtureOptions struct {
-	TestName          string
-	Posture           config.GatewayPosture
-	DownstreamURL     string   // MCP downstream HTTP URL; creates mock server if empty and DownstreamCmd is empty
-	DownstreamCmd     string   // MCP downstream stdio subprocess command
-	DownstreamArgs    []string // MCP downstream stdio subprocess arguments
-	A2ADownstreamURL  string   // A2A downstream; if empty, reuses MCP downstream server
-	AllowTestPortZero bool
-	PublicBaseURL     string // Public base URL for approval links; defaults to localhost:HTTPS_port
+	TestName         string
+	Posture          config.GatewayPosture
+	DownstreamURL    string   // MCP downstream HTTP URL; creates mock server if empty and DownstreamCmd is empty
+	DownstreamCmd    string   // MCP downstream stdio subprocess command
+	DownstreamArgs   []string // MCP downstream stdio subprocess arguments
+	A2ADownstreamURL string   // A2A downstream; if empty, reuses MCP downstream server
+	PublicBaseURL    string   // Public base URL for approval links; defaults to localhost:HTTPS_port
 
 	// Consensus configuration for consensus/notary postures. When zero-valued,
 	// defaults to a single-member consensus (nMembers=1, quorum=1, nServiceMembers=1)
@@ -120,10 +118,12 @@ func repoTestResultsDir() string {
 func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture {
 	t.Helper()
 
-	// Create test paths without mutating global constants.Paths. The ephemeral
-	// scaffolding (secrets, runtime dir) lives under testutil.TempDir(t); only the
+	// Create test paths without mutating global constants.Paths. The Gateway is
+	// rooted in a throwaway Operator directory, not testutil.TempDir(t): its
+	// embedded Operator executes and edits files under this root, and .ztd/tmp
+	// is protected runtime state that L1 Doctrine rejects edits to. Only the
 	// gateway data/vault is relocated to a persistent results directory below.
-	testPaths := testutil.NewTestPathsFromTemp(t)
+	testPaths := testutil.NewTestPaths(testutil.OperatorDir(t))
 
 	// Integration runs leave their artifacts behind for inspection: each run
 	// writes a fresh, uniquely-named directory under <repo>/test-results/ and
@@ -210,22 +210,23 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		posture = config.PostureNotary
 	}
 
+	// WorkDir roots the Gateway (and its embedded Operator's working directory)
+	// in this test's runtime base, exactly as `gw start` roots it in the project.
 	cfg, err := config.LoadGateway(config.GatewayOptions{
-		DataDir:           dataDir,
-		PKIDir:            pkiDir,
-		SecretsDir:        secretsDir,
-		VaultDir:          testPaths.VaultDir,
-		PasskeyRpID:       "localhost",
-		PasskeyRpName:     "ztd",
-		AllowTestPortZero: opts.AllowTestPortZero,
+		WorkDir:       testPaths.BaseDir,
+		DataDir:       dataDir,
+		PKIDir:        pkiDir,
+		SecretsDir:    secretsDir,
+		VaultDir:      testPaths.VaultDir,
+		PasskeyRpID:   "localhost",
+		PasskeyRpName: "ztd",
+		// Both listeners bind port 0, so the kernel assigns each port atomically
+		// at listen time. Probing for a free port first races the other test
+		// binaries that go test runs concurrently.
+		AllowTestPortZero: true,
 		Posture:           posture,
 	})
 	require.NoError(t, err)
-	// LoadGateway only validates; like Gateway start, the fixture resolves a
-	// free port pair so it never collides with a running Gateway.
-	if !opts.AllowTestPortZero {
-		cfg.Gateway.HTTPPort, cfg.Gateway.HTTPSPort = config.ResolveGatewayPorts(cfg.Gateway.HTTPPort, cfg.Gateway.HTTPSPort)
-	}
 	// Integration fixtures serve only local test clients. Keep both Gateway
 	// listeners on loopback so Windows test binaries never request firewall access.
 	cfg.Gateway.ListenHost = "127.0.0.1"
@@ -246,7 +247,6 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	}
 	cfg.Gateway.A2ADownstreamURL = a2aURL
 
-	require.NoError(t, paths.InitWithBase(testPaths.BaseDir))
 	fileSvc, err := fs.NewRuntimeFileService(testPaths.BaseDir, testutil.NewTestLogger())
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))

@@ -169,9 +169,8 @@ type adapterFixture struct {
 func newAdapterFixture(t *testing.T, testName, downstreamURL string) adapterFixture {
 	t.Helper()
 	opts := fixtures.GatewayFixtureOptions{
-		TestName:          testName,
-		A2ADownstreamURL:  downstreamURL,
-		AllowTestPortZero: true,
+		TestName:         testName,
+		A2ADownstreamURL: downstreamURL,
 	}
 	f := fixtures.NewGatewayFixture(t, opts)
 	f.WaitForReady(t)
