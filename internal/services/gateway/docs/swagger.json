@@ -4952,6 +4952,9 @@
                 },
                 "error": {
                     "type": "string"
+                },
+                "receipt": {
+                    "$ref": "#/definitions/operatorv1.ActionReceipt"
                 }
             }
         },

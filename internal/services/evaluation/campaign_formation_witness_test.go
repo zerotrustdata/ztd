@@ -223,8 +223,8 @@ func TestBuildFormationRunEvidence_PersistsWitnessDigests(t *testing.T) {
 		EvaluationAttemptID: req.AttemptID,
 		ScenarioID:          req.Assignment.GetScenarioId(),
 		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
-		InferenceSessionID:  req.Binding.InferenceOperatorSessionID,
-		DataSessionID:       req.Binding.DataOperatorSessionID,
+		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
+		DataSessionID:       req.Binding.Topology.Data.OperatorSessionID,
 	}
 	harness, err := NewFormationHarness(
 		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },

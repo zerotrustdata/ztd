@@ -1939,6 +1939,8 @@ definitions:
         $ref: '#/definitions/operatorv1.InferenceDispatchFailureCode'
       error:
         type: string
+      receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
     type: object
   operatorv1.InferenceDispatchFailureCode:
     enum:

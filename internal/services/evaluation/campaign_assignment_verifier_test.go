@@ -44,8 +44,8 @@ func TestCampaignAssignmentVerifier_PassesHeterogeneousFormationResult(t *testin
 		EvaluationAttemptID: req.AttemptID,
 		ScenarioID:          req.Assignment.GetScenarioId(),
 		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
-		InferenceSessionID:  req.Binding.InferenceOperatorSessionID,
-		DataSessionID:       req.Binding.DataOperatorSessionID,
+		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
+		DataSessionID:       req.Binding.Topology.Data.OperatorSessionID,
 	}, formationResult)
 	require.NoError(t, err)
 	require.NotEmpty(t, body)

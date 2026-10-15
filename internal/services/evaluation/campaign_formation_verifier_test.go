@@ -59,8 +59,8 @@ func newDirectFormationFixture(t *testing.T) directFormationFixture {
 		EvaluationAttemptID: req.AttemptID,
 		ScenarioID:          req.Assignment.GetScenarioId(),
 		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
-		InferenceSessionID:  req.Binding.InferenceOperatorSessionID,
-		DataSessionID:       req.Binding.DataOperatorSessionID,
+		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
+		DataSessionID:       req.Binding.Topology.Data.OperatorSessionID,
 	}
 	body, _, err := BuildFormationRunEvidence(req, runContext, formationResult)
 	require.NoError(t, err)

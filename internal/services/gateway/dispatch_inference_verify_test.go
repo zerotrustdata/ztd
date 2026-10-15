@@ -267,6 +267,10 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrInferenceReceiptFailed)
+		failed := governance.FailedReceipt(err)
+		require.NotNil(t, failed)
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Status)
+		assert.Equal(t, txID, failed.TransactionId)
 	})
 
 	t.Run("completed receipt without result fails closed", func(t *testing.T) {

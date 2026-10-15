@@ -33,7 +33,9 @@ func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing
 
 	require.NotNil(t, decoded.ToolCalls[0].Receipt)
 	assert.True(t, proto.Equal(trace.ToolCalls[0].Receipt.ActionReceipt, decoded.ToolCalls[0].Receipt.ActionReceipt))
-	assert.True(t, proto.Equal(trace.DataOperatorAnchor.ConformanceAnchor, decoded.DataOperatorAnchor.ConformanceAnchor))
+	assert.True(t, proto.Equal(trace.Inference.Anchor.ConformanceAnchor, decoded.Inference.Anchor.ConformanceAnchor))
+	assert.True(t, proto.Equal(trace.Data.Anchor.ConformanceAnchor, decoded.Data.Anchor.ConformanceAnchor))
+	assert.True(t, proto.Equal(trace.ModelCalls[0].Receipt.ActionReceipt, decoded.ModelCalls[0].Receipt.ActionReceipt))
 	require.NotNil(t, decoded.Bracket)
 	assert.True(t, proto.Equal(trace.Bracket.After.ActionReceipt, decoded.Bracket.After.ActionReceipt))
 
