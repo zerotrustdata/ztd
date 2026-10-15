@@ -425,7 +425,8 @@ func (d *DispatchService) PublishCommand(ctx context.Context, req PublishCommand
 	if perr != nil {
 		return "", fmt.Errorf("dispatch: publish command: %w", perr)
 	}
-	if posture.RequiresL2Signature() && d.l2Deliberator != nil {
+	actionType := constants.ActionType(env.GetActionType())
+	if governance.L2Enforced(actionType, posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return "", fmt.Errorf("dispatch: publish command: l2 deliberation: %w", derr)

@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Architecture and Threat Model
 audience: architects and security reviewers
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/services/gateway/public_mirror.go
   - internal/services/publicdisclosure/
@@ -58,7 +58,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SPEC-ISO-01 | Owner-local observe mode and anonymous public spectator mode MUST NOT share state, configuration, credentials, or endpoints. Public visitors NEVER connect directly to the private Gateway API. |
-| INV-SPEC-ISO-02 | The public mirror listener MUST expose only read-only endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, and `GET /proofs/<artifact-id>`). It MUST NOT mount mutation, producer, governance, audit, or filesystem routes. |
+| INV-SPEC-ISO-02 | The public mirror listener MUST expose only read-only endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, and `GET /proofs/<artifact-id>`), plus the read-only evaluation explorer static host (`GET` and `HEAD`, from embedded assets or the `--eval-explorer-root` directory). It MUST NOT mount mutation, producer, governance, audit, or runtime-state filesystem routes. |
 | INV-SPEC-ISO-03 | Private ingest operations (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`) MUST be served on an isolated loopback listener accessible only to the authenticated publisher. |
 
 ### Data Classification and Projection (`INV-SPEC-DATA`)
@@ -73,9 +73,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SPEC-CRYPTO-01 | Every exported batch MUST be an append-only, monotonically sequenced record signed with Ed25519 over the content hash and linked to the predecessor batch hash (`prev_batch_hash`). |
+| INV-SPEC-CRYPTO-01 | Every exported batch MUST be an append-only, monotonically sequenced record signed with Ed25519 over the content hash and linked to the predecessor batch's `content_hash` (`previous_batch_hash`). |
 | INV-SPEC-CRYPTO-02 | Proof artifacts MUST be immutable, content-addressed files served under paths derived from their SHA-256 digests. |
 | INV-SPEC-CRYPTO-03 | Key rotation MUST occur via a signed revocation batch. Batches signed by revoked keys are rejected. Historical batches remain verifiable against the retained key registry. |
+| INV-SPEC-CRYPTO-04 | Withdrawing a campaign run (`WithdrawCampaignDataset`, reached through the Gateway's publication-state `DELETE` that `ztd eval runs delete` calls) MUST NOT remove or rewrite signed batches. The mirror records the run's dataset as withdrawn and filters its projections from `/bootstrap`, `/history`, and `/stream`; the publisher prunes the run's proof artifacts from the proof catalog and pushes it. Every mirror snapshot carries `withdrawal_digest` (SHA-256 over the sorted withdrawn dataset IDs, zero hash when none), and withdrawal pushes a fresh `snapshot` event to open streams. A client MUST discard cached or in-memory records and refetch history when the digest changes, because the signed chain alone cannot reveal a withdrawal. |
 
 ## Owned surfaces
 
@@ -85,8 +86,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Public feed configuration | `public-feed/` | Key, token, snapshot persist with 0700/0600 permissions |
 | Public publisher commands | `internal/cli/cmd/public/` | `./ztd public status`, `./ztd public publish --help` |
 | Disclosure validation | `internal/services/publicdisclosure/validator.go` | `./ztd test unit --pkg ./internal/services/publicdisclosure` |
-| Public spectator runtime | `internal/services/gateway/public_spectator_runtime.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestPublicSpectator` |
-| Evaluation verification | `internal/services/evaluation/` | `./ztd eval boundary verify`, `./ztd eval runs verify` |
+| Public spectator runtime | `internal/services/gateway/public_spectator_runtime.go` | `./ztd test integration --pkg ./internal/services/gateway --run TestPublicSpectator` |
+| Evaluation verification | `internal/services/evaluation/` | `./ztd eval runs verify` |
 
 ## Two Browser Modes
 
@@ -105,11 +106,11 @@ ztd strictly separates browser observation into two non-interchangeable modes:
 ```
 
 - **Owner-Local Observe Mode**: An authenticated operator connects to the private Gateway (`https://<gw>:8443/console/`). The browser authenticates via WebAuthn passkeys, receiving a secure session cookie. Every read is scoped to the user's permissions and session bindings.
-- **Public Spectator Mode**: Anonymous internet visitors connect via HTTPS to an external domain routed through Cloudflare to a local `cloudflared` tunnel, which dials the loopback-only public mirror listener (`127.0.0.1:8082`). No credentials are sent, and the private Gateway is physically unreachable.
+- **Public Spectator Mode**: Anonymous internet visitors connect via HTTPS to an external domain routed through Cloudflare to a local `cloudflared` tunnel, which dials the loopback-only public mirror listener (`127.0.0.1:8082`). No credentials are sent, and these requests reach only the mirror's public read surface, not the private Gateway API.
 
 ## Network Path and Listener Isolation
 
-The Gateway process hosts the `PublicSpectatorRuntime` (`internal/services/gateway/public_spectator_runtime.go`), binding two distinct loopback listeners:
+The Gateway process hosts the `PublicSpectatorRuntime` (`internal/services/gateway/public_spectator_runtime.go`), which binds the private ingest and public read listeners, and an explorer listener when explorer assets are available:
 
 ```text
 Campaign Host                     Gateway Process                      Public Edge
@@ -132,8 +133,9 @@ POST /api/v1/public-feed/batches ──► PublicSpectatorRuntime
 ```
 
 1. **Private Ingest Listener**: Accepts authenticated batch submissions from the publisher (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`).
-2. **Public Read Listener**: Exposes anonymous read endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proofs/<id>`). Unknown paths and mutation methods are rejected.
-3. **Loopback Binding**: Listeners bind only to loopback interfaces. External visitors reach the public listener solely via `cloudflared` tunnel configured with trusted proxy CIDRs.
+2. **Public Read Listener**: Exposes anonymous read endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proofs/<id>`). Unknown paths and mutation methods are rejected. When explorer assets are available, the same listener also serves the explorer static host for `GET` and `HEAD`; other methods on those paths return HTTP 404.
+3. **Explorer Listener**: When explorer assets are available and `ExplorerListenAddress` differs from the public listener, the runtime binds it as a dedicated listener for the same explorer host. The default address is `127.0.0.1:5173`; `--eval-explorer-listen` overrides it.
+4. **Loopback Binding**: Listeners bind only to loopback interfaces unless the explicit `--public-spectator-allow-container-bind` gateway flag is set. External visitors reach the public listener solely via `cloudflared` tunnel configured with trusted proxy CIDRs.
 
 ## Closed Allowlist and Data Classification
 
@@ -144,11 +146,11 @@ Only allowlisted fields and records cross into the public spectator feed.
 - **Campaign Identity**: Campaign ID, revision, cycle ID.
 - **Run & Assignment Identity**: Run ID, assignment ID, variant ID, task ID, arm ID, repetition index.
 - **Model Role Identity**: Primary variant ID, Assistant variant ID, Lite variant ID.
-- **Metrics**: Metric ID, numerator, denominator, rate, unit, uncertainty interval, claim status.
-- **Verification Status**: Verification label, verification boundary, index-generation hash.
-- **Categorical Environment Labels**: Hardware class label, backend label, quantization policy.
-- **Bounded Diagnostic Detail**: `trajectory_outcome` (closed vocabulary), `guided_retry_count`, public failure sentence, `tools_declared`.
-- **Bounded Model Outputs (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts` (capped at 16 KiB, restricted-text rules enforced).
+- **Metrics**: Metric ID, metric version, numerator, denominator, rate, unit, verification status.
+- **Verification Status**: Verification status, verified index-generation hash.
+- **Categorical Environment Labels**: `environment_class`, `backend_name`, `quantization`.
+- **Bounded Diagnostic Detail**: `trajectory_outcome` (closed vocabulary), `guided_retry_count`, `failure_reason`, `tools_declared`.
+- **Bounded Model Outputs (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts` (each text within the 256 KiB record bound, at most 8 role transcripts, restricted-text rules enforced).
 
 ### Prohibited Fields
 
@@ -166,14 +168,14 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `source_pseudonym` | String | Stable pseudonymous identifier for the publishing source |
+| `source_id` | String | Stable pseudonymous source deployment identifier |
 | `protocol_version` | String | Protocol version (`1.0.0`) |
 | `schema_version` | String | Projection schema version (`1.0.0`) |
-| `first_sequence` | Uint64 | Monotonic sequence number of the first record in batch |
-| `last_sequence` | Uint64 | Monotonic sequence number of the last record in batch |
-| `prev_batch_hash` | Hex String | SHA-256 of the prior batch (first batch uses zero hash) |
+| `first_sequence` | Int64 | Monotonic sequence number of the first record in batch |
+| `last_sequence` | Int64 | Monotonic sequence number of the last record in batch |
+| `previous_batch_hash` | Hex String | `content_hash` of the prior batch (zero hash for the first batch) |
 | `record_hashes` | Array[Hex] | Ordered SHA-256 digests of all records in the batch |
-| `generated_at` | RFC3339 | Monotonic UTC timestamp |
+| `generated_at` | RFC3339Nano | UTC timestamp set when the batch is built |
 | `content_hash` | Hex String | SHA-256 digest over the canonical encoding of batch metadata and record hashes |
 | `signing_key_id` | String | Identifier of the Ed25519 signing key |
 | `signature` | Hex String | Ed25519 signature over `content_hash` |
@@ -182,13 +184,13 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 
 | Threat Vector | Mitigation Strategy | Fail-Closed Behavior |
 | :--- | :--- | :--- |
-| **Replay & Reordering** | Batches enforce strictly increasing monotonic sequence numbers and `prev_batch_hash` linkage. Clients reject sequence $\le$ last consumed. | Batch rejected with HTTP 400 |
-| **Equivocation** | Content hashes bind each batch to its exact position. Comparing content hashes across mirrors detects branch divergence. | Key immediately revoked on detection |
-| **Stale Snapshots** | Snapshots bind high-water mark and chain hash. Clients verify freshness labels (`active`, `delayed`, `stale`, `offline`). | Stale data explicitly tagged, not served as live |
-| **Forged Events** | Batches signed with Ed25519. Mirrors and offline verifiers validate signatures over canonical content hashes. | Unsigned or bad signatures rejected |
+| **Replay & Reordering** | Batches carry contiguous sequence ranges and link to the prior batch by `previous_batch_hash`. The mirror rejects a batch at or below its high-water sequence unless it re-delivers an accepted batch with the same sequence range and content hash, and rejects a broken link. Clients reject sequence $\le$ last consumed. | HTTP 200 with `accepted: false` and a typed `rejection_reason`: `sequence_out_of_order`, `duplicate_sequence`, or `hash_chain_mismatch` |
+| **Equivocation** | Content hashes bind each batch to its exact position. A batch that reuses an accepted sequence range with a different content hash is equivocal. | HTTP 200 with `accepted: false` and `rejection_reason` `equivocation`; ingest revokes no key (revocation requires a signed revocation batch, `INV-SPEC-CRYPTO-03`) |
+| **Stale Snapshots** | Snapshots bind high-water mark and chain hash. Clients verify freshness labels (`active`, `delayed`, `stale`, `intentionally_stopped`, `safety_stopped`, `source_offline`). | Stale data explicitly tagged, not served as live |
+| **Forged Events** | Batches signed with Ed25519. Mirrors and offline verifiers validate signatures over canonical content hashes. | Bad signatures rejected with `accepted: false` and `rejection_reason` `signature_invalid`; unknown or revoked signing keys rejected with `unknown_key` or `revoked_key` |
 | **Mirror Tampering** | Projections and proofs are content-addressed by SHA-256. Proof root manifests bind the entire artifact tree. | Hash mismatch causes immediate client rejection |
 | **Cache Poisoning** | Immutable HTTP cache headers (`Cache-Control: immutable`). Client checks SHA-256 against proof catalog before acceptance. | Corrupted download discarded |
-| **Path Traversal** | Mirror normalizes artifact URLs and strictly rejects `..` or absolute paths. Symlinks are refused at ingest and serve time. | HTTP 403 Forbidden |
+| **Path Traversal** | Proof ingest rejects filenames that are absolute, contain backslashes or `..`, or are not plain base names. The mirror serves artifacts by artifact ID from its store. The publisher refuses symlinked proof artifacts and directories (`ErrPublicFeedProofSymlinkRejected`). | Proof ingest rejected with HTTP 400; download of an unknown artifact ID returns HTTP 404 |
 | **Denial of Service** | Strict rate limits (600 req/min per IP), bounded SSE buffers (100 events), maximum download lengths. | HTTP 429 Too Many Requests |
 | **Correlation Leakage** | Stable non-reversible source pseudonyms; stripping of user IDs, operator sessions, and machine hostnames. | Sanitized at disclosure boundary |
 
@@ -197,7 +199,7 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 ### Read Rate Limits
 
 - **Bootstrap**: Single snapshot per request.
-- **History**: Cursor-paginated (page size 1–500, default 20).
+- **History**: Cursor-paginated; page size defaults to 20 and is capped at 500.
 - **SSE Stream**: Bounded to 1,000 concurrent connections, 100-event memory queue per connection. Drops oldest events on consumer lag and signals `truncated`.
 - **Proof Downloads**: Bounded by byte length in catalog metadata.
 - **Client Rate Limit**: 600 requests per minute per IP. Trusted proxy CIDR required for `CF-Connecting-IP`.

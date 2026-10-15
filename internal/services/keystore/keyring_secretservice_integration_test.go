@@ -148,7 +148,7 @@ func TestSecretServiceKeyring_StoreFailureHasGuidance(t *testing.T) {
 	require.NoError(t, err)
 	err = ks.Initialize()
 	require.ErrorIs(t, err, constants.ErrKeyStoreNoDefaultCollection)
-	require.Contains(t, err.Error(), "--master-key-file")
+	require.Contains(t, err.Error(), "ssh-agent")
 	require.Empty(t, fake.items)
 }
 
@@ -165,5 +165,5 @@ func TestKeystore_NoImplicitHomeKeyDiscovery(t *testing.T) {
 	_, err := NewWithFS(fileSvc, testutil.NewTestLogger(), Options{})
 	require.ErrorIs(t, err, constants.ErrKeyStoreOSKeyringRequired)
 	require.ErrorIs(t, err, constants.ErrKeyStoreSecretServiceDown)
-	require.Contains(t, err.Error(), "--master-key-file")
+	require.Contains(t, err.Error(), "ssh-agent")
 }

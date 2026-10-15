@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ import (
 func TestClassifyConfigLoadError_RealConfigLoadNoPosture_Succeeds(t *testing.T) {
 	opts := ServeOperatorOptions{
 		Endpoint:   "127.0.0.1",
-		WorkingDir: t.TempDir(),
+		WorkingDir: testutil.TempDir(t),
 	}
 	loadOpts := buildOperatorLoadOptions(opts, opts.Endpoint, opts.WorkingDir)
 	assert.Empty(t, loadOpts.Posture, "precondition: no posture supplied (operator reads posture per-envelope)")
@@ -47,7 +48,7 @@ func TestClassifyConfigLoadError_RealConfigLoadNoPosture_Succeeds(t *testing.T) 
 func TestClassifyConfigLoadError_RealConfigLoadWithPosture_Succeeds(t *testing.T) {
 	opts := ServeOperatorOptions{
 		Endpoint:   "127.0.0.1",
-		WorkingDir: t.TempDir(),
+		WorkingDir: testutil.TempDir(t),
 		Posture:    "doctrine",
 	}
 	loadOpts := buildOperatorLoadOptions(opts, opts.Endpoint, opts.WorkingDir)

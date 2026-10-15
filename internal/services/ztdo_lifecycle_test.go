@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -50,12 +51,14 @@ func TestZtdoService_Start_SuccessFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
 
-	// Initialize keystore with in-memory keyring for the master key (required for gateway database)
-	testBackend := keystoretest.NewMemoryKeyring()
-	ks, err := keystore.NewWithKeyringAndFS(testutil.NewVerboseTestLogger(t), testBackend, fileSvc)
+	// StartOperator opens the canonical database before the service exists; do the same here,
+	// with an in-memory keyring for the master key.
+	ks, err := keystore.NewWithKeyringAndFS(testutil.NewVerboseTestLogger(t), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.EnforcePermissions())
+	canonicalDB, err := gateway.OpenCanonicalDBService(testutil.NewVerboseTestLogger(t), ks, fileSvc)
+	require.NoError(t, err)
 
 	tlsConfig := newTestTLSConfig(t)
 	factoryCalls := 0
@@ -67,13 +70,8 @@ func TestZtdoService_Start_SuccessFlow(t *testing.T) {
 		assert.Same(t, tlsConfig, receivedTLSConfig)
 		return pubsubtest.NewMockOperatorPubSubClient(), nil
 	}
-	service, err := NewZtdoService(cfg, testutil.NewVerboseTestLogger(t), tlsConfig, newTestL2Trust(t), fileSvc, factory)
+	service, err := NewZtdoService(cfg, testutil.NewVerboseTestLogger(t), tlsConfig, newTestL2Trust(t), fileSvc, canonicalDB, factory)
 	require.NoError(t, err)
-
-	// Inject test keystore (bypasses OS keychain for cross-platform CI)
-	service.mu.Lock()
-	service.keystore = ks
-	service.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -110,7 +108,7 @@ func TestZtdoService_Start_FactoryFailureStopsBeforeDependents(t *testing.T) {
 
 	factoryErr := fmt.Errorf("pub/sub client factory unavailable")
 	factoryCalls := 0
-	service, err := NewZtdoService(cfg, testutil.NewVerboseTestLogger(t), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
+	service, err := NewZtdoService(cfg, testutil.NewVerboseTestLogger(t), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
 		factoryCalls++
 		return nil, factoryErr
 	})

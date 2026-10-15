@@ -15,10 +15,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestRunSourcefiles_PrintsSlashSeparatedDependencies(t *testing.T) {
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "ui", "src"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "ui", "tests"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "ui", "src", "app.ts"), []byte("app"), 0o644))

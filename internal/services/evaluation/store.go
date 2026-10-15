@@ -18,7 +18,6 @@ import (
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
-	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 // EvidenceScope binds a persisted evidence artifact to its run, scenario,
@@ -54,18 +53,6 @@ func NewArchivedStore(files fs.RuntimeFileService) *Store {
 // run records come from the archive while their campaign is still active.
 func NewArchivedRunStore(files fs.RuntimeFileService) *Store {
 	return &Store{files: files, layout: archivedRunLayout()}
-}
-
-// SaveTargetState persists one canonical EvaluationTargetState observation
-// body under the run's content-addressed evidence directory and returns the
-// scoped reference.
-func (s *Store) SaveTargetState(ctx context.Context, evidence *evalv1.EvaluationTargetState) (*compliancev1.ComplianceEvidenceReference, error) {
-	if s == nil || s.files == nil || evidence == nil || evidence.GetSchemaVersion() != RegistryVersion || !complianceevidence.ValidPathElement(evidence.GetRunId()) || !complianceevidence.ValidPathElement(evidence.GetScenarioId()) || !complianceevidence.ValidPathElement(evidence.GetAttemptId()) || evidence.GetTargetResource() == "" || evidence.GetObservedAt() == nil || evidence.GetObservedAt().CheckValid() != nil || (!evidence.GetPresent() && len(evidence.GetContent()) != 0) {
-		return nil, fmt.Errorf("%w: target state evidence is incomplete", constants.ErrEvaluationReportPersistFailed)
-	}
-	return s.SaveProtoArtifact(ctx, EvidenceScope{
-		RunID: evidence.GetRunId(), ScenarioID: evidence.GetScenarioId(), AttemptID: evidence.GetAttemptId(),
-	}, complianceevidence.ArtifactTypeEvalObservation, evidence)
 }
 
 // SaveProtoArtifact persists one canonical protobuf evidence body beneath the
@@ -128,98 +115,6 @@ func scopedReference(reference *compliancev1.ComplianceEvidenceReference, scope 
 	reference.AttemptId = scope.AttemptID
 	reference.TransactionId = scope.TransactionID
 	return reference
-}
-
-func (s *Store) SaveReport(ctx context.Context, report *evalv1.EvaluationReport) error {
-	if s == nil || s.files == nil || report == nil || report.GetRun() == nil || !complianceevidence.ValidPathElement(report.GetRun().GetRunId()) {
-		return fmt.Errorf("%w: file service and canonical report run ID are required", constants.ErrEvaluationReportPersistFailed)
-	}
-	body, err := evalv1.MarshalCanonical(report)
-	if err != nil {
-		return fmt.Errorf("%w: canonicalize report: %w", constants.ErrEvaluationReportPersistFailed, err)
-	}
-	runDir := evaluationRunDir(report.GetRun().GetRunId())
-	if err := s.files.MkdirAll(ctx, filepath.Join(runDir, constants.EvaluationEvidenceDirname), constants.PermDirPrivate); err != nil {
-		return fmt.Errorf("%w: create run directory: %w", constants.ErrEvaluationReportPersistFailed, err)
-	}
-	if err := s.files.WriteFile(ctx, filepath.Join(runDir, constants.EvaluationReportFilename), body, constants.PermFileReadOnly); err != nil {
-		return fmt.Errorf("%w: write report: %w", constants.ErrEvaluationReportPersistFailed, err)
-	}
-	return nil
-}
-
-func (s *Store) LoadReport(ctx context.Context, runID string) (*evalv1.EvaluationReport, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and canonical run ID are required", constants.ErrEvidenceArtifactMalformed)
-	}
-	body, err := s.files.ReadFile(ctx, filepath.Join(evaluationRunDir(runID), constants.EvaluationReportFilename))
-	if err != nil {
-		return nil, fmt.Errorf("evaluation: read report: %w", err)
-	}
-	report := &evalv1.EvaluationReport{}
-	if err := evalv1.UnmarshalCanonical(body, report); err != nil {
-		return nil, fmt.Errorf("%w: canonical evaluation report: %v", constants.ErrEvidenceArtifactMalformed, err)
-	}
-	if report.GetRun().GetRunId() != runID {
-		return nil, fmt.Errorf("%w: report run ID does not match requested run", constants.ErrEvidenceScopeMismatch)
-	}
-	return report, nil
-}
-
-func (s *Store) SaveVerification(ctx context.Context, runID string, report *compliancev1.ComplianceVerificationReport) (*compliancev1.ComplianceEvidenceReference, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || report == nil || report.GetReportId() != runID {
-		return nil, fmt.Errorf("%w: verification report binding is invalid", constants.ErrEvaluationReportPersistFailed)
-	}
-	body, err := compliancev1.MarshalCanonical(report)
-	if err != nil {
-		return nil, fmt.Errorf("%w: canonicalize verification report: %w", constants.ErrEvaluationReportPersistFailed, err)
-	}
-	if err := s.files.WriteFile(ctx, filepath.Join(evaluationRunDir(runID), constants.EvaluationVerificationFilename), body, constants.PermFileReadOnly); err != nil {
-		return nil, fmt.Errorf("%w: write verification report: %w", constants.ErrEvaluationReportPersistFailed, err)
-	}
-	artifactID := complianceevidence.ContentReferenceForBody("evaluation-verification", body)
-	_, digest, ok := complianceevidence.ParseExpectedContentReference(artifactID, "evaluation-verification")
-	if !ok {
-		return nil, fmt.Errorf("%w: verification content address is invalid", constants.ErrEvaluationReportPersistFailed)
-	}
-	return &compliancev1.ComplianceEvidenceReference{ArtifactId: artifactID, ArtifactType: "evaluation-verification", Sha256: digest, MediaType: constants.MediaTypeJSON, RunId: runID}, nil
-}
-
-func (s *Store) LoadVerification(ctx context.Context, runID string) (*compliancev1.ComplianceVerificationReport, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and canonical run ID are required", constants.ErrEvidenceArtifactMalformed)
-	}
-	body, err := s.files.ReadFile(ctx, filepath.Join(evaluationRunDir(runID), constants.EvaluationVerificationFilename))
-	if err != nil {
-		return nil, fmt.Errorf("evaluation: read verification report: %w", err)
-	}
-	report := &compliancev1.ComplianceVerificationReport{}
-	if err := compliancev1.UnmarshalCanonical(body, report); err != nil {
-		return nil, fmt.Errorf("%w: canonical verification report: %v", constants.ErrEvidenceArtifactMalformed, err)
-	}
-	if report.GetReportId() != runID {
-		return nil, fmt.Errorf("%w: verification report run ID does not match requested run", constants.ErrEvidenceScopeMismatch)
-	}
-	return report, nil
-}
-
-// ListReports returns a list of all run IDs with saved reports.
-func (s *Store) ListReports(ctx context.Context) ([]string, error) {
-	if s == nil || s.files == nil {
-		return nil, fmt.Errorf("%w: file service is required", constants.ErrEvidenceArtifactMalformed)
-	}
-	runsDir := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname)
-	entries, err := s.files.ReadDir(ctx, runsDir)
-	if err != nil {
-		return nil, fmt.Errorf("evaluation: read runs directory: %w", err)
-	}
-	var runIDs []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			runIDs = append(runIDs, entry.Name())
-		}
-	}
-	return runIDs, nil
 }
 
 func evaluationRunDir(runID string) string {

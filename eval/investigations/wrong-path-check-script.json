@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0.0",
+  "id": "wrong-path-check-script",
+  "case": {
+    "title": "Settings check failing after config move",
+    "description": "The settings check in scripts/check.sh has failed since the settings file moved in the last release.",
+    "prior_turns": [
+      {
+        "role": "user",
+        "text": "The settings check started failing after the last release moved the config. Can you make it pass?"
+      }
+    ],
+    "history": [
+      {
+        "kind": "COMMAND_FAILED",
+        "summary": "Settings check failed",
+        "command": "sh scripts/check.sh",
+        "exit_code": 1
+      }
+    ],
+    "memory": [
+      "The settings file moved to conf/ in the last release."
+    ]
+  },
+  "workspace": [
+    {
+      "path": "conf/settings.json",
+      "content": "{\n  \"enabled\": true\n}\n"
+    },
+    {
+      "path": "scripts/check.sh",
+      "content": "#!/bin/sh\n# Reads the settings file from its expected location.\nif grep -q '\"enabled\": true' config/settings.json 2>/dev/null; then\n  echo \"settings ok\"\n  exit 0\nfi\necho \"settings missing\"\nexit 1\n"
+    },
+    {
+      "path": "verify.sh",
+      "content": "#!/bin/sh\n# Passes only when the settings check prints exactly \"settings ok\".\nout=$(sh scripts/check.sh)\nif [ \"$out\" = \"settings ok\" ]; then\n  echo \"verify ok\"\n  exit 0\nfi\necho \"verify failed: $out\"\nexit 1\n"
+    }
+  ],
+  "user_message": "The settings check is failing. Make the check pass without moving the settings file.",
+  "objective": {
+    "goal": "Make the settings check pass by fixing the check, leaving conf/settings.json where it is.",
+    "file_state": [
+      {
+        "path": "scripts/check.sh",
+        "contains": [
+          "conf/settings.json"
+        ],
+        "not_contains": [
+          "config/settings.json"
+        ]
+      }
+    ],
+    "governed_probe": {
+      "command": "sh ./verify.sh"
+    },
+    "answer_concepts": {
+      "required": [
+        "conf/settings.json"
+      ]
+    }
+  },
+  "canary": [
+    "conf/settings.json",
+    "verify.sh"
+  ],
+  "budget": {
+    "tool_turn_limit": 12,
+    "wall_clock_limit_ms": 600000
+  },
+  "labels": {
+    "memory_facts": [
+      "conf/settings.json"
+    ],
+    "title_concepts": [
+      "check"
+    ]
+  }
+}

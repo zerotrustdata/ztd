@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type APIClient interface {
@@ -74,6 +75,19 @@ assertion; there is no CLI-only approval.`,
 				return fmt.Errorf("approve: create API client: %w", err)
 			}
 
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+
+			// Subscribe before the browser opens: the approver can complete the approval as
+			// soon as the page is up, and the stream must already hold that event.
+			approvals, err := subscribeApproval(ctx, fileSvc, cfg)
+			if err != nil {
+				return err
+			}
+			defer approvals.Close()
+
 			// Build the browser approval URL (public endpoint, redirects to console SPA)
 			approvalURL := auth.ApprovalPageURL(cfg, txHash)
 
@@ -86,39 +100,48 @@ assertion; there is no CLI-only approval.`,
 				fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", approvalURL)
 			}
 
-			ctx := cmd.Context()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-
-			return waitForApprovalAndVerify(ctx, cmd, fileSvc, cfg, client, txHash)
+			return waitForApprovalAndVerify(ctx, cmd, approvals, client, txHash)
 		},
 	}
 
 	return cmd
 }
 
-// waitForApprovalAndVerify loads CLI credentials, builds an mTLS SSE client,
-// waits for the approval.completed SSE event, then verifies the approval
-// status via the mTLS status endpoint. CLI credentials are required — there
-// is no polling fallback.
-func waitForApprovalAndVerify(ctx context.Context, cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config, client APIClient, txHash string) error {
+// subscribeApproval loads CLI credentials, builds an mTLS SSE client, and opens the
+// approval.completed subscription for the CLI session. CLI credentials are required —
+// there is no polling fallback.
+func subscribeApproval(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (*auth.ApprovalSubscription, error) {
 	creds, err := auth.LoadCredentials(fileSvc, cfg)
 	if err != nil {
-		return fmt.Errorf("approve: load credentials: %w", err)
+		return nil, fmt.Errorf("approve: load credentials: %w", err)
 	}
 	if creds == nil || creds.UserID == "" {
-		return fmt.Errorf("approve: %w", constants.ErrNotAuthenticated)
+		return nil, fmt.Errorf("approve: %w", constants.ErrNotAuthenticated)
 	}
 
 	sseClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
 	if err != nil {
-		return fmt.Errorf("approve: build mTLS client: %w", err)
+		return nil, fmt.Errorf("approve: build mTLS client: %w", err)
 	}
 
+	approvals, err := auth.SubscribeApprovals(ctx, sseClient, cfg.OperatorPublicURL(), creds.CLISessionID)
+	if err != nil {
+		return nil, fmt.Errorf("approve: %w", err)
+	}
+	return approvals, nil
+}
+
+// waitForApprovalAndVerify waits on the approval subscription for the browser decision,
+// then verifies the approval status via the mTLS status endpoint.
+func waitForApprovalAndVerify(ctx context.Context, cmd *cobra.Command, approvals *auth.ApprovalSubscription, client APIClient, txHash string) error {
 	cmd.Printf("\nWaiting for browser approval (SSE)...\n")
-	if err := auth.WaitForApprovalSSE(ctx, sseClient, cfg.OperatorPublicURL(), creds.CLISessionID, txHash); err != nil {
+	receipt, err := approvals.Wait(ctx, txHash, "")
+	if err != nil {
 		return fmt.Errorf("approve: %w", err)
+	}
+	// A deny resolves the wait with the Operator-signed L3_DENIED rejection.
+	if receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		return fmt.Errorf("approve: transaction %s: %w", txHash, constants.ErrTxL3Denied)
 	}
 
 	resp, err := client.Get(auth.ApprovalStatusPath(txHash))

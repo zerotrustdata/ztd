@@ -65,7 +65,7 @@ func TestLoadModelInventoryFreezeFile_RoundTrip(t *testing.T) {
 	t.Parallel()
 	freeze, err := MaterializeModelRegistry("campaign-1", []*evalv1.ModelVariant{testModelVariant()})
 	require.NoError(t, err)
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, "inventory.json")
 	rawVariants := make([]json.RawMessage, 0, len(freeze.Variants))
 	for _, variant := range freeze.Variants {
@@ -115,7 +115,7 @@ func TestBuildModelVariantsFromProviderInventory_RejectsEmptyInventory(t *testin
 
 func TestLoadModelInventoryFreezeFile_WrapsReadErrors(t *testing.T) {
 	t.Parallel()
-	_, err := LoadModelInventoryFreezeFile(filepath.Join(t.TempDir(), "missing.json"))
+	_, err := LoadModelInventoryFreezeFile(filepath.Join(testutil.TempDir(t), "missing.json"))
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, constants.ErrMissingRequiredField))
 }

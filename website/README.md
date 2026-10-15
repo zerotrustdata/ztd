@@ -80,14 +80,20 @@ to the Releases page for links to another note.
 `static/start.sh` is the one-command onboarding script, `curl -fsSL https://zerotrustdata.io/start.sh | sh`. It
 downloads `ztd.sh`, installs the checksum-verified binary into `$ZTD_DIR` (default `~/ztd`), and then runs the
 `make quickstart` steps: start or reuse a Gateway, sign in or reuse the CLI identity, and run a first governed
-action. `static/ztd.sh` and `static/ztd.ps1` install only the binary. Both shell scripts run entirely from a `main`
+action. `static/start.ps1` is the Windows equivalent, `irm https://zerotrustdata.io/start.ps1 | iex`: it runs `ztd.ps1`
+into `$Env:ZTD_DIR` (default `~\ztd`) and the same four steps. Because `iex` runs it inside the caller's session, all
+its work sits in one script block: it never calls `exit`, restores the caller's location, and a truncated download
+fails to parse instead of running. `static/ztd.sh` and `static/ztd.ps1` install only the binary. Both shell scripts run entirely from a `main`
 function called on the last line, so a truncated download executes nothing, and every child reads `/dev/null` so
 none can consume the piped script.
 
 `test/start.test.js` and `test/install.test.js` run the scripts offline against stub `curl`, `uname`, and `sudo`
 commands and a fake `ztd` that records its invocations and stdin. The start tests pipe the script into every
 available POSIX shell (`sh`, `dash`, `busybox sh`, `bash --posix`), cover reuse, every environment variable, each
-failure remedy, truncated downloads, and run `shellcheck` when it is installed.
+failure remedy, truncated downloads, and run `shellcheck` when it is installed. `test/start-ps1.test.js` runs
+`irm https://zerotrustdata.io/start.ps1 | iex` in a real `pwsh` session with `Invoke-RestMethod`/`Invoke-WebRequest`
+replaced by a stub release host, covering the same cases; it is skipped when `pwsh` is not on `PATH` (or named by
+`ZTD_TEST_PWSH`).
 
 ## Production deployment
 

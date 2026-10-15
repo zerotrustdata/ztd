@@ -88,12 +88,17 @@ type PublicFeedBatch struct {
 }
 
 // PublicFeedSnapshot binds the high-water sequence and the feed-chain hash.
+// WithdrawalDigest, set on every mirror read, is the SHA-256 over the mirror's
+// sorted withdrawn dataset IDs (the zero hash when none): withdrawal hides
+// records without rewriting the signed chain, so clients holding cached
+// records discard them when the digest changes.
 type PublicFeedSnapshot struct {
 	ProtocolVersion   string            `json:"protocol_version"`
 	SourceID          string            `json:"source_id"`
 	HighWaterSequence int64             `json:"high_water_sequence"`
 	FeedChainHash     string            `json:"feed_chain_hash"`
 	BatchCount        int               `json:"batch_count"`
+	WithdrawalDigest  string            `json:"withdrawal_digest,omitempty"`
 	GeneratedAt       time.Time         `json:"generated_at"`
 	Freshness         CampaignFreshness `json:"freshness"`
 }

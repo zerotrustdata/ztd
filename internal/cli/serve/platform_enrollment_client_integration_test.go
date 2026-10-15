@@ -239,12 +239,13 @@ func newTestBootstrapClient(t *testing.T, mg *mockBootstrapGateway, launchID str
 	deployment, err := NewOperatorDeploymentRecorder(fileSvc, launchID)
 	require.NoError(t, err)
 	client, err := NewOperatorBootstrapClient(OperatorBootstrapClientConfig{
-		URL:           mg.url(),
-		InstanceID:    "op-test-instance",
-		Hostname:      "op-test-host",
-		RuntimeConfig: json.RawMessage(`{"platform":"linux"}`),
-		Deployment:    deployment,
-		Logger:        testLogger(),
+		URL:               mg.url(),
+		InstanceID:        "op-test-instance",
+		Hostname:          "op-test-host",
+		RuntimeConfig:     json.RawMessage(`{"platform":"linux"}`),
+		Deployment:        deployment,
+		Logger:            testLogger(),
+		ActuatorPublicKey: strings.Repeat("ab", 32),
 	})
 	require.NoError(t, err)
 	return client, fileSvc
@@ -392,14 +393,15 @@ func TestOperatorBootstrap_WSSVerifiesTheGatewayAgainstThePinnedBundle(t *testin
 		deployment, err := NewOperatorDeploymentRecorder(newTestFileSvc(t), "")
 		require.NoError(t, err)
 		client, err := NewOperatorBootstrapClient(OperatorBootstrapClientConfig{
-			URL:            mg.url(),
-			InstanceID:     "op-test-instance",
-			Hostname:       "op-test-host",
-			RuntimeConfig:  json.RawMessage(`{"platform":"linux"}`),
-			TrustBundlePEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: mg.server.Certificate().Raw}),
-			TLSServerName:  serverName,
-			Deployment:     deployment,
-			Logger:         testLogger(),
+			URL:               mg.url(),
+			InstanceID:        "op-test-instance",
+			Hostname:          "op-test-host",
+			RuntimeConfig:     json.RawMessage(`{"platform":"linux"}`),
+			TrustBundlePEM:    pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: mg.server.Certificate().Raw}),
+			TLSServerName:     serverName,
+			Deployment:        deployment,
+			Logger:            testLogger(),
+			ActuatorPublicKey: strings.Repeat("ab", 32),
 		})
 		require.NoError(t, err)
 		return client

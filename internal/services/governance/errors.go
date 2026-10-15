@@ -32,6 +32,7 @@ var (
 	ErrL2SignatureMissing         = constants.ErrTxL2SignatureMissing
 	ErrL2SignatureInvalid         = constants.ErrTxL2SignatureInvalid
 	ErrL2ConsensusNotConfigured   = constants.ErrTxL2ConsensusNotConfigured
+	ErrL2ConsensusSetUnknown      = constants.ErrTxL2ConsensusSetUnknown
 	ErrL2SignerStoreNotConfigured = constants.ErrTxL2SignerStoreNotConfigured
 	ErrL2QuorumNotMet             = constants.ErrTxL2QuorumNotMet
 	ErrL2DuplicateSigner          = constants.ErrTxL2DuplicateSigner

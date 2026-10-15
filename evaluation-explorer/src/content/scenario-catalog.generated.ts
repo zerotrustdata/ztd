@@ -17,7 +17,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "id": "final-response-diagnosis",
     "category": "final_response",
     "publicDescription": "Deliver an evidence-backed diagnosis with confidence, action, and customer-safe communication.",
-    "gradingMethod": "semantic_judge",
+    "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
     "userPrompt": "Using only the synthetic evidence below, provide diagnosis, confidence, recommended action, and a customer-safe summary.",
     "inlineContext": [
@@ -169,7 +169,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "id": "recovery-tool-failure",
     "category": "recovery",
     "publicDescription": "Recover when a requested workspace file is missing.",
-    "gradingMethod": "semantic_judge",
+    "gradingMethod": "deterministic",
     "trajectoryPolicy": "guided",
     "userPrompt": "Read {{workspace}}/deploy/deployment-status.txt. If the file is unavailable, report the failure and suggest the next safe read-only check.",
     "workspaceFiles": [
@@ -227,7 +227,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "id": "route-handoff-assistant",
     "category": "routing_delegation",
     "publicDescription": "Take a handoff from Primary and complete the detailed correlation.",
-    "gradingMethod": "semantic_judge",
+    "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
     "userPrompt": "Take the handoff: correlate the two excerpts below and tell me whether the rotation explains the failures.",
     "inlineContext": [
@@ -407,7 +407,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "id": "tech-log-parse",
     "category": "technical_analysis",
     "publicDescription": "Extract the failing service from a synthetic error log.",
-    "gradingMethod": "semantic_judge",
+    "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
     "userPrompt": "Identify the failing service named in the synthetic log excerpt below.",
     "inlineContext": [
@@ -581,7 +581,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "arguments": [
         {
           "toolName": "run_commands_with_operator",
-          "argumentName": "request",
+          "argumentName": "command",
           "source": "workspace"
         }
       ]

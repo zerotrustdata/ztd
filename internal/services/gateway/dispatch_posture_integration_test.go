@@ -85,7 +85,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			infra := setupTestInfrastructure(t, false)
 			seedActiveUser(t, infra, userID)
 			seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
-			targetDir := testutil.TempDir(t)
+			targetDir := testutil.OperatorDir(t)
 			targetPath := filepath.Join(targetDir, constants.TestEvaluationTargetFilename)
 			require.NoError(t, os.WriteFile(targetPath, []byte(seed), constants.PermFilePrivate))
 			pubKey := startFileEditOperator(t, infra, operatorID, sessionID, targetDir)
@@ -151,7 +151,11 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 				assert.ErrorIs(t, dispatchErr, constants.ErrDispatchGovernanceRejected)
 				assert.NotErrorIs(t, dispatchErr, constants.ErrDispatchResultTimeout)
 				assert.Contains(t, dispatchErr.Error(), tc.l4Sentinel.Error())
-				assert.Equal(t, http.StatusForbidden, classifyDispatchError(dispatchErr))
+				status, _ := dispatchErrorCode(dispatchErr)
+				assert.Equal(t, http.StatusForbidden, status)
+				rejection := govsvc.RejectionResponse(dispatchErr)
+				require.NotNil(t, rejection, "the rejection carries the Operator's signed receipt to the caller")
+				assert.Equal(t, govsvc.ClassifyGovernanceRejection(tc.l4Sentinel), rejection.GetReceipt().GetRejectionCode())
 				require.Eventually(t, func() bool {
 					select {
 					case <-published:

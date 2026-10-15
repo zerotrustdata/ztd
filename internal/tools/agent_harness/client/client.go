@@ -21,13 +21,13 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
-	ssepkg "github.com/zerotrustdata/ztd/internal/cli/sse"
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // Persona is the identity Agent Harness wears for a given exchange. This is the ONLY
@@ -266,15 +266,14 @@ func (c *Client) stateRoot(ctx context.Context, baseURL string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	var h struct {
-		StateMerkleRoot string `json:"state_merkle_root"`
-		StateRoot       string `json:"state_root"`
+	var h models.StateResponse
+	if err := json.Unmarshal(body, &h); err != nil {
+		return "", fmt.Errorf("state root: decode response: %w", err)
 	}
-	_ = json.Unmarshal(body, &h)
-	if h.StateMerkleRoot != "" {
-		return h.StateMerkleRoot, nil
+	if h.StateMerkleRoot == "" {
+		return "", fmt.Errorf("state root: %w", constants.ErrMissingRequiredField)
 	}
-	return h.StateRoot, nil // tolerate either field name
+	return h.StateMerkleRoot, nil
 }
 
 // RegisterSigner registers an Ed25519 public key as a trusted L2/principal
@@ -298,47 +297,12 @@ func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex, role string)
 	return nil
 }
 
-// WaitForHumanApproval drives the real out-of-band L3 notary flow for human
-// approval: it prints the approval URL, subscribes to the gateway's SSE stream
-// for the approval.completed event matching txHash, and blocks until the human
-// completes the WebAuthn ceremony in their browser. The completion event carries
-// the authoritative resumed-receipt reference, which this method validates and
-// returns on success.
-//
-// SSE routing is via the X-ZTD-CLI-Session-ID header set from Persona.CLISessionID;
-// user_id is bound by the mTLS cert and stamped into context by the auth
-// middleware. The userID parameter is used only for the status-check persona
-// (statusPersona.UserID = userID), not for SSE routing. The SSE subscription
-// and status verification dial PublicBaseURL, which must be reachable from the
-// harness process (container-internal in the demo topology). The approval link
-// printed for the human is built from ApprovalDisplayURL when set — the
-// host-reachable address — so the host browser can actually open it; it falls
-// back to PublicBaseURL when ApprovalDisplayURL is empty.
-func (c *Client) WaitForHumanApproval(ctx context.Context, p Persona, txHash, userID string) (int, []byte, error) {
-	// The human approver reaches the gateway from the host, which uses different
-	// host/ports than the harness process (container-internal). Prefer the
-	// host-reachable display URL for the printed link; fall back to PublicBaseURL
-	// so non-demo invocations keep working.
-	displayBase := c.cfg.ApprovalDisplayURL
-	if displayBase == "" {
-		displayBase = c.cfg.PublicBaseURL
-	}
-	approvalURL := displayBase + constants.APIPaths.ApprovePagePrefix + txHash
-	consoleURL := displayBase + constants.APIPaths.ConsolePrefix
-
-	fmt.Fprintf(os.Stderr, "\n  ╔════════════════════════════════════════════════════════════╗\n")
-	fmt.Fprintf(os.Stderr, "  ║  HUMAN APPROVAL REQUIRED                                    ║\n")
-	fmt.Fprintf(os.Stderr, "  ║  Approve in your console (approval pushed via SSE):        ║\n")
-	fmt.Fprintf(os.Stderr, "  ║  %s\n", consoleURL)
-	fmt.Fprintf(os.Stderr, "  ║  Or open this direct link as an alternative:                ║\n")
-	fmt.Fprintf(os.Stderr, "  ║  %s\n", approvalURL)
-	fmt.Fprintf(os.Stderr, "  ║  Transaction: %s\n", txHash)
-	fmt.Fprintf(os.Stderr, "  ╚════════════════════════════════════════════════════════════╝\n\n")
-
-	// Build an SSE-specific HTTP client with no timeout (context-controlled).
-	// Prefer the CLI-cert TLS config so the SSE subscription is authenticated
-	// with the same identity as the notary submit; fall back to the operator
-	// cert when no CLI cert is configured.
+// SubscribeApprovals opens the approval subscription for the persona's CLI session. It
+// prefers the CLI-cert TLS config, so the SSE subscription is authenticated with the same
+// identity as the notary submit, and falls back to the operator cert when no CLI cert is
+// configured. It returns once the gateway has registered the listener, so it must run
+// before the attended call is submitted.
+func (c *Client) SubscribeApprovals(ctx context.Context, p Persona) (*auth.ApprovalSubscription, error) {
 	sseTLS := c.cliTLS
 	if sseTLS == nil {
 		sseTLS = c.tlsCfg
@@ -347,72 +311,56 @@ func (c *Client) WaitForHumanApproval(ctx context.Context, p Persona, txHash, us
 		Timeout:   0,
 		Transport: &http.Transport{TLSClientConfig: sseTLS.Clone()},
 	}
+	return auth.SubscribeApprovals(ctx, sseHTTPClient, c.cfg.PublicBaseURL, p.CLISessionID)
+}
 
-	sseURL := fmt.Sprintf("%s%s?since_id=0",
-		c.cfg.PublicBaseURL,
-		constants.APIPaths.SSEStream)
+// ApprovalDecision is the decision the banner asks the human approver to make.
+type ApprovalDecision int
 
-	sseClient := ssepkg.NewClient(sseURL, sseHTTPClient)
-	if p.CLISessionID != "" {
-		sseClient.SetHeader(constants.HeaderCLISessionID, p.CLISessionID)
+const (
+	// ApprovalDecisionApprove asks the human to approve the transaction.
+	ApprovalDecisionApprove ApprovalDecision = iota
+	// ApprovalDecisionDeny asks the human to deny the transaction.
+	ApprovalDecisionDeny
+)
+
+// WaitForApproval prints the human approval banner for txHash, asking for decision,
+// waits on sub for the decision, and returns the signed receipt: the resumed
+// receipt on approve, or the L3_DENIED rejection receipt on deny.
+func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.ActionReceipt, error) {
+	// The human approver reaches the gateway from the host, which uses different
+	// host/ports than the harness process (container-internal). Prefer the
+	// host-reachable display URL for the printed link; fall back to PublicBaseURL
+	// so non-demo invocations keep working.
+	cfg := c.cfg
+	displayBase := cfg.ApprovalDisplayURL
+	if displayBase == "" {
+		displayBase = cfg.PublicBaseURL
 	}
+	approvalURL := displayBase + constants.APIPaths.ApprovePagePrefix + txHash
+	consoleURL := displayBase + constants.APIPaths.ConsolePrefix
 
-	// The gateway's approval request TTL is 2 minutes; allow a grace period.
-	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	approved := make(chan struct{}, 1)
-	var once sync.Once
-	var approvalReceipt *models.ApprovalReceiptReference
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-		sseClient.Run(waitCtx, func(eventType, data string) {
-			var envelope models.SSEPushPayload
-			if err := json.Unmarshal([]byte(data), &envelope); err != nil {
-				return
-			}
-			var event models.ApprovalCompletedEvent
-			if err := json.Unmarshal(envelope.Event, &event); err != nil {
-				return
-			}
-			// When the server omits the event: field (R14), eventType is empty.
-			// Extract the type from the inner payload instead.
-			innerType := eventType
-			if innerType == "" {
-				innerType = event.Type
-			}
-			if innerType != constants.SSEEventTypeApprovalCompleted {
-				return
-			}
-			if event.TxHash != txHash || event.UserID != userID {
-				return
-			}
-			once.Do(func() {
-				approvalReceipt = event.Receipt
-				close(approved)
-			})
-		})
-	}()
-
-	select {
-	case <-approved:
-		cancel()
-		<-done
-	case <-waitCtx.Done():
-		<-done
-		return 0, nil, constants.ErrApprovalSSETimeout
+	fmt.Fprintf(os.Stderr, "\n  ╔════════════════════════════════════════════════════════════╗\n")
+	fmt.Fprintf(os.Stderr, "  ║  HUMAN APPROVAL REQUIRED                                    ║\n")
+	if decision == ApprovalDecisionDeny {
+		fmt.Fprintf(os.Stderr, "  ║  DENY this transaction in your console (pushed via SSE):    ║\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "  ║  Approve in your console (approval pushed via SSE):        ║\n")
 	}
+	fmt.Fprintf(os.Stderr, "  ║  %s\n", consoleURL)
+	fmt.Fprintf(os.Stderr, "  ║  Or open this direct link as an alternative:                ║\n")
+	fmt.Fprintf(os.Stderr, "  ║  %s\n", approvalURL)
+	fmt.Fprintf(os.Stderr, "  ║  Transaction: %s\n", txHash)
+	fmt.Fprintf(os.Stderr, "  ╚════════════════════════════════════════════════════════════╝\n\n")
 
-	if approvalReceipt == nil || approvalReceipt.ExecutionID == "" || approvalReceipt.TransactionID == "" || approvalReceipt.TransactionHash != txHash || approvalReceipt.SignerKeyID == "" || approvalReceipt.Signature == "" || approvalReceipt.InvestigationID == "" {
-		return 0, nil, constants.ErrApprovalReceiptReferenceInvalid
-	}
-	body, err := json.Marshal(approvalReceipt)
+	receipt, err := sub.Wait(ctx, txHash, userID)
 	if err != nil {
-		return 0, nil, fmt.Errorf("human approval: encode receipt reference: %w", err)
+		return nil, err
 	}
-
+	if receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		fmt.Fprintf(os.Stderr, "  ✗ Human denied transaction %s (signed L3_DENIED receipt)\n\n", txHash)
+		return receipt, nil
+	}
 	fmt.Fprintf(os.Stderr, "  ✓ Human approval confirmed for transaction %s\n\n", txHash)
-	return http.StatusOK, body, nil
+	return receipt, nil
 }

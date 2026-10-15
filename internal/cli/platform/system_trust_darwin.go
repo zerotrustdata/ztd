@@ -15,7 +15,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -39,16 +38,16 @@ func (i *SystemTrustInstaller) isTrustedPlatform(ctx context.Context, root *x509
 	return bundleContainsFingerprint(out, fingerprint)
 }
 
-// installPlatform writes the root anchor to a restrictive temp file and invokes
-// `sudo security add-trusted-cert` with fixed arguments. The temp file is
-// cleaned up on every path.
+// installPlatform stages the root anchor in a private scratch file under the
+// runtime tmp dir and invokes `sudo security add-trusted-cert` with fixed
+// arguments. The scratch file is cleaned up on every path.
 func (i *SystemTrustInstaller) installPlatform(ctx context.Context, root *x509.Certificate, fingerprint string) error {
 	rootPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: root.Raw})
-	dir, certPath, err := writeTempCert(rootPEM)
+	certPath, cleanup, err := i.stageRootCert(ctx, rootPEM)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer cleanup()
 
 	_, err = i.runner.Run(ctx, nil, "sudo", "security", "add-trusted-cert", "-d", "-r", "trustRoot", "-k", darwinSystemKeychain, certPath)
 	if err != nil {

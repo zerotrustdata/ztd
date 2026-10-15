@@ -17,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func writeFile(t *testing.T, root, rel, content string) {
@@ -45,7 +47,7 @@ func packageLockJSON(version string) string {
 // website has no top-level version, mirroring the real repo.
 func newRepo(t *testing.T, platform, declared string) string {
 	t.Helper()
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	writeFile(t, root, "VERSION", "v"+platform+"\n")
 	for _, doc := range protocolDocs {
 		writeFile(t, root, "protocol/docs/"+doc, "# Doc\n\nVersion: v"+declared+"\n")

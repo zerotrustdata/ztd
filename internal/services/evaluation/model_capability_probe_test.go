@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -50,13 +51,13 @@ func TestGovernedCapabilityProbeRunner_RecordsDescriptiveOutcomesWithoutExclusio
 			return probeResponse(req.ProviderAttemptID, "capability-probe-ok"), nil
 		},
 		"tools": func(InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error) {
-			return nil, fmt.Errorf("tools unsupported")
+			return nil, fmt.Errorf("tools: %w", constants.ErrInferenceToolsUnsupported)
 		},
 		"structured": func(req InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error) { //nolint:unparam // The dispatcher contract returns an error; this fixture covers the successful branch.
 			return probeResponse(req.ProviderAttemptID, "not-json"), nil
 		},
 		"thinking": func(InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error) {
-			return nil, fmt.Errorf("thinking unsupported")
+			return nil, fmt.Errorf("thinking: %w", constants.ErrInferenceCapabilityUnsupported)
 		},
 	}}
 	runner := NewGovernedCapabilityProbeRunner(dispatcher, "infer-session", func(prefix string) string { return prefix })
@@ -73,6 +74,58 @@ func TestGovernedCapabilityProbeRunner_RecordsDescriptiveOutcomesWithoutExclusio
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, outcomes[evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT])
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, outcomes[evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_THINKING])
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, outcomes[evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_CONTEXT_LIMIT])
+}
+
+type capturingProbeDispatcher struct {
+	requests []*operatorv1.InferenceDispatchRequest
+	err      error
+}
+
+func (d *capturingProbeDispatcher) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	d.requests = append(d.requests, req)
+	return nil, d.err
+}
+
+func TestGovernedCapabilityProbeRunner_ToolProbeUsesAutoToolChoice(t *testing.T) {
+	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d', 64)}
+	dispatcher := &capturingProbeDispatcher{err: constants.ErrInferenceBackendTimeout}
+	runner := NewGovernedCapabilityProbeRunner(dispatcher, "infer-session", func(prefix string) string { return prefix }).(*governedCapabilityProbeRunner)
+	_, err := runner.probeToolCallingCapability(context.Background(), variant)
+	require.NoError(t, err)
+	require.Len(t, dispatcher.requests, 1)
+	assert.Equal(t, operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO, dispatcher.requests[0].GetToolChoice().GetMode())
+}
+
+func TestGovernedCapabilityProbeRunner_DispatchFailureIsNotUnsupported(t *testing.T) {
+	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d', 64)}
+	runner := NewGovernedCapabilityProbeRunner(&capturingProbeDispatcher{err: fmt.Errorf("probe: %w", constants.ErrInferenceBackendTimeout)}, "infer-session", func(prefix string) string { return prefix }).(*governedCapabilityProbeRunner)
+	structured, err := runner.probeStructuredOutputCapability(context.Background(), variant)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, structured.GetOutcome())
+	assert.Equal(t, "structured-output probe dispatch failed (backend_timeout)", structured.GetObservationDetail())
+	thinking, err := runner.probeThinkingCapability(context.Background(), variant)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, thinking.GetOutcome())
+	assert.Equal(t, "thinking probe dispatch failed (backend_timeout)", thinking.GetObservationDetail())
+}
+
+func TestGovernedCapabilityProbeRunner_ToolProbeDispatchFailureIsNotUnsupported(t *testing.T) {
+	variant := &evalv1.ModelVariant{
+		VariantId:      "probe-model",
+		ProviderClass:  "ollama",
+		ServedModelTag: "probe-model:latest",
+		ModelDigest:    repeatHex('d', 64),
+	}
+	dispatcher := &stubGovernedCapabilityProbeDispatcher{bySuffix: map[string]func(InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error){
+		"tools": func(InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error) {
+			return nil, fmt.Errorf("tools: %w", constants.ErrInferenceBackendTimeout)
+		},
+	}}
+	runner := NewGovernedCapabilityProbeRunner(dispatcher, "infer-session", func(prefix string) string { return prefix }).(*governedCapabilityProbeRunner)
+	observation, err := runner.probeToolCallingCapability(context.Background(), variant)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, observation.GetOutcome())
+	assert.Equal(t, "tool-call probe dispatch failed (backend_timeout)", observation.GetObservationDetail())
 }
 
 func probeResponse(attemptID, text string) *operatorv1.InferenceDispatchResponse {

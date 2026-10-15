@@ -7,20 +7,7 @@
 
 package keystore
 
-// Keyring abstracts the protected store that holds the master encryption key.
-// Implementations wrap the macOS Keychain (darwin), the freedesktop Secret
-// Service over D-Bus (linux), DPAPI (windows), or an operator-provisioned key
-// file kept outside the runtime directory, plus an in-memory implementation
-// for tests.
-// There is deliberately no implementation that writes the master key in
-// plaintext next to the secrets it protects.
-type Keyring interface {
-	// RetrieveMasterKey retrieves the master encryption key from the keyring.
-	RetrieveMasterKey() ([]byte, error)
-	// StoreMasterKey stores the master encryption key in the keyring.
-	StoreMasterKey(key []byte) error
-	// DeleteMasterKey removes the master encryption key from the keyring.
-	DeleteMasterKey() error
-	// Name returns the human-readable name of the keyring implementation.
-	Name() string
-}
+import "github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
+
+// Keyring is the master-key store contract; see keyring.Keyring.
+type Keyring = keyring.Keyring

@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"path"
 	"strings"
 	"testing"
 
@@ -66,4 +67,50 @@ func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
 	// A backslash is an ordinary file-name byte on a POSIX operator.
 	assert.Equal(t, `/srv/ztd/sub\a.txt`, ws.Resolve(`sub\a.txt`))
 	assert.True(t, ws.Contains(ws.Root+"/x"))
+}
+
+func TestValidateAgentDataOperator(t *testing.T) {
+	cases := []struct {
+		name     string
+		embedded bool
+		wd       string
+		project  string
+		ok       bool
+	}{
+		{name: "dedicated sandbox outside the project", wd: "/srv/eval-sandbox", project: "/srv/ztd", ok: true},
+		{name: "embedded operator", embedded: true, wd: "/srv/eval-sandbox", project: "/srv/ztd"},
+		{name: "project root", wd: "/srv/ztd/", project: "/srv/ztd"},
+		{name: "inside the project", wd: "/srv/ztd/sandbox", project: "/srv/ztd"},
+		{name: "ancestor of the project", wd: "/srv", project: "/srv/ztd"},
+		{name: "throwaway operator under the project runtime", wd: "/srv/ztd/.ztd/operators/op-00001", project: "/srv/ztd", ok: true},
+		{name: "windows throwaway operator under the project runtime", wd: `D:\ztd\.ztd\operators\eval`, project: `D:\ztd`, ok: true},
+		{name: "runtime operators dir itself", wd: "/srv/ztd/.ztd/operators", project: "/srv/ztd"},
+		{name: "nested below a throwaway operator", wd: "/srv/ztd/.ztd/operators/op-00001/sub", project: "/srv/ztd"},
+		{name: "elsewhere in the runtime tree", wd: "/srv/ztd/.ztd/tmp/op", project: "/srv/ztd"},
+		{name: "relative working directory", wd: "sandbox", project: "/srv/ztd"},
+		{name: "relative project root", wd: "/srv/eval-sandbox", project: "ztd"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateAgentDataOperator(tc.embedded, tc.wd, tc.project)
+			if tc.ok {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, constants.ErrEvaluationWorkspaceUnavailable)
+		})
+	}
+}
+
+func TestScenarioWorkspaceSentinelPathSitsBesideRootOutsideTheWorkspace(t *testing.T) {
+	posix, err := NewScenarioWorkspace("/srv/ztd", "run-1", "attempt-1")
+	require.NoError(t, err)
+	assert.Equal(t, path.Dir(posix.Root)+"/"+path.Base(posix.Root)+constants.EvaluationWorkspaceSentinelSuffix, posix.SentinelPath(),
+		"the sentinel is a sibling named after the workspace root")
+	assert.False(t, strings.HasPrefix(posix.SentinelPath(), posix.Root+"/"), "the sentinel sits outside the model's workspace")
+
+	windows, err := NewScenarioWorkspace(`d:\ztd\v1.0.6\ztd`, "run-1", "attempt-1")
+	require.NoError(t, err)
+	assert.Equal(t, path.Dir(windows.Root)+"/"+path.Base(windows.Root)+constants.EvaluationWorkspaceSentinelSuffix, windows.SentinelPath())
+	assert.True(t, strings.HasPrefix(windows.SentinelPath(), "D:/ztd/v1.0.6/ztd/"), "a Windows operator keeps the slash-form drive path")
 }

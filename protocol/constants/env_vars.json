@@ -85,12 +85,6 @@
       "category": "test",
       "description": "HTTPS/mTLS port of the isolated Gateway the E2E suite dials; set together with ZTD_E2E_GATEWAY_HTTP_PORT"
     },
-    "E2EMasterKeyFile": {
-      "_go_const": "EnvVar.E2EMasterKeyFile",
-      "value": "ZTD_E2E_MASTER_KEY_FILE",
-      "category": "test",
-      "description": "Provisioned master key file for E2E CLI processes on hosts without an OS key store; blank selects the OS key store"
-    },
     "Shell": {
       "_go_const": "EnvVar.Shell",
       "value": "SHELL",
@@ -138,6 +132,12 @@
       "value": "XDG_RUNTIME_DIR",
       "category": "host",
       "description": "Per-user runtime directory provided by the host session; locates the systemd user ssh-agent sockets for the Linux master-key seal when SSH_AUTH_SOCK is unset"
+    },
+    "DBusSessionBusAddress": {
+      "_go_const": "EnvVar.DBusSessionBusAddress",
+      "value": "DBUS_SESSION_BUS_ADDRESS",
+      "category": "host",
+      "description": "D-Bus session bus address provided by the host session; multi-process test harnesses point it at a missing socket so their children seal under a private ssh-agent instead of the host Secret Service"
     },
     "CloudflareAPIToken": {
       "_go_const": "EnvVar.CloudflareAPIToken",

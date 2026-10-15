@@ -27,7 +27,7 @@ import (
 
 func TestHandleFsListRequest_ValidPath(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -52,7 +52,7 @@ func TestHandleFsListRequest_ValidPath(t *testing.T) {
 
 func TestHandleFsGrepRequest_ValidPath(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 	testFile := filepath.Join(tmpDir, "test.txt")
 	if err := os.WriteFile(testFile, []byte("hello world\ntest line\n"), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
@@ -77,7 +77,7 @@ func TestHandleFsGrepRequest_ValidPath(t *testing.T) {
 
 func TestHandleFsReadRequest_ValidPath(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 	testFile := filepath.Join(tmpDir, "test.txt")
 	if err := os.WriteFile(testFile, []byte("file content"), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
@@ -127,7 +127,7 @@ func TestHandleFsReadRequest_NonExistentPath(t *testing.T) {
 
 func TestHandleFileEditRequest_InvalidOperation(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -170,7 +170,7 @@ func TestHandleFsListRequest_InvalidPath(t *testing.T) {
 
 func TestPayloadToFileEditRequest_InvalidOperation(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 	req := &operatorv1.FileEditRequested{
 		FilePath:  filepath.Join(tmpDir, "test.txt"),
 		Operation: "invalid",
@@ -188,7 +188,7 @@ func TestPayloadToFileEditRequest_InvalidOperation(t *testing.T) {
 
 func TestPayloadToFileEditRequest_WithTaskID(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 	req := &operatorv1.FileEditRequested{
 		FilePath:  filepath.Join(tmpDir, "test.txt"),
 		Operation: "write",
@@ -210,7 +210,7 @@ func TestPayloadToFileEditRequest_WithTaskID(t *testing.T) {
 
 func TestHandleFsReadRequest_ScrubbingRedactsSecrets(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 	testFile := filepath.Join(tmpDir, "secret.txt")
 	require.NoError(t, os.WriteFile(testFile, []byte("password=secret123 api_key=ghp_test_token"), 0644))
 
@@ -246,7 +246,7 @@ func TestHandleFsReadRequest_ScrubbingRedactsSecrets(t *testing.T) {
 
 func TestHandleFsReadRequest_TruncatesLargeFile(t *testing.T) {
 	t.Parallel()
-	tmpDir := testutil.TempDir(t)
+	tmpDir := testutil.OperatorDir(t)
 	testFile := filepath.Join(tmpDir, "large.txt")
 	largeContent := strings.Repeat("A", 2048)
 	require.NoError(t, os.WriteFile(testFile, []byte(largeContent), 0644))

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // --- validatePublicBaseURL ---
@@ -119,21 +120,21 @@ func TestValidateConsensusID_RejectsDots(t *testing.T) {
 // --- validateConsensusBootstrap ---
 
 func TestValidateConsensusBootstrap_MatchingID(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, "bootstrap.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"consensus_id":"trib-001","members":[]}`), 0644))
 	assert.NoError(t, validateConsensusBootstrap(path, "trib-001"))
 }
 
 func TestValidateConsensusBootstrap_MismatchedID(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, "bootstrap.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"consensus_id":"trib-001","members":[]}`), 0644))
 	assert.Error(t, validateConsensusBootstrap(path, "trib-999"))
 }
 
 func TestValidateConsensusBootstrap_NotJSON(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, "bootstrap.json")
 	require.NoError(t, os.WriteFile(path, []byte("not json"), 0644))
 	assert.Error(t, validateConsensusBootstrap(path, "trib-001"))
@@ -144,12 +145,12 @@ func TestValidateConsensusBootstrap_MissingFile(t *testing.T) {
 }
 
 func TestValidateConsensusBootstrap_Directory(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	assert.Error(t, validateConsensusBootstrap(dir, "trib-001"))
 }
 
 func TestValidateConsensusBootstrap_MissingConsensusIDField(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, "bootstrap.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"members":[]}`), 0644))
 	assert.Error(t, validateConsensusBootstrap(path, "trib-001"))

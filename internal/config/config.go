@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/paths"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 )
 
 // GatewayPosture defines the governance enforcement posture for the Gateway.
@@ -68,7 +69,7 @@ type LoadOptions struct {
 	// Outbound mode requires L3 (human) authorization before sending mutations
 	Posture GatewayPosture
 
-	MasterKeyFile string // --master-key-file: operator-provisioned master key outside the runtime dir
+	Keyring keyring.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
 
 	// Working directory
 	WorkDir string // Absolute path of the directory the Operator was launched from (--working-dir or os.Getwd())
@@ -109,27 +110,27 @@ type LoadOptions struct {
 // No outbound authentication is required - the Operator simply starts and listens.
 type GatewayConfig struct {
 	Enabled           bool
-	Posture           GatewayPosture // Governance enforcement posture (doctrine, consensus, ratify, notary)
-	HTTPPort          int            // Plain HTTP port for bootstrap, PKI discovery and enrollment (default: constants.Ports.OperatorHttp)
-	HTTPSPort         int            // HTTPS port for mTLS API (default: constants.Ports.OperatorHttps)
-	ListenHost        string         // Bind host for HTTP and HTTPS (default: constants.LocalhostIP; 0.0.0.0 must be requested explicitly)
-	DataDir           string         // Root directory for SQLite database (default: .ztd/data in working directory)
-	PKIDir            string         // Directory for TLS certificates (default: .ztd/pki)
-	SecretsDir        string         // Directory for platform secrets (default: .ztd/secrets)
-	VaultDir          string         // Directory for encryption vault (default: .ztd/vault)
-	MasterKeyFile     string         // Operator-provisioned master key file outside the runtime dir (required where no OS key store exists)
-	PasskeyRpID       string         // RP ID for passkey operations (default: localhost)
-	PasskeyRpName     string         // RP Name for passkey operations (default: ztd)
-	PasskeyRpOrigins  []string       // Additional RP origins for passkey operations (e.g. demo remapped ports)
-	MCPDownstreamURL  string         // URL of the downstream MCP server to proxy discovery and execution to
-	MCPDownstreamCmd  string         // Command of the downstream MCP subprocess (mutually exclusive with MCPDownstreamURL)
-	MCPDownstreamArgs []string       // Arguments for the downstream MCP subprocess
-	A2ADownstreamURL  string         // URL of the downstream A2A server to proxy execution to
-	PublicBaseURL     string         // Public base URL for L3 approval links (e.g., https://localhost:8443)
-	JWKSURL           string         // URL to fetch JWKS for JWT validation
-	JWTRoleClaim      string         // The claim in JWT that contains roles (default: "roles")
-	JWTIssuer         string         // Expected issuer claim in JWT (optional, for multi-audience IdP deployments)
-	JWTAudience       string         // Expected audience claim in JWT (optional, for multi-audience IdP deployments)
+	Posture           GatewayPosture  // Governance enforcement posture (doctrine, consensus, ratify, notary)
+	HTTPPort          int             // Plain HTTP port for bootstrap, PKI discovery and enrollment (default: constants.Ports.OperatorHttp)
+	HTTPSPort         int             // HTTPS port for mTLS API (default: constants.Ports.OperatorHttps)
+	ListenHost        string          // Bind host for HTTP and HTTPS (default: constants.LocalhostIP; 0.0.0.0 must be requested explicitly)
+	DataDir           string          // Root directory for SQLite database (default: .ztd/data in working directory)
+	PKIDir            string          // Directory for TLS certificates (default: .ztd/pki)
+	SecretsDir        string          // Directory for platform secrets (default: .ztd/secrets)
+	VaultDir          string          // Directory for encryption vault (default: .ztd/vault)
+	Keyring           keyring.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
+	PasskeyRpID       string          // RP ID for passkey operations (default: localhost)
+	PasskeyRpName     string          // RP Name for passkey operations (default: ztd)
+	PasskeyRpOrigins  []string        // Additional RP origins for passkey operations (e.g. demo remapped ports)
+	MCPDownstreamURL  string          // URL of the downstream MCP server to proxy discovery and execution to
+	MCPDownstreamCmd  string          // Command of the downstream MCP subprocess (mutually exclusive with MCPDownstreamURL)
+	MCPDownstreamArgs []string        // Arguments for the downstream MCP subprocess
+	A2ADownstreamURL  string          // URL of the downstream A2A server to proxy execution to
+	PublicBaseURL     string          // Public base URL for L3 approval links (e.g., https://localhost:8443)
+	JWKSURL           string          // URL to fetch JWKS for JWT validation
+	JWTRoleClaim      string          // The claim in JWT that contains roles (default: "roles")
+	JWTIssuer         string          // Expected issuer claim in JWT (optional, for multi-audience IdP deployments)
+	JWTAudience       string          // Expected audience claim in JWT (optional, for multi-audience IdP deployments)
 
 	// HTTP server limits
 	MaxPayloadBytes   int64         // Maximum request payload size in bytes (default: 10MB)
@@ -273,9 +274,9 @@ type Config struct {
 
 	// Vault configuration for encryption at rest
 	VaultDir string // Directory for encryption vault (default: .ztd/vault)
-	// MasterKeyFile is an operator-provisioned master key file outside the
-	// runtime directory, required where no OS key store exists.
-	MasterKeyFile string
+	// Keyring holds the master key. Nil selects the OS key store; tests inject
+	// an isolated in-memory keyring.
+	Keyring keyring.Keyring
 
 	// System / process context - injected from Settings at startup, never read again
 	Shell string // SHELL env var value (e.g. /bin/bash)
@@ -332,7 +333,7 @@ type GatewayOptions struct {
 	PKIDir            string
 	SecretsDir        string
 	VaultDir          string
-	MasterKeyFile     string
+	Keyring           keyring.Keyring
 	PasskeyRpID       string
 	PasskeyRpName     string
 	PasskeyRpOrigins  []string
@@ -394,32 +395,20 @@ func ResolveGatewayPorts(httpPort, httpsPort int) (int, int) {
 	return httpPort, httpsPort
 }
 
-// validateAndResolveGatewayPorts validates and resolves gateway port configuration.
-// It handles:
-// - Port zero validation (rejects explicit zero in production unless all ports are zero)
-// - Port resolution to available ports (with offset fallback)
-// - Port uniqueness checks (ignoring zero-valued ports)
-//
-// Returns validated and resolved ports, or an error if validation fails.
-func validateAndResolveGatewayPorts(httpPort, httpsPort int, allowTestPortZero bool) (int, int, error) {
-	// Reject port 0 in production
-	// This check must happen before default assignment to validate actual input
+// validateGatewayPorts validates the gateway port configuration. It rejects an
+// explicit zero port in production unless both ports are zero, which selects the
+// defaults. It never probes the host: the Gateway start path resolves free ports
+// with ResolveGatewayPorts after loading.
+func validateGatewayPorts(httpPort, httpsPort int, allowTestPortZero bool) (int, int, error) {
 	if !allowTestPortZero {
-		if httpPort == 0 && httpsPort == 0 {
-			// All zero means "use defaults and resolve"
-		} else {
-			if httpPort == 0 {
-				return 0, 0, constants.ErrConfigHTTPPortZero
-			}
-			if httpsPort == 0 {
-				return 0, 0, constants.ErrConfigHTTPSPortZero
-			}
+		switch {
+		case httpPort == 0 && httpsPort == 0:
+			httpPort, httpsPort = constants.Ports.OperatorHttp, constants.Ports.OperatorHttps
+		case httpPort == 0:
+			return 0, 0, constants.ErrConfigHTTPPortZero
+		case httpsPort == 0:
+			return 0, 0, constants.ErrConfigHTTPSPortZero
 		}
-	}
-
-	// Resolve available ports if they are not 0 (dynamic test ports)
-	if !allowTestPortZero {
-		httpPort, httpsPort = ResolveGatewayPorts(httpPort, httpsPort)
 	}
 
 	// Validate that all ports are unique to prevent conflicts.
@@ -482,8 +471,7 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 		vaultDir = paths.Infra.VaultDir
 	}
 
-	// Validate and resolve gateway ports
-	httpPort, httpsPort, err := validateAndResolveGatewayPorts(
+	httpPort, httpsPort, err := validateGatewayPorts(
 		opts.HTTPPort,
 		opts.HTTPSPort,
 		opts.AllowTestPortZero,
@@ -543,7 +531,7 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 			PKIDir:            pkiDir,
 			SecretsDir:        secretsDir,
 			VaultDir:          vaultDir,
-			MasterKeyFile:     opts.MasterKeyFile,
+			Keyring:           opts.Keyring,
 			PasskeyRpID:       passkeyRpID,
 			PasskeyRpName:     passkeyRpName,
 			PasskeyRpOrigins:  opts.PasskeyRpOrigins,
@@ -649,7 +637,7 @@ func Load(opts LoadOptions) (*Config, error) {
 		MaxMemoryMB:        2048,
 		HeartbeatInterval:  heartbeatIntervalOrDefault(opts.HeartbeatInterval),
 
-		MasterKeyFile: opts.MasterKeyFile,
+		Keyring: opts.Keyring,
 
 		// System / process context
 		Shell: opts.Shell,

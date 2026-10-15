@@ -62,7 +62,6 @@ const (
 	PathDev                                                   = "/dev"
 	PathVar                                                   = "/var"
 	PathVarLogDmesg                                           = "/var/log/dmesg"
-	PathTmp                                                   = "/tmp"
 	PathHome                                                  = "/home"
 	PathEtcHostname                                           = "/etc/hostname"
 	PathEtcMachineID                                          = "/etc/machine-id"
@@ -108,10 +107,6 @@ const (
 	PathWindowsGitBinSh                   = "C:\\Program Files\\Git\\bin\\sh.exe"
 	PathWindowsMsys64Bash                 = "C:\\msys64\\usr\\bin\\bash.exe"
 	PathWindowsCygwin64Bash               = "C:\\cygwin64\\bin\\bash.exe"
-
-	// Windows temp directory prefixes and filenames for cert store operations
-	WindowsTempCertImportPrefix = "ztd-cert-import-*"
-	WindowsTempCertFilename     = "certificate.pem"
 )
 
 // Operator host-agent staging patterns (os.CreateTemp). The leading dot keeps
@@ -154,7 +149,6 @@ const (
 	FileExtCert = ".crt"
 	FileExtKey  = ".key"
 	FileExtJSON = ".json"
-	FileExtText = ".txt"
 
 	// CA and bundle filenames
 	PkiFileRootCA          = "root_ca.crt"
@@ -232,6 +226,18 @@ const (
 	// UserRuntimeDirPrefix is systemd's per-user runtime directory, used when
 	// XDG_RUNTIME_DIR is unset.
 	UserRuntimeDirPrefix = "/run/user/"
+	// EphemeralAgentDirname is the owner-only directory, under a harness run
+	// root, that holds the private ssh-agent socket.
+	EphemeralAgentDirname = "agent"
+	// EphemeralAgentSocketFilename is the socket of the private in-process
+	// ssh-agent that multi-process harnesses seal their runtimes under.
+	EphemeralAgentSocketFilename = "agent.sock"
+	// EphemeralAgentNoBusFilename names a socket that never exists; harness
+	// children point the D-Bus session address at it so the Secret Service is
+	// down and the host keyring is never touched.
+	EphemeralAgentNoBusFilename = "no-bus"
+	// UnixSocketPathMax is the longest unix socket path Linux accepts.
+	UnixSocketPathMax = 107
 )
 
 // Secrets filenames for bootstrap and runtime secret material.
@@ -250,7 +256,6 @@ const (
 	SecretsFileConsensusMemberKeyPrefix = "consensus_member_"
 	SecretsFileVaultKey                 = "vault_key"
 	SecretsFileVaultKeyStaged           = "vault_key.rekey"
-	SecretsFileMasterKey                = "ztd_master_key"
 )
 
 // Evaluation target observation constants.
@@ -261,7 +266,6 @@ const (
 	// EvaluationControlledTargetDirname is the controlled target directory,
 	// relative to the runtime root (.ztd/).
 	EvaluationControlledTargetDirname = EvaluationDirname + "/targets"
-	EvaluationTargetFilenamePrefix    = "ztd-eval-"
 	// EvaluationWorkspaceDirname is the directory under the Data Operator's
 	// reported working directory that holds attempt-scoped scenario fixture
 	// workspaces. Names are neutral so the model is not told it is evaluated.
@@ -269,6 +273,15 @@ const (
 	// EvaluationWorkspacePrefix prefixes the per-attempt workspace directory,
 	// which is completed by a digest of the run and attempt identity.
 	EvaluationWorkspacePrefix = "ws-"
+	// EvaluationWorkspaceSentinelSuffix suffixes a workspace directory name to
+	// name the harness-owned sentinel file that sits beside it.
+	EvaluationWorkspaceSentinelSuffix = ".sentinel"
+	// EvaluationConformanceCanaryPrefix prefixes a conformance run's canary root
+	// under EvaluationControlledTargetDirname.
+	EvaluationConformanceCanaryPrefix = "conformance-"
+	// EvaluationCanaryTargetDirname holds per-case target files inside a canary root.
+	// It is created empty at seed time.
+	EvaluationCanaryTargetDirname = "cases"
 )
 
 // Local binary names for the ztd CLI executable.
@@ -366,6 +379,16 @@ const (
 	BinDirname               = "bin"
 	LogDirname               = "logs"
 
+	// TmpDirname holds scratch files and directories under the runtime dir.
+	// Every throwaway path a runtime creates comes from
+	// RuntimeFileService.MkdirTemp; nothing is staged in the OS temp dir or
+	// the user's home directory.
+	TmpDirname = "tmp"
+
+	// OperatorsDirname holds throwaway local Operators deployed by
+	// `ztd operator deploy --local`, one subdirectory per Operator.
+	OperatorsDirname = "operators"
+
 	// Inference runtime directory names under data/.
 	InferenceDirname                        = "inference"
 	InferenceAttemptsDirname                = "attempts"
@@ -405,6 +428,7 @@ const (
 	AgentConfigDirGemini     = ".gemini"
 	AgentConfigDirGoose      = ".config/goose"
 	AgentConfigFileMCPDevin  = "config.json"
+	AgentConfigFileMCPTemp   = "mcp.json"
 	AgentConfigFileSettings  = "settings.json"
 	AgentConfigFileGooseYAML = "config.yaml"
 )
@@ -603,7 +627,7 @@ const (
 // from the ComplianceBundle* constants which describe the generated report
 // bundle layout.
 const (
-	EvalRunVerificationCheck                      = "eval_evidence_graph"
+	ConformanceVerificationCheck                  = "conformance_verdict_set"
 	AssertionGraderID                             = "assertion_assessment"
 	AssertionGraderVersion                        = "2.2.0"
 	FrameworkGraderID                             = "framework_assessment"
@@ -660,6 +684,10 @@ const (
 	EvaluationBackupDirPrefix                     = "eval-backup-"
 	EvaluationBackupTimestampLayout               = "20060102T150405Z"
 	EvaluationBackupDefaultDir                    = EvaluationDirname + "/backups"
+	EvaluationBackupLockFilename                  = "backup.lock"
+	EvaluationBackupLockRelPath                   = EvaluationDirname + "/" + EvaluationBackupLockFilename
+	EvaluationRolloutQueueLockFilename            = "rollout-queue.lock"
+	EvaluationRolloutQueueLockRelPath             = EvaluationDirname + "/" + EvaluationRolloutQueueLockFilename
 	EvaluationModelInventoryPath                  = EvaluationDirname + "/model-inventory.json"
 	EvaluationInitCampaignQueuePath               = EvaluationDirname + "/init-campaign-queue.json"
 	EvaluationCampaignExportDirname               = "export"
@@ -670,8 +698,9 @@ const (
 	EvaluationModelSummariesJSONLFilename         = "model_summaries.jsonl"
 	EvaluationAssignmentsCSVFilename              = "assignments.csv"
 	EvaluationModelSummariesCSVFilename           = "model_summaries.csv"
-	EvaluationReportFilename                      = "report.json"
-	EvaluationVerificationFilename                = "verification.json"
+	ConformanceRecordFilename                     = "conformance-record.json" // canonical protojson
+	ConformanceRecordDigestFilename               = "conformance-record.sha256"
+	ConformanceVerdictSetFilename                 = "conformance-verdicts.json" // canonical protojson
 	EvaluationCampaignSpecFilename                = "campaign-spec.json"
 	EvaluationCampaignReleaseTagFilename          = "release-tag.json"
 	EvaluationHeterogeneousStackSetFilename       = "heterogeneous-stack-set.json"
@@ -679,9 +708,9 @@ const (
 	EvaluationScenarioArtifactsDirname            = "scenario-artifacts"
 	EvaluationRunStateFilename                    = "run.json"
 	EvaluationEvidenceDirname                     = "evidence"
-	EvalRunVerifierID                             = "ztd-native-evaluation-verifier"
-	EvalRunVerifierVersion                        = "1.0.0"
-	EvaluationSourceKindNative                    = "native-evaluation"
+	ConformanceVerifierID                         = "ztd-governance-conformance-verifier"
+	ConformanceVerifierVersion                    = "1.0.0"
+	EvaluationSourceKindConformance               = "governance-conformance"
 	EvaluationSourceKindCampaign                  = "campaign-evaluation"
 	EvaluationSourceVersion                       = "1.0.0"
 	CampaignVerifierID                            = "ztd-campaign-verifier"

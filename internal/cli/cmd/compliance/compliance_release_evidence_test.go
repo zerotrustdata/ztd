@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 )
 
@@ -99,7 +100,7 @@ func TestComplianceReleaseEvidenceProjection_UsesVerifiedPublicBundleScope(t *te
 		},
 		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
 	)
-	outDir := t.TempDir()
+	outDir := testutil.TempDir(t)
 	cmd.SetArgs([]string{constants.ComplianceBundleManifestFilename, "--out", outDir, "--trust-policy", constants.ComplianceReportTrustPolicyTestFilename})
 	require.NoError(t, cmd.Execute())
 	assert.True(t, closed)
@@ -134,7 +135,7 @@ func TestComplianceReleaseEvidenceProjection_RejectsUnverifiedOrRestrictedBundle
 				},
 				time.Now,
 			)
-			cmd.SetArgs([]string{constants.ComplianceBundleManifestFilename, "--out", t.TempDir(), "--trust-policy", constants.ComplianceReportTrustPolicyTestFilename})
+			cmd.SetArgs([]string{constants.ComplianceBundleManifestFilename, "--out", testutil.TempDir(t), "--trust-policy", constants.ComplianceReportTrustPolicyTestFilename})
 			err := cmd.Execute()
 			require.Error(t, err)
 			assert.ErrorIs(t, err, test.target)
@@ -149,7 +150,7 @@ func TestWriteReleaseProjectionArtifacts_RejectsInvalidInputs(t *testing.T) {
 		version string
 	}{
 		{name: "missing output directory", version: "v2.1.12"},
-		{name: "traversing version", outDir: t.TempDir(), version: "../v2.1.12"},
+		{name: "traversing version", outDir: testutil.TempDir(t), version: "../v2.1.12"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

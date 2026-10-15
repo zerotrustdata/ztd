@@ -10,6 +10,8 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,38 +113,40 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 	}
 }
 
-// --- DispatchResult.ToResponse tests ---
+// --- DispatchResult.GovernedDispatchResult tests ---
 
-func TestDispatchResult_ToResponse(t *testing.T) {
-	t.Run("with result envelope", func(t *testing.T) {
+func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
+	t.Run("carries the result envelope and the final receipt", func(t *testing.T) {
 		env := &commonv1.GovernanceEnvelope{
 			EventType:  string(constants.Event.Operator.FsRead.Completed),
 			ActionType: string(constants.ActionTypeFsRead),
 			Payload:    []byte("result-payload-bytes"),
 		}
+		receipt := &operatorv1.ActionReceipt{TransactionId: "tx-abc-123", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 		result := &DispatchResult{
 			TransactionID:  "tx-abc-123",
 			ResultEnvelope: env,
+			Receipt:        receipt,
 		}
-		resp := result.ToResponse()
-		assert.True(t, resp.Success)
-		assert.Equal(t, "tx-abc-123", resp.TransactionID)
-		assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.EventType)
-		assert.Equal(t, string(constants.ActionTypeFsRead), resp.ActionType)
-		assert.Equal(t, []byte("result-payload-bytes"), resp.ResultPayload)
-		assert.Empty(t, resp.Error)
+		resp := result.GovernedDispatchResult()
+		assert.Equal(t, "tx-abc-123", resp.GetTransactionId())
+		assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.GetEventType())
+		assert.Equal(t, string(constants.ActionTypeFsRead), resp.GetActionType())
+		assert.Equal(t, []byte("result-payload-bytes"), resp.GetResultPayload())
+		assert.Same(t, receipt, resp.GetReceipt())
+		assert.Nil(t, resp.GetInferenceResult())
 	})
 
 	t.Run("nil result envelope", func(t *testing.T) {
 		result := &DispatchResult{
 			TransactionID: "tx-abc-123",
 		}
-		resp := result.ToResponse()
-		assert.True(t, resp.Success)
-		assert.Equal(t, "tx-abc-123", resp.TransactionID)
-		assert.Empty(t, resp.EventType)
-		assert.Empty(t, resp.ActionType)
-		assert.Empty(t, resp.ResultPayload)
+		resp := result.GovernedDispatchResult()
+		assert.Equal(t, "tx-abc-123", resp.GetTransactionId())
+		assert.Empty(t, resp.GetEventType())
+		assert.Empty(t, resp.GetActionType())
+		assert.Empty(t, resp.GetResultPayload())
+		assert.Nil(t, resp.GetReceipt())
 	})
 }
 
@@ -187,10 +191,46 @@ func fsReadPayloadBytes(t *testing.T) []byte {
 // simulated by registering an in-process handler on the cmd channel that
 // publishes a result envelope on the results channel.
 
+// dispatchTestActuator returns the Actuator key the simulated outbound Operator
+// signs its receipts with. newTestDispatchService binds the public half to the
+// Operator's signer store, as a provisioned Operator's bound key is.
+func dispatchTestActuator() (ed25519.PublicKey, ed25519.PrivateKey, string) {
+	priv := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x42}, ed25519.SeedSize))
+	pub := priv.Public().(ed25519.PublicKey)
+	return pub, priv, hex.EncodeToString(pub)
+}
+
+// publishDispatchTestReceipt publishes the simulated Operator's signed final
+// receipt for cmdEnv on its receipts channel, as PublishActionReceipt does.
+func publishDispatchTestReceipt(t *testing.T, broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument, cmdEnv *commonv1.GovernanceEnvelope, priv ed25519.PrivateKey, keyID string) {
+	t.Helper()
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId:    cmdEnv.GetId(),
+		TransactionHash:  cmdEnv.GetTransactionHash(),
+		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		ResultSummary:    "ok",
+		StateRootBefore:  "root-abc",
+		StateRootAfter:   "root-abc",
+		ExecutedAtUnixMs: 1700000000000,
+	}
+	signTestReceipt(t, receipt, priv, keyID)
+	payload, err := proto.Marshal(receipt)
+	require.NoError(t, err)
+	wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
+		EventType:         string(constants.Event.Operator.Receipt.Recorded),
+		OperatorId:        op.Id,
+		OperatorSessionId: op.OperatorSessionId,
+		Payload:           payload,
+	})
+	require.NoError(t, err)
+	broker.Publish(pubsub.ReceiptsChannel(op.Id, op.OperatorSessionId), wire)
+}
+
 func newTestDispatchService(t *testing.T, _ string, op *operatorv1.OperatorDocument) (*DispatchService, *GatewayWebSocketHandler) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	broker := NewGatewayWebSocketHandler(logger)
+	pub, _, keyID := dispatchTestActuator()
 	svc := NewDispatchService(
 		logger,
 		broker,
@@ -199,7 +239,7 @@ func newTestDispatchService(t *testing.T, _ string, op *operatorv1.OperatorDocum
 		"doctrine",
 		governance.NewL1Doctrine(),
 		nil, // no L2 deliberator under doctrine posture
-		nil, // no receipt signer store; inference dispatch tests wire their own
+		&stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}},
 		nil, // no embedded processor in remote dispatch tests
 	)
 	return svc, broker
@@ -237,6 +277,8 @@ func TestDispatchService_Dispatch_Success(t *testing.T) {
 		resultWire, err := protojson.Marshal(resultEnv)
 		require.NoError(t, err)
 		broker.Publish(resultsChannel, resultWire)
+		_, priv, keyID := dispatchTestActuator()
+		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
 	})
 	defer unregisterOperator()
 
@@ -252,6 +294,8 @@ func TestDispatchService_Dispatch_Success(t *testing.T) {
 	assert.NotEmpty(t, result.TransactionID)
 	require.NotNil(t, result.ResultEnvelope)
 	assert.Equal(t, result.TransactionID, result.ResultEnvelope.Id)
+	require.NotNil(t, result.Receipt, "a successful dispatch carries the verified final receipt")
+	assert.Equal(t, result.TransactionID, result.Receipt.GetTransactionId())
 }
 
 func TestDispatchService_Dispatch_InvalidOperatorSession(t *testing.T) {
@@ -267,6 +311,109 @@ func TestDispatchService_Dispatch_InvalidOperatorSession(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dispatch: validate operator session")
+}
+
+func TestDispatchErrorCode_RendersRefusalNotChain(t *testing.T) {
+	cases := []struct {
+		name    string
+		err     error
+		status  int
+		code    operatorv1.IngressRefusalCode
+		message string
+	}{
+		{
+			name:    "unresolved target session",
+			err:     fmt.Errorf("dispatch: validate operator session: %w", &AuthError{Message: constants.ErrGatewayOperatorSessionInvalid.Error(), Status: http.StatusUnauthorized}),
+			status:  http.StatusNotFound,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND,
+			message: constants.ErrGatewayOperatorSessionInvalid.Error(),
+		},
+		{
+			name:    "witness capability",
+			err:     fmt.Errorf("dispatch: %w: rm -rf /srv", constants.ErrWitnessCommandNotCapable),
+			status:  http.StatusUnprocessableEntity,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE,
+			message: constants.ErrWitnessCommandNotCapable.Error(),
+		},
+		{
+			name:    "governance rejected after envelope",
+			err:     fmt.Errorf("dispatch: %w (transaction tx-1): cat /etc/shadow", constants.ErrDispatchGovernanceRejected),
+			status:  http.StatusForbidden,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrDispatchGovernanceRejected.Error(),
+		},
+		{
+			name:    "result timeout after envelope",
+			err:     fmt.Errorf("dispatch: %w after 30s (transaction tx-1)", constants.ErrDispatchResultTimeout),
+			status:  http.StatusGatewayTimeout,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrDispatchResultTimeout.Error(),
+		},
+		{
+			name:    "no delivery after envelope",
+			err:     fmt.Errorf("dispatch: %w", constants.ErrDispatchNoDelivery),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrDispatchNoDelivery.Error(),
+		},
+		{
+			name:    "build-time doctrine",
+			err:     fmt.Errorf("dispatch: %w: matched rm -rf /", constants.ErrTxL1ValidationFailed),
+			status:  http.StatusForbidden,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE,
+			message: constants.ErrTxL1ValidationFailed.Error(),
+		},
+		{
+			name:    "state root unavailable",
+			err:     fmt.Errorf("dispatch: state root: %w: %w", constants.ErrIngressStateRootUnavailable, errors.New("sqlite: disk I/O error at /var/lib/ztd")),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE,
+			message: constants.ErrIngressStateRootUnavailable.Error(),
+		},
+		{
+			name:    "l2 vote quorum not met",
+			err:     fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, constants.ErrTxL2QuorumNotMet),
+			status:  http.StatusForbidden,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED,
+			message: constants.ErrIngressL2DeliberationFailed.Error(),
+		},
+		{
+			name:    "l2 signer store not configured is a server condition",
+			err:     fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, constants.ErrTxL2SignerStoreNotConfigured),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED,
+			message: constants.ErrIngressL2DeliberationFailed.Error(),
+		},
+		{
+			name:    "l2 deliberator unavailable",
+			err:     fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, errors.New("consensus unreachable at 10.0.0.5")),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED,
+			message: constants.ErrIngressL2DeliberationFailed.Error(),
+		},
+		{
+			name:    "vault locked without a receipt is gateway unavailable",
+			err:     fmt.Errorf("dispatch: %w", constants.ErrWardenVaultLocked),
+			status:  http.StatusServiceUnavailable,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE,
+			message: constants.ErrWardenVaultLocked.Error(),
+		},
+		{
+			name:    "unclassified fault",
+			err:     fmt.Errorf("dispatch: get state root: %w", errors.New("sqlite: disk I/O error at /var/lib/ztd")),
+			status:  http.StatusInternalServerError,
+			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED,
+			message: constants.ErrInternal.Error(),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, refusal := dispatchErrorCode(tc.err)
+			assert.Equal(t, tc.status, status)
+			assert.Equal(t, tc.code, refusal.GetCode())
+			assert.Equal(t, tc.message, refusal.GetError())
+		})
+	}
 }
 
 func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
@@ -291,7 +438,8 @@ func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
 		Payload:                 []byte("payload"),
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dispatch: get state root")
+	assert.Contains(t, err.Error(), "dispatch: state root")
+	assert.ErrorIs(t, err, constants.ErrIngressStateRootUnavailable)
 }
 
 func TestDispatchService_Dispatch_ZeroDeliveryFailsClosed(t *testing.T) {
@@ -434,7 +582,7 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 		return &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	}
 
-	publishResult := func(broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument) func(string, []byte) {
+	publishResult := func(t *testing.T, broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument) func(string, []byte) {
 		return func(_ string, data []byte) {
 			cmdEnv := &commonv1.GovernanceEnvelope{}
 			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, cmdEnv); err != nil {
@@ -446,13 +594,15 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 				return
 			}
 			broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), wire)
+			_, priv, keyID := dispatchTestActuator()
+			publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
 		}
 	}
 
 	t.Run("after success", func(t *testing.T) {
 		op := newOp()
 		svc, broker := newTestDispatchService(t, "root-abc", op)
-		unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), publishResult(broker, op))
+		unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), publishResult(t, broker, op))
 		defer unreg()
 
 		_, err := svc.Dispatch(context.Background(), DispatchRequest{
@@ -562,6 +712,8 @@ func TestDispatchService_Dispatch_DuplicateResultDropped(t *testing.T) {
 			}
 			broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), wire)
 		}
+		_, priv, keyID := dispatchTestActuator()
+		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
 	})
 	defer unreg()
 
@@ -575,6 +727,119 @@ func TestDispatchService_Dispatch_DuplicateResultDropped(t *testing.T) {
 	require.NotNil(t, result.ResultEnvelope)
 	assert.Equal(t, []byte("a"), result.ResultEnvelope.Payload, "the first correlated result wins; the duplicate is dropped")
 	assert.Equal(t, 0, resultHandlerCount(broker, op))
+}
+
+func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
+	tests := []struct {
+		name           string
+		receiptFirst   bool
+		publishReceipt bool
+		boundKey       bool
+		wantErr        error
+	}{
+		{name: "verified receipt after the result succeeds", publishReceipt: true, boundKey: true},
+		{name: "verified receipt before the result succeeds", receiptFirst: true, publishReceipt: true, boundKey: true},
+		{name: "result without a receipt times out", wantErr: constants.ErrDispatchResultTimeout},
+		{name: "receipt signed by an unbound key does not end the wait", publishReceipt: true, wantErr: constants.ErrDispatchResultTimeout},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
+			svc, broker := newTestDispatchService(t, "root-abc", op)
+			boundPub, signPriv, signKeyID := dispatchTestActuator()
+			if !tt.boundKey {
+				unbound := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x99}, ed25519.SeedSize))
+				signPriv = unbound
+				signKeyID = hex.EncodeToString(unbound.Public().(ed25519.PublicKey))
+			}
+
+			unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, data []byte) {
+				cmdEnv := &commonv1.GovernanceEnvelope{}
+				if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, cmdEnv); err != nil {
+					t.Errorf("operator: unmarshal command: %v", err)
+					return
+				}
+				resultWire, err := protojson.Marshal(dispatchTestResultEnvelope(cmdEnv, []byte("ok")))
+				require.NoError(t, err)
+				publish := func() {
+					if tt.publishReceipt {
+						publishDispatchTestReceipt(t, broker, op, cmdEnv, signPriv, signKeyID)
+					}
+				}
+				if tt.receiptFirst {
+					publish()
+				}
+				broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), resultWire)
+				if !tt.receiptFirst {
+					publish()
+				}
+			})
+			defer unreg()
+
+			timeout := 5 * time.Second
+			if tt.wantErr != nil {
+				timeout = 200 * time.Millisecond
+			}
+			result, err := svc.Dispatch(context.Background(), DispatchRequest{
+				TargetOperatorSessionID: "sess-001",
+				EventType:               string(constants.Event.Operator.FsRead.Requested),
+				Payload:                 fsReadPayloadBytes(t),
+				Timeout:                 timeout,
+			})
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, result, "an unproven outcome must never be returned as a success")
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, result.Receipt)
+			assert.NoError(t, governance.VerifyActionReceiptSignature(result.Receipt, boundPub))
+			assert.NoError(t, governance.VerifyReceiptPersistenceAttestation(result.Receipt, boundPub))
+		})
+	}
+}
+
+// --- DispatchController.HandleDispatch tests ---
+
+func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(t *testing.T) {
+	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
+	svc, broker := newTestDispatchService(t, "root-abc", op)
+	pub, priv, keyID := dispatchTestActuator()
+	unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, data []byte) {
+		cmdEnv := &commonv1.GovernanceEnvelope{}
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, cmdEnv); err != nil {
+			t.Errorf("operator: unmarshal command: %v", err)
+			return
+		}
+		resultWire, err := protojson.Marshal(dispatchTestResultEnvelope(cmdEnv, []byte("ok")))
+		require.NoError(t, err)
+		broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), resultWire)
+		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
+	})
+	defer unreg()
+
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	ctrl := newDispatchController(DispatchControllerDeps{
+		DispatchSvc: svc,
+		Responder:   response.NewWriter(logger),
+		Logger:      logger,
+	})
+	body, err := json.Marshal(OperatorCommandRequest{
+		TargetOperatorSessionID: "sess-001",
+		EventType:               string(constants.Event.Operator.FsRead.Requested),
+		Payload:                 fsReadPayloadBytes(t),
+	})
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	ctrl.HandleDispatch(rr, httptest.NewRequest(http.MethodPost, constants.APIPaths.OperatorsCommands, bytes.NewReader(body)))
+
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+	got := &operatorv1.GovernedDispatchResult{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), got))
+	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), got.GetEventType())
+	require.NotNil(t, got.GetReceipt(), "the 200 body carries the final receipt")
+	assert.NoError(t, governance.VerifyActionReceiptSignature(got.GetReceipt(), pub))
+	assert.NoError(t, governance.VerifyReceiptPersistenceAttestation(got.GetReceipt(), pub))
 }
 
 // --- DispatchController.HandleDispatch tests ---
@@ -593,9 +858,12 @@ func TestDispatchController_HandleDispatch_MethodNotAllowed(t *testing.T) {
 	ctrl.HandleDispatch(rr, req)
 
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal))
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED, refusal.GetCode())
 }
 
-func TestDispatchController_HandleDispatch_InvalidJSON(t *testing.T) {
+func TestDispatch_InvalidJSON_ReturnsIngressRefusal(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	resp := response.NewWriter(logger)
 	ctrl := newDispatchController(DispatchControllerDeps{
@@ -609,6 +877,10 @@ func TestDispatchController_HandleDispatch_InvalidJSON(t *testing.T) {
 	ctrl.HandleDispatch(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal))
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, refusal.GetCode())
+	assert.Equal(t, constants.ErrInvalidJSONBody.Error(), refusal.GetError())
 }
 
 func TestDispatchController_HandleDispatch_ValidationFails(t *testing.T) {
@@ -627,6 +899,9 @@ func TestDispatchController_HandleDispatch_ValidationFails(t *testing.T) {
 	ctrl.HandleDispatch(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	refusal := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), refusal))
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD, refusal.GetCode())
 }
 
 func TestDispatchController_HandleDispatch_WitnessCommandRejectedAsUnprocessableEntity(t *testing.T) {
@@ -694,8 +969,8 @@ func TestOperatorCommandResultHelpers(t *testing.T) {
 				ActionType: string(constants.ActionTypeExecuteBash),
 				Payload:    wire,
 			},
-		}).ToResponse()
-		assert.Equal(t, wire, resp.ResultPayload)
+		}).GovernedDispatchResult()
+		assert.Equal(t, wire, resp.GetResultPayload())
 	})
 }
 
@@ -741,6 +1016,8 @@ func TestDispatchService_Dispatch_ExecuteBash_WaitsForTerminalResult(t *testing.
 		completedWire, err := protojson.Marshal(completedEnv)
 		require.NoError(t, err)
 		broker.Publish(resultsChannel, completedWire)
+		_, priv, keyID := dispatchTestActuator()
+		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
 	})
 	defer unregisterOperator()
 
@@ -763,7 +1040,7 @@ func TestDispatchService_Dispatch_ExecuteBash_WaitsForTerminalResult(t *testing.
 	assert.Equal(t, string(constants.Event.Operator.Command.Completed), result.ResultEnvelope.EventType)
 
 	decoded := &operatorv1.CommandResult{}
-	require.NoError(t, proto.Unmarshal(result.ToResponse().ResultPayload, decoded))
+	require.NoError(t, proto.Unmarshal(result.GovernedDispatchResult().GetResultPayload(), decoded))
 	assert.Equal(t, "hello\n", decoded.Stdout)
 }
 

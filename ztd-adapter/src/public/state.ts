@@ -10,6 +10,7 @@ export interface PublicSnapshot {
   readonly high_water_sequence: number;
   readonly feed_chain_hash: string;
   readonly batch_count: number;
+  readonly withdrawal_digest?: string;
   readonly generated_at: string;
   readonly freshness: string;
 }

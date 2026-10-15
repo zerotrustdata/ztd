@@ -20,12 +20,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestOllamaStorageAttestor_AttestMatchesManifestDigest(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	modelTag := "probe-model:7b"
 	layerBytes := []byte("synthetic gguf payload")
 	layerDigest := models.SHA256Hex(layerBytes)
@@ -64,7 +65,7 @@ func TestOllamaStorageAttestor_AttestMatchesManifestDigest(t *testing.T) {
 func TestOllamaStorageAttestor_AttestNamespacedModelTag(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	modelTag := "Impulse2000/smollm3:3b-q4_k_m"
 	layerBytes := []byte("namespaced gguf payload")
 	layerDigest := models.SHA256Hex(layerBytes)
@@ -101,7 +102,7 @@ func TestOllamaStorageAttestor_AttestNamespacedModelTag(t *testing.T) {
 func TestResolveOllamaManifestPath_NamespacedVsLibrary(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	libraryPath := filepath.Join(root, "manifests", "registry.ollama.ai", "library", "probe-model", "7b")
 	require.NoError(t, os.MkdirAll(filepath.Dir(libraryPath), 0o755))
 	require.NoError(t, os.WriteFile(libraryPath, []byte("{}"), 0o600))
@@ -122,7 +123,7 @@ func TestResolveOllamaManifestPath_NamespacedVsLibrary(t *testing.T) {
 func TestResolveOllamaManifestPath_HuggingFaceHostPull(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	manifestPath := filepath.Join(root, "manifests", "huggingface.co", "unsloth", "Qwen3.8-27B-GGUF", "UD-Q4_K_M")
 	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
 	require.NoError(t, os.WriteFile(manifestPath, []byte("{}"), 0o600))
@@ -135,7 +136,7 @@ func TestResolveOllamaManifestPath_HuggingFaceHostPull(t *testing.T) {
 func TestResolveOllamaManifestPath_UntaggedModelDefaultsToLatest(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	manifestPath := filepath.Join(root, "manifests", "registry.ollama.ai", "library", "glm-5.3-flash", "latest")
 	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
 	require.NoError(t, os.WriteFile(manifestPath, []byte("{}"), 0o600))
@@ -148,7 +149,7 @@ func TestResolveOllamaManifestPath_UntaggedModelDefaultsToLatest(t *testing.T) {
 func TestOllamaStorageAttestor_AttestUntaggedModelTag(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	modelTag := "glm-5.3-flash"
 	layerBytes := []byte("glm flash payload")
 	layerDigest := models.SHA256Hex(layerBytes)
@@ -210,7 +211,7 @@ func (r *cancelAfterRead) Read(p []byte) (int, error) {
 func TestOllamaStorageAttestor_AttestMultiRunnerManifest(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "blobs"), 0o755))
 	writeBlob := func(body []byte) string {
 		digest := models.SHA256Hex(body)

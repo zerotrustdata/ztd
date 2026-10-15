@@ -3,8 +3,8 @@ doc_id: build_operator
 title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - docs/guides/
   - cmd/ztd
@@ -57,7 +57,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | Gateway start command and flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Operator list/bind/run/stop commands | `internal/cli/cmd/operator/operator.go` | `./ztd operator --help` |
 | Vault administration | `internal/cli/cmd/vault/` | `./ztd vault --help` |
-| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.0.6` | `go get github.com/zerotrustdata/ztd@v1.0.6` |
+| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.1.0` | `go get github.com/zerotrustdata/ztd@v1.1.0` |
 
 ## Procedures
 
@@ -181,7 +181,7 @@ The enrolled owner reviews and approves the request:
 
 `ztd operator cp <target>` copies the running binary to a local path. `ztd operator scp <user@host:path>` copies via SCP.
 
-`ztd operator deploy --local --dest-dir <dir> --count N --capabilities data --background --approve --trust-bundle <gateway-ca.pem> --endpoint <gateway-host>` deploys isolated Operators on this system. Replace `--local` with `--hosts <host[,host...]>` for SSH deployment.
+`ztd operator deploy --local --count N --capabilities data --background --approve --trust-bundle <gateway-ca.pem> --endpoint <gateway-host>` deploys isolated Operators on this system under `.ztd/operators/` (pass `--dest-dir <dir>` to place them elsewhere). Replace `--local` with `--hosts <host[,host...]>` for SSH deployment.
 
 ## Anti-patterns
 

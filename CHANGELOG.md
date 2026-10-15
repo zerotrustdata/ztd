@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## Unreleased
+## v1.1.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.1.0 | 2026-10-14 | Governance conformance and signed rejection evidence: typed, Operator-signed `GovernanceRejection`/`IngressRefusal` on every ingress (including a signed L3 deny), `ztd eval conformance run \| verify \| report` replacing `ztd eval boundary`, `agent-trace.v2` campaign evidence with `INVALID_EVIDENCE` on unverifiable imports, runtime scratch under `.ztd/`, removal of the plaintext `--master-key-file`, and Windows one-command onboarding. | [v1.1.0](docs/release_notes/v1.1.x/v1.1.0.md) |
 
 ## v1.0.x
 

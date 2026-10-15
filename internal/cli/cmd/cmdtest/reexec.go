@@ -20,8 +20,20 @@ import (
 const testReexecEnv = "ZTD_TEST_REEXEC"
 
 // ReexecGatewayIfRequested exits when the test binary is re-executed by
-// StartOperator as a Gateway subprocess (first arg "gw").
+// StartOperator as a Gateway subprocess (first arg "gw"). The child opens no
+// socket, so a Tier 1 TestMain can call it.
 func ReexecGatewayIfRequested() {
+	if len(os.Args) <= 1 || os.Args[1] != "gw" {
+		return
+	}
+	os.Exit(0)
+}
+
+// ReexecServingGatewayIfRequested is ReexecGatewayIfRequested for Tier 2
+// packages: with ZTD_TEST_REEXEC=serve the child serves /api/v1/health on its
+// --http-port before exiting. Only an integration-tagged TestMain calls it
+// (INV-TEST-RUN-02).
+func ReexecServingGatewayIfRequested() {
 	if len(os.Args) <= 1 || os.Args[1] != "gw" {
 		return
 	}

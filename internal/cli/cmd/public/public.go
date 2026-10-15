@@ -42,18 +42,13 @@ type publicFileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, err
 
 // openPublicKeystore opens the keystore that seals the public-feed signing key
 // and ingest token. Tests replace it with an in-memory keyring.
-var openPublicKeystore = func(fileSvc fs.RuntimeFileService, opts keystore.Options) (*keystore.Keystore, error) {
-	return keystore.Open(fileSvc, slog.Default(), opts)
+var openPublicKeystore = func(fileSvc fs.RuntimeFileService) (*keystore.Keystore, error) {
+	return keystore.Open(fileSvc, slog.Default(), keystore.Options{})
 }
 
-// publicKeystore opens the keystore using the public command group's
-// --master-key-file flag.
-func publicKeystore(cmd *cobra.Command, fileSvc fs.RuntimeFileService) (*keystore.Keystore, error) {
-	var opts keystore.Options
-	if flag := cmd.Flag("master-key-file"); flag != nil {
-		opts.MasterKeyFile = flag.Value.String()
-	}
-	ks, err := openPublicKeystore(fileSvc, opts)
+// publicKeystore opens the runtime keystore for a public-feed command.
+func publicKeystore(fileSvc fs.RuntimeFileService) (*keystore.Keystore, error) {
+	ks, err := openPublicKeystore(fileSvc)
 	if err != nil {
 		return nil, fmt.Errorf("public-feed: open keystore: %w", err)
 	}
@@ -118,7 +113,7 @@ func publicInitCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 			exportConfig.SourceID = sourceID
 			exportConfig.MirrorOrigin = mirrorOrigin
 			exportConfig.SigningKeyID = hex.EncodeToString(keyDigest[:])
-			ks, err := publicKeystore(cmd, fileSvc)
+			ks, err := publicKeystore(fileSvc)
 			if err != nil {
 				return err
 			}
@@ -208,7 +203,7 @@ func publicSourceTransitionCmdWithConfig(configLoader publicConfigLoader, fileSv
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
-			ks, err := publicKeystore(cmd, fileSvc)
+			ks, err := publicKeystore(fileSvc)
 			if err != nil {
 				return err
 			}
@@ -287,7 +282,6 @@ func rejectTrailingPublicJSON(decoder *json.Decoder) error {
 
 func Cmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "public", Short: "Manage the public spectator feed"}
-	cmd.PersistentFlags().String("master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
 	configCmd := &cobra.Command{Use: "config", Short: "Manage public-feed configuration"}
 	configCmd.AddCommand(publicConfigSetCmdWithConfig(shared.LoadConfig, shared.NewFileSvc))
 	sourceCmd := &cobra.Command{Use: "source", Short: "Manage the active public-feed source"}
@@ -302,12 +296,12 @@ func Cmd() *cobra.Command {
 		eval.PublicRestoreCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc),
 		publicStatusCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
-		publicVerifyAssignmentCmd(),
+		publicVerifyAssignmentCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 	)
 	return cmd
 }
 
-func publicVerifyAssignmentCmd() *cobra.Command {
+func publicVerifyAssignmentCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory publicFileSvcFactory) *cobra.Command {
 	var dbPath string
 	var vaultKeyPath string
 	cmd := &cobra.Command{
@@ -325,7 +319,15 @@ func publicVerifyAssignmentCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("public-feed: read assignment audit vault key: %w", err)
 			}
-			if err := evaluation.VerifyAssignmentAuditSlice(dbBytes, keyBytes); err != nil {
+			cfg, err := configLoader("")
+			if err != nil {
+				return err
+			}
+			fileSvc, err := fileSvcFactory(cfg.ProjectRoot, slog.Default())
+			if err != nil {
+				return err
+			}
+			if err := evaluation.VerifyAssignmentAuditSlice(cmd.Context(), fileSvc, dbBytes, keyBytes); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Assignment audit slice verified")
@@ -372,7 +374,7 @@ func loadPublicCommandRuntime(cmd *cobra.Command, configLoader publicConfigLoade
 
 func newPublicPublisherForCommand(cmd *cobra.Command, fileSvc fs.RuntimeFileService, exportConfig models.PublicExportConfig) (*gateway.PublicPublisherService, error) {
 	ctx := shared.CommandContext(cmd)
-	ks, err := publicKeystore(cmd, fileSvc)
+	ks, err := publicKeystore(fileSvc)
 	if err != nil {
 		return nil, err
 	}
@@ -703,7 +705,7 @@ func publicRotateKeyCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 				return err
 			}
 			ctx := shared.CommandContext(cmd)
-			ks, err := publicKeystore(cmd, fileSvc)
+			ks, err := publicKeystore(fileSvc)
 			if err != nil {
 				return err
 			}

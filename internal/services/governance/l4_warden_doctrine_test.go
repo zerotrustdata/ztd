@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -53,11 +54,11 @@ func TestL4Warden_Doctrine_ValidMutationPassesWithoutL2L3(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected mutation to pass under doctrine without L2/L3, got %v", err)
 	}
-	if verified.L2Valid {
-		t.Fatalf("expected L2Valid=false under doctrine with no L2 proof")
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L2 status NOT_REQUIRED under doctrine with no L2 proof, got %s", verified.L2Status)
 	}
-	if verified.L3Valid {
-		t.Fatalf("expected L3Valid=false under doctrine with no L3 proof")
+	if verified.L3Status != operatorv1.L3Status_L3_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L3 status NOT_REQUIRED under doctrine with no L3 proof, got %s", verified.L3Status)
 	}
 }
 
@@ -108,8 +109,8 @@ func TestL4Warden_Doctrine_MissingL2DoesNotReject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected non-mutation to pass under doctrine without L2, got %v", err)
 	}
-	if verified.L2Valid {
-		t.Fatalf("expected L2Valid=false with no L2 proof")
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L2 status NOT_REQUIRED with no L2 proof, got %s", verified.L2Status)
 	}
 }
 
@@ -126,8 +127,8 @@ func TestL4Warden_Doctrine_MissingL3DoesNotReject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected mutation to pass under doctrine without L3, got %v", err)
 	}
-	if verified.L3Valid {
-		t.Fatalf("expected L3Valid=false with no L3 proof")
+	if verified.L3Status != operatorv1.L3Status_L3_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L3 status NOT_REQUIRED with no L3 proof, got %s", verified.L3Status)
 	}
 }
 
@@ -258,4 +259,85 @@ func TestL4Warden_Doctrine_ForbiddenPayloadRejectedByL1(t *testing.T) {
 	last := verified.DeterministicStageEvidence[len(verified.DeterministicStageEvidence)-1]
 	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION, last.Kind)
 	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, last.Outcome)
+}
+
+// requireL1StageOutcome asserts the L1_DOCTRINE stage exists at index 0, carries
+// the doctrine bundle identity, and binds to the L4 stage as its parent.
+func requireL1StageOutcome(t *testing.T, stages []*operatorv1.DeterministicStageEvidence, want operatorv1.DeterministicStageOutcome) {
+	t.Helper()
+	require.NotEmpty(t, stages)
+	l1 := stages[0]
+	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE, l1.Kind)
+	assert.Equal(t, want, l1.Outcome)
+	assert.NotEmpty(t, l1.DoctrineBundleHash, "L1 stage must carry the doctrine bundle hash")
+	assert.NotEmpty(t, l1.DoctrineBundleVersion, "L1 stage must carry the doctrine bundle version")
+}
+
+// requireL4FailedLast asserts the final stage is the L4 FAILED stage and that
+// every prior stage declares it as parent.
+func requireL4FailedLast(t *testing.T, stages []*operatorv1.DeterministicStageEvidence) {
+	t.Helper()
+	require.NotEmpty(t, stages)
+	l4 := stages[len(stages)-1]
+	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION, l4.Kind)
+	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, l4.Outcome)
+	for _, stage := range stages[:len(stages)-1] {
+		assert.Equal(t, l4.StageId, stage.ParentStageId, "stage %s must bind to the L4 stage", stage.Kind)
+	}
+}
+
+// TestL4Warden_Doctrine_L1ViolationEmitsFailedL1Stage verifies that a payload
+// doctrine actually rejects produces an L1_DOCTRINE FAILED stage followed by the
+// L4 FAILED stage.
+func TestL4Warden_Doctrine_L1ViolationEmitsFailedL1Stage(t *testing.T) {
+	t.Parallel()
+	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
+	forbidden, err := proto.Marshal(&operatorv1.CommandRequested{Command: "sudo rm -rf /", ExecutionId: "exec-1", Justification: "test"})
+	require.NoError(t, err)
+	env := signedEnvelope(t, constants.ActionTypeExecuteBash, forbidden, privKey, "doctrine")
+
+	rejected, err := verifier.VerifyEnvelope(context.Background(), env)
+	require.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
+	require.NotNil(t, rejected)
+	require.Len(t, rejected.DeterministicStageEvidence, 2)
+	requireL1StageOutcome(t, rejected.DeterministicStageEvidence, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED)
+	requireL4FailedLast(t, rejected.DeterministicStageEvidence)
+}
+
+// TestL4Warden_Doctrine_IdentityFailureAfterDoctrinePassEmitsVerifiedL1Stage
+// verifies that when doctrine passes and the hash/id binding then fails, the
+// L1 stage truthfully records VERIFIED and the L4 stage records FAILED.
+func TestL4Warden_Doctrine_IdentityFailureAfterDoctrinePassEmitsVerifiedL1Stage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		mutate  func(env *govtypes.GovernanceEnvelope)
+		wantErr error
+	}{
+		{
+			name:    "hash mismatch",
+			mutate:  func(env *govtypes.GovernanceEnvelope) { env.TransactionHash = "tampered-hash" },
+			wantErr: constants.ErrTxTransactionHashMismatch,
+		},
+		{
+			name:    "id mismatch",
+			mutate:  func(env *govtypes.GovernanceEnvelope) { env.Id = "tampered-id" },
+			wantErr: constants.ErrTxTransactionIDMismatch,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
+			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "doctrine")
+			tc.mutate(env)
+
+			rejected, err := verifier.VerifyEnvelope(context.Background(), env)
+			require.ErrorIs(t, err, tc.wantErr)
+			require.NotNil(t, rejected)
+			require.Len(t, rejected.DeterministicStageEvidence, 2)
+			requireL1StageOutcome(t, rejected.DeterministicStageEvidence, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED)
+			requireL4FailedLast(t, rejected.DeterministicStageEvidence)
+		})
+	}
 }

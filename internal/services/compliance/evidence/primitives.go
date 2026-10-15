@@ -10,7 +10,6 @@ package evidence
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -254,18 +253,6 @@ func Contains(values []string, target string) bool {
 	return false
 }
 
-// VerifyReceiptSignature verifies an ActionReceipt signature against the
-// given Ed25519 public key. Returns nil if the signature is valid.
-func VerifyReceiptSignature(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
-	return governance.VerifyActionReceiptSignature(receipt, publicKey)
-}
-
-// VerifyReceiptPersistence verifies the final-persistence attestation on an
-// ActionReceipt. Returns nil if the attestation is valid.
-func VerifyReceiptPersistence(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
-	return governance.VerifyReceiptPersistenceAttestation(receipt, publicKey)
-}
-
 type ReceiptBinding struct {
 	RunID                   string
 	ScenarioID              string
@@ -353,13 +340,6 @@ func BuildVerifiedReceiptEvidence(binding ReceiptBinding, projection ReceiptProj
 	}, nil
 }
 
-func VerifyReceiptEvidenceSignatures(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
-	if err := VerifyReceiptSignature(receipt, publicKey); err != nil {
-		return err
-	}
-	return VerifyReceiptPersistence(receipt, publicKey)
-}
-
 func ValidateVerificationReport(body []byte, reportID, verifierID, verifierVersion string, notAfter time.Time) (*compliancev1.ComplianceVerificationReport, error) {
 	report := &compliancev1.ComplianceVerificationReport{}
 	if err := compliancev1.UnmarshalCanonical(body, report); err != nil {
@@ -370,8 +350,8 @@ func ValidateVerificationReport(body []byte, reportID, verifierID, verifierVersi
 	}
 	var expectedCheckID string
 	switch {
-	case verifierID == constants.EvalRunVerifierID && verifierVersion == constants.EvalRunVerifierVersion:
-		expectedCheckID = constants.EvalRunVerificationCheck
+	case verifierID == constants.ConformanceVerifierID && verifierVersion == constants.ConformanceVerifierVersion:
+		expectedCheckID = constants.ConformanceVerificationCheck
 	default:
 		return nil, fmt.Errorf("%w: protected source verifier is unsupported", constants.ErrReportVerificationFailed)
 	}

@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	_ "modernc.org/sqlite"
@@ -29,7 +30,7 @@ import (
 
 func newCampaignExportFileService(t *testing.T) fs.RuntimeFileService {
 	t.Helper()
-	fileSvc, err := fs.NewRuntimeFileService(t.TempDir(), nil)
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
 	return fileSvc

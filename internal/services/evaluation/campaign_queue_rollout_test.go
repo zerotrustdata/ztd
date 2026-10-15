@@ -51,7 +51,7 @@ func TestSaveRolloutQueue_EmptyQueueRemovesFile(t *testing.T) {
 	require.NoError(t, fileSvc.CreateRuntimeTree(ctx))
 
 	queue := BuildInitCampaignQueue("", nil)
-	_, err = queue.AddVariants([]*evalv1.ModelVariant{rolloutVariant("qwen3-4b", "qwen3:4b", 4_000_000_000)}, nil)
+	_, err = queue.AddVariants([]*evalv1.ModelVariant{rolloutVariant("qwen3-4b", "qwen3:4b", 4_000_000_000)}, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, SaveRolloutQueue(ctx, fileSvc, queue))
 	exists, err := fileSvc.FileExists(ctx, DefaultInitCampaignQueueRelPath)
@@ -70,14 +70,14 @@ func TestSaveRolloutQueue_EmptyQueueRemovesFile(t *testing.T) {
 
 func TestCampaignQueueAddVariants_OrdersByPriorityThenSize(t *testing.T) {
 	queue := BuildInitCampaignQueue("", nil)
-	added, err := queue.AddVariants([]*evalv1.ModelVariant{
+	intake, err := queue.AddVariants([]*evalv1.ModelVariant{
 		rolloutVariant("big", "m:big", 12_000_000_000),
 		rolloutVariant("tiny", "m:tiny", 1_000_000_000),
 		rolloutVariant("mid", "m:mid", 4_000_000_000),
 		rolloutVariant("pinned", "m:pinned", 30_000_000_000),
-	}, []string{"pinned"})
+	}, nil, []string{"pinned"})
 	require.NoError(t, err)
-	assert.Len(t, added, 4)
+	assert.Len(t, intake.Added, 4)
 	assert.Equal(t, []string{"pinned", "tiny", "mid", "big"}, rolloutQueueEntryIDs(queue))
 	for _, entry := range queue.Models {
 		assert.Equal(t, QueueStatusPending, entry.Status)
@@ -88,22 +88,63 @@ func TestCampaignQueueAddVariants_OrdersByPriorityThenSize(t *testing.T) {
 
 func TestCampaignQueueAddVariants_KeepsQueuedEntriesAndStatus(t *testing.T) {
 	queue := BuildInitCampaignQueue("", nil)
-	_, err := queue.AddVariants([]*evalv1.ModelVariant{rolloutVariant("mid", "m:mid", 4_000_000_000)}, nil)
+	_, err := queue.AddVariants([]*evalv1.ModelVariant{rolloutVariant("mid", "m:mid", 4_000_000_000)}, nil, nil)
 	require.NoError(t, err)
 	queue.SetEntryStatus([]string{"mid"}, QueueStatusVerified, "done")
 	queue.Models[0].VerifiedRunID = "run-1"
 
-	added, err := queue.AddVariants([]*evalv1.ModelVariant{
+	intake, err := queue.AddVariants([]*evalv1.ModelVariant{
 		rolloutVariant("mid", "m:mid", 4_000_000_000),
 		rolloutVariant("tiny", "m:tiny", 1_000_000_000),
 		nil,
-	}, nil)
+	}, nil, nil)
 	require.NoError(t, err)
-	require.Len(t, added, 1)
-	assert.Equal(t, "tiny", added[0].VariantID)
+	require.Len(t, intake.Added, 1)
+	assert.Equal(t, "tiny", intake.Added[0].VariantID)
+	assert.Equal(t, 1, intake.AlreadyQueued)
 	assert.Equal(t, []string{"mid", "tiny"}, rolloutQueueEntryIDs(queue))
 	assert.Equal(t, QueueStatusVerified, queue.Models[0].Status)
 	assert.Equal(t, "run-1", queue.Models[0].VerifiedRunID)
+}
+
+func TestCampaignQueueAddVariants_SkipsToolUnsupportedVariants(t *testing.T) {
+	queue := BuildInitCampaignQueue("", nil)
+	toolless := rolloutVariant("toolless", "m:toolless", 1_000_000_000)
+	toolless.CapabilityObservations = []*evalv1.ModelCapabilityObservation{
+		capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected tool-call probe"),
+	}
+	failedProbe := rolloutVariant("weak", "m:weak", 1_000_000_000)
+	failedProbe.CapabilityObservations = []*evalv1.ModelCapabilityObservation{
+		capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "tool-call probe did not return probe_echo"),
+	}
+	unprobed := rolloutVariant("unprobed", "m:unprobed", 2_000_000_000)
+
+	intake, err := queue.AddVariants([]*evalv1.ModelVariant{toolless, failedProbe, unprobed}, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"weak", "unprobed"}, rolloutQueueEntryIDs(queue), "a served model that fails the probe still produces scored evidence")
+	assert.Equal(t, []RolloutIntakeSkip{{VariantID: "toolless", ServedModelTag: "m:toolless", Reason: RolloutSkipToolCallingUnsupported}}, intake.Skipped)
+}
+
+func TestCampaignQueueAddVariants_CollapsesDigestAliases(t *testing.T) {
+	queue := BuildInitCampaignQueue("", nil)
+	queued := rolloutVariant("queued", "m:queued", 3_000_000_000)
+	_, err := queue.AddVariants([]*evalv1.ModelVariant{queued}, nil, nil)
+	require.NoError(t, err)
+
+	queuedAlias := rolloutVariant("queued-latest", "m:latest", 3_000_000_000)
+	queuedAlias.ModelDigest = queued.GetModelDigest()
+	first := rolloutVariant("first", "m:first", 1_000_000_000)
+	firstAlias := rolloutVariant("first-hf", "hf.co/m:first", 1_000_000_000)
+	firstAlias.ModelDigest = first.GetModelDigest()
+	registry := []*evalv1.ModelVariant{queued, queuedAlias, first, firstAlias}
+
+	intake, err := queue.AddVariants([]*evalv1.ModelVariant{firstAlias, queuedAlias, first}, registry, []string{"first"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"queued", "first"}, rolloutQueueEntryIDs(queue), "the first variant in rollout order keeps the slot")
+	assert.ElementsMatch(t, []RolloutIntakeSkip{
+		{VariantID: "first-hf", ServedModelTag: "hf.co/m:first", Reason: RolloutSkipAlias, AliasOf: "m:first"},
+		{VariantID: "queued-latest", ServedModelTag: "m:latest", Reason: RolloutSkipAlias, AliasOf: "m:queued"},
+	}, intake.Skipped)
 }
 
 func TestCampaignQueueSelectEntries(t *testing.T) {
@@ -111,7 +152,7 @@ func TestCampaignQueueSelectEntries(t *testing.T) {
 	_, err := queue.AddVariants([]*evalv1.ModelVariant{
 		rolloutVariant("tiny", "m:tiny", 1_000_000_000),
 		rolloutVariant("mid", "m:mid", 4_000_000_000),
-	}, nil)
+	}, nil, nil)
 	require.NoError(t, err)
 
 	selected, err := queue.SelectEntries([]string{"m:mid", "tiny", "mid"})
@@ -132,7 +173,7 @@ func TestCampaignQueueEntriesForVariants_UsesQueueOrder(t *testing.T) {
 		rolloutVariant("mid", "m:mid", 4_000_000_000),
 		rolloutVariant("big", "m:big", 12_000_000_000),
 	}
-	_, err := queue.AddVariants(variants[:2], nil)
+	_, err := queue.AddVariants(variants[:2], nil, nil)
 	require.NoError(t, err)
 
 	entries := queue.EntriesForVariants([]*evalv1.ModelVariant{variants[1], variants[2], variants[0], nil})
@@ -146,7 +187,7 @@ func TestCampaignQueueSetEntryStatus(t *testing.T) {
 	_, err := queue.AddVariants([]*evalv1.ModelVariant{
 		rolloutVariant("tiny", "m:tiny", 1_000_000_000),
 		rolloutVariant("mid", "m:mid", 4_000_000_000),
-	}, nil)
+	}, nil, nil)
 	require.NoError(t, err)
 	queue.SetEntryStatus([]string{"tiny"}, QueueStatusVerified, "ok")
 	queue.Models[0].VerifiedRunID = "run-1"

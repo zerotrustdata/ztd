@@ -21,9 +21,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
+	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -102,7 +106,7 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	defer hardCancel()
 	cmd.SetContext(hardCtx)
 	defer cmd.SetContext(parent)
-	watcher := startRunStopWatcher(hardCtx, store, opts.RunID, deps.runControl.interval(), signals, hardCancel)
+	watcher := startRunStopWatcher(hardCtx, store, opts.RunID, deps.runControl.interval(), signals, hardCancel, deps.runControl.onSignalHandled)
 	defer watcher.Stop()
 
 	return executeAssignments(cmd, deps, opts, watcher)
@@ -210,8 +214,15 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: initialize gateway client: %w", err)
 		}
-		lane := evaluation.NewCommandLane(gatewayClient, store, harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}, 0, 0)
-		return evaluation.NewCampaignAgentExecutor(&harnessFormationInferenceDispatcher{client: appClient}, lane, store, deps.now, newID)
+		persona := harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
+		lane := evaluation.NewCommandLane(gatewayClient, persona)
+		sentinel, err := drive.NewSentinel(gatewayClient, persona, map[cases.Executor]cliop.Target{
+			cases.ExecutorOutbound: {OperatorID: dataOperator.OperatorID, OperatorSessionID: dataOperator.OperatorSessionID},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
+		}
+		return evaluation.NewCampaignAgentExecutor(&harnessFormationInferenceDispatcher{client: appClient}, lane, sentinel, store, deps.now, newID)
 	}
 	controller := controllerFactory(evaluation.NewCampaignAssignmentRouter(buildFormation, buildAgent))
 	var publication *evaluation.CampaignPublicationCoordinator
@@ -222,6 +233,28 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		}
 		controller = controller.WithPublication(publication)
 	}
+	// A model drives every non-platform lane's Data Operator actions, shell
+	// included, so the operator must run in a disposable directory. This is
+	// checked before the anchor: the embedded Operator has no enrollment-bound
+	// key, and the workspace refusal is the actionable error.
+	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
+		if err := evaluation.ValidateAgentDataOperator(dataOperator.Embedded, dataOperator.WorkingDirectory, cfg.ProjectRoot); err != nil {
+			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+	}
+	var dataOperatorDocument *operatorv1.OperatorDocument
+	for _, op := range operators {
+		if op.GetId() == dataOperator.OperatorID && op.GetOperatorSessionId() == dataOperator.OperatorSessionID {
+			dataOperatorDocument = op
+			break
+		}
+	}
+	dataOperatorAnchor, anchorErr := oracle.BoundAnchor(dataOperatorDocument)
+	// The anchor verifies the receipts of model-driven lanes. A platform run
+	// never reads them, so it does not need the key.
+	if anchorErr != nil && summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
+		return 0, fmt.Errorf("evaluation: run execute: data operator anchor: %w", anchorErr)
+	}
 	executionBinding := evaluation.CampaignExecutionBinding{
 		InferenceOperatorSessionID:   selected.OperatorSessionID,
 		DataOperatorID:               dataOperator.OperatorID,
@@ -229,11 +262,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		DataOperatorWorkingDirectory: dataOperator.WorkingDirectory,
 		ModelRegistryDigest:          spec.GetModelRegistryDigest(),
 		ModelRegistry:                evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
-	}
-	if summary.Run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE {
-		if err := evaluation.ValidateOperatorWorkingDirectory(executionBinding.DataOperatorWorkingDirectory); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
-		}
+		DataOperatorAnchor:           dataOperatorAnchor,
 	}
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
@@ -310,13 +339,15 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), executedAssignmentLine(executedAssignment, result))
 		}
 	}
-	if stopped && !opts.JSONOutput {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Stopped after %d assignment(s): cancel requested\n", executed)
-	}
 
 	summary, err = controller.RunSummary(cmd.Context(), opts.RunID)
 	if err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	// A stop is not completion: a caller that verifies or promotes on success
+	// would otherwise accept the executed subset as the run.
+	if stopped && summary.QueuedCount > 0 {
+		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
 		if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, selected.OperatorSessionID, spec); err != nil {

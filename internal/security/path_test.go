@@ -467,3 +467,27 @@ func TestIsShellRequiredAllMetacharacters(t *testing.T) {
 		})
 	}
 }
+
+func TestIsProtectedRuntimePath(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{path: "/srv/op/notes.txt"},
+		{path: "/srv/op/.ztd/pki/operator.key", want: true},
+		{path: "/srv/op/.ztd/eval/targets/fixture.txt"},
+		{path: "/srv/ztd/.ztd/tmp/scratch/notes.txt", want: true},
+		{path: "/srv/ztd/.ztd/operators", want: true},
+		{path: "/srv/ztd/.ztd/operators/eval", want: true},
+		{path: "/srv/ztd/.ztd/operators/eval/workspaces/w1/notes.txt"},
+		{path: "/srv/ztd/.ztd/operators/eval/.ztd/vault/master.key", want: true},
+		{path: "/srv/ztd/.ztd/operators/eval/.ztd/eval/targets/fixture.txt"},
+		{path: "/srv/ztd/.ztd/operators/../pki/ca.key", want: true},
+		{path: `D:\ztd\.ztd\operators\eval\workspaces\notes.txt`},
+		{path: `D:\ztd\.ZTD\Operators\eval\.ztd\db\audit.db`, want: true},
+	} {
+		if got := IsProtectedRuntimePath(tc.path); got != tc.want {
+			t.Errorf("IsProtectedRuntimePath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}

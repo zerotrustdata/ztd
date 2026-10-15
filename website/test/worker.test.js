@@ -310,6 +310,7 @@ test('/releases/v<version>/ shows pinned commands, verification, and the build-t
   const html = await response.text();
   assert.match(html, /<link rel="canonical" href="https:\/\/zerotrustdata\.io\/releases\/v2\.3\.1\/">/);
   assert.match(html, /start\.sh \| ZTD_VERSION=2\.3\.1 sh/);
+  assert.match(html, /\$env:ZTD_VERSION=&#39;2\.3\.1&#39;; irm https:\/\/zerotrustdata\.io\/start\.ps1 \| iex/);
   assert.match(html, /\$env:ZTD_VERSION=&#39;2\.3\.1&#39;; irm https:\/\/zerotrustdata\.io\/ztd\.ps1 \| iex/);
   assert.match(html, /release-binary\.yml@refs\/tags\/v2\.3\.1/);
   assert.match(html, /<p>Fixed <strong>things<\/strong>\.<\/p>/);

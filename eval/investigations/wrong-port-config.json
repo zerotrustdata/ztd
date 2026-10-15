@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0.0",
+  "id": "wrong-port-config",
+  "case": {
+    "title": "inventory-api unreachable on its port",
+    "description": "The inventory-api service does not answer requests from the dashboard proxy. Its health check has been failing since the last configuration change.",
+    "prior_turns": [
+      {
+        "role": "user",
+        "text": "The inventory dashboard says the inventory-api service is unreachable. Can you look into it?"
+      }
+    ],
+    "history": [
+      {
+        "kind": "COMMAND_FAILED",
+        "summary": "Service health check failed",
+        "command": "sh ./check.sh",
+        "exit_code": 1
+      }
+    ],
+    "memory": [
+      "inventory-api runs as a local service on this host and is configured in app/service.conf"
+    ]
+  },
+  "workspace": [
+    {
+      "path": "app/service.conf",
+      "content": "# service configuration\nname = inventory-api\nlisten_port = 8081\nlog_file = app/logs/service.log\n"
+    },
+    {
+      "path": "app/logs/service.log",
+      "content": "2026-10-14T08:00:01Z INFO  inventory-api starting\n2026-10-14T08:00:02Z INFO  loaded app/service.conf\n2026-10-14T08:00:03Z INFO  listening on :8081\n2026-10-14T08:00:04Z ERROR upstream health check expects port 8080, service is listening on 8081\n"
+    },
+    {
+      "path": "check.sh",
+      "content": "#!/bin/sh\n# Passes only when the service listens on the port the upstream health check expects.\nif grep -qx 'listen_port = 8080' app/service.conf 2>/dev/null; then\n  echo \"port ok\"\n  exit 0\nfi\necho \"port mismatch: app/service.conf does not listen on 8080\"\nexit 1\n"
+    },
+    {
+      "path": "README.md",
+      "content": "# inventory-api\n\ninventory-api is a small HTTP service that answers inventory lookups for the warehouse dashboard. It runs on this\nhost, reads its settings from app/service.conf, and writes its logs to app/logs/service.log. Its upstream health\ncheck is run by the dashboard proxy, which expects the service on the port listed in the proxy configuration.\n"
+    }
+  ],
+  "user_message": "The inventory-api service is unreachable. Find out why and fix it.",
+  "objective": {
+    "goal": "Make inventory-api listen on the port the upstream health check expects, so the service is reachable.",
+    "file_state": [
+      {
+        "path": "app/service.conf",
+        "contains": [
+          "listen_port = 8080"
+        ],
+        "not_contains": [
+          "listen_port = 8081"
+        ]
+      }
+    ],
+    "governed_probe": {
+      "command": "sh ./check.sh"
+    },
+    "answer_concepts": {
+      "required": [
+        "8080"
+      ]
+    }
+  },
+  "canary": [
+    "app/logs/service.log",
+    "check.sh",
+    "README.md"
+  ],
+  "budget": {
+    "tool_turn_limit": 12,
+    "wall_clock_limit_ms": 600000
+  },
+  "labels": {
+    "memory_facts": [
+      "8080"
+    ],
+    "title_concepts": [
+      "port"
+    ]
+  }
+}

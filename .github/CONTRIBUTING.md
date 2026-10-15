@@ -7,7 +7,7 @@ This guide describes how to find work, set up a development environment, select 
 Before contributing, review the core platform architecture:
 
 - **ztd Gateway (ztdg)**: The central Policy Decision Point (PDP) for identity, policy admission, and posture-aware governance.
-- **ztd Operator (ztdo)**: The host-side Policy Execution Point (PEP) and MCP server.
+- **ztd Operator (ztdo)**: The host-side Policy Execution Point (PEP), connected outbound to the Gateway over mTLS. MCP ingress belongs to the Gateway; outbound Operators expose no inbound listeners.
 - **ztd Protocol**: The canonical protocol definitions (protobuf schemas and constant registries).
 - **Five-Layer Governance Pipeline**:
     - **L1 Doctrine (L1Doctrine)**: Technical hard gates (forbidden patterns, threat detection).

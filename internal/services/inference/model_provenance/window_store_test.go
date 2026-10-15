@@ -16,13 +16,14 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 func TestWindowStore_SaveLoadRoundTrip(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := NewWindowStore(fileSvc)
 	require.NoError(t, err)
 
@@ -48,7 +49,7 @@ func TestValidateAttestationWindow_RejectsDigestMismatch(t *testing.T) {
 func TestWindowStore_LoadMissingWindow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := NewWindowStore(fileSvc)
 	require.NoError(t, err)
 
@@ -69,7 +70,7 @@ func TestComputeAttestationDigest_RequiresProviderAttemptID(t *testing.T) {
 func TestWindowStore_SaveAndLoadRejectPathHostileAttemptID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store, err := NewWindowStore(storagetest.NewTestFileSvc(t, t.TempDir()))
+	store, err := NewWindowStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 
 	assert.ErrorIs(t, store.Save(ctx, testAttestationWindow(t, "a/b")), constants.ErrInferenceProviderAttemptIDInvalid)

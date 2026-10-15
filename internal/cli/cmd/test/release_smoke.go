@@ -35,12 +35,15 @@ import (
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	operatorcli "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/security"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	govservice "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	harness "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -129,7 +132,9 @@ type releaseSmokeRun struct {
 	opts                                                  releaseSmokeOptions
 	owner                                                 smokeProcessOwner
 	summary                                               releaseSmokeSummary
-	logDir, gwRoot, workerRoot, reportsDir, masterKey     string
+	logDir, gwRoot, workerRoot, reportsDir                string
+	agent                                                 *keystore.EphemeralAgent
+	childEnv                                              []string // agent env every child ztd inherits
 	ports                                                 struct{ http, https int }
 	cleanups                                              []smokeCleanup
 	workerSession                                         string
@@ -139,6 +144,7 @@ type releaseSmokeRun struct {
 		UserID       string
 		CLISessionID string
 	}
+	anchors                       *oracle.AnchorSet
 	client                        *harness.Client
 	persona                       harness.Persona
 	fileTx, fileName, fileContent string
@@ -156,13 +162,22 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.RunDir == "" {
-				opts.RunDir = filepath.Join(".local.dev", "release-smoke", time.Now().UTC().Format("20060102T150405Z"))
+				opts.RunDir = filepath.Join(constants.RuntimeDirname, constants.OperatorsDirname, "release-smoke-"+time.Now().UTC().Format("20060102T150405Z"))
 			}
 			abs, err := filepath.Abs(opts.RunDir)
 			if err != nil {
 				return fmt.Errorf("resolve smoke root: %w", err)
 			}
+			abs, err = fs.ResolveExistingPath(abs)
+			if err != nil {
+				return fmt.Errorf("resolve smoke root ancestors: %w", err)
+			}
 			opts.RunDir = abs
+			// Both runtimes mutate ordinary files beneath their working roots.
+			// Protected scratch roots would make those governed edits fail.
+			if security.IsProtectedRuntimePath(filepath.Join(abs, "gateway", "smoke-target")) {
+				return fmt.Errorf("smoke root %s must permit governed file edits; use .ztd/operators/: %w", abs, constants.ErrFileEditProtectedRuntimePath)
+			}
 			if opts.ZtdBin == "" {
 				opts.ZtdBin, err = os.Executable()
 				if err != nil {
@@ -186,7 +201,7 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&opts.RunDir, "root", "", "Isolated run and artifact root (default: .local.dev/release-smoke/<UTC timestamp>)")
+	cmd.Flags().StringVar(&opts.RunDir, "root", "", "Isolated run and artifact root (default: .ztd/operators/release-smoke-<UTC timestamp>)")
 	cmd.Flags().StringVar(&opts.ZtdBin, "binary", "", "ztd binary used for the Gateway and Operator (default: running binary)")
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", releaseSmokeDefaultTimeout, "Overall run deadline; owned resources are stopped when it expires")
 	return cmd
@@ -272,6 +287,9 @@ func (r *releaseSmokeRun) runCleanups(ctx context.Context) error {
 	if err := r.owner.stopAll(5 * time.Second); err != nil {
 		errs = append(errs, err)
 	}
+	if r.agent != nil {
+		errs = append(errs, r.agent.Close())
+	}
 	return errors.Join(errs...)
 }
 func (r *releaseSmokeRun) phases() []smokePhase {
@@ -289,16 +307,23 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 	r.workerRoot = filepath.Join(r.opts.RunDir, "worker")
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	r.reportsDir = filepath.Join(r.opts.RunDir, "reports")
-	for _, dir := range []string{r.gwRoot, r.workerRoot, r.logDir, r.reportsDir, filepath.Join(r.opts.RunDir, "evidence"), filepath.Join(r.opts.RunDir, "secrets")} {
+	for _, dir := range []string{r.gwRoot, r.workerRoot, r.logDir, r.reportsDir, filepath.Join(r.opts.RunDir, "evidence")} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create %s: %w", dir, err)
 		}
 	}
-	var err error
-	r.masterKey, err = keystore.ProvisionMasterKeyFile(filepath.Join(r.opts.RunDir, "secrets"))
+	// Every runtime this run starts seals its master key under a private
+	// in-memory agent, so the smoke never touches the host key stores and its
+	// runtimes are unreadable once the run ends.
+	runFiles, err := fs.NewRuntimeFileService(r.opts.RunDir, slog.Default())
 	if err != nil {
-		return fmt.Errorf("provision isolated master key: %w", err)
+		return err
 	}
+	r.agent, err = keystore.StartEphemeralAgent(ctx, runFiles, constants.EphemeralAgentDirname)
+	if err != nil {
+		return fmt.Errorf("start isolated key agent: %w", err)
+	}
+	r.childEnv = r.agent.Env()
 	for _, p := range []*int{&r.ports.http, &r.ports.https} {
 		*p, err = freeSmokePort()
 		if err != nil {
@@ -324,7 +349,7 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 }
 func (r *releaseSmokeRun) startGateway(ctx context.Context) error {
 	r.addCleanup("Gateway", func(ctx context.Context) error { _, err := r.ztdGateway(ctx, "gateway-stop", "gw", "stop"); return err })
-	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", "doctrine", "--public-spectator=false", "--master-key-file", r.masterKey)
+	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", "doctrine", "--public-spectator=false")
 	if err != nil {
 		return err
 	}
@@ -351,7 +376,7 @@ func (r *releaseSmokeRun) loginCLI(ctx context.Context) error {
 	}
 	r.identity.UserID = creds.UserID
 	r.identity.CLISessionID = creds.CLISessionID
-	cfg.MasterKeyFile = r.masterKey
+	cfg.Keyring = r.agent.Keyring(fileSvc)
 	cliCert, err := auth.LoadCLICertificate(fileSvc, cfg)
 	if err != nil {
 		return err
@@ -369,7 +394,7 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 		return err
 	}
 	trust := cfg.ResolvedTrustBundlePath()
-	out, err := r.ztd(ctx, "deploy-worker", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", r.workerRoot, "--background", "--approve", "--capabilities", "data", "--trust-bundle", trust, "--master-key-file", r.masterKey, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https))
+	out, err := r.ztd(ctx, "deploy-worker", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", r.workerRoot, "--background", "--approve", "--capabilities", "data", "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https))
 	if err != nil {
 		return err
 	}
@@ -389,6 +414,9 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 	for _, op := range ops {
 		if op.GetOperatorSessionId() == session && op.GetStatus() == string(constants.OperatorStatusActive) {
 			r.workerOperatorID = op.GetId()
+			if err := r.pinReceiptAnchors(ctx, op); err != nil {
+				return fmt.Errorf("pin smoke receipt keys: %w", err)
+			}
 		}
 	}
 	if r.workerOperatorID == "" {
@@ -397,6 +425,34 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 	r.summary.Worker = releaseSmokeWorker{r.workerRoot, session}
 	return nil
 }
+
+// pinReceiptAnchors fixes the receipt trust inputs before any smoke mutation.
+// The Gateway owns its local export; the outbound key must also match enrollment.
+func (r *releaseSmokeRun) pinReceiptAnchors(ctx context.Context, worker *operatorv1.OperatorDocument) error {
+	gatewayFiles, err := fs.NewRuntimeFileService(r.gwRoot, slog.Default())
+	if err != nil {
+		return err
+	}
+	gatewayAnchor, err := oracle.LoadAnchor(ctx, gatewayFiles, releaseSmokeEmbeddedOpID)
+	if err != nil {
+		return err
+	}
+	workerFiles, err := fs.NewRuntimeFileService(r.workerRoot, slog.Default())
+	if err != nil {
+		return err
+	}
+	bound, err := oracle.BoundAnchor(worker)
+	if err != nil {
+		return err
+	}
+	workerAnchor, err := oracle.CheckedBoundAnchor(ctx, workerFiles, worker.GetId(), bound)
+	if err != nil {
+		return err
+	}
+	r.anchors, err = oracle.NewAnchorSet([]*evalv1.ConformanceAnchor{gatewayAnchor, workerAnchor})
+	return err
+}
+
 func (r *releaseSmokeRun) scenarioFileCreate(ctx context.Context) error {
 	token, err := randomSmokeHex(8)
 	if err != nil {
@@ -408,14 +464,14 @@ func (r *releaseSmokeRun) scenarioFileCreate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	status, resp, body, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: r.workerSession, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: r.fileName})
+	outcome, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: r.workerSession, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: r.fileName})
 	if err != nil {
 		return err
 	}
-	if status < 200 || status >= 300 || resp == nil || !resp.Success || resp.TransactionID == "" {
-		return fmt.Errorf("governed FILE_EDIT failed: status=%d response=%s", status, strings.TrimSpace(string(body)))
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
+		return fmt.Errorf("governed FILE_EDIT failed: status=%d response=%s", outcome.Observation.GetHttpStatus(), strings.TrimSpace(string(outcome.Body)))
 	}
-	r.fileTx = resp.TransactionID
+	r.fileTx = outcome.Dispatch.GetTransactionId()
 	if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, r.fileTx); err != nil {
 		return fmt.Errorf("FILE_EDIT receipt: %w", err)
 	}
@@ -435,7 +491,7 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if err != nil {
 		return err
 	}
-	record, err := storage.ReadLocalActionReceipt(fileSvc, slog.Default(), r.masterKey, tx)
+	record, err := storage.ReadLocalActionReceipt(fileSvc, slog.Default(), keystore.Options{Keyring: r.agent.Keyring(fileSvc)}, tx)
 	if err != nil {
 		return err
 	}
@@ -455,11 +511,14 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if receipt.TransactionId != tx {
 		return fmt.Errorf("receipt transaction %s does not match %s", receipt.TransactionId, tx)
 	}
-	pub, err := r.client.GetTrustedSignerPublicKey(ctx, receipt.SignerKeyId)
+	pub, err := r.anchors.Key(receipt.SignerKeyId, expectedOperator)
 	if err != nil {
 		return err
 	}
 	if err := govservice.VerifyActionReceiptSignature(receipt, pub); err != nil {
+		return err
+	}
+	if err := govservice.VerifyReceiptPersistenceAttestation(receipt, pub); err != nil {
 		return err
 	}
 	runtimeName := "worker"
@@ -532,7 +591,13 @@ func (r *releaseSmokeRun) scenarioDocument(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if doc == nil || doc.GetString("case_title") != title || doc.GetString("case_id") != caseID || doc.GetString("status") != closed {
+	if doc == nil {
+		return fmt.Errorf("document merge read-back lost the document")
+	}
+	gotTitle, okTitle := doc.GetString("case_title")
+	gotCaseID, okCaseID := doc.GetString("case_id")
+	gotStatus, okStatus := doc.GetString("status")
+	if !okTitle || !okCaseID || !okStatus || gotTitle != title || gotCaseID != caseID || gotStatus != closed {
 		return fmt.Errorf("document merge read-back lost or changed fields: %#v", doc)
 	}
 	r.recordScenario("document-merge", []string{createTx, mergeTx})
@@ -553,14 +618,14 @@ func (r *releaseSmokeRun) scenarioEmbeddedFile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	status, resp, body, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: session, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: name})
+	outcome, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: session, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: name})
 	if err != nil {
 		return err
 	}
-	if status < 200 || status >= 300 || resp == nil || !resp.Success || resp.TransactionID == "" {
-		return fmt.Errorf("embedded governed FILE_EDIT failed: status=%d response=%s", status, strings.TrimSpace(string(body)))
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
+		return fmt.Errorf("embedded governed FILE_EDIT failed: status=%d response=%s", outcome.Observation.GetHttpStatus(), strings.TrimSpace(string(outcome.Body)))
 	}
-	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, resp.TransactionID); err != nil {
+	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, outcome.Dispatch.GetTransactionId()); err != nil {
 		return fmt.Errorf("embedded FILE_EDIT receipt: %w", err)
 	}
 	out, err := r.ztdGateway(ctx, "embedded-file-read-back", "--json", "operator", "run", session, "--cmd", "cat -- "+name, "--timeout", "60")
@@ -579,7 +644,7 @@ func (r *releaseSmokeRun) scenarioEmbeddedFile(ctx context.Context) error {
 	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, result.Results[0].TransactionID); err != nil {
 		return fmt.Errorf("embedded read-back receipt: %w", err)
 	}
-	r.recordScenario("embedded-file-create", []string{resp.TransactionID, result.Results[0].TransactionID})
+	r.recordScenario("embedded-file-create", []string{outcome.Dispatch.GetTransactionId(), result.Results[0].TransactionID})
 	return nil
 }
 
@@ -623,7 +688,7 @@ func (r *releaseSmokeRun) exportReports(ctx context.Context) error {
 	var reportErrs []error
 	for _, target := range []struct{ name, root string }{{"gateway", r.gwRoot}, {"worker", r.workerRoot}} {
 		out := filepath.Join(r.reportsDir, target.name)
-		if _, err := r.ztd(ctx, "report-"+target.name, r.gwRoot, "report", "all", "--runtime-dir", filepath.Join(target.root, constants.RuntimeDirname), "--out", out, "--master-key-file", r.masterKey); err != nil {
+		if _, err := r.ztd(ctx, "report-"+target.name, r.gwRoot, "report", "all", "--runtime-dir", filepath.Join(target.root, constants.RuntimeDirname), "--out", out); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -677,17 +742,17 @@ func (r *releaseSmokeRun) embeddedFileTransactions() []string {
 	return nil
 }
 func (r *releaseSmokeRun) ztdGateway(ctx context.Context, name string, args ...string) (string, error) {
-	return r.ztd(ctx, name, r.gwRoot, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https), "--master-key-file", r.masterKey}, args...)...)
+	return r.ztd(ctx, name, r.gwRoot, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https)}, args...)...)
 }
 func (r *releaseSmokeRun) ztd(ctx context.Context, name, dir string, args ...string) (string, error) {
 	argv := append([]string{r.opts.ZtdBin}, args...)
 	prefix := filepath.Join(r.logDir, name)
-	p, err := r.owner.start(name, dir, prefix, argv, nil)
+	p, err := r.owner.start(name, dir, prefix, argv, r.childEnv)
 	if err != nil {
 		return "", err
 	}
 	waitErr := r.owner.wait(ctx, p)
-	r.summary.Commands = append(r.summary.Commands, releaseSmokeCommand{Name: name, Argv: redactArgv(argv), ExitCode: smokeExitCode(waitErr), StdoutLog: p.stdoutPath, StderrLog: prefix + ".stderr.log"})
+	r.summary.Commands = append(r.summary.Commands, releaseSmokeCommand{Name: name, Argv: argv, ExitCode: smokeExitCode(waitErr), StdoutLog: p.stdoutPath, StderrLog: prefix + ".stderr.log"})
 	out, readErr := os.ReadFile(p.stdoutPath)
 	if waitErr != nil {
 		return string(out), fmt.Errorf("command %s: %w", name, waitErr)
@@ -704,15 +769,6 @@ func (r *releaseSmokeRun) writeSummary() error {
 		return err
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o600)
-}
-func redactArgv(argv []string) []string {
-	out := append([]string(nil), argv...)
-	for i := 0; i+1 < len(out); i++ {
-		if out[i] == "--master-key-file" {
-			out[i+1] = "<run-master-key>"
-		}
-	}
-	return out
 }
 func parseSmokeDeploySession(out, dir string) (string, error) {
 	for _, line := range strings.Split(out, "\n") {

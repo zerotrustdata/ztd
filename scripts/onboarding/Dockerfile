@@ -16,16 +16,16 @@ FROM ${BASE}
 RUN set -eux; \
     if command -v apt-get >/dev/null; then \
         apt-get update; \
-        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo ca-certificates tar gzip procps; \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo ca-certificates tar gzip procps openssh-client; \
         rm -rf /var/lib/apt/lists/*; \
     elif command -v dnf >/dev/null; then \
-        dnf install -y sudo ca-certificates tar gzip procps-ng shadow-utils; \
+        dnf install -y sudo ca-certificates tar gzip procps-ng shadow-utils openssh-clients; \
         dnf clean all; \
     elif command -v pacman >/dev/null; then \
-        pacman -Syu --noconfirm --needed sudo ca-certificates tar gzip procps-ng; \
+        pacman -Syu --noconfirm --needed sudo ca-certificates tar gzip procps-ng openssh; \
         pacman -Scc --noconfirm; \
     elif command -v zypper >/dev/null; then \
-        zypper --non-interactive install sudo ca-certificates tar gzip procps shadow; \
+        zypper --non-interactive install sudo ca-certificates tar gzip procps shadow openssh-clients; \
         zypper clean --all; \
     else \
         echo "unsupported base image" >&2; exit 1; \

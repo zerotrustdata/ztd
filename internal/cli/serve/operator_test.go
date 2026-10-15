@@ -21,13 +21,14 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestNewOperatorRuntimeFileServiceUsesWorkingDir(t *testing.T) {
-	workingDir := t.TempDir()
+	workingDir := testutil.TempDir(t)
 	fileSvc, effectiveWorkDir, err := newOperatorRuntimeFileService(ServeOperatorOptions{
 		WorkingDir: workingDir,
-		LaunchDir:  t.TempDir(),
+		LaunchDir:  testutil.TempDir(t),
 	}, testLogger())
 	require.NoError(t, err)
 	assert.Equal(t, workingDir, effectiveWorkDir)
@@ -472,7 +473,7 @@ func TestOperatorInstanceIDSeparatesSameHostAndRole(t *testing.T) {
 
 func TestRefuseGatewayRuntime(t *testing.T) {
 	ctx := context.Background()
-	fileSvc, workDir, err := newOperatorRuntimeFileService(ServeOperatorOptions{WorkingDir: t.TempDir()}, testLogger())
+	fileSvc, workDir, err := newOperatorRuntimeFileService(ServeOperatorOptions{WorkingDir: testutil.TempDir(t)}, testLogger())
 	require.NoError(t, err)
 	require.NoError(t, refuseGatewayRuntime(ctx, fileSvc, workDir))
 

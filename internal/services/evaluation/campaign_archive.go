@@ -134,9 +134,9 @@ func LocateCampaign(ctx context.Context, files fs.RuntimeFileService, campaignID
 	return archived, true, nil
 }
 
-// Archiver moves campaigns and runs into and out of the archive. Archive is the
-// only removal: nothing is deleted, and archiving does not retract anything
-// already published.
+// Archiver moves campaigns and runs into and out of the archive. Archiving
+// deletes nothing and does not retract anything already published; Deleter
+// removes runs and withdraws their publication.
 type Archiver struct {
 	files fs.RuntimeFileService
 	now   func() time.Time
@@ -333,6 +333,12 @@ func RejectArchivedRun(ctx context.Context, files fs.RuntimeFileService, runID s
 }
 
 func (a *Archiver) rejectRunning(ctx context.Context, store *Store, runID string) error {
+	return rejectRunningRun(ctx, store, a.live, runID)
+}
+
+// rejectRunningRun returns constants.ErrEvaluationRunRunning when a live
+// process holds the run's lease.
+func rejectRunningRun(ctx context.Context, store *Store, live LeaseLiveness, runID string) error {
 	lease, err := store.LoadRunLease(ctx, runID)
 	if err != nil {
 		if errors.Is(err, constants.ErrNotFound) {
@@ -340,7 +346,7 @@ func (a *Archiver) rejectRunning(ctx context.Context, store *Store, runID string
 		}
 		return err
 	}
-	if a.live != nil && a.live(*lease) {
+	if live != nil && live(*lease) {
 		return fmt.Errorf("evaluation: run %q: %w", runID, constants.ErrEvaluationRunRunning)
 	}
 	return nil

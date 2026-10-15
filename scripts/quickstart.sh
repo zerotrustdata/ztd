@@ -9,7 +9,8 @@
 # ztd quickstart: from a checkout to a running Gateway, a signed-in CLI, and a
 # first governed action in one command. Every step reuses what already exists
 # (binary, running Gateway, CLI identity), so rerunning it is safe and fast.
-# It only composes the public CLI; it never touches .ztd/ directly.
+# It only composes the public CLI; it never touches .ztd/ runtime state (its command log
+# is scratch under .ztd/tmp).
 # Run via `make quickstart`. See docs/guides/getting_started.md.
 
 set -euo pipefail
@@ -26,19 +27,13 @@ Starts a local Gateway (embedded Operator, doctrine posture), signs in the CLI
 headless, and runs a first governed action. Safe to rerun.
 
 Options:
-  --master-key-file <path>  Seal the vault with this provisioned key file instead
-                            of the OS keystore (headless Linux without a Secret
-                            Service keyring or ssh-agent). See build_gateway.md.
   -h, --help                Show this help
 EOF
 }
 
-MASTER_KEY_FILE=""
 GW_EXTRA=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --master-key-file) MASTER_KEY_FILE="${2:?--master-key-file needs a path}"; shift 2 ;;
-        --master-key-file=*) MASTER_KEY_FILE="${1#*=}"; shift ;;
         -h|--help) ztd_quickstart_usage; exit 0 ;;
         --) shift; GW_EXTRA=("$@"); break ;;
         *) echo "Unknown option: $1"; ztd_quickstart_usage; exit 2 ;;
@@ -49,18 +44,15 @@ ztd_ui_init
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$REPO_ROOT"
 ZTD=./ztd
-# The master key file seals and unseals the Gateway vault and the CLI identity
-# keys alike, so every ./ztd call below carries it.
-KEY_ARGS=()
-if [[ -n "$MASTER_KEY_FILE" ]]; then
-    KEY_ARGS=(--master-key-file "$MASTER_KEY_FILE")
-fi
-LOG="$(mktemp "${TMPDIR:-/tmp}/ztd-quickstart.XXXXXX")"
-trap 'rm -f "$LOG"' EXIT
+# shellcheck source=lib/scratch.sh
+. "${SCRIPT_DIR}/lib/scratch.sh"
+SCRATCH="$(ztd_scratch_dir "$REPO_ROOT" ztd-quickstart)"
+LOG="$SCRATCH/commands.log"
+trap 'rm -rf "$SCRATCH"' EXIT
 
 # usage: ztd_cli <ztd arguments...>
 ztd_cli() {
-    "$ZTD" "$@" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"}
+    "$ZTD" "$@"
 }
 
 # Runs a command with its output captured; on failure shows the tail and exits.
@@ -106,10 +98,10 @@ else
     if ! ztd_quickstart_run "Gateway start" ztd_cli gw start --capabilities data ${GW_EXTRA[@]+"${GW_EXTRA[@]}"}; then
         if grep -qiE 'keyring|keystore|secret service|ssh-agent|master key' "$LOG"; then
             echo >&2
-            ztd_ui_warn "No usable key store for the vault master key. Either:" >&2
-            echo "      eval \"\$(ssh-agent)\" && ssh-add        # then rerun make quickstart" >&2
-            echo "      make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'" >&2
-            echo "    See docs/guides/build_gateway.md for provisioning the key file." >&2
+            ztd_ui_warn "No usable key store for the vault master key. Start an ssh-agent with a key loaded:" >&2
+            echo "      ssh-keygen -t ed25519                # skip if you already have an Ed25519 key" >&2
+            echo "      eval \"\$(ssh-agent)\" && ssh-add" >&2
+            echo "    Then rerun make quickstart." >&2
         fi
         exit 1
     fi
@@ -140,6 +132,3 @@ echo -e "  ${ZTD_UI_BOLD}Browser${ZTD_UI_RESET}   ./ztd login web          ${ZTD
 echo -e "  ${ZTD_UI_BOLD}Evidence${ZTD_UI_RESET}  ./ztd gw data audit list --operator-session-id ${session:-<id>}"
 echo -e "  ${ZTD_UI_BOLD}Agents${ZTD_UI_RESET}    ./ztd mcp agent run claude"
 echo -e "  ${ZTD_UI_BOLD}Stop${ZTD_UI_RESET}      make down                ${ZTD_UI_DIM}state in .ztd/ is kept${ZTD_UI_RESET}"
-if [[ -n "$MASTER_KEY_FILE" ]]; then
-    echo -e "\n  ${ZTD_UI_DIM}Pass --master-key-file $MASTER_KEY_FILE to each ./ztd command above.${ZTD_UI_RESET}"
-fi

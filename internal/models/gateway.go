@@ -329,13 +329,6 @@ type ApprovalRespondRequest struct {
 	Reason     string `json:"reason,omitempty"`
 }
 
-// ApprovalRespondResponse is the typed response for POST /api/v1/approvals/respond.
-type ApprovalRespondResponse struct {
-	Success    bool   `json:"success"`
-	ApprovalID string `json:"approval_id"`
-	Approved   bool   `json:"approved"`
-}
-
 // BootstrapResponse is the typed response for POST /api/auth/bootstrap.
 type BootstrapResponse struct {
 	Success           bool            `json:"success"`

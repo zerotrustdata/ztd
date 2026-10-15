@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -123,7 +124,7 @@ const reported = evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_MET
 func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	ctx := context.Background()
 	newReader := func(t *testing.T) (*CampaignProviderObservationReader, fs.RuntimeFileService) {
-		fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+		fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 		reader, err := NewCampaignProviderObservationReader(fileSvc)
 		require.NoError(t, err)
 		return reader, fileSvc
@@ -246,7 +247,7 @@ func (e *attemptStubExecutor) ExecuteAssignment(ctx context.Context, req Assignm
 
 func TestPublishedCatalogCarriesTheObservedEnvironmentOnlyOnceTheRunIsComplete(t *testing.T) {
 	ctx := context.Background()
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)

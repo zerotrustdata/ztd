@@ -37,8 +37,9 @@ const (
 	DefaultGenesisHomogeneousCampaignID   = "eval-genesis-homogeneous"
 )
 
-func campaignInventoryPath(inventoryRelDir, campaignID string) string {
-	return path.Join(inventoryRelDir, campaignID+constants.FileExtJSON)
+// campaignInventoryPath returns the runtime-relative frozen inventory path for campaignID.
+func campaignInventoryPath(campaignID string) string {
+	return path.Join(DefaultCampaignInventoryRelDirname, campaignID+constants.FileExtJSON)
 }
 
 // CampaignQueueModel summarizes one init-campaign queue entry.

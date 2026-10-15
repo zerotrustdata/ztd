@@ -360,15 +360,18 @@ func GenerateComplianceAnalysis(ctx context.Context, request GenerationRequest) 
 		ActionClasses: append([]string(nil), request.Scope.GetApplicability().GetActionClasses()...),
 		Arms:          append([]string(nil), request.Scope.GetApplicability().GetArms()...),
 	}
-	population := &evidence.AssertionPopulation{Subjects: make([]evidence.AssertionSubject, 0, len(request.Scope.GetSelectedPopulation().GetSubjects()))}
-	for _, subject := range request.Scope.GetSelectedPopulation().GetSubjects() {
-		population.Subjects = append(population.Subjects, evidence.AssertionSubject{
-			SourceAdmissionID: subject.GetSourceAdmissionId(),
-			RunID:             subject.GetRunId(),
-			AttemptID:         subject.GetAttemptId(),
-			ScenarioID:        subject.GetScenarioId(),
-			TransactionID:     subject.GetTransactionId(),
-		})
+	var population *evidence.AssertionPopulation
+	if subjects := request.Scope.GetSelectedPopulation().GetSubjects(); len(subjects) > 0 {
+		population = &evidence.AssertionPopulation{Subjects: make([]evidence.AssertionSubject, 0, len(subjects))}
+		for _, subject := range subjects {
+			population.Subjects = append(population.Subjects, evidence.AssertionSubject{
+				SourceAdmissionID: subject.GetSourceAdmissionId(),
+				RunID:             subject.GetRunId(),
+				AttemptID:         subject.GetAttemptId(),
+				ScenarioID:        subject.GetScenarioId(),
+				TransactionID:     subject.GetTransactionId(),
+			})
+		}
 	}
 
 	assertionAssessments, err := evidence.GradeControlAssertions(ctx, evidence.AssertionGradingRequest{

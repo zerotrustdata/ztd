@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -98,13 +99,26 @@ func (c *Client) DispatchInference(ctx context.Context, req *operatorv1.Inferenc
 		return nil, respBody, err
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return nil, respBody, fmt.Errorf("%w: inference dispatch returned status %d", constants.ErrHTTPStatusError, status)
+		return nil, respBody, inferenceDispatchFailure(status, respBody)
 	}
 	response := &operatorv1.InferenceDispatchResponse{}
 	if err := protojson.Unmarshal(respBody, response); err != nil {
 		return nil, respBody, fmt.Errorf("%w: decode inference dispatch response: %v", constants.ErrInvalidJSONResponse, err)
 	}
 	return response, respBody, nil
+}
+
+// inferenceDispatchFailure maps a non-2xx dispatch response to its public
+// sentinel through the typed failure code, keeping ErrHTTPStatusError in the
+// chain. A body without a known code yields the status error alone.
+func inferenceDispatchFailure(status int, body []byte) error {
+	failure := &operatorv1.InferenceDispatchFailure{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, failure); err == nil {
+		if sentinel := dispatch.FailureSentinel(failure.GetCode()); sentinel != nil {
+			return fmt.Errorf("%w: inference dispatch returned status %d: %w", constants.ErrHTTPStatusError, status, sentinel)
+		}
+	}
+	return fmt.Errorf("%w: inference dispatch returned status %d", constants.ErrHTTPStatusError, status)
 }
 
 // InferenceDispatchStreamResult carries the terminal governed response and any
@@ -155,7 +169,10 @@ func (c *Client) DispatchInferenceStream(ctx context.Context, req *operatorv1.In
 			case *operatorv1.InferenceDispatchStreamFrame_Completion:
 				result.Completion = payload.Completion
 			case *operatorv1.InferenceDispatchStreamFrame_Failure:
-				if payload.Failure == nil || payload.Failure.GetReason() == "" {
+				if sentinel := dispatch.FailureSentinel(payload.Failure.GetCode()); sentinel != nil {
+					return nil, fmt.Errorf("inference dispatch stream failed: %w", sentinel)
+				}
+				if payload.Failure.GetReason() == "" {
 					return nil, fmt.Errorf("%w: inference dispatch stream failed", constants.ErrInferenceProviderResponseInvalid)
 				}
 				return nil, fmt.Errorf("%w: %s", constants.ErrInferenceProviderResponseInvalid, payload.Failure.GetReason())

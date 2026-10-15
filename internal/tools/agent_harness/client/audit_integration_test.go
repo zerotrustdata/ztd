@@ -52,10 +52,10 @@ func TestAuditReceipts(t *testing.T) {
 			},
 		},
 		{
-			name:              "bare array response",
+			name:              "bare array is not the Gateway shape",
 			operatorSessionID: "",
 			responseBody:      `[{"transaction_id":"tx1"}]`,
-			wantErr:           false,
+			wantErr:           true,
 		},
 		{
 			name:              "empty receipts",
@@ -64,10 +64,10 @@ func TestAuditReceipts(t *testing.T) {
 			wantErr:           false,
 		},
 		{
-			name:              "server error",
+			name:              "error body without receipts field",
 			operatorSessionID: "",
 			responseBody:      `{"error": "internal error"}`,
-			wantErr:           false, // AuditReceipts is lenient like ExportReceipts
+			wantErr:           true,
 		},
 		{
 			name:              "network error",

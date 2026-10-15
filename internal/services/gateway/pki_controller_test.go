@@ -517,7 +517,7 @@ func TestPKIController_HandleZtdBinaryDownload(t *testing.T) {
 	c, _ := setupTestPKIController(t)
 
 	// Create binaries directory and a test binary
-	binDir := t.TempDir()
+	binDir := testutil.TempDir(t)
 	testZtdBinaryContent := []byte("test binary content")
 	binaryPath := filepath.Join(binDir, "ztd-windows-amd64.exe")
 	require.NoError(t, os.WriteFile(binaryPath, testZtdBinaryContent, constants.PermFilePublic))
@@ -565,7 +565,7 @@ func (r testZtdBinaryReader) Artifact(name string) (io.ReadSeeker, os.FileInfo, 
 func TestPKIController_HandleZtdBinaryDownload_ImageBakedBinDir(t *testing.T) {
 	c, _ := setupTestPKIController(t)
 
-	binDir := t.TempDir()
+	binDir := testutil.TempDir(t)
 	testContent := []byte("image-baked binary content")
 	binaryPath := filepath.Join(binDir, "ztd-darwin-arm64")
 	require.NoError(t, os.WriteFile(binaryPath, testContent, constants.PermFilePublic))

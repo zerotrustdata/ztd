@@ -215,7 +215,7 @@ func TestNewHistoryHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := testutil.TempDir(t)
+			dir := testutil.OperatorDir(t)
 			hh, err := NewHistoryHandler(tt.auditStore, tt.ledger, tt.logger, newTestFileSvc(t, dir), dir)
 
 			if tt.wantErr != nil {
@@ -762,7 +762,7 @@ func TestHandleRestoreFile_RestoreError(t *testing.T) {
 			return errors.New("git checkout failed")
 		},
 	}
-	dir := testutil.TempDir(t)
+	dir := testutil.OperatorDir(t)
 	restorePath := filepath.Join(dir, "file.txt")
 	hh, err := NewHistoryHandler(&mockAuditStore{}, mockLedger, &mockLogger{}, newTestFileSvc(t, dir), dir)
 	require.NoError(t, err)
@@ -788,7 +788,7 @@ func TestHandleRestoreFile_Success(t *testing.T) {
 			return nil
 		},
 	}
-	dir := testutil.TempDir(t)
+	dir := testutil.OperatorDir(t)
 	restorePath := filepath.Join(dir, "file.txt")
 	hh, err := NewHistoryHandler(&mockAuditStore{}, mockLedger, &mockLogger{}, newTestFileSvc(t, dir), dir)
 	require.NoError(t, err)
@@ -981,7 +981,7 @@ func targetPath(target *fs.FileEditTarget) string {
 // in a per-test temp directory, so RESTORE_FILE policy checks run against real paths.
 func newUnitHistoryHandler(t *testing.T, auditStore auditStoreInterface, ledger ledgerInterface, logger loggerInterface) *HistoryHandler {
 	t.Helper()
-	dir := testutil.TempDir(t)
+	dir := testutil.OperatorDir(t)
 	hh, err := NewHistoryHandler(auditStore, ledger, logger, newTestFileSvc(t, dir), dir)
 	require.NoError(t, err)
 	return hh

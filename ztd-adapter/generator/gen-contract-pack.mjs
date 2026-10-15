@@ -1191,7 +1191,7 @@ function publicFixture(freshness) {
       records: [{ sequence: 1, record_type: 'projection', record_hash: recordHash, record_bytes: recordBytes }],
     },
     bootstrap: {
-      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: generatedAt,
+      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, withdrawal_digest: '0'.repeat(64), generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: generatedAt,
     },
   });
 }

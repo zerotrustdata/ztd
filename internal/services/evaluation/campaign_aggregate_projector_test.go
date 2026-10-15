@@ -482,7 +482,7 @@ func TestRunAggregateCompleteLifecycleWithoutPersistedResult(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)

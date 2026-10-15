@@ -68,7 +68,7 @@ type integrationEvaluatorFixture struct {
 func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 	t.Helper()
 
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 	fileSvc := storagetest.NewTestFileSvc(t, tempDir)
 
 	_, privKey, err := ed25519.GenerateKey(nil)

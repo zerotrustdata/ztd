@@ -7,13 +7,16 @@
 # released under the Apache License, Version 2.0.
 #
 # Exercise the release gates offline in disposable repositories. Git commits
-# and tags, synthetic binaries, and placeholder signature files stay in /tmp.
+# and tags, synthetic binaries, and placeholder signature files stay under .ztd/tmp.
 # Placeholder signatures test staging only; this script makes no claim about
 # cosign/Fulcio authenticity.
 set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRATCH="$(mktemp -d)"
+# shellcheck source=lib/scratch.sh
+. "$SOURCE_ROOT/scripts/lib/scratch.sh"
+SCRATCH="$(ztd_scratch_dir "$SOURCE_ROOT" ztd-release-scripts)"
+export GIT_CEILING_DIRECTORIES="$SOURCE_ROOT/.ztd/tmp"
 trap 'rm -rf "$SCRATCH"' EXIT
 
 fail() {
@@ -46,6 +49,7 @@ mkdir -p "$REPO/scripts" "$REPO/docs/release_notes/v1.0.x" \
 	"$REPO/internal/tools" "$REPO/internal/services"
 cp "$SOURCE_ROOT/scripts/release-preflight.sh" "$REPO/scripts/"
 cp "$SOURCE_ROOT/scripts/release-artifacts.sh" "$REPO/scripts/"
+cp -R "$SOURCE_ROOT/scripts/lib" "$REPO/scripts/"
 cp "$SOURCE_ROOT/go.mod" "$SOURCE_ROOT/go.sum" "$REPO/"
 ln -s "$SOURCE_ROOT/vendor" "$REPO/vendor"
 ln -s "$SOURCE_ROOT/internal/constants" "$REPO/internal/constants"

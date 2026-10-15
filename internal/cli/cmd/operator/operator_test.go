@@ -650,7 +650,7 @@ func TestPromptForScpOptions(t *testing.T) {
 
 func TestResolveOperatorWorkingDir(t *testing.T) {
 	home := filepath.Join(string(filepath.Separator)+"home", "operator")
-	if volume := filepath.VolumeName(os.TempDir()); volume != "" {
+	if volume := filepath.VolumeName(testutil.TempDir(t)); volume != "" {
 		home = volume + home
 	}
 	t.Setenv("HOME", home)

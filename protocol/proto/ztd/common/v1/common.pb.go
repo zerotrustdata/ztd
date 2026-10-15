@@ -447,8 +447,13 @@ func (x *L3Proof) GetCliSignature() string {
 }
 
 type L3Metadata struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Proof         *L3Proof               `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"` // WebAuthn or CLI/mTLS proof
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Proof *L3Proof               `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"` // WebAuthn or CLI/mTLS proof
+	// The human declined the suspended transaction. L4 rejects a denied
+	// envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so
+	// the deny is an Operator-signed rejection receipt. A deny can only stop
+	// execution, so it needs no proof.
+	Denied        bool `protobuf:"varint,2,opt,name=denied,proto3" json:"denied,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -488,6 +493,13 @@ func (x *L3Metadata) GetProof() *L3Proof {
 		return x.Proof
 	}
 	return nil
+}
+
+func (x *L3Metadata) GetDenied() bool {
+	if x != nil {
+		return x.Denied
+	}
+	return false
 }
 
 // Unified Governance Metadata
@@ -1407,10 +1419,11 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\tsignature\x18\x03 \x01(\tR\tsignature\x12#\n" +
 	"\rcredential_id\x18\x04 \x01(\tR\fcredentialId\x122\n" +
 	"\x15mtls_cert_fingerprint\x18\x05 \x01(\tR\x13mtlsCertFingerprint\x12#\n" +
-	"\rcli_signature\x18\x06 \x01(\tR\fcliSignature\":\n" +
+	"\rcli_signature\x18\x06 \x01(\tR\fcliSignature\"R\n" +
 	"\n" +
 	"L3Metadata\x12,\n" +
-	"\x05proof\x18\x01 \x01(\v2\x16.ztd.common.v1.L3ProofR\x05proof\"\x95\x01\n" +
+	"\x05proof\x18\x01 \x01(\v2\x16.ztd.common.v1.L3ProofR\x05proof\x12\x16\n" +
+	"\x06denied\x18\x02 \x01(\bR\x06denied\"\x95\x01\n" +
 	"\x12GovernanceMetadata\x12)\n" +
 	"\x02l1\x18\x01 \x01(\v2\x19.ztd.common.v1.L1MetadataR\x02l1\x12)\n" +
 	"\x02l2\x18\x02 \x01(\v2\x19.ztd.common.v1.L2MetadataR\x02l2\x12)\n" +

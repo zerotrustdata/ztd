@@ -489,8 +489,9 @@ func enrollTestOperatorRequest(state models.PlatformEnrollmentState) models.Plat
 		SystemFingerprint: "fp-host-a",
 		State:             state,
 		Operator: &models.PlatformOperatorCSRPayload{
-			OperatorCSRPEM: "operator-csr",
-			CLICSRPEM:      "cli-csr",
+			OperatorCSRPEM:    "operator-csr",
+			CLICSRPEM:         "cli-csr",
+			ActuatorPublicKey: strings.Repeat("ab", 32),
 		},
 	}
 }

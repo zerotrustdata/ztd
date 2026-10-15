@@ -10,8 +10,6 @@ package constants
 import "time"
 
 const (
-	EvaluationReceiptPollInterval = 500 * time.Millisecond
-	EvaluationReceiptPollTimeout  = 30 * time.Second
 	InferenceRequestSchemaVersion = "1.0"
 
 	// InferenceMaxOutputTokens is the hard upper bound on one inference
@@ -19,6 +17,10 @@ const (
 	// above it is rejected, and a request that states no limit (0) runs under it.
 	InferenceMaxOutputTokens int32 = 256_000
 )
+
+// SUTTerminalGrace is how long past the turn's wall-clock limit ztd keeps the
+// SUT's event stream open before the turn counts as a contract failure.
+const SUTTerminalGrace = 30 * time.Second
 
 // Platform binary names.
 const (

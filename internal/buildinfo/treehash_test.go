@@ -42,7 +42,7 @@ func writeParityFixture(t *testing.T, root string) {
 }
 
 func TestComputeSourceManifestHash_KeysRetainEntryPrefix(t *testing.T) {
-	base := t.TempDir()
+	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 
 	// Manifest mode keys files by their path relative to base, so
@@ -53,7 +53,7 @@ func TestComputeSourceManifestHash_KeysRetainEntryPrefix(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_RejectsMissingEntry(t *testing.T) {
-	base := t.TempDir()
+	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 
 	_, err := ComputeSourceManifestHash(base, []string{"does-not-exist"}, nil)
@@ -62,7 +62,7 @@ func TestComputeSourceManifestHash_RejectsMissingEntry(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_RejectsEscapingEntry(t *testing.T) {
-	base := t.TempDir()
+	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 
 	for _, entry := range []string{"../outside", "/absolute/path", "a/../..", ""} {
@@ -73,9 +73,9 @@ func TestComputeSourceManifestHash_RejectsEscapingEntry(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_RejectsSymlinkEntry(t *testing.T) {
-	base := t.TempDir()
+	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
-	outside := t.TempDir()
+	outside := testutil.TempDir(t)
 	testutil.Symlink(t, outside, filepath.Join(base, "ext"))
 
 	_, err := ComputeSourceManifestHash(base, []string{"ext"}, nil)
@@ -84,7 +84,7 @@ func TestComputeSourceManifestHash_RejectsSymlinkEntry(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_ExcludeSkipsNestedGeneratedDirs(t *testing.T) {
-	base := t.TempDir()
+	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 	venv := filepath.Join(base, "pkg", ".venv", "bin")
 	require.NoError(t, os.MkdirAll(venv, 0o755))
@@ -106,7 +106,7 @@ func TestComputeSourceManifestHash_ExcludeSkipsNestedGeneratedDirs(t *testing.T)
 }
 
 func TestListSourceManifestFiles_ReturnsPortableSortedDependencies(t *testing.T) {
-	base := t.TempDir()
+	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 	require.NoError(t, os.MkdirAll(filepath.Join(base, "dir", "tests"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(base, "dir", "tests", "ignored.ts"), []byte("ignored"), 0o644))

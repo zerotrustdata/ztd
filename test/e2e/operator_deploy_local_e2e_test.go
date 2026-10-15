@@ -37,6 +37,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -288,7 +289,7 @@ func deploymentCLI(ctx context.Context, bin string, args ...string) (string, err
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.CommandContext(ctx, bin, append(args, e2eMasterKeyArgs()...)...)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = root
 	var output bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, &output
@@ -370,7 +371,7 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		require.NoError(t, err)
 		// The Operator's local receipt is authoritative; its content columns are
 		// sealed with the Operator's vault key, so read through the audit store.
-		record, err := storage.ReadLocalActionReceipt(fileSvc, testutil.NewTestLogger(), e2eMasterKeyFile(), result.TransactionID)
+		record, err := storage.ReadLocalActionReceipt(fileSvc, testutil.NewTestLogger(), keystore.Options{}, result.TransactionID)
 		require.NoError(t, err)
 		require.NotNil(t, record, "the Operator must hold its own local receipt")
 		receipt := record.ActionReceipt

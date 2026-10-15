@@ -48,7 +48,7 @@ func TestProviderObservationControllerHandleProviderObservation_RejectsNonGet(t 
 
 func TestProviderObservationControllerHandleProviderObservation_NotFound(t *testing.T) {
 	logger := testutil.NewTestLogger()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windows, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	attempts, err := inference.NewAttemptStore(fileSvc)
@@ -71,7 +71,7 @@ func TestProviderObservationControllerHandleProviderObservation_NotFound(t *test
 func TestProviderObservationControllerHandleProviderObservation_SynthesizesAttemptFromWindow(t *testing.T) {
 	ctx := context.Background()
 	logger := testutil.NewTestLogger()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windows, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	attempts, err := inference.NewAttemptStore(fileSvc)
@@ -124,7 +124,7 @@ func TestProviderObservationControllerHandleProviderObservation_SynthesizesAttem
 func TestProviderObservationControllerHandleProviderObservation_ReturnsBundle(t *testing.T) {
 	ctx := context.Background()
 	logger := testutil.NewTestLogger()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windows, err := provider_observer.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	attempts, err := inference.NewAttemptStore(fileSvc)

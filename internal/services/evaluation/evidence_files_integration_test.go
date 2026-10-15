@@ -50,7 +50,7 @@ func newSealedRuntime(t *testing.T) *sealedRuntime {
 	raw, err := rtfs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
 	require.NoError(t, raw.CreateRuntimeTree(context.Background()))
-	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{MasterKeyFile: keystoretest.ProvisionMasterKeyFile(t)})
+	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{Keyring: keystoretest.NewMemoryKeyring()})
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
@@ -94,7 +94,7 @@ func assertNoPlaintextAnywhere(t *testing.T, root string, needles ...string) int
 func TestEvidenceFiles_EncryptEveryRecordUnderDataEval(t *testing.T) {
 	rt := newSealedRuntime(t)
 	ctx := context.Background()
-	sealedPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", "report.json")
+	sealedPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
 	plainPath := filepath.Join(constants.EvaluationDirname, "queue.json")
 	body := []byte(`{"prompt":"` + evidenceMarker + `"}`)
 
@@ -125,7 +125,7 @@ func TestEvidenceFiles_SealComplianceReportBundlesUnderTheirOwnDomain(t *testing
 	rt := newSealedRuntime(t)
 	ctx := context.Background()
 	reportPath := path.Join(constants.ComplianceBundlesDirname, "report-1", constants.ComplianceBundleManifestPath)
-	evalPath := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", "report.json")
+	evalPath := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
 	body := []byte(`{"source":"` + evidenceMarker + `"}`)
 
 	assert.True(t, SealsPath(rt.files, reportPath))
@@ -170,8 +170,8 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 		require.NoError(t, err)
 
 		body, err := locked.ReadFile(ctx, sealedPath)
-		require.ErrorIs(t, err, constants.ErrEvaluationEvidenceDecryptFailed)
 		require.ErrorIs(t, err, constants.ErrVaultLocked)
+		assert.NotErrorIs(t, err, constants.ErrEvaluationEvidenceDecryptFailed, "a locked vault is not an authentication failure")
 		assert.Empty(t, body)
 	})
 
@@ -397,7 +397,7 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
 	rt := newSealedRuntime(t)
 	ctx := context.Background()
-	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.EvaluationReportFilename)
+	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
 	require.NoError(t, rt.files.WriteFile(ctx, recordPath, []byte(`{"detail":"`+evidenceMarker+`"}`), constants.PermFilePrivate))
 
 	backupDir := filepath.Join(testutil.TempDir(t), "backups")

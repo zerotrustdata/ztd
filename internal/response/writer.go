@@ -9,6 +9,7 @@ package response
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -78,12 +79,24 @@ func (w *Writer) ProtoJSON(rw http.ResponseWriter, status int, message proto.Mes
 // (snake_case), matching the canonical client-facing serialization used by
 // the protocol bindings (preserving_proto_field_name=True).
 func (w *Writer) ProtoJSONCanonical(rw http.ResponseWriter, status int, message proto.Message) {
-	payload, err := (protojson.MarshalOptions{UseProtoNames: true}).Marshal(message)
+	payload, err := MarshalProtoJSONCanonical(message)
 	if err != nil {
 		w.Error(rw, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
 		return
 	}
 	w.writeProtoJSON(rw, status, payload)
+}
+
+// MarshalProtoJSONCanonical renders a protobuf message as canonical protojson
+// with proto field names. It is the single marshal step behind
+// ProtoJSONCanonical, so an embedded message and a directly written response
+// carry identical bytes.
+func MarshalProtoJSONCanonical(message proto.Message) ([]byte, error) {
+	payload, err := (protojson.MarshalOptions{UseProtoNames: true}).Marshal(message)
+	if err != nil {
+		return nil, fmt.Errorf("response: marshal protojson: %w", err)
+	}
+	return payload, nil
 }
 
 func (w *Writer) writeProtoJSON(rw http.ResponseWriter, status int, payload []byte) {

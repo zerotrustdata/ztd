@@ -46,6 +46,7 @@ export interface PublicFeedSnapshot {
   high_water_sequence: number;
   feed_chain_hash: string;
   batch_count: number;
+  withdrawal_digest?: string;
   generated_at: string;
   freshness: CampaignFreshness;
 }
@@ -144,6 +145,7 @@ export function isPublicFeedSnapshot(value: unknown): value is PublicFeedSnapsho
   if (!(typeof v.high_water_sequence === 'number' && Number.isInteger(v.high_water_sequence))) return false; /* high_water_sequence */
   if (!(typeof v.feed_chain_hash === 'string')) return false; /* feed_chain_hash */
   if (!(typeof v.batch_count === 'number' && Number.isInteger(v.batch_count))) return false; /* batch_count */
+  if (v.withdrawal_digest !== undefined && !(typeof v.withdrawal_digest === 'string')) return false; /* withdrawal_digest */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
   if (!(typeof v.freshness === 'string' && (CAMPAIGN_FRESHNESS_VALUES as readonly string[]).includes(v.freshness))) return false; /* freshness */
   return true;

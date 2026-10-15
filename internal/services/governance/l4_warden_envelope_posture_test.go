@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // TestVerifyEnvelope_ReadsPostureFromEnvelope verifies that the warden reads
@@ -47,7 +48,7 @@ func TestVerifyEnvelope_ReadsPostureFromEnvelope(t *testing.T) {
 		verified, err := verifier.VerifyEnvelope(context.Background(), env)
 		assert.NoError(t, err)
 		assert.NotNil(t, verified)
-		assert.False(t, verified.L3Valid)
+		assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, verified.L3Status)
 		assert.Equal(t, "doctrine", verified.Posture.Name())
 	})
 }
@@ -68,7 +69,7 @@ func TestVerifyEnvelope_ReadOnlyNeedsNoL3UnderAnyPosture(t *testing.T) {
 
 			verified, err := verifier.VerifyEnvelope(context.Background(), env)
 			require.NoError(t, err)
-			assert.False(t, verified.L3Valid)
+			assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, verified.L3Status)
 			assert.Equal(t, posture, verified.Posture.Name())
 		})
 	}
@@ -115,8 +116,8 @@ func TestVerifyEnvelope_RatifyRequiresL3WithoutL2(t *testing.T) {
 			if !assert.NoError(t, err) || !assert.NotNil(t, verified) {
 				return
 			}
-			assert.False(t, verified.L2Valid)
-			assert.True(t, verified.L3Valid)
+			assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, verified.L2Status)
+			assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, verified.L3Status)
 			assert.Equal(t, "ratify", verified.Posture.Name())
 		})
 	}
@@ -168,4 +169,48 @@ func TestVerifyEnvelope_InvalidEnvelopePostureFailsClosed(t *testing.T) {
 	_, err := verifier.VerifyEnvelope(context.Background(), env)
 	assert.Error(t, err)
 	assert.False(t, errors.Is(err, nil))
+}
+
+// TestPostureGates_L2EnforcedAndL3RequiredByActionClass pins the two posture
+// gates that L4 and every Gateway deliberation or refusal site share. L2 is
+// enforced under a posture that requires it, except for bootstrap actions. L3
+// is required under a posture that requires it, but only for mutations. Each
+// posture is crossed with a mutation, a read, a non-mutating bootstrap action,
+// and a mutating bootstrap action, so each exemption is checked on its own.
+func TestPostureGates_L2EnforcedAndL3RequiredByActionClass(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		posture GovernancePosture
+		action  constants.ActionType
+		wantL2  bool
+		wantL3  bool
+	}{
+		{"doctrine mutation", &DoctrinePosture{}, constants.ActionTypeFileEdit, false, false},
+		{"doctrine read", &DoctrinePosture{}, constants.ActionTypeFsRead, false, false},
+		{"doctrine bootstrap", &DoctrinePosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"doctrine bootstrap mutation", &DoctrinePosture{}, constants.ActionTypePlatformEnrollmentDecide, false, false},
+
+		{"consensus mutation", &ConsensusPosture{}, constants.ActionTypeFileEdit, true, false},
+		{"consensus read", &ConsensusPosture{}, constants.ActionTypeFsRead, true, false},
+		{"consensus bootstrap", &ConsensusPosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"consensus bootstrap mutation", &ConsensusPosture{}, constants.ActionTypePlatformEnrollmentDecide, false, false},
+
+		{"ratify mutation", &RatifyPosture{}, constants.ActionTypeFileEdit, false, true},
+		{"ratify read", &RatifyPosture{}, constants.ActionTypeFsRead, false, false},
+		{"ratify bootstrap", &RatifyPosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"ratify bootstrap mutation", &RatifyPosture{}, constants.ActionTypePlatformEnrollmentDecide, false, true},
+
+		{"notary mutation", &NotaryPosture{}, constants.ActionTypeFileEdit, true, true},
+		{"notary read", &NotaryPosture{}, constants.ActionTypeFsRead, true, false},
+		{"notary bootstrap", &NotaryPosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"notary bootstrap mutation", &NotaryPosture{}, constants.ActionTypePlatformEnrollmentDecide, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.wantL2, L2Enforced(tc.action, tc.posture), "L2Enforced")
+			assert.Equal(t, tc.wantL3, L3Required(tc.action, tc.posture), "L3Required")
+		})
+	}
 }

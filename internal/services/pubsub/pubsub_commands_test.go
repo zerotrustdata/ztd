@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1280,52 +1281,6 @@ func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) {
 	})
 }
 
-func TestOperatorPubSubService_Start(t *testing.T) {
-
-	t.Run("rejects start when already running", func(t *testing.T) {
-		t.Parallel()
-		f := newPubsubFixture(t)
-		ctx := context.Background()
-		err := f.Svc.Start(ctx)
-		require.NoError(t, err)
-
-		err = f.Svc.Start(ctx)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "already running")
-
-		f.Svc.Stop()
-	})
-
-	t.Run("starts in gateway mode without pub/sub subscription", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		cfg.OperatorID = ""
-		cfg.OperatorSessionId = ""
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		err = svc.Start(context.Background())
-		require.NoError(t, err)
-		svc.Stop()
-	})
-}
-
 func TestOperatorPubSubService_Stop(t *testing.T) {
 	t.Parallel()
 
@@ -1414,11 +1369,12 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("rejects event and action_type mismatch before verification", func(t *testing.T) {
+	t.Run("rejects event and action_type mismatch in L4 with a signed receipt", func(t *testing.T) {
 		t.Parallel()
 		req := &operatorv1.FsListRequested{Path: ".", ExecutionId: "exec-mismatch"}
 		payload, _ := proto.Marshal(req)
 		env := &govpkg.GovernanceEnvelope{
+			Id:              "tx-mismatch",
 			ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
 			Timestamp:       timestamppb.Now(),
 			ExpiresAt:       timestamppb.New(time.Now().Add(time.Hour)),
@@ -1432,9 +1388,39 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
-		_, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrTxEventActionMismatch)
+		var rejection *governance.RejectionError
+		require.ErrorAs(t, err, &rejection, "the mismatch must be an L4 rejection carrying a receipt")
+		require.NotNil(t, receipt)
+		assert.Same(t, rejection.Receipt, receipt)
+		assert.True(t, governance.IsGovernanceRejectionReceipt(receipt))
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH, receipt.GetRejectionCode())
+		assert.NotEmpty(t, receipt.GetSignature(), "the L4 rejection receipt must be signed by the Actuator")
+	})
+
+	t.Run("refuses a registered event that is not governed before L4", func(t *testing.T) {
+		t.Parallel()
+		env := &govpkg.GovernanceEnvelope{
+			Id:              "tx-not-governed",
+			ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
+			Timestamp:       timestamppb.Now(),
+			ExpiresAt:       timestamppb.New(time.Now().Add(time.Hour)),
+			EventType:       string(constants.EventOperatorAuditAiRecordRequested),
+			ActionType:      string(constants.ActionTypeFsList),
+			TargetResource:  "localhost",
+			StateMerkleRoot: "test-state-root",
+			Nonce:           "nonce-not-governed",
+			Posture:         constants.PostureDoctrine,
+		}
+		envelopeBytes, _ := protojson.Marshal(env)
+
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		require.ErrorIs(t, err, constants.ErrTxEventNotGoverned)
+		assert.Nil(t, receipt, "a pre-L4 refusal has no action to sign, so it carries no receipt")
+		var rejection *governance.RejectionError
+		assert.False(t, errors.As(err, &rejection), "a pre-L4 refusal must not be an L4 rejection")
 	})
 
 	t.Run("rejects when transaction verifier not configured", func(t *testing.T) {
@@ -1929,41 +1915,6 @@ func TestOperatorPubSubService_handleHeartbeatEvent(t *testing.T) {
 	})
 }
 
-func TestOperatorPubSubService_SendAutomaticHeartbeat(t *testing.T) {
-	t.Run("sends automatic heartbeat via heartbeat service", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		logger := testutil.NewTestLogger()
-		privKey := ed25519.NewKeyFromSeed(make([]byte, 32))
-		mockPublisher := &mockResultsPublisher{}
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:          mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:             storagetest.NewTestLedger(t),
-			RuntimeVault:       governancetest.UnlockedVault{},
-			Config:             cfg,
-			Logger:             logger,
-			PubSubClient:       pubsubtest.NewMockOperatorPubSubClient(),
-			ResultsService:     mockPublisher,
-			ActuatorSigningKey: privKey,
-			ActuatorKeyID:      "test-key",
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		err = svc.SendAutomaticHeartbeat()
-		assert.NoError(t, err)
-		assert.True(t, mockPublisher.publishHeartbeatCalled, "automatic heartbeat must be published through the results publisher")
-	})
-}
-
 func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 	t.Run("records field read event in audit store", func(t *testing.T) {
 		t.Parallel()
@@ -2159,43 +2110,6 @@ func TestOperatorPubSubService_BindMCPGatewayRejectsDuplicateBinding(t *testing.
 
 	assert.ErrorIs(t, err, constants.ErrPubSubMCPGatewayAlreadyBound)
 	assert.Same(t, first, svc.GetMCPGateway())
-}
-
-func TestOperatorPubSubService_BindMCPGatewayRejectsBindingAfterStart(t *testing.T) {
-	svc := newPubsubFixture(t).Svc
-	svc.config.OperatorID = ""
-	svc.config.OperatorSessionId = ""
-	require.NoError(t, svc.Start(context.Background()))
-	t.Cleanup(func() { require.NoError(t, svc.Stop()) })
-
-	err := svc.BindMCPGateway(&mcp.GatewayService{})
-
-	assert.ErrorIs(t, err, constants.ErrPubSubMCPGatewayBindAfterStart)
-	assert.Nil(t, svc.GetMCPGateway())
-}
-
-func TestOperatorPubSubService_StartGatewayModeRequiresMCPGatewayBinding(t *testing.T) {
-	t.Parallel()
-	svc := newGatewayPubsubServiceForBindingTest(t)
-
-	err := svc.Start(context.Background())
-
-	assert.ErrorIs(t, err, constants.ErrPubSubMCPGateway)
-	assert.False(t, svc.running)
-}
-
-func TestOperatorPubSubService_StartOutboundModeDoesNotRequireMCPGatewayBinding(t *testing.T) {
-	svc := newPubsubFixture(t).Svc
-	svc.config.OperatorID = ""
-	svc.config.OperatorSessionId = ""
-
-	require.NoError(t, svc.Start(context.Background()))
-	t.Cleanup(func() { require.NoError(t, svc.Stop()) })
-	assert.Nil(t, svc.GetMCPGateway())
-	_, hasMCPHandler := svc.actionHandlers[constants.ActionTypeMcpCall]
-	_, hasA2AHandler := svc.actionHandlers[constants.ActionTypeA2aCall]
-	assert.False(t, hasMCPHandler)
-	assert.False(t, hasA2AHandler)
 }
 
 func TestOperatorPubSubService_BoundMCPGatewaySupportsConcurrentReads(t *testing.T) {

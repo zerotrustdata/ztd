@@ -111,7 +111,7 @@ func setupTestConfig(t *testing.T) (*config.Config, fs.RuntimeFileService) {
 
 	cfg, err := config.Load(projectRoot)
 	require.NoError(t, err)
-	cfg.MasterKeyFile = keystoretest.ProvisionMasterKeyFile(t)
+	cfg.Keyring = keystoretest.NewMemoryKeyring()
 
 	require.NoError(t, fileSvc.WriteFile(context.Background(), cfg.DefaultTrustBundleRelPath(), caCertPEM, constants.PermFilePublic))
 

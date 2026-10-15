@@ -1329,7 +1329,7 @@ func TestNewL1DoctrineFromDir_EmptyDir_FallsBack(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_LoadsPatterns(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test_source","version":"1.0","doctrines":[
 		{"id":"test_detector","name":"Test","category":"data_exfiltration","severity":"critical","pattern":"(?i)exfiltrate.*data","mitre_attack":"T1567","mitre_tactic":"Exfiltration","confidence":0.9,"enabled":true}
@@ -1359,7 +1359,7 @@ func TestNewL1DoctrineFromDir_LoadsPatterns(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_InvalidJSON_ReturnsError(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{invalid json"), 0o644))
 
 	_, err := NewL1DoctrineFromDir(dir)
@@ -1368,7 +1368,7 @@ func TestNewL1DoctrineFromDir_InvalidJSON_ReturnsError(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_DisabledEntriesSkipped(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","doctrines":[
 		{"id":"disabled_one","name":"Disabled","category":"data_exfiltration","severity":"critical","pattern":"(?i)should_not_match","confidence":0.9,"enabled":false},
@@ -1396,7 +1396,7 @@ func TestNewL1DoctrineFromDir_DisabledEntriesSkipped(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_PHIExfilBlocked(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"healthcare_phi_hipaa","version":"1.0","doctrines":[
 		{"id":"phi_exfil_attempt","name":"PHI Data Exfiltration Attempt","category":"data_exfiltration","severity":"critical","pattern":"(?i)(exfil|exfiltrate|export|download).*(phi|patient|medical)","mitre_attack":"T1567.001","mitre_tactic":"Exfiltration","confidence":0.95,"enabled":true}
@@ -1420,7 +1420,7 @@ func TestNewL1DoctrineFromDir_PHIExfilBlocked(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_MultipleFiles(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	doc1 := `{"source":"src_a","version":"1.0","doctrines":[
 		{"id":"detector_a","name":"A","category":"data_exfiltration","severity":"critical","pattern":"(?i)pattern_a","confidence":0.9,"enabled":true}
@@ -1457,7 +1457,7 @@ func TestNewL1DoctrineFromDir_MultipleFiles(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_UnknownCategoryMappedToCustom(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","doctrines":[
 		{"id":"custom_cat","name":"Custom","category":"trading_limits","severity":"critical","pattern":"(?i)violates.*limit","confidence":0.9,"enabled":true}
@@ -1481,7 +1481,7 @@ func TestNewL1DoctrineFromDir_UnknownCategoryMappedToCustom(t *testing.T) {
 
 func TestL1Doctrine_FedRAMPPrivilegeEscalation_NoFalsePositiveOnResourceIDs(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"FedRAMP Program Management Office","version":"1.0","doctrines":[
 		{"id":"fedramp-si4-privilege-escalation","name":"FedRAMP SI-4 Privilege Escalation via Cloud API","category":"privilege_escalation","severity":"high","pattern":"\\b(sudo|chmod|chown|iam-role|assume-role|escalate)\\b","mitre_attack":"T1548","mitre_tactic":"privilege-escalation","confidence":0.90,"enabled":true}
@@ -1559,7 +1559,7 @@ func TestNewL1DoctrineFromDir_NonExistentDir_ReturnsError(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_KSIControlOverlayProjection(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test_compliance","version":"1.0","last_updated":"2026-01-15","license":"BUSL-1.1","doctrines":[
 		{"id":"ksi_test_detector","name":"KSI Test","category":"data_exfiltration","severity":"critical","pattern":"(?i)exfiltrate.*data","mitre_attack":"T1567","mitre_tactic":"Exfiltration","confidence":0.9,"enabled":true,"ksi_ids":["KSI-SVC-03","KSI-CNA-01"],"control_ids":["SC-8","SC-7"],"overlay_ids":["COSAiS-LLM-01"]}
@@ -1620,7 +1620,7 @@ func TestNewL1DoctrineFromDir_KSIControlOverlayProjection(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_KSIProjectionViaMCPArguments(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test_compliance","version":"1.0","doctrines":[
 		{"id":"ksi_mcp_detector","name":"KSI MCP Test","category":"data_exfiltration","severity":"critical","pattern":"(?i)exfiltrate.*data","mitre_attack":"T1567","mitre_tactic":"Exfiltration","confidence":0.9,"enabled":true,"ksi_ids":["KSI-MLA-07"],"control_ids":["AU-2"],"overlay_ids":[]}
@@ -1649,7 +1649,7 @@ func TestNewL1DoctrineFromDir_KSIProjectionViaMCPArguments(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_LastUpdatedLicenseParsed(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","last_updated":"2026-03-01","license":"MIT","doctrines":[
 		{"id":"test_det","name":"Test","category":"data_exfiltration","severity":"high","pattern":"(?i)test_pattern","confidence":0.9,"enabled":true}
@@ -1672,7 +1672,7 @@ func TestNewL1DoctrineFromDir_LastUpdatedLicenseParsed(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_EmptyKSIFields_DefaultToNil(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","doctrines":[
 		{"id":"no_ksi","name":"No KSI","category":"data_exfiltration","severity":"high","pattern":"(?i)plain_pattern","confidence":0.9,"enabled":true}

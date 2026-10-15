@@ -9,7 +9,11 @@ package testcmd
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +22,9 @@ import (
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/security"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	govservice "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -73,7 +80,7 @@ func writeSmokeReport(t *testing.T, dir string, f smokeFixture) {
 }
 
 func TestEvaluateSmokeReportAcceptsCompleteWorkerExport(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
 
 	ev, err := evaluateSmokeReport("worker", dir)
@@ -96,7 +103,7 @@ func TestEvaluateSmokeReportRejectsFailAndSkippedRows(t *testing.T) {
 	f := completeSmokeFixture()
 	f.verificationRows[0] = "commitment_chain,commitment_ledger,abc,FAIL,prior hash mismatch"
 	f.verificationRows[1] = "git_merkle_root,ledger,HEAD,SKIPPED,ledger unavailable"
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, f)
 
 	ev, err := evaluateSmokeReport("worker", dir)
@@ -114,7 +121,7 @@ func TestEvaluateSmokeReportRejectsFailAndSkippedRows(t *testing.T) {
 func TestEvaluateSmokeReportRejectsMissingRequiredCheck(t *testing.T) {
 	f := completeSmokeFixture()
 	f.verificationRows = f.verificationRows[:3]
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, f)
 
 	ev, err := evaluateSmokeReport("gateway", dir)
@@ -131,7 +138,7 @@ func TestEvaluateSmokeReportRejectsEmptyEvidence(t *testing.T) {
 	f.receiptRows = nil
 	f.commitmentRows = nil
 	f.mutationRows = nil
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, f)
 
 	ev, err := evaluateSmokeReport("worker", dir)
@@ -148,7 +155,7 @@ func TestEvaluateSmokeReportRejectsEmptyEvidence(t *testing.T) {
 func TestEvaluateSmokeReportRejectsGatewayWithoutFileMutations(t *testing.T) {
 	f := completeSmokeFixture()
 	f.mutationRows = nil
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, f)
 
 	ev, err := evaluateSmokeReport("gateway", dir)
@@ -161,7 +168,7 @@ func TestEvaluateSmokeReportRejectsGatewayWithoutFileMutations(t *testing.T) {
 }
 
 func TestRequireCompletedReceiptFailsClosedWhenNotExported(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
 	ev, err := evaluateSmokeReport("gateway", dir)
 	if err != nil {
@@ -174,7 +181,7 @@ func TestRequireCompletedReceiptFailsClosedWhenNotExported(t *testing.T) {
 }
 
 func TestEvaluateSmokeReportFailsOnMalformedCSV(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
 	if err := os.WriteFile(filepath.Join(dir, constants.ReportReceiptsFilename), []byte("a,b,c\n1,2\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -196,15 +203,8 @@ func TestParseDeploySessionReadsOnlyThisWorker(t *testing.T) {
 	}
 }
 
-func TestRedactArgvHidesMasterKeyPath(t *testing.T) {
-	got := redactArgv([]string{"ztd", "report", "--master-key-file", "/run/secrets/master.key"})
-	if got[3] != "<run-master-key>" || strings.Contains(strings.Join(got, " "), "master.key") {
-		t.Fatalf("key path not redacted: %v", got)
-	}
-}
-
 func TestExecuteRunsCleanupsAndWritesFailedSummary(t *testing.T) {
-	runDir := filepath.Join(t.TempDir(), "new-run")
+	runDir := filepath.Join(testutil.TempDir(t), "new-run")
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: runDir})
 	var cleaned []string
 	phases := []smokePhase{
@@ -233,7 +233,7 @@ func TestExecuteRunsCleanupsAndWritesFailedSummary(t *testing.T) {
 }
 
 func TestExecuteJoinsCleanupFailureWithStepFailure(t *testing.T) {
-	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(t.TempDir(), "new-run")})
+	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(testutil.TempDir(t), "new-run")})
 	r.addCleanup("gateway stop", func(context.Context) error { return errors.New("gw stop refused") })
 	err := r.execute(context.Background(), []smokePhase{{"fail", func(context.Context) error { return errors.New("boom") }}})
 	if err == nil || !strings.Contains(err.Error(), "boom") || !strings.Contains(err.Error(), "gw stop refused") {
@@ -242,7 +242,7 @@ func TestExecuteJoinsCleanupFailureWithStepFailure(t *testing.T) {
 }
 
 func TestExecuteRefusesExistingRootWithoutChangingEvidence(t *testing.T) {
-	runDir := t.TempDir()
+	runDir := testutil.TempDir(t)
 	evidenceDir := filepath.Join(runDir, "evidence")
 	if err := os.Mkdir(evidenceDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -267,7 +267,7 @@ func TestExecuteRefusesExistingRootWithoutChangingEvidence(t *testing.T) {
 }
 
 func TestClaimRunRootRejectsSymlink(t *testing.T) {
-	parent := t.TempDir()
+	parent := testutil.TempDir(t)
 	target := filepath.Join(parent, "target")
 	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatal(err)
@@ -284,7 +284,7 @@ func TestClaimRunRootRejectsSymlink(t *testing.T) {
 }
 
 func TestVerifyEvidenceFailsRunOnUnverifiedWorkerExport(t *testing.T) {
-	runDir := t.TempDir()
+	runDir := testutil.TempDir(t)
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: runDir})
 	r.reportsDir = filepath.Join(runDir, "reports")
 	r.fileTx = testSmokeTxFile
@@ -314,7 +314,7 @@ func TestZtdCommandFailurePropagatesWithExitCode(t *testing.T) {
 		}
 		bin, args = path, nil
 	}
-	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: t.TempDir(), ZtdBin: bin})
+	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: testutil.TempDir(t), ZtdBin: bin})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	_, err := r.ztd(context.Background(), "always-fails", r.opts.RunDir, args...)
 	if err == nil {
@@ -341,5 +341,100 @@ func TestReleaseSmokeCmdAnchorsRelativeBinaryAndRoot(t *testing.T) {
 	}
 	if !filepath.IsAbs(got.RunDir) {
 		t.Fatalf("root = %q, want absolute path", got.RunDir)
+	}
+}
+
+func TestReleaseSmokeCmdRejectsProtectedRootBeforeStartingRuntimes(t *testing.T) {
+	cmd := releaseSmokeCmdWithRunner(func(context.Context, releaseSmokeOptions) error {
+		t.Fatal("runner started with a protected working root")
+		return nil
+	})
+	cmd.SetArgs([]string{"--root", filepath.Join(testutil.TempDir(t), "smoke")})
+	cmd.SetOut(&strings.Builder{})
+	cmd.SetErr(&strings.Builder{})
+	if err := cmd.Execute(); !errors.Is(err, constants.ErrFileEditProtectedRuntimePath) {
+		t.Fatalf("execute = %v, want protected-runtime error", err)
+	}
+}
+
+func TestReleaseSmokeCmdDefaultPermitsGovernedFileEdits(t *testing.T) {
+	cmd := releaseSmokeCmdWithRunner(func(_ context.Context, opts releaseSmokeOptions) error {
+		for _, name := range []string{"gateway", "worker"} {
+			if security.IsProtectedRuntimePath(filepath.Join(opts.RunDir, name, "file.txt")) {
+				t.Fatalf("default root protects %s working files: %s", name, opts.RunDir)
+			}
+			if !security.IsProtectedRuntimePath(filepath.Join(opts.RunDir, name, constants.RuntimeDirname, "file.txt")) {
+				t.Fatalf("default root leaves %s runtime state writable: %s", name, opts.RunDir)
+			}
+		}
+		return nil
+	})
+	cmd.SetArgs(nil)
+	cmd.SetOut(&strings.Builder{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+}
+
+func TestSmokeReceiptAnchorsRejectUnboundWorkerKeyAndStayPinned(t *testing.T) {
+	ctx := context.Background()
+	gatewayKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newReleaseSmokeRun(releaseSmokeOptions{})
+	r.gwRoot, r.workerRoot = testutil.TempDir(t), testutil.TempDir(t)
+	gatewayFiles, err := fs.NewRuntimeFileService(r.gwRoot, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerFiles, err := fs.NewRuntimeFileService(r.workerRoot, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatewayID, workerID := hex.EncodeToString(gatewayKey), hex.EncodeToString(workerKey)
+	if err := govservice.ExportActuatorPublicKey(gatewayFiles, gatewayKey, gatewayID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := govservice.ExportActuatorPublicKey(workerFiles, workerKey, workerID, nil); err != nil {
+		t.Fatal(err)
+	}
+	worker := &operatorv1.OperatorDocument{Id: "smoke-worker", ActuatorKeyId: gatewayID, ActuatorPublicKey: gatewayID}
+	if err := r.pinReceiptAnchors(ctx, worker); !errors.Is(err, constants.ErrConformanceAnchorInvalid) {
+		t.Fatalf("mismatched worker key accepted: %v", err)
+	}
+	worker.ActuatorKeyId, worker.ActuatorPublicKey = workerID, workerID
+	if err := r.pinReceiptAnchors(ctx, worker); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.anchors.Key(workerID, releaseSmokeEmbeddedOpID); !errors.Is(err, constants.ErrConformanceAnchorUnknown) {
+		t.Fatalf("worker key accepted for Gateway: %v", err)
+	}
+	if err := govservice.ExportActuatorPublicKey(workerFiles, gatewayKey, gatewayID, nil); err != nil {
+		t.Fatal(err)
+	}
+	key, err := r.anchors.Key(workerID, worker.Id)
+	if err != nil || !key.Equal(workerKey) {
+		t.Fatalf("pinned worker key changed: %v", err)
+	}
+}
+
+func TestReleaseSmokeCmdRejectsProtectedRootThroughSymlinkAncestor(t *testing.T) {
+	parent := testutil.OperatorDir(t)
+	alias := filepath.Join(parent, "scratch-alias")
+	testutil.Symlink(t, testutil.TempDir(t), alias)
+	cmd := releaseSmokeCmdWithRunner(func(context.Context, releaseSmokeOptions) error {
+		t.Fatal("runner started through a protected symlink ancestor")
+		return nil
+	})
+	cmd.SetArgs([]string{"--root", filepath.Join(alias, "new-run")})
+	cmd.SetOut(&strings.Builder{})
+	cmd.SetErr(&strings.Builder{})
+	if err := cmd.Execute(); !errors.Is(err, constants.ErrFileEditProtectedRuntimePath) {
+		t.Fatalf("execute = %v, want protected-runtime error", err)
 	}
 }

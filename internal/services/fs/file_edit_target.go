@@ -88,11 +88,11 @@ func (fs *localFS) OpenFileEditTarget(ctx context.Context, path, workDir string)
 	if err != nil {
 		return nil, fmt.Errorf("file edit: validate path: %w", err)
 	}
-	resolvedPath, err := resolveExistingPath(absPath)
+	resolvedPath, err := ResolveExistingPath(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("file edit: resolve symlink destination: %w", err)
 	}
-	resolvedRuntime, err := resolveExistingPath(fs.runtimeDir)
+	resolvedRuntime, err := ResolveExistingPath(fs.runtimeDir)
 	if err != nil {
 		return nil, fmt.Errorf("file edit: resolve runtime directory: %w", err)
 	}
@@ -116,7 +116,7 @@ func (fs *localFS) OpenFileEditTarget(ctx context.Context, path, workDir string)
 // directory is created by the evaluation command before a run; it is never
 // created here.
 func (fs *localFS) openEvaluationTarget(path, absPath, resolvedPath string) (*FileEditTarget, error) {
-	targetDir, err := resolveExistingPath(fs.Resolve(constants.EvaluationControlledTargetDirname))
+	targetDir, err := ResolveExistingPath(fs.Resolve(constants.EvaluationControlledTargetDirname))
 	if err != nil {
 		return nil, fmt.Errorf("file edit: resolve controlled evaluation target directory: %w", err)
 	}

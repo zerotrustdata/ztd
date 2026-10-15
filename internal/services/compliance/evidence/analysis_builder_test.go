@@ -197,7 +197,7 @@ func analysisTestGraph(t *testing.T) *evidence.EvidenceGraph {
 		VerifierID:         "test-verifier",
 		VerifierVersion:    "1.0.0",
 		VerifiedAt:         analysisTestEvaluatedAt.Add(-time.Hour),
-		BundlePath:         constants.EvaluationReportFilename,
+		BundlePath:         constants.ConformanceRecordFilename,
 		CanonicalBytes:     receiptBody,
 		References:         []string{},
 	}))
@@ -218,7 +218,7 @@ func analysisTestGraph(t *testing.T) *evidence.EvidenceGraph {
 		VerifierID:         "test-verifier",
 		VerifierVersion:    "1.0.0",
 		VerifiedAt:         analysisTestEvaluatedAt.Add(-time.Hour),
-		BundlePath:         constants.EvaluationReportFilename,
+		BundlePath:         constants.ConformanceRecordFilename,
 		CanonicalBytes:     metricBody,
 		References:         []string{receiptID},
 	}))
@@ -599,8 +599,8 @@ func TestBuildComplianceAnalysis_CanonicalVectorIsPinned(t *testing.T) {
 	canonical, err := compliancev1.MarshalCanonical(analysis)
 	require.NoError(t, err)
 	digest := sha256.Sum256(canonical)
-	assert.Equal(t, "compliance-analysis:sha256:2e7ea24aa85d73f99b03a0d34db5efa4ca29657e533f01cb5a4f294be93a9271", analysis.GetAnalysisId())
-	assert.Equal(t, "2a5ac6340b865bd25d3f6be5bce1ee8b371cfbff0c92c751385242eb3c59e40b", hex.EncodeToString(digest[:]))
+	assert.Equal(t, "compliance-analysis:sha256:73066d9dd08b42562d12cb0d5f97f4a50ccd3378ec415c5e696777963e959cbc", analysis.GetAnalysisId())
+	assert.Equal(t, "fdc1187ada70f4b8cba4ef02fc2748e01ac2562f838d2e68dd2de28efe12877b", hex.EncodeToString(digest[:]))
 }
 
 func TestBuildComplianceAnalysis_CanonicalBytesIgnoreInputOrdering(t *testing.T) {

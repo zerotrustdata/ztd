@@ -26,6 +26,7 @@ export function ApprovalsView({ autoApproveTxHash, focusEnrollmentId, recoveryTo
   const { transactions, enrollments, canReviewEnrollments, reload } = useApprovals();
   const toast = useToast();
   const [pending, setPending] = useState<string | null>(null);
+  const [denying, setDenying] = useState(false);
 
   const approve = async (txHash: string) => {
     setPending(txHash);
@@ -36,6 +37,23 @@ export function ApprovalsView({ autoApproveTxHash, focusEnrollmentId, recoveryTo
       toast('error', errorText(err));
     } finally {
       setPending(null);
+      await reload();
+    }
+  };
+
+  // A deny is the Operator-signed L3_DENIED rejection; it needs no passkey
+  // because it can only stop the transaction.
+  const deny = async (txHash: string) => {
+    setPending(txHash);
+    setDenying(true);
+    try {
+      await api.post(Paths.approvalsRespond, { approval_id: txHash, approved: false });
+      toast('success', 'Transaction denied. The executing runtime signed the rejection.');
+    } catch (err) {
+      toast('error', errorText(err));
+    } finally {
+      setPending(null);
+      setDenying(false);
       await reload();
     }
   };
@@ -112,7 +130,15 @@ export function ApprovalsView({ autoApproveTxHash, focusEnrollmentId, recoveryTo
                       disabled={pending !== null}
                       onClick={() => void approve(tx.transaction_hash)}
                     >
-                      {pending === tx.transaction_hash ? 'Waiting for passkey…' : 'Approve'}
+                      {pending === tx.transaction_hash && !denying ? 'Waiting for passkey…' : 'Approve'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger"
+                      disabled={pending !== null}
+                      onClick={() => void deny(tx.transaction_hash)}
+                    >
+                      {pending === tx.transaction_hash && denying ? 'Denying…' : 'Deny'}
                     </button>
                   </td>
                 </tr>

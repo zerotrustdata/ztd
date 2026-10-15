@@ -3,8 +3,8 @@ doc_id: overview
 title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -82,7 +82,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-ARCH-PIPE-01 | Every operation entering a governed platform path MUST pass through the five-layer verification pipeline (L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, L5 Actuator). Universal checks (hash integrity, replay nonce reservation, expiration, state Merkle root, payload decode) and posture-required proofs fail closed. Optional L2/L3 proofs are verified and recorded as audit evidence without gating execution. |
-| INV-ARCH-PIPE-02 | The platform MUST enforce one of four immutable governance postures (`doctrine`, `consensus`, `ratify`, `notary`) selected at Gateway startup via `--posture`. The executing Operator's L4 Warden treats the posture declared in `GovernanceEnvelope.Posture` as authoritative. |
+| INV-ARCH-PIPE-02 | The Gateway selects one of four immutable governance postures (`doctrine`, `consensus`, `ratify`, `notary`) at startup via `--posture` and stamps it into its constructed `GovernanceEnvelope`. The executing Operator's L4 Warden applies the posture carried in that Gateway-built envelope; client-supplied posture is not authoritative. |
 | INV-ARCH-PIPE-03 | The L5 Actuator is the sole execution boundary. It MUST sign an `EXECUTING` receipt, append to the commitment chain when SQL audit is active, rehydrate scrubbed secrets at the execution site, mint a short-lived capability bound to the transaction hash, dispatch the action, dissolve the capability, and persist a final `COMPLETED` or `FAILED` receipt. |
 
 ### Node Topology and Operating Modes (`INV-ARCH-NODE`)
@@ -146,8 +146,8 @@ The platform ships as a single static Go binary (`ztd`) serving multiple operati
 3. **Embedded Operator**: The in-process Operator substrate inside the Gateway (`operator_type: embedded`). It runs concurrently with the Gateway, carries the `data` capability by default, and accesses local execution evidence via `storage.OpenLocalExecutionEvidence`.
 4. **CLI Client (`ztd`)**: Unified command-line interface encompassing command groups: `gw`, `auth`, `mcp`, `operator`, `vault`, `test`, `audit`, `report`, `public`, `swagger`, `tui`, `version`, `compliance`, and `eval`. Flags and defaults resolve via `./ztd <command> --help`.
 5. **Terminal UI (`ztd tui`)**: Interactive terminal interface monitoring Gateway state, connected Operators, session leases, and recent transactions.
-6. **Console**: React and TypeScript Single Page Application embedded into the Gateway binary and served at `https://<gateway>:8443/console/`. Manages WebAuthn passkey authentication, human approvals, Operator inventory, and audit telemetry.
-7. **Evaluation Explorer**: Specialized web application served on port 5173 for real-time model campaign monitoring, prompt inspections, hardware observation, and benchmark verification.
+6. **Console**: React and TypeScript Single Page Application embedded into the Gateway binary and served at `/console/` on the Gateway HTTPS origin. It calls Gateway APIs for WebAuthn authentication, human approvals, Operator inventory, and audit telemetry; it does not communicate directly with Operators.
+7. **Evaluation Explorer**: Optional evaluation campaign interface served by the Gateway's loopback Explorer listener when enabled and configured. It is an auxiliary surface, not a separate always-running platform service.
 
 ### The Five-Layer Governance Pipeline
 
@@ -156,7 +156,7 @@ Every transaction entering a governed platform path traverses five distinct veri
 | Layer | Owner | Responsibilities | Failure Mode |
 | :--- | :--- | :--- | :--- |
 | **L1 Doctrine** | Gateway (PDP) & Operator (PEP) | Static forbidden-pattern matching, MITRE ATT&CK heuristics, and command safety analysis. Detects privilege escalation, destructive disk operations, reverse shells, and credential access. | Fails closed with `ErrTxL1ValidationFailed` across all postures. |
-| **L2 Consensus** | Gateway (Coord.) & Operator (Verify) | $K$-of-$N$ Ed25519 multi-agent machine quorum over `<transaction_hash>\|<decision>`. Members independently deliberate and sign affirmative or negative votes. | Fails closed with `ErrTxL2QuorumNotMet` under `consensus` and `notary`. Audited under `doctrine` and `ratify`. |
+| **L2 Consensus** | Gateway (Coord.) & Operator (Verify) | $K$-of-$N$ Ed25519 multi-agent machine quorum over `<transaction_hash>\|<decision>`. Members independently deliberate and sign affirmative or negative votes. | Fails closed with `ErrTxL2QuorumNotMet`, or `ErrTxL2SignatureInvalid` for a forged member vote, under `consensus` and `notary`. Audited under `doctrine` and `ratify`. |
 | **L3 Notary** | Gateway (Coord.) & Operator (Verify) | Human authorization for mutating operations. Gateway challenges require WebAuthn passkey assertions. Operator verification checks approved suspended transactions with authorized cryptographic proofs. | Fails closed with `ErrTxL3ProofMissing` for mutations under `ratify` and `notary`. Audited under `doctrine` and `consensus`. |
 | **L4 Warden** | Executing Operator (PEP) | Pre-dispatch verification gate: reserves nonce in durable SQLite replay store, verifies TTL expiry, decodes typed payload, validates target ownership, re-runs L1 Doctrine, recalculates transaction hash, checks state Merkle root, and enforces posture-required L2/L3 proofs. | Fails closed; releases reserved nonce and records a signed failed receipt. |
 | **L5 Actuator** | Executing Operator (PEP) | Sole execution boundary: signs and persists an initial `EXECUTING` receipt, appends signed commitment to SQL ledger, rehydrates scrubbed secrets via local vault, mints a short-lived JIT capability, dispatches typed action handler, dissolves capability, and persists signed `COMPLETED` or `FAILED` receipt. | Fails closed; execution aborts if receipt signing, commitment append, or capability minting fails. |
@@ -165,12 +165,14 @@ Every transaction entering a governed platform path traverses five distinct veri
 
 The platform operates under one of four immutable governance postures set at Gateway startup via `--posture <posture>`:
 
-| Posture | L1 Doctrine | L2 Consensus | L3 Notary (Mutations) | L3 Notary (Read-Only) | Operational Use Case |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`doctrine`** | Enforced | Audited | Audited | Not Required | Local development, automated testing, and CI pipelines |
-| **`consensus`** | Enforced | Enforced ($K$-of-$N$) | Audited | Not Required | Autonomous multi-agent workflows with machine peer review |
-| **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required | Interactive workflows requiring human sign-off on mutations |
-| **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) | Not Required | High-assurance production environments with full interlock |
+| Posture | L1 Doctrine | L2 Consensus | L3 Notary (Mutations) | L3 Notary (Read-Only) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`doctrine`** | Enforced | Audited | Audited | Not Required |
+| **`consensus`** | Enforced | Enforced ($K$-of-$N$) | Audited | Not Required |
+| **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required |
+| **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) | Not Required |
+
+Posture selects which evidence gates execution; it does not by itself configure Consensus services, voters, or human identities.
 
 Universal invariants enforced across every posture: L1 Doctrine evaluation, canonical transaction hash integrity, durable replay nonce reservation, expiration validation, state Merkle root verification, execution target matching, and payload decoding.
 
@@ -192,7 +194,7 @@ sequenceDiagram
         Delib-->>GW: Return L2 Ed25519 Votes
     end
     opt Posture requires L3 (Mutation)
-        GW-->>Client: Challenge / Suspend (HTTP 403 / Approval URL)
+        GW-->>Client: Suspend / Approval URL
         Client->>GW: Submit WebAuthn Assertion
         GW->>GW: Attach L3 Notary Proof
     end
@@ -204,6 +206,8 @@ sequenceDiagram
     OP-->>GW: Publish Receipt (receipts:<op_id>:<session_id>)
     GW-->>Client: Return Result & Signed ActionReceipt
 ```
+
+A caller can instead deny a suspended transaction through `POST /api/v1/approvals/respond`. The Gateway resubmits it with an L3 deny marker; the Operator rejects it and returns a signed `L3_DENIED` receipt, which the Gateway returns and publishes as `approval.completed`. The denied transaction does not continue through normal execution.
 
 ### Client Ingress Surfaces and Protocol Adapters
 
@@ -234,12 +238,14 @@ The network topology strictly isolates management, application, observation, and
 
 | Port | Protocol | Listener | Authentication Policy | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| **8080** | HTTP | Gateway | Public / Token Bootstrap | Plaintext discovery (`/.well-known/ztd/pki/*`), health, bootstrap WebSocket, and HTTPS redirects |
-| **8443** | HTTPS | Gateway | Route-Gated (`RouteAuthNone`, `RouteAuthMTLS`, `RouteAuthWebSession`, `RouteAuthDual`) | Authenticated API, Console SPA, MCP, A2A, WebSocket pub/sub command channels, and governance routes |
+| **8080 default** | HTTP | Gateway | Public / Token Bootstrap | Plaintext discovery (`/.well-known/ztd/pki/*`), health, bootstrap WebSocket, and redirects to the resolved HTTPS listener |
+| **8443 default** | HTTPS | Gateway | Route-Gated (`RouteAuthNone`, `RouteAuthMTLS`, `RouteAuthWebSession`, `RouteAuthDual`) | Authenticated API, Console SPA, MCP, A2A, WebSocket pub/sub command channels, and governance routes |
 | **8081** | HTTP | Gateway | Loopback Only | Private ingest listener for exporting public spectator mirror feeds |
 | **8082** | HTTP | Public Mirror | Anonymous / Public | Public spectator mirror serving sanitized feeds, SSE, and content-addressed proofs |
-| **5173** | HTTP | Eval Explorer | Loopback Only | Evaluation Explorer SPA for live campaign and model telemetry |
+| **5173 default** | HTTP | Gateway Explorer | Loopback Only | Optional evaluation Explorer SPA when enabled/configured |
 | **11434**| HTTP | Ollama Provider | Localhost / Private LAN | Model provider dialed exclusively by the Inference Operator |
+
+The Gateway's HTTP and HTTPS values are defaults. After configuration validation, startup checks availability and may bind both listeners at the same higher offset; the selected values are persisted in the launch profile. Auxiliary mirror and Explorer listeners have separate loopback defaults and may be configured independently.
 
 Certificates are issued under the `ztd.local` SPIFFE trust domain:
 - Operator: `spiffe://ztd.local/operator/<organization_id>/<operator_id>/<operator_session_id>`
@@ -259,7 +265,7 @@ Authentication enforces strong cryptographic identity:
 ### Cryptographic Key Custody and Vault Hierarchy
 
 ztd protects sensitive data using a three-tier encryption hierarchy:
-- **Platform Master Key**: 32-byte key held in the OS keyring or protected external key file (`0600` permissions). Never stored in plaintext in the runtime tree.
+- **Platform Master Key**: 32-byte key sealed by the OS key store, or by an ssh-agent key on hosts without one. Never stored in plaintext, and a host with neither fails closed.
 - **Vault Key**: 32-byte key sealed under the master key and stored in `.ztd/secrets/vault_key`.
 - **Key Encryption Key (KEK)**: Derived from the vault key using HKDF-SHA256 with domain-specific salt and info strings.
 - **Data Encryption Key (DEK)**: 256-bit AES key wrapped by the KEK using AES Key Wrap and stored in `.ztd/vault/vault.header`. Encrypts sensitive audit logs, file diffs, and scrubber tokens using AES-256-GCM.
@@ -283,7 +289,7 @@ The Gateway operates an SSE streaming infrastructure for live observation:
 
 Observation operates across strict trust tiers:
 1. **Private Observe API**: Authenticated Gateway endpoints serving raw operational telemetry to authorized operators and CLI clients.
-2. **Evaluation Explorer**: Served on loopback port 5173, providing rich visualization of evaluation campaigns, scenario grading, model responses, and hardware metrics.
+2. **Evaluation Explorer**: Optional Gateway auxiliary listener, loopback port 5173 by default, providing evaluation campaign views when enabled/configured.
 3. **Public Spectator Mirror**: Operates on loopback port 8082 as a read-only, sanitized mirror. The Gateway exports public-safe event projections over internal port 8081. All credentials, paths, identities, and private payloads are scrubbed prior to export.
 
 ### Protocol Contracts and Code Generation

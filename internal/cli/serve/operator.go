@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 )
@@ -49,6 +50,9 @@ type ServeOperatorOptions struct {
 	CloudMode         bool
 	CloudProvider     string
 	HeartbeatInterval time.Duration
+	// Keyring holds the master key. Nil selects the OS key store; in-process
+	// test Operators inject an isolated in-memory keyring.
+	Keyring keyring.Keyring
 
 	Posture string
 
@@ -61,10 +65,6 @@ type ServeOperatorOptions struct {
 
 	ProvenanceOperatorID               string
 	ProvenanceOperatorModelStorageRoot string
-
-	// MasterKeyFile is an operator-provisioned master key outside the runtime
-	// directory, required where no OS key store exists.
-	MasterKeyFile string
 }
 
 // resolveOperatorGateway splits the --endpoint value (host or host:port,
@@ -121,12 +121,12 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		HTTPSPort:            opts.HTTPSPort,
 		CloudMode:            opts.CloudMode,
 		CloudProvider:        opts.CloudProvider,
-		MasterKeyFile:        opts.MasterKeyFile,
 		LogLevel:             opts.LogLevel,
 		WorkDir:              effectiveWorkDir,
 		PKIDir:               "",
 		SecretsDir:           "",
 		HeartbeatInterval:    opts.HeartbeatInterval,
+		Keyring:              opts.Keyring,
 		Shell:                os.Getenv(string(constants.EnvVar.Shell)),
 		Lang:                 os.Getenv(string(constants.EnvVar.Lang)),
 		Term:                 os.Getenv(string(constants.EnvVar.Term)),

@@ -18,11 +18,13 @@ echo "=== Go smoke test ==="
 
 VERSION=$(cat "$REPO_ROOT/VERSION" | tr -d '\n' | sed 's/^v//')
 
-# Create a temp project that imports the ztd module
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+# Create a scratch project that imports the ztd module
+# shellcheck source=lib/scratch.sh
+. "$SCRIPT_DIR/lib/scratch.sh"
+SCRATCH=$(ztd_scratch_dir "$REPO_ROOT" ztd-go-smoke)
+trap 'rm -rf "$SCRATCH"' EXIT
 
-cd "$TMPDIR"
+cd "$SCRATCH"
 go mod init smoke-test
 
 # Write a minimal main that imports a public package

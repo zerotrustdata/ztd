@@ -25,7 +25,7 @@ func TestEvalTreeInvariants(t *testing.T) {
 	// Invariant 1: No group has exactly one subcommand
 	checkNoSingletonGroups(t, cmd)
 
-	// Invariant 2: Group names are plural (except mass nouns: rollout, boundary, observer)
+	// Invariant 2: Group names are plural (except mass nouns: rollout, conformance)
 	checkPluralGroupNames(t, cmd)
 
 	// Invariant 3: No --run-id, --params, or path flags (except --output-dir)
@@ -53,8 +53,8 @@ func checkNoSingletonGroups(t *testing.T, cmd *cobra.Command) {
 func checkPluralGroupNames(t *testing.T, cmd *cobra.Command) {
 	// Mass nouns that are allowed to be singular-like
 	massNouns := map[string]bool{
-		"rollout":  true,
-		"boundary": true,
+		"rollout":     true,
+		"conformance": true,
 	}
 
 	walkCommands(cmd, func(path []string, c *cobra.Command) {
@@ -116,6 +116,18 @@ func checkJSONSupport(t *testing.T, cmd *cobra.Command) {
 	})
 }
 
+// idFlagSelectors are "-id" flags that select a party to act on or act as, not the
+// ID of the command's own subject: session-id, operator-session-id, and pool-id
+// select a session or pool, and operator-id and approver-user-id select the
+// remote Operator and the approving user.
+var idFlagSelectors = map[string]bool{
+	"session-id":          true,
+	"operator-session-id": true,
+	"pool-id":             true,
+	"operator-id":         true,
+	"approver-user-id":    true,
+}
+
 func checkPositionalIDs(t *testing.T, cmd *cobra.Command) {
 	// Check that commands taking IDs use positional arguments
 	idFlagPatterns := []string{"-id"}
@@ -125,8 +137,7 @@ func checkPositionalIDs(t *testing.T, cmd *cobra.Command) {
 		}
 		c.Flags().VisitAll(func(f *pflag.Flag) {
 			for _, pattern := range idFlagPatterns {
-				if strings.HasSuffix(f.Name, pattern) && f.Name != "session-id" && f.Name != "operator-session-id" && f.Name != "pool-id" {
-					// session-id, operator-session-id, and pool-id are not command IDs
+				if strings.HasSuffix(f.Name, pattern) && !idFlagSelectors[f.Name] {
 					t.Errorf("command %s should use positional argument for ID, not flag --%s (invariant 5)", strings.Join(path, " "), f.Name)
 				}
 			}
@@ -157,7 +168,7 @@ func TestEvalCmd_ContainsExpectedGroups(t *testing.T) {
 	cmd := evalCmdWithConfig(deps)
 
 	expected := []string{
-		"backup", "boundary", "campaigns", "formations", "gates", "models", "restore", "rollout", "runs", "suites",
+		"backup", "campaigns", "conformance", "formations", "gates", "models", "restore", "rollout", "runs", "suites",
 	}
 	var actual []string
 	for _, subcmd := range cmd.Commands() {

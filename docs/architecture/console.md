@@ -3,8 +3,8 @@ doc_id: console
 title: Console Architecture and Development Guide
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - console/
   - internal/services/gateway/console/
@@ -31,7 +31,7 @@ do_not_use_for:
 
 The ztd Console is the platform's browser frontend. It is a React and TypeScript single-page application built from `console/` and embedded in the single static `ztd` binary; the Gateway serves it at `/console/` on its HTTPS port.
 
-The console shares the Gateway's origin, communicating exclusively with the Gateway over HTTPS without CORS configuration, using a first-party `SameSite=Lax` session cookie.
+The console shares the Gateway's origin, communicating exclusively with the Gateway over HTTPS without CORS configuration, using a first-party `SameSite=Lax` session cookie. It does not call Operators or expose a standalone browser service.
 
 The console covers core platform administrative operations:
 - **Authentication**: First-owner passkey enrollment, passkey sign-in, and CLI-initiated passkey enrollment (`#enroll=1&token=…`).
@@ -126,6 +126,7 @@ The console is an untrusted presentation layer with zero cryptographic keys or s
 The Approvals view handles human-in-the-loop decisions:
 
 - `#approve=<tx_hash>`: Deep link that initiates a WebAuthn assertion ceremony over the suspended transaction hash. Successful assertion notifies the Gateway via `/api/v1/approvals/`.
+- **Deny** on a suspended transaction posts `{approval_id, approved: false}` to `POST /api/v1/approvals/respond`. Denial does not prompt for a fresh WebAuthn assertion, but requires an authenticated caller; under `ratify` or `notary`, a web caller must have a registered passkey and a CLI caller must use mTLS. The Gateway resubmits the denial marker to the executing Operator; L4 rejects it, L5 signs the `L3_DENIED` receipt, and the Gateway returns and publishes that receipt. Approval itself requires a WebAuthn assertion through the verify route.
 - `#recovery=<token>`: Reviews an operator or CLI recovery request (`POST /api/v1/auth/cli/recovery/approve`).
 - `#platform-enrollment=<id>`: Owner review of pending workload enrollment requests (`POST /api/v1/auth/platform-enrollments/decision`).
 

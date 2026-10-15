@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -35,12 +36,35 @@ type ScenarioWorkspace struct {
 	OperatorWorkingDirectory string
 }
 
-// ValidateOperatorWorkingDirectory reports whether a Data Operator's working
-// directory can host scenario workspaces. Run execution checks it before any
-// assignment is marked running, so a bad binding never strands an assignment.
-func ValidateOperatorWorkingDirectory(operatorWorkingDirectory string) error {
-	_, err := cleanOperatorWorkingDirectory(operatorWorkingDirectory)
-	return err
+// ValidateAgentDataOperator reports whether a Data Operator may host
+// model-role scenarios. The model under evaluation runs arbitrary shell
+// commands in the operator working directory, so that directory MUST be
+// disposable: never the Gateway's embedded Operator, whose working directory
+// is the ztd project, and never a directory that is, contains, or sits inside
+// projectRoot. Run execution checks it before any assignment is marked running.
+func ValidateAgentDataOperator(embedded bool, operatorWorkingDirectory, projectRoot string) error {
+	workingDirectory, err := cleanOperatorWorkingDirectory(operatorWorkingDirectory)
+	if err != nil {
+		return err
+	}
+	if embedded {
+		return fmt.Errorf("%w: the embedded Operator runs in the ztd project %q; start a dedicated Data Operator (ztd operator deploy --local --background)", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory)
+	}
+	project, ok := cleanOperatorAbsPath(filepath.ToSlash(projectRoot))
+	if !ok {
+		return fmt.Errorf("%w: project root %q is not an absolute path", constants.ErrEvaluationWorkspaceUnavailable, projectRoot)
+	}
+	// The one sanctioned location inside the project is a throwaway Operator
+	// directly under <project>/.ztd/operators/; anything else that overlaps
+	// the project would let scenario fixtures touch ztd source or state.
+	operators := path.Join(project, constants.RuntimeDirname, constants.OperatorsDirname)
+	if path.Dir(workingDirectory) == operators {
+		return nil
+	}
+	if pathWithin(workingDirectory, project) || pathWithin(project, workingDirectory) {
+		return fmt.Errorf("%w: operator working directory %q overlaps the ztd project %q; start the Data Operator under %s/<name> or in a disposable directory outside the project", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory, project, operators)
+	}
+	return nil
 }
 
 func cleanOperatorWorkingDirectory(operatorWorkingDirectory string) (string, error) {
@@ -70,6 +94,12 @@ func NewScenarioWorkspace(operatorWorkingDirectory, runID, attemptID string) (Sc
 // Render replaces every ScenarioWorkspaceToken in text with the workspace root.
 func (w ScenarioWorkspace) Render(text string) string {
 	return strings.ReplaceAll(text, ScenarioWorkspaceToken, w.Root)
+}
+
+// SentinelPath is the harness-owned file the attempt's ledger sentinels read.
+// It sits next to the workspace root, outside the model's workspace.
+func (w ScenarioWorkspace) SentinelPath() string {
+	return path.Join(path.Dir(w.Root), path.Base(w.Root)+constants.EvaluationWorkspaceSentinelSuffix)
 }
 
 // FilePath returns the absolute path of one workspace-relative fixture path.

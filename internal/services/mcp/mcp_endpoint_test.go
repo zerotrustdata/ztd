@@ -20,8 +20,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // endpointTestOption is a functional option for configuring a test GatewayService for endpoint tests.
@@ -41,6 +44,7 @@ func newEndpointTestGatewayService(opts ...endpointTestOption) *GatewayService {
 	logger := slog.Default()
 	_, privKey, _ := ed25519.GenerateKey(rand.Reader)
 	g := &GatewayService{
+		posture:         &governance.DoctrinePosture{},
 		logger:          logger,
 		responder:       response.NewWriter(logger),
 		maxPayloadBytes: 10 * 1024 * 1024,
@@ -219,7 +223,9 @@ func TestHandleMCP_InvalidJSONRPCVersion(t *testing.T) {
 
 	require.NotNil(t, resp.Error)
 	require.Equal(t, -32600, resp.Error.Code)
-	require.Contains(t, resp.Error.Message, "jsonrpc version must be 2.0")
+	require.Equal(t, constants.ErrJSONRPCVersionInvalid.Error(), resp.Error.Message)
+	require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST,
+		decodeRefusal(t, resp.Error.Data).GetCode())
 }
 
 func TestHandleMCP_MissingMethod(t *testing.T) {
@@ -319,7 +325,9 @@ func TestHandleMCP_InvalidJSON(t *testing.T) {
 
 	require.NotNil(t, resp.Error)
 	require.Equal(t, constants.JSONRPCErrorCodeParseError, resp.Error.Code)
-	require.Contains(t, resp.Error.Message, constants.JSONRPCErrorMessageParseError)
+	require.Equal(t, constants.ErrInvalidJSONBody.Error(), resp.Error.Message)
+	require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST,
+		decodeRefusal(t, resp.Error.Data).GetCode())
 }
 
 func TestHandleMCP_ToolsList(t *testing.T) {
@@ -348,6 +356,31 @@ func TestHandleMCP_ToolsList(t *testing.T) {
 	err = json.Unmarshal(resp.Result, &result)
 	require.NoError(t, err)
 	require.NotNil(t, result.Tools)
+}
+
+// listedNames returns the name of each tool entry, in order.
+func listedNames(t *testing.T, tools []json.RawMessage) []string {
+	t.Helper()
+	names := make([]string, 0, len(tools))
+	for _, raw := range tools {
+		var head struct {
+			Name string `json:"name"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &head))
+		names = append(names, head.Name)
+	}
+	return names
+}
+
+func TestListToolsNoDownstreamListsNativeToolsOnly(t *testing.T) {
+	g := newTestGatewayService(t)
+	res, err := g.listToolsResult(context.Background())
+	require.NoError(t, err)
+
+	names := listedNames(t, res.Tools)
+	require.Len(t, names, len(g.nativeToolHandler.registry.List()))
+	require.Contains(t, names, (&RunShellCommandTool{}).Name())
+	require.Contains(t, names, (&FileReadTool{}).Name())
 }
 
 func TestHandleMCP_ResourcesList(t *testing.T) {

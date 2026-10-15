@@ -15,10 +15,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestLoadActionTypeMeta_ReadsGoConstValueAndClassificationFlags(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "status.json")
+	path := filepath.Join(testutil.TempDir(t), "status.json")
 	writeFile(t, path, `{
 		"status": {
 			"action_type": {
@@ -43,7 +45,7 @@ func TestLoadActionTypeMeta_ReadsGoConstValueAndClassificationFlags(t *testing.T
 }
 
 func TestLoadActionTypeMeta_ReturnsEmptyMapWhenStatusHasNoActionTypes(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "status.json")
+	path := filepath.Join(testutil.TempDir(t), "status.json")
 	writeFile(t, path, `{"status":{}}`)
 
 	got, err := loadActionTypeMeta(path)
@@ -55,13 +57,13 @@ func TestLoadActionTypeMeta_ReturnsEmptyMapWhenStatusHasNoActionTypes(t *testing
 
 func TestLoadActionTypeMeta_ReportsMissingAndMalformedFiles(t *testing.T) {
 	t.Run("missing file", func(t *testing.T) {
-		_, err := loadActionTypeMeta(filepath.Join(t.TempDir(), "absent.json"))
+		_, err := loadActionTypeMeta(filepath.Join(testutil.TempDir(t), "absent.json"))
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
 	t.Run("malformed json names the file", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "status.json")
+		path := filepath.Join(testutil.TempDir(t), "status.json")
 		writeFile(t, path, `{"status": `)
 
 		_, err := loadActionTypeMeta(path)
@@ -70,7 +72,7 @@ func TestLoadActionTypeMeta_ReportsMissingAndMalformedFiles(t *testing.T) {
 		assert.Contains(t, err.Error(), "decode "+path)
 	})
 	t.Run("flag with wrong type", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "status.json")
+		path := filepath.Join(testutil.TempDir(t), "status.json")
 		writeFile(t, path, `{"status":{"action_type":{"X":{"_mutation":"yes"}}}}`)
 
 		_, err := loadActionTypeMeta(path)

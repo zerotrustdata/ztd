@@ -66,9 +66,10 @@ func (o *PasskeyOrchestrator) ApproveSuspendedTransaction(ctx context.Context, t
 	return o.suspendedStore.ApproveSuspendedTransaction(ctx, txHash, proof)
 }
 
-// DenySuspendedTransaction discards a suspended transaction the user declined.
-func (o *PasskeyOrchestrator) DenySuspendedTransaction(ctx context.Context, txHash string) error {
-	return o.suspendedStore.DeleteSuspendedTransaction(ctx, txHash)
+// DenySuspendedTransaction ends a suspended transaction the user declined and
+// returns the executing Operator's signed L3_DENIED rejection receipt.
+func (o *PasskeyOrchestrator) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+	return o.mcpSvc.DenySuspendedTransaction(ctx, txHash, userID)
 }
 
 // ListSuspendedTransactions retrieves all non-expired suspended transactions for a user.
@@ -78,8 +79,10 @@ func (o *PasskeyOrchestrator) ListSuspendedTransactions(ctx context.Context, use
 
 // EmitApprovalCompletedSSE publishes an approval.completed SSE event scoped to
 // the specific CLI session that submitted the transaction, so the waiting CLI
-// client receives real-time notification without polling.
-func (o *PasskeyOrchestrator) EmitApprovalCompletedSSE(userID, cliSessionID, txHash string, receipt *models.ApprovalReceiptReference) {
+// client receives real-time notification without polling. The receipt is the
+// canonical signed ActionReceipt of the decision: the resumed transaction's
+// receipt on approval, its L3_DENIED rejection receipt on deny.
+func (o *PasskeyOrchestrator) EmitApprovalCompletedSSE(userID, cliSessionID, txHash string, receipt json.RawMessage) {
 	if userID == "" || cliSessionID == "" {
 		o.logger.Warn("approval: skipping SSE emission due to missing parameters", "user_id", userID, "cli_session_id", cliSessionID, "tx_hash", txHash)
 		return

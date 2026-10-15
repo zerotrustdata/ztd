@@ -55,7 +55,7 @@ func (blockingCampaignMirrorProbe) DatasetPresent(ctx context.Context, _ string)
 
 func TestCampaignMirrorReconciler_ReconcileVerifiedQueueReportsProgressAndBoundsEachRun(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		files := newCampaignMemoryFileService()
+		files := newCampaignRuntimeFileService(t)
 		store := NewStore(files)
 		exporter := &recordingCampaignFeedExporter{}
 		coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
@@ -78,7 +78,7 @@ func TestCampaignMirrorReconciler_ReconcileVerifiedQueueReportsProgressAndBounds
 }
 
 func TestCampaignMirrorReconcilerRestoresMissingVerifiedRuns(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
@@ -122,7 +122,7 @@ func TestCampaignMirrorReconcilerRestoresMissingVerifiedRuns(t *testing.T) {
 }
 
 func TestCampaignMirrorReconciler_ReconcileVerifiedQueueForceSkipsPresentDataset(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
@@ -147,7 +147,7 @@ func TestCampaignMirrorReconciler_ReconcileVerifiedQueueForceSkipsPresentDataset
 }
 
 func TestCampaignMirrorReconciler_ReconcileRunRestoresMissingDataset(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
@@ -163,7 +163,7 @@ func TestCampaignMirrorReconciler_ReconcileRunRestoresMissingDataset(t *testing.
 }
 
 func TestCampaignMirrorReconciler_ReconcileRunSkipsPresentDataset(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	run := completedVerifiedMirrorTestCampaign(t, store)
@@ -179,7 +179,7 @@ func TestCampaignMirrorReconciler_ReconcileRunSkipsPresentDataset(t *testing.T) 
 }
 
 func TestCampaignMirrorReconciler_ReconcileRunForceRepublishesPresentDataset(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
@@ -199,7 +199,7 @@ func TestCampaignMirrorReconciler_ReconcileRunForceRepublishesPresentDataset(t *
 }
 
 func TestCampaignPublicationCoordinatorResetsIdempotencyWhenMirrorDatasetMissing(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
@@ -227,7 +227,7 @@ func TestCampaignMirrorReconciler_EligibilityUsesCanonicalCampaignState(t *testi
 		for _, state := range []string{"verified", "unfinished", "unverified", "verification_failed", "corrupt_verification"} {
 			t.Run(source+"/"+state, func(t *testing.T) {
 				ctx := context.Background()
-				files := newCampaignMemoryFileService()
+				files := newCampaignRuntimeFileService(t)
 				store := NewStore(files)
 				run := completedVerifiedMirrorTestCampaign(t, store)
 				runID := run.GetRunId()
@@ -286,7 +286,7 @@ func TestCampaignMirrorReconciler_EligibilityUsesCanonicalCampaignState(t *testi
 }
 
 func TestCampaignMirrorReconciler_QueueReportsMissingHostEvidence(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)

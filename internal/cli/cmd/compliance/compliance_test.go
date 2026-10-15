@@ -29,18 +29,16 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-// seedKSIRuntimeVault initializes the runtime vault under fileSvc with a master
-// key file kept outside the runtime root, and returns that path. The ksi command
-// must then open the vault with --master-key-file, so tests never touch the OS
-// key store.
-func seedKSIRuntimeVault(t *testing.T, fileSvc fs.RuntimeFileService) string {
+// seedKSIRuntimeVault initializes the runtime vault under fileSvc with an
+// isolated in-memory master key, and returns the keystore options the ksi
+// command must open the vault with, so tests never touch the OS key store.
+func seedKSIRuntimeVault(t *testing.T, fileSvc fs.RuntimeFileService) keystore.Options {
 	t.Helper()
-	masterKeyFile, err := keystore.ProvisionMasterKeyFile(testutil.TempDir(t))
-	require.NoError(t, err)
-	ks, err := keystore.Open(fileSvc, testutil.NewTestLogger(), keystore.Options{MasterKeyFile: masterKeyFile})
+	opts := keystore.Options{Keyring: keystoretest.NewMemoryKeyring()}
+	ks, err := keystore.Open(fileSvc, testutil.NewTestLogger(), opts)
 	require.NoError(t, err)
 	require.NoError(t, ks.InitVault())
-	return masterKeyFile
+	return opts
 }
 
 // writeTestKSICatalog creates and writes a valid test KSI catalog via the given file service.
@@ -128,7 +126,7 @@ func TestComplianceKSICmd_RejectsEachMissingEvaluationBindingFlag(t *testing.T) 
 	}
 	for _, omitted := range requiredFlags {
 		t.Run("missing "+omitted.name, func(t *testing.T) {
-			cmd := complianceKSICmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
+			cmd := complianceKSICmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), keystore.Options{})
 			args := make([]string, 0, (len(requiredFlags)-1)*2)
 			for _, flag := range requiredFlags {
 				if flag.name != omitted.name {
@@ -182,7 +180,7 @@ func TestComplianceCmd_Structure(t *testing.T) {
 // TestComplianceKSICmd_FileSvcFactoryError asserts that the ksi subcommand
 // wraps fileSvcFactory errors with ErrFileServiceInit.
 func TestComplianceKSICmd_FileSvcFactoryError(t *testing.T) {
-	cmd := complianceKSICmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
+	cmd := complianceKSICmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), keystore.Options{})
 	require.NoError(t, cmd.Flags().Set("scope-id", "test-scope"))
 	require.NoError(t, cmd.Flags().Set("run-id", "test-run"))
 	require.NoError(t, cmd.Flags().Set("assertion-assessment-id", "assessment-1"))
@@ -287,7 +285,7 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 			fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 			catPath, certClass := tt.setup(t, fileSvc)
 
-			cmd := complianceKSICmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
+			cmd := complianceKSICmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), keystore.Options{})
 			require.NoError(t, cmd.Flags().Set("catalog", catPath))
 			require.NoError(t, cmd.Flags().Set("class", certClass))
 			require.NoError(t, cmd.Flags().Set("scope-id", "test-scope"))
@@ -323,10 +321,9 @@ func TestComplianceKSICmd_StoresUnavailable(t *testing.T) {
 	require.NoError(t, os.RemoveAll(dataDir))
 	require.NoError(t, os.WriteFile(dataDir, []byte("blocking-file"), constants.PermFileReadOnly))
 
-	masterKeyFile := seedKSIRuntimeVault(t, fileSvc)
-	cmd := complianceKSICmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
+	ksOpts := seedKSIRuntimeVault(t, fileSvc)
+	cmd := complianceKSICmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksOpts)
 	require.NoError(t, cmd.Flags().Set("catalog", catPath))
-	require.NoError(t, cmd.Flags().Set("master-key-file", masterKeyFile))
 	require.NoError(t, cmd.Flags().Set("scope-id", "test-scope"))
 	require.NoError(t, cmd.Flags().Set("run-id", "test-run"))
 	require.NoError(t, cmd.Flags().Set("assertion-assessment-id", "assessment-1"))
@@ -348,10 +345,9 @@ func TestComplianceKSICmd_Success_OutputsJSON(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	catPath := writeTestKSICatalog(t, fileSvc)
 
-	masterKeyFile := seedKSIRuntimeVault(t, fileSvc)
-	cmd := complianceKSICmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
+	ksOpts := seedKSIRuntimeVault(t, fileSvc)
+	cmd := complianceKSICmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksOpts)
 	require.NoError(t, cmd.Flags().Set("catalog", catPath))
-	require.NoError(t, cmd.Flags().Set("master-key-file", masterKeyFile))
 	require.NoError(t, cmd.Flags().Set("class", "C"))
 	require.NoError(t, cmd.Flags().Set("scope-id", "test-scope"))
 	require.NoError(t, cmd.Flags().Set("run-id", "test-run"))

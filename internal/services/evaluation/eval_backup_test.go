@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -351,7 +352,7 @@ func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T
 		"eval",
 	} {
 		t.Run(bad, func(t *testing.T) {
-			snapshot := t.TempDir()
+			snapshot := testutil.TempDir(t)
 			raw, err := json.Marshal(EvalBackupManifest{
 				SchemaVersion: evalBackupManifestVersionInline,
 				Files:         []EvalBackupFile{{Path: bad, Size: 1, SHA256: digest}},
@@ -496,8 +497,8 @@ func TestEvalBackup_RestoreAllMergesSnapshotsNewestWins(t *testing.T) {
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	older := f.create(t)
-	// The later snapshot changes one file and no longer lists another, as when a
-	// campaign is deleted between backups.
+	// The later snapshot changes one file and no longer lists another, as when
+	// evidence is lost between backups.
 	f.write(t, backupRunReportPath, `{"run":2}`)
 	require.NoError(t, f.files.Remove(ctx, backupCampaignPath))
 	newer := f.laterBackup(time.Minute)
@@ -590,4 +591,85 @@ func TestEvalBackup_RestoreAllWithoutSnapshotsFails(t *testing.T) {
 	_, err := f.backup.RestoreAll(context.Background(), f.outRoot, false)
 
 	assert.ErrorIs(t, err, constants.ErrEvaluationBackupNone)
+}
+
+func TestEvalBackupPurge_RemovesEntriesAndObjectsOnlyTheyReference(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	ctx := context.Background()
+	const (
+		sharedPath = "data/eval/runs/run-2/report.json"
+		uniquePath = "data/eval/runs/run-1/unique.json"
+	)
+	f.write(t, sharedPath, `{"run":1}`)
+	f.write(t, uniquePath, `{"only":"run-1"}`)
+	older := f.create(t)
+	f.write(t, backupCampaignPath, `{"campaign":2}`)
+	newer, err := f.laterBackup(time.Minute).Create(ctx, f.outRoot)
+	require.NoError(t, err)
+	onlyRun := writeLegacySnapshot(t, f.outRoot, "eval-backup-20260101T000000Z", map[string]string{backupRunReportPath: `{"run":0}`})
+	mixed := writeLegacySnapshot(t, f.outRoot, "eval-backup-20260101T000001Z", map[string]string{
+		backupRunReportPath: `{"run":0}`,
+		backupCampaignPath:  `{"campaign":0}`,
+	})
+	objectsBefore := objectCount(t, f.outRoot)
+
+	plan, err := planEvalBackupPurge(f.outRoot, []string{"data/eval/runs/run-1"})
+	require.NoError(t, err)
+	require.NoError(t, plan.apply())
+
+	assert.Equal(t, EvalBackupPurgeReport{Files: 6, Snapshots: 4, Objects: 1}, plan.report)
+	assert.NoDirExists(t, onlyRun, "a snapshot left empty is removed")
+	assert.NoFileExists(t, filepath.Join(mixed, filepath.FromSlash(backupRunReportPath)), "a legacy snapshot's inline copy is removed")
+	assert.FileExists(t, filepath.Join(mixed, filepath.FromSlash(backupCampaignPath)))
+	for _, snapshot := range []string{older.SnapshotDir, newer.SnapshotDir, mixed} {
+		manifest, err := readEvalBackupManifest(snapshot)
+		require.NoError(t, err)
+		for _, file := range manifest.Files {
+			assert.False(t, strings.HasPrefix(file.Path, "data/eval/runs/run-1/"), "%s still lists %s", snapshot, file.Path)
+		}
+	}
+	assert.Equal(t, objectsBefore-1, objectCount(t, f.outRoot), "only the content no kept file shares is removed")
+	assert.NoFileExists(t, evalBackupObjectPath(f.outRoot, evalBackupDigest([]byte(`{"only":"run-1"}`))))
+	assert.FileExists(t, evalBackupObjectPath(f.outRoot, evalBackupDigest([]byte(`{"run":1}`))), "run-2 still holds the same content")
+
+	require.NoError(t, f.files.RemoveAll(ctx, constants.EvaluationDataPath))
+	restored, err := f.backup.RestoreAll(ctx, f.outRoot, false)
+	require.NoError(t, err)
+	assert.NotContains(t, reportPaths(restored.Restored), backupRunReportPath)
+	assert.Contains(t, reportPaths(restored.Restored), sharedPath)
+}
+
+func TestEvalBackupPurge_WithoutSnapshotsHasNothingToDo(t *testing.T) {
+	plan, err := planEvalBackupPurge(filepath.Join(testutil.TempDir(t), "missing"), []string{"data/eval/runs/run-1"})
+	require.NoError(t, err)
+	require.NoError(t, plan.apply())
+	assert.Equal(t, EvalBackupPurgeReport{}, plan.report)
+}
+
+func TestEvalBackupPurge_RejectsPathsThatAreNotBeneathAnEvidenceTree(t *testing.T) {
+	for _, relPath := range []string{"", ".", "data/eval", "eval", "data/eval/", "data/ztd.db", "/data/eval/runs/run-1", "data/eval/../ztd.db"} {
+		_, err := planEvalBackupPurge(testutil.TempDir(t), []string{relPath})
+		assert.ErrorIs(t, err, constants.ErrEvaluationBackupPurgePathInvalid, relPath)
+	}
+}
+
+func TestEvalBackup_SnapshotsShareTheLockAndADeleteExcludesThem(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	ctx := context.Background()
+	shared, err := f.backup.sharedLock(ctx)
+	require.NoError(t, err)
+	report := f.create(t)
+	assert.NotContains(t, reportPaths(report.Files), constants.EvaluationBackupLockRelPath, "the lock file is never backed up")
+
+	_, err = f.backup.exclusiveLock(ctx)
+	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked, "a delete waits for snapshots to finish")
+	require.NoError(t, shared.Close())
+
+	exclusive, err := f.backup.exclusiveLock(ctx)
+	require.NoError(t, err)
+	_, err = f.backup.Create(ctx, f.outRoot)
+	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked, "no snapshot is taken while a delete purges the backups")
+	_, err = f.backup.RestoreAll(ctx, f.outRoot, false)
+	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
+	require.NoError(t, exclusive.Close())
 }

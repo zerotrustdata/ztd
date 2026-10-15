@@ -15,10 +15,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestRun(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	good := filepath.Join(dir, "good.json")
 	bad := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(good, []byte(`{"rules":[{"id":"x"}]}`), 0o644))

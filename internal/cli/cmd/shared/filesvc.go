@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -28,16 +27,23 @@ var NewFileSvc = fs.NewRuntimeFileService
 // first time a record is read or written; a missing or locked vault fails the
 // read or write and there is no plaintext fallback. Commands that never touch
 // evaluation evidence never open the vault.
-func NewEvidenceFileSvc(baseDir string, logger *slog.Logger) (fs.RuntimeFileService, error) {
-	files, err := NewFileSvc(baseDir, logger)
-	if err != nil {
-		return nil, err
-	}
-	return evaluation.NewEvidenceFileService(files, func() (evaluation.EvidenceVault, error) {
-		ks, err := keystore.NewWithFS(files, logger, keystore.Options{MasterKeyFile: config.MasterKeyFileOverride()})
+var NewEvidenceFileSvc = EvidenceFileSvcFactory(keystore.Options{})
+
+// EvidenceFileSvcFactory returns an evidence file service factory whose vault
+// is opened from the key store opts selects; production passes zero Options
+// for the OS key store.
+func EvidenceFileSvcFactory(opts keystore.Options) func(baseDir string, logger *slog.Logger) (fs.RuntimeFileService, error) {
+	return func(baseDir string, logger *slog.Logger) (fs.RuntimeFileService, error) {
+		files, err := NewFileSvc(baseDir, logger)
 		if err != nil {
-			return nil, fmt.Errorf("%w: open key store: %w", constants.ErrVaultKeyReadFailed, err)
+			return nil, err
 		}
-		return ks.OpenVault()
-	})
+		return evaluation.NewEvidenceFileService(files, func() (evaluation.EvidenceVault, error) {
+			ks, err := keystore.NewWithFS(files, logger, opts)
+			if err != nil {
+				return nil, fmt.Errorf("%w: open key store: %w", constants.ErrVaultKeyReadFailed, err)
+			}
+			return ks.OpenVault()
+		})
+	}
 }

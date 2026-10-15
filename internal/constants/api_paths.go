@@ -358,3 +358,12 @@ var APIPaths = struct {
 	// Landing
 	Landing: "/",
 }
+
+// Agent system-under-test routes. The SUT serves these, never the Gateway.
+// ztd posts one scored turn, reads its event stream to the terminal event and
+// fetches its trace once.
+const (
+	SUTTurnsPath      = "/ztd-sut/v1/turns"           // POST ScoredTurnRequest
+	SUTTurnEventsPath = "/ztd-sut/v1/turns/%s/events" // GET, SSE of ScoredTurnEvent
+	SUTTurnTracePath  = "/ztd-sut/v1/turns/%s/trace"  // GET AgentTrace
+)

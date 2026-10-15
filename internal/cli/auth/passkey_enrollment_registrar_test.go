@@ -375,6 +375,61 @@ func TestMonitorPasskeyRegistration_MalformedEventIgnored(t *testing.T) {
 	assert.True(t, isRegistered, "expected passkeyRegisteredMsg, got %T", msg)
 }
 
+// TestMonitorPasskeyRegistration_UndecodableInnerEventIgnored verifies that an
+// SSE envelope whose inner event fails to decode is skipped as a non-match, and
+// that the stream still delivers the next matching event.
+func TestMonitorPasskeyRegistration_UndecodableInnerEventIgnored(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	writeTestCLICert(t, fileSvc, cfg)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok)
+
+		// Envelope whose inner event has a non-string type: the inner decode
+		// fails, so the event must not match.
+		undecodable, _ := json.Marshal(models.SSEPushPayload{
+			UserID:       "test-user",
+			CliSessionID: "test-session",
+			Event:        json.RawMessage(`{"type":5}`),
+		})
+		fmt.Fprintf(w, "data: %s\n\n", string(undecodable))
+		flusher.Flush()
+
+		// Matching event after the malformed one.
+		matchingEnvelope, _ := json.Marshal(models.SSEPushPayload{
+			UserID:       "test-user",
+			CliSessionID: "test-session",
+			Event:        json.RawMessage(`{"type":"passkey.registered"}`),
+		})
+		fmt.Fprintf(w, "data: %s\n\n", string(matchingEnvelope))
+		flusher.Flush()
+
+		<-r.Context().Done()
+	}
+	server := startTLSEnrollServer(t, cfg, handler)
+
+	sseURL := fmt.Sprintf("%s/sse?since_id=0", server.URL)
+	httpClient, err := BuildMTLSClient(fileSvc, cfg, 0)
+	require.NoError(t, err)
+	sseClient := sse.NewClient(sseURL, httpClient)
+	sseClient.SetHeader(constants.HeaderCLISessionID, "test-session")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	r := newPasskeyRegistrar(fileSvc, cfg, PasskeyRegistrarOptions{Browser: func(string) error { return nil }})
+	sender := newMockProgramSender()
+	go r.monitorPasskeyRegistration(ctx, sseClient, sender, "test-user", "test-session", cancel)
+
+	msg, ok := sender.waitForMsg(5 * time.Second)
+	require.True(t, ok, "expected passkeyRegisteredMsg after malformed then matching event")
+	_, isRegistered := msg.(passkeyRegisteredMsg)
+	assert.True(t, isRegistered, "expected passkeyRegisteredMsg, got %T", msg)
+}
+
 // TestMonitorPasskeyRegistration_SuccessCancelsSSEContext verifies that when
 // the matching event arrives, the cancel function is called, terminating the
 // SSE stream and closing the response body. This prevents goroutine/response-

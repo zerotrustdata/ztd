@@ -43,7 +43,7 @@ func startExecSSHServer(t *testing.T, rejectSessions bool, respond func(command 
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 
-	server := &execSSHServer{addr: listener.Addr().String(), hostKey: signer.PublicKey()}
+	server := &execSSHServer{addr: listener.Addr().String(), hostKey: signer.PublicKey(), loginDir: testutil.TempDir(t)}
 
 	go func() {
 		for {
@@ -87,8 +87,9 @@ func TestStreamToHost_DeliversBinaryViaSFTPAndExecutesDirectly(t *testing.T) {
 	assert.Positive(t, res.Elapsed)
 
 	// Verify the binary was uploaded via SFTP with 0755 permissions and expected content
-	assert.True(t, strings.HasPrefix(remoteUploadedPath, "/tmp/"+constants.StreamTempBinaryPrefix),
-		"uploaded path %q should start with /tmp/.ztd-stream-", remoteUploadedPath)
+	remoteScratch := filepath.Join(server.loginDir, constants.RuntimeDirname, constants.TmpDirname)
+	assert.True(t, strings.HasPrefix(remoteUploadedPath, filepath.Join(remoteScratch, constants.StreamTempBinaryPrefix)),
+		"uploaded path %q should be staged in the remote runtime scratch dir %q", remoteUploadedPath, remoteScratch)
 	assert.Equal(t, testutil.FileMode(0o755, false), remoteUploadedMode, "remote binary must have 0755 permissions")
 	assert.Equal(t, binary, remoteUploadedContent, "remote uploaded content must match binary")
 

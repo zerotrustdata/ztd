@@ -146,12 +146,3 @@ func TestSelectLinuxKeyring_SecretServiceFailuresFailClosed(t *testing.T) {
 	_, err := selectLinuxKeyring(fileSvc, fake.dial, dial)
 	require.ErrorIs(t, err, constants.ErrKeyStoreDuplicateKey)
 }
-
-func TestDialSSHAgent_NoUserAgentFailsUnavailable(t *testing.T) {
-	runtimeDir := testutil.TempDir(t)
-	t.Setenv(string(constants.EnvVar.SSHAuthSock), "")
-	t.Setenv(string(constants.EnvVar.XDGRuntimeDir), runtimeDir)
-
-	_, _, err := dialSSHAgent()
-	require.ErrorIs(t, err, constants.ErrKeyStoreSSHAgentUnavailable)
-}

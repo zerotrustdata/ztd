@@ -142,21 +142,28 @@ type MaximalEnvelope struct {
 
 // SubmitEnvelope submits a pre-built GovernanceEnvelope directly to the admission API.
 // This is used when the caller has already constructed the envelope (e.g., from fixtures).
-func (c *Client) SubmitEnvelope(ctx context.Context, p Persona, envelope *commonv1.GovernanceEnvelope) (status int, body []byte, err error) {
+func (c *Client) SubmitEnvelope(ctx context.Context, p Persona, envelope *commonv1.GovernanceEnvelope) (*GovernedOutcome, error) {
 	wire, err := protojson.Marshal(envelope)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: %w", constants.ErrPubSubMarshalEnvelope, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrPubSubMarshalEnvelope, err)
 	}
-
-	status, body, err = c.do(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.GovernanceEnvelopes, wire)
-	return status, body, err
+	return c.SubmitEnvelopeBody(ctx, p, wire)
 }
 
-// SubmitMaximal builds a real GovernanceEnvelope wrapping an MCP_CALL, computes the
-// canonical transaction hash with ztd's own hasher, attaches L2 (and optionally
-// mock L3), marshals it as protojson, and POSTs it to the admission API.
-// Returns the computed hash so callers can drive the OOB approve flow.
-func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope) (txHash string, status int, body []byte, err error) {
+// SubmitEnvelopeBody posts body to the direct envelope ingress unchanged and
+// classifies the answer. It performs no validation: conformance cases use it to
+// send malformed requests.
+func (c *Client) SubmitEnvelopeBody(ctx context.Context, p Persona, body []byte) (*GovernedOutcome, error) {
+	status, raw, err := c.do(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.GovernanceEnvelopes, body)
+	if err != nil {
+		return nil, fmt.Errorf("agent harness: submit governance envelope: %w", err)
+	}
+	return decodeHTTPOutcome(status, raw, &operatorv1.ActionReceipt{}), nil
+}
+
+// buildMaximalEnvelope builds the signed-ready GovernanceEnvelope for an MCP_CALL
+// and returns it with its canonical transaction hash.
+func buildMaximalEnvelope(p Persona, m MaximalEnvelope) (*governance.GovernanceEnvelope, string, error) {
 	// 1. Typed protobuf payload — the "what". The Operator decodes this exact type.
 	call := &operatorv1.McpCallRequested{
 		ToolName:      m.ToolName,
@@ -165,7 +172,7 @@ func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope
 	}
 	payloadBytes, err := proto.Marshal(call)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("%w: %w", constants.ErrRequestMarshalFailed, err)
+		return nil, "", fmt.Errorf("%w: %w", constants.ErrRequestMarshalFailed, err)
 	}
 
 	// JSON-first mirror of intent for consumers that read intent_data.
@@ -191,9 +198,10 @@ func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope
 		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
 		OperatorId:        m.OperatorID,
 		OperatorSessionId: m.OperatorSessionID,
+		RequestorUserId:   p.UserID,
 		ActionType:        ActionMcpCall,
 		TargetResource:    m.TargetResource,
-		EventType:         "operator.mcp.call.requested",
+		EventType:         string(constants.EventOperatorMcpCallRequested),
 		Payload:           payloadBytes,
 		IntentData:        intent,
 		StateMerkleRoot:   m.StateRoot,
@@ -201,9 +209,9 @@ func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope
 	}
 
 	// 3. Canonical hash — REAL hasher. id == transaction_hash == SHA256(canonical).
-	txHash, err = governance.GenerateMessageID(env)
+	txHash, err := governance.GenerateMessageID(env)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("%w: %w", constants.ErrTxTransactionHashMissing, err)
+		return nil, "", fmt.Errorf("%w: %w", constants.ErrTxTransactionHashMissing, err)
 	}
 	env.Id = txHash
 	env.TransactionHash = txHash
@@ -213,13 +221,25 @@ func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope
 	if m.VoterPool != nil {
 		env.Governance.L2 = m.VoterPool.Vote(txHash, true)
 	}
+	return env, txHash, nil
+}
 
-	// 5. protojson is the canonical client-facing wire format (NOT encoding/json).
-	wire, err := protojson.Marshal(env)
+// SubmitMaximal builds a real GovernanceEnvelope wrapping an MCP_CALL, computes the
+// canonical transaction hash with ztd's own hasher, attaches L2 (and optionally
+// mock L3), marshals it as protojson, and POSTs it to the admission API.
+// Returns the computed hash so callers can drive the OOB approve flow.
+func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope) (string, *GovernedOutcome, error) {
+	env, txHash, err := buildMaximalEnvelope(p, m)
 	if err != nil {
-		return txHash, 0, nil, fmt.Errorf("%w: %w", constants.ErrPubSubMarshalEnvelope, err)
+		return "", nil, err
 	}
 
-	status, body, err = c.do(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.GovernanceEnvelopes, wire)
-	return txHash, status, body, err
+	// protojson is the canonical client-facing wire format (NOT encoding/json).
+	wire, err := protojson.Marshal(env)
+	if err != nil {
+		return txHash, nil, fmt.Errorf("%w: %w", constants.ErrPubSubMarshalEnvelope, err)
+	}
+
+	outcome, err := c.SubmitEnvelopeBody(ctx, p, wire)
+	return txHash, outcome, err
 }

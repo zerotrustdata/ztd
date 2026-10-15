@@ -18,10 +18,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestOperatorDeployLocalWorkerDetachesFromLaunchingProcess(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "fleet with spaces")
+	dir := filepath.Join(testutil.TempDir(t), "fleet with spaces")
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ztd"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o700))
 	host := deploySSH{local: true}

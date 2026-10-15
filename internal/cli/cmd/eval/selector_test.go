@@ -64,6 +64,7 @@ func TestModelSelectorResolve(t *testing.T) {
 		{name: "all with max params", selector: ModelSelector{All: true, MaxParams: "8b"}, wantMsg: "--all cannot be combined"},
 		{name: "zero max params", selector: ModelSelector{MaxParams: "0"}, wantMsg: "greater than zero"},
 		{name: "malformed max params", selector: ModelSelector{MaxParams: "big"}, wantMsg: "parse parameter count"},
+		{name: "max params without unit", selector: ModelSelector{MaxParams: "4"}, wantMsg: "needs a unit"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

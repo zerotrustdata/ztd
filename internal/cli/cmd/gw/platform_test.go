@@ -93,9 +93,7 @@ func TestGatewayStartCmd(t *testing.T) {
 		assert.NotNil(t, vaultDirFlag, "vault-dir flag should exist")
 		assert.Equal(t, "", vaultDirFlag.DefValue)
 
-		masterKeyFileFlag := flags.Lookup("master-key-file")
-		assert.NotNil(t, masterKeyFileFlag, "master-key-file flag should exist")
-		assert.Equal(t, "", masterKeyFileFlag.DefValue)
+		assert.Nil(t, flags.Lookup("master-key-file"), "the master key lives in the OS keyring or ssh-agent, never a key file")
 
 		// Verify passkey flags
 		passkeyRpIDFlag := flags.Lookup("passkey-rp-id")

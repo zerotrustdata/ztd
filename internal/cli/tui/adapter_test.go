@@ -23,6 +23,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/sse"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestTranslateSSEEvent(t *testing.T) {
@@ -300,6 +302,22 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-abc"}}, msgs)
 	})
 
+	t.Run("approval.completed with the L3_DENIED receipt is a deny", func(t *testing.T) {
+		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+			TransactionHash: "tx-denied",
+			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+		})
+		require.NoError(t, err)
+		event, err := json.Marshal(models.ApprovalCompletedEvent{Type: constants.SSEEventTypeApprovalCompleted, UserID: "user-1", TxHash: "tx-denied", Receipt: receipt})
+		require.NoError(t, err)
+		frame, err := json.Marshal(models.SSEPushPayload{UserID: "user-1", CliSessionID: "cli-1", Event: event})
+		require.NoError(t, err)
+		msgs := translateSSEEvents("", string(frame))
+		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-denied", Denied: true}}, msgs)
+	})
+
 	t.Run("transaction approvals.changed produces no message", func(t *testing.T) {
 		frame := gatewayFrame(t, string(constants.EventPlatformApprovalsChanged), models.ApprovalsChangedPayload{Subject: models.ApprovalsChangedTransactions})
 		assert.Empty(t, translateSSEEvents("", frame))
@@ -320,5 +338,50 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, LevelWarn, lm.Level)
 		assert.Contains(t, lm.Message, "replay_failed")
+	})
+}
+
+// TestTranslateSSEEvents_MalformedPayloadWarns verifies that a payload which
+// fails to decode is reported as one warning line naming the event, and never
+// renders as a message built from the zero value of the failed decode.
+func TestTranslateSSEEvents_MalformedPayloadWarns(t *testing.T) {
+	malformedFrame := func(t *testing.T, eventType, data string) string {
+		t.Helper()
+		frame, err := json.Marshal(models.SSEPushPayload{
+			UserID:       "user-1",
+			CliSessionID: "cli-1",
+			Event:        json.RawMessage(`{"type":"` + eventType + `","data":` + data + `}`),
+		})
+		require.NoError(t, err)
+		return string(frame)
+	}
+
+	tests := []struct {
+		name      string
+		eventType string
+		data      string
+	}{
+		{"approval request data is a string", string(constants.EventOperatorCommandApprovalRequested), `"not-an-object"`},
+		{"heartbeat data is a string", string(constants.EventOperatorHeartbeatReceived), `"not-an-object"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgs := translateSSEEvents("", malformedFrame(t, tt.eventType, tt.data))
+			require.Len(t, msgs, 1, "a malformed payload must yield exactly one message")
+			lm, ok := msgs[0].(LedgerMsg)
+			require.True(t, ok, "got %T", msgs[0])
+			assert.Equal(t, LevelWarn, lm.Level)
+			assert.Contains(t, lm.Message, tt.eventType)
+		})
+	}
+
+	t.Run("stream error sentinel with a mistyped field warns instead of an empty reason", func(t *testing.T) {
+		msgs := translateSSEEvents("", `{"type":"error","reason":5}`)
+		require.Len(t, msgs, 1)
+		lm, ok := msgs[0].(LedgerMsg)
+		require.True(t, ok, "got %T", msgs[0])
+		assert.Equal(t, LevelWarn, lm.Level)
+		assert.Contains(t, lm.Message, "Malformed error event")
+		assert.NotContains(t, lm.Message, "Event stream error")
 	})
 }

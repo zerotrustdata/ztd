@@ -25,6 +25,9 @@ type CampaignExecutionBinding struct {
 	DataOperatorWorkingDirectory string
 	ModelRegistryDigest          string
 	ModelRegistry                []*operatorv1.InferenceModelVariant
+	// DataOperatorAnchor pins the Data Operator's actuator key as bound at
+	// enrollment. Import verifies every governed receipt against it.
+	DataOperatorAnchor *evalv1.ConformanceAnchor
 }
 
 func modelCampaignRoleLabel(role evalv1.ModelCampaignRole) (string, error) {

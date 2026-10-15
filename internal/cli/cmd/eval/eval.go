@@ -21,7 +21,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	version "github.com/zerotrustdata/ztd/internal/cli/cmd/version"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
-	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -35,22 +34,6 @@ import (
 type nativeEvalClientFactory func(harnessconfig.Config) (*harnessclient.Client, error)
 type nativeEvalAuthLoader func(fs.RuntimeFileService, *config.Config) (*auth.ClientAuthContext, error)
 
-type nativeEvalRunner interface {
-	Run(context.Context, evaluation.RunRequest) (*evalv1.EvaluationReport, error)
-}
-
-type nativeEvalVerifier interface {
-	Verify(context.Context, string) (*compliancev1.ComplianceVerificationReport, error)
-}
-
-type nativeEvalStore interface {
-	evaluation.ReportStore
-	SaveVerification(context.Context, string, *compliancev1.ComplianceVerificationReport) (*compliancev1.ComplianceEvidenceReference, error)
-	LoadReport(context.Context, string) (*evalv1.EvaluationReport, error)
-	LoadVerification(context.Context, string) (*compliancev1.ComplianceVerificationReport, error)
-	ListReports(context.Context) ([]string, error)
-}
-
 type nativeEvalDeps struct {
 	configLoader               func(string) (*config.Config, error)
 	fileSvcFactory             func(string, *slog.Logger) (fs.RuntimeFileService, error)
@@ -58,21 +41,17 @@ type nativeEvalDeps struct {
 	clientFactory              nativeEvalClientFactory
 	authLoader                 nativeEvalAuthLoader
 	bindClientFactory          func(*config.Config) evalBindClient
-	laneFactory                func(*harnessclient.Client, fs.RuntimeFileService, harnessclient.Persona) evaluation.PlatformLane
-	observerFactory            func(fs.RuntimeFileService) evaluation.TargetObserver
-	runnerFactory              func(evaluation.PlatformLane, evaluation.TargetObserver, evaluation.ReportStore, func() time.Time, func(string) string) nativeEvalRunner
-	storeFactory               func(fs.RuntimeFileService) nativeEvalStore
-	verifierFactory            func(fs.RuntimeFileService, func() time.Time) nativeEvalVerifier
 	campaignPublicationFactory campaignVerificationPublicationFactory
 	formationRunnerFactory     campaignFormationRunnerFactory
 	runControl                 runControlDeps
+	conformance                conformanceDeps
 	now                        func() time.Time
 	newID                      func() (string, error)
 }
 
 // adaptNewID adapts a fallible ID generator to the evaluation framework's
-// infallible func(string) string seams (evaluation.NewRunner,
-// NewCampaignController, and friends), which predate error-aware ID
+// infallible func(string) string seams
+// (NewCampaignController and friends), which predate error-aware ID
 // generation and cannot propagate errors. An OS random-source failure
 // (practically impossible) yields a visibly-invalid ID rather than a
 // silent empty string or a panic (INV-CODE-06).
@@ -107,22 +86,12 @@ func Cmd() *cobra.Command {
 		clientFactory:     harnessclient.New,
 		authLoader:        auth.LoadClientAuthContext,
 		bindClientFactory: defaultEvalBindClient,
-		laneFactory: func(client *harnessclient.Client, fileSvc fs.RuntimeFileService, persona harnessclient.Persona) evaluation.PlatformLane {
-			return evaluation.NewCommandLane(client, evaluation.NewStore(fileSvc), persona, 0, 0)
-		},
-		observerFactory: evaluation.NewRuntimeTargetReader,
-		runnerFactory: func(lane evaluation.PlatformLane, observer evaluation.TargetObserver, store evaluation.ReportStore, now func() time.Time, newID func(string) string) nativeEvalRunner {
-			return evaluation.NewRunner(evaluation.NewRegistry(), lane, observer, store, now, newID)
-		},
-		storeFactory: func(fileSvc fs.RuntimeFileService) nativeEvalStore { return evaluation.NewStore(fileSvc) },
-		verifierFactory: func(fileSvc fs.RuntimeFileService, now func() time.Time) nativeEvalVerifier {
-			return evaluation.NewVerifier(fileSvc, evaluation.NewRegistry(), now)
-		},
 		campaignPublicationFactory: func(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (campaignVerificationPublication, error) {
 			return NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		},
 		formationRunnerFactory: newProductionCampaignFormationRunner,
 		runControl:             defaultRunControlDeps(),
+		conformance:            defaultConformanceDeps(),
 		now:                    time.Now,
 		newID:                  uuid.NewString,
 	})
@@ -143,23 +112,9 @@ func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {
 		rolloutEvalCmd(deps),
 		formationsEvalCmd(deps),
 		gatesEvalCmd(deps),
-		boundaryEvalCmd(deps),
+		conformanceEvalCmd(deps),
 		jsonLeaf(backupEvalCmd(deps)),
 		jsonLeaf(restoreEvalCmd(deps)),
-	)
-	return cmd
-}
-
-func boundaryEvalCmd(deps nativeEvalDeps) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "boundary",
-		Short: "Native execution-boundary suite (no models)",
-	}
-	cmd.AddCommand(
-		jsonLeaf(boundaryEvalListCmd(deps)),
-		jsonLeaf(boundaryEvalRunCmd(deps)),
-		jsonLeaf(boundaryEvalVerifyCmd(deps)),
-		jsonLeaf(boundaryEvalShowCmd(deps)),
 	)
 	return cmd
 }
@@ -191,207 +146,6 @@ func gatesEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	return cmd
 }
 
-func boundaryEvalListCmd(deps nativeEvalDeps) *cobra.Command {
-	command := &cobra.Command{
-		Use:   "list",
-		Short: "List boundary execution reports",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
-			if err != nil {
-				return err
-			}
-			store := deps.storeFactory(fileSvc)
-			runIDs, err := store.ListReports(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("evaluation: list boundary reports: %w", err)
-			}
-
-			type reportRow struct {
-				RunID     string `json:"run_id"`
-				Suite     string `json:"suite"`
-				Status    string `json:"status"`
-				StartedAt string `json:"started_at"`
-				Operator  string `json:"operator"`
-				Valid     *bool  `json:"valid,omitempty"`
-			}
-
-			var rows []reportRow
-			for _, runID := range runIDs {
-				report, err := store.LoadReport(cmd.Context(), runID)
-				if err != nil {
-					continue
-				}
-				var valid *bool
-				verification, err := store.LoadVerification(cmd.Context(), runID)
-				if err == nil && verification != nil {
-					v := verification.GetValid()
-					valid = &v
-				}
-				startedAt := ""
-				if report.GetRun().GetStartedAt() != nil {
-					startedAt = report.GetRun().GetStartedAt().AsTime().Format("2006-01-02T15:04:05Z")
-				}
-				rows = append(rows, reportRow{
-					RunID:     report.GetRun().GetRunId(),
-					Suite:     report.GetRun().GetSuiteRef().GetId(),
-					Status:    report.GetSummaryStatus().String(),
-					StartedAt: startedAt,
-					Operator:  report.GetRun().GetTargetOperatorId(),
-					Valid:     valid,
-				})
-			}
-
-			if output.JSONEnabled(cmd) {
-				return output.WriteJSON(cmd.OutOrStdout(), map[string]interface{}{
-					"reports": rows,
-				})
-			}
-			if len(rows) == 0 {
-				cmd.Println("No boundary reports found")
-				return nil
-			}
-			for _, row := range rows {
-				valid := "—"
-				if row.Valid != nil {
-					valid = fmt.Sprintf("%t", *row.Valid)
-				}
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\t%s\n",
-					row.RunID, row.Suite, row.Status, row.StartedAt, row.Operator, valid)
-			}
-			return nil
-		},
-	}
-	return command
-}
-
-func boundaryEvalRunCmd(deps nativeEvalDeps) *cobra.Command {
-	command := &cobra.Command{
-		Use:   "run",
-		Short: "Run core-execution-boundary@1.0.0",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
-			if err != nil {
-				return err
-			}
-			authContext, err := deps.authLoader(fileSvc, cfg)
-			if err != nil {
-				return fmt.Errorf("evaluation: load CLI identity: %w", err)
-			}
-			clientConfig := nativeEvalClientConfig(cfg, authContext)
-			gatewayClient, err := deps.clientFactory(clientConfig)
-			if err != nil {
-				return fmt.Errorf("evaluation: initialize gateway client: %w", err)
-			}
-			runID, err := deps.newID()
-			if err != nil {
-				return err
-			}
-			if err := fileSvc.MkdirAll(cmd.Context(), evaluation.ControlledTargetDirectory(), constants.PermDirPrivate); err != nil {
-				return fmt.Errorf("evaluation: prepare controlled target directory: %w", err)
-			}
-			target := evaluation.ControlledTargetResource(fileSvc, runID)
-			marker := constants.EvaluationTargetFilenamePrefix + runID
-			store := deps.storeFactory(fileSvc)
-			lane := deps.laneFactory(gatewayClient, fileSvc, harnessclient.Persona{ID: "ztd-native-evaluator", CLISessionID: authContext.CLISessionID, UserID: authContext.UserID})
-			runner := deps.runnerFactory(lane, deps.observerFactory(fileSvc), store, deps.now, adaptNewID(deps.newID))
-			report, runErr := runner.Run(cmd.Context(), evaluation.RunRequest{RunID: runID, TargetResource: target, Marker: marker, Deployment: nativeEvalDeployment(cfg, authContext, runID, target)})
-			if report == nil {
-				return runErr
-			}
-			verification, verifyErr := deps.verifierFactory(fileSvc, deps.now).Verify(cmd.Context(), runID)
-			if verifyErr != nil {
-				return fmt.Errorf("evaluation: verify persisted run: %w", verifyErr)
-			}
-			verificationRef, saveErr := store.SaveVerification(cmd.Context(), runID, verification)
-			if saveErr != nil {
-				return saveErr
-			}
-			report.Run.FinalVerificationReportRef = verificationRef
-			if saveErr := store.SaveReport(cmd.Context(), report); saveErr != nil {
-				return saveErr
-			}
-			if err := writeNativeEvalRun(cmd, report, verification, output.JSONEnabled(cmd)); err != nil {
-				return err
-			}
-			if runErr != nil {
-				return runErr
-			}
-			if !verification.GetValid() {
-				return constants.ErrEvalRunVerificationFailed
-			}
-			return nil
-		},
-	}
-	return command
-}
-
-func boundaryEvalVerifyCmd(deps nativeEvalDeps) *cobra.Command {
-	command := &cobra.Command{
-		Use:   "verify <run-id>",
-		Short: "Re-verify persisted execution-boundary evidence",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
-			if err != nil {
-				return err
-			}
-			report, err := deps.verifierFactory(fileSvc, deps.now).Verify(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			if err := writeNativeVerification(cmd, report, output.JSONEnabled(cmd)); err != nil {
-				return err
-			}
-			if !report.GetValid() {
-				return constants.ErrEvalRunVerificationFailed
-			}
-			return nil
-		},
-	}
-	return command
-}
-
-func boundaryEvalShowCmd(deps nativeEvalDeps) *cobra.Command {
-	command := &cobra.Command{
-		Use:   "show <run-id>",
-		Short: "Show a persisted execution-boundary report",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
-			if err != nil {
-				return err
-			}
-			report, err := deps.storeFactory(fileSvc).LoadReport(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			if output.JSONEnabled(cmd) {
-				body, err := evalv1.MarshalCanonical(report)
-				if err != nil {
-					return fmt.Errorf("evaluation: canonicalize report: %w", err)
-				}
-				_, err = fmt.Fprintln(cmd.OutOrStdout(), string(body))
-				return err
-			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Run: %s\nSuite: %s@%s\nStatus: %s\nSummary: %s\nOperator: %s\nSession: %s\n", report.GetRun().GetRunId(), report.GetRun().GetSuiteRef().GetId(), report.GetRun().GetSuiteRef().GetVersion(), report.GetSummaryStatus().String(), report.GetSummary(), report.GetRun().GetTargetOperatorId(), report.GetRun().GetTargetOperatorSessionId())
-			if err != nil {
-				return err
-			}
-			for _, verdict := range report.GetVerdicts() {
-				if verdict.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
-					continue
-				}
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "- %s: %s (%s)\n", verdict.GetAssertionRef().GetId(), verdict.GetStatus().String(), verdict.GetFailureReason()); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-	}
-	return command
-}
-
 func nativeEvalEnvironment(cmd *cobra.Command, deps nativeEvalDeps) (*config.Config, fs.RuntimeFileService, error) {
 	projectRoot, err := cmd.Flags().GetString("project-root")
 	if err != nil {
@@ -421,7 +175,7 @@ func nativeEvalDeployment(cfg *config.Config, authContext *auth.ClientAuthContex
 		DeploymentId:        runID,
 		TopologyRef:         &compliancev1.VersionedReference{Id: evaluation.TopologyID, Version: evaluation.TopologyVersion},
 		ControlledTarget:    target,
-		IndependentObserver: evaluation.RuntimeTargetObserverID,
+		IndependentObserver: constants.EvaluationRuntimeTargetObserverID,
 		RuntimeBoundaries: []*evalv1.EvaluationRuntimeBoundary{
 			{Component: evalv1.EvaluationRuntimeComponent_EVALUATION_RUNTIME_COMPONENT_EVALUATOR, ProcessIdentity: "host-side ztd eval process", RuntimeNamespace: "host workspace", Endpoint: cfg.OperatorHTTPURL(), AuthenticatedIdentity: authContext.UserID},
 			{Component: evalv1.EvaluationRuntimeComponent_EVALUATION_RUNTIME_COMPONENT_GATEWAY, ProcessIdentity: "ztd gateway (host process)", RuntimeNamespace: "host runtime root", PersistentStore: "Gateway runtime root", Endpoint: cfg.OperatorHTTPURL(), AuthenticatedIdentity: authContext.CLISessionID},
@@ -429,40 +183,6 @@ func nativeEvalDeployment(cfg *config.Config, authContext *auth.ClientAuthContex
 			{Component: evalv1.EvaluationRuntimeComponent_EVALUATION_RUNTIME_COMPONENT_CONTROLLED_TARGET, ProcessIdentity: target, RuntimeNamespace: "host runtime root", MountedFilesystems: []string{"controlled target directory"}},
 		},
 	}
-}
-
-func writeNativeEvalRun(cmd *cobra.Command, report *evalv1.EvaluationReport, verification *compliancev1.ComplianceVerificationReport, jsonOutput bool) error {
-	if jsonOutput {
-		body, err := evalv1.MarshalCanonical(report)
-		if err != nil {
-			return fmt.Errorf("evaluation: canonicalize report: %w", err)
-		}
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), string(body))
-		return err
-	}
-	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Run: %s\nStatus: %s\nSummary: %s\nVerification: %t\nOperator: %s\nSession: %s\n", report.GetRun().GetRunId(), report.GetSummaryStatus().String(), report.GetSummary(), verification.GetValid(), report.GetRun().GetTargetOperatorId(), report.GetRun().GetTargetOperatorSessionId())
-	return err
-}
-
-func writeNativeVerification(cmd *cobra.Command, report *compliancev1.ComplianceVerificationReport, jsonOutput bool) error {
-	if jsonOutput {
-		body, err := compliancev1.MarshalCanonical(report)
-		if err != nil {
-			return fmt.Errorf("evaluation: canonicalize verification: %w", err)
-		}
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), string(body))
-		return err
-	}
-	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Run: %s\nValid: %t\nFailures: %d\n", report.GetReportId(), report.GetValid(), len(report.GetFailures()))
-	if err != nil {
-		return err
-	}
-	for _, failure := range report.GetFailures() {
-		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "- %s: %s (%s)\n", failure.GetCode(), failure.GetReason(), failure.GetSubjectRef()); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // platformIdentity returns the build identity the root command attached, the

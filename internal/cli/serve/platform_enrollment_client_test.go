@@ -232,12 +232,13 @@ func TestNewOperatorBootstrapClient_RejectsIncompleteConfig(t *testing.T) {
 	deployment, err := NewOperatorDeploymentRecorder(newTestFileSvc(t), "")
 	require.NoError(t, err)
 	valid := OperatorBootstrapClientConfig{
-		URL:           "ws://ztd.local:8080" + constants.APIPaths.AuthOperatorBootstrapWebSocket,
-		InstanceID:    "op-instance",
-		Hostname:      "op-host",
-		RuntimeConfig: []byte(`{}`),
-		Deployment:    deployment,
-		Logger:        testLogger(),
+		URL:               "ws://ztd.local:8080" + constants.APIPaths.AuthOperatorBootstrapWebSocket,
+		InstanceID:        "op-instance",
+		Hostname:          "op-host",
+		RuntimeConfig:     []byte(`{}`),
+		Deployment:        deployment,
+		Logger:            testLogger(),
+		ActuatorPublicKey: strings.Repeat("ab", 32),
 	}
 	_, err = NewOperatorBootstrapClient(valid)
 	require.NoError(t, err)

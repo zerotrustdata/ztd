@@ -138,7 +138,7 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "dispatch", err: fmt.Errorf("send: %w", constants.ErrEvaluationDispatchFailed), want: ExecutionFailureDispatch},
 		{name: "target", err: fmt.Errorf("resolve: %w", constants.ErrEvaluationTargetUnavailable), want: ExecutionFailureTarget},
 		{name: "posture", err: fmt.Errorf("posture: %w", constants.ErrEvaluationPostureUnsupported), want: ExecutionFailurePosture},
-		{name: "evidence", err: fmt.Errorf("receipt: %w", constants.ErrEvaluationReceiptUnavailable), want: ExecutionFailureEvidence},
+		{name: "evidence", err: fmt.Errorf("observe: %w", constants.ErrEvaluationObservationUnavailable), want: ExecutionFailureEvidence},
 		{name: "verification", err: fmt.Errorf("verify: %w", constants.ErrEvalRunVerificationFailed), want: ExecutionFailureVerification},
 		{name: "inference backend", err: fmt.Errorf("infer: %w", constants.ErrInferenceBackendUnavailable), want: ExecutionFailureProvider},
 		{name: "unrecognized", err: fmt.Errorf("opaque failure"), want: ExecutionFailureInternal},

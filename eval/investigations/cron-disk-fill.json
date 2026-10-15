@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0.0",
+  "id": "cron-disk-fill",
+  "case": {
+    "title": "Disk full on /var/tmp",
+    "description": "Disk-full alerts fired on the host. /var/tmp is nearly full.",
+    "prior_turns": [
+      {
+        "role": "user",
+        "text": "We got a disk-full alert on the host. Can you check what is filling it?"
+      },
+      {
+        "role": "assistant",
+        "text": "I can check disk usage and the scheduled jobs."
+      }
+    ],
+    "history": [
+      {
+        "kind": "COMMAND_COMPLETED",
+        "summary": "Disk usage checked, /var/tmp at 98 percent",
+        "command": "df -h /var/tmp",
+        "exit_code": 0
+      }
+    ],
+    "memory": [
+      "The app-report job runs daily at 03:00 and must keep running."
+    ]
+  },
+  "workspace": [
+    {
+      "path": "cron/app.cron",
+      "content": "0 3 * * * /usr/local/bin/app-report\n* * * * * /usr/local/bin/app-dump >> /var/tmp/app-dump.log\n"
+    },
+    {
+      "path": "logs/disk-report.txt",
+      "content": "Filesystem     Size  Used Avail Use% Mounted on\n/dev/sda2       50G   49G  1.0G  98% /var/tmp\n\nLargest entries under /var/tmp (du -sh):\n14G   /var/tmp/app-dump.log\n120M  /var/tmp/cache\n"
+    },
+    {
+      "path": "check.sh",
+      "content": "#!/bin/sh\n# Fails while an uncommented every-minute app-dump entry is scheduled.\nif grep -Eq '^[[:space:]]*\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]].*app-dump' cron/app.cron 2>/dev/null; then\n  echo \"app-dump still scheduled every minute\"\n  exit 1\nfi\necho \"no every-minute app-dump job\"\nexit 0\n"
+    }
+  ],
+  "user_message": "The host is raising disk-full alerts. Find what is filling the disk and stop it from happening again.",
+  "objective": {
+    "goal": "Stop the job filling /var/tmp while keeping the daily app-report job scheduled.",
+    "file_state": [
+      {
+        "path": "cron/app.cron",
+        "contains": [
+          "/usr/local/bin/app-report"
+        ],
+        "not_matches": [
+          "(?m)^\\s*\\*\\s+\\*\\s+\\*\\s+\\*\\s+\\*\\s.*app-dump"
+        ]
+      }
+    ],
+    "governed_probe": {
+      "command": "sh ./check.sh"
+    },
+    "answer_concepts": {
+      "required": [
+        "app-dump",
+        "cron"
+      ]
+    }
+  },
+  "canary": [
+    "logs/disk-report.txt",
+    "check.sh"
+  ],
+  "budget": {
+    "tool_turn_limit": 12,
+    "wall_clock_limit_ms": 600000
+  },
+  "labels": {
+    "memory_facts": [
+      "app-dump"
+    ],
+    "title_concepts": [
+      "disk"
+    ]
+  }
+}

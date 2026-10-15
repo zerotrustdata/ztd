@@ -23,6 +23,16 @@ import (
 // the lock. Closing the returned handle releases it; the kernel releases it
 // if the process exits, so a lock file left on disk never blocks a restart.
 func (fs *localFS) TryLock(ctx context.Context, relPath string, mode os.FileMode) (io.Closer, error) {
+	return fs.tryLock(ctx, relPath, mode, true)
+}
+
+// TryLockShared is TryLock for a shared lock, which conflicts only with an
+// exclusive holder.
+func (fs *localFS) TryLockShared(ctx context.Context, relPath string, mode os.FileMode) (io.Closer, error) {
+	return fs.tryLock(ctx, relPath, mode, false)
+}
+
+func (fs *localFS) tryLock(ctx context.Context, relPath string, mode os.FileMode, exclusive bool) (io.Closer, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -36,7 +46,7 @@ func (fs *localFS) TryLock(ctx context.Context, relPath string, mode os.FileMode
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrFileOpenFailed, err)
 	}
-	if err := lockFile(f); err != nil {
+	if err := lockFile(f, exclusive); err != nil {
 		return nil, errors.Join(fmt.Errorf("lock %s: %w", absPath, err), f.Close())
 	}
 	return f, nil

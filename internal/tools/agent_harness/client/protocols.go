@@ -9,12 +9,9 @@ package client
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -55,15 +52,6 @@ type DispatchCommandRequest struct {
 	CLISessionID            string `json:"cli_session_id,omitempty"`
 }
 
-type DispatchCommandResponse struct {
-	Success       bool   `json:"success"`
-	TransactionID string `json:"transaction_id"`
-	EventType     string `json:"event_type,omitempty"`
-	ActionType    string `json:"action_type,omitempty"`
-	ResultPayload []byte `json:"result_payload,omitempty"`
-	Error         string `json:"error,omitempty"`
-}
-
 func (c *Client) Health(ctx context.Context) (*models.HealthResponse, []byte, error) {
 	status, raw, err := c.do(ctx, c.auditorPersona(), http.MethodGet, c.cfg.MTLSBaseURL+constants.APIPaths.Health, nil)
 	if err != nil {
@@ -82,73 +70,88 @@ func (c *Client) Health(ctx context.Context) (*models.HealthResponse, []byte, er
 	return health, raw, nil
 }
 
-func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request DispatchCommandRequest) (int, *DispatchCommandResponse, []byte, error) {
+// DispatchCommand submits one governed operator command through the CLI-cert
+// client and returns the typed outcome of the Gateway's answer. A transport
+// failure is returned as an error, never as an outcome.
+func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request DispatchCommandRequest) (*GovernedOutcome, error) {
 	if request.TargetOperatorSessionID == "" || (request.ActionType == "" && request.EventType == "") || len(request.Payload) == 0 {
-		return 0, nil, nil, constants.ErrMissingRequiredField
+		return nil, constants.ErrMissingRequiredField
 	}
 	if request.EventType == "" && request.ActionType != "" {
 		eventType, err := constants.RequestEventForAction(constants.ActionType(request.ActionType))
 		if err != nil {
-			return 0, nil, nil, fmt.Errorf("agent harness: resolve request event: %w", err)
+			return nil, fmt.Errorf("agent harness: resolve request event: %w", err)
 		}
 		request.EventType = string(eventType)
 	}
 	if request.ActionType == "" && request.EventType != "" {
 		actionType, err := constants.ValidateGovernedRequest(constants.EventType(request.EventType))
 		if err != nil {
-			return 0, nil, nil, fmt.Errorf("agent harness: resolve action type: %w", err)
+			return nil, fmt.Errorf("agent harness: resolve action type: %w", err)
 		}
 		request.ActionType = string(actionType)
 	}
 	if err := constants.ValidateGovernedEnvelopeFields(constants.EventType(request.EventType), constants.ActionType(request.ActionType)); err != nil {
-		return 0, nil, nil, fmt.Errorf("agent harness: validate request fields: %w", err)
+		return nil, fmt.Errorf("agent harness: validate request fields: %w", err)
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("agent harness: marshal dispatch command: %w", err)
+		return nil, fmt.Errorf("agent harness: marshal dispatch command: %w", err)
 	}
-	status, raw, err := c.doWithCLI(ctx, persona, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body)
-	if err != nil {
-		return status, nil, raw, err
-	}
-	response := &DispatchCommandResponse{}
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, response); err != nil {
-			return status, nil, raw, fmt.Errorf("agent harness: decode dispatch response: %w", err)
-		}
-	}
-	return status, response, raw, nil
+	return c.DispatchCommandBody(ctx, persona, body)
 }
 
-// rpc posts a JSON-RPC request to an MCP/A2A route and decodes the response.
-func (c *Client) rpc(ctx context.Context, p Persona, path, method string, params any) (*JSONRPCResponse, error) {
-	req := JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: method, Params: params}
-	body, _ := json.Marshal(req)
-	_, raw, err := c.do(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+path, body)
+// DispatchCommandBody posts body to the governed dispatch ingress unchanged and
+// classifies the answer. It performs no validation: conformance cases use it to
+// send malformed requests.
+func (c *Client) DispatchCommandBody(ctx context.Context, p Persona, body []byte) (*GovernedOutcome, error) {
+	status, raw, err := c.doWithCLI(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("agent harness: submit dispatch command: %w", err)
 	}
-	var resp JSONRPCResponse
-	if len(raw) > 0 && json.Valid(raw) {
-		_ = json.Unmarshal(raw, &resp)
+	return decodeHTTPOutcome(status, raw, &operatorv1.GovernedDispatchResult{}), nil
+}
+
+// marshalJSONRPC renders one JSON-RPC 2.0 request for method.
+func marshalJSONRPC(method string, params any) ([]byte, error) {
+	body, err := json.Marshal(JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: method, Params: params})
+	if err != nil {
+		return nil, fmt.Errorf("agent harness: marshal json-rpc %s: %w", method, err)
 	}
-	return &resp, nil
+	return body, nil
+}
+
+// rpc posts a JSON-RPC request to an MCP/A2A route and returns the raw answer.
+func (c *Client) rpc(ctx context.Context, p Persona, path, method string, params any) (int, []byte, error) {
+	body, err := marshalJSONRPC(method, params)
+	if err != nil {
+		return 0, nil, err
+	}
+	return c.do(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+path, body)
 }
 
 // rpcWithCLI is like rpc but uses the CLI-cert TLS client so handleCLIAuth
 // stamps the host user's identity onto the suspended transaction.
-func (c *Client) rpcWithCLI(ctx context.Context, p Persona, path, method string, params any) (*JSONRPCResponse, error) {
-	req := JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: method, Params: params}
-	body, _ := json.Marshal(req)
-	_, raw, err := c.doWithCLI(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+path, body)
+func (c *Client) rpcWithCLI(ctx context.Context, p Persona, path, method string, params any) (int, []byte, error) {
+	body, err := marshalJSONRPC(method, params)
+	if err != nil {
+		return 0, nil, err
+	}
+	return c.doWithCLI(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+path, body)
+}
+
+// rpcResponse posts a JSON-RPC request for a caller that reads the envelope
+// itself (list and read methods). The answer must be a strict JSON-RPC envelope.
+func (c *Client) rpcResponse(ctx context.Context, p Persona, path, method string, params any) (*JSONRPCResponse, error) {
+	_, raw, err := c.rpc(ctx, p, path, method, params)
 	if err != nil {
 		return nil, err
 	}
-	var resp JSONRPCResponse
-	if len(raw) > 0 && json.Valid(raw) {
-		_ = json.Unmarshal(raw, &resp)
+	resp := &JSONRPCResponse{}
+	if err := decodeStrictJSON(raw, resp); err != nil {
+		return nil, fmt.Errorf("agent harness: decode %s response: %w", method, err)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
 // ---- MCP --------------------------------------------------------------------
@@ -263,6 +266,14 @@ type CommandSkillPayload struct {
 
 func (CommandSkillPayload) isSkillPayload() {}
 
+// MarkerSkillPayload is the conformance skill payload that names the marker the
+// A2A downstream records.
+type MarkerSkillPayload struct {
+	Marker string `json:"marker"`
+}
+
+func (MarkerSkillPayload) isSkillPayload() {}
+
 // ---- MCP params envelopes ---------------------------------------------------
 
 // toolsCallParams is the JSON-RPC params envelope for tools/call.
@@ -283,44 +294,52 @@ type promptsGetParams struct {
 }
 
 func (c *Client) MCPToolsList(ctx context.Context, p Persona) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/mcp", "tools/list", struct{}{})
+	return c.rpcResponse(ctx, p, "/mcp", "tools/list", struct{}{})
 }
 
 // MCPToolsCall invokes a tool. The Gateway wraps this into a governed MCP_CALL
 // envelope, runs the interlock sequence, and dispatches to the real Operator.
-func (c *Client) MCPToolsCall(ctx context.Context, p Persona, tool string, args ToolArgs) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/mcp", "tools/call", toolsCallParams{
+func (c *Client) MCPToolsCall(ctx context.Context, p Persona, tool string, args ToolArgs) (*GovernedOutcome, error) {
+	status, raw, err := c.rpc(ctx, p, "/mcp", "tools/call", toolsCallParams{
 		Name:      tool,
 		Arguments: args,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return decodeRPCOutcome(status, raw, decodeMCPResult), nil
 }
 
 // MCPToolsCallWithCLI is like MCPToolsCall but routes through the CLI-cert
 // TLS client so the gateway's handleCLIAuth stamps the host user's identity
 // onto the suspended transaction. Use this for notary-scenario submits.
-func (c *Client) MCPToolsCallWithCLI(ctx context.Context, p Persona, tool string, args ToolArgs) (*JSONRPCResponse, error) {
-	return c.rpcWithCLI(ctx, p, "/mcp", "tools/call", toolsCallParams{
+func (c *Client) MCPToolsCallWithCLI(ctx context.Context, p Persona, tool string, args ToolArgs) (*GovernedOutcome, error) {
+	status, raw, err := c.rpcWithCLI(ctx, p, "/mcp", "tools/call", toolsCallParams{
 		Name:      tool,
 		Arguments: args,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return decodeRPCOutcome(status, raw, decodeMCPResult), nil
 }
 
 func (c *Client) MCPResourcesList(ctx context.Context, p Persona) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/mcp", "resources/list", struct{}{})
+	return c.rpcResponse(ctx, p, "/mcp", "resources/list", struct{}{})
 }
 
 func (c *Client) MCPResourcesRead(ctx context.Context, p Persona, uri string) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/mcp", "resources/read", resourcesReadParams{URI: uri})
+	return c.rpcResponse(ctx, p, "/mcp", "resources/read", resourcesReadParams{URI: uri})
 }
 
 func (c *Client) MCPPromptsList(ctx context.Context, p Persona) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/mcp", "prompts/list", struct{}{})
+	return c.rpcResponse(ctx, p, "/mcp", "prompts/list", struct{}{})
 }
 
 // MCPPromptsGet invokes a named prompt. args is a PromptArgs value matching
 // that prompt's argument schema.
 func (c *Client) MCPPromptsGet(ctx context.Context, p Persona, name string, args PromptArgs) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/mcp", "prompts/get", promptsGetParams{
+	return c.rpcResponse(ctx, p, "/mcp", "prompts/get", promptsGetParams{
 		Name:      name,
 		Arguments: args,
 	})
@@ -335,46 +354,16 @@ type a2aCallParams struct {
 	ExecutionID string       `json:"execution_id"`
 }
 
-// a2aCallProtoParams is the JSON-RPC params envelope for a2a/call with a
-// base64-encoded protobuf payload.
-type a2aCallProtoParams struct {
-	SkillName   string `json:"skill_name"`
-	ExecutionID string `json:"execution_id"`
-	Encoding    string `json:"encoding"`
-	ContentType string `json:"content_type"`
-	PayloadB64  string `json:"payload_b64"`
-}
-
 // A2ACall invokes an A2A skill with a typed JSON payload. payload matches
 // the skill's schema; a nil payload is forwarded as JSON null.
-func (c *Client) A2ACall(ctx context.Context, p Persona, skill string, payload SkillPayload, execID string) (*JSONRPCResponse, error) {
-	return c.rpc(ctx, p, "/api/a2a/v1/call", "a2a/call", a2aCallParams{
+func (c *Client) A2ACall(ctx context.Context, p Persona, skill string, payload SkillPayload, execID string) (*GovernedOutcome, error) {
+	status, raw, err := c.rpc(ctx, p, constants.APIPaths.A2ACall, "a2a/call", a2aCallParams{
 		SkillName:   skill,
 		Payload:     payload,
 		ExecutionID: execID,
 	})
-}
-
-// A2ACallProto demonstrates A2A carrying a typed protobuf task payload rather
-// than loose JSON: it marshals an A2ACallRequested, base64-encodes the bytes,
-// and ships them under a content-type marker. The Gateway still wraps it in an
-// A2A_CALL governance envelope; the difference is a deterministic, typed,
-// schema-checked payload instead of free-form JSON.
-func (c *Client) A2ACallProto(ctx context.Context, p Persona, skill string, payloadJSON, execID string) (*JSONRPCResponse, error) {
-	msg := &operatorv1.A2ACallRequested{
-		SkillName:   skill,
-		PayloadJson: payloadJSON,
-		ExecutionId: execID,
-	}
-	raw, err := proto.Marshal(msg)
 	if err != nil {
-		return nil, fmt.Errorf("marshal A2ACallRequested: %w", err)
+		return nil, err
 	}
-	return c.rpc(ctx, p, "/api/a2a/v1/call", "a2a/call", a2aCallProtoParams{
-		SkillName:   skill,
-		ExecutionID: execID,
-		Encoding:    "protobuf",
-		ContentType: "application/x-protobuf;type=ztd.operator.v1.A2ACallRequested",
-		PayloadB64:  base64.StdEncoding.EncodeToString(raw),
-	})
+	return decodeRPCOutcome(status, raw, decodeA2AResult), nil
 }

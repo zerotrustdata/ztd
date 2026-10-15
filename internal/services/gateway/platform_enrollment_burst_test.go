@@ -124,7 +124,7 @@ func runPlatformEnrollmentBurst(t *testing.T, n int, scenario burstScenario) {
 				InstanceID:        fmt.Sprintf("burst-%04d", i),
 				Hostname:          "burst.local",
 				SystemFingerprint: fmt.Sprintf("burst-host-%04d", i),
-				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR},
+				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: testActuatorPublicKeyHex},
 			},
 			operatorKey: operatorKey,
 			cliKey:      cliKey,

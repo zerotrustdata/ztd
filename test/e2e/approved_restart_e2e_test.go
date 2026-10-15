@@ -121,10 +121,10 @@ func TestApprovedRestart_ReenrollsAfterRestart(t *testing.T) {
 
 	// Command roundtrip proves the new session has command readiness, not just registry state.
 	resp := e2eClient.dispatchFsRead(t, ctx)
-	assert.NotEmpty(t, resp.TransactionID, "dispatch response must carry a transaction ID")
-	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.EventType,
+	assert.NotEmpty(t, resp.GetTransactionId(), "dispatch response must carry a transaction ID")
+	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.GetEventType(),
 		"dispatch response event type must be the fs.read completed event")
-	t.Logf("command roundtrip succeeded on re-enrolled session: txn=%s", resp.TransactionID)
+	t.Logf("command roundtrip succeeded on re-enrolled session: txn=%s", resp.GetTransactionId())
 }
 
 // e2eEventWaiters holds the level-triggered wake-ups the enrollment restart tests

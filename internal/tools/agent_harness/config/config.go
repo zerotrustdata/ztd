@@ -72,7 +72,7 @@ type Config struct {
 	OperatorID string `json:"operator_id"`
 
 	// UserID is the host CLI user_id used to scope the SSE approval subscription.
-	// When set, WaitForHumanApproval subscribes with this user_id instead of the
+	// When set, SubscribeApprovals waits for approvals tagged with this user_id instead of the
 	// operator id, so the harness receives events for transactions tagged with
 	// the host user's identity.
 	UserID string `json:"user_id"`

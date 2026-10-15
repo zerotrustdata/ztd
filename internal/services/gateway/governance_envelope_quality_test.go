@@ -44,16 +44,26 @@ func TestClassifyEnvelopeError_Exhaustive(t *testing.T) {
 		{governance.ErrTransactionExpired, http.StatusForbidden},
 		{governance.ErrNonceMissing, http.StatusForbidden},
 		{governance.ErrTransactionReplay, http.StatusForbidden},
-		{governance.ErrStateRootMissing, http.StatusForbidden},
+		{governance.ErrStateRootMissing, http.StatusServiceUnavailable},
 		{governance.ErrStateRootRequired, http.StatusForbidden},
 		{governance.ErrStateRootMismatch, http.StatusForbidden},
 		{governance.ErrL2SignatureMissing, http.StatusForbidden},
 		{governance.ErrL2SignatureInvalid, http.StatusForbidden},
-		{governance.ErrL2ConsensusNotConfigured, http.StatusForbidden},
+		{governance.ErrL2ConsensusNotConfigured, http.StatusServiceUnavailable},
+		{governance.ErrL2ConsensusSetUnknown, http.StatusForbidden},
 		{governance.ErrL3ProofMissing, http.StatusForbidden},
 		{governance.ErrL3ProofInvalid, http.StatusForbidden},
-		{governance.ErrL3NotaryNotConfigured, http.StatusForbidden},
+		{governance.ErrL3NotaryNotConfigured, http.StatusServiceUnavailable},
 		{governance.ErrTxInFlight, http.StatusForbidden},
+		{constants.ErrTxTransactionIDMismatch, http.StatusForbidden},
+		{constants.ErrTxExpiresAtMissing, http.StatusForbidden},
+		{constants.ErrEnvelopePostureMissing, http.StatusForbidden},
+		{constants.ErrTxOutcomeNotAllowed, http.StatusForbidden},
+		{constants.ErrTxL3ProofUnmintable, http.StatusForbidden},
+		{constants.ErrWardenVaultLocked, http.StatusServiceUnavailable},
+		{constants.ErrTxDoctrineMissing, http.StatusServiceUnavailable},
+		{constants.ErrTxReplayStoreMissing, http.StatusServiceUnavailable},
+		{constants.ErrTxPayloadDecoderMissing, http.StatusServiceUnavailable},
 		{governance.ErrInvalidEnvelope, http.StatusBadRequest},
 		{fmt.Errorf("%w: some error", constants.ErrTxInvalidEnvelope), http.StatusBadRequest},
 		{constants.ErrPubSubEmptyPayload, http.StatusBadRequest},
@@ -84,6 +94,7 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 		actingAppID       string
 		source            commonv1.Component
 		expectErr         bool
+		wantErr           error // nil means ErrURISANMismatch
 	}{
 		{
 			name:              "CLI session match",
@@ -133,6 +144,7 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 			actingAppID: "app-1",
 			source:      commonv1.Component_COMPONENT_AGENT,
 			expectErr:   true,
+			wantErr:     constants.ErrIdentityBindingFailed,
 		},
 		{
 			name:        "Non-app component skips App check",
@@ -191,8 +203,11 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 			})
 			err := verifyEnvelopeIdentityBinding(req, envelope)
 			if tc.expectErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "certificate URI SAN does not match envelope identity claims")
+				wantErr := tc.wantErr
+				if wantErr == nil {
+					wantErr = constants.ErrURISANMismatch
+				}
+				require.ErrorIs(t, err, wantErr)
 			} else {
 				require.NoError(t, err)
 			}

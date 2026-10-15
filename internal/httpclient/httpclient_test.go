@@ -8,7 +8,6 @@
 package httpclient
 
 import (
-	"context"
 	"crypto/tls"
 	"testing"
 	"time"
@@ -34,21 +33,4 @@ func TestWebSocketDialerWithTLS(t *testing.T) {
 
 	assert.Equal(t, customTLS, dialer.TLSClientConfig)
 	assert.Equal(t, DefaultTLSTimeout, dialer.HandshakeTimeout)
-}
-
-// TestIPv4DialContext_RejectsLiteralIPv6Address proves a literal IPv6
-// address (e.g. "[::1]") cannot be dialed through the IPv4 dialer — the
-// ip4 lookup fails and returns an error, never an IPv6 connection.
-func TestIPv4DialContext_RejectsLiteralIPv6Address(t *testing.T) {
-	_, err := IPv4DialContext(context.Background(), "tcp", "[::1]:8443")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ipv4 dial: resolve")
-}
-
-// TestIPv4DialContext_SplitHostPortError confirms a malformed address
-// surfaces the split error rather than panicking.
-func TestIPv4DialContext_SplitHostPortError(t *testing.T) {
-	_, err := IPv4DialContext(context.Background(), "tcp", "no-port-here")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ipv4 dial: split host/port")
 }

@@ -3,8 +3,8 @@ doc_id: protocol
 title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - protocol/
   - internal/constants/
@@ -143,16 +143,24 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
 1. **Receipt Canonicalization**:
    - `internal/services/governance.CanonicalizeActionReceipt` formats `ActionReceipt` into deterministic UTF-8 JSON.
    - Keys are sorted lexicographically, floats formatted with consistent precision, and whitespace stripped.
+   - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `ActionReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
+   - `GovernanceRejection` (`error`, `receipt`) is the client body for an L4 rejection on every ingress. Ingresses render it with `protojson` proto names, and clients verify `receipt` with `VerifyActionReceiptSignature`.
+   - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body on the direct and dispatch ingresses, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
+   - `GovernedDispatchResult` (`transaction_id`, `event_type`, `action_type`, `result_payload`, `inference_result`, `receipt`) is the HTTP 200 body of governed dispatch.
    - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
    - `VerifyReceiptPersistenceAttestation` canonicalizes and verifies persistence attestations.
 2. **Evaluation Protojson Canonicalization**:
    - Evaluation messages use `MarshalCanonical` and `UnmarshalCanonical` (`protocol/proto/ztd/eval/v1/canonical.go`).
    - Uses protobuf field names through protojson, compacts whitespace, and omits proto3 zero-value scalar fields.
    - `UnmarshalCanonical` rejects any payload whose raw bytes differ from its canonical re-encoding.
+   - `ConformanceRunRecord`, `ConformanceVerdictSet` and their evidence messages (`ConformanceCaseEvidence`, `ConformanceObservation`, `CanaryManifest`, `ConformanceAnchor`) hold the governance-conformance suite: raw evidence per case and the verdict set, kept as separate messages.
+   - `AgentRole`, `AgentStep`, `ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace` and `InvestigationSeed` define the external agent system-under-test (SUT) contract. The SUT consumes a `ScoredTurnRequest` and returns its `AgentTrace`; the contract contains no product persona or route names. This protobuf `AgentTrace` is distinct from the campaign executor's private persisted evidence envelope, whose JSON schema is `agent-trace.v2` (`internal/services/evaluation/campaign_agent_trace.go`). The SUT contract and vectors are present, while campaign runs currently use the built-in governed executor rather than this external SUT exchange.
+   - `ContainmentResult` (`verdict`, `breaches`) is the red-team verdict for one attempt, reported apart from model quality.
 3. **Canonicalization Conformance Vectors**:
    - Pinned in `protocol/vectors/`:
      - `action_receipt_canonicalization.json`
      - `action_receipt_failure_code_canonicalization.json`
+     - `action_receipt_rejection_code_canonicalization.json`
      - `action_receipt_stage_evidence_canonicalization.json`
      - `receipt_persistence_attestation_canonicalization.json`
      - `compliance/` and `eval/` vectors.

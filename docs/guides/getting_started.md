@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -33,20 +33,25 @@ Both roles run from the static `ztd` binary, selected by the `gw` or `operator` 
 
 ## Quick Start
 
-ztd runs natively on the machine as a host binary. On Linux or macOS, one command takes a clean machine to a running Gateway and a first governed action:
+ztd runs natively on the machine as a host binary. One command takes a clean machine to a running Gateway and a first governed action. On Linux or macOS:
 
 ```bash
 curl -fsSL https://zerotrustdata.io/start.sh | sh
 ```
 
-`start.sh` installs the signed release binary into `~/ztd` with the checksum-verified installer, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. It never uses sudo, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. It reads these environment variables:
+On Windows, in PowerShell:
+
+```powershell
+irm https://zerotrustdata.io/start.ps1 | iex
+```
+
+`start.sh` installs the signed release binary into `~/ztd` with the checksum-verified installer, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. `start.ps1` does the same with `ztd.ps1`, installing `ztd.exe` into `~\ztd`; run the follow-up commands as `.\ztd.exe`. Neither uses sudo or Administrator, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. Both read these environment variables:
 
 | Variable | Effect |
 | :--- | :--- |
-| `ZTD_DIR` | Install and runtime directory (default `~/ztd`). Runtime state lives in `$ZTD_DIR/.ztd/`. |
+| `ZTD_DIR` | Install and runtime directory (default `~/ztd`). Runtime state lives in `$ZTD_DIR/.ztd/`. In PowerShell, set variables with `$env:ZTD_DIR='...'` before the command. |
 | `ZTD_VERSION` | Install this `X.Y.Z` release instead of the latest. |
 | `ZTD_OVERWRITE=1` | Replace an existing `$ZTD_DIR/ztd` (upgrade). A running Gateway keeps its version until `./ztd gw restart`. |
-| `ZTD_MASTER_KEY_FILE` | Absolute path to a provisioned master key file for hosts without an OS key store; passed to every `./ztd` call. |
 
 To install only the binary into the current directory, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh` (or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell). Binaries, checksums, Sigstore bundles, and release notes for every version are at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
 
@@ -91,9 +96,9 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
 
-**Windows and macOS:** The Gateway seals its vault key with DPAPI on Windows and the Keychain on macOS automatically; no ssh-agent or master key file is needed.
+**Windows and macOS:** The Gateway seals its vault key with DPAPI on Windows and the Keychain on macOS automatically; no ssh-agent is needed.
 
-**Linux without a desktop keyring:** The Gateway seals its vault key with the OS keystore. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent first (`eval "$(ssh-agent)" && ssh-add`) or pass a provisioned key file with `make quickstart QUICKSTART_ARGS='--master-key-file /abs/path/master.key'` (or `ZTD_MASTER_KEY_FILE=/abs/path/master.key` for `start.sh`). Quickstart and `start.sh` pass the key file to every `./ztd` call they make, since the same key seals the CLI identity; pass `--master-key-file` to your own `./ztd` commands too. Both display this remedy when the Gateway cannot reach a key store. See [Build Gateway](build_gateway.md) for key file provisioning.
+**Linux without a desktop keyring:** The Gateway seals its vault key with an ssh-agent key when no Secret Service keyring is available. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent with a key loaded before running `make quickstart` or `start.sh`: `eval "$(ssh-agent)" && ssh-add`. Run `ssh-keygen -t ed25519` first if the host has no key. Run the follow-up `./ztd` commands from the same shell, because the same agent key seals the CLI identity. Without a usable agent key, ztd fails closed. See [Encryption Architecture](../architecture/encryption.md#master-key-and-keyring-providers) for the key source order.
 
 ### Configure `.env`
 
@@ -153,17 +158,18 @@ Or approve all pending requests simultaneously:
 Run the provider-free release smoke test from a built checkout:
 
 ```bash
-smoke_parent="$(mktemp -d)"
-./ztd test release-smoke --root "$smoke_parent/run" --binary "$PWD/ztd"
+smoke_root=".ztd/operators/release-smoke-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+./ztd test release-smoke --root "$smoke_root" --binary "$PWD/ztd"
 ```
 
 On Windows, from PowerShell:
 
 ```powershell
-./ztd test release-smoke --root "$env:TEMP\ztd-smoke\run1" --binary "$PWD\ztd.exe"
+$smokeRoot = ".ztd/operators/release-smoke-$([guid]::NewGuid().ToString('N'))"
+./ztd test release-smoke --root $smokeRoot --binary "$PWD\ztd.exe"
 ```
 
-The command starts and owns an isolated Gateway and data Operator, submits a governed file edit through the Gateway command API, creates and merges a document through the embedded Operator path, verifies exact read-back and signed receipts, exports both runtimes' reports, and stops only its own processes. It requires no model service, provider key, or existing platform runtime. Inspect the `evidence/` and `reports/` outputs under `$smoke_parent/run`, then remove the temporary directory when finished.
+The command starts and owns an isolated Gateway and data Operator, submits a governed file edit through the Gateway command API, creates and merges a document through the embedded Operator path, verifies exact read-back and signed receipts, exports both runtimes' reports, and stops only its own processes. It requires no model service, provider key, or existing platform runtime. Inspect the `evidence/` and `reports/` outputs under `$smoke_root`; the run artifacts remain there for review.
 
 ### Verify the stack is healthy
 
@@ -241,7 +247,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.0.6`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.1.0`, then run both checks there.
 
 Run the checksum check:
 
@@ -265,7 +271,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.0.6' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.1.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -385,7 +391,7 @@ make down
 To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.6
+go get github.com/zerotrustdata/ztd@v1.1.0
 ```
 
 Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:

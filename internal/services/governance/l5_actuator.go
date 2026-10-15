@@ -134,6 +134,17 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 		"action_type", vt.ActionType,
 		"event_type", eventType)
 
+	// The Warden decides L2 and L3 before L5 runs. An undecided transaction is a
+	// programming error: it is recorded as a FAILED receipt and the handler never runs.
+	if err := requireDecidedLayers(vt); err != nil {
+		w.Logger.Error("Fail-closed: verified transaction has an undecided L2 or L3 status", "message_id", vt.Envelope.Id)
+		rejected, recordErr := w.RecordRejectedTransaction(ctx, vt, err)
+		if recordErr != nil {
+			return nil, recordErr
+		}
+		return rejected, err
+	}
+
 	// Refuse before any receipt is signed or the handler runs when the target cannot be scrubbed.
 	signed, err := w.signedView(vt)
 	if err != nil {
@@ -279,6 +290,7 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 	receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 	receipt.ResultSummary = w.failedReceiptSummary("rejected", operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejection)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+	receipt.RejectionCode = ClassifyGovernanceRejection(rejection)
 	receipt.ExecutedAtUnixMs = time.Now().UnixMilli()
 	if err := w.signAndLogRejectionReceipt(context.WithoutCancel(ctx), signed, identity, receipt); err != nil {
 		return nil, err
@@ -295,7 +307,22 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 	return receipt, nil
 }
 
+// requireDecidedLayers fails closed when the Warden left L2 or L3 undecided. Every
+// VerifiedTransaction from VerifyEnvelope carries both statuses, so UNSPECIFIED
+// is a programming error with no default.
+func requireDecidedLayers(vt *VerifiedTransaction) error {
+	if vt.L2Status == operatorv1.L2Status_L2_STATUS_UNSPECIFIED {
+		return fmt.Errorf("L5Actuator: L2 status undecided: %w", constants.ErrInternal)
+	}
+	if vt.L3Status == operatorv1.L3Status_L3_STATUS_UNSPECIFIED {
+		return fmt.Errorf("L5Actuator: L3 status undecided: %w", constants.ErrInternal)
+	}
+	return nil
+}
+
 // buildInitialReceipt constructs the EXECUTING-status receipt with state root and L2/L3 status.
+// The L2 and L3 status are the Warden's decision, copied as decided; L5 never recomputes
+// them from posture. Execute refuses an undecided transaction before this runs.
 // Receipt evidence does not depend on the caller staying connected, so the
 // state root read ignores ctx cancellation, as the receipt writes do.
 func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransaction) *operatorv1.ActionReceipt {
@@ -305,24 +332,6 @@ func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransa
 		stateBefore, err = w.StateRootProvider.GetCurrentStateRoot(context.WithoutCancel(ctx))
 		if err != nil {
 			w.Logger.Warn("Failed to get state root before execution", string(constants.ConnectionStateError), err)
-		}
-	}
-
-	l2Status := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
-	if vt.Posture != nil && vt.Posture.RequiresL2Signature() {
-		if vt.L2Valid {
-			l2Status = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
-		} else {
-			l2Status = operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED
-		}
-	}
-
-	l3Status := operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
-	if vt.Posture != nil && vt.Posture.RequiresL3Proof() {
-		if vt.L3Valid {
-			l3Status = operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
-		} else {
-			l3Status = operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED
 		}
 	}
 
@@ -345,8 +354,8 @@ func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransa
 		StateRootBefore:            stateBefore,
 		ExecutedAtUnixMs:           time.Now().UnixMilli(),
 		SignerKeyId:                w.KeyID,
-		L2Status:                   l2Status,
-		L3Status:                   l3Status,
+		L2Status:                   vt.L2Status,
+		L3Status:                   vt.L3Status,
 		DeterministicStageEvidence: stages,
 	}
 }
@@ -846,6 +855,15 @@ func VerifyReceiptPersistenceAttestation(receipt *operatorv1.ActionReceipt, publ
 	return nil
 }
 
+// VerifyActionReceipt verifies a receipt's signature and its final-persistence
+// attestation against the executing runtime's actuator public key.
+func VerifyActionReceipt(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
+	if err := VerifyActionReceiptSignature(receipt, publicKey); err != nil {
+		return err
+	}
+	return VerifyReceiptPersistenceAttestation(receipt, publicKey)
+}
+
 // canonicalReceipt is the typed representation for ActionReceipt canonicalization.
 // This ensures strict typing and deterministic JSON marshaling for signing/verification.
 type canonicalReceipt struct {
@@ -863,6 +881,7 @@ type canonicalReceipt struct {
 	L3Status                       int32  `json:"l3_status"`
 	DeterministicStageEvidenceHash string `json:"deterministic_stage_evidence_hash,omitempty"`
 	FailureCode                    int32  `json:"failure_code,omitempty"`
+	RejectionCode                  int32  `json:"rejection_code,omitempty"`
 }
 
 func deterministicStageEvidenceHash(stages []*operatorv1.DeterministicStageEvidence) (string, error) {
@@ -909,6 +928,7 @@ func CanonicalizeActionReceipt(r *operatorv1.ActionReceipt) ([]byte, error) {
 		L3Status:                       int32(r.L3Status),
 		DeterministicStageEvidenceHash: stageEvidenceHash,
 		FailureCode:                    int32(r.FailureCode),
+		RejectionCode:                  int32(r.RejectionCode),
 	}
 	payload, err := json.Marshal(canonical)
 	if err != nil {

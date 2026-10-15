@@ -35,7 +35,7 @@ if [[ ! -x ./ztd ]]; then
     exit 1
 fi
 
-smoke_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ztd-onboarding-smoke-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
+smoke_root="${RUNNER_TEMP:-$PWD/.ztd/tmp}/ztd-onboarding-smoke-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
 if [[ -e "$smoke_root" ]]; then
     echo "ERROR: smoke evidence path already exists: $smoke_root" >&2
     exit 1

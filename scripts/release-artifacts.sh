@@ -48,6 +48,8 @@ repo_root() {
 
 ROOT="$(repo_root)"
 cd "$ROOT"
+# shellcheck source=lib/scratch.sh
+. "$ROOT/scripts/lib/scratch.sh"
 
 expected_binaries() {
 	local targets token os arch name
@@ -131,11 +133,12 @@ cmd_verify() {
 	# Run a private executable copy (digest verified above): artifact transfer
 	# drops the executable bit, and verification must not modify the release set.
 	if [ "$(uname -s)/$(uname -m)" = "Linux/x86_64" ]; then
-		local out exe
-		exe=$(mktemp)
+		local out scratch exe
+		scratch=$(ztd_scratch_dir "$ROOT" ztd-release-verify) || die "cannot create scratch dir"
+		exe="$scratch/ztd-linux-amd64"
 		install -m 0700 "$dir/ztd-linux-amd64" "$exe"
-		out=$("$exe" version --json --fips) || { rm -f "$exe"; die "ztd-linux-amd64 version --json --fips failed (FIPS 140-3 approved mode inactive or binary not executable)"; }
-		rm -f "$exe"
+		out=$("$exe" version --json --fips) || { rm -rf "$scratch"; die "ztd-linux-amd64 version --json --fips failed (FIPS 140-3 approved mode inactive or binary not executable)"; }
+		rm -rf "$scratch"
 		[ "$(jq -r '.version' <<<"$out")" = "v${version}" ] || die "ztd-linux-amd64 does not report version v${version}"
 		[ "$(jq -r '.platform' <<<"$out")" = "linux/amd64" ] || die "ztd-linux-amd64 does not report platform linux/amd64"
 		[ "$(jq -r '.source_revision' <<<"$out")" = "$revision" ] || die "ztd-linux-amd64 does not report source revision ${revision}"

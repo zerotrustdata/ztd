@@ -236,7 +236,7 @@ func publicDiagnosticCode(code string) string {
 		"campaign_native_assertion_unmapped",
 		"campaign_population_incomplete",
 		"campaign_verification_failure",
-		"evaluation_candidate_native",
+		"evaluation_candidate_conformance",
 		"evaluation_candidate_campaign",
 		"evaluation_candidate_incomplete",
 		"evaluation_candidate_unsupported",

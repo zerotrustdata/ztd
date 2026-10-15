@@ -35,6 +35,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/timesvc"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -330,7 +331,7 @@ func TestBundleVerifier_VerifyOperationalSourcesReplaysProtectedInventory(t *tes
 	admission.OwnerRuntimeBoundary = "operator-1"
 	admission.AcquisitionBoundary = "operator-local-export"
 	admission.RunId = "run-1"
-	sourceDir := t.TempDir()
+	sourceDir := testutil.TempDir(t)
 	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{Receipts: []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: time.UnixMilli(receipt.GetExecutedAtUnixMs()), Body: receiptBody}}}, evidence.OperationalExportRequest{
 		ScopeID:              scope.GetScopeId(),
 		AdmissionID:          admission.GetAdmissionId(),
@@ -437,7 +438,7 @@ func operationalReplaySourceFixture(t *testing.T, admission *compliancev1.Assess
 	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
 
-	sourceDir := t.TempDir()
+	sourceDir := testutil.TempDir(t)
 	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 		Receipts: []storage.OperationalReceiptSource{{
 			TransactionID: receipt.GetTransactionId(),
@@ -1996,7 +1997,7 @@ func TestBundleVerifier_SourceVerificationRejectsMalformedTimestamps(t *testing.
 		verificationErr error
 		source          string
 	}{
-		{name: "eval source verification timestamp", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.EvalRunVerifierID, verifierVersion: constants.EvalRunVerifierVersion, verificationErr: constants.ErrEvalRunVerificationFailed, source: "eval"},
+		{name: "eval source verification timestamp", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.ConformanceVerifierID, verifierVersion: constants.ConformanceVerifierVersion, verificationErr: constants.ErrEvalRunVerificationFailed, source: "eval"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -2030,7 +2031,7 @@ func TestBundleVerifier_SourceVerificationRejectsReportsWithoutAnalysisEvidenceR
 		verifierID      string
 		verifierVersion string
 	}{
-		{name: "eval source", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.EvalRunVerifierID, verifierVersion: constants.EvalRunVerifierVersion},
+		{name: "eval source", sourceDir: constants.ComplianceBundleSourceEvalsDirname, verifierID: constants.ConformanceVerifierID, verifierVersion: constants.ConformanceVerifierVersion},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

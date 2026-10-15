@@ -82,8 +82,9 @@ func submitGatewayOriginEnrollment(t *testing.T, env *platformEnrollmentTestEnv,
 		Hostname:          gatewayHostname,
 		SystemFingerprint: "gateway-fingerprint",
 		Operator: &models.PlatformOperatorCSRPayload{
-			OperatorCSRPEM: operatorCSR,
-			CLICSRPEM:      cliCSR,
+			OperatorCSRPEM:    operatorCSR,
+			CLICSRPEM:         cliCSR,
+			ActuatorPublicKey: testActuatorPublicKeyHex,
 		},
 	}, "https://gateway.local/console")
 	require.NoError(t, err)

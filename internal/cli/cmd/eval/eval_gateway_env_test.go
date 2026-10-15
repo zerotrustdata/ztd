@@ -51,7 +51,7 @@ func newGatewayTestDeps(t *testing.T, root string, operators []*operatorv1.Opera
 	paths.Host = server.URL
 	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
 	require.NoError(t, err)
-	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, MasterKeyFile: keystoretest.ProvisionMasterKeyFile(t)}
+	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, Keyring: keystoretest.NewMemoryKeyring()}
 	fixedNow := time.Unix(1789657337, 0).UTC()
 	return nativeEvalDeps{
 		configLoader: func(string) (*config.Config, error) { return cfg, nil },

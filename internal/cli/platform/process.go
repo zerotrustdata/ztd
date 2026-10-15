@@ -298,9 +298,6 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	if opts.VaultDir != "" {
 		args = append(args, "--vault-dir", opts.VaultDir)
 	}
-	if opts.MasterKeyFile != "" {
-		args = append(args, "--master-key-file", opts.MasterKeyFile)
-	}
 
 	if opts.CertIdentityMode != "" {
 		args = append(args, "--cert-mode", opts.CertIdentityMode)

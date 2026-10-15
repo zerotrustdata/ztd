@@ -12,6 +12,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,9 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestClient_StateRoot(t *testing.T) {
@@ -45,14 +48,13 @@ func TestClient_StateRoot(t *testing.T) {
 			usePublicBase: true,
 		},
 		{
-			name:          "state_root field",
+			name:          "legacy state_root field only is missing the required root",
 			responseBody:  `{"state_root": "def456"}`,
-			expectedRoot:  "def456",
-			wantErr:       false,
+			wantErr:       true,
 			usePublicBase: true,
 		},
 		{
-			name:          "both fields (state_merkle_root takes precedence)",
+			name:          "state_merkle_root read, state_root ignored",
 			responseBody:  `{"state_merkle_root": "abc123", "state_root": "def456"}`,
 			expectedRoot:  "abc123",
 			wantErr:       false,
@@ -61,22 +63,19 @@ func TestClient_StateRoot(t *testing.T) {
 		{
 			name:          "empty response",
 			responseBody:  `{}`,
-			expectedRoot:  "",
-			wantErr:       false,
+			wantErr:       true,
 			usePublicBase: true,
 		},
 		{
 			name:          "invalid JSON",
 			responseBody:  `invalid`,
-			wantErr:       false, // stateRoot is lenient - returns empty string on invalid JSON
-			expectedRoot:  "",
+			wantErr:       true,
 			usePublicBase: true,
 		},
 		{
 			name:         "server error",
 			responseBody: `{"error": "internal error"}`,
-			wantErr:      false, // stateRoot is lenient - doesn't check status codes
-			expectedRoot: "",
+			wantErr:      true,
 			setupServer: func(s *httptest.Server) {
 				s.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
@@ -506,35 +505,49 @@ func TestClient_do_Verbose(t *testing.T) {
 	}
 }
 
-func TestClient_WaitForHumanApproval_Success(t *testing.T) {
+// resumedReceiptJSON returns the canonical signed receipt of txHash's resumed
+// transaction, as the Gateway embeds it in approval.completed.
+func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
+	t.Helper()
+	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+		TransactionId:   "transaction-" + txHash,
+		TransactionHash: txHash,
+		SignerKeyId:     "warden-key-resumed",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		ResultSummary:   "resumed result",
+		Signature:       "signature-resumed",
+	})
+	require.NoError(t, err)
+	return receiptJSON
+}
+
+// approvalCompletedSSE serves one approval.completed SSE frame carrying receipt.
+func approvalCompletedSSE(t *testing.T, w http.ResponseWriter, userID, txHash string, receipt json.RawMessage) {
+	t.Helper()
+	w.Header().Set("Content-Type", "text/event-stream")
+	eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
+		Type:    constants.SSEEventTypeApprovalCompleted,
+		UserID:  userID,
+		TxHash:  txHash,
+		Receipt: receipt,
+	})
+	require.NoError(t, err)
+	envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
+	require.NoError(t, err)
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+	// Flush like the gateway does, so a handler that holds the stream open still
+	// delivers the 200 and the frame.
+	w.(http.Flusher).Flush()
+}
+
+func TestClient_ApprovalSubscription_Success(t *testing.T) {
 	const userID = "test-user-approval"
 	const txHash = "tx-success-001"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			w.Header().Set("Content-Type", "text/event-stream")
-			eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-				Type:   constants.SSEEventTypeApprovalCompleted,
-				UserID: userID,
-				TxHash: txHash,
-				Receipt: &models.ApprovalReceiptReference{
-					ExecutionID: "execution-success-001", TransactionID: "transaction-success-001", TransactionHash: txHash,
-					SignerKeyID: "warden-key-success-001", Signature: "signature-success-001", InvestigationID: "investigation-success-001",
-				},
-			})
-			if err != nil {
-				t.Fatalf("marshal event: %v", err)
-			}
-			envelope := models.SSEPushPayload{
-				UserID: userID,
-				Event:  eventPayload,
-			}
-			envelopeJSON, err := json.Marshal(envelope)
-			if err != nil {
-				t.Fatalf("marshal envelope: %v", err)
-			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+			approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
@@ -547,136 +560,28 @@ func TestClient_WaitForHumanApproval_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cfg := config.Config{
-		PublicBaseURL: srv.URL,
-		MTLSBaseURL:   srv.URL,
-		Auth:          config.Auth{},
-	}
-
-	client, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
+	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	status, body, err := client.WaitForHumanApproval(ctx, Persona{ID: "test"}, txHash, userID)
-	if err != nil {
-		t.Fatalf("WaitForHumanApproval() error = %v", err)
-	}
-	if status != http.StatusOK {
-		t.Errorf("expected status 200, got %d", status)
-	}
-	if len(body) == 0 {
-		t.Error("expected non-empty body")
-	}
+	sub, err := client.SubscribeApprovals(ctx, Persona{ID: "test"})
+	require.NoError(t, err)
+	defer sub.Close()
+
+	receipt, err := client.WaitForApproval(ctx, sub, txHash, userID, ApprovalDecisionApprove)
+	require.NoError(t, err)
+	assert.Equal(t, txHash, receipt.GetTransactionHash())
 }
 
-func TestClient_WaitForHumanApproval_ReturnsResumedReceiptFromCompletionEvent(t *testing.T) {
-	const userID = "test-user-resumed-receipt"
-	const txHash = "tx-resumed-receipt-001"
-
-	expectedReceipt := models.ApprovalReceiptReference{
-		ExecutionID:     "execution-resumed-1",
-		TransactionID:   "transaction-resumed-1",
-		TransactionHash: txHash,
-		InvestigationID: "investigation-resumed-1",
-		SignerKeyID:     "warden-key-resumed-1",
-		Signature:       "signature-resumed-1",
-	}
-	type completionEvent struct {
-		Type    string                          `json:"type"`
-		UserID  string                          `json:"user_id"`
-		TxHash  string                          `json:"tx_hash"`
-		Receipt models.ApprovalReceiptReference `json:"receipt"`
-	}
-
-	statusRequests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			w.Header().Set("Content-Type", "text/event-stream")
-			eventPayload, err := json.Marshal(completionEvent{
-				Type: constants.SSEEventTypeApprovalCompleted, UserID: userID, TxHash: txHash, Receipt: expectedReceipt,
-			})
-			require.NoError(t, err)
-			envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
-			require.NoError(t, err)
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
-			statusRequests++
-			w.Header().Set("Content-Type", "application/json")
-			require.NoError(t, json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
-				Status: string(constants.SuspendedTxStatusExpiredOrNotFound),
-			}))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	status, body, err := client.WaitForHumanApproval(context.Background(), Persona{ID: "test"}, txHash, userID)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, status)
-	assert.Zero(t, statusRequests)
-
-	var receipt Receipt
-	require.NoError(t, json.Unmarshal(body, &receipt))
-	assert.Equal(t, expectedReceipt.ExecutionID, receipt.ExecutionID)
-	assert.Equal(t, expectedReceipt.TransactionID, receipt.TransactionID)
-	assert.Equal(t, expectedReceipt.TransactionHash, receipt.TransactionHash)
-	assert.Equal(t, expectedReceipt.InvestigationID, receipt.InvestigationID)
-	assert.Equal(t, expectedReceipt.SignerKeyID, receipt.SignerKeyID)
-	assert.Equal(t, expectedReceipt.Signature, receipt.Signature)
-}
-
-func TestClient_WaitForHumanApproval_FailsClosedWhenReceiptTransactionDoesNotMatchEvent(t *testing.T) {
-	const userID = "test-user-mismatched-receipt"
-	const txHash = "tx-matched-event-001"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-			Type:   constants.SSEEventTypeApprovalCompleted,
-			UserID: userID,
-			TxHash: txHash,
-			Receipt: &models.ApprovalReceiptReference{
-				ExecutionID: "execution-mismatched-receipt-1", TransactionID: "transaction-mismatched-receipt-1", TransactionHash: "different-transaction-hash",
-				SignerKeyID: "warden-key-mismatched-receipt-1", Signature: "signature-mismatched-receipt-1", InvestigationID: "investigation-mismatched-receipt-1",
-			},
-		})
-		require.NoError(t, err)
-		envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
-		require.NoError(t, err)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
-	require.NoError(t, err)
-
-	status, body, err := client.WaitForHumanApproval(context.Background(), Persona{ID: "test"}, txHash, userID)
-
-	require.ErrorIs(t, err, constants.ErrApprovalReceiptReferenceInvalid)
-	assert.Zero(t, status)
-	assert.Empty(t, body)
-}
-
-func TestClient_WaitForHumanApproval_TimeoutNoMatchingEvent(t *testing.T) {
+func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 	const userID = "test-user-timeout"
 	const sentTxHash = "tx-wrong-999"
 	const expectedTxHash = "tx-correct-001"
 
 	// sseCLISessionID captures the X-ZTD-CLI-Session-ID header from the SSE
-	// subscription request so the test can assert WaitForHumanApproval sends the
+	// subscription request so the test can assert SubscribeApprovals sends the
 	// persona's CLI session ID as a header (not in the URL query string).
 	var sseCLISessionID string
 
@@ -684,49 +589,32 @@ func TestClient_WaitForHumanApproval_TimeoutNoMatchingEvent(t *testing.T) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
 			sseCLISessionID = r.Header.Get(constants.HeaderCLISessionID)
-			w.Header().Set("Content-Type", "text/event-stream")
-			eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-				Type:   constants.SSEEventTypeApprovalCompleted,
-				UserID: userID,
-				TxHash: sentTxHash,
-			})
-			if err != nil {
-				t.Fatalf("marshal event: %v", err)
-			}
-			envelope := models.SSEPushPayload{
-				UserID: userID,
-				Event:  eventPayload,
-			}
-			envelopeJSON, err := json.Marshal(envelope)
-			if err != nil {
-				t.Fatalf("marshal envelope: %v", err)
-			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
+			approvalCompletedSSE(t, w, userID, sentTxHash, resumedReceiptJSON(t, sentTxHash))
+			// Hold the stream open so Wait ends on its timeout, not on a dropped stream.
+			<-r.Context().Done()
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
 
-	cfg := config.Config{
-		PublicBaseURL: srv.URL,
-		MTLSBaseURL:   srv.URL,
-		Auth:          config.Auth{},
-	}
-
-	client, err := New(cfg)
+	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
 
+	sub, err := client.SubscribeApprovals(context.Background(), Persona{ID: "test", CLISessionID: "cli-test-session"})
+	require.NoError(t, err)
+	defer sub.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	_, _, err = client.WaitForHumanApproval(ctx, Persona{ID: "test", CLISessionID: "cli-test-session"}, expectedTxHash, userID)
+	_, err = sub.Wait(ctx, expectedTxHash, userID)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
-	if err != constants.ErrApprovalSSETimeout {
+	if !errors.Is(err, constants.ErrApprovalSSETimeout) {
 		t.Errorf("expected ErrApprovalSSETimeout, got %v", err)
 	}
 	// The SSE subscription must carry the persona's CLI session ID as a header
@@ -734,66 +622,6 @@ func TestClient_WaitForHumanApproval_TimeoutNoMatchingEvent(t *testing.T) {
 	if sseCLISessionID != "cli-test-session" {
 		t.Errorf("SSE subscription X-ZTD-CLI-Session-ID header: got %q, want %q", sseCLISessionID, "cli-test-session")
 	}
-}
-
-func TestClient_WaitForHumanApproval_FailsClosedWhenCompletionEventOmitsReceipt(t *testing.T) {
-	const userID = "test-user-status-err"
-	const txHash = "tx-status-err-456"
-
-	statusRequests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			w.Header().Set("Content-Type", "text/event-stream")
-			eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-				Type:   constants.SSEEventTypeApprovalCompleted,
-				UserID: userID,
-				TxHash: txHash,
-			})
-			if err != nil {
-				t.Fatalf("marshal event: %v", err)
-			}
-			envelope := models.SSEPushPayload{
-				UserID: userID,
-				Event:  eventPayload,
-			}
-			envelopeJSON, err := json.Marshal(envelope)
-			if err != nil {
-				t.Fatalf("marshal envelope: %v", err)
-			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
-			statusRequests++
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
-				Status: string(constants.SuspendedTxStatusExpiredOrNotFound),
-				TxHash: txHash,
-			})
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer srv.Close()
-
-	cfg := config.Config{
-		PublicBaseURL: srv.URL,
-		MTLSBaseURL:   srv.URL,
-		Auth:          config.Auth{},
-	}
-
-	client, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	status, _, err := client.WaitForHumanApproval(ctx, Persona{ID: "test"}, txHash, userID)
-	require.ErrorIs(t, err, constants.ErrApprovalReceiptReferenceInvalid)
-	assert.Zero(t, status)
-	assert.Zero(t, statusRequests)
 }
 
 func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
@@ -848,4 +676,45 @@ func TestMCPToolsCallWithCLI_FallsBackToDoWhenNoCLIHTTP(t *testing.T) {
 	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, "fs_list", FSPathArgs{Path: "."})
 	require.NoError(t, err)
 	assert.True(t, sawRequest, "server should have received the fallback request")
+}
+
+func TestStateRoot_DecodesGatewayField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state_merkle_root":"root-abc"}`))
+	}))
+	defer server.Close()
+
+	client, err := New(config.Config{MTLSBaseURL: server.URL})
+	require.NoError(t, err)
+	root, err := client.stateRoot(context.Background(), server.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "root-abc", root)
+}
+
+func TestStateRoot_FailsClosedOnBadBody(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"malformed JSON", `{"state_merkle_root":`},
+		{"field name the Gateway never writes", `{"state_root":"root-abc"}`},
+		{"empty root after a successful decode", `{"state_merkle_root":""}`},
+		{"root field has the wrong JSON type", `{"state_merkle_root":42}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client, err := New(config.Config{MTLSBaseURL: server.URL})
+			require.NoError(t, err)
+			root, err := client.stateRoot(context.Background(), server.URL)
+			require.Error(t, err)
+			assert.Empty(t, root)
+		})
+	}
 }

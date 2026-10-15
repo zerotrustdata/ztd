@@ -45,17 +45,17 @@ func TestCommandRoundtrip_FsRead(t *testing.T) {
 	// type. The result envelope's EventType is the completed event — proof
 	// the operator processed the command through the full L4/L5 chain and
 	// published a typed result.
-	assert.NotEmpty(t, resp.TransactionID, "response must carry the transaction ID")
-	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.EventType,
+	assert.NotEmpty(t, resp.GetTransactionId(), "response must carry the transaction ID")
+	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.GetEventType(),
 		"response event type must be the fs.read completed event")
-	assert.NotEmpty(t, resp.ResultPayload, "response must carry the operator result payload")
+	assert.NotEmpty(t, resp.GetResultPayload(), "response must carry the operator result payload")
 
 	// Decode the result payload as FsReadResult and assert the operator read
 	// /etc/hostname successfully. The content is the file's bytes inside the
 	// operator — proving the command executed on the operator, not in the
 	// gateway process.
 	var fsReadResult operatorv1.FsReadResult
-	require.NoError(t, proto.Unmarshal(resp.ResultPayload, &fsReadResult),
+	require.NoError(t, proto.Unmarshal(resp.GetResultPayload(), &fsReadResult),
 		"unmarshal FsReadResult from response payload")
 	assert.Equal(t, constants.PathEtcHostname, fsReadResult.Path,
 		"result path must match the requested path")
@@ -64,5 +64,5 @@ func TestCommandRoundtrip_FsRead(t *testing.T) {
 	assert.NotEmpty(t, fsReadResult.Content, "fs.read result content must not be empty")
 	assert.Greater(t, fsReadResult.SizeBytes, int64(0), "fs.read result size must be positive")
 	t.Logf("command roundtrip succeeded: txn=%s content_size=%d",
-		resp.TransactionID, fsReadResult.SizeBytes)
+		resp.GetTransactionId(), fsReadResult.SizeBytes)
 }

@@ -653,8 +653,8 @@ type evalSourceInventory struct {
 	verificationReport   *compliancev1.ComplianceVerificationReport
 	campaignReport       *evalv1.EvaluationVerificationReport
 	campaignInventory    *evalv1.CampaignComplianceSourceInventory
-	report               bool
-	evidence             bool
+	record               bool
+	digest               bool
 	runtimeArtifacts     int
 	runtimeArtifactPaths map[string]struct{}
 }
@@ -678,15 +678,15 @@ func (v *bundleVerifier) verifyEvaluationSelectionDiagnostics() {
 	selectedEvalAdmissions := make(map[string]string)
 	for _, admission := range scope.GetSourceAdmissions() {
 		admissions[admission.GetAdmissionId()] = admission
-		if admission.GetSourceKind() == constants.EvaluationSourceKindNative {
-			selectedEvalAdmissions[admission.GetAdmissionId()] = "evaluation_candidate_native"
+		if admission.GetSourceKind() == constants.EvaluationSourceKindConformance {
+			selectedEvalAdmissions[admission.GetAdmissionId()] = "evaluation_candidate_conformance"
 		}
 		if admission.GetSourceKind() == constants.EvaluationSourceKindCampaign {
 			selectedEvalAdmissions[admission.GetAdmissionId()] = "evaluation_candidate_campaign"
 		}
 	}
 	expectedSeverity := map[string]string{
-		"evaluation_candidate_native":         "info",
+		"evaluation_candidate_conformance":    "info",
 		"evaluation_candidate_campaign":       "info",
 		"evaluation_candidate_incomplete":     "warning",
 		"evaluation_candidate_unsupported":    "warning",
@@ -754,7 +754,7 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 	inventories := make(map[string]*evalSourceInventory)
 	for _, admission := range scope.GetSourceAdmissions() {
 		_, hasEvalManifest := evalAdmissions[admission.GetAdmissionId()]
-		if hasEvalManifest && (admission.GetSourceKind() == constants.EvaluationSourceKindNative || admission.GetSourceKind() == constants.EvaluationSourceKindCampaign) {
+		if hasEvalManifest && (admission.GetSourceKind() == constants.EvaluationSourceKindConformance || admission.GetSourceKind() == constants.EvaluationSourceKindCampaign) {
 			key := admission.GetRunId()
 			if admission.GetSourceKind() == constants.EvaluationSourceKindCampaign {
 				key = admission.GetAdmissionId()
@@ -788,11 +788,11 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 					inventory.campaignReport = report
 				}
 			} else {
-				inventory.verificationReport = v.verifySourceVerificationReport(bundlePath, body, inventory.admission.GetRunId(), constants.EvalRunVerifierID, constants.EvalRunVerifierVersion, constants.ErrEvalRunVerificationFailed, "eval")
+				inventory.verificationReport = v.verifySourceVerificationReport(bundlePath, body, inventory.admission.GetRunId(), constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, constants.ErrEvalRunVerificationFailed, "eval")
 			}
 		case constants.CampaignSourceInventoryFilename:
 			if !campaign {
-				v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "native eval source cannot carry a campaign inventory")
+				v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "conformance eval source cannot carry a campaign inventory")
 				continue
 			}
 			manifest := &evalv1.CampaignComplianceSourceInventory{}
@@ -822,12 +822,8 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 				}
 				inventory.runtimeArtifactPaths[runtimePath] = struct{}{}
 				inventory.runtimeArtifacts++
-			}
-			if !campaign && len(parts) == 5 && parts[4] == constants.EvaluationReportFilename {
-				inventory.report = true
-			}
-			if !campaign && len(parts) == 6 && parts[4] == constants.EvaluationEvidenceDirname {
-				inventory.evidence = true
+			} else {
+				v.markConformanceRuntimeArtifact(bundlePath, parts, inventory)
 			}
 		default:
 			v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "eval source path is unsupported")
@@ -842,11 +838,38 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 			v.replayCampaignSourceVerification(ctx, key, inventory)
 			continue
 		}
-		if inventory.verificationReport == nil || !inventory.report || !inventory.evidence {
+		if inventory.verificationReport == nil || !inventory.record || !inventory.digest {
 			v.fail(constants.ErrEvalRunVerificationFailed, key, "eval evidence run lacks a complete protected runtime source inventory")
 			continue
 		}
 		v.replayEvalSourceVerification(ctx, inventory.admission.GetRunId(), inventory.verificationReport)
+	}
+}
+
+// markConformanceRuntimeArtifact admits one runtime file of a conformance
+// source: its record or its digest sidecar, each exactly once, at the top of the
+// runtime tree. Any other runtime path, including a legacy report.json or
+// evidence/ tree, fails closed.
+func (v *bundleVerifier) markConformanceRuntimeArtifact(bundlePath string, parts []string, inventory *evalSourceInventory) {
+	if len(parts) != 5 {
+		v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "conformance eval runtime path is unsupported")
+		return
+	}
+	switch parts[4] {
+	case constants.ConformanceRecordFilename:
+		if inventory.record {
+			v.fail(constants.ErrEvidenceDuplicateID, bundlePath, "conformance eval record is duplicated")
+			return
+		}
+		inventory.record = true
+	case constants.ConformanceRecordDigestFilename:
+		if inventory.digest {
+			v.fail(constants.ErrEvidenceDuplicateID, bundlePath, "conformance eval record digest is duplicated")
+			return
+		}
+		inventory.digest = true
+	default:
+		v.fail(constants.ErrUnexpectedEvidenceArtifact, bundlePath, "conformance eval runtime path is unsupported")
 	}
 }
 
@@ -1752,7 +1775,7 @@ func (v *bundleVerifier) replayEvalSourceVerification(ctx context.Context, runID
 		v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, err.Error())
 		return
 	}
-	replayed, err := evaluation.NewVerifier(reader, evaluation.NewRegistry(), func() time.Time { return assessmentAsOf }).Verify(ctx, runID)
+	replayed, _, err := evaluation.VerifyConformanceSource(ctx, reader, runID, assessmentAsOf)
 	if err != nil {
 		v.fail(constants.ErrEvalRunVerificationFailed, bundlePath, err.Error())
 		return
@@ -1863,11 +1886,17 @@ func (r *bundledRuntimeArtifactReader) OpenForRead(context.Context, string) (*os
 func (r *bundledRuntimeArtifactReader) TryLock(context.Context, string, os.FileMode) (io.Closer, error) {
 	return nil, constants.ErrReadOnlyEvidenceSource
 }
+func (r *bundledRuntimeArtifactReader) TryLockShared(context.Context, string, os.FileMode) (io.Closer, error) {
+	return nil, constants.ErrReadOnlyEvidenceSource
+}
 func (r *bundledRuntimeArtifactReader) Remove(context.Context, string) error {
 	return constants.ErrReadOnlyEvidenceSource
 }
 func (r *bundledRuntimeArtifactReader) RemoveAll(context.Context, string) error {
 	return constants.ErrReadOnlyEvidenceSource
+}
+func (r *bundledRuntimeArtifactReader) MkdirTemp(context.Context, string) (string, error) {
+	return "", constants.ErrReadOnlyEvidenceSource
 }
 func (r *bundledRuntimeArtifactReader) ArchiveRuntime(context.Context, time.Time) (string, error) {
 	return "", constants.ErrReadOnlyEvidenceSource

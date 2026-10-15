@@ -31,7 +31,7 @@ func newTestVaultEnv(t *testing.T) (fs.RuntimeFileService, keystoreFactory, *key
 	t.Helper()
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	keyring := keystoretest.NewMemoryKeyring()
-	factory := func(fs fs.RuntimeFileService, opts keystore.Options, create bool) (*keystore.Keystore, error) {
+	factory := func(fs fs.RuntimeFileService, create bool) (*keystore.Keystore, error) {
 		ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fs)
 		if err != nil {
 			return nil, err

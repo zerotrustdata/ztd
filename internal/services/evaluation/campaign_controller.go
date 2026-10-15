@@ -191,6 +191,13 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	if err != nil {
 		return nil, err
 	}
+	// A catalog frozen before judge grading was removed would terminate every
+	// judge-graded cell GRADER_FAILED regardless of the model's answer.
+	for _, scenario := range catalog.GetScenarios() {
+		if scenario.GetGradingMethod() == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
+			return nil, fmt.Errorf("evaluation: start run %q: campaign %q scenario %s: %w", req.RunID, req.CampaignID, scenario.GetScenarioId(), constants.ErrEvaluationCatalogRequiresJudge)
+		}
+	}
 	if exists, err := c.store.RunExists(ctx, req.RunID); err != nil {
 		return nil, err
 	} else if exists {

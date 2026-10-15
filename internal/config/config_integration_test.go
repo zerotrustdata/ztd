@@ -46,7 +46,10 @@ func TestResolveGatewayPorts(t *testing.T) {
 	})
 }
 
-func TestLoadGateway_IncrementalPorts(t *testing.T) {
+// TestLoadGateway_NeverProbesPorts verifies that loading configuration keeps a
+// taken port as configured. Free-port resolution belongs to Gateway start
+// (ResolveGatewayPorts), so config loading opens no socket.
+func TestLoadGateway_NeverProbesPorts(t *testing.T) {
 	// Try to find a port to block
 	basePort := 56000
 	var ln net.Listener
@@ -71,6 +74,6 @@ func TestLoadGateway_IncrementalPorts(t *testing.T) {
 		AllowTestPortZero: false,
 	})
 	require.NoError(t, err)
-	assert.NotEqual(t, basePort, cfg.Gateway.HTTPPort)
-	assert.Greater(t, cfg.Gateway.HTTPPort, basePort)
+	assert.Equal(t, basePort, cfg.Gateway.HTTPPort)
+	assert.Equal(t, basePort+10, cfg.Gateway.HTTPSPort)
 }

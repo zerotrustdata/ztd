@@ -285,15 +285,15 @@
         "ztd.bound"
       ],
       "arguments": [
+        "command",
         "expected_output_lines",
-        "guidelines",
         "request",
         "target_operators",
         "timeout_seconds"
       ],
       "name": "run_commands_with_operator",
       "required_arguments": [
-        "request"
+        "command"
       ],
       "requires_web_search": false,
       "scope": "operator_gated"

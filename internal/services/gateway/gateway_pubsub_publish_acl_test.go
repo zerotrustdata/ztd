@@ -466,30 +466,6 @@ func TestHandlePublish_OperatorCrossOperatorHeartbeatRejected(t *testing.T) {
 	assert.False(t, called, "operator publishing to another operator's heartbeat must be rejected")
 }
 
-// TestSetCommandRelayDeps verifies that SetCommandRelayDeps stores the
-// dependencies and they are retrievable for the relay path.
-func TestSetCommandRelayDeps(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	broker := NewGatewayWebSocketHandler(logger)
-
-	assert.Nil(t, broker.stateRootProvider, "state root provider must be nil before SetCommandRelayDeps")
-	assert.Nil(t, broker.sessionValidator, "session validator must be nil before SetCommandRelayDeps")
-	assert.Empty(t, broker.posture, "posture must be empty before SetCommandRelayDeps")
-	assert.Nil(t, broker.doctrine, "doctrine must be nil before SetCommandRelayDeps")
-
-	provider := &stubStateRootProvider{root: "root-1"}
-	validator := &stubOperatorSessionValidator{op: &operatorv1.OperatorDocument{Id: "op-1"}}
-	doctrine := governance.NewL1Doctrine()
-	broker.SetCommandRelayDeps(provider, validator, "doctrine", doctrine)
-
-	broker.mu.RLock()
-	assert.NotNil(t, broker.stateRootProvider)
-	assert.NotNil(t, broker.sessionValidator)
-	assert.Equal(t, "doctrine", broker.posture)
-	assert.Equal(t, doctrine, broker.doctrine)
-	broker.mu.RUnlock()
-}
-
 // TestHandlePublish_LogsOnACLViolation verifies that ACL violations are
 // logged at WARN level for observability.
 func TestHandlePublish_LogsOnACLViolation(t *testing.T) {

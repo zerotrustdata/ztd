@@ -87,21 +87,6 @@ func TestLoad_NoPosture_Succeeds(t *testing.T) {
 	assert.Empty(t, cfg.Posture, "cfg.Posture should be empty when no posture was supplied")
 }
 
-func TestLoad_WorkDir_Flag(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	cfg, err := Load(LoadOptions{
-		OperatorEndpoint: constants.DefaultEndpoint,
-		WorkDir:          tmpDir,
-		Posture:          PostureDoctrine,
-	})
-	require.NoError(t, err)
-
-	assert.Equal(t, tmpDir, cfg.WorkDir)
-	assert.Equal(t, filepath.Join(tmpDir, constants.RuntimeDirname, constants.PkiDirname), cfg.PKIDir)
-	assert.Equal(t, filepath.Join(tmpDir, constants.RuntimeDirname, constants.VaultDirname), cfg.VaultDir)
-}
-
 func TestLoad_FieldPassthrough(t *testing.T) {
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,

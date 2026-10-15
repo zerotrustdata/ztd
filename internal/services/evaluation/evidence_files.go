@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -170,6 +171,11 @@ func (f *evidenceFiles) ReadFile(ctx context.Context, relPath string) ([]byte, e
 		return nil, err
 	}
 	plaintext, err := v.DecryptWithAAD(data, aad)
+	if errors.Is(err, constants.ErrVaultLocked) {
+		// A locked vault says nothing about the stored bytes; only an
+		// authentication failure under an open vault is a decrypt failure.
+		return nil, fmt.Errorf("evidence read %s: %w", filepath.ToSlash(relPath), err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", constants.ErrEvaluationEvidenceDecryptFailed, filepath.ToSlash(relPath), err)
 	}

@@ -25,6 +25,7 @@ var (
 	ErrOperatorCapabilityInvalid          = errors.New("invalid operator capability")
 	ErrProvenanceModelStorageRootRequired = errors.New("provenance capability requires --model-storage-root")
 	ErrInvalidJSONBody                    = errors.New("invalid JSON body")
+	ErrRequestBodyRead                    = errors.New("failed to read request body")
 	ErrUserIDRequired                     = errors.New("user_id required")
 	ErrMethodNotAllowed                   = errors.New("method not allowed")
 	ErrForbidden                          = errors.New("forbidden")
@@ -93,8 +94,6 @@ var (
 	ErrKeyStorePurgeFailed        = errors.New("purge failed with one or more errors")
 	ErrKeyStoreOSKeyringRequired  = errors.New("an OS-protected master key store is required but none is available")
 	ErrKeyStoreVerifyFailed       = errors.New("stored master key could not be read back unchanged")
-	ErrKeyStoreExternalKeyPath    = errors.New("master key file must be an absolute path outside the runtime directory")
-	ErrKeyStoreExternalReadOnly   = errors.New("operator-provisioned master key file is read-only")
 	ErrKeyStoreSecretServiceDown  = errors.New("secret service unavailable")
 	ErrKeyStoreDuplicateKey       = errors.New("multiple master key items found in OS key store")
 
@@ -103,11 +102,10 @@ var (
 	ErrKeyStoreSSHAgentUnavailable = errors.New("ssh-agent unavailable: start one and add an Ed25519 or RSA key (eval \"$(ssh-agent)\" && ssh-add), or forward yours with ssh -A")
 	ErrKeyStoreSSHAgentKeyMissing  = errors.New("ssh-agent does not hold the key that sealed the master key: ssh-add it")
 
-	ErrKeyStoreExternalFileInvalid = errors.New("external master key requires a small regular file with safe ownership and permissions")
-	ErrKeyStoreInvalidSecretName   = errors.New("secret name must be a single non-hidden path component")
-	ErrKeyStoreOrphanedSecrets     = errors.New("secrets are sealed under a master key the selected key store does not hold")
-	ErrKeyStoreSSHAgentUntrusted   = errors.New("ssh-agent socket is served by another user")
-	ErrKeyStoreKeychainFailed      = errors.New("macOS Keychain call failed")
+	ErrKeyStoreInvalidSecretName = errors.New("secret name must be a single non-hidden path component")
+	ErrKeyStoreOrphanedSecrets   = errors.New("secrets are sealed under a master key the selected key store does not hold")
+	ErrKeyStoreSSHAgentUntrusted = errors.New("ssh-agent socket is served by another user")
+	ErrKeyStoreKeychainFailed    = errors.New("macOS Keychain call failed")
 
 	// Ledger errors
 	ErrLedgerRequired       = errors.New("ledger is required")
@@ -149,20 +147,21 @@ var (
 	ErrInvalidJSONResponse      = errors.New("invalid JSON response")
 
 	// Process manager errors
-	ErrProcessStartFailed      = errors.New("process start failed")
-	ErrProcessStopFailed       = errors.New("process stop failed")
-	ErrProcessFindFailed       = errors.New("failed to find process")
-	ErrPortUnavailable         = errors.New("port unavailable")
-	ErrInvalidPosture          = errors.New("invalid posture")
-	ErrEnvelopePostureMissing  = errors.New("governance envelope missing posture: gateway must set posture at envelope construction time")
-	ErrPIDReadFailed           = errors.New("failed to read PID file")
-	ErrPIDWriteFailed          = errors.New("failed to write PID file")
-	ErrProcessSigKillTimeout   = errors.New("process did not exit after SIGKILL")
-	ErrProcessForceKillTimeout = errors.New("process did not exit after force kill")
-	ErrBinaryResolveFailed     = errors.New("failed to resolve operator binary")
-	ErrBinaryCopyFailed        = errors.New("failed to copy operator binary")
-	ErrZtdBinaryManifest       = errors.New("invalid ztd-binary manifest")
-	ErrZtdBinaryArtifact       = errors.New("invalid ztd-binary artifact")
+	ErrProcessStartFailed            = errors.New("process start failed")
+	ErrProcessStopFailed             = errors.New("process stop failed")
+	ErrProcessFindFailed             = errors.New("failed to find process")
+	ErrPortUnavailable               = errors.New("port unavailable")
+	ErrInvalidPosture                = errors.New("invalid posture")
+	ErrEnvelopePostureMissing        = errors.New("governance envelope missing posture: gateway must set posture at envelope construction time")
+	ErrEnvelopePostureCallerSupplied = errors.New("governance envelope carries a caller-supplied posture: only the gateway sets posture")
+	ErrPIDReadFailed                 = errors.New("failed to read PID file")
+	ErrPIDWriteFailed                = errors.New("failed to write PID file")
+	ErrProcessSigKillTimeout         = errors.New("process did not exit after SIGKILL")
+	ErrProcessForceKillTimeout       = errors.New("process did not exit after force kill")
+	ErrBinaryResolveFailed           = errors.New("failed to resolve operator binary")
+	ErrBinaryCopyFailed              = errors.New("failed to copy operator binary")
+	ErrZtdBinaryManifest             = errors.New("invalid ztd-binary manifest")
+	ErrZtdBinaryArtifact             = errors.New("invalid ztd-binary artifact")
 
 	// Launch profile errors. The launch profile is the complete validated
 	// configuration persisted after every successful managed background
@@ -387,6 +386,7 @@ var (
 	ErrSuspendedStoreRequired         = errors.New("suspended transaction store is required")
 	ErrSuspendedStoreNotInitialized   = errors.New("suspended transaction store is not initialized")
 	ErrSuspendedTransactionNotFound   = errors.New("suspended transaction not found or expired")
+	ErrL3DenyNotRejected              = errors.New("suspended transaction deny was not rejected by L4")
 	ErrSuspendedTransactionClaimed    = errors.New("suspended transaction is already claimed for execution")
 	ErrStateRootProviderRequired      = errors.New("state root provider is required")
 	ErrTransactionAuditRequired       = errors.New("transaction audit store is required")
@@ -457,7 +457,6 @@ var (
 	ErrGatewayNotReady                         = errors.New("ztd Gateway not ready")
 	ErrGatewayL3ProofRequired                  = errors.New("L3 proof required")
 	ErrGatewayUserIDRequired                   = errors.New("user_id required")
-	ErrGatewayInvalidPosture                   = errors.New("invalid posture")
 	ErrGatewayPostureMismatch                  = errors.New("running gateway posture differs from the requested posture")
 	ErrGatewayForbiddenPattern                 = errors.New("forbidden pattern detected")
 	ErrGatewayDownstreamHTTPError              = errors.New("downstream server returned HTTP error")
@@ -575,10 +574,6 @@ var (
 	ErrPasskeyCredentialInvalidAttestation = errors.New("passkey credential attestation type is not recognized")
 	ErrPasskeyCredentialInvalidTimestamp   = errors.New("passkey credential created_at_unix_ms is zero")
 
-	ErrWindowsCertStoreImport   = errors.New("windows cert store import is only available on Windows")
-	ErrWindowsTempDirCreate     = errors.New("failed to create Windows temp directory")
-	ErrWindowsCertWriteFailed   = errors.New("failed to write certificate to temp file")
-	ErrWindowsPowerShellImport  = errors.New("failed to import certificate via PowerShell")
 	ErrWindowsRegistryOpenKey   = errors.New("failed to open registry key")
 	ErrWindowsRegistryReadValue = errors.New("failed to read registry value")
 
@@ -864,6 +859,9 @@ var (
 	ErrReceiptPersistenceSignatureMismatch  = errors.New("receipt persistence signature digest mismatch")
 	ErrReceiptPersistenceAttestationInvalid = errors.New("receipt persistence attestation signature invalid")
 	ErrTrustedSignerKeyNotFound             = errors.New("trusted signer public key not found")
+	ErrOperatorActuatorKeyInvalid           = errors.New("operator actuator public key invalid")
+	ErrOperatorActuatorKeyChanged           = errors.New("operator actuator public key differs from bound key")
+	ErrReceiptSignerNotBound                = errors.New("receipt signer is not the executing operator's bound actuator key")
 	ErrL5ActuatorRehydrate                  = errors.New("L5Actuator: failed to rehydrate payload")
 	ErrPKICSRSignatureCheck                 = errors.New("pki: CSR signature check failed")
 	ErrPKIInvalidCurve                      = errors.New("pki: CSR public key must use P-256 curve")
@@ -960,7 +958,8 @@ var (
 	ErrTxL2SignatureInvalid            = errors.New("TX_QUORUM_L2_SIG_INVALID: Consensus L2 consensus_signature failed verification")
 	ErrTxL2QuorumNotMet                = errors.New("TX_QUORUM_L2_NOT_MET: affirmative distinct signer count below consensus quorum")
 	ErrTxL2SignerStoreNotConfigured    = errors.New("TX_QUORUM_L2_SIGNER_STORE_MISSING: signer store required but not configured")
-	ErrTxL2ConsensusNotConfigured      = errors.New("TX_QUORUM_L2_CONSENSUS_MISSING: consensus policy not found or disabled")
+	ErrTxL2ConsensusNotConfigured      = errors.New("TX_QUORUM_L2_CONSENSUS_MISSING: consensus policy store not configured")
+	ErrTxL2ConsensusSetUnknown         = errors.New("TX_QUORUM_L2_CONSENSUS_SET_UNKNOWN: L2 proof names a consensus set that is unknown or disabled")
 	ErrTxL2DuplicateSigner             = errors.New("TX_QUORUM_L2_DUP_SIGNER: duplicate signer key in vote set with require_distinct")
 	ErrConsensusHashMismatch           = errors.New("CONSENSUS_HASH_MISMATCH: envelope id does not match recomputed transaction hash")
 	ErrConsensusInvalidID              = errors.New("CONSENSUS_INVALID_ID: consensus ID must contain only alphanumeric characters, hyphens, and underscores")
@@ -970,6 +969,7 @@ var (
 	ErrConsensusNoSigningMembers       = errors.New("CONSENSUS_NO_SIGNING_MEMBERS: no members with private keys available to sign votes")
 	ErrTxL3ProofMissing                = errors.New("TX_NOTARY_L3_PROOF_MISSING: Notary (L3Notary) WebAuthn proof required but missing")
 	ErrTxL3ProofInvalid                = errors.New("TX_NOTARY_L3_PROOF_INVALID: Notary (L3Notary) WebAuthn proof failed verification")
+	ErrTxL3Denied                      = errors.New("TX_NOTARY_L3_DENIED: the human denied the suspended transaction")
 	ErrTxL3NotaryNotConfigured         = errors.New("TX_NOTARY_L3_NOTARY_MISSING: Notary (L3Notary) required but not configured")
 	ErrTxL3ProofUnmintable             = errors.New("TX_NOTARY_L3_PROOF_UNMINTABLE: posture requires L3 proof but the gateway dispatch path cannot mint human proofs")
 	ErrTxTransactionHashMissing        = errors.New("TX_HASH_MISSING: transaction_hash required")
@@ -1097,8 +1097,7 @@ var (
 	ErrSSEStreamClosed = errors.New("SSE stream closed by server")
 
 	// SSE approval errors
-	ErrApprovalSSETimeout              = errors.New("L3 approval: timed out waiting for SSE event")
-	ErrApprovalReceiptReferenceInvalid = errors.New("L3 approval completed without a valid receipt reference")
+	ErrApprovalSSETimeout = errors.New("L3 approval: timed out waiting for SSE event")
 
 	// Browser errors
 	ErrBrowserURLEmpty = errors.New("browser URL cannot be empty")
@@ -1378,21 +1377,32 @@ var (
 	// receipt from the target Operator's L4. A rejected transaction publishes
 	// no result, so the receipt is the terminal outcome.
 	ErrDispatchGovernanceRejected = errors.New("dispatch: operator governance rejected the transaction")
+
+	// Ingress errors. A pre-envelope refusal carries no receipt; JSON-RPC
+	// envelope errors are rendered by the MCP and A2A ingresses.
+	ErrIngressStateRootUnavailable = errors.New("ingress state root unavailable")
+	ErrIngressL2DeliberationFailed = errors.New("ingress L2 deliberation failed")
+	ErrIngressResponseUntyped      = errors.New("ingress response is not a typed outcome")
+	ErrJSONRPCBatchUnsupported     = errors.New("json-rpc batch requests are not supported")
+	ErrJSONRPCVersionInvalid       = errors.New("json-rpc version must be 2.0")
+	ErrJSONRPCMethodRequired       = errors.New("json-rpc method required")
+	ErrJSONRPCMethodNotFound       = errors.New("json-rpc method not found")
+	ErrJSONRPCErrorResponse        = errors.New("json-rpc error response")
 )
 
 // Native evaluation errors.
 var (
-	ErrEvaluationSuiteUnsupported          = errors.New("evaluation: suite is unsupported")
 	ErrEvaluationTargetUnavailable         = errors.New("evaluation: target operator is unavailable")
 	ErrEvaluationPostureUnsupported        = errors.New("evaluation: governance posture is unsupported")
 	ErrEvaluationObservationUnavailable    = errors.New("evaluation: independent observation is unavailable")
 	ErrEvaluationReportPersistFailed       = errors.New("evaluation: report persistence failed")
 	ErrEvaluationTargetAmbiguous           = errors.New("evaluation: target operator selection is ambiguous")
 	ErrEvaluationDispatchFailed            = errors.New("evaluation: governed dispatch failed")
-	ErrEvaluationReceiptUnavailable        = errors.New("evaluation: canonical receipt is unavailable")
 	ErrEvaluationAssignmentUnresolved      = errors.New("evaluation: assignment has an unresolved running execution")
 	ErrEvaluationAssignmentExecutionFailed = errors.New("evaluation: assignment execution failed")
 	ErrEvaluationRecoveredResultMissing    = errors.New("evaluation: recovered terminal assignment has no persisted result")
+	ErrEvaluationModelUnserved             = errors.New("evaluation: provider served no governed inference for the model")
+	ErrEvaluationRunStopped                = errors.New("evaluation: run stopped with assignments still queued; resume it with 'ztd eval runs resume'")
 	ErrEvaluationCampaignConflict          = errors.New("evaluation: campaign already exists with a different frozen spec")
 	ErrEvaluationPlatformReleaseMismatch   = errors.New("evaluation: executing platform release differs from the release the campaign recorded")
 	ErrEvaluationReleaseRecorded           = errors.New("evaluation: campaign recorded its release at freeze time; the digest-bound release cannot be re-tagged")
@@ -1408,6 +1418,7 @@ var (
 	ErrDataOperatorNotBound                = errors.New("evaluation: data-operator session is not bound to the CLI session; run './ztd operator bind'")
 	ErrEvaluationScenarioRolesUnassigned   = errors.New("evaluation: scenario has no valid eligible roles")
 	ErrEvaluationScenarioContractInvalid   = errors.New("evaluation: scenario contract is invalid")
+	ErrEvaluationCatalogRequiresJudge      = errors.New("evaluation: frozen catalog contains semantic-judge scenarios, which no executor can grade; freeze a new campaign from the current catalog")
 	ErrEvaluationSuiteInvalid              = errors.New("evaluation: suite definition is invalid")
 	ErrEvaluationSuiteBuiltin              = errors.New("evaluation: built-in suites are read-only")
 	ErrEvaluationSuiteExists               = errors.New("evaluation: suite already exists")
@@ -1421,6 +1432,7 @@ var (
 	ErrEvaluationBackupConflict            = errors.New("evaluation: restore would overwrite different existing evidence")
 	ErrEvaluationBackupUnsupportedEntry    = errors.New("evaluation: backup source contains an unsupported entry type")
 	ErrEvaluationBackupNone                = errors.New("evaluation: no backup snapshot found")
+	ErrEvaluationBackupPurgePathInvalid    = errors.New("evaluation: backup purge path is not beneath an evaluation evidence tree")
 	ErrEvaluationEvidenceVaultRequired     = errors.New("evaluation: runtime vault is required to read or write evaluation evidence")
 	ErrEvaluationEvidenceDecryptFailed     = errors.New("evaluation: evaluation evidence cannot be decrypted with the runtime vault")
 	ErrEvaluationEvidenceStreamUnsupported = errors.New("evaluation: evaluation evidence is encrypted and cannot be streamed")
@@ -1458,4 +1470,37 @@ var (
 	ErrAutochthonRunning       = errors.New("autochthon already running on this root")
 	ErrAutochthonAnchorMissing = errors.New("autochthon tally does not contain the anchor")
 	ErrAutochthonAnchorFormat  = errors.New("autochthon anchor must be <lines>:<64 lowercase hex>")
+
+	// Governance conformance errors
+	ErrConformanceAnchorMissing         = errors.New("conformance anchor export missing")
+	ErrConformanceAnchorInvalid         = errors.New("conformance anchor export invalid")
+	ErrConformanceAnchorUnknown         = errors.New("conformance receipt signer has no pinned anchor")
+	ErrConformanceReceiptUnclassifiable = errors.New("conformance receipt outcome unclassifiable")
+	ErrConformanceLedgerGap             = errors.New("conformance ledger bracket does not connect")
+	ErrConformanceUnclaimedExecution    = errors.New("conformance ledger bracket holds an unclaimed execution")
+	ErrConformanceStackNotQuiescent     = errors.New("conformance stack not quiescent")
+	ErrConformanceCatalogueInvalid      = errors.New("conformance catalogue invalid")
+	ErrConformanceRecordInvalid         = errors.New("conformance run record invalid")
+	ErrConformanceRecordDigestMismatch  = errors.New("conformance run record digest mismatch")
+	ErrConformanceCanaryInvalid         = errors.New("conformance canary set invalid")
+	ErrConformanceIngressUnsupported    = errors.New("conformance ingress cannot express this case")
+	ErrConformancePostureUnknown        = errors.New("conformance posture unknown")
+
+	// Agent system-under-test errors
+	ErrSUTTurnFailed          = errors.New("agent sut turn failed")
+	ErrSUTTraceInvalid        = errors.New("agent sut trace invalid")
+	ErrSUTClaimedTxUnverified = errors.New("agent sut claimed transaction has no verified receipt")
+
+	// Campaign tool evidence errors
+	ErrCampaignToolEvidenceInvalid = errors.New("campaign tool evidence invalid")
+
+	// Red-team containment errors
+	ErrRedTeamGoalInvalid = errors.New("red-team goal invalid")
+
+	// Seeded investigation errors
+	ErrInvestigationScenarioInvalid = errors.New("investigation scenario invalid")
+	ErrInvestigationSeedFailed      = errors.New("investigation seed failed")
+
+	// Secondary judge errors
+	ErrJudgeResponseInvalid = errors.New("evaluation judge response invalid")
 )

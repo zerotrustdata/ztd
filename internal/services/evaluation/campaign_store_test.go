@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -23,7 +24,9 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	ztdfs "github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -36,6 +39,16 @@ func newCampaignMemoryFileService() *campaignMemoryFileService {
 	return &campaignMemoryFileService{files: make(map[string][]byte)}
 }
 
+// newCampaignRuntimeFileService is a real runtime file service for paths that
+// need disk-backed scratch (assignment-audit SQLite), which the memory fake
+// cannot host.
+func newCampaignRuntimeFileService(t *testing.T) ztdfs.RuntimeFileService {
+	t.Helper()
+	files, err := ztdfs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	require.NoError(t, err)
+	return files
+}
+
 func (m *campaignMemoryFileService) MkdirAll(_ context.Context, relPath string, _ os.FileMode) error {
 	m.files[relPath] = nil
 	return nil
@@ -46,7 +59,7 @@ func (m *campaignMemoryFileService) CreateRuntimeTree(context.Context) error { r
 func (m *campaignMemoryFileService) ReadFile(_ context.Context, relPath string) ([]byte, error) {
 	body, ok := m.files[relPath]
 	if !ok {
-		return nil, os.ErrNotExist
+		return nil, fmt.Errorf("%w: %s", constants.ErrNotFound, relPath)
 	}
 	return append([]byte(nil), body...), nil
 }
@@ -80,6 +93,10 @@ func (m *campaignMemoryFileService) TryLock(context.Context, string, os.FileMode
 	return nil, os.ErrInvalid
 }
 
+func (m *campaignMemoryFileService) TryLockShared(context.Context, string, os.FileMode) (io.Closer, error) {
+	return nil, os.ErrInvalid
+}
+
 func (m *campaignMemoryFileService) Resolve(relPath string) string { return relPath }
 func (m *campaignMemoryFileService) Remove(_ context.Context, relPath string) error {
 	delete(m.files, relPath)
@@ -88,6 +105,10 @@ func (m *campaignMemoryFileService) Remove(_ context.Context, relPath string) er
 
 func (m *campaignMemoryFileService) ArchiveRuntime(context.Context, time.Time) (string, error) {
 	panic("unexpected ArchiveRuntime")
+}
+
+func (m *campaignMemoryFileService) MkdirTemp(context.Context, string) (string, error) {
+	panic("unexpected MkdirTemp")
 }
 
 func (m *campaignMemoryFileService) RemoveAll(_ context.Context, relPath string) error {
@@ -369,18 +390,11 @@ func TestStoreListCampaigns_ReturnsEmptyWhenNoCampaignsExist(t *testing.T) {
 	assert.Empty(t, campaigns)
 }
 
-func TestStoreListRunInventory_ClassifiesEveryPersistedCandidate(t *testing.T) {
+func TestInspectRunListClassifiesEveryPersistedCandidate(t *testing.T) {
 	ctx := context.Background()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
-	require.NoError(t, store.SaveReport(ctx, &evalv1.EvaluationReport{
-		SchemaVersion: RegistryVersion,
-		Run: &evalv1.EvaluationRun{
-			SchemaVersion: RegistryVersion,
-			RunId:         "native-run",
-			SuiteRef:      &compliancev1.VersionedReference{Id: CoreExecutionBoundarySuiteID, Version: CoreExecutionBoundarySuiteVersion},
-		},
-	}))
+	saveConformanceRecordForInventory(t, ctx, store, "conformance-run", cases.SuiteID, cases.SuiteVersion)
 	require.NoError(t, store.SaveRun(ctx, &evalv1.EvaluationRun{
 		SchemaVersion: CampaignSchemaVersion,
 		RunId:         "campaign-run",
@@ -388,24 +402,11 @@ func TestStoreListRunInventory_ClassifiesEveryPersistedCandidate(t *testing.T) {
 			CampaignId: "campaign-1",
 		},
 	}))
-	require.NoError(t, store.SaveReport(ctx, &evalv1.EvaluationReport{
-		SchemaVersion: RegistryVersion,
-		Run: &evalv1.EvaluationRun{
-			SchemaVersion: RegistryVersion,
-			RunId:         "unsupported-run",
-			SuiteRef:      &compliancev1.VersionedReference{Id: "unsupported-suite", Version: "1.0.0"},
-		},
-	}))
-	require.NoError(t, files.WriteFile(ctx, filepath.Join(evaluationRunDir("incomplete-run"), constants.EvaluationVerificationFilename), []byte("{}"), constants.PermFileReadOnly))
+	saveConformanceRecordForInventory(t, ctx, store, "unsupported-run", "unsupported-suite", "1.0.0")
+	require.NoError(t, files.WriteFile(ctx, filepath.Join(evaluationRunDir("incomplete-run"), "stray-verification.json"), []byte("{}"), constants.PermFileReadOnly))
 	require.NoError(t, files.WriteFile(ctx, activeEvalLayout().runStatePath("malformed-run"), []byte("{}"), constants.PermFileReadOnly))
-	require.NoError(t, store.SaveReport(ctx, &evalv1.EvaluationReport{
-		SchemaVersion: RegistryVersion,
-		Run: &evalv1.EvaluationRun{
-			SchemaVersion: RegistryVersion,
-			RunId:         "ambiguous-run",
-			SuiteRef:      &compliancev1.VersionedReference{Id: CoreExecutionBoundarySuiteID, Version: CoreExecutionBoundarySuiteVersion},
-		},
-	}))
+	require.NoError(t, files.WriteFile(ctx, filepath.Join(evaluationRunDir("missing-sidecar-run"), constants.ConformanceRecordFilename), []byte("{}"), constants.PermFileReadOnly))
+	saveConformanceRecordForInventory(t, ctx, store, "ambiguous-run", cases.SuiteID, cases.SuiteVersion)
 	require.NoError(t, store.SaveRun(ctx, &evalv1.EvaluationRun{
 		SchemaVersion: CampaignSchemaVersion,
 		RunId:         "ambiguous-run",
@@ -416,20 +417,28 @@ func TestStoreListRunInventory_ClassifiesEveryPersistedCandidate(t *testing.T) {
 
 	inventory, err := store.ListRunInventory(ctx)
 	require.NoError(t, err)
-	require.Len(t, inventory, 6)
+	require.Len(t, inventory, 7)
 	assert.Equal(t, []RunInventoryEntry{
-		{RunID: "ambiguous-run", Kind: RunKindMalformed, Reason: "native and campaign markers are both present"},
+		{RunID: "ambiguous-run", Kind: RunKindMalformed, Reason: "conformance and campaign markers are both present"},
 		{RunID: "campaign-run", Kind: RunKindCampaign},
-		{RunID: "incomplete-run", Kind: RunKindIncomplete, Reason: "native and campaign markers are both missing"},
+		{RunID: "conformance-run", Kind: RunKindConformance},
+		{RunID: "incomplete-run", Kind: RunKindIncomplete, Reason: "conformance and campaign markers are both missing"},
 		{RunID: "malformed-run", Kind: RunKindMalformed, Reason: "campaign run record is malformed"},
-		{RunID: "native-run", Kind: RunKindNative},
-		{RunID: "unsupported-run", Kind: RunKindUnsupported, Reason: "native evaluation suite or schema is unsupported"},
+		{RunID: "missing-sidecar-run", Kind: RunKindMalformed, Reason: "conformance record or digest is unreadable"},
+		{RunID: "unsupported-run", Kind: RunKindUnsupported, Reason: "conformance suite is unsupported"},
 	}, inventory)
 }
 
-func TestStoreInspectRun_ReturnsExplicitIncompleteDispositionForMissingSelection(t *testing.T) {
+func TestInspectRunReturnsIncompleteForMissingSelection(t *testing.T) {
 	store := NewStore(newCampaignMemoryFileService())
 	entry, err := store.InspectRun(context.Background(), "missing-run")
 	require.NoError(t, err)
-	assert.Equal(t, RunInventoryEntry{RunID: "missing-run", Kind: RunKindIncomplete, Reason: "native and campaign markers are both missing"}, entry)
+	assert.Equal(t, RunInventoryEntry{RunID: "missing-run", Kind: RunKindIncomplete, Reason: "conformance and campaign markers are both missing"}, entry)
+}
+
+// saveConformanceRecordForInventory persists a conformance record whose only
+// content the inventory reads is the suite binding.
+func saveConformanceRecordForInventory(t *testing.T, ctx context.Context, store *Store, runID, suiteID, suiteVersion string) {
+	t.Helper()
+	require.NoError(t, store.SaveConformanceRecord(ctx, &evalv1.ConformanceRunRecord{RunId: runID, SuiteId: suiteID, SuiteVersion: suiteVersion}))
 }

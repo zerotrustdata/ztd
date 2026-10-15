@@ -21,17 +21,17 @@ import (
 
 // ReadLocalActionReceipt opens one runtime's canonical audit database through
 // fileSvc and returns the signed receipt that runtime recorded for
-// transactionID, decrypted with the runtime's own vault key (the OS key store,
-// or masterKeyFile when set). It reads only the local, authoritative store and
+// transactionID, decrypted with the runtime's own vault key from the key store
+// opts selects (zero Options select the OS key store). It reads only the local, authoritative store and
 // never consults a Gateway mirror. It returns nil, nil when no receipt exists.
-func ReadLocalActionReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, masterKeyFile, transactionID string) (*models.ActionReceiptRecord, error) {
+func ReadLocalActionReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, opts keystore.Options, transactionID string) (*models.ActionReceiptRecord, error) {
 	if fileSvc == nil {
 		return nil, fmt.Errorf("local receipt: file service: %w", constants.ErrMissingRequiredField)
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	ks, err := keystore.Open(fileSvc, logger, keystore.Options{MasterKeyFile: masterKeyFile})
+	ks, err := keystore.Open(fileSvc, logger, opts)
 	if err != nil {
 		return nil, fmt.Errorf("local receipt: open runtime keystore: %w", err)
 	}

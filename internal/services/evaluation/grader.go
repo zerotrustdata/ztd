@@ -18,6 +18,18 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
+const (
+	GraderID                      = "ztd-native-deterministic-grader"
+	GraderVersion                 = "1.0.0"
+	RegistryVersion               = "1.0.0"
+	MetricRequiredVerdictPassRate = "required-verdict-pass-rate"
+	MetricEligiblePopulation      = "required-verdicts"
+)
+
+func versioned(id, version string) *compliancev1.VersionedReference {
+	return &compliancev1.VersionedReference{Id: id, Version: version}
+}
+
 type Grader struct {
 	now func() time.Time
 }
@@ -221,14 +233,4 @@ func appendUniqueReference(references []*compliancev1.ComplianceEvidenceReferenc
 		}
 	}
 	return append(references, proto.Clone(candidate).(*compliancev1.ComplianceEvidenceReference))
-}
-
-func cloneReferences(references []*compliancev1.ComplianceEvidenceReference) []*compliancev1.ComplianceEvidenceReference {
-	clones := make([]*compliancev1.ComplianceEvidenceReference, 0, len(references))
-	for _, reference := range references {
-		if reference != nil {
-			clones = append(clones, proto.Clone(reference).(*compliancev1.ComplianceEvidenceReference))
-		}
-	}
-	return clones
 }

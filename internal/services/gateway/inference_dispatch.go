@@ -138,22 +138,22 @@ func newInferenceDispatchController(d InferenceDispatchControllerDeps) *Inferenc
 // @Produce		json
 // @Param			request	body		operatorv1.InferenceDispatchRequest	true	"Governed inference dispatch request"
 // @Success		200		{object}	operatorv1.InferenceDispatchResponse	"Verified inference result and final signed receipt"
-// @Failure		400		{string}	string								"Bad Request — malformed body, unknown field, missing messages, invalid role, or acting_app_id identity mismatch"
-// @Failure		401		{string}	string								"Unauthorized — missing delegated user identity"
-// @Failure		403		{string}	string								"Forbidden — not an app workload, model override denied, or governance rejection"
-// @Failure		404		{string}	string								"Not Found — no inference-capable operator session"
-// @Failure		405		{string}	string								"Method Not Allowed"
-// @Failure		409		{string}	string								"Conflict — multiple inference-capable operators; explicit target required"
-// @Failure		413		{string}	string								"Request Entity Too Large — body exceeds the payload limit"
-// @Failure		422		{string}	string								"Unprocessable Entity — context overflow, unsupported tools, or target operator session is not inference-capable"
-// @Failure		502		{string}	string								"Bad Gateway — provider or receipt verification failure"
-// @Failure		503		{string}	string								"Service Unavailable — command delivered to no operator subscribers"
-// @Failure		504		{string}	string								"Gateway Timeout — request deadline exceeded; remote provider outcome unknown"
-// @Failure		500		{string}	string								"Internal Error"
+// @Failure		400		{object}	operatorv1.InferenceDispatchFailure	"Bad Request — malformed body, unknown field, missing messages, invalid role, or acting_app_id identity mismatch"
+// @Failure		401		{object}	operatorv1.InferenceDispatchFailure	"Unauthorized — missing delegated user identity"
+// @Failure		403		{object}	operatorv1.InferenceDispatchFailure	"Forbidden — not an app workload, model override denied, or governance rejection"
+// @Failure		404		{object}	operatorv1.InferenceDispatchFailure	"Not Found — no inference-capable operator session"
+// @Failure		405		{object}	operatorv1.InferenceDispatchFailure	"Method Not Allowed"
+// @Failure		409		{object}	operatorv1.InferenceDispatchFailure	"Conflict — multiple inference-capable operators; explicit target required"
+// @Failure		413		{object}	operatorv1.InferenceDispatchFailure	"Request Entity Too Large — body exceeds the payload limit"
+// @Failure		422		{object}	operatorv1.InferenceDispatchFailure	"Unprocessable Entity — context overflow, unsupported tools, or target operator session is not inference-capable"
+// @Failure		502		{object}	operatorv1.InferenceDispatchFailure	"Bad Gateway — provider or receipt verification failure"
+// @Failure		503		{object}	operatorv1.InferenceDispatchFailure	"Service Unavailable — command delivered to no operator subscribers"
+// @Failure		504		{object}	operatorv1.InferenceDispatchFailure	"Gateway Timeout — request deadline exceeded; remote provider outcome unknown"
+// @Failure		500		{object}	operatorv1.InferenceDispatchFailure	"Internal Error"
 // @Router			/api/v1/inference/dispatch [post]
 func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		c.writeFailure(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed)
 		return
 	}
 
@@ -165,37 +165,37 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 	body, err := readRequestBody(r, c.maxPayload)
 	if err != nil {
 		if errors.Is(err, constants.ErrPayloadExceedsLimit) {
-			c.responder.Error(w, http.StatusRequestEntityTooLarge, constants.ErrPayloadExceedsLimit.Error())
+			c.writeFailure(w, http.StatusRequestEntityTooLarge, constants.ErrPayloadExceedsLimit)
 			return
 		}
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
+		c.writeFailure(w, http.StatusBadRequest, constants.ErrInvalidJSONBody)
 		return
 	}
 
 	req := &operatorv1.InferenceDispatchRequest{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(body, req); err != nil {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
+		c.writeFailure(w, http.StatusBadRequest, constants.ErrInvalidJSONBody)
 		return
 	}
 
 	if len(req.GetMessages()) == 0 {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrInferenceMessagesRequired.Error())
+		c.writeFailure(w, http.StatusBadRequest, constants.ErrInferenceMessagesRequired)
 		return
 	}
 	if req.GetProviderAttemptId() == "" {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrInferenceProviderAttemptRequired.Error())
+		c.writeFailure(w, http.StatusBadRequest, constants.ErrInferenceProviderAttemptRequired)
 		return
 	}
 	role := models.InferenceModelRoleFromProto(req.GetRole())
 	if role == models.InferenceModelRoleUnspecified {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrInferenceRoleInvalid.Error())
+		c.writeFailure(w, http.StatusBadRequest, constants.ErrInferenceRoleInvalid)
 		return
 	}
 	// acting_app_id derives from the authenticated app identity. A body
 	// value that contradicts it is an identity binding violation; an absent
 	// value is populated from the mTLS identity.
 	if bodyAppID := req.GetActingAppId(); bodyAppID != "" && bodyAppID != appID {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrIdentityBindingFailed.Error())
+		c.writeFailure(w, http.StatusBadRequest, constants.ErrIdentityBindingFailed)
 		return
 	}
 
@@ -246,7 +246,7 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 	if req.GetStream() {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			c.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+			c.writeFailure(w, http.StatusInternalServerError, constants.ErrInternal)
 			return
 		}
 		w.Header().Set("Content-Type", "application/x-ndjson")
@@ -283,8 +283,8 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 			return
 		}
 		status, publicErr := classifyInferenceDispatchError(err)
-		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), logging.ErrorKind(err))
-		c.responder.Error(w, status, publicErr.Error())
+		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), slog.String("failure_code", dispatch.FailureCode(publicErr).String()), logging.ErrorKind(err))
+		c.writeFailure(w, status, publicErr)
 		return
 	}
 
@@ -292,6 +292,15 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 		TransactionId: result.TransactionID,
 		Result:        result.Result,
 		Receipt:       result.Receipt,
+	})
+}
+
+// writeFailure writes the typed InferenceDispatchFailure body for a public
+// sentinel, so a caller classifies the failure by code, not by text.
+func (c *InferenceDispatchController) writeFailure(w http.ResponseWriter, status int, sentinel error) {
+	c.responder.ProtoJSONCanonical(w, status, &operatorv1.InferenceDispatchFailure{
+		Error: sentinel.Error(),
+		Code:  dispatch.FailureCode(sentinel),
 	})
 }
 
@@ -307,7 +316,7 @@ func writeInferenceDispatchStreamFailure(c *InferenceDispatchController, w http.
 	_, publicErr := classifyInferenceDispatchError(err)
 	if writeErr := writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
 		Frame: &operatorv1.InferenceDispatchStreamFrame_Failure{
-			Failure: &operatorv1.InferenceDispatchStreamFailure{Reason: publicErr.Error()},
+			Failure: &operatorv1.InferenceDispatchStreamFailure{Reason: publicErr.Error(), Code: dispatch.FailureCode(publicErr)},
 		},
 	}); writeErr != nil {
 		c.logger.Info("inference dispatch: failed to write streaming failure frame", "error", writeErr)

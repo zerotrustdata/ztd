@@ -3,8 +3,8 @@ doc_id: gateway
 title: Gateway Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/gw/
@@ -69,7 +69,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-GW-NET-01 | The Gateway MUST expose two separate network surfaces: an HTTP listener on port 8080 (`GatewayHTTPPort`) for bootstrap, PKI discovery, health, and HTTPS redirects; and an HTTPS listener on port 8443 (`GatewayHTTPSPort`) for authenticated application, console, MCP, pub/sub, and governance traffic. Mutating or authenticated routes MUST NOT be served on port 8080. |
+| INV-GW-NET-01 | The Gateway MUST expose separate HTTP and HTTPS surfaces. Their default ports are 8080 (`GatewayHTTPPort`) and 8443 (`GatewayHTTPSPort`); after configuration validation, startup probes for an available pair and can select matching higher offsets. HTTP serves bootstrap, PKI discovery, health, and HTTPS redirects; HTTPS serves authenticated application, console, MCP, pub/sub, and governance traffic. Mutating or authenticated routes MUST NOT be served on HTTP. |
 | INV-GW-NET-02 | The Gateway route classifier (`internal/services/gateway/gateway_auth.go`) MUST assign every route exactly one of four authentication policies: `RouteAuthNone`, `RouteAuthMTLS`, `RouteAuthWebSession`, or `RouteAuthDual`. Handlers MUST fail closed if route authentication requirements are unmet. |
 
 ### Governance Pipeline Coordination (`INV-GW-GOV`)
@@ -78,7 +78,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GW-GOV-01 | Every transaction submitted via `POST /api/v1/governance/envelopes` or admitted via MCP/A2A MUST traverse the five-layer governance pipeline. The Gateway PDP coordinates L1–L3; the executing Operator PEP (embedded or remote) enforces L4–L5. |
 | INV-GW-GOV-02 | The Gateway MUST NOT synthesize missing L2 consensus votes or L3 notary proofs for direct envelope submissions or governed HTTP command dispatch. Transactions lacking required proofs MUST fail closed at L4. |
-| INV-GW-GOV-03 | Governed HTTP command dispatch (`POST /api/v1/operators/commands`) reports an admitted action whose handler ran and failed the same way for the embedded and an outbound Operator: HTTP 200 with the handler's typed failure result (`DispatchService`, `embeddedHandlerFailed`). An L4 rejection is 403, and any embedded failure before or around the handler (no final receipt, no failed L5 execution stage) fails the dispatch. |
+| INV-GW-GOV-03 | Governed HTTP command dispatch (`POST /api/v1/operators/commands`) reports an admitted action whose handler ran and failed the same way for the embedded and an outbound Operator: HTTP 200 with a `GovernedDispatchResult` carrying the handler's typed failure result and the executing Operator's verified final `ActionReceipt` (`DispatchService`, `executionFailedReceipt`). Every non-inference success, for every event type, waits for both the terminal result and that verified final receipt, in either order; a result without a verified receipt ends in result timeout, never a success. An L4 rejection is 403 with a `GovernanceRejection` body that carries the signed rejection receipt (`INV-GOV-ACT-10`). Every other error body is an `IngressRefusal{code, error}` (`INV-GOV-ACT-11`) whose `error` renders only the typed sentinel, never the wrapped chain (`dispatchErrorCode`): an unresolved target operator session is 404 `OPERATOR_SESSION_NOT_FOUND`, witness capability 422, no delivery 503, result timeout 504, and an unclassified fault 500 `ErrInternal` with `UNCLASSIFIED`. Any embedded failure before or around the handler (no final receipt, no failed L5 execution stage) fails the dispatch. |
+| INV-GW-GOV-04 | Model inference dispatch (`POST /api/v1/inference/dispatch`, `InferenceDispatchController`) MUST report every failure as a typed `InferenceDispatchFailure` body: the public sentinel text plus an `InferenceDispatchFailureCode` from the single sentinel↔code table in `internal/services/inference/dispatch/failure.go`. A stream that already started NDJSON delivery ends with an `InferenceDispatchStreamFailure` frame that carries the same code. The `dispatch failed` log records the code; the provider response body MUST NOT be logged or returned. A request fault without a dispatch sentinel (method, body size, JSON decode, identity binding) carries `INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED`. |
+| INV-GW-GOV-05 | Direct envelope submission (`POST /api/v1/governance/envelopes`, `envelopeErrorCode` in `internal/services/gateway/governance_controller.go`) MUST return the signed receipt as canonical protojson (proto field names) on 200 and map errors by type, never to 500 for a governance sentinel: a malformed request (unreadable body, caller-supplied posture, undecodable envelope) is 400; an L4 rejection is 403 with a `GovernanceRejection` body, or 503 when the verifier cannot run (`RUNTIME_VAULT_LOCKED`, `VERIFIER_MISCONFIGURED`); a refusal before L4 (transport identity binding, `ErrTxOutcomeNotRegistered`, `ErrTxOutcomeNotAllowed`, `ErrTxL3ProofUnmintable`) is 403 without a receipt. Every non-rejection error body is an `IngressRefusal{code, error}` (`INV-GOV-ACT-11`) whose `error` renders the typed sentinel only, never the wrapped chain. Only an unclassified fault is 500. |
+| INV-GW-GOV-06 | Receipt signers resolve by the executing Operator's identity. The embedded Operator (`constants.DocIDEmbeddedOperator`) resolves to the Gateway Actuator key. An outbound Operator resolves to the Actuator key bound on its `OperatorDocument` at enrollment (`actuator_public_key`, `actuator_key_id`). A receipt's self-declared `signer_key_id` MUST equal the bound key id and is never a trust source. Otherwise the receipt fails closed with `ErrReceiptSignerNotBound`. Owner: `SignerStoreService.ReceiptSignerKey`. |
 
 ### MCP Native Tool Registry (`INV-GW-MCP`)
 
@@ -113,14 +116,14 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 The Gateway binary operates in two distinct execution modes:
 
-1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP router (8080) and HTTPS router (8443), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation to enrolled Consensus services, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
+1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP and HTTPS routers (default ports 8080 and 8443; startup may resolve an available pair at higher offsets), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation to configured Consensus services, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
 2. **Standard Operator Mode (`ztd operator start`)**: When started as an Operator, the same static binary operates as a remote Policy Execution Point (PEP). It opens an outbound-only mTLS WebSocket connection to the Gateway, receives transactions on its assigned command channel, executes independent L4 Warden verification, and enforces L5 Actuator execution. The Gateway does not make inbound connections to remote Operators.
 
 ### Configuration, Startup, and Launch Profiles
 
 The Gateway is configured via CLI flags or an interactive setup wizard:
 - `ztd gw start [--posture <posture>] [--http-port 8080] [--https-port 8443] [--listen-host 127.0.0.1]`: Starts the Gateway. The listeners bind loopback by default; specify `--listen-host 0.0.0.0` when remote Operators or external clients connect.
-- Port selection (background start): when the requested HTTP port is held by a live listener, `gw start` moves both ports up by the same offset, skipping the Gateway's own auxiliary ports (8081, 8082, 5173), and prints the holder and the bound ports (`internal/cli/platform/process.go`). On Linux the availability probe keeps `SO_REUSEADDR`, matching the Gateway's own bind, so TIME_WAIT sockets left by a Gateway that just stopped do not count as busy; on BSD/macOS it disables `SO_REUSEADDR` so a wildcard probe still detects a listener on a specific address (`internal/netutil/port_probe_other.go`). The bound ports are persisted in the launch profile. Every CLI command run without `--endpoint`/`--port` reads them from the launch profile while its Gateway is running (`recordLocalGatewayPorts` in `internal/cli/cmd/main.go`, `config.SetLocalGatewayPorts`). The startup guidance and `gw status` print the Console URL and the Operator `--endpoint <host>:<http> --port <https>` command on the bound ports.
+- Port selection (background start): when the requested HTTP port is held by a live listener, `gw start` moves both ports up by the same offset, skipping the Gateway's own auxiliary ports (8081, 8082, 5173), and prints the holder and the bound ports (`internal/cli/platform/process.go`). On Linux the availability probe keeps `SO_REUSEADDR`, matching the Gateway's own bind, so TIME_WAIT sockets left by a Gateway that just stopped do not count as busy; on BSD/macOS it disables `SO_REUSEADDR` so a wildcard probe still detects a listener on a specific address (`internal/netutil/port_probe_other.go`). The bound ports are persisted in the launch profile. Every CLI command run without `--endpoint`/`--port` reads them from the launch profile while its Gateway is running (`recordLocalGatewayPorts` in `internal/cli/cmd/main.go`, `config.SetLocalGatewayPorts`). The startup guidance and `gw status` print the Console URL and the Operator `--endpoint <host>:<http> --port <https>` command on the bound ports. The Gateway process itself resolves free ports once at start (`config.ResolveGatewayPorts`, called from `internal/cli/serve/gateway.go`); `config.LoadGateway` only validates the configured ports and never probes the host.
 - `ztd gw start` against a running Gateway (background start, without `--follow`): compares the startup flags the caller set explicitly among `--capabilities`, `--posture`, `--listen-host`, `--http-port`, `--https-port`, `--model-storage-root`, `--inference-ollama-endpoint`, `--public-base-url`, `--cors-origin`, and `--passkey-rp-id`/`--passkey-rp-name`/`--passkey-rp-origin` with the running launch profile (`gateway_start_running.go`); a `ZTD_OLLAMA_ENDPOINT` value (exported or from `.env`) counts as setting `--inference-ollama-endpoint`. Other flags are not compared. It reuses the Gateway when they match and otherwise lists the differences and fails with `ErrGatewayAlreadyRunning`. Without a launch profile, any of these flags fails the same way (`ErrLaunchProfileMissing`). Stop the Gateway (`ztd gw stop` or `make down`) to change them; `.ztd/` state is kept.
 - `ztd gw setup`: Launches an interactive terminal wizard producing a resolved platform configuration.
 - `ztd gw start -i`: Launches the interactive setup wizard, then boots the Gateway immediately with the confirmed settings.
@@ -132,25 +135,27 @@ The Gateway is configured via CLI flags or an interactive setup wizard:
 
 The Gateway enforces one of four postures selected at startup via `--posture`:
 
-| Posture | L1 Doctrine | L2 Consensus | L3 Notary (Mutations) | L3 Notary (Read-Only) | Operational Use Case |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`doctrine`** | Enforced | Audited | Audited | Not Required | Local development, automated testing, and CI pipelines |
-| **`consensus`** | Enforced | Enforced ($K$-of-$N$) | Audited | Not Required | Multi-agent collaboration requiring peer review |
-| **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required | Workflows requiring human approval for state mutations |
-| **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) | Not Required | Strict production governance with both peer and human interlocks |
+| Posture | L1 Doctrine | L2 Consensus | L3 Notary (Mutations) | L3 Notary (Read-Only) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`doctrine`** | Enforced | Audited | Audited | Not Required |
+| **`consensus`** | Enforced | Enforced ($K$-of-$N$) | Audited | Not Required |
+| **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required |
+| **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) | Not Required |
+
+Selecting a posture does not create its supporting identities or services. For example, the `consensus` and `notary` postures require a configured Consensus policy/service and eligible voters; human approval under `ratify` and `notary` requires the applicable authenticated approval ceremony. Check startup validation and enrollment state for the deployment.
 
 ### HTTP and HTTPS Route Classifications
 
 The Gateway segments traffic across two network listeners:
 
-#### HTTP Surface (Port 8080)
+#### HTTP Surface (Default Port 8080)
 The HTTP router (`buildHTTPRouter`) serves unauthenticated discovery endpoints:
 - `/.well-known/ztd/pki/*`: CA root bundles and CRL endpoints.
 - `/health`: Lightweight bootstrap health check.
 - `/ws/operator/bootstrap`: Bootstrap WebSocket for Operator enrollment.
-- Catch-all: Permanently redirects all other paths to HTTPS on port 8443.
+- Catch-all: Redirects all other paths to HTTPS on the Gateway's resolved HTTPS port.
 
-#### HTTPS Surface (Port 8443)
+#### HTTPS Surface (Default Port 8443)
 The HTTPS router (`buildPublicRouter`) manages authenticated platform APIs. The route registry in `gateway_auth.go` classifies routes into four strict policies:
 
 | Auth Policy | Routes Covered | Identity Requirement |
@@ -172,7 +177,7 @@ Every transaction entering `POST /api/v1/governance/envelopes` or arriving via M
 
 ### Model Context Protocol (MCP) Endpoint and Native Tools
 
-The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`, and `a2a/call`.
+The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`, and `a2a/call`. With a downstream MCP server configured, `tools/list` returns the native tools followed by the downstream's tools, and a native tool wins a name collision (the downstream entry is dropped).
 
 The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains.
 
@@ -195,12 +200,12 @@ The Gateway maintains an incremental 16-ary Merkle commitment tree (algorithm 2)
 
 ### Readiness and Health Endpoints
 
-- **Readiness Check (`HTTPS /health`, Port 8443)**: Verifies that SQLite databases are mounted, the state Merkle root is calculated, and the governance pipeline is initialized. Returns `status`, `mode`, `version`, `pid`, `governance_ready`, and `state_merkle_root`.
-- **Bootstrap Check (`HTTP /health`, Port 8080)**: Lightweight process check verifying listener availability prior to database initialization.
+- **Readiness Check (`HTTPS /health`, default port 8443)**: Verifies that SQLite databases are mounted, the state Merkle root is calculated, and the governance pipeline is initialized. Returns `status`, `mode`, `version`, `pid`, `governance_ready`, and `state_merkle_root`.
+- **Bootstrap Check (`HTTP /health`, default port 8080)**: Lightweight process check verifying listener availability prior to database initialization.
 
 ## Anti-patterns
 
-- **Serving Application Routes over Plaintext HTTP**: Hosting MCP, governance, or pub/sub endpoints on port 8080 instead of HTTPS port 8443 (INV-GW-NET-01).
+- **Serving Application Routes over Plaintext HTTP**: Hosting MCP, governance, or pub/sub endpoints on the HTTP listener instead of HTTPS (default ports 8080 and 8443; INV-GW-NET-01).
 - **Mutating Governance Posture at Runtime**: Attempting to alter `--posture` without a complete Gateway restart (INV-GW-POST-01).
 - **Restarting with an Invalid Launch Profile**: Executing `ztd gw restart` when `.ztd/pids/operator-launch-profile.json` is missing or corrupted (INV-GW-POST-02).
 - **Ad-Hoc Endpoint Authentication Checks**: Bypassing the centralized route classification in `gateway_auth.go` (INV-GW-NET-02).

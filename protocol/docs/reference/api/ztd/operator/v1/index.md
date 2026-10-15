@@ -56,9 +56,12 @@
     - [FsReadResult](#ztd-operator-v1-FsReadResult)
     - [GetRevocationBundleRequested](#ztd-operator-v1-GetRevocationBundleRequested)
     - [GetRevocationBundleResult](#ztd-operator-v1-GetRevocationBundleResult)
+    - [GovernanceRejection](#ztd-operator-v1-GovernanceRejection)
+    - [GovernedDispatchResult](#ztd-operator-v1-GovernedDispatchResult)
     - [HeartbeatRequested](#ztd-operator-v1-HeartbeatRequested)
     - [HeartbeatResult](#ztd-operator-v1-HeartbeatResult)
     - [InferenceCompletion](#ztd-operator-v1-InferenceCompletion)
+    - [InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure)
     - [InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest)
     - [InferenceDispatchResponse](#ztd-operator-v1-InferenceDispatchResponse)
     - [InferenceDispatchStreamFailure](#ztd-operator-v1-InferenceDispatchStreamFailure)
@@ -77,6 +80,7 @@
     - [InferenceToolChoice](#ztd-operator-v1-InferenceToolChoice)
     - [InferenceToolDeclaration](#ztd-operator-v1-InferenceToolDeclaration)
     - [InferenceToolResult](#ztd-operator-v1-InferenceToolResult)
+    - [IngressRefusal](#ztd-operator-v1-IngressRefusal)
     - [ListDeviceLinksRequested](#ztd-operator-v1-ListDeviceLinksRequested)
     - [ListDeviceLinksResult](#ztd-operator-v1-ListDeviceLinksResult)
     - [ListOperatorSlotsRequested](#ztd-operator-v1-ListOperatorSlotsRequested)
@@ -140,13 +144,16 @@
     - [DeterministicStageKind](#ztd-operator-v1-DeterministicStageKind)
     - [DeterministicStageOutcome](#ztd-operator-v1-DeterministicStageOutcome)
     - [ExecutionStatus](#ztd-operator-v1-ExecutionStatus)
+    - [GovernanceRejectionCode](#ztd-operator-v1-GovernanceRejectionCode)
     - [HeartbeatType](#ztd-operator-v1-HeartbeatType)
+    - [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode)
     - [InferenceLoadState](#ztd-operator-v1-InferenceLoadState)
     - [InferenceMessageRole](#ztd-operator-v1-InferenceMessageRole)
     - [InferenceProviderAttemptStatus](#ztd-operator-v1-InferenceProviderAttemptStatus)
     - [InferenceRetryClassification](#ztd-operator-v1-InferenceRetryClassification)
     - [InferenceTimingSource](#ztd-operator-v1-InferenceTimingSource)
     - [InferenceToolChoiceMode](#ztd-operator-v1-InferenceToolChoiceMode)
+    - [IngressRefusalCode](#ztd-operator-v1-IngressRefusalCode)
     - [L2Status](#ztd-operator-v1-L2Status)
     - [L3Status](#ztd-operator-v1-L3Status)
     - [ModelRole](#ztd-operator-v1-ModelRole)
@@ -207,6 +214,7 @@ ActionReceipt is the signed proof of an executing, completed, or failed mutation
 | failure_code | [ReceiptFailureCode](#ztd-operator-v1-ReceiptFailureCode) |  | Typed classification of a FAILED receipt. UNSPECIFIED on non-failed receipts. Bound into the signature via canonicalization. |
 | event_type | [string](#string) |  | The semantic request event that produced this receipt. |
 | action_type | [string](#string) |  | The registry-derived governance class for the request event. |
+| rejection_code | [GovernanceRejectionCode](#ztd-operator-v1-GovernanceRejectionCode) |  | The verification check that rejected the transaction. Set exactly when failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the signature via canonicalization. |
 
 
 
@@ -1234,6 +1242,50 @@ for L1-L5 verification before the gateway persists them via DocSet.
 
 
 
+<a name="ztd-operator-v1-GovernanceRejection"></a>
+
+### GovernanceRejection
+GovernanceRejection is the client-facing body every governed ingress
+(direct envelope submission, governed dispatch, MCP, A2A) returns when the
+executing Operator rejected a transaction at L4. receipt is the Operator&#39;s
+signed FAILED receipt with failure_code GOVERNANCE_REJECTED; its
+transaction_id and rejection_code are the authoritative identity and
+attribution of the rejection. error is the governance sentinel text, for
+display only.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [string](#string) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-GovernedDispatchResult"></a>
+
+### GovernedDispatchResult
+GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
+receipt is the executing Operator&#39;s signed final ActionReceipt. Failures are
+GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| transaction_id | [string](#string) |  |  |
+| event_type | [string](#string) |  |  |
+| action_type | [string](#string) |  |  |
+| result_payload | [bytes](#bytes) |  | result_payload is the proto-marshaled terminal operator result for event_type (for example FsReadResult), the same bytes the dispatch response carries today. |
+| inference_result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+
+
+
+
+
+
 <a name="ztd-operator-v1-HeartbeatRequested"></a>
 
 ### HeartbeatRequested
@@ -1294,6 +1346,25 @@ instead of at the dispatch deadline.
 | ----- | ---- | ----- | ----------- |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  | The signed final ActionReceipt for the inference transaction. |
 | result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result. Absent when the receipt status is not EXECUTION_STATUS_COMPLETED. |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceDispatchFailure"></a>
+
+### InferenceDispatchFailure
+InferenceDispatchFailure is the protocol-owned error body for a non-2xx
+POST /api/v1/inference/dispatch. Error is a public-safe centralized
+sentinel; code classifies it, and is UNSPECIFIED for request faults the
+handler rejects before dispatch (method, identity, body size).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [string](#string) |  |  |
+| code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
 
 
 
@@ -1379,12 +1450,13 @@ the gateway&#39;s standard typed error envelope with a public-safe code.
 InferenceDispatchStreamFailure is the protocol-owned terminal failure
 frame for a streaming dispatch that already started NDJSON delivery.
 Reason is a public-safe centralized sentinel; it never carries raw
-prompts, model output, or receipt bodies.
+prompts, model output, or receipt bodies. Code classifies it.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | reason | [string](#string) |  |  |
+| code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
 
 
 
@@ -1708,6 +1780,23 @@ InferenceToolResult carries a tool continuation value. result_json is a canonica
 | call_id | [string](#string) |  |  |
 | name | [string](#string) |  |  |
 | result_json | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-IngressRefusal"></a>
+
+### IngressRefusal
+IngressRefusal is the body of every pre-envelope refusal: the HTTP body on the
+direct and dispatch ingresses, and JSON-RPC error.data on MCP and A2A.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| code | [IngressRefusalCode](#ztd-operator-v1-IngressRefusalCode) |  |  |
+| error | [string](#string) |  |  |
 
 
 
@@ -2091,6 +2180,8 @@ persists it; every other component reads it through this contract.
 | operator_cert_chain | [string](#string) |  | Chain of operator certificates for zero-trust verification. |
 | termination_reason | [string](#string) |  | Reason for operator termination (e.g., &#34;user_requested&#34;, &#34;max_duration_exceeded&#34;). |
 | stale_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Instant after which an active remote Operator that stays silent reads as stale: its last sign of life plus the stale window for its declared heartbeat interval. The Gateway derives it on every read and never stores it; it is unset for an Operator that cannot read as stale. |
+| actuator_public_key | [string](#string) |  | actuator_public_key is the hex Ed25519 public key of this Operator&#39;s L5 Actuator, bound once at enrollment over the authenticated bootstrap channel. Receipts executed by this Operator verify only against this key. |
+| actuator_key_id | [string](#string) |  | actuator_key_id equals actuator_public_key (key_id == hex(pub)). |
 
 
 
@@ -2844,6 +2935,45 @@ Execution status enum for command and operation results
 
 
 
+<a name="ztd-operator-v1-GovernanceRejectionCode"></a>
+
+### GovernanceRejectionCode
+GovernanceRejectionCode names the verification check that rejected a
+transaction before execution. The L5 actuator stamps it on every
+GOVERNANCE_REJECTED receipt, so a verifier can attribute a rejection to a
+layer from signed evidence alone, without parsing result_summary. It is
+bound into the receipt signature.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| GOVERNANCE_REJECTION_CODE_UNSPECIFIED | 0 | The receipt is not a governance rejection. |
+| GOVERNANCE_REJECTION_CODE_UNCLASSIFIED | 1 | The rejection error is not mapped to a check. A verifier treats it as a defect. |
+| GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED | 2 | The runtime vault is locked or absent, so nothing may execute. |
+| GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED | 3 | A verifier dependency (doctrine, replay store, signer store, consensus, notary, state root provider) is absent. |
+| GOVERNANCE_REJECTION_CODE_ENVELOPE_MALFORMED | 4 | The envelope is structurally incomplete or its typed payload does not decode. |
+| GOVERNANCE_REJECTION_CODE_PROTOCOL_VERSION_UNSUPPORTED | 5 |  |
+| GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH | 6 |  |
+| GOVERNANCE_REJECTION_CODE_EXPIRED | 7 |  |
+| GOVERNANCE_REJECTION_CODE_REPLAY | 8 | The nonce was already reserved or is in flight. |
+| GOVERNANCE_REJECTION_CODE_DOCUMENT_COLLECTION_NOT_GOVERNED | 9 |  |
+| GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH | 10 |  |
+| GOVERNANCE_REJECTION_CODE_TARGET_SESSION_MISMATCH | 11 |  |
+| GOVERNANCE_REJECTION_CODE_L1_DOCTRINE | 12 | L1 doctrine found a forbidden pattern in the typed payload. |
+| GOVERNANCE_REJECTION_CODE_TRANSACTION_HASH_MISMATCH | 13 |  |
+| GOVERNANCE_REJECTION_CODE_TRANSACTION_ID_MISMATCH | 14 |  |
+| GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH | 15 |  |
+| GOVERNANCE_REJECTION_CODE_POSTURE_MISSING | 16 |  |
+| GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING | 17 |  |
+| GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID | 18 |  |
+| GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET | 19 |  |
+| GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER | 20 |  |
+| GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING | 21 |  |
+| GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID | 22 |  |
+| GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN | 23 | The L2 proof names a consensus set that is unknown or disabled. |
+| GOVERNANCE_REJECTION_CODE_L3_DENIED | 24 | The human denied the suspended transaction at the L3 approval. |
+
+
+
 <a name="ztd-operator-v1-HeartbeatType"></a>
 
 ### HeartbeatType
@@ -2854,6 +2984,64 @@ Heartbeat type enum
 | HEARTBEAT_TYPE_UNSPECIFIED | 0 |  |
 | HEARTBEAT_TYPE_AUTOMATIC | 1 |  |
 | HEARTBEAT_TYPE_MANUAL | 2 |  |
+
+
+
+<a name="ztd-operator-v1-InferenceDispatchFailureCode"></a>
+
+### InferenceDispatchFailureCode
+InferenceDispatchFailureCode is the typed classification of a failed
+POST /api/v1/inference/dispatch. Each code names one centralized public
+sentinel, so a caller classifies the failure (a provider that rejects tool
+declarations, a backend timeout, a governance rejection) without parsing
+the error text.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED | 0 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL | 1 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN | 2 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT | 3 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND | 4 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS | 5 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE | 6 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID | 7 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED | 8 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED | 9 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID | 10 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID | 11 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL | 12 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID | 13 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID | 14 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED | 15 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED | 16 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW | 17 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID | 18 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED | 19 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID | 20 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID | 21 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED | 22 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY | 23 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED | 24 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY | 25 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH | 26 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST | 27 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH | 28 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH | 29 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID | 30 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE | 31 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT | 32 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT | 33 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE | 34 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED | 35 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT | 36 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED | 37 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND | 38 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID | 39 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CANCELED | 40 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED | 41 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE | 42 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH | 43 |  |
 
 
 
@@ -2936,6 +3124,39 @@ InferenceMessageRole identifies the semantic role of one ordered conversation tu
 | INFERENCE_TOOL_CHOICE_MODE_AUTO | 1 |  |
 | INFERENCE_TOOL_CHOICE_MODE_NONE | 2 |  |
 | INFERENCE_TOOL_CHOICE_MODE_REQUIRED | 3 |  |
+
+
+
+<a name="ztd-operator-v1-IngressRefusalCode"></a>
+
+### IngressRefusalCode
+IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
+exists. It is the pre-envelope counterpart of GovernanceRejectionCode. A refusal
+never carries a receipt, because nothing was executed or rejected by L4.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| INGRESS_REFUSAL_CODE_UNSPECIFIED | 0 |  |
+| INGRESS_REFUSAL_CODE_UNCLASSIFIED | 1 |  |
+| INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED | 2 |  |
+| INGRESS_REFUSAL_CODE_PAYLOAD_TOO_LARGE | 3 |  |
+| INGRESS_REFUSAL_CODE_MALFORMED_REQUEST | 4 |  |
+| INGRESS_REFUSAL_CODE_MISSING_FIELD | 5 |  |
+| INGRESS_REFUSAL_CODE_UNKNOWN_EVENT_TYPE | 6 |  |
+| INGRESS_REFUSAL_CODE_EVENT_ACTION_MISMATCH | 7 |  |
+| INGRESS_REFUSAL_CODE_PAYLOAD_DECODE_FAILED | 8 |  |
+| INGRESS_REFUSAL_CODE_MTLS_REQUIRED | 9 |  |
+| INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED | 10 |  |
+| INGRESS_REFUSAL_CODE_CALLER_SUPPLIED_POSTURE | 11 |  |
+| INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND | 12 |  |
+| INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE | 13 |  |
+| INGRESS_REFUSAL_CODE_L1_DOCTRINE | 14 |  |
+| INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE | 15 |  |
+| INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE | 16 |  |
+| INGRESS_REFUSAL_CODE_GATEWAY_MISCONFIGURED | 17 |  |
+| INGRESS_REFUSAL_CODE_EMBEDDED_OPERATOR_UNCLAIMED | 18 |  |
+| INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED | 19 |  |
+| INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE | 20 |  |
 
 
 

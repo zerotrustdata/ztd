@@ -61,6 +61,7 @@ const SNAP: FeedSnapshot = {
   source_id: 'opendevops-local',
   high_water_sequence: 0,
   feed_chain_hash: '0000000000000000000000000000000000000000000000000000000000000000',
+  withdrawal_digest: '0'.repeat(64),
   batch_count: 0,
   generated_at: '2026-09-14T08:00:00Z',
   freshness: 'active',

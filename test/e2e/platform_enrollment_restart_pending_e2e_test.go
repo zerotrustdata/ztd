@@ -84,9 +84,9 @@ func TestPlatformEnrollment_RestartDuringPending(t *testing.T) {
 
 	// A command roundtrip must succeed against the newly issued session.
 	resp := e2eClient.dispatchFsRead(t, ctx)
-	assert.NotEmpty(t, resp.TransactionID, "dispatch response must carry a transaction ID")
-	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.EventType,
+	assert.NotEmpty(t, resp.GetTransactionId(), "dispatch response must carry a transaction ID")
+	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.GetEventType(),
 		"dispatch response event type must be the fs.read completed event")
 	t.Logf("command roundtrip succeeded after restart-during-pending: txn=%s",
-		resp.TransactionID)
+		resp.GetTransactionId())
 }

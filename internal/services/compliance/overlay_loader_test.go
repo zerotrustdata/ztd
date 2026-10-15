@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // writeOverlayFile writes a JSON file with the given content to the directory.
@@ -55,7 +56,7 @@ func testOverlayCatalog() *OverlayCatalog {
 
 // TestLoadOverlayCatalog_Success loads a valid overlay catalog from disk.
 func TestLoadOverlayCatalog_Success(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, "overlays.json")
 	writeOverlayFile(t, dir, "overlays.json", testOverlayCatalog())
 
@@ -79,7 +80,7 @@ func TestLoadOverlayCatalog_FileNotFound(t *testing.T) {
 
 // TestLoadOverlayCatalog_InvalidJSON returns an error for malformed JSON.
 func TestLoadOverlayCatalog_InvalidJSON(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o644))
 
@@ -190,7 +191,7 @@ func TestOverlayCatalog_HasOverlay(t *testing.T) {
 
 // TestLoadOverlaysFromDir_EmptyDir returns an empty catalog for an empty directory.
 func TestLoadOverlaysFromDir_EmptyDir(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	cat, err := LoadOverlaysFromDir(dir)
 	require.NoError(t, err)
 	require.NotNil(t, cat)
@@ -214,7 +215,7 @@ func TestLoadOverlaysFromDir_NonexistentDir(t *testing.T) {
 
 // TestLoadOverlaysFromDir_SingleFile loads one overlay JSON file.
 func TestLoadOverlaysFromDir_SingleFile(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeOverlayFile(t, dir, "overlays.json", testOverlayCatalog())
 
 	cat, err := LoadOverlaysFromDir(dir)
@@ -225,7 +226,7 @@ func TestLoadOverlaysFromDir_SingleFile(t *testing.T) {
 
 // TestLoadOverlaysFromDir_MultipleFiles merges overlay files in lexical order.
 func TestLoadOverlaysFromDir_MultipleFiles(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	cat1 := &OverlayCatalog{
 		Version: "v1",
@@ -253,7 +254,7 @@ func TestLoadOverlaysFromDir_MultipleFiles(t *testing.T) {
 
 // TestLoadOverlaysFromDir_DuplicateAcrossFiles returns an error for duplicate IDs.
 func TestLoadOverlaysFromDir_DuplicateAcrossFiles(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 
 	cat1 := &OverlayCatalog{
 		Version: "v1",
@@ -279,7 +280,7 @@ func TestLoadOverlaysFromDir_DuplicateAcrossFiles(t *testing.T) {
 
 // TestLoadOverlaysFromDir_IgnoresNonJSON ignores non-JSON files.
 func TestLoadOverlaysFromDir_IgnoresNonJSON(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	writeOverlayFile(t, dir, "overlays.json", testOverlayCatalog())
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# Overlays"), 0o644))
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "subdir"), 0o755))
@@ -291,7 +292,7 @@ func TestLoadOverlaysFromDir_IgnoresNonJSON(t *testing.T) {
 
 // TestLoadOverlaysFromDir_InvalidFile returns an error for malformed JSON.
 func TestLoadOverlaysFromDir_InvalidFile(t *testing.T) {
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{broken"), 0o644))
 
 	_, err := LoadOverlaysFromDir(dir)

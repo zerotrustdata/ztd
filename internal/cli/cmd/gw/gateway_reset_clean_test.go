@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 func TestGatewayCleanCmd_ConfirmYesProceedsPastPrompt(t *testing.T) {
@@ -192,7 +193,7 @@ func TestGatewayCleanCmd_RemovesOSTrustAnchors(t *testing.T) {
 	cmd := gatewayCleanCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg),
 		cmdtest.FileSvcFactoryFor(fileSvc),
-		func() (systemTrustCleaner, error) { return mock, nil },
+		func(fs.RuntimeFileService) (systemTrustCleaner, error) { return mock, nil },
 	)
 	cmd.Flags().Set("force", "true")
 	var buf bytes.Buffer
@@ -226,7 +227,7 @@ func TestGatewayCleanCmd_NoOSTrustAnchors_NoRemoveCall(t *testing.T) {
 	cmd := gatewayCleanCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg),
 		cmdtest.FileSvcFactoryFor(fileSvc),
-		func() (systemTrustCleaner, error) { return mock, nil },
+		func(fs.RuntimeFileService) (systemTrustCleaner, error) { return mock, nil },
 	)
 	cmd.Flags().Set("force", "true")
 	var buf bytes.Buffer
@@ -250,7 +251,7 @@ func TestGatewayCleanCmd_OSTrustUnsupported_ProceedsWithWipe(t *testing.T) {
 	cmd := gatewayCleanCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg),
 		cmdtest.FileSvcFactoryFor(fileSvc),
-		func() (systemTrustCleaner, error) { return mock, nil },
+		func(fs.RuntimeFileService) (systemTrustCleaner, error) { return mock, nil },
 	)
 	cmd.Flags().Set("force", "true")
 	var buf bytes.Buffer
@@ -273,7 +274,7 @@ func TestGatewayCleanCmd_OSTrustListError_ProceedsWithWarning(t *testing.T) {
 	cmd := gatewayCleanCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg),
 		cmdtest.FileSvcFactoryFor(fileSvc),
-		func() (systemTrustCleaner, error) { return mock, nil },
+		func(fs.RuntimeFileService) (systemTrustCleaner, error) { return mock, nil },
 	)
 	cmd.Flags().Set("force", "true")
 	var buf bytes.Buffer
@@ -295,7 +296,7 @@ func TestGatewayCleanCmd_ArchivesRuntimeInsteadOfDeleting(t *testing.T) {
 	cmd := gatewayCleanCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg),
 		cmdtest.FileSvcFactoryFor(fileSvc),
-		func() (systemTrustCleaner, error) { return &mockTrustCleaner{}, nil },
+		func(fs.RuntimeFileService) (systemTrustCleaner, error) { return &mockTrustCleaner{}, nil },
 	)
 	require.NoError(t, cmd.Flags().Set("force", "true"))
 	require.NoError(t, cmd.Flags().Set("skip-backup", "true"))
@@ -332,7 +333,7 @@ func TestGatewayCleanCmd_OffersBackupBeforeArchiving(t *testing.T) {
 			cmd := gatewayCleanCmdWithConfig(
 				cmdtest.ConfigLoaderFor(cfg),
 				cmdtest.FileSvcFactoryFor(fileSvc),
-				func() (systemTrustCleaner, error) { return &mockTrustCleaner{}, nil },
+				func(fs.RuntimeFileService) (systemTrustCleaner, error) { return &mockTrustCleaner{}, nil },
 			)
 			require.NoError(t, cmd.Flags().Set("force", "true"))
 			if tc.skipBackup {

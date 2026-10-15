@@ -12,6 +12,7 @@ package platform
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -21,7 +22,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+// newTestTrustInstaller returns an installer driven by r whose staged root
+// PEM lands in an isolated runtime root.
+func newTestTrustInstaller(t *testing.T, r commandRunner) *SystemTrustInstaller {
+	t.Helper()
+	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	require.NoError(t, err)
+	return &SystemTrustInstaller{runner: r, now: time.Now, files: files}
+}
 
 // fakeRunner is a test commandRunner that records calls and returns scripted
 // outputs. It never invokes real system commands.
@@ -122,7 +134,7 @@ func TestLinux_IsTrustedDebian_AlreadyTrusted(t *testing.T) {
 	r := newFakeRunner()
 	r.setResponse("cat", []byte(rootPEM), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	trusted, err := installer.isTrustedDebian(context.Background(), fp)
 	require.NoError(t, err)
 	assert.True(t, trusted)
@@ -137,7 +149,7 @@ func TestLinux_IsTrustedDebian_NotPresent(t *testing.T) {
 	r := newFakeRunner()
 	r.setResponse("cat", nil, &fakeErr{msg: "no such file"})
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	trusted, err := installer.isTrustedDebian(context.Background(), fp)
 	require.NoError(t, err)
 	assert.False(t, trusted)
@@ -152,7 +164,7 @@ func TestLinux_IsTrustedRHEL_AlreadyTrusted(t *testing.T) {
 	r := newFakeRunner()
 	r.setResponse("trust", []byte(rootPEM), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	trusted, err := installer.isTrustedRHEL(context.Background(), fp)
 	require.NoError(t, err)
 	assert.True(t, trusted)
@@ -168,7 +180,7 @@ func TestLinux_IsTrustedRHEL_DifferentCert(t *testing.T) {
 	r := newFakeRunner()
 	r.setResponse("trust", []byte(otherPEM), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	trusted, err := installer.isTrustedRHEL(context.Background(), fp)
 	require.NoError(t, err)
 	assert.False(t, trusted)
@@ -185,7 +197,7 @@ func TestLinux_IsTrusted_AlreadyTrusted_Debian(t *testing.T) {
 	// isTrustedDebian: cat the managed file returns the root PEM
 	r.setResponse("cat", []byte(bundle[:strings.Index(bundle, "-----END CERTIFICATE-----\n")+len("-----END CERTIFICATE-----\n")]), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	trusted, err := installer.IsTrusted(context.Background(), fp)
 	require.NoError(t, err)
 	assert.True(t, trusted)
@@ -207,7 +219,7 @@ func TestLinux_InstallRoot_Debian(t *testing.T) {
 	// sudo cp succeeds
 	r.setResponse("sudo", []byte(""), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.InstallRoot(context.Background(), rootCert, fp)
 	require.NoError(t, err)
 
@@ -223,6 +235,12 @@ func TestLinux_InstallRoot_Debian(t *testing.T) {
 	// First sudo call: cp <temp> <managed>
 	assert.Equal(t, "cp", sudoCalls[0].args[0])
 	assert.Contains(t, sudoCalls[0].args[2], "ztd-root-"+fp+".crt")
+	// The staged PEM lived under the runtime tmp dir and is gone afterwards.
+	tmpRoot := installer.files.Resolve(constants.TmpDirname)
+	assert.True(t, strings.HasPrefix(sudoCalls[0].args[1], tmpRoot+string(filepath.Separator)), "staged cert %q outside %q", sudoCalls[0].args[1], tmpRoot)
+	staged, err := installer.files.ReadDir(context.Background(), constants.TmpDirname)
+	require.NoError(t, err)
+	assert.Empty(t, staged)
 	// Second sudo call: update-ca-certificates
 	assert.Equal(t, "update-ca-certificates", sudoCalls[1].args[0])
 }
@@ -239,7 +257,7 @@ func TestLinux_InstallRoot_RHEL(t *testing.T) {
 	// sudo cp + sudo update-ca-trust succeed
 	r.setResponse("sudo", []byte(""), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.InstallRoot(context.Background(), rootCert, fp)
 	require.NoError(t, err)
 
@@ -263,7 +281,7 @@ func TestLinux_InstallRoot_MissingTool(t *testing.T) {
 
 	r := newFakeRunner()
 	// Neither tool found
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.InstallRoot(context.Background(), rootCert, "any-fp")
 	require.Error(t, err)
 }
@@ -276,7 +294,7 @@ func TestLinux_InstallRoot_SudoFails(t *testing.T) {
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 	r.setResponse("sudo", nil, &fakeErr{msg: "sudo: command not found"})
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.InstallRoot(context.Background(), rootCert, "any-fp")
 	require.Error(t, err)
 }
@@ -289,7 +307,7 @@ func TestLinux_InstallRoot_NoShellInjection(t *testing.T) {
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 	r.setResponse("sudo", []byte(""), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.InstallRoot(context.Background(), rootCert, "any-fp")
 	require.NoError(t, err)
 
@@ -312,7 +330,7 @@ func TestLinux_InstallRoot_ConcurrentCalls(t *testing.T) {
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 	r.setResponse("sudo", []byte(""), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
@@ -342,7 +360,7 @@ func TestLinux_ListStaleAnchors_NoStaleAnchors(t *testing.T) {
 	currentRootPEM := bundle[:strings.Index(bundle, "-----END CERTIFICATE-----\n")+len("-----END CERTIFICATE-----\n")]
 	r.setResponse("cat", []byte(currentRootPEM), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	stale, err := installer.ListStaleAnchors(context.Background(), fp)
 	require.NoError(t, err)
 	assert.Empty(t, stale, "current anchor should not be listed as stale")
@@ -375,7 +393,7 @@ func TestLinux_ListStaleAnchors_FindsStale(t *testing.T) {
 	}
 	r2.setResponse("update-ca-certificates", []byte("usage"), nil)
 
-	installer := &SystemTrustInstaller{runner: r2, now: time.Now}
+	installer := newTestTrustInstaller(t, r2)
 	stale, err := installer.ListStaleAnchors(context.Background(), currentFP)
 	require.NoError(t, err)
 	require.Len(t, stale, 1)
@@ -390,7 +408,7 @@ func TestLinux_ListStaleAnchors_EmptyDir(t *testing.T) {
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 	r.setResponse("ls", []byte(""), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	stale, err := installer.ListStaleAnchors(context.Background(), "any-fp")
 	require.NoError(t, err)
 	assert.Empty(t, stale)
@@ -402,7 +420,7 @@ func TestLinux_ListStaleAnchors_DirNotFound(t *testing.T) {
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 	r.setResponse("ls", nil, &fakeErr{msg: "no such directory"})
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	stale, err := installer.ListStaleAnchors(context.Background(), "any-fp")
 	require.NoError(t, err)
 	assert.Empty(t, stale, "missing directory should yield no stale anchors")
@@ -419,7 +437,7 @@ func TestLinux_RemoveStaleAnchors_Debian(t *testing.T) {
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 	r.setResponse("sudo", []byte(""), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.RemoveStaleAnchors(context.Background(), anchors)
 	require.NoError(t, err)
 
@@ -453,7 +471,7 @@ func TestLinux_RemoveStaleAnchors_RHEL(t *testing.T) {
 	r.setResponse("trust", []byte(""), nil)
 	r.setResponse("sudo", []byte(""), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.RemoveStaleAnchors(context.Background(), anchors)
 	require.NoError(t, err)
 
@@ -475,7 +493,7 @@ func TestLinux_RemoveStaleAnchors_Empty_NoOp(t *testing.T) {
 	r := newFakeRunner()
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.RemoveStaleAnchors(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, r.callCount(), "no commands should run for empty anchor list")
@@ -491,7 +509,7 @@ func TestLinux_RemoveStaleAnchors_SudoFails(t *testing.T) {
 	r.setResponse("update-ca-certificates", []byte("usage"), nil)
 	r.setResponse("sudo", nil, &fakeErr{msg: "sudo: command not found"})
 
-	installer := &SystemTrustInstaller{runner: r, now: time.Now}
+	installer := newTestTrustInstaller(t, r)
 	err := installer.RemoveStaleAnchors(context.Background(), anchors)
 	require.Error(t, err)
 }

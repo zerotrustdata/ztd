@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // repoRootForEnvTest resolves the repository root from this package directory.
@@ -63,7 +65,7 @@ const envFixtureExample = `# Fixture environment template.
 // root and asserts the unmutated fixture is itself valid.
 func newEnvFixture(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	for rel, content := range map[string]string{
 		relPathEnvVars:    envFixtureRegistry,
 		relPathEnvExample: envFixtureExample,

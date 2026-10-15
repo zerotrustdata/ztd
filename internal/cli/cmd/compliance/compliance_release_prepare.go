@@ -33,6 +33,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -45,7 +46,7 @@ var sha256HexRegexp = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // without git, the running executable, or a real clock.
 type releasePrepareDeps struct {
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)
-	runtimeVault   func(fs.RuntimeFileService, string) (*vault.Vault, func(), error)
+	runtimeVault   func(fs.RuntimeFileService) (*vault.Vault, func(), error)
 	signingLoader  complianceReportSigningIdentityLoader
 	binaryDigest   func() (string, error)
 	gitRevision    func(ctx context.Context, repoRoot string) (string, error)
@@ -78,7 +79,6 @@ type releasePrepareOptions struct {
 	signingPrivateKey string
 	newKey            bool
 	assessor          string
-	masterKeyFile     string
 }
 
 func complianceReleasePrepareCmdWithConfig(deps releasePrepareDeps) *cobra.Command {
@@ -137,7 +137,6 @@ command; it does not commit or tag.`,
 	flags.StringVar(&opts.signingPrivateKey, "signing-private-key", "", "Path to hex-encoded Ed25519 report private key (defaults to the runtime secrets directory; set with --signing-metadata)")
 	flags.BoolVar(&opts.newKey, "new-key", false, "Generate the report-signing key at the signing key paths; refuses to overwrite")
 	flags.StringVar(&opts.assessor, "assessor", constants.ComplianceReleaseDefaultAssessor, "Assessor identity recorded in the first-party trust policies")
-	flags.StringVar(&opts.masterKeyFile, "master-key-file", "", "Absolute path to a provisioned base64 32-byte master key outside the runtime root; Linux mode 0400 or 0600. Blank uses the OS key store. No fallback on failure.")
 	return cmd
 }
 
@@ -175,7 +174,7 @@ func runReleasePrepare(ctx context.Context, deps releasePrepareDeps, opts releas
 	if err := refusePreparedRelease(ctx, fileSvc, prepared); err != nil {
 		return err
 	}
-	encryptionVault, vaultCleanup, err := deps.runtimeVault(fileSvc, opts.masterKeyFile)
+	encryptionVault, vaultCleanup, err := deps.runtimeVault(fileSvc)
 	if err != nil {
 		return fmt.Errorf("release-prepare: open runtime vault: %w", err)
 	}
@@ -672,10 +671,12 @@ func defaultGitRevision(ctx context.Context, repoRoot string) (string, error) {
 func newReleasePrepareDeps() releasePrepareDeps {
 	return releasePrepareDeps{
 		fileSvcFactory: shared.NewFileSvc,
-		runtimeVault:   openRuntimeVault,
-		signingLoader:  loadComplianceReportSigningIdentity,
-		binaryDigest:   defaultBinaryDigest,
-		gitRevision:    defaultGitRevision,
+		runtimeVault: func(fileSvc fs.RuntimeFileService) (*vault.Vault, func(), error) {
+			return openRuntimeVault(fileSvc, keystore.Options{})
+		},
+		signingLoader: loadComplianceReportSigningIdentity,
+		binaryDigest:  defaultBinaryDigest,
+		gitRevision:   defaultGitRevision,
 		newGenerateCmd: func() *cobra.Command {
 			return complianceReportGenerateCmdWithConfig(shared.NewEvidenceFileSvc, loadComplianceReportSigningIdentity, time.Now)
 		},

@@ -30,6 +30,8 @@ import (
 )
 
 // testGatewayOpts configures optional parameters for newTestGatewayService.
+// An unset posture selects doctrine, the Gateway's startup default; the Gateway
+// itself rejects an empty posture.
 type testGatewayOpts struct {
 	posture  config.GatewayPosture
 	httpPort int
@@ -49,7 +51,10 @@ func newTestGatewayService(t *testing.T, opts testGatewayOpts) *GatewayModeServi
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
 	cfg.Gateway.HTTPPort = opts.httpPort
-	cfg.Gateway.Posture = opts.posture
+	cfg.Gateway.Posture = config.PostureDoctrine
+	if opts.posture != "" {
+		cfg.Gateway.Posture = opts.posture
+	}
 
 	db, err := openTestDB(t, fileSvc, logger)
 	require.NoError(t, err)

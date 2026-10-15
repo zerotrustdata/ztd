@@ -230,7 +230,7 @@ func (r *CampaignMirrorReconciler) completedAndVerified(ctx context.Context, run
 		return false, nil
 	}
 	report, err := r.store.LoadCampaignVerification(ctx, runID)
-	if errors.Is(err, fs.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, constants.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil || report == nil || report.GetStatus() != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {

@@ -46,23 +46,6 @@ type e2eConfig struct {
 // window or the suite fails closed.
 const healthCheckTimeout = 10 * time.Second
 
-// e2eMasterKeyFile returns the provisioned master key file named by
-// ZTD_E2E_MASTER_KEY_FILE, which seals the runtime tree's CLI identity key when
-// the host has no OS key store (the scale scenarios on a headless host), or ""
-// for the OS key store.
-func e2eMasterKeyFile() string {
-	return strings.TrimSpace(os.Getenv(string(constants.EnvVar.E2EMasterKeyFile)))
-}
-
-// e2eMasterKeyArgs returns the global CLI flag that points a child ztd process
-// at the environment's master key file, or nil for the OS key store.
-func e2eMasterKeyArgs() []string {
-	if path := e2eMasterKeyFile(); path != "" {
-		return []string{"--master-key-file", path}
-	}
-	return nil
-}
-
 // e2eGatewayPorts returns the Gateway ports named by ZTD_E2E_GATEWAY_HTTP_PORT
 // and ZTD_E2E_GATEWAY_HTTPS_PORT, or zeros when neither is set. Setting only
 // one of them is an error. Scenarios whose isolated Gateway listens on
@@ -112,7 +95,6 @@ func loadE2EConfig() (*e2eConfig, error) {
 		return nil, fmt.Errorf("e2e: resolve runtime root: %w", err)
 	}
 
-	config.SetMasterKeyFileOverride(e2eMasterKeyFile())
 	cfg, err := config.Load(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("e2e: load CLI config: %w", err)

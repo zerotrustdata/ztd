@@ -11,6 +11,11 @@ import (
 	"fmt"
 )
 
+// EventWireNamespace prefixes every registered event wire value. Code that
+// needs an in-namespace value the registry does not define composes it from
+// this prefix rather than a ztd.v1 wire literal.
+const EventWireNamespace = "ztd.v1."
+
 func eventHasTransport(entry EventRegistryEntry, transport string) bool {
 	for _, t := range entry.Transport {
 		if t == transport {

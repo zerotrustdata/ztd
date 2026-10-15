@@ -58,14 +58,24 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailurePosture
 	case errors.Is(err, constants.ErrEvalRunVerificationFailed):
 		return ExecutionFailureVerification
-	case errors.Is(err, constants.ErrEvaluationObservationUnavailable), errors.Is(err, constants.ErrEvaluationReceiptUnavailable):
+	case errors.Is(err, constants.ErrEvaluationObservationUnavailable):
 		return ExecutionFailureEvidence
-	case errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
+	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
 	default:
 		return ExecutionFailureInternal
 	}
+}
+
+// ProviderFailureClass returns the inference attempt failure class an error
+// carries, or "" when the provider did not classify it.
+func ProviderFailureClass(err error) inference.AttemptFailureClass {
+	class := inference.ClassifyAttemptFailure(err)
+	if class == inference.AttemptFailureInternal {
+		return ""
+	}
+	return class
 }
 
 // BuildExecutorFailureAssignmentResult materializes one terminal assignment

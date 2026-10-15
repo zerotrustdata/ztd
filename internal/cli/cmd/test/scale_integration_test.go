@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -100,17 +101,6 @@ func scaleTestConfig(t *testing.T) scaleConfig {
 	return cfg
 }
 
-// masterKeyFileArg returns the value following --master-key-file in a joined argv.
-func masterKeyFileArg(argv string) string {
-	fields := strings.Fields(argv)
-	for i, field := range fields {
-		if field == "--master-key-file" && i+1 < len(fields) {
-			return fields[i+1]
-		}
-	}
-	return ""
-}
-
 func TestRunScale_RunsPhasesInOrderAndTearsDown(t *testing.T) {
 	cfg := scaleTestConfig(t)
 	fake := &fakeScaleDeps{}
@@ -119,17 +109,21 @@ func TestRunScale_RunsPhasesInOrderAndTearsDown(t *testing.T) {
 
 	argvs := fake.argvs()
 	require.Len(t, argvs, 7)
-	assert.True(t, strings.HasPrefix(argvs[0], "gw start --master-key-file "))
-	assert.Contains(t, argvs[0], " --listen-host 127.0.0.1 --cert-mode localhost --posture doctrine")
+	assert.True(t, strings.HasPrefix(argvs[0], "gw start --listen-host 127.0.0.1 --cert-mode localhost --posture doctrine"))
 	assert.Contains(t, argvs[0], "--http-port 18080 --https-port 18443")
 	assert.NotContains(t, argvs[0], "--quiet", "gw start output must be logged for diagnostics")
-	assert.True(t, strings.HasPrefix(argvs[1], "auth enroll user -e 127.0.0.1:18080 -p 18443 --master-key-file "))
-	assert.True(t, strings.HasSuffix(argvs[1], " --headless"))
-	assert.Equal(t, masterKeyFileArg(argvs[0]), masterKeyFileArg(argvs[1]), "the CLI identity is sealed under the Gateway's provisioned master key")
-	assert.True(t, strings.HasPrefix(argvs[2], "operator deploy --master-key-file "))
-	assert.Contains(t, argvs[2], " --hosts local ")
-	assert.Equal(t, masterKeyFileArg(argvs[0]), masterKeyFileArg(argvs[2]), "the Gateway and every deploy batch use the one provisioned master key")
-	assert.NotEmpty(t, masterKeyFileArg(argvs[0]))
+	assert.Equal(t, "auth enroll user -e 127.0.0.1:18080 -p 18443 --headless", argvs[1])
+	assert.True(t, strings.HasPrefix(argvs[2], "operator deploy --hosts local "))
+	for _, argv := range argvs {
+		assert.NotContains(t, argv, "--master-key-file")
+	}
+	layout := newScaleLayout(cfg.Root)
+	if runtime.GOOS == "linux" {
+		agentSock := filepath.Join(layout.Run, constants.RuntimeDirname, constants.EphemeralAgentDirname, constants.EphemeralAgentSocketFilename)
+		for _, call := range fake.calls {
+			assert.Contains(t, call.Env, string(constants.EnvVar.SSHAuthSock)+"="+agentSock, "every child seals under the run's ephemeral ssh-agent")
+		}
+	}
 	assert.Contains(t, argvs[2], "-e 127.0.0.1 --gateway-http-port 18080 --gateway-https-port 18443")
 	assert.Contains(t, argvs[2], "--count 100 --start-index 1 ")
 	assert.Contains(t, argvs[3], "--count 50 --start-index 101 ")
@@ -138,7 +132,6 @@ func TestRunScale_RunsPhasesInOrderAndTearsDown(t *testing.T) {
 	assert.Contains(t, argvs[5], "-run "+scaleRestartScenario)
 	assert.Equal(t, "gw stop", argvs[6])
 
-	layout := newScaleLayout(cfg.Root)
 	assert.Equal(t, []string{layout.Run}, fake.verifyCalls, "gateway ownership must be verified in layout.Run before enrollment")
 	assert.Equal(t, []string{layout.Fleet}, fake.stopped)
 	assert.Equal(t, []string{"local"}, fake.stoppedHosts)
@@ -164,8 +157,7 @@ func TestRunScale_RemoteHostsConfiguresGatewayAndDeploy(t *testing.T) {
 
 	argvs := fake.argvs()
 	require.NotEmpty(t, argvs)
-	assert.True(t, strings.HasPrefix(argvs[0], "gw start --master-key-file "))
-	assert.Contains(t, argvs[0], " --listen-host 0.0.0.0 --cert-mode full --posture doctrine")
+	assert.True(t, strings.HasPrefix(argvs[0], "gw start --listen-host 0.0.0.0 --cert-mode full --posture doctrine"))
 	assert.Contains(t, argvs[2], " --hosts remote1,remote2 ")
 	assert.Contains(t, argvs[2], "-e 192.168.1.50")
 	assert.Contains(t, argvs[2], "--operator-endpoint 192.168.1.50")

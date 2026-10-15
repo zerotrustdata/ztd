@@ -3,8 +3,8 @@ doc_id: auth
 title: Authentication & Authorization Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/auth/
@@ -13,11 +13,11 @@ owners:
   - internal/constants/auth.go
   - internal/models/auth.go
 related:
-  - docs/architecture/gateway.md
-  - docs/architecture/governance.md
-  - docs/architecture/network.md
-  - docs/architecture/operator.md
-  - docs/devs/troubleshooting.md
+  - gateway.md
+  - governance.md
+  - network.md
+  - operator.md
+  - ../devs/troubleshooting.md
 when_to_read: Implementing authentication or authorization logic, reviewing security posture, auditing route admission, or understanding identity binding and session lifecycle.
 do_not_use_for:
   - WebAuthn ceremony mechanics (internal/cli/auth/passkey_enrollment.go)
@@ -115,7 +115,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Gateway auth middleware | `internal/services/gateway/gateway_auth.go` | Route classification, web-session cookie validation, and admission logic |
 | CLI enrollment state machine | `internal/cli/auth/enrollment.go`, `internal/cli/auth/` | Decision matrix, credential store, and session binding |
 | Browser passkey ceremonies | `internal/services/gateway/passkey_service_http.go` | WebAuthn registration and assertion handling |
-| Envelope identity binding | `internal/services/gateway/governance_controller.go` (`verifyEnvelopeIdentityBinding`) | `./ztd test unit --pkg ./internal/services/gateway --run IdentityBinding` |
+| Envelope identity binding | `internal/services/gateway/governance_controller.go` (`verifyEnvelopeIdentityBinding`) | `./ztd test integration --pkg ./internal/services/gateway --run 'TestVerifyEnvelopeIdentityBinding\|TestGovernanceEnvelope'` |
 | Workload enrollment flow | `internal/services/gateway/platform_enrollment_service.go`, `platform_enrollment_controller.go`, `internal/services/pubsub/platform_enrollment_handlers.go` | CSR submission, approval, certificate issuance |
 | Direct approval response | `internal/services/gateway/passkey_service_approvals.go` (`handleApprovalRespond`) | Route classification in `gateway_auth.go` |
 | Identity models | `internal/models/auth.go` | User, CLI session, operator, application identity types |
@@ -236,7 +236,7 @@ Authentication admits a principal to a route. Authorization determines whether t
 | **L4 Warden** | Universal | Nonce reservation, replay prevention, hash integrity, Merkle root, proof verification |
 | **L5 Actuator** | Universal | JIT capability minting, payload rehydration, command dispatch, signed receipts |
 
-Gateway-mode L3 approval requires a WebAuthn assertion; there is no CLI-only approval on the Gateway. Denials can be submitted via `POST /api/v1/approvals/respond`.
+Gateway-mode L3 approval requires a WebAuthn assertion; there is no CLI-only approval on the Gateway. Denials are submitted via `POST /api/v1/approvals/respond` with `approved: false`. The Gateway resubmits the suspended envelope with `L3Metadata.denied` set; the executing runtime's L4 rejects it in every posture with `GOVERNANCE_REJECTION_CODE_L3_DENIED`, and its L5 signs the rejection receipt. The deny needs no approval proof because it can only stop execution, and `denied` is outside the transaction hash. The response and the `approval.completed` event both carry the signed receipt.
 
 ## Procedures
 

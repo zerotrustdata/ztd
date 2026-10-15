@@ -231,7 +231,7 @@ func NewEnrollmentCoordinator(deps EnrollmentCoordinatorDeps) (*EnrollmentCoordi
 	}
 	trust := deps.Trust
 	if trust == nil {
-		trust = platform.NewSystemTrustInstaller()
+		trust = platform.NewSystemTrustInstaller(deps.FileSvc)
 	}
 	browser := deps.Browser
 	if browser == nil {

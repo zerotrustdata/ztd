@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
 
 func TestNewStdioConfigSimple_EmptyPath(t *testing.T) {
@@ -168,6 +169,7 @@ func TestRuntimeDeps_L2ConsensusDeliberator(t *testing.T) {
 	t.Run("nil deliberator by default", func(t *testing.T) {
 		t.Parallel()
 		g := &GatewayService{
+			posture:           &governance.DoctrinePosture{},
 			logger:            slog.Default(),
 			envProc:           &fakeEnvelopeProcessor{},
 			stateRootProvider: &fakeStateRootProvider{root: "test"},
@@ -180,6 +182,7 @@ func TestRuntimeDeps_L2ConsensusDeliberator(t *testing.T) {
 		t.Parallel()
 		mock := &mockL2ConsensusDeliberator{}
 		g := &GatewayService{
+			posture:                &governance.DoctrinePosture{},
 			logger:                 slog.Default(),
 			envProc:                &fakeEnvelopeProcessor{},
 			stateRootProvider:      &fakeStateRootProvider{root: "test"},

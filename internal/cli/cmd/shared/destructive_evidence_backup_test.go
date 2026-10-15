@@ -34,7 +34,7 @@ import (
 
 var priorSnapshotTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
-var runReportRelPath = path.Join(constants.EvaluationDataPath, "runs", "run-1", "report.json")
+var runRecordRelPath = path.Join(constants.EvaluationDataPath, "runs", "run-1", constants.ConformanceRecordFilename)
 
 type evidenceFixture struct {
 	fileSvc fs.RuntimeFileService
@@ -82,7 +82,7 @@ func TestEvalEvidenceBackup_PromptNamesTheDefaultBackupDirectory(t *testing.T) {
 
 func TestEvalEvidenceBackup_RunSnapshotsEvidenceIntoTheDefaultBackupDirectory(t *testing.T) {
 	f := newEvidenceFixture(t)
-	f.writeEvidence(t, runReportRelPath, `{"run":1}`)
+	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 
 	summary, err := f.backup().Run(context.Background())
 
@@ -96,7 +96,7 @@ func TestEvalEvidenceBackup_RunSnapshotsEvidenceIntoTheDefaultBackupDirectory(t 
 
 func TestEvalEvidenceBackup_RunReportsAlreadyBackedUpWhenEvidenceMatchesTheNewestSnapshot(t *testing.T) {
 	f := newEvidenceFixture(t)
-	f.writeEvidence(t, runReportRelPath, `{"run":1}`)
+	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 	prior, err := evaluation.NewEvalBackup(f.fileSvc, func() time.Time { return priorSnapshotTime }).
 		Create(context.Background(), shared.DefaultEvalBackupDir(f.cfg))
 	require.NoError(t, err)
@@ -110,11 +110,11 @@ func TestEvalEvidenceBackup_RunReportsAlreadyBackedUpWhenEvidenceMatchesTheNewes
 
 func TestEvalEvidenceBackup_RunTakesANewSnapshotWhenEvidenceChangedSinceTheLastOne(t *testing.T) {
 	f := newEvidenceFixture(t)
-	f.writeEvidence(t, runReportRelPath, `{"run":1}`)
+	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 	_, err := evaluation.NewEvalBackup(f.fileSvc, func() time.Time { return priorSnapshotTime }).
 		Create(context.Background(), shared.DefaultEvalBackupDir(f.cfg))
 	require.NoError(t, err)
-	f.writeEvidence(t, runReportRelPath, `{"run":1,"status":"completed"}`)
+	f.writeEvidence(t, runRecordRelPath, `{"run":1,"status":"completed"}`)
 
 	summary, err := f.backup().Run(context.Background())
 
@@ -202,7 +202,7 @@ func TestConfirmDestructive_WithEvidenceBackupReportsNothingToBackUpOnAnEmptyRun
 
 func TestConfirmDestructive_WithEvidenceBackupPrintsTheSnapshotSummaryBeforeProceeding(t *testing.T) {
 	f := newEvidenceFixture(t)
-	f.writeEvidence(t, runReportRelPath, `{"run":1}`)
+	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 	cmd := &cobra.Command{Use: "clean"}
 	var out bytes.Buffer
 	cmd.SetOut(&out)

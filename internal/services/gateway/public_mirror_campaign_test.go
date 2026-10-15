@@ -10,6 +10,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -37,9 +38,19 @@ func TestMirrorWithdrawCampaignDatasetHidesHistoryAndBootstrap(t *testing.T) {
 	}, constants.PublicFeedZeroHashHex)
 	_, response := env.sendIngest(batch)
 	require.True(t, response.Accepted)
+	sourceID := batch.SourceID
+	assert.Equal(t, constants.PublicFeedZeroHashHex, env.mirror.getSnapshotForSSE(sourceID).WithdrawalDigest)
+	subscriber, accepted := env.mirror.addSSESubscriber(sourceID)
+	require.True(t, accepted)
+	t.Cleanup(func() { env.mirror.removeSSESubscriber(subscriber) })
 
 	require.NoError(t, env.mirror.WithdrawCampaignDataset(context.Background(), runID))
 	assert.True(t, env.mirror.CampaignDatasetWithdrawn(runID))
+	select {
+	case <-subscriber.resync:
+	default:
+		t.Fatal("withdrawal did not ask open streams to resync")
+	}
 
 	bootstrapReq := httptest.NewRequest(http.MethodGet, "/bootstrap", nil)
 	bootstrapRec := httptest.NewRecorder()
@@ -48,6 +59,15 @@ func TestMirrorWithdrawCampaignDatasetHidesHistoryAndBootstrap(t *testing.T) {
 	var bootstrap models.PublicFeedBootstrap
 	require.NoError(t, json.Unmarshal(bootstrapRec.Body.Bytes(), &bootstrap))
 	assert.Empty(t, bootstrap.RecentProjections)
+	assert.Regexp(t, `^[0-9a-f]{64}$`, bootstrap.Snapshot.WithdrawalDigest)
+	assert.NotEqual(t, constants.PublicFeedZeroHashHex, bootstrap.Snapshot.WithdrawalDigest)
+
+	snapshotRec := httptest.NewRecorder()
+	env.mirror.handleSnapshot(snapshotRec, httptest.NewRequest(http.MethodGet, "/snapshot", nil))
+	require.Equal(t, http.StatusOK, snapshotRec.Code)
+	var snapshot models.PublicFeedSnapshot
+	require.NoError(t, json.Unmarshal(snapshotRec.Body.Bytes(), &snapshot))
+	assert.Equal(t, bootstrap.Snapshot.WithdrawalDigest, snapshot.WithdrawalDigest)
 
 	historyReq := httptest.NewRequest(http.MethodGet, "/history?limit=10", nil)
 	historyRec := httptest.NewRecorder()
@@ -65,4 +85,41 @@ func TestMirrorProjectionMatchesCampaignRun(t *testing.T) {
 	})
 	assert.True(t, mirrorProjectionMatchesCampaignRun(item, runID))
 	assert.False(t, mirrorProjectionMatchesCampaignRun(item, "other-run"))
+}
+
+func TestEvalCampaignPublicationControllerDeleteWithdrawsRunFromMirror(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	runID := "eval-init-smollm2-135m-1791934107"
+	batch := env.buildBatch([]models.PublicFeedRecord{
+		env.makeRecord(1, models.NewPublicFeedObject(map[string]string{
+			"kind":           "evaluation_summary",
+			"dataset_id":     campaignMirrorDatasetID(runID),
+			"run_id":         runID,
+			"schema_version": "1.5.0",
+		})),
+	}, constants.PublicFeedZeroHashHex)
+	_, response := env.sendIngest(batch)
+	require.True(t, response.Accepted)
+
+	controller := newEvalCampaignPublicationControllerTest(t)
+	controller.spectator = func() *PublicSpectatorRuntime { return &PublicSpectatorRuntime{mirror: env.mirror} }
+	path := constants.APIPaths.EvalCampaignPublicationStateByRun + runID + "/publication-state"
+	putRec := httptest.NewRecorder()
+	controller.handlePublicationState(putRec, httptest.NewRequest(http.MethodPut, path, bytes.NewReader(mustJSON(t, models.EvalCampaignPublicationState{
+		RunID:                runID,
+		PublishedIdempotency: []string{"run:key-a"},
+	}))))
+	require.Equal(t, http.StatusOK, putRec.Code)
+
+	deleteRec := httptest.NewRecorder()
+	controller.handlePublicationState(deleteRec, httptest.NewRequest(http.MethodDelete, path, nil))
+	require.Equal(t, http.StatusOK, deleteRec.Code)
+	assert.True(t, env.mirror.CampaignDatasetWithdrawn(runID))
+
+	getRec := httptest.NewRecorder()
+	controller.handlePublicationState(getRec, httptest.NewRequest(http.MethodGet, path, nil))
+	require.Equal(t, http.StatusOK, getRec.Code)
+	var state models.EvalCampaignPublicationState
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &state))
+	assert.Empty(t, state.PublishedIdempotency)
 }

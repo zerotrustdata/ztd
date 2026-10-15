@@ -367,3 +367,45 @@ func signedEnvelopeWithAppID(t *testing.T, actionType constants.ActionType, payl
 	rehash(t, env)
 	return env
 }
+
+// TestL4Warden_PreDoctrineRejectionEmitsNoL1Stage verifies that a rejection
+// before L1 Doctrine runs carries no L1_DOCTRINE stage. Doctrine never judged
+// these transactions, so the evidence must not claim it did. Only the L4 FAILED
+// stage is emitted.
+func TestL4Warden_PreDoctrineRejectionEmitsNoL1Stage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		mutate  func(env *govtypes.GovernanceEnvelope)
+		wantErr error
+	}{
+		{
+			name:    "protocol version mismatch",
+			mutate:  func(env *govtypes.GovernanceEnvelope) { env.ProtocolVersion = "1" },
+			wantErr: constants.ErrTxProtocolVersionUnsupported,
+		},
+		{
+			name:    "target operator mismatch",
+			mutate:  func(env *govtypes.GovernanceEnvelope) { env.OperatorId = "unknown-operator" },
+			wantErr: constants.ErrTxTargetOperatorMismatch,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
+			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, constants.PostureDoctrine)
+			// No rehash: both mutations are rejected before the hash check, and
+			// the hash helper itself refuses a non-V2 protocol version.
+			tc.mutate(env)
+
+			rejected, err := verifier.VerifyEnvelope(context.Background(), env)
+			require.ErrorIs(t, err, tc.wantErr)
+			require.NotNil(t, rejected)
+			require.Len(t, rejected.DeterministicStageEvidence, 1)
+			l4 := rejected.DeterministicStageEvidence[0]
+			assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION, l4.Kind)
+			assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, l4.Outcome)
+		})
+	}
+}

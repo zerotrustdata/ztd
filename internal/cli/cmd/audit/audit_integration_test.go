@@ -19,7 +19,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -52,6 +51,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	clientpkg "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -71,11 +71,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 	cfg.Gateway.Posture = config.PostureDoctrine
 	cfg.Gateway.SecretsDir = gatewayFiles.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = gatewayFiles.Resolve(constants.VaultDirname)
-	masterKey := make([]byte, 32)
-	_, err = io.ReadFull(rand.Reader, masterKey)
-	require.NoError(t, err)
-	cfg.Gateway.MasterKeyFile = filepath.Join(testutil.TempDir(t), "master-key")
-	require.NoError(t, os.WriteFile(cfg.Gateway.MasterKeyFile, []byte(base64.StdEncoding.EncodeToString(masterKey)), 0o600))
+	cfg.Gateway.Keyring = keystoretest.NewMemoryKeyring()
 	svc, err := gateway.NewGatewayModeService(cfg, gatewayFiles, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { svc.Stop(ctx) })
@@ -157,7 +153,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		require.NoError(t, err)
 		root, err := svc.GetStateRootSvc().GetCurrentStateRoot(t.Context())
 		require.NoError(t, err)
-		env := &commonv1.GovernanceEnvelope{ProtocolVersion: govtypes.GovernanceProtocolVersionV2, Timestamp: timestamppb.Now(), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)), SourceComponent: commonv1.Component_COMPONENT_AGENT, ActingAppId: "test-app", RequestorUserId: bootstrap.UserID, EventType: string(constants.EventAppDocumentUpdateRequested), ActionType: string(constants.ActionTypeDocumentUpdate), TargetResource: string(constants.CollectionInvestigations) + "/audit-document", Payload: payload, StateMerkleRoot: root, Nonce: []string{"create-nonce", "merge-nonce"}[index]}
+		env := &commonv1.GovernanceEnvelope{ProtocolVersion: govtypes.GovernanceProtocolVersionV2, Timestamp: timestamppb.Now(), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)), SourceComponent: commonv1.Component_COMPONENT_AGENT, ActingAppId: "test-app", EventType: string(constants.EventAppDocumentUpdateRequested), ActionType: string(constants.ActionTypeDocumentUpdate), TargetResource: string(constants.CollectionInvestigations) + "/audit-document", Payload: payload, StateMerkleRoot: root, Nonce: []string{"create-nonce", "merge-nonce"}[index]}
 		env.Id, err = govtypes.GenerateMessageID(env)
 		require.NoError(t, err)
 		env.TransactionHash = env.Id
@@ -196,8 +192,12 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 	require.NoError(t, err)
 	var doc clientpkg.DocumentResponse
 	require.NoError(t, json.Unmarshal(docBytes, &doc))
-	require.Equal(t, "merged", doc.GetString("case_title"))
-	require.Equal(t, "open", doc.GetString("status"))
+	title, ok := doc.GetString("case_title")
+	require.True(t, ok)
+	require.Equal(t, "merged", title)
+	status, ok := doc.GetString("status")
+	require.True(t, ok)
+	require.Equal(t, "open", status)
 
 	loader := func(string) (*clicfg.Config, error) { //nolint:unparam // The loader contract returns an error; this fixture exercises success.
 		return cliConfig, nil

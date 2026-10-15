@@ -9,6 +9,7 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 | `eval/base-model-inventory.json` | **Default genesis program inventory** — 75 init-campaign models (75 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 5,625 cells total) |
 | `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); currently 47 entries and does not yet list `gemma4:12b`, `glm-5.3-air`, or `qwen2.5:1b-rlcd` |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
+| `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
 
 The base inventory is the canonical 75-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are a reference provider snapshot; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
 
@@ -37,8 +38,10 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 # Manual-create entries (sharded GGUF, pending single-file) are skipped until a
 # governed provider-side alias-creation workflow is available.
 
-# 1. Freeze provider inventory into runtime registry
-./ztd eval models freeze
+# 1. Freeze provider inventory into runtime registry. --probe-capabilities records
+#    each model's governed tool-calling probe, which rollout add uses to skip
+#    models the provider cannot serve with tools.
+./ztd eval models freeze --probe-capabilities
 
 ./ztd eval models list
 
@@ -69,8 +72,8 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval campaigns create` | Create a frozen campaign definition from model selector or formations |
 | `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags |
 | `ztd eval runs export` | Export one run's disclosure-safe bundle under the runtime root (`--output-dir`, runtime-relative) |
-| `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json` |
-| `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models |
+| `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json`. Skips and lists a model whose tool-calling probe the provider rejected (freeze with `--probe-capabilities` to record it) and a model that shares a digest with a queued model or one earlier in rollout order (an alias) |
+| `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models. A run in which the provider failed every assignment fails the entry as `provider_failure (<class>)`, for example `(capability_unsupported)` for a model without tool support; stopping a run ends the batch and leaves the entry pending. `--gate-smoke` screens with the smoke suite first; `--promote-on-pass` follows a smoke pass with the full run. The batch holds the queue lock: `rollout add`/`remove`/`retry`/`skip` fail until it ends. Model-driven runs refuse the embedded Operator and any Data Operator working in or above the project (INV-EVAL-CAMP-32) |
 | `ztd eval rollout list` | Inspect queue entries |
 | `ztd eval rollout next` | Show the next pending model |
 | `ztd eval rollout retry` | Reset entries back to pending |
@@ -122,7 +125,7 @@ Canonical evidence stays under `.ztd/data/eval/runs/` during execution, encrypte
 ./ztd eval runs export eval-init-granite3-3-2b-1789754079 --output-dir exports/granite-reference
 ```
 
-To keep the evidence itself across a full platform wipe, back it up to a directory outside the runtime tree with `./ztd eval backup` and restore it with `./ztd eval restore`. The backup holds the evidence in its encrypted form, so only a runtime with the same vault key can read a restored snapshot.
+To keep the evidence itself across a full platform wipe, back it up to a directory outside the runtime tree with `./ztd eval backup` and restore it with `./ztd eval restore`. The backup holds the evidence in its encrypted form, so only a runtime with the same vault key can read a restored snapshot. `./ztd eval runs delete` and `./ztd eval campaigns delete` also purge the deleted evidence from `eval/backups/`, so a restore never brings it back.
 
 ## License
 

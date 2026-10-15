@@ -90,6 +90,10 @@ func newTestScrubber(t *testing.T) *scrubbing.ScrubbingService {
 	return scrubber
 }
 
+// testActuatorPublicKeyHex is a well-formed hex Ed25519 Actuator public key for
+// Operator enrollment payloads; issuance binds it and rejects a missing key.
+const testActuatorPublicKeyHex = "abababababababababababababababababababababababababababababababab"
+
 // openTestDB wraps OpenCanonicalDBService for tests, creating a keystore
 // with an in-memory keyring so callers don't need to manage a keystore.
 // Vault auto-initializes on first open; the keystore is for secret operations.

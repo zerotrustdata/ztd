@@ -65,7 +65,6 @@ func TestBuildReExecArgs(t *testing.T) {
 					PKIDir:             "/pki",
 					SecretsDir:         "/secrets",
 					VaultDir:           "/vault",
-					MasterKeyFile:      "/run/secrets/key",
 					CertIdentityMode:   "spiffe",
 					ConsensusID:        "trib-1",
 					ConsensusURL:       "https://trib:8443",
@@ -83,7 +82,6 @@ func TestBuildReExecArgs(t *testing.T) {
 			},
 			wantSubstrs: []string{
 				"--vault-dir /vault",
-				"--master-key-file /run/secrets/key",
 				"--consensus-id trib-1",
 				"--consensus-url https://trib:8443",
 				"--consensus-bootstrap bootstrap-data",

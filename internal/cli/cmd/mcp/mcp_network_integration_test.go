@@ -23,25 +23,12 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestProxyToGatewayWithRetry(t *testing.T) {
+func TestL3ApprovalProxyToGatewayWithRetry(t *testing.T) {
 	t.Run("SSE credentials missing returns ErrNotAuthenticated", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			resp := JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      float64(1),
-				Result: map[string]interface{}{
-					"approval_url": "https://ztd.local:8443/api/v1/approve/tx-missing-creds",
-					"content": []interface{}{
-						map[string]interface{}{
-							"type": "text",
-							"text": "Execution paused. Please authorize.",
-						},
-					},
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(suspendedCallResponse("tx-missing-creds"))
 		}))
 		defer server.Close()
 
@@ -51,11 +38,7 @@ func TestProxyToGatewayWithRetry(t *testing.T) {
 			gatewayURL:  server.URL,
 		}
 
-		req := JSONRPCRequest{
-			JSONRPC: "2.0",
-			ID:      1,
-			Method:  "tools/call",
-		}
+		req := JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/call"}
 
 		_, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, req, nil)
 		require.Error(t, err)
@@ -66,25 +49,15 @@ func TestProxyToGatewayWithRetry(t *testing.T) {
 		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			resp := JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      float64(1),
-				Result: map[string]interface{}{
-					"approval_url": "https://ztd.local:8443/api/v1/approve/tx-timeout",
-					"content": []interface{}{
-						map[string]interface{}{
-							"type": "text",
-							"text": "Execution paused. Please authorize.",
-						},
-					},
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(suspendedCallResponse("tx-timeout"))
 		}))
 		defer gatewayServer.Close()
 
 		sseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
+			// The Gateway flushes the 200 before any event, so the subscription connects.
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
 			<-r.Context().Done()
 		}))
 		defer sseServer.Close()
@@ -98,11 +71,7 @@ func TestProxyToGatewayWithRetry(t *testing.T) {
 			cliSessionID: "cli-timeout-test",
 		}
 
-		req := JSONRPCRequest{
-			JSONRPC: "2.0",
-			ID:      1,
-			Method:  "tools/call",
-		}
+		req := JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/call"}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
@@ -110,46 +79,6 @@ func TestProxyToGatewayWithRetry(t *testing.T) {
 		_, err := proxySessionToGatewayWithRetryContext(ctx, conn, req, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "timed out")
-	})
-
-	t.Run("extractTxHashFromApprovalURL extracts hash from full URL", func(t *testing.T) {
-		tests := []struct {
-			name  string
-			input string
-			want  string
-		}{
-			{
-				name:  "standard approval URL",
-				input: "https://ztd.local:8443/api/v1/approve/abc123",
-				want:  "abc123",
-			},
-			{
-				name:  "URL with query params",
-				input: "https://ztd.local:8443/api/v1/approve/txhash456?foo=bar",
-				want:  "txhash456",
-			},
-			{
-				name:  "URL with fragment",
-				input: "https://ztd.local:8443/api/v1/approve/hash789#section",
-				want:  "hash789",
-			},
-			{
-				name:  "empty URL",
-				input: "",
-				want:  "",
-			},
-			{
-				name:  "IP-based URL",
-				input: "https://10.0.0.5:8443/api/v1/approve/deadbeef",
-				want:  "deadbeef",
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				got := extractTxHashFromApprovalURL(tt.input)
-				assert.Equal(t, tt.want, got)
-			})
-		}
 	})
 }
 

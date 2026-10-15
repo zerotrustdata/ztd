@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // StaleAnchor describes a ztd root CA found in the OS trust store that does
@@ -83,14 +85,18 @@ type SystemTrustInstaller struct {
 	runner commandRunner
 	// now is injectable for expiry checks in tests.
 	now func() time.Time
+	// files stages the root PEM under the runtime tmp dir for InstallRoot.
+	files fs.RuntimeFileService
 }
 
 // NewSystemTrustInstaller returns an installer using real os/exec for command
-// execution and the system clock for time checks.
-func NewSystemTrustInstaller() *SystemTrustInstaller {
+// execution, the system clock for time checks, and files for staging the
+// root PEM handed to the OS trust tool.
+func NewSystemTrustInstaller(files fs.RuntimeFileService) *SystemTrustInstaller {
 	return &SystemTrustInstaller{
 		runner: execRunner{},
 		now:    time.Now,
+		files:  files,
 	}
 }
 
@@ -271,18 +277,29 @@ func bundleContainsFingerprint(data []byte, fingerprint string) (bool, error) { 
 
 var _ = bundleContainsFingerprint
 
-// writeTempCert writes certPEM to a restrictive temporary directory and returns
-// the file path. The caller must clean up the returned directory via
-// os.RemoveAll(dir).
-func writeTempCert(certPEM []byte) (dir, path string, err error) {
-	dir, err = os.MkdirTemp("", "ztd-systrust-*")
+// systemTrustCertFilename is the staged root PEM inside the scratch dir.
+const systemTrustCertFilename = "root.pem"
+
+// stageRootCert writes certPEM to a private scratch directory under the
+// runtime tmp dir and returns its absolute path for the OS trust tool. The
+// caller must defer the returned cleanup.
+func (i *SystemTrustInstaller) stageRootCert(ctx context.Context, certPEM []byte) (certPath string, cleanup func(), err error) {
+	if i.files == nil {
+		return "", nil, fmt.Errorf("%w: system trust installer file service", constants.ErrMissingRequiredField)
+	}
+	relDir, err := i.files.MkdirTemp(ctx, "systrust-*")
 	if err != nil {
-		return "", "", fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+		return "", nil, err
 	}
-	path = filepath.Join(dir, "root.pem")
-	if err = os.WriteFile(path, certPEM, constants.PermFilePrivate); err != nil {
-		os.RemoveAll(dir)
-		return "", "", fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
+	cleanup = func() {
+		if rerr := i.files.RemoveAll(context.Background(), relDir); rerr != nil {
+			slog.Warn("Failed to remove system trust scratch directory", "path", relDir, "error", rerr)
+		}
 	}
-	return dir, path, nil
+	relPath := filepath.Join(relDir, systemTrustCertFilename)
+	if err := i.files.WriteFile(ctx, relPath, certPEM, constants.PermFilePrivate); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
+	}
+	return i.files.Resolve(relPath), cleanup, nil
 }

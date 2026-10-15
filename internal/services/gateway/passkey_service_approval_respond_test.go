@@ -9,7 +9,7 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // approvalRespondMCP is an in-memory MCPServiceProvider for POST /api/v1/approvals/respond.
@@ -37,6 +38,11 @@ type approvalRespondMCP struct {
 	resumedUser  string
 	resumedProof *commonv1.L3Proof
 	resumeCalls  int
+	denyReceipt  *operatorv1.ActionReceipt
+	denyErr      error
+	deniedHash   string
+	deniedUser   string
+	denyCalls    int
 }
 
 func (m *approvalRespondMCP) GetSuspendedTransaction(_ context.Context, _ string) (*models.SuspendedTransaction, bool, error) {
@@ -47,6 +53,12 @@ func (m *approvalRespondMCP) ResumeWithL3Proof(_ context.Context, txHash, userID
 	m.resumeCalls++
 	m.resumedHash, m.resumedUser, m.resumedProof = txHash, userID, proof
 	return m.receipt, nil
+}
+
+func (m *approvalRespondMCP) DenySuspendedTransaction(_ context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+	m.denyCalls++
+	m.deniedHash, m.deniedUser = txHash, userID
+	return m.denyReceipt, m.denyErr
 }
 
 // approvalRespondStore records the approve/deny mutations the handler performs
@@ -201,8 +213,38 @@ func TestHandleApprovalRespond(t *testing.T) {
 		assert.Zero(t, mcp.resumeCalls, "approve must not resume the suspended transaction")
 	})
 
-	t.Run("Success - deny discards the suspended transaction", func(t *testing.T) {
+	t.Run("Failure - deny of a transaction that expired before the claim returns 404", func(t *testing.T) {
 		mcp := suspendedFor(userID)
+		mcp.denyErr = fmt.Errorf("gateway: %w", constants.ErrTransactionExpired)
+		h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
+		rr := httptest.NewRecorder()
+
+		h.handleApprovalRespond(rr, approvalRespondRequest(`{"approval_id":"`+txHash+`","approved":false}`, userID))
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		assert.Equal(t, 1, mcp.denyCalls)
+	})
+
+	t.Run("Failure - deny receipt for another transaction fails closed", func(t *testing.T) {
+		mcp := suspendedFor(userID)
+		mcp.denyReceipt = &operatorv1.ActionReceipt{TransactionHash: "tx-other"}
+		h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
+		rr := httptest.NewRecorder()
+
+		h.handleApprovalRespond(rr, approvalRespondRequest(`{"approval_id":"`+txHash+`","approved":false}`, userID))
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	})
+
+	t.Run("Success - deny returns the signed L3_DENIED rejection receipt", func(t *testing.T) {
+		mcp := suspendedFor(userID)
+		mcp.denyReceipt = &operatorv1.ActionReceipt{
+			TransactionId:   "transaction-approval-respond-1",
+			TransactionHash: txHash,
+			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+		}
 		store := &approvalRespondStore{}
 		h := newApprovalRespondHandler(mcp, store)
 		rr := httptest.NewRecorder()
@@ -210,12 +252,16 @@ func TestHandleApprovalRespond(t *testing.T) {
 		h.handleApprovalRespond(rr, approvalRespondRequest(`{"approval_id":"`+txHash+`","approved":false}`, userID))
 
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
-		var got models.ApprovalRespondResponse
-		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
-		assert.Equal(t, models.ApprovalRespondResponse{Success: true, ApprovalID: txHash, Approved: false}, got)
+		got := &operatorv1.ActionReceipt{}
+		require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), got))
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, got.GetRejectionCode())
+		assert.Equal(t, txHash, got.GetTransactionHash())
 
-		assert.Equal(t, txHash, store.deletedHash)
+		assert.Equal(t, 1, mcp.denyCalls)
+		assert.Equal(t, txHash, mcp.deniedHash)
+		assert.Equal(t, userID, mcp.deniedUser)
 		assert.Empty(t, store.approvedHash)
+		assert.Empty(t, store.deletedHash, "the deny path owns the suspended record, the handler never deletes it")
 		assert.Zero(t, mcp.resumeCalls, "a denied transaction is never resumed")
 	})
 }

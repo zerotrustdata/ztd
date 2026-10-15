@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -264,8 +265,8 @@ func (t *OperatorDeployTool) deployViaSSH(ctx context.Context, hostname, operato
 	// Check if operator binary is a local file that needs to be transferred
 	if filepath.IsAbs(operatorBinary) || !strings.Contains(operatorBinary, "/") {
 		// Transfer the binary to the remote host
-		remotePath := constants.PathTmp + "/" + constants.OperatorBinaryFilename
-		if err := t.transferBinaryViaSCP(client, operatorBinary, remotePath); err != nil {
+		remotePath, err := t.transferBinaryViaSCP(client, operatorBinary)
+		if err != nil {
 			result.Error = fmt.Sprintf("transfer binary: %v", err)
 			result.Message = fmt.Sprintf("Failed to transfer operator binary: %v", err)
 			return result
@@ -296,38 +297,45 @@ func (t *OperatorDeployTool) deployViaSSH(ctx context.Context, hostname, operato
 	return result
 }
 
-// transferBinaryViaSCP transfers a binary file to the remote host via SFTP.
-func (t *OperatorDeployTool) transferBinaryViaSCP(client *sshlib.Client, localPath, remotePath string) error {
+// transferBinaryViaSCP stages a local binary in the remote runtime scratch
+// dir via SFTP and returns its remote path.
+func (t *OperatorDeployTool) transferBinaryViaSCP(client *sshlib.Client, localPath string) (string, error) {
 	// Create SFTP client
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
-		return fmt.Errorf("create SFTP client: %w", err)
+		return "", fmt.Errorf("create SFTP client: %w", err)
 	}
 	defer sftpClient.Close()
+
+	scratchDir, err := ssh.MkdirRemoteScratch(sftpClient)
+	if err != nil {
+		return "", err
+	}
+	remotePath := path.Join(scratchDir, constants.OperatorBinaryFilename)
 
 	// Open local file
 	srcFile, err := os.Open(filepath.Clean(localPath))
 	if err != nil {
-		return fmt.Errorf("open local file: %w", err)
+		return "", fmt.Errorf("open local file: %w", err)
 	}
 	defer srcFile.Close()
 
 	// Create remote file
 	dstFile, err := sftpClient.Create(remotePath)
 	if err != nil {
-		return fmt.Errorf("create remote file: %w", err)
+		return "", fmt.Errorf("create remote file: %w", err)
 	}
 	defer dstFile.Close()
 
 	// Copy file contents
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("copy file contents: %w", err)
+		return "", fmt.Errorf("copy file contents: %w", err)
 	}
 
 	// Make the file executable
-	if err := sftpClient.Chmod(remotePath, 0755); err != nil {
-		return fmt.Errorf("chmod file: %w", err)
+	if err := sftpClient.Chmod(remotePath, constants.PermFileExecutable); err != nil {
+		return "", fmt.Errorf("chmod file: %w", err)
 	}
 
-	return nil
+	return remotePath, nil
 }

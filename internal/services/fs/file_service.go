@@ -73,11 +73,22 @@ type RuntimeFileService interface {
 	// kernel releases it if the process exits.
 	TryLock(ctx context.Context, relPath string, mode os.FileMode) (io.Closer, error)
 
+	// TryLockShared is TryLock for a shared lock: any number of shared holders
+	// coexist, and it returns constants.ErrRuntimeFileLocked only while an
+	// exclusive holder has the lock.
+	TryLockShared(ctx context.Context, relPath string, mode os.FileMode) (io.Closer, error)
+
 	// Remove deletes a file. No-op if file doesn't exist.
 	Remove(ctx context.Context, relPath string) error
 
 	// RemoveAll deletes a directory tree. No-op if path doesn't exist.
 	RemoveAll(ctx context.Context, relPath string) error
+
+	// MkdirTemp creates a new private (0700) scratch directory under the
+	// runtime tmp directory, named by pattern as os.MkdirTemp names it, and
+	// returns its runtime-relative path. It is the only way a runtime creates
+	// a throwaway path; the caller removes it with RemoveAll.
+	MkdirTemp(ctx context.Context, pattern string) (string, error)
 
 	// ArchiveRuntime renames the whole runtime directory aside to
 	// .ztd-<MMDDHHMM> rather than deleting it and returns the archive path
@@ -176,9 +187,9 @@ func withinPath(root, candidate string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// resolveExistingPath resolves symlinked ancestors while retaining a suffix
+// ResolveExistingPath resolves symlinked ancestors while retaining a suffix
 // for a file or directory that does not exist yet.
-func resolveExistingPath(path string) (string, error) {
+func ResolveExistingPath(path string) (string, error) {
 	probe := filepath.Clean(path)
 	var suffix []string
 	for {
@@ -346,6 +357,25 @@ func (fs *localFS) RemoveAll(ctx context.Context, relPath string) error {
 		return fmt.Errorf("%w: %s: %w", constants.ErrDirRemoveFailed, relPath, err)
 	}
 	return nil
+}
+
+// MkdirTemp creates a private scratch directory under the runtime tmp
+// directory and returns its runtime-relative path.
+func (fs *localFS) MkdirTemp(ctx context.Context, pattern string) (string, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+	}
+	tmpRoot := fs.Resolve(constants.TmpDirname)
+	if err := os.MkdirAll(tmpRoot, constants.PermDirPrivate); err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+	}
+	absPath, err := os.MkdirTemp(tmpRoot, pattern)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+	}
+	return filepath.Join(constants.TmpDirname, filepath.Base(absPath)), nil
 }
 
 // ReadDir lists directory entries.

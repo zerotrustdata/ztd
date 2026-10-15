@@ -26,6 +26,7 @@ export const Paths = {
   approvals: '/api/v1/approvals',
   approvalChallenge: (txHash: string) => `/api/v1/approvals/${enc(txHash)}/challenge`,
   approvalVerify: (txHash: string) => `/api/v1/approvals/${enc(txHash)}/verify`,
+  approvalsRespond: '/api/v1/approvals/respond',
 
   cliRecoveryStatus: (token: string) => `/api/v1/auth/cli/recovery/status?token=${enc(token)}`,
   cliRecoveryApprove: '/api/v1/auth/cli/recovery/approve',

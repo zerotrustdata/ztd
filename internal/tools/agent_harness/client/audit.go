@@ -20,7 +20,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -184,19 +183,6 @@ func (c *Client) AuditReceipts(ctx context.Context, operatorSessionID string) ([
 	if operatorSessionID != "" {
 		u += "?" + url.Values{"operator_session_id": {operatorSessionID}}.Encode()
 	}
-	_, body, err := c.doWithCLI(ctx, c.auditorPersona(), http.MethodGet, u, nil)
-	if err != nil {
-		return nil, body, err
-	}
-	receipts := parseReceipts(body)
-	return receipts, body, nil
-}
-
-func (c *Client) AuditReceiptRecords(ctx context.Context, operatorSessionID string) ([]*models.ActionReceiptRecord, []byte, error) {
-	if operatorSessionID == "" {
-		return nil, nil, constants.ErrMissingRequiredField
-	}
-	u := c.cfg.MTLSBaseURL + constants.APIPaths.AuditReceipts + "?" + url.Values{"operator_session_id": {operatorSessionID}}.Encode()
 	status, body, err := c.doWithCLI(ctx, c.auditorPersona(), http.MethodGet, u, nil)
 	if err != nil {
 		return nil, body, err
@@ -204,14 +190,11 @@ func (c *Client) AuditReceiptRecords(ctx context.Context, operatorSessionID stri
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return nil, body, fmt.Errorf("%w: audit receipt list returned status %d", constants.ErrHTTPStatusError, status)
 	}
-	response := &models.AuditReceiptsResponse{}
-	if err := json.Unmarshal(body, response); err != nil {
-		return nil, body, fmt.Errorf("%w: decode audit receipt records: %v", constants.ErrInvalidJSONResponse, err)
+	receipts, err := parseReceipts(body)
+	if err != nil {
+		return nil, body, fmt.Errorf("audit receipts: %w", err)
 	}
-	if !response.Success || response.Receipts == nil {
-		return nil, body, fmt.Errorf("%w: audit receipt list is incomplete", constants.ErrInvalidJSONResponse)
-	}
-	return response.Receipts, body, nil
+	return receipts, body, nil
 }
 
 // ExportReceipts pulls the full export bundle for archival alongside the report.
@@ -261,26 +244,27 @@ func (c *Client) DiscoverOperator(ctx context.Context) (string, string, error) {
 	}
 }
 
-// parseReceipts tolerates {"receipts":[...]} or a bare array of receipts.
-func parseReceipts(body []byte) []Receipt {
-	if !json.Valid(body) {
-		return nil
-	}
+// parseReceipts decodes the {"success":true,"receipts":[...]} list wrapper that
+// the Gateway's handleAuditReceipts writes. A body without the receipts field or
+// a row that does not decode is an error, never an empty Receipt.
+func parseReceipts(body []byte) ([]Receipt, error) {
 	var wrap struct {
 		Receipts []json.RawMessage `json:"receipts"`
 	}
-	var rows []json.RawMessage
-	if json.Unmarshal(body, &wrap) == nil && len(wrap.Receipts) > 0 {
-		rows = wrap.Receipts
-	} else {
-		_ = json.Unmarshal(body, &rows)
+	if err := json.Unmarshal(body, &wrap); err != nil {
+		return nil, fmt.Errorf("decode receipt list: %w", err)
 	}
-	out := make([]Receipt, 0, len(rows))
-	for _, r := range rows {
+	if wrap.Receipts == nil {
+		return nil, fmt.Errorf("decode receipt list: %w: missing receipts field", constants.ErrInvalidJSONResponse)
+	}
+	out := make([]Receipt, 0, len(wrap.Receipts))
+	for i, r := range wrap.Receipts {
 		var rec Receipt
-		_ = json.Unmarshal(r, &rec)
+		if err := json.Unmarshal(r, &rec); err != nil {
+			return nil, fmt.Errorf("decode receipt %d: %w", i, err)
+		}
 		rec.Raw = r
 		out = append(out, rec)
 	}
-	return out
+	return out, nil
 }

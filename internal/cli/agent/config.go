@@ -8,10 +8,12 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -19,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/pathutil"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // nativeToolsToDisable lists built-in tools that Claude Code and Codex must
@@ -114,8 +117,8 @@ func ResolveHomeDir() (string, error) {
 // WriteConfig writes the agent's MCP configuration beneath homeDir so that the
 // ztd stdio bridge (binaryPath, running as application appName) is the agent's
 // MCP server. It returns the config path and a cleanup func (nil unless the
-// config is a throwaway file).
-func (i Integration) WriteConfig(homeDir, binaryPath, appName string) (string, func(), error) {
+// config is a throwaway file in a runtime scratch directory owned by files).
+func (i Integration) WriteConfig(ctx context.Context, files fs.RuntimeFileService, homeDir, binaryPath, appName string) (string, func(), error) {
 	server := mcpServer{Command: binaryPath, Args: StdioServerArgs(appName)}
 	agentPaths := paths.GetAgentConfigPaths(homeDir)
 
@@ -134,7 +137,7 @@ func (i Integration) WriteConfig(homeDir, binaryPath, appName string) (string, f
 		return writeGooseConfig(agentPaths, binaryPath, appName)
 
 	case ConfigTempJSON:
-		return writeTempMCPConfig(server)
+		return writeTempMCPConfig(ctx, files, server)
 
 	default:
 		return "", nil, fmt.Errorf("%w: agent %q has unknown config strategy %q", constants.ErrAgentNotSupported, i.ID, i.ConfigStrategy)
@@ -142,8 +145,12 @@ func (i Integration) WriteConfig(homeDir, binaryPath, appName string) (string, f
 }
 
 // writeTempMCPConfig writes the mcpServers file passed to Claude/Codex via
-// --mcp-config, with the native tools listed for exclusion.
-func writeTempMCPConfig(server mcpServer) (string, func(), error) {
+// --mcp-config, with the native tools listed for exclusion, into a runtime
+// scratch directory that the returned cleanup removes.
+func writeTempMCPConfig(ctx context.Context, files fs.RuntimeFileService, server mcpServer) (string, func(), error) {
+	if files == nil {
+		return "", nil, fmt.Errorf("agent: temp mcp config: file service: %w", constants.ErrMissingRequiredField)
+	}
 	configJSON, err := json.Marshal(mcpConfig{
 		MCPServers:   map[string]mcpServer{constants.MCPServerNameZTD: server},
 		ExcludeTools: nativeToolsToDisable,
@@ -151,25 +158,25 @@ func writeTempMCPConfig(server mcpServer) (string, func(), error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("agent: marshal temp mcp config: %w", err)
 	}
-	tmpFile, err := os.CreateTemp("", "ztd-mcp-*.json")
+	relDir, err := files.MkdirTemp(ctx, "agent-mcp-*")
 	if err != nil {
-		return "", nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+		return "", nil, fmt.Errorf("agent: temp mcp config: %w", err)
 	}
-	tmpPath := tmpFile.Name()
-	if _, err := tmpFile.Write(configJSON); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
-		return "", nil, fmt.Errorf("%w: %w", constants.ErrFileWriteFailed, err)
+	relPath := filepath.Join(relDir, constants.AgentConfigFileMCPTemp)
+	if err := files.WriteFile(ctx, relPath, configJSON, constants.PermFilePrivate); err != nil {
+		removeScratch(files, relDir)
+		return "", nil, fmt.Errorf("agent: temp mcp config: %w", err)
 	}
-	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpPath)
-		return "", nil, fmt.Errorf("%w: %w", constants.ErrFileWriteFailed, err)
+	return files.Resolve(relPath), func() { removeScratch(files, relDir) }, nil
+}
+
+// removeScratch removes a runtime scratch directory. It runs on a background
+// context so a cancelled caller still cleans up, and logs a failure rather than
+// masking the caller's result.
+func removeScratch(files fs.RuntimeFileService, relDir string) {
+	if err := files.RemoveAll(context.Background(), relDir); err != nil {
+		slog.Warn("Failed to remove agent scratch directory", "path", relDir, "error", err)
 	}
-	return tmpPath, func() {
-		if err := os.Remove(tmpPath); err != nil {
-			slog.Warn("Failed to cleanup temp MCP config file", "path", tmpPath, "error", err)
-		}
-	}, nil
 }
 
 // writeGeminiSettings merges the ztd server into Gemini's settings.json and

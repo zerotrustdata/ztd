@@ -10,13 +10,16 @@ package operator
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -45,8 +48,7 @@ func TestBuildExecuteBashDispatchRequest_MissingFields(t *testing.T) {
 }
 
 func TestParseCommandResult_EmptyPayload(t *testing.T) {
-	_, err := ParseCommandResult(&DispatchResponse{
-		Success:   true,
+	_, err := ParseCommandResult(&operatorv1.GovernedDispatchResult{
 		EventType: "ztd.v1.operator.command.status.updated.running",
 	})
 	require.Error(t, err)
@@ -60,8 +62,7 @@ func TestParseCommandResult_Success(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := ParseCommandResult(&DispatchResponse{
-		Success:       true,
+	result, err := ParseCommandResult(&operatorv1.GovernedDispatchResult{
 		EventType:     "ztd.v1.operator.command.completed",
 		ActionType:    string(constants.ActionTypeExecuteBash),
 		ResultPayload: payload,
@@ -136,57 +137,161 @@ func TestBuildExecuteBashDispatchRequest_AllowsAnEmptyCLISessionAndOmitsItFromJS
 	assert.NotEmpty(t, fields["payload"], "the protobuf payload travels base64 encoded")
 }
 
-func TestDecodeDispatchResponse_DecodesEveryField(t *testing.T) {
-	raw := []byte(`{
-		"success": true,
-		"transaction_id": "tx-1",
-		"event_type": "ztd.v1.operator.command.completed",
-		"action_type": "EXECUTE_BASH",
-		"result_payload": "AQID",
-		"error": "none"
-	}`)
-
-	got, err := DecodeDispatchResponse(raw)
-
-	require.NoError(t, err)
-	assert.Equal(t, &DispatchResponse{
-		Success:       true,
-		TransactionID: "tx-1",
-		EventType:     "ztd.v1.operator.command.completed",
-		ActionType:    "EXECUTE_BASH",
-		ResultPayload: []byte{1, 2, 3},
-		Error:         "none",
-	}, got)
+// fakeCommandPoster records the request it was given and returns a canned
+// response, so RunOnce is exercised without a Gateway.
+type fakeCommandPoster struct {
+	path string
+	body any
+	raw  []byte
+	err  error
 }
 
-func TestDecodeDispatchResponse_IgnoresFieldsTheCLIDoesNotModel(t *testing.T) {
-	got, err := DecodeDispatchResponse([]byte(`{"success":false,"transaction_id":"tx-2","future_field":{"a":1}}`))
-
-	require.NoError(t, err)
-	assert.False(t, got.Success)
-	assert.Equal(t, "tx-2", got.TransactionID)
+func (f *fakeCommandPoster) Post(path string, body any) ([]byte, error) {
+	f.path = path
+	f.body = body
+	return f.raw, f.err
 }
 
-func TestDecodeDispatchResponse_RejectsUnusableBodies(t *testing.T) {
+func marshalDispatchBody(t *testing.T, msg proto.Message) []byte {
+	t.Helper()
+	body, err := protojson.Marshal(msg)
+	require.NoError(t, err)
+	return body
+}
+
+func marshalCommandResult(t *testing.T, result *operatorv1.CommandResult) []byte {
+	t.Helper()
+	payload, err := proto.Marshal(result)
+	require.NoError(t, err)
+	return payload
+}
+
+func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
+	signedRejection := &operatorv1.GovernanceRejection{
+		Error: "rejected",
+		Receipt: &operatorv1.ActionReceipt{
+			TransactionId: "tx-2",
+			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE,
+			ResultSummary: "denied by doctrine",
+			SignerKeyId:   "key-2",
+		},
+	}
 	tests := []struct {
-		name    string
-		raw     []byte
-		wantErr string
+		name              string
+		raw               []byte
+		err               error
+		wantSuccess       bool
+		wantTransaction   string
+		wantError         string
+		wantReceiptStatus string
+		wantSignerKey     string
+		wantStdout        string
+		wantRejection     bool
+		wantRejectionCode string
+		wantRefusalCode   string
 	}{
-		{name: "nil body", raw: nil, wantErr: "empty dispatch response"},
-		{name: "empty body", raw: []byte{}, wantErr: "empty dispatch response"},
-		{name: "not json", raw: []byte("<html>502 Bad Gateway</html>"), wantErr: "decode dispatch response"},
-		{name: "json array instead of object", raw: []byte(`[1,2]`), wantErr: "decode dispatch response"},
-		{name: "wrong field type", raw: []byte(`{"success":"yes"}`), wantErr: "decode dispatch response"},
-		{name: "payload that is not base64", raw: []byte(`{"result_payload":"***"}`), wantErr: "decode dispatch response"},
+		{
+			name: "signed final receipt and completed command",
+			raw: marshalDispatchBody(t, &operatorv1.GovernedDispatchResult{
+				TransactionId: "tx-1",
+				EventType:     "ztd.v1.operator.command.completed",
+				ActionType:    string(constants.ActionTypeExecuteBash),
+				ResultPayload: marshalCommandResult(t, &operatorv1.CommandResult{
+					Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+					Stdout: "hi\n",
+				}),
+				Receipt: &operatorv1.ActionReceipt{
+					TransactionId: "tx-1",
+					Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+					SignerKeyId:   "key-1",
+				},
+			}),
+			wantSuccess:       true,
+			wantTransaction:   "tx-1",
+			wantReceiptStatus: "EXECUTION_STATUS_COMPLETED",
+			wantSignerKey:     "key-1",
+			wantStdout:        "hi\n",
+		},
+		{
+			name: "200 body without a receipt fails closed",
+			raw: marshalDispatchBody(t, &operatorv1.GovernedDispatchResult{
+				TransactionId: "tx-1",
+				ResultPayload: marshalCommandResult(t, &operatorv1.CommandResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}),
+			}),
+			wantTransaction: "tx-1",
+			wantError:       "no receipt",
+		},
+		{
+			name: "completed receipt with a failed command reports the command error",
+			raw: marshalDispatchBody(t, &operatorv1.GovernedDispatchResult{
+				TransactionId: "tx-1",
+				ResultPayload: marshalCommandResult(t, &operatorv1.CommandResult{
+					Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+					Error:  "command exited",
+				}),
+				Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
+			}),
+			wantTransaction:   "tx-1",
+			wantError:         "command exited",
+			wantReceiptStatus: "EXECUTION_STATUS_COMPLETED",
+		},
+		{
+			name:      "malformed 200 body is an error",
+			raw:       []byte("<html>proxy page</html>"),
+			wantError: "decode governed dispatch result",
+		},
+		{
+			name:              "signed L4 rejection",
+			err:               &api.StatusError{StatusCode: http.StatusForbidden, Body: string(marshalDispatchBody(t, signedRejection))},
+			wantTransaction:   "tx-2",
+			wantError:         "denied by doctrine",
+			wantRejection:     true,
+			wantRejectionCode: "GOVERNANCE_REJECTION_CODE_L1_DOCTRINE",
+		},
+		{
+			name:            "typed refusal before L4",
+			err:             &api.StatusError{StatusCode: http.StatusForbidden, Body: string(marshalDispatchBody(t, &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED, Error: "method refused"}))},
+			wantError:       "method refused",
+			wantRefusalCode: "INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED",
+		},
+		{
+			name:      "untyped non-2xx body keeps the transport error",
+			err:       &api.StatusError{StatusCode: http.StatusBadGateway, Body: "<html>502 Bad Gateway</html>"},
+			wantError: "status 502",
+		},
+		{
+			name:      "transport failure without a status",
+			err:       errors.New("connection refused"),
+			wantError: "connection refused",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := DecodeDispatchResponse(tt.raw)
+			poster := &fakeCommandPoster{raw: tt.raw, err: tt.err}
 
-			assert.Nil(t, got)
-			require.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
-			assert.Contains(t, err.Error(), tt.wantErr)
+			result := RunOnce(poster, Target{OperatorSessionID: "session-1", OperatorID: "op-1"}, "echo hi", "exec-1", "cli-1")
+
+			assert.Equal(t, constants.APIPaths.OperatorsCommands, poster.path)
+			assert.Equal(t, "session-1", result.OperatorSessionID)
+			assert.Equal(t, "op-1", result.OperatorID)
+			assert.Equal(t, tt.wantSuccess, result.Success)
+			assert.Equal(t, tt.wantTransaction, result.TransactionID)
+			if tt.wantError != "" {
+				assert.Contains(t, result.Error, tt.wantError)
+			} else {
+				assert.Empty(t, result.Error)
+			}
+			assert.Equal(t, tt.wantReceiptStatus, result.ReceiptStatus)
+			assert.Equal(t, tt.wantSignerKey, result.SignerKeyID)
+			assert.Equal(t, tt.wantStdout, result.Stdout)
+			assert.Equal(t, tt.wantRejection, result.Rejection != nil)
+			assert.Equal(t, tt.wantRejectionCode, result.RejectionCode)
+			assert.Equal(t, tt.wantRefusalCode, result.RefusalCode)
+			if tt.wantSuccess {
+				assert.NotNil(t, result.Receipt, "a success carries the verified final receipt")
+			}
 		})
 	}
 }
@@ -199,8 +304,7 @@ func TestParseCommandResult_NilResponseIsAMissingRequiredField(t *testing.T) {
 }
 
 func TestParseCommandResult_EmptyPayloadErrorIdentifiesTheOffendingEvent(t *testing.T) {
-	_, err := ParseCommandResult(&DispatchResponse{
-		Success:    true,
+	_, err := ParseCommandResult(&operatorv1.GovernedDispatchResult{
 		EventType:  "ztd.v1.operator.command.status.updated.running",
 		ActionType: string(constants.ActionTypeExecuteBash),
 	})
@@ -211,7 +315,7 @@ func TestParseCommandResult_EmptyPayloadErrorIdentifiesTheOffendingEvent(t *test
 }
 
 func TestParseCommandResult_CorruptPayloadWrapsTheProtobufError(t *testing.T) {
-	_, err := ParseCommandResult(&DispatchResponse{ResultPayload: truncatedProto})
+	_, err := ParseCommandResult(&operatorv1.GovernedDispatchResult{ResultPayload: truncatedProto})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "operator dispatch: decode command result")

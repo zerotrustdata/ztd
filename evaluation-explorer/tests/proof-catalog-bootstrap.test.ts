@@ -20,6 +20,7 @@ function snapshot(highWater = 0) {
     source_id: sourceId,
     high_water_sequence: highWater,
     feed_chain_hash: 'd'.repeat(64),
+    withdrawal_digest: '0'.repeat(64),
     batch_count: 1,
     generated_at: '2026-09-20T00:00:00Z',
     freshness: 'active',

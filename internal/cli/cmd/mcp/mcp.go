@@ -21,7 +21,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 	"time"
 
@@ -38,6 +37,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -99,19 +99,6 @@ type InitializeResult struct {
 type ServerInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
-}
-
-// ApprovalResult represents a tool call result requiring L3 approval.
-type ApprovalResult struct {
-	ApprovalURL string    `json:"approval_url,omitempty"`
-	Content     []Content `json:"content,omitempty"`
-}
-
-// Content represents a content item in an MCP response.
-type Content struct {
-	Type string      `json:"type"`
-	Text string      `json:"text,omitempty"`
-	Data interface{} `json:"data,omitempty"`
 }
 
 // ─── stdio: governed proxy (the only supported mode) ────────────────────────
@@ -482,117 +469,95 @@ func proxySessionToGateway(session *gatewayConn, req JSONRPCRequest) (JSONRPCRes
 
 // proxySessionToGatewayWithRetryContext handles L3 approval responses by opening
 // the browser for WebAuthn authorization and waiting for the approval.completed
-// SSE event from the gateway. Once received, it re-sends the original request
-// and returns the result. SSE credentials are required — there is no polling
-// fallback.
+// SSE event from the gateway. The event carries the resumed transaction's signed
+// receipt, which becomes the tools/call result; the request is not re-sent. SSE
+// credentials are required — there is no polling fallback.
+//
+// Only tools/call can suspend, so only it opens the approval stream. It opens the
+// stream before the call is forwarded, so an approval completed while the call is
+// in flight is already held by the subscription when Wait runs. A subscribe failure
+// fails the call before anything is forwarded.
 func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gatewayConn, req JSONRPCRequest, logger *slog.Logger) (JSONRPCResponse, error) {
+	var approvals *auth.ApprovalSubscription
+	if req.Method == "tools/call" && session.sseClient != nil && session.sseBaseURL != "" && session.cliSessionID != "" {
+		sub, err := auth.SubscribeApprovals(ctx, session.sseClient, session.sseBaseURL, session.cliSessionID)
+		if err != nil {
+			return JSONRPCResponse{}, fmt.Errorf("L3 approval: subscribe: %w", err)
+		}
+		defer sub.Close()
+		approvals = sub
+	}
+
 	resp, err := proxySessionToGateway(session, req)
 	if err != nil {
 		return resp, err
 	}
 
-	if !isL3ApprovalResponse(resp) {
+	suspension, err := l3Suspension(resp)
+	if err != nil {
+		return resp, err
+	}
+	if suspension == nil {
 		return resp, nil
 	}
-
-	approvalURL := extractApprovalURL(resp)
+	if suspension.TxHash == "" || suspension.ApprovalURL == "" {
+		return resp, fmt.Errorf("L3 approval: suspension: %w", constants.ErrMissingRequiredField)
+	}
 	if logger != nil {
-		logger.Info("L3 approval required, waiting for user to authorize...", "url", approvalURL)
+		logger.Info("L3 approval required, waiting for user to authorize...", "url", suspension.ApprovalURL)
 	}
 
-	if session.sseClient == nil || session.sseBaseURL == "" || session.cliSessionID == "" {
+	if approvals == nil {
 		return resp, fmt.Errorf("L3 approval: %w", constants.ErrNotAuthenticated)
 	}
 	if session.openBrowser == nil {
 		return resp, fmt.Errorf("L3 approval: browser opener: %w", constants.ErrMissingRequiredField)
 	}
 
-	if err := session.openBrowser(approvalURL); err != nil {
+	if err := session.openBrowser(suspension.ApprovalURL); err != nil {
 		if logger != nil {
 			logger.Warn("Failed to auto-open browser", "error", err)
 		}
-		fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", approvalURL)
+		fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", suspension.ApprovalURL)
 	}
 
-	txHash := extractTxHashFromApprovalURL(approvalURL)
-	if err := auth.WaitForApprovalSSE(ctx, session.sseClient, session.sseBaseURL, session.cliSessionID, txHash); err != nil {
+	receipt, err := approvals.Wait(ctx, suspension.TxHash, "")
+	if err != nil {
 		if logger != nil {
 			logger.Warn("L3 approval SSE wait ended", "error", err)
 		}
 		return resp, err
 	}
 
-	retryResp, err := proxySessionToGateway(session, req)
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	if err != nil {
-		return resp, err
+		return resp, fmt.Errorf("L3 approval: encode resumed receipt: %w", err)
 	}
 	if logger != nil {
-		logger.Info("L3 approval completed, proceeding with execution")
+		logger.Info("L3 approval completed, returning the resumed receipt")
 	}
-	return retryResp, nil
+	return JSONRPCResponse{
+		JSONRPC: constants.JSONRPCVersion,
+		ID:      resp.ID,
+		Result:  mcp.ReceiptCallToolResult(receipt, receiptJSON),
+	}, nil
 }
 
-// extractTxHashFromApprovalURL extracts the transaction hash from an approval
-// URL path (e.g., "https://ztd.local:8443/api/v1/approve/abc123" -> "abc123").
-func extractTxHashFromApprovalURL(approvalURL string) string {
-	if approvalURL == "" {
-		return ""
-	}
-	parsed, err := url.Parse(approvalURL)
-	if err != nil {
-		return ""
-	}
-	path := strings.TrimPrefix(parsed.Path, constants.APIPaths.ApprovePagePrefix)
-	// Remove any trailing query or fragment
-	if idx := strings.IndexAny(path, "?#"); idx >= 0 {
-		path = path[:idx]
-	}
-	return path
-}
-
-func isL3ApprovalResponse(resp JSONRPCResponse) bool {
+// l3Suspension decodes the typed suspension of a tools/call result. It returns nil
+// when the call was not suspended for L3 approval.
+func l3Suspension(resp JSONRPCResponse) (*mcp.GovernedSuspension, error) {
 	if resp.Result == nil {
-		return false
+		return nil, nil
 	}
-	// Try to unmarshal as ApprovalResult
 	resultBytes, err := json.Marshal(resp.Result)
 	if err != nil {
-		return false
+		return nil, fmt.Errorf("mcp: encode tool result: %w", err)
 	}
-	var approvalResult ApprovalResult
-	if err := json.Unmarshal(resultBytes, &approvalResult); err != nil {
-		return false
+	var result mcp.CallToolResult
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("mcp: decode tool result: %w", err)
 	}
-	return approvalResult.ApprovalURL != ""
-}
-
-func extractApprovalURL(resp JSONRPCResponse) string {
-	if resp.Result == nil {
-		return ""
-	}
-
-	// Try to unmarshal as ApprovalResult
-	resultBytes, err := json.Marshal(resp.Result)
-	if err != nil {
-		return ""
-	}
-	var approvalResult ApprovalResult
-	if err := json.Unmarshal(resultBytes, &approvalResult); err == nil {
-		if approvalResult.ApprovalURL != "" {
-			return approvalResult.ApprovalURL
-		}
-		// Check content array for approval URL
-		for _, item := range approvalResult.Content {
-			if item.Text != "" {
-				if url := extractURLFromText(item.Text); url != "" {
-					return url
-				}
-			}
-		}
-	}
-
-	// Fallback to text extraction from entire result
-	return extractURLFromText(string(resultBytes))
+	return result.Suspension, nil
 }
 
 // ─── agent show config printers ─────────────────────────────────────────────
@@ -635,18 +600,18 @@ generated JSON to your agent's MCP settings file.`,
 	cmd.AddCommand(
 		agentListCmd(),
 		agentShowCmd(),
-		agentVerifyCmd(),
+		agentVerifyCmd(shared.NewFileSvc),
 		agentRunCmd(),
 	)
 
 	return cmd
 }
 
-func agentVerifyCmd() *cobra.Command {
+func agentVerifyCmd(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify <agent>",
 		Short: "Verify an agent's launcher config and tool lockdown without starting it",
-		Long: `Write the agent's MCP config into an isolated temporary home directory, compute
+		Long: `Write the agent's MCP config into an isolated scratch home directory under .ztd/tmp/, compute
 its launch arguments, and run the registry's tool-interception checks. The agent
 binary is never started and your real agent config is never touched, so this is
 safe to run in CI without the agent installed.`,
@@ -654,15 +619,20 @@ safe to run in CI without the agent installed.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentVerify(cmd, args[0])
+			return runAgentVerify(cmd, args[0], fileSvcFactory)
 		},
 	}
 }
 
-func runAgentVerify(cmd *cobra.Command, agentID string) error {
+func runAgentVerify(cmd *cobra.Command, agentID string, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) error {
 	integration, err := agent.Lookup(agentID)
 	if err != nil {
 		return fmt.Errorf("mcp: agent verify: %w", err)
+	}
+
+	fileSvc, err := fileSvcFactory("", slog.Default())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
 
 	binaryPath, err := os.Executable()
@@ -670,7 +640,7 @@ func runAgentVerify(cmd *cobra.Command, agentID string) error {
 		return fmt.Errorf("%w: %w", constants.ErrPathNotFound, err)
 	}
 
-	if err := integration.VerifyIsolated(binaryPath); err != nil {
+	if err := integration.VerifyIsolated(cmd.Context(), fileSvc, binaryPath); err != nil {
 		return fmt.Errorf("mcp: agent verify: %w", err)
 	}
 
@@ -1040,7 +1010,7 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 		}
 	}
 
-	_, cleanup, launchArgs, err := prepareAgentLaunch(agentID, agentAppName, verify)
+	_, cleanup, launchArgs, err := prepareAgentLaunch(context.Background(), fileSvc, agentID, agentAppName, verify)
 	if err != nil {
 		return err
 	}
@@ -1053,7 +1023,7 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 // prepareAgentLaunch validates the agent binary, writes the agent config, computes launch
 // args, and optionally verifies tool interception. The stdio bridge the agent spawns runs
 // as application appName. Returns configPath, cleanup func, launchArgs.
-func prepareAgentLaunch(agentID, appName string, verify bool) (string, func(), []string, error) {
+func prepareAgentLaunch(ctx context.Context, fileSvc fs.RuntimeFileService, agentID, appName string, verify bool) (string, func(), []string, error) {
 	integration, err := agent.Lookup(agentID)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("mcp: prepare launch: %w", err)
@@ -1073,7 +1043,7 @@ func prepareAgentLaunch(agentID, appName string, verify bool) (string, func(), [
 		return "", nil, nil, fmt.Errorf("mcp: prepare launch: %w", err)
 	}
 
-	prepared, err := integration.Prepare(homeDir, binaryPath, appName, verify)
+	prepared, err := integration.Prepare(ctx, fileSvc, homeDir, binaryPath, appName, verify)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("mcp: prepare launch: %w", err)
 	}
@@ -1116,16 +1086,4 @@ func runMCPAgentRun(args []string, verify bool, posture string, fileSvcFactory f
 		return fmt.Errorf("mcp: agent run: %w", err)
 	}
 	return launchAgentWithGovernance(string(integration.ID), args[1:], verify, posture, fileSvcFactory, enrollerFactory)
-}
-
-func extractURLFromText(text string) string {
-	urlPattern := regexp.MustCompile(`https://[^\s"']+` + regexp.QuoteMeta(constants.APIPaths.ApprovePagePrefix) + `[^\s"']*`)
-	if matches := urlPattern.FindStringSubmatch(text); len(matches) > 0 {
-		return matches[0]
-	}
-	genericURLPattern := regexp.MustCompile(`https://[^\s"']+`)
-	if matches := genericURLPattern.FindStringSubmatch(text); len(matches) > 0 {
-		return matches[0]
-	}
-	return ""
 }

@@ -3,8 +3,8 @@ doc_id: devs
 title: Developer Guidelines
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - go.mod
   - Makefile
@@ -161,6 +161,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-FS-08 | A command constructor under `internal/cli/cmd/<group>/` that touches runtime state MUST accept a file-service factory. Factory initialization failure MUST wrap `constants.ErrFileServiceInit` and preserve the underlying error. Every new factory injection point MUST have a matching case in `internal/cli/cmd/<group>/factory_error_<group>_test.go` proving downstream dependencies are not called. |
 | INV-FS-09 | Tests MUST use `testutil.TempDir` and `testutil.TestPaths` for isolated roots. `testutil.TempDir` returns an absolute base directory. Pass that directory to `fs.NewRuntimeFileService` and `paths.InitWithBase`. MUST NOT append `.ztd` manually. |
 | INV-FS-10 | A command that clears the runtime root MUST call `fileSvc.ArchiveRuntime`, which renames `.ztd/` to `.ztd-<MMDDHHMM>`. MUST NOT call `RemoveAll("")` on the runtime root. Destructive `clean` or `reset` commands MUST gate on `shared.ConfirmDestructive` before mutating state. |
+| INV-FS-11 | Every scratch directory or file MUST live under `.ztd/tmp/` (`constants.TmpDirname`), created with `fileSvc.MkdirTemp`. Throwaway local Operators live under `.ztd/operators/<name>` (`constants.OperatorsDirname`), the `ztd operator deploy --local` default. Remote staging over SSH uses `.ztd/tmp/` under the login directory (`ssh.MkdirRemoteScratch`). MUST NOT stage anything in the OS temp directory (`/tmp`, `%TEMP%`, `os.TempDir`, `os.MkdirTemp("")`) or the user's home directory. Tests use `testutil.TempDir(t)`; `make lint` rejects `os.TempDir`, `t.TempDir`, and empty-dir `os.MkdirTemp`/`os.CreateTemp`. |
 
 Consumers pass relative paths from `internal/constants/paths.go` into `ReadFile`, `WriteFile`, `Stat`, `FileExists`, `ReadDir`, `Rename`, `Remove`, `RemoveAll`, and other `RuntimeFileService` methods. Startup constructs the service and calls `CreateRuntimeTree` (`internal/cli/serve/gateway.go`, `internal/cli/serve/operator.go`).
 

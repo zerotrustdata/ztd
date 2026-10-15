@@ -811,6 +811,7 @@ export interface FeedSnapshot {
   high_water_sequence: number;
   feed_chain_hash: string;
   batch_count: number;
+  withdrawal_digest: string;
   generated_at: string;
   freshness: FreshnessState;
 }

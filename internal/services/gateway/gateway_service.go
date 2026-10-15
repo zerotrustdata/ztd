@@ -170,7 +170,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if b.db != nil {
 		db = b.db
 	} else {
-		ks, ksErr := keystore.Open(b.fileSvc, logger, keystore.Options{MasterKeyFile: cfg.Gateway.MasterKeyFile})
+		ks, ksErr := keystore.Open(b.fileSvc, logger, keystore.Options{Keyring: cfg.Gateway.Keyring})
 		if ksErr != nil {
 			return nil, fmt.Errorf("gateway: open keystore: %w", ksErr)
 		}
@@ -324,14 +324,6 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: load doctrine: %w", err)
 	}
-
-	// Wire the pubsub command relay dependencies: the gateway intercepts
-	// app-published command intent on cmd: channels, validates the target
-	// operator session, fetches the current state root, and constructs the
-	// governed GovernanceEnvelope (with L1 screening) before fan-out. This
-	// runs after the L1 doctrine is loaded so the relay has a doctrine to
-	// screen against.
-	wsHandler.SetCommandRelayDeps(stateRootSvc, auth, string(cfg.Gateway.Posture), doctrine)
 
 	actuatorPriv, actuatorKeyID, err := sm.GetActuatorKey()
 	if err != nil {
@@ -966,12 +958,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Logger:    logger,
 			Responder: ls.responder,
 			Service:   NewEvalCampaignPublicationService(ls.docStore),
-			Mirror: func() *PublicMirrorServer {
-				if ls.publicSpectator == nil {
-					return nil
-				}
-				return ls.publicSpectator.Mirror()
-			},
+			Spectator: func() *PublicSpectatorRuntime { return ls.publicSpectator },
 		},
 		ProviderObservationControllerDeps: providerObservationDeps,
 		ModelProvenanceControllerDeps:     modelProvenanceDeps,

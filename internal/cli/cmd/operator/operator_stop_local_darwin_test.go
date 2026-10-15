@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestMain(m *testing.M) {
@@ -45,7 +46,7 @@ func startStopTestWorker(t *testing.T, dir string, args ...string) *exec.Cmd {
 	t.Helper()
 	executable, err := os.Executable()
 	require.NoError(t, err)
-	workerPath := filepath.Join(t.TempDir(), "ztd")
+	workerPath := filepath.Join(testutil.TempDir(t), "ztd")
 	require.NoError(t, CopyFile(executable, workerPath))
 	child := exec.Command(workerPath, append([]string{"operator", "start"}, args...)...)
 	child.Dir = dir
@@ -83,7 +84,7 @@ func discoverStopTestWorker(t *testing.T, pid int) localOperatorProcess {
 }
 
 func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
-	child := startStopTestWorker(t, t.TempDir(), "--working-dir=/tmp/ztd-stop-test")
+	child := startStopTestWorker(t, testutil.TempDir(t), "--working-dir=/tmp/ztd-stop-test")
 	worker := discoverStopTestWorker(t, child.Process.Pid)
 	require.Equal(t, "/tmp/ztd-stop-test", worker.dir)
 	cmd := &cobra.Command{}
@@ -97,7 +98,7 @@ func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
 }
 
 func TestLocalOperatorDiscoveryUsesWorkerCwd(t *testing.T) {
-	dir, err := filepath.EvalSymlinks(t.TempDir())
+	dir, err := filepath.EvalSymlinks(testutil.TempDir(t))
 	require.NoError(t, err)
 	child := startStopTestWorker(t, dir)
 	worker := discoverStopTestWorker(t, child.Process.Pid)

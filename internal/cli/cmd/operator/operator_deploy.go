@@ -504,6 +504,7 @@ func operatorDeployCmdWithConfig(
 		Short: "Deploy the operator binary locally or over SSH",
 		Long: `Deploy up to 5000 Operators locally (--local) or to each SSH host (--hosts).
 Use --dest-dir for the binary and isolated runtime state; --remote-dir remains an alias.
+--local alone defaults --dest-dir to the project's .ztd/operators/, one op-NNNNN directory per Operator.
 With --count N, directories are op-00001 through op-N. --start-index adds later batches
 without replacing earlier Operators. An explicit --start-index always uses numbered directories.
 The binary is installed once per host and hard-linked into each directory.
@@ -536,6 +537,18 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each wor
 			creds, err := auth.LoadCredentials(fileSvc, cfg)
 			if err != nil || creds == nil {
 				return fmt.Errorf("%w\nEnroll first with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
+			}
+
+			// A local-only deployment without --dest-dir stages its Operators
+			// under the project runtime tree, never the user's home directory.
+			numberedDirs := cmd.Flags().Changed("start-index") || startIndex != 1
+			destDirSet := cmd.Flags().Changed("dest-dir") || cmd.Flags().Changed("remote-dir")
+			if local && strings.TrimSpace(hosts) == "" && !destDirSet {
+				if err := fileSvc.MkdirAll(cmd.Context(), constants.OperatorsDirname, constants.PermDirPrivate); err != nil {
+					return fmt.Errorf("operator deploy: create %s: %w", constants.OperatorsDirname, err)
+				}
+				remoteDir = fileSvc.Resolve(constants.OperatorsDirname)
+				numberedDirs = true
 			}
 
 			hosts, workerEndpoint, err := validateOperatorDeployFlags(
@@ -571,7 +584,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each wor
 
 			hostList := strings.Split(hosts, ",")
 			dirs := operatorDeployDirs(remoteDir, count)
-			if cmd.Flags().Changed("start-index") || startIndex != 1 {
+			if numberedDirs {
 				dirs = make([]string, count)
 				for i := range dirs {
 					dirs[i] = fmt.Sprintf("%s/op-%05d", strings.TrimSuffix(remoteDir, "/"), startIndex+i)
@@ -639,7 +652,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each wor
 	cmd.Flags().StringVar(&remoteDir, "dest-dir", "~", "Destination directory for binary and isolated Operator runtimes")
 	cmd.Flags().StringVar(&remoteDir, "remote-dir", "~", "Alias for --dest-dir")
 	cmd.MarkFlagsMutuallyExclusive("dest-dir", "remote-dir")
-	cmd.Flags().BoolVar(&local, "local", false, "Deploy on this system without SSH (requires --dest-dir)")
+	cmd.Flags().BoolVar(&local, "local", false, "Deploy on this system without SSH (defaults --dest-dir to .ztd/operators/; requires --dest-dir with --hosts)")
 	cmd.Flags().IntVar(&startIndex, "start-index", 1, "First numbered operator directory (1..5000)")
 	for _, name := range operatorDeployForwardFlags {
 		cmd.Flags().AddFlag(start.Flags().Lookup(name))
@@ -931,7 +944,7 @@ var operatorDeployForwardFlags = []string{
 	"capabilities", "inference-ollama-endpoint", "inference-keep-alive",
 	"provider-boundary-observer-id", "provenance-operator-id", "model-storage-root",
 	"gateway-http-port", "gateway-https-port",
-	"heartbeat-interval", "log", "trust-bundle", "master-key-file",
+	"heartbeat-interval", "log", "trust-bundle",
 }
 
 // operatorDeployPreflightArgs returns the gateway-preflight arguments that probe
@@ -1088,8 +1101,8 @@ func validateOperatorDeployFlags(
 		return "", "", fmt.Errorf("%w: --hosts or --local is required", constants.ErrMissingRequiredField)
 	}
 
-	if local && !cmd.Flags().Changed("dest-dir") && !cmd.Flags().Changed("remote-dir") {
-		return "", "", fmt.Errorf("%w: --local requires --dest-dir", constants.ErrMissingRequiredField)
+	if local && strings.TrimSpace(hosts) != "" && !cmd.Flags().Changed("dest-dir") && !cmd.Flags().Changed("remote-dir") {
+		return "", "", fmt.Errorf("%w: --local with --hosts requires --dest-dir", constants.ErrMissingRequiredField)
 	}
 
 	seen := make(map[string]bool)

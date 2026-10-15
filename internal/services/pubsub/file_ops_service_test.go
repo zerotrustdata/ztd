@@ -34,6 +34,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type fileEditResultsPublisher struct {
+	mockResultsPublisher
+	results []proto.Message
+}
+
+func (m *fileEditResultsPublisher) PublishFileEditResult(_ context.Context, result proto.Message, _ *PubSubCommandMessage) error {
+	m.results = append(m.results, result)
+	return nil
+}
+
 func newFileEditTestService(t *testing.T, cfg *config.Config, logger *slog.Logger) *execution.FileEditService {
 	t.Helper()
 	fileSvc, err := fs.NewRuntimeFileService(cfg.WorkDir, logger)
@@ -129,7 +139,7 @@ func TestNewFileOpsService_RequiresEveryDependency(t *testing.T) {
 func TestPayloadToFileEditRequest(t *testing.T) {
 	t.Run("converts valid payload", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FileEditRequested{
 			FilePath:        filepath.Join(tmpDir, "test.txt"),
 			Operation:       "write",
@@ -207,7 +217,7 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 
 	t.Run("rejects missing operation", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FileEditRequested{FilePath: filepath.Join(tmpDir, "test.txt")}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -223,7 +233,7 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 
 	t.Run("uses message ID when payload has no execution_id", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FileEditRequested{FilePath: filepath.Join(tmpDir, "test.txt"), Operation: "write"}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -239,7 +249,7 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 
 	t.Run("uses default justification when not specified", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FileEditRequested{FilePath: filepath.Join(tmpDir, "test.txt"), Operation: "write"}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -257,7 +267,7 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 func TestPayloadToFsListRequest(t *testing.T) {
 	t.Run("converts valid payload", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FsListRequested{
 			Path:        tmpDir,
 			ExecutionId: "exec-1",
@@ -315,7 +325,7 @@ func TestPayloadToFsListRequest(t *testing.T) {
 
 	t.Run("uses message ID when payload has no execution_id", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FsListRequested{Path: tmpDir}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -331,7 +341,7 @@ func TestPayloadToFsListRequest(t *testing.T) {
 
 	t.Run("uses default max_entries when not specified", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FsListRequested{Path: tmpDir}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -349,7 +359,7 @@ func TestPayloadToFsListRequest(t *testing.T) {
 func TestPayloadToFsGrepRequest(t *testing.T) {
 	t.Run("converts valid payload", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FsGrepRequested{
 			Path:        tmpDir,
 			Pattern:     "test",
@@ -409,7 +419,7 @@ func TestPayloadToFsGrepRequest(t *testing.T) {
 
 	t.Run("uses message ID when payload has no execution_id", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FsGrepRequested{Path: tmpDir, Pattern: "test"}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -425,7 +435,7 @@ func TestPayloadToFsGrepRequest(t *testing.T) {
 
 	t.Run("uses default max_matches when not specified", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		req := &operatorv1.FsGrepRequested{Path: tmpDir, Pattern: "test"}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -441,6 +451,45 @@ func TestPayloadToFsGrepRequest(t *testing.T) {
 }
 
 func TestFileOpsService_HandleFileEditRequest(t *testing.T) {
+	t.Run("publishes failed result for protected runtime path", func(t *testing.T) {
+		t.Parallel()
+		cfg := testutil.NewTestConfig(t)
+		logger := testutil.NewTestLogger()
+		client := pubsubtest.NewMockOperatorPubSubClient()
+		fileEditSvc := newFileEditTestService(t, cfg, logger)
+		results := &fileEditResultsPublisher{}
+		svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{Results: results})
+
+		filePath := filepath.Join(cfg.WorkDir, constants.RuntimeDirname, constants.TmpDirname, "release-smoke", "worker", "start.log")
+		payload, err := proto.Marshal(&operatorv1.FileEditRequested{
+			FilePath:    filePath,
+			Operation:   string(constants.FileOperationWrite),
+			ExecutionId: "exec-protected-file-edit",
+			Content:     "must not be written",
+		})
+		require.NoError(t, err)
+		msg := &PubSubCommandMessage{
+			ID:                "msg-protected-file-edit",
+			EventType:         constants.Event.Operator.FileEdit.Requested,
+			OperatorSessionID: testOperatorSessionID,
+			Payload:           payload,
+		}
+
+		_, err = svc.HandleFileEditRequest(context.Background(), msg)
+		require.ErrorIs(t, err, constants.ErrFileEditProtectedRuntimePath)
+		require.Len(t, results.results, 1)
+		result, ok := results.results[0].(*operatorv1.FileEditResult)
+		require.True(t, ok, "published result is %T", results.results[0])
+		assert.Equal(t, "exec-protected-file-edit", result.GetExecutionId())
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.GetStatus())
+		assert.Equal(t, filePath, result.GetFilePath())
+		assert.Equal(t, string(constants.FileOperationWrite), result.GetOperation())
+		assert.Equal(t, "validation_error", result.GetErrorType())
+		assert.Contains(t, result.GetErrorMessage(), constants.ErrFileEditProtectedRuntimePath.Error())
+		_, statErr := os.Stat(filePath)
+		assert.ErrorIs(t, statErr, os.ErrNotExist)
+	})
+
 	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
 		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
@@ -481,7 +530,7 @@ func TestFileOpsService_HandleFileEditRequest(t *testing.T) {
 
 	t.Run("rejects missing operation", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -679,7 +728,7 @@ func TestFileOpsService_HandleFsListRequest(t *testing.T) {
 func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
 	t.Run("snapshots an existing file", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
 		logger := testutil.NewTestLogger()
@@ -701,7 +750,7 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
 
 	t.Run("returns nil for path traversal attempt", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
 		logger := testutil.NewTestLogger()
@@ -714,7 +763,7 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
 
 	t.Run("returns nil when file does not exist and operation is not create/write", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
 		logger := testutil.NewTestLogger()
@@ -772,7 +821,7 @@ func newFileOpsLedgerForTest(t *testing.T, tmpDir string, unlocked bool) (*stora
 func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
 	t.Run("begin failure refuses the edit and publishes FileEdit.Failed", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
 		logger := testutil.NewTestLogger()
@@ -809,7 +858,7 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
 
 	t.Run("completion failure fails the result and publishes FileEdit.Failed", func(t *testing.T) {
 		t.Parallel()
-		tmpDir := testutil.TempDir(t)
+		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
 		logger := testutil.NewTestLogger()

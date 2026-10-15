@@ -60,7 +60,7 @@ func setupTestLedgerLocked(t *testing.T) (*GitLedgerService, string) {
 // setupLedgerWithVault builds a GitLedgerService over a fresh vault, unlocked or locked.
 func setupLedgerWithVault(t *testing.T, unlocked bool) (*GitLedgerService, string) {
 	t.Helper()
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 
 	fileSvc := newTestFileSvc(t, tempDir)
 

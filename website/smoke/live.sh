@@ -7,18 +7,25 @@
 # released under the Apache License, Version 2.0.
 #
 # Live smoke test for the deployed site, run after every production deploy. Checks the Releases pages, then runs the
-# published one-command onboarding exactly as a user would, with a provisioned master key file because CI runners
-# have no OS key store, and stops the Gateway it started. ZTD_SMOKE_ORIGIN overrides the origin (e.g. a preview).
+# published one-command onboarding exactly as a user would, under an ephemeral ssh-agent with a throwaway Ed25519 key
+# because CI runners have no OS key store, and stops the Gateway and the agent it started. ZTD_SMOKE_ORIGIN overrides
+# the origin (e.g. a preview).
 
 set -eu
 
 origin="${ZTD_SMOKE_ORIGIN:-https://zerotrustdata.io}"
-work=$(mktemp -d)
+root=$(cd "$(dirname "$0")/../.." && pwd)
+# shellcheck source=../../scripts/lib/scratch.sh
+. "$root/scripts/lib/scratch.sh"
+work=$(ztd_scratch_dir "$root" ztd-website-smoke)
 dir="$work/ztd"
 
 cleanup() {
   if [ -x "$dir/ztd" ]; then
-    (cd "$dir" && ./ztd gw stop --master-key-file "$work/master.key" </dev/null >/dev/null 2>&1) || true
+    (cd "$dir" && ./ztd gw stop </dev/null >/dev/null 2>&1) || true
+  fi
+  if [ -n "${SSH_AGENT_PID:-}" ]; then
+    ssh-agent -k >/dev/null 2>&1 || true
   fi
   rm -rf "$work"
 }
@@ -40,12 +47,16 @@ echo "smoke: latest release v$version"
 
 page /releases/ "/releases/v$version/"
 page /releases/ "/start.sh | sh"
+page /releases/ "/start.ps1 | iex"
+page /start.ps1 "irm https://zerotrustdata.io/start.ps1 | iex"
 page "/releases/v$version/" "/v/$version/ztd-binaries.json"
 location=$(curl -fsS -o /dev/null -w '%{redirect_url}' "$origin/releases/latest/")
 [ "$location" = "$origin/releases/v$version/" ] || fail "/releases/latest/ redirects to '$location'"
 echo "smoke: releases pages ok"
 
-(umask 077 && head -c 32 /dev/urandom | base64 >"$work/master.key")
-curl -fsSL "$origin/start.sh" | ZTD_DIR="$dir" ZTD_MASTER_KEY_FILE="$work/master.key" sh
+eval "$(ssh-agent -s -a "$work/agent.sock")"
+ssh-keygen -q -t ed25519 -N '' -f "$work/agent_key"
+ssh-add -q "$work/agent_key"
+curl -fsSL "$origin/start.sh" | ZTD_DIR="$dir" sh
 "$dir/ztd" --version </dev/null | grep -qF "$version" || fail "installed ztd is not v$version"
 echo "smoke: start.sh onboarding ok"

@@ -19,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -80,7 +81,7 @@ func TestVerifyModelProvenanceWindow_ExpectedDigestMismatch(t *testing.T) {
 func TestLocalModelProvenanceReader_LoadRoundTrip(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	window := testModelProvenanceWindow(t, "attempt-1")
@@ -106,7 +107,7 @@ func (s *stubModelProvenanceRemote) Load(_ context.Context, providerAttemptID st
 func TestLocalModelProvenanceReader_RejectsMissingProviderAttemptID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	reader := &localModelProvenanceReader{store: store}
@@ -118,7 +119,7 @@ func TestLocalModelProvenanceReader_RejectsMissingProviderAttemptID(t *testing.T
 func TestCampaignModelProvenanceReader_CaptureAssignmentEvidencePersistsGatewayEvidence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	window := testModelProvenanceWindow(t, "attempt-captured")
 	reader, err := NewCampaignModelProvenanceReaderWithRemote(fileSvc, &stubModelProvenanceRemote{window: window})
 	require.NoError(t, err)
@@ -135,7 +136,7 @@ func TestCampaignModelProvenanceReader_CaptureAssignmentEvidencePersistsGatewayE
 func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictMissingWindow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	reader, err := NewCampaignModelProvenanceReader(fileSvc)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
@@ -153,7 +154,7 @@ func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictMis
 func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictDigestMatch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, t.TempDir())
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := model_provenance.NewWindowStore(fileSvc)
 	require.NoError(t, err)
 	window := testModelProvenanceWindow(t, "attempt-1")

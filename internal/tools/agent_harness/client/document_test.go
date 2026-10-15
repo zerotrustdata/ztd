@@ -13,24 +13,32 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestDocumentResponse_GetString_AbsentField(t *testing.T) {
 	doc := DocumentResponse{"case_title": json.RawMessage(`"hello"`)}
-	assert.Equal(t, "hello", doc.GetString("case_title"))
-	assert.Equal(t, "", doc.GetString("absent_field"))
+	title, ok := doc.GetString("case_title")
+	require.True(t, ok)
+	assert.Equal(t, "hello", title)
+	_, ok = doc.GetString("absent_field")
+	assert.False(t, ok)
 }
 
 func TestDocumentResponse_GetBool_AbsentField(t *testing.T) {
 	doc := DocumentResponse{"case_flag": json.RawMessage(`true`)}
-	assert.True(t, doc.GetBool("case_flag"))
-	assert.False(t, doc.GetBool("absent_field"))
+	flag, ok := doc.GetBool("case_flag")
+	require.True(t, ok)
+	assert.True(t, flag)
+	_, ok = doc.GetBool("absent_field")
+	assert.False(t, ok)
 }
 
-func TestActingAppHarness_IsEvaluationApp(t *testing.T) {
-	assert.Equal(t, constants.EvaluationAppName, ActingAppHarness)
+func TestDocumentResponse_GetString_WrongType(t *testing.T) {
+	doc := DocumentResponse{"case_title": json.RawMessage(`42`), "case_flag": json.RawMessage(`"true"`)}
+	_, ok := doc.GetString("case_title")
+	assert.False(t, ok, "a number must not read as a string")
+	_, ok = doc.GetBool("case_flag")
+	assert.False(t, ok, "a string must not read as a bool")
 }
 
 func TestInvestigationUpdate_OmitsUnsetFields(t *testing.T) {

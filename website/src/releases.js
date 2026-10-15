@@ -30,6 +30,7 @@ const PLATFORM_ORDER = Object.keys(PLATFORMS);
 
 export const startCommand = version => `curl -fsSL ${ORIGIN}/start.sh | ${version ? `ZTD_VERSION=${version} ` : ''}sh`;
 export const installCommand = version => `curl -fsSL ${ORIGIN}/ztd.sh | ${version ? `ZTD_VERSION=${version} ` : ''}sh`;
+export const windowsStartCommand = version => `${version ? `$env:ZTD_VERSION='${version}'; ` : ''}irm ${ORIGIN}/start.ps1 | iex`;
 export const windowsInstallCommand = version => `${version ? `$env:ZTD_VERSION='${version}'; ` : ''}irm ${ORIGIN}/ztd.ps1 | iex`;
 export const releasePath = version => `${RELEASES_PATH}v${version}/`;
 const downloadPath = (version, file) => `/v/${version}/${file}`;
@@ -133,9 +134,10 @@ function downloadTable(manifest) {
 function installSection(version, pinned) {
   return `<section class="install" aria-labelledby="install-title"><h2 id="install-title" class="label">${pinned ? `INSTALL ${escape(version)}` : 'ONE COMMAND'}</h2>
 ${command(startCommand(pinned ? version : ''), 'Install, start a Gateway, and sign in — Linux and macOS')}
+${command(windowsStartCommand(pinned ? version : ''), 'Install, start a Gateway, and sign in — Windows PowerShell')}
 ${command(installCommand(pinned ? version : ''), 'Install the binary only — Linux and macOS')}
 ${command(windowsInstallCommand(pinned ? version : ''), 'Install the binary only — Windows PowerShell')}
-<p class="install-note">The installers verify each binary against its published SHA-256 checksum before writing it and never use sudo. <a href="${REPOSITORY_URL}/blob/main/docs/guides/getting_started.md">Getting started ↗</a></p></section>`;
+<p class="install-note">The installers verify each binary against its published SHA-256 checksum before writing it and never use sudo or Administrator. <a href="${REPOSITORY_URL}/blob/main/docs/guides/getting_started.md">Getting started ↗</a></p></section>`;
 }
 
 export function renderReleasesIndex({ releases, latest, manifest }) {

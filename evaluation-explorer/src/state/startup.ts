@@ -63,9 +63,12 @@ async function loadCompatibleCache(
   }
   if (!cached) return null;
   const cachedSnapshot = cached.snapshot;
+  // A changed withdrawal digest means cached records may include a dataset
+  // the mirror now hides; refetch the filtered history instead.
   if (
     cachedSnapshot.source_id !== snapshot.source_id ||
     cachedSnapshot.protocol_version !== snapshot.protocol_version ||
+    cachedSnapshot.withdrawal_digest !== snapshot.withdrawal_digest ||
     cachedSnapshot.high_water_sequence > snapshot.high_water_sequence
   ) {
     await storage.clear(mirrorOrigin).catch(() => undefined);
@@ -192,7 +195,16 @@ function connectStream(
 ): void {
   activeStream?.close();
   activeStream = streamFactory(mirrorOrigin, sourceId, sinceId, {
-    onSnapshot: (snapshot) => evalStore.acceptSnapshot(snapshot),
+    onSnapshot: (snapshot) => {
+      const reference = evalStore.getState().currentSnapshot ?? evalStore.getState().pendingSnapshot;
+      // The mirror withdrew a dataset this tab may hold: reload from the
+      // filtered feed rather than keep showing it.
+      if (reference && reference.withdrawal_digest !== snapshot.withdrawal_digest) {
+        if (gen === generation) void startFeed();
+        return;
+      }
+      evalStore.acceptSnapshot(snapshot);
+    },
     onProjection: (record) => {
       evalStore.acceptProjection(record);
     },

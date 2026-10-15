@@ -24,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -53,13 +54,14 @@ func newStartableZtdoService(t *testing.T, mutate func(cfg *config.Config)) *Ztd
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.EnforcePermissions())
 
-	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), fileSvc, newTestPubSubClientFactory())
+	canonicalDB, err := gateway.OpenCanonicalDBService(testutil.NewTestLogger(), ks, fileSvc)
 	require.NoError(t, err)
-	service.keystore = ks
+	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), fileSvc, canonicalDB, newTestPubSubClientFactory())
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		// Start can fail after opening stores; force the service into the
-		// running state so Stop releases everything that was opened.
+		// Start can fail after it has been handed the canonical database; force
+		// the service into the running state so Stop releases it.
 		service.mu.Lock()
 		service.running = true
 		service.mu.Unlock()

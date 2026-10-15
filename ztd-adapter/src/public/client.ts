@@ -41,6 +41,7 @@ function snapshot(value: unknown): value is PublicSnapshot {
     && string(candidate.feed_chain_hash)
     && /^[0-9a-f]{64}$/.test(candidate.feed_chain_hash)
     && integer(candidate.batch_count)
+    && (candidate.withdrawal_digest === undefined || (string(candidate.withdrawal_digest) && /^[0-9a-f]{64}$/.test(candidate.withdrawal_digest)))
     && string(candidate.generated_at)
     && ['active', 'delayed', 'stale', 'intentionally_stopped', 'safety_stopped', 'source_offline'].includes(String(candidate.freshness));
 }

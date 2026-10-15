@@ -11,7 +11,10 @@
 set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRATCH="$(mktemp -d)"
+# shellcheck source=lib/scratch.sh
+. "$SOURCE_ROOT/scripts/lib/scratch.sh"
+SCRATCH="$(ztd_scratch_dir "$SOURCE_ROOT" ztd-commit-hygiene)"
+export GIT_CEILING_DIRECTORIES="$SOURCE_ROOT/.ztd/tmp"
 trap 'rm -rf "$SCRATCH"' EXIT
 CASE_NUMBER=0
 

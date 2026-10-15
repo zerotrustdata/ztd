@@ -17,6 +17,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/dev-setup-common.sh
 source "${SCRIPT_DIR}/lib/dev-setup-common.sh"
+# shellcheck source=lib/scratch.sh
+source "${SCRIPT_DIR}/lib/scratch.sh"
 
 ZTD_PKG=""
 SUDO=""
@@ -70,32 +72,33 @@ ztd_linux_pkg_install() {
 # every distro and on WSL; the snap alternative needs a running snapd, which WSL
 # often lacks, and distro golang packages are usually too old.
 ztd_linux_install_go() {
-    local goarch tarball tmp want got
+    local goarch tarball scratch tmp want got
     case "$(uname -m)" in
         x86_64) goarch="amd64" ;;
         aarch64|arm64) goarch="arm64" ;;
         *) echo "  no official Go tarball flow for $(uname -m); install Go from https://go.dev/dl/"; return 1 ;;
     esac
     tarball="go${ZTD_GO_MIN}.linux-${goarch}.tar.gz"
-    tmp="$(mktemp "${TMPDIR:-/tmp}/ztd-go.XXXXXX")"
+    scratch="$(ztd_scratch_dir "$REPO_ROOT" ztd-go)" || return 1
+    tmp="$scratch/${tarball}"
 
     echo "Downloading ${tarball}..."
     if ! curl -fSL "https://go.dev/dl/${tarball}" -o "$tmp" ||
         ! want="$(curl -fsSL "https://dl.google.com/go/${tarball}.sha256")"; then
-        rm -f "$tmp"
+        rm -rf "$scratch"
         return 1
     fi
     got="$(ztd_sha256 "$tmp")"
     if [[ "$got" != "$want" ]]; then
         echo "  checksum mismatch for ${tarball} (expected ${want}, got ${got})"
-        rm -f "$tmp"
+        rm -rf "$scratch"
         return 1
     fi
 
     echo "Installing Go ${ZTD_GO_MIN} to /usr/local/go (replaces any existing /usr/local/go)..."
     $SUDO rm -rf /usr/local/go
     $SUDO tar -C /usr/local -xzf "$tmp"
-    rm -f "$tmp"
+    rm -rf "$scratch"
     # Ahead of any older distro Go (e.g. /usr/bin/go) so the re-check sees this one.
     export PATH="/usr/local/go/bin:$PATH"
     hash -r
@@ -109,7 +112,7 @@ ZTD_NODE_LTS_MAJOR=22
 # into /usr/local/lib/nodejs and links node/npm/npx into /usr/local/bin.
 # Ubuntu's apt nodejs is older than the supported lines.
 ztd_linux_install_node() {
-    local nodearch sums tarball tmp want got dest
+    local nodearch sums tarball scratch tmp want got dest
     case "$(uname -m)" in
         x86_64) nodearch="x64" ;;
         aarch64|arm64) nodearch="arm64" ;;
@@ -124,16 +127,17 @@ ztd_linux_install_node() {
         return 1
     fi
 
-    tmp="$(mktemp "${TMPDIR:-/tmp}/ztd-node.XXXXXX")"
+    scratch="$(ztd_scratch_dir "$REPO_ROOT" ztd-node)" || return 1
+    tmp="$scratch/${tarball}"
     echo "Downloading ${tarball}..."
     if ! curl -fSL "${base}/${tarball}" -o "$tmp"; then
-        rm -f "$tmp"
+        rm -rf "$scratch"
         return 1
     fi
     got="$(ztd_sha256 "$tmp")"
     if [[ "$got" != "$want" ]]; then
         echo "  checksum mismatch for ${tarball} (expected ${want}, got ${got})"
-        rm -f "$tmp"
+        rm -rf "$scratch"
         return 1
     fi
 
@@ -141,7 +145,7 @@ ztd_linux_install_node() {
     echo "Installing ${tarball%.tar.gz} to ${dest}..."
     $SUDO mkdir -p "$dest"
     $SUDO tar -C "$dest" -xzf "$tmp"
-    rm -f "$tmp"
+    rm -rf "$scratch"
     for bin in node npm npx corepack; do
         $SUDO ln -sf "${dest}/${tarball%.tar.gz}/bin/${bin}" "/usr/local/bin/${bin}"
     done

@@ -56,10 +56,12 @@ expect_no_log() {
 
 # Runs a command the way a user does after setup: in a new interactive login
 # terminal with a clean environment, so only what setup wrote to the shell
-# profile is on PATH. Output goes to $OUT/<log>.
+# profile is on PATH. SSH_AUTH_SOCK is the one passthrough, so ztd can reach the
+# ephemeral ssh-agent that scenario_quickstart starts. Output goes to $OUT/<log>.
 # usage: in_new_terminal <log> <command>
 in_new_terminal() {
     env -i HOME="$HOME" USER="$(id -un)" SHELL=/bin/bash TERM=dumb LANG=C.UTF-8 PATH=/usr/bin:/bin \
+        ${SSH_AUTH_SOCK:+"SSH_AUTH_SOCK=$SSH_AUTH_SOCK"} \
         bash -ic "cd '$REPO' && $2" >"$OUT/$1" 2>&1 </dev/null
 }
 
@@ -105,25 +107,29 @@ scenario_rerun() {
 }
 
 scenario_quickstart() {
-    # A container has neither a Secret Service keyring nor an ssh-agent, so
-    # provision the documented master key file: 32 random bytes, base64, 0600,
-    # no-clobber, in a private directory outside the runtime root.
-    local keydir="$HOME/.config/ztd-onboarding" key
-    key="$keydir/master.key"
-    install -d -m 700 "$keydir"
-    (umask 077 && set -C && head -c 32 /dev/urandom | base64 >"$key")
+    # A container has neither a Secret Service keyring nor an ssh-agent. Start an
+    # ephemeral agent whose socket and throwaway Ed25519 key live in a private
+    # scratch directory under the repo runtime root. Quickstart and every ./ztd call
+    # it makes find the agent via SSH_AUTH_SOCK. The trap stops it when this scenario exits.
+    # shellcheck source=../lib/scratch.sh
+    . "$REPO/scripts/lib/scratch.sh"
+    local agent_dir
+    agent_dir="$(ztd_scratch_dir "$REPO" onboarding-agent)" || return 1
+    trap 'ssh-agent -k >/dev/null 2>&1 || true' EXIT
+    eval "$(ssh-agent -s -a "$agent_dir/agent.sock")"
+    ssh-keygen -q -t ed25519 -N '' -f "$agent_dir/agent_key"
+    ssh-add -q "$agent_dir/agent_key"
 
-    local args="QUICKSTART_ARGS=--master-key-file $key"
-    expect "first quickstart exits 0" in_new_terminal quickstart.log "make quickstart '$args'"
+    expect "first quickstart exits 0" in_new_terminal quickstart.log "make quickstart"
     expect_log quickstart.log 'hello from ztd'
     expect_log quickstart.log "You're running ztd"
-    expect "second quickstart exits 0" in_new_terminal quickstart-rerun.log "make quickstart '$args'"
+    expect "second quickstart exits 0" in_new_terminal quickstart-rerun.log "make quickstart"
     expect_log quickstart-rerun.log 'already running'
     expect_log quickstart-rerun.log 'already signed in'
     expect_no_log quickstart.log 'command not found'
     local session
     session="$(awk '$1 == "Operator" && $2 == "session" {print $3; exit}' "$OUT/quickstart.log")"
-    expect "audit trail for the governed action" bash -c "./ztd gw data audit list --operator-session-id '$session' --master-key-file '$key' >'$OUT/audit.log' 2>&1"
+    expect "audit trail for the governed action" bash -c "./ztd gw data audit list --operator-session-id '$session' >'$OUT/audit.log' 2>&1"
     expect "make down exits 0" bash -c "make down >'$OUT/down.log' 2>&1"
 }
 

@@ -9,8 +9,11 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -79,6 +82,26 @@ func mirrorProjectionWithdrawn(state *PublicMirrorSourceState, item models.Publi
 	return false
 }
 
+// mirrorWithdrawalDigest is the SHA-256 over the source's sorted withdrawn
+// dataset IDs, or the zero hash when nothing is withdrawn.
+func mirrorWithdrawalDigest(state *PublicMirrorSourceState) string {
+	if state == nil || len(state.WithdrawnDatasetIDs) == 0 {
+		return constants.PublicFeedZeroHashHex
+	}
+	ids := make([]string, 0, len(state.WithdrawnDatasetIDs))
+	for id, withdrawn := range state.WithdrawnDatasetIDs {
+		if withdrawn {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return constants.PublicFeedZeroHashHex
+	}
+	sort.Strings(ids)
+	sum := sha256.Sum256([]byte(strings.Join(ids, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
 func mirrorRecordWithdrawn(state *PublicMirrorSourceState, record models.PublicFeedRecord) bool {
 	if state == nil || len(state.WithdrawnDatasetIDs) == 0 {
 		return false
@@ -91,14 +114,16 @@ func mirrorRecordWithdrawn(state *PublicMirrorSourceState, record models.PublicF
 }
 
 // WithdrawCampaignDataset hides one live campaign dataset from anonymous mirror
-// reads without mutating the signed batch chain.
+// reads without mutating the signed batch chain. Open streams of the source
+// receive a fresh snapshot so browsers holding the dataset resynchronize.
 func (m *PublicMirrorServer) WithdrawCampaignDataset(ctx context.Context, runID string) error {
 	if m == nil || runID == "" {
 		return fmt.Errorf("public mirror: withdraw campaign dataset: %w", constants.ErrMissingRequiredField)
 	}
 	datasetID := campaignMirrorDatasetID(runID)
-	return m.mutateState(ctx, func(storeState *PublicMirrorStoreState) error {
-		sourceID := activePublicMirrorSourceID(*storeState)
+	var sourceID string
+	if err := m.mutateState(ctx, func(storeState *PublicMirrorStoreState) error {
+		sourceID = activePublicMirrorSourceID(*storeState)
 		if sourceID == "" {
 			return nil
 		}
@@ -112,7 +137,13 @@ func (m *PublicMirrorServer) WithdrawCampaignDataset(ctx context.Context, runID 
 		}
 		state.WithdrawnDatasetIDs[datasetID] = true
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("public mirror: withdraw campaign dataset %s: %w", runID, err)
+	}
+	if sourceID != "" {
+		m.requestSnapshotResync(sourceID)
+	}
+	return nil
 }
 
 // CampaignDatasetWithdrawn reports whether one live campaign dataset is hidden

@@ -58,7 +58,7 @@ Restart the Gateway and it would wander off to 8087/8450, while every CLI comman
 `connection refused`. Lovely. The probe now keeps `SO_REUSEADDR` on Linux, and the CLI reads the bound ports from
 the running Gateway instead of assuming the defaults.
 
-All of this lands in v1.0.6, which isn't out yet.
+All of this shipped in v1.0.6.
 
 ## One command, still clunky
 

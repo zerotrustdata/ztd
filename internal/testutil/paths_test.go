@@ -20,7 +20,7 @@ import (
 func TestTempDir_CleanupSurvivesWorkingDirectoryChange(t *testing.T) {
 	original, err := os.Getwd()
 	require.NoError(t, err)
-	discoveryDir := t.TempDir()
+	discoveryDir := TempDir(t)
 	var root string
 	t.Run("directory discovery changes after allocation", func(t *testing.T) {
 		// Exercise TempDir's working-directory discovery and cleanup ownership.
@@ -33,4 +33,17 @@ func TestTempDir_CleanupSurvivesWorkingDirectoryChange(t *testing.T) {
 	})
 	_, err = os.Stat(root)
 	require.ErrorIs(t, err, os.ErrNotExist, "the owning test must remove its root even after directory discovery changes")
+}
+
+func TestTempDirAndOperatorDirLiveUnderModuleRuntime(t *testing.T) {
+	var scratch, operator string
+	t.Run("allocate", func(t *testing.T) {
+		scratch, operator = TempDir(t), OperatorDir(t)
+		require.Equal(t, filepath.Join(runtimeRoot, constants.TmpDirname), filepath.Dir(scratch))
+		require.Equal(t, filepath.Join(runtimeRoot, constants.OperatorsDirname), filepath.Dir(operator))
+	})
+	for _, dir := range []string{scratch, operator} {
+		_, err := os.Stat(dir)
+		require.ErrorIs(t, err, os.ErrNotExist, "%s must be removed when its test ends", dir)
+	}
 }

@@ -63,6 +63,30 @@ func appEnvelope(t *testing.T, appID string, source commonv1.Component) []byte {
 	})
 }
 
+// operatorEnvelope builds a wire envelope bound to the Operator identity that
+// operatorPeerRequest presents, so identity binding admits it.
+func operatorEnvelope(t *testing.T, id string) []byte {
+	t.Helper()
+	return marshalEnvelope(t, &commonv1.GovernanceEnvelope{
+		Id:                id,
+		OperatorId:        "op-1",
+		OperatorSessionId: "sess-1",
+	})
+}
+
+// operatorPeerRequest builds an envelope POST whose mTLS peer certificate is
+// the Operator SPIFFE ID that operatorEnvelope names.
+func operatorPeerRequest(t *testing.T, body []byte) *http.Request {
+	t.Helper()
+	spiffeURL, err := url.Parse("spiffe://ztd.local/operator/org-1/op-1/sess-1")
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(body))
+	req.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{{URIs: []*url.URL{spiffeURL}}},
+	}
+	return req
+}
+
 // fakeEnvelopeProcessor is a test double that returns predetermined results
 // for ProcessEnvelope. It captures the payload it was called with so tests
 // can assert the handler forwarded the body unchanged.
@@ -73,15 +97,7 @@ type fakeEnvelopeProcessor struct {
 	calls      int
 }
 
-// actionReceiptJSON represents the JSON response format for ActionReceipt
 // using protojson field naming conventions.
-type actionReceiptJSON struct {
-	TransactionID   string `json:"transaction_id"`
-	TransactionHash string `json:"transaction_hash"`
-	Signature       string `json:"signature"`
-	SignerKeyID     string `json:"signer_key_id"`
-}
-
 func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	f.calls++
 	f.gotPayload = append([]byte(nil), payload...)
@@ -121,7 +137,7 @@ func TestGovernanceEnvelope_NonPostMethod_Returns405(t *testing.T) {
 	require.Zero(t, proc.calls, "envelope processor must not be called for non-POST methods")
 }
 
-func TestGovernanceEnvelope_EmptyBody_Returns400(t *testing.T) {
+func TestGovernanceEnvelope_EmptyBody_ReturnsIngressRefusal(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
@@ -132,6 +148,32 @@ func TestGovernanceEnvelope_EmptyBody_Returns400(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Zero(t, proc.calls, "envelope processor must not be called for empty body")
+	got := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), got))
+	require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, got.GetCode())
+	require.Equal(t, constants.ErrInvalidJSONBody.Error(), got.GetError())
+}
+
+// TestGovernanceEnvelope_URISANMismatch_Returns403Refusal proves an Operator
+// envelope whose certificate names a different Operator session is refused
+// IDENTITY_BINDING_FAILED with 403, not a 500, and never reaches the processor.
+func TestGovernanceEnvelope_URISANMismatch_Returns403Refusal(t *testing.T) {
+	spiffeURL, parseErr := url.Parse("spiffe://ztd.local/operator/org-1/op-9/sess-9")
+	require.NoError(t, parseErr)
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-mismatch"}}
+	h := newGovernanceEnvelopeHandler(t, proc)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(operatorEnvelope(t, "tx-mismatch")))
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{URIs: []*url.URL{spiffeURL}}}}
+	w := httptest.NewRecorder()
+	h.governanceController.handleGovernanceEnvelope(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Zero(t, proc.calls, "an envelope whose certificate does not match must never reach the processor")
+	got := &operatorv1.IngressRefusal{}
+	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), got))
+	require.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED, got.GetCode())
+	require.Equal(t, constants.ErrURISANMismatch.Error(), got.GetError())
 }
 
 func TestGovernanceEnvelope_VerificationErrors_Return403(t *testing.T) {
@@ -145,12 +187,10 @@ func TestGovernanceEnvelope_VerificationErrors_Return403(t *testing.T) {
 		{"unknown action", governance.ErrUnknownActionType},
 		{"missing l2", governance.ErrL2SignatureMissing},
 		{"invalid l2 signature", governance.ErrL2SignatureInvalid},
-		{"unknown l2 signer", governance.ErrL2ConsensusNotConfigured},
+		{"unknown l2 signer", governance.ErrL2ConsensusSetUnknown},
 		{"missing l3 proof", governance.ErrL3ProofMissing},
 		{"invalid l3 proof", governance.ErrL3ProofInvalid},
-		{"l3 notary not configured", governance.ErrL3NotaryNotConfigured},
 		{"state root mismatch", governance.ErrStateRootMismatch},
-		{"state root missing", governance.ErrStateRootMissing},
 		{"state root required", governance.ErrStateRootRequired},
 		{"l1 validation failed", fmt.Errorf("%w: violation", governance.ErrL1ValidationFailed)},
 	}
@@ -160,7 +200,7 @@ func TestGovernanceEnvelope_VerificationErrors_Return403(t *testing.T) {
 			proc := &fakeEnvelopeProcessor{err: tc.err}
 			h := newGovernanceEnvelopeHandler(t, proc)
 
-			req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{"id":"x"}`)))
+			req := operatorPeerRequest(t, operatorEnvelope(t, "x"))
 			w := httptest.NewRecorder()
 
 			h.governanceController.handleGovernanceEnvelope(w, req)
@@ -176,23 +216,77 @@ func TestGovernanceEnvelope_VerificationErrors_Return403(t *testing.T) {
 	}
 }
 
-func TestGovernanceEnvelope_DecodeFailure_Returns400(t *testing.T) {
+// TestGovernanceEnvelope_VerifierUnavailable_Returns503 proves an L4 that
+// cannot run (dependency absent, vault locked) is a server condition, not a
+// caller rejection.
+func TestGovernanceEnvelope_VerifierUnavailable_Returns503(t *testing.T) {
+	for _, sentinel := range []error{
+		governance.ErrL3NotaryNotConfigured,
+		governance.ErrStateRootMissing,
+		constants.ErrTxDoctrineMissing,
+		constants.ErrWardenVaultLocked,
+	} {
+		t.Run(sentinel.Error(), func(t *testing.T) {
+			h := newGovernanceEnvelopeHandler(t, &fakeEnvelopeProcessor{err: sentinel})
+			req := operatorPeerRequest(t, operatorEnvelope(t, "x"))
+			w := httptest.NewRecorder()
+
+			h.governanceController.handleGovernanceEnvelope(w, req)
+
+			require.Equal(t, http.StatusServiceUnavailable, w.Code)
+		})
+	}
+}
+
+// TestGovernanceEnvelope_Rejection_ReturnsSignedReceipt proves an L4
+// rejection hands the caller the Operator's signed receipt with its typed
+// rejection_code, and renders only the sentinel as error text.
+func TestGovernanceEnvelope_Rejection_ReturnsSignedReceipt(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId: "tx-rejected",
+		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED,
+		Signature:     "sig",
+	}
+	verifyErr := fmt.Errorf("%w: expired 3s ago", governance.ErrTransactionExpired)
+	proc := &fakeEnvelopeProcessor{receipt: receipt, err: governance.WithRejectionReceipt(receipt, verifyErr)}
+	h := newGovernanceEnvelopeHandler(t, proc)
+
+	req := operatorPeerRequest(t, operatorEnvelope(t, "x"))
+	w := httptest.NewRecorder()
+	h.governanceController.handleGovernanceEnvelope(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	got := &operatorv1.GovernanceRejection{}
+	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), got))
+	require.Equal(t, governance.ErrTransactionExpired.Error(), got.GetError())
+	require.Equal(t, "tx-rejected", got.GetReceipt().GetTransactionId())
+	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED, got.GetReceipt().GetRejectionCode())
+	require.Equal(t, "sig", got.GetReceipt().GetSignature())
+}
+
+// TestGovernanceEnvelope_UnparseableEnvelope_Refused proves an envelope that
+// cannot be decoded is refused at the identity binding gate with 400, and never
+// reaches the processor.
+func TestGovernanceEnvelope_UnparseableEnvelope_Refused(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{err: fmt.Errorf("%w: unexpected token", constants.ErrTxInvalidEnvelope)}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
-	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`not-json`)))
+	req := operatorPeerRequest(t, []byte(`not-json`))
 	w := httptest.NewRecorder()
 
 	h.governanceController.handleGovernanceEnvelope(w, req)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Zero(t, proc.calls, "an unparseable envelope must never reach the processor")
 }
 
 func TestGovernanceEnvelope_OversizedPayload_Returns400(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{err: fmt.Errorf("payload exceeds 1048576 byte limit: %w", constants.ErrPayloadExceedsLimit)}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
-	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{}`)))
+	req := operatorPeerRequest(t, operatorEnvelope(t, "tx-big"))
 	w := httptest.NewRecorder()
 
 	h.governanceController.handleGovernanceEnvelope(w, req)
@@ -215,8 +309,8 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{receipt: receipt}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
-	body := []byte(`{"id":"tx-abc"}`)
-	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(body))
+	body := operatorEnvelope(t, "tx-abc")
+	req := operatorPeerRequest(t, body)
 	w := httptest.NewRecorder()
 
 	h.governanceController.handleGovernanceEnvelope(w, req)
@@ -224,23 +318,48 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, 1, proc.calls)
 
-	// The handler injects the gateway's posture into the envelope before
+	// The handler stamps the gateway's posture into the envelope before
 	// forwarding to the processor. The test config uses PostureNotary, so the
 	// processor receives the posture field alongside the client's original
-	// fields. Posture is not part of the transaction hash, so this injection
+	// fields. Posture is not part of the transaction hash, so this stamp
 	// does not invalidate the client's signature.
 	var forwarded commonv1.GovernanceEnvelope
 	require.NoError(t, protojson.Unmarshal(proc.gotPayload, &forwarded))
 	require.Equal(t, "tx-abc", forwarded.GetId())
-	require.Equal(t, constants.PostureNotary, forwarded.GetPosture(), "handler must inject gateway posture into the envelope")
+	require.Equal(t, constants.PostureNotary, forwarded.GetPosture(), "handler must stamp gateway posture onto the envelope")
 
-	// Receipt should be returned as JSON. Field names follow protojson.
-	var got actionReceiptJSON
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	require.Equal(t, "tx-abc", got.TransactionID)
-	require.Equal(t, "abc123", got.TransactionHash)
-	require.Equal(t, "deadbeef", got.Signature)
-	require.Equal(t, "Actuator-key-id", got.SignerKeyID)
+	// Receipt is returned as canonical protojson (proto field names).
+	got := &operatorv1.ActionReceipt{}
+	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), got))
+	require.Equal(t, "tx-abc", got.GetTransactionId())
+	require.Equal(t, "abc123", got.GetTransactionHash())
+	require.Equal(t, "deadbeef", got.GetSignature())
+	require.Equal(t, "Actuator-key-id", got.GetSignerKeyId())
+	require.Contains(t, w.Body.String(), `"transaction_id"`)
+}
+
+func TestGovernanceEnvelope_CallerSuppliedPosture_ReturnsIngressRefusal(t *testing.T) {
+	// Only the gateway sets posture. A caller-supplied one (here a doctrine
+	// downgrade sent to a notary gateway) is refused before processing.
+	for _, posture := range []string{constants.PostureDoctrine, constants.PostureNotary} {
+		proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-posture"}}
+		h := newGovernanceEnvelopeHandler(t, proc)
+
+		body := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
+			Id:                "tx-posture",
+			Posture:           posture,
+			OperatorId:        "op-1",
+			OperatorSessionId: "sess-1",
+		})
+		req := operatorPeerRequest(t, body)
+		w := httptest.NewRecorder()
+
+		h.governanceController.handleGovernanceEnvelope(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code, posture)
+		require.JSONEq(t, `{"code":"INGRESS_REFUSAL_CODE_CALLER_SUPPLIED_POSTURE","error":"`+constants.ErrEnvelopePostureCallerSupplied.Error()+`"}`, w.Body.String(), posture)
+		require.Zero(t, proc.calls, "a caller-supplied posture must never reach the processor")
+	}
 }
 
 func TestGovernanceEnvelope_FailedExecution_StillReturns200(t *testing.T) {
@@ -259,12 +378,13 @@ func TestGovernanceEnvelope_FailedExecution_StillReturns200(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{receipt: receipt, err: nil}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
-	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{"id":"tx-fail"}`)))
+	req := operatorPeerRequest(t, operatorEnvelope(t, "tx-fail"))
 	w := httptest.NewRecorder()
 
 	h.governanceController.handleGovernanceEnvelope(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"status":"EXECUTION_STATUS_FAILED"`, "enums render by name, as canonical protojson")
 }
 
 func TestGovernanceEnvelope_NilReceiptNilError_Returns500(t *testing.T) {
@@ -273,7 +393,7 @@ func TestGovernanceEnvelope_NilReceiptNilError_Returns500(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{receipt: nil, err: nil}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
-	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{}`)))
+	req := operatorPeerRequest(t, operatorEnvelope(t, "tx-nil"))
 	w := httptest.NewRecorder()
 
 	h.governanceController.handleGovernanceEnvelope(w, req)
@@ -419,10 +539,10 @@ func TestVerifyEnvelopeIdentityBinding_AppCertificateRejectsMismatchedActingApp(
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 	})
 	err := verifyEnvelopeIdentityBinding(req, envelope)
-	require.ErrorIs(t, err, constants.ErrURISANMismatch)
+	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
 }
 
-func TestVerifyEnvelopeIdentityBinding_InvalidJSON_ReturnsNil(t *testing.T) {
+func TestVerifyEnvelopeIdentityBinding_InvalidJSON_ReturnsError(t *testing.T) {
 	spiffeURL, parseErr := url.Parse("spiffe://ztd.local/operator/org-1/op-1/sess-1")
 	require.NoError(t, parseErr)
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{}`)))
@@ -433,7 +553,68 @@ func TestVerifyEnvelopeIdentityBinding_InvalidJSON_ReturnsNil(t *testing.T) {
 	}
 	envelope := []byte(`not-json`)
 	err := verifyEnvelopeIdentityBinding(req, envelope)
-	require.NoError(t, err, "invalid JSON should pass through to processor for decode error")
+	require.ErrorIs(t, err, constants.ErrTxInvalidEnvelope, "an unparseable envelope must be refused, not passed downstream")
+}
+
+// TestVerifyEnvelopeIdentityBinding_RequestorBinding proves requestor_user_id
+// must equal the user the auth middleware authenticated: a forged, missing, or
+// extra requestor is refused, and only an exact match is admitted.
+func TestVerifyEnvelopeIdentityBinding_RequestorBinding(t *testing.T) {
+	cliURL, parseErr := url.Parse("spiffe://ztd.local/cli/user-A/cli-sess-1")
+	require.NoError(t, parseErr)
+	appURL, parseErr := url.Parse("spiffe://ztd.local/app/test-app")
+	require.NoError(t, parseErr)
+
+	cases := []struct {
+		name      string
+		uri       *url.URL
+		ctxUser   string
+		requestor string
+		wantErr   bool
+	}{
+		{name: "match", uri: cliURL, ctxUser: "user-A", requestor: "user-A"},
+		{name: "forged requestor", uri: cliURL, ctxUser: "user-A", requestor: "user-B", wantErr: true},
+		{name: "missing requestor", uri: cliURL, ctxUser: "user-A", requestor: "", wantErr: true},
+		{name: "extra requestor on certificate without a user", uri: appURL, ctxUser: "", requestor: "user-A", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{}`)))
+			req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{URIs: []*url.URL{tc.uri}}}}
+			if tc.ctxUser != "" {
+				req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, tc.ctxUser))
+			}
+			envelope := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
+				OperatorId:        "op-1",
+				OperatorSessionId: "sess-1",
+				CliSessionId:      "cli-sess-1",
+				RequestorUserId:   tc.requestor,
+			})
+			err := verifyEnvelopeIdentityBinding(req, envelope)
+			if tc.wantErr {
+				require.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestVerifyEnvelopeIdentityBinding_ActingAppNotInCertificate_Refused proves an
+// Operator-bound envelope cannot claim an acting_app_id the certificate does not
+// prove, even when the Operator binding itself matches.
+func TestVerifyEnvelopeIdentityBinding_ActingAppNotInCertificate_Refused(t *testing.T) {
+	spiffeURL, parseErr := url.Parse("spiffe://ztd.local/operator/org-1/op-1/sess-1")
+	require.NoError(t, parseErr)
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{}`)))
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{URIs: []*url.URL{spiffeURL}}}}
+	envelope := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
+		OperatorId:        "op-1",
+		OperatorSessionId: "sess-1",
+		ActingAppId:       "other-app",
+	})
+	err := verifyEnvelopeIdentityBinding(req, envelope)
+	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
 }
 
 func TestVerifyEnvelopeIdentityBinding_NoIdentityFields_FailsClosed(t *testing.T) {
@@ -449,4 +630,67 @@ func TestVerifyEnvelopeIdentityBinding_NoIdentityFields_FailsClosed(t *testing.T
 	require.NoError(t, marshalErr)
 	err := verifyEnvelopeIdentityBinding(req, envelope)
 	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed, "an unbound envelope must fail closed")
+}
+
+// TestGovernanceEnvelope_NoTLS_Refused proves an envelope POST without an mTLS
+// client certificate is refused with 403 MTLS_REQUIRED, renders only the
+// sentinel, and never reaches the processor.
+func TestGovernanceEnvelope_NoTLS_Refused(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-unbound"}}
+	h := newGovernanceEnvelopeHandler(t, proc)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(operatorEnvelope(t, "tx-unbound")))
+	w := httptest.NewRecorder()
+	h.governanceController.handleGovernanceEnvelope(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.JSONEq(t, `{"code":"INGRESS_REFUSAL_CODE_MTLS_REQUIRED","error":"`+constants.ErrMTLSRequired.Error()+`"}`, w.Body.String())
+	require.Zero(t, proc.calls)
+}
+
+// TestGovernanceEnvelope_ActingAppMismatch_Refused proves an Operator-bound
+// envelope whose acting_app_id is not in the certificate is refused with 403
+// before it reaches the processor.
+func TestGovernanceEnvelope_ActingAppMismatch_Refused(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-app"}}
+	h := newGovernanceEnvelopeHandler(t, proc)
+
+	body := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
+		Id:                "tx-app",
+		OperatorId:        "op-1",
+		OperatorSessionId: "sess-1",
+		ActingAppId:       "other-app",
+	})
+	req := operatorPeerRequest(t, body)
+	w := httptest.NewRecorder()
+	h.governanceController.handleGovernanceEnvelope(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Zero(t, proc.calls, "an acting app outside the certificate must never reach the processor")
+}
+
+// TestGovernanceEnvelope_RequestorMismatch_Refused proves a CLI certificate for
+// user A cannot submit an envelope acting for user B: the handler refuses it
+// with 403 before it reaches the processor.
+func TestGovernanceEnvelope_RequestorMismatch_Refused(t *testing.T) {
+	cliURL, parseErr := url.Parse("spiffe://ztd.local/cli/user-A/cli-sess-1")
+	require.NoError(t, parseErr)
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-req"}}
+	h := newGovernanceEnvelopeHandler(t, proc)
+
+	body := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
+		Id:                "tx-req",
+		OperatorId:        "op-1",
+		OperatorSessionId: "sess-1",
+		CliSessionId:      "cli-sess-1",
+		RequestorUserId:   "user-B",
+	})
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(body))
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{URIs: []*url.URL{cliURL}}}}
+	req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, "user-A"))
+	w := httptest.NewRecorder()
+	h.governanceController.handleGovernanceEnvelope(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Zero(t, proc.calls, "a requestor the certificate does not authenticate must never reach the processor")
 }

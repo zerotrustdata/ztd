@@ -28,7 +28,7 @@ import (
 // (SQLite audit store, Git ledger service, encryption vault) for testing.
 func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *SQLAuditStore, *vault.Vault, string) {
 	t.Helper()
-	tempDir := testutil.TempDir(t)
+	tempDir := testutil.OperatorDir(t)
 
 	fileSvc := newTestFileSvc(t, tempDir)
 

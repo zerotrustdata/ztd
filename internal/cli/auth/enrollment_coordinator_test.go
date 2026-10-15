@@ -450,7 +450,7 @@ func TestNewEnrollmentCoordinator_NilRequiredDeps(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrInternal)
 	assert.Contains(t, err.Error(), "FileSvc is required")
 
-	fileSvc, err := fs.NewRuntimeFileService(t.TempDir(), slog.Default())
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), slog.Default())
 	require.NoError(t, err)
 
 	_, err = NewEnrollmentCoordinator(EnrollmentCoordinatorDeps{FileSvc: fileSvc})

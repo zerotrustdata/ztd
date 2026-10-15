@@ -46,6 +46,10 @@ func (m *mockMCPServiceProvider) ResumeWithL3Proof(_ context.Context, _, _ strin
 	return m.receipt, m.err
 }
 
+func (m *mockMCPServiceProvider) DenySuspendedTransaction(_ context.Context, _, _ string) (*operatorv1.ActionReceipt, error) {
+	return m.receipt, m.err
+}
+
 func TestPasskeyService_HandleApprovalAction(t *testing.T) {
 	t.Run("Failure - unauthorized", func(t *testing.T) {
 		s, _, _ := setupTestPasskeyService(t)
@@ -181,80 +185,6 @@ func TestPasskeyService_HandleApprovalVerify(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
-}
-
-func TestApprovalReceiptReference_FailsClosedOnMalformedOrIncompleteIdentity(t *testing.T) {
-	validSuspended := func(t *testing.T) *models.SuspendedTransaction {
-		payload, err := proto.Marshal(&operatorv1.McpCallRequested{ExecutionId: "execution-approval-reference-1"})
-		require.NoError(t, err)
-		envelope, err := protojson.Marshal(&commonv1.GovernanceEnvelope{ActionType: string(constants.ActionTypeMcpCall), Payload: payload, InvestigationId: "investigation-approval-reference-1"})
-		require.NoError(t, err)
-		return &models.SuspendedTransaction{TransactionHash: "hash-approval-reference-1", Envelope: envelope}
-	}
-	validReceipt := func() *operatorv1.ActionReceipt {
-		return &operatorv1.ActionReceipt{
-			TransactionId:   "transaction-approval-reference-1",
-			TransactionHash: "hash-approval-reference-1",
-			SignerKeyId:     "warden-key-approval-reference-1",
-			Signature:       "signature-approval-reference-1",
-		}
-	}
-
-	tests := []struct {
-		name       string
-		mutate     func(*models.SuspendedTransaction, *operatorv1.ActionReceipt)
-		nilSource  bool
-		nilReceipt bool
-		wantTyped  bool
-	}{
-		{name: "nil suspended transaction", nilSource: true, wantTyped: true},
-		{name: "nil resumed receipt", nilReceipt: true, wantTyped: true},
-		{name: "malformed suspended envelope", mutate: func(tx *models.SuspendedTransaction, _ *operatorv1.ActionReceipt) {
-			tx.Envelope = []byte(`{not valid json`)
-		}},
-		{name: "malformed suspended payload", mutate: func(tx *models.SuspendedTransaction, _ *operatorv1.ActionReceipt) {
-			tx.Envelope = mustCanonicalEnvelope(t, &commonv1.GovernanceEnvelope{Payload: []byte{0xff}, InvestigationId: "investigation-approval-reference-1"})
-		}},
-		{name: "missing execution ID", mutate: func(tx *models.SuspendedTransaction, _ *operatorv1.ActionReceipt) {
-			tx.Envelope = mustCanonicalEnvelope(t, &commonv1.GovernanceEnvelope{ActionType: string(constants.ActionTypeMcpCall), InvestigationId: "investigation-approval-reference-1"})
-		}, wantTyped: true},
-		{name: "missing investigation ID", mutate: func(tx *models.SuspendedTransaction, _ *operatorv1.ActionReceipt) {
-			payload, err := proto.Marshal(&operatorv1.McpCallRequested{ExecutionId: "execution-approval-reference-1"})
-			require.NoError(t, err)
-			tx.Envelope = mustCanonicalEnvelope(t, &commonv1.GovernanceEnvelope{ActionType: string(constants.ActionTypeMcpCall), Payload: payload})
-		}, wantTyped: true},
-		{name: "missing transaction ID", mutate: func(_ *models.SuspendedTransaction, receipt *operatorv1.ActionReceipt) { receipt.TransactionId = "" }, wantTyped: true},
-		{name: "missing transaction hash", mutate: func(_ *models.SuspendedTransaction, receipt *operatorv1.ActionReceipt) { receipt.TransactionHash = "" }, wantTyped: true},
-		{name: "mismatched transaction hash", mutate: func(_ *models.SuspendedTransaction, receipt *operatorv1.ActionReceipt) {
-			receipt.TransactionHash = "different-hash"
-		}, wantTyped: true},
-		{name: "missing signer key ID", mutate: func(_ *models.SuspendedTransaction, receipt *operatorv1.ActionReceipt) { receipt.SignerKeyId = "" }, wantTyped: true},
-		{name: "missing signature", mutate: func(_ *models.SuspendedTransaction, receipt *operatorv1.ActionReceipt) { receipt.Signature = "" }, wantTyped: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			suspendedTx := validSuspended(t)
-			receipt := validReceipt()
-			if tt.mutate != nil {
-				tt.mutate(suspendedTx, receipt)
-			}
-			if tt.nilSource {
-				suspendedTx = nil
-			}
-			if tt.nilReceipt {
-				receipt = nil
-			}
-
-			ref, err := approvalReceiptReference(suspendedTx, receipt)
-
-			require.Error(t, err)
-			assert.Nil(t, ref)
-			if tt.wantTyped {
-				assert.ErrorIs(t, err, constants.ErrApprovalReceiptReferenceInvalid)
-			}
-		})
-	}
 }
 
 func mustCanonicalEnvelope(t *testing.T, envelope *commonv1.GovernanceEnvelope) []byte {
@@ -537,11 +467,13 @@ func TestEmitApprovalCompletedSSE(t *testing.T) {
 		const userID = "u-approval-sse-1"
 		const txHash = "tx-approval-sse-1"
 
-		receipt := &models.ApprovalReceiptReference{
-			ExecutionID: "execution-approval-sse-1", TransactionID: "transaction-approval-sse-1", TransactionHash: txHash,
-			SignerKeyID: "warden-key-approval-sse-1", Signature: "signature-approval-sse-1", InvestigationID: "investigation-approval-sse-1",
+		receipt := &operatorv1.ActionReceipt{
+			TransactionId: "transaction-approval-sse-1", TransactionHash: txHash,
+			SignerKeyId: "warden-key-approval-sse-1", Signature: "signature-approval-sse-1",
 		}
-		handler.orchestrator.EmitApprovalCompletedSSE(userID, "cli-approval-sse-1", txHash, receipt)
+		receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
+		require.NoError(t, err)
+		handler.orchestrator.EmitApprovalCompletedSSE(userID, "cli-approval-sse-1", txHash, receiptJSON)
 
 		route := SSERoute{UserID: userID, CLISessionID: "cli-approval-sse-1"}
 		events, err := sseStore.SSEEventsListSince(route, 0, 10)
@@ -560,7 +492,7 @@ func TestEmitApprovalCompletedSSE(t *testing.T) {
 		assert.Equal(t, constants.SSEEventTypeApprovalCompleted, inner.Type)
 		assert.Equal(t, userID, inner.UserID)
 		assert.Equal(t, txHash, inner.TxHash)
-		assert.Equal(t, receipt, inner.Receipt)
+		assert.JSONEq(t, string(receiptJSON), string(inner.Receipt), "approval.completed must carry the canonical receipt bytes")
 	})
 
 	t.Run("no-ops when SSE dependencies not set", func(t *testing.T) {
@@ -694,13 +626,74 @@ func TestHandleApprovalVerify_SSE_EmittedToApproverWhenSuspendedTxUserIDEmpty(t 
 	assert.Equal(t, constants.SSEEventTypeApprovalCompleted, inner.Type)
 	assert.Equal(t, approverUserID, inner.UserID)
 	assert.Equal(t, txHash, inner.TxHash)
-	require.NotNil(t, inner.Receipt)
-	assert.Equal(t, executionID, inner.Receipt.ExecutionID)
-	assert.Equal(t, "transaction-approval-sse-test", inner.Receipt.TransactionID)
-	assert.Equal(t, txHash, inner.Receipt.TransactionHash)
-	assert.Equal(t, investigationID, inner.Receipt.InvestigationID)
-	assert.Equal(t, "warden-key-approval-sse-test", inner.Receipt.SignerKeyID)
-	assert.Equal(t, "signature-approval-sse-test", inner.Receipt.Signature)
+	var receipt operatorv1.ActionReceipt
+	require.NoError(t, protojson.Unmarshal(inner.Receipt, &receipt), "approval.completed must carry the strict protojson receipt")
+	assert.Equal(t, "transaction-approval-sse-test", receipt.GetTransactionId())
+	assert.Equal(t, txHash, receipt.GetTransactionHash())
+	assert.Equal(t, "warden-key-approval-sse-test", receipt.GetSignerKeyId())
+	assert.Equal(t, "signature-approval-sse-test", receipt.GetSignature())
+}
+
+func TestHandleApprovalVerify_FailsClosedWhenResumedReceiptIsForAnotherTransaction(t *testing.T) {
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
+	resp := response.NewWriter(logger)
+	svc, err := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+	require.NoError(t, err)
+	sseStore := db.GetSSEStore()
+	pubsub := NewGatewayWebSocketHandler(logger)
+	t.Cleanup(func() { pubsub.Close() })
+
+	const approverUserID = "u-approver-mismatch-test"
+	const submitterCLISessionID = "cli-submitter-mismatch-test"
+	const txHash = "tx-mismatch-suspended"
+
+	requestPayload, err := proto.Marshal(&operatorv1.McpCallRequested{ExecutionId: "execution-mismatch-test"})
+	require.NoError(t, err)
+	envelope, err := protojson.Marshal(&commonv1.GovernanceEnvelope{ActionType: string(constants.ActionTypeMcpCall), Payload: requestPayload, InvestigationId: "investigation-mismatch-test"})
+	require.NoError(t, err)
+
+	mockMCP := &mockMCPServiceProvider{
+		suspendedTx: &models.SuspendedTransaction{
+			TransactionHash:       txHash,
+			OperatorSessionID:     "operator-session-1",
+			Envelope:              envelope,
+			UserID:                approverUserID,
+			SubmitterCLISessionID: submitterCLISessionID,
+			ToolName:              "test-tool",
+			ToolArguments:         []byte("{}"),
+			ExpiresAt:             time.Now().Add(5 * time.Minute),
+		},
+		found: true,
+		// The resumed receipt names a different transaction than the suspended one.
+		receipt: &operatorv1.ActionReceipt{
+			TransactionId: "transaction-other", TransactionHash: "tx-other-transaction",
+			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			SignerKeyId: "warden-key-mismatch", Signature: "signature-mismatch",
+		},
+	}
+	orchestrator, err := NewPasskeyOrchestrator(mockMCP, nil, sseStore, pubsub, logger)
+	require.NoError(t, err)
+	handler := NewPasskeyHandler(PasskeyHandlerDeps{
+		Service:       svc,
+		WebSessionSvc: webSessionSvc,
+		Responder:     resp,
+		MaxPayload:    10 * 1024 * 1024,
+		Orchestrator:  orchestrator,
+	})
+
+	body := `{"id":"cred-1","rawId":"cred-1","clientDataJSON":"{}","authenticatorData":"{}","signature":"sig"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/approvals/"+txHash+"/verify", strings.NewReader(body))
+	req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, approverUserID))
+	rr := httptest.NewRecorder()
+
+	handler.handleApprovalVerify(rr, req, txHash, approverUserID)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code, "a receipt for another transaction must not be reported as this approval")
+	events, err := sseStore.SSEEventsListSince(SSERoute{UserID: approverUserID, CLISessionID: submitterCLISessionID}, 0, 10)
+	require.NoError(t, err)
+	assert.Empty(t, events, "no approval.completed event may be emitted for a mismatched receipt")
 }
 
 func TestPasskeyService_HandleListSuspendedTransactions(t *testing.T) {

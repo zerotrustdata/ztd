@@ -9,6 +9,7 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,7 +73,11 @@ func rolloutRunCmd(deps nativeEvalDeps) *cobra.Command {
 built-in suite, run every model-role assignment through the governed Inference
 and Data Operators, and verify the run with provider observation and model
 provenance required. A verified run marks the entry verified; a failed entry is
-marked failed and the batch continues.
+marked failed and the batch continues. A run in which the provider failed every
+assignment, as when it rejects tool declarations for the model, fails. Stopping
+a run (Ctrl-C or 'ztd eval runs cancel') ends the batch and leaves its entry
+pending. The batch holds the queue lock, so 'rollout add', 'remove', 'retry',
+'skip', and a second batch fail until it ends.
 
 --gate-smoke screens each model first with a fast smoke campaign
 (<campaign>-smoke). A smoke pass does not verify the entry; add
@@ -134,6 +139,13 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 	if err != nil {
 		return err
 	}
+	if !opts.DryRun {
+		held, err := evaluation.LockRolloutQueue(cmd.Context(), fileSvc)
+		if err != nil {
+			return fmt.Errorf("evaluation: rollout run: %w", err)
+		}
+		defer func() { _ = held.Close() }()
+	}
 	queue, err := evaluation.LoadRolloutQueue(cmd.Context(), fileSvc)
 	if err != nil {
 		return fmt.Errorf("evaluation: rollout run: %w", err)
@@ -178,6 +190,7 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 	if jsonOutput {
 		progress = stderr
 	}
+	var stopErr error
 	for _, entry := range plan {
 		_, _ = fmt.Fprintf(progress, "=== START %s (%s) ===\n", entry.VariantID, entry.ServedModelTag)
 		// Per-model output goes to the caller's streams only. It quotes grade
@@ -195,6 +208,13 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 
 		runs, runErr := qualifyRolloutEntry(&sub, fileSvc, runGate, entry, opts)
 		result.Runs = append(result.Runs, runs...)
+		if errors.Is(runErr, constants.ErrEvaluationRunStopped) {
+			// An operator stop is not a model outcome: the entry stays
+			// pending and no later entry starts.
+			_, _ = fmt.Fprintf(progress, "STOPPED %s (%s)\n", entry.VariantID, entry.ServedModelTag)
+			stopErr = fmt.Errorf("evaluation: rollout run: %s: %w", entry.VariantID, runErr)
+			break
+		}
 		if runErr != nil {
 			result.Failed++
 			result.Failures = append(result.Failures, rolloutRunFailure{VariantID: entry.VariantID, Tag: entry.ServedModelTag, Error: runErr.Error()})
@@ -211,7 +231,7 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 			_, _ = fmt.Fprintf(progress, "PASS %s %s -> %s\n", entry.VariantID, last.Gate, last.RunID)
 		}
 	}
-	return finishRolloutRun(cmd, result)
+	return errors.Join(stopErr, finishRolloutRun(cmd, result))
 }
 
 // qualifyRolloutEntry runs the gates the options ask for against one queue
@@ -297,7 +317,82 @@ func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeF
 	if result != nil && result.RunID != "" {
 		run = &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, CampaignID: campaignID, RunID: result.RunID, Gate: gate}
 	}
+	if err == nil && run != nil {
+		err = requireRunServed(cmd.Context(), fileSvc, gate, run.RunID)
+	}
 	return run, err
+}
+
+// requireRunServed fails a gate when the provider failed every assignment
+// before the model answered, as when the provider rejects tool declarations
+// for the model. Such a run verifies, since its evidence is intact, but it
+// holds no inference, so it neither promotes nor verifies the model.
+func requireRunServed(ctx context.Context, fileSvc fs.RuntimeFileService, gate, runID string) error {
+	store := evaluation.NewStore(fileSvc)
+	assignments, err := store.ListAssignments(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("%s gate: run %s: %w", gate, runID, err)
+	}
+	results, err := store.LoadAssignmentResults(ctx, runID, assignments)
+	if err != nil {
+		return fmt.Errorf("%s gate: run %s: %w", gate, runID, err)
+	}
+	for _, result := range results {
+		if result.GetLifecycleStatus() != evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED {
+			return nil
+		}
+	}
+	class, err := runProviderFailureClass(ctx, store, runID, assignments)
+	if err != nil {
+		return fmt.Errorf("%s gate: run %s: %w", gate, runID, err)
+	}
+	return &rolloutUnservedError{Gate: gate, RunID: runID, Class: class}
+}
+
+// rolloutUnservedError is a gate run the provider served no assignment of.
+// Class is the inference attempt failure class most of its traces record
+// (capability_unsupported for a model without tool support), or "" when none
+// does.
+type rolloutUnservedError struct {
+	Gate  string
+	RunID string
+	Class string
+}
+
+func (e *rolloutUnservedError) Error() string {
+	reason := "every assignment failed at the provider"
+	if e.Class != "" {
+		reason += " (" + e.Class + ")"
+	}
+	return fmt.Sprintf("%s gate: run %s: %s: %v", e.Gate, e.RunID, reason, constants.ErrEvaluationModelUnserved)
+}
+
+func (e *rolloutUnservedError) Unwrap() error { return constants.ErrEvaluationModelUnserved }
+
+// runProviderFailureClass returns the attempt failure class most agent traces
+// of a run record. An assignment whose executor failed before a trace was
+// sealed has none and is skipped.
+func runProviderFailureClass(ctx context.Context, store *evaluation.Store, runID string, assignments []*evalv1.EvaluationAssignment) (string, error) {
+	counts := make(map[string]int)
+	for _, assignment := range assignments {
+		trace, err := store.LoadAssignmentAgentTrace(ctx, runID, assignment.GetAssignmentId())
+		if errors.Is(err, constants.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if trace.ProviderFailureClass != "" {
+			counts[trace.ProviderFailureClass]++
+		}
+	}
+	best := ""
+	for class, count := range counts {
+		if count > counts[best] || (count == counts[best] && class < best) {
+			best = class
+		}
+	}
+	return best, nil
 }
 
 func findVariant(variants []*evalv1.ModelVariant, variantID string) *evalv1.ModelVariant {
@@ -314,8 +409,12 @@ func findVariant(variants []*evalv1.ModelVariant, variantID string) *evalv1.Mode
 func markRolloutFailure(ctx context.Context, fileSvc fs.RuntimeFileService, entry evaluation.CampaignQueueModel, runs []rolloutRunSuccess, runErr error) error {
 	// The queue is plaintext, so it records the failure class, never the error
 	// text, which can echo model, provider, or target content.
-	class := evaluation.ClassifyExecutionFailure(runErr)
-	notes := "failed: " + string(class)
+	class := string(evaluation.ClassifyExecutionFailure(runErr))
+	var unserved *rolloutUnservedError
+	if errors.As(runErr, &unserved) && unserved.Class != "" {
+		class += " (" + unserved.Class + ")"
+	}
+	notes := "failed: " + class
 	runID := ""
 	if len(runs) > 0 {
 		runID = runs[len(runs)-1].RunID

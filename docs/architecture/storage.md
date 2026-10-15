@@ -3,8 +3,8 @@ doc_id: storage
 title: Storage Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/services/storage/
   - internal/constants/paths.go
@@ -48,7 +48,7 @@ Documents ztd's storage architecture: local SQLite databases, persistence topolo
 | INV-STOR-KV-01 | The Gateway exposes no HTTP KV API. Session, nonce, scrubbing-token, and other KV keys are private to Gateway services. |
 | INV-STOR-KV-02 | No `kv_store` row is a derived copy of a document or query result, and document writes MUST NOT write or delete KV rows. Every `kv_store` row is committed state in the bound or observed tier. |
 | INV-STOR-KV-03 | Gateway services and application clients MUST use Gateway storage primitives and MUST NOT emulate atomic counters, hashes, lists, or nonce reservation through client-side read/modify/write. Governed replay protection belongs to the executing runtime's uniqueness-constrained replay store. |
-| INV-STOR-ENC-01 | Every column or file that holds content (command lines, output, file contents and paths, target resources, summaries, receipt and attestation bodies, envelopes, tool arguments, diff stats, session titles and identities) MUST be encrypted with the runtime vault before it is written. A nil or locked vault MUST fail the write and the read with a typed sentinel. MUST NOT add a plaintext branch, an `encrypted` flag, or a fallback. Only identifiers, hashes, signatures, enum types and statuses, timestamps, sizes, counts, exit codes, and key IDs stay plaintext. |
+| INV-STOR-ENC-01 | Vault-protected content fields (command lines and output, file snapshots and paths, target resources, summaries, receipt and attestation bodies, suspended envelopes and tool arguments, diff stats, and session titles and identities) MUST be encrypted with the runtime vault before they are written. A nil or locked vault MUST fail protected writes and reads with a typed error. MUST NOT add a plaintext branch, an `encrypted` flag, or a fallback. Platform documents, SSE payloads, approval proof fields, and the explicitly listed inference evidence metadata are outside this field-level encryption boundary; see Security Properties. Identifiers, hashes, signatures, enum types and statuses, timestamps, sizes, counts, exit codes, and key IDs stay plaintext. |
 | INV-STOR-ONE-01 | Each runtime root persists local state in one SQLite database (`data/ztd.db`) and one file ledger (`data/ledger/`), plus the vault, secrets, and inference trees. Each fact has one owning record and one store implementation: MUST NOT add a second database file, a second table holding the same fact in another shape, or a parallel implementation of an existing store. |
 | INV-STOR-EGRESS-01 | Local stores hold full, unscrubbed content (encrypted per INV-STOR-ENC-01). Every result that leaves the runtime MUST pass the single egress choke point (`pubsub.BuildUniversalResultEnvelope`, backed by `scrubbing.ScrubbingService`). With no scrubber, egress publishes the typed failure event and never the raw content. The Gateway HTTP audit endpoints (`/api/v1/audit/events`, `/report`, `/receipts`, `/receipts/export`) scrub every content-bearing field (`command_raw`, receipt `target_resource` and `result_summary`) before the response, `AuditController` requires a scrubber at construction, and a disabled scrubber returns 503 with `ErrEgressScrubberUnavailable`. `mcp.GatewayService.DispatchToDownstream` scrubs every branch (read_field, native tools, downstream MCP) and fails closed with no scrubber. The L5 actuator signs a result digest only from the typed `CommandMessage.InferenceResultDigest` channel of an INFERENCE action; every other handler output is scrubbed text, and no output is recognized by shape. |
 | INV-STOR-LOG-01 | Logs carry no execution content. Logger calls MUST NOT include command lines, arguments, stdout or stderr, file paths and patterns, target resources, summaries, diffs, envelopes, tool arguments, prompts, or outputs, as attributes or in the message, and MUST NOT log an error whose text embeds them (use `logging.ErrorKind`). Log identifiers (`execution_id`, transaction hash, `operator_session_id`), sizes, counts, and exit codes instead; the raw content lives only in the encrypted `events` table. `TestLoggerCallsCarryNoExecutionContent` enforces the attribute keys for the execution-path packages. |
@@ -76,7 +76,7 @@ SQLite retry helpers take an explicit context for connection-pool waits, stateme
 This document does not define a general SQLite backup or recovery procedure. The supported lifecycle operations are owned by CLI commands; confirm flags and defaults with `./ztd <command> --help`.
 
 - **Reset host runtime state:** `ztd gw clean` stops services and renames `.ztd/` aside to `.ztd-<MMDDHHMM>` (nothing is deleted) after offering an evaluation-evidence backup, so the Gateway restarts with no databases, vault, or PKI. `make clean` removes build and test artifacts only and does not reset runtime state, trust, or databases.
-- **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`; see [Evaluation Programs](./evals.md).
+- **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`; `ztd eval runs delete` and `ztd eval campaigns delete` purge deleted evidence from the backups too; see [Evaluation Programs](./evals.md).
 - **Verify the audit chain:** `ztd audit verify` walks the hash chain from the latest checkpoint (or genesis) and reports the head sequence and hash.
 
 ## Anti-patterns
@@ -220,6 +220,8 @@ The `envelope` and `tool_arguments` columns are vault-encrypted BLOBs (INV-STOR-
 
 RuntimeFileService ([internal/services/fs/](../../internal/services/fs/)) is the canonical abstraction for paths and file operations inside the `.ztd/` runtime tree. The audit store uses it to establish and verify its data directory before opening the resolved SQLite path. The file ledger uses it for runtime directories and ledger files. File operations outside the runtime tree (host targets, governed mutations) access those paths directly outside the abstraction boundary.
 
+Scratch space is `.ztd/tmp/`: `RuntimeFileService.MkdirTemp` creates a private (`0700`) directory there and returns its runtime-relative path. Throwaway local Operators deployed with `ztd operator deploy --local` default to `.ztd/operators/<name>`, each with its own isolated runtime root. Nothing is staged in the OS temp directory or the user's home directory (INV-FS-11 in [devs.md](../devs/devs.md)).
+
 All SQLite services resolve their database paths through RuntimeFileService before opening them. Under default configuration, relative database paths resolve beneath `.ztd/data/`. The abstraction owns file permissions and directory creation; the SQLite layer does not. `WriteFile` writes atomically through a temporary file in the target directory and a rename; on Windows it clears the read-only attribute on an existing destination before the rename and restores the previous mode if the rename fails.
 
 ## Key Material at Rest
@@ -233,9 +235,8 @@ The runtime tree never holds the master key in plaintext. Where the master key l
 | Secret Service (Linux), Keychain (macOS) | OS keyring, outside the runtime tree | None |
 | ssh-agent seal (Linux) | `.ztd/secrets/.master_key.ssh-agent` | Ciphertext under a key derived from an SSH-agent signature; opens only with the same SSH private key in a trusted agent |
 | DPAPI (Windows) | `.ztd/secrets/.master_key.dpapi` | DPAPI ciphertext; opens only for the same Windows user on the same machine |
-| External file (`--master-key-file`) | Operator-provisioned path outside the runtime root | None; ztd reads the file and never writes, copies, or deletes it |
 
-Copying, backing up, or exfiltrating `.ztd/` therefore yields only ciphertext. The hidden `.master_key.*` names are reserved; secret names cannot be hidden, so no secret operation can touch the seals. Backend selection, sealing, and the external-file checks are owned by [Encryption Architecture](./encryption.md#master-key-and-keyring-providers).
+Copying, backing up, or exfiltrating `.ztd/` therefore yields only ciphertext. The hidden `.master_key.*` names are reserved; secret names cannot be hidden, so no secret operation can touch the seals. Backend selection and sealing are owned by [Encryption Architecture](./encryption.md#master-key-and-keyring-providers). A Gateway initialized on v1.0.x with the removed master key file must be recreated; see [Upgrading a v1.0.x Gateway](./encryption.md#upgrading-a-v10x-gateway).
 
 ## Retention and Maintenance
 

@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/timesvc"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -127,7 +128,7 @@ func TestOperationalExportImporter_RejectsBrokenCommitmentSegment(t *testing.T) 
 	signer := newOperationalCommitmentSigner(t)
 	first := signer.commitment(t, "tx-1", "", executedAt)
 	second := signer.commitment(t, "tx-2", "wrong-prior", executedAt.Add(time.Second))
-	outputDir := t.TempDir()
+	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 		Commitments: []storage.OperationalCommitmentSource{
 			{Sequence: 10, TransactionID: first.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, first)},
@@ -151,7 +152,7 @@ func TestOperationalExportImporter_AcceptsBoundedCommitmentSegmentWithoutWholeLe
 	signer := newOperationalCommitmentSigner(t)
 	commitment := signer.commitment(t, "tx-1", "external-prior", executedAt)
 	body := canonicalOperationalCommitment(t, commitment)
-	outputDir := t.TempDir()
+	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 		Commitments: []storage.OperationalCommitmentSource{{Sequence: 10, TransactionID: commitment.GetTransactionId(), CommittedAt: executedAt, Body: body}},
 	}, operationalExportRequestForTest(outputDir, executedAt))
@@ -172,7 +173,7 @@ func TestOperationalExportImporter_RejectsCommitmentSegmentSequenceGap(t *testin
 	signer := newOperationalCommitmentSigner(t)
 	first := signer.commitment(t, "tx-1", "external-prior", executedAt)
 	second := signer.commitment(t, "tx-2", first.GetHash(), executedAt.Add(time.Second))
-	outputDir := t.TempDir()
+	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 		Commitments: []storage.OperationalCommitmentSource{
 			{Sequence: 10, TransactionID: first.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, first)},
@@ -233,7 +234,7 @@ func TestOperationalExportImporter_RejectsRetainedReceiptAndStageSubstitutions(t
 			receipt.Signature = hex.EncodeToString(ed25519.Sign(signer.privateKey, receiptPayload))
 			receiptBody, err := compliancev1.MarshalCanonical(receipt)
 			require.NoError(t, err)
-			outputDir := t.TempDir()
+			outputDir := testutil.TempDir(t)
 			inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 				Receipts:    []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: executedAt, Body: receiptBody}},
 				Commitments: []storage.OperationalCommitmentSource{{Sequence: 10, TransactionID: commitment.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, commitment)}},
@@ -277,7 +278,7 @@ func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t 
 	receipt.FinalPersistenceAttestation = attestation
 	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
-	outputDir := t.TempDir()
+	outputDir := testutil.TempDir(t)
 	_, err = ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{Receipts: []storage.OperationalReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: receiptBody}}}, OperationalExportRequest{
 		ScopeID:              "scope-1",
 		AdmissionID:          "source-1",
@@ -363,7 +364,7 @@ func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksReceipts(t *te
 	prevHash := strings.Repeat("0", 64)
 	hash := storage.AuditEventChainHash(7, prevHash, string(constants.EventOperatorReceiptRecorded), "session-1", timestamp, digest, receipt.GetTransactionId())
 
-	outputDir := t.TempDir()
+	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 		Receipts:    []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: executedAt, Body: receiptBody}},
 		Commitments: []storage.OperationalCommitmentSource{{Sequence: 10, TransactionID: commitment.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, commitment)}},

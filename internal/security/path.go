@@ -77,12 +77,20 @@ func IsProtectedRuntimePath(path string) bool {
 		if !strings.EqualFold(part, constants.RuntimeDirname) {
 			continue
 		}
-		if isEvaluationControlledTargetPathFromParts(parts, i) {
+		if isEvaluationControlledTargetPathFromParts(parts, i) || isNestedOperatorRootFromParts(parts, i) {
 			continue
 		}
 		return true
 	}
 	return false
+}
+
+// isNestedOperatorRootFromParts reports whether the runtime component at
+// runtimeIndex only hosts a throwaway Operator's own root
+// (.ztd/operators/<name>/...). That Operator's runtime is its own nested .ztd,
+// which the caller's loop still protects; .ztd/operators itself stays protected.
+func isNestedOperatorRootFromParts(parts []string, runtimeIndex int) bool {
+	return runtimeIndex+3 < len(parts) && strings.EqualFold(parts[runtimeIndex+1], constants.OperatorsDirname)
 }
 
 // IsEvaluationControlledTargetPath reports whether path is lexically within

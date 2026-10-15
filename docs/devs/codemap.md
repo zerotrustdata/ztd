@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -193,7 +193,7 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `tui` | `tuicmd` | `internal/cli/cmd/tui/` | | Tactical Governance Console. |
 | `version` | `version` | `internal/cli/cmd/version/` | | Build metadata. Optional FIPS module status is `./ztd version --help`. |
 | `compliance` | `compliancecmd` | `internal/cli/cmd/compliance/` | `compliances` | `ksi`, `ksi-history`, `overlay`, `release-evidence`, `release-prepare`, `evidence`, `evidence-graph`, and `report`. |
-| `eval` | `eval` | `internal/cli/cmd/eval/` | | `models`, `campaigns`, `runs`, `rollout`, `formations`, `gates`, `boundary`, `suites`, `backup`, and `restore`. Also constructs `public restore`. |
+| `eval` | `eval` | `internal/cli/cmd/eval/` | | `models`, `campaigns`, `runs`, `rollout`, `formations`, `gates`, `conformance`, `suites`, `backup`, and `restore`. Also constructs `public restore`. |
 
 Files at `internal/cli/cmd/` root are the root command, its tests, and shared file-service and config-load tests. Factory-error tests reside beside the group they cover (`factory_error_<group>_test.go`). Factory rule is `INV-FS-08`.
 
@@ -315,7 +315,8 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
 | `internal/services/consensus/` | Consensus members, policy construction, deliberation, and Ed25519 voting. |
-| `internal/services/evaluation/` | Native suite registry, governed command lane, target observer, model campaign controller, grading, evidence storage, and verification. |
+| `internal/services/evaluation/` | Model campaign controller, governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
+| `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.0.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
 | `internal/services/fs/` | Scoped `.ztd/` runtime file operations. |
 | `internal/services/ztdbinaries/` | Deployment-binary catalog, reader, and publisher. CLI wrapper: `internal/tools/ztdbinaries/`. |
@@ -349,7 +350,7 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | :--- | :--- |
 | `common/v1` | Governance envelopes, layer metadata, shared enums, and common messages. |
 | `compliance/v1` | Compliance evidence, assessment, and report messages. |
-| `eval/v1` | Native evaluation runs, attempts, observations, assertions, verdicts, metrics, reports, and deployment identities. |
+| `eval/v1` | Evaluation campaign, scenario catalog, assignment, run verification, witness (provider-boundary and model-provenance) evidence, public projection, governance-conformance record and verdict, and agent system-under-test messages. |
 | `operator/v1` | Operator commands, execution results, telemetry, receipts, and service RPC definitions. |
 | `pubsub/v1` | Pub/sub event and message envelopes. |
 

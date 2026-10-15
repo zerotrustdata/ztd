@@ -36,7 +36,7 @@ import (
 
 // --- stubs for receipt relay unit tests ---
 
-// stubSignerStore implements governance.SignerStore for receipt relay tests.
+// stubSignerStore implements governance.SignerStore and ReceiptSignerResolver for receipt relay tests.
 type stubSignerStore struct {
 	keys map[string]ed25519.PublicKey
 	err  error
@@ -52,6 +52,19 @@ func (s *stubSignerStore) GetTrustedSigner(_ context.Context, keyID string) (ed2
 	pub, ok := s.keys[keyID]
 	if !ok {
 		return nil, nil
+	}
+	return pub, nil
+}
+
+// ReceiptSignerKey resolves the receipt's signer key id against keys,
+// standing in for the Operator's bound Actuator key.
+func (s *stubSignerStore) ReceiptSignerKey(_ context.Context, _ string, receipt *operatorv1.ActionReceipt) (ed25519.PublicKey, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	pub, ok := s.keys[receipt.GetSignerKeyId()]
+	if !ok {
+		return nil, fmt.Errorf("stub signer store: %w: %s", constants.ErrReceiptSignerNotBound, receipt.GetSignerKeyId())
 	}
 	return pub, nil
 }

@@ -51,7 +51,6 @@ func TestResolveStartConfig(t *testing.T) {
 			PKIDir:           "/pki",
 			SecretsDir:       "/secrets",
 			VaultDir:         "/vault",
-			MasterKeyFile:    "/run/secrets/ztd_master_key",
 			PasskeyRpID:      "rp-id",
 			PasskeyRpName:    "rp-name",
 			RateLimitRPS:     100.0,
@@ -69,7 +68,6 @@ func TestResolveStartConfig(t *testing.T) {
 		assert.Equal(t, "/pki", cfg.PKIDir)
 		assert.Equal(t, "/secrets", cfg.SecretsDir)
 		assert.Equal(t, "/vault", cfg.VaultDir)
-		assert.Equal(t, "/run/secrets/ztd_master_key", cfg.MasterKeyFile)
 		assert.Equal(t, "rp-id", cfg.PasskeyRpID)
 		assert.Equal(t, "rp-name", cfg.PasskeyRpName)
 		assert.InEpsilon(t, 100.0, cfg.RateLimitRPS, 0.01)
@@ -116,7 +114,6 @@ func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
 			PKIDir:                            "/pki",
 			SecretsDir:                        "/secrets",
 			VaultDir:                          "/vault",
-			MasterKeyFile:                     "/run/secrets/key",
 			PasskeyRpID:                       "localhost",
 			PasskeyRpName:                     "ztd",
 			PasskeyRpOrigins:                  []string{"http://localhost:8087", "https://localhost:8450"},

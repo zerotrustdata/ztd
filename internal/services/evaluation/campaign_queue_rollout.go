@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,26 @@ func LoadRolloutQueue(ctx context.Context, fileSvc fs.RuntimeFileService) (*Camp
 		return BuildInitCampaignQueue("", nil), nil
 	}
 	return LoadInitCampaignQueueFromRuntime(ctx, fileSvc, DefaultInitCampaignQueueRelPath)
+}
+
+// LockRolloutQueue takes the rollout queue's writer lock. Every queue edit
+// (add and the selector verbs) holds it across its load/modify/save, and
+// rollout run holds it from planning to the end of the batch, so no edit can
+// overwrite an outcome the run records or be overwritten by one. A held lock
+// fails with ErrRuntimeFileLocked and changes nothing. The run's own entry
+// updates (MarkCampaignQueueEntry) happen under its lock and do not retake it.
+func LockRolloutQueue(ctx context.Context, fileSvc fs.RuntimeFileService) (io.Closer, error) {
+	if fileSvc == nil {
+		return nil, fmt.Errorf("evaluation: lock rollout queue: %w", constants.ErrMissingRequiredField)
+	}
+	held, err := fileSvc.TryLock(ctx, constants.EvaluationRolloutQueueLockRelPath, constants.PermFilePrivate)
+	if errors.Is(err, constants.ErrRuntimeFileLocked) {
+		return nil, fmt.Errorf("evaluation: the rollout queue is in use by a rollout run or another queue edit; retry when it finishes: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: lock rollout queue: %w", err)
+	}
+	return held, nil
 }
 
 // SaveRolloutQueue writes the rollout queue. An empty queue removes the file.
@@ -92,30 +113,66 @@ func NewCampaignQueueModel(variant *evalv1.ModelVariant) (CampaignQueueModel, er
 		VariantID:            variant.GetVariantId(),
 		ServedModelTag:       variant.GetServedModelTag(),
 		CampaignID:           campaignID,
-		InventoryFile:        campaignInventoryPath(DefaultCampaignInventoryRelDirname, campaignID),
+		InventoryFile:        campaignInventoryPath(campaignID),
 		ModelRegistryDigest:  freeze.RegistryDigest,
 		HomogeneousCellCount: freeze.HomogeneousCellCount,
 		Status:               QueueStatusPending,
 	}, nil
 }
 
+// Reasons rollout add records for a selected variant it does not queue.
+const (
+	RolloutSkipToolCallingUnsupported = "tool_calling_unsupported"
+	RolloutSkipAlias                  = "alias"
+)
+
+// RolloutIntakeSkip is a selected variant that rollout add did not queue.
+// AliasOf names the served tag already queued for the same model digest.
+type RolloutIntakeSkip struct {
+	VariantID      string `json:"variant_id"`
+	ServedModelTag string `json:"served_model_tag"`
+	Reason         string `json:"reason"`
+	AliasOf        string `json:"alias_of,omitempty"`
+}
+
+// RolloutIntake is the outcome of adding variants to the rollout queue.
+type RolloutIntake struct {
+	Added         []CampaignQueueModel
+	Skipped       []RolloutIntakeSkip
+	AlreadyQueued int
+}
+
 // AddVariants appends the variants that are not queued yet, ordered by the
 // rollout ordering (priority intake first, then smallest models first), and
 // returns the entries it added. Queued entries keep their place and status.
-func (queue *CampaignQueue) AddVariants(variants []*evalv1.ModelVariant, priorityIDs []string) ([]CampaignQueueModel, error) {
+//
+// A variant whose recorded tool-calling probe the provider rejected is skipped:
+// every scenario declares tools, so its run could only fail at the provider.
+// A variant that shares a model digest with a queued entry, or with a variant
+// added earlier in rollout order, is an alias of that model and is skipped.
+// registry resolves the model digests of queued entries.
+func (queue *CampaignQueue) AddVariants(variants, registry []*evalv1.ModelVariant, priorityIDs []string) (RolloutIntake, error) {
 	if queue == nil {
-		return nil, fmt.Errorf("evaluation: rollout queue add: %w", constants.ErrMissingRequiredField)
+		return RolloutIntake{}, fmt.Errorf("evaluation: rollout queue add: %w", constants.ErrMissingRequiredField)
 	}
 	queued := make(map[string]struct{}, len(queue.Models))
 	for _, entry := range queue.Models {
 		queued[entry.VariantID] = struct{}{}
 	}
+	digestOwners := make(map[string]string, len(queue.Models))
+	for _, variant := range registry {
+		if _, ok := queued[variant.GetVariantId()]; ok && variant.GetModelDigest() != "" {
+			digestOwners[variant.GetModelDigest()] = variant.GetServedModelTag()
+		}
+	}
+	var intake RolloutIntake
 	fresh := make([]*evalv1.ModelVariant, 0, len(variants))
 	for _, variant := range variants {
 		if variant == nil {
 			continue
 		}
 		if _, ok := queued[variant.GetVariantId()]; ok {
+			intake.AlreadyQueued++
 			continue
 		}
 		queued[variant.GetVariantId()] = struct{}{}
@@ -123,16 +180,41 @@ func (queue *CampaignQueue) AddVariants(variants []*evalv1.ModelVariant, priorit
 	}
 	SortModelVariantsForRollout(fresh)
 	fresh = PrioritizeRolloutIntake(fresh, priorityIDs)
-	added := make([]CampaignQueueModel, 0, len(fresh))
+	intake.Added = make([]CampaignQueueModel, 0, len(fresh))
 	for _, variant := range fresh {
+		skip := RolloutIntakeSkip{VariantID: variant.GetVariantId(), ServedModelTag: variant.GetServedModelTag()}
+		if ToolCallingUnsupported(variant) {
+			skip.Reason = RolloutSkipToolCallingUnsupported
+			intake.Skipped = append(intake.Skipped, skip)
+			continue
+		}
+		if owner, ok := digestOwners[variant.GetModelDigest()]; ok {
+			skip.Reason = RolloutSkipAlias
+			skip.AliasOf = owner
+			intake.Skipped = append(intake.Skipped, skip)
+			continue
+		}
 		entry, err := NewCampaignQueueModel(variant)
 		if err != nil {
-			return nil, err
+			return RolloutIntake{}, err
 		}
-		added = append(added, entry)
+		digestOwners[variant.GetModelDigest()] = variant.GetServedModelTag()
+		intake.Added = append(intake.Added, entry)
 	}
-	queue.Models = append(queue.Models, added...)
-	return added, nil
+	queue.Models = append(queue.Models, intake.Added...)
+	return intake, nil
+}
+
+// ToolCallingUnsupported reports whether the variant's recorded tool-calling
+// capability probe was rejected by the provider. A variant frozen without
+// probes has no observation and is not excluded.
+func ToolCallingUnsupported(variant *evalv1.ModelVariant) bool {
+	for _, observation := range variant.GetCapabilityObservations() {
+		if observation.GetCapability() == evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING {
+			return observation.GetOutcome() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED
+		}
+	}
+	return false
 }
 
 // SelectEntries returns the queue entries whose served tag or variant ID is

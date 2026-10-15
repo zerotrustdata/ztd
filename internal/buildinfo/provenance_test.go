@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestComputeProvenanceManifestHash_MatchesMakefileStamp(t *testing.T) {
@@ -30,16 +31,20 @@ func TestComputeProvenanceManifestHash_MatchesMakefileStamp(t *testing.T) {
 
 func TestRepositoryRoot_RejectsModulelessTree(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
+	// Only the filesystem root is guaranteed to have no go.mod ancestor: test
+	// scratch lives inside the module (INV-FS-11).
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	root := filepath.VolumeName(wd) + string(filepath.Separator)
 
-	_, err := RepositoryRoot(root)
+	_, err = RepositoryRoot(root)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrPathNotFound)
 }
 
 func TestComputeProvenanceManifestHash_AcceptsModuleRootWithGoModOnly(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"), []byte("module test\n"), 0o644))
 
 	hash, err := ComputeProvenanceManifestHash(root)

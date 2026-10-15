@@ -254,18 +254,17 @@ func (c *E2EClient) GetOperatorBySession(ctx context.Context, sessionID string) 
 
 // DispatchCommand sends a command dispatch request to the gateway via the
 // owner-authenticated commands endpoint. The dispatchRequestJSON body carries
-// the target operator session ID, action type, and protobuf payload. The
-// dispatchResponseJSON body carries the transaction ID, event type, and result
-// payload. The timeout parameter overrides the default client timeout for
+// the target operator session ID, action type, and protobuf payload. The 200
+// body is a GovernedDispatchResult carrying the signed final receipt. The timeout parameter overrides the default client timeout for
 // long-running dispatch operations.
-func (c *E2EClient) DispatchCommand(ctx context.Context, body dispatchRequestJSON, timeout time.Duration) (dispatchResponseJSON, error) {
+func (c *E2EClient) DispatchCommand(ctx context.Context, body dispatchRequestJSON, timeout time.Duration) (*operatorv1.GovernedDispatchResult, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return dispatchResponseJSON{}, fmt.Errorf("marshal dispatch body: %w", err)
+		return nil, fmt.Errorf("marshal dispatch body: %w", err)
 	}
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodPost, constants.APIPaths.OperatorsCommands, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return dispatchResponseJSON{}, err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -279,20 +278,24 @@ func (c *E2EClient) DispatchCommand(ctx context.Context, body dispatchRequestJSO
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return dispatchResponseJSON{}, fmt.Errorf("execute dispatch request: %w", err)
+		return nil, fmt.Errorf("execute dispatch request: %w", err)
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return dispatchResponseJSON{}, fmt.Errorf("read dispatch response: %w", err)
+		return nil, fmt.Errorf("read dispatch response: %w", err)
 	}
 	if len(respBody) > maxResponseBytes {
-		return dispatchResponseJSON{}, fmt.Errorf("dispatch response exceeds %d bytes", maxResponseBytes)
+		return nil, fmt.Errorf("dispatch response exceeds %d bytes", maxResponseBytes)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return dispatchResponseJSON{}, fmt.Errorf("dispatch status %d: %s", resp.StatusCode, truncateBody(respBody))
+		return nil, fmt.Errorf("dispatch status %d: %s", resp.StatusCode, truncateBody(respBody))
 	}
-	return decodeJSON[dispatchResponseJSON](respBody, "dispatch response")
+	result := &operatorv1.GovernedDispatchResult{}
+	if err := protojson.Unmarshal(respBody, result); err != nil {
+		return nil, fmt.Errorf("decode dispatch response: %w", err)
+	}
+	return result, nil
 }
 
 // GetConsoleIndex fetches the Gateway-embedded console SPA index over HTTPS
@@ -447,7 +450,7 @@ func (c *E2EClient) GetAuditEvents(ctx context.Context) (models.AuditEventsRespo
 // test. A caller that has just enrolled the operator must first wait for its
 // operator.status.updated event (e2eEventWaiters.awaitStatus). The caller owns
 // the context; it must be called from a test goroutine.
-func (c *E2EClient) dispatchFsRead(t *testing.T, ctx context.Context) dispatchResponseJSON {
+func (c *E2EClient) dispatchFsRead(t *testing.T, ctx context.Context) *operatorv1.GovernedDispatchResult {
 	t.Helper()
 
 	operators, err := c.ListOperators(ctx)
@@ -466,7 +469,7 @@ func (c *E2EClient) dispatchFsRead(t *testing.T, ctx context.Context) dispatchRe
 // the operator holding operatorSessionID and requires it to succeed. A 503
 // ("delivered to no operator subscribers") is a failure: an operator announced
 // active is subscribed to its command channel.
-func (c *E2EClient) dispatchFsReadToSession(t *testing.T, ctx context.Context, operatorSessionID string) dispatchResponseJSON {
+func (c *E2EClient) dispatchFsReadToSession(t *testing.T, ctx context.Context, operatorSessionID string) *operatorv1.GovernedDispatchResult {
 	t.Helper()
 	require.NotEmpty(t, operatorSessionID, "target operator session ID must be non-empty")
 
@@ -482,7 +485,7 @@ func (c *E2EClient) dispatchFsReadToSession(t *testing.T, ctx context.Context, o
 		TargetResource:          constants.PathEtcHostname,
 	}, 60*time.Second)
 	require.NoError(t, err, "dispatch to operator session %s must succeed", operatorSessionID)
-	require.True(t, resp.Success, "dispatch to operator session %s must report success: %+v", operatorSessionID, resp)
+	require.NotNil(t, resp.GetReceipt(), "dispatch to operator session %s must return the signed final receipt: %v", operatorSessionID, resp)
 	return resp
 }
 

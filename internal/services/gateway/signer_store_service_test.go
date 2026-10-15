@@ -34,7 +34,7 @@ func setupSignerStore(t *testing.T) *SignerStoreService {
 	_, err = db.Exec(gatewaySchema)
 	require.NoError(t, err)
 
-	return NewSignerStoreService(db, logger, NewDocumentStoreService(db, logger))
+	return NewSignerStoreService(db, logger, NewDocumentStoreService(db, logger), nil, "")
 }
 
 func generateTestPublicKey(t *testing.T) ed25519.PublicKey {
@@ -199,16 +199,6 @@ func TestSignerStoreService_GetTrustedSigner(t *testing.T) {
 		assert.Nil(t, retrieved)
 	})
 
-	t.Run("GetTrustedSigner decodes hex public key when not in document store", func(t *testing.T) {
-		svc := setupSignerStore(t)
-		pubKey := generateTestPublicKey(t)
-		keyHex := hex.EncodeToString(pubKey)
-
-		retrieved, err := svc.GetTrustedSigner(t.Context(), keyHex)
-		assert.NoError(t, err)
-		assert.Equal(t, pubKey, retrieved)
-	})
-
 	t.Run("GetTrustedSigner handles invalid hex public key", func(t *testing.T) {
 		// This test would require direct DB manipulation to insert invalid hex data
 		// Since we can't insert invalid data through AddTrustedSigner,
@@ -220,6 +210,18 @@ func TestSignerStoreService_GetTrustedSigner(t *testing.T) {
 		// Similar to above, requires direct DB manipulation
 		t.Skip("Requires direct DB manipulation to insert invalid data")
 	})
+}
+
+func TestGetTrustedSigner_NoSelfDescribingFallback(t *testing.T) {
+	svc := setupSignerStore(t)
+	pubKey := generateTestPublicKey(t)
+	keyID := hex.EncodeToString(pubKey)
+
+	// A well-formed 64-hex key id that names no registered signer must not
+	// resolve to a key: the id is never decoded into the key it describes.
+	retrieved, err := svc.GetTrustedSigner(t.Context(), keyID)
+	assert.NoError(t, err)
+	assert.Nil(t, retrieved)
 }
 
 func TestSignerStoreService_ListTrustedSigners(t *testing.T) {

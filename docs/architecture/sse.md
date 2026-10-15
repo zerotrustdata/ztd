@@ -3,8 +3,8 @@ doc_id: sse
 title: SSE Streaming
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/services/gateway/sse_controller.go
   - internal/services/gateway/sse_event_publisher.go
@@ -61,9 +61,9 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SSE-EVT-01 | Every SSE event is keyed by two routing dimensions: `user_id` (ownership) and exactly one of `web_session_id` or `cli_session_id` (delivery target). A bare `user_id` is not a valid route. The Gateway does not provide user-wide fan-out. |
-| INV-SSE-EVT-02 | Event type strings are constants generated from `protocol/constants/events.json` (`internal/constants/events_gen.go`). The registry's `persistence` value is the contract: a publisher uses `SSEEventPublisher.Publish` for a persisted event and `PublishEphemeral` for an `ephemeral` one. |
-| INV-SSE-EVT-03 | SSE frames carry a `data:` field and, for persisted events, an `id:` field; no `event:` field is emitted. Ephemeral events have no durable row and therefore no `id:` line. Consumers read the application event type from the nested `event.type` value in the JSON data payload. Heartbeats are SSE comments (`: ping\n\n`) and do not advance the event cursor. |
-| INV-SSE-EVT-04 | Ephemeral events are delivered via live streams but not persisted to the SSE store; consumers cannot recover them via replay. Persist-before-publish ordering ensures events that fail to persist never reach consumers. A live ephemeral event is emitted without an `id:` line to avoid rewinding the client's `Last-Event-ID` cursor. |
+| INV-SSE-EVT-02 | Registered event type strings are constants generated from `protocol/constants/events.json` (`internal/constants/events_gen.go`). Special flat CLI notification types such as `approval.completed` and `passkey.registered` are defined by their owning producers. The registry's `persistence` value is the contract for registered events: a publisher uses `SSEEventPublisher.Publish` for a persisted event and `PublishEphemeral` for an `ephemeral` one. |
+| INV-SSE-EVT-03 | SSE frames carry a `data:` field and, for persisted events, an `id:` field; no `event:` field is emitted. Ephemeral events have no durable row and therefore no `id:` line. Consumers read the application event type from the nested `event.type` value in the JSON data payload. Heartbeats are SSE comments (`: heartbeat\n\n`) and do not advance the event cursor. |
+| INV-SSE-EVT-04 | Ephemeral events are delivered via live streams but not persisted to the SSE store; consumers cannot recover them via replay. Persisted events are appended before live publication, so a persistence failure prevents delivery. A live ephemeral event is emitted without an `id:` line to avoid rewinding the client's `Last-Event-ID` cursor. |
 
 ### Producer authentication (`INV-SSE-PROD`)
 
@@ -83,9 +83,9 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SSE-DEL-01 | `GET /api/v1/sse/events` returns rows with `id > since_id`, ordered ascending, with `limit` defaulting to 200 and clamped to `[1, 1000]`. Polling does not delete or acknowledge rows. |
-| INV-SSE-DEL-02 | `GET /api/v1/sse/stream` replays at most 1,000 rows per connection. When replay hits the limit, an unnumbered `truncated` sentinel carries the last emitted id and limit; the client may reconnect with a higher cursor. A `Last-Event-ID` header or positive `since_id` query parameter requests replay; `since_id=0` without `Last-Event-ID` requests live-only streams. |
-| INV-SSE-DEL-03 | Each live stream maintains a 100-event in-memory queue. If a consumer falls behind, the Gateway drops the oldest queued event; the consumer can recover via cursor-based replay on reconnect. |
+| INV-SSE-DEL-01 | `GET /api/v1/sse/events` returns rows with `id > since_id`, ordered ascending. `limit` defaults to 200; values below 1 or above 1000 also use 200. Polling does not delete or acknowledge rows. |
+| INV-SSE-DEL-02 | `GET /api/v1/sse/stream` replays at most 1,000 rows per connection. With no cursor parameters, a fresh connection replays from ID 0; a `Last-Event-ID` header or positive `since_id` query parameter replays from that cursor. Explicit `since_id=0` without `Last-Event-ID` requests a live-only stream. When replay returns 1,000 rows, an unnumbered `truncated` sentinel carries the last emitted ID and limit; the client may reconnect with a higher cursor. |
+| INV-SSE-DEL-03 | Each live stream maintains a 100-event in-memory queue. If a consumer falls behind, the Gateway drops the oldest queued event; persisted events can be recovered through cursor-based replay on reconnect, while ephemeral events cannot. |
 | INV-SSE-DEL-04 | The stream installs its live listener and clears the server write deadline before flushing response headers. Heartbeats are sent every 30 seconds as SSE comments. The maintenance loop (every 30 seconds) removes events older than one hour from `sse_events`. |
 
 ## Owned surfaces
@@ -126,17 +126,17 @@ Persisted Event             Ephemeral Event
 - **Persisted Frame**:
   ```text
   id: 1042
-  data: {"event":{"type":"ztd.v1.operator.status.updated.active","payload":{...}},"timestamp":"..."}
+  data: {"user_id":"alice","cli_session_id":"...","event":{"type":"ztd.v1.operator.status.updated.active","data":{...}}}
 
   ```
 - **Ephemeral Frame** (no `id:` field):
   ```text
-  data: {"event":{"type":"ztd.v1.platform.approvals.changed","payload":{"kind":"transactions"}},"timestamp":"..."}
+  data: {"user_id":"alice","web_session_id":"...","event":{"type":"ztd.v1.platform.approvals.changed","data":{"subject":"transactions"}}}
 
   ```
 - **Heartbeat Frame** (comment):
   ```text
-  : ping
+  : heartbeat
 
   ```
 
@@ -145,13 +145,13 @@ Persisted Event             Ephemeral Event
 | Event Type | Persistence | Publisher / Trigger | Description |
 | :--- | :--- | :--- | :--- |
 | `ztd.v1.platform.approvals.changed` | ephemeral | `approvals_events.go` | Signals pending L3 transactions or platform enrollment changes |
-| `ztd.v1.operator.status.updated.<state>` | persisted | `operator_status_events.go` | Operator state transitions: `offline` on enrollment, `active` when the Operator's command-channel subscription is established (ready for commands), then `stale`, `stopped`, `terminated` |
+| `ztd.v1.operator.status.updated.<state>` | persisted | `operator_status_events.go` | Operator status announcements: `offline` on enrollment, `active` when the Operator's command-channel subscription is established (ready for commands), and later `stopped` or `terminated`; `stale` is derived on read and may be reported to a deploy client, not stored as a transition |
 | `ztd.v1.operator.heartbeat.received` | ephemeral | `operator_status_events.go` | Real-time telemetry carrying `last_heartbeat_at` and `stale_at` |
 | `ztd.v1.inference.model.provenance.preflight.updated` | ephemeral | `model_provenance_controller.go` | Progress updates during storage-side model attestation |
 | `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
 | `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
-| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed L3 approval |
-| `passkey.registered` | ephemeral | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed passkey registration |
+| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
+| `passkey.registered` | persisted | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed passkey registration |
 
 ## Observe Producers
 
@@ -160,7 +160,7 @@ App workloads enrolled through platform enrollment publish telemetry over mTLS t
 - `POST /api/v1/observe/producer/agent-state`
 - `POST /api/v1/observe/producer/run-state`
 
-The Gateway extracts the application SPIFFE ID from the client certificate, validates that the application policy allows telemetry publication, and forwards events to the owning user's active web and CLI sessions.
+The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway stores the event for that session and delivers it live when that session has an open stream.
 
 ## Consumer Replay and Reconnection
 
@@ -179,27 +179,27 @@ Browser / CLI Client                          Gateway SSE Controller
         │  [Live Phase: de-duplicated real-time]         │
         │◄────── id: 1023, data: {...} ──────────────────┤
         │◄────── data: {ephemeral...} ───────────────────┤
-        │◄────── : ping ─────────────────────────────────┤
+        │◄────── : heartbeat ────────────────────────────┤
 ```
 
-1. **Replay Phase**: On connection, if `Last-Event-ID` or `since_id` is supplied, the Gateway fetches stored events from `sse_events` where `id > cursor` up to a limit of 1,000 events. If the limit is reached, a `truncated` frame is emitted.
-2. **Live Phase**: As events arrive on the pub/sub channel, the Gateway streams them to the client. Stored events emitted during replay are deduplicated by ID.
+1. **Replay Phase**: With no cursor parameters, the Gateway fetches stored events from ID 0. A `Last-Event-ID` header takes precedence over `since_id`; an explicit `since_id=0` without that header skips replay. Replay returns rows where `id > cursor`, up to 1,000 events. If 1,000 rows are returned, a `truncated` frame is emitted.
+2. **Live Phase**: As events arrive on the pub/sub channel, the Gateway streams them to the client. Persisted events emitted during replay are deduplicated by ID.
 3. **Queue Overflow**: Each stream buffer holds up to 100 events. If the consumer cannot keep up, the oldest event is dropped. Reconnecting with `Last-Event-ID` recovers dropped persisted events from SQLite.
 
 ## Procedures
 
 ### Consuming Live Events via CLI
 
-The CLI client (`internal/cli/sse`) handles connection, backoff, and reconnection automatically:
+The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for approval or passkey-registration events. For example, `ztd auth approve` opens the browser approval page and waits for its completion event:
 
 ```bash
-# Connect to SSE stream via CLI session
-./ztd auth context
+# Open the browser approval page and wait on the CLI SSE subscription
+./ztd auth approve <transaction-hash>
 ```
 
 ### Consuming Polled Events
 
-Query unread events since a known cursor:
+Query stored events after a known cursor:
 
 ```bash
 curl -k -H "Cookie: ztd_web_session_cookie=<cookie>" \

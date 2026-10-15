@@ -15,7 +15,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SCRATCH="$(mktemp -d)"
+# shellcheck source=lib/scratch.sh
+. "$SCRIPT_DIR/lib/scratch.sh"
+SCRATCH="$(ztd_scratch_dir "$SOURCE_ROOT" ztd-onboarding-test)"
 trap 'rm -rf "$SCRATCH"' EXIT
 
 fail() {
@@ -370,7 +372,11 @@ test_quickstart_help_and_unknown_option() {
 	local out="$SCRATCH/qs-help.out" rc=0
 	HOME="$SCRATCH/home-qs-help" bash "$SCRIPT_DIR/quickstart.sh" --help >"$out" 2>&1 || rc=$?
 	[[ $rc -eq 0 ]] || { cat "$out" >&2; fail "quickstart --help: want exit 0, got $rc"; }
-	grep -qF -- '--master-key-file' "$out" || fail "quickstart --help: missing --master-key-file"
+	# The removed key-file flag is matched by its --master-key prefix: no --master-key* flag may be advertised.
+	if grep -qF -- '--master-key' "$out"; then
+		cat "$out" >&2
+		fail "quickstart --help: still advertises a --master-key flag"
+	fi
 
 	rc=0
 	HOME="$SCRATCH/home-qs-help" bash "$SCRIPT_DIR/quickstart.sh" --bogus >"$out" 2>&1 || rc=$?
@@ -384,15 +390,12 @@ make_fake_repo() {
 	local repo=$1 state=$2
 	mkdir -p "$repo/scripts/lib" "$state"
 	cp "$SCRIPT_DIR/quickstart.sh" "$repo/scripts/"
-	cp "$SCRIPT_DIR/lib/dev-setup-common.sh" "$repo/scripts/lib/"
+	cp "$SCRIPT_DIR/lib/dev-setup-common.sh" "$SCRIPT_DIR/lib/scratch.sh" "$repo/scripts/lib/"
 	cat >"$repo/ztd" <<'STUB'
 #!/bin/sh
 STATE="${ZTD_STUB_STATE:?}"
 echo "$*" >>"$STATE/calls.log"
-# Match on the command alone; quickstart appends the key flag to every call.
-# Join first: bash (macOS /bin/sh) applies ${*%...} to each argument.
-args="$*"
-case "${args% --master-key-file *}" in
+case "$*" in
 --version) echo "ztd version v1.0.0" ;;
 "gw status")
 	if [ -e "$STATE/gw.on" ]; then
@@ -431,19 +434,18 @@ test_quickstart_end_to_end_is_idempotent() {
 	mkdir -p "$home"
 
 	out="$SCRATCH/qs-e2e-first.out"
-	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" \
-		--master-key-file /tmp/k.key >"$out" 2>&1 || rc=$?
+	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
 	[[ $rc -eq 0 ]] || { cat "$out" >&2; fail "quickstart first run: want exit 0, got $rc"; }
 	grep -qF 'hello from ztd' "$out" || { cat "$out" >&2; fail "quickstart first run: no governed-action output"; }
 	grep -qF "You're running ztd" "$out" || fail "quickstart first run: no success banner"
-	grep -qxF 'gw start --capabilities data --master-key-file /tmp/k.key' "$state/calls.log" ||
-		fail "quickstart first run: missing gw start call with --master-key-file"
-	grep -qxF 'login --master-key-file /tmp/k.key' "$state/calls.log" ||
-		fail "quickstart first run: missing login call with --master-key-file"
-	grep -qxF "operator run --all-active --cmd echo hello from ztd --master-key-file /tmp/k.key" "$state/calls.log" ||
-		fail "quickstart first run: missing operator run call with --master-key-file"
-	if grep -v -e '^--version$' -e ' --master-key-file /tmp/k.key$' "$state/calls.log" >&2; then
-		fail "quickstart first run: ztd call without --master-key-file"
+	grep -qxF 'gw start --capabilities data' "$state/calls.log" ||
+		fail "quickstart first run: missing gw start call"
+	grep -qxF 'login' "$state/calls.log" ||
+		fail "quickstart first run: missing login call"
+	grep -qxF "operator run --all-active --cmd echo hello from ztd" "$state/calls.log" ||
+		fail "quickstart first run: missing operator run call"
+	if grep -F -- '--master-key' "$state/calls.log" >&2; then
+		fail "quickstart first run: ztd call passes a removed --master-key flag"
 	fi
 
 	starts="$(count_calls "$state" '^gw start')"
@@ -451,8 +453,7 @@ test_quickstart_end_to_end_is_idempotent() {
 
 	rc=0
 	out="$SCRATCH/qs-e2e-second.out"
-	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" \
-		--master-key-file /tmp/k.key >"$out" 2>&1 || rc=$?
+	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
 	[[ $rc -eq 0 ]] || { cat "$out" >&2; fail "quickstart second run: want exit 0, got $rc"; }
 	grep -qF 'already running' "$out" || { cat "$out" >&2; fail "quickstart second run: Gateway not reported as already running"; }
 	grep -qF 'already signed in' "$out" || { cat "$out" >&2; fail "quickstart second run: CLI not reported as already signed in"; }
@@ -470,11 +471,14 @@ test_quickstart_surfaces_key_store_remedy() {
 	mkdir -p "$home"
 
 	out="$SCRATCH/qs-keyring.out"
-	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" \
-		--master-key-file /tmp/k.key >"$out" 2>&1 || rc=$?
+	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
 	[[ $rc -ne 0 ]] || { cat "$out" >&2; fail "quickstart with no key store: want non-zero exit"; }
 	grep -qF 'ssh-agent' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-agent remedy"; }
-	grep -qF -- '--master-key-file' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no --master-key-file remedy"; }
+	grep -qF 'ssh-add' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-add step in the remedy"; }
+	if grep -qF -- '--master-key' "$out"; then
+		cat "$out" >&2
+		fail "quickstart key-store failure: remedy still names a --master-key flag"
+	fi
 }
 
 run_test() {

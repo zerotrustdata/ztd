@@ -116,6 +116,11 @@ func (e operatorBootstrapExchange) run(ctx context.Context) error {
 	if err := enrollment.ValidateShape(); err != nil {
 		return err
 	}
+	// The Actuator key is bound at enrollment; a malformed key never reaches
+	// the document store.
+	if _, err := enrollment.Operator.ActuatorKey(); err != nil {
+		return fmt.Errorf("operator bootstrap: %w", err)
+	}
 	runtimeConfig, err := operatorBootstrapRuntimeConfig(frame.Request)
 	if err != nil {
 		return err

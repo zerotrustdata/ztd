@@ -30,7 +30,7 @@ func TestProbe_EvaluateFailClosed(t *testing.T) {
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
 
-	tmp := t.TempDir()
+	tmp := testutil.TempDir(t)
 	cat := compliance.KSICatalog{Version: "1.0", Source: "test", KSIs: []compliance.KSI{{
 		ID: "KSI-CMT-01", Title: "T", Category: compliance.KSICategoryCMT,
 		ControlRefs: []string{"CM-3"}, ApplicableClasses: []compliance.CertificationClass{compliance.ClassC},

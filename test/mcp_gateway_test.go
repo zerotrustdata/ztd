@@ -42,6 +42,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -213,7 +214,7 @@ func TestMCPGateway_EndToEnd(t *testing.T) {
 
 func TestMCPGateway_SubprocessDownstream_EndToEnd(t *testing.T) {
 	// Create mock downstream stdio script
-	tmpDir := t.TempDir()
+	tmpDir := testutil.TempDir(t)
 	scriptPath := filepath.Join(tmpDir, "mock_mcp_downstream.sh")
 	scriptContent := `#!/bin/sh
 while IFS= read -r line; do

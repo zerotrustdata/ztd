@@ -81,7 +81,7 @@ func inferenceTestResult(t *testing.T) *operatorv1.InferenceResult {
 // newInferenceDispatchService builds a DispatchService whose signer store is
 // the given store; other dependencies are stubs that are not exercised by
 // verifyInferenceCompletion.
-func newInferenceDispatchService(t *testing.T, signerStore governance.SignerStore) *DispatchService {
+func newInferenceDispatchService(t *testing.T, signerStore ReceiptSignerResolver) *DispatchService {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	return NewDispatchService(

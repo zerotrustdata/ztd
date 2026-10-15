@@ -194,7 +194,7 @@ func TestProjectLiveEvents_CarryTheCampaignReleaseIdentity(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinator_ExportsProjectionRecordsOnly(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	savePublicRunIdentity(t, store, "run-1", "campaign-1")
 	exporter := &recordingCampaignFeedExporter{}
@@ -223,7 +223,7 @@ const campaignPublicationEmitsNativeLiveEvents = true
 
 func TestCampaignPublication_PublishesNativeLiveEventsFromTerminalResult(t *testing.T) {
 	require.True(t, campaignPublicationEmitsNativeLiveEvents)
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
 	runID := "run-live-1"
@@ -295,7 +295,7 @@ func TestCampaignPublication_PublishesNativeLiveEventsFromTerminalResult(t *test
 }
 
 func TestCampaignPublication_PublishesInvocationAtAssignmentStart(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
 	runID := "run-live-start"
@@ -332,7 +332,7 @@ func TestCampaignPublication_PublishesInvocationAtAssignmentStart(t *testing.T) 
 }
 
 func TestCampaignPublication_PublishesFormationRoleInvocationIncrementally(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
 	variants := testHeterogeneousVariants()
@@ -360,7 +360,7 @@ func TestCampaignPublication_PublishesFormationRoleInvocationIncrementally(t *te
 }
 
 func TestCampaignPublication_PublishesFormationRoleProgressWithPerRoleMetrics(t *testing.T) {
-	files := newCampaignMemoryFileService()
+	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
 	variants := testHeterogeneousVariants()

@@ -3,8 +3,8 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/services/consensus/
   - internal/services/governance/l2_consensus.go
@@ -89,12 +89,13 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-CON-WARD-03 | Quorum evaluation MUST count only affirmative (`decision=true`) votes signed by enabled `TrustedSigner` keys belonging to enrolled policy members. Negative votes (`decision=false`) authenticate dissent but do not count toward quorum. |
 | INV-CON-WARD-04 | Bootstrap action types (`actionType.IsBootstrapAction()`) MUST be exempt from L2 gating across all postures, permitting initial enrollment transactions to succeed before consensus signers exist. |
 | INV-CON-WARD-05 | Under `consensus` and `notary` postures, missing L2 votes, disabled policies, or unmet quorums MUST reject the transaction with a fatal error. Under `doctrine` and `ratify` postures, L2 votes are evaluated for deterministic audit evidence without gating transaction admission. |
+| INV-CON-WARD-06 | Under `consensus` and `notary` postures, a vote from an enrolled member whose signature fails verification, or whose trusted signer cannot be resolved, MUST reject the transaction with `ErrTxL2SignatureInvalid` (`L2_SIGNATURE_INVALID`), even when the other votes meet quorum. Votes from non-members are ignored. |
 
 ### Receipt and Audit Evidence (`INV-CON-RCPT`)
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-RCPT-01 | The L5 ActionReceipt `L2Status` field MUST record `L2_STATUS_REQUIRED_VALID` when L2 is required and verified, `L2_STATUS_REQUIRED_FAILED` when required and failed, or `L2_STATUS_NOT_REQUIRED` when the posture does not require L2. |
+| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 ActionReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, or the action is bootstrap-exempt) and no valid proof is present. L5 never recomputes it from posture. |
 | INV-CON-RCPT-02 | L4 verification MUST produce `DeterministicStageEvidence` for protocol L2 recording stage outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`) and the SHA-256 `L2SignatureDigest` over the vote set. |
 
 ## Owned surfaces
@@ -127,9 +128,9 @@ The active posture governs whether L2 verification gates execution:
 
 | Posture | L2 Gate Status | Receipt `L2Status` Value | Deterministic Stage Outcome |
 | :--- | :--- | :--- | :--- |
-| **`doctrine`** | Non-gating (audited only) | `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
+| **`doctrine`** | Non-gating (audited only) | `L2_STATUS_REQUIRED_VALID` (if valid) or `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
 | **`consensus`** | Strictly required for non-bootstrap | `L2_STATUS_REQUIRED_VALID` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` |
-| **`ratify`** | Non-gating (audited only) | `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
+| **`ratify`** | Non-gating (audited only) | `L2_STATUS_REQUIRED_VALID` (if valid) or `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
 | **`notary`** | Strictly required for non-bootstrap | `L2_STATUS_REQUIRED_VALID` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` |
 
 ### Policy Schema and Validation Rules
@@ -225,7 +226,7 @@ The `--consensus-bootstrap` CLI flag seeds policies and keys at Gateway startup:
 Resolution precedence:
 1. **Per-Member Seeds (`member_seeds`)**: Generates and registers individual Ed25519 key pairs for every member ID. Required for production high-assurance deployments.
 2. **Shared Seed (`seed_hex`)**: Derives a single key pair registered across all members.
-3. **Generated Fallback**: Generates a temporary key pair across members if neither seed is provided.
+3. **Generated Fallback**: Generates one key pair shared across members if neither seed is provided, then seals the private key in the keystore. The generated key persists across restarts.
 
 ### Administrative Enrollment and Lifecycle
 
@@ -249,13 +250,13 @@ flowchart TD
     
     CheckVotes -->|Yes| CheckStores{Stores configured?}
     CheckStores -->|No| CheckReqB{Posture requires L2?}
-    CheckReqB -->|Yes| FailNoStores[Fail: ErrTxL2SignerStoreNotConfigured]
+    CheckReqB -->|Yes| FailNoStores[Fail: ErrTxL2SignerStoreNotConfigured or ErrTxL2ConsensusNotConfigured]
     CheckReqB -->|No| PassNonGating
     
     CheckStores -->|Yes| LoadPolicy[Load policy by l2.ConsensusSetId]
     LoadPolicy --> CheckPolicy{Policy found and enabled?}
     CheckPolicy -->|No| CheckReqC{Posture requires L2?}
-    CheckReqC -->|Yes| FailPolicy[Fail: ErrTxL2ConsensusNotConfigured]
+    CheckReqC -->|Yes| FailPolicy[Fail: ErrTxL2ConsensusSetUnknown]
     CheckReqC -->|No| PassNonGating
     
     CheckPolicy -->|Yes| LoopVotes[Iterate through votes]
@@ -267,7 +268,8 @@ flowchart TD
     SeenCheck -->|Yes & RequireDistinct=false| NextVote
     
     SeenCheck -->|No| VerifySig{Verify Ed25519 signature over hash|decision}
-    VerifySig -->|Invalid| NextVote
+    VerifySig -->|Invalid & enforced| FailSig[Fail: ErrTxL2SignatureInvalid]
+    VerifySig -->|Invalid & not enforced| NextVote
     VerifySig -->|Valid| RecordSeen[Mark seen=true]
     RecordSeen --> DecisionCheck{vote.Decision == true?}
     DecisionCheck -->|Yes| IncQuorum[affirmative++]
@@ -284,9 +286,9 @@ flowchart TD
 ```
 
 1. **Bootstrap Exemption**: If `actionType.IsBootstrapAction()` is true, transactions bypass L2 gating across all postures.
-2. **Presence Checks**: Under `consensus` and `notary`, missing votes or unconfigured policy stores immediately fail closed.
+2. **Presence Checks**: Under `consensus` and `notary`, missing votes or unconfigured stores immediately fail closed. A consensus set that is unknown or disabled fails closed with `ErrTxL2ConsensusSetUnknown`; `ErrTxL2ConsensusNotConfigured` applies only when the consensus policy store is absent.
 3. **Distinctness Enforcement**: If a member key ID was already evaluated and `policy.RequireDistinct` is true, duplicate signatures fail closed with `ErrTxL2DuplicateSigner`.
-4. **Signature Verification**: Verifies Ed25519 signatures against the recomputed transaction hash and decision value.
+4. **Signature Verification**: Verifies Ed25519 signatures against the recomputed transaction hash and decision value. Under `consensus` and `notary`, a member vote whose signature fails, or whose trusted signer cannot be resolved, fails closed with `ErrTxL2SignatureInvalid` even when the other votes meet quorum (INV-CON-WARD-06). Under `doctrine` and `ratify` the vote is skipped and the transaction is not gated.
 5. **Threshold Check**: Increments affirmative counts only when `vote.Decision == true`. If `affirmative < policy.Quorum`, returns `ErrTxL2QuorumNotMet`.
 
 On the Gateway, policies reside in SQLite. Remote Operators receive the Gateway's configured consensus policy and member public keys in their in-memory enrollment bundle, served via `governance.L2TrustStore`.
@@ -295,6 +297,7 @@ On the Gateway, policies reside in SQLite. Remote Operators receive the Gateway'
 
 When L4 verification concludes, the Warden emits deterministic stage evidence, and the L5 Actuator embeds the final L2 outcome into the signed `ActionReceipt`:
 - **Deterministic Stage Evidence**: A stage record with `DETERMINISTIC_STAGE_KIND_PROTOCOL_L2` records the outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`).
+- **Rejection Attribution**: A rejected L2 proof produces a signed `FAILED` receipt whose signed `rejection_code` names the L2 check. The enum is defined in `protocol/proto/ztd/operator/v1/operator.proto`.
 - **Signature Digest**: `L2SignatureDigest` computes a SHA-256 digest over the concatenated member signatures in the vote set, binding the cryptographic proof into the audit trail.
 - **Receipt Status**: The signed receipt records `L2Status`: `L2_STATUS_REQUIRED_VALID`, `L2_STATUS_REQUIRED_FAILED`, or `L2_STATUS_NOT_REQUIRED`.
 

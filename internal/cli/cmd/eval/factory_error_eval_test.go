@@ -45,11 +45,9 @@ func TestEvalCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 		name string
 		args []string
 	}{
-		// boundary
-		{name: "boundary list", args: []string{"boundary", "list"}},
-		{name: "boundary run", args: []string{"boundary", "run"}},
-		{name: "boundary verify", args: []string{"boundary", "verify", "run-id"}},
-		{name: "boundary show", args: []string{"boundary", "show", "run-id"}},
+		// conformance
+		{name: "conformance verify", args: []string{"conformance", "verify", "--run", "run-id"}},
+		{name: "conformance report", args: []string{"conformance", "report", "--run", "run-id"}},
 
 		// models
 		{name: "models list", args: []string{"models", "list"}},

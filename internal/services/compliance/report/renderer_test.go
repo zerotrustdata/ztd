@@ -76,7 +76,7 @@ func rendererTestOSCALInvalidAnalysis() *compliancev1.ComplianceAnalysis {
 		ProducerIdentity:   "gateway",
 		ScopeId:            analysis.GetScopeRef(),
 		VerificationStatus: "verified",
-		BundlePath:         constants.EvaluationReportFilename,
+		BundlePath:         constants.ConformanceRecordFilename,
 	}}
 	return analysis
 }

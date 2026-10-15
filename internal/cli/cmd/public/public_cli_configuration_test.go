@@ -63,7 +63,7 @@ func useTestKeystore(t *testing.T, fileSvc fs.RuntimeFileService) *keystore.Keys
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	original := openPublicKeystore
-	openPublicKeystore = func(_ fs.RuntimeFileService, _ keystore.Options) (*keystore.Keystore, error) {
+	openPublicKeystore = func(_ fs.RuntimeFileService) (*keystore.Keystore, error) {
 		return ks, nil
 	}
 	t.Cleanup(func() {

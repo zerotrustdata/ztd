@@ -63,25 +63,6 @@ type GatewayWebSocketHandler struct {
 	onCommandSubscribedMu sync.RWMutex
 	onCommandSubscribed   func(operatorID, sessionID, deploymentID string)
 
-	// stateRootProvider supplies the gateway's current state Merkle root for
-	// command intent relay. Nil disables the cmd: relay path (publishes to
-	// cmd: are rejected fail-closed when the relay is not configured).
-	stateRootProvider governance.StateRootProvider
-
-	// sessionValidator resolves operator session IDs for command intent
-	// relay. Nil disables the cmd: relay path.
-	sessionValidator operatorSessionValidator
-
-	// posture is the gateway's governance posture, injected into every
-	// envelope built by the cmd: relay so the operator reads it
-	// per-transaction at L4 verification time.
-	posture string
-
-	// doctrine is the L1 validator the cmd: relay runs against the decoded
-	// typed payload before setting L1.Validated. Nil disables the cmd: relay
-	// path (the relay fails closed without a doctrine to screen against).
-	doctrine *governance.L1Doctrine
-
 	// receiptRelayDeps are wired by SetReceiptRelayDeps for the receipts:
 	// relay path. When set, publishes to receipts: channels from
 	// authorized operators are intercepted, the ActionReceipt signature is
@@ -90,7 +71,7 @@ type GatewayWebSocketHandler struct {
 	// out to subscribers. When nil (the default), the receipts: relay path
 	// is disabled and publishes to receipts: are rejected fail-closed.
 	receiptRelayMu       sync.RWMutex
-	receiptSignerStore   governance.SignerStore
+	receiptSignerStore   ReceiptSignerResolver
 	receiptAuditRecorder ReceiptRecorder
 
 	// certRenewal answers Operator requests on renewal: channels, wired by
@@ -244,27 +225,6 @@ func NewGatewayWebSocketHandler(logger *slog.Logger) *GatewayWebSocketHandler {
 	}
 }
 
-// SetCommandRelayDeps wires the StateRootProvider, session validator, gateway
-// posture, and L1 doctrine required for the cmd: command intent relay. When
-// set, publishes to cmd: channels from authorized app workloads are
-// intercepted, transformed into governed GovernanceEnvelopes with the
-// gateway's state root, posture, and L1 screening, and fanned out to
-// subscribers. When nil (the default), the cmd: relay path is disabled and
-// publishes to cmd: are rejected fail-closed. Called once during gateway
-// startup after the auth service, state root service, and L1 doctrine are
-// constructed. The posture is injected into every relayed envelope so the
-// operator reads it per-transaction at L4 verification time instead of from
-// out-of-band config. The doctrine is the L1 validator the relay runs
-// against the decoded typed payload before setting L1.Validated.
-func (b *GatewayWebSocketHandler) SetCommandRelayDeps(stateRootProvider governance.StateRootProvider, sessionValidator operatorSessionValidator, posture string, doctrine *governance.L1Doctrine) {
-	b.mu.Lock()
-	b.stateRootProvider = stateRootProvider
-	b.sessionValidator = sessionValidator
-	b.posture = posture
-	b.doctrine = doctrine
-	b.mu.Unlock()
-}
-
 // SetReceiptRelayDeps wires the SignerStore and ReceiptRecorder required for
 // the receipts: ActionReceipt relay. When set, publishes to receipts:
 // channels from authorized operators are intercepted, the ActionReceipt
@@ -274,7 +234,7 @@ func (b *GatewayWebSocketHandler) SetCommandRelayDeps(stateRootProvider governan
 // subscribers. When nil (the default), the receipts: relay path is disabled
 // and publishes to receipts: are rejected fail-closed. Called once during
 // gateway startup after the SignerStore and AuditStore are constructed.
-func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore governance.SignerStore, recorder ReceiptRecorder) {
+func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore ReceiptSignerResolver, recorder ReceiptRecorder) {
 	b.receiptRelayMu.Lock()
 	b.receiptSignerStore = signerStore
 	b.receiptAuditRecorder = recorder
@@ -699,24 +659,19 @@ func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 		return
 	}
 
-	// 4. Verify the receipt signature. Look up the signer's public key via
-	// the SignerStore, canonicalize the receipt, decode the hex signature,
-	// and verify with ed25519. Fail-closed if the key is not found or the
-	// signature is invalid.
+	// 4. Verify the receipt signature. The verification key is the one bound
+	// to the executing Operator (the envelope's operator_id, already bound to
+	// this channel above), never the key id the receipt declares. Fail-closed
+	// if no key is bound or the signature is invalid.
 	// Broker callbacks carry no request context, so the signer lookup runs
 	// under Background; it is a bounded local read with no caller to cancel.
-	pubKey, err := signerStore.GetTrustedSigner(context.Background(), receipt.SignerKeyId)
+	pubKey, err := signerStore.ReceiptSignerKey(context.Background(), env.OperatorId, receipt)
 	if err != nil {
-		b.logger.Warn("PubSub receipts: relay: failed to look up trusted signer",
+		b.logger.Warn("PubSub receipts: relay: receipt signer not bound to executing operator",
 			"channel", channel,
+			"operator_id", env.OperatorId,
 			"signer_key_id", receipt.SignerKeyId,
 			"error", err.Error())
-		return
-	}
-	if pubKey == nil {
-		b.logger.Warn("PubSub receipts: relay: unknown signer key id",
-			"channel", channel,
-			"signer_key_id", receipt.SignerKeyId)
 		return
 	}
 	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {

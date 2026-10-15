@@ -34,8 +34,8 @@ type VerifiedTransaction struct {
 	StateRoot                  string
 	Nonce                      string
 	ExpiresAt                  time.Time
-	L2Valid                    bool // Whether L2 signature was valid (may be false in Doctrine posture)
-	L3Valid                    bool // Whether L3 proof was valid (may be false in Doctrine/Consensus posture)
+	L2Status                   operatorv1.L2Status // Warden's L2 decision; L5 copies it into the receipt
+	L3Status                   operatorv1.L3Status // Warden's L3 decision; L5 copies it into the receipt
 	Posture                    GovernancePosture
 	DeterministicStageEvidence []*operatorv1.DeterministicStageEvidence
 }
@@ -180,9 +180,13 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 		return nil, constants.ErrTxInvalidEnvelope
 	}
 	verificationStart := governanceMonotonicNow()
+	// No posture-gated proof is evaluated before posture verification, so an early
+	// rejection records NOT_REQUIRED for both layers. verifyPosture replaces them.
 	rejected := &VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionType(envelope.ActionType),
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 	var stages []*operatorv1.DeterministicStageEvidence
 	reject := func(rejection error) (*VerifiedTransaction, error) {
@@ -255,9 +259,10 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 	// Nonce is now durably reserved in SQLite, safe to release in-flight lock
 	tv.releaseInFlight(envelope.Nonce)
 
-	// 2. Stateless Validation
-	doctrineStart := governanceMonotonicNow()
-	decodedPayload, computedHash, err := tv.verifyStateless(ctx, envelope)
+	// 2. Stateless Validation, split at the L1 Doctrine boundary. Only the doctrine
+	// step produces an L1_DOCTRINE stage: a failure before doctrine ran is not a
+	// doctrine judgment, so it carries no L1 stage.
+	decodedPayload, err := tv.verifyPreDoctrine(ctx, envelope)
 	if err != nil {
 		// The error can embed violating payload content (paths, patterns). The full
 		// reason is carried by the signed rejection receipt, not the plaintext log.
@@ -265,30 +270,45 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 			slog.Any("nonce", envelope.Nonce),
 			slog.Any("action_type", envelope.ActionType),
 			logging.ErrorKind(err))
-		// Release nonce reservation on stateless validation failure
 		tv.releaseNonceReservation(envelope.Nonce)
-		l1Stage := newDeterministicStageEvidence(
-			envelope,
-			operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
-			doctrineStart,
-			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
-		)
-		if tv.doctrine != nil {
-			l1Stage.DoctrineBundleHash = tv.doctrine.DoctrineBundleHash()
-			l1Stage.DoctrineBundleVersion = tv.doctrine.DoctrineBundleVersion()
-		}
-		stages = append(stages, l1Stage)
 		return reject(err)
+	}
+
+	doctrineStart := governanceMonotonicNow()
+	doctrineErr := tv.evaluateDoctrine(decodedPayload)
+	l1Outcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED
+	if doctrineErr != nil {
+		l1Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
 	}
 	l1Stage := newDeterministicStageEvidence(
 		envelope,
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
 		doctrineStart,
-		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED,
+		l1Outcome,
 	)
 	l1Stage.DoctrineBundleHash = tv.doctrine.DoctrineBundleHash()
 	l1Stage.DoctrineBundleVersion = tv.doctrine.DoctrineBundleVersion()
 	stages = []*operatorv1.DeterministicStageEvidence{l1Stage}
+	if doctrineErr != nil {
+		tv.logger.Error("Transaction rejected: STATELESS_VALIDATION_FAILED",
+			slog.Any("nonce", envelope.Nonce),
+			slog.Any("action_type", envelope.ActionType),
+			logging.ErrorKind(doctrineErr))
+		tv.releaseNonceReservation(envelope.Nonce)
+		return reject(doctrineErr)
+	}
+
+	// Doctrine passed, so any failure from here on is a hash-binding failure and the
+	// L1 stage above correctly stays VERIFIED.
+	computedHash, err := tv.verifyTransactionHash(envelope)
+	if err != nil {
+		tv.logger.Error("Transaction rejected: STATELESS_VALIDATION_FAILED",
+			slog.Any("nonce", envelope.Nonce),
+			slog.Any("action_type", envelope.ActionType),
+			logging.ErrorKind(err))
+		tv.releaseNonceReservation(envelope.Nonce)
+		return reject(err)
+	}
 
 	// 3. Stateful Validation (excluding nonce, which is already reserved)
 	err = tv.verifyStateful(ctx, envelope)
@@ -316,17 +336,21 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 		return reject(err)
 	}
 	rejected.Posture = posture
-	l2Valid, l3Valid, postureStages, err := tv.verifyPosture(ctx, envelope, computedHash, posture)
-	rejected.L2Valid = l2Valid
-	rejected.L3Valid = l3Valid
+	l2Status, l3Status, postureStages, err := tv.verifyPosture(ctx, envelope, computedHash, posture)
+	rejected.L2Status = l2Status
+	rejected.L3Status = l3Status
 	if err != nil {
 		tv.logger.Error("Transaction rejected: POSTURE_VALIDATION_FAILED",
 			"nonce", envelope.Nonce,
 			"tx_id", envelope.Id,
 			"posture", posture.Name(),
 			string(constants.ConnectionStateError), err)
-		// Release nonce reservation on posture validation failure
-		tv.releaseNonceReservation(envelope.Nonce)
+		// A missing or invalid proof can be retried, so its nonce is released.
+		// A human deny is final: the nonce stays spent so the denied
+		// transaction can never execute later on this runtime.
+		if !errors.Is(err, constants.ErrTxL3Denied) {
+			tv.releaseNonceReservation(envelope.Nonce)
+		}
 		stages = append(stages, postureStages...)
 		return reject(err)
 	}
@@ -353,8 +377,8 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 		StateRoot:                  envelope.StateMerkleRoot,
 		Nonce:                      envelope.Nonce,
 		ExpiresAt:                  expiresAt,
-		L2Valid:                    l2Valid,
-		L3Valid:                    l3Valid,
+		L2Status:                   l2Status,
+		L3Status:                   l3Status,
 		Posture:                    posture,
 		DeterministicStageEvidence: stages,
 	}, nil
@@ -395,105 +419,112 @@ func (tv *L4Warden) releaseNonceReservation(nonce string) {
 	}
 }
 
-// isMutation returns true if the action type modifies system state.
-// Uses the strongly-typed intrinsic property from the action definition.
-// Mutation classification is defined in protocol/constants/status.json via the _mutation field.
-// Actions marked as mutations require L3 Notary (human-presence) verification.
-func (tv *L4Warden) isMutation(actionType constants.ActionType) bool {
-	return actionType.IsMutation()
-}
-
-// verifyStateless performs basic structural, hash, and L1 Doctrine checks.
-func (tv *L4Warden) verifyStateless(ctx context.Context, envelope *govtypes.GovernanceEnvelope) (proto.Message, string, error) {
+// verifyPreDoctrine performs the structural, identity, and typed-payload checks
+// that run before L1 Doctrine judges the payload. Any error returned here means
+// doctrine never evaluated the transaction, so the caller emits no L1 stage.
+// On success it returns the decoded payload that doctrine must be given.
+func (tv *L4Warden) verifyPreDoctrine(ctx context.Context, envelope *govtypes.GovernanceEnvelope) (proto.Message, error) {
 	if envelope.ProtocolVersion != govtypes.GovernanceProtocolVersionV2 {
 		tv.logger.Error("Transaction rejected: unsupported protocol version",
 			"protocol_version", envelope.ProtocolVersion)
-		return nil, "", constants.ErrTxProtocolVersionUnsupported
+		return nil, constants.ErrTxProtocolVersionUnsupported
 	}
 	if tv.doctrine == nil {
 		tv.logger.Error("L1Doctrine not configured")
-		return nil, "", constants.ErrTxDoctrineMissing
+		return nil, constants.ErrTxDoctrineMissing
 	}
 
 	if envelope.Id == "" {
-		return nil, "", constants.ErrTxTransactionIDMissing
+		return nil, constants.ErrTxTransactionIDMissing
 	}
 
 	eventType := constants.EventType(envelope.EventType)
 	if _, err := constants.ValidateGovernedRequest(eventType); err == nil {
 		if err := constants.ValidateGovernedEnvelopeFields(eventType, constants.ActionType(envelope.ActionType)); err != nil {
-			return nil, "", err
+			return nil, err
 		}
 	}
 
 	actionType := constants.ActionType(envelope.ActionType)
 	if _, ok := tv.knownActionTypes[actionType]; !ok {
 		tv.logger.Error("Unknown action type", "action_type", envelope.ActionType)
-		return nil, "", constants.ErrTxUnknownActionType
+		return nil, constants.ErrTxUnknownActionType
 	}
 
 	// Heartbeat and Shutdown messages have no required fields and marshal to
 	// zero bytes when all-default — a valid empty proto, not a missing payload.
 	if len(envelope.Payload) == 0 && !PayloadMayBeEmpty(actionType) {
-		return nil, "", constants.ErrTxPayloadMissing
+		return nil, constants.ErrTxPayloadMissing
 	}
 
 	decodedPayload, err := tv.decodePayloadForAction(actionType, envelope.Payload)
 	if err != nil {
 		tv.logger.Error("Failed to decode typed payload", slog.Any("action_type", envelope.ActionType), logging.ErrorKind(err))
 		if errors.Is(err, constants.ErrTxPayloadDecoderMissing) {
-			return nil, "", err
+			return nil, err
 		}
-		return nil, "", constants.ErrTxPayloadDecodeFailed
+		return nil, constants.ErrTxPayloadDecodeFailed
 	}
 	if decodedPayload == nil {
-		return nil, "", constants.ErrTxPayloadDecoderMissing
+		return nil, constants.ErrTxPayloadDecoderMissing
 	}
 
 	if err := verifyDocumentCollection(decodedPayload); err != nil {
 		tv.logger.Error("Document action rejected: collection not governed", "action_type", envelope.ActionType, string(constants.ConnectionStateError), err)
-		return nil, "", err
+		return nil, err
 	}
 
 	// Unbound app document writes are the sole identity exception (INV-AUTH-ID-05).
 	unboundDocument := envelope.OperatorId == "" &&
 		(actionType == constants.ActionTypeDocumentUpdate || actionType == constants.ActionTypeDocumentDelete)
 	if tv.executionTarget == nil || (!unboundDocument && (envelope.OperatorId == "" || !tv.executionTarget.ExecutesFor(envelope.OperatorId))) {
-		return nil, "", fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, envelope.OperatorId)
+		return nil, fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, envelope.OperatorId)
 	}
 	if err := tv.verifyTargetSession(ctx, envelope); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
+	return decodedPayload, nil
+}
+
+// evaluateDoctrine runs L1 Doctrine over the decoded payload. The only error it
+// returns is one wrapping constants.ErrTxL1ValidationFailed, so a non-nil result
+// means doctrine ran and rejected the payload.
+func (tv *L4Warden) evaluateDoctrine(decodedPayload proto.Message) error {
 	if violations := tv.doctrine.ValidatePayload(decodedPayload); len(violations) > 0 {
-		tv.logger.Error("Doctrine (L1Doctrine) validation failed", "action_type", envelope.ActionType, "violation_count", len(violations))
-		return nil, "", fmt.Errorf("%w: %s", constants.ErrTxL1ValidationFailed, strings.Join(violations, ", "))
+		tv.logger.Error("Doctrine (L1Doctrine) validation failed", "violation_count", len(violations))
+		return fmt.Errorf("%w: %s", constants.ErrTxL1ValidationFailed, strings.Join(violations, ", "))
 	}
+	return nil
+}
 
+// verifyTransactionHash recomputes the canonical transaction hash and checks it
+// against both transaction_hash and id. It runs after L1 Doctrine has passed.
+func (tv *L4Warden) verifyTransactionHash(envelope *govtypes.GovernanceEnvelope) (string, error) {
 	computedHash, err := tv.computeTransactionHash(envelope)
 	if err != nil {
-		return nil, "", fmt.Errorf("l4 warden: compute transaction hash: %w", err)
+		return "", fmt.Errorf("l4 warden: compute transaction hash: %w", err)
 	}
 
 	if envelope.TransactionHash == "" {
-		return nil, "", constants.ErrTxTransactionHashMissing
+		return "", constants.ErrTxTransactionHashMissing
 	}
 
 	if envelope.TransactionHash != computedHash {
 		tv.logger.Error("Transaction hash mismatch",
 			"provided", envelope.TransactionHash,
 			"computed", computedHash)
-		return nil, "", constants.ErrTxTransactionHashMismatch
+		return "", constants.ErrTxTransactionHashMismatch
 	}
 
 	if envelope.Id != computedHash {
 		tv.logger.Error("Transaction id mismatch",
 			"provided", envelope.Id,
 			"computed", computedHash)
-		return nil, "", constants.ErrTxTransactionIDMismatch
+		return "", constants.ErrTxTransactionIDMismatch
 	}
 
-	return decodedPayload, computedHash, nil
+	return computedHash, nil
 }
 
 // verifyTargetSession binds the envelope's operator_session_id to the session
@@ -560,10 +591,13 @@ func (tv *L4Warden) verifyStateful(ctx context.Context, envelope *govtypes.Gover
 	return nil
 }
 
-// verifyPosture performs governance posture-aware checks for L2 and L3.
-// L2 evidence is evaluated before L3, but it gates L3 verification only when
-// the active posture requires L2 consensus.
-func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (bool, bool, []*operatorv1.DeterministicStageEvidence, error) {
+// verifyPosture verifies the L2 and L3 proofs that posture gates and decides the
+// status each layer records. L2 is evaluated before L3, and L2 gates L3 only when
+// the active posture requires L2 consensus. Each stage outcome is derived from
+// its status through the same table ValidateDeterministicProtocolChain reads, so
+// a stage and the receipt status it is checked against cannot disagree.
+func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (operatorv1.L2Status, operatorv1.L3Status, []*operatorv1.DeterministicStageEvidence, error) {
+	actionType := constants.ActionType(envelope.ActionType)
 	l2Start := governanceMonotonicNow()
 	l2Valid, err := tv.verifyL2Posture(ctx, envelope, computedHash, posture)
 	if err != nil {
@@ -574,17 +608,16 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
 		)
 		l2Stage.L2SignatureDigest = l2SignatureDigest(envelope)
-		return false, false, []*operatorv1.DeterministicStageEvidence{l2Stage}, err
+		// L3 is not evaluated once L2 fails. Its status still follows its requirement,
+		// so a required L3 that was never verified is not recorded as satisfied.
+		return operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED, tv.l3StatusFor(actionType, posture, false), []*operatorv1.DeterministicStageEvidence{l2Stage}, err
 	}
-	l2Outcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED
-	if l2Valid {
-		l2Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED
-	}
+	l2Status := l2StatusFor(actionType, posture, l2Valid)
 	l2Stage := newDeterministicStageEvidence(
 		envelope,
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2,
 		l2Start,
-		l2Outcome,
+		deterministicL2StatusOutcome[l2Status],
 	)
 	l2Stage.L2SignatureDigest = l2SignatureDigest(envelope)
 
@@ -598,30 +631,59 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
 		)
 		l3Stage.L3SignatureDigest = humanSignatureDigest(envelope)
-		return l2Valid, false, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, err
+		return l2Status, operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, err
 	}
-	l3Outcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED
-	if l3Valid {
-		l3Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED
-	}
+	l3Status := tv.l3StatusFor(actionType, posture, l3Valid)
 	l3Stage := newDeterministicStageEvidence(
 		envelope,
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY,
 		l3Start,
-		l3Outcome,
+		deterministicL3StatusOutcome[l3Status],
 	)
 	l3Stage.L3SignatureDigest = humanSignatureDigest(envelope)
 
-	return l2Valid, l3Valid, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, nil
+	return l2Status, l3Status, []*operatorv1.DeterministicStageEvidence{l2Stage, l3Stage}, nil
+}
+
+// L3Required reports whether posture gates this action on an L3 notary proof.
+// Only mutations are gated, and only under postures that require L3. Mutation
+// classification is owned by the action registry (constants.ActionType.IsMutation).
+//
+// This is the single owner of the L3 gate. L4 verification and the Gateway
+// dispatch refusal both call it.
+func L3Required(actionType constants.ActionType, posture GovernancePosture) bool {
+	return actionType.IsMutation() && posture.RequiresL3Proof()
+}
+
+// l3StatusFor maps the L3 result of one envelope to the status its receipt
+// records. A valid proof is REQUIRED_VALID even where L3 is not required, because
+// its verified stage is recorded as audit evidence. A required proof that did not
+// verify is REQUIRED_FAILED. Everything else is NOT_REQUIRED.
+func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture GovernancePosture, valid bool) operatorv1.L3Status {
+	switch {
+	case valid:
+		return operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
+	case L3Required(actionType, posture):
+		return operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED
+	default:
+		return operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
+	}
 }
 
 func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, posture GovernancePosture) (bool, error) {
+	// A human deny ends the transaction in every posture. It needs no proof:
+	// it can only stop execution, never authorize it.
+	if envelope.Governance.GetL3().GetDenied() {
+		return false, constants.ErrTxL3Denied
+	}
+
 	actionType := constants.ActionType(envelope.ActionType)
+	required := L3Required(actionType, posture)
 
 	hasProof := envelope.Governance != nil && envelope.Governance.L3 != nil && envelope.Governance.L3.Proof != nil
 
 	if !hasProof {
-		if tv.isMutation(actionType) && posture.RequiresL3Proof() {
+		if required {
 			tv.logger.Error("L3 proof missing but required by posture", "posture", posture.Name())
 			return false, constants.ErrTxL3ProofMissing
 		}
@@ -629,7 +691,7 @@ func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.Gove
 	}
 
 	if tv.l3Notary == nil {
-		if tv.isMutation(actionType) && posture.RequiresL3Proof() {
+		if required {
 			tv.logger.Error("L3 notary not configured but required by posture", "posture", posture.Name())
 			return false, constants.ErrTxL3NotaryNotConfigured
 		}
@@ -644,7 +706,7 @@ func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.Gove
 		envelope.Governance.L3.Proof,
 	)
 
-	if (err != nil || !ok) && tv.isMutation(actionType) && posture.RequiresL3Proof() {
+	if (err != nil || !ok) && required {
 		tv.logger.Error("Notary (L3Notary) verification failed but required by posture", string(constants.ConnectionStateError), err)
 		return false, constants.ErrTxL3ProofInvalid
 	}

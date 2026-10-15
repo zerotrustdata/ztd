@@ -43,39 +43,35 @@ type dispatchRequestJSON struct {
 	TargetResource          string `json:"target_resource,omitempty"`
 }
 
-// dispatchResponseJSON mirrors gateway.DispatchResponse.
-type dispatchResponseJSON struct {
-	Success       bool   `json:"success"`
-	TransactionID string `json:"transaction_id"`
-	EventType     string `json:"event_type,omitempty"`
-	ActionType    string `json:"action_type,omitempty"`
-	ResultPayload []byte `json:"result_payload,omitempty"`
-	Error         string `json:"error,omitempty"`
-}
-
 // DocumentResponse is the wire shape returned by GET /api/v1/data/{collection}/{id}.
 type DocumentResponse map[string]json.RawMessage
 
-// GetString extracts a string field from DocumentResponse.
-func (d DocumentResponse) GetString(field string) string {
+// GetString extracts a string field from a DocumentResponse. The bool is false
+// when the field is absent or not a JSON string.
+func (d DocumentResponse) GetString(field string) (string, bool) {
 	raw, ok := d[field]
 	if !ok {
-		return ""
+		return "", false
 	}
 	var s string
-	_ = json.Unmarshal(raw, &s)
-	return s
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", false
+	}
+	return s, true
 }
 
-// GetBool extracts a bool field from DocumentResponse.
-func (d DocumentResponse) GetBool(field string) bool {
+// GetBool extracts a bool field from a DocumentResponse. The bool is false when
+// the field is absent or not a JSON bool.
+func (d DocumentResponse) GetBool(field string) (bool, bool) {
 	raw, ok := d[field]
 	if !ok {
-		return false
+		return false, false
 	}
 	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return false, false
+	}
+	return b, true
 }
 
 // SubmitGovernanceEnvelope posts a GovernanceEnvelope proto to /api/v1/governance/envelopes.

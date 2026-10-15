@@ -15,13 +15,10 @@ import (
 	"net/url"
 	"strings"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/response"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // handleApprovalAction dispatches approval sub-actions (challenge, verify) based on
@@ -170,10 +167,17 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	receiptRef, err := approvalReceiptReference(suspendedTx, receipt)
+	// The resumed transaction must produce the receipt for the suspended hash. A
+	// mismatch means the Gateway cannot vouch for this approval, so it fails closed.
+	if receipt == nil || receipt.GetTransactionHash() != suspendedTx.TransactionHash {
+		h.logger.Error("Resumed receipt does not match suspended transaction", "txHash", txHash)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	if err != nil {
-		h.logger.Error("Failed to construct approval receipt reference", "error", err, "txHash", txHash)
-		h.responder.Error(w, http.StatusInternalServerError, err.Error())
+		h.logger.Error("Failed to encode approval receipt", "error", err, "txHash", txHash)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
 		return
 	}
 
@@ -181,25 +185,30 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 	if sseUserID == "" {
 		sseUserID = suspendedTx.UserID
 	}
-	h.orchestrator.EmitApprovalCompletedSSE(sseUserID, suspendedTx.SubmitterCLISessionID, txHash, receiptRef)
+	h.orchestrator.EmitApprovalCompletedSSE(sseUserID, suspendedTx.SubmitterCLISessionID, txHash, receiptJSON)
 
 	h.responder.JSON(w, http.StatusOK, receipt)
 }
 
 // @Summary		Deny a suspended transaction
-// @Description	Records a direct deny decision for a suspended transaction owned by the caller. Under ratify or
-// @Description	notary posture a CLI caller must present an mTLS client certificate and a web caller must hold a
-// @Description	registered passkey. `approved: true` is always rejected with 403: approval requires a WebAuthn
-// @Description	assertion through `/api/v1/approvals/{txHash}/verify`.
+// @Description	Denies a suspended transaction owned by the caller. The envelope is re-submitted to its executing
+// @Description	Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
+// @Description	L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
+// @Description	the CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must
+// @Description	present an mTLS client certificate and a web caller must hold a registered passkey.
+// @Description	`approved: true` is always rejected with 403: approval requires a WebAuthn assertion through
+// @Description	`/api/v1/approvals/{txHash}/verify`.
 // @Tags			approvals
 // @Accept		json
 // @Produce		json
 // @Param		body	body		models.ApprovalRespondRequest	true	"Approval decision"
-// @Success		200		{object}	models.ApprovalRespondResponse
+// @Success		200		{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of the deny"
 // @Failure		400		{string}	string	"Invalid request body"
 // @Failure		401		{string}	string	"Unauthorized"
 // @Failure		403		{string}	string	"Forbidden — approval requested, session not grounded for posture, or transaction belongs to another user"
 // @Failure		404		{string}	string	"Transaction not found or expired"
+// @Failure		500		{string}	string	"The deny produced no signed rejection receipt"
+// @Failure		503		{string}	string	"Service Unavailable — runtime vault locked; the deny can be resubmitted"
 // @Router			/api/v1/approvals/respond [post]
 func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -262,48 +271,36 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := h.orchestrator.DenySuspendedTransaction(r.Context(), req.ApprovalID); err != nil {
-		h.logger.Error("Failed to deny suspended transaction", "error", err, "txHash", req.ApprovalID)
-		h.responder.Error(w, http.StatusInternalServerError, "failed to deny transaction")
+	receipt, err := h.orchestrator.DenySuspendedTransaction(r.Context(), req.ApprovalID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrTransactionExpired):
+			h.responder.Error(w, http.StatusNotFound, "transaction not found or expired")
+		case errors.Is(err, constants.ErrAuditStoreVaultLocked):
+			h.logger.Error("Deny blocked: runtime vault locked", "error", err, "txHash", req.ApprovalID)
+			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
+		default:
+			h.logger.Error("Failed to deny suspended transaction", "error", err, "txHash", req.ApprovalID)
+			h.responder.Error(w, http.StatusInternalServerError, "failed to deny transaction")
+		}
 		return
 	}
-	h.responder.JSON(w, http.StatusOK, models.ApprovalRespondResponse{Success: true, ApprovalID: req.ApprovalID, Approved: false})
-}
 
-func approvalReceiptReference(suspendedTx *models.SuspendedTransaction, receipt *operatorv1.ActionReceipt) (*models.ApprovalReceiptReference, error) {
-	if suspendedTx == nil || receipt == nil {
-		return nil, constants.ErrApprovalReceiptReferenceInvalid
+	// The deny must produce the signed rejection for the suspended hash. A
+	// mismatch means the Gateway cannot vouch for this deny, so it fails closed.
+	if receipt == nil || receipt.GetTransactionHash() != tx.TransactionHash {
+		h.logger.Error("Deny receipt does not match suspended transaction", "txHash", req.ApprovalID)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
 	}
-
-	envelope := &commonv1.GovernanceEnvelope{}
-	if err := protojson.Unmarshal(suspendedTx.Envelope, envelope); err != nil {
-		return nil, fmt.Errorf("approval: decode suspended envelope: %w", err)
-	}
-	// Suspension covers every Gateway ingress that awaits L3 (MCP and A2A
-	// calls), so the payload decodes by its action type.
-	decoded, err := governance.DecodePayloadForAction(constants.ActionType(envelope.GetActionType()), envelope.Payload)
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	if err != nil {
-		return nil, fmt.Errorf("approval: decode suspended request: %w", err)
+		h.logger.Error("Failed to encode deny receipt", "error", err, "txHash", req.ApprovalID)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
+		return
 	}
-	request, ok := decoded.(interface{ GetExecutionId() string })
-	if !ok {
-		return nil, constants.ErrApprovalReceiptReferenceInvalid
-	}
-
-	ref := &models.ApprovalReceiptReference{
-		ExecutionID:     request.GetExecutionId(),
-		TransactionID:   receipt.TransactionId,
-		TransactionHash: receipt.TransactionHash,
-		SignerKeyID:     receipt.SignerKeyId,
-		Signature:       receipt.Signature,
-		InvestigationID: envelope.InvestigationId,
-		Status:          int32(receipt.Status),
-		ResultSummary:   receipt.ResultSummary,
-	}
-	if ref.ExecutionID == "" || ref.TransactionID == "" || ref.TransactionHash == "" || ref.TransactionHash != suspendedTx.TransactionHash || ref.SignerKeyID == "" || ref.Signature == "" || ref.InvestigationID == "" {
-		return nil, constants.ErrApprovalReceiptReferenceInvalid
-	}
-	return ref, nil
+	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, req.ApprovalID, receiptJSON)
+	h.responder.JSON(w, http.StatusOK, receipt)
 }
 
 // handleCLIApprovalStatus is an mTLS-authenticated endpoint that returns the current

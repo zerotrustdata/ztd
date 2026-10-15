@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func startSleeper(t *testing.T, r *releaseSmokeRun) *smokeOwnedProcess {
@@ -26,7 +28,7 @@ func startSleeper(t *testing.T, r *releaseSmokeRun) *smokeOwnedProcess {
 		// cmd.exe runs ping as a grandchild, so stopping must reach the whole job.
 		argv = []string{"cmd.exe", "/c", "ping", "-n", "61", "127.0.0.1"}
 	}
-	proc, err := r.owner.start("sleeper", t.TempDir(), filepath.Join(r.logDir, "sleeper"), argv, nil)
+	proc, err := r.owner.start("sleeper", testutil.TempDir(t), filepath.Join(r.logDir, "sleeper"), argv, nil)
 	if err != nil {
 		t.Fatalf("start owned process: %v", err)
 	}
@@ -43,7 +45,7 @@ func assertExited(t *testing.T, proc *smokeOwnedProcess) {
 }
 
 func TestOwnedProcessStopsOnCancellation(t *testing.T) {
-	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(t.TempDir(), "run")})
+	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(testutil.TempDir(t), "run")})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	ctx, cancel := context.WithCancel(context.Background())
 	var proc *smokeOwnedProcess
@@ -61,7 +63,7 @@ func TestOwnedProcessStopsOnCancellation(t *testing.T) {
 }
 
 func TestOwnedProcessStopsOnTimeout(t *testing.T) {
-	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(t.TempDir(), "run")})
+	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(testutil.TempDir(t), "run")})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
@@ -77,7 +79,7 @@ func TestOwnedProcessStopsOnTimeout(t *testing.T) {
 }
 
 func TestOwnedProcessStopsOnFailureAndIsIdempotent(t *testing.T) {
-	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(t.TempDir(), "run")})
+	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(testutil.TempDir(t), "run")})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	var proc *smokeOwnedProcess
 	err := r.execute(context.Background(), []smokePhase{
@@ -94,10 +96,10 @@ func TestOwnedProcessStopsOnFailureAndIsIdempotent(t *testing.T) {
 }
 
 func TestOwnerDoesNotTouchProcessesItDidNotStart(t *testing.T) {
-	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: t.TempDir()})
+	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: testutil.TempDir(t)})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	unrelated := startSleeper(t, r)
-	other := newReleaseSmokeRun(releaseSmokeOptions{RunDir: t.TempDir()})
+	other := newReleaseSmokeRun(releaseSmokeOptions{RunDir: testutil.TempDir(t)})
 	if err := other.owner.stopAll(time.Second); err != nil {
 		t.Fatalf("stopAll on empty owner: %v", err)
 	}

@@ -53,7 +53,7 @@ enum HeartbeatType {
 // Payload for ztd.v1.operator.command.requested
 message CommandRequested {
   // Shell command string to execute
-  string command = 1 [(ztd.common.v1.forbidden_patterns) = "(^|\\s)sudo(\\s|$),(^|\\s)su(\\s|$),rm -rf /"];
+  string command = 1 [(ztd.common.v1.forbidden_patterns) = "(^|[;&|(]\\s*)sudo(\\s|$),(^|[;&|(]\\s*)su(\\s|$),rm -rf /"];
 
   // Unique execution identifier (correlation key)
   string execution_id = 2;
@@ -452,6 +452,12 @@ message OperatorDocument {
   // heartbeat interval. The Gateway derives it on every read and never stores
   // it; it is unset for an Operator that cannot read as stale.
   google.protobuf.Timestamp stale_at = 35;
+  // actuator_public_key is the hex Ed25519 public key of this Operator's L5
+  // Actuator, bound once at enrollment over the authenticated bootstrap channel.
+  // Receipts executed by this Operator verify only against this key.
+  string actuator_public_key = 36;
+  // actuator_key_id equals actuator_public_key (key_id == hex(pub)).
+  string actuator_key_id = 37;
 }
 
 message ShutdownRequested {
@@ -638,6 +644,48 @@ enum ReceiptFailureCode {
   RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
 }
 
+// GovernanceRejectionCode names the verification check that rejected a
+// transaction before execution. The L5 actuator stamps it on every
+// GOVERNANCE_REJECTED receipt, so a verifier can attribute a rejection to a
+// layer from signed evidence alone, without parsing result_summary. It is
+// bound into the receipt signature.
+enum GovernanceRejectionCode {
+  // The receipt is not a governance rejection.
+  GOVERNANCE_REJECTION_CODE_UNSPECIFIED = 0;
+  // The rejection error is not mapped to a check. A verifier treats it as a defect.
+  GOVERNANCE_REJECTION_CODE_UNCLASSIFIED = 1;
+  // The runtime vault is locked or absent, so nothing may execute.
+  GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED = 2;
+  // A verifier dependency (doctrine, replay store, signer store, consensus, notary, state root provider) is absent.
+  GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED = 3;
+  // The envelope is structurally incomplete or its typed payload does not decode.
+  GOVERNANCE_REJECTION_CODE_ENVELOPE_MALFORMED = 4;
+  GOVERNANCE_REJECTION_CODE_PROTOCOL_VERSION_UNSUPPORTED = 5;
+  GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH = 6;
+  GOVERNANCE_REJECTION_CODE_EXPIRED = 7;
+  // The nonce was already reserved or is in flight.
+  GOVERNANCE_REJECTION_CODE_REPLAY = 8;
+  GOVERNANCE_REJECTION_CODE_DOCUMENT_COLLECTION_NOT_GOVERNED = 9;
+  GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH = 10;
+  GOVERNANCE_REJECTION_CODE_TARGET_SESSION_MISMATCH = 11;
+  // L1 doctrine found a forbidden pattern in the typed payload.
+  GOVERNANCE_REJECTION_CODE_L1_DOCTRINE = 12;
+  GOVERNANCE_REJECTION_CODE_TRANSACTION_HASH_MISMATCH = 13;
+  GOVERNANCE_REJECTION_CODE_TRANSACTION_ID_MISMATCH = 14;
+  GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH = 15;
+  GOVERNANCE_REJECTION_CODE_POSTURE_MISSING = 16;
+  GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING = 17;
+  GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID = 18;
+  GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET = 19;
+  GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER = 20;
+  GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING = 21;
+  GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID = 22;
+  // The L2 proof names a consensus set that is unknown or disabled.
+  GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN = 23;
+  // The human denied the suspended transaction at the L3 approval.
+  GOVERNANCE_REJECTION_CODE_L3_DENIED = 24;
+}
+
 // ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
 message ActionReceipt {
   // Original GovernanceEnvelope ID
@@ -687,6 +735,71 @@ message ActionReceipt {
 
   // The registry-derived governance class for the request event.
   string action_type = 17;
+
+  // The verification check that rejected the transaction. Set exactly when
+  // failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the
+  // signature via canonicalization.
+  GovernanceRejectionCode rejection_code = 18;
+}
+
+// GovernanceRejection is the client-facing body every governed ingress
+// (direct envelope submission, governed dispatch, MCP, A2A) returns when the
+// executing Operator rejected a transaction at L4. receipt is the Operator's
+// signed FAILED receipt with failure_code GOVERNANCE_REJECTED; its
+// transaction_id and rejection_code are the authoritative identity and
+// attribution of the rejection. error is the governance sentinel text, for
+// display only.
+message GovernanceRejection {
+  string error = 1;
+  ActionReceipt receipt = 2;
+}
+
+// IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
+// exists. It is the pre-envelope counterpart of GovernanceRejectionCode. A refusal
+// never carries a receipt, because nothing was executed or rejected by L4.
+enum IngressRefusalCode {
+  INGRESS_REFUSAL_CODE_UNSPECIFIED = 0;
+  INGRESS_REFUSAL_CODE_UNCLASSIFIED = 1;
+  INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED = 2;
+  INGRESS_REFUSAL_CODE_PAYLOAD_TOO_LARGE = 3;
+  INGRESS_REFUSAL_CODE_MALFORMED_REQUEST = 4;
+  INGRESS_REFUSAL_CODE_MISSING_FIELD = 5;
+  INGRESS_REFUSAL_CODE_UNKNOWN_EVENT_TYPE = 6;
+  INGRESS_REFUSAL_CODE_EVENT_ACTION_MISMATCH = 7;
+  INGRESS_REFUSAL_CODE_PAYLOAD_DECODE_FAILED = 8;
+  INGRESS_REFUSAL_CODE_MTLS_REQUIRED = 9;
+  INGRESS_REFUSAL_CODE_IDENTITY_BINDING_FAILED = 10;
+  INGRESS_REFUSAL_CODE_CALLER_SUPPLIED_POSTURE = 11;
+  INGRESS_REFUSAL_CODE_OPERATOR_SESSION_NOT_FOUND = 12;
+  INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE = 13;
+  INGRESS_REFUSAL_CODE_L1_DOCTRINE = 14;
+  INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE = 15;
+  INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE = 16;
+  INGRESS_REFUSAL_CODE_GATEWAY_MISCONFIGURED = 17;
+  INGRESS_REFUSAL_CODE_EMBEDDED_OPERATOR_UNCLAIMED = 18;
+  INGRESS_REFUSAL_CODE_L2_DELIBERATION_FAILED = 19;
+  INGRESS_REFUSAL_CODE_STATE_ROOT_UNAVAILABLE = 20;
+}
+
+// IngressRefusal is the body of every pre-envelope refusal: the HTTP body on the
+// direct and dispatch ingresses, and JSON-RPC error.data on MCP and A2A.
+message IngressRefusal {
+  IngressRefusalCode code = 1;
+  string error = 2;
+}
+
+// GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
+// receipt is the executing Operator's signed final ActionReceipt. Failures are
+// GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
+message GovernedDispatchResult {
+  string transaction_id = 1;
+  string event_type = 2;
+  string action_type = 3;
+  // result_payload is the proto-marshaled terminal operator result for event_type
+  // (for example FsReadResult), the same bytes the dispatch response carries today.
+  bytes result_payload = 4;
+  InferenceResult inference_result = 5;
+  ActionReceipt receipt = 6;
 }
 
 // CommitmentAttestation is the Auditor's signed record that a verified
@@ -1658,12 +1771,74 @@ message InferenceDispatchRequest {
   optional int32 seed = 36;
 }
 
+// InferenceDispatchFailureCode is the typed classification of a failed
+// POST /api/v1/inference/dispatch. Each code names one centralized public
+// sentinel, so a caller classifies the failure (a provider that rejects tool
+// declarations, a backend timeout, a governance rejection) without parsing
+// the error text.
+enum InferenceDispatchFailureCode {
+  INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED = 0;
+  INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL = 1;
+  INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN = 2;
+  INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT = 3;
+  INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND = 4;
+  INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS = 5;
+  INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE = 6;
+  INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID = 7;
+  INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED = 8;
+  INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED = 9;
+  INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID = 10;
+  INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID = 11;
+  INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL = 12;
+  INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID = 13;
+  INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID = 14;
+  INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED = 15;
+  INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED = 16;
+  INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW = 17;
+  INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID = 18;
+  INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED = 19;
+  INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID = 20;
+  INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID = 21;
+  INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED = 22;
+  INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY = 23;
+  INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED = 24;
+  INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY = 25;
+  INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH = 26;
+  INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST = 27;
+  INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH = 28;
+  INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH = 29;
+  INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID = 30;
+  INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE = 31;
+  INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT = 32;
+  INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT = 33;
+  INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE = 34;
+  INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED = 35;
+  INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT = 36;
+  INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED = 37;
+  INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND = 38;
+  INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID = 39;
+  INFERENCE_DISPATCH_FAILURE_CODE_CANCELED = 40;
+  INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED = 41;
+  INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE = 42;
+  INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH = 43;
+}
+
+// InferenceDispatchFailure is the protocol-owned error body for a non-2xx
+// POST /api/v1/inference/dispatch. Error is a public-safe centralized
+// sentinel; code classifies it, and is UNSPECIFIED for request faults the
+// handler rejects before dispatch (method, identity, body size).
+message InferenceDispatchFailure {
+  string error = 1;
+  InferenceDispatchFailureCode code = 2;
+}
+
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure
 // frame for a streaming dispatch that already started NDJSON delivery.
 // Reason is a public-safe centralized sentinel; it never carries raw
-// prompts, model output, or receipt bodies.
+// prompts, model output, or receipt bodies. Code classifies it.
 message InferenceDispatchStreamFailure {
   string reason = 1;
+  InferenceDispatchFailureCode code = 2;
 }
 
 // InferenceDispatchStreamFrame is one NDJSON line in a streaming dispatch

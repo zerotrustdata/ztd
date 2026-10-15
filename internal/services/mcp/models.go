@@ -13,7 +13,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // JSONRPCRequest is an alias for response.JSONRPCRequest
@@ -33,20 +32,16 @@ type CallToolRequest struct {
 	InvestigationID string          `json:"investigation_id,omitempty"`
 }
 
-// CallToolResult is the result for the "tools/call" method.
+// CallToolResult is the result for the "tools/call" method. A successful call
+// carries the executing Operator's signed ActionReceipt; a suspended call
+// carries a GovernedSuspension instead.
 type CallToolResult struct {
-	Content []TextContent         `json:"content"`
-	IsError bool                  `json:"isError,omitempty"`
-	Receipt *toolReceiptReference `json:"receipt,omitempty"`
-}
-
-type toolReceiptReference struct {
-	ExecutionID     string `json:"execution_id"`
-	TransactionID   string `json:"transaction_id"`
-	TransactionHash string `json:"transaction_hash"`
-	SignerKeyID     string `json:"signer_key_id"`
-	Signature       string `json:"signature"`
-	InvestigationID string `json:"investigation_id"`
+	Content []TextContent `json:"content"`
+	IsError bool          `json:"isError,omitempty"`
+	// Receipt is the executing Operator's signed ActionReceipt, canonical protojson.
+	Receipt json.RawMessage `json:"receipt,omitempty"`
+	// Suspension is set when the call awaits L3 human approval.
+	Suspension *GovernedSuspension `json:"suspension,omitempty"`
 }
 
 // TextContent represents a text part of a tool response.
@@ -141,6 +136,16 @@ type ToolsListResult struct {
 	Tools []Tool `json:"tools"`
 }
 
+// toolsListResponse is the "tools/list" result the Gateway returns when a
+// downstream may be configured. Each entry is raw JSON: native tools are
+// marshaled from Tool, and downstream entries are passed through as the
+// downstream sent them, so fields Tool does not model (title, annotations,
+// outputSchema, rich JSON Schema) reach the client unchanged. Only a
+// downstream entry's name is read, to match it against the native tools.
+type toolsListResponse struct {
+	Tools []json.RawMessage `json:"tools"`
+}
+
 // Tool represents an MCP tool.
 type Tool struct {
 	Name        string       `json:"name"`
@@ -158,8 +163,9 @@ type PromptsListResult struct {
 	Prompts []Prompt `json:"prompts"`
 }
 
-// A2ASuspensionResponse is returned when an A2A call is suspended for L3 approval.
-type A2ASuspensionResponse struct {
+// GovernedSuspension is the typed suspension body returned by MCP and A2A when a
+// governed call is paused for L3 human approval. Only a missing L3 proof suspends.
+type GovernedSuspension struct {
 	ID          string `json:"id"`
 	Status      string `json:"status"`
 	TxHash      string `json:"tx_hash"`
@@ -167,10 +173,11 @@ type A2ASuspensionResponse struct {
 	Message     string `json:"message"`
 }
 
-// A2ASuccessResponse is returned when an A2A call succeeds.
+// A2ASuccessResponse is returned when an A2A call succeeds. Result is the
+// executing Operator's signed ActionReceipt, canonical protojson.
 type A2ASuccessResponse struct {
-	ID     string                    `json:"id"`
-	Result *operatorv1.ActionReceipt `json:"result"`
+	ID     string          `json:"id"`
+	Result json.RawMessage `json:"result"`
 }
 
 // A2ACallRequest is the params for the "a2a/call" method.

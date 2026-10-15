@@ -306,12 +306,12 @@ func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *te
 		ReportId:        "run-1",
 		Valid:           true,
 		VerifiedAt:      timestamppb.New(verifiedAt),
-		VerifierId:      constants.EvalRunVerifierID,
-		VerifierVersion: constants.EvalRunVerifierVersion,
+		VerifierId:      constants.ConformanceVerifierID,
+		VerifierVersion: constants.ConformanceVerifierVersion,
 		Checks: []*compliancev1.VerificationCheckResult{NewVerificationCheckResult(
-			constants.EvalRunVerificationCheck,
-			constants.EvalRunVerifierID,
-			constants.EvalRunVerifierVersion,
+			constants.ConformanceVerificationCheck,
+			constants.ConformanceVerifierID,
+			constants.ConformanceVerifierVersion,
 			[]string{"run-1"},
 			nil,
 		)},
@@ -361,7 +361,7 @@ func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *te
 			body, err := compliancev1.MarshalCanonical(report)
 			require.NoError(t, err)
 
-			decoded, err := ValidateVerificationReport(body, "run-1", constants.EvalRunVerifierID, constants.EvalRunVerifierVersion, test.notAfter)
+			decoded, err := ValidateVerificationReport(body, "run-1", constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, test.notAfter)
 			if test.targetErr != nil {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, test.targetErr)
@@ -375,7 +375,7 @@ func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *te
 }
 
 func TestValidateVerificationReport_RejectsNoncanonicalBody(t *testing.T) {
-	report, err := ValidateVerificationReport([]byte(`{"report_id": "run-1"}`), "run-1", constants.EvalRunVerifierID, constants.EvalRunVerifierVersion, time.Unix(1_700_000_000, 0).UTC())
+	report, err := ValidateVerificationReport([]byte(`{"report_id": "run-1"}`), "run-1", constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, time.Unix(1_700_000_000, 0).UTC())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Nil(t, report)

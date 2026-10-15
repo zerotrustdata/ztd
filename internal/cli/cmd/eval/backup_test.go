@@ -40,11 +40,11 @@ func TestBackupRestore_RoundTripAfterWipe(t *testing.T) {
 	assert.Equal(t, len(created.Files), created.FileCount)
 	assert.Equal(t, backupRoot, filepath.Dir(created.SnapshotDir))
 
-	reportRel := filepath.ToSlash(filepath.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-a-1", constants.EvaluationReportFilename))
-	want, err := fileSvc.ReadFile(ctx, reportRel)
+	recordRel := filepath.ToSlash(filepath.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-a-1", constants.ConformanceRecordFilename))
+	want, err := fileSvc.ReadFile(ctx, recordRel)
 	if err != nil {
-		reportRel = created.Files[0].Path
-		want, err = fileSvc.ReadFile(ctx, reportRel)
+		recordRel = created.Files[0].Path
+		want, err = fileSvc.ReadFile(ctx, recordRel)
 	}
 	require.NoError(t, err)
 
@@ -56,7 +56,7 @@ func TestBackupRestore_RoundTripAfterWipe(t *testing.T) {
 	assert.Len(t, restored.Restored, created.FileCount)
 	assert.Empty(t, restored.Unchanged)
 
-	got, err := fileSvc.ReadFile(ctx, reportRel)
+	got, err := fileSvc.ReadFile(ctx, recordRel)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
 }

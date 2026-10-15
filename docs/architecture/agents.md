@@ -3,8 +3,8 @@ doc_id: agents
 title: AI Agents and the ztd Governance Boundary
 audience: maintainers and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.1.0
+last_updated: 2026-10-14
 owners:
   - internal/cli/agent/
   - internal/cli/cmd/mcp/
@@ -66,7 +66,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-AGT-03 | Devin CLI does not expose native-tool disabling options. Only operations explicitly routed through ztd MCP cross the governance boundary; Devin's native file, shell, and network access remain ungoverned side channels. |
 | INV-AGT-04 | `ztd mcp stdio` MUST fail closed immediately with `ErrIncompleteCredentialPair` when supplied a certificate without its corresponding private key or vice versa. Partial credential pairs MUST NOT degrade to unauthenticated access. |
 | INV-AGT-05 | Agents retain native tools (shell, filesystem, network access) outside their configured MCP server unless the agent launcher or configuration actively disables them. Governance covers ONLY operations traversing ztd ingress; side channels remain agent-native. |
-| INV-AGT-06 | Governed HTTP dispatch (`POST /api/v1/operators/commands`) cannot mint human L3 proofs and MUST fail closed under `ratify` or `notary` postures when L3 proof is required. Direct envelopes and MCP/A2A submission paths support L3 suspension; HTTP dispatch does not. |
+| INV-AGT-06 | Governed HTTP dispatch (`POST /api/v1/operators/commands`) cannot mint human L3 proofs and MUST fail closed under `ratify` or `notary` postures when L3 proof is required. MCP/A2A submission paths support L3 suspension; direct envelope submission and HTTP dispatch do not. Direct envelopes MUST supply posture-required L2/L3 proofs and fail closed at L4 when they are missing. A doctrine violation on this path is refused as L1 (`ErrTxL1ValidationFailed`) in every posture, before the L3 refusal. MCP and A2A suspend only on a missing L3 proof (`ErrTxL3ProofMissing`); an invalid proof is a rejection. Every other L4 rejection is a JSON-RPC error whose `error.data` is a `GovernanceRejection` carrying the signed rejection receipt (`INV-GOV-ACT-10`). |
 | INV-AGT-07 | Third-party MCP servers (subprocess or HTTP) are governed exclusively through Gateway downstream egress with full L1–L5 governance, envelope construction, and signed receipts. `ztd mcp agent run` is a launcher only and MUST NOT serve as an external MCP reverse proxy. |
 | INV-AGT-08 | The Go agent harness (`internal/tools/agent_harness/`) is a typed governed client used by evaluation and integration workflows. It contains no model, consensus, or reasoning loop and is not an agent. |
 | INV-AGT-09 | Every agent supported by the launcher MUST correspond to exactly one `agent.Integration` entry in `internal/cli/agent/registry.go`. An unrecognized agent name MUST fail closed with `ErrAgentNotFound` before execution. |
@@ -88,7 +88,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 ### Selecting an Integration Path
 
-ztd provides five distinct integration paths tailored to different agent architectures:
+ztd provides the following integration paths for agents:
 
 - **`ztd mcp agent run <agent>`**: Dedicated launcher providing full L1–L5 governance, automatic tool lockdown, automatic human CLI enrollment, and an enrolled application identity. The Gateway constructs canonical `GovernanceEnvelope` transactions, coordinates L2/L3 when required, and produces signed receipts. Recommended for Claude Code, OpenAI Codex, Devin CLI, Gemini CLI, and Goose.
 - **Claude Code Plugin (`claude-plugin/`)**: For Claude Code running inside IDEs or external shells. The plugin wires `ztd mcp stdio --app <name>` as the sole MCP server and uses a `PreToolUse` hook to deny all native tools except conversation-only utilities. Provides identical L1–L5 enforcement.
@@ -120,7 +120,7 @@ ztd mcp agent verify claude
 ztd mcp agent show claude
 
 # Govern external third-party MCP servers via Gateway downstream egress:
-ztd gw start --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,/tmp'
+ztd gw start --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,.ztd/tmp'
 ztd gw start --mcp-downstream-url http://localhost:3000/mcp
 ```
 
@@ -210,7 +210,7 @@ The launcher defines exact tool lockdown levels across registered agents (INV-AG
    - `--client-cert` and `--client-key`: Explicit CLI flags.
    - Default CLI credentials on disk (`.ztd/cli.crt`, `.ztd/cli.key`; the key is sealed and unsealed in memory).
 2. Fails closed immediately if a certificate or private key is missing (`ErrIncompleteCredentialPair`, INV-AGT-04).
-3. Proxies tool calls over TLS 1.3 mTLS. If an L3 approval challenge is returned, the bridge opens the browser approval URL, listens for the `approval.completed` event over the Gateway SSE stream, and resumes execution upon approval.
+3. Proxies tool calls over TLS 1.3 mTLS. A suspended call returns a typed `suspension` (`GovernedSuspension`) in its `tools/call` result. The bridge reads `suspension.tx_hash` and `suspension.approval_url`, opens the approval URL, and waits for the `approval.completed` event over the Gateway SSE stream. The event carries the signed receipt of the resumed transaction, and the bridge returns it as the `tools/call` result. The bridge never re-sends the original request, because a re-send would open a new envelope and transaction.
 
 ### Five-Layer Governance Enforcement for Agents
 
@@ -231,6 +231,10 @@ Every admitted tool execution produces a signed `ActionReceipt` containing:
 - `ReceiptPersistenceAttestation` signed by the Actuator's private key, proving local database persistence.
 
 Receipts are persisted authoritatively in the executing Operator's local SQLite database. Mirrored receipts at the Gateway provide query access via `ztd audit receipts --app <spiffe-id>`.
+
+MCP `tools/call` and A2A `a2a/call` return that signed `ActionReceipt` as canonical protojson, not as a reference. The execution and investigation IDs are inside the receipt's envelope and payload. A suspended call returns one `GovernedSuspension` (`id`, `status`, `tx_hash`, `approval_url`, `message`) on both ingresses. Only a missing L3 proof suspends. An invalid L3 proof returns a signed `L3_PROOF_INVALID` rejection (`INV-GOV-ACT-13`).
+
+Every JSON-RPC error from `POST /mcp` and `POST /api/v1/a2a/call` carries a typed `error.data`: exactly one of `GovernanceRejection` (a signed L4 rejection) or `IngressRefusal{code, error}` (every other refusal, `INV-GOV-ACT-11`). The JSON-RPC `error.message` is the sentinel text only, never a wrapped error chain, path, or `err.Error()`. The JSON-RPC `error.code` values are unchanged.
 
 ## Anti-patterns
 

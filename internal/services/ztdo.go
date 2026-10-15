@@ -9,6 +9,7 @@ package services
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -24,7 +25,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
-	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
@@ -67,7 +67,6 @@ type ZtdoService struct {
 	onCommandSubscription func(context.Context, string, bool) error
 	tlsConfig             *certs.TLSConfig
 	l2Trust               *governance.L2TrustStore
-	keystore              *keystore.Keystore
 
 	evidence *storage.LocalExecutionEvidence
 
@@ -88,8 +87,10 @@ type PubSubClientFactory func(baseURL, serverName string, logger *slog.Logger, t
 
 // NewZtdoService creates a new Operator service in Outbound Mode.
 // In this mode, the Operator initiates all connections to the platform
-// on port 443 and performs command execution on the local host.
-func NewZtdoService(cfg *config.Config, logger *slog.Logger, tlsConfig *certs.TLSConfig, l2Trust *governance.L2TrustStore, fileSvc fs.RuntimeFileService, pubSubClientFactory PubSubClientFactory) (*ZtdoService, error) {
+// on port 443 and performs command execution on the local host. The canonical
+// database is opened by the caller before enrollment and handed in here; the
+// service takes ownership and closes it in Stop.
+func NewZtdoService(cfg *config.Config, logger *slog.Logger, tlsConfig *certs.TLSConfig, l2Trust *governance.L2TrustStore, fileSvc fs.RuntimeFileService, gatewayDB *gateway.CanonicalDBService, pubSubClientFactory PubSubClientFactory) (*ZtdoService, error) {
 	if pubSubClientFactory == nil {
 		return nil, fmt.Errorf("%w: pub/sub client factory is required", constants.ErrInternal)
 	}
@@ -103,6 +104,10 @@ func NewZtdoService(cfg *config.Config, logger *slog.Logger, tlsConfig *certs.TL
 	if l2Trust == nil {
 		return nil, fmt.Errorf("%w: operator L2 trust is required", constants.ErrInternal)
 	}
+	// The Actuator signing key and the enrolled key come from this one store open.
+	if gatewayDB == nil {
+		return nil, fmt.Errorf("%w: operator canonical database is required", constants.ErrGatewayDatabaseServiceNotConfigured)
+	}
 
 	service := &ZtdoService{
 		config:              cfg,
@@ -111,6 +116,7 @@ func NewZtdoService(cfg *config.Config, logger *slog.Logger, tlsConfig *certs.TL
 		tlsConfig:           tlsConfig,
 		l2Trust:             l2Trust,
 		fileSvc:             fileSvc,
+		gatewayDB:           gatewayDB,
 		pubSubClientFactory: pubSubClientFactory,
 		done:                make(chan struct{}),
 	}
@@ -175,22 +181,11 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 		return fmt.Errorf("operator: create file edit service: %w", err)
 	}
 
-	// Initialize CanonicalDBService for canonical state root calculation
-	// This ensures outbound mode uses the same state root schema as gateway mode.
-	if vs.keystore == nil {
-		vs.keystore, err = keystore.Open(vs.fileSvc, vs.logger, keystore.Options{MasterKeyFile: vs.config.MasterKeyFile})
-		if err != nil {
-			return fmt.Errorf("%w: %w", constants.ErrGatewayDatabaseServiceNotConfigured, err)
-		}
-	}
-	gatewayDB, err := gateway.OpenCanonicalDBService(vs.logger, vs.keystore, vs.fileSvc)
-	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrGatewayDatabaseServiceNotConfigured, err)
-	}
-	vs.gatewayDB = gatewayDB
-	vs.logger.Info("Gateway database initialized (canonical state root)")
+	// The canonical database (canonical state root schema, shared with gateway
+	// mode) was opened by StartOperator and handed in at construction.
+	vs.logger.Info("Gateway database available (canonical state root)")
 
-	vs.secretManager = gatewayDB.GetSecretManager()
+	vs.secretManager = vs.gatewayDB.GetSecretManager()
 	vs.logger.Info("Secret manager initialized")
 
 	// Reuse vault from CanonicalDBService (already initialized and unlocked)
@@ -272,6 +267,12 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	actuatorPriv, actuatorKeyID, err := vs.secretManager.GetActuatorKey()
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
+	}
+	// The Actuator public key is exported for receipt verification. A failed
+	// export fails startup: receipts must be verifiable by the file on disk.
+	actuatorPub := actuatorPriv.Public().(ed25519.PublicKey)
+	if err := governance.ExportActuatorPublicKey(vs.fileSvc, actuatorPub, actuatorKeyID, vs.logger); err != nil {
+		return fmt.Errorf("ztdo: export actuator public key: %w", err)
 	}
 	auditorPriv, auditorKeyID, err := vs.secretManager.GetAuditorKey()
 	if err != nil {

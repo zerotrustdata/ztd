@@ -119,6 +119,8 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	vt := &governance.VerifiedTransaction{
 		Envelope:   envelope,
 		ActionType: constants.ActionTypeExecuteBash,
+		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
+		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{
 			{StageId: envelope.Id + ":l1", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED, TransactionId: envelope.Id, TransactionHash: envelope.TransactionHash, ActionType: envelope.ActionType, OperatorId: envelope.OperatorId, OperatorSessionId: envelope.OperatorSessionId, CaseId: envelope.CaseId, InvestigationId: envelope.InvestigationId, TaskId: envelope.TaskId, ParentStageId: l4StageID},
 			{StageId: envelope.Id + ":l2", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED, TransactionId: envelope.Id, TransactionHash: envelope.TransactionHash, ActionType: envelope.ActionType, OperatorId: envelope.OperatorId, OperatorSessionId: envelope.OperatorSessionId, CaseId: envelope.CaseId, InvestigationId: envelope.InvestigationId, TaskId: envelope.TaskId, ParentStageId: l4StageID},
@@ -159,7 +161,7 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	admission.VerifierRef = &compliancev1.VersionedReference{Id: "operational-export", Version: "1.0.0"}
 	admission.DisclosureClassification = constants.ComplianceBundleProfileRestricted
 
-	sourceDir := t.TempDir()
+	sourceDir := testutil.TempDir(t)
 	_, err = evidence.ExportOperationalEvidence(ctx, snapshot, evidence.OperationalExportRequest{
 		ScopeID:              scope.GetScopeId(),
 		AdmissionID:          admission.GetAdmissionId(),

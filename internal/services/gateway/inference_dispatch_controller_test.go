@@ -477,27 +477,28 @@ func TestInferenceDispatchController_ErrorStatusMapping(t *testing.T) {
 		name        string
 		dispatchErr error
 		wantStatus  int
+		wantCode    operatorv1.InferenceDispatchFailureCode
 	}{
-		{name: "no inference operator", dispatchErr: constants.ErrInferenceOperatorNotFound, wantStatus: http.StatusNotFound},
-		{name: "ambiguous inference operators", dispatchErr: constants.ErrInferenceOperatorAmbiguous, wantStatus: http.StatusConflict},
-		{name: "target not inference capable", dispatchErr: constants.ErrInferenceOperatorNotCapable, wantStatus: http.StatusUnprocessableEntity},
-		{name: "context overflow", dispatchErr: constants.ErrInferenceContextOverflow, wantStatus: http.StatusUnprocessableEntity},
-		{name: "model override denied", dispatchErr: constants.ErrInferenceModelOverrideDenied, wantStatus: http.StatusForbidden},
-		{name: "model registry invalid", dispatchErr: constants.ErrInferenceModelRegistryInvalid, wantStatus: http.StatusForbidden},
-		{name: "campaign binding invalid", dispatchErr: constants.ErrInferenceCampaignBindingInvalid, wantStatus: http.StatusForbidden},
-		{name: "governance rejected receipt", dispatchErr: constants.ErrInferenceGovernanceRejected, wantStatus: http.StatusForbidden},
-		{name: "l1 doctrine rejection", dispatchErr: constants.ErrTxL1ValidationFailed, wantStatus: http.StatusForbidden},
-		{name: "l3 proof unmintable under posture", dispatchErr: constants.ErrTxL3ProofUnmintable, wantStatus: http.StatusForbidden},
-		{name: "zero delivery", dispatchErr: constants.ErrDispatchNoDelivery, wantStatus: http.StatusServiceUnavailable},
-		{name: "receipt execution failed", dispatchErr: constants.ErrInferenceReceiptFailed, wantStatus: http.StatusBadGateway},
-		{name: "receipt verification failed", dispatchErr: constants.ErrInferenceReceiptVerify, wantStatus: http.StatusBadGateway},
-		{name: "result digest mismatch", dispatchErr: constants.ErrInferenceResultDigestMismatch, wantStatus: http.StatusBadGateway},
-		{name: "backend timeout", dispatchErr: constants.ErrInferenceBackendTimeout, wantStatus: http.StatusBadGateway},
-		{name: "model not found", dispatchErr: constants.ErrInferenceModelNotFound, wantStatus: http.StatusBadGateway},
-		{name: "provider response invalid", dispatchErr: constants.ErrInferenceProviderResponseInvalid, wantStatus: http.StatusBadGateway},
-		{name: "unknown remote outcome", dispatchErr: constants.ErrInferenceOutcomeUnknown, wantStatus: http.StatusGatewayTimeout},
-		{name: "caller deadline exceeded", dispatchErr: context.DeadlineExceeded, wantStatus: http.StatusGatewayTimeout},
-		{name: "unexpected internal error", dispatchErr: fmt.Errorf("sql: connection refused at internal/db/store.go:123"), wantStatus: http.StatusInternalServerError},
+		{name: "no inference operator", dispatchErr: constants.ErrInferenceOperatorNotFound, wantStatus: http.StatusNotFound, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND},
+		{name: "ambiguous inference operators", dispatchErr: constants.ErrInferenceOperatorAmbiguous, wantStatus: http.StatusConflict, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS},
+		{name: "target not inference capable", dispatchErr: constants.ErrInferenceOperatorNotCapable, wantStatus: http.StatusUnprocessableEntity, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE},
+		{name: "context overflow", dispatchErr: constants.ErrInferenceContextOverflow, wantStatus: http.StatusUnprocessableEntity, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW},
+		{name: "model override denied", dispatchErr: constants.ErrInferenceModelOverrideDenied, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED},
+		{name: "model registry invalid", dispatchErr: constants.ErrInferenceModelRegistryInvalid, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID},
+		{name: "campaign binding invalid", dispatchErr: constants.ErrInferenceCampaignBindingInvalid, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID},
+		{name: "governance rejected receipt", dispatchErr: constants.ErrInferenceGovernanceRejected, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
+		{name: "l1 doctrine rejection", dispatchErr: constants.ErrTxL1ValidationFailed, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
+		{name: "l3 proof unmintable under posture", dispatchErr: constants.ErrTxL3ProofUnmintable, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
+		{name: "zero delivery", dispatchErr: constants.ErrDispatchNoDelivery, wantStatus: http.StatusServiceUnavailable, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY},
+		{name: "receipt execution failed", dispatchErr: constants.ErrInferenceReceiptFailed, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED},
+		{name: "receipt verification failed", dispatchErr: constants.ErrInferenceReceiptVerify, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY},
+		{name: "result digest mismatch", dispatchErr: constants.ErrInferenceResultDigestMismatch, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH},
+		{name: "backend timeout", dispatchErr: constants.ErrInferenceBackendTimeout, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT},
+		{name: "model not found", dispatchErr: constants.ErrInferenceModelNotFound, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND},
+		{name: "provider response invalid", dispatchErr: constants.ErrInferenceProviderResponseInvalid, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID},
+		{name: "unknown remote outcome", dispatchErr: constants.ErrInferenceOutcomeUnknown, wantStatus: http.StatusGatewayTimeout, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN},
+		{name: "caller deadline exceeded", dispatchErr: context.DeadlineExceeded, wantStatus: http.StatusGatewayTimeout, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN},
+		{name: "unexpected internal error", dispatchErr: fmt.Errorf("sql: connection refused at internal/db/store.go:123"), wantStatus: http.StatusInternalServerError, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL},
 	}
 
 	for _, tt := range tests {
@@ -517,6 +518,9 @@ func TestInferenceDispatchController_ErrorStatusMapping(t *testing.T) {
 			assert.Equal(t, tt.wantStatus, rr.Code, "body: %s", rr.Body.String())
 			assert.NotContains(t, rr.Body.String(), "internal/db/store.go",
 				"internal error chains must never reach the client")
+			failure := &operatorv1.InferenceDispatchFailure{}
+			require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), failure))
+			assert.Equal(t, tt.wantCode, failure.GetCode())
 		})
 	}
 }
@@ -607,6 +611,7 @@ func TestInferenceDispatchController_StreamingDispatchFailureWritesFailureFrame(
 	require.NoError(t, protojson.Unmarshal([]byte(lines[len(lines)-1]), &failureFrame))
 	require.NotNil(t, failureFrame.GetFailure())
 	assert.Equal(t, constants.ErrInferenceProgressBackpressure.Error(), failureFrame.GetFailure().GetReason())
+	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE, failureFrame.GetFailure().GetCode())
 }
 
 type failingFlushWriter struct {

@@ -71,6 +71,15 @@ func buildE2EDocumentEnvelope(
 	return env, nil
 }
 
+// docString returns a string field of doc and fails the test when the field is
+// absent or not a JSON string.
+func docString(t *testing.T, doc DocumentResponse, field string) string {
+	t.Helper()
+	value, ok := doc.GetString(field)
+	require.True(t, ok, "document field %q must be a string", field)
+	return value
+}
+
 // TestGovernance_DocumentUpdateAndDelete verifies the governed document lifecycle
 // end to end against the running platform without requiring an LLM:
 //  1. Submits DOCUMENT_UPDATE (create with merge=false) via POST /api/v1/governance/envelopes.
@@ -165,9 +174,9 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	doc, getStatus, err := e2eClient.GetDocument(ctx, collection, docID)
 	require.NoError(t, err, "get document after create")
 	require.Equal(t, http.StatusOK, getStatus)
-	assert.Equal(t, "initial_value", doc.GetString("field_a"))
-	assert.Equal(t, "keep_me", doc.GetString("field_b"))
-	assert.Equal(t, "active", doc.GetString("status"))
+	assert.Equal(t, "initial_value", docString(t, doc, "field_a"))
+	assert.Equal(t, "keep_me", docString(t, doc, "field_b"))
+	assert.Equal(t, "active", docString(t, doc, "status"))
 	t.Logf("document read-back verified after create")
 
 	// -------------------------------------------------------------------------
@@ -223,10 +232,10 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	doc, getStatus, err = e2eClient.GetDocument(ctx, collection, docID)
 	require.NoError(t, err, "get document after merge")
 	require.Equal(t, http.StatusOK, getStatus)
-	assert.Equal(t, "updated_value", doc.GetString("field_a"), "field_a must be updated")
-	assert.Equal(t, "keep_me", doc.GetString("field_b"), "untouched field_b must survive merge")
-	assert.Equal(t, "active", doc.GetString("status"), "untouched status must survive merge")
-	assert.Equal(t, "newly_added", doc.GetString("field_c"), "field_c must be added")
+	assert.Equal(t, "updated_value", docString(t, doc, "field_a"), "field_a must be updated")
+	assert.Equal(t, "keep_me", docString(t, doc, "field_b"), "untouched field_b must survive merge")
+	assert.Equal(t, "active", docString(t, doc, "status"), "untouched status must survive merge")
+	assert.Equal(t, "newly_added", docString(t, doc, "field_c"), "field_c must be added")
 	t.Logf("document read-back verified after merge (untouched fields survived)")
 
 	// -------------------------------------------------------------------------
