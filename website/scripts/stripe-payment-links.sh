@@ -5,8 +5,8 @@
 # Creates or reconciles the Stripe products, prices, and Payment Links behind the homepage purchase buttons, then
 # writes src/payment-links.json (SKU -> public Payment Link URL). The Worker serves /buy/<sku> from that file.
 #
-# Usage: scripts/stripe-payment-links.sh [--live]
-#   Without --live it runs against Stripe test mode and prints the mapping instead of writing it, so test links
+# Usage: [STRIPE_API_KEY=rk_live_...] scripts/stripe-payment-links.sh [--live]
+#   --live requires STRIPE_API_KEY. Without --live it runs against Stripe test mode and prints the mapping instead of writing it, so test links
 #   never reach the site.
 #
 # Checkout requires acceptance of https://zerotrustdata.io/terms/, which must also be set as the Terms of Service
@@ -20,8 +20,17 @@
 set -euo pipefail
 shopt -s inherit_errexit
 
-MODE=()
-if [[ "${1:-}" == "--live" ]]; then MODE=(--live); elif [[ $# -gt 0 ]]; then echo "usage: $0 [--live]" >&2; exit 2; fi
+MODE=() MODE_NAME=test
+if [[ "${1:-}" == "--live" ]]; then MODE=(--live) MODE_NAME=live; elif [[ $# -gt 0 ]]; then echo "usage: $0 [--live]" >&2; exit 2; fi
+for tool in stripe jq; do
+  command -v "$tool" >/dev/null || { echo "$tool is not installed" >&2; exit 1; }
+done
+# The CLI keeps live keys in the OS keyring, which headless hosts lack, and then blocks on an interactive login.
+# STRIPE_API_KEY takes precedence over the keyring, so live runs require it.
+if [[ $MODE_NAME == live && ! "${STRIPE_API_KEY:-}" =~ ^(sk|rk)_live_ ]]; then
+  echo "--live needs STRIPE_API_KEY set to a live secret or restricted key (rk_live_...) with write access to Products, Prices, and Payment Links" >&2
+  exit 2
+fi
 
 OUTPUT="$(cd "$(dirname "$0")/.." && pwd)/src/payment-links.json"
 LINK_REVISION=3
@@ -40,10 +49,15 @@ CATALOG=(
   "retainer|Principal Architect Retainer|Monthly Tier-4 escalation and async architecture review retainer, including a 50-Host Fleet Pack.|350000|month"
 )
 
-# Runs a Stripe API call and fails on an API error, since the CLI exits 0 when Stripe returns one.
+# Runs a Stripe API call and fails loudly on anything but a JSON object without an error: the CLI exits 0 when
+# Stripe returns an API error, and prints plain text (an expired or missing key, a bad flag) on its own failures.
 api() {
-  local out
-  out="$(stripe "$1" "$2" "${MODE[@]}" "${@:3}" </dev/null)"
+  local out status=0
+  out="$(stripe "$1" "$2" "${MODE[@]}" "${@:3}" </dev/null)" || status=$?
+  if ((status != 0)) || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$out"; then
+    echo "stripe $1 $2 failed (exit $status): ${out:-no output}" >&2
+    exit 1
+  fi
   if jq -e '.error' >/dev/null <<<"$out"; then
     echo "stripe $1 $2 failed: $(jq -r '.error.message' <<<"$out")" >&2
     exit 1
@@ -97,6 +111,9 @@ ensure_link() {
   api post /v1/payment_links -c "${args[@]}" | jq -r '.url'
 }
 
+# Command substitutions do not inherit this trap, so a failure anywhere reports once, from the top level.
+trap 'status=$?; ((status == 0)) || echo "aborted; $OUTPUT was not updated" >&2' EXIT
+echo "reconciling ${#CATALOG[@]} SKUs in Stripe $MODE_NAME mode" >&2
 result='{}'
 for entry in "${CATALOG[@]}"; do
   IFS='|' read -r sku name description amount interval <<<"$entry"

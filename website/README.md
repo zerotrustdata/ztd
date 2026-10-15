@@ -25,10 +25,12 @@ The homepage includes a Contact section linked from the primary navigation. It p
 ## Payments
 
 Homepage purchase buttons link to `/buy/<sku>`. The Worker answers with a 303 redirect to that SKU's Stripe Payment
-Link from `src/payment-links.json`, and unknown SKUs return 404. `scripts/stripe-payment-links.sh --live` creates or
+Link from `src/payment-links.json`, and unknown SKUs return 404. `STRIPE_API_KEY=rk_live_... scripts/stripe-payment-links.sh --live` creates or
 reconciles the Stripe products, prices, and Payment Links with the Stripe CLI and rewrites that file. Without
 `--live`, the script runs in Stripe test mode and prints the mapping without writing it. To change a price, edit
 the script's catalog and run it again. The new price takes over the lookup key, and the old link is deactivated.
+The script logs each SKU as it goes. If any Stripe call fails, including when the CLI prints text instead of JSON
+(an expired or missing key), it prints the failing call and the CLI's output, then exits without writing the file.
 `npm run check` fails if any `/buy/` SKU on the homepage lacks a live-mode link.
 
 Checkout requires buyers to accept the commercial terms at `/terms/`. The build renders that page from

@@ -6,8 +6,15 @@
 // `stripe get|post <path> [--live] [-c] -d key=value...` calls that scripts/stripe-payment-links.sh makes, keeps
 // account state in $FAKE_STRIPE_STATE, and appends every call to that state's log. Like the real CLI, it prints API
 // errors as JSON and exits 0. Setting $FAKE_STRIPE_FAIL to "<method> <path>" makes that call return an error.
+// Setting $FAKE_STRIPE_CRASH to an exit code makes every call print plain text instead of JSON and exit with it,
+// as the real CLI does when its key is missing or expired.
 
 import { readFileSync, writeFileSync } from 'node:fs';
+
+if (process.env.FAKE_STRIPE_CRASH !== undefined) {
+  process.stdout.write('The provided key has expired.\n');
+  process.exit(Number(process.env.FAKE_STRIPE_CRASH));
+}
 
 const [method, path, ...rest] = process.argv.slice(2);
 const params = {};

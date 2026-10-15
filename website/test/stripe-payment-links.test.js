@@ -58,7 +58,7 @@ function fixture(t, { edit = source => source } = {}) {
     edit: change => writeFileSync(copy, change(readFileSync(copy, 'utf8'))),
     run: (args = [], env = {}) => spawnSync(hostTool('bash'), [copy, ...args], {
       encoding: 'utf8',
-      env: { ...process.env, ...env, PATH: `${join(root, 'bin')}${delimiter}${process.env.PATH}`, FAKE_STRIPE_STATE: state }
+      env: { ...process.env, STRIPE_API_KEY: 'rk_live_fixture', ...env, PATH: `${join(root, 'bin')}${delimiter}${process.env.PATH}`, FAKE_STRIPE_STATE: state }
     })
   };
 }
@@ -161,6 +161,18 @@ for (const failing of ['get /v1/prices', 'post /v1/products', 'post /v1/prices',
     const result = site.run(['--live'], { FAKE_STRIPE_FAIL: failing });
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, new RegExp(`stripe ${failing} failed: injected failure`));
+    assert.match(result.stderr, /aborted; .*payment-links\.json was not updated/);
+    assert.equal(existsSync(site.output), false);
+  });
+}
+
+for (const exitCode of ['1', '0']) {
+  test(`a Stripe CLI failure with plain-text output (exit ${exitCode}) is reported and writes nothing`, { skip }, t => {
+    const site = fixture(t);
+    const result = site.run(['--live'], { FAKE_STRIPE_CRASH: exitCode });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, new RegExp(`stripe get /v1/prices failed \\(exit ${exitCode}\\): The provided key has expired\\.`));
+    assert.match(result.stderr, /aborted; .*payment-links\.json was not updated/);
     assert.equal(existsSync(site.output), false);
   });
 }
@@ -195,6 +207,16 @@ test('unknown arguments are rejected before any Stripe call', { skip }, t => {
   assert.match(result.stderr, /usage: .* \[--live\]/);
   assert.deepEqual(site.state().log, []);
 });
+
+for (const key of [undefined, 'sk_test_fixture']) {
+  test(`--live with STRIPE_API_KEY=${key} is rejected before any Stripe call`, { skip }, t => {
+    const site = fixture(t);
+    const result = site.run(['--live'], { STRIPE_API_KEY: key });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--live needs STRIPE_API_KEY/);
+    assert.deepEqual(site.state().log, []);
+  });
+}
 
 test('stripe-payment-links.sh passes shellcheck', { skip: !hostTool('shellcheck') && 'shellcheck is not installed' }, () => {
   const result = spawnSync(hostTool('shellcheck'), ['--severity=style', script], { encoding: 'utf8' });
