@@ -39,6 +39,11 @@ type smokeOwnedProcess struct {
 	stdoutPath string
 	exited     chan struct{}
 	waitErr    error
+	// logs are the runner's stdout/stderr handles. They stay open until the
+	// whole group has exited and the child is reaped (closeLogs), so Windows
+	// never sees them released while a process in the job still runs.
+	logs      []*os.File
+	closeOnce sync.Once
 }
 
 // start starts argv as a new process group in dir. Stdout and stderr are
@@ -81,11 +86,12 @@ func (o *smokeProcessOwner) start(name, dir, logPrefix string, argv, env []strin
 		_ = stderr.Close()
 		return nil, fmt.Errorf("release smoke: contain %s: %w", name, err)
 	}
-	p := &smokeOwnedProcess{name: name, cmd: cmd, group: group, stdoutPath: stdoutPath, exited: make(chan struct{})}
+	p := &smokeOwnedProcess{
+		name: name, cmd: cmd, group: group, stdoutPath: stdoutPath,
+		exited: make(chan struct{}), logs: []*os.File{stdout, stderr},
+	}
 	go func() {
 		p.waitErr = cmd.Wait()
-		_ = stdout.Close()
-		_ = stderr.Close()
 		close(p.exited)
 	}()
 	o.mu.Lock()
@@ -96,6 +102,16 @@ func (o *smokeProcessOwner) start(name, dir, logPrefix string, argv, env []strin
 
 // exitedCh is closed once the process has exited and been reaped.
 func (p *smokeOwnedProcess) exitedCh() <-chan struct{} { return p.exited }
+
+// closeLogs releases the runner's log handles. Call it only after the group
+// has exited and the child has been reaped.
+func (p *smokeOwnedProcess) closeLogs() {
+	p.closeOnce.Do(func() {
+		for _, f := range p.logs {
+			_ = f.Close()
+		}
+	})
+}
 
 // wait blocks until the owned process exits or ctx ends. When ctx ends first
 // the process group is stopped before the error is returned, so cancellation
@@ -116,8 +132,22 @@ func (o *smokeProcessOwner) wait(ctx context.Context, p *smokeOwnedProcess) erro
 }
 
 // stop asks the process group to terminate, waits up to grace, then kills it.
-// It is idempotent for a process that has already exited.
+// Once the group is gone and the child reaped it closes the log handles. It is
+// idempotent for a process that has already exited.
 func (o *smokeProcessOwner) stop(p *smokeOwnedProcess, grace time.Duration) error {
+	if err := o.stopGroup(p, grace); err != nil {
+		return err
+	}
+	select {
+	case <-p.exited:
+	case <-time.After(grace):
+		return fmt.Errorf("release smoke: %s: process not reaped after group exit", p.name)
+	}
+	p.closeLogs()
+	return nil
+}
+
+func (o *smokeProcessOwner) stopGroup(p *smokeOwnedProcess, grace time.Duration) error {
 	if err := p.group.terminate(); err != nil {
 		return fmt.Errorf("release smoke: %s: terminate: %w", p.name, err)
 	}
