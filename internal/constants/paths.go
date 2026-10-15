@@ -906,9 +906,10 @@ const (
 	PublicFeedMaxArtifactBytes         = 64 << 20
 	PublicFeedProofIngestMaxBytes      = 512 << 20
 	PublicFeedKeyRegistrationMaxBytes  = 16 << 10
-	// Init-campaign restore publishes two proof artifacts per assignment across
-	// many verified runs; keep headroom above ~3k assignment-audit artifacts.
-	PublicFeedProofMaxArtifacts       = 8192
+	// Init-campaign restore publishes up to three proof artifacts per assignment
+	// (audit slice, vault key, agent trace) across many verified runs; keep
+	// headroom above ~4.5k assignment proof artifacts.
+	PublicFeedProofMaxArtifacts       = 12288
 	PublicFeedFreshnessDelayedSeconds = 60
 	PublicFeedFreshnessStaleSeconds   = 300
 	PublicFeedFreshnessOfflineSeconds = 900

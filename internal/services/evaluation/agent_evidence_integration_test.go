@@ -234,7 +234,9 @@ func TestAgentEvidenceIntegration_SharedRuntimeEmbeddedOperator(t *testing.T) {
 
 		trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 		require.NoError(t, err)
-		assert.Equal(t, "agent-trace.v3", trace.SchemaVersion)
+		assert.Equal(t, agentTraceSchemaVersion, trace.SchemaVersion)
+		require.NotNil(t, trace.Input, "a v4 trace records the exact model input")
+		assert.NotEmpty(t, trace.Input.Messages)
 		assert.True(t, trace.SharedRuntime(), "shared runtime trace must report SharedRuntime() == true")
 		require.NotEmpty(t, trace.ModelCalls)
 		for _, mc := range trace.ModelCalls {
@@ -264,7 +266,9 @@ func TestAgentEvidenceIntegration_DistinctRuntimes(t *testing.T) {
 
 		trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 		require.NoError(t, err)
-		assert.Equal(t, "agent-trace.v3", trace.SchemaVersion)
+		assert.Equal(t, agentTraceSchemaVersion, trace.SchemaVersion)
+		require.NotNil(t, trace.Input, "a v4 trace records the exact model input")
+		assert.NotEmpty(t, trace.Input.Messages)
 		assert.False(t, trace.SharedRuntime(), "distinct runtimes must report SharedRuntime() == false")
 		require.NotEmpty(t, trace.ModelCalls)
 		for _, mc := range trace.ModelCalls {

@@ -128,6 +128,10 @@ func (c *CampaignPublicationCoordinator) BuildAssignmentAuditBindings(
 	if err != nil {
 		return nil, err
 	}
+	artifacts.AgentTrace, artifacts.AgentTraceSHA256, err = loadAssignmentAgentTraceArtifact(ctx, c.store, result)
+	if err != nil {
+		return nil, err
+	}
 	if !ingestProofs || c.proofPublisher == nil {
 		return AssignmentAuditEvidenceBindings(artifacts), nil
 	}

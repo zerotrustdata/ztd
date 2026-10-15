@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, SnapshotRecord, LiveEvent } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
@@ -266,12 +266,16 @@ describe('AssignmentDetailView', () => {
         model_response: 'I am sorry, I cannot execute that command.',
         failure_output: 'Command execution timed out after 30 seconds',
         semantic_grade_summaries: [
-          { criterion_id: 'tool-execution', status: 'fail', grading_method: 'deterministic', explanation_code: 'criterion_failed' },
+          { criterion_id: 'tool-execution', status: 'fail', grading_method: 'deterministic', explanation_code: 'criterion_failed', detail: 'expected ../run.log to be read; no tool call' },
         ],
       }),
     ]);
 
     expect(screen.getByRole('heading', { name: 'What the model did' })).toBeInTheDocument();
+    // Grader detail is shown verbatim in the diagnosis and in the criterion badge.
+    expect(within(screen.getByRole('alert')).getByText('expected ../run.log to be read; no tool call')).toHaveClass('grade-detail');
+    expect(within(screen.getByLabelText('Grade badges')).getByText('expected ../run.log to be read; no tool call')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('Grade badges')).getByText('Grader detail')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByText(/Failure Diagnosis \(Model failed\)/)).toBeInTheDocument();
     expect(screen.getByText('Command execution timed out after 30 seconds')).toBeInTheDocument();
@@ -667,22 +671,23 @@ describe('AssignmentDetailView', () => {
       expect(screen.getByText('assistant says')).toBeInTheDocument();
     });
 
-    it('explains truncated and withheld results and failed calls', () => {
+    it('shows failed calls and every result verbatim', () => {
+      const keyResult = '{"stdout":"spiffe://ztd.local/operator/x"}';
       renderAssignment([
         assignmentResult({
           role_transcripts: [{
             role: 'primary',
             tool_calls: [
-              { ...readFile, result_redaction: 'truncated' },
-              { tool_name: 'run_commands', success: false, error_type: 'POLICY_DENIED', result_redaction: 'restricted' },
+              { ...readFile, result_json: keyResult },
+              { tool_name: 'run_commands', success: false, error_type: 'POLICY_DENIED' },
             ],
           }],
         }),
       ]);
 
-      expect(screen.getByText(/truncated for publication/)).toBeInTheDocument();
-      expect(screen.getByText(/withheld: restricted content/)).toBeInTheDocument();
-      expect(screen.getByText(/Failed · Policy denied/)).toBeInTheDocument();
+      const transcript = within(screen.getByRole('article', { name: 'Primary transcript' }));
+      expect(transcript.getByText(/spiffe:\/\/ztd\.local\/operator\/x/)).toBeInTheDocument();
+      expect(transcript.getByText(/Failed · Policy denied/)).toBeInTheDocument();
     });
 
     it('keeps the historical model_response rendering when no transcripts were published', () => {

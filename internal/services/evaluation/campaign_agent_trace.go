@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -27,7 +28,14 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const agentTraceSchemaVersion = "agent-trace.v3"
+// agentTraceSchemaVersion is the version every new trace is sealed with. v4
+// adds the exact model input, per-turn thinking, and provider tool-call IDs.
+// A v3 trace remains valid evidence; its model input was not captured and is
+// never reconstructed.
+const (
+	agentTraceSchemaVersion   = "agent-trace.v4"
+	agentTraceSchemaVersionV3 = "agent-trace.v3"
+)
 
 // agentModelCallPurposeTurn is the purpose of every governed agent inference.
 // Each one is a scored step of the tool loop.
@@ -65,8 +73,11 @@ type AgentModelCall struct {
 	FinishReason            string   `json:"finish_reason,omitempty"`
 	LoadState               string   `json:"load_state,omitempty"`
 	RetryCount              uint32   `json:"retry_count"`
-	Text                    string   `json:"text,omitempty"`
-	ToolCallCount           int      `json:"tool_call_count"`
+	// Thinking is the reasoning text the provider returned as thinking parts,
+	// in order. It is never sent back to the model.
+	Thinking      string `json:"thinking,omitempty"`
+	Text          string `json:"text,omitempty"`
+	ToolCallCount int    `json:"tool_call_count"`
 	// Error is the public failure of a call that did not complete.
 	Error   string             `json:"error,omitempty"`
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
@@ -81,8 +92,11 @@ func (c AgentModelCall) Completed() bool {
 // operator tool's CallID is the governed transaction ID when the Gateway
 // admitted the dispatch, so governed actions resolve to their call.
 type AgentToolCall struct {
-	CallID         string `json:"call_id"`
-	ModelCallID    string `json:"model_call_id"`
+	CallID      string `json:"call_id"`
+	ModelCallID string `json:"model_call_id"`
+	// ProviderCallID is the call ID the model returned; the assistant and tool
+	// result messages sent on the next turn carry it.
+	ProviderCallID string `json:"provider_call_id,omitempty"`
 	ToolName       string `json:"tool_name"`
 	ArgumentsJSON  string `json:"arguments_json"`
 	Command        string `json:"command,omitempty"`
@@ -131,6 +145,12 @@ type AgentTrace struct {
 	Inference            AgentTraceRuntime   `json:"inference"`
 	Data                 AgentTraceRuntime   `json:"data"`
 	Workspace            AgentTraceWorkspace `json:"workspace"`
+	// Input is the exact model input of the first turn. Every later turn sent
+	// this input followed, per earlier turn, by one assistant message (the
+	// call's Text, then its tool calls with ProviderCallID, ToolName and
+	// ArgumentsJSON) and one tool message per call carrying ResultJSON. v3
+	// traces have none.
+	Input                *AgentTraceInput    `json:"input,omitempty"`
 	ModelCalls           []AgentModelCall    `json:"model_calls"`
 	ToolCalls            []AgentToolCall     `json:"tool_calls"`
 	FinalOutput          string              `json:"final_output"`
@@ -143,6 +163,48 @@ type AgentTrace struct {
 	// Bracket holds the harness sentinel receipts read on the Data runtime
 	// before and after the attempt. Import fails closed when it is missing.
 	Bracket *AgentTraceBracket `json:"bracket,omitempty"`
+}
+
+// AgentTraceInput is the rendered conversation and the complete tool
+// declarations sent on the first agent turn, exactly as dispatched.
+type AgentTraceInput struct {
+	Messages []AgentTraceMessage `json:"messages"`
+	Tools    []AgentTraceTool    `json:"tools"`
+}
+
+// AgentTraceMessage is one text message of the model input. Role is the
+// InferenceMessageRole enum name.
+type AgentTraceMessage struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+// AgentTraceTool is one tool declaration sent to the model.
+type AgentTraceTool struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	JSONSchema  string `json:"json_schema"`
+}
+
+// newAgentTraceInput records the dispatched first-turn input. Only text
+// parts occur in it; any other part is a harness defect.
+func newAgentTraceInput(messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*AgentTraceInput, error) {
+	input := &AgentTraceInput{Messages: make([]AgentTraceMessage, 0, len(messages)), Tools: make([]AgentTraceTool, 0, len(tools))}
+	for _, message := range messages {
+		var text strings.Builder
+		for _, part := range message.GetParts() {
+			value, ok := part.GetPart().(*operatorv1.InferenceMessagePart_Text)
+			if !ok {
+				return nil, fmt.Errorf("evaluation: record agent trace input: non-text input part: %w", constants.ErrEvidenceArtifactMalformed)
+			}
+			text.WriteString(value.Text)
+		}
+		input.Messages = append(input.Messages, AgentTraceMessage{Role: message.GetRole().String(), Text: text.String()})
+	}
+	for _, tool := range tools {
+		input.Tools = append(input.Tools, AgentTraceTool{Name: tool.GetName(), Description: tool.GetDescription(), JSONSchema: tool.GetJsonSchema()})
+	}
+	return input, nil
 }
 
 // AgentTraceRuntime is one Operator runtime a role executed on, with its
@@ -297,6 +359,14 @@ func SealAgentTrace(trace *AgentTrace) ([]byte, error) {
 	if trace == nil || trace.RunID == "" || trace.AssignmentID == "" || trace.EvaluationAttemptID == "" {
 		return nil, fmt.Errorf("evaluation: seal agent trace: %w", constants.ErrMissingRequiredField)
 	}
+	// An earlier version is sealed evidence; restamping it would claim
+	// captures it never had.
+	if trace.SchemaVersion != "" && trace.SchemaVersion != agentTraceSchemaVersion {
+		return nil, fmt.Errorf("evaluation: seal agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
+	}
+	if trace.Input == nil || len(trace.Input.Messages) == 0 {
+		return nil, fmt.Errorf("evaluation: seal agent trace: input: %w", constants.ErrMissingRequiredField)
+	}
 	trace.SchemaVersion = agentTraceSchemaVersion
 	digest, err := ComputeAgentTraceDigest(trace)
 	if err != nil {
@@ -326,7 +396,16 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 	if trace == nil || trace.EvidenceDigest == "" {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
-	if trace.SchemaVersion != agentTraceSchemaVersion {
+	switch trace.SchemaVersion {
+	case agentTraceSchemaVersion:
+		if trace.Input == nil || len(trace.Input.Messages) == 0 {
+			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
+		}
+	case agentTraceSchemaVersionV3:
+		if trace.Input != nil {
+			return fmt.Errorf("evaluation: validate agent trace: %s carries input: %w", agentTraceSchemaVersionV3, constants.ErrEvidenceArtifactMalformed)
+		}
+	default:
 		return fmt.Errorf("evaluation: validate agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
 	}
 	expected, err := ComputeAgentTraceDigest(trace)
@@ -392,29 +471,48 @@ func (s *Store) SaveAssignmentAgentTrace(ctx context.Context, runID, assignmentI
 
 // LoadAssignmentAgentTrace reads and digest-checks one persisted agent trace.
 func (s *Store) LoadAssignmentAgentTrace(ctx context.Context, runID, assignmentID string) (*AgentTrace, error) {
+	trace, _, err := s.LoadAssignmentAgentTraceArtifact(ctx, runID, assignmentID)
+	return trace, err
+}
+
+// LoadAssignmentAgentTraceArtifact reads and digest-checks one persisted agent
+// trace and returns the exact persisted canonical body alongside it, so public
+// proof publication ships the bytes the evidence ref hashes.
+func (s *Store) LoadAssignmentAgentTraceArtifact(ctx context.Context, runID, assignmentID string) (*AgentTrace, []byte, error) {
 	if s == nil || s.files == nil {
-		return nil, fmt.Errorf("evaluation: load assignment agent trace: %w", constants.ErrMissingRequiredField)
+		return nil, nil, fmt.Errorf("evaluation: load assignment agent trace: %w", constants.ErrMissingRequiredField)
 	}
 	return loadAssignmentAgentTrace(ctx, s.files, s.layout, runID, assignmentID)
 }
 
-func loadAssignmentAgentTrace(ctx context.Context, reader complianceevidence.ArtifactReader, layout evalLayout, runID, assignmentID string) (*AgentTrace, error) {
+func loadAssignmentAgentTrace(ctx context.Context, reader complianceevidence.ArtifactReader, layout evalLayout, runID, assignmentID string) (*AgentTrace, []byte, error) {
 	if reader == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) {
-		return nil, fmt.Errorf("evaluation: load assignment agent trace: %w", constants.ErrMissingRequiredField)
+		return nil, nil, fmt.Errorf("evaluation: load assignment agent trace: %w", constants.ErrMissingRequiredField)
 	}
 	body, err := reader.ReadFile(ctx, layout.assignmentAgentTracePath(runID, assignmentID))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	trace, err := DecodeAgentTrace(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("evaluation: load assignment agent trace: %w", err)
+	}
+	if trace.RunID != runID || trace.AssignmentID != assignmentID {
+		return nil, nil, fmt.Errorf("evaluation: load assignment agent trace: %w", constants.ErrEvidenceScopeMismatch)
+	}
+	return trace, body, nil
+}
+
+// DecodeAgentTrace decodes one sealed trace body, such as a published
+// assignment_agent_trace proof artifact, and checks its canonical encoding
+// and evidence digest.
+func DecodeAgentTrace(body []byte) (*AgentTrace, error) {
 	if err := complianceevidence.ValidateCanonicalJSON(body); err != nil {
-		return nil, fmt.Errorf("evaluation: load assignment agent trace: %w", err)
+		return nil, fmt.Errorf("evaluation: decode agent trace: %w: %v", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	trace := &AgentTrace{}
 	if err := json.Unmarshal(body, trace); err != nil {
-		return nil, fmt.Errorf("evaluation: load assignment agent trace: %w", err)
-	}
-	if trace.RunID != runID || trace.AssignmentID != assignmentID {
-		return nil, fmt.Errorf("evaluation: load assignment agent trace: %w", constants.ErrEvidenceScopeMismatch)
+		return nil, fmt.Errorf("evaluation: decode agent trace: %w", err)
 	}
 	if err := ValidateAgentTraceDigest(trace); err != nil {
 		return nil, err

@@ -1,0 +1,315 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Licensed under the Business Source License 1.1 — see LICENSE for details.
+
+// The sealed agent trace published as an `assignment_agent_trace` proof
+// artifact: the Go `AgentTrace` (internal/services/evaluation/
+// campaign_agent_trace.go) byte for byte. The browser checks the body against
+// its binding and recomputes evidence_digest before rendering any of it.
+// Receipts and anchors are canonical protojson (proto field names) kept as
+// decoded objects; their signatures verify offline with
+// `ztd public verify-agent-trace`.
+
+import { ValidationError, assert, assertBoolean, assertInteger, assertObject, assertString, rejectUnknown } from './validators';
+
+export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4'] as const;
+export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
+
+/** One canonical protojson message (ActionReceipt or ConformanceAnchor). */
+export type AgentTraceProto = Readonly<Record<string, unknown>>;
+
+export interface AgentTraceMessage {
+  role: string;
+  text: string;
+}
+
+export interface AgentTraceTool {
+  name: string;
+  description: string;
+  json_schema: string;
+}
+
+export interface AgentTraceInput {
+  messages: AgentTraceMessage[];
+  tools: AgentTraceTool[];
+}
+
+export interface AgentTraceRuntime {
+  operator_id: string;
+  session_id: string;
+  anchor?: AgentTraceProto;
+}
+
+export interface AgentTraceModelCall {
+  provider_attempt_id: string;
+  transaction_id: string;
+  purpose: string;
+  loop_turn: number;
+  tools_declared: string[];
+  result_digest: string;
+  usage_reported: boolean;
+  prompt_tokens: number;
+  completion_tokens: number;
+  ttft_nanos?: number;
+  generation_duration_nanos?: number;
+  finish_reason?: string;
+  load_state?: string;
+  retry_count: number;
+  thinking?: string;
+  text?: string;
+  tool_call_count: number;
+  error?: string;
+  receipt?: AgentTraceProto;
+}
+
+export interface AgentTraceToolCall {
+  call_id: string;
+  model_call_id: string;
+  provider_call_id?: string;
+  tool_name: string;
+  arguments_json: string;
+  command?: string;
+  result_json?: string;
+  error_type?: string;
+  error?: string;
+  success: boolean;
+  is_operator_tool: boolean;
+  loop_turn: number;
+  action_type?: string;
+  transaction_id?: string;
+  policy_decision?: string;
+  receipt?: AgentTraceProto;
+}
+
+export interface AgentTrace {
+  schema_version: AgentTraceSchemaVersion;
+  evidence_digest: string;
+  run_id: string;
+  assignment_id: string;
+  evaluation_attempt_id: string;
+  campaign_id: string;
+  scenario_id: string;
+  designated_role: string;
+  served_model_tag: string;
+  model_digest: string;
+  model_registry_digest: string;
+  inference: AgentTraceRuntime;
+  data: AgentTraceRuntime;
+  workspace: { root: string; operator_working_directory: string };
+  input?: AgentTraceInput;
+  model_calls: AgentTraceModelCall[];
+  tool_calls: AgentTraceToolCall[];
+  final_output: string;
+  tool_turn_limit_reached: boolean;
+  provider_failure?: string;
+  provider_failure_class?: string;
+  bracket?: { before: AgentTraceProto; after: AgentTraceProto };
+}
+
+const SHA256 = /^[0-9a-f]{64}$/u;
+
+function optionalString(value: Record<string, unknown>, key: string, path: string): void {
+  if (value[key] !== undefined) assertString(value[key], `${path}.${key}`);
+}
+
+function optionalInteger(value: Record<string, unknown>, key: string, path: string): void {
+  if (value[key] !== undefined) assertInteger(value[key], `${path}.${key}`);
+}
+
+function requiredStrings(value: Record<string, unknown>, keys: readonly string[], path: string): void {
+  for (const key of keys) assertString(value[key], `${path}.${key}`);
+}
+
+/** Go encodes an empty slice as null; both mean no entries. */
+function list(value: unknown, path: string): unknown[] {
+  if (value === null) return [];
+  assert(Array.isArray(value), path, 'expected array');
+  return value;
+}
+
+function proto(value: unknown, path: string): AgentTraceProto {
+  assertObject(value, path);
+  return value;
+}
+
+function optionalProto(value: Record<string, unknown>, key: string, path: string): void {
+  if (value[key] !== undefined) proto(value[key], `${path}.${key}`);
+}
+
+function parseRuntime(value: unknown, path: string): AgentTraceRuntime {
+  assertObject(value, path);
+  rejectUnknown(value, ['operator_id', 'session_id', 'anchor'], path);
+  requiredStrings(value, ['operator_id', 'session_id'], path);
+  optionalProto(value, 'anchor', path);
+  return value as unknown as AgentTraceRuntime;
+}
+
+function parseInput(value: unknown, path: string): AgentTraceInput {
+  assertObject(value, path);
+  rejectUnknown(value, ['messages', 'tools'], path);
+  const messages = list(value.messages, `${path}.messages`);
+  messages.forEach((message, index) => {
+    const messagePath = `${path}.messages[${index}]`;
+    assertObject(message, messagePath);
+    rejectUnknown(message, ['role', 'text'], messagePath);
+    requiredStrings(message, ['role', 'text'], messagePath);
+  });
+  const tools = list(value.tools, `${path}.tools`);
+  tools.forEach((tool, index) => {
+    const toolPath = `${path}.tools[${index}]`;
+    assertObject(tool, toolPath);
+    rejectUnknown(tool, ['name', 'description', 'json_schema'], toolPath);
+    requiredStrings(tool, ['name', 'description', 'json_schema'], toolPath);
+  });
+  return { messages: messages as AgentTraceMessage[], tools: tools as AgentTraceTool[] };
+}
+
+const MODEL_CALL_FIELDS = [
+  'provider_attempt_id', 'transaction_id', 'purpose', 'loop_turn', 'tools_declared', 'result_digest', 'usage_reported',
+  'prompt_tokens', 'completion_tokens', 'ttft_nanos', 'generation_duration_nanos', 'finish_reason', 'load_state',
+  'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'receipt',
+] as const;
+
+function parseModelCall(value: unknown, path: string): AgentTraceModelCall {
+  assertObject(value, path);
+  rejectUnknown(value, MODEL_CALL_FIELDS, path);
+  requiredStrings(value, ['provider_attempt_id', 'transaction_id', 'purpose', 'result_digest'], path);
+  for (const key of ['loop_turn', 'prompt_tokens', 'completion_tokens', 'retry_count', 'tool_call_count']) {
+    assertInteger(value[key], `${path}.${key}`);
+  }
+  assertBoolean(value.usage_reported, `${path}.usage_reported`);
+  const declared = list(value.tools_declared, `${path}.tools_declared`);
+  declared.forEach((name, index) => assertString(name, `${path}.tools_declared[${index}]`));
+  for (const key of ['finish_reason', 'load_state', 'thinking', 'text', 'error']) optionalString(value, key, path);
+  optionalInteger(value, 'ttft_nanos', path);
+  optionalInteger(value, 'generation_duration_nanos', path);
+  optionalProto(value, 'receipt', path);
+  return { ...value, tools_declared: declared } as unknown as AgentTraceModelCall;
+}
+
+const TOOL_CALL_FIELDS = [
+  'call_id', 'model_call_id', 'provider_call_id', 'tool_name', 'arguments_json', 'command', 'result_json', 'error_type',
+  'error', 'success', 'is_operator_tool', 'loop_turn', 'action_type', 'transaction_id', 'policy_decision', 'receipt',
+] as const;
+
+function parseToolCall(value: unknown, path: string): AgentTraceToolCall {
+  assertObject(value, path);
+  rejectUnknown(value, TOOL_CALL_FIELDS, path);
+  requiredStrings(value, ['call_id', 'model_call_id', 'tool_name', 'arguments_json'], path);
+  for (const key of ['provider_call_id', 'command', 'result_json', 'error_type', 'error', 'action_type', 'transaction_id', 'policy_decision']) {
+    optionalString(value, key, path);
+  }
+  assertBoolean(value.success, `${path}.success`);
+  assertBoolean(value.is_operator_tool, `${path}.is_operator_tool`);
+  assertInteger(value.loop_turn, `${path}.loop_turn`);
+  optionalProto(value, 'receipt', path);
+  return value as unknown as AgentTraceToolCall;
+}
+
+const TRACE_FIELDS = [
+  'schema_version', 'evidence_digest', 'run_id', 'assignment_id', 'evaluation_attempt_id', 'campaign_id', 'scenario_id',
+  'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'inference', 'data', 'workspace', 'input',
+  'model_calls', 'tool_calls', 'final_output', 'tool_turn_limit_reached', 'provider_failure', 'provider_failure_class', 'bracket',
+] as const;
+
+/** Decodes one trace against the closed AgentTrace schema. */
+export function parseAgentTrace(value: unknown): AgentTrace {
+  const path = 'agent_trace';
+  assertObject(value, path);
+  rejectUnknown(value, TRACE_FIELDS, path);
+  assert(
+    typeof value.schema_version === 'string' && (AGENT_TRACE_SCHEMA_VERSIONS as readonly string[]).includes(value.schema_version),
+    `${path}.schema_version`,
+    `expected one of ${AGENT_TRACE_SCHEMA_VERSIONS.join(', ')}`,
+  );
+  assertString(value.evidence_digest, `${path}.evidence_digest`);
+  assert(SHA256.test(value.evidence_digest), `${path}.evidence_digest`, 'expected lowercase SHA-256');
+  requiredStrings(
+    value,
+    ['run_id', 'assignment_id', 'evaluation_attempt_id', 'campaign_id', 'scenario_id', 'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'final_output'],
+    path,
+  );
+  const inference = parseRuntime(value.inference, `${path}.inference`);
+  const data = parseRuntime(value.data, `${path}.data`);
+  assertObject(value.workspace, `${path}.workspace`);
+  rejectUnknown(value.workspace, ['root', 'operator_working_directory'], `${path}.workspace`);
+  requiredStrings(value.workspace, ['root', 'operator_working_directory'], `${path}.workspace`);
+  let input: AgentTraceInput | undefined;
+  if (value.schema_version === 'agent-trace.v4') {
+    input = parseInput(value.input, `${path}.input`);
+    assert(input.messages.length > 0, `${path}.input.messages`, 'agent-trace.v4 records the exact model input');
+  } else {
+    assert(value.input === undefined, `${path}.input`, 'agent-trace.v3 never carries input');
+  }
+  const modelCalls = list(value.model_calls, `${path}.model_calls`).map((call, index) => parseModelCall(call, `${path}.model_calls[${index}]`));
+  const toolCalls = list(value.tool_calls, `${path}.tool_calls`).map((call, index) => parseToolCall(call, `${path}.tool_calls[${index}]`));
+  assertBoolean(value.tool_turn_limit_reached, `${path}.tool_turn_limit_reached`);
+  optionalString(value, 'provider_failure', path);
+  optionalString(value, 'provider_failure_class', path);
+  let bracket: AgentTrace['bracket'];
+  if (value.bracket !== undefined) {
+    assertObject(value.bracket, `${path}.bracket`);
+    rejectUnknown(value.bracket, ['before', 'after'], `${path}.bracket`);
+    bracket = { before: proto(value.bracket.before, `${path}.bracket.before`), after: proto(value.bracket.after, `${path}.bracket.after`) };
+  }
+  return {
+    ...(value as unknown as AgentTrace),
+    inference,
+    data,
+    input,
+    model_calls: modelCalls,
+    tool_calls: toolCalls,
+    bracket,
+  };
+}
+
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes.slice().buffer as ArrayBuffer);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** The trace's leading members, which fix where evidence_digest sits. */
+function leadingMembers(schemaVersion: string, digest: string): string {
+  return `{"schema_version":"${schemaVersion}","evidence_digest":"${digest}",`;
+}
+
+export interface AgentTraceBinding {
+  sha256: string;
+  runId: string;
+  assignmentId: string;
+}
+
+/**
+ * Verifies one published trace body and decodes it. The body must hash to its
+ * binding; evidence_digest must equal the SHA-256 of the same bytes with the
+ * digest value emptied, which is exactly the Go digest preimage because the
+ * trace encodes its fields in fixed order with schema_version and
+ * evidence_digest first; and the trace must belong to the assignment. Any
+ * failure throws, so an unverified body is never rendered.
+ */
+export async function verifyAgentTraceArtifact(body: Uint8Array, binding: AgentTraceBinding): Promise<AgentTrace> {
+  assert((await sha256Hex(body)) === binding.sha256, 'agent_trace', 'body does not match its published SHA-256 binding');
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body));
+  } catch {
+    throw new ValidationError('body is not UTF-8 JSON', 'agent_trace');
+  }
+  const trace = parseAgentTrace(decoded);
+  const leading = new TextEncoder().encode(leadingMembers(trace.schema_version, trace.evidence_digest));
+  assert(
+    body.byteLength > leading.byteLength && leading.every((byte, index) => body[index] === byte),
+    'agent_trace.evidence_digest',
+    'body does not lead with schema_version and evidence_digest',
+  );
+  const emptied = new TextEncoder().encode(leadingMembers(trace.schema_version, ''));
+  const preimage = new Uint8Array(emptied.byteLength + body.byteLength - leading.byteLength);
+  preimage.set(emptied);
+  preimage.set(body.subarray(leading.byteLength), emptied.byteLength);
+  assert((await sha256Hex(preimage)) === trace.evidence_digest, 'agent_trace.evidence_digest', 'evidence_digest does not match the trace');
+  assert(
+    trace.run_id === binding.runId && trace.assignment_id === binding.assignmentId,
+    'agent_trace',
+    'trace belongs to a different assignment',
+  );
+  return trace;
+}

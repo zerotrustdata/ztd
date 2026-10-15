@@ -13,6 +13,7 @@ import type { AssignmentResult, MetricValue } from '../contract/types';
 import { TOOL_SCORE_DIMENSIONS } from '../contract/types';
 import { AssignmentEvidenceData } from '../components/AssignmentEvidenceData';
 import { AssignmentActivitySummary } from '../components/AssignmentActivitySummary';
+import { AgentTraceSection, agentTraceBinding } from '../components/AgentTraceSection';
 import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../components/AssignmentAuditProofRow';
 import { EvidenceBindingsPanel } from '../components/EvidenceBindingsPanel';
 import { RoleTranscripts } from '../components/RoleTranscripts';
@@ -57,6 +58,7 @@ import {
 const SECTION = {
   task: 'assignment-task',
   trail: 'assignment-trail',
+  agentTrace: 'assignment-agent-trace',
   governance: 'assignment-governance',
   criteria: 'assignment-criteria',
   scores: 'assignment-scores',
@@ -172,6 +174,7 @@ function FailureDiagnosis({ assignment }: { assignment: AssignmentResult }) {
             <li key={chip.criterion_id}>
               <strong>{chip.criterion_id.replace(/-/g, ' ')}:</strong>{' '}
               {chip.explanation ? chip.explanation.replace(/_/g, ' ') : observationLabel(chip.status)}
+              {chip.detail ? <span className="grade-detail">{chip.detail}</span> : null}
             </li>
           ))}
         </ul>
@@ -445,6 +448,7 @@ export function AssignmentDetailView() {
   const gradeChips = assignmentGradeChips(assignment);
   const publishedActivity = Boolean(assignment.activity_summary);
   const transcripts = assignment.role_transcripts ?? [];
+  const hasAgentTrace = Boolean(agentTraceBinding(assignment.evidence_bindings));
   const hasScores = visibleToolScoreDimensions(assignment).length > 0 || decomposedScores(assignment).length > 0;
   const groups = measureGroups(assignment);
   const otherEvidenceBindings = filterNonAuditEvidenceBindings(assignment.evidence_bindings);
@@ -460,8 +464,8 @@ export function AssignmentDetailView() {
 
   const chainTargets: Partial<Record<EvidenceChainStep['key'], string>> = {
     scenario: task ? SECTION.task : undefined,
-    model: SECTION.trail,
-    tool_calls: transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
+    model: hasAgentTrace ? SECTION.agentTrace : SECTION.trail,
+    tool_calls: hasAgentTrace ? SECTION.agentTrace : transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
     policy: publishedActivity ? SECTION.governance : undefined,
     governed_actions: publishedActivity ? SECTION.governance : undefined,
     graded: hasScores ? SECTION.scores : task ? SECTION.criteria : undefined,
@@ -586,6 +590,7 @@ export function AssignmentDetailView() {
           <TaskProvidedSection task={task} className="assignment-task-provided" />
         </Anchor> : null}
         <ModelResponseSection assignment={assignment} />
+        <AgentTraceSection id={SECTION.agentTrace} bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
         <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>
         {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" /></Anchor> : null}
         <ScoresSection assignment={assignment} />

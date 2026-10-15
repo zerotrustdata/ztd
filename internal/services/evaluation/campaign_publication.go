@@ -727,10 +727,7 @@ func (c *CampaignPublicationCoordinator) recordPublishedProofArtifacts(ctx conte
 	if state.PublishedProofArtifacts == nil {
 		state.PublishedProofArtifacts = map[string]CampaignPublishedProofArtifacts{}
 	}
-	state.PublishedProofArtifacts[input.AssignmentID] = CampaignPublishedProofArtifacts{
-		DatabaseSHA256: input.Artifacts.DatabaseSHA256,
-		VaultKeySHA256: input.Artifacts.VaultKeySHA256,
-	}
+	state.PublishedProofArtifacts[input.AssignmentID] = input.Artifacts.PublishedHashes()
 	return c.savePublicationState(ctx, state)
 }
 
@@ -820,7 +817,16 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 		var auditBindings []*evalv1.PublicEvidenceBinding
 		if publicationState != nil && containsString(publicationState.PublishedIdempotency, proofKey) {
 			if stored, ok := publicationState.PublishedProofArtifacts[assignment.GetAssignmentId()]; ok {
-				auditBindings = AssignmentAuditEvidenceBindingsFromHashes(stored.DatabaseSHA256, stored.VaultKeySHA256)
+				// Reuse the published package only when it already carries the
+				// current agent trace; otherwise rebuild so the trace is
+				// published and bound.
+				_, traceSHA256, err := loadAssignmentAgentTraceArtifact(ctx, c.store, result)
+				if err != nil {
+					return 0, err
+				}
+				if stored.AgentTraceSHA256 == traceSHA256 {
+					auditBindings = AssignmentAuditEvidenceBindingsFromHashes(stored.DatabaseSHA256, stored.VaultKeySHA256, stored.AgentTraceSHA256)
+				}
 			}
 		}
 		if auditBindings == nil {

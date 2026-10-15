@@ -297,7 +297,40 @@ func Cmd() *cobra.Command {
 		publicStatusCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicVerifyAssignmentCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
+		publicVerifyAgentTraceCmd(),
 	)
+	return cmd
+}
+
+// publicVerifyAgentTraceCmd verifies a downloaded assignment_agent_trace proof
+// artifact offline: its evidence digest, every receipt signature against the
+// trace's pinned actuator anchors, and the sentinel ledger bracket.
+func publicVerifyAgentTraceCmd() *cobra.Command {
+	var tracePath string
+	cmd := &cobra.Command{
+		Use:   "verify-agent-trace",
+		Short: "Verify a published assignment agent trace offline",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if strings.TrimSpace(tracePath) == "" {
+				return constants.ErrMissingRequiredField
+			}
+			body, err := os.ReadFile(tracePath)
+			if err != nil {
+				return fmt.Errorf("public-feed: read agent trace: %w", err)
+			}
+			trace, err := evaluation.DecodeAgentTrace(body)
+			if err != nil {
+				return fmt.Errorf("public-feed: verify agent trace: %w", err)
+			}
+			if err := evaluation.VerifyAgentTraceEvidence(trace); err != nil {
+				return fmt.Errorf("public-feed: verify agent trace: %w", err)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Agent trace verified (%s, sha256 %s)\n", trace.SchemaVersion, models.SHA256Hex(body))
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&tracePath, "trace", "", "Path to the assignment agent trace JSON")
+	_ = cmd.MarkFlagRequired("trace")
 	return cmd
 }
 

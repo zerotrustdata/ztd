@@ -12,8 +12,11 @@ import "context"
 // CampaignPublishedProofArtifacts stores content-addressed proof hashes for one
 // assignment so force restore can skip rebuilding unchanged audit exports.
 type CampaignPublishedProofArtifacts struct {
-	DatabaseSHA256 string
-	VaultKeySHA256 string
+	DatabaseSHA256      string
+	VaultKeySHA256      string
+	AgentTraceSHA256    string
+	ScenarioInputSHA256 string
+	ScenarioGoldSHA256  string
 }
 
 // CampaignPublicationState tracks exported public projection idempotency keys

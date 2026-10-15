@@ -32,7 +32,7 @@ func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
 	require.NoError(t, err)
 	assignment := assignments[0]
-	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", FinalOutput: "Checkout failures are caused by upstream payment timeouts.", ModelCalls: []AgentModelCall{{LoopTurn: 1, Text: "I will inspect the evidence.", FinishReason: "tool_call"}, {LoopTurn: 2, Text: "Checkout failures are caused by upstream payment timeouts.", FinishReason: "stop"}}, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"target":"checkout"}`, ResultJSON: `{"timeout_rate":18}`, Success: true, LoopTurn: 1}}}
+	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout failures are caused by upstream payment timeouts.", ModelCalls: []AgentModelCall{{LoopTurn: 1, Text: "I will inspect the evidence.", FinishReason: "tool_call"}, {LoopTurn: 2, Text: "Checkout failures are caused by upstream payment timeouts.", FinishReason: "stop"}}, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"target":"checkout"}`, ResultJSON: `{"timeout_rate":18}`, Success: true, LoopTurn: 1}}}
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), assignment.GetAssignmentId(), body))
@@ -74,7 +74,6 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 		tamper         bool
 		want           error
 	}{
-		{name: "restricted", response: "spiffe://private/runtime", want: constants.ErrPublicFeedRestrictedField},
 		{name: "oversized", response: strings.Repeat("a", 256*1024), want: constants.ErrEvidenceArtifactTooLarge},
 		{name: "tampered", response: "captured response", tamper: true, want: constants.ErrChecksumMismatch},
 	} {
@@ -83,7 +82,7 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 			store := NewStore(newCampaignRuntimeFileService(t))
 			assignment := &evalv1.EvaluationAssignment{RunId: "run-transcript", AssignmentId: "assignment-transcript"}
 			result := &evalv1.EvaluationAssignmentResult{RunId: assignment.GetRunId(), AssignmentId: assignment.GetAssignmentId()}
-			trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-transcript", DesignatedRole: "primary", FinalOutput: tc.response}
+			trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-transcript", DesignatedRole: "primary", FinalOutput: tc.response, Input: testAgentTraceInput()}
 			body, err := SealAgentTrace(trace)
 			require.NoError(t, err)
 			if tc.tamper {
@@ -97,6 +96,26 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 			require.Nil(t, transcripts)
 		})
 	}
+}
+
+func TestPublicAssignmentTranscriptPublishesModelAndToolTextVerbatim(t *testing.T) {
+	ctx := context.Background()
+	store := NewStore(newCampaignRuntimeFileService(t))
+	assignment := &evalv1.EvaluationAssignment{RunId: "run-transcript", AssignmentId: "assignment-transcript"}
+	result := &evalv1.EvaluationAssignmentResult{RunId: assignment.GetRunId(), AssignmentId: assignment.GetAssignmentId()}
+	response := "The workload identity is spiffe://ztd.local/operator/x."
+	toolResult := `{"stdout":"-----BEGIN PRIVATE KEY-----\nMIIfixture\n-----END PRIVATE KEY-----"}`
+	trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-transcript", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: response, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"path":"key.pem"}`, ResultJSON: toolResult, Success: true, LoopTurn: 1}}}
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, assignment.GetRunId(), assignment.GetAssignmentId(), body))
+
+	transcripts, err := BuildPublicAssignmentTranscripts(ctx, store, assignment, result)
+
+	require.NoError(t, err)
+	require.Len(t, transcripts, 1)
+	require.Equal(t, response, transcripts[0].Response)
+	require.Equal(t, toolResult, transcripts[0].ToolCalls[0].ResultJSON)
 }
 
 func TestPublicAssignmentTranscriptDistinguishesMissingSourceFromMissingReferencedEvidence(t *testing.T) {

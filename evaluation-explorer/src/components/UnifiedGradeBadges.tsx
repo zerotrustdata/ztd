@@ -66,6 +66,9 @@ export function UnifiedGradeBadges({ assignment }: { assignment: AssignmentResul
               {grade.explanation ? (
                 <DetailRow label="Explanation">{grade.explanation}</DetailRow>
               ) : null}
+              {grade.detail ? (
+                <DetailRow label="Grader detail"><span className="grade-detail">{grade.detail}</span></DetailRow>
+              ) : null}
             </div>
           </details>
         );

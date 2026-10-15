@@ -251,7 +251,6 @@ describe('campaign projection wire contract', () => {
       command: 'cat /tmp/retry.conf',
       success: true,
       result_json: '{"content":"retries=3"}',
-      result_redaction: 'truncated',
     };
     const transcript = { role: 'lite', response: 'retries=3', finish_reason: 'stop', trace_digest: 'c'.repeat(64), tool_calls: [toolCall] };
     const withTranscripts = (roleTranscripts: unknown, envelope = fixtureCampaignResultEnvelope) => ({
@@ -270,7 +269,7 @@ describe('campaign projection wire contract', () => {
       ['an unknown role', [{ ...transcript, role: 'judge' }]],
       ['a non-hex arguments_hash', [{ ...transcript, tool_calls: [{ ...toolCall, arguments_hash: 'Z'.repeat(64) }] }]],
       ['a short trace_digest', [{ ...transcript, trace_digest: 'c'.repeat(63) }]],
-      ['an unknown result_redaction', [{ ...transcript, tool_calls: [{ ...toolCall, result_redaction: 'hidden' }] }]],
+      ['a result_redaction marker', [{ ...transcript, tool_calls: [{ ...toolCall, result_redaction: 'truncated' }] }]],
       ['a missing tool success flag', [{ ...transcript, tool_calls: [{ tool_name: 'read_file' }] }]],
       ['a non-array value', { role: 'lite' }],
     ])('rejects %s', (_label, roleTranscripts) => {

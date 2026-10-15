@@ -2473,6 +2473,13 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
 .failure-criteria-list strong {
   color: var(--fg);
 }
+.grade-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .failure-missingness {
   margin: 6px 0 0;
   font-size: var(--fs-body);
@@ -2871,6 +2878,78 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
   word-break: break-all;
 }
 /* ===== end role transcripts ===== */
+
+/* ===== full agent trace ===== */
+.agent-trace-proof {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-label);
+  color: var(--fg-dim);
+}
+.agent-trace-proof code { font-family: var(--mono); overflow-wrap: anywhere; }
+.agent-trace-proof a {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev2);
+  color: var(--fg);
+  font-weight: 600;
+}
+.agent-trace-proof a:hover,
+.agent-trace-proof a:focus-visible { border-color: var(--accent); color: var(--accent); }
+.agent-trace-failed { margin: 8px 0 0; color: var(--tone-critical); font-size: var(--fs-body); }
+.agent-trace-messages,
+.agent-trace-turns { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.agent-trace-turn {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+}
+.agent-trace-turn-facts { color: var(--fg-dim); font-size: var(--fs-label); }
+.agent-trace-thinking summary,
+.agent-trace-tools summary,
+.agent-trace-raw summary { cursor: pointer; }
+.agent-trace-thinking pre { border-left: 3px solid var(--section-note-border); }
+.agent-trace-tools ul { display: grid; gap: 12px; margin: 8px 0 0; padding: 0; list-style: none; }
+.agent-trace-tools p { margin: 4px 0; color: var(--fg-muted); font-size: var(--fs-body); }
+.agent-trace-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+  font-size: var(--fs-label);
+}
+.agent-trace-receipt {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--accent-surface-border, var(--border));
+  border-radius: var(--radius);
+  background: var(--accent-surface, var(--bg-elev));
+}
+.agent-trace-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: var(--fs-label);
+}
+.agent-trace-facts dt { color: var(--fg-dim); }
+.agent-trace-facts dd { margin: 0; overflow-wrap: anywhere; }
+.agent-trace-facts code { font-family: var(--mono); }
+.agent-trace-stages { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-label); }
+.agent-trace-stages li { padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.agent-trace-stages li span:first-child { font-weight: 600; }
+.agent-trace-runtimes,
+.agent-trace-bracket { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.agent-trace-bracket { margin-top: 12px; }
+/* ===== end full agent trace ===== */
 
 .assignment-json,
 .assignment-event-list details {

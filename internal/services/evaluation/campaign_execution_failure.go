@@ -285,7 +285,9 @@ func (c *CampaignController) importPersistedAgentTrace(ctx context.Context, req 
 	if err != nil || trace == nil {
 		return nil, false
 	}
-	body, err := SealAgentTrace(trace)
+	// The loaded trace is digest-checked sealed evidence; its canonical body is
+	// the persisted one, whatever schema version sealed it.
+	body, err := MarshalCanonicalJSONObject(trace)
 	if err != nil {
 		return nil, false
 	}

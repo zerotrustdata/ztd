@@ -208,13 +208,20 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 // the provider fails, or the turn bound is reached.
 func (r *agentRun) loop(ctx context.Context) error {
 	messages := r.conversation()
+	tools := r.executor.catalog.Declarations()
+	input, err := newAgentTraceInput(messages, tools)
+	if err != nil {
+		return err
+	}
+	r.trace.Input = input
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
-		result, call := r.infer(ctx, agentModelCallPurposeTurn, turn, messages, r.executor.catalog.Declarations())
+		result, call := r.infer(ctx, agentModelCallPurposeTurn, turn, messages, tools)
 		if call == nil {
 			return nil
 		}
-		text, toolCalls := agentResponseParts(result)
+		text, thinking, toolCalls := agentResponseParts(result)
 		call.Text = text
+		call.Thinking = thinking
 		call.ToolCallCount = len(toolCalls)
 		modelCallID := call.ProviderAttemptID
 		if len(toolCalls) == 0 {
@@ -308,14 +315,20 @@ func agentTextMessage(role operatorv1.InferenceMessageRole, text string) *operat
 	return &operatorv1.InferenceMessage{Role: role, Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: text}}}}
 }
 
-func agentResponseParts(result *operatorv1.InferenceResult) (string, []*operatorv1.InferenceToolCall) {
-	var calls []*operatorv1.InferenceToolCall
+// agentResponseParts splits one response into the answer text sent back to
+// the model, the provider's thinking text, and the tool calls.
+func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*operatorv1.InferenceToolCall) {
+	var (
+		calls    []*operatorv1.InferenceToolCall
+		thinking strings.Builder
+	)
 	for _, part := range result.GetParts() {
 		if call := part.GetToolCall(); call != nil {
 			calls = append(calls, call)
 		}
+		thinking.WriteString(part.GetThinking())
 	}
-	return strings.TrimSpace(formationCollectInferenceText(result)), calls
+	return strings.TrimSpace(formationCollectInferenceText(result)), thinking.String(), calls
 }
 
 // infer dispatches one governed inference for the designated model and records
@@ -417,10 +430,11 @@ func (r *agentRun) dispatchInference(ctx context.Context, purpose string, turn i
 // result; only a harness failure returns an error.
 func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, toolCall *operatorv1.InferenceToolCall) (AgentToolCall, error) {
 	record := AgentToolCall{
-		CallID:      r.executor.newID("tool-call"),
-		ModelCallID: modelCallID,
-		ToolName:    toolCall.GetName(),
-		LoopTurn:    turn,
+		CallID:         r.executor.newID("tool-call"),
+		ModelCallID:    modelCallID,
+		ProviderCallID: toolCall.GetCallId(),
+		ToolName:       toolCall.GetName(),
+		LoopTurn:       turn,
 	}
 	arguments, err := canonicalizeToolJSON(toolCall.GetArgumentsJson())
 	if err != nil {

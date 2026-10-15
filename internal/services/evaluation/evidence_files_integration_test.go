@@ -361,12 +361,13 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	}
 	assert.True(t, foundPrompt, "the frozen prompt round-trips through the encrypted store")
 
-	// Agent traces keep private model-call text and error context encrypted.
-	// Only the existing allowlisted model/tool transcript is public on export.
+	// Agent traces are encrypted at rest. The export carries only the
+	// role_transcripts summary; the full trace reaches the public feed as a
+	// content-addressed proof artifact, never as a plaintext runtime file.
 	publicAnswer := "Public synthetic checkout diagnosis."
 	trace := &AgentTrace{
 		RunID: req.RunID, AssignmentID: completed.GetAssignmentId(), EvaluationAttemptID: "attempt-1", CampaignID: campaignID,
-		ScenarioID: "scenario-1", DesignatedRole: "primary", ServedModelTag: "qwen3:4b",
+		ScenarioID: "scenario-1", DesignatedRole: "primary", ServedModelTag: "qwen3:4b", Input: testAgentTraceInput(),
 		ModelCalls: []AgentModelCall{{ProviderAttemptID: "pa-1", TransactionID: "tx-1", Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "thinking about " + evidenceMarker}},
 		ToolCalls: []AgentToolCall{{
 			CallID: "tx-2", ModelCallID: "pa-1", ToolName: "run_commands_with_operator", ArgumentsJSON: `{"command":"cat public-synthetic.txt"}`,

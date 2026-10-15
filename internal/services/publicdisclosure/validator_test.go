@@ -36,7 +36,20 @@ func TestValidatePublicDisclosureMetricsAndStrings(t *testing.T) {
 		{name: "valid benchmark", fn: func() error {
 			return validateBenchmark(json.RawMessage(`{"grade_summaries":[{"criterion_id":"c","status":"pass"}],"tool_scorecard":{"tool_selection":{"value":1}},"timing":{"latency":{"value":2}},"gpu":{"power":{"unavailable_reason":"source_unavailable"}},"unavailable_reasons":[]}`))
 		}},
-		{name: "private benchmark detail", fn: func() error { return validateBenchmark(json.RawMessage(`{"grade_summaries":[{"detail":"private"}]}`)) }, want: constants.ErrPublicFeedRestrictedField},
+		{name: "benchmark grade detail", fn: func() error {
+			return validateBenchmark(json.RawMessage(`{"grade_summaries":[{"criterion_id":"c","detail":"cited ../app.log"}],"unavailable_reasons":[]}`))
+		}},
+		{name: "unknown benchmark grade field", fn: func() error { return validateBenchmark(json.RawMessage(`{"grade_summaries":[{"note":"x"}]}`)) }, want: constants.ErrEvidenceSchemaMismatch},
+		{name: "grade detail carried verbatim", fn: func() error {
+			return validateStrings([]byte(`{"semantic_grade_summaries":[{"criterion_id":"c","detail":"read /.ztd/x and ../y ` + strings.Repeat("x", 600) + `"}]}`))
+		}},
+		{name: "grade identifier still screened", fn: func() error {
+			return validateStrings([]byte(`{"grade_summaries":[{"criterion_id":"../c","detail":"ok"}]}`))
+		}, want: constants.ErrPublicFeedRestrictedField},
+		{name: "grade detail bounded", fn: func() error {
+			return validateStrings([]byte(`{"grade_summaries":[{"detail":"` + strings.Repeat("x", 256*1024+1) + `"}]}`))
+		}, want: constants.ErrEvidenceArtifactTooLarge},
+		{name: "detail outside grades still screened", fn: func() error { return validateStrings([]byte(`{"detail":"../secret"}`)) }, want: constants.ErrPublicFeedRestrictedField},
 		{name: "valid resource", fn: func() error { return validateResource(json.RawMessage(`{"latency_ms":{"value":2}}`)) }},
 		{name: "unknown resource field", fn: func() error { return validateResource(json.RawMessage(`{"private":{"value":2}}`)) }, want: constants.ErrEvidenceSchemaMismatch},
 	}
@@ -196,6 +209,7 @@ func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
 	assert.False(t, bounded("a\nb", 5))
 	assert.True(t, publicFeedViewSchemaVersion("1.5.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.7.0"))
+	assert.True(t, publicFeedViewSchemaVersion("1.8.0"))
 	assert.False(t, publicFeedViewSchemaVersion("9.0.0"))
 	assert.True(t, publicFeedSnapshotKind("evaluation_summary"))
 	assert.False(t, publicFeedSnapshotKind("unknown"))

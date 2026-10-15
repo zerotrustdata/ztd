@@ -16,10 +16,12 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// BuildPublicAssignmentTranscripts fills the existing allowlisted transcript
-// extension from digest-checked evidence. It never exports private prompts,
-// reasoning, runtime identity metadata, receipts, anchors, or provider data.
-// The shared disclosure validator still checks every field and the byte bound.
+// BuildPublicAssignmentTranscripts fills the role_transcripts summary of the
+// feed record from digest-checked evidence: final response, finish state, and
+// each tool call verbatim. The complete trace (exact input, thinking, every
+// turn, receipts, anchors) is published separately as the content-addressed
+// assignment_agent_trace proof artifact. The shared disclosure validator
+// checks the closed schema and byte bounds; content is never screened.
 func BuildPublicAssignmentTranscripts(ctx context.Context, store CampaignStore, assignment *evalv1.EvaluationAssignment, result *evalv1.EvaluationAssignmentResult) ([]publicdisclosure.RoleTranscript, error) {
 	if ctx == nil || store == nil || assignment == nil || result == nil {
 		return nil, fmt.Errorf("evaluation: build public transcript: %w", constants.ErrMissingRequiredField)

@@ -23,7 +23,7 @@ import (
 func TestBuildPublicAssignmentProjectionComposesApprovedSections(t *testing.T) {
 	t.Parallel()
 	assignment := &evalv1.EvaluationAssignment{AssignmentId: "assignment-1", RunId: "run-1", ScenarioId: "scenario-1", LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED}
-	result := &evalv1.EvaluationAssignmentResult{AssignmentId: "assignment-1", RunId: "run-1", LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, DeterministicGrades: []*evalv1.DeterministicGrade{{CriterionId: "criterion-1", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Detail: "private detail"}}}
+	result := &evalv1.EvaluationAssignmentResult{AssignmentId: "assignment-1", RunId: "run-1", LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, DeterministicGrades: []*evalv1.DeterministicGrade{{CriterionId: "criterion-1", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Detail: "grader detail"}}}
 	scenarioContext := &PublicScenarioContext{
 		ScenarioID: "scenario-1", ScenarioVersion: "1.0.0", PublicDescription: "Public scenario",
 		Criteria: []*evalv1.PublicScenarioCriterion{{CriterionId: "criterion-1", PublicLabel: "Criterion", PublicDescription: "Public criterion", Required: true}},
@@ -38,7 +38,7 @@ func TestBuildPublicAssignmentProjectionComposesApprovedSections(t *testing.T) {
 	assert.Equal(t, "pass", record.Extensions.BenchmarkObservations.GradeSummaries[0].Status)
 	assert.NotNil(t, record.Projection.GetActivitySummary())
 	assert.NotNil(t, record.Extensions.ResourceSummary)
-	assert.NotContains(t, record.Extensions.BenchmarkObservations.GradeSummaries[0].Detail, "private")
+	assert.Equal(t, "grader detail", record.Extensions.BenchmarkObservations.GradeSummaries[0].Detail)
 }
 
 func TestMarshalAssignmentResultProjectionEnvelopeUsesCanonicalExtensions(t *testing.T) {

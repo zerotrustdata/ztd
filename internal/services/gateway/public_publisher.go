@@ -1603,7 +1603,7 @@ func assignmentAuditProofArtifacts(request models.PublicAssignmentAuditProofPubl
 	dbFilename := fmt.Sprintf("assignment-%s.db", request.AssignmentID)
 	keyFilename := fmt.Sprintf("assignment-%s.vault.key", request.AssignmentID)
 	verifyCommand := fmt.Sprintf("ztd public verify-assignment --db %s --vault-key %s", dbFilename, keyFilename)
-	return []ProofArtifactInput{
+	artifacts := []ProofArtifactInput{
 		{
 			Filename:            dbFilename,
 			MediaType:           "application/vnd.sqlite3",
@@ -1620,7 +1620,19 @@ func assignmentAuditProofArtifacts(request models.PublicAssignmentAuditProofPubl
 			SourceRunID:         request.RunID,
 			VerificationCommand: verifyCommand,
 		},
-	}, request.CampaignID, revision, indexDigest, nil
+	}
+	if len(request.AgentTrace) > 0 {
+		traceFilename := fmt.Sprintf("assignment-%s.agent-trace.json", request.AssignmentID)
+		artifacts = append(artifacts, ProofArtifactInput{
+			Filename:            traceFilename,
+			MediaType:           constants.MediaTypeJSON,
+			Content:             request.AgentTrace,
+			CampaignID:          request.CampaignID,
+			SourceRunID:         request.RunID,
+			VerificationCommand: fmt.Sprintf("ztd public verify-agent-trace --trace %s", traceFilename),
+		})
+	}
+	return artifacts, request.CampaignID, revision, indexDigest, nil
 }
 
 // PublishAssignmentAuditProof ingests one assignment audit export package into

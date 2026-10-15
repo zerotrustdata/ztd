@@ -392,6 +392,8 @@ export interface AssignmentGradeChip {
   criterion_id: string;
   status: string;
   explanation?: string;
+  /** Grader output, published verbatim. */
+  detail?: string;
 }
 
 function gradeChipSortRank(status: string): number {
@@ -406,6 +408,7 @@ export function deterministicGradeChips(assignment: AssignmentResult): Assignmen
       criterion_id: grade.criterion_id,
       status: grade.status.toLowerCase(),
       explanation: publicGradeExplanationLabel(grade.explanation_code),
+      detail: grade.detail,
     }))
     .sort(
       (left, right) =>
@@ -423,6 +426,7 @@ export function assignmentGradeChips(assignment: AssignmentResult): AssignmentGr
         criterion_id: grade.criterion_id,
         status: grade.status,
         explanation: publicGradeExplanationLabel(grade.explanation_code),
+        detail: grade.detail,
       }))
       .sort(
         (left, right) =>

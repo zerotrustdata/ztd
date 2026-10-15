@@ -381,6 +381,7 @@ func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx co
 			IndexDigest:      input.IndexDigest,
 			Database:         input.Artifacts.Database,
 			VaultKey:         input.Artifacts.VaultKey,
+			AgentTrace:       input.Artifacts.AgentTrace,
 		}
 	}
 	path := constants.APIPaths.PublicFeedProofsBatch

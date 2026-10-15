@@ -136,7 +136,19 @@ func bracketOf(before, after *operatorv1.ActionReceipt) *AgentTraceBracket {
 func evidenceTrace(inference, data AgentTraceRuntime) *AgentTrace {
 	return &AgentTrace{
 		RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", ScenarioID: "scenario-1",
-		Inference: inference, Data: data,
+		Inference: inference, Data: data, Input: testAgentTraceInput(),
+	}
+}
+
+// testAgentTraceInput is the minimal recorded model input a sealed trace
+// requires.
+func testAgentTraceInput() *AgentTraceInput {
+	return &AgentTraceInput{
+		Messages: []AgentTraceMessage{
+			{Role: "INFERENCE_MESSAGE_ROLE_SYSTEM", Text: "You are the primary investigator."},
+			{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Why is checkout failing?"},
+		},
+		Tools: []AgentTraceTool{{Name: "inspect", Description: "Inspect one target.", JSONSchema: `{"type":"object"}`}},
 	}
 }
 

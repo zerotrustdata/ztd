@@ -291,6 +291,36 @@ func TestCampaignAgentExecutor_RunCommandsDispatchesModelWrittenCommandVerbatim(
 	assert.Equal(t, agentTestCommand, trace.ToolCalls[0].Command)
 }
 
+func TestCampaignAgentExecutor_TraceRecordsExactInputThinkingAndProviderCallIDs(t *testing.T) {
+	turns := runCommandTurns(agentTestCommand)
+	turns[0] = append([]*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "  Read the health file first.\n"}}}, turns[0]...)
+	f := newAgentExecutorFixture(t, turns...)
+
+	_, err := f.execute()
+
+	require.NoError(t, err)
+	trace := f.storedTrace()
+	assert.Equal(t, agentTraceSchemaVersion, trace.SchemaVersion)
+	require.NotNil(t, trace.Input)
+	first := f.inference.requests[0]
+	require.Len(t, trace.Input.Messages, len(first.GetMessages()), "the trace records the first turn's rendered messages")
+	for i, message := range first.GetMessages() {
+		assert.Equal(t, message.GetRole().String(), trace.Input.Messages[i].Role)
+		assert.Equal(t, message.GetParts()[0].GetText(), trace.Input.Messages[i].Text)
+	}
+	require.Len(t, trace.Input.Tools, len(first.GetTools()), "the trace records the declared tool schemas")
+	for i, tool := range first.GetTools() {
+		assert.Equal(t, tool.GetName(), trace.Input.Tools[i].Name)
+		assert.Equal(t, tool.GetJsonSchema(), trace.Input.Tools[i].JSONSchema)
+	}
+	require.Len(t, trace.ModelCalls, 2)
+	assert.Equal(t, "  Read the health file first.\n", trace.ModelCalls[0].Thinking, "thinking is published verbatim")
+	assert.Empty(t, trace.ModelCalls[1].Thinking)
+	require.Len(t, trace.ToolCalls, 1)
+	assert.Equal(t, "call-1", trace.ToolCalls[0].ProviderCallID)
+	require.NoError(t, ValidateAgentTraceDigest(trace))
+}
+
 func TestCampaignAgentExecutor_EmptyCommandFailsCallWithoutDispatch(t *testing.T) {
 	f := newAgentExecutorFixture(t, runCommandTurns("   ")...)
 

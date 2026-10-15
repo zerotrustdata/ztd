@@ -48,8 +48,9 @@ func (s *gatewayCampaignPublicationStateStore) Load(_ context.Context, runID str
 	proofArtifacts := make(map[string]evaluation.CampaignPublishedProofArtifacts, len(remote.PublishedProofArtifacts))
 	for assignmentID, artifacts := range remote.PublishedProofArtifacts {
 		proofArtifacts[assignmentID] = evaluation.CampaignPublishedProofArtifacts{
-			DatabaseSHA256: artifacts.DatabaseSHA256,
-			VaultKeySHA256: artifacts.VaultKeySHA256,
+			DatabaseSHA256:   artifacts.DatabaseSHA256,
+			VaultKeySHA256:   artifacts.VaultKeySHA256,
+			AgentTraceSHA256: artifacts.AgentTraceSHA256,
 		}
 	}
 	return &evaluation.CampaignPublicationState{
@@ -80,8 +81,9 @@ func (s *gatewayCampaignPublicationStateStore) Save(_ context.Context, state *ev
 	proofArtifacts := make(map[string]models.EvalCampaignPublishedProofArtifacts, len(state.PublishedProofArtifacts))
 	for assignmentID, artifacts := range state.PublishedProofArtifacts {
 		proofArtifacts[assignmentID] = models.EvalCampaignPublishedProofArtifacts{
-			DatabaseSHA256: artifacts.DatabaseSHA256,
-			VaultKeySHA256: artifacts.VaultKeySHA256,
+			DatabaseSHA256:   artifacts.DatabaseSHA256,
+			VaultKeySHA256:   artifacts.VaultKeySHA256,
+			AgentTraceSHA256: artifacts.AgentTraceSHA256,
 		}
 	}
 	if _, err := s.client.Put(path, models.EvalCampaignPublicationState{

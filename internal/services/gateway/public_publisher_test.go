@@ -1170,3 +1170,22 @@ func TestExportBatch_RejectsProhibitedFields(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrPublicFeedRestrictedField)
 }
+
+func TestAssignmentAuditProofArtifacts_AddsAgentTraceOnlyWhenCaptured(t *testing.T) {
+	request := models.PublicAssignmentAuditProofPublishRequest{CampaignID: "campaign-1", RunID: "run-1", AssignmentID: "assignment-1", Database: []byte("db"), VaultKey: []byte("key\n")}
+
+	artifacts, _, _, _, err := assignmentAuditProofArtifacts(request)
+	require.NoError(t, err)
+	require.Len(t, artifacts, 2)
+
+	request.AgentTrace = []byte(`{"evidence_digest":"x","final_output":"spiffe://ztd.local/operator/x"}`)
+	artifacts, _, _, _, err = assignmentAuditProofArtifacts(request)
+	require.NoError(t, err)
+	require.Len(t, artifacts, 3)
+	trace := artifacts[2]
+	assert.Equal(t, "assignment-assignment-1.agent-trace.json", trace.Filename)
+	assert.Equal(t, constants.MediaTypeJSON, trace.MediaType)
+	assert.Equal(t, request.AgentTrace, trace.Content, "the trace is published byte for byte, never screened")
+	assert.Equal(t, "run-1", trace.SourceRunID)
+	assert.Equal(t, "ztd public verify-agent-trace --trace assignment-assignment-1.agent-trace.json", trace.VerificationCommand)
+}

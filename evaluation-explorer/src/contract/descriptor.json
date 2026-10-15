@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.7.0",
+  "schema_version": "1.8.0",
   "enums": {
     "ReleaseBasis": ["recorded", "asserted", "unknown"],
     "QualityState": [
@@ -213,7 +213,8 @@
       "statistical_analysis",
       "source_manifest",
       "assignment_audit_slice",
-      "assignment_audit_vault_key"
+      "assignment_audit_vault_key",
+      "assignment_agent_trace"
     ],
     "PublicActivityEvidenceSource": [
       "application_reported",

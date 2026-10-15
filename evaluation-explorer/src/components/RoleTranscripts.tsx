@@ -10,7 +10,7 @@ import type { RoleTranscript, RoleTranscriptToolCall } from '../contract/types';
 import { roleLabel } from '../views/derived';
 import { CopyButton } from './shared';
 
-function prettyJSON(text: string): string {
+export function prettyJSON(text: string): string {
   try {
     return JSON.stringify(JSON.parse(text), null, 2);
   } catch {
@@ -18,7 +18,7 @@ function prettyJSON(text: string): string {
   }
 }
 
-function label(value: string): string {
+export function label(value: string): string {
   return value.replace(/_/g, ' ').toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 }
 
@@ -49,14 +49,11 @@ function ToolCall({ call, index }: { call: RoleTranscriptToolCall; index: number
           <pre className="model-response-text"><code>{call.command}</code></pre>
         </div>
       ) : null}
-      {call.result_json || call.result_redaction ? (
+      {call.result_json ? (
         <details className="transcript-field transcript-result" open>
-          <summary className="transcript-field-label">
-            Tool result
-            {call.result_redaction === 'truncated' ? <small>truncated for publication; full result bound by trace digest</small> : null}
-            {call.result_redaction === 'restricted' ? <small>withheld: restricted content</small> : null}
-          </summary>
-          {call.result_json ? <><CopyButton text={call.result_json} label={`${call.tool_name} result`} /><pre className="model-response-text"><code>{prettyJSON(call.result_json)}</code></pre></> : null}
+          <summary className="transcript-field-label">Tool result</summary>
+          <CopyButton text={call.result_json} label={`${call.tool_name} result`} />
+          <pre className="model-response-text"><code>{prettyJSON(call.result_json)}</code></pre>
         </details>
       ) : null}
     </li>

@@ -242,7 +242,7 @@ func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
 	report.CatalogDigest = spec.GetCatalogDigest()
 	report.ModelRegistryDigest = spec.GetModelRegistryDigest()
 	// A verified revision must preserve the transcript added by initial publication.
-	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignments[0].GetAssignmentId(), EvaluationAttemptID: "attempt-verified-transcript", DesignatedRole: "primary", FinalOutput: "Verified revision preserves this response."}
+	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignments[0].GetAssignmentId(), EvaluationAttemptID: "attempt-verified-transcript", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Verified revision preserves this response."}
 	traceBody, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(context.Background(), run.GetRunId(), assignments[0].GetAssignmentId(), traceBody))
@@ -825,6 +825,54 @@ func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
 	_, err = coordinator.PublishRunCatchUp(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	assert.Empty(t, proofPublisher.inputs)
+}
+
+// A package published before its agent trace was captured, or bound to a
+// different trace, is rebuilt so the current trace is published and bound.
+func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	proofPublisher := &recordingCampaignProofPublisher{}
+	publicationState := NewMemoryCampaignPublicationStateStore()
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}, nil).
+		WithProofPublisher(proofPublisher)
+	run := completedTestCampaign(t, store)
+	assignments, err := store.ListAssignments(ctx, run.GetRunId())
+	require.NoError(t, err)
+	require.NotEmpty(t, assignments)
+	proofKeys := make([]string, 0, len(assignments))
+	proofArtifacts := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
+	for index, assignment := range assignments {
+		proofKeys = append(proofKeys, AssignmentAuditProofIdempotencyKey(run.GetRunId(), assignment.GetAssignmentId()))
+		proofArtifacts[assignment.GetAssignmentId()] = CampaignPublishedProofArtifacts{
+			DatabaseSHA256: fmt.Sprintf("%064x", index*2),
+			VaultKeySHA256: fmt.Sprintf("%064x", index*2+1),
+		}
+	}
+	traced := assignments[0]
+	traceBody, err := SealAgentTrace(&AgentTrace{RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), traced.GetAssignmentId(), traceBody))
+	require.NoError(t, publicationState.Save(ctx, &CampaignPublicationState{
+		SchemaVersion:           campaignPublicationStateSchemaVersion,
+		RunID:                   run.GetRunId(),
+		PublishedIdempotency:    proofKeys,
+		PublishedProofArtifacts: proofArtifacts,
+	}))
+	require.NoError(t, coordinator.ResetFeedPublicationIdempotency(ctx, run.GetRunId()))
+
+	_, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
+
+	require.NoError(t, err)
+	require.Len(t, proofPublisher.inputs, 1, "only the assignment whose trace is unpublished is rebuilt")
+	rebuilt := proofPublisher.inputs[0]
+	assert.Equal(t, traced.GetAssignmentId(), rebuilt.AssignmentID)
+	assert.Equal(t, traceBody, rebuilt.Artifacts.AgentTrace)
+	assert.Equal(t, hashBytes(traceBody), rebuilt.Artifacts.AgentTraceSHA256)
+	state, err := publicationState.Load(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assert.Equal(t, hashBytes(traceBody), state.PublishedProofArtifacts[traced.GetAssignmentId()].AgentTraceSHA256)
 }
 
 func completedHeterogeneousFormationCampaign(t *testing.T, store *Store) *evalv1.EvaluationRun {

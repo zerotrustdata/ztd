@@ -14,14 +14,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -95,6 +98,60 @@ func TestBuildAssignmentAuditSlice_RoundTripAndBindings(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Len(t, bindingsFromEvidence, 2)
+}
+
+// saveAgentTraceForAuditProof seals and persists one trace and returns the
+// result that references it alongside the exact persisted body.
+func saveAgentTraceForAuditProof(t *testing.T, store *Store) (*evalv1.EvaluationAssignmentResult, []byte) {
+	t.Helper()
+	trace := &AgentTrace{RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."}
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(context.Background(), "run-1", "assignment-1", body))
+	ref, err := BuildAssignmentAgentTraceEvidenceReference("run-1", "attempt-1", body, time.Now().UTC())
+	require.NoError(t, err)
+	return &evalv1.EvaluationAssignmentResult{RunId: "run-1", AssignmentId: "assignment-1", EvidenceRefs: []*compliancev1.ComplianceEvidenceReference{ref}}, body
+}
+
+func TestAssignmentAgentTraceArtifact_PublishesExactPersistedBodyAndBindsIt(t *testing.T) {
+	store := NewStore(newCampaignRuntimeFileService(t))
+	result, persisted := saveAgentTraceForAuditProof(t, store)
+
+	body, digest, err := loadAssignmentAgentTraceArtifact(context.Background(), store, result)
+
+	require.NoError(t, err)
+	assert.Equal(t, persisted, body, "the published artifact is the sealed body byte for byte")
+	assert.Equal(t, result.GetEvidenceRefs()[0].GetSha256(), digest)
+	bindings := AssignmentAuditEvidenceBindingsFromHashes(strings.Repeat("a", 64), strings.Repeat("b", 64), digest)
+	require.Len(t, bindings, 3)
+	assert.Equal(t, AssignmentAgentTraceKind, bindings[2].GetKind())
+	assert.Len(t, AssignmentAuditEvidenceBindingsFromHashes(strings.Repeat("a", 64), strings.Repeat("b", 64), ""), 2, "no trace, no trace binding")
+}
+
+func TestAssignmentAgentTraceArtifact_AbsentTraceWithoutReferencePublishesNothing(t *testing.T) {
+	store := NewStore(newCampaignRuntimeFileService(t))
+
+	body, digest, err := loadAssignmentAgentTraceArtifact(context.Background(), store, &evalv1.EvaluationAssignmentResult{RunId: "run-1", AssignmentId: "assignment-1"})
+
+	require.NoError(t, err)
+	assert.Nil(t, body)
+	assert.Empty(t, digest)
+}
+
+func TestAssignmentAgentTraceArtifact_FailsClosed(t *testing.T) {
+	t.Run("referenced trace missing", func(t *testing.T) {
+		store := NewStore(newCampaignRuntimeFileService(t))
+		result := &evalv1.EvaluationAssignmentResult{RunId: "run-1", AssignmentId: "assignment-1", EvidenceRefs: []*compliancev1.ComplianceEvidenceReference{{ArtifactType: string(complianceevidence.ArtifactTypeEvaluationAssignmentTrace), Sha256: strings.Repeat("c", 64)}}}
+		_, _, err := loadAssignmentAgentTraceArtifact(context.Background(), store, result)
+		assert.ErrorIs(t, err, constants.ErrNotFound)
+	})
+	t.Run("reference hash differs from persisted body", func(t *testing.T) {
+		store := NewStore(newCampaignRuntimeFileService(t))
+		result, _ := saveAgentTraceForAuditProof(t, store)
+		result.EvidenceRefs[0].Sha256 = strings.Repeat("c", 64)
+		_, _, err := loadAssignmentAgentTraceArtifact(context.Background(), store, result)
+		assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	})
 }
 
 func TestVerifyAssignmentAuditSlice_WrongKeyFailsDecrypt(t *testing.T) {

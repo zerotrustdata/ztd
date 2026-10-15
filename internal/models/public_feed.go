@@ -225,7 +225,10 @@ type PublicAssignmentAuditProofPublishRequest struct {
 	IndexDigest      string `json:"index_digest"`
 	Database         []byte `json:"database"`
 	VaultKey         []byte `json:"vault_key"`
-	DeferMirrorPush  bool   `json:"defer_mirror_push,omitempty"`
+	// AgentTrace is the exact sealed agent trace body for agent assignments.
+	// It is published unredacted as a content-addressed proof artifact.
+	AgentTrace      []byte `json:"agent_trace,omitempty"`
+	DeferMirrorPush bool   `json:"defer_mirror_push,omitempty"`
 }
 
 // PublicAssignmentAuditProofBatchPublishRequest ingests many assignment audit
@@ -264,9 +267,10 @@ type PublicProofMirrorSyncState struct {
 
 type PublicAssignmentAuditProofPublishResponse struct {
 	Accepted        bool   `json:"accepted"`
-	DatabaseSHA256  string `json:"database_sha256,omitempty"`
-	VaultKeySHA256  string `json:"vault_key_sha256,omitempty"`
-	ProofRootSHA256 string `json:"proof_root_sha256,omitempty"`
+	DatabaseSHA256   string `json:"database_sha256,omitempty"`
+	VaultKeySHA256   string `json:"vault_key_sha256,omitempty"`
+	AgentTraceSHA256 string `json:"agent_trace_sha256,omitempty"`
+	ProofRootSHA256  string `json:"proof_root_sha256,omitempty"`
 }
 
 type PublicAssignmentAuditProofBatchPublishResponse struct {

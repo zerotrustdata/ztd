@@ -10,12 +10,12 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.7.0 on 2026-10-15. A change to any enum value
+// FROZEN at schema_version 1.8.0 on 2026-10-15. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.7.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.8.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -58,6 +58,7 @@ export const PUBLIC_EVIDENCE_KINDS = [
   'source_manifest',
   'assignment_audit_slice',
   'assignment_audit_vault_key',
+  'assignment_agent_trace',
 ] as const;
 export type PublicEvidenceKind = (typeof PUBLIC_EVIDENCE_KINDS)[number];
 
@@ -589,6 +590,8 @@ export interface PublicSemanticGradeSummary {
   grading_method: 'deterministic' | 'semantic_judge';
   judge_variant_id?: string;
   explanation_code: PublicGradeExplanationCode;
+  /** Grader output, published verbatim. */
+  detail?: string;
 }
 
 export interface PublicModelActivityRecord {
@@ -715,8 +718,6 @@ export interface AssignmentResult extends ViewRecordEnvelope {
   tools_declared?: string[];
 }
 
-export const TOOL_RESULT_REDACTIONS = ['truncated', 'restricted'] as const;
-
 /** One executed tool call, lifted verbatim from a digest-bound role trace.
  *  arguments_hash is sha256(arguments_json) as recorded in that trace. */
 export interface RoleTranscriptToolCall {
@@ -727,7 +728,6 @@ export interface RoleTranscriptToolCall {
   success: boolean;
   error_type?: string;
   result_json?: string;
-  result_redaction?: (typeof TOOL_RESULT_REDACTIONS)[number];
 }
 
 /** What one model role actually did: its output and every tool call. */

@@ -1303,6 +1303,13 @@ definitions:
     type: object
   models.PublicAssignmentAuditProofPublishRequest:
     properties:
+      agent_trace:
+        description: |-
+          AgentTrace is the exact sealed agent trace body for agent assignments.
+          It is published unredacted as a content-addressed proof artifact.
+        items:
+          type: integer
+        type: array
       assignment_id:
         type: string
       campaign_id:
@@ -1328,6 +1335,8 @@ definitions:
     properties:
       accepted:
         type: boolean
+      agent_trace_sha256:
+        type: string
       database_sha256:
         type: string
       proof_root_sha256:

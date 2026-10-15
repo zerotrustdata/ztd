@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,20 @@ func TestValidatePublicAssignmentRecordAcceptsHistoricalAndEnrichedRecords(t *te
 				},
 			},
 		},
+		{
+			// Grader detail is published verbatim, like model text, so a
+			// detail quoting a path or an over-long line is still accepted.
+			name:    "grade detail",
+			version: campaignProjectionEnvelopeEnrichedVersion,
+			extensions: PublicAssignmentRecordExtensions{
+				BenchmarkObservations: &PublicBenchmarkObservations{
+					GradeSummaries: []PublicGradeSummary{{
+						CriterionID: "criterion",
+						Detail:      "expected ../checkout.log to be cited; " + strings.Repeat("x", 600),
+					}},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -66,16 +81,6 @@ func TestValidatePublicAssignmentRecordRejectsMalformedAssignmentGrammar(t *test
 				record["private_detail"] = "should reject"
 			},
 			want: constants.ErrEvidenceSchemaMismatch,
-		},
-		{
-			name:    "private grade detail",
-			version: campaignProjectionEnvelopeEnrichedVersion,
-			extensions: PublicAssignmentRecordExtensions{
-				BenchmarkObservations: &PublicBenchmarkObservations{
-					GradeSummaries: []PublicGradeSummary{{CriterionID: "criterion", Detail: "private grader output"}},
-				},
-			},
-			want: constants.ErrPublicFeedRestrictedField,
 		},
 		{
 			name:    "historical enriched extension",

@@ -66,8 +66,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SPEC-DATA-01 | Every exported record MUST pass a closed allowlist enforced by campaign projector, disclosure validator, publisher, and mirror before becoming browser-visible. Any unknown field fails closed. |
-| INV-SPEC-DATA-02 | Prompts, intermediate reasoning, raw chain-of-thought, credentials, private keys, SPIFFE identities, machine-specific paths, and internal transaction IDs MUST NEVER cross the projection boundary. |
-| INV-SPEC-DATA-03 | Model responses and failure outputs are published only as bounded exceptions (`model_response`, `failure_output`, `role_transcripts`). Records exceeding 256 KiB or containing `BEGIN PRIVATE KEY` or `spiffe://` are rejected. |
+| INV-SPEC-DATA-02 | Every structural feed-record string outside the verbatim carriers (`INV-SPEC-DATA-03`) MUST be at most 512 bytes and MUST NOT contain `BEGIN PRIVATE KEY`, `spiffe://`, `../`, or `/.ztd/`. Credentials, private keys, vault key material, and anything that confers Gateway access MUST NEVER be published; public proof never grants Gateway access. |
+| INV-SPEC-DATA-03 | Evaluation evidence is published in full and never redacted or screened. The feed-record carriers `model_response`, `failure_output`, `role_transcripts`, and each grade summary's `detail` are verbatim text held only to the 256 KiB record bound. The complete agent trace (exact model input, every turn's thinking and text, tool arguments and results, signed receipts, actuator anchors, and the sentinel bracket) is published as a content-addressed proof artifact bound by an `assignment_agent_trace` evidence binding. |
 
 ### Cryptographic Continuity (`INV-SPEC-CRYPTO`)
 
@@ -150,17 +150,17 @@ Only allowlisted fields and records cross into the public spectator feed.
 - **Verification Status**: Verification status, verified index-generation hash.
 - **Categorical Environment Labels**: `environment_class`, `backend_name`, `quantization`.
 - **Bounded Diagnostic Detail**: `trajectory_outcome` (closed vocabulary), `guided_retry_count`, `failure_reason`, `tools_declared`.
-- **Bounded Model Outputs (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts` (each text within the 256 KiB record bound, at most 8 role transcripts, restricted-text rules enforced).
+- **Verbatim Model and Grader Text (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts`, and `benchmark_observations.grade_summaries[].detail` / `semantic_grade_summaries[].detail` (each text within the 256 KiB record bound, at most 8 role transcripts, no screening or redaction).
+- **Agent Trace Proof Artifact**: `assignment-<id>.agent-trace.json`, the persisted `AgentTrace` body byte for byte, served at `/proofs/<sha256>` and bound by an `assignment_agent_trace` evidence binding. `agent-trace.v4` carries the exact first-turn model input (`input.messages`, `input.tools`); `agent-trace.v3` carries none, and the explorer labels it not captured.
 
 ### Prohibited Fields
 
-The following fields MUST NEVER cross the projection boundary:
-- Private scenario prompts, full system prompts, and prompt hints.
-- Intermediate chain-of-thought, model reasoning traces, and scratchpads.
+The following MUST NEVER cross the projection boundary:
 - Private evidence files, encrypted evidence envelopes, and vault DEK/KEK metadata.
-- User identities, WebAuthn credentials, session IDs, and tokens.
-- Internal IP addresses, internal DNS hostnames, SPIFFE URI SANs, and filesystem paths.
-- Execution receipts, raw command strings, and audit ledger internals.
+- User identities, WebAuthn credentials, user session IDs, and tokens.
+- Private keys, Gateway credentials, and mTLS client material.
+- Internal IP addresses, internal DNS hostnames, SPIFFE URI SANs, and filesystem paths in structural feed-record fields (`INV-SPEC-DATA-02`).
+- Audit ledger databases and governance envelopes.
 
 ## Export Binding and Cryptographic Continuity
 
@@ -214,7 +214,7 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 
 - **Private Ingress**: Private Gateway surfaces (`/mcp`, `/api/v1/a2a/`, `/api/v1/governance/envelopes`) never accept anonymous traffic.
 - **SSE Bridge**: Gateway SSE (`/api/v1/sse/stream`) is session-scoped for owners and CLIs; Public SSE (`/stream`) is served exclusively by the mirror runtime.
-- **Evaluation Integration**: Native evaluation runs persist under `.ztd/data/eval/runs/`. The public-safe projector generates allowlisted projections without exposing internal traces.
+- **Evaluation Integration**: Native evaluation runs persist under `.ztd/data/eval/runs/`. The projector generates allowlisted projections; the publisher attaches each captured agent trace as a proof artifact (`INV-SPEC-DATA-03`).
 
 ## Procedures
 
@@ -242,11 +242,13 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 3. Compute SHA-256 of all artifacts and compare against catalog entries.
 4. Verify catalog entries match the signed root manifest.
 5. Verify Ed25519 signature over manifest root using trusted public key.
+6. Verify a downloaded agent trace with `./ztd public verify-agent-trace --trace assignment-<id>.agent-trace.json`: it checks `evidence_digest`, every model and tool receipt signature against the trace's actuator anchors, and the sentinel bracket ordering. `./ztd public verify-assignment` verifies an assignment audit slice.
 
 ## Anti-patterns
 
 - **Conflating observe modes**: Attempting to use public mirror endpoints for owner-local control, or vice versa (`INV-SPEC-ISO-01`).
-- **Publishing unredacted model traces**: Emitting free-form prompt, reasoning, or trace text across the projection boundary (`INV-SPEC-DATA-02`).
+- **Redacting or summarizing evaluation evidence**: Screening, truncating, or reconstructing model input, thinking, tool results, or grader detail instead of publishing it verbatim within the size bounds (`INV-SPEC-DATA-03`).
+- **Free text in structural fields**: Routing prose through identifiers or labels instead of a verbatim carrier, which bypasses the bounds the structural screen relies on (`INV-SPEC-DATA-02`).
 - **Direct public exposure of Gateway**: Pointing external tunnels directly at Gateway port 8443 or 8080 instead of the mirror loopback port 8082.
 - **Treating mirror uptime as proof validity**: Relying on mirror availability rather than verifying signed proof artifacts offline.
 

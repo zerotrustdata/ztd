@@ -169,7 +169,7 @@ func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservatio
 		DeterministicGrades: []*evalv1.DeterministicGrade{{
 			CriterionId: "tool-selection",
 			Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
-			Detail:      "private grading detail",
+			Detail:      "grading detail",
 		}},
 	}
 	record, err := (&CampaignExporter{}).buildAssignmentExportRecord(
@@ -189,7 +189,7 @@ func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservatio
 	require.NotNil(t, record.BenchmarkObservations)
 	require.Len(t, record.BenchmarkObservations.GradeSummaries, 1)
 	assert.Equal(t, "tool-selection", record.BenchmarkObservations.GradeSummaries[0].CriterionID)
-	assert.Empty(t, record.BenchmarkObservations.GradeSummaries[0].Detail)
+	assert.Equal(t, "grading detail", record.BenchmarkObservations.GradeSummaries[0].Detail)
 	require.NotNil(t, record.BenchmarkObservations.ToolScorecard["tool_selection"])
 	assert.Equal(t, 0.0, *record.BenchmarkObservations.ToolScorecard["tool_selection"].Value)
 }

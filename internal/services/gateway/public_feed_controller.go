@@ -177,8 +177,9 @@ func (c *PublicFeedController) handlePublicFeedProofs(w http.ResponseWriter, r *
 	c.responder.JSON(w, http.StatusOK, models.PublicAssignmentAuditProofPublishResponse{
 		Accepted:        true,
 		DatabaseSHA256:  hashBytes(request.Database),
-		VaultKeySHA256:  hashBytes(request.VaultKey),
-		ProofRootSHA256: manifest.ProofRootSHA256,
+		VaultKeySHA256:   hashBytes(request.VaultKey),
+		AgentTraceSHA256: agentTraceSHA256(request.AgentTrace),
+		ProofRootSHA256:  manifest.ProofRootSHA256,
 	})
 }
 
@@ -327,6 +328,15 @@ func publicFeedProofPublishErrorStatus(err error) (int, string) {
 func hashBytes(value []byte) string {
 	sum := sha256.Sum256(value)
 	return hex.EncodeToString(sum[:])
+}
+
+// agentTraceSHA256 hashes the optional agent trace artifact; assignments
+// without a trace report no hash.
+func agentTraceSHA256(trace []byte) string {
+	if len(trace) == 0 {
+		return ""
+	}
+	return hashBytes(trace)
 }
 
 func (c *PublicFeedController) publisher() (*PublicPublisherService, error) {

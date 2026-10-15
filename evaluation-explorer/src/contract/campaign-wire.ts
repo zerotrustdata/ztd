@@ -70,6 +70,7 @@ const EVIDENCE_KINDS = [
   'source_manifest',
   'assignment_audit_slice',
   'assignment_audit_vault_key',
+  'assignment_agent_trace',
 ] as const;
 
 type WireMetricUnavailableReason = (typeof WIRE_UNAVAILABLE_REASONS)[number] | (typeof PUBLIC_UNAVAILABLE_REASONS)[number];
@@ -130,6 +131,8 @@ export interface WireSemanticGradeSummary {
   grading_method: (typeof GRADING_METHODS)[number];
   judge_variant_id?: string;
   explanation_code: (typeof EXPLANATION_CODES)[number];
+  /** Grader output, published verbatim. */
+  detail?: string;
 }
 
 const BENCHMARK_TIMING_FIELDS = ['model_load_ms', 'time_to_first_token_ms', 'generation_ms', 'whole_task_ms'] as const;
@@ -147,6 +150,8 @@ export interface WireBenchmarkGradeSummary {
   criterion_id: string;
   status: string;
   explanation_code: (typeof EXPLANATION_CODES)[number];
+  /** Grader output, published verbatim. */
+  detail?: string;
 }
 
 /** Every field the wire admits under `benchmark_observations`
@@ -529,12 +534,13 @@ function assertGradeSummaries(value: unknown, path: string): void {
     const gradePath = `${path}[${index}]`;
     const grade: unknown = value[index];
     assertObject(grade, gradePath);
-    rejectUnknown(grade, ['criterion_id', 'status', 'grading_method', 'judge_variant_id', 'explanation_code'], gradePath);
+    rejectUnknown(grade, ['criterion_id', 'status', 'grading_method', 'judge_variant_id', 'explanation_code', 'detail'], gradePath);
     assertString(grade.criterion_id, `${gradePath}.criterion_id`);
     assertEnum(grade.status, VERDICT_STATUSES, `${gradePath}.status`);
     assertEnum(grade.grading_method, GRADING_METHODS, `${gradePath}.grading_method`);
     assertOptionalString(grade.judge_variant_id, `${gradePath}.judge_variant_id`);
     assertEnum(grade.explanation_code, EXPLANATION_CODES, `${gradePath}.explanation_code`);
+    assertOptionalString(grade.detail, `${gradePath}.detail`);
   }
 }
 
@@ -655,10 +661,11 @@ function assertBenchmarkObservations(value: unknown, path: string): void {
       const gradePath = `${path}.grade_summaries[${index}]`;
       const grade: unknown = value.grade_summaries[index];
       assertObject(grade, gradePath);
-      rejectUnknown(grade, ['criterion_id', 'status', 'explanation_code'], gradePath);
+      rejectUnknown(grade, ['criterion_id', 'status', 'explanation_code', 'detail'], gradePath);
       assertString(grade.criterion_id, `${gradePath}.criterion_id`);
       assertString(grade.status, `${gradePath}.status`);
       assertEnum(grade.explanation_code, EXPLANATION_CODES, `${gradePath}.explanation_code`);
+      assertOptionalString(grade.detail, `${gradePath}.detail`);
     }
   }
   if (value.tool_scorecard !== undefined) {

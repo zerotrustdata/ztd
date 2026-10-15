@@ -206,10 +206,7 @@ func validateBenchmark(raw json.RawMessage) error {
 		if err != nil {
 			return schemaError(err.Error())
 		}
-		if _, ok := fields["detail"]; ok {
-			return fmt.Errorf("private grade detail: %w", constants.ErrPublicFeedRestrictedField)
-		}
-		if err := allowed(fields, "criterion_id", "status", "method", "judge_variant_id", "explanation_code"); err != nil {
+		if err := allowed(fields, "criterion_id", "status", "method", "judge_variant_id", "explanation_code", "detail"); err != nil {
 			return err
 		}
 	}
@@ -323,7 +320,37 @@ func walkStrings(value json.RawMessage) error {
 				}
 				continue
 			}
+			if key == "grade_summaries" || key == "semantic_grade_summaries" {
+				if err := walkGradeSummaries(child); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := walkStrings(child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// walkGradeSummaries checks grade identifiers like any other structural
+// string and carries each grader's detail verbatim under the model-text bound.
+func walkGradeSummaries(value json.RawMessage) error {
+	var grades []map[string]json.RawMessage
+	if err := json.Unmarshal(value, &grades); err != nil {
+		return schemaError(err.Error())
+	}
+	if len(grades) > maxArrayEntries {
+		return fmt.Errorf("assignment array bound: %w", constants.ErrEvidenceArtifactTooLarge)
+	}
+	for _, grade := range grades {
+		for key, child := range grade {
+			walk := walkStrings
+			if key == "detail" {
+				walk = walkModelText
+			}
+			if err := walk(child); err != nil {
 				return err
 			}
 		}
@@ -341,18 +368,11 @@ func walkModelText(value json.RawMessage) error {
 		if err := json.Unmarshal(trimmed, &text); err != nil {
 			return err
 		}
-		if len(text) > maxRecordBytes || RestrictedModelText(text) {
-			return fmt.Errorf("restricted assignment text: %w", constants.ErrPublicFeedRestrictedField)
+		if len(text) > maxRecordBytes {
+			return fmt.Errorf("assignment text bounds: %w", constants.ErrEvidenceArtifactTooLarge)
 		}
 	}
 	return nil
-}
-
-// RestrictedModelText reports whether captured model or tool text contains
-// material that must never reach the public feed. Builders use it to withhold
-// such text before publication; the validator rejects any that slips through.
-func RestrictedModelText(text string) bool {
-	return strings.Contains(text, "BEGIN PRIVATE KEY") || strings.Contains(text, "spiffe://")
 }
 
 // RoleTranscript is the existing bounded public model/tool transcript contract.
@@ -365,19 +385,19 @@ type RoleTranscript struct {
 }
 
 type RoleTranscriptToolCall struct {
-	ToolName        string `json:"tool_name"`
-	ArgumentsJSON   string `json:"arguments_json,omitempty"`
-	ArgumentsHash   string `json:"arguments_hash,omitempty"`
-	Command         string `json:"command,omitempty"`
-	Success         bool   `json:"success"`
-	ErrorType       string `json:"error_type,omitempty"`
-	ResultJSON      string `json:"result_json,omitempty"`
-	ResultRedaction string `json:"result_redaction,omitempty"`
+	ToolName      string `json:"tool_name"`
+	ArgumentsJSON string `json:"arguments_json,omitempty"`
+	ArgumentsHash string `json:"arguments_hash,omitempty"`
+	Command       string `json:"command,omitempty"`
+	Success       bool   `json:"success"`
+	ErrorType     string `json:"error_type,omitempty"`
+	ResultJSON    string `json:"result_json,omitempty"`
 }
 
 // ValidateRoleTranscripts enforces the closed role_transcripts schema: known
 // roles only, digests as SHA-256 hex, identifiers bounded, and every captured
-// model/tool text held to the same rules as model_response.
+// model/tool text size-bounded like model_response. Transcript content is
+// published verbatim; it is never redacted or screened.
 func ValidateRoleTranscripts(raw json.RawMessage) error {
 	if len(raw) > maxRecordBytes {
 		return fmt.Errorf("role transcript bounds: %w", constants.ErrEvidenceArtifactTooLarge)
@@ -409,16 +429,11 @@ func ValidateRoleTranscripts(raw json.RawMessage) error {
 			if call.ArgumentsHash != "" && !hashPattern.MatchString(call.ArgumentsHash) {
 				return fmt.Errorf("invalid transcript arguments hash: %w", constants.ErrEvidenceArtifactMalformed)
 			}
-			switch call.ResultRedaction {
-			case "", "truncated", "restricted":
-			default:
-				return schemaError("unknown transcript result redaction")
-			}
 			texts = append(texts, call.ArgumentsJSON, call.Command, call.ResultJSON)
 		}
 		for _, text := range texts {
-			if len(text) > maxRecordBytes || RestrictedModelText(text) {
-				return fmt.Errorf("restricted transcript text: %w", constants.ErrPublicFeedRestrictedField)
+			if len(text) > maxRecordBytes {
+				return fmt.Errorf("role transcript bounds: %w", constants.ErrEvidenceArtifactTooLarge)
 			}
 		}
 	}
@@ -696,7 +711,7 @@ func validatePublicFeedKeyRevocation(recordBytes []byte) error {
 
 func publicFeedViewSchemaVersion(value string) bool {
 	switch value {
-	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0":
+	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0":
 		return true
 	default:
 		return false

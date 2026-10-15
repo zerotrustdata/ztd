@@ -4054,6 +4054,13 @@
         "models.PublicAssignmentAuditProofPublishRequest": {
             "type": "object",
             "properties": {
+                "agent_trace": {
+                    "description": "AgentTrace is the exact sealed agent trace body for agent assignments.\nIt is published unredacted as a content-addressed proof artifact.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "assignment_id": {
                     "type": "string"
                 },
@@ -4091,6 +4098,9 @@
             "properties": {
                 "accepted": {
                     "type": "boolean"
+                },
+                "agent_trace_sha256": {
+                    "type": "string"
                 },
                 "database_sha256": {
                     "type": "string"
