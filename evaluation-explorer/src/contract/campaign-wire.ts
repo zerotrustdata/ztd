@@ -71,6 +71,8 @@ const EVIDENCE_KINDS = [
   'assignment_audit_slice',
   'assignment_audit_vault_key',
   'assignment_agent_trace',
+  'scenario_input_fixture',
+  'scenario_gold_criteria',
 ] as const;
 
 type WireMetricUnavailableReason = (typeof WIRE_UNAVAILABLE_REASONS)[number] | (typeof PUBLIC_UNAVAILABLE_REASONS)[number];

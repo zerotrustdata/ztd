@@ -1189,3 +1189,53 @@ func TestAssignmentAuditProofArtifacts_AddsAgentTraceOnlyWhenCaptured(t *testing
 	assert.Equal(t, "run-1", trace.SourceRunID)
 	assert.Equal(t, "ztd public verify-agent-trace --trace assignment-assignment-1.agent-trace.json", trace.VerificationCommand)
 }
+
+func TestAssignmentAuditProofArtifacts_PublishesScenarioFixtureCampaignScoped(t *testing.T) {
+	request := models.PublicAssignmentAuditProofPublishRequest{
+		CampaignID:    "campaign-1",
+		RunID:         "run-1",
+		AssignmentID:  "assignment-1",
+		Database:      []byte("db"),
+		VaultKey:      []byte("key\n"),
+		ScenarioID:    "scenario-1",
+		ScenarioInput: []byte(`{"user_prompt":"Summarize the incident."}`),
+		ScenarioGold:  []byte(`{"exact_token":"ZTD-OK"}`),
+	}
+
+	artifacts, _, _, _, err := assignmentAuditProofArtifacts(request)
+
+	require.NoError(t, err)
+	require.Len(t, artifacts, 4)
+	input, gold := artifacts[2], artifacts[3]
+	assert.Equal(t, "scenario-scenario-1.input.json", input.Filename)
+	assert.Equal(t, "scenario-scenario-1.gold.json", gold.Filename)
+	for _, fixture := range []ProofArtifactInput{input, gold} {
+		assert.Equal(t, constants.MediaTypeJSON, fixture.MediaType)
+		assert.Equal(t, "campaign-1", fixture.CampaignID)
+		assert.Empty(t, fixture.SourceRunID, "fixtures are campaign-scoped so one run's prune cannot remove shared bytes")
+	}
+	assert.Equal(t, request.ScenarioInput, input.Content, "the fixture is published byte for byte, never screened")
+	assert.Equal(t, request.ScenarioGold, gold.Content)
+}
+
+func TestAssignmentAuditProofArtifacts_RejectsPartialScenarioFixture(t *testing.T) {
+	base := models.PublicAssignmentAuditProofPublishRequest{CampaignID: "campaign-1", RunID: "run-1", AssignmentID: "assignment-1", Database: []byte("db"), VaultKey: []byte("key\n")}
+	for name, mutate := range map[string]func(*models.PublicAssignmentAuditProofPublishRequest){
+		"input without gold": func(r *models.PublicAssignmentAuditProofPublishRequest) {
+			r.ScenarioID, r.ScenarioInput = "scenario-1", []byte(`{}`)
+		},
+		"gold without input": func(r *models.PublicAssignmentAuditProofPublishRequest) {
+			r.ScenarioID, r.ScenarioGold = "scenario-1", []byte(`{}`)
+		},
+		"bodies without scenario": func(r *models.PublicAssignmentAuditProofPublishRequest) {
+			r.ScenarioInput, r.ScenarioGold = []byte(`{}`), []byte(`{}`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := base
+			mutate(&request)
+			_, _, _, _, err := assignmentAuditProofArtifacts(request)
+			assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+		})
+	}
+}

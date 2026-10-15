@@ -14,6 +14,7 @@ import { TOOL_SCORE_DIMENSIONS } from '../contract/types';
 import { AssignmentEvidenceData } from '../components/AssignmentEvidenceData';
 import { AssignmentActivitySummary } from '../components/AssignmentActivitySummary';
 import { AgentTraceSection, agentTraceBinding } from '../components/AgentTraceSection';
+import { ScenarioFixtureSection, scenarioFixtureBindings } from '../components/ScenarioFixtureSection';
 import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../components/AssignmentAuditProofRow';
 import { EvidenceBindingsPanel } from '../components/EvidenceBindingsPanel';
 import { RoleTranscripts } from '../components/RoleTranscripts';
@@ -58,6 +59,7 @@ import {
 const SECTION = {
   task: 'assignment-task',
   trail: 'assignment-trail',
+  fixture: 'assignment-scenario-fixture',
   agentTrace: 'assignment-agent-trace',
   governance: 'assignment-governance',
   criteria: 'assignment-criteria',
@@ -449,6 +451,8 @@ export function AssignmentDetailView() {
   const publishedActivity = Boolean(assignment.activity_summary);
   const transcripts = assignment.role_transcripts ?? [];
   const hasAgentTrace = Boolean(agentTraceBinding(assignment.evidence_bindings));
+  const fixtureBindings = scenarioFixtureBindings(assignment.evidence_bindings);
+  const hasFixture = Boolean(assignment.scenario_id && fixtureBindings.input && fixtureBindings.gold);
   const hasScores = visibleToolScoreDimensions(assignment).length > 0 || decomposedScores(assignment).length > 0;
   const groups = measureGroups(assignment);
   const otherEvidenceBindings = filterNonAuditEvidenceBindings(assignment.evidence_bindings);
@@ -463,7 +467,7 @@ export function AssignmentDetailView() {
     : assignment.missingness_reason ?? assignment.benchmark_observations?.unavailable_reasons.join(' · ');
 
   const chainTargets: Partial<Record<EvidenceChainStep['key'], string>> = {
-    scenario: task ? SECTION.task : undefined,
+    scenario: hasFixture ? SECTION.fixture : task ? SECTION.task : undefined,
     model: hasAgentTrace ? SECTION.agentTrace : SECTION.trail,
     tool_calls: hasAgentTrace ? SECTION.agentTrace : transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
     policy: publishedActivity ? SECTION.governance : undefined,
@@ -589,6 +593,7 @@ export function AssignmentDetailView() {
           <TaskPromptSection task={task} className="assignment-task-prompt" />
           <TaskProvidedSection task={task} className="assignment-task-provided" />
         </Anchor> : null}
+        <ScenarioFixtureSection id={SECTION.fixture} bindings={assignment.evidence_bindings} scenarioId={assignment.scenario_id} />
         <ModelResponseSection assignment={assignment} />
         <AgentTraceSection id={SECTION.agentTrace} bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
         <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>

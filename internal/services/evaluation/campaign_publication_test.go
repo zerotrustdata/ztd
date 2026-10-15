@@ -805,16 +805,7 @@ func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
 	assignments, err := store.ListAssignments(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	require.NotEmpty(t, assignments)
-	proofKeys := make([]string, 0, len(assignments))
-	proofArtifacts := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
-	for index, assignment := range assignments {
-		assignmentID := assignment.GetAssignmentId()
-		proofKeys = append(proofKeys, AssignmentAuditProofIdempotencyKey(run.GetRunId(), assignmentID))
-		proofArtifacts[assignmentID] = CampaignPublishedProofArtifacts{
-			DatabaseSHA256: fmt.Sprintf("%064x", index*2),
-			VaultKeySHA256: fmt.Sprintf("%064x", index*2+1),
-		}
-	}
+	proofKeys, proofArtifacts := recordedProofArtifacts(t, store, run, assignments)
 	require.NoError(t, publicationState.Save(context.Background(), &CampaignPublicationState{
 		SchemaVersion:           campaignPublicationStateSchemaVersion,
 		RunID:                   run.GetRunId(),
@@ -841,15 +832,7 @@ func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T)
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
 	require.NoError(t, err)
 	require.NotEmpty(t, assignments)
-	proofKeys := make([]string, 0, len(assignments))
-	proofArtifacts := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
-	for index, assignment := range assignments {
-		proofKeys = append(proofKeys, AssignmentAuditProofIdempotencyKey(run.GetRunId(), assignment.GetAssignmentId()))
-		proofArtifacts[assignment.GetAssignmentId()] = CampaignPublishedProofArtifacts{
-			DatabaseSHA256: fmt.Sprintf("%064x", index*2),
-			VaultKeySHA256: fmt.Sprintf("%064x", index*2+1),
-		}
-	}
+	proofKeys, proofArtifacts := recordedProofArtifacts(t, store, run, assignments)
 	traced := assignments[0]
 	traceBody, err := SealAgentTrace(&AgentTrace{RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
 	require.NoError(t, err)
@@ -873,6 +856,76 @@ func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T)
 	state, err := publicationState.Load(ctx, run.GetRunId())
 	require.NoError(t, err)
 	assert.Equal(t, hashBytes(traceBody), state.PublishedProofArtifacts[traced.GetAssignmentId()].AgentTraceSHA256)
+}
+
+// A package recorded before scenario fixtures were published is rebuilt so the
+// frozen fixture bodies are published and bound.
+func TestPublishRunCatchUpRebuildsProofWhenScenarioFixtureIsUnpublished(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	proofPublisher := &recordingCampaignProofPublisher{}
+	publicationState := NewMemoryCampaignPublicationStateStore()
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}, nil).
+		WithProofPublisher(proofPublisher)
+	run := completedTestCampaign(t, store)
+	assignments, err := store.ListAssignments(ctx, run.GetRunId())
+	require.NoError(t, err)
+	require.NotEmpty(t, assignments)
+	proofKeys, proofArtifacts := recordedProofArtifacts(t, store, run, assignments)
+	stale := assignments[0]
+	staleHashes := proofArtifacts[stale.GetAssignmentId()]
+	staleHashes.ScenarioInputSHA256 = ""
+	staleHashes.ScenarioGoldSHA256 = ""
+	proofArtifacts[stale.GetAssignmentId()] = staleHashes
+	require.NoError(t, publicationState.Save(ctx, &CampaignPublicationState{
+		SchemaVersion:           campaignPublicationStateSchemaVersion,
+		RunID:                   run.GetRunId(),
+		PublishedIdempotency:    proofKeys,
+		PublishedProofArtifacts: proofArtifacts,
+	}))
+	require.NoError(t, coordinator.ResetFeedPublicationIdempotency(ctx, run.GetRunId()))
+
+	_, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
+
+	require.NoError(t, err)
+	require.Len(t, proofPublisher.inputs, 1, "only the assignment without published fixtures is rebuilt")
+	rebuilt := proofPublisher.inputs[0]
+	assert.Equal(t, stale.GetAssignmentId(), rebuilt.AssignmentID)
+	assert.Equal(t, stale.GetScenarioId(), rebuilt.Artifacts.ScenarioID)
+	assert.NotEmpty(t, rebuilt.Artifacts.ScenarioInput)
+	assert.NotEmpty(t, rebuilt.Artifacts.ScenarioGold)
+	state, err := publicationState.Load(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assert.Equal(t, rebuilt.Artifacts.ScenarioInputSHA256, state.PublishedProofArtifacts[stale.GetAssignmentId()].ScenarioInputSHA256)
+	assert.Equal(t, rebuilt.Artifacts.ScenarioGoldSHA256, state.PublishedProofArtifacts[stale.GetAssignmentId()].ScenarioGoldSHA256)
+}
+
+// recordedProofArtifacts returns proof idempotency keys and recorded hashes
+// for every assignment as if its package, including the campaign's frozen
+// scenario fixture, had already been published.
+func recordedProofArtifacts(t *testing.T, store *Store, run *evalv1.EvaluationRun, assignments []*evalv1.EvaluationAssignment) ([]string, map[string]CampaignPublishedProofArtifacts) {
+	t.Helper()
+	ctx := context.Background()
+	campaignID := run.GetCampaignBinding().GetCampaignId()
+	catalog, err := store.LoadScenarioCatalog(ctx, campaignID)
+	require.NoError(t, err)
+	fixtures, err := store.LoadScenarioArtifacts(ctx, campaignID, catalog)
+	require.NoError(t, err)
+	proofKeys := make([]string, 0, len(assignments))
+	proofArtifacts := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
+	for index, assignment := range assignments {
+		fixture, ok := fixtures[assignment.GetScenarioId()]
+		require.True(t, ok, "scenario fixture for %s", assignment.GetScenarioId())
+		proofKeys = append(proofKeys, AssignmentAuditProofIdempotencyKey(run.GetRunId(), assignment.GetAssignmentId()))
+		proofArtifacts[assignment.GetAssignmentId()] = CampaignPublishedProofArtifacts{
+			DatabaseSHA256:      fmt.Sprintf("%064x", index*2),
+			VaultKeySHA256:      fmt.Sprintf("%064x", index*2+1),
+			ScenarioInputSHA256: fixture.Input.Reference.GetSha256(),
+			ScenarioGoldSHA256:  fixture.Gold.Reference.GetSha256(),
+		}
+	}
+	return proofKeys, proofArtifacts
 }
 
 func completedHeterogeneousFormationCampaign(t *testing.T, store *Store) *evalv1.EvaluationRun {

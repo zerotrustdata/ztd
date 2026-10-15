@@ -90,7 +90,9 @@ export function filterNonAuditEvidenceBindings(bindings: PublicEvidenceBinding[]
     (binding) =>
       binding.kind !== 'assignment_audit_slice' &&
       binding.kind !== 'assignment_audit_vault_key' &&
-      binding.kind !== 'assignment_agent_trace',
+      binding.kind !== 'assignment_agent_trace' &&
+      binding.kind !== 'scenario_input_fixture' &&
+      binding.kind !== 'scenario_gold_criteria',
   );
   return filtered.length > 0 ? filtered : undefined;
 }

@@ -142,20 +142,20 @@ type AgentTrace struct {
 	// Inference and Data are the runtimes the roles executed on. When one
 	// Operator holds both capabilities they name the same runtime, whose
 	// ledger bracket must then account for both roles' executions.
-	Inference            AgentTraceRuntime   `json:"inference"`
-	Data                 AgentTraceRuntime   `json:"data"`
-	Workspace            AgentTraceWorkspace `json:"workspace"`
+	Inference AgentTraceRuntime   `json:"inference"`
+	Data      AgentTraceRuntime   `json:"data"`
+	Workspace AgentTraceWorkspace `json:"workspace"`
 	// Input is the exact model input of the first turn. Every later turn sent
 	// this input followed, per earlier turn, by one assistant message (the
 	// call's Text, then its tool calls with ProviderCallID, ToolName and
 	// ArgumentsJSON) and one tool message per call carrying ResultJSON. v3
 	// traces have none.
-	Input                *AgentTraceInput    `json:"input,omitempty"`
-	ModelCalls           []AgentModelCall    `json:"model_calls"`
-	ToolCalls            []AgentToolCall     `json:"tool_calls"`
-	FinalOutput          string              `json:"final_output"`
-	ToolTurnLimitReached bool                `json:"tool_turn_limit_reached"`
-	ProviderFailure      string              `json:"provider_failure,omitempty"`
+	Input                *AgentTraceInput `json:"input,omitempty"`
+	ModelCalls           []AgentModelCall `json:"model_calls"`
+	ToolCalls            []AgentToolCall  `json:"tool_calls"`
+	FinalOutput          string           `json:"final_output"`
+	ToolTurnLimitReached bool             `json:"tool_turn_limit_reached"`
+	ProviderFailure      string           `json:"provider_failure,omitempty"`
 	// ProviderFailureClass is the inference attempt failure class
 	// (capability_unsupported, backend_timeout, ...) when the provider
 	// classified the failure. Traces sealed before it existed omit it.

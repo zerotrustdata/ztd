@@ -170,29 +170,6 @@ func (c *CampaignPublicationCoordinator) PublishAssignmentResult(ctx context.Con
 		return fmt.Errorf("evaluation: publish assignment result: %w", constants.ErrMissingRequiredField)
 	}
 	idempotencyKey := AssignmentResultIdempotencyKey(assignment.GetRunId(), assignment.GetAssignmentId())
-	liveRequests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-	if err != nil {
-		return err
-	}
-	auditBindings, err := c.BuildAssignmentAuditBindings(ctx, assignment, result, liveRequests, true)
-	if err != nil {
-		return err
-	}
-	return c.publishAssignmentResultWithKey(ctx, assignment, result, scenarioCategory, verificationStatus, idempotencyKey, auditBindings)
-}
-
-func (c *CampaignPublicationCoordinator) publishAssignmentResultWithKey(
-	ctx context.Context,
-	assignment *evalv1.EvaluationAssignment,
-	result *evalv1.EvaluationAssignmentResult,
-	scenarioCategory evalv1.EvaluationScenarioCategory,
-	verificationStatus string,
-	idempotencyKey string,
-	auditBindings []*evalv1.PublicEvidenceBinding,
-) error {
-	if c == nil || c.store == nil || c.files == nil || c.exporter == nil || assignment == nil || result == nil || idempotencyKey == "" {
-		return fmt.Errorf("evaluation: publish assignment result: %w", constants.ErrMissingRequiredField)
-	}
 	run, err := c.store.LoadRun(ctx, assignment.GetRunId())
 	if err != nil {
 		return fmt.Errorf("evaluation: publish assignment result: load run: %w", err)
@@ -204,6 +181,14 @@ func (c *CampaignPublicationCoordinator) publishAssignmentResultWithKey(
 	artifacts, err := c.store.LoadScenarioArtifacts(ctx, run.GetCampaignBinding().GetCampaignId(), catalog)
 	if err != nil {
 		return fmt.Errorf("evaluation: publish assignment result: load scenario artifacts: %w", err)
+	}
+	liveRequests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
+	if err != nil {
+		return err
+	}
+	auditBindings, err := c.BuildAssignmentAuditBindings(ctx, assignment, result, artifacts, liveRequests, true)
+	if err != nil {
+		return err
 	}
 	request, err := c.buildAssignmentResultPublishRequest(ctx, run, catalog, artifacts, assignment, result, scenarioCategory, verificationStatus, idempotencyKey, auditBindings)
 	if err != nil {
@@ -416,7 +401,7 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 			if err != nil {
 				return 0, err
 			}
-			auditBindings, err := c.BuildAssignmentAuditBindings(ctx, assignment, result, liveRequests, false)
+			auditBindings, err := c.BuildAssignmentAuditBindings(ctx, assignment, result, artifacts, liveRequests, false)
 			if err != nil {
 				return 0, err
 			}
@@ -818,14 +803,16 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 		if publicationState != nil && containsString(publicationState.PublishedIdempotency, proofKey) {
 			if stored, ok := publicationState.PublishedProofArtifacts[assignment.GetAssignmentId()]; ok {
 				// Reuse the published package only when it already carries the
-				// current agent trace; otherwise rebuild so the trace is
-				// published and bound.
+				// current agent trace and scenario fixture; otherwise rebuild so
+				// both are published and bound.
 				_, traceSHA256, err := loadAssignmentAgentTraceArtifact(ctx, c.store, result)
 				if err != nil {
 					return 0, err
 				}
-				if stored.AgentTraceSHA256 == traceSHA256 {
-					auditBindings = AssignmentAuditEvidenceBindingsFromHashes(stored.DatabaseSHA256, stored.VaultKeySHA256, stored.AgentTraceSHA256)
+				fixture := artifacts[assignment.GetScenarioId()]
+				if stored.AgentTraceSHA256 == traceSHA256 && stored.ScenarioInputSHA256 != "" &&
+					stored.ScenarioInputSHA256 == fixture.Input.Reference.GetSha256() && stored.ScenarioGoldSHA256 == fixture.Gold.Reference.GetSha256() {
+					auditBindings = AssignmentAuditEvidenceBindingsFromHashes(stored)
 				}
 			}
 		}
@@ -834,7 +821,7 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 			if err != nil {
 				return 0, err
 			}
-			auditBindings, err = c.BuildAssignmentAuditBindings(ctx, assignment, result, liveRequests, true)
+			auditBindings, err = c.BuildAssignmentAuditBindings(ctx, assignment, result, artifacts, liveRequests, true)
 			if err != nil {
 				return 0, err
 			}

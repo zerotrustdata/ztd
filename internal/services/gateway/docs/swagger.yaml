@@ -1326,6 +1326,20 @@ definitions:
         type: string
       run_id:
         type: string
+      scenario_gold:
+        items:
+          type: integer
+        type: array
+      scenario_id:
+        description: |-
+          ScenarioID names the assignment's scenario. ScenarioInput and
+          ScenarioGold are its frozen canonical input fixture and gold criteria
+          bodies, published unredacted as campaign-scoped proof artifacts.
+        type: string
+      scenario_input:
+        items:
+          type: integer
+        type: array
       vault_key:
         items:
           type: integer
@@ -1340,6 +1354,10 @@ definitions:
       database_sha256:
         type: string
       proof_root_sha256:
+        type: string
+      scenario_gold_sha256:
+        type: string
+      scenario_input_sha256:
         type: string
       vault_key_sha256:
         type: string

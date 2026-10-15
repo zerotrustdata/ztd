@@ -122,10 +122,53 @@ func TestAssignmentAgentTraceArtifact_PublishesExactPersistedBodyAndBindsIt(t *t
 	require.NoError(t, err)
 	assert.Equal(t, persisted, body, "the published artifact is the sealed body byte for byte")
 	assert.Equal(t, result.GetEvidenceRefs()[0].GetSha256(), digest)
-	bindings := AssignmentAuditEvidenceBindingsFromHashes(strings.Repeat("a", 64), strings.Repeat("b", 64), digest)
+	bindings := AssignmentAuditEvidenceBindingsFromHashes(CampaignPublishedProofArtifacts{DatabaseSHA256: strings.Repeat("a", 64), VaultKeySHA256: strings.Repeat("b", 64), AgentTraceSHA256: digest})
 	require.Len(t, bindings, 3)
 	assert.Equal(t, AssignmentAgentTraceKind, bindings[2].GetKind())
-	assert.Len(t, AssignmentAuditEvidenceBindingsFromHashes(strings.Repeat("a", 64), strings.Repeat("b", 64), ""), 2, "no trace, no trace binding")
+	assert.Len(t, AssignmentAuditEvidenceBindingsFromHashes(CampaignPublishedProofArtifacts{DatabaseSHA256: strings.Repeat("a", 64), VaultKeySHA256: strings.Repeat("b", 64)}), 2, "no trace, no trace binding")
+}
+
+// testScenarioFixtures returns one frozen built-in scenario's fixture bodies
+// keyed under scenarioID.
+func testScenarioFixtures(t *testing.T, scenarioID string) map[string]ScenarioArtifacts {
+	t.Helper()
+	catalog, artifacts, err := BuildSmokeGateScenarioCatalog()
+	require.NoError(t, err)
+	require.NotEmpty(t, catalog.GetScenarios())
+	return map[string]ScenarioArtifacts{scenarioID: artifacts[catalog.GetScenarios()[0].GetScenarioId()]}
+}
+
+func TestAttachScenarioFixture_PublishesFrozenBodiesAndBindsThem(t *testing.T) {
+	fixtures := testScenarioFixtures(t, "scenario-1")
+	artifacts := AssignmentAuditSliceArtifacts{DatabaseSHA256: strings.Repeat("a", 64), VaultKeySHA256: strings.Repeat("b", 64)}
+
+	require.NoError(t, artifacts.attachScenarioFixture(&evalv1.EvaluationAssignment{ScenarioId: "scenario-1"}, fixtures))
+
+	assert.Equal(t, "scenario-1", artifacts.ScenarioID)
+	assert.Equal(t, fixtures["scenario-1"].Input.Body, artifacts.ScenarioInput, "input fixture is published byte for byte")
+	assert.Equal(t, fixtures["scenario-1"].Gold.Body, artifacts.ScenarioGold, "gold criteria are published byte for byte")
+	assert.Equal(t, hashBytes(artifacts.ScenarioInput), artifacts.ScenarioInputSHA256)
+	assert.Equal(t, hashBytes(artifacts.ScenarioGold), artifacts.ScenarioGoldSHA256)
+	bindings := AssignmentAuditEvidenceBindings(artifacts)
+	require.Len(t, bindings, 4)
+	assert.Equal(t, ScenarioInputFixtureKind, bindings[2].GetKind())
+	assert.Equal(t, artifacts.ScenarioInputSHA256, bindings[2].GetSha256())
+	assert.Equal(t, ScenarioGoldCriteriaKind, bindings[3].GetKind())
+	assert.Equal(t, artifacts.ScenarioGoldSHA256, bindings[3].GetSha256())
+	_, publicBindings, err := BuildPublicAssignmentEvidence(PublicAssignmentEvidenceInput{Result: &evalv1.EvaluationAssignmentResult{}, PublicProofs: bindings})
+	require.NoError(t, err)
+	assert.Len(t, publicBindings, 4)
+}
+
+func TestAttachScenarioFixture_RejectsMissingOrTamperedFixture(t *testing.T) {
+	fixtures := testScenarioFixtures(t, "scenario-1")
+	var artifacts AssignmentAuditSliceArtifacts
+	require.ErrorIs(t, artifacts.attachScenarioFixture(&evalv1.EvaluationAssignment{ScenarioId: "scenario-unknown"}, fixtures), constants.ErrEvidenceArtifactMalformed)
+
+	tampered := fixtures["scenario-1"]
+	tampered.Gold.Body = append(append([]byte(nil), tampered.Gold.Body...), ' ')
+	require.ErrorIs(t, artifacts.attachScenarioFixture(&evalv1.EvaluationAssignment{ScenarioId: "scenario-1"}, map[string]ScenarioArtifacts{"scenario-1": tampered}), constants.ErrEvidenceArtifactMalformed)
+	assert.Empty(t, artifacts.ScenarioInput, "a rejected fixture attaches nothing")
 }
 
 func TestAssignmentAgentTraceArtifact_AbsentTraceWithoutReferencePublishesNothing(t *testing.T) {

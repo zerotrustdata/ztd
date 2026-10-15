@@ -10,9 +10,11 @@ package models
 // EvalCampaignPublishedProofArtifacts stores content-addressed proof hashes for
 // one assignment so force restore can skip rebuilding unchanged audit exports.
 type EvalCampaignPublishedProofArtifacts struct {
-	DatabaseSHA256   string `json:"database_sha256"`
-	VaultKeySHA256   string `json:"vault_key_sha256"`
-	AgentTraceSHA256 string `json:"agent_trace_sha256,omitempty"`
+	DatabaseSHA256      string `json:"database_sha256"`
+	VaultKeySHA256      string `json:"vault_key_sha256"`
+	AgentTraceSHA256    string `json:"agent_trace_sha256,omitempty"`
+	ScenarioInputSHA256 string `json:"scenario_input_sha256,omitempty"`
+	ScenarioGoldSHA256  string `json:"scenario_gold_sha256,omitempty"`
 }
 
 // EvalCampaignPublicationState tracks which public projection idempotency keys

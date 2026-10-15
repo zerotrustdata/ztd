@@ -1632,6 +1632,27 @@ func assignmentAuditProofArtifacts(request models.PublicAssignmentAuditProofPubl
 			VerificationCommand: fmt.Sprintf("ztd public verify-agent-trace --trace %s", traceFilename),
 		})
 	}
+	if len(request.ScenarioInput) > 0 || len(request.ScenarioGold) > 0 {
+		if request.ScenarioID == "" || len(request.ScenarioInput) == 0 || len(request.ScenarioGold) == 0 {
+			return nil, "", "", "", fmt.Errorf("public-feed: publish scenario fixture: %w", constants.ErrMissingRequiredField)
+		}
+		// Frozen fixtures are campaign-scoped: every run of the campaign shares
+		// the same bytes, so no single run's prune may remove them.
+		artifacts = append(artifacts,
+			ProofArtifactInput{
+				Filename:   fmt.Sprintf("scenario-%s.input.json", request.ScenarioID),
+				MediaType:  constants.MediaTypeJSON,
+				Content:    request.ScenarioInput,
+				CampaignID: request.CampaignID,
+			},
+			ProofArtifactInput{
+				Filename:   fmt.Sprintf("scenario-%s.gold.json", request.ScenarioID),
+				MediaType:  constants.MediaTypeJSON,
+				Content:    request.ScenarioGold,
+				CampaignID: request.CampaignID,
+			},
+		)
+	}
 	return artifacts, request.CampaignID, revision, indexDigest, nil
 }
 

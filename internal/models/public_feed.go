@@ -227,7 +227,13 @@ type PublicAssignmentAuditProofPublishRequest struct {
 	VaultKey         []byte `json:"vault_key"`
 	// AgentTrace is the exact sealed agent trace body for agent assignments.
 	// It is published unredacted as a content-addressed proof artifact.
-	AgentTrace      []byte `json:"agent_trace,omitempty"`
+	AgentTrace []byte `json:"agent_trace,omitempty"`
+	// ScenarioID names the assignment's scenario. ScenarioInput and
+	// ScenarioGold are its frozen canonical input fixture and gold criteria
+	// bodies, published unredacted as campaign-scoped proof artifacts.
+	ScenarioID      string `json:"scenario_id,omitempty"`
+	ScenarioInput   []byte `json:"scenario_input,omitempty"`
+	ScenarioGold    []byte `json:"scenario_gold,omitempty"`
 	DeferMirrorPush bool   `json:"defer_mirror_push,omitempty"`
 }
 
@@ -266,11 +272,13 @@ type PublicProofMirrorSyncState struct {
 }
 
 type PublicAssignmentAuditProofPublishResponse struct {
-	Accepted        bool   `json:"accepted"`
-	DatabaseSHA256   string `json:"database_sha256,omitempty"`
-	VaultKeySHA256   string `json:"vault_key_sha256,omitempty"`
-	AgentTraceSHA256 string `json:"agent_trace_sha256,omitempty"`
-	ProofRootSHA256  string `json:"proof_root_sha256,omitempty"`
+	Accepted            bool   `json:"accepted"`
+	DatabaseSHA256      string `json:"database_sha256,omitempty"`
+	VaultKeySHA256      string `json:"vault_key_sha256,omitempty"`
+	AgentTraceSHA256    string `json:"agent_trace_sha256,omitempty"`
+	ScenarioInputSHA256 string `json:"scenario_input_sha256,omitempty"`
+	ScenarioGoldSHA256  string `json:"scenario_gold_sha256,omitempty"`
+	ProofRootSHA256     string `json:"proof_root_sha256,omitempty"`
 }
 
 type PublicAssignmentAuditProofBatchPublishResponse struct {

@@ -59,6 +59,8 @@ export const PUBLIC_EVIDENCE_KINDS = [
   'assignment_audit_slice',
   'assignment_audit_vault_key',
   'assignment_agent_trace',
+  'scenario_input_fixture',
+  'scenario_gold_criteria',
 ] as const;
 export type PublicEvidenceKind = (typeof PUBLIC_EVIDENCE_KINDS)[number];
 

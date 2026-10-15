@@ -35,7 +35,7 @@ function enumLabel(value: string | undefined, prefix: string): string | undefine
   return value ? label(value.replace(prefix, '')) : undefined;
 }
 
-function TextBlock({ title, text, copyLabel, json = false }: { title: string; text: string; copyLabel: string; json?: boolean }) {
+export function TextBlock({ title, text, copyLabel, json = false }: { title: string; text: string; copyLabel: string; json?: boolean }) {
   return (
     <div className="transcript-field">
       <div className="transcript-field-label">

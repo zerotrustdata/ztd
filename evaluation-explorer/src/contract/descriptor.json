@@ -214,7 +214,9 @@
       "source_manifest",
       "assignment_audit_slice",
       "assignment_audit_vault_key",
-      "assignment_agent_trace"
+      "assignment_agent_trace",
+      "scenario_input_fixture",
+      "scenario_gold_criteria"
     ],
     "PublicActivityEvidenceSource": [
       "application_reported",

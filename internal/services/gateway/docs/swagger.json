@@ -4085,6 +4085,22 @@
                 "run_id": {
                     "type": "string"
                 },
+                "scenario_gold": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "scenario_id": {
+                    "description": "ScenarioID names the assignment's scenario. ScenarioInput and\nScenarioGold are its frozen canonical input fixture and gold criteria\nbodies, published unredacted as campaign-scoped proof artifacts.",
+                    "type": "string"
+                },
+                "scenario_input": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "vault_key": {
                     "type": "array",
                     "items": {
@@ -4106,6 +4122,12 @@
                     "type": "string"
                 },
                 "proof_root_sha256": {
+                    "type": "string"
+                },
+                "scenario_gold_sha256": {
+                    "type": "string"
+                },
+                "scenario_input_sha256": {
                     "type": "string"
                 },
                 "vault_key_sha256": {
