@@ -392,11 +392,13 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   table.pm th,table.pm td{padding:9px 6px}
   .code pre{font-size:12.5px;padding:18px 16px}
 }
+/* reduced motion drops shake, jitter, and slide offsets; fades, pulses, and slowed ambient motion stay */
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
-  .rv{opacity:1;transform:none}
-  .trace .row{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+  .fx-noise{animation:none}
   .glitch::before,.glitch::after{display:none}
+  .rv,.trace .row,.feat:hover{transform:none}
+  .ticker-track{animation-duration:144s}
 }
 </style>
 </head>
@@ -421,6 +423,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <li><a href="#start">Quick start</a></li>
         <li class="pricing-nav"><a class="nav-hot" href="#licensing">Pricing</a></li>
         <li><a href="#sprints">Architecture Sprints</a></li>
+        <li class="journal-nav"><a href="/releases/">Releases</a></li>
         <li class="journal-nav"><a href="/build-in-public/">Build in Public</a></li>
       </ul>
     </nav>
@@ -708,20 +711,34 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="rv">
       <p class="eyebrow">07 / Quick start</p>
       <h2 id="start-title">First governed action in <em>one command</em></h2>
-      <p class="lede">Pull the source, build the static binary, and run a governed Gateway + Operator locally. Evaluation and other non-production use are free under BSL 1.1. Production use needs a commercial license plan below.</p>
-      <p class="req">Requires <code>git</code>, <code>Go 1.27.2+</code>, <code>make</code>, and <code>curl</code>. No external cloud dependencies or LLM SDKs required.</p>
+      <p class="lede">Install the signed <code>ztd</code> binary, start a Gateway, sign in, and run a first governed action. Safe to rerun. Evaluation and other non-production use are free under BSL 1.1. Production use needs a commercial license plan below.</p>
+      <p class="req">No root, no admin, no toolchain. Checksums verified before install. Binaries and Sigstore bundles: <a href="/releases/">Releases</a>.</p>
       <div class="pk">
-        <div><code>make quickstart</code><span>Run L1–L5 end to end (free to evaluate)</span></div>
         <div><code>./ztd tui</code><span>Watch live governance envelopes</span></div>
+        <div><code>./ztd login web</code><span>Open the console</span></div>
       </div>
     </div>
     <div class="panel rv">
       <div class="tabs" role="tablist" aria-label="Install paths">
-        <button role="tab" aria-selected="true" aria-controls="tp-1" id="tb-1">Gateway</button>
+        <button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">Linux / macOS</button>
+        <button role="tab" aria-selected="false" aria-controls="tp-w" id="tb-w" tabindex="-1">Windows</button>
+        <button role="tab" aria-selected="false" aria-controls="tp-1" id="tb-1" tabindex="-1">From source</button>
         <button role="tab" aria-selected="false" aria-controls="tp-2" id="tb-2" tabindex="-1">Enroll</button>
         <button role="tab" aria-selected="false" aria-controls="tp-3" id="tb-3" tabindex="-1">Full platform</button>
       </div>
-      <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1">
+      <div class="code" role="tabpanel" id="tp-0" aria-labelledby="tb-0">
+<pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
+<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh | sh
+<span class="c"># binary only: curl -fsSL https://zerotrustdata.io/ztd.sh | sh</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh | sh">Copy</button>
+      </div>
+      <div class="code" role="tabpanel" id="tp-w" aria-labelledby="tb-w" hidden>
+<pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
+<span class="p">PS&gt; </span>irm https://zerotrustdata.io/start.ps1 | iex
+<span class="c"># binary only: irm https://zerotrustdata.io/ztd.ps1 | iex</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="irm https://zerotrustdata.io/start.ps1 | iex">Copy</button>
+      </div>
+      <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
 <pre><span class="p">$ </span>git clone --depth 1 https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
 <span class="p">$ </span>bash scripts/linux-setup.sh --build-only
@@ -1020,6 +1037,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
           <li><a href="https://github.com/zerotrustdata/ztd/blob/main/docs/architecture/overview.md" rel="noopener">Architecture</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd/blob/main/docs/guides/getting_started.md" rel="noopener">Getting started</a></li>
           <li><a href="https://github.com/zerotrustdata/ztd/blob/main/docs/guides/air_gap.md" rel="noopener">Air-gapped deployment</a></li>
+          <li><a href="/releases/">Releases</a></li>
+          <li><a href="/releases/latest/">Release notes</a></li>
           <li><a href="/build-in-public/">Build in Public</a></li>
         </ul>
       </div>
@@ -1042,98 +1061,6 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   </div>
 </footer>
 
-<script>
-(function(){
-  document.body.classList.remove('no-js');
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var yr=document.getElementById('yr'); if(yr) yr.textContent=new Date().getFullYear();
-
-  /* reveal on scroll */
-  var rv=document.querySelectorAll('.rv');
-  if(reduce || !('IntersectionObserver' in window)){ rv.forEach(function(e){e.classList.add('in')}); }
-  else{
-    var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px',threshold:.08});
-    rv.forEach(function(e){io.observe(e)});
-  }
-
-  /* tabs */
-  var tabs=[].slice.call(document.querySelectorAll('[role=tab]'));
-  function sel(t){
-    tabs.forEach(function(b){var on=b===t;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;document.getElementById(b.getAttribute('aria-controls')).hidden=!on});
-  }
-  tabs.forEach(function(t,i){
-    t.addEventListener('click',function(){sel(t)});
-    t.addEventListener('keydown',function(e){
-      var d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0; if(!d) return;
-      var n=tabs[(i+d+tabs.length)%tabs.length]; sel(n); n.focus(); e.preventDefault();
-    });
-  });
-
-  /* copy */
-  document.querySelectorAll('[data-copy]').forEach(function(b){
-    b.addEventListener('click',function(){
-      var txt=b.getAttribute('data-copy');
-      var done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)};
-      if(navigator.clipboard) navigator.clipboard.writeText(txt).then(done,function(){});
-    });
-  });
-
-  /* replay trace when it scrolls back into view */
-  var trace=document.getElementById('trace');
-  if(trace && !reduce && 'IntersectionObserver' in window){
-    var seen=false;
-    new IntersectionObserver(function(es){es.forEach(function(e){
-      if(e.isIntersecting && seen){ var h=trace.innerHTML; trace.innerHTML=''; void trace.offsetWidth; trace.innerHTML=h; }
-      if(e.isIntersecting) seen=true;
-    })},{threshold:.4}).observe(trace);
-  }
-
-  /* perspective grid + packets */
-  var c=document.getElementById('grid'); if(!c||!c.getContext) return;
-  var x=c.getContext('2d'), W=0,H=0,dpr=1,t0=performance.now(),packets=[],running=true;
-  function size(){dpr=Math.min(window.devicePixelRatio||1,2);W=c.clientWidth;H=c.clientHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)}
-  size(); window.addEventListener('resize',size);
-  for(var i=0;i<26;i++) packets.push({lane:(Math.random()*2-1),z:Math.random(),s:.0012+Math.random()*.0028,c:Math.random()<.6?'0,240,255':(Math.random()<.5?'255,43,214':'182,255,59')});
-  function draw(now){
-    var t=(now-t0)/1000;
-    x.clearRect(0,0,W,H);
-    var hy=H*.5, vx=W*.5;
-    /* horizon glow */
-    var g=x.createLinearGradient(0,hy-120,0,hy+40); g.addColorStop(0,'rgba(255,43,214,0)'); g.addColorStop(.75,'rgba(255,43,214,.10)'); g.addColorStop(1,'rgba(0,240,255,0)');
-    x.fillStyle=g; x.fillRect(0,hy-120,W,160);
-    /* sun-ish disk */
-    var sg=x.createRadialGradient(vx,hy,0,vx,hy,W*.35); sg.addColorStop(0,'rgba(0,240,255,.08)'); sg.addColorStop(1,'rgba(0,240,255,0)'); x.fillStyle=sg; x.fillRect(0,0,W,H);
-    x.lineWidth=1;
-    /* verticals */
-    var n=28;
-    for(var i=-n;i<=n;i++){
-      var bx=vx+i*(W/n)*1.6;
-      x.strokeStyle='rgba(0,240,255,'+(0.10-Math.abs(i)/n*0.07)+')';
-      x.beginPath(); x.moveTo(vx+i*6,hy); x.lineTo(bx,H); x.stroke();
-    }
-    /* horizontals scrolling */
-    var off=reduce?0:(t*.35)%1;
-    for(var j=0;j<22;j++){
-      var p=(j+off)/22, y=hy+Math.pow(p,2.4)*(H-hy);
-      x.strokeStyle='rgba(0,240,255,'+(0.02+p*0.16)+')';
-      x.beginPath(); x.moveTo(0,y); x.lineTo(W,y); x.lineTo(W,y); x.stroke();
-    }
-    /* packets travelling toward viewer along lanes */
-    packets.forEach(function(k){
-      if(!reduce){ k.z+=k.s; if(k.z>1){k.z=0;k.lane=Math.random()*2-1;} }
-      var p=Math.pow(k.z,2.4), y=hy+p*(H-hy), px=vx+k.lane*p*W*.9+k.lane*6;
-      var len=4+p*40, a=Math.min(1,k.z*1.6)*.75;
-      var lg=x.createLinearGradient(px,y-len,px,y);
-      lg.addColorStop(0,'rgba('+k.c+',0)'); lg.addColorStop(1,'rgba('+k.c+','+a+')');
-      x.strokeStyle=lg; x.lineWidth=1+p*2; x.beginPath(); x.moveTo(px,y-len); x.lineTo(px,y); x.stroke();
-    });
-    /* top fade so content reads */
-    var tf=x.createLinearGradient(0,0,0,hy); tf.addColorStop(0,'rgba(5,6,10,1)'); tf.addColorStop(1,'rgba(5,6,10,0)'); x.fillStyle=tf; x.fillRect(0,0,W,hy);
-    if(!reduce && running) requestAnimationFrame(draw);
-  }
-  document.addEventListener('visibilitychange',function(){running=!document.hidden; if(running&&!reduce) requestAnimationFrame(draw)});
-  requestAnimationFrame(draw);
-})();
-</script>
+<script src="/site.js" defer></script>
 </body>
 </html>
