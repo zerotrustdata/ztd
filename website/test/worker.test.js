@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import worker, { releaseKey } from '../worker.js';
+import PAYMENT_LINKS from '../src/payment-links.json' with { type: 'json' };
 
 const noAssets = { fetch: async () => { throw new Error('unexpected asset lookup'); } };
 
@@ -386,4 +387,13 @@ test('unknown /buy/ SKUs return 404 without touching assets', async () => {
   const response = await worker.fetch(new Request('https://zerotrustdata.io/buy/nonexistent'), { ASSETS: noAssets });
   assert.equal(response.status, 404);
   assert.equal(response.headers.get('x-frame-options'), 'DENY');
+});
+
+test('every configured /buy/ SKU redirects 303 to its live Payment Link without touching assets', async () => {
+  for (const [sku, url] of Object.entries(PAYMENT_LINKS)) {
+    const response = await worker.fetch(new Request(`https://zerotrustdata.io/buy/${sku}`), { ASSETS: noAssets });
+    assert.equal(response.status, 303, sku);
+    assert.equal(response.headers.get('location'), url, sku);
+    assert.equal(response.headers.get('x-frame-options'), 'DENY', sku);
+  }
 });

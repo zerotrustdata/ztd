@@ -31,6 +31,17 @@ reconciles the Stripe products, prices, and Payment Links with the Stripe CLI an
 the script's catalog and run it again. The new price takes over the lookup key, and the old link is deactivated.
 `npm run check` fails if any `/buy/` SKU on the homepage lacks a live-mode link.
 
+Checkout requires buyers to accept the commercial terms at `/terms/`. The build renders that page from
+`content/terms.md`. It also publishes the OEM agreement template from `../legal/oem-license-agreement.md` at
+`/terms/oem/`, which the OEM card and the OEM checkout link to. The terms URL must be set as the Terms of Service URL in the Stripe Dashboard (Settings →
+Business → Public details) for live mode. After changing link settings in the script, bump `LINK_REVISION` and
+rerun it, which replaces every link.
+
+`test/stripe-payment-links.test.js` runs the script offline against a fake Stripe CLI
+(`testdata/fake-stripe.js`). It covers creation, idempotent reruns, price changes, revision bumps, API
+errors, and test mode. After each deploy, `smoke/live.sh` checks that every homepage `/buy/` SKU redirects to a
+loading live-mode Payment Link and that both terms pages are served.
+
 ## Build in Public
 
 The journal lives at `/build-in-public/`, with a permanent URL for every post. `src/journal.js` renders the

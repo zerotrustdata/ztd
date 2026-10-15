@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { prepareJournal } from './journal.js';
 import { validatePaymentLinks } from './payments.js';
 import { prepareReleaseNotes } from './release-notes.js';
+import { prepareTerms } from './terms.js';
 
 const SOURCE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const WEBSITE_DIRECTORY = resolve(SOURCE_DIRECTORY, '..');
@@ -60,13 +61,13 @@ async function build() {
   const homepage = prepareHomepage(source);
   validateHomepage(homepage);
   validatePaymentLinks(homepage.html);
-  const [journal, releaseNotes] = await Promise.all([prepareJournal(), prepareReleaseNotes(REPOSITORY_DIRECTORY)]);
+  const [journal, releaseNotes, terms] = await Promise.all([prepareJournal(), prepareReleaseNotes(REPOSITORY_DIRECTORY), prepareTerms()]);
   if (process.argv.includes('--check')) return;
 
   await rm(OUTPUT_DIRECTORY, { recursive: true, force: true });
   await mkdir(OUTPUT_DIRECTORY, { recursive: true });
   await cp(STATIC_DIRECTORY, OUTPUT_DIRECTORY, { recursive: true });
-  for (const [path, content] of [...journal, ...releaseNotes]) {
+  for (const [path, content] of [...journal, ...releaseNotes, ...terms]) {
     const target = resolve(OUTPUT_DIRECTORY, path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, content);

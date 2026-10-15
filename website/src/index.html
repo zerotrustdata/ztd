@@ -297,6 +297,7 @@ table.pm td:first-child{color:var(--text);font-weight:700}
 .tier-list li b{color:var(--text);font-weight:600}
 .tier-foot{margin-top:auto}
 .micro-note{display:block;text-align:center;font:400 11px/1.4 var(--mono);color:var(--dim);margin-top:10px}
+.micro-note a{color:var(--text);text-decoration:underline;text-underline-offset:2px}
 
 /* OEM Banner */
 .oem-box{display:grid;grid-template-columns:1.2fr .8fr;gap:40px;align-items:center;padding:42px;border:1px solid rgba(255,43,214,.38);background:linear-gradient(135deg,rgba(255,43,214,.07),rgba(0,240,255,.04));border-radius:6px;position:relative}
@@ -450,13 +451,13 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div class="cta-row">
         <a class="btn solid" href="#licensing">Buy Fleet License Packs
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
-        <a class="btn ghost" href="#start">Deploy Free Binary</a>
+        <a class="btn ghost" href="#start">Evaluate Free</a>
         <a class="btn ghost" href="https://github.com/zerotrustdata/ztd" rel="noopener">Read the Source</a>
       </div>
 
       <div class="persona-jumps" aria-label="Select your track">
         <span class="lbl">// Jump to your track:</span>
-        <a href="#start">01 · Platform Engineers (Free CLI)</a>
+        <a href="#start">01 · Platform Engineers (Free to Evaluate)</a>
         <a class="p-acid" href="#licensing">02 · CISOs &amp; VPs (50-Host Seat Packs)</a>
         <a class="p-mag" href="#oem">03 · AI Vendors (OEM Embed)</a>
         <a class="p-amber" href="#sprints">04 · Principal Architecture Sprints</a>
@@ -488,8 +489,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 
 <div class="ticker" aria-hidden="true">
   <div class="ticker-track">
-    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Instant Corporate Card Licensing</span>
-    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Instant Corporate Card Licensing</span>
+    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Corporate Card Licensing</span>
+    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Corporate Card Licensing</span>
   </div>
 </div>
 
@@ -707,10 +708,10 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="rv">
       <p class="eyebrow">07 / Quick start</p>
       <h2 id="start-title">First governed action in <em>one command</em></h2>
-      <p class="lede">Pull the source, build the static binary, and run a governed Gateway + Operator locally for free under BSL 1.1. When your team needs automated compliance evidence bundles for an audit, unlock the Pro Compliance CLI key below.</p>
-      <p class="req">Requires <code>git</code>, <code>Go 1.26+</code>, <code>make</code>, and <code>curl</code>. No external cloud dependencies or LLM SDKs required.</p>
+      <p class="lede">Pull the source, build the static binary, and run a governed Gateway + Operator locally. Evaluation and other non-production use are free under BSL 1.1. Production use needs a commercial license plan below.</p>
+      <p class="req">Requires <code>git</code>, <code>Go 1.27.2+</code>, <code>make</code>, and <code>curl</code>. No external cloud dependencies or LLM SDKs required.</p>
       <div class="pk">
-        <div><code>make quickstart</code><span>Run L1–L5 end to end (Free)</span></div>
+        <div><code>make quickstart</code><span>Run L1–L5 end to end (free to evaluate)</span></div>
         <div><code>./ztd tui</code><span>Watch live governance envelopes</span></div>
       </div>
     </div>
@@ -752,8 +753,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div class="sec-head rv">
       <p class="eyebrow acid">08 / Pricing</p>
-      <h2 id="lic-title">Commercial Fleet Packs &amp; <em class="acid">Instant Audit Attestation</em></h2>
-      <p class="lede">Your engineers are already connecting Claude Code, MCP servers, and autonomous agents to internal systems. Lock in your commercial host licensing on a corporate card today, download your <strong>Certificate of Sovereign AI Governance</strong> immediately for your board or audit committee, and roll out the Operators over the next 6–12 months.</p>
+      <h2 id="lic-title">Commercial Fleet Packs for <em class="acid">Production Use</em></h2>
+      <p class="lede">Your engineers are already connecting Claude Code, MCP servers, and autonomous agents to internal systems. Lock in production licensing on a corporate card today and receive a <strong>License Certificate</strong> for Finance and your auditors within one business day. Roll out the Operators at your own pace. Every plan runs the same audited binary, so you can verify every claim before you buy.</p>
     </div>
 
     <div class="tier-grid">
@@ -762,16 +763,16 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <div>
           <div class="tier-persona">// DevSecOps &amp; Lab Teams</div>
           <h3>Compliance CLI Pack</h3>
-          <p class="tier-sub">For engineering teams running the open-source binary who need auditor-ready cryptographic evidence exports.</p>
+          <p class="tier-sub">For engineering teams taking the source-available binary to production with auditor-ready cryptographic evidence.</p>
           <div class="price-line">
             <span class="amt">$99</span>
             <span class="per">/ month · per cluster</span>
           </div>
           <ul class="tier-list">
             <li><span><b>Commercial production rights</b> for up to 10 enrolled Operators</span></li>
-            <li><span><b>Automated Audit Exporter:</b> signed JSON/PDF ledger proofs mapped to SOC 2, ISO 42001 &amp; NIST AI RMF</span></li>
-            <li><span><b>Pre-built L1 Doctrine packs</b> for MITRE ATT&amp;CK &amp; PII/credential egress</span></li>
-            <li><span><b>Self-serve key delivery</b> via email immediately after checkout</span></li>
+            <li><span><b>Signed compliance report bundles:</b> JSON, OSCAL, HTML &amp; CSV evidence mapped to NIST SP 800-53 and FedRAMP 20x KSIs, verifiable offline</span></li>
+            <li><span><b>L1 Doctrine packs:</b> MITRE ATT&amp;CK detectors, gitleaks credential-egress rules &amp; OWASP CRS</span></li>
+            <li><span><b>License Certificate</b> emailed within one business day of checkout</span></li>
           </ul>
         </div>
         <div class="tier-foot">
@@ -786,15 +787,15 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <div>
           <div class="tier-persona">// Mid-Market &amp; Series A–C Security</div>
           <h3>50-Host Fleet Pack</h3>
-          <p class="tier-sub">Buy peace of mind today. Receive immediate executive governance attestation and deploy across 50 hosts at your own pace.</p>
+          <p class="tier-sub">Lock in production licensing today and deploy across 50 hosts at your own pace.</p>
           <div class="price-line">
             <span class="amt">$1,499</span>
             <span class="per">/ year · (~$2.50 / host / mo)</span>
           </div>
           <ul class="tier-list">
             <li><span><b>Commercial production license</b> for up to 50 Governed Operators &amp; Gateways</span></li>
-            <li><span><b>Instant Governance Certificate:</b> downloadable PDF attestation for board decks, cyber-insurance &amp; SOC 2 / ISO 42001 auditors</span></li>
-            <li><span><b>12-Month Rollout Window:</b> lock in compliance status now, enroll hosts over the next year</span></li>
+            <li><span><b>License Certificate</b> for Finance, procurement &amp; auditors, plus signed compliance report bundles your auditors can verify offline</span></li>
+            <li><span><b>12-Month Rollout Window:</b> license now, enroll hosts over the year</span></li>
             <li><span><b>Full L2 Quorum &amp; L3 WebAuthn Passkey</b> mutation gates</span></li>
             <li><span><b>Direct async technical support</b> from the Principal Architect</span></li>
           </ul>
@@ -817,20 +818,20 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
           </div>
           <ul class="tier-list">
             <li><span><b>Everything in the 50-Host Pack</b> scaled to 250 hosts and unlimited Gateways</span></li>
-            <li><span><b>Air-Gapped &amp; Offline Bundles:</b> signed static binaries + vendored source for disconnected enclaves</span></li>
+            <li><span><b>Air-Gapped &amp; Offline Deployment:</b> Sigstore-signed static binaries + vendored source builds, with guided offline transfer</span></li>
             <li><span><b>Custom L1 Doctrine Rules:</b> tailored denylists for your internal SAN/NAS, Kubernetes &amp; DB topologies</span></li>
             <li><span><b>Async Architecture Topology Review</b> included prior to production rollout</span></li>
           </ul>
         </div>
         <div class="tier-foot">
           <a class="btn solid full" href="/buy/sovereign-250">Buy 250-Host Pack ($3,999) →</a>
-          <span class="micro-note">Instant PDF invoice + license certificate for Finance</span>
+          <span class="micro-note">Stripe invoice at checkout · License Certificate within 1 business day</span>
         </div>
       </article>
     </div>
 
     <div class="async-bar rv">
-      <div><b>// Zero-Sales-Call Procurement Guarantee:</b> Built by a Principal Engineer, not a sales floor. Purchase any Fleet Pack directly on a corporate card, or email technical questions for an asynchronous written response within 24 hours.</div>
+      <div><b>// Zero-Sales-Call Procurement Guarantee:</b> Built by a Principal Engineer, not a sales floor. Purchase any Fleet Pack directly on a corporate card under our <a href="/terms/">commercial terms</a>, or email technical questions for a written response within one business day.</div>
       <a class="btn sm ghost" href="mailto:danny@zerotrustdata.io?subject=Fleet%20Licensing%20Invoice%20Request">Request PO / Invoice via Email</a>
     </div>
   </div>
@@ -847,7 +848,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <ul class="tier-list oem-list">
           <li><span><b>Full BSL 1.1 Commercial Exemption:</b> bundle <code>ztd</code> inside proprietary closed-source products and managed services</span></li>
           <li><span><b>White-Label &amp; OEM Redistribution:</b> ship the Gateway and Operator binaries directly to your end customers</span></li>
-          <li><span><b>Direct Go SDK &amp; Protobuf Access:</b> wire your custom agent orchestrator directly into L1–L5 envelopes</span></li>
+          <li><span><b>Protobuf Contracts &amp; Go/TypeScript Bindings:</b> wire your custom agent orchestrator directly into L1–L5 envelopes</span></li>
         </ul>
       </div>
       <div class="price-callout">
@@ -855,7 +856,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <div class="big">$2,950</div>
         <div class="per">Per Year · Unlimited Redistribution</div>
         <a class="btn mag full" href="/buy/oem">License for OEM Embedding →</a>
-        <span class="micro-note">Signed commercial license agreement delivered via email</span>
+        <span class="micro-note"><a href="/terms/oem/">Read the OEM agreement</a> before checkout · Sent for signature after payment</span>
       </div>
     </div>
   </div>
@@ -890,7 +891,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         </div>
         <div class="tier-foot">
           <a class="btn amber full" href="/buy/diagnostic">Book 5-Day Diagnostic →</a>
-          <span class="micro-note">Corporate card or invoice · 48-hour kickoff</span>
+          <span class="micro-note">Corporate card or invoice · Kickoff within 2 business days</span>
         </div>
       </article>
 
@@ -984,7 +985,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <p class="eyebrow centered">12 / Contact</p>
     <h2 id="contact-title">No SDRs. No discovery calls. <em>Just engineering.</em></h2>
-    <p class="lede">Send a quick email with what you're building, which license pack you need, or what production fire you need fixed. You'll get a direct written response from Danny Barbour within 24 hours.</p>
+    <p class="lede">Send a quick email with what you're building, which license pack you need, or what production fire you need fixed. You'll get a direct written response from Danny Barbour within one business day.</p>
     <div class="cta-row">
       <a class="btn solid contact-email" href="mailto:danny@zerotrustdata.io">danny@zerotrustdata.io</a>
     </div>
@@ -1010,6 +1011,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
           <li><a href="#licensing">Fleet Packs</a></li>
           <li><a href="#oem">Commercial OEM License</a></li>
           <li><a href="#sprints">Principal Architecture Sprints</a></li>
+          <li><a href="/terms/">Commercial terms</a></li>
         </ul>
       </div>
       <div>
