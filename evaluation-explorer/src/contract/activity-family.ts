@@ -5,25 +5,20 @@
 // payloads use protobuf enum names; the explorer view contract uses short
 // discriminated-union values.
 
+import {
+  PUBLIC_ACTIVITY_AVAILABILITY_VALUES,
+  PUBLIC_UNAVAILABLE_REASON_VALUES,
+  type PublicActivityAvailability,
+  type PublicUnavailableReason as WireUnavailableReasonName,
+} from './proto-enums.generated';
 import type { ActivityAvailability, PublicActivityFamily, PublicUnavailableReason } from './types';
 import { ValidationError } from './validators';
 
-export const WIRE_ACTIVITY_AVAILABILITIES = [
-  'PUBLIC_ACTIVITY_AVAILABILITY_OBSERVED',
-  'PUBLIC_ACTIVITY_AVAILABILITY_UNAVAILABLE',
-  'PUBLIC_ACTIVITY_AVAILABILITY_NOT_APPLICABLE',
-] as const;
-export type WireActivityAvailability = (typeof WIRE_ACTIVITY_AVAILABILITIES)[number];
+export const WIRE_ACTIVITY_AVAILABILITIES = PUBLIC_ACTIVITY_AVAILABILITY_VALUES;
+export type WireActivityAvailability = PublicActivityAvailability;
 
-export const WIRE_UNAVAILABLE_REASONS = [
-  'PUBLIC_UNAVAILABLE_REASON_HISTORICAL_NOT_CAPTURED',
-  'PUBLIC_UNAVAILABLE_REASON_SOURCE_NOT_CAPTURED',
-  'PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE',
-  'PUBLIC_UNAVAILABLE_REASON_SCENARIO_NOT_APPLICABLE',
-  'PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE',
-  'PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS',
-] as const;
-export type WireUnavailableReason = (typeof WIRE_UNAVAILABLE_REASONS)[number];
+export const WIRE_UNAVAILABLE_REASONS = PUBLIC_UNAVAILABLE_REASON_VALUES;
+export type WireUnavailableReason = WireUnavailableReasonName;
 
 const WIRE_AVAILABILITY_TO_VIEW: Record<WireActivityAvailability, ActivityAvailability> = {
   PUBLIC_ACTIVITY_AVAILABILITY_OBSERVED: 'observed',
@@ -39,6 +34,10 @@ const WIRE_UNAVAILABLE_REASON_TO_VIEW: Record<WireUnavailableReason, PublicUnava
   PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE: 'incomplete_contributor_evidence',
   PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS: 'no_scored_calls',
 };
+
+export function wireUnavailableReasonToView(value: WireUnavailableReason): PublicUnavailableReason {
+  return WIRE_UNAVAILABLE_REASON_TO_VIEW[value];
+}
 
 export interface WireActivityFamily<T> {
   availability: WireActivityAvailability;

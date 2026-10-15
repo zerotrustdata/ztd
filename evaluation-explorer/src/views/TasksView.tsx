@@ -6,6 +6,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
+  CATALOG_SCENARIO_CATEGORIES,
   formatGradingMethod,
   SCENARIO_CATALOG_ID,
   SCENARIO_CATALOG_VERSION,
@@ -20,7 +21,7 @@ import {
   type ScenarioTaskDefinition,
 } from '../content/scenario-task';
 import { ZTD_REPO_URL } from '../content/platform';
-import { SCENARIO_CATEGORIES, type ScenarioCategory } from '../contract/types';
+import type { ScenarioCategory } from '../contract/types';
 import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection } from '../components/TaskPromptSection';
 
 function categoryAnchor(category: ScenarioCategory): string {
@@ -191,7 +192,7 @@ export function TasksView() {
                 Overview
               </NavLink>
             </li>
-            {SCENARIO_CATEGORIES.map((category) => {
+            {CATALOG_SCENARIO_CATEGORIES.map((category) => {
               const meta = SCENARIO_CATEGORY_META[category];
               const tasks = SCENARIO_TASKS_BY_CATEGORY.get(category) ?? [];
               return (
@@ -260,7 +261,7 @@ export function TasksView() {
               </p>
             </header>
 
-            {SCENARIO_CATEGORIES.map((category) => (
+            {CATALOG_SCENARIO_CATEGORIES.map((category) => (
               <CategorySection key={category} category={category} />
             ))}
           </>

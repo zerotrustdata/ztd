@@ -23,12 +23,24 @@ import (
 )
 
 // newCatalogRoot returns a temp directory laid out like a repo root, with the
-// directory that holds the generated module already created.
+// directories that hold the generated modules already created.
 func newCatalogRoot(t *testing.T) string {
 	t.Helper()
 	root := testutil.TempDir(t)
-	require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, outputRelPath)), 0o755))
+	for _, m := range modules() {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, m.relPath)), 0o755))
+	}
 	return root
+}
+
+// writeGenerated writes every generated module under root.
+func writeGenerated(t *testing.T, root string) {
+	t.Helper()
+	for _, m := range modules() {
+		generated, err := m.generate()
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(root, m.relPath), generated, 0o644))
+	}
 }
 
 func TestGenerate_EmitsEveryCatalogScenarioWithoutHintValues(t *testing.T) {
@@ -64,6 +76,30 @@ func TestGenerate_UsesPublicToolArgumentsCategorySpelling(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(out), `"category": "tool_arguments"`)
 	assert.NotContains(t, string(out), `"category": "tool_argument"`)
+}
+
+func TestGenerateEnums_EmitsEveryDeclaredValueExceptUnspecified(t *testing.T) {
+	out, err := generateEnums()
+	require.NoError(t, err)
+	text := string(out)
+
+	assert.True(t, strings.HasPrefix(text, "// Copyright (c) 2026 Lateralus Labs, LLC.\n// Licensed under the Business Source License 1.1"))
+	assert.Contains(t, text, "DO NOT EDIT")
+	assert.NotContains(t, text, "_UNSPECIFIED'")
+	for _, enum := range wireEnums {
+		name := screamingSnake(string(enum.Name()))
+		assert.Contains(t, text, "export const "+name+"_VALUES = [")
+		assert.Contains(t, text, "export type "+string(enum.Name())+" = (typeof "+name+"_VALUES)[number];")
+		for i := 1; i < enum.Values().Len(); i++ {
+			assert.Contains(t, text, "  '"+string(enum.Values().Get(i).Name())+"',\n")
+		}
+	}
+	assert.Contains(t, text, "'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE'")
+}
+
+func TestScreamingSnake_SplitsOnUpperCase(t *testing.T) {
+	assert.Equal(t, "EVALUATION_LANE", screamingSnake("EvaluationLane"))
+	assert.Equal(t, "EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS", screamingSnake("EvaluationAssignmentLifecycleStatus"))
 }
 
 func TestEnumSuffix_StripsPrefixAndLowercases(t *testing.T) {
@@ -218,22 +254,22 @@ func TestRun_WriteCreatesModuleAndCheckAcceptsIt(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	require.NoError(t, run([]string{"-write"}, root, &stdout, &stderr))
-	assert.Equal(t, "generated "+outputRelPath+"\n", stdout.String())
+	assert.Equal(t, "generated "+outputRelPath+"\ngenerated "+enumsRelPath+"\n", stdout.String())
 
-	written, err := os.ReadFile(filepath.Join(root, outputRelPath))
-	require.NoError(t, err)
-	expected, err := generate()
-	require.NoError(t, err)
-	assert.Equal(t, expected, written)
+	for _, m := range modules() {
+		written, err := os.ReadFile(filepath.Join(root, m.relPath))
+		require.NoError(t, err)
+		expected, err := m.generate()
+		require.NoError(t, err)
+		assert.Equal(t, expected, written)
+	}
 
 	require.NoError(t, run([]string{"-check"}, root, &stdout, &stderr))
 }
 
 func TestRun_DefaultsToCheckMode(t *testing.T) {
 	root := newCatalogRoot(t)
-	generated, err := generate()
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(root, outputRelPath), generated, 0o644))
+	writeGenerated(t, root)
 
 	require.NoError(t, run(nil, root, &bytes.Buffer{}, &bytes.Buffer{}))
 }
@@ -247,6 +283,17 @@ func TestRun_CheckRejectsStaleModule(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "out of date")
 	assert.Contains(t, err.Error(), "make explorer-catalog-generate")
+}
+
+func TestRun_CheckRejectsStaleEnumModule(t *testing.T) {
+	root := newCatalogRoot(t)
+	writeGenerated(t, root)
+	require.NoError(t, os.WriteFile(filepath.Join(root, enumsRelPath), []byte("// stale\n"), 0o644))
+
+	err := run([]string{"-check"}, root, &bytes.Buffer{}, &bytes.Buffer{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), enumsRelPath+" is out of date")
 }
 
 func TestRun_CheckReportsMissingModule(t *testing.T) {

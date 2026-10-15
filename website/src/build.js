@@ -16,23 +16,19 @@ const OUTPUT_DIRECTORY = resolve(WEBSITE_DIRECTORY, 'dist');
 const STATIC_DIRECTORY = resolve(WEBSITE_DIRECTORY, 'static');
 const README_PATH = resolve(REPOSITORY_DIRECTORY, 'README.md');
 const HOMEPAGE_PATH = resolve(SOURCE_DIRECTORY, 'index.html');
+// Homepage behavior is its own source file so a markup redesign cannot silently replace it.
+const SCRIPT_PATH = resolve(SOURCE_DIRECTORY, 'site.js');
 const STYLE_ELEMENT = /<style>([\s\S]*?)<\/style>/;
-const SCRIPT_ELEMENT = /<script>([\s\S]*?)<\/script>/;
 const LEGACY_BRAND = /g8e/i;
 
-export function prepareHomepage(source) {
+export function prepareHomepage(source, script) {
   const style = source.match(STYLE_ELEMENT);
-  const script = source.match(SCRIPT_ELEMENT);
-  if (!style || !script) throw new Error('homepage must contain one inline style and one inline script');
-
-  const html = source
-    .replace(STYLE_ELEMENT, '<link rel="stylesheet" href="/styles.css">')
-    .replace(SCRIPT_ELEMENT, '<script src="/site.js" defer></script>');
+  if (!style) throw new Error('homepage must contain one inline style');
 
   return {
-    html,
+    html: source.replace(STYLE_ELEMENT, '<link rel="stylesheet" href="/styles.css">'),
     styles: `${style[1].trim()}\n`,
-    script: `${script[1].trim()}\n`
+    script: `${script.trim()}\n`
   };
 }
 
@@ -48,17 +44,18 @@ export function validateHomepage({ html, styles, script }) {
     !html.includes('href="/styles.css"') ||
     !html.includes('src="/site.js"') ||
     /<style\b/i.test(html) ||
-    /<script>([\s\S]*?)<\/script>/i.test(html) ||
+    /<script(?![^>]*\ssrc=)[^>]*>/i.test(html) ||
     /\sstyle=/i.test(html)
   ) throw new Error('generated website validation failed');
 }
 
 async function build() {
-  const [source, readme] = await Promise.all([
+  const [source, script, readme] = await Promise.all([
     readFile(HOMEPAGE_PATH, 'utf8'),
+    readFile(SCRIPT_PATH, 'utf8'),
     readFile(README_PATH, 'utf8')
   ]);
-  const homepage = prepareHomepage(source);
+  const homepage = prepareHomepage(source, script);
   validateHomepage(homepage);
   validatePaymentLinks(homepage.html);
   const [journal, releaseNotes, terms] = await Promise.all([prepareJournal(), prepareReleaseNotes(REPOSITORY_DIRECTORY), prepareTerms()]);

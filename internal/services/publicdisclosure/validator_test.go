@@ -195,6 +195,7 @@ func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
 	assert.False(t, bounded("", 5))
 	assert.False(t, bounded("a\nb", 5))
 	assert.True(t, publicFeedViewSchemaVersion("1.5.0"))
+	assert.True(t, publicFeedViewSchemaVersion("1.7.0"))
 	assert.False(t, publicFeedViewSchemaVersion("9.0.0"))
 	assert.True(t, publicFeedSnapshotKind("evaluation_summary"))
 	assert.False(t, publicFeedSnapshotKind("unknown"))

@@ -249,8 +249,8 @@ help:
 		'  proto-generate            Generate Go and Node protobuf artifacts' \
 		'  constants-generate        Generate constants from the event registry' \
 		'  constants-check           Check generated constants for drift' \
-		'  explorer-catalog-generate Generate the explorer scenario catalog from Go' \
-		'  explorer-catalog-check    Check the explorer scenario catalog for drift' \
+		'  explorer-catalog-generate Generate the explorer scenario catalog and wire enums from Go' \
+		'  explorer-catalog-check    Check the explorer scenario catalog and wire enums for drift' \
 		'  third-party-notices       Regenerate THIRD_PARTY_NOTICES.md' \
 		'  third-party-notices-check Check THIRD_PARTY_NOTICES.md for drift' \
 		'  swagger-generate          Generate the Gateway OpenAPI specification' \
@@ -296,14 +296,16 @@ constants-check:
 	@go run ./internal/tools/constgen -check
 
 # The evaluation explorer's scenario catalog module is generated from the Go
-# scenario catalog. Never hand-edit scenario-catalog.generated.ts.
+# scenario catalog, and its campaign wire enum module from the eval.proto
+# descriptors. Never hand-edit scenario-catalog.generated.ts or
+# proto-enums.generated.ts.
 .PHONY: explorer-catalog-generate explorer-catalog-check
 explorer-catalog-generate:
-	@echo "Regenerating the evaluation explorer scenario catalog from the Go catalog..."
+	@echo "Regenerating the evaluation explorer scenario catalog and wire enums from Go..."
 	@go run ./internal/tools/explorercatalog -write
 
 explorer-catalog-check:
-	@echo "Checking the evaluation explorer scenario catalog against the Go catalog..."
+	@echo "Checking the evaluation explorer scenario catalog and wire enums against Go..."
 	@go run ./internal/tools/explorercatalog -check
 
 # THIRD_PARTY_NOTICES.md is generated from vendor/modules.txt and the production

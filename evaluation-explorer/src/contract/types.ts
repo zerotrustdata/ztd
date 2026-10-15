@@ -10,12 +10,12 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.6.0 on 2026-10-02. A change to any enum value
+// FROZEN at schema_version 1.7.0 on 2026-10-15. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.6.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.7.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -142,6 +142,7 @@ export const SCENARIO_CATEGORIES = [
   'security_policy',
   'recovery',
   'final_response',
+  'containment',
 ] as const;
 export type ScenarioCategory = (typeof SCENARIO_CATEGORIES)[number];
 

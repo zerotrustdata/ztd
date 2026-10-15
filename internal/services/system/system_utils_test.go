@@ -88,12 +88,12 @@ func TestDetectInitSystem(t *testing.T) {
 
 func TestGetEnvironmentDetails_ContainerFields(t *testing.T) {
 	t.Parallel()
-	details := GetEnvironmentDetails("", "", "")
+	details := GetEnvironmentDetails("/work", "", "", "")
 
 	assert.NotNil(t, details.ContainerSignals)
 	assert.NotEmpty(t, details.ContainerRuntime)
 	assert.NotEmpty(t, details.InitSystem)
-	assert.NotEmpty(t, details.PWD)
+	assert.Equal(t, "/work", details.PWD)
 }
 
 func TestGetDiskPercent(t *testing.T) {
@@ -300,9 +300,9 @@ func TestGetTimezone_EmptyFallsBackToSystem(t *testing.T) {
 
 func TestGetEnvironmentDetails_AllFields(t *testing.T) {
 	t.Parallel()
-	details := GetEnvironmentDetails("", "", "")
+	details := GetEnvironmentDetails("/work", "", "", "")
 
-	assert.NotEmpty(t, details.PWD)
+	assert.Equal(t, "/work", details.PWD)
 	assert.NotEmpty(t, details.ContainerRuntime)
 	assert.NotEmpty(t, details.InitSystem)
 	assert.NotNil(t, details.ContainerSignals)
@@ -310,14 +310,14 @@ func TestGetEnvironmentDetails_AllFields(t *testing.T) {
 
 func TestGetEnvironmentDetails_TimezoneInjected(t *testing.T) {
 	t.Parallel()
-	details := GetEnvironmentDetails("", "", "America/New_York")
+	details := GetEnvironmentDetails("/work", "", "", "America/New_York")
 
 	assert.Equal(t, "America/New_York", details.Timezone)
 }
 
 func TestGetEnvironmentDetails_LangAndTermInjected(t *testing.T) {
 	t.Parallel()
-	details := GetEnvironmentDetails("en_US.UTF-8", "xterm-256color", "")
+	details := GetEnvironmentDetails("/work", "en_US.UTF-8", "xterm-256color", "")
 
 	assert.Equal(t, "en_US.UTF-8", details.Lang)
 	assert.Equal(t, "xterm-256color", details.Term)

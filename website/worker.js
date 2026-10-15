@@ -20,6 +20,7 @@ const LATEST_CACHE = 'public, max-age=300';
 // Release pages list versions from R2 and follow latest.json, so they share the short cache.
 const PAGE_CACHE = 'public, max-age=300';
 const WWW_HOSTNAME = 'www.zerotrustdata.io';
+const WORKER_VERSION_HEADER = 'x-ztd-worker-version';
 const SECURITY_HEADERS = {
   'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   'permissions-policy': 'camera=(), microphone=(), geolocation=()',
@@ -37,9 +38,12 @@ export function releaseKey(pathname, userAgent = '') {
   return 'ztd-linux-amd64';
 }
 
-function withSecurityHeaders(response) {
+// Every response also names the Worker version that served it, so the post-deploy smoke can wait for the edge to
+// serve the version it just deployed instead of testing the previous one.
+function withSecurityHeaders(response, env) {
   const secured = new Response(response.body, response);
   Object.entries(SECURITY_HEADERS).forEach(([name, value]) => secured.headers.set(name, value));
+  if (env.CF_VERSION_METADATA?.id) secured.headers.set(WORKER_VERSION_HEADER, env.CF_VERSION_METADATA.id);
   return secured;
 }
 
@@ -175,36 +179,36 @@ function unavailable(message) {
   return new Response(`${message}\n`, { status: 503, headers: { 'cache-control': 'no-store', 'content-type': 'text/plain; charset=utf-8' } });
 }
 
+async function route(request, env) {
+  const url = new URL(request.url);
+  if (url.hostname === WWW_HOSTNAME) {
+    url.hostname = 'zerotrustdata.io';
+    return Response.redirect(url, 301);
+  }
+  const buy = BUY_PATH.exec(url.pathname);
+  if (buy) {
+    const target = paymentLink(buy[1]);
+    return target ? Response.redirect(target, 303) : notFound();
+  }
+  if (url.pathname === `/${LATEST_POINTER}`) return latestPointerResponse(request, env);
+  if (url.pathname === '/v' || url.pathname.startsWith('/v/')) return versionedResponse(request, env, url.pathname);
+  if (url.pathname === '/releases' || url.pathname.startsWith(RELEASES_PATH)) {
+    try {
+      return await releasesResponse(request, env, url);
+    } catch (error) {
+      console.error('releases page failed', error);
+      return unavailable('release listing is temporarily unavailable');
+    }
+  }
+  // Release-note fragments are composed into /releases/ pages and are not pages of their own.
+  if (url.pathname.startsWith(RELEASE_NOTES_PATH)) return notFound();
+  const file = releaseKey(url.pathname, request.headers.get('user-agent') ?? '');
+  if (file) return latestResponse(request, env, file);
+  return env.ASSETS.fetch(request);
+}
+
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    if (url.hostname === WWW_HOSTNAME) {
-      url.hostname = 'zerotrustdata.io';
-      return withSecurityHeaders(Response.redirect(url, 301));
-    }
-    const buy = BUY_PATH.exec(url.pathname);
-    if (buy) {
-      const target = paymentLink(buy[1]);
-      return withSecurityHeaders(target ? Response.redirect(target, 303) : notFound());
-    }
-    if (url.pathname === `/${LATEST_POINTER}`) {
-      return withSecurityHeaders(await latestPointerResponse(request, env));
-    }
-    if (url.pathname === '/v' || url.pathname.startsWith('/v/')) {
-      return withSecurityHeaders(await versionedResponse(request, env, url.pathname));
-    }
-    if (url.pathname === '/releases' || url.pathname.startsWith(RELEASES_PATH)) {
-      try {
-        return withSecurityHeaders(await releasesResponse(request, env, url));
-      } catch (error) {
-        console.error('releases page failed', error);
-        return withSecurityHeaders(unavailable('release listing is temporarily unavailable'));
-      }
-    }
-    // Release-note fragments are composed into /releases/ pages and are not pages of their own.
-    if (url.pathname.startsWith(RELEASE_NOTES_PATH)) return withSecurityHeaders(notFound());
-    const file = releaseKey(url.pathname, request.headers.get('user-agent') ?? '');
-    if (file) return withSecurityHeaders(await latestResponse(request, env, file));
-    return withSecurityHeaders(await env.ASSETS.fetch(request));
+    return withSecurityHeaders(await route(request, env), env);
   }
 };

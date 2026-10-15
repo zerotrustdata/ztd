@@ -5,10 +5,12 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-// explorercatalog generates the evaluation explorer's scenario catalog module
-// from the Go scenario catalog, so the public task pages can never drift from
-// the scenarios that are actually scored. Prompt-hint argument values are
-// private and never emitted (INV-EVAL-EVID-04).
+// explorercatalog generates the evaluation explorer's Go-owned modules: the
+// scenario catalog, so the public task pages can never drift from the
+// scenarios that are actually scored, and the protobuf enum value lists the
+// campaign wire decoder accepts, so a new enum value can never reach the live
+// feed as an "unknown enum value". Prompt-hint argument values are private and
+// never emitted (INV-EVAL-EVID-04).
 //
 //	go run ./internal/tools/explorercatalog -write
 //	go run ./internal/tools/explorercatalog -check
@@ -23,12 +25,57 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-const outputRelPath = "evaluation-explorer/src/content/scenario-catalog.generated.ts"
+const (
+	outputRelPath = "evaluation-explorer/src/content/scenario-catalog.generated.ts"
+	enumsRelPath  = "evaluation-explorer/src/contract/proto-enums.generated.ts"
+)
+
+// wireEnums are the protobuf enums the campaign projection envelopes carry by
+// name. Each is emitted with every declared value except UNSPECIFIED, which
+// protojson never writes for a populated field.
+var wireEnums = []protoreflect.EnumDescriptor{
+	evalv1.EvaluationAssignmentLifecycleStatus(0).Descriptor(),
+	evalv1.EvaluationScenarioCategory(0).Descriptor(),
+	evalv1.EvaluationLane(0).Descriptor(),
+	evalv1.ModelCampaignRole(0).Descriptor(),
+	evalv1.EvaluationVerdictStatus(0).Descriptor(),
+	evalv1.EvaluationGradingMethod(0).Descriptor(),
+	evalv1.PublicFinishState(0).Descriptor(),
+	evalv1.EvaluationLoadState(0).Descriptor(),
+	evalv1.EvaluationUsageAvailability(0).Descriptor(),
+	evalv1.EvaluationPolicyDecisionOutcome(0).Descriptor(),
+	evalv1.PublicReceiptStatus(0).Descriptor(),
+	evalv1.PublicEvidenceSource(0).Descriptor(),
+	evalv1.PublicGradeExplanationCode(0).Descriptor(),
+	evalv1.EvaluationTrajectoryPolicy(0).Descriptor(),
+	evalv1.EvaluationTrajectoryOutcome(0).Descriptor(),
+	evalv1.EvaluationHintArgumentSource(0).Descriptor(),
+	evalv1.PublicToolScoreDimension(0).Descriptor(),
+	evalv1.PublicActivityAvailability(0).Descriptor(),
+	evalv1.PublicUnavailableReason(0).Descriptor(),
+	evalv1.PublicReleaseBasis(0).Descriptor(),
+}
+
+// module is one generated file and the function that renders it.
+type module struct {
+	relPath  string
+	generate func() ([]byte, error)
+}
+
+func modules() []module {
+	return []module{
+		{relPath: outputRelPath, generate: generate},
+		{relPath: enumsRelPath, generate: generateEnums},
+	}
+}
 
 type inlineContent struct {
 	Kind    string `json:"kind"`
@@ -94,26 +141,36 @@ func run(args []string, root string, stdout, stderr io.Writer) error {
 	if *checkOnly && *write {
 		return fmt.Errorf("use only one of -check or -write")
 	}
-	generated, err := generate()
+	for _, m := range modules() {
+		if err := emit(m, root, *write, stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// emit writes one module, or verifies the committed copy matches.
+func emit(m module, root string, write bool, stdout io.Writer) error {
+	generated, err := m.generate()
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(root, outputRelPath)
-	if *write {
+	path := filepath.Join(root, m.relPath)
+	if write {
 		if err := os.WriteFile(path, generated, 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", outputRelPath, err)
+			return fmt.Errorf("write %s: %w", m.relPath, err)
 		}
-		fmt.Fprintf(stdout, "generated %s\n", outputRelPath)
+		fmt.Fprintf(stdout, "generated %s\n", m.relPath)
 		return nil
 	}
 	existing, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("read %s: %w (run: make explorer-catalog-generate)", outputRelPath, err)
+		return fmt.Errorf("read %s: %w (run: make explorer-catalog-generate)", m.relPath, err)
 	}
 	normalizedExisting := bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n"))
 	normalizedGenerated := bytes.ReplaceAll(generated, []byte("\r\n"), []byte("\n"))
 	if !bytes.Equal(normalizedExisting, normalizedGenerated) {
-		return fmt.Errorf("%s is out of date (run: make explorer-catalog-generate)", outputRelPath)
+		return fmt.Errorf("%s is out of date (run: make explorer-catalog-generate)", m.relPath)
 	}
 	return nil
 }
@@ -162,6 +219,47 @@ export const SCENARIO_CATALOG_ID = %q;
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = %s;
 `, evaluation.DefaultSuiteVersion, evaluation.DefaultSuiteID+"@"+evaluation.DefaultSuiteVersion, body)
 	return out.Bytes(), nil
+}
+
+// generateEnums renders the TypeScript module of campaign wire enum values.
+func generateEnums() ([]byte, error) {
+	var out bytes.Buffer
+	out.WriteString(`// Copyright (c) 2026 Lateralus Labs, LLC.
+// Licensed under the Business Source License 1.1 — see LICENSE for details.
+
+// Code generated by internal/tools/explorercatalog; DO NOT EDIT.
+// Regenerate with: make explorer-catalog-generate
+//
+// Source of truth: protocol/proto/ztd/eval/v1/eval.proto. Every declared value
+// except UNSPECIFIED, in declaration order.
+`)
+	for _, enum := range wireEnums {
+		name := screamingSnake(string(enum.Name()))
+		values := enum.Values()
+		fmt.Fprintf(&out, "\n/** %s */\nexport const %s_VALUES = [\n", enum.FullName(), name)
+		for i := 0; i < values.Len(); i++ {
+			value := values.Get(i)
+			if value.Number() == 0 {
+				continue
+			}
+			fmt.Fprintf(&out, "  '%s',\n", value.Name())
+		}
+		fmt.Fprintf(&out, "] as const;\nexport type %s = (typeof %s_VALUES)[number];\n", enum.Name(), name)
+	}
+	return out.Bytes(), nil
+}
+
+// screamingSnake converts a protobuf enum name (EvaluationLane) to its
+// constant spelling (EVALUATION_LANE).
+func screamingSnake(name string) string {
+	var out strings.Builder
+	for i, r := range name {
+		if i > 0 && unicode.IsUpper(r) {
+			out.WriteByte('_')
+		}
+		out.WriteRune(unicode.ToUpper(r))
+	}
+	return out.String()
 }
 
 func buildTask(scenario *evalv1.EvaluationScenarioDefinition, input evaluation.ScenarioInputFixture, gold evaluation.ScenarioGoldCriteria) task {

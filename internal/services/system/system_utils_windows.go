@@ -303,9 +303,7 @@ func GetMemoryDetails() models.HeartbeatMemoryDetails {
 	}
 }
 
-func GetEnvironmentDetails(lang, term, tz string) models.HeartbeatEnvironment {
-	pwd, _ := os.Getwd()
-
+func GetEnvironmentDetails(pwd, lang, term, tz string) models.HeartbeatEnvironment {
 	initSystem := "Windows Service Manager"
 
 	return models.HeartbeatEnvironment{

@@ -9,7 +9,7 @@
 # Live smoke test for the deployed site, run after every production deploy. Checks the Releases pages, then runs the
 # published one-command onboarding exactly as a user would, under an ephemeral ssh-agent with a throwaway Ed25519 key
 # because CI runners have no OS key store, and stops the Gateway and the agent it started. ZTD_SMOKE_ORIGIN overrides
-# the origin (e.g. a preview).
+# the origin (e.g. a preview); ZTD_SMOKE_WORKER_VERSION names the Worker version the checks must run against.
 
 set -eu
 
@@ -40,6 +40,18 @@ page() {
   curl -fsS "$origin$1" -o "$work/page" || fail "GET $1 failed"
   grep -qF "$2" "$work/page" || fail "GET $1 does not contain: $2"
 }
+
+# wrangler deploy returns before every edge serves the new version, so wait until the site answers from the Worker
+# version just deployed (ZTD_SMOKE_WORKER_VERSION) rather than smoke-testing the previous one.
+if [ -n "${ZTD_SMOKE_WORKER_VERSION:-}" ]; then
+  tries=0
+  until curl -fsS -o /dev/null -D - "$origin/" | tr -d '\r' | grep -qixF "x-ztd-worker-version: $ZTD_SMOKE_WORKER_VERSION"; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 60 ] || fail "worker version $ZTD_SMOKE_WORKER_VERSION is not live after 120s"
+    sleep 2
+  done
+  echo "smoke: worker version $ZTD_SMOKE_WORKER_VERSION live"
+fi
 
 version=$(curl -fsS "$origin/latest.json" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
 [ -n "$version" ] || fail "latest.json does not name a version"

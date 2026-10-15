@@ -14,8 +14,12 @@ npm run check
 npm run build
 ```
 
-The source of truth for the homepage is `src/index.html`. The build extracts its inline CSS and JavaScript into
-`dist/styles.css` and `dist/site.js` so the deployed page can keep a strict Content Security Policy. It also copies
+The homepage markup and CSS live in `src/index.html`; its behavior lives in `src/site.js`, kept separate so a
+markup redesign cannot silently replace it. The build extracts the inline CSS into `dist/styles.css` and copies
+`src/site.js` to `dist/site.js`, so the deployed page keeps a strict Content Security Policy. The build fails if
+`src/index.html` contains an inline script. `test/site.test.js` runs `site.js` against a stub DOM to check that
+reduced motion slows the hero grid rather than freezing it, and that Windows visitors land on the Windows install
+tab. The build also copies
 the install scripts and search metadata into `dist/`; the repository root `README.md` becomes
 `dist/llms-full.txt`.
 
@@ -41,7 +45,8 @@ rerun it, which replaces every link.
 
 `test/stripe-payment-links.test.js` runs the script offline against a fake Stripe CLI
 (`testdata/fake-stripe.js`). It covers creation, idempotent reruns, price changes, revision bumps, API
-errors, and test mode. After each deploy, `smoke/live.sh` checks that every homepage `/buy/` SKU redirects to a
+errors, and test mode. After each deploy, `smoke/live.sh` waits until the site answers with the deployed Worker
+version (the `x-ztd-worker-version` header, from the `CF_VERSION_METADATA` binding), then checks that every homepage `/buy/` SKU redirects to a
 loading live-mode Payment Link and that both terms pages are served.
 
 ## Build in Public

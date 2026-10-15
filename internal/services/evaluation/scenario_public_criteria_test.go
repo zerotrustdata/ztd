@@ -212,3 +212,21 @@ func TestPublicCriteria_ValidationRejectsUnresolvableCriteria(t *testing.T) {
 		})
 	}
 }
+
+// TestPublicContentText_NamesEveryScenarioCategory pins the content criterion
+// to the protobuf enum: a category added to eval.proto without public text
+// would otherwise fail closed only when a scenario first uses it.
+func TestPublicContentText_NamesEveryScenarioCategory(t *testing.T) {
+	values := evalv1.EvaluationScenarioCategory(0).Descriptor().Values()
+	for i := 0; i < values.Len(); i++ {
+		category := evalv1.EvaluationScenarioCategory(values.Get(i).Number())
+		if category == evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_UNSPECIFIED {
+			continue
+		}
+		text, ok := publicContentText[category]
+		if assert.Truef(t, ok, "no public content criterion for %s", category) {
+			assert.NotEmpty(t, text.Label, category.String())
+			assert.NotEmpty(t, text.Description, category.String())
+		}
+	}
+}
