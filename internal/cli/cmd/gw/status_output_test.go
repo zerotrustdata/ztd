@@ -105,7 +105,7 @@ func TestStatusShowsLocalEmbeddedCapabilitiesWithoutCLIEnrollment(t *testing.T) 
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorPIDFilename), []byte(strconv.Itoa(os.Getpid())), constants.PermFilePrivate))
 			require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{OperatorCapabilities: capabilities, Posture: "doctrine", LogLevel: constants.LogLevelInfo}))
-			expected := capabilities.WithData().String()
+			expected := capabilities.WithEmbeddedBaseline().String()
 			var full bytes.Buffer
 			printOperatorTables(&full, collectOperatorInventory(nil, fileSvc, cfg))
 			require.Contains(t, full.String(), string(constants.DocIDEmbeddedOperator))
@@ -146,7 +146,7 @@ func TestLocalEmbeddedOperatorOmitsStoppedRuntimeAndMarksInvalidProfileUnknown(t
 			printOperatorTables(&buf, inv)
 			require.NotContains(t, buf.String(), "inference")
 			if tc.want {
-				require.Equal(t, []string{string(constants.DocIDEmbeddedOperator), "embedded", "running", "local", "-", "unknown", filepath.Dir(fileSvc.Resolve(""))}, tableRow(t, buf.String(), string(constants.DocIDEmbeddedOperator)))
+				require.Equal(t, []string{string(constants.DocIDEmbeddedOperator), "embedded", "running", "local", "-", "unknown", filepath.Join(fileSvc.Resolve(""), constants.OperatorsDirname, constants.EmbeddedOperatorDirname)}, tableRow(t, buf.String(), string(constants.DocIDEmbeddedOperator)))
 			}
 		})
 	}
@@ -348,8 +348,10 @@ func TestGatewayStatusLocalFlagsComeFromLaunchProfileWithoutEnrollment(t *testin
 	}))
 	var buf bytes.Buffer
 	printOperatorTables(&buf, collectOperatorInventory(nil, fileSvc, cfg))
-	require.Equal(t, []string{"embedded-operator", "embedded", "running", "local", "8080", "data,provenance,observer", filepath.Dir(fileSvc.Resolve(""))}, tableRow(t, buf.String(), "embedded-operator"))
+	require.Equal(t, []string{"embedded-operator", "embedded", "running", "local", "8080", "data,inference,provenance,observer", filepath.Join(fileSvc.Resolve(""), constants.OperatorsDirname, constants.EmbeddedOperatorDirname)}, tableRow(t, buf.String(), "embedded-operator"))
 	require.Equal(t, [][]string{
+		{"inference", "--inference-ollama-endpoint", "(default)"},
+		{"inference", "--inference-keep-alive", "(default)"},
 		{"provenance", "--model-storage-root", "/mnt/d/ai/Ollama/models"},
 		{"provenance", "--provenance-operator-id", "(default)"},
 		{"observer", "--provider-boundary-observer-id", "ztd-observer"},

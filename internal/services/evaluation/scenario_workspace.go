@@ -39,16 +39,14 @@ type ScenarioWorkspace struct {
 // ValidateAgentDataOperator reports whether a Data Operator may host
 // model-role scenarios. The model under evaluation runs arbitrary shell
 // commands in the operator working directory, so that directory MUST be
-// disposable: never the Gateway's embedded Operator, whose working directory
-// is the ztd project, and never a directory that is, contains, or sits inside
-// projectRoot. Run execution checks it before any assignment is marked running.
-func ValidateAgentDataOperator(embedded bool, operatorWorkingDirectory, projectRoot string) error {
+// disposable: either directly under <project>/.ztd/operators/ (the embedded
+// Operator's own directory included) or a directory that neither is, contains,
+// nor sits inside projectRoot. Run execution checks it before any assignment is
+// marked running.
+func ValidateAgentDataOperator(operatorWorkingDirectory, projectRoot string) error {
 	workingDirectory, err := cleanOperatorWorkingDirectory(operatorWorkingDirectory)
 	if err != nil {
 		return err
-	}
-	if embedded {
-		return fmt.Errorf("%w: the embedded Operator runs in the ztd project %q; start a dedicated Data Operator (ztd operator deploy --local --background)", constants.ErrEvaluationWorkspaceUnavailable, workingDirectory)
 	}
 	project, ok := cleanOperatorAbsPath(filepath.ToSlash(projectRoot))
 	if !ok {

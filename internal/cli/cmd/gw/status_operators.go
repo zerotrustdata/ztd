@@ -135,9 +135,6 @@ func (o *operatorStatus) reportCustom(logLevel string, cloud bool, provider stri
 // fillFromProfile adds the values the Gateway launched its embedded Operator
 // with. Values the registry already reported are kept.
 func (o *operatorStatus) fillFromProfile(cfg serve.GatewayConfig) {
-	if o.Dir == "" {
-		o.Dir = cfg.WorkingDir
-	}
 	if o.Port == 0 {
 		o.Port = cfg.HTTPPort
 	}
@@ -268,13 +265,13 @@ func localEmbeddedOperator(fileSvc fs.RuntimeFileService, profile serve.GatewayL
 		reported: map[string]string{},
 	}
 	if profileErr == nil {
-		row.Capabilities = profile.Config.OperatorCapabilities.WithData()
+		row.Capabilities = profile.Config.OperatorCapabilities.WithEmbeddedBaseline()
 		row.fillFromProfile(profile.Config)
 	}
-	// The launch profile does not record the Gateway's working directory; its
-	// runtime state lives in <working directory>/.ztd.
-	if runtimeDir := fileSvc.Resolve(""); row.Dir == "" && filepath.Base(runtimeDir) == constants.RuntimeDirname {
-		row.Dir = filepath.Dir(runtimeDir)
+	// The embedded Operator always works in its own directory under the
+	// Gateway's runtime tree.
+	if row.Dir == "" {
+		row.Dir = filepath.Join(fileSvc.Resolve(""), constants.OperatorsDirname, constants.EmbeddedOperatorDirname)
 	}
 	return row, true
 }

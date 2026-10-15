@@ -174,6 +174,27 @@ func (s *RegistrationService) UpdateOperatorRuntimeConfig(ctx context.Context, o
 	return nil
 }
 
+// RecordEmbeddedActuatorKey binds the Gateway's Actuator public key, which
+// signs the embedded Operator's receipts, on the embedded Operator document.
+// keyID is the lowercase hex public key (key_id == hex(pub)).
+func (s *RegistrationService) RecordEmbeddedActuatorKey(ctx context.Context, keyID string) error {
+	if keyID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	updateBytes, err := json.Marshal(struct {
+		ActuatorPublicKey string    `json:"actuator_public_key"`
+		ActuatorKeyID     string    `json:"actuator_key_id"`
+		UpdatedAt         time.Time `json:"updated_at"`
+	}{ActuatorPublicKey: keyID, ActuatorKeyID: keyID, UpdatedAt: time.Now().UTC()})
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
+	}
+	if _, err := s.docStore.DocUpdate(ctx, marshaler.CollectionName(constants.CollectionOperators), string(constants.DocIDEmbeddedOperator), updateBytes); err != nil {
+		return fmt.Errorf("record embedded actuator key: %w", err)
+	}
+	return nil
+}
+
 func (s *RegistrationService) MarkOperatorStopped(ctx context.Context, operatorID, userID, reason string) error {
 	if operatorID == "" {
 		return constants.ErrRegistrationOperatorIDRequired

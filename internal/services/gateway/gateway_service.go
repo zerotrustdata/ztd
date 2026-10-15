@@ -287,6 +287,10 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		}
 	}
 
+	// The embedded Operator executes in its own runtime directory.
+	if err := b.fileSvc.MkdirAll(ctx, filepath.Join(constants.OperatorsDirname, constants.EmbeddedOperatorDirname), constants.PermDirPrivate); err != nil {
+		return nil, fmt.Errorf("gateway: create embedded operator working directory: %w", err)
+	}
 	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
 	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
 		return nil, fmt.Errorf("gateway: embedded runtime config: %w", err)
@@ -328,6 +332,11 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	actuatorPriv, actuatorKeyID, err := sm.GetActuatorKey()
 	if err != nil {
 		return nil, fmt.Errorf("gateway: load actuator signing key: %w", err)
+	}
+	// The embedded Operator signs receipts with the Gateway's Actuator key;
+	// recording it binds that key the way enrollment binds an outbound one.
+	if err := reg.RecordEmbeddedActuatorKey(ctx, actuatorKeyID); err != nil {
+		return nil, fmt.Errorf("gateway: embedded actuator key: %w", err)
 	}
 	auditorPriv, auditorKeyID, err := sm.GetAuditorKey()
 	if err != nil {

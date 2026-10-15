@@ -5,14 +5,13 @@
 // datasets updates the URL so the selection is shareable and survives reload.
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useDatasetOptions } from '../state/dataset';
-import { CURRENT_PLATFORM_RELEASE } from '../content/release';
+import { useDatasetOptions, useSelectedRelease } from '../state/dataset';
 import { ReleaseSelector } from './ReleaseSelector';
 
 export function DatasetSelector({ activeId }: { activeId: string }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const options = useDatasetOptions(params.get('release') ?? CURRENT_PLATFORM_RELEASE);
+  const options = useDatasetOptions(useSelectedRelease());
 
   return (
     <div className="dataset-selector" data-testid="dataset-selector">

@@ -141,6 +141,9 @@ var (
 	PeerChainPath       = constants.RuntimeDirname + "/" + constants.PkiDirname + "/" + constants.PeerSubdir + "/" + constants.PeerChainFilename
 	PkiGatewayKeyPath   = constants.RuntimeDirname + "/" + constants.PkiDirname + "/" + constants.PkiSubdirIssued + "/" + constants.PkiSubdirHub + "/" + constants.PkiFileGatewayKey
 	ZtdLogPath          = constants.ZtdLogFilename
+	// EmbeddedOperatorWorkDir is the Gateway's embedded Operator working
+	// directory: <runtime>/operators/embedded-operator.
+	EmbeddedOperatorWorkDir = constants.RuntimeDirname + "/" + constants.OperatorsDirname + "/" + constants.EmbeddedOperatorDirname
 )
 
 // Init initializes paths relative to the current working directory.
@@ -193,6 +196,7 @@ func InitWithBase(baseDir string) error {
 	Infra.LedgerFilesDir = pathutil.SafeJoin(Infra.LedgerDir, constants.FilesDirname)
 
 	GatewayIDPath = pathutil.SafeJoin(Infra.DataDir, constants.GatewayIDFilename)
+	EmbeddedOperatorWorkDir = pathutil.SafeJoin(Infra.RuntimeDir, constants.OperatorsDirname, constants.EmbeddedOperatorDirname)
 	NetworkIdentityPath = pathutil.SafeJoin(Infra.PkiDir, constants.NetworkIdentityFilename)
 	PeerCertPath = pathutil.SafeJoin(Infra.PkiDir, constants.PeerSubdir, constants.PeerCertFilename)
 	PeerKeyPath = pathutil.SafeJoin(Infra.PkiDir, constants.PeerSubdir, constants.PeerKeyFilename)

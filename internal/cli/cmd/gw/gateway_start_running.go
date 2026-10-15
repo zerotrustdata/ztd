@@ -43,7 +43,7 @@ func (s startupSetting) requested(flags *pflag.FlagSet) bool {
 // startupSettings lists the flags a running Gateway cannot change. Each value
 // is normalized so an explicit default compares equal to the running default.
 var startupSettings = []startupSetting{
-	{flag: "capabilities", value: func(c serve.GatewayConfig) string { return c.OperatorCapabilities.WithData().String() }},
+	{flag: "capabilities", value: func(c serve.GatewayConfig) string { return c.OperatorCapabilities.WithEmbeddedBaseline().String() }},
 	{flag: "posture", value: func(c serve.GatewayConfig) string { return string(c.Posture) }},
 	{flag: "listen-host", value: func(c serve.GatewayConfig) string {
 		if c.ListenHost == "" {

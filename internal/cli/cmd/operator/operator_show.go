@@ -109,6 +109,21 @@ func operatorHostnameValue(op *operatorv1.OperatorDocument) string {
 	return op.GetName()
 }
 
+// operatorTableWidth spans every column printOperatorTable writes.
+const operatorTableWidth = 176
+
+// printOperatorTable writes the human-readable Operator table shared by
+// `operator list` and `operator bind list`, including each Operator's
+// effective capabilities.
+func printOperatorTable(cmd *cobra.Command, operators []*operatorv1.OperatorDocument) {
+	const row = "  %-36s  %-12s  %-34s  %-24s  %-36s  %-15s\n"
+	cmd.Printf(row, "ID", "Type", "Capabilities", "Hostname", "Session ID", "Status")
+	cmd.Println(strings.Repeat("-", operatorTableWidth))
+	for _, op := range operators {
+		cmd.Printf(row, op.Id, op.OperatorType, operatorcapability.GetOperatorCapabilities(op), operatorHostnameDisplay(op), op.OperatorSessionId, op.Status)
+	}
+}
+
 func operatorHostnameDisplay(op *operatorv1.OperatorDocument) string {
 	if hostname := operatorHostnameValue(op); hostname != "" {
 		return hostname

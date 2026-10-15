@@ -10,7 +10,7 @@ import { useStoreState } from '../state/store';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { RoleLeadersPanel } from '../components/RoleLeadersPanel';
 import { ReleaseSelector } from '../components/ReleaseSelector';
-import { CURRENT_PLATFORM_RELEASE, matchesRelease, releaseLabel } from '../content/release';
+import { matchesRelease, releaseLabel } from '../content/release';
 import {
   EmptyState,
   OutcomeCounts,
@@ -28,6 +28,7 @@ import {
   normalizeQualityFilter,
 } from '../utils/feed-state';
 import { campaignTerminalProgress, datasetLabel } from './derived';
+import { useSelectedRelease } from '../state/dataset';
 
 export function EvaluationsView() {
   const [params, setParams] = useSearchParams();
@@ -35,7 +36,7 @@ export function EvaluationsView() {
   const suiteFilter = params.get('suite') ?? 'all';
   const statusFilter = params.get('status') ?? 'all';
   const qualityFilter = params.get('quality') ?? 'all';
-  const releaseFilter = params.get('release') ?? CURRENT_PLATFORM_RELEASE;
+  const releaseFilter = useSelectedRelease();
 
   const evaluations = useStoreState((state) =>
     Array.from(state.evaluations.values()).sort((a, b) =>

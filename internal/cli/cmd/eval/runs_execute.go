@@ -235,10 +235,10 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	}
 	// A model drives every non-platform lane's Data Operator actions, shell
 	// included, so the operator must run in a disposable directory. This is
-	// checked before the anchor: the embedded Operator has no enrollment-bound
-	// key, and the workspace refusal is the actionable error.
+	// checked before the anchor because the workspace refusal is the
+	// actionable error.
 	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
-		if err := evaluation.ValidateAgentDataOperator(dataOperator.Embedded, dataOperator.WorkingDirectory, cfg.ProjectRoot); err != nil {
+		if err := evaluation.ValidateAgentDataOperator(dataOperator.WorkingDirectory, cfg.ProjectRoot); err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 	}

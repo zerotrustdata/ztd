@@ -359,7 +359,7 @@ func runOperatorBindList(
 	}
 
 	cmd.Printf("CLI session bindings\n")
-	cmd.Println(strings.Repeat("=", 120))
+	cmd.Println(strings.Repeat("=", operatorTableWidth))
 	cmd.Printf("  CLI session ID: %s\n", sessionInfo.CLISessionID)
 	cmd.Printf("  User ID:        %s\n", sessionInfo.UserID)
 	if len(operators) == 0 {
@@ -368,11 +368,7 @@ func runOperatorBindList(
 	}
 
 	cmd.Printf("\nBound operators (%d)\n", len(operators))
-	cmd.Println(strings.Repeat("-", 120))
-	cmd.Printf("  %-36s  %-12s  %-24s  %-36s  %-15s\n", "ID", "Type", "Hostname", "Session ID", "Status")
-	for _, op := range operators {
-		cmd.Printf("  %-36s  %-12s  %-24s  %-36s  %-15s\n", op.Id, op.OperatorType, operatorHostnameDisplay(op), op.OperatorSessionId, op.Status)
-	}
+	printOperatorTable(cmd, operators)
 	return nil
 }
 

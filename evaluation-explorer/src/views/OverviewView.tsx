@@ -4,9 +4,9 @@
 // Overview view — the live event stream and recent campaigns.
 
 import { useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { CURRENT_PLATFORM_RELEASE, matchesRelease, releaseLabel } from '../content/release';
-import { useDatasetOptions } from '../state/dataset';
+import { Link } from 'react-router-dom';
+import { matchesRelease, releaseLabel } from '../content/release';
+import { useDatasetOptions, useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
 import { WhatAmILookingAt } from '../components/WhatAmILookingAt';
@@ -166,8 +166,7 @@ function RecentRuns({
 }
 
 export function OverviewView() {
-  const [params] = useSearchParams();
-  const release = params.get('release') ?? CURRENT_PLATFORM_RELEASE;
+  const release = useSelectedRelease();
   const activeDatasetId = useDatasetOptions(release).find((option) => option.available && option.kind === 'live_run')?.id ?? '';
   const catalogs = useStoreState((state) => Array.from(state.catalogs.values()).filter((record) => matchesRelease(record, release)));
   const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)));

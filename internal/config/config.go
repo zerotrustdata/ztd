@@ -264,8 +264,9 @@ type Config struct {
 	// Monitoring configuration
 	HeartbeatInterval time.Duration
 
-	// WorkDir is the absolute path of the directory the Operator was launched from.
-	// All data storage and command execution is anchored here unless explicitly overridden.
+	// WorkDir is the absolute directory command execution and file operations
+	// are anchored to: the launch directory for an outbound Operator, and
+	// paths.EmbeddedOperatorWorkDir for the Gateway's embedded Operator.
 	WorkDir string
 
 	// PKI and Secrets directories
@@ -428,8 +429,8 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 	if err := opts.OperatorCapabilities.Validate(); err != nil {
 		return nil, err
 	}
-	// The embedded Operator is the Gateway's own Data operator.
-	capabilities := opts.OperatorCapabilities.WithData()
+	// The embedded Operator is the Gateway's own Data and Inference operator.
+	capabilities := opts.OperatorCapabilities.WithEmbeddedBaseline()
 	provenance, err := newProvenanceOperatorConfig(capabilities.Has(constants.OperatorCapabilityProvenance), LoadOptions{ProvenanceOperatorID: opts.ProvenanceOperatorID, ProvenanceOperatorModelStorageRoot: opts.ProvenanceOperatorModelStorageRoot})
 	if err != nil {
 		return nil, err
@@ -508,8 +509,10 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 	jwtAudience := opts.JWTAudience
 
 	return &Config{
-		OperatorCapabilities:     capabilities,
-		WorkDir:                  projectRoot,
+		OperatorCapabilities: capabilities,
+		// The embedded Operator executes in its own runtime directory, never in
+		// the project, so model-driven work cannot touch ztd source or state.
+		WorkDir:                  paths.EmbeddedOperatorWorkDir,
 		Inference:                newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceKeepAlive: opts.InferenceKeepAlive}),
 		ProviderBoundaryObserver: newProviderBoundaryObserverConfig(capabilities.Has(constants.OperatorCapabilityObserver), LoadOptions{ProviderBoundaryObserverID: opts.ProviderBoundaryObserverID}),
 		ProvenanceOperator:       provenance,

@@ -12,7 +12,8 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { CatalogSnapshot, DatasetKind, EvaluationSummary, QualityState, ReleaseProvenance } from '../contract/types';
-import { CURRENT_PLATFORM_RELEASE, matchesRelease, releaseLabel } from '../content/release';
+import { useSearchParams } from 'react-router-dom';
+import { defaultViewRelease, matchesRelease, releaseLabel } from '../content/release';
 import { evalStore, useStoreState } from './store';
 
 const PREF_KEYS = {
@@ -118,7 +119,15 @@ function defaultDatasetId(
   return liveDatasetIds[0] ?? '';
 }
 
-export function useDatasetOptions(release: string = CURRENT_PLATFORM_RELEASE): DatasetOption[] {
+// The release every view filters by: the explicit ?release= choice, else the
+// newest release present in the feed.
+export function useSelectedRelease(): string {
+  const [params] = useSearchParams();
+  const feedDefault = useStoreState((state) => defaultViewRelease([...state.catalogs.values(), ...state.evaluations.values(), ...state.models.values()]));
+  return params.get('release') ?? feedDefault;
+}
+
+export function useDatasetOptions(release: string): DatasetOption[] {
   const catalogs = useStoreState((state) => Array.from(state.catalogs.values()));
   const evaluations = useStoreState((state) => state.evaluations);
   return useMemo(
@@ -127,7 +136,7 @@ export function useDatasetOptions(release: string = CURRENT_PLATFORM_RELEASE): D
   );
 }
 
-export function useActiveDatasetId(routeDatasetId: string | undefined, release: string = CURRENT_PLATFORM_RELEASE): string {
+export function useActiveDatasetId(routeDatasetId: string | undefined, release: string): string {
   const options = useDatasetOptions(release);
   const evaluations = useStoreState((state) => state.evaluations);
   const eligibleEvaluations = Array.from(evaluations.values()).filter((record) => matchesRelease(record, release));

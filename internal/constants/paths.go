@@ -389,6 +389,11 @@ const (
 	// `ztd operator deploy --local`, one subdirectory per Operator.
 	OperatorsDirname = "operators"
 
+	// EmbeddedOperatorDirname is the Gateway's embedded Operator working
+	// directory under OperatorsDirname. The embedded Operator executes there,
+	// never in the project the Gateway was started from.
+	EmbeddedOperatorDirname = "embedded-operator"
+
 	// Inference runtime directory names under data/.
 	InferenceDirname                        = "inference"
 	InferenceAttemptsDirname                = "attempts"

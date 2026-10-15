@@ -40,7 +40,7 @@ func GetOperatorCapabilities(op *operatorv1.OperatorDocument) constants.Operator
 		capabilities = constants.OperatorCapabilities{constants.OperatorCapabilityData}
 	}
 	if constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded {
-		capabilities = capabilities.WithData()
+		capabilities = capabilities.WithEmbeddedBaseline()
 	}
 	return capabilities
 }

@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { Link, useSearchParams } from 'react-router-dom';
-import { CURRENT_PLATFORM_RELEASE } from '../content/release';
+import { Link } from 'react-router-dom';
 import { MODEL_ROLES } from '../content/roles';
-import { useDatasetOptions } from '../state/dataset';
+import { useDatasetOptions, useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import {
   capitalize,
@@ -78,8 +77,7 @@ function RoleSlot({ slot }: { slot: RoleSlotState }) {
 }
 
 export function ActiveCampaignBar() {
-  const [params] = useSearchParams();
-  const activeDatasetId = useDatasetOptions(params.get('release') ?? CURRENT_PLATFORM_RELEASE).find((option) => option.available && option.kind === 'live_run')?.id ?? '';
+  const activeDatasetId = useDatasetOptions(useSelectedRelease()).find((option) => option.available && option.kind === 'live_run')?.id ?? '';
   const evaluations = useStoreState((state) =>
     Array.from(state.evaluations.values()).filter((evaluation) => evaluation.dataset_id === activeDatasetId),
   );

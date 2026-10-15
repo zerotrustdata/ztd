@@ -413,6 +413,7 @@ func TestCLIRefreshController_Refresh_UnboundOldSession_BindsEmbedded(t *testing
 		Status:            string(constants.OperatorStatusActive),
 		OperatorType:      string(constants.OperatorTypeEmbedded),
 		OperatorSessionId: "embedded-sess-refresh",
+		RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{},
 		CreatedAt:         timestamppb.New(now),
 		UpdatedAt:         timestamppb.New(now),
 	})
@@ -451,4 +452,22 @@ func TestCLIRefreshController_Refresh_UnboundOldSession_BindsEmbedded(t *testing
 	require.NoError(t, json.Unmarshal(dataBytes, &newSession))
 	assert.Equal(t, "embedded-sess-refresh", newSession.OperatorSessionID,
 		"new session persists the recovered embedded binding")
+}
+
+func TestDefaultDataOperatorOrderPrefersEmbedded(t *testing.T) {
+	active := func(id string, kind constants.OperatorType, capabilities ...constants.OperatorCapability) *operatorv1.OperatorDocument {
+		return &operatorv1.OperatorDocument{
+			Id:                id,
+			OperatorSessionId: "sess-" + id,
+			Status:            string(constants.OperatorStatusActive),
+			OperatorType:      string(kind),
+			RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(capabilities)},
+		}
+	}
+	dedicated := active("data", constants.OperatorTypeRemote, constants.OperatorCapabilityData)
+	inference := active("inference", constants.OperatorTypeRemote, constants.OperatorCapabilityInference)
+	embedded := active(string(constants.DocIDEmbeddedOperator), constants.OperatorTypeEmbedded)
+
+	assert.Equal(t, []*operatorv1.OperatorDocument{embedded, dedicated}, defaultDataOperatorOrder([]*operatorv1.OperatorDocument{dedicated, inference, embedded}))
+	assert.Equal(t, []*operatorv1.OperatorDocument{dedicated}, defaultDataOperatorOrder([]*operatorv1.OperatorDocument{inference, dedicated}))
 }

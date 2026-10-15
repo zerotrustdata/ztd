@@ -32,15 +32,15 @@ func TestStartupEnablesEveryRequestedOperatorCapabilityCombination(t *testing.T)
 				want := capabilities.Canonical()
 				if operatorType == constants.OperatorTypeEmbedded {
 					cfg, err = config.LoadGateway(config.GatewayOptions{OperatorCapabilities: capabilities, ProvenanceOperatorModelStorageRoot: testutil.TempDir(t)})
-					want = capabilities.WithData()
+					want = capabilities.WithEmbeddedBaseline()
 				} else {
 					cfg, err = config.Load(config.LoadOptions{OperatorCapabilities: capabilities, OperatorEndpoint: constants.DefaultEndpoint, WorkDir: testutil.TempDir(t), ProvenanceOperatorModelStorageRoot: testutil.TempDir(t)})
 				}
 				require.NoError(t, err)
 				require.Equal(t, want, cfg.EffectiveOperatorCapabilities())
-				require.Equal(t, capabilities.Has(constants.OperatorCapabilityInference), cfg.Inference.Enabled)
-				require.Equal(t, capabilities.Has(constants.OperatorCapabilityProvenance), cfg.ProvenanceOperator.Enabled)
-				require.Equal(t, capabilities.Has(constants.OperatorCapabilityObserver), cfg.ProviderBoundaryObserver.Enabled)
+				require.Equal(t, want.Has(constants.OperatorCapabilityInference), cfg.Inference.Enabled)
+				require.Equal(t, want.Has(constants.OperatorCapabilityProvenance), cfg.ProvenanceOperator.Enabled)
+				require.Equal(t, want.Has(constants.OperatorCapabilityObserver), cfg.ProviderBoundaryObserver.Enabled)
 			})
 		}
 	}

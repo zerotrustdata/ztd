@@ -312,13 +312,8 @@ func operatorListCmdWithConfig(configLoader func(string) (*config.Config, error)
 			}
 
 			cmd.Printf("Operators (%d total)\n", len(operators))
-			cmd.Println(strings.Repeat("=", 140))
-			cmd.Printf("  %-36s  %-12s  %-24s  %-36s  %-15s\n", "ID", "Type", "Hostname", "Session ID", "Status")
-			cmd.Println(strings.Repeat("-", 140))
-			for _, op := range operators {
-				cmd.Printf("  %-36s  %-12s  %-24s  %-36s  %-15s\n", op.Id, op.OperatorType, operatorHostnameDisplay(op), op.OperatorSessionId, op.Status)
-			}
-
+			cmd.Println(strings.Repeat("=", operatorTableWidth))
+			printOperatorTable(cmd, operators)
 			return nil
 		},
 	}

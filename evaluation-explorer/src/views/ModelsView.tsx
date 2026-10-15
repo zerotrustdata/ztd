@@ -8,12 +8,12 @@
 
 import { useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useUserPref, PREF } from '../state/dataset';
+import { useSelectedRelease, useUserPref, PREF } from '../state/dataset';
 import { modelComparisonId, resolveModelFromComparisonId, useStoreState } from '../state/store';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { ModelComparisonPanel } from '../components/ModelComparisonPanel';
 import { ReleaseSelector } from '../components/ReleaseSelector';
-import { CURRENT_PLATFORM_RELEASE, matchesRelease } from '../content/release';
+import { matchesRelease } from '../content/release';
 import {
   EmptyState,
   ErrorState,
@@ -68,7 +68,7 @@ export function ModelsView() {
     }
   }, [params, setComparison, setParams]);
 
-  const release = params.get('release') ?? CURRENT_PLATFORM_RELEASE;
+  const release = useSelectedRelease();
   const models = useStoreState((state) => Array.from(state.models.values()).filter((record) => matchesRelease(record, release)));
   const connection = useStoreState((state) => state.connection);
   const evaluatedFilter =

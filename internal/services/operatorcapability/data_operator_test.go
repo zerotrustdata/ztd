@@ -214,7 +214,7 @@ func tierOp(id string, kind constants.OperatorType, hostname string, capabilitie
 
 func TestEmbeddedTypeImpliesDataAndWitnessCommands(t *testing.T) {
 	op := tierOp("embedded-operator", constants.OperatorTypeEmbedded, "", constants.OperatorCapabilityObserver)
-	require.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityObserver}, GetOperatorCapabilities(op))
+	require.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver}, GetOperatorCapabilities(op))
 	require.NoError(t, ValidateWitnessCommand(&operatorv1.OperatorRuntimeConfig{}, "pwd"))
 	require.True(t, IsDataOperator(op))
 	require.False(t, IsDedicatedDataOperator(op))
@@ -223,20 +223,21 @@ func TestEmbeddedTypeImpliesDataAndWitnessCommands(t *testing.T) {
 func TestDataOperatorTiering(t *testing.T) {
 	embedded := tierOp("embedded-operator", constants.OperatorTypeEmbedded, "")
 	remote := tierOp("data", constants.OperatorTypeRemote, "host", constants.OperatorCapabilityData)
+	remote2 := tierOp("data-2", constants.OperatorTypeRemote, "host-2", constants.OperatorCapabilityData)
 
-	sel, err := SelectDataOperator([]*operatorv1.OperatorDocument{embedded, remote})
-	require.NoError(t, err)
-	require.Equal(t, "data", sel.OperatorID)
-
-	sel, err = SelectDataOperator([]*operatorv1.OperatorDocument{embedded})
+	sel, err := SelectDataOperator([]*operatorv1.OperatorDocument{remote, embedded, remote2})
 	require.NoError(t, err)
 	require.Equal(t, "embedded-operator", sel.OperatorID)
 
-	_, err = SelectDataOperator([]*operatorv1.OperatorDocument{remote, tierOp("data-2", constants.OperatorTypeRemote, "host-2", constants.OperatorCapabilityData)})
+	sel, err = SelectDataOperator([]*operatorv1.OperatorDocument{remote})
+	require.NoError(t, err)
+	require.Equal(t, "data", sel.OperatorID)
+
+	_, err = SelectDataOperator([]*operatorv1.OperatorDocument{remote, remote2})
 	require.ErrorIs(t, err, constants.ErrDataOperatorAmbiguous)
 
-	require.Equal(t, []*operatorv1.OperatorDocument{remote}, PreferDedicatedDataOperators([]*operatorv1.OperatorDocument{embedded, remote}))
-	require.Equal(t, []*operatorv1.OperatorDocument{embedded}, PreferDedicatedDataOperators([]*operatorv1.OperatorDocument{embedded}))
+	require.Equal(t, []*operatorv1.OperatorDocument{embedded}, PreferEmbeddedDataOperator([]*operatorv1.OperatorDocument{remote, embedded}))
+	require.Equal(t, []*operatorv1.OperatorDocument{remote, remote2}, PreferEmbeddedDataOperator([]*operatorv1.OperatorDocument{remote, remote2}))
 }
 
 func TestActiveDataOperators_EmbeddedWorkingDirectoryFromRuntimeConfig(t *testing.T) {
