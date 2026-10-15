@@ -41,7 +41,8 @@ rerun it, which replaces every link.
 
 `test/stripe-payment-links.test.js` runs the script offline against a fake Stripe CLI
 (`testdata/fake-stripe.js`). It covers creation, idempotent reruns, price changes, revision bumps, API
-errors, and test mode. After each deploy, `smoke/live.sh` checks that every homepage `/buy/` SKU redirects to a
+errors, and test mode. After each deploy, `smoke/live.sh` waits until the site answers with the deployed Worker
+version (the `x-ztd-worker-version` header, from the `CF_VERSION_METADATA` binding), then checks that every homepage `/buy/` SKU redirects to a
 loading live-mode Payment Link and that both terms pages are served.
 
 ## Build in Public

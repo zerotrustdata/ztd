@@ -52,6 +52,14 @@ test('worker serves site paths from static assets with security headers', async 
   assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
 });
 
+test('worker names its deployed version on every response for the post-deploy smoke', async () => {
+  const env = { ASSETS: noAssets, RELEASES: releases({}), CF_VERSION_METADATA: { id: '2eadabd4-a950-4a28-80ec-aa4c9e786c9c' } };
+  const redirect = await worker.fetch(new Request('https://www.zerotrustdata.io/'), env);
+  const missing = await worker.fetch(new Request('https://zerotrustdata.io/v/'), env);
+  assert.equal(redirect.headers.get('x-ztd-worker-version'), '2eadabd4-a950-4a28-80ec-aa4c9e786c9c');
+  assert.equal(missing.headers.get('x-ztd-worker-version'), '2eadabd4-a950-4a28-80ec-aa4c9e786c9c');
+});
+
 test('worker redirects www to the canonical hostname and preserves the request target', async () => {
   const response = await worker.fetch(new Request('https://www.zerotrustdata.io/docs/start?mode=local'), {
     ASSETS: { fetch: async () => { throw new Error('unexpected asset lookup'); } },
