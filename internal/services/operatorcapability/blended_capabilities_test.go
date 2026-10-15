@@ -39,7 +39,7 @@ func TestEveryOperatorCapabilityCombinationPreservesMembership(t *testing.T) {
 				op := &operatorv1.OperatorDocument{Id: "blend", OperatorSessionId: "session", OperatorType: string(operatorType), Status: string(constants.OperatorStatusActive), RuntimeConfig: cfg}
 				effective := capabilities.Canonical()
 				if operatorType == constants.OperatorTypeEmbedded {
-					effective = capabilities.WithData()
+					effective = capabilities.WithEmbeddedBaseline()
 				}
 				require.Equal(t, effective, GetOperatorCapabilities(op))
 				require.Equal(t, effective.Has(constants.OperatorCapabilityData), IsDataOperator(op))

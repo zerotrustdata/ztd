@@ -25,6 +25,7 @@ type InferenceOperatorStatus struct {
 	Status            string
 	InferenceEnabled  bool
 	OllamaEndpoint    string
+	Embedded          bool
 }
 
 // ActiveInferenceOperators returns every active remote or configured embedded
@@ -41,6 +42,7 @@ func ActiveInferenceOperators(operators []*operatorv1.OperatorDocument) []Infere
 			Status:            op.GetStatus(),
 			InferenceEnabled:  true,
 			OllamaEndpoint:    inferenceOperatorOllamaEndpoint(op),
+			Embedded:          op.GetOperatorType() == string(constants.OperatorTypeEmbedded),
 		})
 	}
 	return matches
@@ -48,7 +50,8 @@ func ActiveInferenceOperators(operators []*operatorv1.OperatorDocument) []Infere
 
 // SelectInferenceOperator resolves exactly one inference-capable Operator.
 // When sessionID is non-empty it must match an active inference Operator;
-// otherwise exactly one active inference Operator must exist.
+// otherwise the Gateway's embedded Operator is the default, and without it
+// exactly one active inference Operator must exist.
 func SelectInferenceOperator(operators []*operatorv1.OperatorDocument, sessionID string) (*InferenceOperatorStatus, error) {
 	return SelectInferenceOperatorForHardware(operators, sessionID, "")
 }
@@ -84,6 +87,12 @@ func SelectInferenceOperatorForHardware(
 			}
 		}
 		return nil, fmt.Errorf("%w: session %s", constants.ErrInferenceOperatorNotCapable, sessionID)
+	}
+	for _, match := range matches {
+		if match.Embedded {
+			selected := match
+			return &selected, nil
+		}
 	}
 	switch len(matches) {
 	case 0:

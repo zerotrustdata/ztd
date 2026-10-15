@@ -232,7 +232,7 @@ func (c *Client) DiscoverOperator(ctx context.Context) (string, string, error) {
 		matches = append(matches, op)
 	}
 	if c.cfg.OperatorID == "" && c.cfg.OperatorSessionID == "" {
-		matches = operatorcapability.PreferDedicatedDataOperators(matches)
+		matches = operatorcapability.PreferEmbeddedDataOperator(matches)
 	}
 	switch len(matches) {
 	case 0:

@@ -71,14 +71,13 @@ func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
 
 func TestValidateAgentDataOperator(t *testing.T) {
 	cases := []struct {
-		name     string
-		embedded bool
-		wd       string
-		project  string
-		ok       bool
+		name    string
+		wd      string
+		project string
+		ok      bool
 	}{
 		{name: "dedicated sandbox outside the project", wd: "/srv/eval-sandbox", project: "/srv/ztd", ok: true},
-		{name: "embedded operator", embedded: true, wd: "/srv/eval-sandbox", project: "/srv/ztd"},
+		{name: "embedded operator directory", wd: "/srv/ztd/.ztd/operators/embedded-operator", project: "/srv/ztd", ok: true},
 		{name: "project root", wd: "/srv/ztd/", project: "/srv/ztd"},
 		{name: "inside the project", wd: "/srv/ztd/sandbox", project: "/srv/ztd"},
 		{name: "ancestor of the project", wd: "/srv", project: "/srv/ztd"},
@@ -92,7 +91,7 @@ func TestValidateAgentDataOperator(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateAgentDataOperator(tc.embedded, tc.wd, tc.project)
+			err := ValidateAgentDataOperator(tc.wd, tc.project)
 			if tc.ok {
 				require.NoError(t, err)
 				return

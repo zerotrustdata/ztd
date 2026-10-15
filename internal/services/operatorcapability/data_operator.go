@@ -22,7 +22,7 @@ type DataOperatorStatus struct {
 	Status            string
 	WorkingDirectory  string
 	// Embedded is true for the Gateway's embedded Operator, whose working
-	// directory is the ztd project the Gateway was started from.
+	// directory is <runtime>/operators/embedded-operator.
 	Embedded bool
 }
 
@@ -33,30 +33,32 @@ func IsDataOperator(op *operatorv1.OperatorDocument) bool {
 }
 
 // IsDedicatedDataOperator reports whether op is an active Data session other
-// than the Gateway's embedded Operator. Selection prefers dedicated Data
-// Operators and falls back to the embedded one only when none is active.
+// than the Gateway's embedded Operator.
 func IsDedicatedDataOperator(op *operatorv1.OperatorDocument) bool {
 	return IsDataOperator(op) && constants.OperatorType(op.OperatorType) != constants.OperatorTypeEmbedded
 }
 
-// PreferDedicatedDataOperators drops the Gateway's embedded Operator when a
-// dedicated Data session is also present.
-func PreferDedicatedDataOperators(operators []*operatorv1.OperatorDocument) []*operatorv1.OperatorDocument {
-	dedicated := make([]*operatorv1.OperatorDocument, 0, len(operators))
+// isEmbeddedDataOperator reports whether op is the Gateway's active embedded
+// Operator, which is always a Data operator.
+func isEmbeddedDataOperator(op *operatorv1.OperatorDocument) bool {
+	return IsDataOperator(op) && constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded
+}
+
+// PreferEmbeddedDataOperator narrows operators to the Gateway's embedded
+// Operator when it is an active Data session; it is the default Data operator.
+// Otherwise operators is returned unchanged.
+func PreferEmbeddedDataOperator(operators []*operatorv1.OperatorDocument) []*operatorv1.OperatorDocument {
 	for _, op := range operators {
-		if IsDedicatedDataOperator(op) {
-			dedicated = append(dedicated, op)
+		if isEmbeddedDataOperator(op) {
+			return []*operatorv1.OperatorDocument{op}
 		}
 	}
-	if len(dedicated) == 0 {
-		return operators
-	}
-	return dedicated
+	return operators
 }
 
 // ActiveDataOperators returns the active data-operator sessions in preference
-// order: dedicated Data Operators (host-native Operators started with a data
-// role), else the Gateway's embedded Operator.
+// order: the Gateway's embedded Operator, the default Data operator, else the
+// dedicated Data Operators (host-native Operators started with a data role).
 func ActiveDataOperators(operators []*operatorv1.OperatorDocument) []DataOperatorStatus {
 	var dedicatedMatches []DataOperatorStatus
 	var embeddedMatches []DataOperatorStatus
@@ -83,12 +85,10 @@ func ActiveDataOperators(operators []*operatorv1.OperatorDocument) []DataOperato
 			dedicatedMatches = append(dedicatedMatches, status)
 		}
 	}
-	switch {
-	case len(dedicatedMatches) > 0:
-		return dedicatedMatches
-	default:
+	if len(embeddedMatches) > 0 {
 		return embeddedMatches
 	}
+	return dedicatedMatches
 }
 
 // extractWorkingDirectory reads the pwd from the operator's heartbeat.
