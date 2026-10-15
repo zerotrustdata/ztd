@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -117,9 +118,11 @@ func TestRunScale_RunsPhasesInOrderAndTearsDown(t *testing.T) {
 		assert.NotContains(t, argv, "--master-key-file")
 	}
 	layout := newScaleLayout(cfg.Root)
-	agentSock := filepath.Join(layout.Run, constants.RuntimeDirname, constants.EphemeralAgentDirname, constants.EphemeralAgentSocketFilename)
-	for _, call := range fake.calls {
-		assert.Contains(t, call.Env, string(constants.EnvVar.SSHAuthSock)+"="+agentSock, "every child seals under the run's ephemeral ssh-agent")
+	if runtime.GOOS == "linux" {
+		agentSock := filepath.Join(layout.Run, constants.RuntimeDirname, constants.EphemeralAgentDirname, constants.EphemeralAgentSocketFilename)
+		for _, call := range fake.calls {
+			assert.Contains(t, call.Env, string(constants.EnvVar.SSHAuthSock)+"="+agentSock, "every child seals under the run's ephemeral ssh-agent")
+		}
 	}
 	assert.Contains(t, argvs[2], "-e 127.0.0.1 --gateway-http-port 18080 --gateway-https-port 18443")
 	assert.Contains(t, argvs[2], "--count 100 --start-index 1 ")
