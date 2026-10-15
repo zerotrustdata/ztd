@@ -13,10 +13,10 @@ import { ReleaseSelector } from '../components/ReleaseSelector';
 import { matchesRelease, releaseLabel } from '../content/release';
 import {
   EmptyState,
-  OutcomeCounts,
   ProgressBar,
   QualityBadge,
   SectionHeading,
+  StatTile,
   formatTimestamp,
   formatDuration,
   formatPercent,
@@ -27,7 +27,8 @@ import {
   EVALUATION_QUALITY_FILTER_STATES,
   normalizeQualityFilter,
 } from '../utils/feed-state';
-import { campaignTerminalProgress, datasetLabel } from './derived';
+import { campaignTerminalProgress, datasetLabel, nativeResultTone, verifierStateTone } from './derived';
+import { OutcomeBreakdown, PanelSection, TonePill } from '../components/evidence';
 import { useSelectedRelease } from '../state/dataset';
 
 export function EvaluationsView() {
@@ -120,13 +121,17 @@ export function EvaluationsView() {
       {
         id: 'outcomes',
         header: 'Outcomes',
-        cell: ({ row }) => row.original.native_result ? row.original.native_result.summary_status : <OutcomeCounts outcomes={row.original.terminal_outcomes} />,
+        cell: ({ row }) => row.original.native_result ? <>
+          <TonePill tone={nativeResultTone(row.original.native_result.summary_status)}>{row.original.native_result.summary_status}</TonePill>
+          <p>{row.original.native_result.passed_verdict_count}/{row.original.native_result.required_verdict_count} verdicts passed</p>
+        </> : <OutcomeBreakdown outcomes={row.original.terminal_outcomes} />,
         enableSorting: false,
       },
       {
         id: 'verifier',
         header: 'Verifier',
         accessorKey: 'verifier_state',
+        cell: ({ row }) => <TonePill tone={verifierStateTone(row.original.verifier_state)} title={row.original.verifier_failure_summary}>{row.original.verifier_state.replace(/_/g, ' ')}</TonePill>,
       },
       {
         id: 'started',
@@ -138,7 +143,7 @@ export function EvaluationsView() {
         id: 'elapsed',
         header: 'Elapsed',
         accessorFn: (row: EvaluationSummary) => row.elapsed_seconds ?? 0,
-        cell: ({ row }) => (row.original.elapsed_seconds ? formatDuration(row.original.elapsed_seconds) : '—'),
+        cell: ({ row }) => (row.original.elapsed_seconds !== undefined ? formatDuration(row.original.elapsed_seconds) : '—'),
       },
       {
         id: 'pass_rate',
@@ -161,12 +166,21 @@ export function EvaluationsView() {
 
   return (
     <div className="evaluations-view">
-      <RoleLeadersPanel models={models} catalogs={catalogs} evaluations={releaseEvaluations} />
       <SectionHeading
         kicker="EVALUATIONS"
         title="Evaluation runs"
-        description="Published runs for the selected release across datasets. Each row shows release provenance, progress, verifier state, and headline metrics."
+        description="What has ztd been tested against, and did the evidence hold? Inspect conformance and model campaigns without averaging scores across suites."
       />
+
+      <div className="stat-tile-grid summary-strip" aria-label="Filtered evaluation summary">
+        <StatTile label="Runs" value={filtered.length} />
+        <StatTile label="Assignments" value={filtered.reduce((sum, run) => sum + run.assignment_total, 0)} />
+        <StatTile label="Verifier passed" value={filtered.filter((run) => run.verifier_state === 'passed').length} />
+        <StatTile label="Verifier failed" value={filtered.filter((run) => run.verifier_state === 'failed').length} />
+        <StatTile label="Verifier not run" value={filtered.filter((run) => run.verifier_state === 'not_run').length} />
+        <StatTile label="Conformance runs" value={filtered.filter((run) => run.native_result).length} />
+      </div>
+      <RoleLeadersPanel models={models} catalogs={catalogs} evaluations={releaseEvaluations} />
 
       <div className="eval-toolbar">
         <ReleaseSelector />
@@ -193,13 +207,36 @@ export function EvaluationsView() {
       </div>
 
       {filtered.length === 0 ? (
+        <div>
         <EmptyState
           hasRecords={evaluations.length > 0}
           hasFilters={releaseFilter !== 'all' || suiteFilter !== 'all' || statusFilter !== 'all' || effectiveQualityFilter !== 'all'}
           connection={connection}
         />
+        <p className="panel-note">Active filters: release {releaseFilter}, suite {suiteFilter}, status {statusFilter}, quality {effectiveQualityFilter}.</p>
+        <Link to="/evaluations?release=all">Reset filters</Link>
+        </div>
       ) : (
-        <DataTable data={filtered} columns={columns} pageSize={25} caption="Evaluation runs" />
+        <div className="program-groups">
+          {(['Governance conformance', 'Model campaigns'] as const).map((program) => {
+            const runs = filtered.filter((run) => Boolean(run.native_result) === (program === 'Governance conformance'));
+            if (runs.length === 0) return null;
+            return <PanelSection key={program} title={program}>
+              <DataTable data={runs} columns={columns} pageSize={25} caption={program}
+                renderCard={(run) => {
+                  const progress = campaignTerminalProgress(run);
+                  return <article className="run-card">
+                    <Link to={`/evaluations/${run.dataset_id}/${run.run_id}`}>{run.run_id}</Link>
+                    <p>{run.suite_id} · {releaseLabel(run)}</p>
+                    <TonePill tone={verifierStateTone(run.verifier_state)} title={run.verifier_failure_summary}>{run.verifier_state.replace(/_/g, ' ')}</TonePill>
+                    {run.native_result ? <TonePill tone={nativeResultTone(run.native_result.summary_status)}>{run.native_result.summary_status}</TonePill> : null}
+                    <ProgressBar completed={run.native_result?.passed_verdict_count ?? progress.done} total={run.native_result?.required_verdict_count ?? progress.total} label={`${run.run_id} progress`} />
+                    <QualityBadge state={run.quality_state} />
+                  </article>;
+                }} />
+            </PanelSection>;
+          })}
+        </div>
       )}
     </div>
   );

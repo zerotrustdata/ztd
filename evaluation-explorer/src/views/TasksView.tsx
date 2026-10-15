@@ -3,7 +3,7 @@
 
 // Task catalog — the frozen default-suite scenarios grouped by behavior category.
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
   CATALOG_SCENARIO_CATEGORIES,
@@ -23,6 +23,10 @@ import {
 import { ZTD_REPO_URL } from '../content/platform';
 import type { ScenarioCategory } from '../contract/types';
 import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection } from '../components/TaskPromptSection';
+import { DetailLayout, NON_VERDICT_NOTE, PageHero, PanelSection, TonePill } from '../components/evidence';
+import { assignmentVerdictTone, isNonVerdictOutcome } from './derived';
+import { useStoreState } from '../state/store';
+import { scrollToAnchor, scrollToAnchorOnClick } from '../utils/scroll';
 
 function categoryAnchor(category: ScenarioCategory): string {
   return `category-${category}`;
@@ -42,16 +46,18 @@ function TaskFlagNotes({ task }: { task: ScenarioTaskDefinition }) {
 
 function TaskDetailPanel({ task }: { task: ScenarioTaskDefinition }) {
   const meta = SCENARIO_CATEGORY_META[task.category];
+  const recent = useStoreState((state) => Array.from(state.assignments.values())
+    .filter((assignment) => assignment.task_id.split('@')[0] === task.id)
+    .sort((a, b) => b.observed_at.localeCompare(a.observed_at)).slice(0, 10));
 
   return (
-    <article className="panel task-detail" aria-labelledby="task-detail-title">
-      <header className="task-detail-head">
-        <p className="task-detail-eyebrow">
+    <article className="task-detail" aria-label={task.id}>
+        <nav className="breadcrumb" aria-label="Breadcrumb">
           <Link to="/tasks">All tasks</Link>
           <span aria-hidden="true"> / </span>
           <Link to={`/tasks#${categoryAnchor(task.category)}`}>{meta.label}</Link>
-        </p>
-        <h1 id="task-detail-title" className="task-detail-title">{task.id}</h1>
+        </nav>
+      <PageHero kicker={meta.label} title={task.id} tone="info">
         <p className="task-detail-lede">{task.publicDescription}</p>
         <div className="task-detail-meta">
           <TaskFlag>{meta.label}</TaskFlag>
@@ -59,26 +65,16 @@ function TaskDetailPanel({ task }: { task: ScenarioTaskDefinition }) {
           <TaskFlag>{TRAJECTORY_POLICY_META[task.trajectoryPolicy].label}</TaskFlag>
         </div>
         <TaskFlagNotes task={task} />
-      </header>
-
-      <div className="task-detail-body">
-        <TaskPromptSection task={task} />
-        <TaskProvidedSection task={task} />
-
-        <TaskExpectationSection task={task} />
-
-        <section className="task-detail-section">
-          <h2>Concepts measured</h2>
-          <p className="task-section-note">Tags for catalog grouping and campaign reporting.</p>
+      </PageHero>
+      <DetailLayout aside={<>
+        <PanelSection title="Concepts measured" note="Tags for catalog grouping and campaign reporting.">
           <ul className="task-concept-list">
             {task.requiredConcepts.map((concept) => (
               <li key={concept}><code>{concept}</code></li>
             ))}
           </ul>
-        </section>
-
-        <section className="task-detail-section task-detail-sources">
-          <h2>Source references</h2>
+        </PanelSection>
+        <PanelSection className="task-detail-sources" title="Source references">
           <ul>
             <li>
               <a href={scenarioTaskSourceUrl(task)} target="_blank" rel="noopener noreferrer">
@@ -96,15 +92,27 @@ function TaskDetailPanel({ task }: { task: ScenarioTaskDefinition }) {
               </a>
             </li>
           </ul>
-        </section>
-      </div>
+        </PanelSection>
+        {recent.length > 0 ? <PanelSection title="Recent assignments of this task">
+          <ul className="sibling-list">
+            {recent.map((assignment) => <li key={`${assignment.dataset_id}:${assignment.assignment_id}`}>
+              <Link to={`/evaluations/${assignment.dataset_id}/${assignment.run_id}/assignments/${assignment.assignment_id}`}>{assignment.assignment_id}</Link>
+              <TonePill tone={assignmentVerdictTone(assignment.terminal_status, assignment.verification_disposition)} title={isNonVerdictOutcome(assignment.terminal_status) ? NON_VERDICT_NOTE : undefined}>{assignment.terminal_status.replace(/_/g, ' ')}</TonePill>
+            </li>)}
+          </ul>
+        </PanelSection> : null}
+      </>}>
+        <TaskPromptSection task={task} />
+        <TaskProvidedSection task={task} />
+        <TaskExpectationSection task={task} />
+      </DetailLayout>
     </article>
   );
 }
 
 function TaskCard({ task }: { task: ScenarioTaskDefinition }) {
   return (
-    <article className="task-card" id={task.id}>
+    <article className={`task-card task-card-${task.category}`} id={task.id}>
       <header className="task-card-head">
         <h3>
           <Link to={`/tasks/${task.id}`}>{task.id}</Link>
@@ -121,6 +129,10 @@ function TaskCard({ task }: { task: ScenarioTaskDefinition }) {
         </span>
       </header>
       <p className="task-card-description">{task.publicDescription}</p>
+      <div className="task-detail-meta">
+        <TaskFlag>{TRAJECTORY_POLICY_META[task.trajectoryPolicy].label}</TaskFlag>
+        {task.allowedTools ? <TaskFlag>{task.allowedTools.length} allowed tools</TaskFlag> : null}
+      </div>
       <p className="task-card-prompt">{task.userPrompt}</p>
       <footer className="task-card-foot">
         <Link to={`/tasks/${task.id}`} className="task-card-detail-link">
@@ -167,6 +179,7 @@ export function TasksView() {
   const { taskId } = useParams();
   const navigate = useNavigate();
   const selectedTask = taskId ? SCENARIO_TASK_BY_ID.get(taskId) : undefined;
+  const [activeCategory, setActiveCategory] = useState('');
 
   useEffect(() => {
     if (taskId && !selectedTask) {
@@ -177,7 +190,7 @@ export function TasksView() {
   useEffect(() => {
     if (!taskId && window.location.hash) {
       const anchor = window.location.hash.slice(1);
-      document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth' });
+      scrollToAnchor(anchor);
     }
   }, [taskId]);
 
@@ -199,10 +212,11 @@ export function TasksView() {
                 <li key={category} className="tasks-sidebar-category">
                   <Link
                     to={taskId ? `/tasks#${categoryAnchor(category)}` : `#${categoryAnchor(category)}`}
+                    aria-current={(selectedTask?.category ?? activeCategory) === category ? 'location' : undefined}
                     onClick={(event) => {
                       if (!taskId) {
-                        event.preventDefault();
-                        document.getElementById(categoryAnchor(category))?.scrollIntoView({ behavior: 'smooth' });
+                        setActiveCategory(category);
+                        scrollToAnchorOnClick(categoryAnchor(category))(event);
                       }
                     }}
                   >

@@ -76,7 +76,9 @@ Publication is owned by the Go evaluation service. Campaign runs project lifecyc
 
 The overview first reconstructs bootstrap, complete paginated history, and the sealed snapshot, then connects SSE. A live run appears as queued, running, provisional assignment and metric updates, and finally completed, failed, or stopped without a refresh. Reload reconstructs the same state before SSE resumes. Current-standard verified, run-scoped verified, not fully verified, legacy unverified, in-progress, failed, unavailable, and not-evaluated states remain distinct; the site never averages datasets.
 
-The Evaluation runs table defaults to all quality states for the selected release, keeping active runs and failures visible beside verified history. Use its quality filter to inspect verified runs only.
+The Evaluations page defaults to all quality states for the selected release, keeping active runs and failures visible beside verified history. Its summary counts reflect the active filters; governance conformance and model campaigns have separate tables, rendered as cards below 900px. Use its quality filter to inspect verified runs only.
+
+Run detail follows the evidence from the run to assignments or conformance scenarios, verification, and the evidence bundle. Conformance scenario cards expand to versioned assertion verdicts; a rejected scenario is a correct refusal. Native metrics retain their published count or ratio units and numerator/denominator. Model verdicts (`completed`, `model_failed`) remain separate from infrastructure and evidence outcomes that are not counted for or against the model. Model and task detail link back to the assignments that supply their evidence; an unmeasured model says “Not evaluated.” Missing evidence is never rendered as a measured zero.
 
 The Evals leaderboard admits only scored models with exactly 100% evaluation coverage and current-standard or run-scoped verification. Each role leader ranks by pass rate descending, advertised parameter count ascending, then completed evaluation elapsed time ascending. Size comes from the model tag or name (billions or millions of parameters); elapsed time comes from a dataset containing one homogeneous model run. Unknown sizes and durations follow known values, with model name and variant ID providing a stable final order. Size and evaluation time appear beside each leader.
 
@@ -124,7 +126,7 @@ npm run build
 npm audit --audit-level=moderate
 ```
 
-After `npm run build`, run `make build` to refresh the embedded explorer, then restart the Gateway. The production runtime names only `https://opendevops.ai`. External browsers reach that origin through the dedicated `opendevops-feed` Cloudflare Tunnel, which terminates at loopback `http://127.0.0.1:8082`.
+From the repository root, run `make explorer-embed` to refresh the committed explorer assets, then `make explorer-embed-check` to verify them and `make build` to compile them into the binary. `make ci-explorer` checks for drift without refreshing the embed. Restart the Gateway to serve the new binary. The production runtime names only `https://opendevops.ai`. External browsers reach that origin through the dedicated `opendevops-feed` Cloudflare Tunnel, which terminates at loopback `http://127.0.0.1:8082`.
 
 ## Host service supervision
 

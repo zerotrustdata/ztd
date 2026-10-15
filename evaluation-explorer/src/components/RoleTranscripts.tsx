@@ -25,7 +25,7 @@ function label(value: string): string {
 function ToolCall({ call, index }: { call: RoleTranscriptToolCall; index: number }) {
   const outcome = call.success ? 'Succeeded' : call.error_type ? `Failed · ${label(call.error_type)}` : 'Failed';
   return (
-    <li className="transcript-tool-call">
+    <li className={`transcript-tool-call ${call.success ? 'transcript-tool-call-ok' : 'transcript-tool-call-failed'}`}>
       <div className="transcript-tool-call-header">
         <span className="transcript-step">{index + 1}</span>
         <code className="transcript-tool-name">{call.tool_name}</code>

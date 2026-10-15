@@ -35,6 +35,11 @@ export const ABOUT_SITE_INTRO_AFTER =
   ' — a zero-trust execution platform between people, AI systems, and the systems they affect. Evaluations are one application of ztd: this Explorer makes their results and available evidence inspectable.';
 
 export const ABOUT_PURPOSE_HEADING = 'Capable help. Control stays with you.';
+export const ABOUT_EVIDENCE_PRINCIPLES = [
+  'A model can ask, but it cannot act directly: governed execution crosses the Gateway and Operator boundary.',
+  'Every governed action is signed at the execution boundary and recorded by the executing Operator.',
+  'Published verification metadata binds results to evidence that can be verified offline; mirror availability is not verification.',
+] as const;
 export const ABOUT_PURPOSE =
   'An AI system can investigate, reason, and propose work. ztd separates that reasoning from the authority to act, so people can get useful help without surrendering control of their systems and data.';
 

@@ -15,11 +15,11 @@ import {
   emptyStateReason,
   FRESHNESS_DELAYED_MS,
   qualityStateLabel,
-  qualityStateTone,
   type FeedConnectionState,
   type FeedStatus,
   type StreamConnectionState,
 } from '../utils/feed-state';
+import { qualityStateTone } from '../views/derived';
 import { metricDisplay, formatPercent, formatNumber, formatLatency, formatThroughput, formatTokens, formatDuration, formatTimestamp, formatRelativeTime } from '../utils/format';
 export const toneClass: Record<string, string> = {
   ok: 'tone-ok',
@@ -117,18 +117,20 @@ export function MetricCard({
   metric,
   formatter,
   hint,
+  variant = 'card',
 }: {
   label: string;
   metric: MetricValue | RunMetricValue | undefined;
   formatter: (value: number) => string;
   hint?: string;
+  variant?: 'card' | 'tile';
 }) {
   const display = metricDisplay(metric, formatter);
   const coverage = metric && 'observed_count' in metric
     ? `${metric.observed_count} observed / ${metric.eligible_count} eligible`
     : undefined;
   return (
-    <div className="metric-card" data-testid={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}>
+    <div className={variant === 'tile' ? 'stat-tile' : 'metric-card'} data-testid={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}>
       <div className="metric-label">{label}</div>
       <div className={`metric-value${display.unavailable ? ' unavailable' : ''}`}>
         {display.text}

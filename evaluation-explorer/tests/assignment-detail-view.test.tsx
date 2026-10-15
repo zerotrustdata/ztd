@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, SnapshotRecord } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { AssignmentDetailView } from '../src/views/AssignmentDetailView';
+import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
 
 const DATASET_ID = 'ds-assignment-test';
 const RUN_ID = 'run-assignment-test';
@@ -66,6 +67,12 @@ function renderAssignment(records: AssignmentResult[]): void {
 describe('AssignmentDetailView', () => {
   beforeEach(() => {
     evalStore.loadFixtures([], []);
+  });
+
+  it('omits an empty scores panel when every published tool dimension is not applicable', () => {
+    renderAssignment([{ ...fixtureEnrichedAssignmentResult, dataset_id: DATASET_ID, run_id: RUN_ID, assignment_id: ASSIGNMENT_ID }]);
+    expect(screen.queryByRole('heading', { name: 'Scores' })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="#assignment-scores"]')).not.toBeInTheDocument();
   });
 
   it('shows only observed scoring data for a thin record', () => {
@@ -319,7 +326,9 @@ describe('AssignmentDetailView', () => {
 
     expect(screen.getByRole('heading', { name: 'What the model did' })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(screen.getAllByText('no_scored_calls')).toHaveLength(2);
+    // Missingness is stated once, inside the failure diagnosis, not repeated in the hero.
+    expect(screen.getAllByText('no_scored_calls')).toHaveLength(1);
+    expect(screen.getByRole('alert')).toHaveTextContent('no_scored_calls');
     expect(screen.getByText(/No free-text response or tool activity was captured/)).toBeInTheDocument();
     expect(screen.getByText(/Result: Model failed\./)).toBeInTheDocument();
   });

@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { SnapshotRecord } from '../src/contract/types';
+import { NATIVE_SCENARIO_STATUSES } from '../src/contract/types';
+import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
 import { evalStore } from '../src/state/store';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 
@@ -34,6 +36,52 @@ const nativeEvaluation = {
 describe('native evaluation detail', () => {
   beforeEach(() => {
     evalStore.loadFixtures([catalog, nativeEvaluation] as unknown as SnapshotRecord[], []);
+  });
+
+  it.each(NATIVE_SCENARIO_STATUSES)('renders scenario %s with its distinct conformance tone and expandable verdicts', (status) => {
+    evalStore.loadFixtures([catalog, { ...nativeEvaluation, native_result: { ...nativeEvaluation.native_result,
+      scenarios: [{ ...nativeEvaluation.native_result.scenarios[0], status }],
+    } }] as unknown as SnapshotRecord[], []);
+    render(<MemoryRouter initialEntries={['/evaluations/native-core-execution-boundary/native-run-1']}><Routes><Route path="/evaluations/:datasetId/:runId" element={<EvaluationDetailView />} /></Routes></MemoryRouter>);
+    const scenario = screen.getByText('allowed-execution-occurs-once@1.0.0').closest('details')!;
+    const expected = { completed: 'ok', rejected: 'ok', failed: 'critical', unavailable: 'neutral', unsupported: 'neutral', invalid_evidence: 'warn' };
+    expect(within(scenario).getByText(status)).toHaveAttribute('data-tone', expected[status]);
+    expect(scenario).not.toHaveAttribute('open');
+    fireEvent.click(scenario.querySelector('summary')!);
+    expect(scenario).toHaveAttribute('open');
+    expect(within(scenario).getByText('allowed-effect-count@1.0.0')).toBeVisible();
+  });
+
+  it('renders native ratio and count measurements and failed independent verification', () => {
+    evalStore.loadFixtures([catalog, { ...nativeEvaluation, native_result: { ...nativeEvaluation.native_result,
+      verification_valid: false, verification_failure_count: 2,
+      metrics: [...nativeEvaluation.native_result.metrics, { metric_id: 'effects', metric_version: '1.0.0', numerator: 3, denominator: 4, value: 3, unit: 'count' }],
+    } }] as unknown as SnapshotRecord[], []);
+    render(<MemoryRouter initialEntries={['/evaluations/native-core-execution-boundary/native-run-1']}><Routes><Route path="/evaluations/:datasetId/:runId" element={<EvaluationDetailView />} /></Routes></MemoryRouter>);
+    expect(screen.getByTestId('stat-required-verdict-pass-rate@1.0.0')).toHaveTextContent('100.0%');
+    expect(screen.getByTestId('stat-required-verdict-pass-rate@1.0.0')).toHaveTextContent('2 / 2');
+    expect(screen.getByTestId('stat-effects@1.0.0')).toHaveTextContent('3 / 4');
+    expect(screen.getByText('Invalid (2 failures)')).toHaveAttribute('data-tone', 'critical');
+    expect(screen.queryByRole('link', { name: 'Watch it Live' })).not.toBeInTheDocument();
+  });
+
+  it('filters campaign assignments into model verdicts and non-verdict outcomes', () => {
+    const run = { ...nativeEvaluation, native_result: undefined, evaluation_unit: 'model' };
+    evalStore.loadFixtures([catalog, run, ...(['completed', 'model_failed', 'grader_failed', 'running'] as const).map((status) => ({
+      ...fixtureEnrichedAssignmentResult, dataset_id: run.dataset_id, run_id: run.run_id, assignment_id: `assignment-${status}`, terminal_status: status, verification_disposition: 'not_run',
+    }))] as unknown as SnapshotRecord[], []);
+    render(<MemoryRouter initialEntries={['/evaluations/native-core-execution-boundary/native-run-1']}><Routes><Route path="/evaluations/:datasetId/:runId" element={<EvaluationDetailView />} /></Routes></MemoryRouter>);
+    const assignments = within(screen.getByRole('region', { name: 'Assignments (4)' }));
+    expect(assignments.getByText('grader failed')).toHaveAttribute('data-tone', 'warn');
+    expect(assignments.getByText('grader failed')).toHaveAttribute('title', expect.stringContaining('not counted for or against it'));
+    fireEvent.change(assignments.getByRole('combobox', { name: 'Filter assignments by verdict' }), { target: { value: 'verdict' } });
+    expect(assignments.getByRole('link', { name: 'assignment-completed' })).toBeInTheDocument();
+    expect(assignments.getByRole('link', { name: 'assignment-model_failed' })).toBeInTheDocument();
+    expect(assignments.queryByRole('link', { name: 'assignment-grader_failed' })).not.toBeInTheDocument();
+    fireEvent.change(assignments.getByRole('combobox', { name: 'Filter assignments by verdict' }), { target: { value: 'non-verdict' } });
+    expect(assignments.getByRole('link', { name: 'assignment-grader_failed' })).toBeInTheDocument();
+    expect(assignments.queryByRole('link', { name: 'assignment-completed' })).not.toBeInTheDocument();
+    expect(assignments.queryByRole('link', { name: 'assignment-running' })).not.toBeInTheDocument();
   });
 
   it('renders the native summary, verification, scenarios, and verdicts without model claims', () => {

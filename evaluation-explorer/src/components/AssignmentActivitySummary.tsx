@@ -18,10 +18,26 @@ function label(value: string): string {
   return value.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
 }
 
+type RecordTone = 'ok' | 'warn' | 'critical' | 'neutral';
+
+/** Status dot for a graded outcome: pass and fail are results; the remaining
+ *  outcomes are evidence gaps and never read as a pass or a failure. */
+function outcomeTone(outcome: string): RecordTone {
+  if (outcome === 'pass') return 'ok';
+  if (outcome === 'fail') return 'critical';
+  if (outcome === 'invalid_evidence' || outcome === 'unsupported') return 'warn';
+  return 'neutral';
+}
+
+/** A policy that stopped the call is the boundary working, shown as a stop, not a failure. */
+function policyTone(outcome: string): RecordTone {
+  return outcome === 'allow' ? 'ok' : 'warn';
+}
+
 function ModelRecord({ record }: { record: PublicModelActivityRecord }) {
   const summary = `${record.variant_id} · ${label(record.model_role)}${record.agent_persona ? ` · ${record.agent_persona}` : ''}`;
   return (
-    <details className="activity-record-details">
+    <details className="activity-record-details" data-tone="neutral">
       <summary className="activity-record-summary">{summary}</summary>
       <div className="activity-record-expanded">
         <DetailRow label="Variant">{record.variant_id}</DetailRow>
@@ -67,7 +83,7 @@ function ModelRecord({ record }: { record: PublicModelActivityRecord }) {
 function ToolDecisionRecord({ record }: { record: PublicToolDecisionActivityRecord }) {
   const summary = `${record.tool_label || 'Unlabeled tool'} · ${record.selected ? 'Selected' : 'Not selected'}`;
   return (
-    <details className="activity-record-details">
+    <details className="activity-record-details" data-tone={record.permission_compliant ? outcomeTone(record.outcome) : 'critical'}>
       <summary className="activity-record-summary">{summary}</summary>
       <div className="activity-record-expanded">
         <DetailRow label="Tool label">{record.tool_label || 'Unlabeled tool'}</DetailRow>
@@ -88,7 +104,7 @@ function ToolCallRecord({ record }: { record: PublicToolCallActivityRecord }) {
   const guidance = record.guidance_shown ? ' · guidance shown' : '';
   const summary = `${turn}${record.tool_label || 'Unlabeled tool'} · Execution: ${label(record.execution_outcome)}${guidance}`;
   return (
-    <details className="activity-record-details">
+    <details className="activity-record-details" data-tone={outcomeTone(record.execution_outcome)}>
       <summary className="activity-record-summary">{summary}</summary>
       <div className="activity-record-expanded">
         <DetailRow label="Tool label">{record.tool_label || 'Unlabeled tool'}</DetailRow>
@@ -107,7 +123,7 @@ function ToolCallRecord({ record }: { record: PublicToolCallActivityRecord }) {
 function PolicyRecord({ record }: { record: PublicPolicyDecisionActivityRecord }) {
   const summary = `${record.tool_label || 'Unlabeled tool'} · Outcome: ${label(record.outcome)}`;
   return (
-    <details className="activity-record-details">
+    <details className="activity-record-details" data-tone={policyTone(record.outcome)}>
       <summary className="activity-record-summary">{summary}</summary>
       <div className="activity-record-expanded">
         <DetailRow label="Tool label">{record.tool_label || 'Unlabeled tool'}</DetailRow>
@@ -121,8 +137,9 @@ function PolicyRecord({ record }: { record: PublicPolicyDecisionActivityRecord }
 
 function GovernedActionRecord({ record }: { record: PublicGovernedActionActivityRecord }) {
   const summary = `${record.action_label} · Policy: ${label(record.reported_policy_outcome)}`;
+  const tone: RecordTone = record.receipt_status === 'reported' ? policyTone(record.reported_policy_outcome) : 'neutral';
   return (
-    <details className="activity-record-details">
+    <details className="activity-record-details" data-tone={tone}>
       <summary className="activity-record-summary">{summary}</summary>
       <div className="activity-record-expanded">
         <DetailRow label="Action label">{record.action_label}</DetailRow>

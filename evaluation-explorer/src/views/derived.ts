@@ -18,18 +18,28 @@
 //     reported separately, not silently dropped.
 
 import { MODEL_ROLE_WIRE_ORDER, MODEL_ROLES } from '../content/roles';
+import { SCENARIO_CATEGORY_COPY, TRAJECTORY_POLICY_META } from '../content/scenario-task';
+import { SECURITY_PRIVACY_EVENTS, TERMINAL_STATUSES } from '../contract/types';
 import type {
   AssignmentResult,
   CatalogSnapshot,
   EnvironmentSource,
+  EscalationDisposition,
   EvaluationSummary,
   LiveEvent,
+  LifecycleStatus,
   MetricValue,
   ModelRole,
   ModelSummary,
+  NativeResultStatus,
+  NativeScenarioStatus,
   ProviderEnvironment,
   ReleaseProvenance,
+  SecurityPrivacyEvent,
+  PublicActivityFamily,
+  PublicGovernedActionActivityRecord,
   PublicGradeExplanationCode,
+  PublicPolicyDecisionActivityRecord,
   PublicSemanticGradeSummary,
   QualityState,
   SuiteSummary,
@@ -430,6 +440,345 @@ export function assignmentVerdictLabel(
   if (verification === 'failed') return `${terminal} · verification failed`;
   if (verification === 'not_applicable') return terminal;
   return terminal;
+}
+
+export type EvidenceTone = 'ok' | 'info' | 'warn' | 'critical' | 'neutral';
+
+function unreachableStatus(state: never): never {
+  throw new Error(`Unknown evidence status: ${state}`);
+}
+
+export function lifecycleStateTone(state: LifecycleStatus): EvidenceTone {
+  switch (state) {
+    case 'queued': return 'neutral';
+    case 'running': return 'info';
+    case 'completed': return 'ok';
+    case 'failed': return 'critical';
+    case 'stopped': return 'warn';
+    default: return unreachableStatus(state);
+  }
+}
+
+export function verifierStateTone(state: VerifierState): EvidenceTone {
+  switch (state) {
+    case 'passed': return 'ok';
+    case 'failed': return 'critical';
+    case 'not_run':
+    case 'not_applicable': return 'neutral';
+    default: return unreachableStatus(state);
+  }
+}
+
+export function nativeResultTone(state: NativeResultStatus): EvidenceTone {
+  switch (state) {
+    case 'pass': return 'ok';
+    case 'fail': return 'critical';
+    case 'unavailable':
+    case 'unsupported': return 'neutral';
+    case 'invalid_evidence': return 'warn';
+    default: return unreachableStatus(state);
+  }
+}
+
+export function nativeScenarioTone(state: NativeScenarioStatus): EvidenceTone {
+  switch (state) {
+    case 'completed':
+    case 'rejected': return 'ok';
+    case 'failed': return 'critical';
+    case 'unavailable':
+    case 'unsupported': return 'neutral';
+    case 'invalid_evidence': return 'warn';
+    default: return unreachableStatus(state);
+  }
+}
+
+export function qualityStateTone(state: QualityState): EvidenceTone {
+  switch (state) {
+    case 'verified_public': return 'ok';
+    case 'exploratory_verified':
+    case 'live_in_progress': return 'info';
+    case 'exploratory_partial':
+    case 'legacy_unverified': return 'warn';
+    case 'terminal_failed':
+    case 'dead_evidence': return 'critical';
+    case 'not_evaluated':
+    case 'unavailable': return 'neutral';
+    default: return unreachableStatus(state);
+  }
+}
+
+export function terminalOutcomeBreakdown(outcomes: Partial<Record<TerminalStatus, number>> | undefined) {
+  if (!outcomes) return undefined;
+  const verdicts: Array<{ status: TerminalStatus; count: number; tone: EvidenceTone }> = [];
+  const nonVerdicts: typeof verdicts = [];
+  for (const status of TERMINAL_STATUSES) {
+    const count = outcomes[status];
+    if (count === undefined || count <= 0) continue;
+    const entry = { status, count, tone: assignmentVerdictTone(status, undefined) };
+    switch (status) {
+      case 'completed':
+      case 'model_failed': verdicts.push(entry); break;
+      case 'grader_failed':
+      case 'invalid_evidence':
+      case 'stopped':
+      case 'provider_failed':
+      case 'execution_failed':
+      case 'escalated': nonVerdicts.push(entry); break;
+      default: unreachableStatus(status);
+    }
+  }
+  const verdictCount = verdicts.reduce((sum, entry) => sum + entry.count, 0);
+  const nonVerdictCount = nonVerdicts.reduce((sum, entry) => sum + entry.count, 0);
+  return { verdicts, nonVerdicts, verdictCount, nonVerdictCount, total: verdictCount + nonVerdictCount };
+}
+
+/** Verdict tone. Only completed and model_failed are verdicts on the model;
+ *  every other terminal status ended without one and reads as a warning, not
+ *  as a model failure. A failed verification overrides the terminal status. */
+export function assignmentVerdictTone(
+  terminalStatus: AssignmentResult['terminal_status'],
+  verification: AssignmentResult['verification_disposition'],
+): EvidenceTone {
+  if (verification === 'failed') return 'critical';
+  if (terminalStatus === 'completed') return 'ok';
+  if (terminalStatus === 'model_failed') return 'critical';
+  if (terminalStatus === 'running' || terminalStatus === 'queued') return 'info';
+  return 'warn';
+}
+
+export function isNonVerdictOutcome(status: AssignmentResult['terminal_status']): boolean {
+  switch (status) {
+    case 'completed':
+    case 'model_failed':
+    case 'queued':
+    case 'running': return false;
+    case 'grader_failed':
+    case 'invalid_evidence':
+    case 'stopped':
+    case 'provider_failed':
+    case 'execution_failed':
+    case 'escalated': return true;
+    default: return unreachableStatus(status);
+  }
+}
+
+/** One link in an assignment's evidence chain, from the scenario to the
+ *  downloadable audit slice. An unpublished or unavailable link says so; it
+ *  never reads as an observed zero. */
+export interface EvidenceChainStep {
+  key: 'scenario' | 'model' | 'tool_calls' | 'policy' | 'governed_actions' | 'graded' | 'verified' | 'audit_slice';
+  label: string;
+  value: string;
+  tone: EvidenceTone;
+  detail?: string;
+}
+
+type ChainValue = Pick<EvidenceChainStep, 'value' | 'tone' | 'detail'>;
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function activityFamilyChainValue<T>(
+  family: PublicActivityFamily<T> | undefined,
+  observed: (records: T[]) => ChainValue,
+): ChainValue {
+  if (!family) return { value: 'Not published', tone: 'neutral' };
+  if (family.availability === 'not_applicable') return { value: 'Not applicable', tone: 'neutral', detail: 'not applicable to this scenario' };
+  if (family.availability === 'unavailable') {
+    return { value: 'Unavailable', tone: 'neutral', detail: family.unavailable_reason.replace(/_/g, ' ') };
+  }
+  return observed(family.records);
+}
+
+function modelChainValue(assignment: AssignmentResult): ChainValue {
+  const transcripts = assignment.role_transcripts ?? [];
+  if (transcripts.length > 0) return { value: countLabel(transcripts.length, 'role trace'), tone: 'info' };
+  if (assignment.activity_summary) {
+    return activityFamilyChainValue(assignment.activity_summary.model_activity, (records) => ({
+      value: countLabel(records.length, 'invocation'),
+      tone: records.length > 0 ? 'info' : 'neutral',
+    }));
+  }
+  if (assignment.model_response) return { value: 'Response captured', tone: 'info' };
+  return { value: 'Not published', tone: 'neutral' };
+}
+
+function toolCallChainValue(assignment: AssignmentResult): ChainValue {
+  const transcripts = assignment.role_transcripts ?? [];
+  const traced = transcripts.flatMap((transcript) => transcript.tool_calls ?? []);
+  if (traced.length > 0) {
+    const failed = traced.filter((call) => !call.success).length;
+    return {
+      value: countLabel(traced.length, 'call'),
+      tone: failed > 0 ? 'warn' : 'info',
+      detail: failed > 0 ? `${failed} failed` : 'all succeeded',
+    };
+  }
+  if (assignment.activity_summary) {
+    return activityFamilyChainValue(assignment.activity_summary.tool_calls, (records) => {
+      const failed = records.filter((record) => record.execution_outcome === 'fail').length;
+      return {
+        value: countLabel(records.length, 'call'),
+        tone: records.length === 0 ? 'neutral' : failed > 0 ? 'warn' : 'info',
+        detail: failed > 0 ? `${failed} failed` : undefined,
+      };
+    });
+  }
+  if (transcripts.length > 0) return { value: '0 calls', tone: 'neutral' };
+  return { value: 'Not published', tone: 'neutral' };
+}
+
+function policyChainValue(records: PublicPolicyDecisionActivityRecord[]): ChainValue {
+  if (records.length === 0) return { value: '0 decisions', tone: 'neutral' };
+  const counts = new Map<string, number>();
+  for (const record of records) counts.set(record.outcome, (counts.get(record.outcome) ?? 0) + 1);
+  const stopped = records.some((record) => record.outcome !== 'allow');
+  return {
+    value: Array.from(counts, ([outcome, count]) => `${count} ${outcome}`).join(' · '),
+    tone: stopped ? 'warn' : 'ok',
+    detail: countLabel(records.length, 'decision'),
+  };
+}
+
+function governedActionChainValue(records: PublicGovernedActionActivityRecord[]): ChainValue {
+  if (records.length === 0) return { value: '0 actions', tone: 'neutral' };
+  const reported = records.filter((record) => record.receipt_status === 'reported').length;
+  return {
+    value: countLabel(records.length, 'action'),
+    tone: reported === records.length ? 'ok' : 'warn',
+    detail: `${reported} of ${records.length} receipts reported`,
+  };
+}
+
+function gradedChainValue(assignment: AssignmentResult): ChainValue {
+  const chips = assignmentGradeChips(assignment);
+  if (chips.length === 0) return { value: 'Not graded', tone: 'neutral' };
+  const passed = chips.filter((chip) => chip.status === 'pass').length;
+  const statuses = new Set(chips.map((chip) => chip.status));
+  const tone: EvidenceTone = statuses.has('fail')
+    ? 'critical'
+    : statuses.has('invalid_evidence') || statuses.has('unsupported')
+      ? 'warn'
+      : statuses.has('unavailable')
+        ? 'info'
+        : 'ok';
+  return { value: `${passed}/${chips.length} passed`, tone, detail: countLabel(chips.length, 'criterion', 'criteria') };
+}
+
+function verifiedChainValue(assignment: AssignmentResult): ChainValue {
+  const state = assignment.verification_disposition ?? assignment.verification_metadata?.verifier_state;
+  const detail = assignment.verification_metadata?.provenance === 'legacy_unbound' ? 'legacy, unbound' : undefined;
+  switch (state) {
+    case 'passed': return { value: 'Verified', tone: 'ok', detail };
+    case 'failed': return { value: 'Failed', tone: 'critical', detail };
+    case 'not_run': return { value: 'Not run', tone: 'neutral', detail };
+    case 'not_applicable': return { value: 'Not applicable', tone: 'neutral', detail };
+    default: return { value: 'Not published', tone: 'neutral' };
+  }
+}
+
+/** True when the assignment publishes both halves of its offline audit slice. */
+export function assignmentHasAuditSlice(assignment: AssignmentResult): boolean {
+  const kinds = new Set((assignment.evidence_bindings ?? []).map((binding) => binding.kind));
+  return kinds.has('assignment_audit_slice') && kinds.has('assignment_audit_vault_key');
+}
+
+/** The assignment's evidence chain in execution order: what was asked, what
+ *  the model did, what governance decided and recorded, how it was graded and
+ *  verified, and whether the signed audit slice can be checked offline. */
+export function assignmentEvidenceChain(assignment: AssignmentResult): EvidenceChainStep[] {
+  const activity = assignment.activity_summary;
+  const scenario = assignment.scenario_summary;
+  const category = scenario?.category ?? assignment.scenario_category;
+  const scenarioValue: ChainValue = scenario?.trajectory_policy
+    ? { value: TRAJECTORY_POLICY_META[scenario.trajectory_policy].label, tone: 'info', detail: category ? SCENARIO_CATEGORY_COPY[category].label : undefined }
+    : category
+      ? { value: SCENARIO_CATEGORY_COPY[category].label, tone: 'info' }
+      : { value: 'Uncatalogued', tone: 'neutral' };
+  const audit: ChainValue = assignmentHasAuditSlice(assignment)
+    ? { value: 'Published', tone: 'ok', detail: 'SQLite + vault key' }
+    : { value: 'Not published', tone: 'neutral' };
+  return [
+    { key: 'scenario', label: 'Scenario', ...scenarioValue },
+    { key: 'model', label: 'Model', ...modelChainValue(assignment) },
+    { key: 'tool_calls', label: 'Tool calls', ...toolCallChainValue(assignment) },
+    { key: 'policy', label: 'Policy', ...(activity ? activityFamilyChainValue(activity.policy_decisions, policyChainValue) : { value: 'Not published', tone: 'neutral' as const }) },
+    { key: 'governed_actions', label: 'Governed actions', ...(activity ? activityFamilyChainValue(activity.governed_actions, governedActionChainValue) : { value: 'Not published', tone: 'neutral' as const }) },
+    { key: 'graded', label: 'Graded', ...gradedChainValue(assignment) },
+    { key: 'verified', label: 'Verified', ...verifiedChainValue(assignment) },
+    { key: 'audit_slice', label: 'Audit slice', ...audit },
+  ];
+}
+
+/** One security, privacy, or escalation observation for an assignment. */
+export interface AssignmentSignal {
+  key: string;
+  label: string;
+  value: string;
+  tone: EvidenceTone;
+}
+
+const ESCALATION_DISPOSITION_SIGNAL: Record<EscalationDisposition, Pick<AssignmentSignal, 'value' | 'tone'>> = {
+  correct_autonomous_completion: { value: 'Correct autonomous completion', tone: 'ok' },
+  correct_escalation: { value: 'Correct escalation', tone: 'ok' },
+  false_escalation: { value: 'False escalation', tone: 'warn' },
+  missed_escalation: { value: 'Missed escalation', tone: 'critical' },
+};
+
+/** Events whose occurrence is a breach; a recorded zero is the boundary holding. */
+const SECURITY_BREACH_EVENTS: ReadonlySet<SecurityPrivacyEvent> = new Set<SecurityPrivacyEvent>([
+  'sensitive_data_sent_externally',
+  'unnecessary_data_sent_externally',
+  'model_attempted_unauthorized_access',
+  'tool_attempted_unauthorized_operation',
+  'audit_record_tampered',
+]);
+
+/** Events whose occurrence is a control doing its job. */
+const SECURITY_CONTROL_EVENTS: ReadonlySet<SecurityPrivacyEvent> = new Set<SecurityPrivacyEvent>([
+  'policy_prevented_disclosure',
+  'authorization_correctly_enforced',
+  'secret_redaction_successful',
+  'audit_record_complete',
+]);
+
+function securityEventTone(event: SecurityPrivacyEvent, count: number): EvidenceTone {
+  if (SECURITY_BREACH_EVENTS.has(event)) return count > 0 ? 'critical' : 'ok';
+  if (SECURITY_CONTROL_EVENTS.has(event)) return count > 0 ? 'ok' : 'neutral';
+  return 'neutral';
+}
+
+/** Escalation disposition, then every published security/privacy event count
+ *  in contract order. An event the record does not publish is omitted, never
+ *  shown as zero. */
+export function assignmentSecuritySignals(assignment: AssignmentResult): AssignmentSignal[] {
+  const observations = assignment.benchmark_observations;
+  const signals: AssignmentSignal[] = [];
+  if (observations?.escalation_disposition) {
+    signals.push({ key: 'escalation', label: 'Escalation', ...ESCALATION_DISPOSITION_SIGNAL[observations.escalation_disposition] });
+  }
+  const events = observations?.security_privacy_events ?? {};
+  for (const event of SECURITY_PRIVACY_EVENTS) {
+    const count = events[event];
+    if (count === undefined) continue;
+    signals.push({
+      key: event,
+      label: event.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase()),
+      value: formatNumber(count),
+      tone: securityEventTone(event, count),
+    });
+  }
+  const correlated = observations?.correlated_failure;
+  if (correlated) {
+    signals.push({
+      key: 'correlated_failure',
+      label: 'Correlated failure',
+      value: `${correlated.semantic_error_code.replace(/_/g, ' ')} · ${correlated.affected_roles.map(roleLabel).join(', ')}`,
+      tone: 'critical',
+    });
+  }
+  return signals;
 }
 
 /** Formatter for one assignment-level scoring metric card. */

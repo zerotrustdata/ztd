@@ -14,7 +14,8 @@ import {
 } from './shared';
 import { roleLabel, roleLeaderRows } from '../views/derived';
 import type { CatalogSnapshot, EvaluationSummary, ModelRole, ModelSummary, QualityState } from '../contract/types';
-import { qualityStateLabel, qualityStateTone } from '../utils/feed-state';
+import { qualityStateLabel } from '../utils/feed-state';
+import { qualityStateTone } from '../views/derived';
 
 function agentStatus(state: QualityState): { label: string; tone: string } {
   return { label: qualityStateLabel(state), tone: qualityStateTone(state) };
@@ -59,7 +60,7 @@ export function RoleLeadersPanel({
   const provisional = roleLeadersUseProvisionalColumns(roleRows, catalogByDataset);
 
   return (
-    <section className="panel role-leaders-panel" aria-label="Leaderboard">
+    <section className="evidence-panel role-leaders-panel" aria-label="Leaderboard">
       <div className="panel-head">
         <h2>
           Leaderboard{' '}

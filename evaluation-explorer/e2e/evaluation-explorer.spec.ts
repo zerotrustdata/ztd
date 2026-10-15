@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { FIXTURE_RELEASE } from '../src/fixtures/fixtures';
+import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult, fixtureModelSummaries, fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
 
 const mirrorOrigin = process.env.ZTD_PUBLIC_MIRROR_ORIGIN ?? 'http://127.0.0.1:8082';
 const datasetId = 'native-core-execution-boundary';
@@ -69,8 +69,7 @@ function nativeEvaluation(runId: string) {
   };
 }
 
-async function installMirror(page: Page): Promise<void> {
-  const records = runIds.map(nativeEvaluation);
+async function installMirror(page: Page, records: object[] = runIds.map(nativeEvaluation)): Promise<void> {
   await page.route(`${mirrorOrigin}/**`, async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/bootstrap') {
@@ -144,10 +143,12 @@ async function expectNativeRun(page: Page, runId: string) {
   await expect(page.getByText('core-execution-boundary@1.0.0', { exact: true })).toBeVisible();
   await expect(page.getByText('10/10 required invariants passed', { exact: true })).toBeVisible();
   await expect(page.getByText('Valid (0 failures)', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'allowed-execution-occurs-once@1.0.0' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'prohibited-equivalent-causes-no-additional-effect@1.0.0' })).toBeVisible();
-  await expect(page.locator('.native-scenario').filter({ hasText: 'allowed-execution-occurs-once' })).toContainText('Status: completed');
-  await expect(page.locator('.native-scenario').filter({ hasText: 'prohibited-equivalent-causes-no-additional-effect' })).toContainText('Status: rejected');
+  await expect(page.locator('.native-scenario summary').filter({ hasText: 'allowed-execution-occurs-once@1.0.0' })).toBeVisible();
+  const rejected = page.locator('.native-scenario').filter({ hasText: 'prohibited-equivalent-causes-no-additional-effect' });
+  await expect(rejected.locator('summary .terminal-pill')).toHaveAttribute('data-tone', 'ok');
+  await expect(rejected.locator('summary')).toContainText('rejected');
+  await rejected.locator('summary').click();
+  await expect(rejected.locator('li').first()).toBeVisible();
   await expect(page.locator('.native-scenario li')).toHaveCount(10);
 }
 
@@ -183,4 +184,26 @@ test('reconstructs native evaluations from public mirror history', async ({ page
 
   expect(consoleErrors).toEqual([]);
   expect(failedRequests.filter((url) => !url.includes('/stream?'))).toEqual([]);
+});
+
+test('follows the evidence from a campaign through its assignment, model and task', async ({ page }) => {
+  const assignment = { ...fixtureEnrichedAssignmentResult, dataset_id: 'ds-live-navigation', run_id: 'navigation-run', assignment_id: 'navigation-assignment', variant_id: 'navigation-model' };
+  const model = { ...fixtureModelSummaries[0]!, dataset_id: assignment.dataset_id, variant_id: assignment.variant_id, role: assignment.role, display_name: 'Navigation model' };
+  const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: assignment.dataset_id, run_id: assignment.run_id, model_role_mapping: { [assignment.role]: assignment.variant_id } };
+  await installMirror(page, [run, model, assignment]);
+  await page.goto('/evaluations?release=all');
+  await page.getByRole('link', { name: run.run_id, exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: run.run_id })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Evidence chain' }).getByRole('link', { name: /Assignments/ }).click();
+  await expect.poll(() => page.locator('#run-results').evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(200);
+  await page.getByRole('region', { name: 'Assignments (1)' }).getByRole('link', { name: assignment.assignment_id }).click();
+  await expect(page.getByRole('heading', { level: 1, name: assignment.task_id })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Evidence chain' }).locator('a[href="#assignment-trail"]').first().click();
+  await expect(page.getByRole('heading', { name: 'What the model did' })).toBeVisible();
+  await page.locator('.evidence-meta').getByRole('link', { name: assignment.variant_id }).click();
+  await expect(page.getByRole('heading', { level: 1, name: model.display_name })).toBeVisible();
+  await page.getByRole('region', { name: 'Assignments (1)' }).getByRole('link', { name: /navigation-assignment/ }).click();
+  await page.goto(`/tasks/${assignment.task_id}`);
+  await expect(page.getByRole('heading', { level: 1, name: assignment.task_id })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Recent assignments of this task' }).getByRole('link', { name: assignment.assignment_id })).toBeVisible();
 });

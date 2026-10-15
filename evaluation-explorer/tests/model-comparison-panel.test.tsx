@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ModelComparisonPanel } from '../src/components/ModelComparisonPanel';
 import type { EnvironmentSource, ModelSummary } from '../src/contract/types';
@@ -31,6 +31,20 @@ function renderPanel(environmentSource: EnvironmentSource | undefined, models: M
 }
 
 describe('ModelComparisonPanel', () => {
+  it('distinguishes measured zero from inventory and clears the selected comparison', () => {
+    const onClear = vi.fn();
+    render(<MemoryRouter><ModelComparisonPanel models={[
+      { ...model('measured-zero', 'ds-a'), pass_rate: { estimate: 0, lower: 0, upper: 0.4, denominator: 3 } },
+      { ...model('inventory', 'ds-a'), inventory_only: true, quality_state: 'not_evaluated' },
+    ]} onClear={onClear} /></MemoryRouter>);
+    const row = within(screen.getByRole('rowheader', { name: 'Pass rate' }).closest('tr')!);
+    expect(row.getByText('0.0%')).toBeInTheDocument();
+    expect(row.getByText('n=3')).toBeInTheDocument();
+    expect(row.getByText('Not evaluated')).toBeInTheDocument();
+    expect(screen.getByText('inventory', { selector: '.terminal-pill' })).toHaveAttribute('data-tone', 'neutral');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear comparison' }));
+    expect(onClear).toHaveBeenCalledOnce();
+  });
   it('describes a same-dataset comparison without a dataset row', () => {
     renderPanel(undefined, [model('model-a', 'ds-a'), model('model-b', 'ds-a')]);
 

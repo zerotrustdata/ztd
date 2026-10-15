@@ -6,10 +6,11 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from './DataTable';
-import { EmptyState, QualityBadge, SectionHeading, formatTimestamp } from './shared';
+import { EmptyState, QualityBadge, formatTimestamp } from './shared';
+import { NON_VERDICT_NOTE, PanelSection, TonePill } from './evidence';
 import type { AssignmentResult, TerminalStatus } from '../contract/types';
 import type { FeedConnectionState } from '../utils/feed-state';
-import { isFailureTerminalStatus, roleLabel } from '../views/derived';
+import { assignmentVerdictTone, isFailureTerminalStatus, isNonVerdictOutcome, roleLabel } from '../views/derived';
 
 function observationLabel(value: string): string {
   return value.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
@@ -56,7 +57,7 @@ export function RunFailuresSection({ assignments, connection }: RunFailuresSecti
         id: 'status',
         header: 'Failure class',
         accessorKey: 'terminal_status',
-        cell: ({ row }) => observationLabel(row.original.terminal_status),
+        cell: ({ row }) => <TonePill tone={assignmentVerdictTone(row.original.terminal_status, row.original.verification_disposition)} title={isNonVerdictOutcome(row.original.terminal_status) ? NON_VERDICT_NOTE : undefined}>{observationLabel(row.original.terminal_status)}</TonePill>,
       },
       {
         id: 'category',
@@ -85,12 +86,7 @@ export function RunFailuresSection({ assignments, connection }: RunFailuresSecti
   );
 
   return (
-    <section className="run-failures">
-      <SectionHeading
-        kicker="FAILURES"
-        title="Terminal failures"
-        description="Failed, grader-failed, invalid-evidence, or stopped assignments for this run remain in the dataset."
-      />
+    <PanelSection className="run-failures" title="Terminal failures" note="All terminal failures remain in the dataset. Infrastructure and evidence failures are not counted for or against the model.">
 
       <div className="view-toolbar">
         <label className="filter-control">
@@ -113,6 +109,6 @@ export function RunFailuresSection({ assignments, connection }: RunFailuresSecti
       ) : (
         <DataTable columns={columns} data={failures} caption="Terminal failures for this run" />
       )}
-    </section>
+    </PanelSection>
   );
 }

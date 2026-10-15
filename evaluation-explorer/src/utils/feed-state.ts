@@ -237,29 +237,6 @@ export function normalizeQualityFilter(selected: string, options: QualityFilterO
   return options.some((option) => option.value === selected) ? selected : 'all';
 }
 
-export function qualityStateTone(state: QualityState): 'ok' | 'info' | 'warn' | 'critical' | 'neutral' {
-  switch (state) {
-    case 'verified_public':
-      return 'ok';
-    case 'exploratory_verified':
-      return 'info';
-    case 'exploratory_partial':
-      return 'warn';
-    case 'legacy_unverified':
-      return 'warn';
-    case 'live_in_progress':
-      return 'info';
-    case 'terminal_failed':
-      return 'critical';
-    case 'dead_evidence':
-      return 'critical';
-    case 'not_evaluated':
-      return 'neutral';
-    case 'unavailable':
-      return 'neutral';
-  }
-}
-
 export function emptyStateReason(
   hasRecords: boolean,
   hasFilters: boolean,

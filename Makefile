@@ -206,7 +206,7 @@ help:
 		'  ci                        Run the complete local CI pipeline' \
 		'  ci-platform               Run platform, protocol, and documentation CI' \
 		'  ci-console                Run console and adapter checks; refresh embeds' \
-		'  ci-explorer               Run evaluation explorer checks; refresh its embed' \
+		'  ci-explorer               Run evaluation explorer checks and verify its embed' \
 		'  ci-protocol               Run Node protocol tests and Go conformance vectors' \
 		'  ci-website                Run website tests and build' \
 		'' \
@@ -265,6 +265,7 @@ help:
 		'  console-test              Run console tests' \
 		'  console-lint              Typecheck and lint the console' \
 		'  explorer-embed            Build and embed the evaluation explorer' \
+		'  explorer-embed-check      Check the committed explorer embed for drift' \
 		'  explorer-test             Run evaluation explorer tests' \
 		'  explorer-lint             Typecheck and lint the evaluation explorer' \
 		'  claude-plugin-test        Test, shellcheck, and validate the Claude Code plugin' \
@@ -542,6 +543,13 @@ $(EXPLORER_EMBED)/index.html: $(EXPLORER_DIST)/index.html
 
 .PHONY: explorer-embed
 explorer-embed: $(EXPLORER_EMBED)/index.html
+
+# Always rebuild: CI must compare the committed embed, never refresh it first.
+.PHONY: explorer-embed-check
+explorer-embed-check: evaluation-explorer/node_modules/.package-lock.json
+	@npm run build --prefix evaluation-explorer
+	@diff -r $(EXPLORER_DIST) $(EXPLORER_EMBED) >/dev/null || { echo "ERROR: $(EXPLORER_EMBED) is stale; run 'make explorer-embed' and commit the result"; exit 1; }
+	@echo "Embedded explorer is current."
 
 CONSOLE_DIST := console/dist
 CONSOLE_EMBED := internal/services/gateway/console/static
@@ -984,7 +992,7 @@ ci-console: dev-check
 ci-explorer: dev-check
 	@$(MAKE) explorer-lint
 	@$(MAKE) explorer-test
-	@$(MAKE) explorer-embed
+	@$(MAKE) explorer-embed-check
 	@echo "Evaluation explorer CI complete."
 
 .PHONY: ci-protocol

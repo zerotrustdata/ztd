@@ -14,15 +14,16 @@ import { releaseLabel } from '../content/release';
 import { recordKey, useStoreState } from '../state/store';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { RunFailuresSection } from '../components/RunFailuresSection';
+import { DetailLayout, EvidenceChain, NON_VERDICT_NOTE, OutcomeBreakdown, PageHero, PanelSection, TonePill } from '../components/evidence';
+import { UnifiedGradeBadges } from '../components/UnifiedGradeBadges';
 import {
   DetailRow,
   EmptyState,
   ErrorState,
   MetricCard,
-  OutcomeCounts,
   ProgressBar,
   QualityBadge,
-  SectionHeading,
+  StatTile,
   SafeSourceLink,
   UnavailableValue,
   formatTimestamp,
@@ -33,7 +34,7 @@ import {
   formatNumber,
 } from '../components/shared';
 import type { AssignmentResult, VerifierState } from '../contract/types';
-import { campaignTerminalProgress, roleLabel } from './derived';
+import { assignmentVerdictTone, campaignTerminalProgress, isNonVerdictOutcome, lifecycleStateTone, nativeResultTone, nativeScenarioTone, roleLabel, verifierStateTone } from './derived';
 
 const verifierStateLabels: Record<VerifierState, string> = {
   not_run: 'Not yet verified',
@@ -63,17 +64,21 @@ export function EvaluationDetailView() {
   );
   const connection = useStoreState((state) => state.connection);
   const [assignmentSearch, setAssignmentSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const filteredAssignments = useMemo(() => {
-    if (!assignmentSearch) return assignments;
     const needle = assignmentSearch.toLowerCase();
     return assignments.filter(
-      (a) =>
-        a.assignment_id.toLowerCase().includes(needle) ||
+      (a) => {
+        const verdict = a.terminal_status === 'completed' || a.terminal_status === 'model_failed';
+        if (statusFilter === 'verdict' && !verdict) return false;
+        if (statusFilter === 'non-verdict' && (verdict || a.terminal_status === 'running' || a.terminal_status === 'queued')) return false;
+        return a.assignment_id.toLowerCase().includes(needle) ||
         a.task_id.toLowerCase().includes(needle) ||
-        a.variant_id.toLowerCase().includes(needle),
+        a.variant_id.toLowerCase().includes(needle);
+      },
     );
-  }, [assignments, assignmentSearch]);
+  }, [assignments, assignmentSearch, statusFilter]);
 
   const assignmentColumns = useMemo<DataTableColumn<AssignmentResult>[]>(
     () => [
@@ -96,14 +101,16 @@ export function EvaluationDetailView() {
         cell: ({ row }) => roleLabel(row.original.role),
       },
       { id: 'rep', header: 'Rep', accessorKey: 'repetition' },
-      { id: 'status', header: 'Status', accessorKey: 'terminal_status' },
+      { id: 'status', header: 'Status', accessorKey: 'terminal_status', cell: ({ row }) => <TonePill tone={assignmentVerdictTone(row.original.terminal_status, row.original.verification_disposition)} title={isNonVerdictOutcome(row.original.terminal_status) ? NON_VERDICT_NOTE : undefined}>{row.original.terminal_status.replace(/_/g, ' ')}</TonePill> },
       {
         id: 'verification',
         header: 'Verification',
         accessorFn: (row: AssignmentResult) => row.verification_disposition ?? '',
         cell: ({ row }) =>
-          row.original.verification_disposition ?? '—',
+          row.original.verification_disposition ? <TonePill tone={verifierStateTone(row.original.verification_disposition)}>{verifierStateLabels[row.original.verification_disposition]}</TonePill> : <UnavailableValue reason="verification not published" />,
       },
+      { id: 'criteria', header: 'Criteria', cell: ({ row }) => <UnifiedGradeBadges assignment={row.original} />, enableSorting: false },
+      { id: 'duration', header: 'Duration', cell: ({ row }) => row.original.resource_summary?.latency_ms?.value !== undefined ? formatLatency(row.original.resource_summary.latency_ms.value) : <UnavailableValue reason="duration not published" />, enableSorting: false },
     ],
     [],
   );
@@ -117,6 +124,7 @@ export function EvaluationDetailView() {
     ['Latency p50', run.headline_metrics.latency_p50_ms],
     ['Output throughput p50', run.headline_metrics.output_throughput_p50_tokens_per_second],
   ] as const) {
+    if (metric?.unavailable_reason) headlineLimitations.add(`${label}: ${metric.unavailable_reason}`);
     if (metric && 'unavailable_count' in metric && metric.value !== undefined && metric.unavailable_count > 0) {
       headlineLimitations.add(`${label}: ${metric.observed_count} of ${metric.eligible_count} eligible assignments contributed evidence.`);
     }
@@ -130,25 +138,33 @@ export function EvaluationDetailView() {
         <span>{run.run_id}</span>
       </nav>
 
-      <SectionHeading
-        kicker="EVALUATION DETAIL"
+      <PageHero
+        kicker={run.native_result ? 'Conformance run' : 'Model campaign'}
         title={run.run_id}
-        description={run.campaign_id ? `Campaign: ${run.campaign_id}` : undefined}
-      />
-
+        tone={run.native_result ? nativeResultTone(run.native_result.summary_status) : lifecycleStateTone(run.lifecycle_state)}
+        meta={<><span>{run.suite_id}</span><span>{releaseLabel(run)}</span><code>{run.dataset_id}</code>{run.started_at ? <span>{formatTimestamp(run.started_at)}</span> : null}{run.elapsed_seconds !== undefined ? <span>{formatDuration(run.elapsed_seconds)}</span> : null}</>}
+        verdict={<><TonePill tone={run.native_result ? nativeResultTone(run.native_result.summary_status) : lifecycleStateTone(run.lifecycle_state)}>{run.native_result?.summary_status ?? run.lifecycle_state}</TonePill>{!run.native_result ? <TonePill tone={verifierStateTone(run.verifier_state)} title={run.verifier_failure_summary}>{verifierStateLabels[run.verifier_state]}</TonePill> : null}</>}
+      >
       <div className="quality-banner">
         <QualityBadge state={run.quality_state} />
-        <span className="lifecycle-state">{run.lifecycle_state}</span>
         {run.verifier_failure_summary ? <span className="verifier-failure">{run.verifier_failure_summary}</span> : null}
       </div>
-
-      <section className="run-identity">
-        <h2>Run identity</h2>
+      {headlineLimitations.size > 0 ? <ul className="catalog-limitations">{Array.from(headlineLimitations).map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}
+      <EvidenceChain steps={[
+        { key: 'run', label: 'Run', value: run.lifecycle_state, tone: lifecycleStateTone(run.lifecycle_state) },
+        { key: 'results', label: run.native_result ? 'Scenarios' : 'Assignments', value: run.native_result ? `${run.native_result.passed_verdict_count}/${run.native_result.required_verdict_count} verdicts passed` : `${campaignTerminalProgress(run).done}/${run.assignment_total} terminal`, tone: run.native_result ? nativeResultTone(run.native_result.summary_status) : run.assignment_failed > 0 ? 'warn' : 'info' },
+        { key: 'verification', label: 'Verification', value: run.native_result ? run.native_result.verification_valid ? 'Valid' : 'Invalid' : run.verifier_state === 'not_run' ? 'Pending verification' : verifierStateLabels[run.verifier_state], tone: run.native_result ? run.native_result.verification_valid ? 'ok' : 'critical' : verifierStateTone(run.verifier_state) },
+        { key: 'evidence', label: 'Evidence bundle', value: run.evidence_link ? 'Published' : 'Not published', tone: run.evidence_link ? 'info' : 'neutral' },
+      ]} targets={{ run: 'run-identity', results: 'run-results', verification: 'run-verification', evidence: 'run-evidence' }} />
+      {run.lifecycle_state === 'running' || run.lifecycle_state === 'queued' ? <Link to="/" className="campaign-primary-action">Watch it Live</Link> : null}
+      </PageHero>
+      <DetailLayout aside={<>
+      <PanelSection id="run-identity" title="Run identity">
         <dl>
           <DetailRow label="Run ID">{run.run_id}</DetailRow>
-          <DetailRow label="Suite">{run.suite_id}</DetailRow>
           <DetailRow label="Execution arm">{run.arm}</DetailRow>
           <DetailRow label="Evaluation unit">{run.evaluation_unit ? `${run.evaluation_unit.charAt(0).toUpperCase()}${run.evaluation_unit.slice(1)} evaluation` : <UnavailableValue reason="not observed in this dataset" />}</DetailRow>
+          {/* T41: remove */}
           <DetailRow label="Stack identity">{run.stack_id ?? (run.evaluation_unit === 'model' ? 'Not applicable' : <UnavailableValue reason="not observed in this dataset" />)}</DetailRow>
           <DetailRow label="Campaign">{run.campaign_id ?? <UnavailableValue reason="no campaign recorded" />}</DetailRow>
           <DetailRow label="Platform release">{releaseLabel(run)}</DetailRow>
@@ -156,15 +172,13 @@ export function EvaluationDetailView() {
           <DetailRow label="Started">{run.started_at ? formatTimestamp(run.started_at) : '—'}</DetailRow>
           <DetailRow label="Ended">{run.ended_at ? formatTimestamp(run.ended_at) : '—'}</DetailRow>
           <DetailRow label="Elapsed">{run.elapsed_seconds ? formatDuration(run.elapsed_seconds) : '—'}</DetailRow>
-          <DetailRow label="Verifier state">{verifierStateLabels[run.verifier_state]}</DetailRow>
           {run.native_result ? <DetailRow label="Active posture">{run.native_result.active_posture}</DetailRow> : null}
           {run.native_result ? <DetailRow label="Lane">{run.native_result.lane}</DetailRow> : null}
         </dl>
-      </section>
+      </PanelSection>
 
       {run.model_role_mapping && Object.keys(run.model_role_mapping).length > 0 ? (
-        <section className="run-roles">
-          <h2>Model-role mapping</h2>
+        <PanelSection title="Model-role mapping">
           <ul className="role-mapping">
             {Object.entries(run.model_role_mapping).map(([role, variantId]) => (
               <li key={role}>
@@ -173,11 +187,27 @@ export function EvaluationDetailView() {
               </li>
             ))}
           </ul>
-        </section>
+        </PanelSection>
       ) : null}
 
-      <section className="run-progress">
-        <h2>{run.native_result ? 'Invariant summary' : 'Assignment progress'}</h2>
+      <PanelSection id="run-verification" title="Verification summary">
+        <dl>
+          <DetailRow label="Verifier state"><TonePill tone={verifierStateTone(run.verifier_state)}>{verifierStateLabels[run.verifier_state]}</TonePill></DetailRow>
+          {run.native_result ? <DetailRow label="Independent verification"><TonePill tone={run.native_result.verification_valid ? 'ok' : 'critical'}>{run.native_result.verification_valid ? 'Valid' : 'Invalid'} ({run.native_result.verification_failure_count} failures)</TonePill></DetailRow> : null}
+          {run.verification_metadata?.verifier_release_version ? <DetailRow label="Verifier release">{run.verification_metadata.verifier_release_version}</DetailRow> : null}
+          {run.verification_metadata?.verifier_contract_version ? <DetailRow label="Verifier contract">{run.verification_metadata.verifier_contract_version}</DetailRow> : null}
+          {run.verification_metadata?.report_digest ? <DetailRow label="Report digest">{run.verification_metadata.report_digest}</DetailRow> : null}
+          {run.verification_metadata?.population_digest ? <DetailRow label="Population digest">{run.verification_metadata.population_digest}</DetailRow> : null}
+          {run.verification_metadata?.verified_at ? <DetailRow label="Verified at">{formatTimestamp(run.verification_metadata.verified_at)}</DetailRow> : null}
+          {run.verifier_failure_summary ? <DetailRow label="Failure summary">{run.verifier_failure_summary}</DetailRow> : null}
+        </dl>
+      </PanelSection>
+      <PanelSection id="run-evidence" title="Evidence bundle">
+        {run.evidence_link ? <SafeSourceLink href={run.evidence_link} label="Public-safe evidence" /> : <p className="panel-note">Evidence bundle not published.</p>}
+      </PanelSection>
+      </>}>
+
+      <PanelSection title={run.native_result ? 'Invariant summary' : 'Assignment progress'}>
         <ProgressBar
           completed={
             run.native_result?.passed_verdict_count ??
@@ -189,72 +219,44 @@ export function EvaluationDetailView() {
           }
           label={run.native_result ? 'Required invariants' : 'Assignments'}
         />
-        {run.native_result ? <p>{run.native_result.summary}</p> : <OutcomeCounts outcomes={run.terminal_outcomes} />}
-      </section>
+        {run.native_result ? <><p>{run.native_result.summary}</p><TonePill tone="info">{run.native_result.active_posture} · {run.native_result.lane}</TonePill></> : <OutcomeBreakdown outcomes={run.terminal_outcomes} />}
+      </PanelSection>
 
-      <div className="run-live-action">
-        <Link to="/" className="campaign-primary-action">
-          Watch it Live
-        </Link>
-      </div>
-
-      <section className="run-metrics">
-        <h2>Headline metrics</h2>
-        <div className="metric-grid">
-          <MetricCard label="Pass rate" metric={run.headline_metrics.pass_rate} formatter={formatPercent} />
-          {!run.native_result ? <MetricCard label="Latency p50" metric={run.headline_metrics.latency_p50_ms} formatter={formatLatency} /> : null}
-          {!run.native_result ? <MetricCard label="Output throughput p50" metric={run.headline_metrics.output_throughput_p50_tokens_per_second ?? run.headline_metrics.throughput} formatter={formatThroughput} /> : null}
+      {!run.native_result ? <PanelSection title="Headline metrics">
+        <div className="stat-tile-grid">
+          <MetricCard variant="tile" label="Pass rate" metric={run.headline_metrics.pass_rate} formatter={formatPercent} />
+          <MetricCard variant="tile" label="Latency p50" metric={run.headline_metrics.latency_p50_ms} formatter={formatLatency} />
+          <MetricCard variant="tile" label="Output throughput p50" metric={run.headline_metrics.output_throughput_p50_tokens_per_second ?? run.headline_metrics.throughput} formatter={formatThroughput} />
+          {/* T41: remove */}
           {!run.native_result && run.evaluation_unit === 'system' ? <MetricCard label="Primary invocation share" metric={run.primary_invocation_share} formatter={formatPercent} /> : null}
+          {/* T41: remove */}
           {!run.native_result && run.evaluation_unit === 'system' ? <MetricCard label="Correlated failure rate" metric={run.correlated_failure_rate} formatter={formatPercent} /> : null}
         </div>
+        {/* T41: remove */}
         {!run.native_result && run.evaluation_unit === 'model' ? (
           <p>Heterogeneous routing and correlation metrics appear only for system evaluations.</p>
         ) : null}
-        {headlineLimitations.size > 0 ? (
-          <ul className="catalog-limitations">
-            {Array.from(headlineLimitations).map((reason) => <li key={reason}>{reason}</li>)}
-          </ul>
-        ) : null}
-      </section>
-
-      <section className="run-verification">
-        <h2>Verification summary</h2>
-        <dl>
-          <DetailRow label="Verifier state">{verifierStateLabels[run.verifier_state]}</DetailRow>
-          {run.native_result ? (
-            <DetailRow label="Independent verification">
-              {run.native_result.verification_valid ? 'Valid' : 'Invalid'} ({run.native_result.verification_failure_count} failures)
-            </DetailRow>
-          ) : null}
-          {run.verification_metadata?.verifier_release_version ? <DetailRow label="Verifier release">{run.verification_metadata.verifier_release_version}</DetailRow> : null}
-          {run.verification_metadata?.verifier_contract_version ? <DetailRow label="Verifier contract">{run.verification_metadata.verifier_contract_version}</DetailRow> : null}
-          {run.verification_metadata?.report_digest ? <DetailRow label="Report digest">{run.verification_metadata.report_digest}</DetailRow> : null}
-          {run.verification_metadata?.population_digest ? <DetailRow label="Population digest">{run.verification_metadata.population_digest}</DetailRow> : null}
-          {run.verification_metadata?.verified_at ? <DetailRow label="Verified at">{formatTimestamp(run.verification_metadata.verified_at)}</DetailRow> : null}
-          {run.verifier_failure_summary ? <DetailRow label="Failure summary">{run.verifier_failure_summary}</DetailRow> : null}
-        </dl>
-      </section>
+      </PanelSection> : null}
 
       {run.native_result ? (
-        <section className="run-native-scenarios">
-          <h2>Scenario and invariant results</h2>
+        <PanelSection id="run-results" title="Scenario and invariant results">
+          <div className="native-scenario-grid">
           {run.native_result.scenarios.map((scenario) => (
-            <article key={scenario.scenario_id} className="native-scenario">
-              <h3>{scenario.scenario_id}@{scenario.scenario_version}</h3>
-              <p>Status: {scenario.status}</p>
+            <details key={scenario.scenario_id} className="native-scenario">
+              <summary><strong>{scenario.scenario_id}@{scenario.scenario_version}</strong><TonePill tone={nativeScenarioTone(scenario.status)}>{scenario.status}</TonePill></summary>
               <ul>
                 {scenario.verdicts.map((verdict) => (
                   <li key={verdict.assertion_id}>
-                    <strong>{verdict.assertion_id}@{verdict.assertion_version}</strong>: {verdict.status}
+                    <strong>{verdict.assertion_id}@{verdict.assertion_version}</strong>: <TonePill tone={nativeResultTone(verdict.status)}>{verdict.status}</TonePill>
                   </li>
                 ))}
               </ul>
-            </article>
+            </details>
           ))}
-        </section>
+          </div>
+        </PanelSection>
       ) : (
-        <section className="run-assignments">
-          <h2>Assignments ({formatNumber(assignments.length)})</h2>
+        <PanelSection id="run-results" title={`Assignments (${formatNumber(assignments.length)})`}>
           {assignments.length === 0 ? (
             <p>No assignment results for this run.</p>
           ) : (
@@ -266,28 +268,29 @@ export function EvaluationDetailView() {
                 aria-label="Search assignments"
                 onChange={(e) => setAssignmentSearch(e.target.value)}
               />
+              <select aria-label="Filter assignments by verdict" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">All statuses</option><option value="verdict">Model verdicts</option><option value="non-verdict">Non-verdict outcomes</option>
+              </select>
               <DataTable
                 data={filteredAssignments}
                 columns={assignmentColumns}
                 pageSize={50}
                 caption={`Assignments for ${run.run_id}`}
-                empty={<p>No assignments match the search.</p>}
+                empty={<p>No assignments match the search or status filter.</p>}
               />
             </>
           )}
-        </section>
+        </PanelSection>
       )}
 
-      {run.evidence_link ? (
-        <section className="run-evidence">
-          <h2>Source</h2>
-          <SafeSourceLink href={run.evidence_link} label="Public-safe evidence" />
-        </section>
-      ) : null}
+      {run.native_result && run.native_result.metrics.length > 0 ? <PanelSection title="Native metrics"><div className="stat-tile-grid">
+        {run.native_result.metrics.map((metric) => <StatTile key={`${metric.metric_id}@${metric.metric_version}`} label={`${metric.metric_id}@${metric.metric_version}`} value={metric.unit === 'ratio' ? formatPercent(metric.value) : formatNumber(metric.value)} hint={`${formatNumber(metric.numerator)} / ${formatNumber(metric.denominator)}`} />)}
+      </div></PanelSection> : null}
 
       {!run.native_result ? (
         <RunFailuresSection assignments={assignments} connection={connection} />
       ) : null}
+      </DetailLayout>
     </div>
   );
 }

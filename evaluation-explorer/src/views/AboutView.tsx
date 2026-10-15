@@ -15,6 +15,7 @@ import {
   ABOUT_PRINCIPLES,
   ABOUT_PURPOSE,
   ABOUT_PURPOSE_HEADING,
+  ABOUT_EVIDENCE_PRINCIPLES,
   ABOUT_SITE_INTRO_AFTER,
   ABOUT_SITE_INTRO_BEFORE,
   ZTD_CORE_DOCS,
@@ -24,6 +25,7 @@ import {
   PLATFORM_CONTACT_LINKEDIN,
 } from '../content/platform';
 import { StreamStatusIndicator } from '../components/shared';
+import { PageHero, PanelSection } from '../components/evidence';
 import { useConnection, useStoreState } from '../state/store';
 
 export function AboutView() {
@@ -31,24 +33,20 @@ export function AboutView() {
   const streamConnection = useStoreState((state) => state.streamConnection);
 
   return (
-    <div className="about">
-      <section className="panel about-panel" aria-label="About this deployment">
-        <div className="panel-head">
-          <h2>About</h2>
-          <StreamStatusIndicator
+    <section className="about" aria-label="About this deployment">
+      <PageHero kicker="About" title={ABOUT_PURPOSE_HEADING} tone="info" verdict={<StreamStatusIndicator
             streamConnection={streamConnection}
             feedConnection={connection}
-          />
-        </div>
-
-        <div className="sys-platform">
+          />}>
           <p className="sys-platform-lede">
             {ABOUT_SITE_INTRO_BEFORE}
             <strong>ztd</strong>
             {ABOUT_SITE_INTRO_AFTER}
           </p>
 
-          <h3 className="sys-platform-heading">{ABOUT_PURPOSE_HEADING}</h3>
+      </PageHero>
+      <div className="about-grid">
+        <PanelSection title="Purpose">
           <p className="sys-platform-lede">{ABOUT_PURPOSE}</p>
           <ul className="about-highlights" aria-label="ztd principles">
             {ABOUT_PRINCIPLES.map((item) => (
@@ -63,12 +61,12 @@ export function AboutView() {
             <a href={ZTD_CORE_DOCS.position} target="_blank" rel="noopener noreferrer">position paper</a>.
           </p>
 
-          <hr className="about-divider" />
-
-          <h3 className="sys-platform-heading">{ABOUT_ORIGIN_HEADING}</h3>
+        </PanelSection>
+        <PanelSection title={ABOUT_ORIGIN_HEADING}>
           <p className="sys-platform-lede">{ABOUT_ORIGIN}</p>
 
-          <h3 className="sys-platform-heading">{ABOUT_HEADING}</h3>
+        </PanelSection>
+        <PanelSection title={ABOUT_HEADING}>
           <p className="sys-platform-lede">
             {ABOUT_OPENING_BEFORE}
             <strong>Danny Barbour</strong>
@@ -83,9 +81,8 @@ export function AboutView() {
             ))}
           </ul>
 
-          <hr className="about-divider" />
-
-          <h3 className="sys-platform-heading">{ABOUT_AVAILABILITY_HEADING}</h3>
+        </PanelSection>
+        <PanelSection title={ABOUT_AVAILABILITY_HEADING}>
           <p className="sys-platform-lede about-availability">{ABOUT_AVAILABILITY}</p>
           <p className="sys-platform-lede about-availability">{ABOUT_AVAILABILITY_DETAIL}</p>
           <p className="sys-platform-lede about-availability">
@@ -93,7 +90,12 @@ export function AboutView() {
             <a href={`mailto:${PLATFORM_CONTACT_EMAIL}`}>{PLATFORM_CONTACT_EMAIL}</a>.
           </p>
 
-          <div className="sys-platform-cta">
+        </PanelSection>
+      </div>
+      <PanelSection title="What ztd proves here">
+        <ul className="about-highlights">{ABOUT_EVIDENCE_PRINCIPLES.map((principle) => <li key={principle}>{principle}</li>)}</ul>
+      </PanelSection>
+          <div className="sys-platform-cta about-actions">
             <div className="sys-platform-links">
               <a
                 className="sys-platform-cta-architecture"
@@ -121,8 +123,6 @@ export function AboutView() {
               </a>
             </div>
           </div>
-        </div>
-      </section>
-    </div>
+    </section>
   );
 }

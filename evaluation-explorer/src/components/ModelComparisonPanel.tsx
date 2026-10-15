@@ -5,6 +5,7 @@
 // from separate datasets that declare the same provider environment and suites.
 
 import { Link } from 'react-router-dom';
+import { PanelSection, TonePill } from './evidence';
 import { modelComparisonId } from '../state/store';
 import { datasetLabel, roleLabel } from '../views/derived';
 import {
@@ -37,10 +38,9 @@ export function ModelComparisonPanel({
 }) {
   const crossDataset = environmentSource !== undefined;
   return (
-    <section className="comparison-panel" aria-labelledby="comparison-heading">
+    <PanelSection className="comparison-panel" title="Side-by-side comparison">
       <div className="comparison-panel-header">
         <div>
-          <h2 id="comparison-heading">Side-by-side comparison</h2>
           <p className="comparison-panel-lede">
             {crossDataset
               ? `Comparing ${models.length} models from separate runs that share ${environmentSource === 'observed' ? 'an observed' : 'a declared'} provider environment and evaluated the same suites.${environmentNote(environmentSource)} Each value comes from that model's own run. This is not a superiority claim.`
@@ -63,6 +63,7 @@ export function ModelComparisonPanel({
                   <span className="compare-model-header">
                     <Link to={`/models/${m.dataset_id}/${m.variant_id}?role=${m.role}`}>{m.display_name}</Link>
                     <QualityBadge state={m.quality_state} />
+                    {m.inventory_only ? <TonePill tone="neutral">inventory</TonePill> : null}
                   </span>
                 </th>
               ))}
@@ -93,7 +94,7 @@ export function ModelComparisonPanel({
               <th scope="row">Pass rate</th>
               {models.map((m) => (
                 <td key={modelComparisonId(m)}>
-                  {m.pass_rate ? <IntervalDisplay interval={m.pass_rate} label="pass rate" /> : <UnavailableValue />}
+                  {m.pass_rate ? <IntervalDisplay interval={m.pass_rate} label="pass rate" /> : <span className="not-evaluated">Not evaluated</span>}
                 </td>
               ))}
             </tr>
@@ -132,6 +133,6 @@ export function ModelComparisonPanel({
           </tbody>
         </table>
       </div>
-    </section>
+    </PanelSection>
   );
 }
