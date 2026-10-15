@@ -106,7 +106,7 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	defer hardCancel()
 	cmd.SetContext(hardCtx)
 	defer cmd.SetContext(parent)
-	watcher := startRunStopWatcher(hardCtx, store, opts.RunID, deps.runControl.interval(), signals, hardCancel)
+	watcher := startRunStopWatcher(hardCtx, store, opts.RunID, deps.runControl.interval(), signals, hardCancel, deps.runControl.onSignalHandled)
 	defer watcher.Stop()
 
 	return executeAssignments(cmd, deps, opts, watcher)

@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -380,15 +381,26 @@ func TestRunsResume_StopWithQueuedAssignmentsIsAnError(t *testing.T) {
 	env := setupRunEnv(t)
 	env.enableWitnessGateway(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	handled := make(chan struct{}, 1)
+	env.deps.runControl.onSignalHandled = func() {
+		select {
+		case handled <- struct{}{}:
+		default:
+		}
+	}
 	interrupts := make(chan os.Signal)
 	env.deps.runControl.notifyInterrupts = func() (<-chan os.Signal, func()) { return interrupts, func() {} }
 
+	var once sync.Once
 	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{
 		RunID:      runID,
 		Daemon:     true,
 		NoAutoBind: true,
 		ResultOutput: func(*evalv1.EvaluationAssignmentResult) {
-			interrupts <- os.Interrupt
+			once.Do(func() {
+				interrupts <- os.Interrupt
+				<-handled
+			})
 		},
 	})
 	require.ErrorIs(t, err, constants.ErrEvaluationRunStopped)

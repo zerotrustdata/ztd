@@ -43,7 +43,10 @@ type runControlDeps struct {
 	// notifyInterrupts registers for interrupt signals and returns the channel
 	// and the function that unregisters it.
 	notifyInterrupts func() (<-chan os.Signal, func())
-	pollInterval     time.Duration
+	// onSignalHandled is an optional test hook called after an interrupt signal
+	// is registered by the stop watcher.
+	onSignalHandled func()
+	pollInterval    time.Duration
 }
 
 // notifyProcessInterrupts registers for SIGINT and SIGTERM.
@@ -134,7 +137,7 @@ type runStopWatcher struct {
 
 // startRunStopWatcher starts the watcher goroutine. hardCancel is called on a
 // second interrupt. The caller owns the watcher and must call Stop.
-func startRunStopWatcher(ctx context.Context, store *evaluation.Store, runID string, poll time.Duration, signals <-chan os.Signal, hardCancel context.CancelFunc) *runStopWatcher {
+func startRunStopWatcher(ctx context.Context, store *evaluation.Store, runID string, poll time.Duration, signals <-chan os.Signal, hardCancel context.CancelFunc, onSignalHandled func()) *runStopWatcher {
 	watchCtx, cancel := context.WithCancel(ctx)
 	watcher := &runStopWatcher{cancel: cancel}
 	watcher.wg.Add(1)
@@ -147,7 +150,11 @@ func startRunStopWatcher(ctx context.Context, store *evaluation.Store, runID str
 			case <-watchCtx.Done():
 				return
 			case <-signals:
-				if watcher.requested.Swap(true) {
+				isSecond := watcher.requested.Swap(true)
+				if onSignalHandled != nil {
+					onSignalHandled()
+				}
+				if isSecond {
 					hardCancel()
 					return
 				}
