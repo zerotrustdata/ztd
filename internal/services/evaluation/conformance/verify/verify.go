@@ -249,6 +249,12 @@ func checkCaseSet(record *evalv1.ConformanceRunRecord, applicable []cases.Case, 
 		if ev.GetExecutor() != executor {
 			return fmt.Errorf("conformance verify: case %s ran on %q, want %q: %w", c.ID, ev.GetExecutor(), executor, constants.ErrConformanceRecordInvalid)
 		}
+		if setupUnavailable(c, ev) {
+			if c.Ingress.Executor() == cases.ExecutorOutbound && runtimes[executor] != "" {
+				return fmt.Errorf("conformance verify: case %s skips a pinned outbound runtime: %w", c.ID, constants.ErrConformanceRecordInvalid)
+			}
+			continue
+		}
 		if _, ok := runtimes[executor]; !ok {
 			return fmt.Errorf("conformance verify: case %s needs executor %q with no pinned anchor: %w", c.ID, executor, constants.ErrConformanceAnchorInvalid)
 		}
@@ -261,7 +267,14 @@ func checkCaseSet(record *evalv1.ConformanceRunRecord, applicable []cases.Case, 
 // whose ledger links are adjacent.
 func checkQuiescence(record *evalv1.ConformanceRunRecord, applicable []cases.Case, runtimes map[string]string, anchors *oracle.AnchorSet) error {
 	required := make(map[string]bool)
+	evidence := make(map[string]*evalv1.ConformanceCaseEvidence, len(record.GetCases()))
+	for _, ev := range record.GetCases() {
+		evidence[ev.GetCaseId()] = ev
+	}
 	for _, c := range applicable {
+		if setupUnavailable(c, evidence[c.ID]) {
+			continue
+		}
 		required[string(c.Ingress.Executor())] = true
 	}
 	seen := make(map[string]bool, len(required))

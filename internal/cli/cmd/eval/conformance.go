@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -87,23 +88,6 @@ type conformanceRunOptions struct {
 	approverUserID string
 }
 
-// validate rejects an incomplete flag set before any file or network access.
-func (o conformanceRunOptions) validate() error {
-	if o.operatorID == "" {
-		return fmt.Errorf("evaluation: conformance run: --operator-id is required, every posture runs cases on the outbound Operator: %w", constants.ErrMissingRequiredField)
-	}
-	if o.operatorRoot == "" {
-		return fmt.Errorf("evaluation: conformance run: --operator-root is required with --operator-id: %w", constants.ErrMissingRequiredField)
-	}
-	if o.a2aStubListen == "" {
-		return fmt.Errorf("evaluation: conformance run: --a2a-stub-listen is required: %w", constants.ErrMissingRequiredField)
-	}
-	if o.attended && o.approverUserID == "" {
-		return fmt.Errorf("evaluation: conformance run: --approver-user-id is required with --attended: %w", constants.ErrMissingRequiredField)
-	}
-	return nil
-}
-
 func conformanceRunCmd(deps nativeEvalDeps) *cobra.Command {
 	var opts conformanceRunOptions
 	command := &cobra.Command{
@@ -112,27 +96,25 @@ func conformanceRunCmd(deps nativeEvalDeps) *cobra.Command {
 		Long: `Drive the governance conformance suite against a live native stack, persist the
 record, and print the verdicts that verification computes from the stored bytes.
 
-Start-up order:
-  1. Keep the --a2a-stub-listen address free. This command starts the A2A stub on it.
-  2. Start the Gateway with --a2a-downstream-url http://<a2a-stub-listen>.
-  3. Run this command with --operator-id and --operator-root for the outbound Operator.
+The active Data Operator is discovered automatically, including the Gateway's embedded
+Operator. When several are available, choose one from the list. --operator-id pins a
+target for scripts. Outbound runtime roots are discovered from enrollment metadata;
+--operator-root overrides the local path when needed.
 
---operator-id and --operator-root are required because every posture runs cases on the
-outbound Operator. Exit is non-zero unless the suite verdict is PASS, or INCOMPLETE for an
-unattended run (its attended cases were not run).`,
+Outbound and CLI cases need an outbound Data Operator. A2A cases need a Gateway started
+with --a2a-downstream-url http://<address> and this command's --a2a-stub-listen <address>.
+Missing optional setup is recorded as unavailable coverage, yielding INCOMPLETE.
+Unattended INCOMPLETE runs exit zero; failures and invalid evidence always exit non-zero.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
-				return err
-			}
 			return runConformance(cmd, deps, opts)
 		},
 	}
-	command.Flags().StringVar(&opts.operatorID, "operator-id", "", "Outbound Operator id; its single active session is the outbound target")
-	command.Flags().StringVar(&opts.operatorRoot, "operator-root", "", "Runtime root of the outbound Operator (its .ztd lives under it)")
-	command.Flags().StringVar(&opts.a2aStubListen, "a2a-stub-listen", "", "host:port the A2A stub listens on; must equal the Gateway's --a2a-downstream-url host and port")
-	command.Flags().BoolVar(&opts.attended, "attended", false, "Run attended cases; needs --approver-user-id")
-	command.Flags().StringVar(&opts.approverUserID, "approver-user-id", "", "User id that approves attended cases (required with --attended)")
+	command.Flags().StringVar(&opts.operatorID, "operator-id", "", "Select a Data Operator explicitly (default: discover or prompt)")
+	command.Flags().StringVar(&opts.operatorRoot, "operator-root", "", "Override the selected outbound Operator's local runtime root (default: discover)")
+	command.Flags().StringVar(&opts.a2aStubListen, "a2a-stub-listen", "", "Enable A2A coverage using this stub address; must match the Gateway's --a2a-downstream-url")
+	command.Flags().BoolVar(&opts.attended, "attended", false, "Run cases requiring human approval")
+	command.Flags().StringVar(&opts.approverUserID, "approver-user-id", "", "User approving attended cases (default: current CLI user)")
 	return command
 }
 
@@ -153,6 +135,9 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		return fmt.Errorf("evaluation: initialize gateway client: %w", err)
 	}
 	persona := harnessclient.Persona{ID: conformancePersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
+	if opts.approverUserID == "" {
+		opts.approverUserID = authContext.UserID
+	}
 
 	// The posture is read once. Drivers and the run must agree on it, and the
 	// posture is immutable at runtime, so one read is the whole truth.
@@ -160,32 +145,43 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	if err != nil {
 		return err
 	}
-	embedded, outbound, outboundDoc, err := conformanceTargets(ctx, gatewayClient, opts.operatorID)
+	embedded, outbound, outboundDoc, err := conformanceTargets(cmd, gatewayClient, opts.operatorID)
 	if err != nil {
 		return err
 	}
-	operatorRoot, err := filepath.Abs(opts.operatorRoot)
-	if err != nil {
-		return fmt.Errorf("evaluation: resolve operator root: %w", err)
+	var operatorFiles fs.RuntimeFileService
+	if outboundDoc != nil {
+		operatorRoot, rootErr := conformanceOperatorRoot(opts.operatorRoot, outboundDoc)
+		if rootErr != nil {
+			return rootErr
+		}
+		operatorFiles, err = deps.fileSvcFactory(operatorRoot, slog.Default())
+		if err != nil {
+			return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+		}
+	} else if opts.operatorRoot != "" {
+		return fmt.Errorf("evaluation: --operator-root applies to an outbound Data Operator; select one from the list or with --operator-id: %w", constants.ErrEvaluationFlagsInvalid)
 	}
-	operatorFiles, err := deps.fileSvcFactory(operatorRoot, slog.Default())
-	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-	}
-	roots, err := conformanceRoots(gwFiles, operatorFiles, opts.operatorID, outboundDoc)
+	roots, err := conformanceRoots(gwFiles, operatorFiles, outbound.OperatorID, outboundDoc)
 	if err != nil {
 		return err
 	}
-	poster, err := deps.conformance.poster(gwFiles, cfg)
-	if err != nil {
-		return err
+	var poster cliop.CommandPoster
+	if outboundDoc != nil {
+		poster, err = deps.conformance.poster(gwFiles, cfg)
+		if err != nil {
+			return err
+		}
 	}
 
-	stub, err := deps.conformance.listen(opts.a2aStubListen)
-	if err != nil {
-		return fmt.Errorf("evaluation: start A2A stub: %w", err)
+	var stub *drive.A2AStub
+	if opts.a2aStubListen != "" {
+		stub, err = deps.conformance.listen(opts.a2aStubListen)
+		if err != nil {
+			return fmt.Errorf("evaluation: start A2A stub: %w", err)
+		}
+		defer func() { err = errors.Join(err, stub.Close(ctx)) }()
 	}
-	defer func() { err = errors.Join(err, stub.Close(ctx)) }()
 
 	drivers, sentinel, err := conformanceDrivers(ctx, conformanceSetup{
 		client:         gatewayClient,
@@ -201,20 +197,32 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	if err != nil {
 		return err
 	}
+	unavailable := make(map[cases.Ingress]evalv1.ConformanceObservationKind)
+	for _, ingress := range []cases.Ingress{cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressA2A} {
+		if drivers[ingress] == nil {
+			unavailable[ingress] = ingress.UnavailableObservation()
+		}
+	}
+	if !output.JSONEnabled(cmd) {
+		if err := writeConformanceSetup(cmd.ErrOrStderr(), outboundDoc, unavailable); err != nil {
+			return err
+		}
+	}
 
 	runID, err := deps.newID()
 	if err != nil {
 		return err
 	}
 	record, err := deps.conformance.run(ctx, run.Config{
-		RunID:    runID,
-		Drivers:  drivers,
-		Sentinel: sentinel,
-		Roots:    roots,
-		Posture:  func(context.Context) (evalv1.EvaluationGovernancePosture, error) { return posture, nil },
-		Recorder: gatewayClient.Record,
-		Attended: opts.attended,
-		Now:      deps.now,
+		RunID:       runID,
+		Drivers:     drivers,
+		Unavailable: unavailable,
+		Sentinel:    sentinel,
+		Roots:       roots,
+		Posture:     func(context.Context) (evalv1.EvaluationGovernancePosture, error) { return posture, nil },
+		Recorder:    gatewayClient.Record,
+		Attended:    opts.attended,
+		Now:         deps.now,
 	})
 	if err != nil {
 		return fmt.Errorf("evaluation: run conformance suite: %w", err)
@@ -228,7 +236,7 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	if err != nil {
 		return err
 	}
-	if err := writeConformanceVerdicts(cmd, record.GetRunId(), stored.verdicts, output.JSONEnabled(cmd)); err != nil {
+	if err := writeConformanceVerdicts(cmd, record.GetRunId(), stored.verdicts, stored.record, output.JSONEnabled(cmd)); err != nil {
 		return err
 	}
 	return conformanceVerdictError(stored.verdicts, stored.record.GetAttended())
@@ -251,7 +259,7 @@ command needs only the Gateway runtime root: it makes no network call and needs 
 			if err != nil {
 				return err
 			}
-			if err := writeConformanceVerdicts(cmd, runID, stored.verdicts, output.JSONEnabled(cmd)); err != nil {
+			if err := writeConformanceVerdicts(cmd, runID, stored.verdicts, stored.record, output.JSONEnabled(cmd)); err != nil {
 				return err
 			}
 			return conformanceVerdictError(stored.verdicts, stored.record.GetAttended())
@@ -331,48 +339,44 @@ func gatewayPosture(ctx context.Context, client *harnessclient.Client) (evalv1.E
 	return conformancePosture(health.Posture)
 }
 
-// conformanceTargets selects the two Operator sessions the suite drives. The
-// embedded target is the Gateway's own Operator. The outbound target is the one
-// active session of operatorID, and its inventory document comes back too: it
-// carries the actuator key bound at enrollment, which is the outbound anchor.
-func conformanceTargets(ctx context.Context, client *harnessclient.Client, operatorID string) (cliop.Target, cliop.Target, *operatorv1.OperatorDocument, error) {
-	operators, _, err := client.ListOperators(ctx)
+// conformanceTargets selects the Gateway's embedded session and, when selected,
+// an outbound Data session. Its document carries the enrollment-bound anchor.
+func conformanceTargets(cmd *cobra.Command, client *harnessclient.Client, operatorID string) (cliop.Target, cliop.Target, *operatorv1.OperatorDocument, error) {
+	operators, _, err := client.ListOperators(cmd.Context())
 	if err != nil {
 		return cliop.Target{}, cliop.Target{}, nil, fmt.Errorf("evaluation: list operators: %w", err)
 	}
-	embedded, _, err := singleConformanceTarget(operators, string(constants.DocIDEmbeddedOperator), false)
+	embedded, err := conformanceEmbeddedTarget(operators)
 	if err != nil {
 		return cliop.Target{}, cliop.Target{}, nil, err
 	}
-	outbound, outboundDoc, err := singleConformanceTarget(operators, operatorID, true)
+	selected, err := selectConformanceDataOperator(cmd, operators, operatorID)
 	if err != nil {
 		return cliop.Target{}, cliop.Target{}, nil, err
 	}
-	return embedded, outbound, outboundDoc, nil
+	if selected.GetId() == string(constants.DocIDEmbeddedOperator) {
+		return embedded, cliop.Target{}, nil, nil
+	}
+	return embedded, cliop.Target{OperatorID: selected.GetId(), OperatorSessionID: selected.GetOperatorSessionId()}, selected, nil
 }
 
-// singleConformanceTarget returns the one session of operatorID that has a
-// session id (and is active when requireActive), with its inventory document.
-// Zero sessions is ErrEvaluationTargetUnavailable, and several is
-// ErrEvaluationTargetAmbiguous.
-func singleConformanceTarget(operators []*operatorv1.OperatorDocument, operatorID string, requireActive bool) (cliop.Target, *operatorv1.OperatorDocument, error) {
+// conformanceEmbeddedTarget requires exactly one session for Gateway-local cases.
+func conformanceEmbeddedTarget(operators []*operatorv1.OperatorDocument) (cliop.Target, error) {
+	operatorID := string(constants.DocIDEmbeddedOperator)
 	var matches []*operatorv1.OperatorDocument
 	for _, op := range operators {
 		if op.GetId() != operatorID || op.GetOperatorSessionId() == "" {
-			continue
-		}
-		if requireActive && constants.OperatorStatus(op.GetStatus()) != constants.OperatorStatusActive {
 			continue
 		}
 		matches = append(matches, op)
 	}
 	switch len(matches) {
 	case 0:
-		return cliop.Target{}, nil, fmt.Errorf("evaluation: operator %s has no matching session: %w", operatorID, constants.ErrEvaluationTargetUnavailable)
+		return cliop.Target{}, fmt.Errorf("evaluation: operator %s has no matching session: %w", operatorID, constants.ErrEvaluationTargetUnavailable)
 	case 1:
-		return cliop.Target{OperatorSessionID: matches[0].GetOperatorSessionId(), OperatorID: operatorID}, matches[0], nil
+		return cliop.Target{OperatorSessionID: matches[0].GetOperatorSessionId(), OperatorID: operatorID}, nil
 	default:
-		return cliop.Target{}, nil, fmt.Errorf("evaluation: operator %s has %d matching sessions: %w", operatorID, len(matches), constants.ErrEvaluationTargetAmbiguous)
+		return cliop.Target{}, fmt.Errorf("evaluation: operator %s has %d matching sessions: %w", operatorID, len(matches), constants.ErrEvaluationTargetAmbiguous)
 	}
 }
 
@@ -386,6 +390,12 @@ func conformanceRoots(gwFiles, operatorFiles fs.RuntimeFileService, operatorID s
 	if err != nil {
 		return nil, err
 	}
+	roots := map[cases.Executor]run.Root{
+		cases.ExecutorEmbedded: {Files: gwFiles, Dir: gwDir, RuntimeID: oracle.GatewayRuntimeID},
+	}
+	if outboundDoc == nil && operatorID == "" {
+		return roots, nil
+	}
 	operatorDir, err := absoluteRuntimeDir(operatorFiles)
 	if err != nil {
 		return nil, err
@@ -394,10 +404,8 @@ func conformanceRoots(gwFiles, operatorFiles fs.RuntimeFileService, operatorID s
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: conformance run: outbound operator %s anchor: %w", operatorID, err)
 	}
-	return map[cases.Executor]run.Root{
-		cases.ExecutorEmbedded: {Files: gwFiles, Dir: gwDir, RuntimeID: oracle.GatewayRuntimeID},
-		cases.ExecutorOutbound: {Files: operatorFiles, Dir: operatorDir, RuntimeID: operatorID, Bound: bound},
-	}, nil
+	roots[cases.ExecutorOutbound] = run.Root{Files: operatorFiles, Dir: operatorDir, RuntimeID: operatorID, Bound: bound}
+	return roots, nil
 }
 
 // absoluteRuntimeDir is the absolute runtime directory a file service resolves
@@ -450,14 +458,13 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	if err != nil {
 		return nil, nil, fmt.Errorf("evaluation: direct driver: %w", err)
 	}
-	targets := map[cases.Executor]cliop.Target{cases.ExecutorEmbedded: s.embedded, cases.ExecutorOutbound: s.outbound}
+	targets := map[cases.Executor]cliop.Target{cases.ExecutorEmbedded: s.embedded}
+	if s.outbound.OperatorSessionID != "" {
+		targets[cases.ExecutorOutbound] = s.outbound
+	}
 	dispatch, err := drive.NewDispatch(s.client, s.persona, targets)
 	if err != nil {
 		return nil, nil, fmt.Errorf("evaluation: dispatch driver: %w", err)
-	}
-	cli, err := drive.NewCLI(s.poster, s.outbound, s.persona.CLISessionID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("evaluation: CLI driver: %w", err)
 	}
 	sentinel, err := drive.NewSentinel(s.client, s.persona, targets)
 	if err != nil {
@@ -467,21 +474,31 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	if err != nil {
 		return nil, nil, fmt.Errorf("evaluation: MCP driver: %w", err)
 	}
-	a2aDriver := drive.NewA2A(s.client, s.persona, s.stub)
-
-	var mcpIngress, a2aIngress cases.Driver = mcpDriver, a2aDriver
+	var mcpIngress cases.Driver = mcpDriver
 	if s.attended {
 		mcpIngress = drive.NewAttended(mcpDriver, s.client, s.persona, s.approverUserID)
-		a2aIngress = drive.NewAttended(a2aDriver, s.client, s.persona, s.approverUserID)
 	}
-	return map[cases.Ingress]cases.Driver{
+	drivers := map[cases.Ingress]cases.Driver{
 		cases.IngressDirect:           direct,
 		cases.IngressDispatchEmbedded: dispatch,
-		cases.IngressDispatchOutbound: dispatch,
-		cases.IngressCLI:              cli,
 		cases.IngressMCP:              mcpIngress,
-		cases.IngressA2A:              a2aIngress,
-	}, sentinel, nil
+	}
+	if s.outbound.OperatorSessionID != "" {
+		cli, err := drive.NewCLI(s.poster, s.outbound, s.persona.CLISessionID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("evaluation: CLI driver: %w", err)
+		}
+		drivers[cases.IngressDispatchOutbound] = dispatch
+		drivers[cases.IngressCLI] = cli
+	}
+	if s.stub != nil {
+		var a2aIngress cases.Driver = drive.NewA2A(s.client, s.persona, s.stub)
+		if s.attended {
+			a2aIngress = drive.NewAttended(a2aIngress, s.client, s.persona, s.approverUserID)
+		}
+		drivers[cases.IngressA2A] = a2aIngress
+	}
+	return drivers, sentinel, nil
 }
 
 // storedConformance is one persisted run as the verifier reads it.
@@ -533,9 +550,9 @@ func conformanceVerdictError(set *evalv1.ConformanceVerdictSet, attended bool) e
 	return fmt.Errorf("evaluation: conformance suite verdict %s: %w", set.GetSuiteVerdict(), constants.ErrEvalRunVerificationFailed)
 }
 
-// writeConformanceVerdicts prints the verdict set: canonical JSON, or the run,
-// posture, suite verdict and one line per non-PASS case.
-func writeConformanceVerdicts(cmd *cobra.Command, runID string, set *evalv1.ConformanceVerdictSet, jsonOutput bool) error {
+// writeConformanceVerdicts prints canonical JSON or a summary with grouped
+// unavailable coverage and individual failures.
+func writeConformanceVerdicts(cmd *cobra.Command, runID string, set *evalv1.ConformanceVerdictSet, record *evalv1.ConformanceRunRecord, jsonOutput bool) error {
 	out := cmd.OutOrStdout()
 	if jsonOutput {
 		body, err := evalv1.MarshalCanonical(set)
@@ -545,18 +562,55 @@ func writeConformanceVerdicts(cmd *cobra.Command, runID string, set *evalv1.Conf
 		_, err = fmt.Fprintln(out, string(body))
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "Run: %s\nPosture: %s\nSuite: %s\n", runID, set.GetPosture(), set.GetSuiteVerdict()); err != nil {
+	posture := strings.ToLower(strings.TrimPrefix(set.GetPosture().String(), "EVALUATION_GOVERNANCE_POSTURE_"))
+	verdict := strings.TrimPrefix(set.GetSuiteVerdict().String(), "CONFORMANCE_SUITE_VERDICT_")
+	if _, err := fmt.Fprintf(out, "Run: %s\nPosture: %s\nSuite: %s\n", runID, posture, verdict); err != nil {
 		return err
 	}
+	counts := make(map[evalv1.EvaluationVerdictStatus]int)
+	unavailableIDs := make(map[string]bool)
+	for _, v := range set.GetVerdicts() {
+		counts[v.GetStatus()]++
+		if v.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
+			unavailableIDs[v.GetCaseId()] = true
+		}
+	}
+	if _, err := fmt.Fprintf(out, "Cases: %d passed, %d failed, %d invalid, %d unavailable\n",
+		counts[evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS],
+		counts[evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL],
+		counts[evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE],
+		counts[evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE]); err != nil {
+		return err
+	}
+	skipped := make(map[evalv1.ConformanceObservationKind]int)
+	for _, ev := range record.GetCases() {
+		if unavailableIDs[ev.GetCaseId()] && len(ev.GetObservations()) == 1 {
+			skipped[ev.GetObservations()[0].GetKind()]++
+		}
+	}
+	for _, reason := range []struct {
+		kind        evalv1.ConformanceObservationKind
+		description string
+	}{
+		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND, "outbound Data Operator not selected"},
+		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A, "A2A test downstream not configured"},
+		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED, "human approval cases not requested (use --attended)"},
+	} {
+		if count := skipped[reason.kind]; count > 0 {
+			if _, err := fmt.Fprintf(out, "Unavailable: %d cases — %s\n", count, reason.description); err != nil {
+				return err
+			}
+		}
+	}
 	for _, verdict := range set.GetVerdicts() {
-		if verdict.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
+		if verdict.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS || verdict.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
 			continue
 		}
 		caseID := verdict.GetCaseId()
 		if caseID == "" {
 			caseID = "(record)"
 		}
-		if _, err := fmt.Fprintf(out, "%s %s %s\n", caseID, verdict.GetStatus(), verdict.GetFailureClass()); err != nil {
+		if _, err := fmt.Fprintf(out, "%s %s %s\n", caseID, strings.TrimPrefix(verdict.GetStatus().String(), "EVALUATION_VERDICT_STATUS_"), strings.TrimPrefix(verdict.GetFailureClass().String(), "CONFORMANCE_FAILURE_CLASS_")); err != nil {
 			return err
 		}
 	}

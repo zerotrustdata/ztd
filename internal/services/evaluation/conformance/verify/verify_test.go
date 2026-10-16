@@ -277,6 +277,75 @@ func TestVerifyAgainstPassingRecordIsPass(t *testing.T) {
 	}
 }
 
+func TestVerifyPersisted_EmbeddedCoverageIsIncompleteAndTamperingStillFails(t *testing.T) {
+	raw, _ := conformancetest.DoctrineRecord(t)
+	record := new(evalv1.ConformanceRunRecord)
+	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
+	applicable, err := cases.Applicable(record.GetPosture())
+	require.NoError(t, err)
+	byID := make(map[string]cases.Case, len(applicable))
+	for _, c := range applicable {
+		byID[c.ID] = c
+	}
+	var skipped int
+	for i, ev := range record.GetCases() {
+		c := byID[ev.GetCaseId()]
+		if kind := c.Ingress.UnavailableObservation(); kind != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED {
+			record.Cases[i] = &evalv1.ConformanceCaseEvidence{
+				CaseId: ev.GetCaseId(), AttemptId: ev.GetAttemptId(), Executor: ev.GetExecutor(),
+				TargetPath: ev.GetTargetPath(), Marker: ev.GetMarker(),
+				Observations: []*evalv1.ConformanceObservation{{Kind: kind}},
+			}
+			skipped++
+		}
+	}
+	var anchors []*evalv1.ConformanceAnchor
+	for _, a := range record.GetAnchors() {
+		if a.GetRuntimeId() == oracle.GatewayRuntimeID {
+			anchors = append(anchors, a)
+		}
+	}
+	record.Anchors = anchors
+	var quiescence []*evalv1.ConformanceQuiescence
+	for _, q := range record.GetQuiescence() {
+		if q.GetExecutor() == string(cases.ExecutorEmbedded) {
+			quiescence = append(quiescence, q)
+		}
+	}
+	record.Quiescence = quiescence
+	raw, err = evalv1.MarshalCanonical(record)
+	require.NoError(t, err)
+	digest := sha256.Sum256(raw)
+	set, err := VerifyPersisted(raw, hex.EncodeToString(digest[:]))
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INCOMPLETE, set.GetSuiteVerdict())
+	var unavailableCount int
+	for _, v := range set.GetVerdicts() {
+		if v.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
+			unavailableCount++
+		}
+	}
+	assert.GreaterOrEqual(t, unavailableCount, skipped)
+	for _, ev := range record.GetCases() {
+		if ev.GetObservations()[0].GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND {
+			ev.SentinelBefore = record.GetQuiescence()[0].GetFirst()
+			break
+		}
+	}
+	set = verifyRecord(t, record, applicable)
+	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE, set.GetSuiteVerdict(), "unavailable cases cannot hide execution evidence")
+}
+
+func TestVerifyAgainstUnavailableReasonCannotHideRequiredIngress(t *testing.T) {
+	f := newFixture(t)
+	record := f.record()
+	ev := caseEvidence(t, record, caseDirect)
+	*ev = evalv1.ConformanceCaseEvidence{CaseId: ev.CaseId, Executor: ev.Executor,
+		Observations: []*evalv1.ConformanceObservation{{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A}}}
+	set := verifyRecord(t, record, f.applicable)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verdictOf(t, set, caseDirect).GetStatus())
+}
+
 func TestVerifyAgainstUnattendedAttendedCaseIsIncomplete(t *testing.T) {
 	f := newFixture(t)
 	rec := f.record()

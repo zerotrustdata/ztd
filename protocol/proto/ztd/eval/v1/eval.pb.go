@@ -2302,6 +2302,8 @@ const (
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED        ConformanceObservationKind = 4 // approval pending, tx hash returned
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED ConformanceObservationKind = 5 // attended case skipped in an unattended run
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED          ConformanceObservationKind = 6 // anything else: always a failure
+	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND ConformanceObservationKind = 7 // no outbound Data Operator selected
+	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A      ConformanceObservationKind = 8 // no harness-owned A2A downstream configured
 )
 
 // Enum value maps for ConformanceObservationKind.
@@ -2314,6 +2316,8 @@ var (
 		4: "CONFORMANCE_OBSERVATION_KIND_SUSPENDED",
 		5: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED",
 		6: "CONFORMANCE_OBSERVATION_KIND_UNTYPED",
+		7: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND",
+		8: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A",
 	}
 	ConformanceObservationKind_value = map[string]int32{
 		"CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED":      0,
@@ -2323,6 +2327,8 @@ var (
 		"CONFORMANCE_OBSERVATION_KIND_SUSPENDED":        4,
 		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED": 5,
 		"CONFORMANCE_OBSERVATION_KIND_UNTYPED":          6,
+		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND": 7,
+		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A":      8,
 	}
 )
 
@@ -10763,7 +10769,7 @@ func (x *CanaryManifest) GetEntries() []*CanaryEntry {
 
 // ConformanceObservation is what one drive of one ingress returned. Exactly
 // one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
-// set, matching kind.
+// set, matching kind. NOT_RUN kinds carry no outcome fields.
 type ConformanceObservation struct {
 	state           protoimpl.MessageState     `protogen:"open.v1"`
 	Kind            ConformanceObservationKind `protobuf:"varint,1,opt,name=kind,proto3,enum=ztd.eval.v1.ConformanceObservationKind" json:"kind,omitempty"`
@@ -11315,7 +11321,7 @@ func (x *ConformanceRunRecord) GetFinishedAt() *timestamppb.Timestamp {
 type ConformanceVerdict struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	CaseId        string                  `protobuf:"bytes,1,opt,name=case_id,json=caseId,proto3" json:"case_id,omitempty"`
-	Status        EvaluationVerdictStatus `protobuf:"varint,2,opt,name=status,proto3,enum=ztd.eval.v1.EvaluationVerdictStatus" json:"status,omitempty"` // PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for NOT_RUN_ATTENDED
+	Status        EvaluationVerdictStatus `protobuf:"varint,2,opt,name=status,proto3,enum=ztd.eval.v1.EvaluationVerdictStatus" json:"status,omitempty"` // PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for a case not run
 	FailureClass  ConformanceFailureClass `protobuf:"varint,3,opt,name=failure_class,json=failureClass,proto3,enum=ztd.eval.v1.ConformanceFailureClass" json:"failure_class,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -14033,7 +14039,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" PUBLIC_RELEASE_BASIS_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_RECORDED\x10\x01\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_ASSERTED\x10\x02\x12 \n" +
-	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xd3\x02\n" +
+	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xb4\x03\n" +
 	"\x1aConformanceObservationKind\x12,\n" +
 	"(CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CONFORMANCE_OBSERVATION_KIND_RECEIPT\x10\x01\x12*\n" +
@@ -14041,7 +14047,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"$CONFORMANCE_OBSERVATION_KIND_REFUSAL\x10\x03\x12*\n" +
 	"&CONFORMANCE_OBSERVATION_KIND_SUSPENDED\x10\x04\x121\n" +
 	"-CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED\x10\x05\x12(\n" +
-	"$CONFORMANCE_OBSERVATION_KIND_UNTYPED\x10\x06*\xcb\x06\n" +
+	"$CONFORMANCE_OBSERVATION_KIND_UNTYPED\x10\x06\x121\n" +
+	"-CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND\x10\a\x12,\n" +
+	"(CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A\x10\b*\xcb\x06\n" +
 	"\x17ConformanceFailureClass\x12)\n" +
 	"%CONFORMANCE_FAILURE_CLASS_UNSPECIFIED\x10\x00\x12.\n" +
 	"*CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH\x10\x01\x12+\n" +

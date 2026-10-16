@@ -16,7 +16,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -1851,7 +1849,7 @@ func (m *PublicMirrorServer) writeJSON(w http.ResponseWriter, status int, v any)
 
 func (m *PublicMirrorServer) logResponseError(message string, err error) {
 	level := slog.LevelError
-	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) {
+	if logging.IsClientDisconnect(err) {
 		level = slog.LevelDebug
 	}
 	m.logger.Log(context.Background(), level, message, logging.ErrorKind(err))

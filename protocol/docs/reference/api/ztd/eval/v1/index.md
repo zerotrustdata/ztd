@@ -408,7 +408,7 @@ ConformanceCaseEvidence is the raw evidence for one case. It holds no verdict.
 ### ConformanceObservation
 ConformanceObservation is what one drive of one ingress returned. Exactly
 one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
-set, matching kind.
+set, matching kind. NOT_RUN kinds carry no outcome fields.
 
 
 | Field | Type | Label | Description |
@@ -479,7 +479,7 @@ executor whose commitment links must be adjacent.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | case_id | [string](#string) |  |  |
-| status | [EvaluationVerdictStatus](#ztd-eval-v1-EvaluationVerdictStatus) |  | PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for NOT_RUN_ATTENDED |
+| status | [EvaluationVerdictStatus](#ztd-eval-v1-EvaluationVerdictStatus) |  | PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for a case not run |
 | failure_class | [ConformanceFailureClass](#ztd-eval-v1-ConformanceFailureClass) |  |  |
 
 
@@ -2501,6 +2501,8 @@ AgentRole is the generic function a step performs in an agent pipeline.
 | CONFORMANCE_OBSERVATION_KIND_SUSPENDED | 4 | approval pending, tx hash returned |
 | CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED | 5 | attended case skipped in an unattended run |
 | CONFORMANCE_OBSERVATION_KIND_UNTYPED | 6 | anything else: always a failure |
+| CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND | 7 | no outbound Data Operator selected |
+| CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A | 8 | no harness-owned A2A downstream configured |
 
 
 

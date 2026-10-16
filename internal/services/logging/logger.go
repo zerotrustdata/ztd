@@ -89,9 +89,9 @@ func ErrorKind(err error) slog.Attr {
 		kind = errorKindTimeout
 	case errors.Is(err, context.Canceled):
 		kind = errorKindCanceled
-	case errors.Is(err, syscall.ECONNREFUSED):
+	case errors.Is(err, syscall.ECONNREFUSED) || isPlatformConnectionRefused(err):
 		kind = errorKindRefused
-	case errors.Is(err, syscall.ECONNRESET):
+	case errors.Is(err, syscall.ECONNRESET) || isPlatformConnectionReset(err):
 		kind = errorKindReset
 	case errors.Is(err, syscall.EPIPE):
 		kind = errorKindBrokenPipe
@@ -111,4 +111,15 @@ func ErrorKind(err error) slog.Attr {
 		kind = errorKindInvalidInput
 	}
 	return slog.String(ErrorKindKey, kind)
+}
+
+// IsClientDisconnect reports whether err is a client-initiated disconnect or
+// cancellation on a response write (broken pipe, connection reset/abort,
+// closed network connection, or context cancellation).
+func IsClientDisconnect(err error) bool {
+	return errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		isPlatformConnectionReset(err) ||
+		errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, context.Canceled)
 }

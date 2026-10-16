@@ -27,12 +27,14 @@ type Root struct {
 
 // Config is everything one conformance run needs from its caller.
 type Config struct {
-	RunID    string
-	Drivers  map[cases.Ingress]cases.Driver
-	Sentinel cases.Sentinel
-	Roots    map[cases.Executor]Root
-	Posture  func(ctx context.Context) (evalv1.EvaluationGovernancePosture, error) // from the Gateway health
-	Recorder func(sink *[]client.Exchange)                                         // client.Record
-	Attended bool
-	Now      func() time.Time
+	RunID   string
+	Drivers map[cases.Ingress]cases.Driver
+	// Unavailable explicitly declares optional ingress coverage that cannot run.
+	Unavailable map[cases.Ingress]evalv1.ConformanceObservationKind
+	Sentinel    cases.Sentinel
+	Roots       map[cases.Executor]Root
+	Posture     func(ctx context.Context) (evalv1.EvaluationGovernancePosture, error) // from the Gateway health
+	Recorder    func(sink *[]client.Exchange)                                         // client.Record
+	Attended    bool
+	Now         func() time.Time
 }

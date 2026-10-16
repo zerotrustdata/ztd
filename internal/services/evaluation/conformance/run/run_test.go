@@ -451,6 +451,37 @@ func TestRunRecordsAttendedCaseAsNotRunInUnattendedRun(t *testing.T) {
 	assert.Equal(t, expectedLog(record), h.log)
 }
 
+func TestRunRecordsUnavailableCoverageWithoutTouchingAbsentRuntime(t *testing.T) {
+	h := newHarness(t)
+	cfg := h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, false)
+	delete(cfg.Roots, cases.ExecutorOutbound)
+	cfg.Unavailable = make(map[cases.Ingress]evalv1.ConformanceObservationKind)
+	for _, ingress := range []cases.Ingress{cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressA2A} {
+		delete(cfg.Drivers, ingress)
+		cfg.Unavailable[ingress] = ingress.UnavailableObservation()
+	}
+	record, err := Run(context.Background(), cfg)
+	require.NoError(t, err)
+	require.Len(t, record.GetAnchors(), 1)
+	require.Len(t, record.GetQuiescence(), 1)
+	assert.Zero(t, h.reads[cases.ExecutorOutbound])
+	applicable, err := cases.Applicable(record.GetPosture())
+	require.NoError(t, err)
+	require.Len(t, record.GetCases(), len(applicable))
+	for i, c := range applicable {
+		if kind, skipped := cfg.Unavailable[c.Ingress]; skipped {
+			ev := record.GetCases()[i]
+			require.Len(t, ev.GetObservations(), 1)
+			assert.Equal(t, kind, ev.GetObservations()[0].GetKind())
+			assert.Nil(t, ev.GetSentinelBefore())
+			assert.Nil(t, ev.GetCanaryBefore())
+		}
+	}
+	for _, a := range h.attempts {
+		assert.NotContains(t, cfg.Unavailable, a.Case.Ingress)
+	}
+}
+
 func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -458,6 +489,13 @@ func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 	}{
 		{name: "missing driver", mutate: func(cfg *Config) { delete(cfg.Drivers, cases.IngressMCP) }},
 		{name: "missing root", mutate: func(cfg *Config) { delete(cfg.Roots, cases.ExecutorOutbound) }},
+		{name: "required ingress cannot be skipped", mutate: func(cfg *Config) {
+			delete(cfg.Drivers, cases.IngressMCP)
+			cfg.Unavailable = map[cases.Ingress]evalv1.ConformanceObservationKind{cases.IngressMCP: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A}
+		}},
+		{name: "unavailable driver also configured", mutate: func(cfg *Config) {
+			cfg.Unavailable = map[cases.Ingress]evalv1.ConformanceObservationKind{cases.IngressA2A: cases.IngressA2A.UnavailableObservation()}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

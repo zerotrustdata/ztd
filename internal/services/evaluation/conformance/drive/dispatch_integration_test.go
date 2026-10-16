@@ -296,23 +296,25 @@ func TestDispatchDriveRejectsUnsupportedCases(t *testing.T) {
 	}
 }
 
-// TestNewDispatchRequiresEveryExecutorTarget checks that construction fails when
-// the embedded or the outbound target is missing, or the client is nil.
-func TestNewDispatchRequiresEveryExecutorTarget(t *testing.T) {
+func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
 	_, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
 	persona := testIdentity().Persona
 
 	missingOutbound := map[cases.Executor]operator.Target{
 		cases.ExecutorEmbedded: testDispatchTargets()[cases.ExecutorEmbedded],
 	}
-	_, err := NewDispatch(c, persona, missingOutbound)
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "missing outbound: %v", err)
+	dispatch, err := NewDispatch(c, persona, missingOutbound)
+	require.NoError(t, err)
+	_, err = dispatch.Drive(context.Background(), dispatchAttempt(cases.IngressDispatchOutbound, cases.FaultNone, cases.ActionMutation))
+	require.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
 
 	missingEmbedded := map[cases.Executor]operator.Target{
 		cases.ExecutorOutbound: testDispatchTargets()[cases.ExecutorOutbound],
 	}
 	_, err = NewDispatch(c, persona, missingEmbedded)
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "missing embedded: %v", err)
+	require.NoError(t, err)
+	_, err = NewDispatch(c, persona, nil)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 
 	_, err = NewDispatch(nil, persona, testDispatchTargets())
 	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "nil client: %v", err)

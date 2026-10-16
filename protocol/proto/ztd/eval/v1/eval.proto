@@ -1325,11 +1325,13 @@ enum ConformanceObservationKind {
   CONFORMANCE_OBSERVATION_KIND_SUSPENDED = 4;        // approval pending, tx hash returned
   CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED = 5; // attended case skipped in an unattended run
   CONFORMANCE_OBSERVATION_KIND_UNTYPED = 6;          // anything else: always a failure
+  CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND = 7; // no outbound Data Operator selected
+  CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A = 8;      // no harness-owned A2A downstream configured
 }
 
 // ConformanceObservation is what one drive of one ingress returned. Exactly
 // one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
-// set, matching kind.
+// set, matching kind. NOT_RUN kinds carry no outcome fields.
 message ConformanceObservation {
   ConformanceObservationKind kind = 1;
   int32 http_status = 2;
@@ -1415,7 +1417,7 @@ enum ConformanceFailureClass {
 
 message ConformanceVerdict {
   string case_id = 1;
-  EvaluationVerdictStatus status = 2;   // PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for NOT_RUN_ATTENDED
+  EvaluationVerdictStatus status = 2;   // PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for a case not run
   ConformanceFailureClass failure_class = 3;
 }
 

@@ -46,6 +46,7 @@ func TestEvalCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 		args []string
 	}{
 		// conformance
+		{name: "conformance run", args: []string{"conformance", "run"}},
 		{name: "conformance verify", args: []string{"conformance", "verify", "--run", "run-id"}},
 		{name: "conformance report", args: []string{"conformance", "report", "--run", "run-id"}},
 

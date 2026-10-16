@@ -14,6 +14,8 @@ import (
 	"io"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/canary"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
@@ -52,9 +54,13 @@ var expectedObservation = map[cases.ExpectKind]evalv1.ConformanceObservationKind
 // verifyCase evaluates one case in the order the plan fixes; the first failure
 // decides the verdict. An error is returned only for a programming fault.
 func (r *recordCheck) verifyCase(c cases.Case, ev *evalv1.ConformanceCaseEvidence) (*evalv1.ConformanceVerdict, error) {
-	// 1. Not run: only an attended case skipped in an unattended run is allowed.
+	// Optional setup never earns passing coverage.
+	if setupUnavailable(c, ev) {
+		return unavailable(c.ID), nil
+	}
+	// 1. Not run: attended cases may also be skipped in an unattended run.
 	if hasNotRunObservation(ev) {
-		if len(ev.GetObservations()) == 1 && c.Attended && !r.record.GetAttended() {
+		if len(ev.GetObservations()) == 1 && ev.GetObservations()[0].GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED && c.Attended && !r.record.GetAttended() {
 			return unavailable(c.ID), nil
 		}
 		return failed(c.ID, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING), nil
@@ -106,11 +112,24 @@ func (r *recordCheck) verifyCase(c cases.Case, ev *evalv1.ConformanceCaseEvidenc
 	return r.checkEffect(c.ID, effectOf(c), ev)
 }
 
-// hasNotRunObservation reports whether any observation is an attended case skipped
-// in an unattended run.
+// setupUnavailable accepts only the ingress's own typed setup reason and no
+// execution evidence. A skipped case cannot conceal a receipt or side effect.
+func setupUnavailable(c cases.Case, ev *evalv1.ConformanceCaseEvidence) bool {
+	kind := c.Ingress.UnavailableObservation()
+	return kind != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED &&
+		len(ev.GetObservations()) == 1 && proto.Equal(ev.GetObservations()[0], &evalv1.ConformanceObservation{Kind: kind}) &&
+		ev.GetSentinelBefore() == nil && ev.GetSentinelAfter() == nil &&
+		ev.GetCanaryBefore() == nil && ev.GetCanaryAfter() == nil &&
+		len(ev.GetA2ACalls()) == 0 && len(ev.GetExchanges()) == 0
+}
+
+// hasNotRunObservation reports whether any observation claims a skipped case.
 func hasNotRunObservation(ev *evalv1.ConformanceCaseEvidence) bool {
 	for _, obs := range ev.GetObservations() {
-		if obs.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED {
+		switch obs.GetKind() {
+		case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED,
+			evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND,
+			evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A:
 			return true
 		}
 	}
