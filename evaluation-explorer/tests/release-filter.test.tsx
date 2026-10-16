@@ -38,7 +38,7 @@ describe('campaign release selection', () => {
     expect(screen.getByRole('link', { name: 'run-current' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'run-older' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'run-unknown' })).not.toBeInTheDocument();
-    expect(screen.getByText(`${currentRelease} (recorded)`)).toBeInTheDocument();
+    expect(screen.getByText(`${currentRelease}(recorded) `)).toBeInTheDocument();
   });
 
   it('defaults to the newest feed release when the build release has no records', () => {

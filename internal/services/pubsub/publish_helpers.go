@@ -113,7 +113,7 @@ func publishLFAATypedResponseTo(
 	}
 	// Egress choke point: BuildUniversalResultEnvelope scrubs the payload. A withheld payload
 	// publishes the typed failure event instead.
-	env, err := BuildUniversalResultEnvelope(ctx, cfg,msg.EventType, eventType, originatingAction, payload, scrubbingService, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
+	env, err := BuildUniversalResultEnvelope(ctx, cfg, msg.EventType, eventType, originatingAction, payload, scrubbingService, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
 	if err != nil {
 		if isEgressWithheld(err) {
 			logger.Error("Withholding LFAA typed response: egress withheld", string(constants.ConnectionStateError), err)

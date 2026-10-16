@@ -1,5 +1,7 @@
 {
   "account": "user@example.com",
+  "actuator_key_id": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "actuator_public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
   "bound_web_session_id": "web-session-golden-1",
   "claimed": true,
   "claimed_at": "2026-01-15T12:00:00Z",

@@ -49,7 +49,7 @@ func segmenterRun(t *testing.T, s models.EgressScrubber, events [][]*operatorv1.
 
 	var terminal []*operatorv1.InferenceResponsePart
 	for _, parts := range events {
-		released, err := stream.accept(context.Background(),parts)
+		released, err := stream.accept(context.Background(), parts)
 		require.NoError(t, err)
 		require.NoError(t, stream.publish(released, "test-model", nil))
 		terminal = append(terminal, released...)
@@ -129,7 +129,7 @@ func TestStreamSegmenter_LongLineWithoutNewlineIsHeldUntilFinish(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := 0; i < 50; i++ {
-		released, err := stream.accept(context.Background(),[]*operatorv1.InferenceResponsePart{segmenterTextPart("word ")})
+		released, err := stream.accept(context.Background(), []*operatorv1.InferenceResponsePart{segmenterTextPart("word ")})
 		require.NoError(t, err)
 		require.Empty(t, released, "no release without a newline, whatever the length")
 	}
@@ -193,15 +193,15 @@ func TestStreamSegmenter_PEMBlockIsHeldUntilItsEndLineCompletes(t *testing.T) {
 	require.NoError(t, err)
 
 	body := "MIIEpAIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun"
-	released, err := stream.accept(context.Background(),[]*operatorv1.InferenceResponsePart{segmenterTextPart("intro\n-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n")})
+	released, err := stream.accept(context.Background(), []*operatorv1.InferenceResponsePart{segmenterTextPart("intro\n-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n")})
 	require.NoError(t, err)
 	assert.Empty(t, released, "nothing at or after the open BEGIN marker is released")
 
-	released, err = stream.accept(context.Background(),[]*operatorv1.InferenceResponsePart{segmenterTextPart("-----END RSA PRIVATE KEY-----")})
+	released, err = stream.accept(context.Background(), []*operatorv1.InferenceResponsePart{segmenterTextPart("-----END RSA PRIVATE KEY-----")})
 	require.NoError(t, err)
 	assert.Empty(t, released, "the block stays held until its END line has a newline")
 
-	released, err = stream.accept(context.Background(),[]*operatorv1.InferenceResponsePart{segmenterTextPart("\nafter\n")})
+	released, err = stream.accept(context.Background(), []*operatorv1.InferenceResponsePart{segmenterTextPart("\nafter\n")})
 	require.NoError(t, err)
 	require.Len(t, released, 1)
 	assert.NotContains(t, released[0].GetText(), body)
@@ -318,7 +318,7 @@ func TestStreamSegmenter_ValueOnNextLineNeverLeaks(t *testing.T) {
 // reconciles with the progress stream.
 func assertNoLeakAcrossSplits(t *testing.T, s *scrubbing.ScrubbingService, text string, secrets []string) {
 	t.Helper()
-	whole := s.ScrubText(context.Background(),text)
+	whole := s.ScrubText(context.Background(), text)
 	for _, secret := range secrets {
 		require.NotContains(t, whole, secret, "the pattern must match the secret on whole text")
 	}
@@ -403,8 +403,8 @@ func TestScrubText_IsIdempotentOnItsOwnOutput(t *testing.T) {
 		s, err := scrubbing.NewScrubbingService(context.Background(), cfg, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 		require.NoError(t, err)
 		for _, input := range inputs {
-			once := s.ScrubText(context.Background(),input)
-			assert.Equal(t, once, s.ScrubText(context.Background(),once), "ScrubText must be idempotent for %q (strict=%t)", input, cfg.StrictMode)
+			once := s.ScrubText(context.Background(), input)
+			assert.Equal(t, once, s.ScrubText(context.Background(), once), "ScrubText must be idempotent for %q (strict=%t)", input, cfg.StrictMode)
 		}
 	}
 }

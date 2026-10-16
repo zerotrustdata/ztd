@@ -347,7 +347,7 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 	var decodeErr error
 	if resp.StatusCode == http.StatusOK {
 		allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
-		chatResp, parts, timeToFirstToken, decodeErr = b.decodeChatStream(ctx, capture,capture.arrivalTime, allowParallelToolCalls, req.ContextLimit, req.ProviderAttemptID, stream)
+		chatResp, parts, timeToFirstToken, decodeErr = b.decodeChatStream(ctx, capture, capture.arrivalTime, allowParallelToolCalls, req.ContextLimit, req.ProviderAttemptID, stream)
 	}
 	responseBody, readErr := capture.result()
 	// Only a 200 stream is bound to the attempt record, and only by digest and

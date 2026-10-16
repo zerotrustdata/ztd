@@ -103,7 +103,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Chaos testing harness and summary | `internal/tools/chaos/`, `internal/cli/cmd/test/chaos.go` | `./ztd test chaos --help`, `./ztd test summary` |
 | Public loop qualification harness | `internal/cli/cmd/test/public_loop.go` | `./ztd test public-loop --help` |
 | Operator fleet scale qualification | `internal/cli/cmd/test/scale.go`, `test/e2e/operator_fleet_e2e_test.go` | `./ztd test scale --help`, `make test-scale` |
-| Makefile platform test targets and package exclusions | `Makefile` (`TEST_EXCLUDE_PKGS`, `TEST_PKGS`) | `make test`, `make test-unit`, `make test-integration`, `make test-enrollment-burst`, `make test-operator-burst`, `make test-coverage`, `make test-cross-enrollment`, `make test-scale`, `make test-airgap` |
+| Makefile platform test targets and coverage exclusions | `Makefile` (`TEST_PKGS`, `COVERAGE_EXCLUDE_PKGS`) | `make test`, `make test-unit`, `make test-integration`, `make test-enrollment-burst`, `make test-operator-burst`, `make test-coverage`, `make test-cross-enrollment`, `make test-scale`, `make test-airgap` |
 | Platform CI scope | `.github/workflows/build-and-test.yml`, `.github/workflows/build-and-test-fips.yml` | Workflow job steps and `Makefile` CI targets |
 | Cross-component test targets | `Makefile`, `console/`, `protocol/` | `make console-test`, `make ci-protocol` |
 | Onboarding script tests | `scripts/test-onboarding.sh`, `scripts/onboarding/` | `make test-onboarding`, `make test-onboarding-docker` |
@@ -160,7 +160,7 @@ make test-coverage
 make lint
 ```
 
-Unfiltered unit and integration commands delegate to `make test-unit` and `make test-integration`, so they share Makefile package exclusions and test settings. Supplying `--pkg` or `--run` invokes `go test` directly for the requested selection. The single source for excluded package patterns is `TEST_EXCLUDE_PKGS` in the root Makefile; coverage also applies `COVERAGE_ONLY_EXCLUDE_PKGS`.
+Unfiltered unit and integration commands delegate to `make test-unit` and `make test-integration`, so they share the Makefile package set and test settings. Supplying `--pkg` or `--run` invokes `go test` directly for the requested selection. `TEST_PKGS` is every Go package in the module, and `make test` and `make ci` run the same set; no package with tests is skipped locally. `COVERAGE_EXCLUDE_PKGS` in the root Makefile only removes packages from the coverage profile.
 
 ### Run Specialized Test Harnesses
 
