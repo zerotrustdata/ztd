@@ -116,6 +116,7 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 			UserPrompt:     "Run one read-only command that prints " + ScenarioWorkspaceToken + "/status/health.txt.",
 			WorkspaceFiles: []ScenarioWorkspaceFile{{Label: "health", RelPath: "status/health.txt", Content: "HEALTHY"}},
 		},
+		ScenarioTools: ScenarioToolExpectations{AllowedTools: agentTestCatalogToolNames()},
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC,
 		Binding: CampaignExecutionBinding{
 			Topology: CampaignOperatorTopology{
@@ -130,6 +131,16 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 	f.workspace, err = NewScenarioWorkspace(agentTestWorkingDirectory, "run-1", "attempt-1")
 	require.NoError(t, err)
 	return f
+}
+
+// agentTestCatalogToolNames scopes the fixture scenario to every catalog tool,
+// so each test can drive whichever tool it exercises.
+func agentTestCatalogToolNames() []string {
+	names := make([]string, 0, len(agentToolSpecs))
+	for _, spec := range agentToolSpecs {
+		names = append(names, spec.Name)
+	}
+	return names
 }
 
 func (f *agentExecutorFixture) execute() (*evalv1.EvaluationAssignmentResult, error) {
@@ -304,11 +315,79 @@ func TestCampaignAgentExecutor_DispatchesToolsDespiteRecordedProbeRejection(t *t
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
 	require.Len(t, f.inference.requests, 2, "past probe results must not suppress current provider requests")
 	for _, request := range f.inference.requests {
-		assert.Len(t, request.GetTools(), len(f.executor.catalog.Declarations()), "the provider receives the full tool catalog")
+		assert.Len(t, request.GetTools(), len(agentToolSpecs), "the provider receives the scenario's full tool surface")
 		require.NotNil(t, request.GetToolChoice())
 		assert.Equal(t, operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO, request.GetToolChoice().GetMode())
 	}
 	assert.Empty(t, f.storedTrace().ProviderFailure)
+}
+
+func TestCampaignAgentExecutor_DeclaresScenarioAllowedAndForbiddenToolsInCatalogOrder(t *testing.T) {
+	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
+	f.req.ScenarioTools = ScenarioToolExpectations{
+		AllowedTools:   []string{agentToolRunCommands, agentToolFileRead},
+		ForbiddenTools: []string{agentToolFileWrite},
+	}
+
+	_, err := f.execute()
+
+	require.NoError(t, err)
+	want := []string{agentToolFileRead, agentToolFileWrite, agentToolRunCommands}
+	for _, request := range f.inference.requests {
+		var names []string
+		for _, tool := range request.GetTools() {
+			names = append(names, tool.GetName())
+		}
+		assert.Equal(t, want, names, "forbidden tools stay declared so restraint is observable")
+	}
+	trace := f.storedTrace()
+	require.NotNil(t, trace.Input)
+	require.Len(t, trace.Input.Tools, len(want))
+	assert.Equal(t, want, trace.ModelCalls[0].ToolsDeclared)
+}
+
+func TestCampaignAgentExecutor_AnswerScenarioDeclaresNoTools(t *testing.T) {
+	f := newAgentExecutorFixture(t, []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: "HEALTHY"}}})
+	f.req.ScenarioTools = ScenarioToolExpectations{}
+
+	_, err := f.execute()
+
+	require.NoError(t, err)
+	require.Len(t, f.inference.requests, 1)
+	assert.Empty(t, f.inference.requests[0].GetTools())
+	assert.Nil(t, f.inference.requests[0].GetToolChoice(), "no tool choice without declared tools")
+	trace := f.storedTrace()
+	assert.Empty(t, trace.Input.Tools)
+	assert.Empty(t, trace.ModelCalls[0].ToolsDeclared)
+	assert.Equal(t, "HEALTHY", trace.FinalOutput)
+}
+
+func TestCampaignAgentExecutor_UndeclaredToolCallFailsWithoutDispatch(t *testing.T) {
+	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
+	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{agentToolFileRead}}
+
+	_, err := f.execute()
+
+	require.NoError(t, err, "an undeclared tool call is a scored answer, not a harness failure")
+	for _, request := range f.client.requests {
+		assert.NotEqual(t, string(constants.ActionTypeExecuteBash), request.ActionType, "an undeclared tool dispatches nothing")
+	}
+	trace := f.storedTrace()
+	require.Len(t, trace.ToolCalls, 1)
+	call := trace.ToolCalls[0]
+	assert.False(t, call.Success)
+	assert.Equal(t, agentToolErrorExecution, call.ErrorType)
+	assert.Equal(t, `ZTD-1607: Unknown tool "run_commands_with_operator"; use one of: file_read_on_operator`, call.Error)
+}
+
+func TestCampaignAgentExecutor_UncatalogedScenarioToolFailsClosed(t *testing.T) {
+	f := newAgentExecutorFixture(t)
+	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{"not_a_catalog_tool"}}
+
+	_, err := f.execute()
+
+	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+	assert.Empty(t, f.inference.requests, "no model call before the tool surface resolves")
 }
 
 func TestCampaignAgentExecutor_TraceRecordsExactInputThinkingAndProviderCallIDs(t *testing.T) {

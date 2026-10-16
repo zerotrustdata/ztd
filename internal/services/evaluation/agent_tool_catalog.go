@@ -176,24 +176,60 @@ func (a agentToolArgument) jsonSchema() map[string]any {
 	}
 }
 
+// Scope returns the declarations one scenario puts in front of the model, in
+// catalog order: its allowed tools plus its forbidden tools, which stay
+// declared so restraint and governed denial remain observable. A scenario
+// naming neither (an ANSWER scenario) declares no tools. A name the catalog
+// does not type fails closed before any model call.
+func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope, error) {
+	surface := stringSet(tools.AllowedTools)
+	for _, name := range tools.ForbiddenTools {
+		surface[name] = struct{}{}
+	}
+	for name := range surface {
+		if _, ok := c.specs[name]; !ok {
+			return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tool %q is not in the agent tool catalog: %w", name, constants.ErrEvaluationScenarioContractInvalid)
+		}
+	}
+	scope := agentToolScope{catalog: c, declarations: make([]*operatorv1.InferenceToolDeclaration, 0, len(surface))}
+	for _, declaration := range c.declarations {
+		if _, ok := surface[declaration.GetName()]; ok {
+			scope.declarations = append(scope.declarations, declaration)
+		}
+	}
+	return scope, nil
+}
+
+// agentToolScope is the tool surface one scenario declares on every agent
+// turn. A model call naming a tool outside it never reaches dispatch.
+type agentToolScope struct {
+	catalog      *agentToolCatalog
+	declarations []*operatorv1.InferenceToolDeclaration
+}
+
 // Declarations returns the tool declarations sent on every agent turn.
-func (c *agentToolCatalog) Declarations() []*operatorv1.InferenceToolDeclaration {
-	return c.declarations
+func (s agentToolScope) Declarations() []*operatorv1.InferenceToolDeclaration {
+	return s.declarations
 }
 
 // DeclaredNames returns the declared tool names in declaration order.
-func (c *agentToolCatalog) DeclaredNames() []string {
-	names := make([]string, 0, len(c.declarations))
-	for _, declaration := range c.declarations {
+func (s agentToolScope) DeclaredNames() []string {
+	names := make([]string, 0, len(s.declarations))
+	for _, declaration := range s.declarations {
 		names = append(names, declaration.GetName())
 	}
 	return names
 }
 
-// Spec returns the named declared tool.
-func (c *agentToolCatalog) Spec(name string) (agentToolSpec, bool) {
-	spec, ok := c.specs[name]
-	return spec, ok
+// Spec returns the named tool when this scope declared it.
+func (s agentToolScope) Spec(name string) (agentToolSpec, bool) {
+	for _, declaration := range s.declarations {
+		if declaration.GetName() == name {
+			spec, ok := s.catalog.specs[name]
+			return spec, ok
+		}
+	}
+	return agentToolSpec{}, false
 }
 
 // agentToolArguments is one decoded model tool call. Model output is untrusted
