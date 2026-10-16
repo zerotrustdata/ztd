@@ -50,20 +50,13 @@ func GenerateFormationCatalogStackSet(req FormationCatalogStackGenerationRequest
 	stacks := make([]*evalv1.HeterogeneousStackDefinition, 0, len(formations))
 	registryVariantIDs := make(map[string]struct{})
 	for _, formation := range formations {
-		if err := validateFormationRegistryCoverage(formation, registry); err != nil {
-			return nil, err
-		}
-		stack, err := formation.ToStackDefinition()
+		stack, err := formationRegistryStack(formation, registry)
 		if err != nil {
-			return nil, fmt.Errorf("evaluation: generate formation catalog stack set: formation %q: %w", formation.ID, err)
+			return nil, fmt.Errorf("evaluation: generate formation catalog stack set: %w", err)
 		}
 		stacks = append(stacks, stack)
-		for _, model := range formation.Models() {
-			variant := lookupFormationVariant(registry, model.VariantID, model.ServedModelTag)
-			if variant == nil {
-				return nil, fmt.Errorf("evaluation: generate formation catalog stack set: formation %q role model %q: %w", formation.ID, model.ServedModelTag, constants.ErrFormationRegistryBinding)
-			}
-			registryVariantIDs[variant.GetVariantId()] = struct{}{}
+		for _, slot := range []*evalv1.RoleAssignment{stack.GetPrimarySlot(), stack.GetAssistantSlot(), stack.GetLiteSlot()} {
+			registryVariantIDs[slot.GetVariantId()] = struct{}{}
 		}
 	}
 	sort.Slice(stacks, func(i, j int) bool {
@@ -93,25 +86,6 @@ func GenerateFormationCatalogStackSet(req FormationCatalogStackGenerationRequest
 	return set, nil
 }
 
-func validateFormationRegistryCoverage(formation Formation, registry formationVariantRegistry) error {
-	for _, role := range formation.Roles() {
-		model, err := formation.Model(role)
-		if err != nil {
-			return err
-		}
-		if lookupFormationVariant(registry, model.VariantID, model.ServedModelTag) == nil {
-			return fmt.Errorf("evaluation: generate formation catalog stack set: formation %q role %s served tag %q: %w", formation.ID, role, model.ServedModelTag, constants.ErrFormationRegistryBinding)
-		}
-		if model.Trust == FormationTrustSovereign {
-			variant := lookupFormationVariant(registry, model.VariantID, model.ServedModelTag)
-			if variant.GetModelDigest() == "" {
-				return fmt.Errorf("evaluation: generate formation catalog stack set: formation %q role %s: %w", formation.ID, role, constants.ErrFormationAttestationRequired)
-			}
-		}
-	}
-	return nil
-}
-
 func buildFormationCatalogCoverageMatrix(stacks []*evalv1.HeterogeneousStackDefinition) *HeterogeneousCoverageMatrix {
 	coverage := roleCoverageFromStacks(stacks)
 	public := make(map[string][]string, len(coverage))
@@ -131,32 +105,23 @@ func buildFormationCatalogCoverageMatrix(stacks []*evalv1.HeterogeneousStackDefi
 	}
 }
 
+// validateFormationCatalogStackSet checks a sealed formation stack set for
+// self-consistency: every slot binds a variant frozen in the set. The live
+// catalog is deliberately not consulted, so catalog edits after a campaign
+// was created cannot invalidate or rebind its sealed stacks.
 func validateFormationCatalogStackSet(set *HeterogeneousStackSet) error {
-	topologies, err := NewExecutionTopologies()
-	if err != nil {
-		return err
+	if len(set.Stacks) == 0 {
+		return fmt.Errorf("evaluation: validate formation catalog stack set: %w", constants.ErrMissingRequiredField)
 	}
-	expectedFormations := make(map[string]struct{})
-	for _, formation := range topologies.Formations() {
-		expectedFormations[formation.ID] = struct{}{}
+	frozen := make(map[string]struct{}, len(set.VariantIDs))
+	for _, variantID := range set.VariantIDs {
+		frozen[variantID] = struct{}{}
 	}
-	if len(set.Stacks) == 0 || len(set.Stacks) > len(expectedFormations) {
-		return fmt.Errorf("evaluation: validate formation catalog stack set: expected between 1 and %d stacks, got %d", len(expectedFormations), len(set.Stacks))
-	}
-	seenStackIDs := make(map[string]struct{}, len(set.Stacks))
 	for _, stack := range set.Stacks {
-		if stack == nil || stack.GetStackId() == "" {
-			return fmt.Errorf("evaluation: validate formation catalog stack set: %w", constants.ErrMissingRequiredField)
-		}
-		if _, exists := seenStackIDs[stack.GetStackId()]; exists {
-			return fmt.Errorf("evaluation: validate formation catalog stack set: duplicate stack_id %q", stack.GetStackId())
-		}
-		seenStackIDs[stack.GetStackId()] = struct{}{}
-		if _, ok := expectedFormations[stack.GetStackId()]; !ok {
-			return fmt.Errorf("evaluation: validate formation catalog stack set: unknown stack_id %q", stack.GetStackId())
-		}
-		if err := ValidateHeterogeneousStackDigest(stack); err != nil {
-			return err
+		for _, slot := range []*evalv1.RoleAssignment{stack.GetPrimarySlot(), stack.GetAssistantSlot(), stack.GetLiteSlot()} {
+			if _, ok := frozen[slot.GetVariantId()]; !ok {
+				return fmt.Errorf("evaluation: validate formation catalog stack set: stack %q variant %q not in frozen variant set: %w", stack.GetStackId(), slot.GetVariantId(), constants.ErrFormationRegistryBinding)
+			}
 		}
 	}
 	return nil

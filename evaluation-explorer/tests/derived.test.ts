@@ -502,6 +502,15 @@ describe('visibleStreamEvents', () => {
     expect(visible.map((event) => event.event_id)).toEqual(['evt-3', 'evt-2', 'evt-1']);
   });
 
+  it('omits metric_updated events from the stream', () => {
+    const withMetric = [
+      ...events,
+      liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', observed_at: '2026-09-17T08:32:00Z' }),
+    ];
+    const visible = visibleStreamEvents(withMetric, { modelFilter: 'all', kindFilter: 'all' });
+    expect(visible.map((event) => event.event_id)).toEqual(['evt-3', 'evt-2', 'evt-1']);
+  });
+
   it('applies model and kind filters before slicing', () => {
     const visible = visibleStreamEvents(events, { modelFilter: 'gemma4-e4b', kindFilter: 'assignment_completed' });
     expect(visible.map((event) => event.event_id)).toEqual(['evt-2']);

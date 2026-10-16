@@ -214,19 +214,6 @@ func (f Formation) ToModelVariants() ([]*evalv1.ModelVariant, error) {
 	return variants, nil
 }
 
-// ToStackDefinition converts the formation into the canonical campaign stack.
-func (f Formation) ToStackDefinition() (*evalv1.HeterogeneousStackDefinition, error) {
-	variants, err := f.ToModelVariants()
-	if err != nil {
-		return nil, err
-	}
-	stack, err := materializeStack(f.ID, variants[0], variants[1], variants[2])
-	if err != nil {
-		return nil, err
-	}
-	return stack, nil
-}
-
 // ExecutionTopologies is the checked-in catalog of benchmark formations.
 type ExecutionTopologies struct {
 	formations []Formation
@@ -688,7 +675,7 @@ func (r *FormationRunner) Run(ctx context.Context, formation Formation, initialS
 		}
 		attestation, attestErr := r.provenance.Attest(ctx, model)
 		if attestErr != nil {
-			return result, fmt.Errorf("formation: attest %s: %w: %v", model.ServedModelTag, constants.ErrFormationAttestationFailed, attestErr)
+			return result, fmt.Errorf("formation: attest %s: %w: %w", model.ServedModelTag, constants.ErrFormationAttestationFailed, attestErr)
 		}
 		if attestation == nil || !attestation.Verified {
 			return result, fmt.Errorf("formation: attest %s: %w", model.ServedModelTag, constants.ErrFormationAttestationFailed)

@@ -49,11 +49,7 @@ func CampaignFormationBindingRequest(assignment *evalv1.EvaluationAssignment, va
 	if err != nil {
 		return FormationBindingRequest{}, fmt.Errorf("evaluation: campaign formation binding: %w", err)
 	}
-	return FormationBindingRequest{
-		FormationID: stack.GetStackId(),
-		Stack:       stack,
-		Variants:    variants,
-	}, nil
+	return FormationBindingRequest{Stack: stack, Variants: variants}, nil
 }
 
 // CampaignFormationRunner executes one bound heterogeneous stack through the
@@ -75,7 +71,7 @@ func NewCampaignFormationProductionRunner(deps FormationProductionDependencies) 
 func (r *campaignFormationProductionRunner) RunHeterogeneousFormation(ctx context.Context, binding FormationBindingRequest, runContext FormationRunContext, initialState []byte) (*FormationRunResult, error) {
 	deps := r.deps
 	deps.RunContext = runContext
-	return RunHeterogeneousFormationProduction(ctx, binding, deps, initialState)
+	return RunFormationProduction(ctx, binding, deps, initialState)
 }
 
 // CampaignFormationExecutor runs heterogeneous system-lane assignments through

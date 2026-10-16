@@ -39,8 +39,7 @@ function isAssignmentLevelEvent(event: LiveEvent): boolean {
   return (
     event.kind === 'assignment_started' ||
     event.kind === 'assignment_completed' ||
-    event.kind === 'assignment_failed' ||
-    event.kind === 'metric_updated'
+    event.kind === 'assignment_failed'
   );
 }
 
@@ -107,7 +106,7 @@ function isTerminalAssignment(assignment: AssignmentResult | undefined): assignm
 function designatedRolesByAssignment(events: LiveEvent[]): Map<string, ModelRole> {
   const designated = new Map<string, ModelRole>();
   for (const event of events) {
-    if (event.assignment_id && event.role && isAssignmentLevelEvent(event) && event.kind !== 'metric_updated') {
+    if (event.assignment_id && event.role && isAssignmentLevelEvent(event)) {
       designated.set(`${event.run_id}:${event.assignment_id}`, event.role);
     }
   }
@@ -165,10 +164,6 @@ function assignmentMetricValues(event: LiveEvent, assignment: AssignmentResult |
   if (isTerminalAssignmentEvent(event)) {
     return applyAssignmentResourceSummary({ ...delta, ...(assignment?.metric_values ?? {}) }, assignment);
   }
-  // Started and metric_updated rows show only what their event stated; the
-  // assignment's final values belong to its terminal event.
-  if (isAssignmentLevelEvent(event)) return { ...delta };
-
   const roleRecord = findModelActivityRecord(event, assignment);
   return {
     ...delta,
@@ -185,7 +180,6 @@ function displayLabel(value: string | undefined): string | undefined {
  *  failed model) stays on `lifecycle_status` for the detail view. */
 function eventStatus(event: LiveEvent): string | undefined {
   if (event.terminal_status) return event.terminal_status;
-  if (event.kind === 'assignment_started' && event.lifecycle_status === 'running') return 'started';
   return event.lifecycle_status;
 }
 
@@ -324,12 +318,6 @@ function streamSortValue(
   const parts = eventParts(event, assignment);
   if (field in parts) return parts[field as keyof EventParts].toLowerCase();
   const metric = assignmentMetric(event, assignment, field as AssignmentMetricColumn);
-  if (field === 'latency_ms' && metric?.value === undefined && event.kind === 'assignment_started') {
-    const obsTime = new Date(event.observed_at).getTime();
-    if (!Number.isNaN(obsTime)) {
-      return Math.max(0, Date.now() - obsTime);
-    }
-  }
   return String(metric?.value ?? metric?.unavailable_reason ?? '').toLowerCase();
 }
 
@@ -384,40 +372,10 @@ export function LiveEventStream({
   const [sortField, setSortField] = useState<StreamSortField>();
   const [sortDirection, setSortDirection] = useState<StreamSortDirection>('asc');
   const [page, setPage] = useState(0);
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const models = useStoreState((state) => state.models);
   const assignments = useStoreState((state) => state.assignments);
-
-  // Terminal event time per assignment; a started row's timer resolves once present.
-  const terminalTimes = useMemo(() => {
-    const times = new Map<string, number>();
-    for (const e of events) {
-      if (e.assignment_id && isTerminalAssignmentEvent(e)) {
-        const t = new Date(e.observed_at).getTime();
-        if (!Number.isNaN(t)) times.set(`${e.run_id}:${e.assignment_id}`, t);
-      }
-    }
-    return times;
-  }, [events]);
-
-  const isPendingStart = (e: LiveEvent): boolean => {
-    if (e.kind !== 'assignment_started') return false;
-    if (e.lifecycle_status !== 'running' && e.lifecycle_status !== 'queued') return false;
-    if (!e.assignment_id) return true;
-    if (terminalTimes.has(`${e.run_id}:${e.assignment_id}`)) return false;
-    return !isTerminalAssignment(assignments.get(recordKey(e.dataset_id, e.assignment_id)));
-  };
-
-  useEffect(() => {
-    const hasRunning = events.some(isPendingStart);
-    if (!hasRunning) return;
-    const interval = setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [events, terminalTimes, assignments]);
 
   const activeRunId = useMemo(() => {
     if (events.length === 0) return undefined;
@@ -758,48 +716,14 @@ export function LiveEventStream({
                         )}
                       </td>
                       {ASSIGNMENT_METRIC_COLUMNS.map(({ key }) => {
-                        const isRunningAssignment = isPendingStart(event);
-                        let displayed = !event.assignment_id
+                        const displayed = !event.assignment_id
                           ? { text: STREAM_EMPTY_METRIC, unavailable: true }
                           : streamMetricDisplay(assignmentMetric(event, assignment, key), assignmentMetricFormatter(key));
-
-                        let isElapsed = false;
-                        if (key === 'latency_ms' && displayed.unavailable && event.kind === 'assignment_started' && event.assignment_id) {
-                          const obsTime = new Date(event.observed_at).getTime();
-                          if (!Number.isNaN(obsTime)) {
-                            if (isRunningAssignment) {
-                              const elapsedSec = Math.max(0, Math.floor((nowMs - obsTime) / 1000));
-                              displayed = { text: `${elapsedSec}s…`, unavailable: false };
-                              isElapsed = true;
-                            } else {
-                              // Resolved: prefer the final scored latency, else freeze at the terminal event.
-                              const final = isTerminalAssignment(assignment)
-                                ? streamMetricDisplay(
-                                    applyAssignmentResourceSummary({ ...assignment.metric_values }, assignment).latency_ms,
-                                    assignmentMetricFormatter(key),
-                                  )
-                                : undefined;
-                              const endMs = terminalTimes.get(`${event.run_id}:${event.assignment_id}`);
-                              if (final && !final.unavailable) {
-                                displayed = final;
-                              } else if (endMs !== undefined) {
-                                displayed = { text: `${Math.max(0, Math.floor((endMs - obsTime) / 1000))}s`, unavailable: false };
-                              }
-                            }
-                          }
-                        }
 
                         return (
                           <td className="stream-metric-cell" key={key}>
                             <span
-                              className={
-                                isElapsed
-                                  ? 'stream-metric-value stream-metric-elapsed'
-                                  : displayed.unavailable
-                                    ? 'stream-metric-value unavailable'
-                                    : 'stream-metric-value'
-                              }
-                              title={isElapsed ? 'Active assignment duration' : undefined}
+                              className={displayed.unavailable ? 'stream-metric-value unavailable' : 'stream-metric-value'}
                             >
                               {displayed.text}
                             </span>

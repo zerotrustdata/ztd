@@ -419,8 +419,8 @@ describe('LiveEventStream', () => {
           events={[
             liveEvent({
               event_id: 'evt-pass',
-              kind: 'metric_updated',
-              assignment_id: 'assignment-1',
+              kind: 'assignment_completed',
+              assignment_id: 'assignment-pass-metric',
               metric_delta: { pass: { value: 0 } },
             }),
           ]}

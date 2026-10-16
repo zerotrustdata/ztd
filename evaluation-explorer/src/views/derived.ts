@@ -74,7 +74,6 @@ export function campaignTerminalProgress(run: EvaluationSummary): { done: number
 /** Assignment kinds that are one result per assignment. Bootstrap newest-first
  *  plus history oldest-first otherwise emit twins at the same observed_at. */
 const COLLAPSIBLE_ASSIGNMENT_KINDS = new Set<LiveEvent['kind']>([
-  'assignment_started',
   'assignment_completed',
   'assignment_failed',
 ]);
@@ -93,12 +92,14 @@ function streamKindRank(kind: LiveEvent['kind']): number {
     case 'assignment_completed':
     case 'assignment_failed':
       return 4;
-    case 'metric_updated':
-      return 5;
     default:
-      return 6;
+      return 5;
   }
 }
+
+/** Kinds that feed the store and assignment detail but are not stream rows:
+ *  each assignment is represented by its stage and terminal rows. */
+const STREAM_HIDDEN_KINDS = new Set<LiveEvent['kind']>(['assignment_started', 'metric_updated']);
 
 function streamDedupeKey(event: LiveEvent): string {
   if (event.assignment_id && COLLAPSIBLE_ASSIGNMENT_KINDS.has(event.kind)) {
@@ -250,13 +251,6 @@ export function restampStreamProgress(events: LiveEvent[]): LiveEvent[] {
         restamped.push({ ...event, completed: terminalCount, total });
         continue;
       }
-      if (event.kind === 'assignment_started' && event.assignment_id) {
-        const completed = finished.has(event.assignment_id)
-          ? terminalCount
-          : Math.min(terminalCount + 1, Math.max(total, 1));
-        restamped.push({ ...event, completed, total: Math.max(total, completed) });
-        continue;
-      }
       restamped.push(total > 0 ? { ...event, total } : event);
     }
   }
@@ -284,6 +278,7 @@ export function visibleStreamEvents(
   options: { modelFilter: string; kindFilter: string; assignmentFilter?: string; limit?: number },
 ): LiveEvent[] {
   const filtered = events
+    .filter((event) => !STREAM_HIDDEN_KINDS.has(event.kind))
     .filter((event) => options.modelFilter === 'all' || event.variant_id === options.modelFilter)
     .filter((event) => options.kindFilter === 'all' || event.kind === options.kindFilter)
     .filter(

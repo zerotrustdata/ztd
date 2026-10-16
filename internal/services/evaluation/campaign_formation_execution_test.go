@@ -24,7 +24,7 @@ type harnessCampaignFormationRunner struct {
 }
 
 func (r *harnessCampaignFormationRunner) RunHeterogeneousFormation(ctx context.Context, binding FormationBindingRequest, _ FormationRunContext, initialState []byte) (*FormationRunResult, error) {
-	formation, err := ResolveFormationBinding(binding)
+	formation, err := BindFormation(binding)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func heterogeneousAssignmentExecutionRequest(t *testing.T, stack *evalv1.Heterog
 	}
 }
 
-func TestBindHeterogeneousStack_BindsRegistryVariants(t *testing.T) {
+func TestBindFormation_BindsRegistryVariants(t *testing.T) {
 	variants := testHeterogeneousVariants()
 	stackSet, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
 		CampaignID: "heterogeneous-campaign",
@@ -68,10 +68,9 @@ func TestBindHeterogeneousStack_BindsRegistryVariants(t *testing.T) {
 	require.NoError(t, err)
 	stack := stackSet.Stacks[0]
 
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{
-		FormationID: stack.GetStackId(),
-		Stack:       stack,
-		Variants:    variants,
+	formation, err := BindFormation(FormationBindingRequest{
+		Stack:    stack,
+		Variants: variants,
 	})
 	require.NoError(t, err)
 	assert.True(t, formation.RelaxedValidation)
@@ -118,7 +117,7 @@ func TestImportAssignmentResultFromFormationRun_SetsAgentPersonaForPublication(t
 		func(prefix string) string { return prefix + "-attempt" },
 	)
 	require.NoError(t, err)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: stackSet.Stacks[0], Variants: variants})
+	formation, err := BindFormation(FormationBindingRequest{Stack: stackSet.Stacks[0], Variants: variants})
 	require.NoError(t, err)
 	formationResult, err := harness.RunBoundFormation(context.Background(), formation, []byte("initial"))
 	require.NoError(t, err)
@@ -149,7 +148,7 @@ func TestImportAssignmentResultFromFormationRun_MaterializesRoleTelemetry(t *tes
 		func(prefix string) string { return prefix + "-attempt" },
 	)
 	require.NoError(t, err)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: stackSet.Stacks[0], Variants: variants})
+	formation, err := BindFormation(FormationBindingRequest{Stack: stackSet.Stacks[0], Variants: variants})
 	require.NoError(t, err)
 	formationResult, err := harness.RunBoundFormation(context.Background(), formation, []byte("initial"))
 	require.NoError(t, err)
@@ -176,7 +175,7 @@ func TestImportAssignmentResultFromFormationRun_MaterializesRoleTelemetry(t *tes
 func TestImportAssignmentResultFromFormationRun_GradesFormationRoleCompletion(t *testing.T) {
 	variants := testHeterogeneousVariants()
 	stack := mustHeterogeneousStack(t)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: stack, Variants: variants})
+	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
 	require.NoError(t, err)
 	formationResult := &FormationRunResult{
 		FormationID: formation.ID,
@@ -202,7 +201,7 @@ func TestImportAssignmentResultFromFormationRun_GradesFormationRoleCompletion(t 
 func TestImportAssignmentResultFromFormationRun_SemanticJudgeScenarioIsGraderFailure(t *testing.T) {
 	variants := testHeterogeneousVariants()
 	stack := mustHeterogeneousStack(t)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: stack, Variants: variants})
+	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
 	require.NoError(t, err)
 	req := heterogeneousAssignmentExecutionRequest(t, stack, variants)
 	req.GradingMethod = evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE
@@ -283,7 +282,7 @@ func TestVerifyFormationAssignmentEvidence_AcceptsCompletedResult(t *testing.T) 
 		func(prefix string) string { return prefix + "-attempt" },
 	)
 	require.NoError(t, err)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: req.Assignment.GetHeterogeneous().GetStack(), Variants: testHeterogeneousVariants()})
+	formation, err := BindFormation(FormationBindingRequest{Stack: req.Assignment.GetHeterogeneous().GetStack(), Variants: testHeterogeneousVariants()})
 	require.NoError(t, err)
 	initialState, err := BuildFormationInitialState(req.ScenarioInput)
 	require.NoError(t, err)

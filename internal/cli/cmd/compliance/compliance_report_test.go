@@ -717,7 +717,7 @@ type harnessFormationRunner struct {
 }
 
 func (r *harnessFormationRunner) RunHeterogeneousFormation(ctx context.Context, binding evaluation.FormationBindingRequest, _ evaluation.FormationRunContext, initialState []byte) (*evaluation.FormationRunResult, error) {
-	formation, err := evaluation.ResolveFormationBinding(binding)
+	formation, err := evaluation.BindFormation(binding)
 	if err != nil {
 		return nil, err
 	}

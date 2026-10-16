@@ -1406,11 +1406,6 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
   height: 1px;
   background: var(--border);
 }
-.stream-metric-elapsed {
-  color: var(--accent);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
 
 /* System overview */
 .sys-platform {
