@@ -41,6 +41,25 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
+func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) {
+	fixture := newPubsubFixture(t)
+	for _, action := range []constants.ActionType{
+		constants.ActionTypeHeartbeat, constants.ActionTypeExecuteBash, constants.ActionTypeCancel,
+		constants.ActionTypeFsList, constants.ActionTypeFsRead, constants.ActionTypeFsGrep,
+		constants.ActionTypePortCheck, constants.ActionTypeOllamaModelInventory, constants.ActionTypeOllamaModelResidency,
+		constants.ActionTypeFetchLogs, constants.ActionTypeFetchHistory, constants.ActionTypeFetchFileHistory,
+		constants.ActionTypeRestoreFile, constants.ActionTypeFetchFileDiff,
+	} {
+		t.Run(string(action), func(t *testing.T) {
+			handler, ok := fixture.Svc.actionHandlers[action]
+			require.True(t, ok)
+			_, err := handler(t.Context(), &PubSubCommandMessage{ID: "decode-failure", Payload: []byte{0xff}})
+			require.Error(t, err, "a handler failure must reach L5 instead of producing a completed receipt")
+			assert.ErrorIs(t, err, proto.Error, "the original protobuf decoding failure must remain in the error chain")
+		})
+	}
+}
+
 func TestNewOperatorPubSubService(t *testing.T) {
 	t.Run("returns non-nil service without error", func(t *testing.T) {
 		t.Parallel()

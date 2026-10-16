@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -838,11 +839,12 @@ func ollamaCapabilityRejection(statusCode int, body []byte) bool {
 // ErrInferenceBackendUnavailable with the underlying transport cause
 // preserved in the chain.
 func transportError(ctx context.Context, op string, err error) error {
+	var netErr net.Error
 	switch {
 	case errors.Is(ctx.Err(), context.Canceled):
-		return fmt.Errorf("ollama_backend: %s: %w", op, context.Canceled)
-	case errors.Is(err, context.DeadlineExceeded):
-		return fmt.Errorf("ollama_backend: %s: %w", op, constants.ErrInferenceBackendTimeout)
+		return fmt.Errorf("ollama_backend: %s: %w: %w", op, context.Canceled, err)
+	case errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
+		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceBackendTimeout, err)
 	default:
 		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceBackendUnavailable, err)
 	}

@@ -286,9 +286,10 @@ func TestLedgerPaths_ReadOfUnknownSessionCreatesNothing(t *testing.T) {
 
 	// The request-payload paths (operator_session_id comes from the caller) fail typed and create nothing.
 	history, err := hh.HandleFetchFileHistory(testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-unknown-history", hostFile, 10, sessionID))
-	require.NoError(t, err)
+	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
 	assert.False(t, history.Success)
-	restore, _ := hh.HandleRestoreFile(t.Context(), sessionID, testutil.BuildRestoreFileRequestedPayload(t, "exec-unknown", hostFile, strings.Repeat("a", 40), sessionID))
+	restore, _, restoreErr := hh.HandleRestoreFile(t.Context(), sessionID, testutil.BuildRestoreFileRequestedPayload(t, "exec-unknown", hostFile, strings.Repeat("a", 40), sessionID))
+	require.ErrorIs(t, restoreErr, constants.ErrLedgerSessionNotFound)
 	assert.False(t, restore.Success)
 
 	entries, err := os.ReadDir(sessionsDir)

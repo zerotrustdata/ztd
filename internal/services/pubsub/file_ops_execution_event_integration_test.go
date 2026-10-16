@@ -109,30 +109,31 @@ func TestHandleFsReadRequest_RecordsExecutionEvent(t *testing.T) {
 	readPath := filepath.Join(cfg.WorkDir, "notes.txt")
 	require.NoError(t, os.WriteFile(readPath, []byte("ordinary content"), 0o600))
 
-	read := func(req *operatorv1.FsReadRequested) {
+	read := func(req *operatorv1.FsReadRequested) error {
 		payload, err := proto.Marshal(req)
 		require.NoError(t, err)
-		svc.HandleFsReadRequest(context.Background(), &PubSubCommandMessage{
+		_, err = svc.HandleFsReadRequest(context.Background(), &PubSubCommandMessage{
 			ID:                "msg-" + req.ExecutionId,
 			EventType:         constants.Event.Operator.FsRead.Requested,
 			OperatorSessionID: "sess-fs-read",
 			Payload:           payload,
 		})
+		return err
 	}
 
-	read(&operatorv1.FsReadRequested{Path: readPath, ExecutionId: "exec-fs-read-ok"})
+	require.NoError(t, read(&operatorv1.FsReadRequested{Path: readPath, ExecutionId: "exec-fs-read-ok"}))
 	event, err := store.GetEventByExecutionID("exec-fs-read-ok")
 	require.NoError(t, err)
 	assert.Equal(t, constants.Event.Operator.FsRead.Completed, event.Type)
 	assert.Equal(t, "ordinary content", event.CommandStdout)
 	assert.Equal(t, 0, event.CommandExitCode)
 
-	read(&operatorv1.FsReadRequested{ExecutionId: "exec-fs-read-no-path"})
+	require.ErrorIs(t, read(&operatorv1.FsReadRequested{ExecutionId: "exec-fs-read-no-path"}), constants.ErrMissingRequiredField)
 	event, err = store.GetEventByExecutionID("exec-fs-read-no-path")
 	require.NoError(t, err)
 	assert.Equal(t, constants.Event.Operator.FsRead.Failed, event.Type)
 	assert.Equal(t, 1, event.CommandExitCode)
-	assert.Equal(t, "missing path in request", event.CommandStderr)
+	assert.Equal(t, "missing path in request: missing required field", event.CommandStderr)
 
 	events, err := store.ListEvents("sess-fs-read", 10, 0)
 	require.NoError(t, err)
@@ -155,12 +156,13 @@ func TestHandleFsReadRequest_UnrecordedReadIsFailed(t *testing.T) {
 	payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: readPath, ExecutionId: "exec-fs-read-unrecorded"})
 	require.NoError(t, err)
 
-	svc.HandleFsReadRequest(context.Background(), &PubSubCommandMessage{
+	_, err = svc.HandleFsReadRequest(context.Background(), &PubSubCommandMessage{
 		ID:                "msg-1",
 		EventType:         constants.Event.Operator.FsRead.Requested,
 		OperatorSessionID: "sess-unknown",
 		Payload:           payload,
 	})
+	require.ErrorIs(t, err, constants.ErrExecutionRecordFailed)
 
 	readResult := decodeFsReadResultForTest(t, client.LastPublished())
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, readResult.Status)
@@ -204,11 +206,12 @@ func TestHandleRestoreFileRequest_RecordsFileMutation(t *testing.T) {
 		OperatorSessionId: sessionID,
 	})
 	require.NoError(t, err)
-	svc.HandleRestoreFileRequest(ctx, &PubSubCommandMessage{
+	_, err = svc.HandleRestoreFileRequest(ctx, &PubSubCommandMessage{
 		EventType:         constants.Event.Operator.RestoreFile.Requested,
 		OperatorSessionID: sessionID,
 		Payload:           payload,
 	})
+	require.NoError(t, err)
 
 	got, err := os.ReadFile(hostFile)
 	require.NoError(t, err)

@@ -23,6 +23,12 @@ export function validatePosts(posts) {
     }
     if (typeof post.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(post.date) || !Number.isFinite(Date.parse(post.date)) || new Date(post.date).toISOString().slice(0, 10) !== post.date) throw new Error(`journal post ${post.slug} has an invalid date`);
     if (!Array.isArray(post.tags) || !post.tags.length || post.tags.some(tag => typeof tag !== 'string' || !tag.trim()) || new Set(post.tags).size !== post.tags.length) throw new Error(`journal post ${post.slug} requires unique tags`);
+    if (post.artwork !== undefined) {
+      if (!post.artwork || typeof post.artwork.src !== 'string' || !/^\/[a-z0-9]+(?:-[a-z0-9]+)*\.svg$/.test(post.artwork.src)) throw new Error(`journal post ${post.slug} artwork requires a root-relative SVG path`);
+      for (const key of ['alt', 'caption']) {
+        if (typeof post.artwork[key] !== 'string' || !post.artwork[key].trim()) throw new Error(`journal post ${post.slug} artwork requires ${key}`);
+      }
+    }
   }
 }
 
@@ -77,11 +83,11 @@ function layout({ article, ...page }) {
 
 function postCard(post, index, total) {
   const featured = index === 0;
-  return `<article class="post-card${featured ? ' featured' : ''}" data-post data-search="${escape(`${post.title} ${post.description} ${post.tags.join(' ')}`.toLowerCase())}" data-tags="${escape(JSON.stringify(post.tags))}">
+  return `<article class="post-card${featured ? ' featured' : ''}${post.artwork ? ' has-art' : ''}" data-post data-search="${escape(`${post.title} ${post.description} ${post.tags.join(' ')}`.toLowerCase())}" data-tags="${escape(JSON.stringify(post.tags))}">
 <div class="post-copy"><div class="post-topline"><span class="entry-number">ENTRY ${String(total - index).padStart(3, '0')}</span>${featured ? '<span class="latest-label">Latest dispatch</span>' : ''}</div>
 <div class="tags">${tags(post)}</div><h3><a href="${postPath(post)}">${escape(post.title)}</a></h3><p>${escape(post.description)}</p>
 <div class="post-meta">${meta(post)}</div><a class="read-link" href="${postPath(post)}">Read the field notes <span aria-hidden="true">↗</span><span class="sr-only">: ${escape(post.title)}</span></a></div>
-${featured ? `<a class="post-art" href="${postPath(post)}" aria-label="Read ${escape(post.title)}" tabindex="-1"><img src="/journal-network.svg" width="560" height="480" alt="" fetchpriority="high"><span class="art-caption"><span>INTENT → VERIFICATION → EXECUTION</span><span>ztd / field notes</span></span></a>` : ''}
+${post.artwork ? `<a class="post-art" href="${postPath(post)}" aria-label="Read ${escape(post.title)}" tabindex="-1"><img src="${escape(post.artwork.src)}" width="560" height="480" alt="${escape(post.artwork.alt)}" ${featured ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"><span class="art-caption"><span>${escape(post.artwork.caption)}</span><span>ztd / field notes</span></span></a>` : ''}
 </article>`;
 }
 

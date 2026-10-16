@@ -308,11 +308,11 @@ func (hs *HeartbeatService) Publish(ctx context.Context, heartbeat *operatorv1.H
 }
 
 // HandleRequest processes an inbound heartbeat request message.
-func (hs *HeartbeatService) HandleRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (hs *HeartbeatService) HandleRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var protoReq operatorv1.HeartbeatRequested
 	if err := proto.Unmarshal(msg.Payload, &protoReq); err != nil {
 		hs.logger.Error("[HEARTBEAT] Failed to decode heartbeat request payload as protobuf HeartbeatRequested", "error", err)
-		return
+		return "", fmt.Errorf("heartbeat: decode request: %w", err)
 	}
 
 	hs.logger.Info("[HEARTBEAT] Heartbeat request received (via Protobuf)",
@@ -326,16 +326,14 @@ func (hs *HeartbeatService) HandleRequest(ctx context.Context, msg *PubSubComman
 		protoHeartbeat := hs.buildProtoHeartbeat(heartbeat)
 		if err := hs.results.PublishHeartbeat(ctx, protoHeartbeat); err != nil {
 			hs.logger.Error("[HEARTBEAT] Failed to send requested heartbeat", "error", err)
+			return "", fmt.Errorf("heartbeat: publish result: %w", err)
 		} else {
 			hs.logger.Info("[HEARTBEAT] Requested heartbeat sent successfully")
 		}
 	} else {
-		if hs.config.Gateway.Enabled {
-			hs.logger.Debug("[HEARTBEAT] Results publisher not set, skipping heartbeat in gateway mode")
-		} else {
-			hs.logger.Warn("[HEARTBEAT] Results publisher not set, cannot send heartbeat")
-		}
+		return "", constants.ErrPubSubResultsPublisher
 	}
+	return "", nil
 }
 
 // SendAutomatic builds and publishes an automatic heartbeat immediately.

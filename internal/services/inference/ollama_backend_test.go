@@ -10,7 +10,11 @@ package inference
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +24,19 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
+
+func TestTransportError_ClassifiesNetworkTimeoutAndPreservesCause(t *testing.T) {
+	cause := &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}
+	err := transportError(t.Context(), "generate", cause)
+	assert.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
+	assert.ErrorIs(t, err, cause)
+	assert.False(t, errors.Is(err, constants.ErrInferenceBackendUnavailable))
+
+	deadlineErr := fmt.Errorf("provider request: %w", context.DeadlineExceeded)
+	err = transportError(t.Context(), "generate", deadlineErr)
+	assert.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
+	assert.ErrorIs(t, err, deadlineErr)
+}
 
 func TestEncodeOllamaKeepAlive(t *testing.T) {
 	t.Parallel()

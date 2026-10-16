@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -336,6 +337,39 @@ func TestCampaignAgentExecutor_EmptyCommandFailsCallWithoutDispatch(t *testing.T
 	assert.False(t, call.Success)
 	assert.Equal(t, agentToolErrorExecution, call.ErrorType)
 	assert.Equal(t, "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required", call.Error)
+}
+
+func TestCampaignAgentExecutor_EmptyFileContentFailsValidationWithoutDispatch(t *testing.T) {
+	for _, tool := range []string{agentToolFileWrite, agentToolFileCreate} {
+		t.Run(tool, func(t *testing.T) {
+			turns := [][]*operatorv1.InferenceResponsePart{
+				{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+					CallId: "empty-write", Name: tool,
+					ArgumentsJson: `{"file_path":"notes.txt","content":"","justification":"update notes","target_operators":[]}`,
+				}}}},
+				{{Part: &operatorv1.InferenceResponsePart_Text{Text: "No file written."}}},
+			}
+			f := newAgentExecutorFixture(t, turns...)
+			_, err := f.execute()
+			require.NoError(t, err)
+			trace := f.storedTrace()
+			require.Len(t, trace.ToolCalls, 1)
+			assert.False(t, trace.ToolCalls[0].Success)
+			assert.Contains(t, trace.ToolCalls[0].Error, "content")
+			for _, request := range f.client.requests {
+				if request.ActionType == string(constants.ActionTypeFileEdit) {
+					edit := &operatorv1.FileEditRequested{}
+					require.NoError(t, proto.Unmarshal(request.Payload, edit))
+					assert.NotEqual(t, "notes.txt", filepath.Base(edit.GetFilePath()), "invalid tool call must not reach governed dispatch")
+				}
+			}
+			for _, declaration := range f.inference.requests[0].GetTools() {
+				if declaration.GetName() == tool {
+					assert.Contains(t, declaration.GetJsonSchema(), `"minLength":1`)
+				}
+			}
+		})
+	}
 }
 
 func TestCampaignAgentExecutor_BracketsToolLoopWithSentinelReadsInOrder(t *testing.T) {

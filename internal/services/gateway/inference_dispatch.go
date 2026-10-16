@@ -262,7 +262,7 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 
 		result, err := c.dispatchSvc.DispatchInference(r.Context(), dispatchReq)
 		if err != nil {
-			writeInferenceDispatchStreamFailure(c, w, flusher, err)
+			writeInferenceDispatchStreamFailure(c, w, flusher, req.GetProviderAttemptId(), err)
 			return
 		}
 		if err := writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
@@ -272,7 +272,7 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 				Receipt:       result.Receipt,
 			}},
 		}); err != nil {
-			c.logger.Error("inference dispatch: failed to write completion frame", "error", err)
+			c.logger.Error("inference dispatch: failed to write completion frame", logging.ErrorKind(err))
 		}
 		return
 	}
@@ -280,11 +280,12 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 	result, err := c.dispatchSvc.DispatchInference(r.Context(), dispatchReq)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, constants.ErrInferenceCanceled) {
-			c.logger.Info("inference dispatch: caller canceled", "error", err)
+			c.logger.Info("inference dispatch: caller canceled", slog.String("provider_attempt_id", req.GetProviderAttemptId()), logging.ErrorKind(err))
 			return
 		}
 		status, publicErr := classifyInferenceDispatchError(err)
-		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), slog.String("failure_code", dispatch.FailureCode(publicErr).String()), logging.ErrorKind(err))
+		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), slog.String("failure_code", dispatch.FailureCode(publicErr).String()),
+			slog.String("provider_attempt_id", req.GetProviderAttemptId()), slog.String("transaction_id", governance.FailedReceipt(err).GetTransactionId()), logging.ErrorKind(err))
 		c.responder.ProtoJSONCanonical(w, status, &operatorv1.InferenceDispatchFailure{
 			Error:   publicErr.Error(),
 			Code:    dispatch.FailureCode(publicErr),
@@ -311,22 +312,23 @@ func (c *InferenceDispatchController) writeFailure(w http.ResponseWriter, status
 	})
 }
 
-func writeInferenceDispatchStreamFailure(c *InferenceDispatchController, w http.ResponseWriter, flusher http.Flusher, err error) {
+func writeInferenceDispatchStreamFailure(c *InferenceDispatchController, w http.ResponseWriter, flusher http.Flusher, providerAttemptID string, err error) {
 	if errors.Is(err, context.Canceled) {
 		err = fmt.Errorf("%w: %w", constants.ErrInferenceCanceled, err)
 	}
-	if errors.Is(err, constants.ErrInferenceCanceled) || errors.Is(err, constants.ErrInferenceCallerDisconnected) {
-		c.logger.Info("inference dispatch: streaming caller left", "error", err)
-	} else {
-		c.logger.Error("inference dispatch: streaming dispatch failed after response started", logging.ErrorKind(err))
-	}
 	_, publicErr := classifyInferenceDispatchError(err)
+	if errors.Is(err, constants.ErrInferenceCanceled) || errors.Is(err, constants.ErrInferenceCallerDisconnected) {
+		c.logger.Info("inference dispatch: streaming caller left", slog.String("provider_attempt_id", providerAttemptID), logging.ErrorKind(err))
+	} else {
+		c.logger.Error("inference dispatch: streaming dispatch failed after response started", slog.String("failure_code", dispatch.FailureCode(publicErr).String()),
+			slog.String("provider_attempt_id", providerAttemptID), slog.String("transaction_id", governance.FailedReceipt(err).GetTransactionId()), logging.ErrorKind(err))
+	}
 	if writeErr := writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
 		Frame: &operatorv1.InferenceDispatchStreamFrame_Failure{
 			Failure: &operatorv1.InferenceDispatchStreamFailure{Reason: publicErr.Error(), Code: dispatch.FailureCode(publicErr)},
 		},
 	}); writeErr != nil {
-		c.logger.Info("inference dispatch: failed to write streaming failure frame", "error", writeErr)
+		c.logger.Info("inference dispatch: failed to write streaming failure frame", logging.ErrorKind(writeErr))
 	}
 }
 

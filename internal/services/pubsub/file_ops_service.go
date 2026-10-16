@@ -10,6 +10,7 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -135,6 +136,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 		}
 		if publishErr := fs.results.PublishFileEditResult(ctx, protoResult, msg); publishErr != nil {
 			fs.logger.Error("Failed to publish rejected file edit result", logging.ErrorKind(publishErr))
+			err = errors.Join(err, publishErr)
 		}
 		return "", err
 	}
@@ -153,8 +155,8 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 		if beginErr != nil {
 			// Fail closed: without a pre-mutation snapshot the edit is never executed.
 			fs.logger.Error("File edit refused: ledger snapshot unavailable", slog.String("message_id", msg.ID), logging.ErrorKind(beginErr))
-			fs.publishLFAAError(ctx, msg, constants.Event.Operator.FileEdit.Failed, beginErr.Error())
-			return "", beginErr
+			publishErr := fs.publishLFAAError(ctx, msg, constants.Event.Operator.FileEdit.Failed, beginErr.Error())
+			return "", errors.Join(beginErr, publishErr)
 		}
 	}
 
@@ -168,7 +170,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 		return "", fmt.Errorf("file edit: %w", constants.ErrInternal)
 	}
 
-	fs.finishLedgerTwoPhaseCommit(msg.OperatorSessionID, ledgerResult, result)
+	execErr := fs.finishLedgerTwoPhaseCommit(msg.OperatorSessionID, ledgerResult, result)
 
 	commandStr := fmt.Sprintf("file_%s: %s", operation, filePath)
 
@@ -195,7 +197,8 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 		ExecutionID:         result.ExecutionID,
 	})
 	if err != nil {
-		fs.logger.Error("File edit event could not be recorded; result marked FAILED", string(constants.ConnectionStateError), err)
+		fs.logger.Error("File edit event could not be recorded; result marked FAILED", logging.ErrorKind(err))
+		execErr = errors.Join(execErr, err)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.ErrorMessage = err.Error()
 		result.ErrorType = "audit_record_error"
@@ -209,9 +212,11 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 			DiffStat:         ledgerResult.DiffStat,
 		}
 		if err := fs.auditStore.RecordFileMutation(mutation); err != nil {
-			fs.logger.Error("File mutation could not be recorded; result marked FAILED", string(constants.ConnectionStateError), err)
+			fs.logger.Error("File mutation could not be recorded; result marked FAILED", logging.ErrorKind(err))
+			mutationErr := fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordFileMutationFailed, err)
+			execErr = errors.Join(execErr, mutationErr)
 			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-			result.ErrorMessage = fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordFileMutationFailed, err).Error()
+			result.ErrorMessage = mutationErr.Error()
 			result.ErrorType = "audit_record_error"
 		}
 	}
@@ -251,11 +256,12 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 	}
 
 	// The results publisher egresses the payload and publishes a typed failure when it is withheld.
-	if err := fs.results.PublishFileEditResult(ctx, protoResult, msg); err != nil {
-		fs.logger.Error("Failed to publish file edit result", "error", err)
+	publishErr := fs.results.PublishFileEditResult(ctx, protoResult, msg)
+	if execErr == nil {
+		execErr = executionResultError(result.Status, result.ErrorMessage)
 	}
-	if result.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return "", fmt.Errorf("file edit failed: %s", result.ErrorMessage)
+	if err := errors.Join(execErr, publishErr); err != nil {
+		return "", fmt.Errorf("file edit: %w", err)
 	}
 	return commandStr, nil
 }
@@ -294,15 +300,18 @@ func (fs *FileOpsService) beginLedgerTwoPhaseCommit(operatorSessionID string, ta
 // finishLedgerTwoPhaseCommit completes the post-mutation snapshot after a successful edit. A failed
 // completion fails the result: the edit happened but its snapshot is not recorded, so the result
 // is published as a FileEdit failure and the audit trail records it as failed.
-func (fs *FileOpsService) finishLedgerTwoPhaseCommit(operatorSessionID string, ledgerResult *storage.LedgerResult, result *models.FileEditResult) {
+func (fs *FileOpsService) finishLedgerTwoPhaseCommit(operatorSessionID string, ledgerResult *storage.LedgerResult, result *models.FileEditResult) error {
 	if ledgerResult == nil || result.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return
+		return nil
 	}
 	if err := fs.completeLedgerTwoPhaseCommit(operatorSessionID, ledgerResult); err != nil {
 		fs.logger.Error("Failed to complete ledger two-phase commit", slog.String("operator_session_id", operatorSessionID), logging.ErrorKind(err))
+		wrapped := fmt.Errorf("file edit: complete ledger two-phase commit: %w", err)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-		result.ErrorMessage = fmt.Errorf("file edit: complete ledger two-phase commit: %w", err).Error()
+		result.ErrorMessage = wrapped.Error()
+		return wrapped
 	}
+	return nil
 }
 
 // completeLedgerTwoPhaseCommit completes the post-mutation snapshot phase of the git
@@ -321,11 +330,11 @@ func (fs *FileOpsService) completeLedgerTwoPhaseCommit(operatorSessionID string,
 }
 
 // HandleFsListRequest processes an inbound filesystem list request.
-func (fs *FileOpsService) HandleFsListRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (fs *FileOpsService) HandleFsListRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var protoList operatorv1.FsListRequested
 	if err := proto.Unmarshal(msg.Payload, &protoList); err != nil {
 		fs.logger.Error("Failed to decode fs list payload as protobuf FsListRequested", "error", err)
-		return
+		return "", err
 	}
 
 	path := protoList.Path
@@ -338,10 +347,11 @@ func (fs *FileOpsService) HandleFsListRequest(ctx context.Context, msg *PubSubCo
 	fsListReq, err := payloadToFsListRequest(msg)
 	if err != nil {
 		fs.logger.Error("Failed to create fs list request", slog.String("message_id", msg.ID), logging.ErrorKind(err))
-		return
+		return "", err
 	}
 
 	result, err := fs.fsList.ExecuteFsList(ctx, fsListReq)
+	execErr := err
 	if err != nil {
 		result = &models.FsListResult{
 			ExecutionID:     fsListReq.ExecutionID,
@@ -380,7 +390,8 @@ func (fs *FileOpsService) HandleFsListRequest(ctx context.Context, msg *PubSubCo
 		ExecutionDurationMs: int64(result.DurationSeconds * 1000),
 		ExecutionID:         result.ExecutionID,
 	}); err != nil {
-		fs.logger.Error("FS list event could not be recorded; result marked FAILED", string(constants.ConnectionStateError), err)
+		fs.logger.Error("FS list event could not be recorded; result marked FAILED", logging.ErrorKind(err))
+		execErr = errors.Join(execErr, err)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.ErrorMessage = err.Error()
 		result.ErrorType = "audit_record_error"
@@ -429,17 +440,19 @@ func (fs *FileOpsService) HandleFsListRequest(ctx context.Context, msg *PubSubCo
 	}
 
 	// The results publisher egresses the payload and publishes a typed failure when it is withheld.
-	if err := fs.results.PublishFsListResult(ctx, protoResult, msg); err != nil {
-		fs.logger.Error("Failed to publish fs list result", "error", err)
+	publishErr := fs.results.PublishFsListResult(ctx, protoResult, msg)
+	if err := errors.Join(execErr, executionResultError(result.Status, result.ErrorMessage), publishErr); err != nil {
+		return "", fmt.Errorf("FsList: %w", err)
 	}
+	return "", nil
 }
 
 // HandleFsGrepRequest processes an inbound filesystem grep request.
-func (fs *FileOpsService) HandleFsGrepRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (fs *FileOpsService) HandleFsGrepRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var protoGrep operatorv1.FsGrepRequested
 	if err := proto.Unmarshal(msg.Payload, &protoGrep); err != nil {
 		fs.logger.Error("Failed to decode fs grep payload as protobuf FsGrepRequested", "error", err)
-		return
+		return "", err
 	}
 
 	path := protoGrep.Path
@@ -452,10 +465,11 @@ func (fs *FileOpsService) HandleFsGrepRequest(ctx context.Context, msg *PubSubCo
 	fsGrepReq, err := payloadToFsGrepRequest(msg)
 	if err != nil {
 		fs.logger.Error("Failed to create fs grep request", slog.String("message_id", msg.ID), logging.ErrorKind(err))
-		return
+		return "", err
 	}
 
 	result, err := fs.fsGrep.ExecuteFsGrep(ctx, fsGrepReq)
+	execErr := err
 	if err != nil {
 		result = &models.FsGrepResult{
 			ExecutionID:     fsGrepReq.ExecutionID,
@@ -495,7 +509,8 @@ func (fs *FileOpsService) HandleFsGrepRequest(ctx context.Context, msg *PubSubCo
 		ExecutionDurationMs: int64(result.DurationSeconds * 1000),
 		ExecutionID:         result.ExecutionID,
 	}); err != nil {
-		fs.logger.Error("FS grep event could not be recorded; result marked FAILED", string(constants.ConnectionStateError), err)
+		fs.logger.Error("FS grep event could not be recorded; result marked FAILED", logging.ErrorKind(err))
+		execErr = errors.Join(execErr, err)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.ErrorMessage = err.Error()
 		result.ErrorType = "audit_record_error"
@@ -537,18 +552,20 @@ func (fs *FileOpsService) HandleFsGrepRequest(ctx context.Context, msg *PubSubCo
 	}
 
 	// The results publisher egresses the payload and publishes a typed failure when it is withheld.
-	if err := fs.results.PublishFsGrepResult(ctx, protoResult, msg); err != nil {
-		fs.logger.Error("Failed to publish fs grep result", "error", err)
+	publishErr := fs.results.PublishFsGrepResult(ctx, protoResult, msg)
+	if err := errors.Join(execErr, executionResultError(result.Status, result.ErrorMessage), publishErr); err != nil {
+		return "", fmt.Errorf("FsGrep: %w", err)
 	}
+	return "", nil
 }
 
 // HandleFsReadRequest processes an inbound filesystem read request. Every outcome,
 // including a rejected request, is recorded as a raw execution event before the result is
 // published, and a failed record marks the result FAILED without its content.
-func (fs *FileOpsService) HandleFsReadRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (fs *FileOpsService) HandleFsReadRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	fs.logger.Info("File system read requested (via Protobuf)", "message_id", msg.ID)
 	start := time.Now()
-	result := fs.executeFsRead(ctx, msg)
+	result, readErr := fs.executeFsRead(ctx, msg)
 	result.ExecutionId = executionIDFromMessage(msg)
 	result.DurationSeconds = float32(time.Since(start).Seconds())
 
@@ -571,7 +588,8 @@ func (fs *FileOpsService) HandleFsReadRequest(ctx context.Context, msg *PubSubCo
 		ExecutionDurationMs: int64(result.DurationSeconds * 1000),
 		ExecutionID:         result.ExecutionId,
 	}); err != nil {
-		fs.logger.Error("FS read event could not be recorded; result marked FAILED", string(constants.ConnectionStateError), err)
+		fs.logger.Error("FS read event could not be recorded; result marked FAILED", logging.ErrorKind(err))
+		readErr = errors.Join(readErr, err)
 		eventType = constants.Event.Operator.FsRead.Failed
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.Content = ""
@@ -580,29 +598,34 @@ func (fs *FileOpsService) HandleFsReadRequest(ctx context.Context, msg *PubSubCo
 		result.ErrorMessage = err.Error()
 		result.ErrorType = "audit_record_error"
 	}
-	fs.publishLFAATypedResponse(ctx, msg, eventType, result)
+	publishErr := fs.publishLFAATypedResponse(ctx, msg, eventType, result)
+	if err := errors.Join(readErr, publishErr); err != nil {
+		fs.logger.Warn("File system read failed", "message_id", msg.ID, "execution_id", result.ExecutionId, "error_type", result.ErrorType, logging.ErrorKind(err))
+		return "", fmt.Errorf("fs read: %w", err)
+	}
+	return readCommand, nil
 }
 
 // executeFsRead reads the requested file and returns the result without an execution ID or
 // duration; HandleFsReadRequest stamps both and records the event.
-func (fs *FileOpsService) executeFsRead(ctx context.Context, msg *PubSubCommandMessage) *operatorv1.FsReadResult {
-	failed := func(path, errorType, message string) *operatorv1.FsReadResult {
+func (fs *FileOpsService) executeFsRead(ctx context.Context, msg *PubSubCommandMessage) (*operatorv1.FsReadResult, error) {
+	failed := func(path, errorType string, err error) (*operatorv1.FsReadResult, error) {
 		return &operatorv1.FsReadResult{
 			Path:         path,
 			Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-			ErrorMessage: message,
+			ErrorMessage: err.Error(),
 			ErrorType:    errorType,
-		}
+		}, err
 	}
 
 	var protoRead operatorv1.FsReadRequested
 	if err := proto.Unmarshal(msg.Payload, &protoRead); err != nil {
 		fs.logger.Error("Failed to decode fs read payload as protobuf FsReadRequested", "error", err)
-		return failed("", "invalid_request", "invalid request payload")
+		return failed("", "invalid_request", fmt.Errorf("decode FsReadRequested: %w", err))
 	}
 	if protoRead.Path == "" {
 		fs.logger.Warn("Fs read request without path")
-		return failed("", "invalid_request", "missing path in request")
+		return failed("", "invalid_request", fmt.Errorf("missing path in request: %w", constants.ErrMissingRequiredField))
 	}
 
 	maxSize := protoRead.MaxSize
@@ -615,26 +638,26 @@ func (fs *FileOpsService) executeFsRead(ctx context.Context, msg *PubSubCommandM
 	// so a symlink swap cannot escape the admitted directory.
 	target, err := fs.fileEdit.OpenFileEditTarget(ctx, protoRead.Path)
 	if err != nil {
-		return failed(protoRead.Path, "read_error", err.Error())
+		return failed(protoRead.Path, "read_error", err)
 	}
 	defer func() { _ = target.Close() }()
 
 	file, err := target.Open()
 	if err != nil {
-		return failed(protoRead.Path, "read_error", err.Error())
+		return failed(protoRead.Path, "read_error", err)
 	}
 	defer func() { _ = file.Close() }()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return failed(protoRead.Path, "read_error", err.Error())
+		return failed(protoRead.Path, "read_error", err)
 	}
 
 	// SECURITY: io.LimitReader bounds memory when reading a large file.
 	readLimit := int64(maxSize)
 	data, err := io.ReadAll(io.LimitReader(file, readLimit))
 	if err != nil {
-		return failed(protoRead.Path, "read_error", err.Error())
+		return failed(protoRead.Path, "read_error", err)
 	}
 
 	return &operatorv1.FsReadResult{
@@ -643,11 +666,11 @@ func (fs *FileOpsService) executeFsRead(ctx context.Context, msg *PubSubCommandM
 		Content:   string(data),
 		SizeBytes: int64(len(data)),
 		Truncated: fileInfo.Size() > readLimit,
-	}
+	}, nil
 }
 
-func (fs *FileOpsService) publishLFAATypedResponse(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, payload proto.Message) {
-	publishLFAATypedResponseTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, payload, fs.auditStore, fs.scrubbing)
+func (fs *FileOpsService) publishLFAATypedResponse(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, payload proto.Message) error {
+	return publishLFAATypedResponseTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, payload, fs.auditStore, fs.scrubbing)
 }
 
 // recordFileOpEvent writes a file operation's execution event to the audit store.
@@ -659,8 +682,8 @@ func (fs *FileOpsService) recordFileOpEvent(event *storage.Event) (int64, error)
 	return id, nil
 }
 
-func (fs *FileOpsService) publishLFAAError(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, errorMsg string) {
-	publishLFAAErrorTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, errorMsg, fs.auditStore, fs.scrubbing)
+func (fs *FileOpsService) publishLFAAError(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, errorMsg string) error {
+	return publishLFAAErrorTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, errorMsg, fs.auditStore, fs.scrubbing)
 }
 
 // payloadToFileEditRequest is a package-level helper shared by FileOpsService and tests.

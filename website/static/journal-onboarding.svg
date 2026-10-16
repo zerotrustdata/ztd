@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 480" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">One release, three platforms</title>
+  <desc id="desc">A public ztd release connects to Linux, Windows, and macOS terminals. Three failed release tags lead to the first published version, v1.0.4.</desc>
+  <defs>
+    <radialGradient id="glow">
+      <stop stop-color="#72f6de" stop-opacity=".11"/>
+      <stop offset="1" stop-color="#72f6de" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="core" x1="194" y1="86" x2="366" y2="182" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24463f"/>
+      <stop offset="1" stop-color="#122626"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r=".7" fill="#608d89" opacity=".28"/>
+    </pattern>
+  </defs>
+  <path fill="#0b171a" d="M0 0h560v480H0z"/>
+  <path fill="url(#grid)" d="M0 0h560v480H0z"/>
+  <circle cx="280" cy="218" r="220" fill="url(#glow)"/>
+  <path d="M20 40V20h20M520 20h20v20M20 416v20h20M520 436h20v-20" stroke="#41645f"/>
+  <g font-family="monospace" font-size="9" letter-spacing="2" fill="#91b6b0">
+    <text x="35" y="49">02 / GOING PUBLIC</text>
+    <text x="525" y="49" text-anchor="end">BEYOND LINUX</text>
+  </g>
+
+  <!-- A release is only useful when it reaches the machines people actually use. -->
+  <rect x="194" y="86" width="172" height="96" rx="12" fill="url(#core)" stroke="#72f6de" stroke-opacity=".7"/>
+  <path d="M194 113h172" stroke="#72f6de" stroke-opacity=".16"/>
+  <circle cx="209" cy="100" r="2" fill="#72f6de"/>
+  <circle cx="219" cy="100" r="2" fill="#436c68"/>
+  <circle cx="229" cy="100" r="2" fill="#436c68"/>
+  <text x="351" y="103" text-anchor="end" font-family="monospace" font-size="8" letter-spacing="1.4" fill="#a9e5d8">PUBLIC RELEASE</text>
+  <path d="M217 132h24l-23 22h23" stroke="#c8fff1" stroke-width="2.5"/>
+  <circle cx="241" cy="132" r="2.5" fill="#72f6de"/>
+  <text x="258" y="150" font-family="monospace" font-size="17" fill="#d9fff5">v1.0.6</text>
+  <g stroke="#72f6de" stroke-opacity=".48">
+    <path d="M280 182v28M116 234v-24h328v24M280 210v24"/>
+    <circle cx="280" cy="210" r="3" fill="#0b171a"/>
+  </g>
+
+  <g fill="#101f22" stroke="#436c68">
+    <rect x="52" y="234" width="128" height="112" rx="7"/>
+    <rect x="216" y="234" width="128" height="112" rx="7"/>
+    <rect x="380" y="234" width="128" height="112" rx="7"/>
+    <path d="M52 260h128M216 260h128M380 260h128"/>
+  </g>
+  <g font-family="monospace" font-size="9" letter-spacing="1.2" fill="#c8e6df" text-anchor="middle">
+    <text x="116" y="251">LINUX</text>
+    <text x="280" y="251">WINDOWS</text>
+    <text x="444" y="251">macOS</text>
+  </g>
+  <g stroke="#72f6de" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m69 279 5 4-5 4m10 0h6M233 279l5 4-5 4m10 0h6M397 279l5 4-5 4m10 0h6"/>
+  </g>
+  <g font-family="monospace" font-size="9" fill="#a9c7c1">
+    <text x="68" y="309">./ztd</text>
+    <text x="232" y="309">.\ztd.exe</text>
+    <text x="396" y="309">./ztd</text>
+  </g>
+  <g stroke="#72f6de" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m154 279 3 3 6-7"/>
+    <rect x="310" y="275" width="17" height="13" rx="2"/>
+    <path d="M310 279h17m-13 3v3m4-3v3m4-3v3"/>
+    <rect x="475" y="280" width="13" height="10" rx="2"/>
+    <path d="M478 280v-3a3.5 3.5 0 0 1 7 0v3"/>
+  </g>
+  <g font-family="monospace" font-size="8" letter-spacing=".6" fill="#789e96">
+    <text x="68" y="332">THE STARTING POINT</text>
+    <text x="232" y="332">PATHS / PROCESSES</text>
+    <text x="396" y="332">KEYCHAIN / PORTS</text>
+  </g>
+
+  <!-- The skipped tags remain part of the release story. -->
+  <path d="M116 390h328" stroke="#436c68" stroke-dasharray="3 5"/>
+  <g fill="#192123" stroke="#d9a388">
+    <circle cx="116" cy="390" r="7"/>
+    <circle cx="225" cy="390" r="7"/>
+    <circle cx="335" cy="390" r="7"/>
+  </g>
+  <g stroke="#d9a388" stroke-linecap="round">
+    <path d="m114 388 4 4m0-4-4 4m109-4 4 4m0-4-4 4m110-4 4 4m0-4-4 4"/>
+  </g>
+  <circle cx="444" cy="390" r="7" fill="#193c32" stroke="#72f6de"/>
+  <path d="m441 390 2 2 4-4" stroke="#72f6de" stroke-linecap="round" stroke-linejoin="round"/>
+  <g font-family="monospace" font-size="8" letter-spacing="1" text-anchor="middle">
+    <g fill="#b69c8d">
+      <text x="116" y="414">v1.0.1</text>
+      <text x="225" y="414">v1.0.2</text>
+      <text x="335" y="414">v1.0.3</text>
+    </g>
+    <text x="444" y="414" fill="#a9e5d8">v1.0.4 / LIVE</text>
+  </g>
+</svg>

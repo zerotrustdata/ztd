@@ -19,6 +19,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -1023,6 +1024,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		listenHost = constants.LocalhostIP
 	}
 	ls.server = &http.Server{
+		ErrorLog:          slog.NewLogLogger(ls.logger.With("server", "http").Handler(), slog.LevelError),
 		Addr:              net.JoinHostPort(listenHost, strconv.Itoa(cfg.Gateway.HTTPPort)),
 		Handler:           ls.handler.buildHTTPRouter(),
 		ReadHeaderTimeout: cfg.Gateway.ReadHeaderTimeout,
@@ -1034,6 +1036,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 
 	// HTTPS server: mTLS for all routes (API, public, enrollment)
 	ls.publicServer = &http.Server{
+		ErrorLog:          slog.NewLogLogger(ls.logger.With("server", "https").Handler(), slog.LevelError),
 		Addr:              net.JoinHostPort(listenHost, strconv.Itoa(cfg.Gateway.HTTPSPort)),
 		Handler:           ls.handler,
 		TLSConfig:         tlsConfig,
@@ -1387,7 +1390,11 @@ func (ls *GatewayModeService) Start(ctx context.Context) error {
 		}
 	}()
 
-	return <-errChan
+	err := <-errChan
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
 
 // Stop gracefully shuts down the HTTP server and closes the database.

@@ -5,7 +5,12 @@
     "date": "2026-10-14",
     "description": "An eval bug wiped the repo root, git saved the day, and I found out my own evals were skipping the L1–L5 pipeline that would have stopped it.",
     "author": "Danny",
-    "tags": ["Engineering", "Evaluations"]
+    "tags": ["Engineering", "Evaluations"],
+    "artwork": {
+      "src": "/journal-eval-recovery.svg",
+      "alt": "A deleted repository restored from git, above the five governance layers the evaluation had skipped.",
+      "caption": "DELETED → RESTORED → RETHOUGHT"
+    }
   },
   {
     "slug": "going-public-onboarding-beyond-linux",
@@ -13,7 +18,12 @@
     "date": "2026-10-13",
     "description": "The repo went public, three release tags never shipped, and onboarding fell over the moment it left Linux. What broke on Windows and macOS, and what's still clunky.",
     "author": "Danny",
-    "tags": ["Engineering", "Releases", "Onboarding"]
+    "tags": ["Engineering", "Releases", "Onboarding"],
+    "artwork": {
+      "src": "/journal-onboarding.svg",
+      "alt": "A ztd release branching into Linux, Windows, and macOS terminals, with three failed release tags before the first published version.",
+      "caption": "ONE RELEASE / THREE PLATFORMS"
+    }
   },
   {
     "slug": "enrolling-two-thousand-operators",
@@ -21,6 +31,11 @@
     "date": "2026-10-12",
     "description": "The failed enrollments, profiles, and fixes behind a 2,000-Operator fleet. A field report on what broke, what changed, and what the measurements actually prove.",
     "author": "Danny",
-    "tags": ["Engineering", "Scale testing"]
+    "tags": ["Engineering", "Scale testing"],
+    "artwork": {
+      "src": "/journal-network.svg",
+      "alt": "A single ztd Gateway at the center of concentric rings of outbound Operators.",
+      "caption": "INTENT → VERIFICATION → EXECUTION"
+    }
   }
 ]

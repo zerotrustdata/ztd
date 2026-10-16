@@ -173,8 +173,8 @@ func TestPublishLFAATypedResponseTo(t *testing.T) {
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		}
 
-		publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
-		// Should log error and not panic
+		err := publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		require.ErrorIs(t, err, constants.ErrClientClosed)
 	})
 }
 
@@ -251,8 +251,8 @@ func TestPublishLFAAErrorTo(t *testing.T) {
 			Payload:           []byte("invalid protobuf"),
 		}
 
-		publishLFAAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
-		// Should log error and not panic
+		err := publishLFAAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		require.ErrorIs(t, err, constants.ErrClientClosed)
 	})
 }
 

@@ -61,13 +61,6 @@ type PubSubCommandMessage struct {
 // A non-empty summary is stamped into the signed ActionReceipt.
 type verifiedActionHandler func(ctx context.Context, msg *PubSubCommandMessage) (string, error)
 
-func fireAndForgetActionHandler(fn func(context.Context, *PubSubCommandMessage)) verifiedActionHandler {
-	return func(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
-		fn(ctx, msg)
-		return "", nil
-	}
-}
-
 // OperatorPubSubService manages the Operator pub/sub connection and dispatches inbound
 // Operator commands to the appropriate first-class service handler.
 type OperatorPubSubService struct {
@@ -416,23 +409,21 @@ func (rs *OperatorPubSubService) buildHandlers() {
 	}
 
 	rs.actionHandlers = map[constants.ActionType]verifiedActionHandler{
-		constants.ActionTypeHeartbeat:   fireAndForgetActionHandler(rs.heartbeat.HandleRequest),
-		constants.ActionTypeExecuteBash: fireAndForgetActionHandler(rs.commands.HandleExecutionRequest),
-		constants.ActionTypeCancel:      fireAndForgetActionHandler(rs.commands.HandleCancelRequest),
-		constants.ActionTypeFileEdit: func(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
-			return rs.fileOps.HandleFileEditRequest(ctx, msg)
-		},
-		constants.ActionTypeFsList:                      fireAndForgetActionHandler(rs.fileOps.HandleFsListRequest),
-		constants.ActionTypeFsRead:                      fireAndForgetActionHandler(rs.fileOps.HandleFsReadRequest),
-		constants.ActionTypeFsGrep:                      fireAndForgetActionHandler(rs.fileOps.HandleFsGrepRequest),
-		constants.ActionTypePortCheck:                   fireAndForgetActionHandler(rs.ports.HandlePortCheckRequest),
-		constants.ActionTypeOllamaModelInventory:        fireAndForgetActionHandler(rs.ollama.HandleInventoryRequest),
-		constants.ActionTypeOllamaModelResidency:        fireAndForgetActionHandler(rs.ollama.HandleResidencyRequest),
-		constants.ActionTypeFetchLogs:                   fireAndForgetActionHandler(rs.history.HandleFetchLogsRequest),
-		constants.ActionTypeFetchHistory:                fireAndForgetActionHandler(rs.history.HandleFetchHistoryRequest),
-		constants.ActionTypeFetchFileHistory:            fireAndForgetActionHandler(rs.history.HandleFetchFileHistoryRequest),
-		constants.ActionTypeRestoreFile:                 fireAndForgetActionHandler(rs.history.HandleRestoreFileRequest),
-		constants.ActionTypeFetchFileDiff:               fireAndForgetActionHandler(rs.history.HandleFetchFileDiffRequest),
+		constants.ActionTypeHeartbeat:                   rs.heartbeat.HandleRequest,
+		constants.ActionTypeExecuteBash:                 rs.commands.HandleExecutionRequest,
+		constants.ActionTypeCancel:                      rs.commands.HandleCancelRequest,
+		constants.ActionTypeFileEdit:                    rs.fileOps.HandleFileEditRequest,
+		constants.ActionTypeFsList:                      rs.fileOps.HandleFsListRequest,
+		constants.ActionTypeFsRead:                      rs.fileOps.HandleFsReadRequest,
+		constants.ActionTypeFsGrep:                      rs.fileOps.HandleFsGrepRequest,
+		constants.ActionTypePortCheck:                   rs.ports.HandlePortCheckRequest,
+		constants.ActionTypeOllamaModelInventory:        rs.ollama.HandleInventoryRequest,
+		constants.ActionTypeOllamaModelResidency:        rs.ollama.HandleResidencyRequest,
+		constants.ActionTypeFetchLogs:                   rs.history.HandleFetchLogsRequest,
+		constants.ActionTypeFetchHistory:                rs.history.HandleFetchHistoryRequest,
+		constants.ActionTypeFetchFileHistory:            rs.history.HandleFetchFileHistoryRequest,
+		constants.ActionTypeRestoreFile:                 rs.history.HandleRestoreFileRequest,
+		constants.ActionTypeFetchFileDiff:               rs.history.HandleFetchFileDiffRequest,
 		constants.ActionTypeDocumentUpdate:              rs.handleDocumentUpdateSync,
 		constants.ActionTypeDocumentDelete:              rs.handleDocumentDeleteSync,
 		constants.ActionTypeEvalAnswer:                  rs.handleEvalAnswerRequestSync,

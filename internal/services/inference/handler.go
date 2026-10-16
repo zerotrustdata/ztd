@@ -14,12 +14,14 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/jsonschema"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/proto"
@@ -162,8 +164,18 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 		"message_count", len(genReq.Messages),
 		"tool_count", len(genReq.Tools))
 
+	started := time.Now()
 	resp, err := h.backend.Generate(ctx, genReq)
 	if err != nil {
+		failureClass := ClassifyAttemptFailure(err)
+		level := slog.LevelError
+		if failureClass == AttemptFailureCanceled {
+			level = slog.LevelInfo
+		}
+		h.logger.Log(ctx, level, "Inference provider request failed",
+			slog.String("provider_attempt_id", genReq.ProviderAttemptID),
+			slog.String("failure_class", string(failureClass)),
+			slog.Int64("duration_ms", time.Since(started).Milliseconds()), logging.ErrorKind(err))
 		return nil, fmt.Errorf("inference handler: %w", err)
 	}
 	if resp == nil || resp.Model != genReq.Model {

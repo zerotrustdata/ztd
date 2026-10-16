@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -699,6 +700,29 @@ func TestInferenceDispatchController_FailedReceiptPropagatedOnProviderFailure(t 
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failure.GetReceipt().GetStatus())
 	require.NotNil(t, governance.FailedReceipt(providerErr))
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, governance.FailedReceipt(providerErr).GetStatus())
+}
+
+func TestInferenceDispatchController_ProviderFailureLogCarriesEvidenceIDsWithoutContent(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%v", stream), func(t *testing.T) {
+			receipt := &operatorv1.ActionReceipt{TransactionId: "tx-backend-failure", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+			dispatcher := &stubInferenceCommandDispatcher{err: governance.WithFailedReceipt(receipt, fmt.Errorf("private provider detail: %w", constants.ErrInferenceBackendUnavailable))}
+			ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}, 4096)
+			var output bytes.Buffer
+			logger, err := logging.NewLogger("info", &output)
+			require.NoError(t, err)
+			ctrl.logger = logger
+			body := marshalInferenceDispatchRequest(t, &operatorv1.InferenceDispatchRequest{
+				Role: operatorv1.ModelRole_MODEL_ROLE_PRIMARY, Messages: inferenceTextMessages("private prompt"), ProviderAttemptId: "attempt-backend-failure", Stream: stream,
+			})
+			ctrl.HandleDispatch(httptest.NewRecorder(), inferenceDispatchHTTPRequest(t, body, "test-app", "user-001"))
+			assert.Contains(t, output.String(), "transaction_id: tx-backend-failure")
+			assert.Contains(t, output.String(), "provider_attempt_id: attempt-backend-failure")
+			assert.Contains(t, output.String(), "INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE")
+			assert.NotContains(t, output.String(), "private provider detail")
+			assert.NotContains(t, output.String(), "private prompt")
+		})
+	}
 }
 
 func TestInferenceDispatchController_GovernanceRejectionCarriesNoFailedReceipt(t *testing.T) {

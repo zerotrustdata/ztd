@@ -8,9 +8,12 @@
 package inference
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -1275,4 +1279,24 @@ func TestInferenceHandler_ProviderOutageFailsOnlyCurrentRequest(t *testing.T) {
 	backend.generateResp = &models.GenerateResponse{Parts: textInferenceResponseParts("recovered"), FinishReason: "stop", Model: "test-model"}
 	_, err = handler.ExecuteVerifiedTransaction(t.Context(), constants.Event.Operator.Inference.Requested, command)
 	require.NoError(t, err, "the same handler must serve requests after provider recovery")
+}
+
+func TestInferenceHandler_LogsProviderFailureWithSafeCauseAndAttemptID(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.NewLogger("info", &output)
+	require.NoError(t, err)
+	backend := &stubBackend{generateErr: fmt.Errorf("private backend detail: %w: %w", constants.ErrInferenceBackendUnavailable, syscall.ECONNRESET)}
+	handler := mustNewHandler(t, backend, &config.Config{Inference: config.InferenceConfig{Enabled: true}}, mustNewScrubbingSvc(t), logger)
+	payload := mustMarshalInferenceRequested(t, &operatorv1.InferenceRequested{
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 operatorv1.ModelRole_MODEL_ROLE_PRIMARY, Model: "test-model",
+		Messages: textInferenceMessages("private prompt"), ProviderAttemptId: "failed-provider-attempt",
+	})
+	_, err = handler.ExecuteVerifiedTransaction(t.Context(), constants.Event.Operator.Inference.Requested, &testCommandMessage{payload: payload})
+	require.ErrorIs(t, err, syscall.ECONNRESET)
+	assert.Contains(t, output.String(), "provider_attempt_id: failed-provider-attempt")
+	assert.Contains(t, output.String(), "error_kind: connection_reset")
+	assert.Contains(t, output.String(), "failure_class: backend_unavailable")
+	assert.NotContains(t, output.String(), "private backend detail")
+	assert.NotContains(t, output.String(), "private prompt")
 }

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 480" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">The day the evals deleted the repo</title>
+  <desc id="desc">A repository disappears during an evaluation and is recovered with git restore. Below it are the five governance layers that the evaluation harness had bypassed.</desc>
+  <defs>
+    <radialGradient id="glow">
+      <stop stop-color="#72f6de" stop-opacity=".1"/>
+      <stop offset="1" stop-color="#72f6de" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="recovered" x1="336" y1="122" x2="504" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24463f"/>
+      <stop offset="1" stop-color="#122626"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r=".7" fill="#608d89" opacity=".28"/>
+    </pattern>
+  </defs>
+  <path fill="#0b171a" d="M0 0h560v480H0z"/>
+  <path fill="url(#grid)" d="M0 0h560v480H0z"/>
+  <circle cx="346" cy="230" r="220" fill="url(#glow)"/>
+  <path d="M20 40V20h20M520 20h20v20M20 416v20h20M520 436h20v-20" stroke="#41645f"/>
+  <g font-family="monospace" font-size="9" letter-spacing="2" fill="#91b6b0">
+    <text x="35" y="49">03 / EVALUATIONS</text>
+    <text x="525" y="49" text-anchor="end">A CLOSE CALL</text>
+  </g>
+
+  <!-- A missing working tree, with its committed history still intact. -->
+  <path d="M56 145v-15a8 8 0 0 1 8-8h49l16 15h87a8 8 0 0 1 8 8v85a8 8 0 0 1-8 8H64a8 8 0 0 1-8-8Z" fill="#211f20" fill-opacity=".45" stroke="#d99b88" stroke-opacity=".75" stroke-dasharray="4 5"/>
+  <path d="M70 158h140M79 176h40m-40 14h63m-63 14h47" stroke="#886f66" stroke-dasharray="3 5"/>
+  <circle cx="175" cy="188" r="17" fill="#2d2524" stroke="#d99b88" stroke-opacity=".6"/>
+  <path d="m169 182 12 12m0-12-12 12" stroke="#e5b19c" stroke-width="1.5" stroke-linecap="round"/>
+  <text x="140" y="101" text-anchor="middle" font-family="monospace" font-size="9" letter-spacing="1.5" fill="#d9a388">REPO ROOT / GONE</text>
+
+  <path d="M336 145v-15a8 8 0 0 1 8-8h49l16 15h87a8 8 0 0 1 8 8v85a8 8 0 0 1-8 8H344a8 8 0 0 1-8-8Z" fill="url(#recovered)" stroke="#72f6de" stroke-opacity=".75"/>
+  <path d="M350 158h140" stroke="#72f6de" stroke-opacity=".2"/>
+  <g stroke="#91c4b7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M359 174h13v11h-13zm0 24h13v11h-13zm0 24h13v-4h-13M381 179h37m-37 24h25m-25 19h42"/>
+  </g>
+  <circle cx="459" cy="194" r="18" fill="#1a3b32" stroke="#72f6de" stroke-opacity=".65"/>
+  <path d="m451 194 5 5 10-11" stroke="#a6ffe6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="420" y="101" text-anchor="middle" font-family="monospace" font-size="9" letter-spacing="1.5" fill="#a9e5d8">WORKING TREE / BACK</text>
+
+  <path d="M235 184h90m-6-5 6 5-6 5" stroke="#72f6de" stroke-opacity=".55" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="262" y="166" width="36" height="36" rx="7" fill="#122626" stroke="#436c68"/>
+  <g stroke="#a9e5d8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M274 175v17m0-13 12 9"/>
+    <circle cx="274" cy="175" r="2" fill="#122626"/>
+    <circle cx="274" cy="192" r="2" fill="#122626"/>
+    <circle cx="286" cy="188" r="2" fill="#122626"/>
+  </g>
+  <rect x="174" y="267" width="212" height="37" rx="5" fill="#102421" stroke="#345d54"/>
+  <path d="m190 280 5 5-5 5m11 0h7" stroke="#72f6de" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="224" y="290" font-family="monospace" font-size="13" fill="#c8fff1">git restore</text>
+  <path d="M140 238v47h34m212 0h34v-47" stroke="#436c68" stroke-dasharray="3 5"/>
+
+  <!-- The governance layers were present in the platform, but skipped by the harness. -->
+  <text x="280" y="342" text-anchor="middle" font-family="monospace" font-size="8" letter-spacing="1.6" fill="#b69c8d">THE MISSING SEATBELT / L1–L5</text>
+  <path d="M118 375h324" stroke="#436c68" stroke-dasharray="3 5"/>
+  <g fill="#101f22" stroke="#436c68">
+    <rect x="100" y="357" width="36" height="36" rx="6" stroke="#d9a388"/>
+    <rect x="181" y="357" width="36" height="36" rx="6"/>
+    <rect x="262" y="357" width="36" height="36" rx="6"/>
+    <rect x="343" y="357" width="36" height="36" rx="6"/>
+    <rect x="424" y="357" width="36" height="36" rx="6"/>
+  </g>
+  <g font-family="monospace" font-size="12" text-anchor="middle" fill="#a9c7c1">
+    <text x="118" y="379" fill="#e5b19c">L1</text>
+    <text x="199" y="379">L2</text>
+    <text x="280" y="379">L3</text>
+    <text x="361" y="379">L4</text>
+    <text x="442" y="379">L5</text>
+  </g>
+  <g font-family="monospace" font-size="7" letter-spacing=".6" text-anchor="middle" fill="#789e96">
+    <text x="118" y="414" fill="#b69c8d">DOCTRINE</text>
+    <text x="199" y="414">CONSENSUS</text>
+    <text x="280" y="414">NOTARY</text>
+    <text x="361" y="414">WARDEN</text>
+    <text x="442" y="414">ACTUATOR</text>
+  </g>
+</svg>

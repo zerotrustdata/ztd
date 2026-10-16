@@ -163,7 +163,7 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	publisher.SetIngestAuthToken(hex.EncodeToString(token))
 	publisher.SetMirrorOrigin("http://" + runtime.cfg.PrivateListenAddress)
 
-	runtime.privateServer = newPublicMirrorHTTPServer(runtime.cfg.PrivateListenAddress, mirror.Handler())
+	runtime.privateServer = newPublicMirrorHTTPServer(runtime.cfg.PrivateListenAddress, mirror.Handler(), runtime.logger.With("server", "mirror-private"))
 	mirrorOrigin := resolveEvalExplorerMirrorOrigin(runtime.cfg.PublicBaseURL, runtime.cfg.PublicListenAddress)
 	publicHandler := mirror.PublicHandler()
 	explorerHandler, explorerErr := NewEvalExplorerHandler(runtime.cfg.ExplorerRoot, mirrorOrigin, false)
@@ -172,7 +172,7 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	} else {
 		runtime.logger.Warn("Evaluation explorer static assets unavailable", "error", explorerErr)
 	}
-	runtime.publicServer = newPublicMirrorHTTPServer(runtime.cfg.PublicListenAddress, publicHandler)
+	runtime.publicServer = newPublicMirrorHTTPServer(runtime.cfg.PublicListenAddress, publicHandler, runtime.logger.With("server", "mirror-public"))
 	if explorerErr == nil && shouldServeDedicatedExplorer(runtime.cfg) {
 		// Dedicated explorer listeners (for example :5173) must target the local
 		// public mirror API (:8082), not the gateway HTTPS base URL used for
@@ -182,7 +182,7 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 		if dedicatedErr != nil {
 			return fmt.Errorf("public spectator: dedicated explorer: %w", dedicatedErr)
 		}
-		runtime.explorerServer = newPublicMirrorHTTPServer(runtime.cfg.ExplorerListenAddress, dedicatedHandler)
+		runtime.explorerServer = newPublicMirrorHTTPServer(runtime.cfg.ExplorerListenAddress, dedicatedHandler, runtime.logger.With("server", "explorer"))
 	}
 	runtime.mirror = mirror
 	runtime.publisher = publisher

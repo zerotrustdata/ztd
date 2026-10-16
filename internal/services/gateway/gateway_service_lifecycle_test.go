@@ -28,6 +28,7 @@ func TestGatewayModeService_StartStop(t *testing.T) {
 	// Test configuration must keep real listeners on loopback so Windows does
 	// not request firewall access for the test binary.
 	for _, server := range []*http.Server{ls.server, ls.publicServer} {
+		assert.NotNil(t, server.ErrorLog, "HTTP diagnostics must use the injected platform logger")
 		host, _, err := net.SplitHostPort(server.Addr)
 		require.NoError(t, err)
 		assert.Equal(t, constants.LocalhostIP, host)
@@ -66,7 +67,7 @@ func TestGatewayModeService_StartStop(t *testing.T) {
 
 	cancel()
 	err = <-errChan
-	assert.Error(t, err)
+	assert.NoError(t, err, "normal cancellation must not report http.ErrServerClosed")
 
 	stopErr := ls.Stop(context.Background())
 	assert.NoError(t, stopErr)
@@ -85,6 +86,21 @@ func TestGatewayModeService_StopWhenNotRunning(t *testing.T) {
 
 	err := ls.Stop(context.Background())
 	assert.NoError(t, err)
+}
+
+func TestGatewayModeService_ListenFailurePreservesCause(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	service := newTestGatewayService(t, testGatewayOpts{httpPort: 0})
+	service.server.Addr = listener.Addr().String()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	err = service.Start(ctx)
+	require.Error(t, err)
+	var networkErr *net.OpError
+	require.ErrorAs(t, err, &networkErr)
+	assert.Equal(t, "listen", networkErr.Op)
 }
 
 func TestGatewayModeService_SuspendedTxServiceSingleField(t *testing.T) {

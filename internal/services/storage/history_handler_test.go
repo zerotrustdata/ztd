@@ -139,7 +139,7 @@ func TestHistoryHandler_FetchHistoryInvalidRequest(t *testing.T) {
 	requestJSON := testutil.BuildFetchHistoryRequestedPayload(t, "exec-123", "", 10, 0)
 
 	response, err := hh.HandleFetchHistory(requestJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, response.Success)
 	assert.Contains(t, response.Error, "operator_session_id is required")
@@ -289,7 +289,7 @@ func TestHistoryHandler_FetchHistoryInvalidJSON(t *testing.T) {
 
 	// Invalid JSON
 	response, err := hh.HandleFetchHistory([]byte("invalid json"))
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, response.Success)
 	assert.Contains(t, response.Error, "invalid request format")
@@ -362,7 +362,7 @@ func TestHistoryHandler_FetchFileHistoryValidationErrors(t *testing.T) {
 			}
 
 			response, err := hh.HandleFetchFileHistory(requestJSON)
-			require.NoError(t, err)
+			require.Error(t, err)
 
 			assert.False(t, response.Success)
 			assert.Contains(t, response.Error, tc.expectError)
@@ -424,7 +424,8 @@ func TestHistoryHandler_RestoreFile(t *testing.T) {
 	// Restore to original
 	requestJSON := testutil.BuildRestoreFileRequestedPayload(t, "exec-123", testFilePath, originalHash, operatorSessionID)
 
-	response, restored := hh.HandleRestoreFile(context.Background(), operatorSessionID, requestJSON)
+	response, restored, restoreErr := hh.HandleRestoreFile(context.Background(), operatorSessionID, requestJSON)
+	require.NoError(t, restoreErr)
 
 	assert.True(t, response.Success)
 	assert.Equal(t, testFilePath, response.FilePath)
@@ -469,7 +470,8 @@ func TestHistoryHandler_RestoreFileValidationErrors(t *testing.T) {
 				requestJSON = testutil.BuildRestoreFileRequestedPayload(t, "exec-123", tc.filePath, tc.commitHash, tc.sessionID)
 			}
 
-			response, _ := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+			response, _, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+			require.Error(t, restoreErr)
 
 			assert.False(t, response.Success)
 			assert.Contains(t, response.Error, tc.expectError)
@@ -489,7 +491,8 @@ func TestHistoryHandler_RestoreFileInvalidCommit(t *testing.T) {
 
 	requestJSON := testutil.BuildRestoreFileRequestedPayload(t, "exec-123", testFilePath, "invalidhash123456789", "operator_session")
 
-	response, _ := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	response, _, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	require.Error(t, restoreErr)
 
 	assert.False(t, response.Success)
 	assert.Contains(t, response.Error, "failed to restore file")
@@ -649,7 +652,8 @@ func TestHistoryHandler_RestoreFileRejectsProtectedRuntimePath(t *testing.T) {
 	require.NoError(t, hh.fileSvc.WriteFile(ctx, protectedRel, []byte("sentinel"), constants.PermFilePrivate))
 
 	requestJSON := testutil.BuildRestoreFileRequestedPayload(t, "exec-123", protectedPath, "abc123", "operator_session")
-	response, _ := hh.HandleRestoreFile(ctx, testRestoreSessionID, requestJSON)
+	response, _, restoreErr := hh.HandleRestoreFile(ctx, testRestoreSessionID, requestJSON)
+	require.ErrorIs(t, restoreErr, constants.ErrFileEditProtectedRuntimePath)
 
 	assert.False(t, response.Success)
 	assert.Contains(t, response.Error, constants.ErrFileEditProtectedRuntimePath.Error())
@@ -687,7 +691,8 @@ func TestHistoryHandler_RestoreFileRejectsSymlinkIntoProtectedRuntimePath(t *tes
 	testutil.Symlink(t, hh.fileSvc.Resolve(protectedRel), linkPath)
 
 	requestJSON := testutil.BuildRestoreFileRequestedPayload(t, "exec-123", linkPath, commitHash, sessionID)
-	response, _ := hh.HandleRestoreFile(ctx, testRestoreSessionID, requestJSON)
+	response, _, restoreErr := hh.HandleRestoreFile(ctx, testRestoreSessionID, requestJSON)
+	require.ErrorIs(t, restoreErr, constants.ErrFileEditProtectedRuntimePath)
 
 	assert.False(t, response.Success)
 	assert.Contains(t, response.Error, constants.ErrFileEditProtectedRuntimePath.Error())

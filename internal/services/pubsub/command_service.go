@@ -9,6 +9,7 @@ package pubsub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	execution "github.com/zerotrustdata/ztd/internal/services/execution"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -66,19 +68,19 @@ func NewCommandService(
 }
 
 // HandleExecutionRequest processes an inbound command execution request.
-func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	if len(msg.Payload) > 1024*1024 {
 		cs.logger.Error("Command payload exceeds size limit", "size", len(msg.Payload), "limit", 1024*1024)
-		return
+		return "", constants.ErrPayloadExceedsLimit
 	}
 	var protoCmd operatorv1.CommandRequested
 	if err := proto.Unmarshal(msg.Payload, &protoCmd); err != nil {
 		cs.logger.Error("Failed to decode command payload as protobuf CommandRequested", string(constants.ConnectionStateError), err)
-		return
+		return "", err
 	}
 	if protoCmd.Command == "" {
 		cs.logger.Error("Invalid CommandRequested: missing command field")
-		return
+		return "", constants.ErrEmptyCommand
 	}
 
 	cs.logger.Info("Parsed command payload via Protobuf (CommandRequested)")
@@ -89,7 +91,7 @@ func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSu
 	}, command); err != nil {
 		// The validator's error embeds the command line, so only its sentinel is logged.
 		cs.logger.Error("Witness command rejected", "message_id", msg.ID, string(constants.ConnectionStateError), constants.ErrWitnessCommandNotCapable)
-		return
+		return "", err
 	}
 	justification := protoCmd.Justification
 	if justification == "" {
@@ -99,7 +101,7 @@ func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSu
 	execReq, err := payloadToExecutionRequest(msg)
 	if err != nil {
 		cs.logger.Error("Failed to create execution request", string(constants.ConnectionStateError), err)
-		return
+		return "", err
 	}
 
 	cs.logger.Info("Command execution requested",
@@ -168,6 +170,7 @@ func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSu
 	if err := cs.recordCommandExecution(msg, result, command, justification); err != nil {
 		cs.logger.Error("Command executed but its event could not be recorded; result marked FAILED",
 			string(constants.ConnectionStateError), err, "execution_id", result.ExecutionID)
+		execErr = errors.Join(execErr, err)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.ErrorMessage = err.Error()
 		result.ErrorType = "audit_record_error"
@@ -197,9 +200,12 @@ func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSu
 
 	// PublishExecutionResult egresses the payload through the scrubber and publishes a typed
 	// failure when the content is withheld.
-	if err := cs.results.PublishExecutionResult(ctx, protoResult, msg); err != nil {
-		cs.logger.Error("Failed to publish execution result", string(constants.ConnectionStateError), err)
+	publishErr := cs.results.PublishExecutionResult(ctx, protoResult, msg)
+	if err := errors.Join(execErr, executionResultError(result.Status, result.ErrorMessage), publishErr); err != nil {
+		cs.logger.Warn("Command execution failed", "execution_id", result.ExecutionID, logging.ErrorKind(err))
+		return "", fmt.Errorf("command execution: %w", err)
 	}
+	return "", nil
 }
 
 // recordCommandExecution writes the execution's audit event with the raw stdout and
@@ -277,19 +283,19 @@ func (cs *CommandService) runStatusTicker(
 }
 
 // HandleCancelRequest processes an inbound command cancellation request.
-func (cs *CommandService) HandleCancelRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (cs *CommandService) HandleCancelRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	if len(msg.Payload) > 64*1024 {
 		cs.logger.Error("Cancel payload exceeds size limit", "size", len(msg.Payload), "limit", 64*1024)
-		return
+		return "", constants.ErrPayloadExceedsLimit
 	}
 	var protoCancel operatorv1.CommandCancelRequested
 	if err := proto.Unmarshal(msg.Payload, &protoCancel); err != nil {
 		cs.logger.Error("Failed to decode cancel payload as protobuf CommandCancelRequested", string(constants.ConnectionStateError), err)
-		return
+		return "", err
 	}
 	if protoCancel.ExecutionId == "" {
 		cs.logger.Error("Invalid CommandCancelRequested: missing execution_id field")
-		return
+		return "", constants.ErrMissingRequiredField
 	}
 
 	cs.logger.Info("Parsed cancel payload via Protobuf (CommandCancelRequested)")
@@ -337,9 +343,8 @@ func (cs *CommandService) HandleCancelRequest(ctx context.Context, msg *PubSubCo
 		protoResult.StartTimeUnixMs = payload.StartTime.UnixMilli()
 	}
 
-	if err := cs.results.PublishCancellationResult(ctx, protoResult, msg); err != nil {
-		cs.logger.Error("Failed to publish cancellation result", string(constants.ConnectionStateError), err)
-	}
+	publishErr := cs.results.PublishCancellationResult(ctx, protoResult, msg)
+	return "", errors.Join(err, publishErr)
 }
 
 // payloadToExecutionRequest is a package-level helper shared by CommandService and tests.

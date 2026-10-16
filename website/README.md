@@ -84,6 +84,8 @@ date of the underlying experiment. Posts sort newest first, with the slug breaki
 entry is featured automatically; reading times, topic filters, section navigation, `/build-in-public/feed.xml`,
 and `/sitemap.xml` are generated from the published content. Keep slugs stable once published.
 
+Post cards can include an optional `artwork` object in the manifest with `src` (a root-relative SVG path), `alt`, and `caption`. Store the SVG in `static/`; artwork stays with its post regardless of which entry is featured. The fleet illustration belongs to the first, 2,000-Operator field note, with separate illustrations for cross-platform onboarding and the eval repository recovery.
+
 The first post, [From 936 to 2,000 Operators on one Gateway](content/posts/enrolling-two-thousand-operators.md),
 is the publication copy of the October 8–11 field notes. It uses current ztd branding, preserves the original
 measurements and limitations, and replaces private editorial references with a public source note. The retained

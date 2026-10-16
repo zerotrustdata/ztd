@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -105,6 +106,9 @@ func (fes *FileEditService) ExecuteFileEdit(ctx context.Context, request *models
 			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 			result.ErrorMessage = err.Error()
 			result.ErrorType = "execution_error"
+			if errors.Is(err, constants.ErrFileEditContentRequired) || errors.Is(err, constants.ErrFileEditOldContentRequired) || errors.Is(err, constants.ErrFileEditInsertContentRequired) || errors.Is(err, constants.ErrFileEditLineRangeRequired) || errors.Is(err, constants.ErrFileEditPatchContentRequired) {
+				result.ErrorType = "validation_error"
+			}
 		}
 	} else {
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
@@ -125,7 +129,12 @@ func (fes *FileEditService) ExecuteFileEdit(ctx context.Context, request *models
 		logArgs = append(logArgs, "error_type", result.ErrorType)
 	}
 
-	fes.logger.Info("File edit operation completed", logArgs...)
+	if result.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+		logArgs = append(logArgs, logging.ErrorKind(err))
+		fes.logger.Warn("File edit operation failed", logArgs...)
+	} else {
+		fes.logger.Info("File edit operation completed", logArgs...)
+	}
 
 	return result, nil
 }

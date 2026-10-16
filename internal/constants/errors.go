@@ -201,6 +201,7 @@ var (
 
 	// Execution service errors
 	ErrExecutionServiceStopping = errors.New("execution service is stopping")
+	ErrActionExecutionFailed    = errors.New("action execution failed")
 	ErrExecutionNotFound        = errors.New("execution not found")
 	ErrEmptyCommand             = errors.New("empty command")
 	ErrCommandLookup            = errors.New("command lookup failed")

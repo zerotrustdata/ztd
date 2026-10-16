@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 )
 
@@ -83,6 +84,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	if logger == nil || deps.ClientIdentity == nil {
 		return nil, fmt.Errorf("%w: operator runtime requires a logger and client identity", constants.ErrInternal)
 	}
+	logger = logger.With(logging.ComponentKey, logging.ComponentOperator)
 	clientIdentity := deps.ClientIdentity
 
 	gatewayHost, httpPort, err := resolveOperatorGateway(opts.Endpoint, opts.HTTPPort)

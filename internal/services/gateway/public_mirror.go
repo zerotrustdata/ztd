@@ -16,6 +16,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,11 +27,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 )
 
@@ -894,7 +897,7 @@ func (m *PublicMirrorServer) withGzip(next http.Handler) http.Handler {
 		writer := gzip.NewWriter(w)
 		next.ServeHTTP(gzipResponseWriter{ResponseWriter: w, writer: writer}, r)
 		if err := writer.Close(); err != nil {
-			m.logger.Error("mirror: close gzip response", "error", err)
+			m.logResponseError("mirror: close gzip response", err)
 		}
 	})
 }
@@ -1724,7 +1727,7 @@ func (m *PublicMirrorServer) handleProofDownload(w http.ResponseWriter, r *http.
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	if _, err := w.Write(content); err != nil {
-		m.logger.Error("mirror: write proof response", "error", err)
+		m.logResponseError("mirror: write proof response", err)
 	}
 }
 
@@ -1842,8 +1845,16 @@ func (m *PublicMirrorServer) writeJSON(w http.ResponseWriter, status int, v any)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		m.logger.Error("mirror: encode JSON response", "error", err)
+		m.logResponseError("mirror: encode JSON response", err)
 	}
+}
+
+func (m *PublicMirrorServer) logResponseError(message string, err error) {
+	level := slog.LevelError
+	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) {
+		level = slog.LevelDebug
+	}
+	m.logger.Log(context.Background(), level, message, logging.ErrorKind(err))
 }
 
 // sseWriteEvent writes a named SSE event with a JSON payload.
