@@ -28,12 +28,14 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v4
-// adds the exact model input, per-turn thinking, and provider tool-call IDs.
-// A v3 trace remains valid evidence; its model input was not captured and is
+// agentTraceSchemaVersion is the version every new trace is sealed with. v5
+// adds the held context a repetition continued; v4 added the exact model
+// input, per-turn thinking, and provider tool-call IDs. v4 and v3 traces
+// remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v4"
+	agentTraceSchemaVersion   = "agent-trace.v5"
+	agentTraceSchemaVersionV4 = "agent-trace.v4"
 	agentTraceSchemaVersionV3 = "agent-trace.v3"
 )
 
@@ -145,11 +147,15 @@ type AgentTrace struct {
 	Inference AgentTraceRuntime   `json:"inference"`
 	Data      AgentTraceRuntime   `json:"data"`
 	Workspace AgentTraceWorkspace `json:"workspace"`
-	// Input is the exact model input of the first turn. Every later turn sent
-	// this input followed, per earlier turn, by one assistant message (the
-	// call's Text, then its tool calls with ProviderCallID, ToolName and
-	// ArgumentsJSON) and one tool message per call carrying ResultJSON. v3
-	// traces have none.
+	// HeldContext is the previous repetition's conversation this repetition
+	// continued, when its campaign holds context. The model received these
+	// messages ahead of Input on every turn.
+	HeldContext *AgentTraceHeldContext `json:"held_context,omitempty"`
+	// Input is the exact model input of the first turn after any HeldContext.
+	// Every later turn sent this input followed, per earlier turn, by one
+	// assistant message (the call's Text, then its tool calls with
+	// ProviderCallID, ToolName and ArgumentsJSON) and one tool message per
+	// call carrying ResultJSON. v3 traces have none.
 	Input                *AgentTraceInput `json:"input,omitempty"`
 	ModelCalls           []AgentModelCall `json:"model_calls"`
 	ToolCalls            []AgentToolCall  `json:"tool_calls"`
@@ -184,6 +190,115 @@ type AgentTraceTool struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	JSONSchema  string `json:"json_schema"`
+}
+
+// AgentTraceHeldContext is the complete conversation of the previous
+// repetition of the same cell, carried verbatim into the next repetition and
+// bound to the sealed trace it was rebuilt from. Workspace is the held trace's
+// workspace, which the continuing repetition reuses so every path in the held
+// conversation still names the same files.
+type AgentTraceHeldContext struct {
+	AssignmentID   string                     `json:"assignment_id"`
+	Repetition     uint32                     `json:"repetition"`
+	EvidenceDigest string                     `json:"evidence_digest"`
+	Workspace      AgentTraceWorkspace        `json:"workspace"`
+	Messages       []AgentTraceContextMessage `json:"messages"`
+}
+
+// AgentTraceContextMessage is one message of a held conversation. Role is the
+// InferenceMessageRole enum name. An assistant message carries its Text and
+// any ToolCalls; a tool message carries exactly one ToolResult.
+type AgentTraceContextMessage struct {
+	Role       string                       `json:"role"`
+	Text       string                       `json:"text,omitempty"`
+	ToolCalls  []AgentTraceContextToolCall  `json:"tool_calls,omitempty"`
+	ToolResult *AgentTraceContextToolResult `json:"tool_result,omitempty"`
+}
+
+// AgentTraceContextToolCall is one tool call of a held assistant message.
+type AgentTraceContextToolCall struct {
+	CallID        string `json:"call_id,omitempty"`
+	Name          string `json:"name"`
+	ArgumentsJSON string `json:"arguments_json"`
+}
+
+// AgentTraceContextToolResult is the result a held tool message returned.
+type AgentTraceContextToolResult struct {
+	CallID     string `json:"call_id,omitempty"`
+	Name       string `json:"name"`
+	ResultJSON string `json:"result_json"`
+}
+
+// Conversation rebuilds the complete conversation this trace's model saw and
+// produced: its held context, its input, and per completed turn the assistant
+// message and its tool results, ending with the final answer. A v3 trace
+// recorded no input and cannot be rebuilt.
+func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
+	if t == nil || t.Input == nil || len(t.Input.Messages) == 0 {
+		return nil, fmt.Errorf("evaluation: agent trace conversation: input: %w", constants.ErrMissingRequiredField)
+	}
+	var messages []AgentTraceContextMessage
+	if t.HeldContext != nil {
+		messages = append(messages, t.HeldContext.Messages...)
+	}
+	for _, message := range t.Input.Messages {
+		messages = append(messages, AgentTraceContextMessage{Role: message.Role, Text: message.Text})
+	}
+	assistantRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT.String()
+	toolRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL.String()
+	for _, call := range t.ModelCalls {
+		if call.Purpose != agentModelCallPurposeTurn || !call.Completed() {
+			break
+		}
+		if call.ToolCallCount == 0 {
+			if call.Text != "" {
+				messages = append(messages, AgentTraceContextMessage{Role: assistantRole, Text: call.Text})
+			}
+			break
+		}
+		assistant := AgentTraceContextMessage{Role: assistantRole, Text: call.Text}
+		var results []AgentTraceContextMessage
+		for _, tool := range t.ToolCalls {
+			if tool.ModelCallID != call.ProviderAttemptID {
+				continue
+			}
+			assistant.ToolCalls = append(assistant.ToolCalls, AgentTraceContextToolCall{CallID: tool.ProviderCallID, Name: tool.ToolName, ArgumentsJSON: tool.ArgumentsJSON})
+			results = append(results, AgentTraceContextMessage{Role: toolRole, ToolResult: &AgentTraceContextToolResult{CallID: tool.ProviderCallID, Name: tool.ToolName, ResultJSON: tool.ResultJSON}})
+		}
+		if len(assistant.ToolCalls) != call.ToolCallCount {
+			return nil, fmt.Errorf("evaluation: agent trace conversation: turn %d recorded %d of %d tool calls: %w", call.LoopTurn, len(assistant.ToolCalls), call.ToolCallCount, constants.ErrEvidenceArtifactMalformed)
+		}
+		messages = append(messages, assistant)
+		messages = append(messages, results...)
+	}
+	return messages, nil
+}
+
+// inferenceMessage converts one held message back into the model input part
+// shape the executor dispatched it in.
+func (m AgentTraceContextMessage) inferenceMessage() (*operatorv1.InferenceMessage, error) {
+	role, ok := operatorv1.InferenceMessageRole_value[m.Role]
+	if !ok || role == int32(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_UNSPECIFIED) {
+		return nil, fmt.Errorf("evaluation: held context message role %q: %w", m.Role, constants.ErrEvidenceArtifactMalformed)
+	}
+	message := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole(role)}
+	if m.Text != "" {
+		message.Parts = append(message.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: m.Text}})
+	}
+	for _, call := range m.ToolCalls {
+		message.Parts = append(message.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+			CallId: call.CallID, Name: call.Name, ArgumentsJson: call.ArgumentsJSON,
+		}}})
+	}
+	if m.ToolResult != nil {
+		message.Parts = append(message.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolResult{ToolResult: &operatorv1.InferenceToolResult{
+			CallId: m.ToolResult.CallID, Name: m.ToolResult.Name, ResultJson: m.ToolResult.ResultJSON,
+		}}})
+	}
+	if len(message.Parts) == 0 {
+		return nil, fmt.Errorf("evaluation: held context %s message is empty: %w", m.Role, constants.ErrEvidenceArtifactMalformed)
+	}
+	return message, nil
 }
 
 // newAgentTraceInput records the dispatched first-turn input. Only text
@@ -397,12 +512,18 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
+		if trace.HeldContext != nil && trace.SchemaVersion == agentTraceSchemaVersionV4 {
+			return fmt.Errorf("evaluation: validate agent trace: %s carries held context: %w", agentTraceSchemaVersionV4, constants.ErrEvidenceArtifactMalformed)
+		}
+		if trace.HeldContext != nil && (trace.HeldContext.AssignmentID == "" || trace.HeldContext.EvidenceDigest == "" || len(trace.HeldContext.Messages) == 0) {
+			return fmt.Errorf("evaluation: validate agent trace: held context: %w", constants.ErrMissingRequiredField)
+		}
 	case agentTraceSchemaVersionV3:
-		if trace.Input != nil {
+		if trace.Input != nil || trace.HeldContext != nil {
 			return fmt.Errorf("evaluation: validate agent trace: %s carries input: %w", agentTraceSchemaVersionV3, constants.ErrEvidenceArtifactMalformed)
 		}
 	default:

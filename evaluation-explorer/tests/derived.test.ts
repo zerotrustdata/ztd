@@ -502,14 +502,40 @@ describe('visibleStreamEvents', () => {
     expect(visible.map((event) => event.event_id)).toEqual(['evt-3', 'evt-2', 'evt-1']);
   });
 
-  it('omits assignment_started and metric_updated events from the stream', () => {
+  it('omits metric_updated events from the stream', () => {
     const withHidden = [
       ...events,
-      liveEvent({ event_id: 'evt-start', kind: 'assignment_started', assignment_id: 'a1', observed_at: '2026-09-17T08:32:00Z' }),
       liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', observed_at: '2026-09-17T08:33:00Z' }),
     ];
     const visible = visibleStreamEvents(withHidden, { modelFilter: 'all', kindFilter: 'all' });
     expect(visible.map((event) => event.event_id)).toEqual(['evt-3', 'evt-2', 'evt-1']);
+  });
+
+  it('shows one row per assignment carrying its current status', () => {
+    const started = liveEvent({ event_id: 'a1:start', kind: 'assignment_started', assignment_id: 'a1', observed_at: '2026-09-17T08:32:00Z' });
+    const stage = liveEvent({ event_id: 'a1:stage', kind: 'stage_updated', assignment_id: 'a1', role: 'lite', observed_at: '2026-09-17T08:33:00Z' });
+    const done = liveEvent({
+      event_id: 'a1:done',
+      kind: 'assignment_completed',
+      assignment_id: 'a1',
+      lifecycle_status: 'completed',
+      observed_at: '2026-09-17T08:34:00Z',
+    });
+    const rowsFor = (stream: LiveEvent[]) =>
+      visibleStreamEvents([...events, ...stream], { modelFilter: 'all', kindFilter: 'all' })
+        .filter((event) => event.assignment_id === 'a1')
+        .map((event) => event.event_id);
+    expect(rowsFor([started])).toEqual(['a1:start']);
+    expect(rowsFor([started, stage])).toEqual(['a1:stage']);
+    expect(rowsFor([started, stage, done])).toEqual(['a1:done']);
+    // A terminal result stays the row even when a stage event lands after it.
+    expect(rowsFor([done, { ...stage, observed_at: '2026-09-17T08:35:00Z' }])).toEqual(['a1:done']);
+  });
+
+  it('matches the kind filter against the assignment current status', () => {
+    const started = liveEvent({ event_id: 'a1:start', kind: 'assignment_started', assignment_id: 'a1', observed_at: '2026-09-17T08:32:00Z' });
+    const done = liveEvent({ event_id: 'a1:done', kind: 'assignment_completed', assignment_id: 'a1', observed_at: '2026-09-17T08:34:00Z' });
+    expect(visibleStreamEvents([started, done], { modelFilter: 'all', kindFilter: 'assignment_started' })).toEqual([]);
   });
 
   it('applies model and kind filters before slicing', () => {
@@ -522,7 +548,7 @@ describe('visibleStreamEvents', () => {
       ...events,
       liveEvent({
         event_id: 'evt-asg-filter',
-        kind: 'stage_updated',
+        kind: 'assignment_completed',
         assignment_id: 'target-asg',
         observed_at: '2026-09-17T08:35:00Z',
       }),
@@ -553,7 +579,7 @@ describe('visibleStreamEvents', () => {
     const batch = Array.from({ length: 120 }, (_, index) =>
       liveEvent({
         event_id: `assign-${String(index).padStart(3, '0')}`,
-        kind: 'stage_updated',
+        kind: 'assignment_completed',
         observed_at: '2026-09-17T12:00:00Z',
         feed_sequence: index + 1,
       }),
@@ -575,8 +601,8 @@ describe('visibleStreamEvents', () => {
     expect(visible.map((event) => event.event_id)).toEqual(['evt-3', 'evt-2', 'evt-1']);
   });
 
-  it('collapses planned and scored stage_updated rows for the same role', () => {
-    const twins = [
+  it('upsertLiveEvent collapses planned and scored stage_updated events for the same role', () => {
+    const [planned, scored] = [
       liveEvent({
         event_id: 'run:a1:invocation:lite:event',
         kind: 'stage_updated',
@@ -599,9 +625,9 @@ describe('visibleStreamEvents', () => {
         },
       }),
     ];
-    const visible = visibleStreamEvents(twins, { modelFilter: 'all', kindFilter: 'all' });
-    expect(visible).toHaveLength(1);
-    expect(visible[0]?.event_id).toBe('run:a1:invocation-scored:lite:event');
+    const stored = upsertLiveEvent(upsertLiveEvent([], planned!).events, scored!).events;
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.event_id).toBe('run:a1:invocation-scored:lite:event');
   });
 
   it('collapses bootstrap/history twins at the same observed_at into one result', () => {

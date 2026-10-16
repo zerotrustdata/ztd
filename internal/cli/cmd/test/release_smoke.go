@@ -210,7 +210,7 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 func runReleaseSmoke(ctx context.Context, opts releaseSmokeOptions) error {
 	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
-	r := &releaseSmokeRun{opts: opts}
+	r := newReleaseSmokeRun(opts)
 	return r.execute(ctx, r.phases())
 }
 

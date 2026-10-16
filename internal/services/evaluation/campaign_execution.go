@@ -66,6 +66,10 @@ type AssignmentExecutionRequest struct {
 	RequiredConcepts []string
 	GradingMethod    evalv1.EvaluationGradingMethod
 	Binding          CampaignExecutionBinding
+	// HeldContext is the previous repetition's sealed trace when the campaign
+	// holds context; the homogeneous executor continues its conversation in
+	// its workspace. Nil for a cell's first repetition or a fresh campaign.
+	HeldContext *AgentTrace
 	// OnFormationRoleStarting is optional. When set, the heterogeneous formation
 	// executor invokes it before each role executes so one planned invocation row
 	// reaches the live feed instead of batching all roles at assignment start.

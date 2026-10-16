@@ -29,7 +29,7 @@ describe('LiveEventStream', () => {
     render(
       <MemoryRouter>
         <LiveEventStream
-          events={[liveEvent({ event_id: 'evt-bootstrap', kind: 'stage_updated' })]}
+          events={[liveEvent({ event_id: 'evt-bootstrap', kind: 'assignment_completed' })]}
           connection="live"
           streamConnection="connecting"
           isReconciling
@@ -88,12 +88,13 @@ describe('LiveEventStream', () => {
     expect(screen.getAllByRole('row')).toHaveLength(6); // header + 5 rows
   });
 
-  it('hides Assignment Started and Metric Updated rows', () => {
+  it('hides Assignment Started, Stage Updated and Metric Updated rows', () => {
     render(
       <MemoryRouter>
         <LiveEventStream
           events={[
             liveEvent({ event_id: 'evt-started', kind: 'assignment_started', assignment_id: 'assignment-hidden', lifecycle_status: 'running' }),
+            liveEvent({ event_id: 'evt-stage', kind: 'stage_updated', assignment_id: 'assignment-hidden', role: 'primary' }),
             liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', assignment_id: 'assignment-hidden' }),
             liveEvent({ event_id: 'evt-completed', kind: 'assignment_completed', assignment_id: 'assignment-hidden', lifecycle_status: 'completed' }),
           ]}
@@ -104,6 +105,7 @@ describe('LiveEventStream', () => {
     );
 
     expect(screen.queryByText('Assignment Started')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stage Updated')).not.toBeInTheDocument();
     expect(screen.queryByText('Metric Updated')).not.toBeInTheDocument();
     expect(screen.getByText('Assignment Completed')).toBeInTheDocument();
     expect(screen.getAllByRole('row')).toHaveLength(2); // header + 1 row
@@ -114,7 +116,6 @@ describe('LiveEventStream', () => {
       <MemoryRouter>
         <LiveEventStream
           events={[
-            liveEvent({ event_id: 'evt-staging', kind: 'stage_updated', lifecycle_status: 'queued' }),
             liveEvent({ event_id: 'evt-succeeding', kind: 'assignment_completed', lifecycle_status: 'completed' }),
             liveEvent({ event_id: 'evt-failing', kind: 'assignment_failed', lifecycle_status: 'completed' }),
           ]}
@@ -124,7 +125,6 @@ describe('LiveEventStream', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Stage Updated' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-running');
     expect(screen.getByRole('link', { name: 'Assignment Completed' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-completed');
     expect(screen.getByRole('link', { name: 'Assignment Failed' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-failed');
   });
@@ -179,7 +179,7 @@ describe('LiveEventStream', () => {
           events={[
             liveEvent({
               event_id: 'evt-platform',
-              kind: 'stage_updated',
+              kind: 'evaluation_started',
             }),
             liveEvent({
               event_id: 'evt-partial',
@@ -197,7 +197,7 @@ describe('LiveEventStream', () => {
       </MemoryRouter>,
     );
 
-    const platformRow = screen.getByRole('link', { name: 'Stage Updated' }).closest('tr');
+    const platformRow = screen.getByRole('link', { name: 'Evaluation Started' }).closest('tr');
     expect(platformRow).not.toBeNull();
     for (const cell of platformRow?.querySelectorAll('.stream-metric-value') ?? []) {
       expect(cell).toHaveTextContent('--');
@@ -339,7 +339,6 @@ describe('LiveEventStream', () => {
     const labels = [
       'Time',
       'Role',
-      'Grading',
       'Event',
       'Status',
       'Category',
@@ -369,9 +368,9 @@ describe('LiveEventStream', () => {
       <MemoryRouter>
         <LiveEventStream
           events={[
-            liveEvent({ event_id: 'evt-progress-15', kind: 'stage_updated', completed: 15, total: 75 }),
-            liveEvent({ event_id: 'evt-progress-3', kind: 'stage_updated', completed: 3, total: 75 }),
-            liveEvent({ event_id: 'evt-progress-30', kind: 'stage_updated', completed: 30, total: 75 }),
+            liveEvent({ event_id: 'evt-progress-15', kind: 'evaluation_started', completed: 15, total: 75 }),
+            liveEvent({ event_id: 'evt-progress-3', kind: 'evaluation_started', completed: 3, total: 75 }),
+            liveEvent({ event_id: 'evt-progress-30', kind: 'evaluation_started', completed: 30, total: 75 }),
           ]}
           connection="live"
           streamConnection="connected"
@@ -395,10 +394,10 @@ describe('LiveEventStream', () => {
           events={[
             liveEvent({
               event_id: 'evt-lite',
-              kind: 'stage_updated',
+              kind: 'assignment_completed',
               variant_id: 'gemma2-9b',
               role: 'lite',
-              stage_label: 'Stage Updated · Queued · Routing Delegation · Route-Lite-Triage',
+              stage_label: 'Assignment Completed · Routing Delegation · Route-Lite-Triage',
             }),
           ]}
           connection="live"
@@ -489,7 +488,6 @@ describe('LiveEventStream', () => {
             events={[
               liveEvent({ event_id: 'evt-started', kind: 'assignment_started', assignment_id: 'assignment-1' }),
               liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', assignment_id: 'assignment-1' }),
-              liveEvent({ event_id: 'evt-passed', kind: 'assignment_completed', assignment_id: 'assignment-1' }),
               liveEvent({ event_id: 'evt-other-run', kind: 'assignment_failed', assignment_id: 'assignment-1', run_id: 'run-b' }),
               liveEvent({
                 event_id: 'evt-failed',
@@ -511,262 +509,6 @@ describe('LiveEventStream', () => {
       expect(screen.getAllByTitle(failureReason)).toHaveLength(1);
     },
   );
-
-  it('shows per-role metrics on stage_updated rows instead of assignment aggregates', () => {
-    const assignment: AssignmentResult = {
-      schema_version: '1.3.0',
-      kind: 'assignment_result',
-      dataset_id: 'ds-live-a',
-      quality_state: 'live_in_progress',
-      observed_at: '2026-09-17T08:00:00Z',
-      assignment_id: 'assignment-formation',
-      run_id: 'run-a',
-      task_id: 'security-policy-deny-delete',
-      variant_id: 'qwen25-14b',
-      role: 'primary',
-      repetition: 1,
-      terminal_status: 'completed',
-      metric_values: {
-        pass: { value: 1 },
-        deterministic_pass_rate: { value: 1 },
-      },
-      stage_summary: [],
-      resource_summary: {
-        latency_ms: { value: 3540 },
-        input_tokens: { value: 628 },
-        output_tokens: { value: 364 },
-        retries: { value: 2 },
-      },
-      benchmark_observations: {
-        timing: { generation_ms: { value: 2890 } },
-        unavailable_reasons: [],
-      },
-      activity_summary: {
-        model_activity: {
-          availability: 'observed',
-          records: [
-            {
-              model_role: 'lite',
-              variant_id: 'qwen25-05b',
-              usage_availability: 'reported',
-              input_tokens: { value: 116 },
-              output_tokens: { value: 4 },
-              retry_count: { value: 0 },
-              total_duration_nanos: { value: 12_000_000 },
-              generation_duration_nanos: { value: 8_000_000 },
-              finish_state: 'stop',
-              load_state: 'warm',
-            },
-            {
-              model_role: 'assistant',
-              variant_id: 'gemma22b',
-              usage_availability: 'reported',
-              input_tokens: { value: 122 },
-              output_tokens: { value: 6 },
-              retry_count: { value: 1 },
-              total_duration_nanos: { value: 18_000_000 },
-              generation_duration_nanos: { value: 14_000_000 },
-              finish_state: 'stop',
-              load_state: 'warm',
-            },
-            {
-              model_role: 'primary',
-              variant_id: 'qwen25-14b',
-              usage_availability: 'reported',
-              input_tokens: { value: 137 },
-              output_tokens: { value: 6 },
-              retry_count: { value: 1 },
-              total_duration_nanos: { value: 27_000_000 },
-              generation_duration_nanos: { value: 21_000_000 },
-              finish_state: 'stop',
-              load_state: 'warm',
-            },
-          ],
-        },
-        tool_decisions: { availability: 'not_applicable' },
-        tool_calls: { availability: 'not_applicable' },
-        policy_decisions: { availability: 'not_applicable' },
-        governed_actions: { availability: 'not_applicable' },
-      },
-    };
-    evalStore.loadFixtures([assignment], []);
-
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-lite',
-              kind: 'stage_updated',
-              assignment_id: 'assignment-formation',
-              variant_id: 'qwen25-05b',
-              role: 'lite',
-            }),
-            liveEvent({
-              event_id: 'evt-assistant',
-              kind: 'stage_updated',
-              assignment_id: 'assignment-formation',
-              variant_id: 'gemma22b',
-              role: 'assistant',
-            }),
-            liveEvent({
-              event_id: 'evt-primary',
-              kind: 'stage_updated',
-              assignment_id: 'assignment-formation',
-              variant_id: 'qwen25-14b',
-              role: 'primary',
-            }),
-            liveEvent({
-              event_id: 'evt-complete',
-              kind: 'assignment_completed',
-              assignment_id: 'assignment-formation',
-              variant_id: 'qwen25-14b',
-              role: 'primary',
-              lifecycle_status: 'completed',
-              metric_delta: {
-                pass: { value: 1 },
-                deterministic_pass_rate: { value: 1 },
-              },
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const rowByRoleAndEvent = (role: string, eventLabel: string) =>
-      screen
-        .getAllByRole('row')
-        .slice(1)
-        .find(
-          (row) =>
-            row.querySelector('.stream-role')?.textContent === role &&
-            row.querySelector('.stream-event-link')?.textContent === eventLabel,
-        );
-
-    const liteRow = rowByRoleAndEvent('Lite', 'Stage Updated');
-    const assistantRow = rowByRoleAndEvent('Assistant', 'Stage Updated');
-    const primaryRow = rowByRoleAndEvent('Primary', 'Stage Updated');
-    const completedRow = screen.getByRole('link', { name: 'Assignment Completed' }).closest('tr');
-
-    expect(liteRow).not.toBeUndefined();
-    expect(assistantRow).not.toBeUndefined();
-    expect(primaryRow).not.toBeUndefined();
-    expect(completedRow).not.toBeNull();
-
-    expect(liteRow).toHaveTextContent('116 tok');
-    expect(liteRow).toHaveTextContent('4 tok');
-    expect(liteRow).toHaveTextContent('12 ms');
-    expect(liteRow).not.toHaveTextContent('628 tok');
-
-    expect(assistantRow).toHaveTextContent('122 tok');
-    expect(assistantRow).toHaveTextContent('6 tok');
-    expect(assistantRow).toHaveTextContent('18 ms');
-
-    expect(primaryRow).toHaveTextContent('137 tok');
-    expect(primaryRow).toHaveTextContent('27 ms');
-    expect(primaryRow).not.toHaveTextContent('628 tok');
-
-    expect(completedRow).toHaveTextContent('628 tok');
-    expect(completedRow).toHaveTextContent('364 tok');
-    expect(completedRow).toHaveTextContent('3.54 s');
-    expect(completedRow).toHaveTextContent('Pass');
-  });
-
-  describe('graded and chain role rows', () => {
-    const stageRows = () =>
-      screen
-        .getAllByRole('row')
-        .slice(1)
-        .filter((row) => row.querySelector('.stream-event-link')?.textContent === 'Stage Updated');
-    const rowForRole = (role: string) =>
-      stageRows().find((row) => row.querySelector('.stream-role')?.textContent === role);
-    const gradingTag = (role: string) => rowForRole(role)?.querySelector('.stream-role-tag');
-
-    const stageEvents = [
-      liveEvent({ event_id: 'evt-start', kind: 'assignment_started', assignment_id: 'assignment-chain', role: 'assistant', variant_id: 'gemma4-e2b' }),
-      liveEvent({ event_id: 'evt-lite', kind: 'stage_updated', assignment_id: 'assignment-chain', role: 'lite', variant_id: 'gemma4-e2b' }),
-      liveEvent({ event_id: 'evt-assistant', kind: 'stage_updated', assignment_id: 'assignment-chain', role: 'assistant', variant_id: 'gemma4-e2b' }),
-      liveEvent({ event_id: 'evt-primary', kind: 'stage_updated', assignment_id: 'assignment-chain', role: 'primary', variant_id: 'gemma4-e2b' }),
-    ];
-
-    function chainAssignment(terminal: AssignmentResult['terminal_status']): AssignmentResult {
-      return {
-        schema_version: '1.3.0',
-        kind: 'assignment_result',
-        dataset_id: 'ds-live-a',
-        quality_state: 'live_in_progress',
-        observed_at: '2026-09-17T08:00:00Z',
-        assignment_id: 'assignment-chain',
-        run_id: 'run-a',
-        task_id: 'security-policy-deny-delete',
-        variant_id: 'gemma4-e2b',
-        role: 'assistant',
-        repetition: 1,
-        terminal_status: terminal,
-        metric_values: {
-          pass: { value: 0 },
-          deterministic_pass_rate: { value: 0.5 },
-          tier_assistant: { value: 0 },
-          tier_lite: { value: 1 },
-        },
-        stage_summary: [],
-      };
-    }
-
-    it('marks the designated role Graded and other roles Chain from assignment events, with -- before completion', () => {
-      evalStore.loadFixtures([], []);
-      render(
-        <MemoryRouter>
-          <LiveEventStream events={stageEvents} connection="live" streamConnection="connected" />
-        </MemoryRouter>,
-      );
-
-      expect(gradingTag('Assistant')).toHaveTextContent('Graded');
-      expect(gradingTag('Lite')).toHaveTextContent('Chain');
-      expect(gradingTag('Primary')).toHaveTextContent('Chain');
-      expect(gradingTag('Assistant')?.closest('td')).not.toBe(rowForRole('Assistant')?.querySelector('.stream-role')?.closest('td'));
-      expect(rowForRole('Primary')).toHaveClass('stream-row-chain');
-      expect(rowForRole('Assistant')).not.toHaveClass('stream-row-chain');
-      for (const row of stageRows()) {
-        expect(row.querySelectorAll('.stream-metric-value.unavailable').length).toBeGreaterThanOrEqual(2);
-        expect(row).not.toHaveTextContent('Pass');
-        expect(row).not.toHaveTextContent('%');
-      }
-    });
-
-    it('fills chain Pass and Pass Rate from tier scores once the assignment completes', () => {
-      evalStore.loadFixtures([chainAssignment('completed')], []);
-      render(
-        <MemoryRouter>
-          <LiveEventStream events={stageEvents} connection="live" streamConnection="connected" />
-        </MemoryRouter>,
-      );
-
-      const lite = rowForRole('Lite');
-      expect(lite).toHaveTextContent('Pass');
-      expect(lite).toHaveTextContent('100.0%');
-      const assistant = rowForRole('Assistant');
-      expect(assistant).toHaveTextContent('Fail');
-      expect(assistant).toHaveTextContent('50.0%');
-      // No player gold for the primary tier: stays absent rather than inventing a score.
-      const primary = rowForRole('Primary');
-      expect(primary).toHaveTextContent('Chain');
-      expect(primary).not.toHaveTextContent('%');
-    });
-
-    it('keeps chain rows at -- while the assignment is still running', () => {
-      evalStore.loadFixtures([chainAssignment('running')], []);
-      render(
-        <MemoryRouter>
-          <LiveEventStream events={stageEvents} connection="live" streamConnection="connected" />
-        </MemoryRouter>,
-      );
-
-      expect(rowForRole('Lite')).not.toHaveTextContent('100.0%');
-    });
-  });
 
   it('links active evaluation details to the live page without duplicating the event stream', () => {
     const evaluation: EvaluationSummary = {
@@ -814,14 +556,14 @@ describe('LiveEventStream', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('correctly maps category for model role invocation stage_updated events without assignment in store', () => {
+  it('correctly maps category for model role invocation events without assignment in store', () => {
     render(
       <MemoryRouter>
         <LiveEventStream
           events={[
             liveEvent({
               event_id: 'evt-invocation-1',
-              kind: 'stage_updated',
+              kind: 'assignment_completed',
               role: 'lite',
               variant_id: 'gemma3:4b',
               task_id: 'tool-select-file-read',
@@ -834,18 +576,16 @@ describe('LiveEventStream', () => {
       </MemoryRouter>,
     );
 
-    const row = screen.getByRole('row', { name: /Stage Updated/i });
+    const row = screen.getByRole('row', { name: /Assignment Completed/i });
     expect(row).toBeInTheDocument();
     const cells = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.trim());
-    // Columns: [Time, Role, Grading, Event, Status, Category, Task, Assignment, Pass, Pass Rate, Latency, Input tokens, Output tokens, Tokens/s, Retries, Model, Progress]
+    // Columns: [Time, Role, Event, Status, Category, Task, Assignment, Pass, Pass Rate, Latency, Input tokens, Output tokens, Tokens/s, Retries, Model, Progress]
     expect(cells[1]).toBe('Lite');
-    expect(cells[2]).toBe('—');
-    expect(cells[3]).toBe('Stage Updated');
-    expect(cells[4]).toBe('Running');
-    expect(cells[5]).toBe('Tool Selection');
-    expect(cells[6]).toBe('tool-select-file-read');
-    expect(cells[5]).not.toBe('Lite');
-    expect(cells[5]).not.toBe('lite');
+    expect(cells[2]).toBe('Assignment Completed');
+    expect(cells[4]).toBe('Tool Selection');
+    expect(cells[5]).toBe('tool-select-file-read');
+    expect(cells[4]).not.toBe('Lite');
+    expect(cells[4]).not.toBe('lite');
   });
 
   it('does not fallback to role name when task is unrecognized and assignment is missing', () => {
@@ -855,7 +595,7 @@ describe('LiveEventStream', () => {
           events={[
             liveEvent({
               event_id: 'evt-custom-task',
-              kind: 'stage_updated',
+              kind: 'assignment_completed',
               role: 'lite',
               variant_id: 'gemma3:4b',
               task_id: 'custom-unknown-task',
@@ -868,12 +608,12 @@ describe('LiveEventStream', () => {
       </MemoryRouter>,
     );
 
-    const row = screen.getByRole('row', { name: /Stage Updated/i });
+    const row = screen.getByRole('row', { name: /Assignment Completed/i });
     expect(row).toBeInTheDocument();
     const cells = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.trim());
     expect(cells[1]).toBe('Lite');
-    expect(cells[5]).toBe('—');
-    expect(cells[6]).toBe('custom-unknown-task');
+    expect(cells[4]).toBe('—');
+    expect(cells[5]).toBe('custom-unknown-task');
   });
 
   it('filters by category using the category dropdown', async () => {
@@ -884,15 +624,15 @@ describe('LiveEventStream', () => {
           events={[
             liveEvent({
               event_id: 'evt-tool-sel',
-              kind: 'stage_updated',
+              kind: 'assignment_completed',
               task_id: 'tool-select-file-read',
-              stage_label: 'stage updated · Tool Selection · tool-select-file-read',
+              stage_label: 'assignment completed · Tool Selection · tool-select-file-read',
             }),
             liveEvent({
               event_id: 'evt-exact-format',
-              kind: 'stage_updated',
+              kind: 'assignment_completed',
               task_id: 'instruction-exact-format',
-              stage_label: 'stage updated · Instruction Adherence · instruction-exact-format',
+              stage_label: 'assignment completed · Instruction Adherence · instruction-exact-format',
             }),
           ]}
           connection="live"
@@ -920,7 +660,7 @@ describe('LiveEventStream', () => {
             liveEvent({
               event_id: 'evt-run-2',
               run_id: 'eval-init-model-2',
-              kind: 'stage_updated',
+              kind: 'assignment_completed',
               observed_at: '2026-09-17T08:02:00Z',
             }),
             liveEvent({
@@ -988,7 +728,7 @@ describe('LiveEventStream', () => {
               event_id: 'evt-asg-1',
               assignment_id: 'asg-live-alpha',
               task_id: 'task-alpha',
-              kind: 'stage_updated',
+              kind: 'assignment_completed',
               observed_at: '2026-09-17T08:02:00Z',
             }),
             liveEvent({
@@ -1032,7 +772,7 @@ describe('LiveEventStream', () => {
               event_id: 'evt-no-asg',
               dataset_id: 'ds-eval-1',
               run_id: 'run-eval-1',
-              kind: 'stage_updated',
+              kind: 'evaluation_started',
             }),
           ]}
           connection="live"
@@ -1048,8 +788,7 @@ describe('LiveEventStream', () => {
     );
     expect(link).toHaveAttribute('title', 'asg-long-assignment-identifier-12345');
 
-    const rows = screen.getAllByRole('row');
-    const stageUpdatedRow = rows[2];
-    expect(stageUpdatedRow).toHaveTextContent('—');
+    const evaluationRow = screen.getByRole('link', { name: 'Evaluation Started' }).closest('tr');
+    expect(evaluationRow).toHaveTextContent('—');
   });
 });

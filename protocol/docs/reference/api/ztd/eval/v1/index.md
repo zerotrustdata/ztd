@@ -741,6 +741,7 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | repetition_count | [uint32](#uint32) |  |  |
 | platform_release | [string](#string) |  | platform_release is the ztd build version that froze the campaign. It is part of campaign_digest, so a campaign cannot be re-labeled. Empty only on campaigns frozen before v2.3.0; their release is an operator-asserted tag held outside the digest. |
 | source_revision | [string](#string) |  | source_revision is the source commit of the build that froze the campaign. |
+| hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
 
 
 

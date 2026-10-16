@@ -92,8 +92,11 @@ type agentRun struct {
 	variant   *evalv1.ModelVariant
 	registry  []*operatorv1.InferenceModelVariant
 	workspace ScenarioWorkspace
-	target    Target
-	trace     *AgentTrace
+	// held is the previous repetition's conversation when the campaign holds
+	// context; the model receives it ahead of this repetition's input.
+	held   []*operatorv1.InferenceMessage
+	target Target
+	trace  *AgentTrace
 }
 
 // ExecuteAssignment runs one homogeneous assignment to a terminal result. A
@@ -173,8 +176,19 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	if err := topology.ValidateAnchored(); err != nil {
 		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", err)
 	}
-	workspace, err := NewScenarioWorkspace(topology.DataWorkingDirectory, assignment.GetRunId(), req.AttemptID)
-	if err != nil {
+	var (
+		workspace   ScenarioWorkspace
+		heldContext *AgentTraceHeldContext
+		held        []*operatorv1.InferenceMessage
+	)
+	if req.HeldContext != nil {
+		if workspace, err = heldScenarioWorkspace(req.HeldContext, topology); err != nil {
+			return nil, err
+		}
+		if heldContext, held, err = newAgentTraceHeldContext(req.HeldContext, assignment.GetRepetition()); err != nil {
+			return nil, err
+		}
+	} else if workspace, err = NewScenarioWorkspace(topology.DataWorkingDirectory, assignment.GetRunId(), req.AttemptID); err != nil {
 		return nil, err
 	}
 	return &agentRun{
@@ -184,8 +198,10 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 		variant:   variant,
 		registry:  binding.ModelRegistry,
 		workspace: workspace,
+		held:      held,
 		target:    Target{OperatorID: topology.Data.OperatorID, SessionID: topology.Data.OperatorSessionID},
 		trace: &AgentTrace{
+			HeldContext:         heldContext,
 			RunID:               assignment.GetRunId(),
 			AssignmentID:        assignment.GetAssignmentId(),
 			EvaluationAttemptID: req.AttemptID,
@@ -207,13 +223,14 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 // loop runs the scored tool loop until the model answers without a tool call,
 // the provider fails, or the turn bound is reached.
 func (r *agentRun) loop(ctx context.Context) error {
-	messages := r.conversation()
+	opening := r.conversation()
 	tools := r.executor.catalog.Declarations()
-	input, err := newAgentTraceInput(messages, tools)
+	input, err := newAgentTraceInput(opening, tools)
 	if err != nil {
 		return err
 	}
 	r.trace.Input = input
+	messages := append(append(make([]*operatorv1.InferenceMessage, 0, len(r.held)+len(opening)), r.held...), opening...)
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
 		result, call := r.infer(ctx, agentModelCallPurposeTurn, turn, messages, tools)
 		if call == nil {
@@ -260,17 +277,22 @@ func (r *agentRun) loop(ctx context.Context) error {
 }
 
 // conversation builds the scored turn's ordered messages: the system context,
-// the frozen seed conversation, and the rendered scenario prompt.
+// the frozen seed conversation, and the rendered scenario prompt. A
+// held-context repetition already carries the system context and seed in its
+// held conversation, so it opens with the scenario prompt alone.
 func (r *agentRun) conversation() []*operatorv1.InferenceMessage {
 	input := r.req.ScenarioInput
-	messages := []*operatorv1.InferenceMessage{agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, r.systemPrompt())}
-	for _, turn := range input.Seed.Turns {
-		role := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT
-		if turn.Sender == "user" {
-			role = operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER
-		}
-		if content := r.workspace.Render(turn.Content); content != "" {
-			messages = append(messages, agentTextMessage(role, content))
+	var messages []*operatorv1.InferenceMessage
+	if len(r.held) == 0 {
+		messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, r.systemPrompt()))
+		for _, turn := range input.Seed.Turns {
+			role := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT
+			if turn.Sender == "user" {
+				role = operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER
+			}
+			if content := r.workspace.Render(turn.Content); content != "" {
+				messages = append(messages, agentTextMessage(role, content))
+			}
 		}
 	}
 	var prompt strings.Builder
@@ -769,7 +791,7 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	if trace.AssignmentID != req.Assignment.GetAssignmentId() || trace.RunID != req.Assignment.GetRunId() {
 		return nil, fmt.Errorf("evaluation: import agent trace: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	if err := trace.ScenarioWorkspace().Validate(trace.RunID, trace.EvaluationAttemptID); err != nil {
+	if err := trace.validateWorkspace(); err != nil {
 		return nil, fmt.Errorf("evaluation: import agent trace: %w", err)
 	}
 	if newID == nil {

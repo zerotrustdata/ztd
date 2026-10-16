@@ -27,6 +27,21 @@ const receipt = (transactionId: string, actionType: string) => ({
   deterministic_stage_evidence: [{ stage_id: 'l1', kind: 'DETERMINISTIC_STAGE_KIND_L1_DOCTRINE', outcome: 'DETERMINISTIC_STAGE_OUTCOME_VERIFIED' }],
 });
 
+/** The previous repetition's investigation a v5 trace continued. */
+const heldContext = {
+  assignment_id: 'assignment-0',
+  repetition: 1,
+  evidence_digest: 'f'.repeat(64),
+  workspace: { root: '/work', operator_working_directory: '/work/run-1' },
+  messages: [
+    { role: 'INFERENCE_MESSAGE_ROLE_SYSTEM', text: 'You are an operations agent.' },
+    { role: 'INFERENCE_MESSAGE_ROLE_USER', text: 'Why is checkout failing? 2>&1 <out>' },
+    { role: 'INFERENCE_MESSAGE_ROLE_ASSISTANT', tool_calls: [{ call_id: 'call-0', name: 'fs_read', arguments_json: '{"path":"held.log"}' }] },
+    { role: 'INFERENCE_MESSAGE_ROLE_TOOL', tool_result: { call_id: 'call-0', name: 'fs_read', result_json: '{"content":"held OOM"}' } },
+    { role: 'INFERENCE_MESSAGE_ROLE_ASSISTANT', text: 'Earlier answer: out of memory.' },
+  ],
+};
+
 /** Everything after evidence_digest, in the Go AgentTrace field order. */
 function traceTail(schemaVersion: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -42,7 +57,8 @@ function traceTail(schemaVersion: string, overrides: Record<string, unknown> = {
     inference: { operator_id: 'operator-inference', session_id: 'session-inference', anchor: { runtime_id: 'operator-inference', key_id: 'key-inference', public_key_hex: 'ab', export_sha256: 'c'.repeat(64) } },
     data: { operator_id: 'operator-data', session_id: 'session-data' },
     workspace: { root: '/work', operator_working_directory: '/work/run-1' },
-    ...(schemaVersion === 'agent-trace.v4'
+    ...(schemaVersion === 'agent-trace.v5' ? { held_context: heldContext } : {}),
+    ...(schemaVersion !== 'agent-trace.v3'
       ? { input: { messages: [{ role: 'INFERENCE_MESSAGE_ROLE_USER', text: 'Why is checkout failing? 2>&1 <out>' }], tools: [{ name: 'fs_read', description: 'Read a file.', json_schema: '{"type":"object"}' }] } }
       : {}),
     model_calls: [{
@@ -112,6 +128,26 @@ describe('verifyAgentTraceArtifact', () => {
     await expect(verifyAgentTraceArtifact(v3, scope(v3))).rejects.toThrow(/never carries input/u);
   });
 
+  it('verifies a v5 trace that continued a held investigation', async () => {
+    const body = sealedBody('agent-trace.v5');
+
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+
+    expect(trace.held_context?.repetition).toBe(1);
+    expect(trace.held_context?.messages[2]?.tool_calls?.[0]?.arguments_json).toBe('{"path":"held.log"}');
+    expect(trace.held_context?.messages[3]?.tool_result?.result_json).toBe('{"content":"held OOM"}');
+  });
+
+  it('rejects held context outside v5 and unknown held fields', async () => {
+    const v4 = sealedBody('agent-trace.v4', { held_context: heldContext });
+    const unknown = sealedBody('agent-trace.v5', { held_context: { ...heldContext, summary: 'x' } });
+    const empty = sealedBody('agent-trace.v5', { held_context: { ...heldContext, messages: [] } });
+
+    await expect(verifyAgentTraceArtifact(v4, scope(v4))).rejects.toThrow(/never carries held context/u);
+    await expect(verifyAgentTraceArtifact(unknown, scope(unknown))).rejects.toThrow(/summary/u);
+    await expect(verifyAgentTraceArtifact(empty, scope(empty))).rejects.toMatchObject({ path: 'agent_trace.held_context.messages' });
+  });
+
   it('rejects a trace for another assignment and unknown fields', async () => {
     const other = sealedBody('agent-trace.v4', { assignment_id: 'assignment-2' });
     const unknown = sealedBody('agent-trace.v4', { grade_detail: 'x' });
@@ -160,6 +196,19 @@ describe('AgentTraceSection', () => {
     expect(screen.getByText('cat app.log')).toBeInTheDocument();
     expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Download trace' })).toHaveAttribute('download', 'assignment-assignment-1.agent-trace.json');
+  });
+
+  it('renders the held investigation ahead of the input', async () => {
+    const held = sealedBody('agent-trace.v5');
+    evalStore.loadProofCatalog([entry(sha256(held))]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(held.slice())));
+    const heldBindings: PublicEvidenceBinding[] = [{ ...bindings[0]!, sha256: sha256(held) }];
+
+    render(<AgentTraceSection id="trace" bindings={heldBindings} runId="run-1" assignmentId="assignment-1" />);
+
+    expect(await screen.findByText('Held investigation · repetition 1')).toBeInTheDocument();
+    expect(screen.getByText('Earlier answer: out of memory.')).toBeInTheDocument();
+    expect(screen.getByText('assignment-0')).toBeInTheDocument();
   });
 
   it('shows nothing from a body that fails verification', async () => {

@@ -109,6 +109,26 @@ func TestCampaignsCreate_FromModelSelector(t *testing.T) {
 	require.NoError(t, env.runJSON(t, &payload, "campaigns", "show", "eval-a"))
 	assert.Equal(t, uint32(2), payload.RepetitionCount)
 	assert.Equal(t, []string{"qwen3:4b"}, payload.Models)
+	assert.True(t, payload.HoldContext, "repetitions hold the investigation by default")
+}
+
+func TestCampaignsCreate_HoldContextFlag(t *testing.T) {
+	env := setupRunEnv(t)
+
+	var fresh campaignCreateJSON
+	require.NoError(t, env.runJSON(t, &fresh, "campaigns", "create", "eval-fresh", "qwen3:4b", "--reps", "3", "--hold-context=false"))
+	assert.False(t, fresh.HoldContext)
+	var single campaignCreateJSON
+	require.NoError(t, env.runJSON(t, &single, "campaigns", "create", "eval-single", "qwen3:4b"))
+	assert.False(t, single.HoldContext, "one repetition has nothing to hold")
+
+	for _, args := range [][]string{
+		{"campaigns", "create", "eval-h", "qwen3:4b", "--hold-context"},
+		{"campaigns", "create", "eval-h", "--all-formations", "--reps", "2", "--hold-context"},
+	} {
+		_, err := env.run(t, args...)
+		require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+	}
 }
 
 func TestCampaignsCreate_JSONReportsFrozenSpec(t *testing.T) {

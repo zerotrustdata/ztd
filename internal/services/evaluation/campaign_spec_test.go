@@ -29,11 +29,12 @@ func TestMaterializeCampaignSpec_BindsCatalogAndInventory(t *testing.T) {
 	inventory, err := MaterializeModelRegistry("smoke-campaign", []*evalv1.ModelVariant{testModelVariant()})
 	require.NoError(t, err)
 
-	spec, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 0, testPlatform)
+	spec, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 0, true, testPlatform)
 	require.NoError(t, err)
 	assert.Equal(t, CampaignSchemaVersion, spec.GetSchemaVersion())
 	assert.Equal(t, "smoke-campaign", spec.GetCampaignId())
 	assert.Equal(t, uint32(1), spec.GetRepetitionCount())
+	assert.False(t, spec.GetHoldContext(), "a single repetition has no later pass to hold context for")
 	assert.Equal(t, catalog.GetCatalogDigest(), spec.GetCatalogDigest())
 	assert.Equal(t, inventory.RegistryDigest, spec.GetModelRegistryDigest())
 	assert.NotEmpty(t, spec.GetCampaignDigest())
@@ -62,7 +63,7 @@ func TestMaterializeCampaignSpec_RejectsMissingInputs(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := MaterializeCampaignSpec(test.campaignID, test.catalog, test.inventory, 1, testPlatform)
+			_, err := MaterializeCampaignSpec(test.campaignID, test.catalog, test.inventory, 1, false, testPlatform)
 			require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 		})
 	}
@@ -116,9 +117,9 @@ func TestMaterializeCampaignSpec_ReleaseIsPartOfTheDigest(t *testing.T) {
 	inventory, err := MaterializeModelRegistry("smoke-campaign", []*evalv1.ModelVariant{testModelVariant()})
 	require.NoError(t, err)
 
-	base, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 1, testPlatform)
+	base, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 1, false, testPlatform)
 	require.NoError(t, err)
-	next, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 1, PlatformIdentity{Release: "v2.2.9", SourceRevision: testPlatform.SourceRevision})
+	next, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 1, false, PlatformIdentity{Release: "v2.2.9", SourceRevision: testPlatform.SourceRevision})
 	require.NoError(t, err)
 	assert.NotEqual(t, base.GetCampaignDigest(), next.GetCampaignDigest())
 
@@ -134,6 +135,26 @@ func TestMaterializeCampaignSpec_RequiresARelease(t *testing.T) {
 	inventory, err := MaterializeModelRegistry("smoke-campaign", []*evalv1.ModelVariant{testModelVariant()})
 	require.NoError(t, err)
 
-	_, err = MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 1, PlatformIdentity{SourceRevision: "0123abc"})
+	_, err = MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 1, false, PlatformIdentity{SourceRevision: "0123abc"})
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+}
+
+func TestMaterializeCampaignSpec_HoldContextIsPartOfTheDigest(t *testing.T) {
+	t.Parallel()
+	catalog, _, err := LoadScenarioCatalog()
+	require.NoError(t, err)
+	inventory, err := MaterializeModelRegistry("smoke-campaign", []*evalv1.ModelVariant{testModelVariant()})
+	require.NoError(t, err)
+
+	held, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 3, true, testPlatform)
+	require.NoError(t, err)
+	assert.True(t, held.GetHoldContext())
+	fresh, err := MaterializeCampaignSpec("smoke-campaign", catalog, inventory, 3, false, testPlatform)
+	require.NoError(t, err)
+	assert.False(t, fresh.GetHoldContext())
+	assert.NotEqual(t, held.GetCampaignDigest(), fresh.GetCampaignDigest())
+
+	flipped := proto.Clone(held).(*evalv1.EvaluationCampaignSpec)
+	flipped.HoldContext = false
+	require.ErrorIs(t, ValidateCampaignSpecDigest(flipped), constants.ErrChecksumMismatch)
 }

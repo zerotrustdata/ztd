@@ -112,6 +112,9 @@ type CampaignCreateRequest struct {
 	Inventory         *ModelInventoryFreeze
 	ScenarioArtifacts map[string]ScenarioArtifacts
 	RepetitionCount   uint32
+	// HoldContext carries each cell's investigation from one repetition into
+	// the next. It is frozen only when RepetitionCount > 1.
+	HoldContext bool
 	// Platform is the build that freezes the campaign; its release is digest-bound.
 	Platform PlatformIdentity
 }
@@ -139,7 +142,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	if req.CampaignID == "" || req.Catalog == nil || req.Inventory == nil {
 		return nil, fmt.Errorf("evaluation: create campaign: %w", constants.ErrMissingRequiredField)
 	}
-	spec, err := MaterializeCampaignSpec(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.Platform)
+	spec, err := MaterializeCampaignSpec(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.HoldContext, req.Platform)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +152,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 		if existing.GetCatalogDigest() != spec.GetCatalogDigest() ||
 			existing.GetModelRegistryDigest() != spec.GetModelRegistryDigest() ||
 			existing.GetRepetitionCount() != spec.GetRepetitionCount() ||
+			existing.GetHoldContext() != spec.GetHoldContext() ||
 			(existing.GetPlatformRelease() != "" && existing.GetPlatformRelease() != spec.GetPlatformRelease()) {
 			return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, constants.ErrEvaluationCampaignConflict)
 		}
@@ -566,7 +570,11 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		OnFormationRoleStarting: c.assignmentFormationRoleStartingHook(assignment),
 		OnFormationRoleProgress: c.assignmentFormationProgressHook(assignment, attemptID),
 	}
-	result, err := c.executor.ExecuteAssignment(ctx, execReq)
+	var result *evalv1.EvaluationAssignmentResult
+	execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
+	if err == nil {
+		result, err = c.executor.ExecuteAssignment(ctx, execReq)
+	}
 	if err != nil {
 		if !isRecoverableAssignmentExecutionError(err) {
 			return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", err)

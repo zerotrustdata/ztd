@@ -499,7 +499,6 @@ var (
 	// Passkey bootstrap errors
 	ErrPasskeyRegistrationTimedOut    = errors.New("passkey registration timed out")
 	ErrPasskeyRegistrationFailed      = errors.New("passkey registration failed")
-	ErrPasskeyStatusUnauthorized      = errors.New("passkey status endpoint returned unauthorized")
 	ErrPasskeySSEStreamClosed         = errors.New("SSE stream closed unexpectedly")
 	ErrPasskeySSEDependenciesRequired = errors.New("passkey orchestrator: SSEStore and PubSub are required at construction, not nil")
 
@@ -1157,8 +1156,6 @@ var (
 	ErrEvidenceImporterFailed       = errors.New("compliance: evidence importer failed")
 	ErrEvidenceProducerUnverified   = errors.New("compliance: evidence producer identity not verified")
 	ErrEvidenceVerifierUnverified   = errors.New("compliance: evidence verifier identity not verified")
-	// ErrGraphInvalid is returned when ValidateAll detects failures.
-	ErrGraphInvalid = errors.New("compliance: evidence graph validation failed")
 
 	// Compliance report bundle assembly errors
 	ErrBundleAssemblyFailed     = errors.New("compliance: report bundle assembly failed")
@@ -1448,6 +1445,7 @@ var (
 	ErrEvaluationLastEntryRemoval          = errors.New("evaluation: cannot remove the last entry from a catalog or inventory")
 	ErrEvaluationFormationSmokeFailed      = errors.New("evaluation: formation smoke failed")
 	ErrEvaluationWorkspaceUnavailable      = errors.New("evaluation: scenario workspace is unavailable on the bound Data Operator")
+	ErrEvaluationHeldContextUnavailable    = errors.New("evaluation: the previous repetition's investigation cannot be held into this repetition")
 
 	// Governed transaction errors
 	ErrTxUnknownEventType      = errors.New("TX_UNKNOWN_EVENT: event type not registered")
@@ -1481,7 +1479,6 @@ var (
 	ErrConformanceStackNotQuiescent     = errors.New("conformance stack not quiescent")
 	ErrConformanceCatalogueInvalid      = errors.New("conformance catalogue invalid")
 	ErrConformanceRecordInvalid         = errors.New("conformance run record invalid")
-	ErrConformanceRecordDigestMismatch  = errors.New("conformance run record digest mismatch")
 	ErrConformanceCanaryInvalid         = errors.New("conformance canary set invalid")
 	ErrConformanceIngressUnsupported    = errors.New("conformance ingress cannot express this case")
 	ErrConformancePostureUnknown        = errors.New("conformance posture unknown")
@@ -1494,12 +1491,8 @@ var (
 	// Campaign tool evidence errors
 	ErrCampaignToolEvidenceInvalid = errors.New("campaign tool evidence invalid")
 
-	// Red-team containment errors
-	ErrRedTeamGoalInvalid = errors.New("red-team goal invalid")
-
 	// Seeded investigation errors
 	ErrInvestigationScenarioInvalid = errors.New("investigation scenario invalid")
-	ErrInvestigationSeedFailed      = errors.New("investigation seed failed")
 
 	// Secondary judge errors
 	ErrJudgeResponseInvalid = errors.New("evaluation judge response invalid")

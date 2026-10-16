@@ -653,9 +653,9 @@ func TestVerifyL2Posture_VoteFaults(t *testing.T) {
 			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), priv1, "consensus")
 			env.Governance.L2.ConsensusSetId = "fault-consensus"
 			env.Governance.L2.Votes = tc.votes(env.TransactionHash)
-			posture, err := NewGovernancePosture(tc.posture)
+			posture, err := ParseGovernancePosture(tc.posture)
 			if err != nil {
-				t.Fatalf("NewGovernancePosture(%s): %v", tc.posture, err)
+				t.Fatalf("ParseGovernancePosture(%s): %v", tc.posture, err)
 			}
 
 			ok, err := newWarden(tc.signers).verifyL2Posture(context.Background(), env, env.TransactionHash, posture)

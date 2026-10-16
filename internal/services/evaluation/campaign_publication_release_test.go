@@ -19,7 +19,7 @@ import (
 func savePublicRunIdentity(t *testing.T, store *Store, runID, campaignID string) {
 	t.Helper()
 	req := testCampaignInitRequest(t)
-	spec, err := MaterializeCampaignSpec(campaignID, req.Catalog, req.Inventory, req.RepetitionCount, testPlatform)
+	spec, err := MaterializeCampaignSpec(campaignID, req.Catalog, req.Inventory, req.RepetitionCount, false, testPlatform)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveCampaignSpec(context.Background(), spec))
 	require.NoError(t, store.SaveRun(context.Background(), &evalv1.EvaluationRun{SchemaVersion: CampaignSchemaVersion, RunId: runID, CampaignBinding: &evalv1.ModelCampaignBinding{CampaignId: campaignID}}))

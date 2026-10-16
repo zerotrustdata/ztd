@@ -20,18 +20,8 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// OSCAL component-definition
+// OSCAL assessment-results
 // ---------------------------------------------------------------------------
-
-// OSCALComponentDefinition is the top-level OSCAL component-definition model.
-// It describes the ztd platform as a component with control implementations
-// keyed by KSI category.
-type OSCALComponentDefinition struct {
-	UUID       string           `json:"uuid"`
-	Metadata   OSCALMetadata    `json:"metadata"`
-	Components []OSCALComponent `json:"components"`
-	BackMatter OSCALBackMatter  `json:"back-matter,omitempty"`
-}
 
 // OSCALMetadata holds common OSCAL metadata fields.
 type OSCALMetadata struct {
@@ -41,40 +31,6 @@ type OSCALMetadata struct {
 	Version      string `json:"version"`
 	OscalVersion string `json:"oscal-version"`
 }
-
-// OSCALComponent describes a single component (ztd platform).
-type OSCALComponent struct {
-	UUID                   string                       `json:"uuid"`
-	Type                   string                       `json:"type"`
-	Title                  string                       `json:"title"`
-	Description            string                       `json:"description"`
-	ControlImplementations []OSCALControlImplementation `json:"control-implementations,omitempty"`
-}
-
-// OSCALControlImplementation groups implemented controls by KSI category.
-type OSCALControlImplementation struct {
-	UUID                string                    `json:"uuid"`
-	Source              string                    `json:"source"`
-	Description         string                    `json:"description"`
-	ImplementedControls []OSCALImplementedControl `json:"implemented-requirements"`
-}
-
-// OSCALImplementedControl describes a single implemented control (per KSI).
-type OSCALImplementedControl struct {
-	ControlID   string           `json:"control-id"`
-	Description string           `json:"description,omitempty"`
-	Statements  []OSCALStatement `json:"statements,omitempty"`
-}
-
-// OSCALStatement links a KSI to a control statement with method evidence.
-type OSCALStatement struct {
-	StatementID string `json:"statement-id"`
-	Description string `json:"description,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// OSCAL assessment-results
-// ---------------------------------------------------------------------------
 
 // OSCALAssessmentResults is the top-level OSCAL assessment-results model.
 // It contains per-KSI observations and results with evidence anchors.
@@ -208,7 +164,7 @@ const (
 	oscalEvidenceLinkReferences = "references"
 )
 
-// OSCALExporter generates component definitions from the KSI catalog and assessment results from canonical compliance analysis.
+// OSCALExporter generates assessment results from canonical compliance analysis.
 type OSCALExporter struct {
 	catalog *KSICatalog
 }

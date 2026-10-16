@@ -4226,8 +4226,13 @@ type EvaluationCampaignSpec struct {
 	PlatformRelease string `protobuf:"bytes,11,opt,name=platform_release,json=platformRelease,proto3" json:"platform_release,omitempty"`
 	// source_revision is the source commit of the build that froze the campaign.
 	SourceRevision string `protobuf:"bytes,12,opt,name=source_revision,json=sourceRevision,proto3" json:"source_revision,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// hold_context makes every repetition after the first continue the previous
+	// repetition's investigation: the model receives that repetition's complete
+	// conversation and works in the same workspace. Only set when
+	// repetition_count > 1; false on campaigns frozen before it existed.
+	HoldContext   bool `protobuf:"varint,13,opt,name=hold_context,json=holdContext,proto3" json:"hold_context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvaluationCampaignSpec) Reset() {
@@ -4342,6 +4347,13 @@ func (x *EvaluationCampaignSpec) GetSourceRevision() string {
 		return x.SourceRevision
 	}
 	return ""
+}
+
+func (x *EvaluationCampaignSpec) GetHoldContext() bool {
+	if x != nil {
+		return x.HoldContext
+	}
+	return false
 }
 
 // EvaluationScenarioCatalog is the immutable 25-scenario private catalog.
@@ -12874,7 +12886,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x0ecatalog_digest\x18\x04 \x01(\tR\rcatalogDigest\x122\n" +
 	"\x15model_registry_digest\x18\x05 \x01(\tR\x13modelRegistryDigest\x12A\n" +
 	"\x1dinference_operator_session_id\x18\x06 \x01(\tR\x1ainferenceOperatorSessionId\x127\n" +
-	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\xed\x04\n" +
+	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\x90\x05\n" +
 	"\x16EvaluationCampaignSpec\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1f\n" +
 	"\vcampaign_id\x18\x02 \x01(\tR\n" +
@@ -12890,7 +12902,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x10repetition_count\x18\n" +
 	" \x01(\rR\x0frepetitionCount\x12)\n" +
 	"\x10platform_release\x18\v \x01(\tR\x0fplatformRelease\x12'\n" +
-	"\x0fsource_revision\x18\f \x01(\tR\x0esourceRevision\"\xfa\x01\n" +
+	"\x0fsource_revision\x18\f \x01(\tR\x0esourceRevision\x12!\n" +
+	"\fhold_context\x18\r \x01(\bR\vholdContext\"\xfa\x01\n" +
 	"\x19EvaluationScenarioCatalog\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12F\n" +
 	"\vcatalog_ref\x18\x02 \x01(\v2%.ztd.compliance.v1.VersionedReferenceR\n" +

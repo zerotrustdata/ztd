@@ -11,7 +11,7 @@
 
 import { ValidationError, assert, assertBoolean, assertInteger, assertObject, assertString, rejectUnknown } from './validators';
 
-export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4'] as const;
+export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
 /** One canonical protojson message (ActionReceipt or ConformanceAnchor). */
@@ -31,6 +31,26 @@ export interface AgentTraceTool {
 export interface AgentTraceInput {
   messages: AgentTraceMessage[];
   tools: AgentTraceTool[];
+}
+
+/** One message of a held conversation; tool messages carry one tool_result. */
+export interface AgentTraceContextMessage {
+  role: string;
+  text?: string;
+  tool_calls?: { call_id?: string; name: string; arguments_json: string }[];
+  tool_result?: { call_id?: string; name: string; result_json: string };
+}
+
+/**
+ * The previous repetition's complete conversation, which a held-context
+ * repetition (agent-trace.v5) continued in the same workspace.
+ */
+export interface AgentTraceHeldContext {
+  assignment_id: string;
+  repetition: number;
+  evidence_digest: string;
+  workspace: { root: string; operator_working_directory: string };
+  messages: AgentTraceContextMessage[];
 }
 
 export interface AgentTraceRuntime {
@@ -95,6 +115,7 @@ export interface AgentTrace {
   inference: AgentTraceRuntime;
   data: AgentTraceRuntime;
   workspace: { root: string; operator_working_directory: string };
+  held_context?: AgentTraceHeldContext;
   input?: AgentTraceInput;
   model_calls: AgentTraceModelCall[];
   tool_calls: AgentTraceToolCall[];
@@ -163,6 +184,54 @@ function parseInput(value: unknown, path: string): AgentTraceInput {
   return { messages: messages as AgentTraceMessage[], tools: tools as AgentTraceTool[] };
 }
 
+function parseWorkspace(value: unknown, path: string): AgentTrace['workspace'] {
+  assertObject(value, path);
+  rejectUnknown(value, ['root', 'operator_working_directory'], path);
+  requiredStrings(value, ['root', 'operator_working_directory'], path);
+  return value as unknown as AgentTrace['workspace'];
+}
+
+function parseContextMessage(value: unknown, path: string): AgentTraceContextMessage {
+  assertObject(value, path);
+  rejectUnknown(value, ['role', 'text', 'tool_calls', 'tool_result'], path);
+  assertString(value.role, `${path}.role`);
+  optionalString(value, 'text', path);
+  let toolCalls: AgentTraceContextMessage['tool_calls'];
+  if (value.tool_calls !== undefined) {
+    toolCalls = list(value.tool_calls, `${path}.tool_calls`).map((call, index) => {
+      const callPath = `${path}.tool_calls[${index}]`;
+      assertObject(call, callPath);
+      rejectUnknown(call, ['call_id', 'name', 'arguments_json'], callPath);
+      optionalString(call, 'call_id', callPath);
+      requiredStrings(call, ['name', 'arguments_json'], callPath);
+      return call as unknown as NonNullable<AgentTraceContextMessage['tool_calls']>[number];
+    });
+  }
+  if (value.tool_result !== undefined) {
+    const resultPath = `${path}.tool_result`;
+    assertObject(value.tool_result, resultPath);
+    rejectUnknown(value.tool_result, ['call_id', 'name', 'result_json'], resultPath);
+    optionalString(value.tool_result, 'call_id', resultPath);
+    requiredStrings(value.tool_result, ['name', 'result_json'], resultPath);
+  }
+  return { ...(value as unknown as AgentTraceContextMessage), tool_calls: toolCalls };
+}
+
+function parseHeldContext(value: unknown, path: string): AgentTraceHeldContext {
+  assertObject(value, path);
+  rejectUnknown(value, ['assignment_id', 'repetition', 'evidence_digest', 'workspace', 'messages'], path);
+  requiredStrings(value, ['assignment_id', 'evidence_digest'], path);
+  assert(SHA256.test(value.evidence_digest as string), `${path}.evidence_digest`, 'expected lowercase SHA-256');
+  assertInteger(value.repetition, `${path}.repetition`);
+  const messages = list(value.messages, `${path}.messages`).map((message, index) => parseContextMessage(message, `${path}.messages[${index}]`));
+  assert(messages.length > 0, `${path}.messages`, 'a held context carries the previous conversation');
+  return {
+    ...(value as unknown as AgentTraceHeldContext),
+    workspace: parseWorkspace(value.workspace, `${path}.workspace`),
+    messages,
+  };
+}
+
 const MODEL_CALL_FIELDS = [
   'provider_attempt_id', 'transaction_id', 'purpose', 'loop_turn', 'tools_declared', 'result_digest', 'usage_reported',
   'prompt_tokens', 'completion_tokens', 'ttft_nanos', 'generation_duration_nanos', 'finish_reason', 'load_state',
@@ -207,7 +276,7 @@ function parseToolCall(value: unknown, path: string): AgentTraceToolCall {
 
 const TRACE_FIELDS = [
   'schema_version', 'evidence_digest', 'run_id', 'assignment_id', 'evaluation_attempt_id', 'campaign_id', 'scenario_id',
-  'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'inference', 'data', 'workspace', 'input',
+  'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'inference', 'data', 'workspace', 'held_context', 'input',
   'model_calls', 'tool_calls', 'final_output', 'tool_turn_limit_reached', 'provider_failure', 'provider_failure_class', 'bracket',
 ] as const;
 
@@ -230,15 +299,19 @@ export function parseAgentTrace(value: unknown): AgentTrace {
   );
   const inference = parseRuntime(value.inference, `${path}.inference`);
   const data = parseRuntime(value.data, `${path}.data`);
-  assertObject(value.workspace, `${path}.workspace`);
-  rejectUnknown(value.workspace, ['root', 'operator_working_directory'], `${path}.workspace`);
-  requiredStrings(value.workspace, ['root', 'operator_working_directory'], `${path}.workspace`);
+  const workspace = parseWorkspace(value.workspace, `${path}.workspace`);
   let input: AgentTraceInput | undefined;
-  if (value.schema_version === 'agent-trace.v4') {
-    input = parseInput(value.input, `${path}.input`);
-    assert(input.messages.length > 0, `${path}.input.messages`, 'agent-trace.v4 records the exact model input');
-  } else {
+  if (value.schema_version === 'agent-trace.v3') {
     assert(value.input === undefined, `${path}.input`, 'agent-trace.v3 never carries input');
+  } else {
+    input = parseInput(value.input, `${path}.input`);
+    assert(input.messages.length > 0, `${path}.input.messages`, `${value.schema_version} records the exact model input`);
+  }
+  let heldContext: AgentTraceHeldContext | undefined;
+  if (value.schema_version === 'agent-trace.v5' && value.held_context !== undefined) {
+    heldContext = parseHeldContext(value.held_context, `${path}.held_context`);
+  } else {
+    assert(value.held_context === undefined, `${path}.held_context`, `${value.schema_version} never carries held context`);
   }
   const modelCalls = list(value.model_calls, `${path}.model_calls`).map((call, index) => parseModelCall(call, `${path}.model_calls[${index}]`));
   const toolCalls = list(value.tool_calls, `${path}.tool_calls`).map((call, index) => parseToolCall(call, `${path}.tool_calls[${index}]`));
@@ -255,6 +328,8 @@ export function parseAgentTrace(value: unknown): AgentTrace {
     ...(value as unknown as AgentTrace),
     inference,
     data,
+    workspace,
+    held_context: heldContext,
     input,
     model_calls: modelCalls,
     tool_calls: toolCalls,
