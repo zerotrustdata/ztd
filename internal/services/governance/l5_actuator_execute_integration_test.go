@@ -28,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -499,14 +500,14 @@ func TestL5Actuator_HexOutputIsNeverPassedThroughAsADigest(t *testing.T) {
 		actuator, _ := newCommitmentTestActuator(t)
 		cfg := scrubbing.DefaultConfig()
 		cfg.CustomScrubPatterns = map[string]string{"HEXKEY": `\b[0-9a-f]{64}\b`}
-		scrubber, err := scrubbing.NewScrubbingService(context.Background(), cfg, testutil.NewTestLogger(), nil)
+		scrubber, err := scrubbing.NewScrubbingService(context.Background(), cfg, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 		require.NoError(t, err)
 		actuator.Scrubbing = scrubber
-		require.NotEqual(t, hexSecret, scrubber.ScrubText(hexSecret), "the test scrubber must match a bare 64-hex string")
+		require.NotEqual(t, hexSecret, scrubber.ScrubText(context.Background(), hexSecret), "the test scrubber must match a bare 64-hex string")
 
 		receipt := run(t, actuator, constants.ActionTypeExecuteBash, nil)
 		assert.NotContains(t, receipt.ResultSummary, hexSecret, "the hex output must not be signed verbatim")
-		assert.Equal(t, scrubber.ScrubText(hexSecret), receipt.ResultSummary, "the output goes through the scrubber like any text")
+		assert.Equal(t, scrubber.ScrubText(context.Background(), hexSecret), receipt.ResultSummary, "the output goes through the scrubber like any text")
 	})
 
 	for name, scrubber := range map[string]*scrubbing.ScrubbingService{"nil scrubber": nil, "disabled scrubber": disabledL5Scrubber(t)} {

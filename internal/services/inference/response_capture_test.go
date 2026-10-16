@@ -8,6 +8,7 @@
 package inference
 
 import (
+	"context"
 	"io"
 	"sync"
 	"testing"
@@ -43,7 +44,7 @@ func TestProviderResponseCapture_IngestsRawTailWhileProgressDeliveryIsBlocked(t 
 		}, "attempt-blocked")
 		require.NoError(t, err)
 		go func() {
-			_, _, _, err := backend.decodeChatStream(capture, capture.arrivalTime, true, nil, "attempt-blocked", stream)
+			_, _, _, err := backend.decodeChatStream(context.Background(), capture, capture.arrivalTime, true, nil, "attempt-blocked", stream)
 			decoded <- err
 		}()
 		written := make(chan error, 1)

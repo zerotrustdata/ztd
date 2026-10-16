@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
@@ -46,7 +47,7 @@ func newTestRouterHandler(t *testing.T, posture config.GatewayPosture, cs *conse
 	cfg.Gateway.Posture = posture
 	logger := testutil.NewTestLogger()
 	responder := response.NewWriter(logger)
-	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, nil)
+	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	h, err := newHTTPHandler(HTTPHandlerDependencies{
 		Cfg:    cfg,

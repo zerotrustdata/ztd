@@ -641,7 +641,8 @@ export interface PublicPolicyDecisionActivityRecord {
 }
 
 export interface PublicGovernedActionActivityRecord {
-  action_label: 'governed action';
+  /** The registry action type the signed receipt names (INFERENCE, FS_READ, FILE_EDIT, ...). */
+  action_label: string;
   reported_policy_outcome: PublicReportedPolicyOutcome;
   receipt_status: PublicReceiptStatus;
   evidence_source: PublicActivityEvidenceSource;

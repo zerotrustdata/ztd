@@ -226,11 +226,11 @@ func verifiedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *opera
 // agentReceiptEvidenceReference names one verified receipt. The receipt lives
 // inside the sealed trace, so the reference carries the trace artifact's ID and
 // the digest of the receipt's canonical protojson.
-func agentReceiptEvidenceReference(traceEvidence *compliancev1.ComplianceEvidenceReference, trace *AgentTrace, call AgentToolCall) (*compliancev1.ComplianceEvidenceReference, error) {
-	if traceEvidence == nil || call.Receipt == nil || call.Receipt.ActionReceipt == nil {
+func agentReceiptEvidenceReference(traceEvidence *compliancev1.ComplianceEvidenceReference, trace *AgentTrace, transactionID string, receipt *AgentTraceReceipt) (*compliancev1.ComplianceEvidenceReference, error) {
+	if traceEvidence == nil || receipt == nil || receipt.ActionReceipt == nil {
 		return nil, fmt.Errorf("evaluation: agent receipt reference: %w", constants.ErrMissingRequiredField)
 	}
-	encoded, err := evalv1.MarshalCanonical(call.Receipt.ActionReceipt)
+	encoded, err := evalv1.MarshalCanonical(receipt.ActionReceipt)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: agent receipt reference: %w", err)
 	}
@@ -241,10 +241,32 @@ func agentReceiptEvidenceReference(traceEvidence *compliancev1.ComplianceEvidenc
 		SchemaRef:     agentReceiptSchemaRef,
 		MediaType:     constants.MediaTypeJSON,
 		Sha256:        hex.EncodeToString(digest[:]),
-		TransactionId: call.TransactionID,
+		TransactionId: transactionID,
 		RunId:         trace.RunID,
 		AttemptId:     trace.EvaluationAttemptID,
 		ScenarioId:    trace.ScenarioID,
+	}, nil
+}
+
+// agentToolGovernedAction binds one tool call's signed receipt as a governed
+// action on the Data Operator. A refused call has no receipt and binds nothing.
+func agentToolGovernedAction(traceEvidence *compliancev1.ComplianceEvidenceReference, trace *AgentTrace, assignmentID string, call AgentToolCall) (*evalv1.GovernedActionBinding, error) {
+	if call.Receipt == nil {
+		return nil, nil
+	}
+	ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
+	if err != nil {
+		return nil, err
+	}
+	return &evalv1.GovernedActionBinding{
+		BindingId:         call.CallID,
+		AssignmentId:      assignmentID,
+		TransactionId:     call.TransactionID,
+		OperatorId:        trace.Data.OperatorID,
+		OperatorSessionId: trace.Data.SessionID,
+		ReceiptRef:        ref,
+		PolicyDecision:    call.PolicyDecision,
+		ActionType:        call.Receipt.GetActionType(),
 	}, nil
 }
 

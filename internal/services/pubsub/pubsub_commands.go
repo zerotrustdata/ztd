@@ -1471,11 +1471,11 @@ func (rs *OperatorPubSubService) ValidateSession(operatorSessionID string) (bool
 
 // blockedSummary returns the ResultSummary of a blocked transaction. The rejection text is scrubbed
 // when a scrubber is active; otherwise the summary is fixed text, never the raw error.
-func (rs *OperatorPubSubService) blockedSummary(rejectionReason error) string {
+func (rs *OperatorPubSubService) blockedSummary(ctx context.Context, rejectionReason error) string {
 	if rejectionReason == nil || rs.scrubbing == nil || !rs.scrubbing.IsEnabled() {
 		return "blocked"
 	}
-	return "blocked: " + rs.scrubbing.ScrubText(rejectionReason.Error())
+	return "blocked: " + rs.scrubbing.ScrubText(ctx, rejectionReason.Error())
 }
 
 // logBlockedTransaction records a blocked/rejected transaction using the ActionReceiptRecord schema.
@@ -1505,7 +1505,7 @@ func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env 
 		ActionType:        constants.ActionType(env.ActionType),
 		TargetResource:    env.TargetResource,
 		Status:            operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		ResultSummary:     rs.blockedSummary(rejectionReason),
+		ResultSummary:     rs.blockedSummary(ctx, rejectionReason),
 		StateRootBefore:   "", // Not available for blocked transactions
 		StateRootAfter:    "", // Not available for blocked transactions
 		ExecutedAt:        time.Now().UTC(),

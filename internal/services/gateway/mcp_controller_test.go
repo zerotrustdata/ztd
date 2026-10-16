@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -32,7 +33,7 @@ func newTestMCPController(t *testing.T) *MCPController {
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	resp := response.NewWriter(logger)
-	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, nil)
+	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	g, err := mcp.NewGatewayService(mcp.Dependencies{
 		Logger:           logger,

@@ -73,7 +73,7 @@ func (h *InferenceExecutionHandler) ExecuteVerifiedTransaction(ctx context.Conte
 // IDs are provider identifiers, not content, and are kept. The caller's parts are never mutated.
 // It fails closed with constants.ErrEgressScrubberUnavailable when the response carries content and
 // the scrubber is nil or disabled; raw output is never returned.
-func scrubResponseParts(parts []*operatorv1.InferenceResponsePart, s *scrubbing.ScrubbingService) ([]*operatorv1.InferenceResponsePart, error) {
+func scrubResponseParts(ctx context.Context, parts []*operatorv1.InferenceResponsePart, s *scrubbing.ScrubbingService) ([]*operatorv1.InferenceResponsePart, error) {
 	out := make([]*operatorv1.InferenceResponsePart, 0, len(parts))
 	var fields []*string
 	for _, part := range parts {
@@ -112,7 +112,7 @@ func scrubResponseParts(parts []*operatorv1.InferenceResponsePart, s *scrubbing.
 	}
 	for _, field := range fields {
 		if *field != "" {
-			*field = s.ScrubText(*field)
+			*field = s.ScrubText(ctx, *field)
 		}
 	}
 	return out, nil
@@ -137,7 +137,7 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 	if err := validateInferenceRequestBounds(req); err != nil {
 		return nil, fmt.Errorf("inference handler: %w", err)
 	}
-	if err := h.normalizeInferenceInput(&infReq); err != nil {
+	if err := h.normalizeInferenceInput(ctx, &infReq); err != nil {
 		return nil, fmt.Errorf("inference handler: normalize request: %w", err)
 	}
 
@@ -177,7 +177,7 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 	// the scrubbed parts so every hash the Gateway checks describes the text that leaves the Operator.
 	// Streamed output was already scrubbed segment by segment at the source (stream_segmenter.go); ScrubText is
 	// idempotent on its own output, so this pass leaves those parts unchanged and the progress hash still matches.
-	scrubbedParts, err := scrubResponseParts(resp.Parts, h.scrubbing)
+	scrubbedParts, err := scrubResponseParts(ctx, resp.Parts, h.scrubbing)
 	if err != nil {
 		return nil, fmt.Errorf("inference handler: scrub response: %w", err)
 	}
@@ -233,7 +233,7 @@ func authorizeGovernedCampaignModel(req models.InferenceRequestPayload) (string,
 	return req.Model, nil
 }
 
-func (h *InferenceExecutionHandler) normalizeInferenceInput(req *models.InferenceRequestPayload) error {
+func (h *InferenceExecutionHandler) normalizeInferenceInput(ctx context.Context, req *models.InferenceRequestPayload) error {
 	if req.ProviderAttemptID == "" {
 		return constants.ErrInferenceProviderAttemptRequired
 	}
@@ -250,7 +250,7 @@ func (h *InferenceExecutionHandler) normalizeInferenceInput(req *models.Inferenc
 	// is refused, never passed through. Content-free input has nothing to scrub, so the identity is safe.
 	scrubText := func(value string) string { return value }
 	if h.scrubbing.IsEnabled() {
-		scrubText = h.scrubbing.ScrubText
+		scrubText = func(value string) string { return h.scrubbing.ScrubText(ctx, value) }
 	} else if inferenceMessagesHaveContent(req.Messages) {
 		return fmt.Errorf("inference input: %w", constants.ErrEgressScrubberUnavailable)
 	}

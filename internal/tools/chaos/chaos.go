@@ -549,8 +549,8 @@ func Run(cfg Config) error {
 	)
 
 	// Receipts and commitments carry the scrubbed target resource, so the chaos actuator needs an
-	// active scrubber, as the production Operator wires one.
-	chaosScrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, nil)
+	// active scrubber, as the production Operator wires one. Its UEI tokens live for the run only.
+	chaosScrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, storagetest.NewTestTokenStore())
 	if err != nil {
 		return fmt.Errorf("chaos: scrubbing service: %w", err)
 	}

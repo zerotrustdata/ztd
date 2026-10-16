@@ -313,8 +313,10 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	suspendedTxService := db.GetSuspendedStore()
 
 	// --- Scrubbing and MCP gateway ---
+	// UEI tokens persist encrypted in the canonical KV store, as on the outbound Operator, so every
+	// scrubbed value is a reversible {{UEI_N}} token rather than a lossy marker.
 	scrubbingConfig := scrubbing.DefaultConfig()
-	scrubbingService, err := scrubbing.NewScrubbingService(context.Background(), scrubbingConfig, logger, nil)
+	scrubbingService, err := scrubbing.NewScrubbingService(context.Background(), scrubbingConfig, logger, NewEncryptedKVAdapter(kvStore, db.GetVault()))
 	if err != nil {
 		return nil, fmt.Errorf("gateway: failed to initialize scrubbing service: %w", err)
 	}

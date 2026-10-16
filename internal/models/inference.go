@@ -8,6 +8,7 @@
 package models
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -100,7 +101,7 @@ type GenerateRequest struct {
 // satisfies it. A nil or disabled scrubber must never be treated as a pass-through.
 type EgressScrubber interface {
 	IsEnabled() bool
-	ScrubText(input string) string
+	ScrubText(ctx context.Context, input string) string
 }
 
 // GenerateResponse carries ordered model response parts, usage metadata, and finish reason returned by the backend.

@@ -864,6 +864,9 @@ message GovernedActionBinding {
   ztd.compliance.v1.ComplianceEvidenceReference persistence_attestation_ref = 7;
   string policy_decision = 8;
   ztd.compliance.v1.ComplianceEvidenceReference effect_observation_ref = 9;
+  // The registry governance class the signed receipt names (INFERENCE,
+  // FS_READ, FILE_EDIT, ...).
+  string action_type = 10;
 }
 
 // GradeBasis states what a deterministic grade measures, so each independent

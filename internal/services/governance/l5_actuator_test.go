@@ -24,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -58,7 +59,7 @@ func newTestActuator(t *testing.T) (*L5Actuator, ed25519.PublicKey) {
 // scrubs the target resource and free-text summaries with it before signing.
 func newL5TestScrubber(t *testing.T) *scrubbing.ScrubbingService {
 	t.Helper()
-	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), nil)
+	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return svc
 }

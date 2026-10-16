@@ -33,7 +33,7 @@ func TestBuildPublicAssignmentEvidence(t *testing.T) {
 		PolicyDecisionsCaptured: true,
 		PolicyDecisions:         []*evalv1.PolicyDecisionRecord{{ToolName: "", Outcome: evalv1.EvaluationPolicyDecisionOutcome_EVALUATION_POLICY_DECISION_OUTCOME_DENY}},
 		GovernedActionsCaptured: true,
-		GovernedActions:         []*evalv1.GovernedActionBinding{{PolicyDecision: "deny", TransactionId: "private-transaction"}},
+		GovernedActions:         []*evalv1.GovernedActionBinding{{PolicyDecision: "deny", TransactionId: "private-transaction", ActionType: string(constants.ActionTypeFsRead)}},
 	}
 	activity, bindings, err := BuildPublicAssignmentEvidence(PublicAssignmentEvidenceInput{
 		Result:       result,
@@ -44,7 +44,7 @@ func TestBuildPublicAssignmentEvidence(t *testing.T) {
 	require.NotNil(t, activity.Summary)
 	assert.Len(t, activity.Summary.ModelActivity.Records, 1)
 	assert.Equal(t, "variant-a", activity.Summary.ModelActivity.Records[0].GetVariantId())
-	assert.Equal(t, "governed action", activity.Summary.GovernedActions.Records[0].GetActionLabel())
+	assert.Equal(t, "FS_READ", activity.Summary.GovernedActions.Records[0].GetActionLabel())
 	assert.Equal(t, evalv1.PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNAVAILABLE, activity.Summary.GovernedActions.Records[0].GetReceiptStatus())
 	assert.Len(t, bindings, 1)
 	assert.Equal(t, "primary", activity.Summary.ModelActivity.Records[0].GetAgentPersona())

@@ -259,7 +259,7 @@ func TestDispatchService_ShutdownPublishesReceiptThenAcknowledgementBeforeCancel
 	// The final receipt is accepted only under the Operator's bound Actuator key.
 	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
-	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)
+	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	results, err := pubsub.NewPubSubResultsService(&remoteCfg, infra.Logger, client, scrubbingSvc)
 	require.NoError(t, err)
@@ -590,7 +590,7 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 	remoteCfg.Inference.KeepAlive = "-1"
 
 	backend := &boundaryInferenceBackend{}
-	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)
+	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	inferenceHandler, err := inference.NewInferenceExecutionHandler(backend, &remoteCfg, scrubbingSvc, infra.Logger)
 	require.NoError(t, err)
@@ -658,7 +658,7 @@ func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, 
 	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
-	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)
+	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	resultsSvc, err := pubsub.NewPubSubResultsService(&remoteCfg, infra.Logger, client, scrubbingSvc)
 	require.NoError(t, err)

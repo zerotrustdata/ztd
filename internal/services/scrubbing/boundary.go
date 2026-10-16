@@ -17,7 +17,6 @@ import (
 	"log/slog"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,63 +57,43 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Scrubber defines an interface for data scrubbing rules
-type Scrubber interface {
-	// Name returns the scrubber identifier for logging
-	Name() string
-	// Scrub processes text and returns scrubbed version
-	Scrub(input string) string
+// valueGroupName names the regex submatch that holds the sensitive value in a
+// key-prefixed pattern. Only that submatch is tokenized, so the key stays
+// visible; a pattern without it tokenizes the whole match.
+const valueGroupName = "value"
+
+// RegexScrubber replaces every sensitive value its pattern matches with the
+// value's reversible {{UEI_N}} token.
+type RegexScrubber struct {
+	name    string
+	pattern *regexp.Regexp
 }
 
-// RegexScrubber scrubs text matching a regex pattern
-type RegexScrubber struct {
-	name        string
-	pattern     *regexp.Regexp
-	replacement string
+func newRegexScrubber(name string, pattern *regexp.Regexp) *RegexScrubber {
+	return &RegexScrubber{name: name, pattern: pattern}
 }
 
 func (r *RegexScrubber) Name() string { return r.name }
-func (r *RegexScrubber) Scrub(input string) string {
-	return r.pattern.ReplaceAllString(input, r.replacement)
-}
 
-// CommandResult represents the raw output from command execution
-type CommandResult struct {
-	Command    string
-	ExitCode   int
-	Stdout     string
-	Stderr     string
-	DurationMs int64
-}
-
-// ScrubbedResult is the sanitized output safe for transmission to cloud AI
-type ScrubbedResult struct {
-	// Status is the high-level outcome: success, failure, error, timeout
-	Status constants.CommandExitStatus `json:"status"`
-
-	// ExitCode is preserved as it contains no sensitive data
-	ExitCode int `json:"exit_code"`
-
-	// Summary is a scrubbed, generalized description of what happened
-	Summary string `json:"summary"`
-
-	// RowCount if the output appears to contain tabular data
-	RowCount *int `json:"row_count,omitempty"`
-
-	// ErrorType categorizes any error without exposing details
-	ErrorType string `json:"error_type,omitempty"`
-
-	// DurationMs is preserved for performance context
-	DurationMs int64 `json:"duration_ms"`
-
-	// OutputLines is the count of output lines (not the content)
-	OutputLines int `json:"output_lines"`
-
-	// Warnings are scrubbed warning messages
-	Warnings []string `json:"warnings,omitempty"`
-
-	// StructureHints provide schema-level info without data
-	StructureHints []string `json:"structure_hints,omitempty"`
+// Scrub replaces each matched value with tokenize(value).
+func (r *RegexScrubber) Scrub(input string, tokenize func(string) string) string {
+	group := max(r.pattern.SubexpIndex(valueGroupName), 0)
+	var out strings.Builder
+	last := 0
+	for _, m := range r.pattern.FindAllStringSubmatchIndex(input, -1) {
+		start, end := m[2*group], m[2*group+1]
+		if start < 0 {
+			continue
+		}
+		out.WriteString(input[last:start])
+		out.WriteString(tokenize(input[start:end]))
+		last = end
+	}
+	if last == 0 {
+		return input
+	}
+	out.WriteString(input[last:])
+	return out.String()
 }
 
 // ScrubbingService handles data scrubbing at the boundary plane:
@@ -124,7 +103,7 @@ type ScrubbedResult struct {
 type ScrubbingService struct {
 	config    *Config
 	logger    *slog.Logger
-	scrubbers []Scrubber
+	scrubbers []*RegexScrubber
 
 	// Tokenized context state for data scrubbing
 	tokenMu       sync.RWMutex
@@ -141,6 +120,9 @@ type ScrubbingService struct {
 func NewScrubbingService(ctx context.Context, config *Config, logger *slog.Logger, tokenStore storage.TokenStore) (*ScrubbingService, error) {
 	if config == nil {
 		config = DefaultConfig()
+	}
+	if config.Enabled && config.RequirePersistence && tokenStore == nil {
+		return nil, fmt.Errorf("scrubbing: new service: %w", constants.ErrScrubbingTokenStoreUnavailable)
 	}
 
 	s := &ScrubbingService{
@@ -168,167 +150,64 @@ func NewScrubbingService(ctx context.Context, config *Config, logger *slog.Logge
 // The scrubbers are applied sequentially, so a generic pattern matching first
 // will prevent the specific pattern from ever seeing the text.
 func (s *ScrubbingService) initializeScrubbers(ctx context.Context) {
-	s.scrubbers = []Scrubber{
+	s.scrubbers = []*RegexScrubber{
 		// JWT (JSON Web Token) - specific base64.base64.base64 format
-		&RegexScrubber{
-			name:        string(constants.AuthProviderJWT),
-			pattern:     regexp.MustCompile(`\beyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\b`),
-			replacement: "[JWT]",
-		},
+		newRegexScrubber(string(constants.AuthProviderJWT), regexp.MustCompile(`\beyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\b`)),
 		// SendGrid API Key - looks like hostname (SG.xxx.xxx) so must come first
-		&RegexScrubber{
-			name:        "sendgrid_key",
-			pattern:     regexp.MustCompile(`\bSG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}\b`),
-			replacement: "[SENDGRID_KEY]",
-		},
+		newRegexScrubber("sendgrid_key", regexp.MustCompile(`\bSG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}\b`)),
 
 		// GitHub Token - specific prefix pattern
-		&RegexScrubber{
-			name:        "github_token",
-			pattern:     regexp.MustCompile(`\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}\b`),
-			replacement: "[GITHUB_TOKEN]",
-		},
+		newRegexScrubber("github_token", regexp.MustCompile(`\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}\b`)),
 		// GCP API Key - specific AIza prefix
-		&RegexScrubber{
-			name:        "gcp_api_key",
-			pattern:     regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`),
-			replacement: "[GCP_API_KEY]",
-		},
+		newRegexScrubber("gcp_api_key", regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`)),
 		// AWS Access Key ID - specific AKIA/ASIA prefix
-		&RegexScrubber{
-			name:        "aws_access_key",
-			pattern:     regexp.MustCompile(`\b(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b`),
-			replacement: "[AWS_KEY]",
-		},
+		newRegexScrubber("aws_access_key", regexp.MustCompile(`\b(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b`)),
 		// Slack Token - xoxb/xoxp/xoxs/xapp prefixes (enterprise comms)
-		&RegexScrubber{
-			name:        "slack_token",
-			pattern:     regexp.MustCompile(`\b(xoxb|xoxp|xoxs|xapp)-[0-9A-Za-z-]{24,}\b`),
-			replacement: "[SLACK_TOKEN]",
-		},
+		newRegexScrubber("slack_token", regexp.MustCompile(`\b(xoxb|xoxp|xoxs|xapp)-[0-9A-Za-z-]{24,}\b`)),
 		// Okta API Token - 00 prefix with 40 alphanumeric chars (enterprise/gov identity)
-		&RegexScrubber{
-			name:        "okta_api_token",
-			pattern:     regexp.MustCompile(`\b00[A-Za-z0-9_-]{40}\b`),
-			replacement: "[OKTA_TOKEN]",
-		},
+		newRegexScrubber("okta_api_token", regexp.MustCompile(`\b00[A-Za-z0-9_-]{40}\b`)),
 		// Azure AD Client Secret - 3+ chars ~ 34+ chars format (gov/healthcare Microsoft)
-		&RegexScrubber{
-			name:        "azure_client_secret",
-			pattern:     regexp.MustCompile(`\b[A-Za-z0-9]{3,8}~[A-Za-z0-9._-]{34,}\b`),
-			replacement: "[AZURE_SECRET]",
-		},
+		newRegexScrubber("azure_client_secret", regexp.MustCompile(`\b[A-Za-z0-9]{3,8}~[A-Za-z0-9._-]{34,}\b`)),
 		// Twilio Account SID - specific AC prefix with hex
-		&RegexScrubber{
-			name:        "twilio_sid",
-			pattern:     regexp.MustCompile(`\bAC[a-f0-9]{32}\b`),
-			replacement: "[TWILIO_SID]",
-		},
+		newRegexScrubber("twilio_sid", regexp.MustCompile(`\bAC[a-f0-9]{32}\b`)),
 		// NPM Token - specific npm_ prefix
-		&RegexScrubber{
-			name:        "npm_token",
-			pattern:     regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}\b`),
-			replacement: "[NPM_TOKEN]",
-		},
+		newRegexScrubber("npm_token", regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}\b`)),
 		// PyPI Token - specific pypi- prefix with base64
-		&RegexScrubber{
-			name:        "pypi_token",
-			pattern:     regexp.MustCompile(`\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}\b`),
-			replacement: "[PYPI_TOKEN]",
-		},
+		newRegexScrubber("pypi_token", regexp.MustCompile(`\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}\b`)),
 		// Discord Bot Token - specific format with dots
-		&RegexScrubber{
-			name:        "discord_token",
-			pattern:     regexp.MustCompile(`\b[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27}\b`),
-			replacement: "[DISCORD_TOKEN]",
-		},
-		// Private key markers - very specific format
-		&RegexScrubber{
-			name:        "private_key",
-			pattern:     regexp.MustCompile(`-----BEGIN[^-]+PRIVATE KEY-----[\s\S]*?-----END[^-]+PRIVATE KEY-----`),
-			replacement: "[PRIVATE_KEY]",
-		},
+		newRegexScrubber("discord_token", regexp.MustCompile(`\b[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27}\b`)),
+		// Private key blocks - very specific format
+		newRegexScrubber("private_key", regexp.MustCompile(`-----BEGIN[^-]+PRIVATE KEY-----[\s\S]*?-----END[^-]+PRIVATE KEY-----`)),
 
 		// AWS Secret Key pattern in config/env
-		&RegexScrubber{
-			name:        "aws_secret_key",
-			pattern:     regexp.MustCompile(`(?i)aws.{0,20}secret.{0,20}['\"]?[0-9a-zA-Z/+=]{40}['\"]?`),
-			replacement: "[AWS_SECRET]",
-		},
+		newRegexScrubber("aws_secret_key", regexp.MustCompile(`(?i)aws.{0,20}secret.{0,20}['\"]?(?P<value>[0-9a-zA-Z/+=]{40})['\"]?`)),
 		// Azure Client Secret / Service Principal
-		&RegexScrubber{
-			name:        "azure_secret",
-			pattern:     regexp.MustCompile(`(?i)azure.{0,20}(secret|password|key).{0,20}['"][A-Za-z0-9_\-\.~]{32,}['"]`),
-			replacement: "[AZURE_SECRET]",
-		},
+		newRegexScrubber("azure_secret", regexp.MustCompile(`(?i)azure.{0,20}(secret|password|key).{0,20}['"](?P<value>[A-Za-z0-9_\-\.~]{32,})['"]`)),
 		// Generic OAuth Client Secret
-		&RegexScrubber{
-			name:        "oauth_secret",
-			pattern:     regexp.MustCompile(`(?i)(client.?secret|oauth.?secret)\s*[=:]\s*['"]?[A-Za-z0-9_\-]{20,}['"]?`),
-			replacement: "[OAUTH_SECRET]",
-		},
+		newRegexScrubber("oauth_secret", regexp.MustCompile(`(?i)(client.?secret|oauth.?secret)\s*[=:]\s*['"]?(?P<value>[A-Za-z0-9_\-]{20,})['"]?`)),
 		// Heroku API Key
-		&RegexScrubber{
-			name:        "heroku_key",
-			pattern:     regexp.MustCompile(`(?i)heroku.{0,20}(api.?key|token).{0,20}['"]?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}['"]?`),
-			replacement: "[HEROKU_KEY]",
-		},
+		newRegexScrubber("heroku_key", regexp.MustCompile(`(?i)heroku.{0,20}(api.?key|token).{0,20}['"]?(?P<value>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})['"]?`)),
 
-		// URLs with embedded credentials (user:pass@host)
-		&RegexScrubber{
-			name:        "url_with_creds",
-			pattern:     regexp.MustCompile(`https?://[^:]+:[^@]+@[^\s<>"{}|\\^` + "`" + `\[\]]+`),
-			replacement: "[URL_WITH_CREDENTIALS]",
-		},
+		// URLs with embedded credentials (user:pass@host) - the credentials are tokenized, the host stays visible
+		newRegexScrubber("url_with_creds", regexp.MustCompile(`https?://(?P<value>[^:/\s@]+:[^@\s/]+)@[^\s<>"{}|\\^`+"`"+`\[\]]+`)),
 		// Connection strings (must come before email for same reason)
-		&RegexScrubber{
-			name:        "conn_string",
-			pattern:     regexp.MustCompile(`(?i)(?:mysql|postgres|mongodb|redis|amqp|jdbc)://[^\s]+`),
-			replacement: "[CONN_STRING]",
-		},
-		// Email addresses - any @domain.tld pattern
-		&RegexScrubber{
-			name:        "email",
-			pattern:     regexp.MustCompile(`[A-Za-z0-9._%+'-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`),
-			replacement: "[EMAIL]",
-		},
+		newRegexScrubber("conn_string", regexp.MustCompile(`(?i)(?:mysql|postgres|mongodb|redis|amqp|jdbc)://[^\s]+`)),
+		// Email addresses - a local part is required, so the host after an
+		// already-tokenized URL credential stays visible
+		newRegexScrubber("email", regexp.MustCompile(`[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`)),
 
 		// Credit card numbers
-		&RegexScrubber{
-			name:        "credit_card",
-			pattern:     regexp.MustCompile(`\b(?:\d{4}[- ]?){3}\d{4}\b`),
-			replacement: "[PII]",
-		},
+		newRegexScrubber("credit_card", regexp.MustCompile(`\b(?:\d{4}[- ]?){3}\d{4}\b`)),
 		// SSN
-		&RegexScrubber{
-			name:        "ssn",
-			pattern:     regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`),
-			replacement: "[PII]",
-		},
+		newRegexScrubber("ssn", regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)),
 		// Phone numbers
-		&RegexScrubber{
-			name:        "phone",
-			pattern:     regexp.MustCompile(`\b(?:\+\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}\b`),
-			replacement: "[PHONE]",
-		},
+		newRegexScrubber("phone", regexp.MustCompile(`\b(?:\+\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}\b`)),
 		// Password patterns in config (generic catch-all)
-		&RegexScrubber{
-			name:        "password_config",
-			pattern:     regexp.MustCompile(`(?i)(?:password|passwd|pwd|secret|token|api_key|apikey)\s*[=:]\s*\S+`),
-			replacement: "[CREDENTIAL_REFERENCE]",
-		},
+		newRegexScrubber("password_config", regexp.MustCompile(`(?i)(?:password|passwd|pwd|secret|token|api_key|apikey)\s*[=:]\s*(?P<value>\S+)`)),
 		// IBAN (International Bank Account Number) - covers 70+ countries
-		&RegexScrubber{
-			name:        "iban",
-			pattern:     regexp.MustCompile(`\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b`),
-			replacement: "[IBAN]",
-		},
+		newRegexScrubber("iban", regexp.MustCompile(`\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b`)),
 		// Generic Bearer Token in headers
-		&RegexScrubber{
-			name:        "bearer_token",
-			pattern:     regexp.MustCompile(`(?i)bearer\s+[a-zA-Z0-9_\-\.]+`),
-			replacement: "[BEARER_TOKEN]",
-		},
+		newRegexScrubber("bearer_token", regexp.MustCompile(`(?i)bearer\s+(?P<value>[a-zA-Z0-9_\-\.]+)`)),
 	}
 
 	for name, pattern := range s.config.CustomScrubPatterns {
@@ -339,11 +218,7 @@ func (s *ScrubbingService) initializeScrubbers(ctx context.Context) {
 			s.logger.Warn("scrubbing: failed to compile custom pattern", "name", name, "error", err)
 			continue
 		}
-		s.scrubbers = append(s.scrubbers, &RegexScrubber{
-			name:        "custom_" + name,
-			pattern:     compiled,
-			replacement: "[" + strings.ToUpper(name) + "]",
-		})
+		s.scrubbers = append(s.scrubbers, newRegexScrubber("custom_"+name, compiled))
 	}
 }
 
@@ -374,75 +249,126 @@ func compileRegexWithTimeout(ctx context.Context, pattern string) (*regexp.Regex
 	}
 }
 
-// ScrubText applies all scrubbers to arbitrary text
-func (s *ScrubbingService) ScrubText(input string) string {
+// suppressedOutput replaces all text when scrubbing is disabled.
+const suppressedOutput = "[OUTPUT_SUPPRESSED]"
+
+// untokenizedValue stands in for a sensitive value whose token could not be
+// persisted. The value never passes through in plaintext.
+const untokenizedValue = "{{UEI_UNAVAILABLE}}"
+
+// ScrubText replaces every sensitive value in arbitrary text with its
+// reversible {{UEI_N}} token. The surrounding text, including the key of a
+// key-value pair, stays as written.
+func (s *ScrubbingService) ScrubText(ctx context.Context, input string) string {
 	if !s.IsEnabled() {
-		return "[OUTPUT_SUPPRESSED]"
+		return suppressedOutput
 	}
 
+	tokenize := func(value string) string { return s.tokenize(ctx, value) }
 	result := input
 	for _, scrubber := range s.scrubbers {
-		result = scrubber.Scrub(result)
+		result = scrubber.Scrub(result, tokenize)
 	}
 
-	// In strict mode, also scrub anything that looks like data values
+	// In strict mode, also tokenize the values of inherently sensitive keys
 	if s.config.StrictMode {
-		result = s.scrubDataValues(result)
+		result = s.scrubDataValues(result, tokenize)
 	}
 
 	return result
 }
 
-// scrubDataValues handles additional scrubbing for sensitive key-value pairs
-// Pattern scrubbers already handle PII, credentials, IPs, etc. in the data values.
-// This function only redacts values for keys that are inherently sensitive (passwords, secrets, etc.)
-func (s *ScrubbingService) scrubDataValues(input string) string {
-	lines := strings.Split(input, "\n")
-	var result []string
+// tokenize returns the tokenized form of one sensitive value. Tokens already in
+// the value (from an earlier, overlapping scrubber) are kept as they are and
+// only the text between them is tokenized, so a token never wraps another one:
+// rehydration stays exact and rescrubbing scrubbed text is idempotent.
+func (s *ScrubbingService) tokenize(ctx context.Context, value string) string {
+	var out strings.Builder
+	last := 0
+	for _, loc := range scrubbedMarkerPattern.FindAllStringIndex(value, -1) {
+		out.WriteString(s.tokenizeSegment(ctx, value[last:loc[0]]))
+		out.WriteString(value[loc[0]:loc[1]])
+		last = loc[1]
+	}
+	out.WriteString(s.tokenizeSegment(ctx, value[last:]))
+	return out.String()
+}
 
-	for _, line := range lines {
-		// Preserve empty lines for output formatting
-		if strings.TrimSpace(line) == "" {
-			result = append(result, line)
+// tokenizeSegment replaces the text of a token-free segment with its token,
+// keeping the segment's surrounding whitespace.
+func (s *ScrubbingService) tokenizeSegment(ctx context.Context, segment string) string {
+	core := strings.TrimSpace(segment)
+	if core == "" {
+		return segment
+	}
+	token, err := s.GetTokenForValue(ctx, core)
+	if err != nil {
+		s.logger.Error("scrubbing: tokenize sensitive value", "error", err)
+		token = untokenizedValue
+	}
+	start := strings.Index(segment, core)
+	return segment[:start] + token + segment[start+len(core):]
+}
+
+// scrubbedMarkerPattern matches a {{UEI_N}} token or the untokenized marker.
+var scrubbedMarkerPattern = regexp.MustCompile(`\{\{UEI_(?:\d+|UNAVAILABLE)\}\}`)
+
+// keyValuePairPattern matches one `key=value`, `Key: value` or `"key": value`
+// pair. Group 1 is the left boundary, group 2 the key identifier (bare or
+// quoted), group 3 the separator, and group 4 the value (quoted or bare). A
+// bare value consumes an existing token whole.
+var keyValuePairPattern = regexp.MustCompile(`(^|[\s,;{(\[&?])("[A-Za-z_][A-Za-z0-9_.\-]*"|'[A-Za-z_][A-Za-z0-9_.\-]*'|[A-Za-z_][A-Za-z0-9_.\-]*)(\s*=\s*|\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|(?:\{\{UEI_(?:\d+|UNAVAILABLE)\}\}|[^\s,;&}\]])+)`)
+
+// scrubDataValues tokenizes, in place, the value of every key-value pair whose
+// key is inherently sensitive (passwords, secrets, etc.), leaving the key and
+// the rest of the line untouched.
+func (s *ScrubbingService) scrubDataValues(input string, tokenize func(string) string) string {
+	lines := strings.Split(input, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
+		lines[i] = s.tokenizeSensitivePairs(line, tokenize)
+	}
+	return strings.Join(lines, "\n")
+}
 
-		// Check if line looks like key-value data with a sensitive key
-		// Only redact the VALUE if the KEY itself indicates sensitive data
-		if s.looksLikeKeyValue(line) {
-			key := s.extractKey(line)
-			if s.isLikelySensitiveKey(key) {
-				result = append(result, fmt.Sprintf("%s: [VALUE]", key))
-				continue
-			}
+// tokenizeSensitivePairs tokenizes the values of sensitive pairs within one
+// line. A quoted value keeps its quotes. A bare value of a header-style
+// `Key: value` pair tokenizes through the end of the line, since such values
+// routinely contain spaces. A bare key followed by a colon without whitespace
+// (a URL scheme, a time of day) is not a pair.
+func (s *ScrubbingService) tokenizeSensitivePairs(line string, tokenize func(string) string) string {
+	var out strings.Builder
+	last := 0
+	for _, m := range keyValuePairPattern.FindAllStringSubmatchIndex(line, -1) {
+		key, sep := line[m[4]:m[5]], line[m[6]:m[7]]
+		quotedKey := key[0] == '"' || key[0] == '\''
+		if quotedKey {
+			key = key[1 : len(key)-1]
 		}
-
-		// Keep the line - pattern scrubbers already handled sensitive values
-		result = append(result, line)
+		headerStyle := !quotedKey && !strings.Contains(sep, "=")
+		if headerStyle && strings.TrimRight(sep, " \t") == sep {
+			continue
+		}
+		if !s.isLikelySensitiveKey(key) {
+			continue
+		}
+		start, end := m[8], m[9]
+		if quote := line[start]; (quote == '"' || quote == '\'') && end-start >= 2 {
+			start, end = start+1, end-1
+		} else if headerStyle {
+			end = len(line)
+		}
+		out.WriteString(line[last:start])
+		out.WriteString(tokenize(line[start:end]))
+		last = end
+		if end == len(line) {
+			break
+		}
 	}
-
-	return strings.Join(result, "\n")
-}
-
-// looksLikeKeyValue checks if a line is a key-value pair
-func (s *ScrubbingService) looksLikeKeyValue(line string) bool {
-	// Patterns like "Key: Value" or "key=value"
-	return strings.Contains(line, ": ") ||
-		(strings.Contains(line, "=") && !strings.HasPrefix(strings.TrimSpace(line), "#"))
-}
-
-// extractKey gets the key portion from a key-value line
-func (s *ScrubbingService) extractKey(line string) string {
-	if idx := strings.Index(line, ": "); idx > 0 {
-		key := strings.TrimSpace(line[:idx])
-		// Scrub the key itself if it contains sensitive patterns
-		return s.ScrubText(key)
-	}
-	if idx := strings.Index(line, "="); idx > 0 {
-		key := strings.TrimSpace(line[:idx])
-		return s.ScrubText(key)
-	}
-	return "[KEY]"
+	out.WriteString(line[last:])
+	return out.String()
 }
 
 // isLikelySensitiveKey checks if a key name suggests sensitive data.
@@ -493,380 +419,6 @@ func (s *ScrubbingService) isLikelySensitiveKey(key string) bool {
 	return false
 }
 
-// ScrubCommandResult processes raw command output and returns a safe summary
-func (s *ScrubbingService) ScrubCommandResult(result *CommandResult) *ScrubbedResult {
-	if !s.config.Enabled {
-		// Even when disabled, we still provide structure without raw data
-		return &ScrubbedResult{
-			Status:      s.determineStatus(result.ExitCode),
-			ExitCode:    result.ExitCode,
-			Summary:     "Scrubbing disabled - output suppressed for safety",
-			DurationMs:  result.DurationMs,
-			OutputLines: countLines(result.Stdout),
-		}
-	}
-
-	scrubbed := &ScrubbedResult{
-		Status:      s.determineStatus(result.ExitCode),
-		ExitCode:    result.ExitCode,
-		DurationMs:  result.DurationMs,
-		OutputLines: countLines(result.Stdout),
-	}
-
-	// Extract structural information before scrubbing
-	scrubbed.RowCount = s.extractRowCount(result.Stdout)
-	scrubbed.StructureHints = s.extractStructureHints(result.Stdout)
-	scrubbed.ErrorType = s.categorizeError(result.Stderr, result.ExitCode)
-
-	// Build summary from scrubbed content
-	scrubbed.Summary = s.buildSummary(result)
-
-	// Extract and scrub warnings
-	scrubbed.Warnings = s.extractWarnings(result.Stderr)
-
-	return scrubbed
-}
-
-// ScrubMap scrubs all string values in an arbitrary JSON object recursively.
-// json.RawMessage is the explicit serialization boundary because callers provide
-// external JSON whose schema is unknown by design.
-func (s *ScrubbingService) ScrubMap(data map[string]json.RawMessage) map[string]json.RawMessage {
-	result := make(map[string]json.RawMessage, len(data))
-	for key, value := range data {
-		scrubbedKey := s.scrubKeyName(key)
-		result[scrubbedKey] = s.scrubJSONValue(key, value)
-	}
-	return result
-}
-
-func (s *ScrubbingService) scrubJSONValue(key string, value json.RawMessage) json.RawMessage {
-	if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-		return append(json.RawMessage(nil), value...)
-	}
-
-	var text string
-	if err := json.Unmarshal(value, &text); err == nil {
-		return json.RawMessage(strconv.Quote(s.ScrubText(text)))
-	}
-
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(value, &object); err == nil {
-		return marshalScrubbedMap(s.ScrubMap(object))
-	}
-
-	var array []json.RawMessage
-	if err := json.Unmarshal(value, &array); err == nil {
-		return marshalScrubbedSlice(s.scrubSlice(array))
-	}
-
-	if s.config.StrictMode && s.isLikelySensitiveKey(key) {
-		return json.RawMessage(strconv.Quote("[VALUE]"))
-	}
-	if json.Valid(value) {
-		return append(json.RawMessage(nil), value...)
-	}
-	return json.RawMessage(strconv.Quote("[UNKNOWN_TYPE]"))
-}
-
-// scrubSlice scrubs all elements in an arbitrary JSON array recursively.
-func (s *ScrubbingService) scrubSlice(data []json.RawMessage) []json.RawMessage {
-	result := make([]json.RawMessage, len(data))
-	for i, item := range data {
-		result[i] = s.scrubJSONValue("", item)
-	}
-	return result
-}
-
-func marshalScrubbedMap(value map[string]json.RawMessage) json.RawMessage {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return json.RawMessage(strconv.Quote("[UNKNOWN_TYPE]"))
-	}
-	return data
-}
-
-func marshalScrubbedSlice(value []json.RawMessage) json.RawMessage {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return json.RawMessage(strconv.Quote("[UNKNOWN_TYPE]"))
-	}
-	return data
-}
-
-// scrubKeyName sanitizes key names that might contain sensitive info
-func (s *ScrubbingService) scrubKeyName(key string) string {
-	// Keys themselves might contain sensitive patterns
-	return s.ScrubText(key)
-}
-
-// determineStatus maps exit code to a status category
-func (s *ScrubbingService) determineStatus(exitCode int) constants.CommandExitStatus {
-	switch exitCode {
-	case 0:
-		return constants.CommandExitStatusSuccess
-	case 1:
-		return constants.CommandExitStatusFailure
-	case 2:
-		return constants.CommandExitStatusMisuse
-	case 126:
-		return constants.CommandExitStatusNotExecutable
-	case 127:
-		return constants.CommandExitStatusNotFound
-	case 128:
-		return constants.CommandExitStatusInvalidExit
-	case 130:
-		return constants.CommandExitStatusInterrupted
-	case 137:
-		return constants.CommandExitStatusKilled
-	case 143:
-		return constants.CommandExitStatusTerminated
-	default:
-		if exitCode > 128 {
-			signalNum := exitCode - 128
-			switch signalNum {
-			case 1:
-				return constants.CommandExitStatusSignal1
-			case 2:
-				return constants.CommandExitStatusSignal2
-			case 3:
-				return constants.CommandExitStatusSignal3
-			case 6:
-				return constants.CommandExitStatusSignal6
-			case 9:
-				return constants.CommandExitStatusSignal9
-			case 11:
-				return constants.CommandExitStatusSignal11
-			case 13:
-				return constants.CommandExitStatusSignal13
-			case 15:
-				return constants.CommandExitStatusSignal15
-			default:
-				return constants.CommandExitStatusError
-			}
-		}
-		return constants.CommandExitStatusError
-	}
-}
-
-// categorizeError determines the type of error from stderr
-func (s *ScrubbingService) categorizeError(stderr string, exitCode int) string {
-	if exitCode == 0 {
-		return ""
-	}
-
-	stderrLower := strings.ToLower(stderr)
-
-	// Check for common error patterns
-	switch {
-	case strings.Contains(stderrLower, "permission denied"):
-		return "permission_denied"
-	case strings.Contains(stderrLower, "not found") || strings.Contains(stderrLower, "no such file"):
-		return "not_found"
-	case strings.Contains(stderrLower, "timeout") || strings.Contains(stderrLower, "timed out"):
-		return "timeout"
-	case strings.Contains(stderrLower, "connection refused"):
-		return "connection_refused"
-	case strings.Contains(stderrLower, "connection reset"):
-		return "connection_reset"
-	case strings.Contains(stderrLower, "out of memory") || strings.Contains(stderrLower, "oom"):
-		return "out_of_memory"
-	case strings.Contains(stderrLower, "disk full") || strings.Contains(stderrLower, "no space"):
-		return "disk_full"
-	case strings.Contains(stderrLower, "authentication") || strings.Contains(stderrLower, "unauthorized"):
-		return "authentication_failed"
-	case strings.Contains(stderrLower, "syntax error"):
-		return "syntax_error"
-	case strings.Contains(stderrLower, "invalid"):
-		return "invalid_input"
-	case strings.Contains(stderrLower, "already exists"):
-		return "already_exists"
-	case strings.Contains(stderrLower, "locked") || strings.Contains(stderrLower, "busy"):
-		return "resource_busy"
-	case strings.Contains(stderrLower, "quota"):
-		return "quota_exceeded"
-	default:
-		return "unknown_error"
-	}
-}
-
-// extractRowCount tries to determine how many data rows are in the output
-func (s *ScrubbingService) extractRowCount(stdout string) *int {
-	lines := strings.Split(stdout, "\n")
-
-	// Filter out empty lines and obvious headers/footers
-	dataLines := 0
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		// Skip common header/footer patterns
-		if strings.HasPrefix(trimmed, "#") ||
-			strings.HasPrefix(trimmed, "--") ||
-			strings.HasPrefix(trimmed, "==") ||
-			strings.HasPrefix(trimmed, "+-") {
-			continue
-		}
-		dataLines++
-	}
-
-	if dataLines > 0 {
-		return &dataLines
-	}
-	return nil
-}
-
-// extractStructureHints provides schema-level information without data
-func (s *ScrubbingService) extractStructureHints(stdout string) []string {
-	var hints []string
-	lines := strings.Split(stdout, "\n")
-
-	if len(lines) > 0 {
-		hints = append(hints, fmt.Sprintf("output_lines: %d", len(lines)))
-	}
-
-	// Check for JSON structure
-	trimmed := strings.TrimSpace(stdout)
-	if strings.HasPrefix(trimmed, "{") {
-		hints = append(hints, "format: json_object")
-	} else if strings.HasPrefix(trimmed, "[") {
-		hints = append(hints, "format: json_array")
-	}
-
-	// Check for tabular structure
-	if len(lines) > 1 {
-		firstLine := lines[0]
-		if strings.Contains(firstLine, "|") {
-			colCount := strings.Count(firstLine, "|") - 1
-			if colCount > 0 {
-				hints = append(hints, fmt.Sprintf("columns: %d", colCount))
-			}
-		} else if strings.Contains(firstLine, "\t") {
-			colCount := strings.Count(firstLine, "\t") + 1
-			hints = append(hints, fmt.Sprintf("columns: %d", colCount))
-		}
-	}
-
-	// Estimate data size category
-	size := len(stdout)
-	switch {
-	case size < 100:
-		hints = append(hints, "size: minimal")
-	case size < 1000:
-		hints = append(hints, "size: small")
-	case size < 10000:
-		hints = append(hints, "size: medium")
-	case size < 100000:
-		hints = append(hints, "size: large")
-	default:
-		hints = append(hints, "size: very_large")
-	}
-
-	return hints
-}
-
-// buildSummary creates a safe summary of the command result
-func (s *ScrubbingService) buildSummary(result *CommandResult) string {
-	var parts []string
-
-	// Command executed (scrubbed)
-	if result.Command != "" {
-		parts = append(parts, fmt.Sprintf("Executed: %s", s.ScrubText(result.Command)))
-	}
-
-	// Exit status
-	status := s.determineStatus(result.ExitCode)
-	parts = append(parts, fmt.Sprintf("Status: %s (exit %d)", status, result.ExitCode))
-
-	// Output presence
-	if len(result.Stdout) > 0 {
-		lines := countLines(result.Stdout)
-		parts = append(parts, fmt.Sprintf("Output: %d lines", lines))
-	} else {
-		parts = append(parts, "Output: none")
-	}
-
-	// Error presence
-	if len(result.Stderr) > 0 {
-		errType := s.categorizeError(result.Stderr, result.ExitCode)
-		if errType != "" {
-			parts = append(parts, fmt.Sprintf("Error type: %s", errType))
-		}
-	}
-
-	// Duration
-	parts = append(parts, fmt.Sprintf("Duration: %dms", result.DurationMs))
-
-	return strings.Join(parts, " | ")
-}
-
-// extractWarnings pulls warning messages from stderr and scrubs them
-func (s *ScrubbingService) extractWarnings(stderr string) []string {
-	if stderr == "" {
-		return nil
-	}
-
-	var warnings []string
-	lines := strings.Split(stderr, "\n")
-
-	for _, line := range lines {
-		lower := strings.ToLower(line)
-		if strings.Contains(lower, "warning") || strings.Contains(lower, "warn") {
-			// Scrub the warning text
-			scrubbed := s.ScrubText(line)
-			// Extract just the warning category if possible
-			category := s.categorizeWarning(line)
-			if category != "" {
-				warnings = append(warnings, category)
-			} else {
-				warnings = append(warnings, scrubbed)
-			}
-		}
-	}
-
-	return warnings
-}
-
-// categorizeWarning attempts to categorize a warning without exposing details
-func (s *ScrubbingService) categorizeWarning(line string) string {
-	lower := strings.ToLower(line)
-
-	switch {
-	case strings.Contains(lower, "deprecated"):
-		return "deprecation_warning"
-	case strings.Contains(lower, "insecure"):
-		return "security_warning"
-	case strings.Contains(lower, "performance"):
-		return "performance_warning"
-	case strings.Contains(lower, "memory"):
-		return "memory_warning"
-	case strings.Contains(lower, "disk"):
-		return "disk_warning"
-	case strings.Contains(lower, string(constants.ToolDisplayCategoryNetwork)):
-		return string(constants.ToolDisplayCategoryNetwork)
-	case strings.Contains(lower, "certificate") || strings.Contains(lower, "ssl") || strings.Contains(lower, "tls"):
-		return "certificate_warning"
-	case strings.Contains(lower, "version"):
-		return "version_warning"
-	default:
-		return ""
-	}
-}
-
-// countLines counts non-empty lines in text
-func countLines(text string) int {
-	if text == "" {
-		return 0
-	}
-	count := 0
-	for _, line := range strings.Split(text, "\n") {
-		if strings.TrimSpace(line) != "" {
-			count++
-		}
-	}
-	return count
-}
-
 // RehydrateText replaces placeholders like {{UEI_N}} with their original values.
 // This is used right before dispatch to restore sensitive data that was hidden from the cloud.
 // Falls back to TokenStore if token is not in memory (for persistence across restarts).
@@ -875,57 +427,30 @@ func (s *ScrubbingService) RehydrateText(ctx context.Context, input string) stri
 		return input
 	}
 
-	s.tokenMu.RLock()
-	if len(s.tokenMap) == 0 && s.tokenStore == nil {
-		s.tokenMu.RUnlock()
-		return input
-	}
-
-	result := input
-	// First replace from in-memory cache
-	for token, value := range s.tokenMap {
-		result = strings.ReplaceAll(result, token, value)
-	}
-	s.tokenMu.RUnlock()
-
-	// If TokenStore is available, check for any remaining tokens not in memory
-	if s.tokenStore != nil {
-		// Find all {{UEI_N}} patterns in the result
-		matches := tokenPattern.FindAllString(result, -1)
-
-		// Check which tokens are already in memory
+	// One pass over the input: a restored value is never rescanned, so the
+	// result does not depend on substitution order.
+	return tokenPattern.ReplaceAllStringFunc(input, func(token string) string {
 		s.tokenMu.RLock()
-		inMemory := make(map[string]bool)
-		for _, token := range matches {
-			if _, ok := s.tokenMap[token]; ok {
-				inMemory[token] = true
-			}
-		}
+		value, ok := s.tokenMap[token]
 		s.tokenMu.RUnlock()
-
-		for _, token := range matches {
-			// Skip if already in memory (already replaced above)
-			if inMemory[token] {
-				continue
-			}
-
-			// Try to load from TokenStore
-			key := constants.ScrubbingTokenKeyPrefix + token
-			value, err := s.tokenStore.KVGet(ctx, key)
-			if err != nil {
-				s.logger.Warn("scrubbing: failed to load token from store", "token", token, "error", err)
-				continue
-			}
-			// Add to in-memory cache for future use (requires write lock)
-			s.tokenMu.Lock()
-			s.tokenMap[token] = value
-			s.reverseMap[value] = token
-			s.tokenMu.Unlock()
-			result = strings.ReplaceAll(result, token, value)
+		if ok {
+			return value
 		}
-	}
+		if s.tokenStore == nil {
+			return token
+		}
 
-	return result
+		value, err := s.tokenStore.KVGet(ctx, constants.ScrubbingTokenKeyPrefix+token)
+		if err != nil {
+			s.logger.Warn("scrubbing: failed to load token from store", "token", token, "error", err)
+			return token
+		}
+		s.tokenMu.Lock()
+		s.tokenMap[token] = value
+		s.reverseMap[value] = token
+		s.tokenMu.Unlock()
+		return value
+	})
 }
 
 // RehydratePayload recursively rehydrates all string values in a JSON payload.
@@ -982,24 +507,23 @@ func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.Ra
 	return append([]byte(nil), value...), nil
 }
 
-// GetTokenForValue registers a sensitive value and returns a unique token for it.
-// Fails closed if persistence is required but unavailable.
-func (s *ScrubbingService) GetTokenForValue(ctx context.Context, value string) string {
+// GetTokenForValue registers a sensitive value and returns its stable {{UEI_N}}
+// token. Fails closed if persistence is required but unavailable or fails.
+func (s *ScrubbingService) GetTokenForValue(ctx context.Context, value string) (string, error) {
 	if value == "" {
-		return ""
+		return "", nil
 	}
 
 	// Fail-closed: if persistence is required but unavailable, reject the operation
 	if s.config.RequirePersistence && s.tokenStore == nil {
-		s.logger.Error("scrubbing: token persistence required but TokenStore unavailable - failing closed to prevent data loss", "error", constants.ErrScrubbingTokenStoreUnavailable)
-		return ""
+		return "", fmt.Errorf("scrubbing: tokenize value: %w", constants.ErrScrubbingTokenStoreUnavailable)
 	}
 
 	s.tokenMu.Lock()
 	defer s.tokenMu.Unlock()
 
 	if token, ok := s.reverseMap[value]; ok {
-		return token
+		return token, nil
 	}
 
 	s.tokenSequence++
@@ -1012,16 +536,15 @@ func (s *ScrubbingService) GetTokenForValue(ctx context.Context, value string) s
 		const tokenTTLSeconds = 24 * 60 * 60
 		key := constants.ScrubbingTokenKeyPrefix + token
 		if err := s.tokenStore.KVSet(ctx, key, value, tokenTTLSeconds); err != nil {
-			s.logger.Error("scrubbing: failed to persist token", "token", token, "error", fmt.Errorf("%w: %w", constants.ErrScrubbingTokenPersist, err))
 			// Rollback the in-memory token since persistence failed
 			delete(s.tokenMap, token)
 			delete(s.reverseMap, value)
 			s.tokenSequence--
-			return ""
+			return "", fmt.Errorf("scrubbing: tokenize value %s: %w: %w", token, constants.ErrScrubbingTokenPersist, err)
 		}
 	}
 
-	return token
+	return token, nil
 }
 
 // IsEnabled returns whether scrubbing is active
@@ -1079,18 +602,6 @@ func (s *ScrubbingService) loadPersistedTokens(ctx context.Context) error {
 	return nil
 }
 
-// ClearTokens clears all in-memory tokens (useful for testing or security events)
-func (s *ScrubbingService) ClearTokens() {
-	s.tokenMu.Lock()
-	defer s.tokenMu.Unlock()
-
-	s.tokenMap = make(map[string]string)
-	s.reverseMap = make(map[string]string)
-	s.tokenSequence = 0
-
-	s.logger.Info("Cleared all in-memory tokens")
-}
-
 // TokenKeymapHash computes a deterministic SHA-256 over the current token keymap.
 // This hash is bound into the state Merkle root so that a rehydration substitution
 // (altering the token→value mapping after a transaction hash was computed) produces
@@ -1122,57 +633,4 @@ func (s *ScrubbingService) TokenKeymapHash() string {
 	}
 
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-// ExtractSafeMetrics extracts only safe numeric metrics from output
-func (s *ScrubbingService) ExtractSafeMetrics(stdout string) map[string]int {
-	metrics := make(map[string]int)
-
-	// Look for common metric patterns
-	patterns := map[string]*regexp.Regexp{
-		"row_count":     regexp.MustCompile(`(?i)(\d+)\s*rows?`),
-		"record_count":  regexp.MustCompile(`(?i)(\d+)\s*records?`),
-		"match_count":   regexp.MustCompile(`(?i)(\d+)\s*match(?:es)?`),
-		"file_count":    regexp.MustCompile(`(?i)(\d+)\s*files?`),
-		"error_count":   regexp.MustCompile(`(?i)(\d+)\s*errors?`),
-		"warning_count": regexp.MustCompile(`(?i)(\d+)\s*warnings?`),
-		"success_count": regexp.MustCompile(`(?i)(\d+)\s*success(?:ful)?`),
-		"failed_count":  regexp.MustCompile(`(?i)(\d+)\s*failed`),
-	}
-
-	for name, pattern := range patterns {
-		matches := pattern.FindStringSubmatch(stdout)
-		if len(matches) >= 2 {
-			if val, err := strconv.Atoi(matches[1]); err == nil {
-				metrics[name] = val
-			}
-		}
-	}
-
-	return metrics
-}
-
-// ValidateNoLeakage performs a final check that no obvious sensitive data remains
-// Note: IPs, UUIDs, hostnames, file paths, ARNs, MAC addresses are intentionally
-// preserved (not scrubbed) so they are NOT checked here.
-func (s *ScrubbingService) ValidateNoLeakage(text string) (bool, []string) {
-	var violations []string
-
-	// Check for sensitive patterns that should have been scrubbed
-	// System/operational data (IPs, UUIDs, hostnames, paths) are preserved intentionally
-	checks := map[string]*regexp.Regexp{
-		"email":       regexp.MustCompile(`[A-Za-z0-9._%+'-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`),
-		"private_key": regexp.MustCompile(`-----BEGIN`),
-	}
-
-	for name, pattern := range checks {
-		if pattern.MatchString(text) {
-			// Check if it's one of our placeholders
-			if !strings.Contains(text, "["+strings.ToUpper(name)+"]") {
-				violations = append(violations, name)
-			}
-		}
-	}
-
-	return len(violations) == 0, violations
 }

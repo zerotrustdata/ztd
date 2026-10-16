@@ -78,7 +78,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-ENC-SCRUB-01 | The Sovereign Execution Boundary scrubs outgoing payloads with strict mode enabled by default (`StrictMode: true`), replacing sensitive tokens and credentials with irreversible labels. |
+| INV-ENC-SCRUB-01 | The Sovereign Execution Boundary scrubs outgoing payloads with strict mode enabled by default (`StrictMode: true`), replacing each sensitive value with a persisted, reversible `{{UEI_N}}` token while keys and field names stay visible; it never emits fixed labels or blanks a field, and fails closed to `{{UEI_UNAVAILABLE}}` when the token cannot be persisted. |
 | INV-ENC-SCRUB-02 | Reversible User-Explicit Information (UEI) placeholders follow the `{{UEI_N}}` pattern. Mapped values are encrypted via the vault into the observed KV store with a 24-hour TTL. L5 Actuator rehydrates `{{UEI_N}}` placeholders immediately before action execution. |
 | INV-ENC-SCRUB-03 | L5 Actuator execution fails closed with `ErrEgressScrubberUnavailable` if an active scrubber is unavailable when scrubbing the target resource on receipt generation. |
 
@@ -216,7 +216,7 @@ Startup enforces directory permissions (`0700`) and secret file permissions (`06
 
 ## Scrubbing and Execution-Site Rehydration
 
-ztd combines irreversible output scrubbing with reversible execution-site rehydration across the sovereign execution boundary:
+ztd combines tokenizing output scrubbing with reversible execution-site rehydration across the sovereign execution boundary:
 
 ```text
 +---------------------------------------------------------------------------------+
@@ -243,7 +243,7 @@ ztd combines irreversible output scrubbing with reversible execution-site rehydr
 +---------------------------------------------------------------------------------+
 ```
 
-1. **Irreversible Scrubbing**: The Sovereign Execution Boundary (`internal/services/scrubbing/boundary.go`) inspects outgoing model payloads, command output, and event streams. It redacts detected credentials, API keys, private keys, IP addresses, and personal data using fixed label replacements (e.g., `[GITHUB_TOKEN]`, `[AWS_SECRET]`). Strict mode (`StrictMode: true`) is enabled by default.
+1. **Tokenizing Scrubbing**: The Sovereign Execution Boundary (`internal/services/scrubbing/boundary.go`) inspects outgoing model payloads, command output, and event streams. Each detected credential, API key, private key, IP address, or personal-data value is replaced with its own persisted `{{UEI_N}}` token — never a fixed label and never an empty field. Only the sensitive value is tokenized: keys, field names, and surrounding operational text stay visible (`password={{UEI_3}}`, `{"password":"{{UEI_3}}","user":"svc-deploy"}`). Strict mode (`StrictMode: true`, enabled by default) adds a key/value pass over sensitive key names. Existing tokens are never re-tokenized. If the token cannot be persisted, the value becomes `{{UEI_UNAVAILABLE}}` (fail closed, no plaintext). Constructing an enabled scrubber that requires persistence without a token store fails with `ErrScrubbingTokenStoreUnavailable`.
 2. **Reversible UEI Rehydration**: Callers register sensitive input strings to obtain a `{{UEI_N}}` token matching `regexp.MustCompile(\`\\{\\{UEI_\\d+\\}\\}\`)`. The value is encrypted into the observed KV store via `EncryptedKVAdapter` with a 24-hour expiration under `constants.SentinelKeyPrefix` (`"__uei_token_"`). Immediately prior to action execution, the L5 Actuator (`internal/services/governance/l5_actuator.go`) rehydrates `{{UEI_N}}` placeholders with original un-scrubbed values via `rehydratePayload`. If rehydration fails, the actuator fails closed and aborts execution before dispatch.
 3. **Outbound Receipt Scrubbing**: Before signing the final `ActionReceipt`, L5 Actuator scrubs the `target_resource` and error causes. If no active scrubber is available, the operation fails closed with `ErrEgressScrubberUnavailable`.
 

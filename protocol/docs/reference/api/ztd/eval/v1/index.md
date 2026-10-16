@@ -1102,6 +1102,7 @@ EvaluationVerificationReport independently verifies one run or assignment.
 | persistence_attestation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | policy_decision | [string](#string) |  |  |
 | effect_observation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
+| action_type | [string](#string) |  | The registry governance class the signed receipt names (INFERENCE, FS_READ, FILE_EDIT, ...). |
 
 
 

@@ -62,7 +62,7 @@ func TestZtdoService_SubServices_Initialization(t *testing.T) {
 		fileEditSvc, err := execution.NewFileEditService(cfg, logger, fileSvc)
 		require.NoError(t, err)
 
-		scrubbingSvc, err := scrubbing.NewScrubbingService(t.Context(), scrubbing.DefaultConfig(), logger, nil)
+		scrubbingSvc, err := scrubbing.NewScrubbingService(t.Context(), scrubbing.DefaultConfig(), logger, storagetest.NewTestTokenStore())
 		require.NoError(t, err)
 
 		ledger := storagetest.NewTestLedger(t)

@@ -9,6 +9,7 @@ package inference
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"unicode"
@@ -85,20 +86,20 @@ func newStreamSegmenter(scrubber models.EgressScrubber, reporter ProgressReporte
 
 // accept takes the parts of one provider event and returns the scrubbed segments that are complete now.
 // Everything else stays buffered until a later event or finish.
-func (g *streamSegmenter) accept(parts []*operatorv1.InferenceResponsePart) ([]*operatorv1.InferenceResponsePart, error) {
+func (g *streamSegmenter) accept(ctx context.Context, parts []*operatorv1.InferenceResponsePart) ([]*operatorv1.InferenceResponsePart, error) {
 	var out []*operatorv1.InferenceResponsePart
 	for _, part := range parts {
 		switch v := part.GetPart().(type) {
 		case *operatorv1.InferenceResponsePart_Text:
-			out = g.appendText(out, segmentText, v.Text)
+			out = g.appendText(ctx, out, segmentText, v.Text)
 		case *operatorv1.InferenceResponsePart_Thinking:
-			out = g.appendText(out, segmentThinking, v.Thinking)
+			out = g.appendText(ctx, out, segmentThinking, v.Thinking)
 		case *operatorv1.InferenceResponsePart_ToolCall:
 			if v.ToolCall == nil {
 				return nil, fmt.Errorf("inference stream: tool call: %w", constants.ErrInferenceProviderResponseInvalid)
 			}
 			g.items = append(g.items, streamItem{offset: len(g.buf), kind: segmentToolCall, call: v.ToolCall})
-			out = g.release(out, false)
+			out = g.release(ctx, out, false)
 		default:
 			return nil, fmt.Errorf("inference stream: response part: %w", constants.ErrInferenceProviderResponseInvalid)
 		}
@@ -107,12 +108,12 @@ func (g *streamSegmenter) accept(parts []*operatorv1.InferenceResponsePart) ([]*
 }
 
 // finish releases the whole buffered tail once the provider stream has ended with its terminal event.
-func (g *streamSegmenter) finish() []*operatorv1.InferenceResponsePart {
-	return g.release(nil, true)
+func (g *streamSegmenter) finish(ctx context.Context) []*operatorv1.InferenceResponsePart {
+	return g.release(ctx, nil, true)
 }
 
 // appendText adds one text or thinking delta to the stream and releases whatever is now complete.
-func (g *streamSegmenter) appendText(out []*operatorv1.InferenceResponsePart, kind segmentKind, text string) []*operatorv1.InferenceResponsePart {
+func (g *streamSegmenter) appendText(ctx context.Context, out []*operatorv1.InferenceResponsePart, kind segmentKind, text string) []*operatorv1.InferenceResponsePart {
 	if text == "" {
 		return out
 	}
@@ -124,16 +125,16 @@ func (g *streamSegmenter) appendText(out []*operatorv1.InferenceResponsePart, ki
 	if i := strings.LastIndexByte(text, '\n'); i >= 0 {
 		g.lastNL = base + i
 	}
-	return g.release(out, false)
+	return g.release(ctx, out, false)
 }
 
 // release emits every item that is complete at the release cut, scrubbing each piece once, and drops the
 // emitted prefix of the stream. The cut is the byte after the last newline, moved back to an open PEM
 // block's BEGIN marker when one is held. When final is set the whole buffer is released.
-func (g *streamSegmenter) release(out []*operatorv1.InferenceResponsePart, final bool) []*operatorv1.InferenceResponsePart {
+func (g *streamSegmenter) release(ctx context.Context, out []*operatorv1.InferenceResponsePart, final bool) []*operatorv1.InferenceResponsePart {
 	cut := len(g.buf)
 	if !final {
-		cut = g.releaseCut()
+		cut = g.releaseCut(ctx)
 	}
 
 	consumed := 0
@@ -143,7 +144,7 @@ func (g *streamSegmenter) release(out []*operatorv1.InferenceResponsePart, final
 			if item.offset > cut {
 				break
 			}
-			out = append(out, g.toolCallPart(item.call))
+			out = append(out, g.toolCallPart(ctx, item.call))
 			consumed++
 			continue
 		}
@@ -154,12 +155,12 @@ func (g *streamSegmenter) release(out []*operatorv1.InferenceResponsePart, final
 		if end > cut {
 			// The run continues past the cut: release its released piece and keep the rest.
 			if cut > item.offset {
-				out = append(out, g.segment(item.kind, string(g.buf[item.offset:cut])))
+				out = append(out, g.segment(ctx, item.kind, string(g.buf[item.offset:cut])))
 			}
 			break
 		}
 		if end > item.offset {
-			out = append(out, g.segment(item.kind, string(g.buf[item.offset:end])))
+			out = append(out, g.segment(ctx, item.kind, string(g.buf[item.offset:end])))
 		}
 		consumed++
 	}
@@ -191,7 +192,7 @@ func (g *streamSegmenter) release(out []*operatorv1.InferenceResponsePart, final
 //
 // Rule 3 is checked on the buffered text. Text that is not yet buffered cannot start a match before c, because
 // every value that a whitespace-bearing pattern can match ends on the line that rule 1 already holds.
-func (g *streamSegmenter) releaseCut() int {
+func (g *streamSegmenter) releaseCut(ctx context.Context) int {
 	end := len(g.buf)
 	limit := len(g.buf)
 	if hold := g.openBlockStart(); hold >= 0 {
@@ -214,10 +215,10 @@ func (g *streamSegmenter) releaseCut() int {
 			continue
 		}
 		if !haveWhole {
-			whole = g.scrubber.ScrubText(string(g.buf))
+			whole = g.scrubber.ScrubText(ctx, string(g.buf))
 			haveWhole = true
 		}
-		if g.scrubber.ScrubText(string(g.buf[:c]))+g.scrubber.ScrubText(string(g.buf[c:])) == whole {
+		if g.scrubber.ScrubText(ctx, string(g.buf[:c]))+g.scrubber.ScrubText(ctx, string(g.buf[c:])) == whole {
 			return c
 		}
 	}
@@ -254,8 +255,8 @@ func (g *streamSegmenter) openBlockStart() int {
 
 // segment scrubs one released run and wraps it as a response part of its kind. Accepted residual: a secret
 // spanning a thinking-to-text kind change is scrubbed in two pieces and can leak.
-func (g *streamSegmenter) segment(kind segmentKind, raw string) *operatorv1.InferenceResponsePart {
-	scrubbed := g.scrubber.ScrubText(raw)
+func (g *streamSegmenter) segment(ctx context.Context, kind segmentKind, raw string) *operatorv1.InferenceResponsePart {
+	scrubbed := g.scrubber.ScrubText(ctx, raw)
 	if kind == segmentThinking {
 		return &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: scrubbed}}
 	}
@@ -263,22 +264,22 @@ func (g *streamSegmenter) segment(kind segmentKind, raw string) *operatorv1.Infe
 }
 
 // toolCallPart scrubs the name and arguments of one tool call and keeps its call ID.
-func (g *streamSegmenter) toolCallPart(call *operatorv1.InferenceToolCall) *operatorv1.InferenceResponsePart {
+func (g *streamSegmenter) toolCallPart(ctx context.Context, call *operatorv1.InferenceToolCall) *operatorv1.InferenceResponsePart {
 	return &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_ToolCall{
 		ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        call.GetCallId(),
-			Name:          g.scrubValue(call.GetName()),
-			ArgumentsJson: g.scrubValue(call.GetArgumentsJson()),
+			Name:          g.scrubValue(ctx, call.GetName()),
+			ArgumentsJson: g.scrubValue(ctx, call.GetArgumentsJson()),
 		},
 	}}
 }
 
 // scrubValue scrubs one non-empty string field; an empty field stays empty.
-func (g *streamSegmenter) scrubValue(value string) string {
+func (g *streamSegmenter) scrubValue(ctx context.Context, value string) string {
 	if value == "" {
 		return ""
 	}
-	return g.scrubber.ScrubText(value)
+	return g.scrubber.ScrubText(ctx, value)
 }
 
 // publish sends the released segments as one progress event with the next contiguous sequence. Progress

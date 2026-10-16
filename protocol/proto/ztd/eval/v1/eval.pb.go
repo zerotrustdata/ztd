@@ -7025,8 +7025,11 @@ type GovernedActionBinding struct {
 	PersistenceAttestationRef *v1.ComplianceEvidenceReference `protobuf:"bytes,7,opt,name=persistence_attestation_ref,json=persistenceAttestationRef,proto3" json:"persistence_attestation_ref,omitempty"`
 	PolicyDecision            string                          `protobuf:"bytes,8,opt,name=policy_decision,json=policyDecision,proto3" json:"policy_decision,omitempty"`
 	EffectObservationRef      *v1.ComplianceEvidenceReference `protobuf:"bytes,9,opt,name=effect_observation_ref,json=effectObservationRef,proto3" json:"effect_observation_ref,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	// The registry governance class the signed receipt names (INFERENCE,
+	// FS_READ, FILE_EDIT, ...).
+	ActionType    string `protobuf:"bytes,10,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GovernedActionBinding) Reset() {
@@ -7120,6 +7123,13 @@ func (x *GovernedActionBinding) GetEffectObservationRef() *v1.ComplianceEvidence
 		return x.EffectObservationRef
 	}
 	return nil
+}
+
+func (x *GovernedActionBinding) GetActionType() string {
+	if x != nil {
+		return x.ActionType
+	}
+	return ""
 }
 
 type DeterministicGrade struct {
@@ -13181,7 +13191,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\rassignment_id\x18\x02 \x01(\tR\fassignmentId\x12#\n" +
 	"\rrecovery_kind\x18\x03 \x01(\tR\frecoveryKind\x12>\n" +
 	"\aoutcome\x18\x04 \x01(\x0e2$.ztd.eval.v1.EvaluationVerdictStatusR\aoutcome\x12\x16\n" +
-	"\x06detail\x18\x05 \x01(\tR\x06detail\"\xa3\x04\n" +
+	"\x06detail\x18\x05 \x01(\tR\x06detail\"\xc4\x04\n" +
 	"\x15GovernedActionBinding\x12\x1d\n" +
 	"\n" +
 	"binding_id\x18\x01 \x01(\tR\tbindingId\x12#\n" +
@@ -13194,7 +13204,10 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"receiptRef\x12n\n" +
 	"\x1bpersistence_attestation_ref\x18\a \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x19persistenceAttestationRef\x12'\n" +
 	"\x0fpolicy_decision\x18\b \x01(\tR\x0epolicyDecision\x12d\n" +
-	"\x16effect_observation_ref\x18\t \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x14effectObservationRef\"\xed\x01\n" +
+	"\x16effect_observation_ref\x18\t \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x14effectObservationRef\x12\x1f\n" +
+	"\vaction_type\x18\n" +
+	" \x01(\tR\n" +
+	"actionType\"\xed\x01\n" +
 	"\x12DeterministicGrade\x12\x19\n" +
 	"\bgrade_id\x18\x01 \x01(\tR\agradeId\x12!\n" +
 	"\fcriterion_id\x18\x02 \x01(\tR\vcriterionId\x12<\n" +

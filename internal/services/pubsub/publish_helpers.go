@@ -113,7 +113,7 @@ func publishLFAATypedResponseTo(
 	}
 	// Egress choke point: BuildUniversalResultEnvelope scrubs the payload. A withheld payload
 	// publishes the typed failure event instead.
-	env, err := BuildUniversalResultEnvelope(cfg, msg.EventType, eventType, originatingAction, payload, scrubbingService, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
+	env, err := BuildUniversalResultEnvelope(ctx, cfg,msg.EventType, eventType, originatingAction, payload, scrubbingService, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
 	if err != nil {
 		if isEgressWithheld(err) {
 			logger.Error("Withholding LFAA typed response: egress withheld", string(constants.ConnectionStateError), err)
@@ -142,7 +142,7 @@ func publishLFAATypedResponseTo(
 	logger.Info("LFAA typed response published (Universal)", "event_type", eventType)
 
 	// §3: observed-state content evidence (best-effort, non-fatal)
-	publishObservedStateEvidence(logger, msg, eventType, payload, auditStore, scrubbingService)
+	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, auditStore, scrubbingService)
 }
 
 // publishLFAAErrorTo builds an error GovernanceEnvelope and publishes it to the results channel.
@@ -164,7 +164,7 @@ func publishLFAAErrorTo(
 	// scrubbed or fixed before it reaches the envelope builder, so the builder runs without egress.
 	safeMsg := constants.ErrEgressScrubberUnavailable.Error()
 	if scrubbingService != nil && scrubbingService.IsEnabled() {
-		safeMsg = scrubbingService.ScrubText(errorMsg)
+		safeMsg = scrubbingService.ScrubText(ctx, errorMsg)
 	}
 
 	// Use CommandResult as a generic error container
@@ -202,7 +202,7 @@ func publishLFAAErrorTo(
 	}
 
 	// §3: observed-state content evidence (best-effort, non-fatal)
-	publishObservedStateEvidence(logger, msg, eventType, payload, auditStore, scrubbingService)
+	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, auditStore, scrubbingService)
 }
 
 // publishObservedStateEvidence persists observed-state content evidence to the audit store.
@@ -211,6 +211,7 @@ func publishLFAAErrorTo(
 // The audit store and an active scrubber are required: the publishing services take both at
 // construction, so neither is checked here.
 func publishObservedStateEvidence(
+	ctx context.Context,
 	logger *slog.Logger,
 	msg *PubSubCommandMessage,
 	eventType constants.EventType,
@@ -230,7 +231,7 @@ func publishObservedStateEvidence(
 	}
 
 	// Scrub content before persisting (per position paper §10: raw data belongs only in raw vault)
-	contentText = scrubbingService.ScrubText(contentText)
+	contentText = scrubbingService.ScrubText(ctx, contentText)
 
 	// Create event record
 	event := &storage.Event{

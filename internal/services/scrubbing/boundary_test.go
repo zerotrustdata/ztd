@@ -11,998 +11,448 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func mustNewScrubbingService(t *testing.T, ctx context.Context, config *Config, logger *slog.Logger, tokenStore storage.TokenStore) *ScrubbingService {
+// newTestService builds a scrubbing service backed by an in-memory token store.
+func newTestService(t *testing.T, config *Config) *ScrubbingService {
 	t.Helper()
-	service, err := NewScrubbingService(ctx, config, logger, tokenStore)
+	service, err := NewScrubbingService(context.Background(), config, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return service
+}
+
+// assertTokenized scrubs input and asserts that every secret was replaced by a
+// reversible {{UEI_N}} token and that rehydration restores the input exactly.
+func assertTokenized(t *testing.T, service *ScrubbingService, input string, secrets ...string) string {
+	t.Helper()
+	ctx := context.Background()
+	result := service.ScrubText(ctx, input)
+	assert.Contains(t, result, "{{UEI_", "input: %s", input)
+	assert.NotContains(t, result, untokenizedValue, "input: %s", input)
+	for _, secret := range secrets {
+		assert.NotContains(t, result, secret, "input: %s", input)
+	}
+	assert.Equal(t, input, service.RehydrateText(ctx, result), "rehydration must restore input: %s", input)
+	return result
+}
+
+// assertPreserved asserts that input passes through scrubbing unchanged.
+func assertPreserved(t *testing.T, service *ScrubbingService, inputs ...string) {
+	t.Helper()
+	for _, input := range inputs {
+		assert.Equal(t, input, service.ScrubText(context.Background(), input))
+	}
+}
+
+func lenientConfig() *Config {
+	return &Config{Enabled: true, StrictMode: false, RequirePersistence: true}
+}
+
+type failingTokenStore struct{ *storagetest.TestTokenStore }
+
+func (failingTokenStore) KVSet(context.Context, string, string, int) error {
+	return fmt.Errorf("kv set: %w", constants.ErrScrubbingTokenPersist)
 }
 
 func TestDefaultConfig(t *testing.T) {
 	t.Parallel()
 	config := DefaultConfig()
 
-	assert.NotNil(t, config)
 	assert.True(t, config.Enabled, "should be enabled by default for safety")
 	assert.True(t, config.StrictMode, "strict mode should be on by default")
+	assert.True(t, config.RequirePersistence, "tokens must be persisted for rehydration")
 	assert.Empty(t, config.AllowedPatterns)
 	assert.Empty(t, config.CustomScrubPatterns)
 }
 
 func TestNewScrubbingService(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
 
-	t.Run("with nil config uses defaults", func(t *testing.T) {
+	t.Run("nil config uses defaults", func(t *testing.T) {
 		t.Parallel()
-		service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-		require.NotNil(t, service)
+		service := newTestService(t, nil)
 		assert.True(t, service.config.StrictMode)
-		assert.NotEmpty(t, service.scrubbers)
+		assert.Greater(t, len(service.scrubbers), 10)
 	})
 
-	t.Run("with custom config", func(t *testing.T) {
+	t.Run("required persistence without a store fails construction", func(t *testing.T) {
 		t.Parallel()
-		config := &Config{
-			StrictMode: false,
-		}
-		service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-		require.NotNil(t, service)
-		assert.False(t, service.config.StrictMode)
+		_, err := NewScrubbingService(context.Background(), DefaultConfig(), testutil.NewTestLogger(), nil)
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenStoreUnavailable)
 	})
 
-	t.Run("initializes scrubbers", func(t *testing.T) {
+	t.Run("disabled scrubbing needs no store", func(t *testing.T) {
 		t.Parallel()
-		service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-		assert.Greater(t, len(service.scrubbers), 10, "should have many scrubbers")
+		service, err := NewScrubbingService(context.Background(), &Config{Enabled: false, RequirePersistence: true}, testutil.NewTestLogger(), nil)
+		require.NoError(t, err)
+		assert.False(t, service.IsEnabled())
 	})
 }
 
-func TestScrubbingService_ScrubText_IPv4_Preserved(t *testing.T) {
+// Operational identifiers stay readable in both modes: the model needs them to troubleshoot.
+func TestScrubbingService_ScrubText_OperationalDataPreserved(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	// IPs are preserved (not scrubbed) - the AI needs them for troubleshooting
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"Server at 192.168.1.1", "Server at 192.168.1.1"},
-		{"Connect to 10.0.0.1:5432", "Connect to 10.0.0.1:5432"},
-		{"IPs: 172.16.0.1 and 8.8.8.8", "IPs: 172.16.0.1 and 8.8.8.8"},
-		{"No IP here", "No IP here"},
+	for name, config := range map[string]*Config{"lenient": lenientConfig(), "default": DefaultConfig()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			service := newTestService(t, config)
+			assertPreserved(t, service,
+				"Server at 192.168.1.1",
+				"Connect to 10.0.0.1:5432",
+				"IPs: 172.16.0.1 and 8.8.8.8",
+				"ID: 550e8400-e29b-41d4-a716-446655440000",
+				"User 123e4567-e89b-12d3-a456-426614174000 created",
+				"File at /home/user/secret.txt",
+				"Reading /etc/passwd",
+				"Log: /var/log/app/debug.log",
+				"arn:aws:s3:::my-bucket/path",
+				"arn:aws:iam::123456789012:role/MyRole",
+				"Account 123456789012 created",
+				"see https://example.com/docs at 08:00:01",
+				"Version: 24.0.7\nClient: Container Engine",
+			)
+		})
 	}
+}
 
-	for _, tt := range tests {
-		result := service.ScrubText(tt.input)
-		assert.Equal(t, tt.expected, result, "Input: %s", tt.input)
-	}
+// A log line whose fields are not sensitive passes through whole: no field is
+// dropped or replaced (regression for the recovery-error-guided-retry eval).
+func TestScrubbingService_ScrubText_LogFieldsPreserved(t *testing.T) {
+	t.Parallel()
+	service := newTestService(t, DefaultConfig())
+	assertPreserved(t, service,
+		"2026-09-16T08:00:01Z AUTH_FAILURE user=svc-deploy",
+		"2026-09-16T08:00:03Z AUTH_FAILURE user=svc-web reason=expired",
+		`{"user": "admin", "status": "ok"}`,
+	)
 }
 
 // Scrubbing never cuts content: an output longer than the former 4096-byte budget is returned whole.
 func TestScrubbingService_ScrubText_DoesNotTruncate(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), DefaultConfig(), logger, nil)
+	service := newTestService(t, DefaultConfig())
 
 	input := strings.Repeat("plain output line\n", 1000) + "tail"
-	result := service.ScrubText(input)
+	result := service.ScrubText(context.Background(), input)
 	assert.Equal(t, input, result)
 	assert.NotContains(t, result, "TRUNCATED")
 }
 
-func TestScrubbingService_ScrubText_Email(t *testing.T) {
+func TestScrubbingService_ScrubText_Tokenizes(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	service := newTestService(t, lenientConfig())
 
 	tests := []struct {
-		input    string
-		expected string
+		name    string
+		input   string
+		secrets []string
 	}{
-		{"Contact admin@example.com", "Contact [EMAIL]"},
-		{"Email: user.name+tag@domain.org", "Email: [EMAIL]"},
-		{"Multiple: a@b.com and c@d.net", "Multiple: [EMAIL] and [EMAIL]"},
-	}
-
-	for _, tt := range tests {
-		result := service.ScrubText(tt.input)
-		assert.Equal(t, tt.expected, result, "Input: %s", tt.input)
-	}
-}
-
-func TestScrubbingService_ScrubText_UUID_Preserved(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	// UUIDs are preserved (not scrubbed) - the AI needs them for log/resource correlation
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"ID: 550e8400-e29b-41d4-a716-446655440000", "ID: 550e8400-e29b-41d4-a716-446655440000"},
-		{"User 123e4567-e89b-12d3-a456-426614174000 created", "User 123e4567-e89b-12d3-a456-426614174000 created"},
-	}
-
-	for _, tt := range tests {
-		result := service.ScrubText(tt.input)
-		assert.Equal(t, tt.expected, result, "Input: %s", tt.input)
-	}
-}
-
-func TestScrubbingService_ScrubText_FilePaths_Preserved(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	// File paths are preserved (not scrubbed) - the AI needs them for troubleshooting
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"File at /home/user/secret.txt", "File at /home/user/secret.txt"},
-		{"Reading /etc/passwd", "Reading /etc/passwd"},
-		{"Log: /var/log/app/debug.log", "Log: /var/log/app/debug.log"},
-	}
-
-	for _, tt := range tests {
-		result := service.ScrubText(tt.input)
-		assert.Equal(t, tt.expected, result, "Input: %s", tt.input)
-	}
-}
-
-func TestScrubbingService_ScrubText_Credentials(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	tests := []struct {
-		input       string
-		shouldMatch string
-	}{
-		{"password=secretvalue123", "[CREDENTIAL_REFERENCE]"},
-		{"api_key: xoxb-123456789012-1234567890123-abcdef", "[CREDENTIAL_REFERENCE]"},
-		{"token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "[CREDENTIAL_REFERENCE]"},
-	}
-
-	for _, tt := range tests {
-		result := service.ScrubText(tt.input)
-		assert.Contains(t, result, tt.shouldMatch, "Input: %s", tt.input)
-		assert.NotContains(t, result, "secretvalue", "Should not contain secret")
-	}
-}
-
-func TestScrubbingService_ScrubText_PII(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	tests := []struct {
-		name     string
-		input    string
-		contains string
-	}{
-		{"SSN", "SSN: 123-45-6789", "[PII]"},
-		{"Credit Card", "Card: 4111-1111-1111-1111", "[PII]"},
-		{"Phone", "Call 555-123-4567", "[PHONE]"},
+		{"email", "Contact admin@example.com", []string{"admin@example.com"}},
+		{"plus-addressed email", "Email: user.name+tag@domain.org", []string{"user.name+tag@domain.org"}},
+		{"password", "password=secretvalue123", []string{"secretvalue123"}},
+		{"slack api key", "api_key: xoxb-123456789012-1234567890123-abcdef", []string{"xoxb-"}},
+		{"token", "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", []string{"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"}},
+		{"ssn", "SSN: 123-45-6789", []string{"123-45-6789"}},
+		{"credit card", "Card: 4111-1111-1111-1111", []string{"4111-1111-1111-1111"}},
+		{"phone", "Call 555-123-4567", []string{"555-123-4567"}},
+		{"mysql", "mysql://user:pass@host:3306/db", []string{"user:pass"}},
+		{"postgres", "postgres://admin:secret@localhost/mydb", []string{"admin:secret"}},
+		{"redis", "redis://default:password@redis.io:6379", []string{"default:password"}},
+		{"url credentials", "fetch https://bob:hunter2@example.com/repo", []string{"bob:hunter2"}},
+		{"aws access key", "Key: AKIAIOSFODNN7EXAMPLE", []string{"AKIAIOSFODNN7EXAMPLE"}},
+		{"aws session key", "ASIA1234567890ABCDEF", []string{"ASIA1234567890ABCDEF"}},
+		{"aws env key", "export AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF", []string{"AKIA1234567890ABCDEF"}},
+		{"gcp api key", "gcp_key=AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe", []string{"AIzaSy"}},
+		{"azure secret", `azure_client_secret="abc123def456ghi789jkl012mno345pqr678"`, []string{"abc123def456ghi789jkl012mno345pqr678"}},
+		{"github token", "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1234", []string{"ghp_"}},
+		{"slack bot token", "xoxb-123456789012-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx", []string{"xoxb-"}},
+		{"slack app token", "xapp-1-A1B2C3D4E5F-1234567890123-abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab", []string{"xapp-"}},
+		{"okta token", "00abcDefGhIjKlMnOpQrStUvWxYz0123456789ABCD", []string{"00abcDef"}},
+		{"azure ad secret", "abc8Q~defghijklmnopqrstuvwxyz1234567890AB", []string{"abc8Q~"}},
+		{"sendgrid key", "SG.xxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", []string{"SG.xxx"}},
+		{"twilio sid", "Account SID: AC12345678901234567890123456789012", []string{"AC1234567890"}},
+		{"npm token", "Using npm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx for auth", []string{"npm_"}},
+		{"german iban", "Bank account: DE89370400440532013000", []string{"DE89370400440532013000"}},
+		{"uk iban", "Bank account: GB82WEST12345698765432", []string{"GB82WEST12345698765432"}},
+		{"french iban", "Bank account: FR7630006000011234567890189", []string{"FR7630006000011234567890189"}},
+		{"bearer header", "Authorization: Bearer abc123def456", []string{"abc123def456"}},
+		{"bearer lowercase", "bearer some_random_token_value", []string{"some_random_token_value"}},
+		{"bearer uppercase", "BEARER MySecretTokenHere", []string{"MySecretTokenHere"}},
+		{"oauth secret", "client_secret=abcdefghijklmnopqrstuvwx", []string{"abcdefghijklmnopqrstuvwx"}},
+		{"oauth secret colon", "oauth_secret: 12345678901234567890abcd", []string{"12345678901234567890abcd"}},
+		{"oauth secret quoted", "clientSecret='mysupersecretclientkey'", []string{"mysupersecretclientkey"}},
+		{
+			"jwt",
+			"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+			[]string{"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"},
+		},
+		{
+			"private key",
+			"-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy...\n-----END RSA PRIVATE KEY-----",
+			[]string{"MIIEpAIBAAKCAQEA"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := service.ScrubText(tt.input)
-			assert.Contains(t, result, tt.contains)
+			assertTokenized(t, service, tt.input, tt.secrets...)
 		})
 	}
 }
 
-func TestScrubbingService_ScrubText_AWSResources_Preserved(t *testing.T) {
+// The key of a key-value pair stays visible; only the value becomes a token.
+func TestScrubbingService_ScrubText_KeepsKeysVisible(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	service := newTestService(t, lenientConfig())
 
-	// AWS ARNs and account IDs are preserved (not scrubbed) - the AI needs them for cloud troubleshooting
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"arn:aws:s3:::my-bucket/path", "arn:aws:s3:::my-bucket/path"},
-		{"arn:aws:iam::123456789012:role/MyRole", "arn:aws:iam::123456789012:role/MyRole"},
-		{"Account 123456789012 created", "Account 123456789012 created"},
+	assert.Regexp(t, `^password=\{\{UEI_\d+\}\}$`, assertTokenized(t, service, "password=secretvalue123", "secretvalue123"))
+	assert.Regexp(t, `^Contact \{\{UEI_\d+\}\}$`, assertTokenized(t, service, "Contact admin@example.com", "admin@example.com"))
+	assert.Regexp(t, `^fetch https://\{\{UEI_\d+\}\}@example\.com/repo$`, assertTokenized(t, service, "fetch https://bob:hunter2@example.com/repo", "hunter2"))
+}
+
+// Overlapping scrubbers never wrap one token inside another, so rehydration is exact.
+func TestScrubbingService_ScrubText_OverlappingScrubbersRoundTrip(t *testing.T) {
+	t.Parallel()
+	service := newTestService(t, DefaultConfig())
+
+	inputs := []string{
+		"Authorization: Bearer abc123def456",
+		"password=AKIAIOSFODNN7EXAMPLE",
+		"api_key: xoxb-123456789012-1234567890123-abcdef",
+		`secret="user@example.com"`,
 	}
-
-	for _, tt := range tests {
-		result := service.ScrubText(tt.input)
-		assert.Equal(t, tt.expected, result, "Input: %s", tt.input)
+	for _, input := range inputs {
+		result := assertTokenized(t, service, input)
+		assert.NotRegexp(t, `\{\{UEI_[^}]*\{\{`, result, "nested token for input: %s", input)
 	}
 }
 
-func TestScrubbingService_ScrubText_ConnectionStrings(t *testing.T) {
+// Scrubbing scrubbed text changes nothing.
+func TestScrubbingService_ScrubText_Idempotent(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	service := newTestService(t, DefaultConfig())
+	ctx := context.Background()
 
-	tests := []struct {
-		input    string
-		contains string
-	}{
-		{"mysql://user:pass@host:3306/db", "[CONN_STRING]"},
-		{"postgres://admin:secret@localhost/mydb", "[CONN_STRING]"},
-		{"mongodb://cluster.example.com:27017", "[CONN_STRING]"},
-		{"redis://default:password@redis.io:6379", "[CONN_STRING]"},
+	inputs := []string{
+		"Authorization: Bearer abc123def456",
+		"password=secretvalue123 user=svc-deploy",
+		`{"password":"hunter2","user":"svc-deploy"}`,
+		"salary_info: 75000",
+		"Contact admin@example.com",
 	}
-
-	for _, tt := range tests {
-		result := service.ScrubText(tt.input)
-		assert.Contains(t, result, tt.contains, "Input: %s", tt.input)
-		assert.NotContains(t, result, "password", "Should not contain password")
+	for _, input := range inputs {
+		once := service.ScrubText(ctx, input)
+		assert.Equal(t, once, service.ScrubText(ctx, once), "input: %s", input)
 	}
-}
-
-func TestScrubbingService_ScrubText_PrivateKeys(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	input := `-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy...
------END RSA PRIVATE KEY-----`
-
-	result := service.ScrubText(input)
-	assert.Equal(t, "[PRIVATE_KEY]", result)
-	assert.NotContains(t, result, "MIIEpAIBAAKCAQEA")
 }
 
 func TestScrubbingService_ScrubText_Disabled(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	result := service.ScrubText("Sensitive data: 192.168.1.1")
-	assert.Equal(t, "[OUTPUT_SUPPRESSED]", result)
+	service := newTestService(t, &Config{Enabled: false})
+	assert.Equal(t, suppressedOutput, service.ScrubText(context.Background(), "Sensitive data: 192.168.1.1"))
 }
 
-func TestScrubbingService_DetermineStatus(t *testing.T) {
+// A value whose token cannot be persisted never passes through in plaintext.
+func TestScrubbingService_ScrubText_PersistFailureFailsClosed(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	tests := []struct {
-		exitCode int
-		expected constants.CommandExitStatus
-	}{
-		{0, constants.CommandExitStatusSuccess},
-		{1, constants.CommandExitStatusFailure},
-		{2, constants.CommandExitStatusMisuse},
-		{126, constants.CommandExitStatusNotExecutable},
-		{127, constants.CommandExitStatusNotFound},
-		{130, constants.CommandExitStatusInterrupted},
-		{137, constants.CommandExitStatusKilled},
-		{143, constants.CommandExitStatusTerminated},
-		{139, constants.CommandExitStatus("signal_11")}, // SIGSEGV
-	}
-
-	for _, tt := range tests {
-		result := service.determineStatus(tt.exitCode)
-		assert.Equal(t, tt.expected, result, "Exit code: %d", tt.exitCode)
-	}
-}
-
-func TestScrubbingService_CategorizeError(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	tests := []struct {
-		stderr   string
-		exitCode int
-		expected string
-	}{
-		{"", 0, ""},
-		{"Permission denied", 1, "permission_denied"},
-		{"No such file or directory", 1, "not_found"},
-		{"Connection refused", 1, "connection_refused"},
-		{"Connection timed out", 1, "timeout"},
-		{"Out of memory", 1, "out_of_memory"},
-		{"No space left on device", 1, "disk_full"},
-		{"Authentication failed", 1, "authentication_failed"},
-		{"Syntax error near", 1, "syntax_error"},
-		{"Invalid argument", 1, "invalid_input"},
-		{"File already exists", 1, "already_exists"},
-		{"Resource busy", 1, "resource_busy"},
-		{"Quota exceeded", 1, "quota_exceeded"},
-		{"Unknown error occurred", 1, "unknown_error"},
-	}
-
-	for _, tt := range tests {
-		result := service.categorizeError(tt.stderr, tt.exitCode)
-		assert.Equal(t, tt.expected, result, "Stderr: %s", tt.stderr)
-	}
-}
-
-func TestScrubbingService_ScrubCommandResult(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	t.Run("successful command", func(t *testing.T) {
-		t.Parallel()
-		result := &CommandResult{
-			Command:    "SELECT * FROM users",
-			ExitCode:   0,
-			Stdout:     "id,name,email\n1,John,john@example.com\n2,Jane,jane@test.org",
-			Stderr:     "",
-			DurationMs: 150,
-		}
-
-		scrubbed := service.ScrubCommandResult(result)
-
-		assert.Equal(t, constants.CommandExitStatusSuccess, scrubbed.Status)
-		assert.Equal(t, 0, scrubbed.ExitCode)
-		assert.Equal(t, int64(150), scrubbed.DurationMs)
-		assert.Positive(t, scrubbed.OutputLines)
-		assert.NotNil(t, scrubbed.RowCount)
-		assert.Empty(t, scrubbed.ErrorType)
-		assert.NotContains(t, scrubbed.Summary, "john@example.com")
-	})
-
-	t.Run("failed command", func(t *testing.T) {
-		t.Parallel()
-		result := &CommandResult{
-			Command:    "cat /etc/shadow",
-			ExitCode:   1,
-			Stdout:     "",
-			Stderr:     "Permission denied",
-			DurationMs: 5,
-		}
-
-		scrubbed := service.ScrubCommandResult(result)
-
-		assert.Equal(t, constants.CommandExitStatusFailure, scrubbed.Status)
-		assert.Equal(t, 1, scrubbed.ExitCode)
-		assert.Equal(t, "permission_denied", scrubbed.ErrorType)
-	})
-
-	t.Run("command with warnings", func(t *testing.T) {
-		t.Parallel()
-		result := &CommandResult{
-			Command:    "npm install",
-			ExitCode:   0,
-			Stdout:     "installed 100 packages",
-			Stderr:     "npm WARN deprecated package@1.0.0\nnpm WARN insecure connection",
-			DurationMs: 5000,
-		}
-
-		scrubbed := service.ScrubCommandResult(result)
-
-		assert.Equal(t, constants.CommandExitStatusSuccess, scrubbed.Status)
-		assert.NotEmpty(t, scrubbed.Warnings)
-		assert.Contains(t, scrubbed.Warnings, "deprecation_warning")
-		assert.Contains(t, scrubbed.Warnings, "security_warning")
-	})
-}
-
-func TestScrubbingService_ExtractStructureHints(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	t.Run("JSON object", func(t *testing.T) {
-		t.Parallel()
-		hints := service.extractStructureHints(`{"key": "value"}`)
-		assert.Contains(t, hints, "format: json_object")
-	})
-
-	t.Run("JSON array", func(t *testing.T) {
-		t.Parallel()
-		hints := service.extractStructureHints(`[1, 2, 3]`)
-		assert.Contains(t, hints, "format: json_array")
-	})
-
-	t.Run("tabular data with pipes", func(t *testing.T) {
-		t.Parallel()
-		hints := service.extractStructureHints("id | name | email\n1 | John | j@x.com")
-		found := false
-		for _, h := range hints {
-			if strings.HasPrefix(h, "columns:") {
-				found = true
-			}
-		}
-		assert.True(t, found, "Should detect columns")
-	})
-
-	t.Run("size categories", func(t *testing.T) {
-		t.Parallel()
-		tests := []struct {
-			size     int
-			expected string
-		}{
-			{50, "size: minimal"},
-			{500, "size: small"},
-			{5000, "size: medium"},
-			{50000, "size: large"},
-			{500000, "size: very_large"},
-		}
-
-		for _, tt := range tests {
-			data := strings.Repeat("x", tt.size)
-			hints := service.extractStructureHints(data)
-			assert.Contains(t, hints, tt.expected)
-		}
-	})
-}
-
-func TestScrubbingService_ExtractSafeMetrics(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	t.Run("row counts", func(t *testing.T) {
-		t.Parallel()
-		metrics := service.ExtractSafeMetrics("Query returned 42 rows")
-		assert.Equal(t, 42, metrics["row_count"])
-	})
-
-	t.Run("multiple metrics", func(t *testing.T) {
-		t.Parallel()
-		output := "Processed 100 files, 5 errors, 10 warnings"
-		metrics := service.ExtractSafeMetrics(output)
-		assert.Equal(t, 100, metrics["file_count"])
-		assert.Equal(t, 5, metrics["error_count"])
-		assert.Equal(t, 10, metrics["warning_count"])
-	})
-}
-
-func TestScrubbingService_ValidateNoLeakage(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	t.Run("clean text passes", func(t *testing.T) {
-		t.Parallel()
-		ok, violations := service.ValidateNoLeakage("Status: success, 10 rows processed")
-		assert.True(t, ok)
-		assert.Empty(t, violations)
-	})
-
-	t.Run("IP address is allowed (preserved for troubleshooting)", func(t *testing.T) {
-		t.Parallel()
-		ok, violations := service.ValidateNoLeakage("Server at 192.168.1.1")
-		assert.True(t, ok)
-		assert.Empty(t, violations)
-	})
-
-	t.Run("email detected", func(t *testing.T) {
-		t.Parallel()
-		ok, violations := service.ValidateNoLeakage("Contact: user@example.com")
-		assert.False(t, ok)
-		assert.Contains(t, violations, "email")
-	})
-
-	t.Run("email placeholder is allowed", func(t *testing.T) {
-		t.Parallel()
-		ok, violations := service.ValidateNoLeakage("Contact: [EMAIL]")
-		assert.True(t, ok)
-		assert.Empty(t, violations)
-	})
-
-	t.Run("UUID is allowed (preserved for troubleshooting)", func(t *testing.T) {
-		t.Parallel()
-		ok, violations := service.ValidateNoLeakage("Resource 550e8400-e29b-41d4-a716-446655440000")
-		assert.True(t, ok)
-		assert.Empty(t, violations)
-	})
-
-	t.Run("private key detected", func(t *testing.T) {
-		t.Parallel()
-		ok, violations := service.ValidateNoLeakage("-----BEGIN RSA PRIVATE KEY-----")
-		assert.False(t, ok)
-		assert.Contains(t, violations, "private_key")
-	})
-}
-
-// TestScrubbingService_ScrubMap exercises the arbitrary JSON ScrubMap boundary.
-func TestScrubbingService_ScrubMap(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-
-	t.Run("preserves IPs and scrubs emails in non-strict mode", func(t *testing.T) {
-		t.Parallel()
-		config := &Config{Enabled: true, StrictMode: false}
-		service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-		data := map[string]json.RawMessage{
-			"ip":    json.RawMessage(`"192.168.1.1"`),
-			"email": json.RawMessage(`"user@test.com"`),
-			"count": json.RawMessage(`42`),
-		}
-
-		scrubbed := service.ScrubMap(data)
-		assert.JSONEq(t, `"192.168.1.1"`, string(scrubbed["ip"]))
-		assert.JSONEq(t, `"[EMAIL]"`, string(scrubbed["email"]))
-		assert.JSONEq(t, `42`, string(scrubbed["count"]))
-	})
-
-	t.Run("preserves IPs in nested maps in non-strict mode", func(t *testing.T) {
-		t.Parallel()
-		config := &Config{Enabled: true, StrictMode: false}
-		service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-		data := map[string]json.RawMessage{
-			"server": json.RawMessage(`{"host":"192.168.1.1","port":5432}`),
-		}
-
-		scrubbed := service.ScrubMap(data)
-		var nested map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(scrubbed["server"], &nested))
-		assert.JSONEq(t, `"192.168.1.1"`, string(nested["host"]))
-		assert.JSONEq(t, `5432`, string(nested["port"]))
-	})
-
-	t.Run("scrubs sensitive keys in strict mode", func(t *testing.T) {
-		t.Parallel()
-		service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-		data := map[string]json.RawMessage{
-			"password": json.RawMessage(`"secret123"`),
-			"balance":  json.RawMessage(`1000`),
-		}
-
-		scrubbed := service.ScrubMap(data)
-		assert.JSONEq(t, `"[VALUE]"`, string(scrubbed["balance"]))
-	})
-
-	t.Run("replaces invalid JSON values without exposing them", func(t *testing.T) {
-		t.Parallel()
-		service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-		scrubbed := service.ScrubMap(map[string]json.RawMessage{
-			"payload": json.RawMessage("not-json"),
-		})
-		assert.JSONEq(t, `"[UNKNOWN_TYPE]"`, string(scrubbed["payload"]))
-	})
-}
-
-func TestScrubbingService_ScrubText_CloudCredentials(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	t.Run("AWS Access Key ID", func(t *testing.T) {
-		t.Parallel()
-		tests := []struct {
-			input    string
-			contains string
-		}{
-			{"Key: AKIAIOSFODNN7EXAMPLE", "[AWS_KEY]"},
-			{"ASIA1234567890ABCDEF", "[AWS_KEY]"},
-			{"export AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF", "[AWS_KEY]"},
-		}
-		for _, tt := range tests {
-			result := service.ScrubText(tt.input)
-			assert.Contains(t, result, tt.contains, "Input: %s", tt.input)
-		}
-	})
-
-	t.Run("GCP API Key", func(t *testing.T) {
-		t.Parallel()
-		input := "gcp_key=AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe"
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "[GCP_API_KEY]")
-		assert.NotContains(t, result, "AIzaSy")
-	})
-
-	t.Run("Azure Secret in config", func(t *testing.T) {
-		t.Parallel()
-		input := `azure_client_secret="abc123def456ghi789jkl012mno345pqr678"`
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "[AZURE_SECRET]")
-	})
-}
-
-func TestScrubbingService_ScrubText_JWT(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	input := "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-	result := service.ScrubText(input)
-	assert.Contains(t, result, "[JWT]")
-	assert.NotContains(t, result, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
-}
-
-func TestScrubbingService_TokenPersistence(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	tokenStore := storagetest.NewTestTokenStore()
-
-	config := &Config{
-		StrictMode:         false,
-		RequirePersistence: true,
-	}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, tokenStore)
-
-	sensitiveValue := "my-secret-api-key-12345"
-	token := service.GetTokenForValue(context.Background(), sensitiveValue)
-	assert.NotEmpty(t, token)
-	assert.Contains(t, token, "{{UEI_")
-
-	// Verify token is in memory
-	rehydrated := service.RehydrateText(context.Background(), token)
-	assert.Equal(t, sensitiveValue, rehydrated)
-
-	// Verify token is persisted in the store
-	key := fmt.Sprintf("%s%s", constants.ScrubbingTokenKeyPrefix, token)
-	storedValue, err := tokenStore.KVGet(context.Background(), key)
-	require.NoError(t, err)
-	assert.Equal(t, sensitiveValue, storedValue)
-
-	// A fresh ScrubbingService backed by the same store must rehydrate from persistence.
-	service2 := mustNewScrubbingService(t, context.Background(), config, logger, tokenStore)
-	rehydrated2 := service2.RehydrateText(context.Background(), token)
-	assert.Equal(t, sensitiveValue, rehydrated2, "Should rehydrate from persisted storage")
-}
-
-func TestScrubbingService_TokenPersistence_FailClosed(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-
-	// Create ScrubbingService with persistence required but no TokenStore
-	config := &Config{
-		StrictMode:         false,
-		RequirePersistence: true,
-	}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	// Should fail closed - return empty token
-	sensitiveValue := "my-secret-api-key-12345"
-	token := service.GetTokenForValue(context.Background(), sensitiveValue)
-	assert.Empty(t, token, "Should return empty token when persistence required but unavailable")
-}
-
-func TestScrubbingService_TokenPersistence_TTL(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	tokenStore := storagetest.NewTestTokenStore()
-
-	config := &Config{
-		StrictMode:         false,
-		RequirePersistence: true,
-	}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, tokenStore)
-
-	sensitiveValue := "my-secret-api-key-12345"
-	token := service.GetTokenForValue(context.Background(), sensitiveValue)
-	assert.NotEmpty(t, token)
-
-	// Write an additional key that is already expired (ttlSeconds = -1) to verify expiry behaviour.
-	key := fmt.Sprintf("sentinel_token_%s", token)
-	err := tokenStore.KVSet(context.Background(), key, sensitiveValue, -1)
+	store := failingTokenStore{storagetest.NewTestTokenStore()}
+	service, err := NewScrubbingService(context.Background(), lenientConfig(), testutil.NewTestLogger(), store)
 	require.NoError(t, err)
 
-	_, err = tokenStore.KVGet(context.Background(), key)
-	require.Error(t, err, "Token should expire after TTL")
-}
-
-func TestScrubbingService_ScrubText_ServiceTokens(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	t.Run("GitHub Token", func(t *testing.T) {
-		t.Parallel()
-		tests := []string{
-			"ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1234",
-			"gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx5678",
-			"ghu_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx9012",
-		}
-		for _, input := range tests {
-			result := service.ScrubText(input)
-			assert.Contains(t, result, "[GITHUB_TOKEN]", "Input: %s", input)
-		}
-	})
-
-	t.Run("Slack Token", func(t *testing.T) {
-		t.Parallel()
-		tests := []string{
-			"xoxb-123456789012-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx",
-			"xoxp-123456789012-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx",
-			"xapp-1-A1B2C3D4E5F-1234567890123-abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
-		}
-		for _, input := range tests {
-			result := service.ScrubText(input)
-			assert.Contains(t, result, "[SLACK_TOKEN]", "Input: %s", input)
-		}
-	})
-
-	t.Run("Okta API Token", func(t *testing.T) {
-		t.Parallel()
-		tests := []string{
-			"00abcDefGhIjKlMnOpQrStUvWxYz0123456789ABCD",
-			"00ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abc",
-		}
-		for _, input := range tests {
-			result := service.ScrubText(input)
-			assert.Contains(t, result, "[OKTA_TOKEN]", "Input: %s", input)
-		}
-	})
-
-	t.Run("Azure AD Client Secret", func(t *testing.T) {
-		t.Parallel()
-		tests := []string{
-			"abc8Q~defghijklmnopqrstuvwxyz1234567890AB",
-			"Xyz12~ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-		}
-		for _, input := range tests {
-			result := service.ScrubText(input)
-			assert.Contains(t, result, "[AZURE_SECRET]", "Input: %s", input)
-		}
-	})
-
-	t.Run("SendGrid Key", func(t *testing.T) {
-		t.Parallel()
-		input := "SG.xxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "[SENDGRID_KEY]")
-	})
-
-	t.Run("Twilio SID", func(t *testing.T) {
-		t.Parallel()
-		input := "Account SID: AC12345678901234567890123456789012"
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "[TWILIO_SID]")
-	})
-
-	t.Run("NPM Token", func(t *testing.T) {
-		t.Parallel()
-		input := "Using npm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx for auth"
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "[NPM_TOKEN]")
-	})
-}
-
-func TestScrubbingService_ScrubText_IBAN(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"German IBAN", "DE89370400440532013000"},
-		{"UK IBAN", "GB82WEST12345698765432"},
-		{"French IBAN", "FR7630006000011234567890189"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result := service.ScrubText("Bank account: " + tt.input)
-			assert.Contains(t, result, "[IBAN]")
-			assert.NotContains(t, result, tt.input)
-		})
-	}
-}
-
-func TestScrubbingService_ScrubText_BearerToken(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	tests := []string{
-		"Authorization: Bearer abc123def456",
-		"bearer some_random_token_value",
-		"BEARER MySecretTokenHere",
-	}
-
-	for _, input := range tests {
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "[BEARER_TOKEN]", "Input: %s", input)
-	}
-}
-
-func TestScrubbingService_ScrubText_OAuthSecret(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	tests := []string{
-		"client_secret=abcdefghijklmnopqrstuvwx",
-		"oauth_secret: 12345678901234567890abcd",
-		"clientSecret='mysupersecretclientkey'",
-	}
-
-	for _, input := range tests {
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "[OAUTH_SECRET]", "Input: %s", input)
-	}
-}
-
-func TestScrubbingService_IsEnabled(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-
-	t.Run("enabled config", func(t *testing.T) {
-		t.Parallel()
-		config := &Config{Enabled: true}
-		service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-		assert.True(t, service.IsEnabled())
-	})
-
-	t.Run("disabled config", func(t *testing.T) {
-		t.Parallel()
-		config := &Config{Enabled: false}
-		service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-		assert.False(t, service.IsEnabled())
-	})
+	result := service.ScrubText(context.Background(), "password=secretvalue123")
+	assert.Equal(t, "password="+untokenizedValue, result)
 }
 
 func TestScrubbingService_CustomScrubPatterns(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{
-		Enabled:    true,
-		StrictMode: false,
-		CustomScrubPatterns: map[string]string{
-			"internal_id": `INT-\d{6}`,
-		},
-	}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	config := lenientConfig()
+	config.CustomScrubPatterns = map[string]string{"internal_id": `INT-\d{6}`}
+	service := newTestService(t, config)
 
-	result := service.ScrubText("Processing INT-123456")
-	assert.Equal(t, "Processing [INTERNAL_ID]", result)
+	result := assertTokenized(t, service, "Processing INT-123456", "INT-123456")
+	assert.Regexp(t, `^Processing \{\{UEI_\d+\}\}$`, result)
 }
 
 func TestScrubbingService_StrictModeDataRows(t *testing.T) {
 	t.Parallel()
+	service := newTestService(t, DefaultConfig())
+
+	t.Run("tabular data keeps structure and tokenizes emails", func(t *testing.T) {
+		t.Parallel()
+		result := assertTokenized(t, service, "id\tname\temail\n1\tJohn\tjohn@test.com\n2\tJane\tjane@test.com", "john@test.com", "jane@test.com")
+		assert.True(t, strings.HasPrefix(result, "id\tname\temail\n1\tJohn\t"))
+	})
+
+	t.Run("sensitive keys stay visible with tokenized values", func(t *testing.T) {
+		t.Parallel()
+		result := assertTokenized(t, service, "salary_info: 75000\nincome_data: 4430", "75000", "4430")
+		assert.Regexp(t, `(?m)^salary_info: \{\{UEI_\d+\}\}$`, result)
+		assert.Regexp(t, `(?m)^income_data: \{\{UEI_\d+\}\}$`, result)
+	})
+
+	t.Run("json sensitive key keeps key and quotes", func(t *testing.T) {
+		t.Parallel()
+		result := assertTokenized(t, service, `{"password":"hunter2","user":"svc-deploy"}`, "hunter2")
+		assert.Regexp(t, `^\{"password":"\{\{UEI_\d+\}\}","user":"svc-deploy"\}$`, result)
+	})
+
+	t.Run("json email value tokenized, other fields kept", func(t *testing.T) {
+		t.Parallel()
+		result := assertTokenized(t, service, `{"user": "admin", "email": "admin@test.com"}`, "admin@test.com")
+		assert.Contains(t, result, `"user": "admin"`)
+		assert.Contains(t, result, `"email": "{{UEI_`)
+	})
+
+	t.Run("comment lines are left as written", func(t *testing.T) {
+		t.Parallel()
+		assertPreserved(t, service, "# account balance report")
+	})
+}
+
+func TestScrubbingService_TokenPersistence(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
 	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: true}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	tokenStore := storagetest.NewTestTokenStore()
+	service, err := NewScrubbingService(ctx, lenientConfig(), logger, tokenStore)
+	require.NoError(t, err)
 
-	t.Run("tabular data preserves structure but scrubs sensitive values", func(t *testing.T) {
-		t.Parallel()
-		input := "id\tname\temail\n1\tJohn\tjohn@test.com\n2\tJane\tjane@test.com"
-		result := service.ScrubText(input)
-		// Structure preserved, but emails scrubbed
-		assert.Contains(t, result, "[EMAIL]")
-		assert.NotContains(t, result, "john@test.com")
-		assert.NotContains(t, result, "jane@test.com")
-		// Non-sensitive data preserved
-		assert.Contains(t, result, "id")
-		assert.Contains(t, result, "name")
-	})
+	sensitiveValue := "my-secret-api-key-12345"
+	token, err := service.GetTokenForValue(ctx, sensitiveValue)
+	require.NoError(t, err)
+	assert.Regexp(t, `^\{\{UEI_\d+\}\}$`, token)
+	assert.Equal(t, sensitiveValue, service.RehydrateText(ctx, token))
 
-	t.Run("sensitive key-value pairs scrubbed", func(t *testing.T) {
-		t.Parallel()
-		input := "salary_info: 75000\nincome_data: 4430"
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "salary_info: [VALUE]")
-		assert.Contains(t, result, "income_data: [VALUE]")
-	})
+	storedValue, err := tokenStore.KVGet(ctx, constants.ScrubbingTokenKeyPrefix+token)
+	require.NoError(t, err)
+	assert.Equal(t, sensitiveValue, storedValue)
 
-	t.Run("non-sensitive key-value pairs preserved", func(t *testing.T) {
-		t.Parallel()
-		input := "Version: 24.0.7\nClient: Container Engine"
-		result := service.ScrubText(input)
-		assert.Contains(t, result, "Version: 24.0.7")
-		assert.Contains(t, result, "Client: Container Engine")
-	})
+	// A fresh service backed by the same store rehydrates from persistence and
+	// continues the token sequence instead of reusing a persisted token.
+	service2, err := NewScrubbingService(ctx, lenientConfig(), logger, tokenStore)
+	require.NoError(t, err)
+	assert.Equal(t, sensitiveValue, service2.RehydrateText(ctx, token))
+	token2, err := service2.GetTokenForValue(ctx, "another-secret")
+	require.NoError(t, err)
+	assert.NotEqual(t, token, token2)
+}
 
-	t.Run("JSON data preserves structure but scrubs sensitive values", func(t *testing.T) {
-		t.Parallel()
-		input := `{"user": "admin", "email": "admin@test.com"}`
-		result := service.ScrubText(input)
-		// Structure preserved, sensitive values scrubbed
-		assert.Contains(t, result, "[EMAIL]")
-		assert.NotContains(t, result, "admin@test.com")
-	})
+// Tokens minted by another service on the same store are loaded on demand.
+func TestScrubbingService_RehydrateText_LoadsFromStore(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	logger := testutil.NewTestLogger()
+	tokenStore := storagetest.NewTestTokenStore()
+
+	reader, err := NewScrubbingService(ctx, lenientConfig(), logger, tokenStore)
+	require.NoError(t, err)
+	writer, err := NewScrubbingService(ctx, lenientConfig(), logger, tokenStore)
+	require.NoError(t, err)
+
+	scrubbed := writer.ScrubText(ctx, "password=late-secret")
+	assert.Equal(t, "password=late-secret", reader.RehydrateText(ctx, scrubbed))
+}
+
+func TestScrubbingService_IsEnabled(t *testing.T) {
+	t.Parallel()
+	assert.True(t, newTestService(t, &Config{Enabled: true}).IsEnabled())
+	assert.False(t, newTestService(t, &Config{Enabled: false}).IsEnabled())
+
+	var nilService *ScrubbingService
+	assert.False(t, nilService.IsEnabled())
 }
 
 func TestScrubbingService_RehydrateText(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	ctx := context.Background()
+	service := newTestService(t, lenientConfig())
 
 	t.Run("empty input returns empty", func(t *testing.T) {
 		t.Parallel()
-		result := service.RehydrateText(context.Background(), "")
-		assert.Empty(t, result)
+		assert.Empty(t, service.RehydrateText(ctx, ""))
 	})
 
 	t.Run("no tokens returns original", func(t *testing.T) {
 		t.Parallel()
-		input := "This is normal text"
-		result := service.RehydrateText(context.Background(), input)
-		assert.Equal(t, input, result)
+		assert.Equal(t, "This is normal text", service.RehydrateText(ctx, "This is normal text"))
+	})
+
+	t.Run("unknown token is left in place", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, "run {{UEI_999999}}", service.RehydrateText(ctx, "run {{UEI_999999}}"))
 	})
 
 	t.Run("rehydrates known token", func(t *testing.T) {
 		t.Parallel()
-		token := service.GetTokenForValue(context.Background(), "secret-value")
-		result := service.RehydrateText(context.Background(), "Command with "+token)
-		assert.Equal(t, "Command with secret-value", result)
+		token, err := service.GetTokenForValue(ctx, "secret-value")
+		require.NoError(t, err)
+		assert.Equal(t, "Command with secret-value", service.RehydrateText(ctx, "Command with "+token))
+	})
+
+	t.Run("restored values are not rescanned", func(t *testing.T) {
+		t.Parallel()
+		inner, err := service.GetTokenForValue(ctx, "inner-value")
+		require.NoError(t, err)
+		outer, err := service.GetTokenForValue(ctx, "literal "+inner)
+		require.NoError(t, err)
+		assert.Equal(t, "literal "+inner, service.RehydrateText(ctx, outer))
 	})
 }
 
 func TestScrubbingService_RehydratePayload(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	ctx := context.Background()
+	service := newTestService(t, lenientConfig())
 
 	t.Run("empty payload returns empty", func(t *testing.T) {
 		t.Parallel()
-		result, err := service.RehydratePayload(context.Background(), []byte{})
+		result, err := service.RehydratePayload(ctx, []byte{})
 		require.NoError(t, err)
 		assert.Empty(t, result)
 	})
 
 	t.Run("non-JSON payload uses text rehydration", func(t *testing.T) {
 		t.Parallel()
-		token := service.GetTokenForValue(context.Background(), "secret")
-		payload := []byte("Text with " + token)
-		result, err := service.RehydratePayload(context.Background(), payload)
+		token, err := service.GetTokenForValue(ctx, "secret")
+		require.NoError(t, err)
+		result, err := service.RehydratePayload(ctx, []byte("Text with "+token))
 		require.NoError(t, err)
 		assert.Equal(t, "Text with secret", string(result))
 	})
 
 	t.Run("JSON payload rehydrates recursively", func(t *testing.T) {
 		t.Parallel()
-		token := service.GetTokenForValue(context.Background(), "secret")
+		token, err := service.GetTokenForValue(ctx, "secret")
+		require.NoError(t, err)
 		payload := []byte(`{"key": "value ` + token + `", "nested": {"data": "` + token + `"}}`)
-		result, err := service.RehydratePayload(context.Background(), payload)
-		require.NoError(t, err)
-		var parsed map[string]json.RawMessage
-		err = json.Unmarshal(result, &parsed)
+		result, err := service.RehydratePayload(ctx, payload)
 		require.NoError(t, err)
 
-		var key string
-		require.NoError(t, json.Unmarshal(parsed["key"], &key))
-		assert.Equal(t, "value secret", key)
-
-		var nested map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(parsed["nested"], &nested))
-		var data string
-		require.NoError(t, json.Unmarshal(nested["data"], &data))
-		assert.Equal(t, "secret", data)
+		var parsed struct {
+			Key    string `json:"key"`
+			Nested struct {
+				Data string `json:"data"`
+			} `json:"nested"`
+		}
+		require.NoError(t, json.Unmarshal(result, &parsed))
+		assert.Equal(t, "value secret", parsed.Key)
+		assert.Equal(t, "secret", parsed.Nested.Data)
 	})
 
 	t.Run("JSON scalar types remain unchanged", func(t *testing.T) {
 		t.Parallel()
 		payload := []byte(`{"count":42,"enabled":true,"missing":null,"values":[1,false,null]}`)
-		result, err := service.RehydratePayload(context.Background(), payload)
+		result, err := service.RehydratePayload(ctx, payload)
 		require.NoError(t, err)
 		assert.JSONEq(t, string(payload), string(result))
 	})
@@ -1010,46 +460,53 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 
 func TestScrubbingService_GetTokenForValue(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	ctx := context.Background()
+	service := newTestService(t, lenientConfig())
 
 	t.Run("empty value returns empty", func(t *testing.T) {
 		t.Parallel()
-		token := service.GetTokenForValue(context.Background(), "")
+		token, err := service.GetTokenForValue(ctx, "")
+		require.NoError(t, err)
 		assert.Empty(t, token)
 	})
 
 	t.Run("same value returns same token", func(t *testing.T) {
 		t.Parallel()
-		value := "my-secret"
-		token1 := service.GetTokenForValue(context.Background(), value)
-		token2 := service.GetTokenForValue(context.Background(), value)
+		token1, err := service.GetTokenForValue(ctx, "my-secret")
+		require.NoError(t, err)
+		token2, err := service.GetTokenForValue(ctx, "my-secret")
+		require.NoError(t, err)
 		assert.Equal(t, token1, token2)
 	})
 
 	t.Run("different values return different tokens", func(t *testing.T) {
 		t.Parallel()
-		token1 := service.GetTokenForValue(context.Background(), "secret1")
-		token2 := service.GetTokenForValue(context.Background(), "secret2")
+		token1, err := service.GetTokenForValue(ctx, "secret1")
+		require.NoError(t, err)
+		token2, err := service.GetTokenForValue(ctx, "secret2")
+		require.NoError(t, err)
 		assert.NotEqual(t, token1, token2)
+	})
+
+	t.Run("persist failure returns error and rolls back", func(t *testing.T) {
+		t.Parallel()
+		store := failingTokenStore{storagetest.NewTestTokenStore()}
+		failing, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), store)
+		require.NoError(t, err)
+
+		token, err := failing.GetTokenForValue(ctx, "secret")
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenPersist)
+		assert.Empty(t, token)
+		assert.Empty(t, failing.tokenMap)
+		assert.Zero(t, failing.tokenSequence)
 	})
 }
 
-func TestScrubbingService_ClearTokens(t *testing.T) {
+// The scrubbed marker pattern recognises exactly the markers tokenize emits.
+func TestScrubbedMarkerPattern(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	// Add some tokens
-	service.GetTokenForValue(context.Background(), "secret1")
-	service.GetTokenForValue(context.Background(), "secret2")
-	assert.NotEmpty(t, service.tokenMap)
-
-	// Clear tokens
-	service.ClearTokens()
-	assert.Empty(t, service.tokenMap)
-	assert.Empty(t, service.reverseMap)
-	assert.Equal(t, 0, service.tokenSequence)
+	assert.True(t, scrubbedMarkerPattern.MatchString("{{UEI_12}}"))
+	assert.True(t, scrubbedMarkerPattern.MatchString(untokenizedValue))
+	assert.False(t, scrubbedMarkerPattern.MatchString("{{UEI_}}"))
+	assert.False(t, regexp.MustCompile(`^`+scrubbedMarkerPattern.String()+`$`).MatchString("{{UEI_1}}x"))
 }

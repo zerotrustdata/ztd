@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/gateway/embedded"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -85,7 +86,7 @@ func newTestOperatorSessionService(t *testing.T, docStore *DocumentStoreService,
 // newTestScrubber builds an enabled egress scrubber with the default configuration.
 func newTestScrubber(t *testing.T) *scrubbing.ScrubbingService {
 	t.Helper()
-	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), nil)
+	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return scrubber
 }

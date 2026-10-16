@@ -842,6 +842,58 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 		result.FailureReason = grading.Trajectory.FailureReason
 		result.PublicFailureReason = grading.Trajectory.PublicFailureReason
 	}
+	// Governed actions are recorded in execution order: each governed inference,
+	// then the tool calls it returned.
+	for _, call := range trace.ModelCalls {
+		if evidenceErr != nil || call.Receipt == nil {
+			continue
+		}
+		ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
+		if err != nil {
+			return nil, err
+		}
+		decision := agentPolicyDecisionAllow
+		if call.Receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
+			decision = agentPolicyDecisionDeny
+		}
+		result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
+			BindingId:         call.ProviderAttemptID,
+			AssignmentId:      assignmentID,
+			TransactionId:     call.TransactionID,
+			OperatorId:        trace.Inference.OperatorID,
+			OperatorSessionId: trace.Inference.SessionID,
+			ReceiptRef:        ref,
+			PolicyDecision:    decision,
+			ActionType:        call.Receipt.GetActionType(),
+		})
+		for _, tool := range trace.ToolCalls {
+			if tool.ModelCallID != call.ProviderAttemptID {
+				continue
+			}
+			binding, err := agentToolGovernedAction(traceEvidence, trace, assignmentID, tool)
+			if err != nil {
+				return nil, err
+			}
+			if binding != nil {
+				result.GovernedActions = append(result.GovernedActions, binding)
+			}
+		}
+	}
+	modelCallIDs := make(map[string]bool, len(trace.ModelCalls))
+	for _, call := range trace.ModelCalls {
+		modelCallIDs[call.ProviderAttemptID] = true
+	}
+	for _, call := range trace.ToolCalls {
+		if evidenceErr == nil && !modelCallIDs[call.ModelCallID] {
+			binding, err := agentToolGovernedAction(traceEvidence, trace, assignmentID, call)
+			if err != nil {
+				return nil, err
+			}
+			if binding != nil {
+				result.GovernedActions = append(result.GovernedActions, binding)
+			}
+		}
+	}
 	for _, call := range trace.ToolCalls {
 		record := &evalv1.ToolCallRecord{
 			CallId:          call.CallID,
@@ -855,20 +907,11 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 			GuidanceShown:   call.ShowedGuidance(),
 		}
 		if evidenceErr == nil && call.Receipt != nil {
-			ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call)
+			ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
 			if err != nil {
 				return nil, err
 			}
 			record.GovernedBindingRef = ref
-			result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
-				BindingId:         call.CallID,
-				AssignmentId:      assignmentID,
-				TransactionId:     call.TransactionID,
-				OperatorId:        trace.Data.OperatorID,
-				OperatorSessionId: trace.Data.SessionID,
-				ReceiptRef:        ref,
-				PolicyDecision:    call.PolicyDecision,
-			})
 		}
 		result.ToolCalls = append(result.ToolCalls, record)
 		if call.PolicyDecision != "" {

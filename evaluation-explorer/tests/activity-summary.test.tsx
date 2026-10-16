@@ -207,7 +207,7 @@ describe('AssignmentActivitySummary', () => {
   it('renders expandable governed action records', async () => {
     const user = userEvent.setup();
     const actionRecord: PublicGovernedActionActivityRecord = {
-      action_label: 'governed action',
+      action_label: 'FS_READ',
       reported_policy_outcome: 'allow',
       receipt_status: 'reported',
       evidence_source: 'application_reported',
@@ -222,10 +222,10 @@ describe('AssignmentActivitySummary', () => {
     }} />);
 
     // Summary should be visible
-    expect(screen.getByText(/governed action.*Policy: Allow/)).toBeInTheDocument();
+    expect(screen.getByText(/FS_READ.*Policy: Allow/)).toBeInTheDocument();
 
     // Expand and check for fields
-    await user.click(screen.getByText(/governed action.*Policy: Allow/));
+    await user.click(screen.getByText(/FS_READ.*Policy: Allow/));
     expect(screen.getByText('Action label')).toBeInTheDocument();
     expect(screen.getByText('Reported policy outcome')).toBeInTheDocument();
     expect(screen.getByText('Receipt status')).toBeInTheDocument();

@@ -178,8 +178,8 @@ describe('assignmentEvidenceChain', () => {
           { tool_label: 'send_email', outcome: 'deny', evidence_source: 'bound_public_proof' },
         ] },
         governed_actions: { availability: 'observed', records: [
-          { action_label: 'governed action', reported_policy_outcome: 'allow', receipt_status: 'reported', evidence_source: 'bound_public_proof' },
-          { action_label: 'governed action', reported_policy_outcome: 'deny', receipt_status: 'unavailable', evidence_source: 'bound_public_proof' },
+          { action_label: 'INFERENCE', reported_policy_outcome: 'allow', receipt_status: 'reported', evidence_source: 'bound_public_proof' },
+          { action_label: 'FS_READ', reported_policy_outcome: 'deny', receipt_status: 'unavailable', evidence_source: 'bound_public_proof' },
         ] },
       },
     });

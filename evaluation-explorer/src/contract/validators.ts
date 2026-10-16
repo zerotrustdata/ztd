@@ -750,7 +750,8 @@ function assertPublicPolicyDecisionRecord(value: unknown, path: string): void {
 function assertPublicGovernedActionRecord(value: unknown, path: string): void {
   assertObject(value, path);
   rejectUnknown(value, ['action_label', 'reported_policy_outcome', 'receipt_status', 'evidence_source'], path);
-  assert(value.action_label === 'governed action', `${path}.action_label`, 'unexpected governed action label');
+  assertPublicIdentifier(value.action_label, `${path}.action_label`);
+  assert(value.action_label !== '', `${path}.action_label`, 'expected the receipt action type');
   assertEnum(value.reported_policy_outcome, PUBLIC_TOOL_OUTCOMES, `${path}.reported_policy_outcome`);
   assertEnum(value.receipt_status, PUBLIC_RECEIPT_STATUSES, `${path}.receipt_status`);
   assertEnum(value.evidence_source, PUBLIC_ACTIVITY_EVIDENCE_SOURCES, `${path}.evidence_source`);

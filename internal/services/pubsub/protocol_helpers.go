@@ -8,6 +8,7 @@
 package pubsub
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -89,6 +90,7 @@ func mapProtoToPayloadType(msg proto.Message) string {
 // content, or an unclassified type) returns an error wrapping the egress sentinel; nothing is
 // published.
 func BuildUniversalResultEnvelope(
+	ctx context.Context,
 	cfg *config.Config,
 	requestEvent constants.EventType,
 	outcomeEvent constants.EventType,
@@ -103,7 +105,7 @@ func BuildUniversalResultEnvelope(
 	webSessionID string,
 	cliSessionID string,
 ) (*commonv1.GovernanceEnvelope, error) {
-	egressPayload, err := egressScrubbed(payload, scrubber)
+	egressPayload, err := egressScrubbed(ctx, payload, scrubber)
 	if err != nil {
 		return nil, fmt.Errorf("build result envelope: %w", err)
 	}

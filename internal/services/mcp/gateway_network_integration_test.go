@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -548,7 +549,7 @@ func TestGatewayService_DispatchToDownstream(t *testing.T) {
 
 func TestGatewayService_DispatchToDownstream_Scrubbing(t *testing.T) {
 
-	scrubSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), slog.Default(), nil)
+	scrubSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), slog.Default(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 
 	t.Run("SSN in downstream response is scrubbed", func(t *testing.T) {
@@ -564,7 +565,8 @@ func TestGatewayService_DispatchToDownstream_Scrubbing(t *testing.T) {
 		result, err := g.DispatchToDownstream(context.Background(), "test-tool", json.RawMessage(`{}`), "test-session-id")
 		require.NoError(t, err)
 		assert.NotContains(t, result, "123-45-6789")
-		assert.Contains(t, result, "[PII]")
+		assert.Contains(t, result, "{{UEI_")
+		assert.Contains(t, scrubSvc.RehydrateText(context.Background(), result), "123-45-6789")
 	})
 
 	t.Run("clean downstream response passes through", func(t *testing.T) {

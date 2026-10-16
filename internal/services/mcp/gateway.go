@@ -1431,7 +1431,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 		if summary == "" {
 			summary = "completed"
 		}
-		return g.scrubToolResult(summary)
+		return g.scrubToolResult(ctx, summary)
 	}
 
 	if g.isNativeTool(toolName) && g.nativeToolHandler != nil {
@@ -1451,7 +1451,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 			summary = "completed"
 		}
 
-		return g.scrubToolResult(summary)
+		return g.scrubToolResult(ctx, summary)
 	}
 
 	if !g.hasDownstream() {
@@ -1552,7 +1552,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 
 	// Scrub downstream MCP output before it leaves this layer. There is no unscrubbed
 	// path: with no active scrubber the call fails closed and the output is dropped.
-	resultSummary, err = g.scrubToolResult(resultSummary)
+	resultSummary, err = g.scrubToolResult(ctx, resultSummary)
 	if err != nil {
 		return "", err
 	}
@@ -1578,11 +1578,11 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 // read_field, native tools and downstream MCP output. It fails closed with
 // constants.ErrEgressScrubberUnavailable when the scrubber is nil or disabled, so raw
 // output never leaves this layer.
-func (g *GatewayService) scrubToolResult(text string) (string, error) {
+func (g *GatewayService) scrubToolResult(ctx context.Context, text string) (string, error) {
 	if g.scrubbingService == nil || !g.scrubbingService.IsEnabled() {
 		return "", fmt.Errorf("gateway: scrub tool result: %w", constants.ErrEgressScrubberUnavailable)
 	}
-	return g.scrubbingService.ScrubText(text), nil
+	return g.scrubbingService.ScrubText(ctx, text), nil
 }
 
 // DispatchToA2ADownstream forwards a verified A2A call to the downstream A2A server.
