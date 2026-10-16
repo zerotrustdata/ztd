@@ -129,7 +129,7 @@ func (hs *HistoryService) HandleFetchFileHistoryRequest(ctx context.Context, msg
 
 	payload, err := hs.historyHandler.HandleFetchFileHistory(msg.Payload)
 	if err != nil {
-		hs.logger.Error("File history handler failed", slog.String("message_id", msg.ID), logging.ErrorKind(err))
+		hs.logger.Error("File history handler failed", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		return "", errors.Join(err, publishLFAAErrorTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileHistory.Failed,
 			fmt.Sprintf("failed to fetch file history: %v", err), hs.auditStore, hs.scrubbing))
 	}
@@ -230,7 +230,7 @@ func (hs *HistoryService) HandleFetchFileDiffRequest(ctx context.Context, msg *P
 		}
 		entry, err := hs.historyHandler.FetchFileDiff(mutationID)
 		if err != nil {
-			hs.logger.Error("Failed to fetch file diff", slog.String("diff_id", diffID), logging.ErrorKind(err))
+			hs.logger.Error("Failed to fetch file diff", "diff_id", diffID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 			return "", errors.Join(err, publishLFAAErrorTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Failed,
 				fmt.Sprintf("failed to fetch file diff: %v", err), hs.auditStore, hs.scrubbing))
 		}
@@ -244,7 +244,7 @@ func (hs *HistoryService) HandleFetchFileDiffRequest(ctx context.Context, msg *P
 	if operatorSessionID != "" {
 		diffs, err := hs.historyHandler.ListFileDiffs(operatorSessionID, filePath, int(limit))
 		if err != nil {
-			hs.logger.Error("Failed to fetch file diffs by session", slog.String("operator_session_id", operatorSessionID), logging.ErrorKind(err))
+			hs.logger.Error("Failed to fetch file diffs by session", "operator_session_id", operatorSessionID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 			return "", errors.Join(err, publishLFAAErrorTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Failed,
 				fmt.Sprintf("failed to fetch file diffs: %v", err), hs.auditStore, hs.scrubbing))
 		}

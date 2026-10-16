@@ -10,6 +10,7 @@ package eval
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -113,15 +114,19 @@ func TestConformanceDataOperatorSelection_FailsWithoutGuessing(t *testing.T) {
 }
 
 func TestConformanceOperatorRoot_UsesEnrolledRuntimeAndExplicitOverride(t *testing.T) {
+	enrolledRoot, err := filepath.Abs("operator")
+	require.NoError(t, err)
+	mountedRoot, err := filepath.Abs("mounted-operator")
+	require.NoError(t, err)
 	op := conformanceTestOutboundDocument()
-	op.LocalDir = "/srv/operator"
+	op.LocalDir = enrolledRoot
 	op.RuntimeConfig = &operatorv1.OperatorRuntimeConfig{LocalDir: "/different-workspace"}
 	root, err := conformanceOperatorRoot("", op)
 	require.NoError(t, err)
-	assert.Equal(t, "/srv/operator", root)
-	root, err = conformanceOperatorRoot("/mounted/operator", op)
+	assert.Equal(t, enrolledRoot, root)
+	root, err = conformanceOperatorRoot(mountedRoot, op)
 	require.NoError(t, err)
-	assert.Equal(t, "/mounted/operator", root)
+	assert.Equal(t, mountedRoot, root)
 	op.LocalDir, op.RuntimeConfig = "", nil
 	_, err = conformanceOperatorRoot("", op)
 	require.ErrorIs(t, err, constants.ErrEvaluationTargetUnavailable)

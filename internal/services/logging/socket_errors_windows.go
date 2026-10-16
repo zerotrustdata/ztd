@@ -22,4 +22,3 @@ func isPlatformConnectionRefused(err error) bool {
 func isPlatformConnectionReset(err error) bool {
 	return errors.Is(err, windows.WSAECONNRESET) || errors.Is(err, windows.WSAECONNABORTED)
 }
-

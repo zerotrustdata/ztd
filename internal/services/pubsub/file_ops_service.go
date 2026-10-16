@@ -120,12 +120,12 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 
 	editReq, err := payloadToFileEditRequest(msg)
 	if err != nil {
-		fs.logger.Error("Failed to create file edit request", slog.String("message_id", msg.ID), logging.ErrorKind(err))
+		fs.logger.Error("Failed to create file edit request", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		return "", err
 	}
 	target, err := fs.fileEdit.OpenFileEditTarget(ctx, editReq.FilePath)
 	if err != nil {
-		fs.logger.Error("File edit path rejected", slog.String("message_id", msg.ID), logging.ErrorKind(err))
+		fs.logger.Error("File edit path rejected", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		protoResult := &operatorv1.FileEditResult{
 			ExecutionId:  editReq.ExecutionID,
 			Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -135,7 +135,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 			ErrorType:    "validation_error",
 		}
 		if publishErr := fs.results.PublishFileEditResult(ctx, protoResult, msg); publishErr != nil {
-			fs.logger.Error("Failed to publish rejected file edit result", logging.ErrorKind(publishErr))
+			fs.logger.Error("Failed to publish rejected file edit result", logging.ErrorKindKey, logging.ErrorKindValue(publishErr))
 			err = errors.Join(err, publishErr)
 		}
 		return "", err
@@ -154,7 +154,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 		ledgerResult, beginErr = fs.beginLedgerTwoPhaseCommit(msg.OperatorSessionID, target, operation)
 		if beginErr != nil {
 			// Fail closed: without a pre-mutation snapshot the edit is never executed.
-			fs.logger.Error("File edit refused: ledger snapshot unavailable", slog.String("message_id", msg.ID), logging.ErrorKind(beginErr))
+			fs.logger.Error("File edit refused: ledger snapshot unavailable", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(beginErr))
 			publishErr := fs.publishLFAAError(ctx, msg, constants.Event.Operator.FileEdit.Failed, beginErr.Error())
 			return "", errors.Join(beginErr, publishErr)
 		}
@@ -162,7 +162,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 
 	result, err := fs.fileEdit.ExecuteFileEdit(ctx, editReq)
 	if err != nil {
-		fs.logger.Error("File edit execution failed", slog.String("message_id", msg.ID), logging.ErrorKind(err))
+		fs.logger.Error("File edit execution failed", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		return "", err
 	}
 	if result == nil {
@@ -305,7 +305,7 @@ func (fs *FileOpsService) finishLedgerTwoPhaseCommit(operatorSessionID string, l
 		return nil
 	}
 	if err := fs.completeLedgerTwoPhaseCommit(operatorSessionID, ledgerResult); err != nil {
-		fs.logger.Error("Failed to complete ledger two-phase commit", slog.String("operator_session_id", operatorSessionID), logging.ErrorKind(err))
+		fs.logger.Error("Failed to complete ledger two-phase commit", "operator_session_id", operatorSessionID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		wrapped := fmt.Errorf("file edit: complete ledger two-phase commit: %w", err)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.ErrorMessage = wrapped.Error()
@@ -346,7 +346,7 @@ func (fs *FileOpsService) HandleFsListRequest(ctx context.Context, msg *PubSubCo
 
 	fsListReq, err := payloadToFsListRequest(msg)
 	if err != nil {
-		fs.logger.Error("Failed to create fs list request", slog.String("message_id", msg.ID), logging.ErrorKind(err))
+		fs.logger.Error("Failed to create fs list request", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		return "", err
 	}
 
@@ -464,7 +464,7 @@ func (fs *FileOpsService) HandleFsGrepRequest(ctx context.Context, msg *PubSubCo
 
 	fsGrepReq, err := payloadToFsGrepRequest(msg)
 	if err != nil {
-		fs.logger.Error("Failed to create fs grep request", slog.String("message_id", msg.ID), logging.ErrorKind(err))
+		fs.logger.Error("Failed to create fs grep request", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		return "", err
 	}
 
@@ -600,7 +600,12 @@ func (fs *FileOpsService) HandleFsReadRequest(ctx context.Context, msg *PubSubCo
 	}
 	publishErr := fs.publishLFAATypedResponse(ctx, msg, eventType, result)
 	if err := errors.Join(readErr, publishErr); err != nil {
-		fs.logger.Warn("File system read failed", "message_id", msg.ID, "execution_id", result.ExecutionId, "error_type", result.ErrorType, logging.ErrorKind(err))
+		fs.logger.Warn("File system read failed",
+			"message_id", msg.ID,
+			"execution_id", result.ExecutionId,
+			"error_type", result.ErrorType,
+			logging.ErrorKindKey, logging.ErrorKindValue(err),
+		)
 		return "", fmt.Errorf("fs read: %w", err)
 	}
 	return readCommand, nil

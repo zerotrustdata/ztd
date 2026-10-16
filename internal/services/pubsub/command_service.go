@@ -202,7 +202,7 @@ func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSu
 	// failure when the content is withheld.
 	publishErr := cs.results.PublishExecutionResult(ctx, protoResult, msg)
 	if err := errors.Join(execErr, executionResultError(result.Status, result.ErrorMessage), publishErr); err != nil {
-		cs.logger.Warn("Command execution failed", "execution_id", result.ExecutionID, logging.ErrorKind(err))
+		cs.logger.Warn("Command execution failed", "execution_id", result.ExecutionID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		return "", fmt.Errorf("command execution: %w", err)
 	}
 	return "", nil

@@ -73,6 +73,14 @@ const (
 // plaintext log (INV-STOR-ENC-01). Log ErrorKind(err) in place of "error", err
 // on those paths; the full error belongs in the encrypted execution record.
 func ErrorKind(err error) slog.Attr {
+	return slog.String(ErrorKindKey, ErrorKindValue(err))
+}
+
+// ErrorKindValue returns the classification string for err without its text.
+// Use with ErrorKindKey in key-value logger calls:
+//
+//	logger.Warn("Failed", "execution_id", id, logging.ErrorKindKey, logging.ErrorKindValue(err))
+func ErrorKindValue(err error) string {
 	kind := errorKindOther
 	var dnsErr *net.DNSError
 	var netErr net.Error
@@ -110,7 +118,7 @@ func ErrorKind(err error) slog.Attr {
 		errors.Is(err, constants.ErrFileEditPatchContentRequired):
 		kind = errorKindInvalidInput
 	}
-	return slog.String(ErrorKindKey, kind)
+	return kind
 }
 
 // IsClientDisconnect reports whether err is a client-initiated disconnect or

@@ -37,6 +37,7 @@ func TestErrorKind_ClassifiesWrappedProviderFailuresWithoutContent(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			err := &url.Error{Op: "Post", URL: "http://private.example/private", Err: fmt.Errorf("private data: %w", test.err)}
 			assert.Equal(t, test.want, ErrorKind(err).Value.String())
+			assert.Equal(t, test.want, ErrorKindValue(err))
 		})
 	}
 }

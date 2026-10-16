@@ -37,4 +37,3 @@ func TestErrorKindAndClientDisconnect_WindowsSocketCodes(t *testing.T) {
 		})
 	}
 }
-

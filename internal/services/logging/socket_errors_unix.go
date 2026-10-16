@@ -11,4 +11,3 @@ package logging
 
 func isPlatformConnectionRefused(error) bool { return false }
 func isPlatformConnectionReset(error) bool   { return false }
-
