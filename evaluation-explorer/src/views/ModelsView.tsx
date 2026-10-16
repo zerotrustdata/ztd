@@ -14,11 +14,13 @@ import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { ModelComparisonPanel } from '../components/ModelComparisonPanel';
 import { ReleaseSelector } from '../components/ReleaseSelector';
 import { matchesRelease } from '../content/release';
+import { OutcomeBreakdown, PassRateBar, TonePill } from '../components/evidence';
 import {
   EmptyState,
   ErrorState,
   QualityBadge,
   SectionHeading,
+  StatTile,
   UnavailableValue,
   formatPercent,
   formatLatency,
@@ -86,6 +88,7 @@ export function ModelsView() {
 
   const catalogs = useStoreState((state) => Array.from(state.catalogs.values()));
   const evaluations = useStoreState((state) => Array.from(state.evaluations.values()));
+  const assignments = useStoreState((state) => Array.from(state.assignments.values()));
   const compatibility = useMemo(
     () => comparisonCompatibility(comparedModels, catalogs, evaluations),
     [comparedModels, catalogs, evaluations],
@@ -163,7 +166,7 @@ export function ModelsView() {
             className="model-link"
           >
             {row.original.display_name}
-            {row.original.inventory_only ? <span className="inv-tag"> inventory</span> : null}
+            {row.original.inventory_only ? <TonePill tone="neutral">inventory</TonePill> : null}
           </Link>
         ),
       },
@@ -189,13 +192,9 @@ export function ModelsView() {
         id: 'pass_rate',
         header: 'Pass rate',
         accessorFn: (row: ModelSummary) => row.pass_rate?.estimate ?? -1,
-        cell: ({ row }) =>
-          row.original.pass_rate ? (
-            formatPercent(row.original.pass_rate.estimate)
-          ) : (
-            <UnavailableValue reason="not evaluated" />
-          ),
+        cell: ({ row }) => <PassRateBar interval={row.original.pass_rate} />,
       },
+      { id: 'outcomes', header: 'Outcomes', cell: ({ row }) => <OutcomeBreakdown outcomes={row.original.terminal_outcomes} />, enableSorting: false },
       {
         id: 'latency_p50',
         header: 'Latency p50',
@@ -228,6 +227,8 @@ export function ModelsView() {
   const updateFilter = (patch: Partial<ModelFilters>) => setFilters({ ...filters, ...patch });
 
   const measuredCount = models.filter((model) => Boolean(model.pass_rate) && model.evaluation_coverage >= 1).length;
+  const modelKeys = new Set(models.map((model) => `${model.dataset_id}:${model.variant_id}:${model.role}`));
+  const coveredRuns = new Set(assignments.filter((assignment) => modelKeys.has(`${assignment.dataset_id}:${assignment.variant_id}:${assignment.role}`)).map((assignment) => `${assignment.dataset_id}:${assignment.run_id}`));
 
   return (
     <div className="models-view">
@@ -236,6 +237,12 @@ export function ModelsView() {
         title="Models with real evaluation data"
         description="Measured models appear first by pass rate across every dataset. Use All models to inspect the unevaluated registry inventory."
       />
+
+      <div className="stat-tile-grid summary-strip" aria-label="Model summary">
+        <StatTile label="Measured models" value={models.filter((model) => model.pass_rate).length} />
+        <StatTile label="Inventory-only models" value={models.filter((model) => model.inventory_only).length} />
+        <StatTile label="Runs covered" value={evaluations.filter((run) => coveredRuns.has(`${run.dataset_id}:${run.run_id}`)).length} />
+      </div>
 
       <div className="models-toolbar">
         <ReleaseSelector />
@@ -296,7 +303,20 @@ export function ModelsView() {
       {filtered.length === 0 ? (
         <EmptyState hasRecords={models.length > 0} hasFilters={filtersActive(filters, effectiveQuality)} connection={connection} />
       ) : (
-        <DataTable data={filtered} columns={columns} pageSize={25} caption="Model catalog" />
+        <DataTable data={filtered} columns={columns} pageSize={25} caption="Model catalog"
+          isRowSelected={(model) => comparison.includes(modelComparisonId(model))}
+          renderCard={(model) => <article className="run-card">
+            <label><input type="checkbox" aria-label={`Select ${model.display_name} for comparison`}
+              checked={comparison.includes(modelComparisonId(model))}
+              disabled={!comparison.includes(modelComparisonId(model)) && comparison.length >= 4}
+              onChange={(event) => setComparison(event.target.checked ? [...comparison, modelComparisonId(model)].slice(0, 4) : comparison.filter((id) => id !== modelComparisonId(model)))} /> Compare</label>
+            <Link to={`/models/${model.dataset_id}/${model.variant_id}?role=${model.role}`}>{model.display_name}</Link>
+            <p>{model.served_model_tag} · {roleLabel(model.role)}</p>
+            {model.inventory_only ? <TonePill tone="neutral">inventory</TonePill> : null}
+            <PassRateBar interval={model.pass_rate} />
+            <OutcomeBreakdown outcomes={model.terminal_outcomes} />
+            <QualityBadge state={model.quality_state} />
+          </article>} />
       )}
     </div>
   );

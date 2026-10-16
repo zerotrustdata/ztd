@@ -16,9 +16,7 @@ import {
   ErrorState,
   IntervalDisplay,
   MetricCard,
-  OutcomeCounts,
   QualityBadge,
-  SectionHeading,
   UnavailableValue,
   formatPercent,
   formatLatency,
@@ -26,7 +24,8 @@ import {
   formatTokens,
   formatNumber,
 } from '../components/shared';
-import { modelSuiteRows, roleLabel, runsForVariant } from './derived';
+import { assignmentVerdictTone, isNonVerdictOutcome, modelSuiteRows, qualityStateTone, roleLabel, runsForVariant, verifierStateTone, lifecycleStateTone } from './derived';
+import { DetailLayout, NON_VERDICT_NOTE, OutcomeBreakdown, PageHero, PanelSection, TonePill } from '../components/evidence';
 
 export function ModelDetailView() {
   const { variantId: routeVariant, datasetId: routeDataset } = useParams();
@@ -85,21 +84,22 @@ export function ModelDetailView() {
         <span>{model.display_name}</span>
       </nav>
 
-      <SectionHeading
-        kicker="MODEL DETAIL"
+      <PageHero
+        kicker="Model"
         title={model.display_name}
-        description={model.served_model_tag ? `Served as ${model.served_model_tag}` : undefined}
-      />
-
+        tone={qualityStateTone(model.quality_state)}
+        meta={<>{model.served_model_tag ? <span>{model.served_model_tag}</span> : null}{model.backend_provider_class ? <span>{model.backend_provider_class}</span> : null}</>}
+        verdict={<TonePill tone={model.pass_rate ? 'info' : 'neutral'}>{model.pass_rate ? `${formatPercent(model.pass_rate.estimate)} · n=${formatNumber(model.pass_rate.denominator)}` : 'Not evaluated'}</TonePill>}
+      >
       <div className="quality-banner">
         <QualityBadge state={model.quality_state} />
         {model.unavailable_reasons?.map((reason, i) => (
           <span key={i} className="unavailable-reason">{reason}</span>
         ))}
       </div>
-
-      <section className="model-identity">
-        <h2>Identity</h2>
+      </PageHero>
+      <DetailLayout aside={<>
+      <PanelSection title="Identity">
         <dl>
           <DetailRow label="Variant ID">{model.variant_id}</DetailRow>
           <DetailRow label="Display name">{model.display_name}</DetailRow>
@@ -110,10 +110,33 @@ export function ModelDetailView() {
           <DetailRow label="Inventory only">{model.inventory_only ? 'Yes' : 'No'}</DetailRow>
           <DetailRow label="Evaluation coverage">{formatPercent(model.evaluation_coverage)}</DetailRow>
         </dl>
-      </section>
+      </PanelSection>
+      {model.repeatability ? (
+        <PanelSection title="Repeatability">
+          <ul className="repeatability-list">
+            <li><span>Consistently correct</span><strong>{formatNumber(model.repeatability.consistently_correct)}</strong></li>
+            <li><span>Consistently wrong</span><strong>{formatNumber(model.repeatability.consistently_wrong)}</strong></li>
+            <li><span>Inconsistent</span><strong>{formatNumber(model.repeatability.inconsistent)}</strong></li>
+            <li><span>Insufficient</span><strong>{formatNumber(model.repeatability.insufficient)}</strong></li>
+          </ul>
+        </PanelSection>
+      ) : null}
+      <PanelSection title="Evaluation runs involving this model">
+        {modelRuns.length === 0 ? <p>No runs involve this model in the selected dataset.</p> : (
+          <ul className="run-card-list">
+            {modelRuns.map((run) => <li key={run.run_id} className="run-card">
+              <Link to={`/evaluations/${run.dataset_id}/${run.run_id}`}>{run.run_id}</Link>
+              <p>{run.suite_id}</p>
+              <TonePill tone={lifecycleStateTone(run.lifecycle_state)}>{run.lifecycle_state}</TonePill>
+              <TonePill tone={verifierStateTone(run.verifier_state)} title={run.verifier_failure_summary}>{run.verifier_state.replace(/_/g, ' ')}</TonePill>
+              <QualityBadge state={run.quality_state} />
+            </li>)}
+          </ul>
+        )}
+      </PanelSection>
+      </>}>
 
-      <section className="model-metrics">
-        <h2>Overall metrics</h2>
+      <PanelSection title="Overall metrics">
         {model.pass_rate ? (
           <div className="metric-block">
             <div className="metric-label">Pass rate</div>
@@ -134,27 +157,10 @@ export function ModelDetailView() {
           <MetricCard label="Thinking tokens" metric={model.thinking_tokens} formatter={formatTokens} />
           <MetricCard label="Cache tokens" metric={model.cache_tokens} formatter={formatTokens} />
         </div>
-      </section>
+      </PanelSection>
+      <PanelSection title="Terminal outcomes"><OutcomeBreakdown outcomes={model.terminal_outcomes} /></PanelSection>
 
-      {model.repeatability ? (
-        <section className="model-repeatability">
-          <h2>Repeatability</h2>
-          <ul className="repeatability-list">
-            <li><span>Consistently correct</span><strong>{formatNumber(model.repeatability.consistently_correct)}</strong></li>
-            <li><span>Consistently wrong</span><strong>{formatNumber(model.repeatability.consistently_wrong)}</strong></li>
-            <li><span>Inconsistent</span><strong>{formatNumber(model.repeatability.inconsistent)}</strong></li>
-            <li><span>Insufficient</span><strong>{formatNumber(model.repeatability.insufficient)}</strong></li>
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="model-outcomes">
-        <h2>Terminal outcomes</h2>
-        <OutcomeCounts outcomes={model.terminal_outcomes} />
-      </section>
-
-      <section className="model-suites">
-        <h2>Suite results</h2>
+      <PanelSection title="Suite results">
         <p className="disclosure">Rows include only assignments produced by this model. Failures and missing measurements remain visible beside the eligible pass-rate denominator.</p>
         {suiteRows.length === 0 ? (
           <p>No suite results for this model in the selected dataset.</p>
@@ -186,7 +192,7 @@ export function ModelDetailView() {
                     <td>{formatNumber(suite.model_failed)}</td>
                     <td>{formatNumber(suite.missing)}</td>
                     <td>{suite.latency_p50_ms !== undefined ? formatLatency(suite.latency_p50_ms) : <UnavailableValue />}</td>
-                    <td>{suite.verifier_state ?? <UnavailableValue />}</td>
+                    <td>{suite.verifier_state ? <TonePill tone={verifierStateTone(suite.verifier_state)}>{suite.verifier_state.replace(/_/g, ' ')}</TonePill> : <UnavailableValue />}</td>
                     <td>{suite.quality_state ? <QualityBadge state={suite.quality_state} /> : <UnavailableValue />}</td>
                   </tr>
                 ))}
@@ -194,42 +200,29 @@ export function ModelDetailView() {
             </table>
           </div>
         )}
-      </section>
-
-      <section className="model-runs">
-        <h2>Evaluation runs involving this model</h2>
-        {modelRuns.length === 0 ? (
-          <p>No runs involve this model in the selected dataset.</p>
-        ) : (
-          <ul className="run-list">
-            {modelRuns.map((run) => (
-              <li key={run.run_id}>
-                <Link to={`/evaluations/${run.dataset_id}/${run.run_id}`}>
-                  <span className="run-id">{run.run_id}</span>
-                  <span className="run-suite">{run.suite_id}</span>
-                  <span className="run-status">{run.lifecycle_state}</span>
-                  <QualityBadge state={run.quality_state} />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      </PanelSection>
 
       {assignments.length > 0 ? (
-        <section className="model-assignments">
-          <h2>Assignments ({formatNumber(assignments.length)})</h2>
-          <ul className="assignment-list">
-            {assignments.slice(0, 20).map((asg) => (
+        <PanelSection title={`Assignments (${formatNumber(assignments.length)})`}>
+          {Array.from(new Set(assignments.map((assignment) => assignment.run_id))).map((runId) => <div key={runId}>
+          <h3><Link to={`/evaluations/${activeDatasetId}/${runId}`}>{runId}</Link></h3>
+          <ul className="sibling-list">
+            {assignments.filter((assignment) => assignment.run_id === runId).map((asg) => (
               <li key={asg.assignment_id}>
                 <Link to={`/evaluations/${asg.dataset_id}/${asg.run_id}/assignments/${asg.assignment_id}`}>
-                  {asg.assignment_id} · {asg.task_id} · rep {asg.repetition}
+                  {asg.assignment_id} · {asg.task_id}
                 </Link>
+                <span className="sibling-rep">rep {asg.repetition}</span>
+                <span className={`sibling-status sibling-status-${assignmentVerdictTone(asg.terminal_status, asg.verification_disposition)}`} title={isNonVerdictOutcome(asg.terminal_status) ? NON_VERDICT_NOTE : undefined}>
+                  {asg.terminal_status.replace(/_/g, ' ')}
+                </span>
               </li>
             ))}
           </ul>
-        </section>
+          </div>)}
+        </PanelSection>
       ) : null}
+      </DetailLayout>
     </div>
   );
 }

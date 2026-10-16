@@ -137,9 +137,9 @@ func (e *CampaignFormationExecutor) ExecuteAssignment(ctx context.Context, req A
 		EvaluationAttemptID:          req.AttemptID,
 		ScenarioID:                   req.Assignment.GetScenarioId(),
 		ModelRegistryDigest:          req.Binding.ModelRegistryDigest,
-		InferenceSessionID:           req.Binding.InferenceOperatorSessionID,
-		DataSessionID:                req.Binding.DataOperatorSessionID,
-		DataOperatorWorkingDirectory: req.Binding.DataOperatorWorkingDirectory,
+		InferenceSessionID:           req.Binding.Topology.Inference.OperatorSessionID,
+		DataSessionID:                req.Binding.Topology.Data.OperatorSessionID,
+		DataOperatorWorkingDirectory: req.Binding.Topology.DataWorkingDirectory,
 	}
 	if req.OnFormationRoleStarting != nil {
 		runContext.OnRoleStarting = func(startCtx context.Context, role FormationRole) error {

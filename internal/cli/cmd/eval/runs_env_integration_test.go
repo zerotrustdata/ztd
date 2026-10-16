@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
@@ -29,10 +30,12 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func setupRunEnv(t *testing.T) *runEnv {
@@ -59,14 +62,30 @@ func setupRunEnv(t *testing.T) *runEnv {
 	paths.Host = server.URL
 	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
 	require.NoError(t, err)
-	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, Keyring: keystoretest.NewMemoryKeyring()}
+	keyring := keystoretest.NewMemoryKeyring()
+	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, Keyring: keyring}
+	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, ks.Initialize())
+	require.NoError(t, ks.InitVault())
 
 	control := newFakeProcessControl()
 	fixedNow := time.Unix(1789657337, 0).UTC()
 	deps := nativeEvalDeps{
 		configLoader: func(string) (*config.Config, error) { return cfg, nil },
 		fileSvcFactory: func(string, *slog.Logger) (fs.RuntimeFileService, error) {
-			return fs.NewRuntimeFileService(root, slog.Default())
+			files, err := fs.NewRuntimeFileService(root, slog.Default())
+			if err != nil {
+				return nil, err
+			}
+			return evaluation.NewEvidenceFileService(files, func(keys fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
+				keyStore, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, keys)
+				if err != nil {
+					return nil, err
+				}
+				return keyStore.OpenVault()
+			})
 		},
 		createRuntimeTree: func(context.Context, fs.RuntimeFileService) error { return nil },
 		clientFactory:     harnessclient.New,
@@ -74,7 +93,7 @@ func setupRunEnv(t *testing.T) *runEnv {
 			return &auth.ClientAuthContext{UserID: "user-1", CLISessionID: "cli-1", OperatorID: "operator-1"}, nil
 		},
 		bindClientFactory: func(*config.Config) evalBindClient { return &fakeBindClient{bound: []string{testDataSession}} },
-		formationRunnerFactory: func(campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error) {
+		formationRunnerFactory: func(context.Context, campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error) {
 			harness, err := evaluation.NewFormationHarness(func() time.Time { return fixedNow }, func(prefix string) string { return prefix + "-attempt" })
 			if err != nil {
 				return nil, err
@@ -201,4 +220,70 @@ func (e *runEnv) firstQueuedAssignment(t *testing.T, runID string) *evalv1.Evalu
 	require.NoError(t, err)
 	require.True(t, ok)
 	return assignment
+}
+
+func TestRunsEnv_SharedRuntimeEmbeddedOperatorTopology(t *testing.T) {
+	root := testutil.TempDir(t)
+	embeddedOp := &operatorv1.OperatorDocument{
+		Id:                "embedded-op",
+		OperatorSessionId: "embedded-sess-1",
+		Status:            string(constants.OperatorStatusActive),
+		OperatorType:      string(constants.OperatorTypeEmbedded),
+		RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
+			Capabilities: []string{
+				string(constants.OperatorCapabilityData),
+				string(constants.OperatorCapabilityInference),
+			},
+			InferenceOllamaEndpoint: "http://provider.example:11434",
+		},
+		LatestHeartbeatSnapshot: &operatorv1.HeartbeatResult{
+			Environment: &operatorv1.EnvironmentDetails{Pwd: testDataOperatorWorkingDirectory},
+		},
+		ActuatorPublicKey: testDataOperatorActuatorKey,
+		ActuatorKeyId:     testDataOperatorActuatorKey,
+	}
+
+	body, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: []*operatorv1.OperatorDocument{embeddedOp}})
+	require.NoError(t, err)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.Operators {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(body)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	paths := config.DefaultPathsConfig()
+	paths.Host = server.URL
+	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
+	require.NoError(t, err)
+	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths}
+	deps := nativeEvalDeps{
+		configLoader:   func(string) (*config.Config, error) { return cfg, nil },
+		fileSvcFactory: func(string, *slog.Logger) (fs.RuntimeFileService, error) { return fileSvc, nil },
+		clientFactory:  harnessclient.New,
+		authLoader: func(fs.RuntimeFileService, *config.Config) (*auth.ClientAuthContext, error) {
+			return &auth.ClientAuthContext{UserID: "user-1", CLISessionID: "cli-1"}, nil
+		},
+	}
+	cmd := cmdtest.SilentCobraCommand()
+	cmd.SetContext(testVersionContext())
+	cmd.Flags().String("project-root", root, "")
+
+	topology, err := resolveOperatorTopology(cmd, deps)
+	require.NoError(t, err)
+	require.True(t, topology.SharedRuntime(), "embedded operator holding data and inference must resolve as a shared runtime")
+	assert.Equal(t, "embedded-op", topology.Inference.OperatorID)
+	assert.Equal(t, "embedded-op", topology.Data.OperatorID)
+	assert.Equal(t, "embedded-sess-1", topology.Inference.OperatorSessionID)
+	assert.Equal(t, "embedded-sess-1", topology.Data.OperatorSessionID)
+
+	anchored, err := topology.WithAnchors([]*operatorv1.OperatorDocument{embeddedOp})
+	require.NoError(t, err)
+	require.NotNil(t, anchored.Inference.Anchor)
+	require.NotNil(t, anchored.Data.Anchor)
+	assert.Equal(t, anchored.Inference.Anchor, anchored.Data.Anchor, "shared runtime pins one actuator anchor")
+	assert.NoError(t, anchored.ValidateAnchored())
 }

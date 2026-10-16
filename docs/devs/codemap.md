@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -315,7 +315,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
 | `internal/services/consensus/` | Consensus members, policy construction, deliberation, and Ed25519 voting. |
-| `internal/services/evaluation/` | Model campaign controller, governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
+| `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
 | `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.0.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
 | `internal/services/fs/` | Scoped `.ztd/` runtime file operations. |

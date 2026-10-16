@@ -56,7 +56,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 			require.NoError(t, err)
 			for range 3 {
 				_, _, err = f.controller.ExecuteNextAssignment(ctx, runID, CampaignExecutionBinding{
-					InferenceOperatorSessionID: "inf-session", DataOperatorID: "data-op", DataOperatorSessionID: "data-session",
+					Topology:            testOperatorTopology("inf-session", "data-session"),
 					ModelRegistryDigest: f.req.Inventory.RegistryDigest, ModelRegistry: InferenceVariantsFromEvalRegistry(f.req.Inventory.Variants),
 				}, f.req.ScenarioArtifacts)
 				require.NoError(t, err)

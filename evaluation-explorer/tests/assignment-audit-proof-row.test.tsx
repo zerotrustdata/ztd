@@ -73,4 +73,17 @@ describe('filterNonAuditEvidenceBindings', () => {
   it('removes audit kinds and returns undefined when nothing remains', () => {
     expect(filterNonAuditEvidenceBindings(auditBindings)).toBeUndefined();
   });
+
+  it('removes the agent trace, which renders in its own section', () => {
+    const trace = { kind: 'assignment_agent_trace' as const, sha256: 'c'.repeat(64), schema_ref: 'ztd.eval.v1.PublicAssignmentAgentTrace' };
+    const manifest = { kind: 'source_manifest' as const, sha256: 'd'.repeat(64), schema_ref: 'ztd.eval.v1.SourceManifest' };
+    expect(filterNonAuditEvidenceBindings([...auditBindings, trace, manifest])).toEqual([manifest]);
+  });
+
+  it('removes the scenario fixture, which renders in its own section', () => {
+    const input = { kind: 'scenario_input_fixture' as const, sha256: 'e'.repeat(64), schema_ref: 'ztd.eval.v1.PublicScenarioInputFixture' };
+    const gold = { kind: 'scenario_gold_criteria' as const, sha256: 'f'.repeat(64), schema_ref: 'ztd.eval.v1.PublicScenarioGoldCriteria' };
+    const manifest = { kind: 'source_manifest' as const, sha256: 'd'.repeat(64), schema_ref: 'ztd.eval.v1.SourceManifest' };
+    expect(filterNonAuditEvidenceBindings([input, gold, manifest])).toEqual([manifest]);
+  });
 });

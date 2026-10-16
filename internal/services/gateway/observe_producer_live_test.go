@@ -1113,38 +1113,6 @@ func TestRecordModelRoleInvocation_MissingVariantIDReturnsError(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrObserveVariantIDRequired)
 }
 
-// TestDisclosureFailure_ProhibitedFieldsNotInPayload verifies that live
-// event payloads do not contain prohibited fields (raw prompts, outputs,
-// credentials, private endpoints, etc.). This is a structural test: the
-// payload structs are typed and only carry allowlisted fields.
-func TestDisclosureFailure_ProhibitedFieldsNotInPayload(t *testing.T) {
-	// Verify that no live event payload struct contains fields that would
-	// expose prohibited content. The structs are typed Go structs with
-	// explicit json tags; they cannot carry arbitrary fields.
-	payload := models.EvalAssignmentStartedPayload{
-		SchemaVersion:  "1.0.0",
-		SourceSequence: 1,
-		EventID:        "evt",
-		CycleID:        "cycle",
-		CampaignID:     "campaign",
-		AssignmentID:   "assign",
-		VariantID:      "variant",
-		Role:           models.ModelRolePrimary,
-		TaskID:         "task",
-		ArmID:          "arm",
-		Repetition:     1,
-	}
-
-	data, err := json.Marshal(payload)
-	require.NoError(t, err)
-
-	// Verify no prohibited field names appear in the JSON.
-	prohibited := []string{"prompt", "output", "response", "credential", "secret", "key", "password", "endpoint", "path", "trail"}
-	for _, p := range prohibited {
-		assert.NotContains(t, string(data), "\""+p+"\"")
-	}
-}
-
 // TestErrors_NotNil verifies that the new error constants are non-nil and
 // distinct.
 func TestErrors_NotNil(t *testing.T) {

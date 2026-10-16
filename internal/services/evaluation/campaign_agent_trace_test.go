@@ -33,7 +33,9 @@ func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing
 
 	require.NotNil(t, decoded.ToolCalls[0].Receipt)
 	assert.True(t, proto.Equal(trace.ToolCalls[0].Receipt.ActionReceipt, decoded.ToolCalls[0].Receipt.ActionReceipt))
-	assert.True(t, proto.Equal(trace.DataOperatorAnchor.ConformanceAnchor, decoded.DataOperatorAnchor.ConformanceAnchor))
+	assert.True(t, proto.Equal(trace.Inference.Anchor.ConformanceAnchor, decoded.Inference.Anchor.ConformanceAnchor))
+	assert.True(t, proto.Equal(trace.Data.Anchor.ConformanceAnchor, decoded.Data.Anchor.ConformanceAnchor))
+	assert.True(t, proto.Equal(trace.ModelCalls[0].Receipt.ActionReceipt, decoded.ModelCalls[0].Receipt.ActionReceipt))
 	require.NotNil(t, decoded.Bracket)
 	assert.True(t, proto.Equal(trace.Bracket.After.ActionReceipt, decoded.Bracket.After.ActionReceipt))
 
@@ -94,4 +96,90 @@ func TestAgentTrace_SealedBodyCarriesReceiptsAsCanonicalProtojson(t *testing.T) 
 	require.NoError(t, err)
 	assert.JSONEq(t, string(want), string(raw.ToolCalls[0].Receipt))
 	assert.Equal(t, agentTraceSchemaVersion, trace.SchemaVersion)
+}
+
+func TestAgentTrace_SealRejectsMissingInput(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	trace.Input = nil
+
+	_, err := SealAgentTrace(trace)
+
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+}
+
+func TestAgentTrace_SealRefusesToRestampEarlierVersion(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	trace.SchemaVersion = agentTraceSchemaVersionV3
+
+	_, err := SealAgentTrace(trace)
+
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+}
+
+func TestAgentTrace_V3TraceValidatesOnlyWithoutInput(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	trace.Input = nil
+	trace.SchemaVersion = agentTraceSchemaVersionV3
+	digest, err := ComputeAgentTraceDigest(trace)
+	require.NoError(t, err)
+	trace.EvidenceDigest = digest
+
+	require.NoError(t, ValidateAgentTraceDigest(trace))
+
+	trace.Input = testAgentTraceInput()
+	trace.EvidenceDigest, err = ComputeAgentTraceDigest(trace)
+	require.NoError(t, err)
+	assert.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed, "a v3 trace never claims a captured input")
+}
+
+func TestAgentTrace_V4TraceRequiresInput(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	_, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+	trace.Input = nil
+	trace.EvidenceDigest, err = ComputeAgentTraceDigest(trace)
+	require.NoError(t, err)
+
+	assert.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrMissingRequiredField)
+}
+
+func TestDecodeAgentTrace_PublishedBodyDecodesAndVerifies(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+
+	decoded, err := DecodeAgentTrace(body)
+
+	require.NoError(t, err)
+	assert.Equal(t, trace.EvidenceDigest, decoded.EvidenceDigest)
+	require.NoError(t, VerifyAgentTraceEvidence(decoded))
+}
+
+func TestDecodeAgentTrace_RejectsTamperedAndNonCanonicalBodies(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+
+	tampered := []byte(strings.Replace(string(body), "Why is checkout failing?", "Why is checkout passing?", 1))
+	_, err = DecodeAgentTrace(tampered)
+	assert.ErrorIs(t, err, constants.ErrChecksumMismatch)
+
+	_, err = DecodeAgentTrace(append(append([]byte{}, body...), '\n'))
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+}
+
+// TestAgentTrace_DigestPreimageIsBodyWithDigestEmptied pins the property the
+// public explorer verifies evidence_digest by: the trace encodes its fields
+// in fixed order with schema_version then evidence_digest first, so the
+// digest preimage is the sealed body with only the digest value emptied.
+func TestAgentTrace_DigestPreimageIsBodyWithDigestEmptied(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	trace.ToolCalls[0].ResultJSON = `{"stdout":"2>&1 <out> & done  "}`
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+
+	prefix := `{"schema_version":"` + agentTraceSchemaVersion + `","evidence_digest":"` + trace.EvidenceDigest + `",`
+	require.True(t, strings.HasPrefix(string(body), prefix))
+	preimage := `{"schema_version":"` + agentTraceSchemaVersion + `","evidence_digest":"",` + strings.TrimPrefix(string(body), prefix)
+	assert.Equal(t, trace.EvidenceDigest, hashBytes([]byte(preimage)))
 }

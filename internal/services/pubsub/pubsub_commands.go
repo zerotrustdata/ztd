@@ -757,7 +757,7 @@ func (rs *OperatorPubSubService) handleCommandPayload(payload []byte) {
 //
 // The signed receipt is returned on execution and verification failure so callers
 // receive cryptographic evidence of the attempt. A verification failure is a
-// *governance.RejectionError carrying that receipt, and still wraps the
+// *governance.ReceiptError carrying that receipt, and still wraps the
 // corresponding governance.ErrXxx sentinel.
 func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	if len(payload) == 0 {

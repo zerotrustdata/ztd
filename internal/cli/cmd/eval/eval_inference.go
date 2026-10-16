@@ -11,14 +11,19 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -87,7 +92,7 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: gates inference: %w", err)
 			}
-			appClient, err := inferenceEvalAppClient(fileSvc, cfg, authContext, deps.clientFactory)
+			appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
 			if err != nil {
 				return fmt.Errorf("evaluation: gates inference: %w", err)
 			}
@@ -212,7 +217,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: gates probe: %w", err)
 			}
-			appClient, err := inferenceEvalAppClient(fileSvc, cfg, authContext, deps.clientFactory)
+			appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
 			if err != nil {
 				return fmt.Errorf("evaluation: gates probe: %w", err)
 			}
@@ -266,9 +271,17 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 }
 
 // inferenceEvalAppClient builds the governed-dispatch client that presents the
-// eval runner's own ztd-eval application identity.
-func inferenceEvalAppClient(fileSvc fs.RuntimeFileService, cfg *config.Config, authContext *auth.ClientAuthContext, clientFactory func(harnessconfig.Config) (*harnessclient.Client, error)) (*harnessclient.Client, error) {
+// eval runner's own ztd-eval application identity. When that identity is
+// missing, expired, or untrusted, it enrolls it through deps.appEnroller under
+// the authenticated owner's CLI identity, then loads it again.
+func inferenceEvalAppClient(ctx context.Context, out io.Writer, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, cfg *config.Config, authContext *auth.ClientAuthContext) (*harnessclient.Client, error) {
 	appCert, err := resolveInferenceProbeAppCredentials(fileSvc, cfg)
+	if err != nil && deps.appEnroller != nil && appIdentityNeedsEnrollment(err) {
+		if enrollErr := deps.appEnroller(ctx, out, fileSvc, cfg); enrollErr != nil {
+			return nil, fmt.Errorf("evaluation: enroll app credential %q: %w", constants.EvaluationAppName, enrollErr)
+		}
+		appCert, err = resolveInferenceProbeAppCredentials(fileSvc, cfg)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +294,32 @@ func inferenceEvalAppClient(fileSvc fs.RuntimeFileService, cfg *config.Config, a
 		},
 		UserID: authContext.UserID,
 	}
-	return clientFactory(appConfig)
+	return deps.clientFactory(appConfig)
+}
+
+// appIdentityNeedsEnrollment reports whether a load failure is one a fresh
+// owner-approved enrollment resolves.
+func appIdentityNeedsEnrollment(err error) bool {
+	return errors.Is(err, constants.ErrAppIdentityNotFound) ||
+		errors.Is(err, constants.ErrAppIdentityExpired) ||
+		errors.Is(err, constants.ErrAppIdentityUntrusted)
+}
+
+// enrollEvalAppIdentity enrolls the ztd-eval application identity and approves
+// its own request with the authenticated owner CLI identity.
+func enrollEvalAppIdentity(ctx context.Context, out io.Writer, fileSvc fs.RuntimeFileService, cfg *config.Config) error {
+	ownerClient, err := api.NewClient(fileSvc, cfg)
+	if err != nil {
+		return fmt.Errorf("owner API client: %w", err)
+	}
+	enroller, err := auth.NewAppPlatformEnrollmentClient(constants.EvaluationAppName, fileSvc, cfg, slog.Default(), auth.AppEnrollmentOptions{
+		Approver: authcmd.OwnerAppEnrollmentApprover(ownerClient, "ztd eval: enrolled by the authenticated owner"),
+	})
+	if err != nil {
+		return err
+	}
+	_, err = enroller.Enroll(ctx, out)
+	return err
 }
 
 func inferenceEvalExecuteProbe(

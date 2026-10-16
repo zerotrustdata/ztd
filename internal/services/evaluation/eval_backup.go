@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -26,14 +28,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
-// Manifest versions name the snapshot layout. Version 1 snapshots hold a full
-// copy of every file beside the manifest. Version 2 snapshots hold only the
-// manifest; file content lives once per distinct digest in the sibling
-// evalBackupObjectsDir, shared by every snapshot.
+// evalBackupManifestVersion names the snapshot layout: a snapshot holds only
+// its manifest; file content lives once per distinct digest in the sibling
+// evalBackupObjectsDir, shared by every snapshot, and the manifest names the
+// vault key chain that sealed the evidence it lists.
 const (
-	evalBackupManifestVersionInline  = "1.0.0"
-	evalBackupManifestVersionObjects = "2.0.0"
-	evalBackupObjectsDir             = "objects"
+	evalBackupManifestVersion = "3.0.0"
+	evalBackupObjectsDir      = "objects"
 )
 
 // evalBackupConflictSample bounds how many conflicting paths a restore error names.
@@ -47,11 +48,15 @@ type EvalBackupFile struct {
 }
 
 // EvalBackupManifest is the integrity record written last into a snapshot. A
-// snapshot directory without one is incomplete and is never restored.
+// snapshot directory without one is incomplete and is never restored. KeyChain
+// lists the runtime vault key chain the evidence in Files was sealed under, so
+// the snapshot stays readable after the runtime tree, and the vault in it, is
+// wiped and recreated.
 type EvalBackupManifest struct {
 	SchemaVersion string           `json:"schema_version"`
 	CreatedAt     string           `json:"created_at"`
 	Files         []EvalBackupFile `json:"files"`
+	KeyChain      []EvalBackupFile `json:"key_chain"`
 }
 
 // EvalBackupReport describes a completed backup.
@@ -59,6 +64,7 @@ type EvalBackupReport struct {
 	SnapshotDir string
 	CreatedAt   time.Time
 	Files       []EvalBackupFile
+	KeyChain    []EvalBackupFile
 	TotalBytes  int64
 	// Unchanged is set by CreateIfChanged when the evidence matched the newest
 	// existing snapshot, in which case SnapshotDir names that snapshot and
@@ -77,39 +83,71 @@ type EvalRestoreReport struct {
 	Unchanged []EvalBackupFile
 }
 
-// evalBackupSource is one file to restore and where its verified content is read from.
+// evalBackupSource is one file to restore, where its verified content is
+// read from, and the key chain of the snapshot it came from.
 type evalBackupSource struct {
-	file    EvalBackupFile
-	payload string
+	file     EvalBackupFile
+	payload  string
+	keyChain *evalBackupKeyChain
+}
+
+// evalBackupKeyChain is the vault key chain one snapshot recorded. id names
+// its content, so snapshots taken under the same vault open it once.
+type evalBackupKeyChain struct {
+	id         string
+	backupRoot string
+	files      []EvalBackupFile
 }
 
 // EvalBackup copies evaluation evidence between the runtime tree and a plain
 // directory outside it. Runtime I/O goes through the file service; the
 // snapshot side is ordinary host storage, not runtime state.
 //
-// Evidence under .ztd/data/eval/ is encrypted at rest with the runtime vault,
-// and a backup carries it in that form: it reads and writes the sealed file
-// service, so no plaintext leaves the runtime and no vault is needed to take or
-// restore a snapshot. A restored snapshot is readable only by a runtime that
-// holds the same vault key.
+// Evidence under .ztd/data/eval/ is encrypted at rest with the runtime vault.
+// A snapshot carries it in that form together with the vault key chain that
+// sealed it (the vault header, the vault key sealed under the master key, and
+// the key store's sealed master key blob where it keeps one), all ciphertext,
+// so no plaintext leaves the runtime and taking a snapshot needs no vault. A
+// restore opens each snapshot's vault from its key chain with the OS key store
+// (or the user's SSH key), which outlives the runtime tree, and writes the
+// evidence back through the evidence file service, sealing it under the
+// current runtime vault. A snapshot whose key chain the key store cannot open
+// restores nothing.
 //
 // Snapshots and restores hold the runtime's backup lock shared, so any number
 // run at once. Purging deleted evidence holds it exclusively, so a snapshot
 // never captures evidence that is being deleted and never references an
 // object the purge removes.
 type EvalBackup struct {
-	fileSvc fs.RuntimeFileService
-	now     func() time.Time
+	fileSvc  fs.RuntimeFileService
+	evidence *evidenceFiles
+	now      func() time.Time
 }
 
+// NewEvalBackup returns a backup over fileSvc. Snapshots read the stored
+// ciphertext beneath it; restores need it to be the evidence file service.
 func NewEvalBackup(fileSvc fs.RuntimeFileService, now func() time.Time) *EvalBackup {
-	return &EvalBackup{fileSvc: SealedFiles(fileSvc), now: now}
+	evidence, _ := fileSvc.(*evidenceFiles)
+	return &EvalBackup{fileSvc: SealedFiles(fileSvc), evidence: evidence, now: now}
 }
 
 // evalBackupRoots are the runtime-relative trees a backup covers: run and
 // campaign evidence, and the rollout queue with the frozen model inventory.
 func evalBackupRoots() []string {
 	return []string{constants.EvaluationDataPath, constants.EvaluationDirname}
+}
+
+// evalBackupKeyChainPaths are the runtime-relative vault key chain files a
+// snapshot records, in manifest order. The sealed master key blobs exist only
+// for the key stores that keep one in the secrets directory.
+func evalBackupKeyChainPaths() []string {
+	return []string{constants.VaultHeaderRelPath, constants.VaultKeyRelPath, constants.MasterKeyDPAPIRelPath, constants.MasterKeySSHAgentRelPath}
+}
+
+// evalBackupKeyChainRequired are the key chain files without which no key
+// store can open the vault that sealed a snapshot's evidence.
+func evalBackupKeyChainRequired() []string {
+	return []string{constants.VaultHeaderRelPath, constants.VaultKeyRelPath}
 }
 
 // evalBackupTransient reports process-local state that must not be carried
@@ -168,7 +206,7 @@ func (b *EvalBackup) CreateIfChanged(ctx context.Context, outputDir string) (*Ev
 		if err != nil {
 			return nil, err
 		}
-		if evalBackupSameFiles(previous.Files, report.Files) {
+		if evalBackupSameFiles(previous.Files, report.Files) && evalBackupSameFiles(previous.KeyChain, report.KeyChain) {
 			report.SnapshotDir = previousDir
 			report.Unchanged = true
 			return report, nil
@@ -206,7 +244,35 @@ func (b *EvalBackup) capture(ctx context.Context, destRoot string) (*EvalBackupR
 		report.Files = append(report.Files, file)
 		report.TotalBytes += file.Size
 	}
+	report.KeyChain, err = b.captureKeyChain(ctx, destRoot)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateEvalBackupKeyChain(report.Files, report.KeyChain); err != nil {
+		return nil, fmt.Errorf("evaluation: backup: %w", err)
+	}
 	return report, nil
+}
+
+// captureKeyChain stores the runtime vault key chain beside the evidence. The
+// files are copied as stored: a wrapped header and sealed keys.
+func (b *EvalBackup) captureKeyChain(ctx context.Context, destRoot string) ([]EvalBackupFile, error) {
+	var chain []EvalBackupFile
+	for _, relPath := range evalBackupKeyChainPaths() {
+		data, err := b.fileSvc.ReadFile(ctx, relPath)
+		if errors.Is(err, constants.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: backup: read %s: %w", relPath, err)
+		}
+		file := EvalBackupFile{Path: relPath, Size: int64(len(data)), SHA256: evalBackupDigest(data)}
+		if err := storeEvalBackupObject(destRoot, file, data); err != nil {
+			return nil, err
+		}
+		chain = append(chain, file)
+	}
+	return chain, nil
 }
 
 // commitSnapshot reserves a snapshot directory and writes its manifest last,
@@ -230,9 +296,10 @@ func (b *EvalBackup) commitSnapshot(ctx context.Context, destRoot string, report
 		snapshotDir = fmt.Sprintf("%s-%06d", snapshotBase, sequence)
 	}
 	manifest, err := json.MarshalIndent(EvalBackupManifest{
-		SchemaVersion: evalBackupManifestVersionObjects,
+		SchemaVersion: evalBackupManifestVersion,
 		CreatedAt:     report.CreatedAt.Format(time.RFC3339),
 		Files:         report.Files,
+		KeyChain:      report.KeyChain,
 	}, "", "  ")
 	if err == nil {
 		err = os.WriteFile(filepath.Join(snapshotDir, constants.EvaluationBackupManifestFilename), manifest, constants.PermFilePrivate)
@@ -331,21 +398,24 @@ func planEvalBackupPurge(backupDir string, relPaths []string) (*evalBackupPurge,
 		if err != nil {
 			return nil, err
 		}
-		objects := manifest.SchemaVersion == evalBackupManifestVersionObjects
 		entry := evalBackupSnapshotPurge{dir: snapshotDir, manifest: *manifest}
 		entry.manifest.Files = nil
 		for _, file := range manifest.Files {
 			if evalBackupPathUnder(file.Path, roots) {
 				entry.dropped = append(entry.dropped, file)
-				if objects {
-					candidates[file.SHA256] = struct{}{}
-				}
+				candidates[file.SHA256] = struct{}{}
 				continue
 			}
 			entry.manifest.Files = append(entry.manifest.Files, file)
-			if objects {
-				referenced[file.SHA256] = struct{}{}
-			}
+			referenced[file.SHA256] = struct{}{}
+		}
+		// A snapshot left with no evidence is removed, and its key chain with it.
+		keyChainUse := referenced
+		if len(entry.dropped) > 0 && len(entry.manifest.Files) == 0 {
+			keyChainUse = candidates
+		}
+		for _, file := range manifest.KeyChain {
+			keyChainUse[file.SHA256] = struct{}{}
 		}
 		if len(entry.dropped) == 0 {
 			continue
@@ -382,8 +452,7 @@ func (p *evalBackupPurge) apply() error {
 }
 
 // rewrite replaces the snapshot's manifest with one listing only the kept
-// files, then removes a version 1 snapshot's inline copies of the dropped
-// ones. A snapshot with nothing kept is removed.
+// files. A snapshot with nothing kept is removed.
 func (s evalBackupSnapshotPurge) rewrite() error {
 	if len(s.manifest.Files) == 0 {
 		if err := os.RemoveAll(s.dir); err != nil {
@@ -413,14 +482,6 @@ func (s evalBackupSnapshotPurge) rewrite() error {
 	if err != nil {
 		_ = os.Remove(tempName)
 		return fmt.Errorf("evaluation: backup purge: rewrite manifest in %s: %w", s.dir, err)
-	}
-	if s.manifest.SchemaVersion != evalBackupManifestVersionInline {
-		return nil
-	}
-	for _, file := range s.dropped {
-		if err := os.Remove(filepath.Join(s.dir, filepath.FromSlash(file.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("evaluation: backup purge: remove %s from %s: %w", file.Path, s.dir, err)
-		}
 	}
 	return nil
 }
@@ -569,15 +630,18 @@ func evalBackupSnapshotNames(backupDir string) (string, []string, error) {
 	return abs, names, nil
 }
 
-// snapshotSources pairs each manifest entry with the file holding its content.
+// snapshotSources pairs each manifest entry with the object holding its
+// content and the snapshot's key chain.
 func snapshotSources(snapshotDir string, manifest *EvalBackupManifest) []evalBackupSource {
+	backupRoot := filepath.Dir(snapshotDir)
+	ids := make([]string, 0, len(manifest.KeyChain))
+	for _, file := range manifest.KeyChain {
+		ids = append(ids, file.Path+"="+file.SHA256)
+	}
+	chain := &evalBackupKeyChain{id: strings.Join(ids, ","), backupRoot: backupRoot, files: manifest.KeyChain}
 	sources := make([]evalBackupSource, 0, len(manifest.Files))
 	for _, file := range manifest.Files {
-		payload := filepath.Join(snapshotDir, filepath.FromSlash(file.Path))
-		if manifest.SchemaVersion == evalBackupManifestVersionObjects {
-			payload = evalBackupObjectPath(filepath.Dir(snapshotDir), file.SHA256)
-		}
-		sources = append(sources, evalBackupSource{file: file, payload: payload})
+		sources = append(sources, evalBackupSource{file: file, payload: evalBackupObjectPath(backupRoot, file.SHA256), keyChain: chain})
 	}
 	return sources
 }
@@ -648,12 +712,20 @@ func (b *EvalBackup) RestoreAll(ctx context.Context, backupDir string, overwrite
 	return report, nil
 }
 
-// restoreSources writes the sources into the runtime tree. Files already in
-// place with the right content are skipped without reading the backup, and
-// content is read one file at a time, so memory stays near one file. Every
-// file that will be written is verified against its digest before the first
-// write, so a corrupt backup changes nothing.
+// restoreSources writes the sources into the runtime tree as the runtime held
+// them: a record its snapshot's vault sealed is opened with that vault and
+// written through the evidence file service, sealing it under the runtime
+// vault whatever vault the snapshot was taken under; anything else, such as
+// the disclosure-safe export ExportRun writes in the clear (INV-EVAL-EVID-04),
+// is written back byte for byte. Content is read, verified against its digest,
+// and opened one file at a time, so memory stays near one file. Every source
+// is read and opened before the first write, so a corrupt backup or a key
+// chain the key store cannot open changes nothing.
 func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSource, overwrite bool) (*EvalRestoreReport, error) {
+	if b.evidence == nil {
+		return nil, fmt.Errorf("evaluation: restore: %w", constants.ErrEvaluationEvidenceVaultRequired)
+	}
+	vaults := make(map[string]EvidenceVault)
 	report := &EvalRestoreReport{}
 	var pending []evalBackupSource
 	var conflicts []EvalBackupFile
@@ -661,7 +733,11 @@ func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSou
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		same, exists, err := b.matchesExisting(ctx, source.file)
+		content, err := b.restoreContent(ctx, source, vaults)
+		if err != nil {
+			return nil, err
+		}
+		same, exists, err := b.matchesExisting(ctx, source.file.Path, content)
 		if err != nil {
 			return nil, err
 		}
@@ -678,19 +754,14 @@ func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSou
 		return nil, evalBackupConflictError(conflicts)
 	}
 	for _, source := range pending {
-		if _, err := readVerifiedEvalBackupPayload(source); err != nil {
-			return nil, err
-		}
-	}
-	for _, source := range pending {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		data, err := readVerifiedEvalBackupPayload(source)
+		content, err := b.restoreContent(ctx, source, vaults)
 		if err != nil {
 			return nil, err
 		}
-		if err := b.fileSvc.WriteFile(ctx, source.file.Path, data, constants.PermFilePrivate); err != nil {
+		if err := content.files(b).WriteFile(ctx, source.file.Path, content.data, constants.PermFilePrivate); err != nil {
 			return nil, fmt.Errorf("evaluation: restore: write %s: %w", source.file.Path, err)
 		}
 		report.Restored = append(report.Restored, source.file)
@@ -698,39 +769,99 @@ func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSou
 	return report, nil
 }
 
-func readVerifiedEvalBackupPayload(source evalBackupSource) ([]byte, error) {
-	data, err := os.ReadFile(source.payload)
-	if err != nil {
-		return nil, fmt.Errorf("evaluation: restore: read %s: %w", source.file.Path, err)
+// evalRestoreContent is one file's content as a restore writes it: data is
+// plaintext for a sealed record and the stored bytes otherwise.
+type evalRestoreContent struct {
+	data   []byte
+	sealed bool
+}
+
+// files is the file service that writes and reads the content: the evidence
+// file service seals a record, and the stored form is written as is.
+func (c evalRestoreContent) files(b *EvalBackup) fs.RuntimeFileService {
+	if c.sealed {
+		return b.evidence
 	}
-	if int64(len(data)) != source.file.Size || evalBackupDigest(data) != source.file.SHA256 {
-		return nil, fmt.Errorf("evaluation: restore: %s: %w", source.file.Path, constants.ErrEvaluationBackupIntegrity)
+	return b.fileSvc
+}
+
+// restoreContent returns a source's verified content. A file under a sealed
+// root is opened with its snapshot's vault; one that vault did not seal was
+// stored in the clear and is returned as stored.
+func (b *EvalBackup) restoreContent(ctx context.Context, source evalBackupSource, vaults map[string]EvidenceVault) (evalRestoreContent, error) {
+	data, err := readVerifiedEvalBackupPayload(source.file, source.payload)
+	if err != nil {
+		return evalRestoreContent{}, err
+	}
+	aad, sealedRoot := sealedPathAAD(source.file.Path)
+	if !sealedRoot {
+		return evalRestoreContent{data: data}, nil
+	}
+	v, err := b.keyChainVault(ctx, source.keyChain, vaults)
+	if err != nil {
+		return evalRestoreContent{}, err
+	}
+	plaintext, err := v.DecryptWithAAD(data, aad)
+	if err != nil {
+		//nolint:nilerr // intentional: the payload digest is already verified; a clear ExportRun bundle under a sealed root is restored as stored
+		return evalRestoreContent{data: data}, nil
+	}
+	return evalRestoreContent{data: plaintext, sealed: true}, nil
+}
+
+// keyChainVault opens the vault a snapshot's key chain holds, once per
+// distinct key chain.
+func (b *EvalBackup) keyChainVault(ctx context.Context, chain *evalBackupKeyChain, vaults map[string]EvidenceVault) (EvidenceVault, error) {
+	if v, ok := vaults[chain.id]; ok {
+		return v, nil
+	}
+	files := make(map[string][]byte, len(chain.files))
+	for _, file := range chain.files {
+		data, err := readVerifiedEvalBackupPayload(file, evalBackupObjectPath(chain.backupRoot, file.SHA256))
+		if err != nil {
+			return nil, err
+		}
+		files[file.Path] = data
+	}
+	v, err := b.evidence.openKeyChain(ctx, files)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: restore: %w", err)
+	}
+	vaults[chain.id] = v
+	return v, nil
+}
+
+func readVerifiedEvalBackupPayload(file EvalBackupFile, payload string) ([]byte, error) {
+	data, err := os.ReadFile(payload)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: restore: read %s: %w", file.Path, err)
+	}
+	if int64(len(data)) != file.Size || evalBackupDigest(data) != file.SHA256 {
+		return nil, fmt.Errorf("evaluation: restore: %s: %w", file.Path, constants.ErrEvaluationBackupIntegrity)
 	}
 	return data, nil
 }
 
-// matchesExisting compares a runtime file with the backup entry, reading it
-// only when its size already matches.
-func (b *EvalBackup) matchesExisting(ctx context.Context, file EvalBackupFile) (same, exists bool, err error) {
-	exists, err = b.fileSvc.FileExists(ctx, file.Path)
+// matchesExisting compares the runtime file at relPath with the content a
+// restore would write, read the same way the restore writes it. A sealed
+// record the runtime vault cannot open differs.
+func (b *EvalBackup) matchesExisting(ctx context.Context, relPath string, want evalRestoreContent) (same, exists bool, err error) {
+	files := want.files(b)
+	exists, err = files.FileExists(ctx, relPath)
 	if err != nil {
-		return false, false, fmt.Errorf("evaluation: restore: check %s: %w", file.Path, err)
+		return false, false, fmt.Errorf("evaluation: restore: check %s: %w", relPath, err)
 	}
 	if !exists {
 		return false, false, nil
 	}
-	info, err := b.fileSvc.Stat(ctx, file.Path)
-	if err != nil {
-		return false, true, fmt.Errorf("evaluation: restore: stat existing %s: %w", file.Path, err)
-	}
-	if info.Size() != file.Size {
+	current, err := files.ReadFile(ctx, relPath)
+	if errors.Is(err, constants.ErrEvaluationEvidenceDecryptFailed) {
 		return false, true, nil
 	}
-	current, err := b.fileSvc.ReadFile(ctx, file.Path)
 	if err != nil {
-		return false, true, fmt.Errorf("evaluation: restore: read existing %s: %w", file.Path, err)
+		return false, true, fmt.Errorf("evaluation: restore: read existing %s: %w", relPath, err)
 	}
-	return evalBackupDigest(current) == file.SHA256, true, nil
+	return bytes.Equal(current, want.data), true, nil
 }
 
 func evalBackupConflictError(conflicts []EvalBackupFile) error {
@@ -846,7 +977,7 @@ func readEvalBackupManifest(snapshotDir string) (*EvalBackupManifest, error) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return nil, fmt.Errorf("evaluation: restore: decode manifest: %w: %w", constants.ErrEvaluationBackupManifestInvalid, err)
 	}
-	if manifest.SchemaVersion != evalBackupManifestVersionInline && manifest.SchemaVersion != evalBackupManifestVersionObjects {
+	if manifest.SchemaVersion != evalBackupManifestVersion {
 		return nil, fmt.Errorf("evaluation: restore: manifest schema %q: %w", manifest.SchemaVersion, constants.ErrEvaluationBackupManifestInvalid)
 	}
 	seen := make(map[string]struct{}, len(manifest.Files))
@@ -859,7 +990,42 @@ func readEvalBackupManifest(snapshotDir string) (*EvalBackupManifest, error) {
 		}
 		seen[file.Path] = struct{}{}
 	}
+	if err := validateEvalBackupKeyChain(manifest.Files, manifest.KeyChain); err != nil {
+		return nil, fmt.Errorf("evaluation: restore: %s: %w", snapshotDir, err)
+	}
 	return &manifest, nil
+}
+
+// validateEvalBackupKeyChain confines key chain entries to the vault key chain
+// files, and requires the files that open the vault when any listed evidence
+// is sealed.
+func validateEvalBackupKeyChain(files, chain []EvalBackupFile) error {
+	present := make(map[string]struct{}, len(chain))
+	for _, file := range chain {
+		if !slices.Contains(evalBackupKeyChainPaths(), file.Path) {
+			return fmt.Errorf("key chain path %q is not a vault key chain file: %w", file.Path, constants.ErrEvaluationBackupManifestInvalid)
+		}
+		if _, dup := present[file.Path]; dup {
+			return fmt.Errorf("duplicate key chain path %q: %w", file.Path, constants.ErrEvaluationBackupManifestInvalid)
+		}
+		if file.Size < 0 || len(file.SHA256) != sha256.Size*2 {
+			return fmt.Errorf("key chain entry %q has an invalid size or digest: %w", file.Path, constants.ErrEvaluationBackupManifestInvalid)
+		}
+		present[file.Path] = struct{}{}
+	}
+	sealed := slices.ContainsFunc(files, func(file EvalBackupFile) bool {
+		_, ok := sealedPathAAD(file.Path)
+		return ok
+	})
+	if !sealed {
+		return nil
+	}
+	for _, required := range evalBackupKeyChainRequired() {
+		if _, ok := present[required]; !ok {
+			return fmt.Errorf("%w: %s", constants.ErrEvaluationBackupKeyChainMissing, required)
+		}
+	}
+	return nil
 }
 
 // validateEvalBackupEntry confines a manifest path to the backup roots so a

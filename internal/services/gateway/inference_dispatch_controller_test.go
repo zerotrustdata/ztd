@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -666,4 +667,56 @@ func TestInferenceDispatchController_ContextCanceledWritesNothing(t *testing.T) 
 
 	assert.Equal(t, http.StatusOK, rr.Code, "recorder default; the handler must not write an error for a canceled client")
 	assert.Empty(t, rr.Body.String(), "no response is written when the caller is gone")
+}
+
+func TestInferenceDispatchController_FailedReceiptPropagatedOnProviderFailure(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId: "tx-inference-failed-001",
+		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		Signature:     "sig-failed-001",
+		ResultSummary: "ollama provider timeout",
+	}
+	providerErr := governance.WithFailedReceipt(receipt, constants.ErrInferenceBackendTimeout)
+	dispatcher := &stubInferenceCommandDispatcher{err: providerErr}
+	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
+	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
+
+	body := marshalInferenceDispatchRequest(t, &operatorv1.InferenceDispatchRequest{
+		Role:     operatorv1.ModelRole_MODEL_ROLE_PRIMARY,
+		Messages: inferenceTextMessages("hi"),
+	})
+	req := inferenceDispatchHTTPRequest(t, body, "test-app", "user-001")
+	rr := httptest.NewRecorder()
+	ctrl.HandleDispatch(rr, req)
+
+	assert.Equal(t, http.StatusBadGateway, rr.Code)
+	failure := &operatorv1.InferenceDispatchFailure{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), failure))
+	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT, failure.GetCode())
+	require.NotNil(t, failure.GetReceipt(), "the HTTP failure body must carry the Operator's FAILED receipt")
+	assert.Equal(t, "tx-inference-failed-001", failure.GetReceipt().GetTransactionId())
+	assert.Equal(t, "sig-failed-001", failure.GetReceipt().GetSignature())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failure.GetReceipt().GetStatus())
+	require.NotNil(t, governance.FailedReceipt(providerErr))
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, governance.FailedReceipt(providerErr).GetStatus())
+}
+
+func TestInferenceDispatchController_GovernanceRejectionCarriesNoFailedReceipt(t *testing.T) {
+	dispatcher := &stubInferenceCommandDispatcher{err: constants.ErrInferenceGovernanceRejected}
+	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
+	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
+
+	body := marshalInferenceDispatchRequest(t, &operatorv1.InferenceDispatchRequest{
+		Role:     operatorv1.ModelRole_MODEL_ROLE_PRIMARY,
+		Messages: inferenceTextMessages("hi"),
+	})
+	req := inferenceDispatchHTTPRequest(t, body, "test-app", "user-001")
+	rr := httptest.NewRecorder()
+	ctrl.HandleDispatch(rr, req)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+	failure := &operatorv1.InferenceDispatchFailure{}
+	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), failure))
+	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED, failure.GetCode())
+	assert.Nil(t, failure.GetReceipt(), "governance rejection without execution must carry no FAILED receipt")
 }

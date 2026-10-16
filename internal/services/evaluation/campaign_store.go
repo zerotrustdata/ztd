@@ -698,8 +698,12 @@ func (s *Store) listRunIDsByCampaign(ctx context.Context) (map[string][]string, 
 			continue
 		}
 		run, err := s.LoadRun(ctx, entry.Name())
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, constants.ErrNotFound) {
+			// A run directory whose state record is not written yet is not a run.
 			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: list campaign runs: %w", err)
 		}
 		campaignID := run.GetCampaignBinding().GetCampaignId()
 		if campaignID == "" {

@@ -39,12 +39,27 @@ func NewCmdTestEnv(t *testing.T) (fs.RuntimeFileService, *config.Config) {
 // in-memory key store.
 func NewEvidenceCmdTestEnv(t *testing.T) (fs.RuntimeFileService, *config.Config) {
 	t.Helper()
+	return NewEvidenceCmdTestEnvWithKeyring(t, keystoretest.NewMemoryKeyring())
+}
+
+// NewEvidenceCmdTestEnvWithKeyring is NewEvidenceCmdTestEnv over a given
+// in-memory OS key store, so several runtimes share one as the runtimes on a
+// host share its OS key store.
+func NewEvidenceCmdTestEnvWithKeyring(t *testing.T, keyring keystore.Keyring) (fs.RuntimeFileService, *config.Config) {
+	t.Helper()
 	fileSvc, cfg := NewCmdTestEnv(t)
-	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
+	cfg.Keyring = keyring
+	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
-	sealed, err := evaluation.NewEvidenceFileService(fileSvc, func() (evaluation.EvidenceVault, error) { return ks.OpenVault() })
+	sealed, err := evaluation.NewEvidenceFileService(fileSvc, func(keys fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
+		keyStore, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, keys)
+		if err != nil {
+			return nil, err
+		}
+		return keyStore.OpenVault()
+	})
 	require.NoError(t, err)
 	return sealed, cfg
 }

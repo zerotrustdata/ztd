@@ -94,11 +94,9 @@ func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
 	require.NotNil(t, first)
 
 	result, executed, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              req.Inventory.ToModelRegistryFreeze().Variants,
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	require.True(t, executed)

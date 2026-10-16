@@ -617,8 +617,8 @@ func verifyBatchSignature(batch models.PublicFeedBatch, pubKey ed25519.PublicKey
 
 // validateBatch performs all ingest validation layers: signature, content
 // hash, hash chain, sequence ordering, duplicate sequence, oversized batch,
-// revoked key, unknown key, record hash verification, and prohibited field
-// scan. Returns a typed rejection reason on failure.
+// revoked key, unknown key, and record hash verification. Returns a typed
+// rejection reason on failure.
 func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models.PublicFeedIngestRejectionReason, error) {
 	if len(batch.Records) == 0 {
 		return models.PublicFeedIngestRejectionOversizedBatch, constants.ErrPublicFeedBatchEmpty
@@ -666,9 +666,6 @@ func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models
 		computed := sha256.Sum256([]byte(r.RecordBytes))
 		if hex.EncodeToString(computed[:]) != r.RecordHash {
 			return models.PublicFeedIngestRejectionSignatureInvalid, constants.ErrPublicFeedRecordHashMismatch
-		}
-		if err := checkProhibitedFields(r.RecordBytes); err != nil {
-			return models.PublicFeedIngestRejectionSignatureInvalid, err
 		}
 		if err := publicdisclosure.ValidatePublicFeedRecord(r.RecordType, []byte(r.RecordBytes)); err != nil {
 			return models.PublicFeedIngestRejectionSignatureInvalid, fmt.Errorf("public mirror: validate record: %w", err)
@@ -1295,11 +1292,6 @@ func validatePublicProofCatalogArtifacts(request models.PublicProofIngestRequest
 		hash := sha256.Sum256(content)
 		if entry.SHA256 != hex.EncodeToString(hash[:]) {
 			return constants.ErrPublicFeedProofHashMismatch
-		}
-		if strings.Contains(entry.MediaType, "json") {
-			if err := checkProhibitedFields(string(content)); err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPublicFeedProofRestricted, err)
-			}
 		}
 	}
 	return nil

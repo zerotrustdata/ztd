@@ -24,10 +24,6 @@
       "PublicAssignmentResultProjection"
     ],
     "prohibited_claims": [
-      "raw_prompt",
-      "model_output",
-      "private_evidence",
-      "receipt_internals",
       "protocol_authorization",
       "individual_verification"
     ]

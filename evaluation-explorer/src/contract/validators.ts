@@ -61,7 +61,6 @@ import {
   RUN_METRIC_UNITS,
   SUPPORTED_VIEW_SCHEMA_VERSIONS,
   TERMINAL_STATUSES,
-  TOOL_RESULT_REDACTIONS,
   TOOL_SCORE_DIMENSIONS,
   VERIFIER_STATES,
   type ViewSchemaVersion,
@@ -101,11 +100,11 @@ function isEnum<T extends string>(value: unknown, set: readonly T[]): value is T
   return isString(value) && (set as readonly string[]).includes(value);
 }
 
-function assert(condition: unknown, path: string, message: string): asserts condition {
+export function assert(condition: unknown, path: string, message: string): asserts condition {
   if (!condition) throw new ValidationError(message, path);
 }
 
-function assertString(value: unknown, path: string): asserts value is string {
+export function assertString(value: unknown, path: string): asserts value is string {
   assert(isString(value), path, `expected string`);
 }
 
@@ -118,15 +117,15 @@ function assertNumber(value: unknown, path: string): asserts value is number {
   assert(isNumber(value), path, `expected finite number`);
 }
 
-function assertInteger(value: unknown, path: string): asserts value is number {
+export function assertInteger(value: unknown, path: string): asserts value is number {
   assert(isInteger(value), path, `expected safe integer`);
 }
 
-function assertBoolean(value: unknown, path: string): asserts value is boolean {
+export function assertBoolean(value: unknown, path: string): asserts value is boolean {
   assert(isBoolean(value), path, `expected boolean`);
 }
 
-function assertObject(value: unknown, path: string): asserts value is Record<string, unknown> {
+export function assertObject(value: unknown, path: string): asserts value is Record<string, unknown> {
   assert(isObject(value), path, `expected object`);
 }
 
@@ -177,7 +176,7 @@ function assertStringArray(value: unknown, path: string, maxItems = 128, maxByte
 }
 
 /** Reject unknown fields on a record to prevent silent shape drift. */
-function rejectUnknown(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
+export function rejectUnknown(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) {
       throw new ValidationError(`unknown field "${key}"`, path);
@@ -813,7 +812,7 @@ export function assertRoleTranscripts(value: unknown, path: string): asserts val
       const callPath = `${transcriptPath}.tool_calls[${callIndex}]`;
       const call: unknown = transcript.tool_calls[callIndex];
       assertObject(call, callPath);
-      rejectUnknown(call, ['tool_name', 'arguments_json', 'arguments_hash', 'command', 'success', 'error_type', 'result_json', 'result_redaction'], callPath);
+      rejectUnknown(call, ['tool_name', 'arguments_json', 'arguments_hash', 'command', 'success', 'error_type', 'result_json'], callPath);
       assertString(call.tool_name, `${callPath}.tool_name`);
       assertOptional(call.arguments_json, `${callPath}.arguments_json`, assertString);
       assertOptionalHash(call.arguments_hash, `${callPath}.arguments_hash`);
@@ -821,7 +820,6 @@ export function assertRoleTranscripts(value: unknown, path: string): asserts val
       assertBoolean(call.success, `${callPath}.success`);
       assertOptional(call.error_type, `${callPath}.error_type`, assertString);
       assertOptional(call.result_json, `${callPath}.result_json`, assertString);
-      assertOptional(call.result_redaction, `${callPath}.result_redaction`, (v, p) => assertEnum(v, TOOL_RESULT_REDACTIONS, p));
     }
   }
 }
@@ -856,7 +854,7 @@ function assertPublicSemanticGrades(value: unknown, path: string): void {
     const gradePath = `${path}[${index}]`;
     const grade: unknown = value[index];
     assertObject(grade, gradePath);
-    rejectUnknown(grade, ['criterion_id', 'status', 'grading_method', 'judge_variant_id', 'explanation_code'], gradePath);
+    rejectUnknown(grade, ['criterion_id', 'status', 'grading_method', 'judge_variant_id', 'explanation_code', 'detail'], gradePath);
     assertPublicIdentifier(grade.criterion_id, `${gradePath}.criterion_id`);
     assert(!criterionIds.has(grade.criterion_id), `${gradePath}.criterion_id`, 'duplicate criterion id');
     criterionIds.add(grade.criterion_id);
@@ -864,6 +862,7 @@ function assertPublicSemanticGrades(value: unknown, path: string): void {
     assertEnum(grade.grading_method, ['deterministic', 'semantic_judge'], `${gradePath}.grading_method`);
     assertOptional(grade.judge_variant_id, `${gradePath}.judge_variant_id`, assertPublicIdentifier);
     assertEnum(grade.explanation_code, PUBLIC_GRADE_EXPLANATION_CODES, `${gradePath}.explanation_code`);
+    assertOptional(grade.detail, `${gradePath}.detail`, assertString);
   }
 }
 

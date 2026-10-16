@@ -242,6 +242,31 @@ describe('campaign projection wire contract', () => {
     ).not.toThrow();
   });
 
+  it('accepts multiline grader detail exceeding 128 bytes on benchmark and semantic grades', () => {
+    const record = fixtureCampaignResultEnvelope.record as CampaignResultRecord;
+    const detail = 'Expected the model to read ../run.log before answering.\nObserved: no tool call; answered from prior.\n'.repeat(8);
+    const decoded = decodeCampaignProjectionEnvelope({
+      ...fixtureCampaignResultEnvelope,
+      record: {
+        ...record,
+        benchmark_observations: {
+          ...record.benchmark_observations,
+          grade_summaries: [{ criterion_id: 'reads-log', status: 'fail', explanation_code: 'PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_FAILED', detail }],
+        },
+        semantic_grade_summaries: [{
+          criterion_id: 'reads-log',
+          status: 'EVALUATION_VERDICT_STATUS_FAIL',
+          grading_method: 'EVALUATION_GRADING_METHOD_DETERMINISTIC',
+          explanation_code: 'PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_FAILED',
+          detail,
+        }],
+      },
+    });
+    const decodedRecord = decoded.record as CampaignResultRecord;
+    expect(decodedRecord.benchmark_observations?.grade_summaries?.[0]?.detail).toBe(detail);
+    expect(decodedRecord.semantic_grade_summaries?.[0]?.detail).toBe(detail);
+  });
+
   describe('role_transcripts', () => {
     const record = fixtureCampaignResultEnvelope.record as CampaignResultRecord;
     const toolCall = {
@@ -251,7 +276,6 @@ describe('campaign projection wire contract', () => {
       command: 'cat /tmp/retry.conf',
       success: true,
       result_json: '{"content":"retries=3"}',
-      result_redaction: 'truncated',
     };
     const transcript = { role: 'lite', response: 'retries=3', finish_reason: 'stop', trace_digest: 'c'.repeat(64), tool_calls: [toolCall] };
     const withTranscripts = (roleTranscripts: unknown, envelope = fixtureCampaignResultEnvelope) => ({
@@ -270,7 +294,7 @@ describe('campaign projection wire contract', () => {
       ['an unknown role', [{ ...transcript, role: 'judge' }]],
       ['a non-hex arguments_hash', [{ ...transcript, tool_calls: [{ ...toolCall, arguments_hash: 'Z'.repeat(64) }] }]],
       ['a short trace_digest', [{ ...transcript, trace_digest: 'c'.repeat(63) }]],
-      ['an unknown result_redaction', [{ ...transcript, tool_calls: [{ ...toolCall, result_redaction: 'hidden' }] }]],
+      ['a result_redaction marker', [{ ...transcript, tool_calls: [{ ...toolCall, result_redaction: 'truncated' }] }]],
       ['a missing tool success flag', [{ ...transcript, tool_calls: [{ tool_name: 'read_file' }] }]],
       ['a non-array value', { role: 'lite' }],
     ])('rejects %s', (_label, roleTranscripts) => {

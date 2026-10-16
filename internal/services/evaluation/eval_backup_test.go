@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +21,8 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -38,22 +39,27 @@ const (
 	backupSnapshotPrefix = "eval-backup-20260930T120000Z"
 )
 
+// evalBackupFixture is a runtime whose evaluation evidence is sealed by a real
+// vault opened through the real key store over an in-memory OS key store, the
+// part of the key chain that outlives the runtime tree.
 type evalBackupFixture struct {
+	raw     fs.RuntimeFileService
 	files   fs.RuntimeFileService
+	keyring keystore.Keyring
 	backup  *EvalBackup
 	outRoot string
 }
 
 func newEvalBackupFixture(t *testing.T) *evalBackupFixture {
 	t.Helper()
-	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	raw, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
-	require.NoError(t, files.CreateRuntimeTree(context.Background()))
 	f := &evalBackupFixture{
-		files:   files,
-		backup:  NewEvalBackup(files, func() time.Time { return evalBackupTestNow }),
+		raw:     raw,
+		keyring: keystoretest.NewMemoryKeyring(),
 		outRoot: filepath.Join(testutil.TempDir(t), "backups"),
 	}
+	f.initRuntime(t)
 	f.write(t, backupRunReportPath, `{"run":1}`)
 	f.write(t, backupRunLeasePath, `{"pid":1}`)
 	f.write(t, backupActiveRunPath, `{"run":"run-1"}`)
@@ -62,6 +68,41 @@ func newEvalBackupFixture(t *testing.T) *evalBackupFixture {
 	f.write(t, backupQueueLogPath, "queued\n")
 	f.write(t, backupUnrelatedPath, "not evaluation data")
 	return f
+}
+
+// initRuntime creates the runtime tree and a fresh vault in it, as a new
+// install, or a reinstall after the runtime tree was wiped, does.
+func (f *evalBackupFixture) initRuntime(t *testing.T) {
+	t.Helper()
+	f.files = newVaultedEvidenceFiles(t, f.raw, f.keyring)
+	f.backup = NewEvalBackup(f.files, func() time.Time { return evalBackupTestNow })
+}
+
+// newVaultedEvidenceFiles creates raw's runtime tree and a fresh vault in it,
+// and returns the evidence file service over it. The vault key is sealed under
+// the master key keyring holds.
+func newVaultedEvidenceFiles(t *testing.T, raw fs.RuntimeFileService, keyring keystore.Keyring) fs.RuntimeFileService {
+	t.Helper()
+	require.NoError(t, raw.CreateRuntimeTree(context.Background()))
+	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, raw)
+	require.NoError(t, err)
+	require.NoError(t, ks.Initialize())
+	require.NoError(t, ks.InitVault())
+	files, err := NewEvidenceFileService(raw, func(keys fs.RuntimeFileService) (EvidenceVault, error) {
+		keyStore, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, keys)
+		if err != nil {
+			return nil, err
+		}
+		return keyStore.OpenVault()
+	})
+	require.NoError(t, err)
+	return files
+}
+
+// wipeRuntime removes the whole runtime tree, vault included.
+func (f *evalBackupFixture) wipeRuntime(t *testing.T) {
+	t.Helper()
+	require.NoError(t, os.RemoveAll(f.raw.Resolve("")))
 }
 
 func (f *evalBackupFixture) write(t *testing.T, rel, body string) {
@@ -81,6 +122,15 @@ func (f *evalBackupFixture) create(t *testing.T) *EvalBackupReport {
 	report, err := f.backup.Create(context.Background(), f.outRoot)
 	require.NoError(t, err)
 	return report
+}
+
+// stored is the content the runtime holds on disk for rel: ciphertext for a
+// sealed record.
+func (f *evalBackupFixture) stored(t *testing.T, rel string) []byte {
+	t.Helper()
+	data, err := f.raw.ReadFile(context.Background(), rel)
+	require.NoError(t, err)
+	return data
 }
 
 func reportPaths(files []EvalBackupFile) []string {
@@ -108,24 +158,6 @@ func objectCount(t *testing.T, backupDir string) int {
 	return count
 }
 
-// writeLegacySnapshot lays out a version 1 snapshot: every file copied beside its manifest.
-func writeLegacySnapshot(t *testing.T, backupDir, name string, files map[string]string) string {
-	t.Helper()
-	dir := filepath.Join(backupDir, name)
-	manifest := EvalBackupManifest{SchemaVersion: evalBackupManifestVersionInline}
-	for rel, body := range files {
-		target := filepath.Join(dir, filepath.FromSlash(rel))
-		require.NoError(t, os.MkdirAll(filepath.Dir(target), constants.PermDirPrivate))
-		require.NoError(t, os.WriteFile(target, []byte(body), constants.PermFilePrivate))
-		manifest.Files = append(manifest.Files, EvalBackupFile{Path: rel, Size: int64(len(body)), SHA256: evalBackupDigest([]byte(body))})
-	}
-	sort.Slice(manifest.Files, func(i, j int) bool { return manifest.Files[i].Path < manifest.Files[j].Path })
-	raw, err := json.Marshal(manifest)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, constants.EvaluationBackupManifestFilename), raw, constants.PermFilePrivate))
-	return dir
-}
-
 func TestEvalBackup_CreateCopiesEvidenceOnly(t *testing.T) {
 	f := newEvalBackupFixture(t)
 
@@ -133,30 +165,35 @@ func TestEvalBackup_CreateCopiesEvidenceOnly(t *testing.T) {
 
 	assert.Equal(t, filepath.Join(f.outRoot, backupSnapshotPrefix), report.SnapshotDir)
 	assert.Equal(t, []string{backupCampaignPath, backupRunReportPath, backupQueueLogPath, backupInventoryPath}, reportPaths(report.Files))
-	for _, file := range report.Files {
+	assert.Equal(t, []string{constants.VaultHeaderRelPath, constants.VaultKeyRelPath}, reportPaths(report.KeyChain))
+	for _, file := range append(append([]EvalBackupFile{}, report.Files...), report.KeyChain...) {
 		copied, err := os.ReadFile(payloadPath(report.SnapshotDir, file))
 		require.NoError(t, err)
-		assert.Equal(t, f.read(t, file.Path), string(copied))
+		assert.Equal(t, f.stored(t, file.Path), copied, "%s is copied as stored", file.Path)
 		assert.Equal(t, evalBackupDigest(copied), file.SHA256)
 	}
+	sealed, err := os.ReadFile(payloadPath(report.SnapshotDir, report.Files[1]))
+	require.NoError(t, err)
+	assert.NotContains(t, string(sealed), `{"run":1}`, "sealed evidence leaves the runtime as ciphertext")
 	snapshotEntries, err := os.ReadDir(report.SnapshotDir)
 	require.NoError(t, err)
 	require.Len(t, snapshotEntries, 1, "a snapshot holds only its manifest")
 	assert.Equal(t, constants.EvaluationBackupManifestFilename, snapshotEntries[0].Name())
-	assert.Equal(t, len(report.Files), objectCount(t, f.outRoot), "excluded files (lease, active run, unrelated data) are never stored")
+	assert.Equal(t, len(report.Files)+len(report.KeyChain), objectCount(t, f.outRoot), "excluded files (lease, active run, unrelated data) are never stored")
 	var manifest EvalBackupManifest
 	raw, err := os.ReadFile(filepath.Join(report.SnapshotDir, constants.EvaluationBackupManifestFilename))
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(raw, &manifest))
 	assert.Equal(t, report.Files, manifest.Files)
-	assert.Equal(t, evalBackupManifestVersionObjects, manifest.SchemaVersion)
+	assert.Equal(t, report.KeyChain, manifest.KeyChain)
+	assert.Equal(t, evalBackupManifestVersion, manifest.SchemaVersion)
 }
 
 func TestEvalBackup_RepeatedBackupsStoreEachContentOnce(t *testing.T) {
 	f := newEvalBackupFixture(t)
 	first := f.create(t)
 	stored := objectCount(t, f.outRoot)
-	require.Equal(t, len(first.Files), stored)
+	require.Equal(t, len(first.Files)+len(first.KeyChain), stored)
 
 	f.create(t)
 	assert.Equal(t, stored, objectCount(t, f.outRoot), "an identical backup copies nothing")
@@ -215,15 +252,16 @@ func TestEvalBackup_CreateSameSecondPreservesSnapshots(t *testing.T) {
 
 	assert.Equal(t, first.SnapshotDir+"-000001", second.SnapshotDir)
 	assert.Equal(t, first.SnapshotDir+"-000002", third.SnapshotDir)
-	for snapshot, want := range map[*EvalBackupReport]string{first: `{"run":1}`, second: `{"run":2}`} {
+	digests := make(map[string]bool)
+	for _, snapshot := range []*EvalBackupReport{first, second} {
 		for _, file := range snapshot.Files {
 			if file.Path == backupRunReportPath {
-				data, err := os.ReadFile(payloadPath(snapshot.SnapshotDir, file))
-				require.NoError(t, err)
-				assert.JSONEq(t, want, string(data))
+				assert.FileExists(t, payloadPath(snapshot.SnapshotDir, file))
+				digests[file.SHA256] = true
 			}
 		}
 	}
+	assert.Len(t, digests, 2, "each snapshot keeps its own version of the changed file")
 	latest, err := LatestEvalBackupSnapshot(f.outRoot)
 	require.NoError(t, err)
 	assert.Equal(t, third.SnapshotDir, latest)
@@ -271,6 +309,76 @@ func TestEvalBackup_RoundTripAfterWipe(t *testing.T) {
 	leaseExists, err := f.files.FileExists(ctx, backupRunLeasePath)
 	require.NoError(t, err)
 	assert.False(t, leaseExists, "lease state must not be resurrected")
+}
+
+// A snapshot outlives the runtime tree and the vault in it: after a wipe and a
+// fresh install, the restore opens the snapshot's vault from its key chain and
+// seals the evidence under the new runtime vault.
+func TestEvalBackup_RestoreAfterRuntimeAndVaultAreRecreated(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	report := f.create(t)
+	oldHeader := f.stored(t, constants.VaultHeaderRelPath)
+	f.wipeRuntime(t)
+	f.initRuntime(t)
+	require.NotEqual(t, oldHeader, f.stored(t, constants.VaultHeaderRelPath), "the reinstall creates a new vault")
+
+	restored, err := f.backup.RestoreAll(context.Background(), f.outRoot, false)
+
+	require.NoError(t, err)
+	assert.Equal(t, report.Files, restored.Restored)
+	assert.Equal(t, `{"run":1}`, f.read(t, backupRunReportPath))
+	assert.Equal(t, `{"campaign":1}`, f.read(t, backupCampaignPath))
+	assert.Equal(t, "queued\n", f.read(t, backupQueueLogPath))
+	assert.NotContains(t, string(f.stored(t, backupRunReportPath)), `{"run":1}`, "restored evidence is sealed again")
+
+	again, err := f.backup.RestoreAll(context.Background(), f.outRoot, false)
+
+	require.NoError(t, err)
+	assert.Empty(t, again.Restored, "evidence sealed under another vault compares by content")
+	assert.Equal(t, report.Files, again.Unchanged)
+}
+
+// Evidence a vault the key store cannot open sealed is never written back.
+func TestEvalBackup_RestoreRejectsKeyChainTheKeyStoreCannotOpen(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	f.create(t)
+	f.wipeRuntime(t)
+	f.keyring = keystoretest.NewMemoryKeyring()
+	f.initRuntime(t)
+
+	_, err := f.backup.RestoreAll(context.Background(), f.outRoot, false)
+
+	require.ErrorIs(t, err, constants.ErrEvaluationBackupKeyChainInvalid)
+	exists, err := f.files.FileExists(context.Background(), backupCampaignPath)
+	require.NoError(t, err)
+	assert.False(t, exists, "nothing is written when a snapshot's vault cannot be opened")
+}
+
+func TestEvalBackup_RestoreRejectsSnapshotWithoutKeyChain(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	report := f.create(t)
+	manifestPath := filepath.Join(report.SnapshotDir, constants.EvaluationBackupManifestFilename)
+	raw, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+	var manifest EvalBackupManifest
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	manifest.KeyChain = manifest.KeyChain[:1]
+	raw, err = json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, raw, constants.PermFilePrivate))
+
+	_, err = f.backup.Restore(context.Background(), report.SnapshotDir, true)
+
+	assert.ErrorIs(t, err, constants.ErrEvaluationBackupKeyChainMissing)
+}
+
+func TestEvalBackup_RestoreRequiresTheEvidenceFileService(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	report := f.create(t)
+
+	_, err := NewEvalBackup(f.raw, time.Now).Restore(context.Background(), report.SnapshotDir, true)
+
+	assert.ErrorIs(t, err, constants.ErrEvaluationEvidenceVaultRequired)
 }
 
 func TestEvalBackup_RestoreIsIdempotent(t *testing.T) {
@@ -343,6 +451,7 @@ func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T
 	f := newEvalBackupFixture(t)
 	digest := evalBackupDigest([]byte("x"))
 	for _, bad := range []string{
+		constants.VaultKeyRelPath,
 		"pki/operator.key",
 		"data/ztd.db",
 		"../escape",
@@ -354,7 +463,7 @@ func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T
 		t.Run(bad, func(t *testing.T) {
 			snapshot := testutil.TempDir(t)
 			raw, err := json.Marshal(EvalBackupManifest{
-				SchemaVersion: evalBackupManifestVersionInline,
+				SchemaVersion: evalBackupManifestVersion,
 				Files:         []EvalBackupFile{{Path: bad, Size: 1, SHA256: digest}},
 			})
 			require.NoError(t, err)
@@ -365,6 +474,20 @@ func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T
 			assert.ErrorIs(t, err, constants.ErrEvaluationBackupManifestInvalid)
 		})
 	}
+	t.Run("key chain path outside the vault key chain", func(t *testing.T) {
+		snapshot := testutil.TempDir(t)
+		raw, err := json.Marshal(EvalBackupManifest{
+			SchemaVersion: evalBackupManifestVersion,
+			Files:         []EvalBackupFile{{Path: backupInventoryPath, Size: 1, SHA256: digest}},
+			KeyChain:      []EvalBackupFile{{Path: "pki/ca.key", Size: 1, SHA256: digest}},
+		})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(snapshot, constants.EvaluationBackupManifestFilename), raw, constants.PermFilePrivate))
+
+		_, err = f.backup.Restore(context.Background(), snapshot, true)
+
+		assert.ErrorIs(t, err, constants.ErrEvaluationBackupManifestInvalid)
+	})
 }
 
 func (f *evalBackupFixture) laterBackup(after time.Duration) *EvalBackup {
@@ -384,7 +507,7 @@ func TestEvalBackup_CreateIfChangedSkipsIdenticalEvidence(t *testing.T) {
 	snapshots, err := AllEvalBackupSnapshots(f.outRoot)
 	require.NoError(t, err)
 	assert.Len(t, snapshots, 1, "an unchanged backup must not leave a second snapshot")
-	assert.Equal(t, len(first.Files), objectCount(t, f.outRoot))
+	assert.Equal(t, len(first.Files)+len(first.KeyChain), objectCount(t, f.outRoot))
 }
 
 func TestEvalBackup_CreateIfChangedKeepsSnapshotWhenEvidenceChanged(t *testing.T) {
@@ -401,35 +524,19 @@ func TestEvalBackup_CreateIfChangedKeepsSnapshotWhenEvidenceChanged(t *testing.T
 	assert.FileExists(t, filepath.Join(report.SnapshotDir, constants.EvaluationBackupManifestFilename))
 }
 
-// A directory of full-copy snapshots from before the object store must not make
-// every automatic backup look changed: the comparison reads the manifest's file
-// list, which both layouts share.
-func TestEvalBackup_CreateIfChangedTreatsMatchingLegacySnapshotAsUnchanged(t *testing.T) {
+func TestEvalBackup_CreateIfChangedKeepsSnapshotWhenVaultChanged(t *testing.T) {
 	f := newEvalBackupFixture(t)
-	legacyDir := writeLegacySnapshot(t, f.outRoot, "eval-backup-20260101T000000Z", map[string]string{
-		backupRunReportPath: `{"run":1}`,
-		backupCampaignPath:  `{"campaign":1}`,
-		backupInventoryPath: `{"variants":[]}`,
-		backupQueueLogPath:  "queued\n",
-	})
+	first := f.create(t)
+	f.wipeRuntime(t)
+	f.initRuntime(t)
+	_, err := f.backup.RestoreAll(context.Background(), f.outRoot, false)
+	require.NoError(t, err)
 
 	report, err := f.backup.CreateIfChanged(context.Background(), f.outRoot)
 
 	require.NoError(t, err)
-	assert.True(t, report.Unchanged)
-	assert.Equal(t, legacyDir, report.SnapshotDir)
-	snapshots, err := AllEvalBackupSnapshots(f.outRoot)
-	require.NoError(t, err)
-	assert.Equal(t, []string{legacyDir}, snapshots, "a matching legacy snapshot must not gain a successor")
-
-	f.write(t, backupRunReportPath, `{"run":2}`)
-
-	changed, err := f.backup.CreateIfChanged(context.Background(), f.outRoot)
-
-	require.NoError(t, err)
-	assert.False(t, changed.Unchanged)
-	assert.NotEqual(t, legacyDir, changed.SnapshotDir)
-	assert.FileExists(t, filepath.Join(legacyDir, constants.EvaluationBackupManifestFilename), "the legacy snapshot must survive")
+	assert.False(t, report.Unchanged, "evidence resealed under a new vault is a new snapshot")
+	assert.NotEqual(t, first.KeyChain, report.KeyChain)
 }
 
 func TestEvalBackup_CreateIfChangedCreatesFirstSnapshot(t *testing.T) {
@@ -523,28 +630,6 @@ func TestEvalBackup_RestoreAllMergesSnapshotsNewestWins(t *testing.T) {
 	assert.Len(t, again.Unchanged, len(older.Files))
 }
 
-func TestEvalBackup_RestoreAllReadsLegacyAndObjectSnapshots(t *testing.T) {
-	f := newEvalBackupFixture(t)
-	ctx := context.Background()
-	legacyDir := writeLegacySnapshot(t, f.outRoot, "eval-backup-20260101T000000Z", map[string]string{
-		backupCampaignPath:  `{"campaign":"legacy"}`,
-		backupRunReportPath: `{"run":"legacy"}`,
-	})
-	_, err := f.backup.Restore(ctx, legacyDir, true)
-	require.NoError(t, err)
-	assert.Equal(t, `{"run":"legacy"}`, f.read(t, backupRunReportPath), "a version 1 snapshot still restores")
-
-	f.write(t, backupRunReportPath, `{"run":"current"}`)
-	f.create(t)
-	require.NoError(t, f.files.RemoveAll(ctx, constants.EvaluationDataPath))
-
-	_, err = f.backup.RestoreAll(ctx, f.outRoot, false)
-
-	require.NoError(t, err)
-	assert.Equal(t, `{"run":"current"}`, f.read(t, backupRunReportPath))
-	assert.Equal(t, `{"campaign":"legacy"}`, f.read(t, backupCampaignPath), "the object-store snapshot lists the campaign too, with the same content")
-}
-
 func TestEvalBackup_RestoreAllConflictWritesNothingUnlessOverwrite(t *testing.T) {
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
@@ -606,37 +691,62 @@ func TestEvalBackupPurge_RemovesEntriesAndObjectsOnlyTheyReference(t *testing.T)
 	f.write(t, backupCampaignPath, `{"campaign":2}`)
 	newer, err := f.laterBackup(time.Minute).Create(ctx, f.outRoot)
 	require.NoError(t, err)
-	onlyRun := writeLegacySnapshot(t, f.outRoot, "eval-backup-20260101T000000Z", map[string]string{backupRunReportPath: `{"run":0}`})
-	mixed := writeLegacySnapshot(t, f.outRoot, "eval-backup-20260101T000001Z", map[string]string{
-		backupRunReportPath: `{"run":0}`,
-		backupCampaignPath:  `{"campaign":0}`,
-	})
+	var dropped []EvalBackupFile
+	for _, file := range older.Files {
+		if strings.HasPrefix(file.Path, "data/eval/runs/run-1/") {
+			dropped = append(dropped, file)
+		}
+	}
+	require.Len(t, dropped, 2)
 	objectsBefore := objectCount(t, f.outRoot)
 
 	plan, err := planEvalBackupPurge(f.outRoot, []string{"data/eval/runs/run-1"})
 	require.NoError(t, err)
 	require.NoError(t, plan.apply())
 
-	assert.Equal(t, EvalBackupPurgeReport{Files: 6, Snapshots: 4, Objects: 1}, plan.report)
-	assert.NoDirExists(t, onlyRun, "a snapshot left empty is removed")
-	assert.NoFileExists(t, filepath.Join(mixed, filepath.FromSlash(backupRunReportPath)), "a legacy snapshot's inline copy is removed")
-	assert.FileExists(t, filepath.Join(mixed, filepath.FromSlash(backupCampaignPath)))
-	for _, snapshot := range []string{older.SnapshotDir, newer.SnapshotDir, mixed} {
+	assert.Equal(t, EvalBackupPurgeReport{Files: 4, Snapshots: 2, Objects: 2}, plan.report)
+	for _, snapshot := range []string{older.SnapshotDir, newer.SnapshotDir} {
 		manifest, err := readEvalBackupManifest(snapshot)
 		require.NoError(t, err)
 		for _, file := range manifest.Files {
 			assert.False(t, strings.HasPrefix(file.Path, "data/eval/runs/run-1/"), "%s still lists %s", snapshot, file.Path)
 		}
+		assert.Equal(t, older.KeyChain, manifest.KeyChain, "a kept snapshot keeps its key chain")
 	}
-	assert.Equal(t, objectsBefore-1, objectCount(t, f.outRoot), "only the content no kept file shares is removed")
-	assert.NoFileExists(t, evalBackupObjectPath(f.outRoot, evalBackupDigest([]byte(`{"only":"run-1"}`))))
-	assert.FileExists(t, evalBackupObjectPath(f.outRoot, evalBackupDigest([]byte(`{"run":1}`))), "run-2 still holds the same content")
+	assert.Equal(t, objectsBefore-2, objectCount(t, f.outRoot), "only the content no kept file shares is removed")
+	for _, file := range dropped {
+		assert.NoFileExists(t, evalBackupObjectPath(f.outRoot, file.SHA256))
+	}
+	for _, file := range newer.Files {
+		if !strings.HasPrefix(file.Path, "data/eval/runs/run-1/") {
+			assert.FileExists(t, evalBackupObjectPath(f.outRoot, file.SHA256), "kept content is kept")
+		}
+	}
+	for _, file := range older.KeyChain {
+		assert.FileExists(t, evalBackupObjectPath(f.outRoot, file.SHA256))
+	}
 
 	require.NoError(t, f.files.RemoveAll(ctx, constants.EvaluationDataPath))
 	restored, err := f.backup.RestoreAll(ctx, f.outRoot, false)
 	require.NoError(t, err)
 	assert.NotContains(t, reportPaths(restored.Restored), backupRunReportPath)
 	assert.Contains(t, reportPaths(restored.Restored), sharedPath)
+}
+
+func TestEvalBackupPurge_RemovesTheKeyChainOfASnapshotLeftEmpty(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	ctx := context.Background()
+	require.NoError(t, f.files.RemoveAll(ctx, constants.EvaluationDirname))
+	require.NoError(t, f.files.Remove(ctx, backupCampaignPath))
+	only := f.create(t)
+	require.Equal(t, []string{backupRunReportPath}, reportPaths(only.Files))
+
+	plan, err := planEvalBackupPurge(f.outRoot, []string{"data/eval/runs/run-1"})
+	require.NoError(t, err)
+	require.NoError(t, plan.apply())
+
+	assert.NoDirExists(t, only.SnapshotDir, "a snapshot left empty is removed")
+	assert.Zero(t, objectCount(t, f.outRoot), "its key chain goes with it")
 }
 
 func TestEvalBackupPurge_WithoutSnapshotsHasNothingToDo(t *testing.T) {

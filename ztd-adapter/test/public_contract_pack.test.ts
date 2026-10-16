@@ -44,9 +44,9 @@ describe('public spectator contract pack', () => {
   });
 
   it('contains disclosure, proof, event, verifier, and honest-state fixtures', () => {
-    const disclosure = readJson('disclosure-matrix.json') as { default: string; prohibited_fields: string[] };
+    const disclosure = readJson('disclosure-matrix.json') as { default: string; prohibited_fields?: string[] };
     expect(disclosure.default).toBe('prohibited');
-    expect(disclosure.prohibited_fields).toEqual(expect.arrayContaining(['raw_prompt', 'model_output', 'private_key', 'token', 'gateway_url']));
+    expect(disclosure.prohibited_fields).toBeUndefined();
     expect(() => readJson('event-schemas.json')).not.toThrow();
     expect(() => readJson('proof-schemas.json')).not.toThrow();
     expect(readFileSync(join(publicPack, 'offline-verifier.md'), 'utf8')).toContain('Ed25519');

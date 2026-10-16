@@ -110,3 +110,53 @@ func TestVerifyBracket(t *testing.T) {
 		})
 	}
 }
+
+// TestOrderLedgerThenVerifyBracket covers claims gathered across roles that
+// share one runtime: they arrive out of ledger order, and ordering must neither
+// hide an unclaimed execution nor accept a link that never joins the ledger.
+func TestOrderLedgerThenVerifyBracket(t *testing.T) {
+	before := linkOutcome("tx-before", "h-0", "h-1")
+	a := linkOutcome("tx-a", "h-1", "h-2")
+	b := linkOutcome("tx-b", "h-2", "h-3")
+	c := linkOutcome("tx-c", "h-3", "h-4")
+
+	tests := []struct {
+		name    string
+		after   Outcome
+		claimed []Outcome
+		want    error
+	}{
+		{name: "claims in ledger order", after: linkOutcome("tx-after", "h-4", "h-9"), claimed: []Outcome{a, b, c}},
+		{name: "claims interleaved across roles", after: linkOutcome("tx-after", "h-4", "h-9"), claimed: []Outcome{c, a, b}},
+		{name: "no claims, adjacent sentinels", after: linkOutcome("tx-after", "h-1", "h-9")},
+		{
+			name: "middle execution unclaimed", after: linkOutcome("tx-after", "h-4", "h-9"),
+			claimed: []Outcome{c, a}, want: constants.ErrConformanceUnclaimedExecution,
+		},
+		{
+			name: "trailing execution unclaimed", after: linkOutcome("tx-after", "h-4", "h-9"),
+			claimed: []Outcome{b, a}, want: constants.ErrConformanceUnclaimedExecution,
+		},
+		{
+			name: "claim that never joins the bracket", after: linkOutcome("tx-after", "h-2", "h-9"),
+			claimed: []Outcome{a, linkOutcome("tx-x", "h-x", "h-y")}, want: constants.ErrConformanceLedgerGap,
+		},
+		{
+			name: "claim with no ledger link", after: linkOutcome("tx-after", "h-2", "h-9"),
+			claimed: []Outcome{a, {Kind: OutcomeRejected}}, want: constants.ErrConformanceLedgerGap,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ordered, err := OrderLedger(before, tt.after, tt.claimed)
+			if err == nil {
+				err = VerifyBracket(before, tt.after, ordered)
+			}
+			if tt.want == nil {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, tt.want)
+		})
+	}
+}

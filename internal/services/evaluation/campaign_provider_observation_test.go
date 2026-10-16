@@ -109,7 +109,7 @@ func TestBuildPublicGradeSummaries_FromDeterministicGrades(t *testing.T) {
 	require.Len(t, summaries, 1)
 	assert.Equal(t, "tool-selection", summaries[0].CriterionID)
 	assert.Equal(t, "fail", summaries[0].Status)
-	assert.Empty(t, summaries[0].Detail)
+	assert.Equal(t, "expected tool selection evidence is missing", summaries[0].Detail)
 }
 
 func TestBuildToolScorecardObservations_FailingToolSelection(t *testing.T) {

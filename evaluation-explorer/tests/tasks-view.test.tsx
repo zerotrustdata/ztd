@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { TasksView } from '../src/views/TasksView';
 import { SCENARIO_CATALOG_ID, SCENARIO_TASKS, scenarioTaskSourceUrl } from '../src/content/scenario-task';
+import { evalStore } from '../src/state/store';
+import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
 
 function renderTasks(initialPath = '/tasks') {
   return render(
@@ -19,6 +21,37 @@ function renderTasks(initialPath = '/tasks') {
 }
 
 describe('TasksView', () => {
+  beforeEach(() => evalStore.loadFixtures([], []));
+  it('uses the shared anchor behavior and marks the clicked category', () => {
+    const scroll = vi.fn();
+    renderTasks();
+    const section = document.getElementById('category-tool_selection')!;
+    section.scrollIntoView = scroll;
+    const navigation = within(screen.getByRole('complementary', { name: 'Task catalog navigation' }));
+    const link = navigation.getByRole('link', { name: /Tool selection/ });
+    fireEvent.click(link);
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(link).toHaveAttribute('aria-current', 'location');
+  });
+
+  it('links recent task assignments across loaded datasets with their verdict tones', () => {
+    evalStore.loadFixtures([
+      { ...fixtureEnrichedAssignmentResult, dataset_id: 'one', task_id: 'tool-select-grep', assignment_id: 'recent-one', terminal_status: 'model_failed', verification_disposition: 'not_run' },
+      { ...fixtureEnrichedAssignmentResult, dataset_id: 'two', task_id: 'tool-select-grep@1.0.0', assignment_id: 'recent-two', terminal_status: 'grader_failed', verification_disposition: 'not_run' },
+    ], []);
+    renderTasks('/tasks/tool-select-grep');
+    expect(screen.getByRole('heading', { level: 1, name: 'tool-select-grep' })).toHaveClass('evidence-title');
+    const recent = within(screen.getByRole('region', { name: 'Recent assignments of this task' }));
+    expect(recent.getByRole('link', { name: 'recent-one' })).toHaveAttribute('href', expect.stringContaining('/evaluations/one/'));
+    expect(recent.getByRole('link', { name: 'recent-two' })).toHaveAttribute('href', expect.stringContaining('/evaluations/two/'));
+    expect(recent.getByText('model failed')).toHaveAttribute('data-tone', 'critical');
+    expect(recent.getByText('grader failed')).toHaveAttribute('data-tone', 'warn');
+  });
+
+  it('omits recent assignments when none have been published for the task', () => {
+    renderTasks('/tasks/tool-select-grep');
+    expect(screen.queryByRole('region', { name: 'Recent assignments of this task' })).not.toBeInTheDocument();
+  });
   it('lists every catalog task grouped by category on the overview', () => {
     renderTasks();
 

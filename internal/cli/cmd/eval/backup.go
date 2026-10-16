@@ -77,7 +77,9 @@ func backupEvalCmd(deps nativeEvalDeps) *cobra.Command {
 queue, and the frozen model inventory) as a new timestamped snapshot beneath
 --output-dir (default: eval/backups under the project root). A snapshot is a
 SHA-256 manifest; file content is stored once per digest in the shared objects/
-directory, so only files not already backed up are copied.
+directory, so only files not already backed up are copied. Evidence is
+copied encrypted, together with the vault key chain that sealed it, so the
+snapshot can be restored after .ztd/ is wiped and its vault recreated.
 
 The destination must be outside .ztd/ so it survives deleting the runtime tree. Run and lease state is not copied. Runs made by
 ztd eval runs start or resume back up to the default directory
@@ -120,9 +122,11 @@ func restoreEvalCmd(deps nativeEvalDeps) *cobra.Command {
 		Use:   "restore [snapshot-dir]",
 		Short: "Restore evaluation evidence from backup snapshot(s)",
 		Long: `Verify every file in snapshot(s) created by ztd eval backup against their
-manifests, then write them back into .ztd/. Files already present with identical
-content are skipped. If any existing file differs, nothing is written unless
---overwrite is passed.
+manifests, open each snapshot's vault from the key chain it carries with this
+host's key store, then write the evidence back into .ztd/ sealed under the
+current runtime vault. A snapshot whose vault the key store cannot open
+restores nothing. Files already present with identical content are skipped.
+If any existing file differs, nothing is written unless --overwrite is passed.
 
 Without <snapshot-dir>, every complete snapshot in eval/backups under the
 project root is merged and restored in one pass: each file comes from the

@@ -29,7 +29,7 @@ import {
   PUBLIC_TOOL_SCORE_DIMENSION_VALUES,
   type PublicReleaseBasis,
 } from './proto-enums.generated';
-import { assertReleaseProvenance, assertRoleTranscripts, ValidationError } from './validators';
+import { assertReleaseProvenance, assertRoleTranscripts, assertString as assertVerbatimText, ValidationError } from './validators';
 
 export const CAMPAIGN_LIFECYCLE_SCHEMA_VERSION = '1.0.0' as const;
 export const CAMPAIGN_RESULT_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0'] as const;
@@ -70,6 +70,9 @@ const EVIDENCE_KINDS = [
   'source_manifest',
   'assignment_audit_slice',
   'assignment_audit_vault_key',
+  'assignment_agent_trace',
+  'scenario_input_fixture',
+  'scenario_gold_criteria',
 ] as const;
 
 type WireMetricUnavailableReason = (typeof WIRE_UNAVAILABLE_REASONS)[number] | (typeof PUBLIC_UNAVAILABLE_REASONS)[number];
@@ -130,6 +133,8 @@ export interface WireSemanticGradeSummary {
   grading_method: (typeof GRADING_METHODS)[number];
   judge_variant_id?: string;
   explanation_code: (typeof EXPLANATION_CODES)[number];
+  /** Grader output, published verbatim. */
+  detail?: string;
 }
 
 const BENCHMARK_TIMING_FIELDS = ['model_load_ms', 'time_to_first_token_ms', 'generation_ms', 'whole_task_ms'] as const;
@@ -147,6 +152,8 @@ export interface WireBenchmarkGradeSummary {
   criterion_id: string;
   status: string;
   explanation_code: (typeof EXPLANATION_CODES)[number];
+  /** Grader output, published verbatim. */
+  detail?: string;
 }
 
 /** Every field the wire admits under `benchmark_observations`
@@ -529,12 +536,13 @@ function assertGradeSummaries(value: unknown, path: string): void {
     const gradePath = `${path}[${index}]`;
     const grade: unknown = value[index];
     assertObject(grade, gradePath);
-    rejectUnknown(grade, ['criterion_id', 'status', 'grading_method', 'judge_variant_id', 'explanation_code'], gradePath);
+    rejectUnknown(grade, ['criterion_id', 'status', 'grading_method', 'judge_variant_id', 'explanation_code', 'detail'], gradePath);
     assertString(grade.criterion_id, `${gradePath}.criterion_id`);
     assertEnum(grade.status, VERDICT_STATUSES, `${gradePath}.status`);
     assertEnum(grade.grading_method, GRADING_METHODS, `${gradePath}.grading_method`);
     assertOptionalString(grade.judge_variant_id, `${gradePath}.judge_variant_id`);
     assertEnum(grade.explanation_code, EXPLANATION_CODES, `${gradePath}.explanation_code`);
+    if (grade.detail !== undefined) assertVerbatimText(grade.detail, `${gradePath}.detail`);
   }
 }
 
@@ -655,10 +663,11 @@ function assertBenchmarkObservations(value: unknown, path: string): void {
       const gradePath = `${path}.grade_summaries[${index}]`;
       const grade: unknown = value.grade_summaries[index];
       assertObject(grade, gradePath);
-      rejectUnknown(grade, ['criterion_id', 'status', 'explanation_code'], gradePath);
+      rejectUnknown(grade, ['criterion_id', 'status', 'explanation_code', 'detail'], gradePath);
       assertString(grade.criterion_id, `${gradePath}.criterion_id`);
       assertString(grade.status, `${gradePath}.status`);
       assertEnum(grade.explanation_code, EXPLANATION_CODES, `${gradePath}.explanation_code`);
+      if (grade.detail !== undefined) assertVerbatimText(grade.detail, `${gradePath}.detail`);
     }
   }
   if (value.tool_scorecard !== undefined) {
@@ -687,8 +696,8 @@ function assertExtensions(value: Record<string, unknown>, path: string): void {
     rejectUnknown(value.resource_summary, ['latency_ms', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'retries'], `${path}.resource_summary`);
     for (const [key, metric] of Object.entries(value.resource_summary)) assertMetric(metric, `${path}.resource_summary.${key}`);
   }
-  if (value.model_response !== undefined) assert(typeof value.model_response === 'string', `${path}.model_response`, 'expected string');
-  if (value.failure_output !== undefined) assert(typeof value.failure_output === 'string', `${path}.failure_output`, 'expected string');
+  if (value.model_response !== undefined) assertVerbatimText(value.model_response, `${path}.model_response`);
+  if (value.failure_output !== undefined) assertVerbatimText(value.failure_output, `${path}.failure_output`);
   if (value.role_transcripts !== undefined) assertRoleTranscripts(value.role_transcripts, `${path}.role_transcripts`);
 }
 

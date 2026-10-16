@@ -7,7 +7,7 @@
 // Includes column-visibility controls so users can hide columns on wide
 // tables (e.g. the 1,125-row assignment table) and keep the view scannable.
 
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 import {
   type ColumnDef,
   type ColumnVisibilityState,
@@ -44,7 +44,18 @@ export interface DataTableProps<T extends RowData> {
   caption?: string;
   /** When true, renders the column-visibility toggle panel. Defaults to true. */
   enableColumnVisibility?: boolean;
+  /** Cards share the table's sorted, paginated row model below 900px. */
+  renderCard?: (record: T) => ReactNode;
+  isRowSelected?: (record: T) => boolean;
 }
+
+const cardMedia = '(max-width: 899px)';
+function subscribeToCardViewport(onChange: () => void) {
+  const media = window.matchMedia?.(cardMedia);
+  media?.addEventListener('change', onChange);
+  return () => media?.removeEventListener('change', onChange);
+}
+function cardViewport() { return window.matchMedia?.(cardMedia).matches ?? false; }
 
 export function DataTable<T extends RowData>({
   data,
@@ -53,7 +64,10 @@ export function DataTable<T extends RowData>({
   pageSize = 50,
   caption,
   enableColumnVisibility = true,
+  renderCard,
+  isRowSelected,
 }: DataTableProps<T>) {
+  const mobile = useSyncExternalStore(subscribeToCardViewport, cardViewport, () => false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
@@ -86,7 +100,7 @@ export function DataTable<T extends RowData>({
 
   return (
     <div className="data-table-wrap" data-testid="data-table">
-      {enableColumnVisibility && toggleableColumns.length > 1 ? (
+      {!(mobile && renderCard) && enableColumnVisibility && toggleableColumns.length > 1 ? (
         <div className="column-visibility">
           <button
             type="button"
@@ -118,7 +132,22 @@ export function DataTable<T extends RowData>({
           ) : null}
         </div>
       ) : null}
-      <table className="data-table">
+      {mobile && renderCard ? <>
+        <label className="card-sort">Sort runs or models
+          <select aria-label="Sort cards" value={sorting[0] ? `${sorting[0].id}:${sorting[0].desc ? 'desc' : 'asc'}` : ''}
+            onChange={(event) => {
+              const [id, direction] = event.target.value.split(':');
+              setSorting(id ? [{ id, desc: direction === 'desc' }] : []);
+            }}>
+            <option value="">Published order</option>
+            {table.getAllLeafColumns().filter((column) => column.getCanSort()).flatMap((column) => ['asc', 'desc'].map((direction) =>
+              <option key={`${column.id}:${direction}`} value={`${column.id}:${direction}`}>{String(column.columnDef.header ?? column.id)} · {direction === 'asc' ? 'ascending' : 'descending'}</option>))}
+          </select>
+        </label>
+        <ul className="data-card-list" aria-label={caption}>
+          {pageRows.map((row) => <li key={row.id} className={isRowSelected?.(row.original) ? 'data-row-selected' : undefined}>{renderCard(row.original)}</li>)}
+        </ul>
+      </> : <table className="data-table">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           {table.getHeaderGroups().map((group) => (
@@ -155,7 +184,7 @@ export function DataTable<T extends RowData>({
         </thead>
         <tbody>
           {pageRows.map((row) => (
-            <tr key={row.id}>
+            <tr key={row.id} className={isRowSelected?.(row.original) ? 'data-row-selected' : undefined}>
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id}>
                   <table.FlexRender cell={cell} />
@@ -164,7 +193,7 @@ export function DataTable<T extends RowData>({
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
       {pageCount > 1 ? (
         <div className="table-pagination" data-testid="table-pagination">
           <button

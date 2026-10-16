@@ -51,11 +51,9 @@ func heterogeneousAssignmentExecutionRequest(t *testing.T, stack *evalv1.Heterog
 		},
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC,
 		Binding: CampaignExecutionBinding{
-			InferenceOperatorSessionID: "infer-session",
-			DataOperatorID:             "data-op",
-			DataOperatorSessionID:      "data-session",
-			ModelRegistryDigest:        "d" + repeatHex('d', 63),
-			ModelRegistry:              InferenceVariantsFromEvalRegistry(variants),
+			Topology:            testOperatorTopology("infer-session", "data-session"),
+			ModelRegistryDigest: "d" + repeatHex('d', 63),
+			ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
 		},
 	}
 }

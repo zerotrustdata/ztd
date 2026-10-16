@@ -4054,6 +4054,13 @@
         "models.PublicAssignmentAuditProofPublishRequest": {
             "type": "object",
             "properties": {
+                "agent_trace": {
+                    "description": "AgentTrace is the exact sealed agent trace body for agent assignments.\nIt is published unredacted as a content-addressed proof artifact.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "assignment_id": {
                     "type": "string"
                 },
@@ -4078,6 +4085,22 @@
                 "run_id": {
                     "type": "string"
                 },
+                "scenario_gold": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "scenario_id": {
+                    "description": "ScenarioID names the assignment's scenario. ScenarioInput and\nScenarioGold are its frozen canonical input fixture and gold criteria\nbodies, published unredacted as campaign-scoped proof artifacts.",
+                    "type": "string"
+                },
+                "scenario_input": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "vault_key": {
                     "type": "array",
                     "items": {
@@ -4092,10 +4115,19 @@
                 "accepted": {
                     "type": "boolean"
                 },
+                "agent_trace_sha256": {
+                    "type": "string"
+                },
                 "database_sha256": {
                     "type": "string"
                 },
                 "proof_root_sha256": {
+                    "type": "string"
+                },
+                "scenario_gold_sha256": {
+                    "type": "string"
+                },
+                "scenario_input_sha256": {
                     "type": "string"
                 },
                 "vault_key_sha256": {
@@ -4952,6 +4984,9 @@
                 },
                 "error": {
                     "type": "string"
+                },
+                "receipt": {
+                    "$ref": "#/definitions/operatorv1.ActionReceipt"
                 }
             }
         },

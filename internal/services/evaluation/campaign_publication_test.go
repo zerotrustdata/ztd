@@ -127,11 +127,9 @@ func TestCampaignPublicationCoordinatorPublishRunCatchUp(t *testing.T) {
 	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
 	require.NoError(t, err)
 	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(exporter.records), 3)
@@ -160,11 +158,9 @@ func TestCampaignPublicationCoordinatorPublishRunCompletion(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-			InferenceOperatorSessionID: "inf-session",
-			DataOperatorID:             "data-op",
-			DataOperatorSessionID:      "data-session",
-			ModelRegistryDigest:        req.Inventory.RegistryDigest,
-			ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+			Topology:            testOperatorTopology("inf-session", "data-session"),
+			ModelRegistryDigest: req.Inventory.RegistryDigest,
+			ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 		}, req.ScenarioArtifacts)
 		require.NoError(t, err)
 	}
@@ -202,11 +198,9 @@ func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-			InferenceOperatorSessionID: "inf-session",
-			DataOperatorID:             "data-op",
-			DataOperatorSessionID:      "data-session",
-			ModelRegistryDigest:        req.Inventory.RegistryDigest,
-			ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+			Topology:            testOperatorTopology("inf-session", "data-session"),
+			ModelRegistryDigest: req.Inventory.RegistryDigest,
+			ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 		}, req.ScenarioArtifacts)
 		require.NoError(t, err)
 	}
@@ -247,11 +241,24 @@ func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
 	report.CampaignDigest = spec.GetCampaignDigest()
 	report.CatalogDigest = spec.GetCatalogDigest()
 	report.ModelRegistryDigest = spec.GetModelRegistryDigest()
+	// A verified revision must preserve the transcript added by initial publication.
+	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignments[0].GetAssignmentId(), EvaluationAttemptID: "attempt-verified-transcript", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Verified revision preserves this response."}
+	traceBody, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(context.Background(), run.GetRunId(), assignments[0].GetAssignmentId(), traceBody))
 	before := len(exporter.records)
 	count, err := coordinator.PublishRunVerification(context.Background(), run.GetRunId(), report)
 	require.NoError(t, err)
 	assert.Greater(t, count, 0)
 	assert.Greater(t, len(exporter.records), before)
+
+	foundTranscript := false
+	for _, record := range exporter.records[before:] {
+		if strings.Contains(record.RecordBytes, trace.FinalOutput) {
+			foundTranscript = true
+		}
+	}
+	require.True(t, foundTranscript, "verified result revision must retain the saved transcript")
 
 	var summary evaluationSummaryRecord
 	for _, record := range exporter.records[len(exporter.records)-count:] {
@@ -325,11 +332,9 @@ func TestCampaignPublicationCoordinatorForceRepublish(t *testing.T) {
 	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
 	require.NoError(t, err)
 	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	_, err = coordinator.PublishRunCatchUp(context.Background(), run.GetRunId())
@@ -562,11 +567,9 @@ func completedTestCampaign(t *testing.T, store *Store) *evalv1.EvaluationRun {
 			break
 		}
 		_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-			InferenceOperatorSessionID: "inf-session",
-			DataOperatorID:             "data-op",
-			DataOperatorSessionID:      "data-session",
-			ModelRegistryDigest:        req.Inventory.RegistryDigest,
-			ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+			Topology:            testOperatorTopology("inf-session", "data-session"),
+			ModelRegistryDigest: req.Inventory.RegistryDigest,
+			ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 		}, req.ScenarioArtifacts)
 		require.NoError(t, err)
 	}
@@ -702,11 +705,9 @@ func TestPublishRunAggregatesIgnoresStalePartialVerificationOnInProgressRun(t *t
 	require.Greater(t, scheduled, 1)
 
 	binding := CampaignExecutionBinding{
-		InferenceOperatorSessionID: req.InferenceOperatorSessionID,
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      req.DataOperatorSessionID,
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+		Topology:            testOperatorTopology(req.InferenceOperatorSessionID, req.DataOperatorSessionID),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}
 	_, ok, err := controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), binding, req.ScenarioArtifacts)
 	require.NoError(t, err)
@@ -804,16 +805,7 @@ func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
 	assignments, err := store.ListAssignments(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	require.NotEmpty(t, assignments)
-	proofKeys := make([]string, 0, len(assignments))
-	proofArtifacts := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
-	for index, assignment := range assignments {
-		assignmentID := assignment.GetAssignmentId()
-		proofKeys = append(proofKeys, AssignmentAuditProofIdempotencyKey(run.GetRunId(), assignmentID))
-		proofArtifacts[assignmentID] = CampaignPublishedProofArtifacts{
-			DatabaseSHA256: fmt.Sprintf("%064x", index*2),
-			VaultKeySHA256: fmt.Sprintf("%064x", index*2+1),
-		}
-	}
+	proofKeys, proofArtifacts := recordedProofArtifacts(t, store, run, assignments)
 	require.NoError(t, publicationState.Save(context.Background(), &CampaignPublicationState{
 		SchemaVersion:           campaignPublicationStateSchemaVersion,
 		RunID:                   run.GetRunId(),
@@ -824,6 +816,116 @@ func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
 	_, err = coordinator.PublishRunCatchUp(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	assert.Empty(t, proofPublisher.inputs)
+}
+
+// A package published before its agent trace was captured, or bound to a
+// different trace, is rebuilt so the current trace is published and bound.
+func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	proofPublisher := &recordingCampaignProofPublisher{}
+	publicationState := NewMemoryCampaignPublicationStateStore()
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}, nil).
+		WithProofPublisher(proofPublisher)
+	run := completedTestCampaign(t, store)
+	assignments, err := store.ListAssignments(ctx, run.GetRunId())
+	require.NoError(t, err)
+	require.NotEmpty(t, assignments)
+	proofKeys, proofArtifacts := recordedProofArtifacts(t, store, run, assignments)
+	traced := assignments[0]
+	traceBody, err := SealAgentTrace(&AgentTrace{RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), traced.GetAssignmentId(), traceBody))
+	require.NoError(t, publicationState.Save(ctx, &CampaignPublicationState{
+		SchemaVersion:           campaignPublicationStateSchemaVersion,
+		RunID:                   run.GetRunId(),
+		PublishedIdempotency:    proofKeys,
+		PublishedProofArtifacts: proofArtifacts,
+	}))
+	require.NoError(t, coordinator.ResetFeedPublicationIdempotency(ctx, run.GetRunId()))
+
+	_, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
+
+	require.NoError(t, err)
+	require.Len(t, proofPublisher.inputs, 1, "only the assignment whose trace is unpublished is rebuilt")
+	rebuilt := proofPublisher.inputs[0]
+	assert.Equal(t, traced.GetAssignmentId(), rebuilt.AssignmentID)
+	assert.Equal(t, traceBody, rebuilt.Artifacts.AgentTrace)
+	assert.Equal(t, hashBytes(traceBody), rebuilt.Artifacts.AgentTraceSHA256)
+	state, err := publicationState.Load(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assert.Equal(t, hashBytes(traceBody), state.PublishedProofArtifacts[traced.GetAssignmentId()].AgentTraceSHA256)
+}
+
+// A package recorded before scenario fixtures were published is rebuilt so the
+// frozen fixture bodies are published and bound.
+func TestPublishRunCatchUpRebuildsProofWhenScenarioFixtureIsUnpublished(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	proofPublisher := &recordingCampaignProofPublisher{}
+	publicationState := NewMemoryCampaignPublicationStateStore()
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}, nil).
+		WithProofPublisher(proofPublisher)
+	run := completedTestCampaign(t, store)
+	assignments, err := store.ListAssignments(ctx, run.GetRunId())
+	require.NoError(t, err)
+	require.NotEmpty(t, assignments)
+	proofKeys, proofArtifacts := recordedProofArtifacts(t, store, run, assignments)
+	stale := assignments[0]
+	staleHashes := proofArtifacts[stale.GetAssignmentId()]
+	staleHashes.ScenarioInputSHA256 = ""
+	staleHashes.ScenarioGoldSHA256 = ""
+	proofArtifacts[stale.GetAssignmentId()] = staleHashes
+	require.NoError(t, publicationState.Save(ctx, &CampaignPublicationState{
+		SchemaVersion:           campaignPublicationStateSchemaVersion,
+		RunID:                   run.GetRunId(),
+		PublishedIdempotency:    proofKeys,
+		PublishedProofArtifacts: proofArtifacts,
+	}))
+	require.NoError(t, coordinator.ResetFeedPublicationIdempotency(ctx, run.GetRunId()))
+
+	_, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
+
+	require.NoError(t, err)
+	require.Len(t, proofPublisher.inputs, 1, "only the assignment without published fixtures is rebuilt")
+	rebuilt := proofPublisher.inputs[0]
+	assert.Equal(t, stale.GetAssignmentId(), rebuilt.AssignmentID)
+	assert.Equal(t, stale.GetScenarioId(), rebuilt.Artifacts.ScenarioID)
+	assert.NotEmpty(t, rebuilt.Artifacts.ScenarioInput)
+	assert.NotEmpty(t, rebuilt.Artifacts.ScenarioGold)
+	state, err := publicationState.Load(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assert.Equal(t, rebuilt.Artifacts.ScenarioInputSHA256, state.PublishedProofArtifacts[stale.GetAssignmentId()].ScenarioInputSHA256)
+	assert.Equal(t, rebuilt.Artifacts.ScenarioGoldSHA256, state.PublishedProofArtifacts[stale.GetAssignmentId()].ScenarioGoldSHA256)
+}
+
+// recordedProofArtifacts returns proof idempotency keys and recorded hashes
+// for every assignment as if its package, including the campaign's frozen
+// scenario fixture, had already been published.
+func recordedProofArtifacts(t *testing.T, store *Store, run *evalv1.EvaluationRun, assignments []*evalv1.EvaluationAssignment) ([]string, map[string]CampaignPublishedProofArtifacts) {
+	t.Helper()
+	ctx := context.Background()
+	campaignID := run.GetCampaignBinding().GetCampaignId()
+	catalog, err := store.LoadScenarioCatalog(ctx, campaignID)
+	require.NoError(t, err)
+	fixtures, err := store.LoadScenarioArtifacts(ctx, campaignID, catalog)
+	require.NoError(t, err)
+	proofKeys := make([]string, 0, len(assignments))
+	proofArtifacts := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
+	for index, assignment := range assignments {
+		fixture, ok := fixtures[assignment.GetScenarioId()]
+		require.True(t, ok, "scenario fixture for %s", assignment.GetScenarioId())
+		proofKeys = append(proofKeys, AssignmentAuditProofIdempotencyKey(run.GetRunId(), assignment.GetAssignmentId()))
+		proofArtifacts[assignment.GetAssignmentId()] = CampaignPublishedProofArtifacts{
+			DatabaseSHA256:      fmt.Sprintf("%064x", index*2),
+			VaultKeySHA256:      fmt.Sprintf("%064x", index*2+1),
+			ScenarioInputSHA256: fixture.Input.Reference.GetSha256(),
+			ScenarioGoldSHA256:  fixture.Gold.Reference.GetSha256(),
+		}
+	}
+	return proofKeys, proofArtifacts
 }
 
 func completedHeterogeneousFormationCampaign(t *testing.T, store *Store) *evalv1.EvaluationRun {
@@ -880,8 +982,8 @@ func completedHeterogeneousFormationCampaign(t *testing.T, store *Store) *evalv1
 		EvaluationAttemptID: execReq.AttemptID,
 		ScenarioID:          execReq.Assignment.GetScenarioId(),
 		ModelRegistryDigest: execReq.Binding.ModelRegistryDigest,
-		InferenceSessionID:  execReq.Binding.InferenceOperatorSessionID,
-		DataSessionID:       execReq.Binding.DataOperatorSessionID,
+		InferenceSessionID:  execReq.Binding.Topology.Inference.OperatorSessionID,
+		DataSessionID:       execReq.Binding.Topology.Data.OperatorSessionID,
 	}, formationResult)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentFormationRun(context.Background(), req.RunID, execReq.Assignment.GetAssignmentId(), body))

@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - docs/
   - protocol/docs/
@@ -286,6 +286,9 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.0.6 Release Notes](../release_notes/v1.0.x/v1.0.6.md): v1.0.6 release scope and changes.
 - [v1.0.6 Compliance Evidence](../release_notes/v1.0.x/v1.0.6-compliance-evidence.md): Generated compliance evidence projection for v1.0.6.
 - [v1.1.0 Release Notes](../release_notes/v1.1.x/v1.1.0.md): v1.1.0 release scope and changes.
+- [v1.1.0 Compliance Evidence](../release_notes/v1.1.x/v1.1.0-compliance-evidence.md): Generated compliance evidence projection for v1.1.0.
+- [v1.1.1 Release Notes](../release_notes/v1.1.x/v1.1.1.md): v1.1.1 release scope and changes.
+- [v1.1.1 Compliance Evidence](../release_notes/v1.1.x/v1.1.1-compliance-evidence.md): Generated compliance evidence projection for v1.1.1.
 
 ## Procedures
 

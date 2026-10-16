@@ -23,7 +23,7 @@ import (
 func TestBuildPublicAssignmentProjectionComposesApprovedSections(t *testing.T) {
 	t.Parallel()
 	assignment := &evalv1.EvaluationAssignment{AssignmentId: "assignment-1", RunId: "run-1", ScenarioId: "scenario-1", LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED}
-	result := &evalv1.EvaluationAssignmentResult{AssignmentId: "assignment-1", RunId: "run-1", LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, DeterministicGrades: []*evalv1.DeterministicGrade{{CriterionId: "criterion-1", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Detail: "private detail"}}}
+	result := &evalv1.EvaluationAssignmentResult{AssignmentId: "assignment-1", RunId: "run-1", LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, DeterministicGrades: []*evalv1.DeterministicGrade{{CriterionId: "criterion-1", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Detail: "grader detail"}}}
 	scenarioContext := &PublicScenarioContext{
 		ScenarioID: "scenario-1", ScenarioVersion: "1.0.0", PublicDescription: "Public scenario",
 		Criteria: []*evalv1.PublicScenarioCriterion{{CriterionId: "criterion-1", PublicLabel: "Criterion", PublicDescription: "Public criterion", Required: true}},
@@ -38,7 +38,7 @@ func TestBuildPublicAssignmentProjectionComposesApprovedSections(t *testing.T) {
 	assert.Equal(t, "pass", record.Extensions.BenchmarkObservations.GradeSummaries[0].Status)
 	assert.NotNil(t, record.Projection.GetActivitySummary())
 	assert.NotNil(t, record.Extensions.ResourceSummary)
-	assert.NotContains(t, record.Extensions.BenchmarkObservations.GradeSummaries[0].Detail, "private")
+	assert.Equal(t, "grader detail", record.Extensions.BenchmarkObservations.GradeSummaries[0].Detail)
 }
 
 func TestMarshalAssignmentResultProjectionEnvelopeUsesCanonicalExtensions(t *testing.T) {
@@ -67,13 +67,23 @@ func TestBuildPublicAssignmentProjectionRejectsInvalidPublicBinding(t *testing.T
 	assert.Error(t, err)
 }
 
-func TestMarshalPublicAssignmentRecordRejectsRestrictedBenchmarkDetail(t *testing.T) {
+// Grader detail is public evidence and is published verbatim (INV-SPEC-DATA-02).
+func TestMarshalPublicAssignmentRecordPublishesBenchmarkDetailVerbatim(t *testing.T) {
 	t.Parallel()
-	_, err := MarshalPublicAssignmentRecord(&PublicAssignmentRecord{
+	detail := "expected HEALTHY, got `rm -rf /` in turn 3"
+	body, err := MarshalPublicAssignmentRecord(&PublicAssignmentRecord{
 		Projection: &evalv1.PublicAssignmentResultProjection{AssignmentId: "assignment-1", RunId: "run-1", ScenarioId: "scenario-1"},
-		Extensions: PublicAssignmentRecordExtensions{BenchmarkObservations: &PublicBenchmarkObservations{GradeSummaries: []PublicGradeSummary{{CriterionID: "criterion-1", Status: "fail", Detail: "private detail"}}}},
+		Extensions: PublicAssignmentRecordExtensions{BenchmarkObservations: &PublicBenchmarkObservations{GradeSummaries: []PublicGradeSummary{{CriterionID: "criterion-1", Status: "fail", Detail: detail}}}},
 	})
-	assert.Error(t, err)
+	require.NoError(t, err)
+	var decoded struct {
+		BenchmarkObservations struct {
+			GradeSummaries []PublicGradeSummary `json:"grade_summaries"`
+		} `json:"benchmark_observations"`
+	}
+	require.NoError(t, json.Unmarshal(body, &decoded))
+	require.Len(t, decoded.BenchmarkObservations.GradeSummaries, 1)
+	assert.Equal(t, detail, decoded.BenchmarkObservations.GradeSummaries[0].Detail)
 }
 
 func TestBuildPublicAssignmentProjectionPreservesCanonicalZeroAndUint64Values(t *testing.T) {

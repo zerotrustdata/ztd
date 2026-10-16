@@ -12072,11 +12072,16 @@ func (x *InferenceDispatchRequest) GetSeed() int32 {
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
 // POST /api/v1/inference/dispatch. Error is a public-safe centralized
 // sentinel; code classifies it, and is UNSPECIFIED for request faults the
-// handler rejects before dispatch (method, identity, body size).
+// handler rejects before dispatch (method, identity, body size). Receipt is
+// the executing Operator's verified signed FAILED receipt when the dispatch
+// reached it: a governance rejection, or a failed execution whose commitment
+// the Operator's ledger holds. It is absent for every failure that ended
+// before the Operator signed an outcome.
 type InferenceDispatchFailure struct {
 	state         protoimpl.MessageState       `protogen:"open.v1"`
 	Error         string                       `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
 	Code          InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
+	Receipt       *ActionReceipt               `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12123,6 +12128,13 @@ func (x *InferenceDispatchFailure) GetCode() InferenceDispatchFailureCode {
 		return x.Code
 	}
 	return InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED
+}
+
+func (x *InferenceDispatchFailure) GetReceipt() *ActionReceipt {
+	if x != nil {
+		return x.Receipt
+	}
+	return nil
 }
 
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure
@@ -13609,10 +13621,11 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x06_top_kB\x16\n" +
 	"\x14_parallel_tool_callsB\x10\n" +
 	"\x0e_context_limitB\a\n" +
-	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"s\n" +
+	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"\xad\x01\n" +
 	"\x18InferenceDispatchFailure\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error\x12A\n" +
-	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\"{\n" +
+	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\x128\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\"{\n" +
 	"\x1eInferenceDispatchStreamFailure\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12A\n" +
 	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\"\x89\x02\n" +
@@ -14090,27 +14103,28 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	135, // 93: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
 	137, // 94: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
 	16,  // 95: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	16,  // 96: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	141, // 97: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
-	147, // 98: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
-	145, // 99: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
-	140, // 100: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	69,  // 101: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	17,  // 102: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
-	18,  // 103: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
-	19,  // 104: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
-	20,  // 105: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
-	21,  // 106: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
-	74,  // 107: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
-	74,  // 108: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
-	74,  // 109: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
-	74,  // 110: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
-	74,  // 111: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
-	107, // [107:112] is the sub-list for method output_type
-	102, // [102:107] is the sub-list for method input_type
-	102, // [102:102] is the sub-list for extension type_name
-	102, // [102:102] is the sub-list for extension extendee
-	0,   // [0:102] is the sub-list for field type_name
+	69,  // 96: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	16,  // 97: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	141, // 98: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
+	147, // 99: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
+	145, // 100: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
+	140, // 101: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
+	69,  // 102: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	17,  // 103: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
+	18,  // 104: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
+	19,  // 105: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
+	20,  // 106: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
+	21,  // 107: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
+	74,  // 108: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
+	74,  // 109: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
+	74,  // 110: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
+	74,  // 111: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
+	74,  // 112: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
+	108, // [108:113] is the sub-list for method output_type
+	103, // [103:108] is the sub-list for method input_type
+	103, // [103:103] is the sub-list for extension type_name
+	103, // [103:103] is the sub-list for extension extendee
+	0,   // [0:103] is the sub-list for field type_name
 }
 
 func init() { file_ztd_operator_v1_operator_proto_init() }

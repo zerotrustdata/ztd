@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { EvaluationSummary, ModelSummary, SnapshotRecord } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
@@ -70,6 +70,30 @@ describe('EvaluationsView', () => {
     expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
     expect(panel.getByRole('columnheader', { name: 'Eval time' })).toBeInTheDocument();
+  });
+
+  it('counts filtered evidence and separates conformance from campaigns with verifier tones', () => {
+    const campaign = { ...evaluation('ds-campaign', 'campaign', '2026-10-06T00:00:00Z'), verifier_state: 'failed', verifier_failure_summary: 'Digest mismatch' } as EvaluationSummary;
+    const native: EvaluationSummary = { ...evaluation('ds-native', 'conformance', '2026-10-06T00:00:00Z'), verifier_state: 'passed', assignment_total: 2,
+      native_result: { active_posture: 'doctrine', lane: 'platform', summary_status: 'invalid_evidence', summary: 'Invalid evidence', required_verdict_count: 2, passed_verdict_count: 1, verification_valid: false, verification_failure_count: 1, scenarios: [], metrics: [] } };
+    evalStore.loadFixtures([campaign, native], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
+    expect(screen.getByTestId('stat-runs')).toHaveTextContent('2');
+    expect(screen.getByTestId('stat-assignments')).toHaveTextContent('77');
+    expect(screen.getByTestId('stat-verifier-passed')).toHaveTextContent('1');
+    expect(screen.getByTestId('stat-verifier-failed')).toHaveTextContent('1');
+    expect(screen.getByTestId('stat-conformance-runs')).toHaveTextContent('1');
+    const conformance = within(screen.getByRole('region', { name: 'Governance conformance' }));
+    expect(conformance.getByText('invalid_evidence')).toHaveAttribute('data-tone', 'warn');
+    expect(conformance.getByText('1/2 verdicts passed')).toBeInTheDocument();
+    expect(conformance.getByText('passed')).toHaveAttribute('data-tone', 'ok');
+    const campaigns = within(screen.getByRole('region', { name: 'Model campaigns' }));
+    expect(campaigns.getByTitle('Digest mismatch')).toHaveAttribute('data-tone', 'critical');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), { target: { value: 'stopped' } });
+    expect(screen.getByText(/Active filters:.*status stopped/)).toBeInTheDocument();
+    expect(screen.getByTestId('stat-runs')).toHaveTextContent('0');
+    fireEvent.click(screen.getByRole('link', { name: 'Reset filters' }));
+    expect(screen.getByTestId('stat-runs')).toHaveTextContent('2');
   });
 
   it('only lists quality filter options that exist in the current runs', () => {

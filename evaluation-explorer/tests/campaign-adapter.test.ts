@@ -898,8 +898,8 @@ describe('adaptCampaignProjectionEnvelope', () => {
 
   it.each([
     { basis: 'GRADE_BASIS_DERIVED' },
-    { detail: 'private grade explanation' },
-  ])('rejects private grade fields on a public benchmark summary: %j', (privateFields) => {
+    { detail: 42 },
+  ])('rejects private or malformed grade fields on a public benchmark summary: %j', (privateFields) => {
     const resultRecord = JSON.parse(failedResultVector.canonical_json) as Record<string, unknown>;
     expect(() => decodeCampaignProjectionEnvelope({
       schema_version: '1.2.0',
@@ -1089,6 +1089,7 @@ describe('adaptCampaignProjectionEnvelope', () => {
                 criterion_id: 'tool-selection',
                 status: 'fail',
                 explanation_code: 'PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_FAILED',
+                detail: 'expected tool selection evidence is missing',
               },
             ],
             tool_scorecard: {
@@ -1108,6 +1109,7 @@ describe('adaptCampaignProjectionEnvelope', () => {
           criterion_id: 'tool-selection',
           status: 'fail',
           explanation_code: 'criterion_failed',
+          detail: 'expected tool selection evidence is missing',
         },
       ],
       tool_scorecard: {

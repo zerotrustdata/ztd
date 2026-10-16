@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -110,15 +111,21 @@ func (c *Client) DispatchInference(ctx context.Context, req *operatorv1.Inferenc
 
 // inferenceDispatchFailure maps a non-2xx dispatch response to its public
 // sentinel through the typed failure code, keeping ErrHTTPStatusError in the
-// chain. A body without a known code yields the status error alone.
+// chain. A body without a known code yields the status error alone. The
+// Operator's signed FAILED receipt, when the body carries one, rides with the
+// error (governance.FailedReceipt) so evidence verification can claim its
+// ledger commitment; it is unverified here and must be checked against the
+// executing Operator's anchor before use.
 func inferenceDispatchFailure(status int, body []byte) error {
 	failure := &operatorv1.InferenceDispatchFailure{}
-	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, failure); err == nil {
-		if sentinel := dispatch.FailureSentinel(failure.GetCode()); sentinel != nil {
-			return fmt.Errorf("%w: inference dispatch returned status %d: %w", constants.ErrHTTPStatusError, status, sentinel)
-		}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, failure); err != nil {
+		return fmt.Errorf("%w: inference dispatch returned status %d", constants.ErrHTTPStatusError, status)
 	}
-	return fmt.Errorf("%w: inference dispatch returned status %d", constants.ErrHTTPStatusError, status)
+	err := fmt.Errorf("%w: inference dispatch returned status %d", constants.ErrHTTPStatusError, status)
+	if sentinel := dispatch.FailureSentinel(failure.GetCode()); sentinel != nil {
+		err = fmt.Errorf("%w: inference dispatch returned status %d: %w", constants.ErrHTTPStatusError, status, sentinel)
+	}
+	return governance.WithFailedReceipt(failure.GetReceipt(), err)
 }
 
 // InferenceDispatchStreamResult carries the terminal governed response and any

@@ -3,7 +3,9 @@
 
 // Public guide to docs/architecture/evals.md. Keep the architecture diagram at the top.
 
-import { type MouseEvent, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { EvidenceChain, PanelSection } from '../components/evidence';
+import { scrollToAnchorOnClick } from '../utils/scroll';
 import { ZTD_ARCHITECTURE_DOCS, ZTD_CAMPAIGN_OPERATORS, WORKSTATION_SPECS } from '../content/platform';
 import { SCENARIO_CATALOG_ID } from '../content/scenario-task';
 
@@ -167,31 +169,15 @@ function ArchitectureDiagram() {
         })}
       </svg>
 
-      <ol className="docs-architecture-steps">
-        <li>
-          <strong>Publication → mirror → Explorer</strong>
-          <span>Public-safe campaign evidence travels through the mirror and Cloudflare to this read-only browser.</span>
-        </li>
-        <li>
-          <strong>Home workstation</strong>
-          <span>Windows host running the full ztd platform (host binary) and Ollama for on-prem model inference.</span>
-        </li>
-        <li>
-          <strong>ztd unified stack</strong>
-          <span>Gateway, Operator, and native eval campaigns execute and grade every benchmark locally.</span>
-        </li>
-        <li>
-          <strong>Campaign operators</strong>
-          <span>Data, Inference, Observer, and Provenance sessions connect outbound over mTLS with separate responsibilities.</span>
-        </li>
-      </ol>
+      <EvidenceChain steps={[
+        { key: 'gateway', label: 'Gateway PDP', value: 'Admits typed intent', tone: 'info' },
+        { key: 'governance', label: 'L1–L5', value: 'Governance pipeline', tone: 'info' },
+        { key: 'operator', label: 'Operator PEP', value: 'Verifies and executes', tone: 'info' },
+        { key: 'receipt', label: 'Signed receipt', value: 'Local execution evidence', tone: 'ok' },
+        { key: 'verification', label: 'Verification', value: 'Offline evidence checks', tone: 'ok' },
+      ]} />
     </div>
   );
-}
-
-function scrollToSection(id: string, event: MouseEvent<HTMLAnchorElement>) {
-  event.preventDefault();
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 }
 
 function DocsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -205,10 +191,8 @@ function DocsSection({ id, title, children }: { id: string; title: string; child
 
 function DocsCard({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <article className="panel docs-card">
-      {title ? <h3 className="docs-card-title">{title}</h3> : null}
-      {children}
-    </article>
+    title ? <PanelSection title={title} className="docs-card">{children}</PanelSection>
+      : <div className="evidence-panel docs-card">{children}</div>
   );
 }
 
@@ -217,6 +201,7 @@ function Command({ children }: { children: string }) {
 }
 
 export function MethodologyView() {
+  const [activeSection, setActiveSection] = useState('');
   return (
     <div className="docs-layout">
       <aside className="docs-sidebar" aria-label="Documentation navigation">
@@ -225,7 +210,7 @@ export function MethodologyView() {
           <ul className="docs-sidebar-nav">
             {DOC_NAV.map((item) => (
               <li key={item.id}>
-                <a href={`#${item.id}`} onClick={(event) => scrollToSection(item.id, event)}>{item.label}</a>
+                <a href={`#${item.id}`} aria-current={activeSection === item.id ? 'location' : undefined} onClick={(event) => { setActiveSection(item.id); scrollToAnchorOnClick(item.id)(event); }}>{item.label}</a>
               </li>
             ))}
           </ul>
@@ -257,7 +242,7 @@ export function MethodologyView() {
 
         <DocsSection id="programs" title="Two programs, separate execution paths">
           <div className="docs-program-grid">
-            <article className="panel docs-program-card">
+            <article className="evidence-panel docs-program-card">
               <div className="docs-program-head"><span>01</span><code>governance-conformance@1.0.0</code></div>
               <h3>Governance conformance</h3>
               <p>Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator&apos;s signed receipts and no unclaimed side effect.</p>
@@ -266,7 +251,7 @@ export function MethodologyView() {
                 <div><dt>Excludes</dt><dd>Model providers, model judges, campaigns, scheduling, and synthetic simulators.</dd></div>
               </dl>
             </article>
-            <article className="panel docs-program-card">
+            <article className="evidence-panel docs-program-card">
               <div className="docs-program-head"><span>02</span><code>{SCENARIO_CATALOG_ID} or a custom suite</code></div>
               <h3>Model campaigns</h3>
               <p>Score real models by running heterogeneous formations (Lite, Assistant, and Primary) through governed inference on the bound Inference Operator, against a frozen scenario catalog.</p>

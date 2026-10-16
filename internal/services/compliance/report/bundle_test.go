@@ -279,7 +279,7 @@ var complianceReportTestAAD = []byte("ztd-compliance-report-v1")
 func newSealedBundleFileService(t *testing.T) (fs.RuntimeFileService, *recordingBundleFileService) {
 	t.Helper()
 	recording := newRecordingBundleFileService()
-	sealed, err := evaluation.NewEvidenceFileService(recording, func() (evaluation.EvidenceVault, error) { return sealingBundleVault{}, nil })
+	sealed, err := evaluation.NewEvidenceFileService(recording, func(fs.RuntimeFileService) (evaluation.EvidenceVault, error) { return sealingBundleVault{}, nil })
 	require.NoError(t, err)
 	return sealed, recording
 }
@@ -376,7 +376,7 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 		runtimeDir := testutil.TempDir(t)
 		store := newRecordingBundleFileService()
 		store.runtimeDir = runtimeDir
-		sealed, err := evaluation.NewEvidenceFileService(store, func() (evaluation.EvidenceVault, error) { return sealingBundleVault{}, nil })
+		sealed, err := evaluation.NewEvidenceFileService(store, func(fs.RuntimeFileService) (evaluation.EvidenceVault, error) { return sealingBundleVault{}, nil })
 		require.NoError(t, err)
 		_, err = PersistBundle(context.Background(), sealed, result)
 		require.NoError(t, err)

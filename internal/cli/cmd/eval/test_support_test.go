@@ -34,6 +34,11 @@ import (
 // fixture documents carry, so oracle.BoundAnchor admits them.
 var testDataOperatorActuatorKey = hex.EncodeToString(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize)).Public().(ed25519.PublicKey))
 
+// testInferenceOperatorActuatorKey is the enrollment-bound actuator key the
+// infer-op run fixture carries, so a split topology anchors both runtimes
+// (INV-EVAL-CAMP-35).
+var testInferenceOperatorActuatorKey = hex.EncodeToString(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{8}, ed25519.SeedSize)).Public().(ed25519.PublicKey))
+
 func writeTestFrozenInventory(t *testing.T, root string, variants ...*evalv1.ModelVariant) {
 	t.Helper()
 	bodies := make([]json.RawMessage, 0, len(variants))

@@ -9,6 +9,7 @@ package authcmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -35,6 +36,40 @@ type AppEnrollerFactory func(appName string, fileSvc fs.RuntimeFileService, cfg 
 // DefaultAppEnrollerFactory creates a production AppPlatformEnrollmentClient.
 func DefaultAppEnrollerFactory(appName string, fileSvc fs.RuntimeFileService, cfg *config.Config, logger *slog.Logger) (AppEnroller, error) {
 	return auth.NewAppPlatformEnrollmentClient(appName, fileSvc, cfg, logger)
+}
+
+// OwnerAppEnrollmentApprover approves an application's own pending platform
+// enrollment request with the authenticated owner CLI identity behind client.
+// It decides only the named request, and only when the pending snapshot is an
+// application request whose app CSR fingerprint matches the key the requester
+// generated. A request that is no longer pending is left alone; the
+// requester's status check reports its outcome.
+func OwnerAppEnrollmentApprover(client APIClient, reason string) auth.AppEnrollmentApprover {
+	return func(_ context.Context, target models.PlatformEnrollmentDecisionTarget) error {
+		body, err := client.Get(constants.APIPaths.AuthPlatformEnrollmentPending)
+		if err != nil {
+			return fmt.Errorf("fetch pending list: %w", err)
+		}
+		var pending models.PlatformEnrollmentPendingResponse
+		if err := json.Unmarshal(body, &pending); err != nil {
+			return fmt.Errorf("parse pending list: %w", err)
+		}
+		for _, req := range pending.Requests {
+			if req.RequestID != target.RequestID {
+				continue
+			}
+			if req.ComponentKind != models.PlatformComponentApplication || req.Fingerprints != target.Fingerprints {
+				return fmt.Errorf("%w: request %s", constants.ErrPlatformEnrollmentCSRMismatch, req.RequestID)
+			}
+			_, err := PostPlatformEnrollmentBatchDecision(client, models.PlatformEnrollmentBatchDecisionRequest{
+				Requests: []models.PlatformEnrollmentDecisionTarget{target},
+				Decision: models.PlatformEnrollmentDecisionApprove,
+				Reason:   reason,
+			})
+			return err
+		}
+		return nil
+	}
 }
 
 func enrollAppCmd() *cobra.Command {

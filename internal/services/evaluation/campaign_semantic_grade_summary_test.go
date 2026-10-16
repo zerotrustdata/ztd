@@ -16,17 +16,18 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func TestBuildPublicGradeSummarySetRemovesPrivateDetails(t *testing.T) {
+func TestBuildPublicGradeSummarySetPublishesGraderDetail(t *testing.T) {
 	t.Parallel()
 	result := &evalv1.EvaluationAssignmentResult{
-		DeterministicGrades: []*evalv1.DeterministicGrade{{CriterionId: "criterion-1", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, Detail: "private canary"}},
-		SemanticGrades:      []*evalv1.SemanticGrade{{CriterionId: "criterion-2", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE, JudgeVariantId: "judge-1", Detail: "private judge output"}},
+		DeterministicGrades: []*evalv1.DeterministicGrade{{CriterionId: "criterion-1", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, Detail: "expected tool call missing"}},
+		SemanticGrades:      []*evalv1.SemanticGrade{{CriterionId: "criterion-2", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE, JudgeVariantId: "judge-1", Detail: "judge output"}},
 	}
 	grades, err := BuildPublicGradeSummarySet(result, &PublicScenarioContext{GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE})
 	require.NoError(t, err)
 	require.Len(t, grades.Deterministic, 1)
 	require.Len(t, grades.Semantic, 1)
-	assert.Empty(t, grades.Deterministic[0].Detail)
+	assert.Equal(t, "expected tool call missing", grades.Deterministic[0].Detail)
+	assert.Equal(t, "judge output", grades.Semantic[0].GetDetail())
 	assert.Equal(t, evalv1.PublicGradeExplanationCode_PUBLIC_GRADE_EXPLANATION_CODE_CRITERION_FAILED, PublicGradeExplanation(result.GetDeterministicGrades()[0].GetStatus()))
 	assert.Equal(t, evalv1.PublicGradeExplanationCode_PUBLIC_GRADE_EXPLANATION_CODE_GRADER_UNAVAILABLE, grades.Semantic[0].GetExplanationCode())
 	assert.Equal(t, "judge-1", grades.Semantic[0].GetJudgeVariantId())

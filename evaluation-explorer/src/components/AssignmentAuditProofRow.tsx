@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { PublicEvidenceBinding } from '../contract/types';
-import { loadRuntimeConfig } from '../state/feed';
+import { useMirrorOrigin } from '../state/mirror';
 import { useStoreState } from '../state/store';
 import { formatNumber } from './shared';
 
@@ -19,7 +19,7 @@ function formatBytes(value: number): string {
 }
 
 export function AssignmentAuditProofRow({ bindings }: { bindings: PublicEvidenceBinding[] | undefined }) {
-  const [origin, setOrigin] = useState<string | undefined>();
+  const origin = useMirrorOrigin();
   const sliceBinding = bindingForKind(bindings, 'assignment_audit_slice');
   const keyBinding = bindingForKind(bindings, 'assignment_audit_vault_key');
   const sliceArtifact = useStoreState((state) =>
@@ -28,20 +28,6 @@ export function AssignmentAuditProofRow({ bindings }: { bindings: PublicEvidence
   const keyArtifact = useStoreState((state) =>
     keyBinding ? state.proofArtifacts.get(keyBinding.sha256) : undefined,
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    loadRuntimeConfig()
-      .then((config) => {
-        if (!cancelled) setOrigin(config.mirror_origin);
-      })
-      .catch(() => {
-        if (!cancelled) setOrigin(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const verifyCommand = useMemo(() => {
     if (!sliceBinding || !keyBinding) return undefined;
@@ -101,7 +87,12 @@ export function AssignmentAuditProofRow({ bindings }: { bindings: PublicEvidence
 export function filterNonAuditEvidenceBindings(bindings: PublicEvidenceBinding[] | undefined): PublicEvidenceBinding[] | undefined {
   if (!bindings?.length) return bindings;
   const filtered = bindings.filter(
-    (binding) => binding.kind !== 'assignment_audit_slice' && binding.kind !== 'assignment_audit_vault_key',
+    (binding) =>
+      binding.kind !== 'assignment_audit_slice' &&
+      binding.kind !== 'assignment_audit_vault_key' &&
+      binding.kind !== 'assignment_agent_trace' &&
+      binding.kind !== 'scenario_input_fixture' &&
+      binding.kind !== 'scenario_gold_criteria',
   );
   return filtered.length > 0 ? filtered : undefined;
 }

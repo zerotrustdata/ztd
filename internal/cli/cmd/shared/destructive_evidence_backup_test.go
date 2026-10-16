@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -43,7 +44,7 @@ type evidenceFixture struct {
 
 func newEvidenceFixture(t *testing.T) *evidenceFixture {
 	t.Helper()
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	fileSvc, cfg := cmdtest.NewEvidenceCmdTestEnv(t)
 	return &evidenceFixture{fileSvc: fileSvc, cfg: cfg}
 }
 
@@ -90,7 +91,7 @@ func TestEvalEvidenceBackup_RunSnapshotsEvidenceIntoTheDefaultBackupDirectory(t 
 	dirs := f.snapshotDirs(t)
 	require.Len(t, dirs, 1)
 	assert.True(t, strings.HasPrefix(dirs[0], constants.EvaluationBackupDirPrefix), dirs[0])
-	assert.Contains(t, summary, "Backed up evaluation evidence (1 file(s), 9 bytes) to ")
+	assert.Contains(t, summary, "Backed up evaluation evidence (1 file(s), ")
 	assert.Contains(t, summary, shared.DefaultEvalBackupDir(f.cfg))
 }
 
@@ -213,6 +214,9 @@ func TestConfirmDestructive_WithEvidenceBackupPrintsTheSnapshotSummaryBeforeProc
 
 	require.NoError(t, err)
 	assert.True(t, proceed)
-	assert.Contains(t, out.String(), "Backed up evaluation evidence (1 file(s), 9 bytes)")
+	// The backup copies the record as stored: sealed, so larger than its plaintext.
+	stored, err := os.Stat(f.fileSvc.Resolve(runRecordRelPath))
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), fmt.Sprintf("Backed up evaluation evidence (1 file(s), %d bytes)", stored.Size()))
 	assert.Len(t, f.snapshotDirs(t), 1)
 }

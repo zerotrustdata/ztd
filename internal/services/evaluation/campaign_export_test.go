@@ -60,11 +60,9 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	_, executed, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              req.Inventory.ToModelRegistryFreeze().Variants,
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	require.True(t, executed)
@@ -171,7 +169,7 @@ func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservatio
 		DeterministicGrades: []*evalv1.DeterministicGrade{{
 			CriterionId: "tool-selection",
 			Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
-			Detail:      "private grading detail",
+			Detail:      "grading detail",
 		}},
 	}
 	record, err := (&CampaignExporter{}).buildAssignmentExportRecord(
@@ -191,7 +189,7 @@ func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservatio
 	require.NotNil(t, record.BenchmarkObservations)
 	require.Len(t, record.BenchmarkObservations.GradeSummaries, 1)
 	assert.Equal(t, "tool-selection", record.BenchmarkObservations.GradeSummaries[0].CriterionID)
-	assert.Empty(t, record.BenchmarkObservations.GradeSummaries[0].Detail)
+	assert.Equal(t, "grading detail", record.BenchmarkObservations.GradeSummaries[0].Detail)
 	require.NotNil(t, record.BenchmarkObservations.ToolScorecard["tool_selection"])
 	assert.Equal(t, 0.0, *record.BenchmarkObservations.ToolScorecard["tool_selection"].Value)
 }
@@ -226,11 +224,9 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, executed, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, CampaignExecutionBinding{
-			InferenceOperatorSessionID: "inf-session",
-			DataOperatorID:             "data-op",
-			DataOperatorSessionID:      "data-session",
-			ModelRegistryDigest:        req.Inventory.RegistryDigest,
-			ModelRegistry:              req.Inventory.ToModelRegistryFreeze().Variants,
+			Topology:            testOperatorTopology("inf-session", "data-session"),
+			ModelRegistryDigest: req.Inventory.RegistryDigest,
+			ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 		}, req.ScenarioArtifacts)
 		require.NoError(t, err)
 		require.True(t, executed)

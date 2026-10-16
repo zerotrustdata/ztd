@@ -1114,6 +1114,8 @@ message PublicSemanticGradeSummary {
   EvaluationGradingMethod grading_method = 3;
   string judge_variant_id = 4;
   PublicGradeExplanationCode explanation_code = 5;
+  // Grader output published verbatim under the public model-text bound.
+  string detail = 6;
 }
 
 message PublicModelActivityRecord {

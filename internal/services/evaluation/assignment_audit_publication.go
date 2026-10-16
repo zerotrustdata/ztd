@@ -101,12 +101,14 @@ func collectAssignmentAuditEventBodies(requests []campaignFeedPublishRequest) []
 }
 
 // BuildAssignmentAuditBindings builds one assignment audit export package from
-// the live events about to be published for a terminal assignment. When
+// the live events about to be published for a terminal assignment, its agent
+// trace, and its scenario's frozen fixture bodies from fixtures. When
 // ingestProofs is true, the proof publisher ingests the export package.
 func (c *CampaignPublicationCoordinator) BuildAssignmentAuditBindings(
 	ctx context.Context,
 	assignment *evalv1.EvaluationAssignment,
 	result *evalv1.EvaluationAssignmentResult,
+	fixtures map[string]ScenarioArtifacts,
 	liveRequests []campaignFeedPublishRequest,
 	ingestProofs bool,
 ) ([]*evalv1.PublicEvidenceBinding, error) {
@@ -126,6 +128,13 @@ func (c *CampaignPublicationCoordinator) BuildAssignmentAuditBindings(
 	}
 	artifacts, err := BuildAssignmentAuditSlice(ctx, c.files, assignment.GetAssignmentId(), events)
 	if err != nil {
+		return nil, err
+	}
+	artifacts.AgentTrace, artifacts.AgentTraceSHA256, err = loadAssignmentAgentTraceArtifact(ctx, c.store, result)
+	if err != nil {
+		return nil, err
+	}
+	if err := artifacts.attachScenarioFixture(assignment, fixtures); err != nil {
 		return nil, err
 	}
 	if !ingestProofs || c.proofPublisher == nil {

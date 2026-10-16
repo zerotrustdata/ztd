@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -35,8 +36,9 @@ type archiveFixture struct {
 
 func newArchiveFixture(t *testing.T) *archiveFixture {
 	t.Helper()
-	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	raw, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
+	files := newVaultedEvidenceFiles(t, raw, keystoretest.NewMemoryKeyring())
 	store := NewStore(files)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return archiveTestNow }, func(prefix string) string { return prefix + "-1" })
 

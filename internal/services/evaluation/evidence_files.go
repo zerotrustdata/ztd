@@ -57,11 +57,14 @@ func sealedRoots() []sealedRoot {
 	}
 }
 
-// EvidenceVaultProvider opens the runtime vault the first time an evaluation
-// record is read or written. A command that never touches evaluation evidence
-// never opens it, and a failure is returned to the caller, never cached or
-// downgraded to plaintext.
-type EvidenceVaultProvider func() (EvidenceVault, error)
+// EvidenceVaultProvider opens the vault whose key chain (constants.VaultHeaderRelPath,
+// constants.VaultKeyRelPath, and any sealed master key blob) lives in keys.
+// The evidence file service calls it with its own runtime the first time an
+// evaluation record is read or written, so a command that never touches
+// evaluation evidence never opens it. A restore calls it with a scratch runtime
+// holding a backup snapshot's key chain. A failure is returned to the caller,
+// never cached or downgraded to plaintext.
+type EvidenceVaultProvider func(keys fs.RuntimeFileService) (EvidenceVault, error)
 
 // evidenceFiles is a RuntimeFileService whose evaluation records and
 // compliance report bundles are encrypted at rest. Every file under
@@ -72,7 +75,8 @@ type EvidenceVaultProvider func() (EvidenceVault, error)
 // missing or locked vault, or a file that does not authenticate, is an error.
 //
 // The exceptions are by code path, not by name: ExportRun writes its
-// disclosure-safe public projection (INV-EVAL-EVID-04) through SealedFiles,
+// disclosure-safe public projection, including bounded allowlisted model/tool
+// transcripts (INV-EVAL-EVID-04), through SealedFiles,
 // and "compliance report export" writes an owner-chosen plaintext copy of a
 // report bundle outside the runtime root, because those are meant to be
 // opened by people and tools outside ztd.
@@ -127,7 +131,7 @@ func (f *evidenceFiles) vaultFor() (EvidenceVault, error) {
 	if f.vault != nil {
 		return f.vault, nil
 	}
-	v, err := f.provider()
+	v, err := f.provider(f.RuntimeFileService)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrEvaluationEvidenceVaultRequired, err)
 	}
@@ -135,6 +139,36 @@ func (f *evidenceFiles) vaultFor() (EvidenceVault, error) {
 		return nil, constants.ErrEvaluationEvidenceVaultRequired
 	}
 	f.vault = v
+	return v, nil
+}
+
+// openKeyChain opens the vault a captured key chain holds. chain maps each
+// key chain file's runtime-relative path to its stored bytes, all of them
+// ciphertext or wrapped keys. They are laid out in a scratch runtime under the
+// runtime tmp directory for the provider and removed before it returns; the
+// opened vault keeps only its unwrapped key, in memory.
+func (f *evidenceFiles) openKeyChain(ctx context.Context, chain map[string][]byte) (EvidenceVault, error) {
+	scratch, err := f.MkdirTemp(ctx, "eval-restore-keys-*")
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: open backup key chain: %w", err)
+	}
+	defer func() { _ = f.RemoveAll(context.WithoutCancel(ctx), scratch) }()
+	keys, err := fs.NewRuntimeFileService(f.Resolve(scratch), nil)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: open backup key chain: %w", err)
+	}
+	for relPath, data := range chain {
+		if err := keys.WriteFile(ctx, relPath, data, constants.PermFilePrivate); err != nil {
+			return nil, fmt.Errorf("evaluation: open backup key chain: stage %s: %w", relPath, err)
+		}
+	}
+	v, err := f.provider(keys)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrEvaluationBackupKeyChainInvalid, err)
+	}
+	if v == nil {
+		return nil, constants.ErrEvaluationBackupKeyChainInvalid
+	}
 	return v, nil
 }
 

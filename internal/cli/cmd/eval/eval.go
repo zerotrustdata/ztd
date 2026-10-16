@@ -10,6 +10,7 @@ package eval
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -43,11 +44,16 @@ type nativeEvalDeps struct {
 	bindClientFactory          func(*config.Config) evalBindClient
 	campaignPublicationFactory campaignVerificationPublicationFactory
 	formationRunnerFactory     campaignFormationRunnerFactory
+	appEnroller                evalAppEnroller
 	runControl                 runControlDeps
 	conformance                conformanceDeps
 	now                        func() time.Time
 	newID                      func() (string, error)
 }
+
+// evalAppEnroller enrolls the ztd-eval application identity, writing progress
+// to out.
+type evalAppEnroller func(ctx context.Context, out io.Writer, fileSvc fs.RuntimeFileService, cfg *config.Config) error
 
 // adaptNewID adapts a fallible ID generator to the evaluation framework's
 // infallible func(string) string seams
@@ -90,6 +96,7 @@ func Cmd() *cobra.Command {
 			return NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		},
 		formationRunnerFactory: newProductionCampaignFormationRunner,
+		appEnroller:            enrollEvalAppIdentity,
 		runControl:             defaultRunControlDeps(),
 		conformance:            defaultConformanceDeps(),
 		now:                    time.Now,

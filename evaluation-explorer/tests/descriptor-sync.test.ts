@@ -138,7 +138,7 @@ const tsEnums: Record<EnumName, readonly string[]> = {
 
 describe('descriptor.json stays in sync with types.ts', () => {
   it('exposes the frozen schema version', () => {
-    expect(descriptor.schema_version).toBe('1.7.0');
+    expect(descriptor.schema_version).toBe('1.8.0');
   });
 
   it('includes the not-run verifier lifecycle state', () => {

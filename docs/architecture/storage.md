@@ -3,8 +3,8 @@ doc_id: storage
 title: Storage Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - internal/services/storage/
   - internal/constants/paths.go
@@ -76,7 +76,7 @@ SQLite retry helpers take an explicit context for connection-pool waits, stateme
 This document does not define a general SQLite backup or recovery procedure. The supported lifecycle operations are owned by CLI commands; confirm flags and defaults with `./ztd <command> --help`.
 
 - **Reset host runtime state:** `ztd gw clean` stops services and renames `.ztd/` aside to `.ztd-<MMDDHHMM>` (nothing is deleted) after offering an evaluation-evidence backup, so the Gateway restarts with no databases, vault, or PKI. `make clean` removes build and test artifacts only and does not reset runtime state, trust, or databases.
-- **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`; `ztd eval runs delete` and `ztd eval campaigns delete` purge deleted evidence from the backups too; see [Evaluation Programs](./evals.md).
+- **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`, carrying the vault key chain that sealed the evidence so a snapshot restores into a reinitialized runtime; `ztd eval runs delete` and `ztd eval campaigns delete` purge deleted evidence from the backups too; see [Evaluation Programs](./evals.md).
 - **Verify the audit chain:** `ztd audit verify` walks the hash chain from the latest checkpoint (or genesis) and reports the head sequence and hash.
 
 ## Anti-patterns
@@ -176,7 +176,7 @@ The `receipts` table is a latest-stage query projection, not the audit record of
 
 Receipt canonicalization and audit-content encryption happen before acquiring the writer gate or SQLite write transaction. Nonempty session IDs are checked for surrounding whitespace before any write. The receipt upsert, audit-chain append, and optional commitment append still commit atomically; receipt and event foreign keys enforce session existence without a repeated session lookup; commitment construction uses the head read inside that transaction. Receipt and commitment success logs run only after commit and after the writer gate is released, so log sinks do not extend the chain's critical section.
 
-Compliance operational export carries both the retained receipt body and the matching chained receipt facts. The evidence importer verifies the exported chain segment, cross-links matching receipt projections to their chain entries, and cross-links commitments to receipts through deterministic stage evidence.
+Compliance operational export carries both the retained receipt body and the matching chained receipt facts. The exported chain segment runs from the first to the last chained receipt fact in the window and includes every chained event between them whatever its type, so the segment is sequence-contiguous; only receipt facts carry `content_sha256`. The evidence importer verifies the exported chain segment, cross-links matching receipt projections to their chain entries, and cross-links commitments to receipts through deterministic stage evidence.
 
 For a remote Operator, the local audit store is authoritative. After execution, the Operator publishes the signed receipt to the Gateway receipt channel. The Gateway verifies the signer, mirrors an accepted receipt into its own chain and projection, but publication failure does not invalidate the already persisted local result.
 

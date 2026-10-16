@@ -9012,8 +9012,10 @@ type PublicSemanticGradeSummary struct {
 	GradingMethod   EvaluationGradingMethod    `protobuf:"varint,3,opt,name=grading_method,json=gradingMethod,proto3,enum=ztd.eval.v1.EvaluationGradingMethod" json:"grading_method,omitempty"`
 	JudgeVariantId  string                     `protobuf:"bytes,4,opt,name=judge_variant_id,json=judgeVariantId,proto3" json:"judge_variant_id,omitempty"`
 	ExplanationCode PublicGradeExplanationCode `protobuf:"varint,5,opt,name=explanation_code,json=explanationCode,proto3,enum=ztd.eval.v1.PublicGradeExplanationCode" json:"explanation_code,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Grader output published verbatim under the public model-text bound.
+	Detail        string `protobuf:"bytes,6,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PublicSemanticGradeSummary) Reset() {
@@ -9079,6 +9081,13 @@ func (x *PublicSemanticGradeSummary) GetExplanationCode() PublicGradeExplanation
 		return x.ExplanationCode
 	}
 	return PublicGradeExplanationCode_PUBLIC_GRADE_EXPLANATION_CODE_UNSPECIFIED
+}
+
+func (x *PublicSemanticGradeSummary) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
 }
 
 type PublicModelActivityRecord struct {
@@ -13390,13 +13399,14 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" \x03(\v20.ztd.eval.v1.PublicToolScoreDimensionRequirementR\x13toolScoreDimensions\x12T\n" +
 	"\x11trajectory_policy\x18\v \x01(\x0e2'.ztd.eval.v1.EvaluationTrajectoryPolicyR\x10trajectoryPolicy\x128\n" +
 	"\vprompt_hint\x18\f \x01(\v2\x17.ztd.eval.v1.PromptHintR\n" +
-	"promptHint\"\xc8\x02\n" +
+	"promptHint\"\xe0\x02\n" +
 	"\x1aPublicSemanticGradeSummary\x12!\n" +
 	"\fcriterion_id\x18\x01 \x01(\tR\vcriterionId\x12<\n" +
 	"\x06status\x18\x02 \x01(\x0e2$.ztd.eval.v1.EvaluationVerdictStatusR\x06status\x12K\n" +
 	"\x0egrading_method\x18\x03 \x01(\x0e2$.ztd.eval.v1.EvaluationGradingMethodR\rgradingMethod\x12(\n" +
 	"\x10judge_variant_id\x18\x04 \x01(\tR\x0ejudgeVariantId\x12R\n" +
-	"\x10explanation_code\x18\x05 \x01(\x0e2'.ztd.eval.v1.PublicGradeExplanationCodeR\x0fexplanationCode\"\xe2\x05\n" +
+	"\x10explanation_code\x18\x05 \x01(\x0e2'.ztd.eval.v1.PublicGradeExplanationCodeR\x0fexplanationCode\x12\x16\n" +
+	"\x06detail\x18\x06 \x01(\tR\x06detail\"\xe2\x05\n" +
 	"\x19PublicModelActivityRecord\x12=\n" +
 	"\n" +
 	"model_role\x18\x01 \x01(\x0e2\x1e.ztd.eval.v1.ModelCampaignRoleR\tmodelRole\x12#\n" +

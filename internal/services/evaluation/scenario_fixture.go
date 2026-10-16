@@ -122,7 +122,9 @@ type InvestigationSeed struct {
 	CaseMemory      *InvestigationSeedMemory        `json:"case_memory,omitempty"`
 }
 
-// ScenarioInputFixture is the typed private prompt/input payload for one scenario.
+// ScenarioInputFixture is the typed prompt/input payload for one scenario. Its
+// campaign-frozen canonical bytes are published unredacted as a public proof
+// artifact alongside each assignment result that ran it.
 type ScenarioInputFixture struct {
 	SchemaVersion  string                  `json:"schema_version"`
 	ScenarioID     string                  `json:"scenario_id"`
@@ -244,7 +246,9 @@ type ScenarioRecoveryExpectation struct {
 	Detail   string `json:"detail,omitempty"`
 }
 
-// ScenarioGoldCriteria is the typed private gold standard for one scenario.
+// ScenarioGoldCriteria is the typed gold standard for one scenario. Its
+// campaign-frozen canonical bytes are published unredacted as a public proof
+// artifact alongside each assignment result graded against it.
 type ScenarioGoldCriteria struct {
 	SchemaVersion         string                        `json:"schema_version"`
 	ScenarioID            string                        `json:"scenario_id"`

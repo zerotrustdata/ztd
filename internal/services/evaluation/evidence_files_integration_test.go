@@ -47,14 +47,27 @@ type sealedRuntime struct {
 
 func newSealedRuntime(t *testing.T) *sealedRuntime {
 	t.Helper()
+	return newSealedRuntimeWithKeyring(t, keystoretest.NewMemoryKeyring())
+}
+
+// newSealedRuntimeWithKeyring is newSealedRuntime over a given OS key store, so
+// several runtimes share one as the runtimes on a host do.
+func newSealedRuntimeWithKeyring(t *testing.T, keyring keystore.Keyring) *sealedRuntime {
+	t.Helper()
 	raw, err := rtfs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
 	require.NoError(t, raw.CreateRuntimeTree(context.Background()))
-	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{Keyring: keystoretest.NewMemoryKeyring()})
+	ks, err := keystore.NewWithFS(raw, testutil.NewTestLogger(), keystore.Options{Keyring: keyring})
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
-	files, err := NewEvidenceFileService(raw, func() (EvidenceVault, error) { return ks.OpenVault() })
+	files, err := NewEvidenceFileService(raw, func(keys rtfs.RuntimeFileService) (EvidenceVault, error) {
+		keyStore, err := keystore.NewWithFS(keys, testutil.NewTestLogger(), keystore.Options{Keyring: keyring})
+		if err != nil {
+			return nil, err
+		}
+		return keyStore.OpenVault()
+	})
 	require.NoError(t, err)
 	return &sealedRuntime{raw: raw, files: files}
 }
@@ -152,7 +165,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 
 	t.Run("a locked vault refuses to write and writes nothing", func(t *testing.T) {
 		rt := newSealedRuntime(t)
-		locked, err := NewEvidenceFileService(rt.raw, func() (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
+		locked, err := NewEvidenceFileService(rt.raw, func(rtfs.RuntimeFileService) (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
 		require.NoError(t, err)
 
 		err = locked.WriteFile(ctx, sealedPath, []byte(evidenceMarker), constants.PermFilePrivate)
@@ -166,7 +179,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 	t.Run("a locked vault refuses to read", func(t *testing.T) {
 		rt := newSealedRuntime(t)
 		require.NoError(t, rt.files.WriteFile(ctx, sealedPath, []byte(evidenceMarker), constants.PermFilePrivate))
-		locked, err := NewEvidenceFileService(rt.raw, func() (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
+		locked, err := NewEvidenceFileService(rt.raw, func(rtfs.RuntimeFileService) (EvidenceVault, error) { return lockedVault(t, rt.raw), nil })
 		require.NoError(t, err)
 
 		body, err := locked.ReadFile(ctx, sealedPath)
@@ -177,7 +190,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 
 	t.Run("an unavailable vault is a typed error, never a plaintext write", func(t *testing.T) {
 		rt := newSealedRuntime(t)
-		unavailable, err := NewEvidenceFileService(rt.raw, func() (EvidenceVault, error) { return nil, constants.ErrVaultNotInitialized })
+		unavailable, err := NewEvidenceFileService(rt.raw, func(rtfs.RuntimeFileService) (EvidenceVault, error) { return nil, constants.ErrVaultNotInitialized })
 		require.NoError(t, err)
 
 		err = unavailable.WriteFile(ctx, sealedPath, []byte(evidenceMarker), constants.PermFilePrivate)
@@ -230,7 +243,12 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 	})
 }
 
-// markerExecutor returns a terminal result whose private grade detail quotes
+// markerGradeDetail is the grader detail markerExecutor records. Grade detail
+// is public evidence published verbatim (INV-SPEC-DATA-02), so it carries no
+// marker.
+const markerGradeDetail = "expected hint not found in the public synthetic answer"
+
+// markerExecutor returns a terminal result whose private failure reason quotes
 // the marker on its first call and fails with an error that echoes the marker
 // on later calls.
 type markerExecutor struct {
@@ -256,7 +274,7 @@ func (m *markerExecutor) ExecuteAssignment(_ context.Context, req AssignmentExec
 			GradeId:     req.Assignment.GetAssignmentId() + ":scenario-content",
 			CriterionId: "scenario-content",
 			Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
-			Detail:      "expected hint not found in " + evidenceMarker,
+			Detail:      markerGradeDetail,
 			Basis:       basisObservation,
 		}},
 	}
@@ -308,11 +326,9 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 
 	binding := CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              req.Inventory.ToModelRegistryFreeze().Variants,
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 	}
 	completed, executedFirst, err := controller.ExecuteNextAssignment(ctx, req.RunID, binding, req.ScenarioArtifacts)
 	require.NoError(t, err)
@@ -328,11 +344,11 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, loadedFailure.String(), evidenceMarker)
 
-	// The completed result keeps its private grade detail, encrypted and readable.
+	// The completed result keeps its private failure reason, encrypted and readable.
 	loadedCompleted, err := store.LoadAssignmentResult(ctx, req.RunID, completed.GetAssignmentId())
 	require.NoError(t, err)
 	assert.Contains(t, loadedCompleted.GetFailureReason(), evidenceMarker)
-	assert.Contains(t, loadedCompleted.GetDeterministicGrades()[0].GetDetail(), evidenceMarker)
+	assert.Equal(t, markerGradeDetail, loadedCompleted.GetDeterministicGrades()[0].GetDetail())
 
 	// The frozen fixtures decrypt for the readers that grade against them.
 	run, err := store.LoadRun(ctx, req.RunID)
@@ -350,16 +366,19 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	}
 	assert.True(t, foundPrompt, "the frozen prompt round-trips through the encrypted store")
 
-	// Agent trace: model text, tool arguments, command, tool result, final answer.
+	// Agent traces are encrypted at rest. The export carries only the
+	// role_transcripts summary; the full trace reaches the public feed as a
+	// content-addressed proof artifact, never as a plaintext runtime file.
+	publicAnswer := "Public synthetic checkout diagnosis."
 	trace := &AgentTrace{
 		RunID: req.RunID, AssignmentID: completed.GetAssignmentId(), EvaluationAttemptID: "attempt-1", CampaignID: campaignID,
-		ScenarioID: "scenario-1", DesignatedRole: "primary", ServedModelTag: "qwen3:4b",
+		ScenarioID: "scenario-1", DesignatedRole: "primary", ServedModelTag: "qwen3:4b", Input: testAgentTraceInput(),
 		ModelCalls: []AgentModelCall{{ProviderAttemptID: "pa-1", TransactionID: "tx-1", Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "thinking about " + evidenceMarker}},
 		ToolCalls: []AgentToolCall{{
-			CallID: "tx-2", ModelCallID: "pa-1", ToolName: "run_commands_with_operator", ArgumentsJSON: `{"command":"cat ` + evidenceMarker + `"}`,
-			Command: "cat " + evidenceMarker, ResultJSON: `{"stdout":"` + evidenceMarker + `"}`, Error: "no such file " + evidenceMarker, IsOperatorTool: true, LoopTurn: 1,
+			CallID: "tx-2", ModelCallID: "pa-1", ToolName: "run_commands_with_operator", ArgumentsJSON: `{"command":"cat public-synthetic.txt"}`,
+			Command: "cat public-synthetic.txt", ResultJSON: `{"stdout":"public synthetic evidence"}`, Error: "no such file " + evidenceMarker, IsOperatorTool: true, LoopTurn: 1,
 		}},
-		FinalOutput:     "the answer is " + evidenceMarker,
+		FinalOutput:     publicAnswer,
 		ProviderFailure: string(ClassifyExecutionFailure(fmt.Errorf("model echoed %s", evidenceMarker))),
 	}
 	traceBody, err := SealAgentTrace(trace)
@@ -380,22 +399,28 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(exchangeBody), evidenceMarker, "the exchange evidence round-trips through the encrypted store")
 
-	// The export bundle is public by design and must carry none of it.
+	// The export carries public transcripts and grader detail verbatim; private
+	// model-call text, errors, prompts, and exchange evidence stay sealed.
 	exportReport, err := NewCampaignExporter(func() time.Time { return time.Unix(1_700_000_100, 0).UTC() }).ExportRun(ctx, store, rt.files, req.RunID, constants.EvaluationCampaignExportDirname)
 	require.NoError(t, err)
 	require.NotEmpty(t, exportReport.Files)
 	exportedAssignments, err := rt.raw.ReadFile(ctx, filepath.Join(constants.EvaluationCampaignExportDirname, constants.EvaluationAssignmentsJSONLFilename))
 	require.NoError(t, err)
 	assert.Contains(t, string(exportedAssignments), completed.GetAssignmentId(), "the export is a readable bundle, not ciphertext")
+	assert.Contains(t, string(exportedAssignments), publicAnswer, "allowlisted final response is available in the public export")
+	assert.Contains(t, string(exportedAssignments), "public synthetic evidence", "allowlisted tool result is available in the public export")
+	assert.Contains(t, string(exportedAssignments), markerGradeDetail, "grader detail is published verbatim")
 
 	scanned := assertNoPlaintextAnywhere(t, rt.raw.Resolve(""), evidenceMarker, prompt)
 	assert.Greater(t, scanned, 10, "the walk covered the evaluation records, vault, and export")
 }
 
 // TestEvalBackup_CarriesCiphertextOnly proves a backup leaves the runtime in
-// its encrypted form and restores into a runtime that holds the same vault.
+// its encrypted form, key chain included, and restores into any runtime whose
+// OS key store holds the master key that sealed that key chain.
 func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
-	rt := newSealedRuntime(t)
+	keyring := keystoretest.NewMemoryKeyring()
+	rt := newSealedRuntimeWithKeyring(t, keyring)
 	ctx := context.Background()
 	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
 	require.NoError(t, rt.files.WriteFile(ctx, recordPath, []byte(`{"detail":"`+evidenceMarker+`"}`), constants.PermFilePrivate))
@@ -414,10 +439,21 @@ func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(restored), evidenceMarker)
 
-	// A runtime with a different vault cannot read the restored evidence.
+	// A reinstalled runtime has a new vault on the same host key store: the
+	// restore opens the snapshot's vault and reseals the evidence under its own.
+	reinstalled := newSealedRuntimeWithKeyring(t, keyring)
+	_, err = NewEvalBackup(reinstalled.files, time.Now).Restore(ctx, report.SnapshotDir, false)
+	require.NoError(t, err)
+	restored, err = reinstalled.files.ReadFile(ctx, recordPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(restored), evidenceMarker)
+	assertNoPlaintextAnywhere(t, reinstalled.raw.Resolve(""), evidenceMarker)
+
+	// A host whose key store never held the master key cannot open the snapshot.
 	other := newSealedRuntime(t)
 	_, err = NewEvalBackup(other.files, time.Now).Restore(ctx, report.SnapshotDir, false)
+	require.True(t, errors.Is(err, constants.ErrEvaluationBackupKeyChainInvalid), "a key chain the key store cannot open restores nothing: %v", err)
+	exists, err := other.files.FileExists(ctx, recordPath)
 	require.NoError(t, err)
-	_, err = other.files.ReadFile(ctx, recordPath)
-	require.True(t, errors.Is(err, constants.ErrEvaluationEvidenceDecryptFailed), "evidence backed up under one vault is unreadable under another")
+	assert.False(t, exists)
 }

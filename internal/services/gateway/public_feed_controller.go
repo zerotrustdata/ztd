@@ -175,10 +175,13 @@ func (c *PublicFeedController) handlePublicFeedProofs(w http.ResponseWriter, r *
 	}
 
 	c.responder.JSON(w, http.StatusOK, models.PublicAssignmentAuditProofPublishResponse{
-		Accepted:        true,
-		DatabaseSHA256:  hashBytes(request.Database),
-		VaultKeySHA256:  hashBytes(request.VaultKey),
-		ProofRootSHA256: manifest.ProofRootSHA256,
+		Accepted:            true,
+		DatabaseSHA256:      hashBytes(request.Database),
+		VaultKeySHA256:      hashBytes(request.VaultKey),
+		AgentTraceSHA256:    optionalSHA256(request.AgentTrace),
+		ScenarioInputSHA256: optionalSHA256(request.ScenarioInput),
+		ScenarioGoldSHA256:  optionalSHA256(request.ScenarioGold),
+		ProofRootSHA256:     manifest.ProofRootSHA256,
 	})
 }
 
@@ -316,8 +319,7 @@ func publicFeedProofPublishErrorStatus(err error) (int, string) {
 		errors.Is(err, constants.ErrPublicFeedProofNotVerified),
 		errors.Is(err, constants.ErrPublicFeedBatchEmpty),
 		errors.Is(err, constants.ErrPublicFeedProofOversized),
-		errors.Is(err, constants.ErrPublicFeedProofPathTraversal),
-		errors.Is(err, constants.ErrPublicFeedProofRestricted):
+		errors.Is(err, constants.ErrPublicFeedProofPathTraversal):
 		return http.StatusBadRequest, err.Error()
 	default:
 		return http.StatusInternalServerError, err.Error()
@@ -327,6 +329,15 @@ func publicFeedProofPublishErrorStatus(err error) (int, string) {
 func hashBytes(value []byte) string {
 	sum := sha256.Sum256(value)
 	return hex.EncodeToString(sum[:])
+}
+
+// agentTraceSHA256 hashes the optional agent trace artifact; assignments
+// without a trace report no hash.
+func optionalSHA256(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	return hashBytes(body)
 }
 
 func (c *PublicFeedController) publisher() (*PublicPublisherService, error) {
@@ -353,8 +364,7 @@ func publicFeedExportBatchErrorStatus(err error) (int, string) {
 		errors.Is(err, constants.ErrPublicFeedSequenceOutOfOrder),
 		errors.Is(err, constants.ErrPublicFeedRecordHashMismatch),
 		errors.Is(err, constants.ErrPublicFeedRecordTypeInvalid),
-		errors.Is(err, constants.ErrPublicFeedRecordSchemaInvalid),
-		errors.Is(err, constants.ErrPublicFeedRestrictedField):
+		errors.Is(err, constants.ErrPublicFeedRecordSchemaInvalid):
 		return http.StatusBadRequest, err.Error()
 	default:
 		return http.StatusInternalServerError, err.Error()

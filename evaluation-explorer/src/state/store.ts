@@ -163,6 +163,10 @@ export interface StoreState {
   suites: Map<string, SuiteSummary>;
   evaluations: Map<string, EvaluationSummary>;
   assignments: Map<string, AssignmentResult>;
+  /** Validated public source records, retained before view normalization. */
+  assignmentSources: Map<string, ProjectionRecord>;
+  /** Complete ingested assignment history, independent of the live feed tail. */
+  assignmentEvents: Map<string, LiveEvent[]>;
   methodology: MethodologySnapshot | null;
   events: LiveEvent[];
   eventIds: Set<string>;
@@ -209,6 +213,8 @@ function emptyState(): StoreState {
     suites: new Map(),
     evaluations: new Map(),
     assignments: new Map(),
+    assignmentSources: new Map(),
+    assignmentEvents: new Map(),
     methodology: null,
     events: [],
     eventIds: new Set(),
@@ -414,6 +420,9 @@ export class EvalStore {
         this.campaignContext = candidateContext;
         for (const decoded of validated) {
           this.indexRecord(state, decoded, record.sequence);
+          if (decoded.kind === 'assignment_result') {
+            state.assignmentSources.set(recordKey(decoded.dataset_id, decoded.assignment_id), record);
+          }
         }
         return;
       }
@@ -423,6 +432,9 @@ export class EvalStore {
       }
       const decoded = isLiveEventKind(kind) ? decodeLiveEventWire(payload) : decodeViewRecord(kind, payload);
       this.indexRecord(state, decoded, record.sequence);
+      if (decoded.kind === 'assignment_result') {
+        state.assignmentSources.set(recordKey(decoded.dataset_id, decoded.assignment_id), record);
+      }
     } catch (error) {
       const message = error instanceof ValidationError ? `${error.path}: ${error.message}` : 'invalid public feed record';
       state.errors = [...state.errors, message].slice(-20);
@@ -466,6 +478,13 @@ export class EvalStore {
             feedSequence !== undefined
               ? ({ ...(record as LiveEvent), feed_sequence: feedSequence } as LiveEvent)
               : (record as LiveEvent);
+          if (event.assignment_id) {
+            const key = recordKey(event.dataset_id, event.assignment_id);
+            const history = state.assignmentEvents.get(key) ?? [];
+            if (!history.some((existing) => existing.event_id === event.event_id)) {
+              state.assignmentEvents.set(key, [...history, event]);
+            }
+          }
           if (!state.eventIds.has(event.event_id)) {
             const { events, replacedId } = upsertLiveEvent(state.events, event);
             if (replacedId) state.eventIds.delete(replacedId);
@@ -571,14 +590,7 @@ export class EvalStore {
       this.indexRecord(state, record);
     }
     for (const event of liveEvents) {
-      if (!state.eventIds.has(event.event_id)) {
-        const { events, replacedId } = upsertLiveEvent(state.events, event);
-        if (replacedId) state.eventIds.delete(replacedId);
-        state.eventIds.add(event.event_id);
-        state.events = events;
-        this.applyLiveEvent(state, event);
-        this.retainLiveEvents(state, LIVE_EVENT_STORE_LIMIT);
-      }
+      this.indexRecord(state, event, event.feed_sequence);
     }
     this.state = state;
     this.emitIfNotBatching();

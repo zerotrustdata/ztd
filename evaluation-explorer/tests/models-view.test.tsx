@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { allFixtureSnapshotRecords, fixtureLiveEvents, FIXTURE_DATASET_IDS } from '../src/fixtures/fixtures';
 import type { ModelSummary } from '../src/contract/types';
@@ -13,6 +13,25 @@ import { ModelsView } from '../src/views/ModelsView';
 describe('ModelsView', () => {
   beforeEach(() => {
     evalStore.loadFixtures(allFixtureSnapshotRecords, fixtureLiveEvents);
+  });
+
+  it('shows denominators, neutral inventory pills, unevaluated results and selected comparison rows', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    evalStore.loadFixtures([
+      { ...source, display_name: 'Measured', variant_id: 'measured' },
+      { ...source, display_name: 'Inventory', variant_id: 'inventory', inventory_only: true, pass_rate: undefined, quality_state: 'not_evaluated' },
+    ], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><ModelsView /></MemoryRouter>);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by evaluation status' }), { target: { value: 'all' } });
+    const inventory = within(screen.getByRole('link', { name: /Inventory/ }).closest('tr')!);
+    expect(inventory.getByText('inventory')).toHaveAttribute('data-tone', 'neutral');
+    expect(inventory.getAllByText('Not evaluated').length).toBeGreaterThan(0);
+    expect(inventory.queryByText('0.0%')).not.toBeInTheDocument();
+    const measured = screen.getByRole('link', { name: 'Measured' }).closest('tr')!;
+    expect(measured).toHaveTextContent(`n=${source.pass_rate!.denominator}`);
+    fireEvent.click(within(measured).getByRole('checkbox', { name: 'Select Measured for comparison' }));
+    expect(measured).toHaveClass('data-row-selected');
+    expect(screen.getByTestId('stat-inventory-only-models')).toHaveTextContent('1');
   });
 
   it('renders verifier-passed model summaries with a run-scoped verification label', () => {

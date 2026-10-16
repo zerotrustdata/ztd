@@ -482,6 +482,7 @@ function mapSemanticGradeSummaries(value: WireSemanticGradeSummary[] | undefined
     grading_method: mapGradingMethod(grade.grading_method),
     judge_variant_id: grade.judge_variant_id,
     explanation_code: mapExplanationCode(grade.explanation_code),
+    ...(grade.detail ? { detail: grade.detail } : {}),
   }));
 }
 
@@ -746,6 +747,7 @@ function mapGradeSummaries(value: WireBenchmarkGradeSummary[] | undefined): Benc
     criterion_id: summary.criterion_id,
     status: summary.status,
     explanation_code: mapExplanationCode(summary.explanation_code),
+    ...(summary.detail ? { detail: summary.detail } : {}),
   }));
 }
 

@@ -59,11 +59,19 @@ const (
 	appEnrollSubmitDeadline = 30 * time.Minute
 )
 
+// AppEnrollmentApprover records the owner decision for the client's own
+// pending request when the caller already holds the owner's CLI identity, so
+// enrollment completes without a separate approve command. The target binds
+// the request ID to the app CSR fingerprint this client generated; the Gateway
+// still enforces owner authority server-side.
+type AppEnrollmentApprover func(ctx context.Context, target models.PlatformEnrollmentDecisionTarget) error
+
 // AppEnrollmentOptions provides optional overrides for app platform enrollment.
 type AppEnrollmentOptions struct {
 	GatewayHTTPURL string
 	InstanceID     string
 	Hostname       string
+	Approver       AppEnrollmentApprover
 }
 
 // appPendingState is the resumable pending enrollment attempt,
@@ -89,6 +97,7 @@ type AppPlatformEnrollmentClient struct {
 	gatewayHTTPURL string
 	instanceID     string
 	hostname       string
+	approver       AppEnrollmentApprover
 	fileSvc        fs.RuntimeFileService
 	cfg            *config.Config
 	logger         *slog.Logger
@@ -140,6 +149,7 @@ func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileServic
 		gatewayHTTPURL: gatewayHTTPURL,
 		instanceID:     instanceID,
 		hostname:       hostname,
+		approver:       opt.Approver,
 		fileSvc:        fileSvc,
 		cfg:            cfg,
 		logger:         logger,
@@ -239,7 +249,19 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 		c.logger.Info("app enrollment: request submitted", "app_name", c.appName, "request_id", requestID, "fingerprint", appFP)
 		if out != nil {
 			fmt.Fprintf(out, "Enrollment request submitted for application %q.\n", c.appName)
-			fmt.Fprintf(out, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, requestID)
+			if c.approver == nil {
+				fmt.Fprintf(out, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, requestID)
+			}
+		}
+	}
+
+	if c.approver != nil {
+		target := models.PlatformEnrollmentDecisionTarget{
+			RequestID:    requestID,
+			Fingerprints: models.PlatformEnrollmentCSRFingerprints{App: appFP},
+		}
+		if err := c.approver(ctx, target); err != nil {
+			return nil, fmt.Errorf("app enrollment: owner approval of %s: %w", requestID, err)
 		}
 	}
 

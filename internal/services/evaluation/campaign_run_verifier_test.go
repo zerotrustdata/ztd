@@ -189,8 +189,8 @@ func newCompletedRunFixture(t *testing.T, catalogRef *compliancev1.VersionedRefe
 		EvaluationAttemptID: execReq.AttemptID,
 		ScenarioID:          execReq.Assignment.GetScenarioId(),
 		ModelRegistryDigest: execReq.Binding.ModelRegistryDigest,
-		InferenceSessionID:  execReq.Binding.InferenceOperatorSessionID,
-		DataSessionID:       execReq.Binding.DataOperatorSessionID,
+		InferenceSessionID:  execReq.Binding.Topology.Inference.OperatorSessionID,
+		DataSessionID:       execReq.Binding.Topology.Data.OperatorSessionID,
 	}, formationResult)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentFormationRun(context.Background(), req.RunID, execReq.Assignment.GetAssignmentId(), body))

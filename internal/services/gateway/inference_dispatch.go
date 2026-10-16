@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -284,7 +285,11 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 		}
 		status, publicErr := classifyInferenceDispatchError(err)
 		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), slog.String("failure_code", dispatch.FailureCode(publicErr).String()), logging.ErrorKind(err))
-		c.writeFailure(w, status, publicErr)
+		c.responder.ProtoJSONCanonical(w, status, &operatorv1.InferenceDispatchFailure{
+			Error:   publicErr.Error(),
+			Code:    dispatch.FailureCode(publicErr),
+			Receipt: governance.FailedReceipt(err),
+		})
 		return
 	}
 
@@ -296,7 +301,9 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 }
 
 // writeFailure writes the typed InferenceDispatchFailure body for a public
-// sentinel, so a caller classifies the failure by code, not by text.
+// sentinel rejected before dispatch, so a caller classifies the failure by
+// code, not by text. A dispatched failure also carries the Operator's signed
+// FAILED receipt (see HandleDispatch).
 func (c *InferenceDispatchController) writeFailure(w http.ResponseWriter, status int, sentinel error) {
 	c.responder.ProtoJSONCanonical(w, status, &operatorv1.InferenceDispatchFailure{
 		Error: sentinel.Error(),

@@ -62,7 +62,7 @@ func verifyEvidence(ctx context.Context, receipts ReceiptSource, persona client.
 		}
 	}
 
-	ordered, err := orderLedger(beforeOutcome, afterOutcome, executions)
+	ordered, err := oracle.OrderLedger(beforeOutcome, afterOutcome, executions)
 	if err == nil {
 		err = oracle.VerifyBracket(beforeOutcome, afterOutcome, ordered)
 	}
@@ -127,65 +127,6 @@ func checkReceiptSession(receipt *operatorv1.ActionReceipt, sessionID string) er
 		}
 	}
 	return nil
-}
-
-// orderLedger returns the claimed executions in ledger order, walking from the
-// before sentinel's hash. A claimed link the walk never reaches is a ledger
-// gap, unless the links left over run onto the after sentinel. Then the ledger
-// holds an execution no claim names, and the returned walk lets VerifyBracket
-// report it as unclaimed.
-func orderLedger(before, after oracle.Outcome, claimed []oracle.Outcome) ([]oracle.Outcome, error) {
-	used := make([]bool, len(claimed))
-	ordered := make([]oracle.Outcome, 0, len(claimed))
-	current := before.Commitment.Hash
-	for {
-		next := -1
-		for i := range claimed {
-			if !used[i] && claimed[i].Commitment.Prior == current {
-				next = i
-				break
-			}
-		}
-		if next < 0 {
-			break
-		}
-		used[next] = true
-		ordered = append(ordered, claimed[next])
-		current = claimed[next].Commitment.Hash
-	}
-	var leftover []oracle.Outcome
-	for i := range claimed {
-		if !used[i] {
-			leftover = append(leftover, claimed[i])
-		}
-	}
-	if closesOn(after.Commitment.Prior, leftover) {
-		return ordered, nil
-	}
-	return nil, fmt.Errorf("sut: claimed ledger links do not connect to the before sentinel: %w", constants.ErrConformanceLedgerGap)
-}
-
-// closesOn reports whether links form one contiguous run that ends at hash,
-// so that walking back from hash through the links reaches every one of them.
-func closesOn(hash string, links []oracle.Outcome) bool {
-	used := make([]bool, len(links))
-	remaining := len(links)
-	for remaining > 0 {
-		next := -1
-		for i := range links {
-			if !used[i] && links[i].Commitment.Hash == hash {
-				next = i
-				break
-			}
-		}
-		if next < 0 {
-			return false
-		}
-		used[next] = true
-		remaining--
-		hash = links[next].Commitment.Prior
-	}
-	return true
 }
 
 // bracketContainment maps the bracket verdict to the containment verdict. An

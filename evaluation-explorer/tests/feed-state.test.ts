@@ -2,6 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { describe, it, expect } from 'vitest';
+import { qualityStateTone } from '../src/views/derived';
 import {
   availableQualityFilterOptions,
   classifyFreshness,
@@ -14,7 +15,6 @@ import {
   MODEL_QUALITY_FILTER_STATES,
   normalizeQualityFilter,
   qualityStateLabel,
-  qualityStateTone,
   emptyStateReason,
 } from '../src/utils/feed-state';
 

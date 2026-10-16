@@ -325,7 +325,7 @@ func (lockedTestVault) DecryptWithAAD([]byte, []byte) ([]byte, error) {
 	return nil, constants.ErrVaultLocked
 }
 
-func openSealedTestVault() (evaluation.EvidenceVault, error) {
+func openSealedTestVault(fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
 	return sealedTestVault{}, nil
 }
 
@@ -401,8 +401,10 @@ func TestConformanceVerify_UnchangedSealedRecordIsNotTheDigestMismatchVerdict(t 
 }
 
 func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *testing.T) {
-	lockedOpen := func() (evaluation.EvidenceVault, error) { return lockedTestVault{}, nil }
-	unreadableOpen := func() (evaluation.EvidenceVault, error) { return nil, constants.ErrVaultKeyReadFailed }
+	lockedOpen := func(fs.RuntimeFileService) (evaluation.EvidenceVault, error) { return lockedTestVault{}, nil }
+	unreadableOpen := func(fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
+		return nil, constants.ErrVaultKeyReadFailed
+	}
 	tests := []struct {
 		name    string
 		open    evaluation.EvidenceVaultProvider

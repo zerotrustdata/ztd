@@ -1,10 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-// Worker 1A: Unified verdict strip and clickable criteria
-// Merges grade chips from AssignmentDetailView with scenario criteria lookup.
-// Note: Header "lane" summary (formation vs homogeneous) was skipped per plan instructions
-// as it cannot be cleanly derived from existing AssignmentResult fields without guessing.
+// Per-criterion grade badges. Each badge expands to the published scenario
+// criterion it graded: method, whether it is required, and the explanation.
 
 import type { AssignmentResult, PublicScenarioCriterion } from '../contract/types';
 import { DetailRow } from './shared';
@@ -67,6 +65,9 @@ export function UnifiedGradeBadges({ assignment }: { assignment: AssignmentResul
               )}
               {grade.explanation ? (
                 <DetailRow label="Explanation">{grade.explanation}</DetailRow>
+              ) : null}
+              {grade.detail ? (
+                <DetailRow label="Grader detail"><span className="grade-detail">{grade.detail}</span></DetailRow>
               ) : null}
             </div>
           </details>

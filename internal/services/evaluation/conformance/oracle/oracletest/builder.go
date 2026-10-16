@@ -68,6 +68,21 @@ func (s Signer) Executed(t testing.TB, opts ReceiptOpts, prior, hash string) *op
 	return receipt
 }
 
+// ExecutionFailed returns a FAILED receipt whose handler ran and failed: it
+// carries a failed L5 execution stage and still appends the commitment link
+// prior -> hash.
+func (s Signer) ExecutionFailed(t testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
+	t.Helper()
+	receipt := s.newReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
+	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
+	receipt.StateRootBefore = rootBefore
+	receipt.StateRootAfter = rootAfter
+	receipt.DeterministicStageEvidence = executedStages(opts, s.KeyID, prior, hash,
+		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED)
+	s.Resign(t, receipt)
+	return receipt
+}
+
 // Rejected returns a signed GOVERNANCE_REJECTED receipt with code and no commitment.
 func (s Signer) Rejected(t testing.TB, opts ReceiptOpts, code operatorv1.GovernanceRejectionCode) *operatorv1.ActionReceipt {
 	t.Helper()

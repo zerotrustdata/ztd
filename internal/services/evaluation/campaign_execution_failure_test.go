@@ -73,11 +73,9 @@ func TestExecuteNextAssignment_PersistsResultOnRecoverableHeterogeneousExecutorF
 	require.NoError(t, err)
 
 	result, executed, err := controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-		InferenceOperatorSessionID: "inf-session",
-		DataOperatorID:             "data-op",
-		DataOperatorSessionID:      "data-session",
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              InferenceVariantsFromEvalRegistry(variants),
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	require.True(t, executed)

@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
@@ -31,7 +33,13 @@ import (
 const (
 	AssignmentAuditSliceKind    = "assignment_audit_slice"
 	AssignmentAuditVaultKeyKind = "assignment_audit_vault_key"
+	AssignmentAgentTraceKind    = "assignment_agent_trace"
+	ScenarioInputFixtureKind    = "scenario_input_fixture"
+	ScenarioGoldCriteriaKind    = "scenario_gold_criteria"
 	assignmentAuditSchemaRef    = "ztd.eval.v1.PublicAssignmentAuditSlice"
+	assignmentAgentTraceRef     = "ztd.eval.v1.PublicAssignmentAgentTrace"
+	scenarioInputFixtureRef     = "ztd.eval.v1.PublicScenarioInputFixture"
+	scenarioGoldCriteriaRef     = "ztd.eval.v1.PublicScenarioGoldCriteria"
 	assignmentAuditDBFilename   = "assignment-audit.db"
 )
 
@@ -44,17 +52,22 @@ type AssignmentAuditSliceEvent struct {
 }
 
 // AssignmentAuditSliceArtifacts is the content-addressed export package for one
-// assignment: a standalone SQLite file and a dedicated vault key.
+// assignment: a standalone SQLite file, a dedicated vault key, and, for agent
+// assignments, the exact sealed agent trace body (model input, every turn,
+// thinking, tool calls and results, receipts, and actuator anchors), plus the
+// scenario's frozen input fixture and gold criteria bodies.
 type AssignmentAuditSliceArtifacts struct {
-	Database       []byte
-	DatabaseSHA256 string
-	VaultKey       []byte
-	VaultKeySHA256 string
-}
-
-var assignmentAuditProhibitedKeys = []string{
-	"prompt", "output", "reasoning", "session_id", "transaction_id",
-	"command_raw", "receipt_json", "private_key", "vault_key",
+	Database            []byte
+	DatabaseSHA256      string
+	VaultKey            []byte
+	VaultKeySHA256      string
+	AgentTrace          []byte
+	AgentTraceSHA256    string
+	ScenarioID          string
+	ScenarioInput       []byte
+	ScenarioInputSHA256 string
+	ScenarioGold        []byte
+	ScenarioGoldSHA256  string
 }
 
 // BuildAssignmentAuditSlice builds a WAL-checkpointed SQLite audit slice and a
@@ -319,24 +332,7 @@ func validateAssignmentAuditPayload(payload []byte) error {
 	if err := publicdisclosure.ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, payload); err != nil {
 		return fmt.Errorf("evaluation: assignment audit payload: %w", err)
 	}
-	fields, err := decodeAssignmentAuditObject(payload)
-	if err != nil {
-		return fmt.Errorf("evaluation: assignment audit payload: %w", err)
-	}
-	for _, key := range assignmentAuditProhibitedKeys {
-		if _, ok := fields[key]; ok {
-			return fmt.Errorf("evaluation: assignment audit payload: prohibited field %q: %w", key, constants.ErrEvidenceArtifactMalformed)
-		}
-	}
 	return nil
-}
-
-func decodeAssignmentAuditObject(payload []byte) (map[string]json.RawMessage, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &fields); err != nil {
-		return nil, err
-	}
-	return fields, nil
 }
 
 func initAssignmentAuditSchema(db *sqliteutil.DB) error {
@@ -547,22 +543,85 @@ func deriveAssignmentAuditVaultKey(assignmentID string, events []AssignmentAudit
 	return key
 }
 
+// PublishedHashes returns the content-addressed proof hashes of the package.
+func (a *AssignmentAuditSliceArtifacts) PublishedHashes() CampaignPublishedProofArtifacts {
+	return CampaignPublishedProofArtifacts{
+		DatabaseSHA256:      a.DatabaseSHA256,
+		VaultKeySHA256:      a.VaultKeySHA256,
+		AgentTraceSHA256:    a.AgentTraceSHA256,
+		ScenarioInputSHA256: a.ScenarioInputSHA256,
+		ScenarioGoldSHA256:  a.ScenarioGoldSHA256,
+	}
+}
+
 // AssignmentAuditEvidenceBindings returns the public evidence bindings for a
 // built audit slice package.
 func AssignmentAuditEvidenceBindings(artifacts AssignmentAuditSliceArtifacts) []*evalv1.PublicEvidenceBinding {
-	return AssignmentAuditEvidenceBindingsFromHashes(artifacts.DatabaseSHA256, artifacts.VaultKeySHA256)
+	return AssignmentAuditEvidenceBindingsFromHashes(artifacts.PublishedHashes())
 }
 
 // AssignmentAuditEvidenceBindingsFromHashes returns public evidence bindings
-// from previously published content-addressed proof hashes.
-func AssignmentAuditEvidenceBindingsFromHashes(databaseSHA256, vaultKeySHA256 string) []*evalv1.PublicEvidenceBinding {
-	if databaseSHA256 == "" || vaultKeySHA256 == "" {
+// from previously published content-addressed proof hashes. The agent trace
+// binding is present only for assignments that persisted a trace, and the
+// scenario fixture bindings only when both frozen fixture bodies were published.
+func AssignmentAuditEvidenceBindingsFromHashes(hashes CampaignPublishedProofArtifacts) []*evalv1.PublicEvidenceBinding {
+	if hashes.DatabaseSHA256 == "" || hashes.VaultKeySHA256 == "" {
 		return nil
 	}
-	return []*evalv1.PublicEvidenceBinding{
-		{Sha256: databaseSHA256, SchemaRef: assignmentAuditSchemaRef, Kind: AssignmentAuditSliceKind},
-		{Sha256: vaultKeySHA256, SchemaRef: assignmentAuditSchemaRef, Kind: AssignmentAuditVaultKeyKind},
+	bindings := []*evalv1.PublicEvidenceBinding{
+		{Sha256: hashes.DatabaseSHA256, SchemaRef: assignmentAuditSchemaRef, Kind: AssignmentAuditSliceKind},
+		{Sha256: hashes.VaultKeySHA256, SchemaRef: assignmentAuditSchemaRef, Kind: AssignmentAuditVaultKeyKind},
 	}
+	if hashes.AgentTraceSHA256 != "" {
+		bindings = append(bindings, &evalv1.PublicEvidenceBinding{Sha256: hashes.AgentTraceSHA256, SchemaRef: assignmentAgentTraceRef, Kind: AssignmentAgentTraceKind})
+	}
+	if hashes.ScenarioInputSHA256 != "" && hashes.ScenarioGoldSHA256 != "" {
+		bindings = append(bindings,
+			&evalv1.PublicEvidenceBinding{Sha256: hashes.ScenarioInputSHA256, SchemaRef: scenarioInputFixtureRef, Kind: ScenarioInputFixtureKind},
+			&evalv1.PublicEvidenceBinding{Sha256: hashes.ScenarioGoldSHA256, SchemaRef: scenarioGoldCriteriaRef, Kind: ScenarioGoldCriteriaKind},
+		)
+	}
+	return bindings
+}
+
+// attachScenarioFixture adds the assignment scenario's frozen input fixture and
+// gold criteria bodies to the package. Both bodies must still hash to the
+// catalog references they were frozen under.
+func (a *AssignmentAuditSliceArtifacts) attachScenarioFixture(assignment *evalv1.EvaluationAssignment, fixtures map[string]ScenarioArtifacts) error {
+	pair, ok := fixtures[assignment.GetScenarioId()]
+	if !ok || !contentMatchesReference(pair.Input.Body, pair.Input.Reference) || !contentMatchesReference(pair.Gold.Body, pair.Gold.Reference) {
+		return fmt.Errorf("evaluation: publish scenario fixture %s: %w", assignment.GetScenarioId(), constants.ErrEvidenceArtifactMalformed)
+	}
+	a.ScenarioID = assignment.GetScenarioId()
+	a.ScenarioInput, a.ScenarioInputSHA256 = pair.Input.Body, pair.Input.Reference.GetSha256()
+	a.ScenarioGold, a.ScenarioGoldSHA256 = pair.Gold.Body, pair.Gold.Reference.GetSha256()
+	return nil
+}
+
+// loadAssignmentAgentTraceArtifact returns the exact persisted trace body and
+// its SHA-256 for public proof publication. A missing trace is allowed only
+// when the result does not reference one; a referenced trace must hash to the
+// result's evidence ref.
+func loadAssignmentAgentTraceArtifact(ctx context.Context, store CampaignStore, result *evalv1.EvaluationAssignmentResult) ([]byte, string, error) {
+	referenced, referencedSHA256 := false, ""
+	for _, ref := range result.GetEvidenceRefs() {
+		if ref.GetArtifactType() == string(complianceevidence.ArtifactTypeEvaluationAssignmentTrace) {
+			referenced, referencedSHA256 = true, ref.GetSha256()
+			break
+		}
+	}
+	_, body, err := store.LoadAssignmentAgentTraceArtifact(ctx, result.GetRunId(), result.GetAssignmentId())
+	if errors.Is(err, constants.ErrNotFound) && !referenced {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("evaluation: publish assignment agent trace: %w", err)
+	}
+	digest := hashBytes(body)
+	if referenced && referencedSHA256 != digest {
+		return nil, "", fmt.Errorf("evaluation: publish assignment agent trace: %w", constants.ErrEvidenceArtifactMalformed)
+	}
+	return body, digest, nil
 }
 
 // assignmentAuditScratch is the runtime scratch directory holding one slice

@@ -125,15 +125,24 @@ func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings(t *testing.
 	require.NoError(t, err)
 	require.NotEmpty(t, liveRequests)
 
-	bindings, err := coordinator.BuildAssignmentAuditBindings(context.Background(), assignment, result, liveRequests, true)
+	fixtures := testScenarioFixtures(t)
+	bindings, err := coordinator.BuildAssignmentAuditBindings(context.Background(), assignment, result, fixtures, liveRequests, true)
 	require.NoError(t, err)
-	require.Len(t, bindings, 2)
+	require.Len(t, bindings, 4)
 	assert.Equal(t, AssignmentAuditSliceKind, bindings[0].GetKind())
 	assert.Equal(t, AssignmentAuditVaultKeyKind, bindings[1].GetKind())
+	assert.Equal(t, ScenarioInputFixtureKind, bindings[2].GetKind())
+	assert.Equal(t, ScenarioGoldCriteriaKind, bindings[3].GetKind())
 	require.Len(t, proofPublisher.inputs, 1)
 	assert.Equal(t, assignmentID, proofPublisher.inputs[0].AssignmentID)
 	assert.NotEmpty(t, proofPublisher.inputs[0].Artifacts.Database)
 	assert.NotEmpty(t, proofPublisher.inputs[0].Artifacts.VaultKey)
+	assert.Equal(t, "scenario-1", proofPublisher.inputs[0].Artifacts.ScenarioID)
+	assert.Equal(t, fixtures["scenario-1"].Input.Body, proofPublisher.inputs[0].Artifacts.ScenarioInput)
+	assert.Equal(t, fixtures["scenario-1"].Gold.Body, proofPublisher.inputs[0].Artifacts.ScenarioGold)
+	state, err := coordinator.loadPublicationState(context.Background(), runID)
+	require.NoError(t, err)
+	assert.Equal(t, proofPublisher.inputs[0].Artifacts.PublishedHashes(), state.PublishedProofArtifacts[assignmentID], "publication state records the fixture hashes for reuse")
 }
 
 func TestCampaignPublicationCoordinator_FlushesDeferredProofBatch(t *testing.T) {
@@ -196,7 +205,7 @@ func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings_EmptyLiveRe
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED,
 	}
 
-	bindings, err := coordinator.BuildAssignmentAuditBindings(context.Background(), assignment, result, nil, true)
+	bindings, err := coordinator.BuildAssignmentAuditBindings(context.Background(), assignment, result, testScenarioFixtures(t), nil, true)
 	require.NoError(t, err)
 	assert.Nil(t, bindings)
 	assert.Empty(t, proofPublisher.inputs)

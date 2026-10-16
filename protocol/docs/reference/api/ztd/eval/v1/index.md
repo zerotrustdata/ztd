@@ -1997,6 +1997,7 @@ exactly one of value and unavailable_reason is set.
 | grading_method | [EvaluationGradingMethod](#ztd-eval-v1-EvaluationGradingMethod) |  |  |
 | judge_variant_id | [string](#string) |  |  |
 | explanation_code | [PublicGradeExplanationCode](#ztd-eval-v1-PublicGradeExplanationCode) |  |  |
+| detail | [string](#string) |  | Grader output published verbatim under the public model-text bound. |
 
 
 

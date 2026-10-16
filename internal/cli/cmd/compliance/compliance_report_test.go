@@ -757,11 +757,12 @@ func generateCampaignComplianceBundleFixture(t *testing.T, includeWitnesses bool
 	require.NoError(t, err)
 	scheduleComplianceFormationRun(t, ctx, controller, req)
 	result, executed, err := controller.ExecuteNextAssignment(ctx, req.RunID, evaluation.CampaignExecutionBinding{
-		InferenceOperatorSessionID: req.InferenceOperatorSessionID,
-		DataOperatorID:             "data-operator",
-		DataOperatorSessionID:      req.DataOperatorSessionID,
-		ModelRegistryDigest:        req.Inventory.RegistryDigest,
-		ModelRegistry:              evaluation.InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+		Topology: evaluation.CampaignOperatorTopology{
+			Inference: evaluation.CampaignOperatorRuntime{OperatorID: "inference-operator", OperatorSessionID: req.InferenceOperatorSessionID},
+			Data:      evaluation.CampaignOperatorRuntime{OperatorID: "data-operator", OperatorSessionID: req.DataOperatorSessionID},
+		},
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       evaluation.InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	require.True(t, executed)

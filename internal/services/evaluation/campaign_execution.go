@@ -19,15 +19,12 @@ import (
 // CampaignExecutionBinding pins the exact governed execution authorities for one
 // scored assignment executed by the direct formation runner.
 type CampaignExecutionBinding struct {
-	InferenceOperatorSessionID   string
-	DataOperatorID               string
-	DataOperatorSessionID        string
-	DataOperatorWorkingDirectory string
-	ModelRegistryDigest          string
-	ModelRegistry                []*operatorv1.InferenceModelVariant
-	// DataOperatorAnchor pins the Data Operator's actuator key as bound at
-	// enrollment. Import verifies every governed receipt against it.
-	DataOperatorAnchor *evalv1.ConformanceAnchor
+	// Topology names the Inference and Data runtimes and, for model-driven
+	// lanes, pins each one's enrollment-bound actuator key. Evidence verifies
+	// every governed receipt against the anchor of the runtime that signed it.
+	Topology            CampaignOperatorTopology
+	ModelRegistryDigest string
+	ModelRegistry       []*operatorv1.InferenceModelVariant
 }
 
 func modelCampaignRoleLabel(role evalv1.ModelCampaignRole) (string, error) {

@@ -2,6 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { describe, expect, it } from 'vitest';
+import { NATIVE_RESULT_STATUSES, NATIVE_SCENARIO_STATUSES, QUALITY_STATES, TERMINAL_STATUSES, VERIFIER_STATES } from '../src/contract/types';
 import type {
   AssignmentResult,
   CatalogSnapshot,
@@ -11,8 +12,18 @@ import type {
   ProviderEnvironment,
 } from '../src/contract/types';
 import {
+  assignmentEvidenceChain,
+  assignmentLifecycleEvents,
   assignmentMetricEntries,
   assignmentMetricFormatter,
+  assignmentSecuritySignals,
+  assignmentVerdictTone,
+  isNonVerdictOutcome,
+  nativeResultTone,
+  nativeScenarioTone,
+  qualityStateTone,
+  terminalOutcomeBreakdown,
+  verifierStateTone,
   comparisonCompatibility,
   recentCampaignRows,
   roleLabel,
@@ -24,6 +35,44 @@ import {
   upsertLiveEvent,
   visibleStreamEvents,
 } from '../src/views/derived';
+
+describe('verifierStateTone', () => {
+  const expected = { passed: 'ok', failed: 'critical', not_run: 'neutral', not_applicable: 'neutral' };
+  it.each(VERIFIER_STATES)('maps %s', (state) => expect(verifierStateTone(state)).toBe(expected[state]));
+});
+
+describe('nativeResultTone', () => {
+  const expected = { pass: 'ok', fail: 'critical', unavailable: 'neutral', unsupported: 'neutral', invalid_evidence: 'warn' };
+  it.each(NATIVE_RESULT_STATUSES)('maps %s', (state) => expect(nativeResultTone(state)).toBe(expected[state]));
+});
+
+describe('nativeScenarioTone', () => {
+  const expected = { completed: 'ok', rejected: 'ok', failed: 'critical', unavailable: 'neutral', unsupported: 'neutral', invalid_evidence: 'warn' };
+  it.each(NATIVE_SCENARIO_STATUSES)('maps %s', (state) => expect(nativeScenarioTone(state)).toBe(expected[state]));
+});
+
+describe('qualityStateTone', () => {
+  const expected = { verified_public: 'ok', exploratory_verified: 'info', exploratory_partial: 'warn', legacy_unverified: 'warn', live_in_progress: 'info', terminal_failed: 'critical', dead_evidence: 'critical', not_evaluated: 'neutral', unavailable: 'neutral' };
+  it.each(QUALITY_STATES)('maps %s', (state) => expect(qualityStateTone(state)).toBe(expected[state]));
+});
+
+describe('terminalOutcomeBreakdown', () => {
+  it.each(TERMINAL_STATUSES)('classifies %s without dropping it', (status) => {
+    const result = terminalOutcomeBreakdown({ [status]: 2 })!;
+    expect(result.total).toBe(2);
+    const isVerdict = status === 'completed' || status === 'model_failed';
+    expect(isNonVerdictOutcome(status)).toBe(!isVerdict);
+    expect(result.verdictCount).toBe(isVerdict ? 2 : 0);
+    expect(result.nonVerdictCount).toBe(isVerdict ? 0 : 2);
+    expect([...result.verdicts, ...result.nonVerdicts][0]?.status).toBe(status);
+  });
+  it('keeps absent outcomes distinct from observed zero outcomes', () => {
+    expect(isNonVerdictOutcome('running')).toBe(false);
+    expect(isNonVerdictOutcome('queued')).toBe(false);
+    expect(terminalOutcomeBreakdown(undefined)).toBeUndefined();
+    expect(terminalOutcomeBreakdown({ completed: 0 })?.total).toBe(0);
+  });
+});
 
 describe('roleLabel', () => {
   it('maps wire roles to display labels', () => {
@@ -72,6 +121,110 @@ describe('siblingRepetitions', () => {
     ]);
 
     expect(siblings.map((item) => item.assignment_id)).toEqual(['rep-2', 'rep-2-alpha', 'rep-3']);
+  });
+});
+
+describe('assignmentVerdictTone', () => {
+  it('reads only completed and model_failed as verdicts on the model', () => {
+    expect(assignmentVerdictTone('completed', 'passed')).toBe('ok');
+    expect(assignmentVerdictTone('model_failed', undefined)).toBe('critical');
+    expect(assignmentVerdictTone('running', undefined)).toBe('info');
+    for (const status of ['grader_failed', 'invalid_evidence', 'stopped', 'provider_failed', 'execution_failed', 'escalated'] as const) {
+      expect(assignmentVerdictTone(status, undefined)).toBe('warn');
+    }
+  });
+
+  it('lets a failed verification override a completed status', () => {
+    expect(assignmentVerdictTone('completed', 'failed')).toBe('critical');
+  });
+});
+
+describe('assignmentEvidenceChain', () => {
+  const step = (assignment: AssignmentResult, key: string) =>
+    assignmentEvidenceChain(assignment).find((item) => item.key === key);
+
+  it('walks all eight links in execution order', () => {
+    expect(assignmentEvidenceChain(assignmentResult()).map((item) => item.key)).toEqual([
+      'scenario', 'model', 'tool_calls', 'policy', 'governed_actions', 'graded', 'verified', 'audit_slice',
+    ]);
+  });
+
+  it('says "Not published" for evidence the record does not carry, never zero', () => {
+    const assignment = assignmentResult();
+    for (const key of ['model', 'tool_calls', 'policy', 'governed_actions', 'verified', 'audit_slice']) {
+      expect(step(assignment, key)).toMatchObject({ value: 'Not published', tone: 'neutral' });
+    }
+  });
+
+  it('counts traced tool calls and flags failures', () => {
+    const assignment = assignmentResult({
+      role_transcripts: [{ role: 'primary', tool_calls: [
+        { tool_name: 'read_file', success: true },
+        { tool_name: 'send_email', success: false },
+      ] }],
+    });
+    expect(step(assignment, 'model')).toMatchObject({ value: '1 role trace' });
+    expect(step(assignment, 'tool_calls')).toMatchObject({ value: '2 calls', tone: 'warn', detail: '1 failed' });
+  });
+
+  it('summarises policy outcomes and receipt coverage, and states unavailability with its reason', () => {
+    const assignment = assignmentResult({
+      activity_summary: {
+        model_activity: { availability: 'not_applicable' },
+        tool_decisions: { availability: 'not_applicable' },
+        tool_calls: { availability: 'unavailable', unavailable_reason: 'source_not_captured' },
+        policy_decisions: { availability: 'observed', records: [
+          { tool_label: 'read_file', outcome: 'allow', evidence_source: 'bound_public_proof' },
+          { tool_label: 'send_email', outcome: 'deny', evidence_source: 'bound_public_proof' },
+        ] },
+        governed_actions: { availability: 'observed', records: [
+          { action_label: 'governed action', reported_policy_outcome: 'allow', receipt_status: 'reported', evidence_source: 'bound_public_proof' },
+          { action_label: 'governed action', reported_policy_outcome: 'deny', receipt_status: 'unavailable', evidence_source: 'bound_public_proof' },
+        ] },
+      },
+    });
+    expect(step(assignment, 'tool_calls')).toMatchObject({ value: 'Unavailable', detail: 'source not captured' });
+    expect(step(assignment, 'policy')).toMatchObject({ value: '1 allow · 1 deny', tone: 'warn', detail: '2 decisions' });
+    expect(step(assignment, 'governed_actions')).toMatchObject({ value: '2 actions', tone: 'warn', detail: '1 of 2 receipts reported' });
+  });
+
+  it('marks verification and the audit slice from the published record', () => {
+    const assignment = assignmentResult({
+      verification_disposition: 'passed',
+      evidence_bindings: [
+        { sha256: 'a'.repeat(64), schema_ref: 'ztd.assignment_audit_slice/v1', kind: 'assignment_audit_slice' },
+        { sha256: 'b'.repeat(64), schema_ref: 'ztd.assignment_audit_vault_key/v1', kind: 'assignment_audit_vault_key' },
+      ],
+    });
+    expect(step(assignment, 'verified')).toMatchObject({ value: 'Verified', tone: 'ok' });
+    expect(step(assignment, 'audit_slice')).toMatchObject({ value: 'Published', tone: 'ok' });
+  });
+});
+
+describe('assignmentSecuritySignals', () => {
+  it('orders escalation, published security events, then correlated failure', () => {
+    const signals = assignmentSecuritySignals(assignmentResult({
+      benchmark_observations: {
+        escalation_disposition: 'missed_escalation',
+        security_privacy_events: { sensitive_data_sent_externally: 0, policy_prevented_disclosure: 2, model_attempted_unauthorized_access: 1 },
+        correlated_failure: { cluster_id: 'cluster-1', semantic_error_code: 'tool_misuse', affected_roles: ['primary', 'assistant'] },
+        unavailable_reasons: [],
+      },
+    }));
+    expect(signals).toHaveLength(5);
+    expect(signals[0]).toMatchObject({ key: 'escalation', value: 'Missed escalation', tone: 'critical' });
+    expect(signals[4]).toMatchObject({ key: 'correlated_failure', tone: 'critical' });
+    const tones = Object.fromEntries(signals.map((signal) => [signal.key, signal.tone]));
+    expect(tones).toMatchObject({
+      sensitive_data_sent_externally: 'ok',
+      policy_prevented_disclosure: 'ok',
+      model_attempted_unauthorized_access: 'critical',
+    });
+    expect(signals.find((signal) => signal.key === 'correlated_failure')?.value).toBe('tool misuse · Primary, Assistant');
+  });
+
+  it('omits events the record does not publish rather than showing zero', () => {
+    expect(assignmentSecuritySignals(assignmentResult())).toEqual([]);
   });
 });
 
@@ -678,5 +831,16 @@ describe('recentCampaignRows', () => {
     ]);
     expect(row?.startedAt).toBe('2026-09-17T12:00:00Z');
     expect(row?.elapsedSeconds).toBe(630);
+  });
+});
+
+
+describe('assignment event completeness', () => {
+  it('retains distinct planned, scored, result and verified event IDs while removing exact duplicates', () => {
+    const event: LiveEvent = { schema_version: '1.3.0', kind: 'stage_updated', dataset_id: 'ds-events', run_id: 'run-events',
+      assignment_id: 'assignment-events', role: 'primary', quality_state: 'live_in_progress', event_id: 'planned',
+      observed_at: '2026-10-15T00:00:00Z', lifecycle_status: 'running', completed: 0, total: 1 };
+    const scored = { ...event, event_id: 'scored', observed_at: '2026-10-15T00:00:01Z' };
+    expect(assignmentLifecycleEvents('assignment-events', [scored, event, scored]).map((row) => row.event_id)).toEqual(['planned', 'scored']);
   });
 });

@@ -24,7 +24,8 @@ var publicEvidenceKinds = map[string]struct{}{
 	"campaign_profile": {}, "model_registry": {}, "verification_report": {},
 	"evaluation_projection": {}, "comparison_row": {}, "efficiency_observation": {},
 	"statistical_analysis": {}, "source_manifest": {},
-	AssignmentAuditSliceKind: {}, AssignmentAuditVaultKeyKind: {},
+	AssignmentAuditSliceKind: {}, AssignmentAuditVaultKeyKind: {}, AssignmentAgentTraceKind: {},
+	ScenarioInputFixtureKind: {}, ScenarioGoldCriteriaKind: {},
 }
 
 // BuildPublicAssignmentEvidence creates the disclosure-approved activity

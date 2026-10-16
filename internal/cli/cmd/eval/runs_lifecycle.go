@@ -43,9 +43,9 @@ type runStartFlowResult struct {
 	Lane       string
 	Cells      uint64
 	Models     []string
-	// Sessions is populated only when the flow resolved operator sessions; a
+	// Topology is populated only when the flow resolved operator sessions; a
 	// dry run does not.
-	Sessions         operatorSessions
+	Topology         evaluation.CampaignOperatorTopology
 	SessionsResolved bool
 	Prepared         bool
 	Executed         int
@@ -84,8 +84,8 @@ func runStartPlan(result *runStartFlowResult, digest string) runStartPlanJSON {
 		ModelRegistryDigest: digest,
 		CellCount:           result.Cells,
 		SessionsResolved:    result.SessionsResolved,
-		InferenceSession:    result.Sessions.InferenceSessionID,
-		DataSession:         result.Sessions.DataSessionID,
+		InferenceSession:    result.Topology.Inference.OperatorSessionID,
+		DataSession:         result.Topology.Data.OperatorSessionID,
 	}
 }
 
@@ -137,9 +137,9 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
-	var sessions operatorSessions
+	var topology evaluation.CampaignOperatorTopology
 	if !opts.DryRun {
-		sessions, err = resolveOperatorSessions(cmd, deps, constants.OperatorCapabilityInference, constants.OperatorCapabilityData)
+		topology, err = resolveOperatorTopology(cmd, deps)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
@@ -153,7 +153,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		RunID:      runID,
 		Lane:       laneName,
 		Cells:      campaignCells(catalog, spec, laneName, stacks),
-		Sessions:   sessions,
+		Topology:   topology,
 
 		SessionsResolved: !opts.DryRun,
 	}
@@ -177,8 +177,8 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if _, err := controller.StartRun(cmd.Context(), evaluation.RunStartRequest{
 		CampaignID:                 opts.CampaignID,
 		RunID:                      runID,
-		InferenceOperatorSessionID: sessions.InferenceSessionID,
-		DataOperatorSessionID:      sessions.DataSessionID,
+		InferenceOperatorSessionID: topology.Inference.OperatorSessionID,
+		DataOperatorSessionID:      topology.Data.OperatorSessionID,
 		Deployment:                 nativeEvalDeployment(cfg, authContext, runID, ""),
 		Lane:                       runLane,
 		PlatformRelease:            platformIdentity(cmd).Release,
