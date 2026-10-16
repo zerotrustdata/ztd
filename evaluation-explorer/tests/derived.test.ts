@@ -502,12 +502,13 @@ describe('visibleStreamEvents', () => {
     expect(visible.map((event) => event.event_id)).toEqual(['evt-3', 'evt-2', 'evt-1']);
   });
 
-  it('omits metric_updated events from the stream', () => {
-    const withMetric = [
+  it('omits assignment_started and metric_updated events from the stream', () => {
+    const withHidden = [
       ...events,
-      liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', observed_at: '2026-09-17T08:32:00Z' }),
+      liveEvent({ event_id: 'evt-start', kind: 'assignment_started', assignment_id: 'a1', observed_at: '2026-09-17T08:32:00Z' }),
+      liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', observed_at: '2026-09-17T08:33:00Z' }),
     ];
-    const visible = visibleStreamEvents(withMetric, { modelFilter: 'all', kindFilter: 'all' });
+    const visible = visibleStreamEvents(withHidden, { modelFilter: 'all', kindFilter: 'all' });
     expect(visible.map((event) => event.event_id)).toEqual(['evt-3', 'evt-2', 'evt-1']);
   });
 
@@ -521,7 +522,7 @@ describe('visibleStreamEvents', () => {
       ...events,
       liveEvent({
         event_id: 'evt-asg-filter',
-        kind: 'assignment_started',
+        kind: 'stage_updated',
         assignment_id: 'target-asg',
         observed_at: '2026-09-17T08:35:00Z',
       }),
@@ -630,7 +631,7 @@ describe('visibleStreamEvents', () => {
     expect(visible[0]?.event_id).toBe('run:a1:result:verified:event');
   });
 
-  it('restamps started/completed progress by observed_at, not SSE ingest order', () => {
+  it('restamps completed progress by observed_at, not SSE ingest order', () => {
     const prior = Array.from({ length: 49 }, (_, index) =>
       liveEvent({
         event_id: `prior-${index}`,
@@ -650,25 +651,13 @@ describe('visibleStreamEvents', () => {
         total: 75,
         observed_at: '2026-09-18T06:05:29Z',
       }),
-      liveEvent({
-        event_id: 'security:start',
-        kind: 'assignment_started',
-        assignment_id: 'security',
-        completed: 76,
-        total: 75,
-        observed_at: '2026-09-18T06:05:24Z',
-      }),
       ...prior,
     ];
     const visible = visibleStreamEvents(ingestOrder, { modelFilter: 'all', kindFilter: 'all' });
-    const started = visible.find((event) => event.event_id === 'security:start');
     const completed = visible.find((event) => event.event_id === 'security:done');
-    expect(started?.completed).toBe(50);
-    expect(started?.total).toBe(75);
     expect(completed?.completed).toBe(50);
     expect(completed?.total).toBe(75);
     expect(visible[0]?.event_id).toBe('security:done');
-    expect(visible[1]?.event_id).toBe('security:start');
   });
 
   it('streamProgressLabel uses the event point-in-time progress fields', () => {
@@ -699,20 +688,11 @@ describe('visibleStreamEvents', () => {
         total: 2,
         observed_at: '2026-09-17T19:20:00Z',
       }),
-      liveEvent({
-        event_id: 'hist:a2:start',
-        kind: 'assignment_started',
-        assignment_id: 'a2',
-        completed: 3,
-        total: 2,
-        observed_at: '2026-09-17T19:24:12Z',
-      }),
     ];
     const visible = restampStreamProgress(ingestOrder);
-    expect(visible.map((event) => `${event.kind}:${event.completed}/${event.total}`)).toEqual([
-      'assignment_completed:1/2',
-      'assignment_started:2/2',
-      'assignment_completed:2/2',
+    expect(visible.map((event) => `${event.event_id}:${event.completed}/${event.total}`)).toEqual([
+      'boot:a1:1/2',
+      'boot:a2:2/2',
     ]);
   });
 

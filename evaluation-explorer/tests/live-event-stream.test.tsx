@@ -29,7 +29,7 @@ describe('LiveEventStream', () => {
     render(
       <MemoryRouter>
         <LiveEventStream
-          events={[liveEvent({ event_id: 'evt-bootstrap', kind: 'assignment_started' })]}
+          events={[liveEvent({ event_id: 'evt-bootstrap', kind: 'stage_updated' })]}
           connection="live"
           streamConnection="connecting"
           isReconciling
@@ -88,13 +88,14 @@ describe('LiveEventStream', () => {
     expect(screen.getAllByRole('row')).toHaveLength(6); // header + 5 rows
   });
 
-  it('labels a running assignment start as Started while preserving terminal statuses', () => {
+  it('hides Assignment Started and Metric Updated rows', () => {
     render(
       <MemoryRouter>
         <LiveEventStream
           events={[
-            liveEvent({ event_id: 'evt-started', kind: 'assignment_started', lifecycle_status: 'running' }),
-            liveEvent({ event_id: 'evt-completed', kind: 'assignment_completed', lifecycle_status: 'completed' }),
+            liveEvent({ event_id: 'evt-started', kind: 'assignment_started', assignment_id: 'assignment-hidden', lifecycle_status: 'running' }),
+            liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', assignment_id: 'assignment-hidden' }),
+            liveEvent({ event_id: 'evt-completed', kind: 'assignment_completed', assignment_id: 'assignment-hidden', lifecycle_status: 'completed' }),
           ]}
           connection="live"
           streamConnection="connected"
@@ -102,9 +103,10 @@ describe('LiveEventStream', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Started')).toBeInTheDocument();
-    expect(screen.queryByText('Running')).not.toBeInTheDocument();
-    expect(screen.getByText('Completed')).toBeInTheDocument();
+    expect(screen.queryByText('Assignment Started')).not.toBeInTheDocument();
+    expect(screen.queryByText('Metric Updated')).not.toBeInTheDocument();
+    expect(screen.getByText('Assignment Completed')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(2); // header + 1 row
   });
 
   it('colors role labels by event outcome instead of only lifecycle status', () => {
@@ -112,7 +114,7 @@ describe('LiveEventStream', () => {
       <MemoryRouter>
         <LiveEventStream
           events={[
-            liveEvent({ event_id: 'evt-starting', kind: 'assignment_started', lifecycle_status: 'running' }),
+            liveEvent({ event_id: 'evt-staging', kind: 'stage_updated', lifecycle_status: 'queued' }),
             liveEvent({ event_id: 'evt-succeeding', kind: 'assignment_completed', lifecycle_status: 'completed' }),
             liveEvent({ event_id: 'evt-failing', kind: 'assignment_failed', lifecycle_status: 'completed' }),
           ]}
@@ -122,7 +124,7 @@ describe('LiveEventStream', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Assignment Started' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-running');
+    expect(screen.getByRole('link', { name: 'Stage Updated' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-running');
     expect(screen.getByRole('link', { name: 'Assignment Completed' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-completed');
     expect(screen.getByRole('link', { name: 'Assignment Failed' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-failed');
   });
@@ -284,7 +286,7 @@ describe('LiveEventStream', () => {
           events={[
             liveEvent({
               event_id: 'evt-zeta',
-              kind: 'assignment_started',
+              kind: 'assignment_failed',
               assignment_id: 'assignment-zeta',
               task_id: 'task-zeta',
               stage_label: 'Zeta stage',
@@ -456,44 +458,6 @@ describe('LiveEventStream', () => {
     const row = screen.getByRole('link', { name: 'Assignment Failed' }).closest('tr');
     expect(row).toHaveTextContent('Model Failed');
     expect(row).not.toHaveTextContent('Completed');
-  });
-
-  it('does not show the assignment final result on its started row', () => {
-    const assignment: AssignmentResult = {
-      schema_version: '1.3.0',
-      kind: 'assignment_result',
-      dataset_id: 'ds-live-a',
-      quality_state: 'live_in_progress',
-      observed_at: '2026-09-17T08:00:00Z',
-      assignment_id: 'assignment-1',
-      run_id: 'run-a',
-      task_id: 'task-started',
-      variant_id: 'model-started',
-      role: 'primary',
-      repetition: 1,
-      terminal_status: 'model_failed',
-      metric_values: { pass: { value: 0 }, deterministic_pass_rate: { value: 0.818 } },
-      stage_summary: [],
-      resource_summary: { input_tokens: { value: 42 } },
-    };
-    evalStore.loadFixtures([assignment], []);
-
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({ event_id: 'evt-started', kind: 'assignment_started', assignment_id: 'assignment-1' }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const row = screen.getByRole('link', { name: 'Assignment Started' }).closest('tr');
-    expect(row).not.toHaveTextContent('81.8%');
-    expect(row).not.toHaveTextContent('Fail');
-    expect(row).not.toHaveTextContent('42 tok');
   });
 
   it.each(['model_failed', 'grader_failed', 'invalid_evidence'] as const)(
@@ -920,15 +884,15 @@ describe('LiveEventStream', () => {
           events={[
             liveEvent({
               event_id: 'evt-tool-sel',
-              kind: 'assignment_started',
+              kind: 'stage_updated',
               task_id: 'tool-select-file-read',
-              stage_label: 'assignment started · Tool Selection · tool-select-file-read',
+              stage_label: 'stage updated · Tool Selection · tool-select-file-read',
             }),
             liveEvent({
               event_id: 'evt-exact-format',
-              kind: 'assignment_started',
+              kind: 'stage_updated',
               task_id: 'instruction-exact-format',
-              stage_label: 'assignment started · Instruction Adherence · instruction-exact-format',
+              stage_label: 'stage updated · Instruction Adherence · instruction-exact-format',
             }),
           ]}
           connection="live"
@@ -956,7 +920,7 @@ describe('LiveEventStream', () => {
             liveEvent({
               event_id: 'evt-run-2',
               run_id: 'eval-init-model-2',
-              kind: 'assignment_started',
+              kind: 'stage_updated',
               observed_at: '2026-09-17T08:02:00Z',
             }),
             liveEvent({
@@ -974,31 +938,6 @@ describe('LiveEventStream', () => {
 
     expect(screen.getByTestId('run-divider-eval-init-model-1')).toBeInTheDocument();
     expect(screen.getByText('Run: eval-init-model-1')).toBeInTheDocument();
-  });
-
-  it('displays an active elapsed duration timer for running in-progress assignments', () => {
-    const startedAgo = new Date(Date.now() - 15000).toISOString();
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-running-timer',
-              assignment_id: 'assignment-running-timer',
-              kind: 'assignment_started',
-              lifecycle_status: 'running',
-              observed_at: startedAgo,
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const elapsedElement = document.querySelector('.stream-metric-elapsed');
-    expect(elapsedElement).toBeInTheDocument();
-    expect(elapsedElement?.textContent).toMatch(/^\d+s…$/);
   });
 
   it('switches to active run only and retains all run events past default limit', async () => {
@@ -1049,7 +988,7 @@ describe('LiveEventStream', () => {
               event_id: 'evt-asg-1',
               assignment_id: 'asg-live-alpha',
               task_id: 'task-alpha',
-              kind: 'assignment_started',
+              kind: 'stage_updated',
               observed_at: '2026-09-17T08:02:00Z',
             }),
             liveEvent({
