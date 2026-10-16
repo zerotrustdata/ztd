@@ -1,5 +1,5 @@
 record_type,identifier,reference,status,evidence_level,freshness,selected_subjects,assessed_subjects,failed_subjects,unavailable_subjects,proof_digests,verification_status,verifier,diagnostic_severity,count
-analysis,compliance-analysis:sha256:4b679062b4151f4698cc2d4596a5f7c61e7a13c621ee4aea1bdcf5bf8e5a4f34,b8cd05de28cac23e9887e43a3c0c3638f4e0feaaabfd0d9c20fa0efbe9f9d7ba,graph_valid=true,,,,,,,,,,,
+analysis,compliance-analysis:sha256:abedf98ad9eb5a495db2ea143efb70fda43b85c41fba9ab1e86b2440b3dafa23,c2a1a8764d13dd984c22ba6be2a0e45b14a51a91d7680d483037aafbefffbe6c,graph_valid=true,,,,,,,,,,,
 assertion,ZTD-DLP-REHYDRATE-001,ZTD-DLP-REHYDRATE-001@2.0.0,not_applicable,L0,not_applicable,0,0,0,0,,,assertion_assessment@2.2.0,,
 assertion,ZTD-CRYPTO-FIPS-001,ZTD-CRYPTO-FIPS-001@2.0.0,not_applicable,L0,not_applicable,0,0,0,0,,,assertion_assessment@2.2.0,,
 assertion,ZTD-AU-CHAIN-001,ZTD-AU-CHAIN-001@2.0.0,satisfied,L2,fresh,0,0,0,0,protocol-chain:sha256:be3b3557936c711066abaec385f3085670187e1049ebee3555e9656578d0ea7b,,assertion_assessment@2.2.0,,

@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.1.2
+last_updated: 2026-10-16
 owners:
   - docs/
   - protocol/docs/
