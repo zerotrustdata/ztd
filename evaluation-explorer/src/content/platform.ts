@@ -32,16 +32,52 @@ export const PLATFORM_OVERVIEW_LEDE =
 
 export const ABOUT_SITE_INTRO_BEFORE = 'This Evaluation Explorer is a live window into ';
 export const ABOUT_SITE_INTRO_AFTER =
-  ' — a zero-trust execution platform between people, AI systems, and the systems they affect. Evaluations are one application of ztd: this Explorer makes their results and available evidence inspectable.';
+  ' as I develop the platform and run model evaluations through it. You can follow the work here: the models, the tasks, the results, and the available evidence behind them.';
 
-export const ABOUT_PURPOSE_HEADING = 'Capable help. Control stays with you.';
+export const ABOUT_PURPOSE_HEADING = 'Building ztd in the open.';
+export const ABOUT_EVALUATION_INTRO =
+  'These evaluations test the platform and investigate how to make AI systems more useful, accountable, and controlled. Six questions guide the work:';
+export const ABOUT_EVALUATION_GOALS = [
+  {
+    label: 'Does the platform work under real model workloads?',
+    detail:
+      'Exercise context delivery, tool use, governed execution, and evidence capture together. Use failures to find what needs fixing as ztd develops.',
+  },
+  {
+    label: 'Which models fit the Primary, Assistant, and Lite roles?',
+    detail:
+      'Identify strong candidates for each job: Primary owns the task, plans, delegates, and synthesizes; Assistant handles bounded technical work; Lite makes constrained decisions or escalates. Evaluate models against the work their role is expected to handle.',
+  },
+  {
+    label: 'How far can small models go with better context?',
+    detail:
+      'Investigate whether ztd’s context delivery helps small models do useful work. The neuroevolution-inspired idea is that an investigation’s context evolves as evidence accumulates over time. These evaluations ask whether that evolution is actually happening and whether it improves outcomes.',
+  },
+  {
+    label: 'Does a frontier model do better with a ztd team?',
+    detail:
+      'Compare a frontier model working alone with the same model supported by ztd’s Assistant and Lite models. Look for measurable differences in task outcomes, failure modes, latency, and resource use.',
+  },
+  {
+    label: 'Can we measure accuracy, security, safety, and privacy together?',
+    detail:
+      'Bring answer correctness, resistance to attacks, safe behavior, and protection of sensitive data into one evaluation program. Report each dimension against the scenarios and evidence that actually test it.',
+  },
+  {
+    label: 'What evidence demonstrates that ztd works?',
+    detail:
+      'Build inspectable evidence that ztd delivers useful help while enforcing its execution controls. Make successful runs, failures, and limits visible so the claims can be checked.',
+  },
+] as const;
+export const ABOUT_EVIDENCE_INTRO =
+  'These questions guide an ongoing investigation. A completed run establishes only what its scenarios and checks cover. Claims about better context or stronger model teams need comparable runs and recorded outcomes.';
 export const ABOUT_EVIDENCE_PRINCIPLES = [
-  'A model can ask, but it cannot act directly: governed execution crosses the Gateway and Operator boundary.',
-  'Every governed action is signed at the execution boundary and recorded by the executing Operator.',
-  'Published verification metadata binds results to evidence that can be verified offline; mirror availability is not verification.',
+  'Follow a result back to its scenario, model role, recorded tool calls, and available trace.',
+  'Read evidence verification and task accuracy separately: a signed record supports checking what happened; the scenario’s grading criteria determine what was correct.',
+  'Check the published verification status and evidence for each run. The live connection indicator describes the feed connection.',
 ] as const;
 export const ABOUT_PURPOSE =
-  'An AI system can investigate, reason, and propose work. ztd separates that reasoning from the authority to act, so people can get useful help without surrendering control of their systems and data.';
+  'ztd is a zero-trust execution and evidence platform. An AI system can investigate, reason, and propose work; ztd separates that reasoning from the authority to act, so people can get useful help while retaining control of their systems and data.';
 
 export const ABOUT_PRINCIPLES = [
   {
@@ -96,6 +132,8 @@ export const ABOUT_EXPERIENCE = [
 ] as const;
 
 export const ABOUT_AVAILABILITY_HEADING = 'Let’s work together';
+export const ABOUT_PORTFOLIO =
+  'This is also my working portfolio: a platform I designed, built, and operate, with its development and evaluation evidence open to inspection. I’m looking for a team to join or contracts where I can put that experience to work.';
 export const ABOUT_AVAILABILITY =
   'Reach out about ztd licensing, consulting, contract engagements, or full-time W-2 roles.';
 export const ABOUT_AVAILABILITY_DETAIL =

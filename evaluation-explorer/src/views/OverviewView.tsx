@@ -9,7 +9,6 @@ import { matchesRelease, releaseLabel } from '../content/release';
 import { useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
-import { WhatAmILookingAt } from '../components/WhatAmILookingAt';
 import { formatNumber } from '../components/shared';
 import { formatDuration, formatRelativeTime, formatTimestamp } from '../utils/format';
 import { recentCampaignRows, roleLabel, type RecentCampaignRow } from './derived';
@@ -55,10 +54,6 @@ function RecentRuns({
       <div className="panel-head campaign-evidence-head">
         <div>
           <h2>Recent Runs</h2>
-          <p className="panel-note">
-            The latest evaluation run from each dataset: the models under test, when it started and how long it ran,
-            and how many of its assignments have reached a final result.
-          </p>
         </div>
         <Link to="/evaluations" className="panel-link">
           Explore all →
@@ -194,18 +189,14 @@ export function OverviewView() {
   return (
     <div className="overview">
       <LiveEventStream
+        key={release}
         events={events}
         connection={connection}
         streamConnection={streamConnection}
         isReconciling={isReconciling}
       />
 
-      <div className="overview-content">
-        <div className="overview-primary">
-          <RecentRuns catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
-        </div>
-        <WhatAmILookingAt />
-      </div>
+      <RecentRuns catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
     </div>
   );
 }

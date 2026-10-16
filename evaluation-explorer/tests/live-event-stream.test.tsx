@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, LiveEvent } from '../src/contract/types';
@@ -10,506 +10,217 @@ import { LiveEventStream } from '../src/components/LiveEventStream';
 import { evalStore, recordKey } from '../src/state/store';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 
-function liveEvent(partial: Partial<LiveEvent> & Pick<LiveEvent, 'event_id' | 'kind'>): LiveEvent {
+function liveEvent(partial: Partial<LiveEvent> = {}): LiveEvent {
   return {
-    schema_version: '1.3.0',
-    dataset_id: 'ds-live-a',
-    quality_state: 'live_in_progress',
-    observed_at: '2026-09-17T08:00:00Z',
-    run_id: 'run-a',
-    lifecycle_status: 'running',
-    completed: 0,
-    total: 75,
+    schema_version: '1.3.0', dataset_id: 'ds-live-a', quality_state: 'live_in_progress',
+    observed_at: '2026-09-17T08:00:00Z', run_id: 'run-a', lifecycle_status: 'completed',
+    event_id: 'evt-1', kind: 'assignment_completed', completed: 1, total: 75,
+    assignment_id: 'assignment-1', task_id: 'tool-select-file-read', role: 'primary', variant_id: 'model-a',
     ...partial,
   };
 }
+function assignment(partial: Partial<AssignmentResult> = {}): AssignmentResult {
+  return {
+    schema_version: '1.5.0', kind: 'assignment_result', dataset_id: 'ds-live-a', quality_state: 'live_in_progress',
+    observed_at: '2026-09-17T08:00:00Z', assignment_id: 'assignment-1', run_id: 'run-a',
+    task_id: 'tool-select-file-read', variant_id: 'model-a', role: 'primary', repetition: 1,
+    terminal_status: 'completed', metric_values: { pass: { value: 1 } }, stage_summary: [], ...partial,
+  };
+}
+function stream(events: LiveEvent[], isReconciling = false) {
+  return <MemoryRouter><LiveEventStream events={events} connection="live" streamConnection="connected" isReconciling={isReconciling} /></MemoryRouter>;
+}
+const rows = () => screen.getAllByRole('row').slice(1);
+
+beforeEach(() => evalStore.loadFixtures([], []));
 
 describe('LiveEventStream', () => {
-  it('renders bootstrap events while history replay is in progress', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[liveEvent({ event_id: 'evt-bootstrap', kind: 'assignment_completed' })]}
-          connection="live"
-          streamConnection="connecting"
-          isReconciling
-        />
-      </MemoryRouter>,
-    );
-
+  it('renders bootstrap activity while history is reconciling', () => {
+    render(stream([liveEvent()], true));
     expect(screen.getByText('Syncing feed history…')).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
-  it('shows only the 100 most recent events', () => {
-    const events = Array.from({ length: 120 }, (_, index) =>
-      liveEvent({
-        event_id: `evt-${index}`,
-        variant_id: `model-${index}`,
-        kind: 'assignment_completed',
-        observed_at: `2026-09-17T${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}:00Z`,
-      }),
-    );
-
-    render(
-      <MemoryRouter>
-        <LiveEventStream events={events} connection="live" streamConnection="connected" />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText('Page 1 of 4 (100 events)')).toBeInTheDocument();
-    expect(screen.queryByText('model-0')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'model-119' })).toHaveLength(1);
-  });
-
-  it('paginates events and scrolls per page', async () => {
-    const user = userEvent.setup();
-    const events = Array.from({ length: 30 }, (_, index) =>
-      liveEvent({
-        event_id: `evt-${index}`,
-        kind: 'assignment_completed',
-        observed_at: `2026-09-17T08:${String(index).padStart(2, '0')}:00Z`,
-      }),
-    );
-
-    render(
-      <MemoryRouter>
-        <LiveEventStream events={events} connection="live" streamConnection="connected" />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByTestId('stream-pagination')).toBeInTheDocument();
-    expect(screen.getByText('Page 1 of 2 (30 events)')).toBeInTheDocument();
-    expect(screen.getAllByRole('row')).toHaveLength(26); // header + 25 rows
-
-    await user.click(screen.getByRole('button', { name: 'Next page' }));
-
-    expect(screen.getByText('Page 2 of 2 (30 events)')).toBeInTheDocument();
-    expect(screen.getAllByRole('row')).toHaveLength(6); // header + 5 rows
-  });
-
-  it('hides Assignment Started, Stage Updated and Metric Updated rows', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({ event_id: 'evt-started', kind: 'assignment_started', assignment_id: 'assignment-hidden', lifecycle_status: 'running' }),
-            liveEvent({ event_id: 'evt-stage', kind: 'stage_updated', assignment_id: 'assignment-hidden', role: 'primary' }),
-            liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', assignment_id: 'assignment-hidden' }),
-            liveEvent({ event_id: 'evt-completed', kind: 'assignment_completed', assignment_id: 'assignment-hidden', lifecycle_status: 'completed' }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByText('Assignment Started')).not.toBeInTheDocument();
-    expect(screen.queryByText('Stage Updated')).not.toBeInTheDocument();
-    expect(screen.queryByText('Metric Updated')).not.toBeInTheDocument();
-    expect(screen.getByText('Assignment Completed')).toBeInTheDocument();
-    expect(screen.getAllByRole('row')).toHaveLength(2); // header + 1 row
-  });
-
-  it('colors role labels by event outcome instead of only lifecycle status', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({ event_id: 'evt-succeeding', kind: 'assignment_completed', lifecycle_status: 'completed' }),
-            liveEvent({ event_id: 'evt-failing', kind: 'assignment_failed', lifecycle_status: 'completed' }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('link', { name: 'Assignment Completed' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-completed');
-    expect(screen.getByRole('link', { name: 'Assignment Failed' }).closest('tr')?.querySelector('.stream-role')).toHaveClass('status-failed');
-  });
-
-  it('renders each event and assignment detail as its own table column', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-complete',
-              kind: 'assignment_completed',
-              assignment_id: 'assignment-1',
-              task_id: 'security-policy-block-run',
-              lifecycle_status: 'completed',
-              metric_delta: {
-                pass: { value: 1 },
-                latency_ms: { value: 780 },
-              },
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('columnheader', { name: 'Event' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Category' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Task' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Assignment' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Pass' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Pass Rate' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Latency' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'security-policy-block-run' })).toHaveAttribute(
-      'href',
-      '/tasks/security-policy-block-run',
-    );
-    expect(screen.getByRole('link', { name: 'assign…' })).toHaveAttribute(
-      'href',
-      '/evaluations/ds-live-a/run-a/assignments/assignment-1',
-    );
-    expect(screen.getByText('Pass', { selector: '.stream-metric-value' })).toBeInTheDocument();
+  it('keeps seven columns and links the task and result directly to evidence', () => {
+    render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 } } })]));
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim()))
+      .toEqual(['Result', 'Task', 'Model', 'Latency', 'Output', 'Tokens/s', 'Time']);
+    const href = '/evaluations/ds-live-a/run-a/assignments/assignment-1';
+    expect(screen.getByRole('link', { name: 'tool-select-file-read — View details' })).toHaveAttribute('href', href);
+    expect(screen.getByRole('link', { name: /Passed:.*View details/ })).toHaveAttribute('href', href);
+    expect(screen.getByRole('link', { name: 'model-a' })).toHaveAttribute('href', '/models/ds-live-a/model-a?role=primary');
     expect(screen.getByText('780 ms')).toBeInTheDocument();
+    expect(screen.getByText('Primary')).toHaveClass('stream-role');
   });
 
-  it('renders -- for absent or explicitly unavailable metrics', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-platform',
-              kind: 'evaluation_started',
-            }),
-            liveEvent({
-              event_id: 'evt-partial',
-              kind: 'assignment_completed',
-              assignment_id: 'assignment-1',
-              metric_delta: {
-                pass: { value: 1 },
-                latency_ms: { unavailable_reason: 'no_scored_calls' },
-              },
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const platformRow = screen.getByRole('link', { name: 'Evaluation Started' }).closest('tr');
-    expect(platformRow).not.toBeNull();
-    for (const cell of platformRow?.querySelectorAll('.stream-metric-value') ?? []) {
-      expect(cell).toHaveTextContent('--');
-    }
-
-    const assignmentRow = screen.getByRole('link', { name: 'Assignment Completed' }).closest('tr');
-    expect(assignmentRow).not.toBeNull();
-    const metricCells = Array.from(assignmentRow?.querySelectorAll('.stream-metric-value') ?? []).map(
-      (cell) => cell.textContent,
-    );
-    expect(metricCells).toContain('Pass');
-    expect(metricCells.filter((text) => text === '--').length).toBeGreaterThan(0);
-    expect(metricCells).not.toContain('Unavailable');
-  });
-
-  it('renders tokens per second from output tokens and generation time', () => {
-    const assignment: AssignmentResult = {
-      schema_version: '1.3.0',
-      kind: 'assignment_result',
-      dataset_id: 'ds-live-a',
-      quality_state: 'live_in_progress',
-      observed_at: '2026-09-17T08:00:00Z',
-      assignment_id: 'assignment-1',
-      run_id: 'run-a',
-      task_id: 'task-throughput',
-      variant_id: 'model-throughput',
-      role: 'primary',
-      repetition: 1,
-      terminal_status: 'completed',
-      metric_values: { pass: { value: 1 } },
-      stage_summary: [],
-      resource_summary: {
-        input_tokens: { value: 42 },
-        output_tokens: { value: 180 },
-      },
-      benchmark_observations: {
-        timing: { generation_ms: { value: 780 } },
-        unavailable_reasons: [],
-      },
-    };
-    evalStore.loadFixtures([assignment], []);
-
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-throughput',
-              kind: 'assignment_completed',
-              assignment_id: 'assignment-1',
-              task_id: 'task-throughput',
-              lifecycle_status: 'completed',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('columnheader', { name: 'Tokens/s' })).toBeInTheDocument();
-    expect(screen.getByText('42 tok')).toBeInTheDocument();
-    expect(screen.getByText('230.8 tok/s')).toBeInTheDocument();
-  });
-
-  it('hides thinking and cache token columns from the live stream', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[liveEvent({ event_id: 'evt-resource-metrics', kind: 'assignment_completed' })]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByRole('columnheader', { name: 'Thinking tokens' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: 'Cache tokens' })).not.toBeInTheDocument();
-  });
-
-  it('sorts the Event and Assignment details columns independently', async () => {
+  it('caps the unfiltered feed at 100 rows and paginates 25 at a time', async () => {
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-zeta',
-              kind: 'assignment_failed',
-              assignment_id: 'assignment-zeta',
-              task_id: 'task-zeta',
-              stage_label: 'Zeta stage',
-            }),
-            liveEvent({
-              event_id: 'evt-alpha',
-              kind: 'assignment_completed',
-              assignment_id: 'assignment-alpha',
-              task_id: 'task-alpha',
-              stage_label: 'Alpha stage',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const rows = () => screen.getAllByRole('row').slice(1).map((row) => row.textContent ?? '');
-    await user.click(screen.getByRole('button', { name: 'Sort by Event' }));
-    expect(rows()[0]).toContain('Assignment Completed');
-    expect(screen.getByRole('columnheader', { name: 'Event' })).toHaveAttribute('aria-sort', 'ascending');
-
-    await user.click(screen.getByRole('button', { name: 'Sort by Task' }));
-    expect(rows()[0]).toContain('task-alpha');
-    expect(screen.getByRole('columnheader', { name: 'Task' })).toHaveAttribute('aria-sort', 'ascending');
+    const events = Array.from({ length: 120 }, (_, index) => liveEvent({
+      event_id: `evt-${index}`, assignment_id: `assignment-${index}`, task_id: `task-${index}`,
+      observed_at: new Date(Date.UTC(2026, 8, 17, 8, index)).toISOString(),
+    }));
+    render(stream(events));
+    expect(screen.getByText('Page 1 of 4 (100 events)')).toBeInTheDocument();
+    expect(rows()).toHaveLength(25);
+    expect(rows()[0]).toHaveTextContent('task-119');
+    expect(screen.queryByText('task-0')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText('Page 2 of 4 (100 events)')).toBeInTheDocument();
+    expect(rows()[0]).toHaveTextContent('task-94');
   });
 
-  it('makes every live stream column sortable', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-sortable-columns',
-              kind: 'assignment_completed',
-              variant_id: 'model-sortable',
-              role: 'primary',
-              completed: 3,
-              total: 10,
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const labels = [
-      'Time',
-      'Role',
-      'Event',
-      'Status',
-      'Category',
-      'Task',
-      'Assignment',
-      'Pass',
-      'Pass Rate',
-      'Latency',
-      'Input tokens',
-      'Output tokens',
-      'Tokens/s',
-      'Retries',
-      'Model',
-      'Progress',
-    ];
-
-    for (const label of labels) {
-      const header = screen.getByRole('columnheader', { name: label });
-      await user.click(screen.getByRole('button', { name: `Sort by ${label}` }));
-      expect(header).toHaveAttribute('aria-sort', 'ascending');
-    }
-  });
-
-  it('sorts Progress by completion ratio instead of the displayed fraction text', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({ event_id: 'evt-progress-15', kind: 'evaluation_started', completed: 15, total: 75 }),
-            liveEvent({ event_id: 'evt-progress-3', kind: 'evaluation_started', completed: 3, total: 75 }),
-            liveEvent({ event_id: 'evt-progress-30', kind: 'evaluation_started', completed: 30, total: 75 }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Sort by Progress' }));
-
-    const progressValues = screen
-      .getAllByRole('row')
-      .slice(1)
-      .map((row) => row.querySelector('.stream-progress')?.textContent);
-    expect(progressValues).toEqual(['3/75', '15/75', '30/75']);
-  });
-
-  it('shows designated role from the event before model summaries exist', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-lite',
-              kind: 'assignment_completed',
-              variant_id: 'gemma2-9b',
-              role: 'lite',
-              stage_label: 'Assignment Completed · Routing Delegation · Route-Lite-Triage',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const roleCell = screen.getByText('Lite').closest('.stream-role');
-    expect(roleCell).not.toBeNull();
-    expect(roleCell).toHaveTextContent('Lite');
-    expect(roleCell).not.toHaveTextContent('gemma2-9b');
-    expect(roleCell?.querySelector('.status-dot')).not.toBeInTheDocument();
-  });
-
-  it('shows the binary pass metric as Fail and invents no pass rate', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-pass',
-              kind: 'assignment_completed',
-              assignment_id: 'assignment-pass-metric',
-              metric_delta: { pass: { value: 0 } },
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText('Fail', { selector: '.stream-metric-value' })).toBeInTheDocument();
-    expect(screen.queryByText('0.0%')).not.toBeInTheDocument();
-  });
-
-  it('shows the outcome, not the lifecycle, on a terminal row', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-terminal',
-              kind: 'assignment_failed',
-              assignment_id: 'assignment-1',
-              lifecycle_status: 'completed',
-              terminal_status: 'model_failed',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const row = screen.getByRole('link', { name: 'Assignment Failed' }).closest('tr');
-    expect(row).toHaveTextContent('Model Failed');
-    expect(row).not.toHaveTextContent('Completed');
+  it('collapses assignment lifecycle updates into one result', () => {
+    render(stream([
+      liveEvent({ event_id: 'start', kind: 'assignment_started', lifecycle_status: 'running' }),
+      liveEvent({ event_id: 'stage', kind: 'stage_updated', lifecycle_status: 'running' }),
+      liveEvent({ event_id: 'metric', kind: 'metric_updated' }),
+      liveEvent(),
+    ]));
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /Completed:.*View details/ })).toHaveTextContent('✓');
   });
 
   it.each(['model_failed', 'grader_failed', 'invalid_evidence', 'provider_failed', 'execution_failed'] as const)(
-    'shows the public failure sentence only on the %s terminal row',
-    (terminalStatus) => {
-      const failureReason = 'Expected the model to decline the forbidden operation.';
-      const assignment: AssignmentResult = {
-        schema_version: '1.5.0',
-        kind: 'assignment_result',
-        dataset_id: 'ds-live-a',
-        quality_state: 'live_in_progress',
-        observed_at: '2026-09-17T08:00:00Z',
-        assignment_id: 'assignment-1',
-        run_id: 'run-a',
-        task_id: 'security-policy-deny-delete',
-        variant_id: 'model-1',
-        role: 'primary',
-        repetition: 1,
-        terminal_status: terminalStatus,
-        metric_values: {},
-        stage_summary: [],
-        failure_reason: failureReason,
-      };
-      evalStore.loadFixtures([assignment], []);
-
-      render(
-        <MemoryRouter>
-          <LiveEventStream
-            events={[
-              liveEvent({ event_id: 'evt-started', kind: 'assignment_started', assignment_id: 'assignment-1' }),
-              liveEvent({ event_id: 'evt-metric', kind: 'metric_updated', assignment_id: 'assignment-1' }),
-              liveEvent({ event_id: 'evt-other-run', kind: 'assignment_failed', assignment_id: 'assignment-1', run_id: 'run-b' }),
-              liveEvent({
-                event_id: 'evt-failed',
-                kind: 'assignment_failed',
-                assignment_id: 'assignment-1',
-                terminal_status: terminalStatus,
-                lifecycle_status: 'completed',
-              }),
-            ]}
-            connection="live"
-            streamConnection="connected"
-          />
-        </MemoryRouter>,
-      );
-
-      const tooltip = screen.getByTitle(failureReason);
-      expect(within(tooltip).getByText(failureReason)).toBeVisible();
-      expect(tooltip).toHaveTextContent(terminalStatus.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()));
-      expect(tooltip.closest('tr')).toHaveTextContent('Assignment Failed');
-      expect(screen.getAllByTitle(failureReason)).toHaveLength(1);
+    'keeps %s diagnostic prose off the landing page while linking to details', (status) => {
+      const reason = 'Expected the model to decline the forbidden operation.';
+      evalStore.loadFixtures([assignment({ terminal_status: status, failure_reason: reason })], []);
+      render(stream([liveEvent({ kind: 'assignment_failed', terminal_status: status })]));
+      const result = rows()[0]!.querySelector('.stream-result');
+      expect(result).toHaveAttribute('href', '/evaluations/ds-live-a/run-a/assignments/assignment-1');
+      expect(result).toHaveAttribute('data-tone', status === 'model_failed' ? 'critical' : 'neutral');
+      expect(result).toHaveTextContent(status === 'model_failed' ? '×' : '!');
+      expect(screen.queryByText(reason)).not.toBeInTheDocument();
+      expect(screen.queryByTitle(reason)).not.toBeInTheDocument();
     },
   );
+
+  it('shows a failed observation as an X even when execution completed', () => {
+    render(stream([liveEvent({ metric_delta: { pass: { value: 0 } } })]));
+    expect(screen.getByRole('link', { name: /Model failed:/ })).toHaveTextContent('×');
+    expect(screen.queryByText('0.0%')).not.toBeInTheDocument();
+  });
+
+  it('uses final resource observations and derives throughput only from generation time', () => {
+    evalStore.loadFixtures([assignment({
+      resource_summary: { latency_ms: { value: 1200 }, output_tokens: { value: 180 } },
+      benchmark_observations: { timing: { generation_ms: { value: 780 } }, unavailable_reasons: [] },
+    })], []);
+    render(stream([liveEvent()]));
+    expect(screen.getByText('180 tok')).toBeInTheDocument();
+    expect(screen.getByText('230.8 tok/s')).toBeInTheDocument();
+  });
+
+  it('distinguishes missing metrics from zero and does not infer speed from latency', () => {
+    render(stream([liveEvent({ metric_delta: { output_tokens: { value: 0 }, latency_ms: { value: 1000 } } })]));
+    expect(screen.getByText('0 tok')).toBeInTheDocument();
+    expect(screen.getByText('--')).toHaveAttribute('title', 'not observed');
+  });
+
+  it('does not borrow outcome or metrics from an assignment in another run', () => {
+    evalStore.loadFixtures([assignment({ run_id: 'other-run', terminal_status: 'provider_failed', resource_summary: { output_tokens: { value: 999 } } })], []);
+    render(stream([liveEvent()]));
+    expect(screen.getByRole('link', { name: /Completed:/ })).toHaveTextContent('✓');
+    expect(screen.queryByText('999 tok')).not.toBeInTheDocument();
+  });
+
+  it('keeps model choices available after filtering and clears an empty attention filter', async () => {
+    const user = userEvent.setup();
+    render(stream([liveEvent(), liveEvent({ assignment_id: 'second', event_id: 'second', variant_id: 'model-b' })]));
+    const select = screen.getByRole('combobox', { name: 'Filter by model' });
+    await user.selectOptions(select, 'model-a');
+    expect(within(select).getByRole('option', { name: 'model-b' })).toBeInTheDocument();
+    expect(rows()).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(rows()).toHaveLength(2);
+  });
+
+  it('includes model failures and non-verdict errors in Needs attention', async () => {
+    const user = userEvent.setup();
+    render(stream([
+      liveEvent(),
+      liveEvent({ event_id: 'failed', assignment_id: 'failed', kind: 'assignment_failed', terminal_status: 'model_failed' }),
+      liveEvent({ event_id: 'provider', assignment_id: 'provider', kind: 'assignment_failed', terminal_status: 'provider_failed' }),
+    ]));
+    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
+    expect(rows()).toHaveLength(2);
+    expect(screen.getByRole('link', { name: /Model failed:/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Provider Failed:/ })).toBeInTheDocument();
+  });
+
+  it('reveals category filters on demand and resolves categories before assignment results arrive', async () => {
+    const user = userEvent.setup();
+    render(stream([
+      liveEvent({ role: 'lite', stage_label: 'model role invoked · lite · model-a · tool-select-file-read' }),
+      liveEvent({ event_id: 'format', assignment_id: 'format', task_id: 'instruction-exact-format' }),
+    ]));
+    expect(screen.getByText('Filters', { selector: 'summary' }).closest('details')).not.toHaveAttribute('open');
+    await user.click(screen.getByText('Filters', { selector: 'summary' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by category' }), 'Tool Selection');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toHaveTextContent('Lite');
+    expect(rows()[0]).toHaveTextContent('Tool Selection');
+  });
+
+  it('filters by latest run and assignment without losing older run activity by default', async () => {
+    const user = userEvent.setup();
+    render(stream([
+      liveEvent({ event_id: 'old', assignment_id: 'old', run_id: 'old-run' }),
+      liveEvent({ event_id: 'new', assignment_id: 'new', run_id: 'new-run', observed_at: '2026-09-17T09:00:00Z' }),
+    ]));
+    expect(rows()).toHaveLength(2);
+    await user.click(screen.getByText('Filters', { selector: 'summary' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by assignment' }), 'old');
+    expect(rows()[0]?.querySelector('.stream-task-link')).toHaveAttribute('href', '/evaluations/ds-live-a/old-run/assignments/old');
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by run scope' }), 'latest');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]?.querySelector('.stream-task-link')).toHaveAttribute('href', '/evaluations/ds-live-a/new-run/assignments/new');
+  });
+
+  it('waits for a classified result before attributing an unclassified failure to the model', () => {
+    render(stream([liveEvent({ kind: 'assignment_failed' })]));
+    expect(screen.getByRole('link', { name: /Failed:/ })).toHaveAttribute('data-tone', 'neutral');
+  });
+
+  it('sorts metrics numerically with unavailable observations last in either direction', async () => {
+    const user = userEvent.setup();
+    render(stream([
+      liveEvent({ event_id: 'ten', assignment_id: 'ten', metric_delta: { output_tokens: { value: 10 } } }),
+      liveEvent({ event_id: 'two', assignment_id: 'two', metric_delta: { output_tokens: { value: 2 } } }),
+      liveEvent({ event_id: 'missing', assignment_id: 'missing' }),
+    ]));
+    const output = () => rows().map((row) => row.querySelector('[data-label="Output"]')?.textContent);
+    await user.click(screen.getByRole('button', { name: 'Sort by Output' }));
+    expect(output()).toEqual(['2 tok', '10 tok', '--']);
+    await user.click(screen.getByRole('button', { name: 'Sort by Output' }));
+    expect(output()).toEqual(['10 tok', '2 tok', '--']);
+  });
+
+  it('freezes rows and metrics while paused, then resumes the latest state', async () => {
+    const user = userEvent.setup();
+    evalStore.loadFixtures([assignment({ resource_summary: { output_tokens: { value: 10 } } })], []);
+    const { rerender } = render(stream([liveEvent()]));
+    await user.click(screen.getByRole('button', { name: 'Pause live updates' }));
+    act(() => evalStore.loadFixtures([assignment({ resource_summary: { output_tokens: { value: 20 } } })], []));
+    rerender(stream([liveEvent(), liveEvent({ event_id: 'new', assignment_id: 'new', task_id: 'new-task' })]));
+    expect(screen.getByText('Paused')).toBeInTheDocument();
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByText('10 tok')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Resume live updates' }));
+    expect(rows()).toHaveLength(2);
+    expect(screen.getByText('20 tok')).toBeInTheDocument();
+    expect(screen.getByText('new-task')).toBeInTheDocument();
+  });
+
+  it('links run lifecycle activity to the run without claiming a model passed', () => {
+    render(stream([liveEvent({ kind: 'evaluation_completed', assignment_id: undefined, task_id: undefined, variant_id: undefined, role: undefined })]));
+    const result = screen.getByRole('link', { name: /Evaluation Completed:.*View details/ });
+    expect(result).toHaveAttribute('href', '/evaluations/ds-live-a/run-a');
+    expect(result).toHaveAttribute('data-tone', 'neutral');
+    expect(result).not.toHaveTextContent('✓');
+  });
 
   it('links active evaluation details to the live page without duplicating the event stream', () => {
     const evaluation: EvaluationSummary = {
@@ -557,239 +268,4 @@ describe('LiveEventStream', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('correctly maps category for model role invocation events without assignment in store', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-invocation-1',
-              kind: 'assignment_completed',
-              role: 'lite',
-              variant_id: 'gemma3:4b',
-              task_id: 'tool-select-file-read',
-              stage_label: 'model role invoked · lite · gemma3:4b · tool-select-file-read',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const row = screen.getByRole('row', { name: /Assignment Completed/i });
-    expect(row).toBeInTheDocument();
-    const cells = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.trim());
-    // Columns: [Time, Role, Event, Status, Category, Task, Assignment, Pass, Pass Rate, Latency, Input tokens, Output tokens, Tokens/s, Retries, Model, Progress]
-    expect(cells[1]).toBe('Lite');
-    expect(cells[2]).toBe('Assignment Completed');
-    expect(cells[4]).toBe('Tool Selection');
-    expect(cells[5]).toBe('tool-select-file-read');
-    expect(cells[4]).not.toBe('Lite');
-    expect(cells[4]).not.toBe('lite');
-  });
-
-  it('does not fallback to role name when task is unrecognized and assignment is missing', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-custom-task',
-              kind: 'assignment_completed',
-              role: 'lite',
-              variant_id: 'gemma3:4b',
-              task_id: 'custom-unknown-task',
-              stage_label: 'model role invoked · lite · gemma3:4b · custom-unknown-task',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const row = screen.getByRole('row', { name: /Assignment Completed/i });
-    expect(row).toBeInTheDocument();
-    const cells = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.trim());
-    expect(cells[1]).toBe('Lite');
-    expect(cells[4]).toBe('—');
-    expect(cells[5]).toBe('custom-unknown-task');
-  });
-
-  it('filters by category using the category dropdown', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-tool-sel',
-              kind: 'assignment_completed',
-              task_id: 'tool-select-file-read',
-              stage_label: 'assignment completed · Tool Selection · tool-select-file-read',
-            }),
-            liveEvent({
-              event_id: 'evt-exact-format',
-              kind: 'assignment_completed',
-              task_id: 'instruction-exact-format',
-              stage_label: 'assignment completed · Instruction Adherence · instruction-exact-format',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const categorySelect = screen.getByRole('combobox', { name: 'Filter by category' });
-    expect(categorySelect).toBeInTheDocument();
-    expect(screen.getByText('tool-select-file-read')).toBeInTheDocument();
-    expect(screen.getByText('instruction-exact-format')).toBeInTheDocument();
-
-    await user.selectOptions(categorySelect, 'Tool Selection');
-
-    expect(screen.getByText('tool-select-file-read')).toBeInTheDocument();
-    expect(screen.queryByText('instruction-exact-format')).not.toBeInTheDocument();
-  });
-
-  it('renders a visual run divider when consecutive events belong to different runs', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-run-2',
-              run_id: 'eval-init-model-2',
-              kind: 'assignment_completed',
-              observed_at: '2026-09-17T08:02:00Z',
-            }),
-            liveEvent({
-              event_id: 'evt-run-1',
-              run_id: 'eval-init-model-1',
-              kind: 'assignment_completed',
-              observed_at: '2026-09-17T08:01:00Z',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByTestId('run-divider-eval-init-model-1')).toBeInTheDocument();
-    expect(screen.getByText('Run: eval-init-model-1')).toBeInTheDocument();
-  });
-
-  it('switches to active run only and retains all run events past default limit', async () => {
-    const user = userEvent.setup();
-    // 120 events for active run 'eval-run-current', and 10 for 'eval-run-past'
-    const pastEvents = Array.from({ length: 10 }, (_, i) =>
-      liveEvent({
-        event_id: `past-${i}`,
-        run_id: 'eval-run-past',
-        kind: 'assignment_completed',
-        lifecycle_status: 'completed',
-        observed_at: `2026-09-17T07:${String(i).padStart(2, '0')}:00Z`,
-      }),
-    );
-    const currentEvents = Array.from({ length: 120 }, (_, i) =>
-      liveEvent({
-        event_id: `current-${i}`,
-        run_id: 'eval-run-current',
-        kind: 'assignment_completed',
-        observed_at: `2026-09-17T08:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00Z`,
-      }),
-    );
-    const allEvents = [...pastEvents, ...currentEvents];
-
-    render(
-      <MemoryRouter>
-        <LiveEventStream events={allEvents} connection="live" streamConnection="connected" />
-      </MemoryRouter>,
-    );
-
-    // Default 'All runs' is capped at 100 events
-    expect(screen.getByText(/Page 1 of 4 \(100 events\)/)).toBeInTheDocument();
-
-    const scopeSelect = screen.getByRole('combobox', { name: 'Filter by run scope' });
-    await user.selectOptions(scopeSelect, 'active');
-
-    // In active run mode, all 120 events for eval-run-current are retained
-    expect(screen.getByText(/Page 1 of 5 \(120 events\)/)).toBeInTheDocument();
-  });
-
-  it('renders an Assignment dropdown and filters events by assignment', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-asg-1',
-              assignment_id: 'asg-live-alpha',
-              task_id: 'task-alpha',
-              kind: 'assignment_completed',
-              observed_at: '2026-09-17T08:02:00Z',
-            }),
-            liveEvent({
-              event_id: 'evt-asg-2',
-              assignment_id: 'asg-live-beta',
-              task_id: 'task-beta',
-              kind: 'assignment_completed',
-              observed_at: '2026-09-17T08:01:00Z',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const assignmentSelect = screen.getByRole('combobox', { name: 'Filter by assignment' });
-    expect(assignmentSelect).toBeInTheDocument();
-    expect(screen.getByText('task-alpha')).toBeInTheDocument();
-    expect(screen.getByText('task-beta')).toBeInTheDocument();
-
-    await user.selectOptions(assignmentSelect, 'asg-live-alpha');
-
-    expect(screen.getByText('task-alpha')).toBeInTheDocument();
-    expect(screen.queryByText('task-beta')).not.toBeInTheDocument();
-  });
-
-  it('renders an abbreviated Assignment ID linking to the Assignment Details view', () => {
-    render(
-      <MemoryRouter>
-        <LiveEventStream
-          events={[
-            liveEvent({
-              event_id: 'evt-link-check',
-              dataset_id: 'ds-eval-1',
-              run_id: 'run-eval-1',
-              assignment_id: 'asg-long-assignment-identifier-12345',
-              kind: 'assignment_completed',
-            }),
-            liveEvent({
-              event_id: 'evt-no-asg',
-              dataset_id: 'ds-eval-1',
-              run_id: 'run-eval-1',
-              kind: 'evaluation_started',
-            }),
-          ]}
-          connection="live"
-          streamConnection="connected"
-        />
-      </MemoryRouter>,
-    );
-
-    const link = screen.getByRole('link', { name: 'asg-lo…' });
-    expect(link).toHaveAttribute(
-      'href',
-      '/evaluations/ds-eval-1/run-eval-1/assignments/asg-long-assignment-identifier-12345',
-    );
-    expect(link).toHaveAttribute('title', 'asg-long-assignment-identifier-12345');
-
-    const evaluationRow = screen.getByRole('link', { name: 'Evaluation Started' }).closest('tr');
-    expect(evaluationRow).toHaveTextContent('—');
-  });
 });

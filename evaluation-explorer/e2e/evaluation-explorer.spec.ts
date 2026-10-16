@@ -2,6 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { LIVE_EVENT_KINDS } from '../src/contract/types';
 import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult, fixtureModelSummaries, fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
 
 const mirrorOrigin = process.env.ZTD_PUBLIC_MIRROR_ORIGIN ?? 'http://127.0.0.1:8082';
@@ -100,7 +101,7 @@ async function installMirror(page: Page, records: object[] = runIds.map(nativeEv
         contentType: 'application/json',
         body: JSON.stringify({
           protocol_version: '1.0.0',
-          items: records.map((record, index) => ({ sequence: index + 1, record_type: 'projection', ...record })),
+          items: records.map((record, index) => ({ sequence: index + 1, record_type: LIVE_EVENT_KINDS.includes((record as { kind: typeof LIVE_EVENT_KINDS[number] }).kind) ? 'event' : 'projection', ...record })),
           has_more: false,
           limit: 100,
         }),
@@ -207,3 +208,59 @@ test('follows the evidence from a campaign through its assignment, model and tas
   await expect(page.getByRole('heading', { level: 1, name: assignment.task_id })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Recent assignments of this task' }).getByRole('link', { name: assignment.assignment_id })).toBeVisible();
 });
+
+for (const viewport of [
+  { width: 1440, height: 1000, theme: 'dark' },
+  { width: 1440, height: 1000, theme: 'light' },
+  { width: 900, height: 1000, theme: 'dark' },
+  { width: 390, height: 844, theme: 'dark' },
+]) {
+  test(`Live activity stays compact and opens evidence at ${viewport.width}px in ${viewport.theme} mode`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const failureReason = 'The model called file_read_on_operator instead of the required run_commands_with_operator.';
+    const taskIds = ['tool-arg-run-commands', 'tool-arg-grep-pattern', 'tool-arg-file-path', 'tech-log-parse', 'tech-error-diagnosis', 'tool-select-file-read'];
+    const assignments = taskIds.map((task, index) => ({
+      ...fixtureEnrichedAssignmentResult,
+      dataset_id: 'ds-live-redesign', run_id: 'live-design-run', assignment_id: `live-assignment-${index}`,
+      task_id: task, scenario_id: task, scenario_summary: undefined, scenario_category: undefined, variant_id: 'qwen3:8b', role: index % 2 === 0 ? 'primary' : 'assistant',
+      terminal_status: index === 0 ? 'model_failed' : index === 3 ? 'provider_failed' : 'completed',
+      metric_values: { pass: { value: index === 0 ? 0 : 1 } },
+      failure_reason: index === 0 ? failureReason : undefined,
+      resource_summary: { latency_ms: { value: 12000 + index * 1300 }, output_tokens: { value: 480 + index * 20 } },
+      benchmark_observations: { timing: { generation_ms: { value: 9000 } }, unavailable_reasons: [] },
+    }));
+    const events = assignments.map((assignment, index) => ({
+      schema_version: '1.4.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED',
+      kind: assignment.terminal_status === 'completed' ? 'assignment_completed' : 'assignment_failed',
+      dataset_id: assignment.dataset_id, run_id: assignment.run_id, assignment_id: assignment.assignment_id,
+      event_id: `live-event-${index}`, task_id: assignment.task_id, variant_id: assignment.variant_id, role: assignment.role,
+      quality_state: 'live_in_progress', lifecycle_status: 'completed', completed: index + 1, total: 75,
+      observed_at: new Date(Date.UTC(2026, 9, 16, 14, 58 - index)).toISOString(),
+    }));
+    const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: 'ds-live-redesign', run_id: 'live-design-run', model_role_mapping: { primary: 'qwen3:8b', assistant: 'qwen3:8b' } };
+    await installMirror(page, [run, ...assignments, ...events]);
+    await page.goto('/?release=all');
+    await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), viewport.theme);
+    const live = page.getByRole('region', { name: 'Live activity', exact: true });
+    await expect(live.locator('tbody tr')).toHaveCount(6);
+    await expect(live.getByText(failureReason)).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'What am I looking at?' })).toHaveCount(0);
+    await expect(live.getByRole('combobox', { name: 'Filter by category' })).not.toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await live.locator('.stream-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    if (viewport.width > 700) {
+      const heights = await live.locator('tbody tr').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(2);
+      expect(Math.max(...heights)).toBeLessThan(80);
+    }
+    await page.screenshot({ path: testInfo.outputPath('live-view.png'), fullPage: true });
+    await live.getByRole('button', { name: 'Pause live updates' }).click();
+    await expect(live.getByText('Paused', { exact: true })).toBeVisible();
+    await live.getByRole('button', { name: 'Resume live updates' }).click();
+    await live.getByRole('button', { name: 'Needs attention' }).click();
+    await expect(live.locator('tbody tr')).toHaveCount(2);
+    await live.getByRole('link', { name: 'tool-arg-run-commands — View details' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'tool-arg-run-commands' })).toBeVisible();
+    await expect(page.getByText(failureReason, { exact: true }).first()).toBeVisible();
+  });
+}

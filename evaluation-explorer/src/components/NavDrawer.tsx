@@ -16,7 +16,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { to: '/tasks', label: 'Tasks', description: 'Benchmark scenarios & task suite' },
   { to: '/models', label: 'Models', description: 'Evaluated models & scorecards' },
   { to: '/methodology', label: 'Docs', description: 'Methodology & governance specifications' },
-  { to: '/about', label: 'About', description: 'Platform architecture & verification' },
+  { to: '/about', label: 'About', description: 'Evaluation goals, project & builder' },
 ];
 
 export function NavDrawer() {

@@ -3,7 +3,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { CatalogSnapshot, EvaluationSummary, LiveEvent, ModelSummary, SnapshotRecord, SuiteSummary } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
@@ -130,14 +129,14 @@ describe('OverviewView', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('region', { name: 'Events' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Live activity' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Filter by release' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'System overview' })).not.toBeInTheDocument();
     expect(screen.queryByText('Active campaign')).not.toBeInTheDocument();
     expect(screen.queryByText(/live deployment of the ztd AI governance suite/i)).not.toBeInTheDocument();
   });
 
-  it('shows progress from every run in the selected release, including events arriving before summaries', () => {
+  it('shows activity from every run in the selected release, including events arriving before summaries', () => {
     const secondEvent: LiveEvent = {
       ...events[0]!,
       dataset_id: 'ds-live-second-run',
@@ -155,11 +154,10 @@ describe('OverviewView', () => {
 
     render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
 
-    const stream = within(screen.getByRole('region', { name: 'Events' }));
-    expect(stream.getByRole('link', { name: 'Assignment Failed' }).closest('tr')).toHaveTextContent('Provider Failed');
+    const stream = within(screen.getByRole('region', { name: 'Live activity' }));
+    expect(stream.getByRole('link', { name: /Provider Failed:.*View details/ })).toHaveAttribute('data-tone', 'neutral');
     expect(stream.getByRole('link', { name: 'smollm2-135m' })).toBeInTheDocument();
-    expect(stream.getByText('1/41')).toBeInTheDocument();
-    expect(stream.getByRole('link', { name: 'Stage Updated' })).toBeInTheDocument();
+    expect(stream.getByRole('link', { name: /Stage Updated:.*View details/ })).toBeInTheDocument();
   });
 
   it('filters live events by release even before a catalog or run summary arrives', () => {
@@ -170,27 +168,15 @@ describe('OverviewView', () => {
 
     render(<MemoryRouter initialEntries={['/?release=v1.1.2']}><OverviewView /></MemoryRouter>);
 
-    const stream = within(screen.getByRole('region', { name: 'Events' }));
+    const stream = within(screen.getByRole('region', { name: 'Live activity' }));
     expect(stream.getByRole('link', { name: 'current-model' })).toBeInTheDocument();
     expect(stream.queryByRole('link', { name: 'older-model' })).not.toBeInTheDocument();
   });
 
-  it('offers a condensed, interactive guide that links to Docs and Tasks', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={['/?release=all']}>
-        <OverviewView />
-      </MemoryRouter>,
-    );
-
-    const guide = within(screen.getByRole('region', { name: 'What am I looking at?' }));
-    expect(guide.getByRole('tab', { name: /Freeze/ })).toHaveAttribute('aria-selected', 'true');
-    await user.click(guide.getByRole('tab', { name: /Verify/ }));
-    expect(guide.getByRole('tab', { name: /Verify/ })).toHaveAttribute('aria-selected', 'true');
-    expect(guide.getByText(/report\.json \+ verification\.json/)).toBeInTheDocument();
-    expect(guide.getByRole('link', { name: /Read the Docs/ })).toHaveAttribute('href', '/methodology');
-    expect(guide.getByRole('link', { name: /Browse all \d+ tasks/ })).toHaveAttribute('href', '/tasks');
-    expect(guide.getByRole('link', { name: /Tool selection/ })).toHaveAttribute('href', '/tasks#category-tool_selection');
+  it('removes the landing page explainer while retaining recent runs', () => {
+    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    expect(screen.queryByRole('region', { name: 'What am I looking at?' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Recent runs' })).toBeInTheDocument();
   });
 
   it('presents recent runs with coverage for engineers without duplicate public data section', () => {
