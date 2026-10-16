@@ -3,8 +3,8 @@ doc_id: build_operator
 title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.1.2
+last_updated: 2026-10-16
 owners:
   - docs/guides/
   - cmd/ztd
@@ -57,7 +57,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | Gateway start command and flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Operator list/bind/run/stop commands | `internal/cli/cmd/operator/operator.go` | `./ztd operator --help` |
 | Vault administration | `internal/cli/cmd/vault/` | `./ztd vault --help` |
-| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.1.1` | `go get github.com/zerotrustdata/ztd@v1.1.1` |
+| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.1.2` | `go get github.com/zerotrustdata/ztd@v1.1.2` |
 
 ## Procedures
 

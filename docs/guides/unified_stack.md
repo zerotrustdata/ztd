@@ -3,8 +3,8 @@ doc_id: unified_stack
 title: Unified Stack Guide
 audience: platform operators and evaluators
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.1.2
+last_updated: 2026-10-16
 owners:
   - Makefile
   - docs/guides/

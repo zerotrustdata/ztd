@@ -289,6 +289,8 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.1.0 Compliance Evidence](../release_notes/v1.1.x/v1.1.0-compliance-evidence.md): Generated compliance evidence projection for v1.1.0.
 - [v1.1.1 Release Notes](../release_notes/v1.1.x/v1.1.1.md): v1.1.1 release scope and changes.
 - [v1.1.1 Compliance Evidence](../release_notes/v1.1.x/v1.1.1-compliance-evidence.md): Generated compliance evidence projection for v1.1.1.
+- [v1.1.2 Release Notes](../release_notes/v1.1.x/v1.1.2.md): v1.1.2 release scope and changes.
+- [v1.1.2 Compliance Evidence](../release_notes/v1.1.x/v1.1.2-compliance-evidence.md): Generated compliance evidence projection for v1.1.2.
 
 ## Procedures
 

@@ -7,7 +7,7 @@ ztd lets AI systems propose actions without giving them direct control over real
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
 
-The current version is **v1.1.1**. See the [release notes](docs/release_notes/v1.1.x/v1.1.1.md) for changes and validation results.
+The current version is **v1.1.2**. See the [release notes](docs/release_notes/v1.1.x/v1.1.2.md) for changes and validation results.
 
 ## What ztd does
 
@@ -133,7 +133,7 @@ go run ./examples/governance-envelope/
 go run ./examples/workload-identity/
 ```
 
-To use the protocol in your own Go module, run `go get github.com/zerotrustdata/ztd@v1.1.1`, import the packages, then `go mod tidy`. See [Use the Protocol Library](docs/guides/getting_started.md#use-the-protocol-library-go-module).
+To use the protocol in your own Go module, run `go get github.com/zerotrustdata/ztd@v1.1.2`, import the packages, then `go mod tidy`. See [Use the Protocol Library](docs/guides/getting_started.md#use-the-protocol-library-go-module).
 
 ## What is in the repo
 
