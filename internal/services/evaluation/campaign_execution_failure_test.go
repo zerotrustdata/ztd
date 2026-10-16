@@ -36,6 +36,7 @@ func TestBuildExecutorFailureAssignmentResult_ClassifiesProviderFailures(t *test
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, result.GetLifecycleStatus())
 	assert.NotEmpty(t, result.GetResultDigest())
+	assert.Equal(t, "Provider request timed out (backend_timeout); no final response was produced.", result.GetPublicFailureReason())
 }
 
 func TestBuildExecutorFailureAssignmentResult_ClassifiesValidationFailures(t *testing.T) {

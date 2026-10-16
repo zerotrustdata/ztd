@@ -119,6 +119,10 @@ func BuildExecutorFailureAssignmentResult(req AssignmentExecutionRequest, execEr
 		},
 		CompletedAt: timestamppb.New(now),
 	}
+	if class == ExecutionFailureProvider {
+		result.FailureReason = providerFailureReason(ProviderFailureClass(execErr))
+		result.PublicFailureReason = result.FailureReason
+	}
 	digest, err := ComputeAssignmentResultDigest(result)
 	if err != nil {
 		return nil, err

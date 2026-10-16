@@ -6,7 +6,7 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { matchesRelease, releaseLabel } from '../content/release';
-import { useDatasetOptions, useSelectedRelease } from '../state/dataset';
+import { useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
 import { WhatAmILookingAt } from '../components/WhatAmILookingAt';
@@ -181,12 +181,11 @@ function RecentRuns({
 
 export function OverviewView() {
   const release = useSelectedRelease();
-  const activeDatasetId = useDatasetOptions(release).find((option) => option.available && option.kind === 'live_run')?.id ?? '';
   const catalogs = useStoreState((state) => Array.from(state.catalogs.values()).filter((record) => matchesRelease(record, release)));
   const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)));
   const allModels = useStoreState((state) => Array.from(state.models.values()).filter((record) => matchesRelease(record, release)));
   const events = useStoreState((state) =>
-    state.events.filter((event) => event.dataset_id === activeDatasetId),
+    state.events.filter((event) => matchesRelease(event, release)),
   );
   const connection = useStoreState((state) => state.connection);
   const streamConnection = useStoreState((state) => state.streamConnection);

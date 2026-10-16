@@ -50,6 +50,19 @@ func TestGradeHomogeneousScenario_ProviderFailureLeadsWithAttemptClass(t *testin
 	assert.Equal(t, "role-invoked", first.GetCriterionId())
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, first.GetStatus())
 	assert.Equal(t, "designated model role was not invoked: provider_failure (capability_unsupported)", first.GetDetail())
+	assert.Equal(t, "Provider rejected a requested capability (capability_unsupported); no final response was produced.", grading.Trajectory.PublicFailureReason)
+}
+
+func TestGradeHomogeneousScenario_ContextFailureIsNotReportedAsModelBehavior(t *testing.T) {
+	req := providerFailureGradeRequest()
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
+		ProviderFailure: string(ExecutionFailureProvider), ProviderFailureClass: "context_overflow",
+	}
+	grading, err := GradeHomogeneousScenario(req, trace, agentTraceLifecycle(req, trace))
+	require.NoError(t, err)
+	assert.Equal(t, "Provider request exceeded the context limit (context_overflow); no final response was produced.", grading.Trajectory.PublicFailureReason)
+	assert.Equal(t, grading.Trajectory.PublicFailureReason, grading.Trajectory.FailureReason)
 }
 
 // A trace sealed before the attempt class existed recomputes to the grade it

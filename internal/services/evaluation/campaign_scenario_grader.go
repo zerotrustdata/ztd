@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -116,6 +117,13 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A provider failure is not an observed model answer or a missing tool call.
+	// Keep canonical grades and trajectory evidence intact, but lead diagnostics
+	// with the classified dispatch outcome instead of its downstream grade misses.
+	if g.lifecycle == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED {
+		privReason = providerFailureReason(inference.AttemptFailureClass(trace.ProviderFailureClass))
+		pubReason = privReason
+	}
 	return &ScenarioGradingResult{
 		DeterministicGrades: grades,
 		SemanticGrades:      semanticGrades,
@@ -127,6 +135,33 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			PublicFailureReason: pubReason,
 		},
 	}, nil
+}
+
+// providerFailureReason uses only fixed categories; provider error bodies may
+// contain prompts and must never be copied into a public failure sentence.
+func providerFailureReason(class inference.AttemptFailureClass) string {
+	var reason string
+	switch class {
+	case inference.AttemptFailureCapabilityRejected:
+		reason = "Provider rejected a requested capability (capability_unsupported)"
+	case inference.AttemptFailureContextOverflow:
+		reason = "Provider request exceeded the context limit (context_overflow)"
+	case inference.AttemptFailureBackendTimeout:
+		reason = "Provider request timed out (backend_timeout)"
+	case inference.AttemptFailureBackendUnavailable:
+		reason = "Provider could not be reached (backend_unavailable)"
+	case inference.AttemptFailureModelNotFound:
+		reason = "Provider could not find the requested model (model_not_found)"
+	case inference.AttemptFailureResponseInvalid:
+		reason = "Provider returned an invalid response (provider_response_invalid)"
+	case inference.AttemptFailureGenerateFailed:
+		reason = "Provider generation failed (generation_failed)"
+	case inference.AttemptFailureCanceled:
+		reason = "Inference request was canceled (canceled)"
+	default:
+		reason = "Inference failed before a final response"
+	}
+	return reason + "; no final response was produced."
 }
 
 // notInvokedDetail leads a provider failure with its attempt class, so a

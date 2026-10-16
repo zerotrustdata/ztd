@@ -292,6 +292,25 @@ func TestCampaignAgentExecutor_RunCommandsDispatchesModelWrittenCommandVerbatim(
 	assert.Equal(t, agentTestCommand, trace.ToolCalls[0].Command)
 }
 
+func TestCampaignAgentExecutor_DispatchesToolsDespiteRecordedProbeRejection(t *testing.T) {
+	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
+	f.req.Assignment.GetHomogeneous().CandidateVariant.CapabilityObservations = []*evalv1.ModelCapabilityObservation{
+		capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected tool-call probe"),
+	}
+
+	result, err := f.execute()
+
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
+	require.Len(t, f.inference.requests, 2, "past probe results must not suppress current provider requests")
+	for _, request := range f.inference.requests {
+		assert.Len(t, request.GetTools(), len(f.executor.catalog.Declarations()), "the provider receives the full tool catalog")
+		require.NotNil(t, request.GetToolChoice())
+		assert.Equal(t, operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO, request.GetToolChoice().GetMode())
+	}
+	assert.Empty(t, f.storedTrace().ProviderFailure)
+}
+
 func TestCampaignAgentExecutor_TraceRecordsExactInputThinkingAndProviderCallIDs(t *testing.T) {
 	turns := runCommandTurns(agentTestCommand)
 	turns[0] = append([]*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "  Read the health file first.\n"}}}, turns[0]...)

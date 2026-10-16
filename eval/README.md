@@ -39,11 +39,14 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 # governed provider-side alias-creation workflow is available.
 
 # 1. Freeze provider inventory into runtime registry. --probe-capabilities records
-#    each model's governed tool-calling probe, which rollout add uses to skip
-#    models the provider cannot serve with tools.
+#    governed capability observations for diagnostics. Probes never exclude a
+#    model or remove tools: every evaluation records the current provider response.
 ./ztd eval models freeze --probe-capabilities
 
 ./ztd eval models list
+
+# Inspect saved observations. A plain freeze replaces the registry without probes.
+./ztd eval models show smollm2:135m
 
 # 2. Build rollout queue from catalog models (default)
 ./ztd eval rollout add --all

@@ -29,6 +29,10 @@ func AssignmentOutcomeSummary(result *evalv1.EvaluationAssignmentResult) string 
 	verdict := strings.TrimPrefix(DerivePublicSummaryStatus(result).String(), verdictStatusPrefix)
 	var line strings.Builder
 	fmt.Fprintf(&line, "%s verdict=%s", lifecycle, verdict)
+	if result.GetLifecycleStatus() == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED && result.GetPublicFailureReason() != "" {
+		fmt.Fprintf(&line, " reason=%q", result.GetPublicFailureReason())
+		return line.String()
+	}
 	if rate, ok := DeterministicPassRate(result); ok {
 		fmt.Fprintf(&line, " pass_rate=%.1f%%", rate*100)
 	}

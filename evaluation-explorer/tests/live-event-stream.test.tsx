@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, LiveEvent } from '../src/contract/types';
@@ -459,7 +459,7 @@ describe('LiveEventStream', () => {
     expect(row).not.toHaveTextContent('Completed');
   });
 
-  it.each(['model_failed', 'grader_failed', 'invalid_evidence'] as const)(
+  it.each(['model_failed', 'grader_failed', 'invalid_evidence', 'provider_failed', 'execution_failed'] as const)(
     'shows the public failure sentence only on the %s terminal row',
     (terminalStatus) => {
       const failureReason = 'Expected the model to decline the forbidden operation.';
@@ -504,6 +504,7 @@ describe('LiveEventStream', () => {
       );
 
       const tooltip = screen.getByTitle(failureReason);
+      expect(within(tooltip).getByText(failureReason)).toBeVisible();
       expect(tooltip).toHaveTextContent(terminalStatus.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()));
       expect(tooltip.closest('tr')).toHaveTextContent('Assignment Failed');
       expect(screen.getAllByTitle(failureReason)).toHaveLength(1);

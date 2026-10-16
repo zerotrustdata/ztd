@@ -1352,6 +1352,7 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .role-leader-empty td { color: var(--fg-muted); font-size: var(--text-lg); }
 .stream-time { color: var(--fg-dim); font-size: var(--overview-meta-size, var(--text-md)); white-space: nowrap; }
 .stream-role { display: inline-flex; align-items: center; gap: 6px; font-size: var(--overview-meta-size, var(--text-md)); font-weight: 600; }
+.stream-failure-reason { display: block; margin-top: 4px; max-width: 32ch; color: var(--tone-warn); font-size: var(--overview-meta-size, var(--text-md)); line-height: 1.4; }
 .stream-event-value, .stream-event-link, .stream-task-link, .stream-category-link, .stream-assignment-link { white-space: nowrap; }
 .stream-event-link, .stream-assignment-link { color: var(--fg-muted); font-size: var(--overview-meta-size, var(--text-md)); }
 .stream-event-link:hover, .stream-task-link:hover, .stream-category-link:hover, .stream-assignment-link:hover { color: var(--accent); }

@@ -580,7 +580,10 @@ export function LiveEventStream({
                           {parts.kind}
                         </Link>
                       </td>
-                      <td title={failureReason}>{parts.status}</td>
+                      <td title={failureReason}>
+                        {parts.status}
+                        {failureReason ? <span className="stream-failure-reason">{failureReason}</span> : null}
+                      </td>
                       <td>
                         {categoryHref ? (
                           <Link to={categoryHref} className="stream-category-link">

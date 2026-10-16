@@ -137,6 +137,44 @@ describe('OverviewView', () => {
     expect(screen.queryByText(/live deployment of the ztd AI governance suite/i)).not.toBeInTheDocument();
   });
 
+  it('shows progress from every run in the selected release, including events arriving before summaries', () => {
+    const secondEvent: LiveEvent = {
+      ...events[0]!,
+      dataset_id: 'ds-live-second-run',
+      run_id: 'second-run',
+      assignment_id: 'tiny-model-assignment',
+      event_id: 'tiny-model-event',
+      variant_id: 'smollm2-135m',
+      kind: 'assignment_failed',
+      terminal_status: 'provider_failed',
+      lifecycle_status: 'failed',
+      completed: 1,
+      total: 41,
+    };
+    evalStore.loadFixtures([catalog, evaluation], [...events, secondEvent]);
+
+    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+
+    const stream = within(screen.getByRole('region', { name: 'Events' }));
+    expect(stream.getByRole('link', { name: 'Assignment Failed' }).closest('tr')).toHaveTextContent('Provider Failed');
+    expect(stream.getByRole('link', { name: 'smollm2-135m' })).toBeInTheDocument();
+    expect(stream.getByText('1/41')).toBeInTheDocument();
+    expect(stream.getByRole('link', { name: 'Stage Updated' })).toBeInTheDocument();
+  });
+
+  it('filters live events by release even before a catalog or run summary arrives', () => {
+    evalStore.loadFixtures([], [
+      { ...events[0]!, release: 'v1.1.2', release_basis: 'recorded', variant_id: 'current-model' },
+      { ...events[0]!, event_id: 'older-event', assignment_id: 'older-assignment', release: 'v1.1.1', release_basis: 'recorded', variant_id: 'older-model' },
+    ]);
+
+    render(<MemoryRouter initialEntries={['/?release=v1.1.2']}><OverviewView /></MemoryRouter>);
+
+    const stream = within(screen.getByRole('region', { name: 'Events' }));
+    expect(stream.getByRole('link', { name: 'current-model' })).toBeInTheDocument();
+    expect(stream.queryByRole('link', { name: 'older-model' })).not.toBeInTheDocument();
+  });
+
   it('offers a condensed, interactive guide that links to Docs and Tasks', async () => {
     const user = userEvent.setup();
     render(

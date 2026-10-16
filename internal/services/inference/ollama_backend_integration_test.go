@@ -676,8 +676,12 @@ func TestOllamaBackend_GenerateNonOKStatusReturnsErrInferenceGenerateFailed(t *t
 
 func TestOllamaBackend_GenerateToolsUnsupportedReturnsErrInferenceToolsUnsupported(t *testing.T) {
 	logger := testutil.NewTestLogger()
+	requests := make(chan ollamaChatRequest, 1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request ollamaChatRequest
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		requests <- request
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"registry.ollama.ai/sam860/LFM2:350m does not support tools"}`))
 	}))
@@ -698,6 +702,14 @@ func TestOllamaBackend_GenerateToolsUnsupportedReturnsErrInferenceToolsUnsupport
 	require.Error(t, err)
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, constants.ErrInferenceToolsUnsupported)
+	select {
+	case request := <-requests:
+		assert.Equal(t, "sam860/LFM2:350m", request.Model)
+		require.Len(t, request.Tools, 1, "the provider must receive the tool declaration before reporting unsupported")
+		assert.Equal(t, "get_command_constraints", request.Tools[0].Function.Name)
+	default:
+		t.Fatal("tool support must be rejected by the provider response, never by a local model capability assumption")
+	}
 }
 
 func TestOllamaBackend_GenerateThinkingUnsupportedReturnsErrInferenceCapabilityUnsupported(t *testing.T) {

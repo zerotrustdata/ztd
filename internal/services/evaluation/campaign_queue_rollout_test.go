@@ -107,7 +107,7 @@ func TestCampaignQueueAddVariants_KeepsQueuedEntriesAndStatus(t *testing.T) {
 	assert.Equal(t, "run-1", queue.Models[0].VerifiedRunID)
 }
 
-func TestCampaignQueueAddVariants_SkipsToolUnsupportedVariants(t *testing.T) {
+func TestCampaignQueueAddVariants_CapabilityObservationsDoNotExcludeModels(t *testing.T) {
 	queue := BuildInitCampaignQueue("", nil)
 	toolless := rolloutVariant("toolless", "m:toolless", 1_000_000_000)
 	toolless.CapabilityObservations = []*evalv1.ModelCapabilityObservation{
@@ -121,8 +121,8 @@ func TestCampaignQueueAddVariants_SkipsToolUnsupportedVariants(t *testing.T) {
 
 	intake, err := queue.AddVariants([]*evalv1.ModelVariant{toolless, failedProbe, unprobed}, nil, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"weak", "unprobed"}, rolloutQueueEntryIDs(queue), "a served model that fails the probe still produces scored evidence")
-	assert.Equal(t, []RolloutIntakeSkip{{VariantID: "toolless", ServedModelTag: "m:toolless", Reason: RolloutSkipToolCallingUnsupported}}, intake.Skipped)
+	assert.Equal(t, []string{"toolless", "weak", "unprobed"}, rolloutQueueEntryIDs(queue), "every selected model is attempted regardless of probe outcome")
+	assert.Empty(t, intake.Skipped)
 }
 
 func TestCampaignQueueAddVariants_CollapsesDigestAliases(t *testing.T) {
