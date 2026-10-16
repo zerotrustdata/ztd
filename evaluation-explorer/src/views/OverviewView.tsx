@@ -92,6 +92,7 @@ function RecentRuns({
                     ? 'Verification not applicable'
                     : 'Verification not run';
             const title = campaign.modelName ?? campaign.label;
+            const titleModel = campaign.models.find((model) => model.role === 'primary') ?? campaign.models[0];
             const otherModels = campaign.models.filter((model) => model.name !== campaign.modelName);
             const duration = runDurationSeconds(campaign, now);
             const running = campaign.lifecycleState === 'running';
@@ -99,16 +100,26 @@ function RecentRuns({
             return (
               <li key={campaign.datasetId} className="campaign-evidence-row">
                 <div className="campaign-evidence-title-row">
-                  <Link to={href} className="campaign-evidence-title" title={title}>
-                    {title}
-                  </Link>
+                  {titleModel ? (
+                    <Link
+                      to={`/models/${campaign.datasetId}/${titleModel.variantId}?role=${titleModel.role}`}
+                      className="campaign-evidence-title"
+                      title={title}
+                    >
+                      {title}
+                    </Link>
+                  ) : (
+                    <span className="campaign-evidence-title" title={title}>{title}</span>
+                  )}
                   <span className={`campaign-evidence-state status-${status}`}>
                     <span className="status-dot" aria-hidden="true" />
                     {campaign.lifecycleState ? capitalize(campaign.lifecycleState) : capitalize(campaign.qualityState.replaceAll('_', ' '))}
                   </span>
                 </div>
                 <div className="campaign-evidence-meta">
-                  <span title={campaign.label}>{campaign.label}</span>
+                  <span title={campaign.runId ?? campaign.label}>
+                    <Link to={href}>{campaign.runId ?? campaign.label}</Link>
+                  </span>
                   <span>{campaign.detail}</span>
                   <span>{releaseLabel(campaign)}</span>
                 </div>
@@ -116,7 +127,10 @@ function RecentRuns({
                   <ul className="campaign-evidence-roles" aria-label="Models by role">
                     {campaign.models.map((model) => (
                       <li key={model.role} title={model.variantId}>
-                        <span className="campaign-evidence-role">{roleLabel(model.role)}</span> {model.name}
+                        <span className="campaign-evidence-role">{roleLabel(model.role)}</span>{' '}
+                        <Link to={`/models/${campaign.datasetId}/${model.variantId}?role=${model.role}`}>
+                          {model.name}
+                        </Link>
                       </li>
                     ))}
                   </ul>

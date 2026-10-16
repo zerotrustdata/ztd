@@ -84,7 +84,7 @@ Publication is owned by the Go evaluation service. Campaign runs project lifecyc
 
 ## Expected browser states
 
-The overview first reconstructs bootstrap, complete paginated history, and the sealed snapshot, then connects SSE. A live run appears as queued, running, provisional assignment and metric updates, and finally completed, failed, or stopped without a refresh. Reload reconstructs the same state before SSE resumes. Current-standard verified, run-scoped verified, not fully verified, legacy unverified, in-progress, failed, unavailable, and not-evaluated states remain distinct; the site never averages datasets.
+The overview first reconstructs bootstrap, complete paginated history, and the sealed snapshot, then connects SSE. A live run appears as queued, running, provisional assignment and metric updates, and finally completed, failed, or stopped without a refresh. Reload reconstructs the same state before SSE resumes. In Recent Runs, model names link to their model definitions for the dataset and role; the run ID directly beneath the heading links to that run's evaluation details. Current-standard verified, run-scoped verified, not fully verified, legacy unverified, in-progress, failed, unavailable, and not-evaluated states remain distinct; the site never averages datasets.
 
 The Evaluations page defaults to all quality states for the selected release, keeping active runs and failures visible beside verified history. Its summary counts reflect the active filters; governance conformance and model campaigns have separate tables, rendered as cards below 900px. Use its quality filter to inspect verified runs only.
 

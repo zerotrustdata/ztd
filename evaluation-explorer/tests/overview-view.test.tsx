@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import type { CatalogSnapshot, EvaluationSummary, LiveEvent, SnapshotRecord, SuiteSummary } from '../src/contract/types';
+import type { CatalogSnapshot, EvaluationSummary, LiveEvent, ModelSummary, SnapshotRecord, SuiteSummary } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { OverviewView } from '../src/views/OverviewView';
 
@@ -175,5 +175,38 @@ describe('OverviewView', () => {
 
     expect(screen.queryByRole('region', { name: 'Public data and APIs' })).not.toBeInTheDocument();
     expect(screen.queryByText('Public data & APIs')).not.toBeInTheDocument();
+  });
+
+  it.each(['primary', 'assistant'] as const)('links the %s model to its definition and the run ID to evaluation details', (role) => {
+    const model: ModelSummary = {
+      schema_version: '1.4.0',
+      kind: 'model_summary',
+      dataset_id: datasetId,
+      quality_state: 'live_in_progress',
+      observed_at: evaluation.observed_at,
+      variant_id: 'ministral-3-8b',
+      display_name: 'Ministral 3 8B',
+      role,
+      inventory_only: false,
+      evaluation_coverage: 1,
+    };
+    evalStore.loadFixtures([
+      catalog, model,
+      { ...evaluation, model_role_mapping: { [role]: model.variant_id } },
+    ], []);
+
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <OverviewView />
+      </MemoryRouter>,
+    );
+
+    const recent = within(screen.getByRole('region', { name: 'Recent runs' }));
+    expect(recent.getByRole('link', { name: model.display_name })).toHaveAttribute(
+      'href', `/models/${datasetId}/${model.variant_id}?role=${role}`,
+    );
+    expect(recent.getByRole('link', { name: evaluation.run_id })).toHaveAttribute(
+      'href', `/evaluations/${datasetId}/${evaluation.run_id}`,
+    );
   });
 });

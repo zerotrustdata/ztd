@@ -422,19 +422,23 @@ type runCancelJSON struct {
 	Stopped      int    `json:"stopped"`
 	ClearedStale bool   `json:"cleared_stale_lease"`
 	WasRunning   bool   `json:"was_running"`
+	Published    int    `json:"published"`
 }
 
 func runsCancelCmd(deps nativeEvalDeps) *cobra.Command {
-	return &cobra.Command{
+	var publish bool
+	cmd := &cobra.Command{
 		Use:   "cancel <run>",
 		Short: "Cancel a run: stop after the current assignment and stop the rest",
 		Long: `Cancel a run. A run whose process is alive is asked to stop; cancel waits for
 its current assignment to reach a terminal record and then stops every remaining
-assignment. A lease whose process is gone is cleared and reported.`,
+assignment. A lease whose process is gone is cleared and reported. With --publish
+the stopped assignments and the run's stopped summary are published to the
+public mirror, so the explorer stops reporting the run as running.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
-			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
+			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
@@ -475,13 +479,27 @@ assignment. A lease whose process is gone is cleared and reported.`,
 			if result.Stopped, err = controller.CancelRun(cmd.Context(), runID); err != nil {
 				return fmt.Errorf("evaluation: runs cancel: %w", err)
 			}
+			if publish {
+				publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
+				if result.Published, err = publication.PublishRunCatchUp(cmd.Context(), runID); err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
+			}
 			if jsonOutput {
 				return output.WriteJSON(out, result)
 			}
 			_, err = fmt.Fprintf(out, "Cancelled run %s: stopped %d assignment(s)\n", runID, result.Stopped)
+			if err == nil && publish {
+				_, err = fmt.Fprintf(out, "Published %d projection record(s) for run %s\n", result.Published, runID)
+			}
 			return err
 		},
 	}
+	cmd.Flags().BoolVar(&publish, "publish", true, "Publish the stopped assignments and run summary to the public mirror")
+	return cmd
 }
 
 // awaitRunStop asks the process holding a run's lease to stop and waits until

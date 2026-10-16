@@ -27,7 +27,7 @@ func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
-	out := env.mustRun(t, "runs", "cancel", "run-a-1")
+	out := env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 	assert.Contains(t, out, fmt.Sprintf("Cancelled run run-a-1: stopped %d assignment(s)", evaluation.DefaultSuiteScenarioCount))
 
 	var show runShowJSON
@@ -42,7 +42,7 @@ func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	var payload runCancelJSON
-	require.NoError(t, env.runJSON(t, &payload, "runs", "cancel", "run-a-1"))
+	require.NoError(t, env.runJSON(t, &payload, "runs", "cancel", "run-a-1", "--publish=false"))
 	assert.Equal(t, "run-a-1", payload.RunID)
 	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Stopped)
 	assert.False(t, payload.WasRunning)
@@ -55,7 +55,7 @@ func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
 	env.holdRun(t, "run-a-1")
 	env.control.setAlive(otherHostPID, false)
 
-	out := env.mustRun(t, "runs", "cancel", "run-a-1")
+	out := env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 	assert.Contains(t, out, "Cleared stale lease held by process 9999 on test-host")
 
 	_, err := env.store(t).LoadRunLease(context.Background(), "run-a-1")
@@ -73,7 +73,7 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		out, err := env.run(t, "runs", "cancel", "run-a-1")
+		out, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
 		done <- outcome{out, err}
 	}()
 
@@ -107,7 +107,7 @@ func TestRunsCancel_RejectsMissingAndArchivedRuns(t *testing.T) {
 	assert.Contains(t, err.Error(), "runs cancel")
 
 	env.mustRun(t, "runs", "archive", "run-a-1")
-	_, err = env.run(t, "runs", "cancel", "run-a-1")
+	_, err = env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvaluationArchived)
 }
@@ -115,7 +115,7 @@ func TestRunsCancel_RejectsMissingAndArchivedRuns(t *testing.T) {
 func TestRunsResume_DoesNotResumeAStoppedRun(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
-	env.mustRun(t, "runs", "cancel", "run-a-1")
+	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 
 	store := env.store(t)
 	controller := evaluation.NewCampaignController(store, nil, env.deps.now, func(prefix string) string { return prefix + "-id" })
@@ -128,7 +128,7 @@ func TestRunsResume_DoesNotResumeAStoppedRun(t *testing.T) {
 func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
-	env.mustRun(t, "runs", "cancel", "run-a-1")
+	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 
 	out := env.mustRun(t, "runs", "show", "run-a-1", "--watch")
 	assert.Contains(t, out, "Status: cancelled")
@@ -149,7 +149,7 @@ func TestRunsShow_WatchFollowsARunUntilItSettles(t *testing.T) {
 	case <-time.After(60 * time.Millisecond):
 	}
 
-	env.mustRun(t, "runs", "cancel", "run-a-1")
+	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 	select {
 	case out := <-done:
 		assert.Contains(t, out, "cancelled")

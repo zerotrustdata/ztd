@@ -164,9 +164,13 @@ type runAggregateState struct {
 	// (completed or model_failed). It is the pass-rate denominator: a provider,
 	// harness, grader, escalation, policy, or stopped ending is terminal but
 	// says nothing about the model, so it never lowers the rate.
-	Judged         uint32
-	Passed         uint32
+	Judged uint32
+	Passed uint32
+	// Failed counts terminal assignments that ended in any failure outcome.
+	// Stopped assignments never ran to an outcome, so they count in Stopped
+	// instead and a cancelled run reports stopped rather than completed.
 	Failed         uint32
+	Stopped        uint32
 	ModelCount     uint32
 	VariantRoles   map[string]*variantRoleAggregate
 	EvaluatedCount uint32
@@ -330,43 +334,13 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 			buckets = append(buckets, bucket)
 		}
 		result := results[assignment.GetAssignmentId()]
-		if result == nil {
-			if !assignmentLifecycleIsTerminal(assignment.GetLifecycleStatus()) {
-				continue
-			}
-			terminalStatus, err := AssignmentTerminalOutcome(assignment.GetLifecycleStatus(), nil)
-			if err != nil {
-				return nil, fmt.Errorf("evaluation: collect run aggregate state: assignment %s: %w", assignment.GetAssignmentId(), err)
-			}
-			state.Terminal++
-			passed := terminalStatus == TerminalOutcomeCompleted
-			judged := terminalOutcomeIsJudged(terminalStatus)
-			if judged {
-				state.Judged++
-			}
-			if passed {
-				state.Passed++
-			} else {
-				state.Failed++
-			}
-			for _, bucket := range buckets {
-				if judged {
-					bucket.Judged++
-				}
-				if passed {
-					bucket.Passed++
-				} else {
-					bucket.Failed++
-				}
-				bucket.Terminal++
-				bucket.Outcomes[terminalStatus]++
-			}
-			for _, pair := range variantRoles {
-				evaluatedVariants[pair.variantID] = struct{}{}
-			}
+		lifecycle := assignment.GetLifecycleStatus()
+		if result != nil {
+			lifecycle = result.GetLifecycleStatus()
+		} else if !assignmentLifecycleIsTerminal(lifecycle) {
 			continue
 		}
-		terminalStatus, err := AssignmentTerminalOutcome(result.GetLifecycleStatus(), result)
+		terminalStatus, err := AssignmentTerminalOutcome(lifecycle, result)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: collect run aggregate state: assignment %s: %w", assignment.GetAssignmentId(), err)
 		}
@@ -376,9 +350,12 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 		if judged {
 			state.Judged++
 		}
-		if passed {
+		switch {
+		case passed:
 			state.Passed++
-		} else {
+		case terminalStatus == TerminalOutcomeStopped:
+			state.Stopped++
+		default:
 			state.Failed++
 		}
 		for _, bucket := range buckets {
@@ -1404,12 +1381,16 @@ func qualityStateForModelSummary(terminal uint32) string {
 // lifecycleStateForAggregate maps canonical assignment counters to the explorer
 // lifecycle_state enum. Scheduled runs with no terminal outcomes report queued
 // rather than running so rollout starts that never executed are distinguishable
-// from runs actively processing assignments.
+// from runs actively processing assignments. A settled run with any stopped
+// assignment was cancelled and reports stopped.
 func lifecycleStateForAggregate(state *runAggregateState) string {
 	if state == nil {
 		return "running"
 	}
 	if runAggregateSettled(state) {
+		if state.Stopped > 0 {
+			return "stopped"
+		}
 		return "completed"
 	}
 	if state.Terminal == 0 {
