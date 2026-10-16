@@ -16,10 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -487,6 +484,7 @@ type FormationObserverEvidence struct {
 // FormationProvenanceOperator attests sovereign model weights at their storage boundary.
 type FormationProvenanceOperator interface {
 	Attest(ctx context.Context, model FormationModel) (*FormationAttestation, error)
+	AttestAttempt(ctx context.Context, providerAttemptID string, model FormationModel) (*FormationAttestation, error)
 }
 
 // FormationProviderObserver brackets one role execution at the provider boundary.
@@ -575,6 +573,7 @@ type FormationRoleTelemetry struct {
 	StateMutation           bool
 	PolicyValidation        FormationPolicyValidation
 	ObserverEvidence        *FormationObserverEvidence
+	PreflightEvidence       *FormationAttestation
 	ProvenanceEvidence      *FormationAttestation
 }
 
@@ -738,11 +737,25 @@ func (r *FormationRunner) Run(ctx context.Context, formation Formation, initialS
 			return result, fmt.Errorf("formation: observer evidence %s: %w", role, constants.ErrFormationWitnessUnavailable)
 		}
 		observedPeak := observedPeakVRAMMiB(observation.Window)
+		var provenanceEvidence *FormationAttestation
+		if model.Trust == FormationTrustDelegated {
+			provenanceEvidence = &FormationAttestation{Verified: true}
+		} else if r.provenance != nil && roleResult.ProviderAttemptID != "" {
+			var provErr error
+			provenanceEvidence, provErr = r.provenance.AttestAttempt(ctx, roleResult.ProviderAttemptID, model)
+			if provErr != nil {
+				return result, fmt.Errorf("formation: attest attempt %s: %w", role, provErr)
+			}
+		}
+		if model.Trust == FormationTrustSovereign && (provenanceEvidence == nil || provenanceEvidence.Window == nil) {
+			return result, fmt.Errorf("formation: provenance evidence %s: %w", role, constants.ErrFormationWitnessUnavailable)
+		}
+		preflightAttestation := attestationForRole(attestations, role)
 		telemetry := FormationRoleTelemetry{
 			Role: role, Model: model, AttemptID: attemptID,
 			AttestationStatus:       formationAttestationStatus(model.Trust),
-			AttestationVerified:     model.Trust == FormationTrustDelegated || attestations[formationAttestationIndex(role)].Verified,
-			AttestationDigest:       attestations[formationAttestationIndex(role)].Digest,
+			AttestationVerified:     model.Trust == FormationTrustDelegated || (preflightAttestation.Verified && (provenanceEvidence == nil || provenanceEvidence.Verified)),
+			AttestationDigest:       preflightAttestation.Digest,
 			ProviderAttemptID:       roleResult.ProviderAttemptID,
 			UsageAvailability:       roleResult.UsageAvailability,
 			PromptTokens:            roleResult.PromptTokens,
@@ -754,7 +767,8 @@ func (r *FormationRunner) Run(ctx context.Context, formation Formation, initialS
 			LoadState:          roleResult.LoadState,
 			RetryCount:         roleResult.RetryCount,
 			ObserverEvidence:   observation,
-			ProvenanceEvidence: bindFormationProvenanceEvidence(attestationForRole(attestations, role), roleResult.ProviderAttemptID),
+			PreflightEvidence:  preflightAttestation,
+			ProvenanceEvidence: bindFormationProvenanceEvidence(provenanceEvidence, roleResult.ProviderAttemptID),
 		}
 		if telemetry.GenerationDurationNanos > 0 {
 			telemetry.GenerationTokensPerSec = float64(telemetry.GenerationTokens) / (float64(telemetry.GenerationDurationNanos) / float64(time.Second))
@@ -818,24 +832,10 @@ func bindFormationProvenanceEvidence(attestation *FormationAttestation, provider
 	if attestation == nil || attestation.Window == nil || providerAttemptID == "" {
 		return attestation
 	}
-	if attestation.Window.GetProviderAttemptId() == providerAttemptID {
-		return attestation
+	if attestation.Window.GetProviderAttemptId() != providerAttemptID {
+		return nil
 	}
-	cloned, ok := proto.Clone(attestation.Window).(*evalv1.ModelProvenanceAttestationWindow)
-	if !ok {
-		return attestation
-	}
-	cloned.ProviderAttemptId = providerAttemptID
-	digest, err := model_provenance.ComputeAttestationDigest(cloned)
-	if err != nil {
-		return attestation
-	}
-	cloned.AttestationDigest = digest
-	return &FormationAttestation{
-		Verified: attestation.Verified,
-		Digest:   attestation.Digest,
-		Window:   cloned,
-	}
+	return attestation
 }
 
 func observedPeakVRAMMiB(window *evalv1.ProviderBoundaryObservationWindow) uint64 {

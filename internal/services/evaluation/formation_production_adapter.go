@@ -28,6 +28,12 @@ type FormationProvenancePreflight interface {
 	PreflightSovereignModel(ctx context.Context, model FormationModel) (*FormationAttestation, error)
 }
 
+// FormationProvenanceLoader loads model provenance attestation evidence keyed by
+// provider_attempt_id after governed inference completes.
+type FormationProvenanceLoader interface {
+	LoadProvenanceWindow(ctx context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error)
+}
+
 // FormationObservationLoader loads provider-boundary evidence keyed by
 // provider_attempt_id after governed inference completes.
 type FormationObservationLoader interface {
@@ -47,6 +53,7 @@ type FormationProductionDependencies struct {
 	RunContext             FormationRunContext
 	Variants               []*evalv1.ModelVariant
 	ProvenancePreflight    FormationProvenancePreflight
+	ProvenanceLoader       FormationProvenanceLoader
 	ObservationLoader      FormationObservationLoader
 	InferenceDispatcher    FormationInferenceDispatcher
 	ModelCommandDispatcher OllamaModelCommandDispatcher
@@ -58,7 +65,7 @@ type FormationProductionDependencies struct {
 // NewFormationProductionRunner constructs a FormationRunner backed by governed
 // production adapters instead of the in-memory harness fakes.
 func NewFormationProductionRunner(deps FormationProductionDependencies) (*FormationRunner, error) {
-	if deps.InferenceDispatcher == nil || deps.ProvenancePreflight == nil || deps.ObservationLoader == nil {
+	if deps.InferenceDispatcher == nil || deps.ProvenancePreflight == nil || deps.ObservationLoader == nil || deps.ProvenanceLoader == nil {
 		return nil, fmt.Errorf("formation: production runner: %w", constants.ErrFormationRunnerDependency)
 	}
 	if deps.RunContext.InferenceSessionID == "" || deps.RunContext.CampaignID == "" || deps.RunContext.ModelRegistryDigest == "" {
@@ -83,7 +90,10 @@ func NewFormationProductionRunner(deps FormationProductionDependencies) (*Format
 		dispatcher:     deps.InferenceDispatcher,
 	}
 	runner, err := NewFormationRunner(
-		&formationProductionProvenance{preflight: deps.ProvenancePreflight},
+		&formationProductionProvenance{
+			preflight: deps.ProvenancePreflight,
+			loader:    deps.ProvenanceLoader,
+		},
 		&formationProductionObserver{loader: deps.ObservationLoader},
 		&formationProductionAllocator{
 			runContext:      deps.RunContext,
@@ -158,6 +168,58 @@ func (l *retryingFormationObservationLoader) LoadObservationWindow(ctx context.C
 	return nil, fmt.Errorf("formation: observation window %q: %w", providerAttemptID, lastErr)
 }
 
+type retryingFormationProvenanceLoader struct {
+	load     func(context.Context, string) (*evalv1.ModelProvenanceAttestationWindow, error)
+	attempts int
+	delay    time.Duration
+}
+
+// NewRetryingFormationProvenanceLoader polls for model provenance attestation windows when
+// gateway evidence persistence trails governed inference completion.
+func NewRetryingFormationProvenanceLoader(
+	load func(context.Context, string) (*evalv1.ModelProvenanceAttestationWindow, error),
+	attempts int,
+	delay time.Duration,
+) FormationProvenanceLoader {
+	if attempts <= 0 {
+		attempts = 1
+	}
+	return &retryingFormationProvenanceLoader{load: load, attempts: attempts, delay: delay}
+}
+
+func (l *retryingFormationProvenanceLoader) LoadProvenanceWindow(ctx context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error) {
+	if l == nil || l.load == nil {
+		return nil, fmt.Errorf("formation: provenance loader: %w", constants.ErrFormationRunnerDependency)
+	}
+	var lastErr error
+	for attempt := 0; attempt < l.attempts; attempt++ {
+		window, err := l.load(ctx, providerAttemptID)
+		if err == nil && window != nil {
+			return window, nil
+		}
+		lastErr = err
+		if attempt+1 == l.attempts {
+			break
+		}
+		if l.delay > 0 {
+			timer := time.NewTimer(l.delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	if lastErr == nil {
+		lastErr = constants.ErrFormationWitnessUnavailable
+	}
+	if errors.Is(lastErr, constants.ErrNotFound) {
+		return nil, fmt.Errorf("formation: provenance window %q: %w", providerAttemptID, constants.ErrFormationWitnessUnavailable)
+	}
+	return nil, fmt.Errorf("formation: provenance window %q: %w", providerAttemptID, lastErr)
+}
+
 // RunFormationProduction binds one frozen formation stack to frozen registry
 // digests and executes it through governed production adapters.
 func RunFormationProduction(ctx context.Context, binding FormationBindingRequest, deps FormationProductionDependencies, initialState []byte) (*FormationRunResult, error) {
@@ -174,6 +236,7 @@ func RunFormationProduction(ctx context.Context, binding FormationBindingRequest
 
 type formationProductionProvenance struct {
 	preflight FormationProvenancePreflight
+	loader    FormationProvenanceLoader
 }
 
 func (p *formationProductionProvenance) Attest(ctx context.Context, model FormationModel) (*FormationAttestation, error) {
@@ -184,6 +247,27 @@ func (p *formationProductionProvenance) Attest(ctx context.Context, model Format
 		return nil, fmt.Errorf("formation: provenance preflight: %w", constants.ErrFormationRunnerDependency)
 	}
 	return p.preflight.PreflightSovereignModel(ctx, model)
+}
+
+func (p *formationProductionProvenance) AttestAttempt(ctx context.Context, providerAttemptID string, model FormationModel) (*FormationAttestation, error) {
+	if model.Trust == FormationTrustDelegated {
+		return &FormationAttestation{Verified: true}, nil
+	}
+	if p == nil || p.loader == nil {
+		return nil, fmt.Errorf("formation: provenance loader: %w", constants.ErrFormationRunnerDependency)
+	}
+	window, err := p.loader.LoadProvenanceWindow(ctx, providerAttemptID)
+	if err != nil {
+		return nil, fmt.Errorf("formation: provenance attestation %s: %w", model.ServedModelTag, err)
+	}
+	if window == nil {
+		return nil, fmt.Errorf("formation: provenance attestation %s: %w", model.ServedModelTag, constants.ErrFormationWitnessUnavailable)
+	}
+	return &FormationAttestation{
+		Verified: window.GetDigestMatch(),
+		Digest:   window.GetAttestationDigest(),
+		Window:   window,
+	}, nil
 }
 
 type formationProductionObserver struct {

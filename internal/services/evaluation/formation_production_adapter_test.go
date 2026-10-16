@@ -48,6 +48,27 @@ func seedFormationObservationWindow(loader *stubFormationObservationLoader, atte
 	}
 }
 
+type stubFormationProvenanceLoader struct {
+	windows map[string]*evalv1.ModelProvenanceAttestationWindow
+}
+
+func (s *stubFormationProvenanceLoader) LoadProvenanceWindow(_ context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error) {
+	if s == nil || s.windows[providerAttemptID] == nil {
+		return nil, constants.ErrNotFound
+	}
+	return s.windows[providerAttemptID], nil
+}
+
+func seedFormationProvenanceWindow(loader *stubFormationProvenanceLoader, attemptID, modelDigest string) {
+	loader.windows[attemptID] = &evalv1.ModelProvenanceAttestationWindow{
+		ProviderAttemptId:   attemptID,
+		ExpectedModelDigest: modelDigest,
+		ObservedModelDigest: modelDigest,
+		AttestationDigest:   "digest-" + attemptID,
+		DigestMatch:         true,
+	}
+}
+
 type recordingFormationInferenceDispatcher struct {
 	requests []*operatorv1.InferenceDispatchRequest
 }
@@ -86,12 +107,17 @@ func ultraEfficientSpeedsterProductionDeps(t *testing.T, dispatcher *recordingFo
 	registryDigest, err := models.ComputeInferenceModelRegistryDigest("formation-campaign", inferenceVariants)
 	require.NoError(t, err)
 	observer := &stubFormationObservationLoader{windows: map[string]*evalv1.ProviderBoundaryObservationWindow{}}
-	for _, attemptID := range []string{
-		"ultra-efficient-speedster-lite-id",
-		"ultra-efficient-speedster-assistant-id",
-		"ultra-efficient-speedster-primary-id",
+	provenanceLoader := &stubFormationProvenanceLoader{windows: map[string]*evalv1.ModelProvenanceAttestationWindow{}}
+	for _, item := range []struct {
+		attemptID   string
+		modelDigest string
+	}{
+		{"ultra-efficient-speedster-lite-id", variants[2].GetModelDigest()},
+		{"ultra-efficient-speedster-assistant-id", variants[1].GetModelDigest()},
+		{"ultra-efficient-speedster-primary-id", variants[0].GetModelDigest()},
 	} {
-		seedFormationObservationWindow(observer, attemptID)
+		seedFormationObservationWindow(observer, item.attemptID)
+		seedFormationProvenanceWindow(provenanceLoader, item.attemptID, item.modelDigest)
 	}
 	return FormationProductionDependencies{
 		RunContext: FormationRunContext{
@@ -104,6 +130,7 @@ func ultraEfficientSpeedsterProductionDeps(t *testing.T, dispatcher *recordingFo
 		},
 		Variants:               variants,
 		ProvenancePreflight:    stubFormationProvenancePreflight{},
+		ProvenanceLoader:       provenanceLoader,
 		ObservationLoader:      observer,
 		InferenceDispatcher:    dispatcher,
 		ModelCommandDispatcher: modelDispatcher,

@@ -29,6 +29,26 @@ func (p *FormationHarnessProvenance) Attest(_ context.Context, model FormationMo
 	return &FormationAttestation{Verified: true, Digest: model.ModelDigest}, nil
 }
 
+func (p *FormationHarnessProvenance) AttestAttempt(_ context.Context, providerAttemptID string, model FormationModel) (*FormationAttestation, error) {
+	if p != nil {
+		p.Events = append(p.Events, "attest-attempt:"+providerAttemptID+":"+model.VariantID)
+	}
+	if model.Trust == FormationTrustDelegated {
+		return &FormationAttestation{Verified: true}, nil
+	}
+	return &FormationAttestation{
+		Verified: true,
+		Digest:   model.ModelDigest,
+		Window: &evalv1.ModelProvenanceAttestationWindow{
+			ProviderAttemptId:   providerAttemptID,
+			AttestationDigest:   "harness-provenance-" + providerAttemptID,
+			ExpectedModelDigest: model.ModelDigest,
+			ObservedModelDigest: model.ModelDigest,
+			DigestMatch:         true,
+		},
+	}, nil
+}
+
 // FormationHarnessObserver records provider-boundary bracketing for isolated tests.
 type FormationHarnessObserver struct {
 	Events []string

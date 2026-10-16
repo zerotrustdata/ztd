@@ -54,6 +54,14 @@ func (r *CampaignFormationWitnessReader) persistRoleWitnessEvidence(ctx context.
 			return fmt.Errorf("evaluation: persist formation observer evidence: %w", err)
 		}
 	}
+	if role.PreflightEvidence != nil && role.PreflightEvidence.Window != nil {
+		if r.modelProvenance == nil {
+			return fmt.Errorf("evaluation: persist formation preflight evidence: %w", constants.ErrMissingRequiredField)
+		}
+		if err := r.modelProvenance.ImportProvenanceWindow(ctx, role.PreflightEvidence.Window); err != nil {
+			return fmt.Errorf("evaluation: persist formation preflight evidence: %w", err)
+		}
+	}
 	if role.ProvenanceEvidence != nil && role.ProvenanceEvidence.Window != nil {
 		if r.modelProvenance == nil {
 			return fmt.Errorf("evaluation: persist formation provenance evidence: %w", constants.ErrMissingRequiredField)
@@ -140,6 +148,19 @@ func VerifyFormationWitnessEvidence(
 		if role.ModelDigest != "" && provenanceWindow.GetExpectedModelDigest() != "" && provenanceWindow.GetExpectedModelDigest() != role.ModelDigest {
 			failures = append(failures, fmt.Sprintf("formation role %s provenance expected digest mismatch", role.Role))
 		}
+		if role.PreflightAttemptID != "" && role.PreflightAttestationDigest != "" {
+			preflightWindow, err := provenanceReader.LoadProvenanceWindow(ctx, role.PreflightAttemptID)
+			if err != nil {
+				failures = append(failures, fmt.Sprintf("formation role %s preflight window load failed: %v", role.Role, err))
+			} else {
+				if preflightWindow.GetAttestationDigest() != role.PreflightAttestationDigest {
+					failures = append(failures, fmt.Sprintf("formation role %s preflight digest mismatch", role.Role))
+				}
+				if role.ModelDigest != "" && preflightWindow.GetExpectedModelDigest() != "" && preflightWindow.GetExpectedModelDigest() != role.ModelDigest {
+					failures = append(failures, fmt.Sprintf("formation role %s preflight expected digest mismatch", role.Role))
+				}
+			}
+		}
 	}
 	return failures
 }
@@ -152,6 +173,14 @@ func formationRoleWitnessDigests(role FormationRoleTelemetry) (observerDigest, p
 		provenanceDigest = role.ProvenanceEvidence.Window.GetAttestationDigest()
 	}
 	return observerDigest, provenanceDigest
+}
+
+func formationRolePreflightEvidence(role FormationRoleTelemetry) (preflightAttemptID, preflightDigest string) {
+	if role.PreflightEvidence != nil && role.PreflightEvidence.Window != nil {
+		preflightAttemptID = role.PreflightEvidence.Window.GetProviderAttemptId()
+		preflightDigest = role.PreflightEvidence.Window.GetAttestationDigest()
+	}
+	return preflightAttemptID, preflightDigest
 }
 
 // ImportObservationWindow persists one provider-boundary observation window.

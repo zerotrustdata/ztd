@@ -62,6 +62,8 @@ type persistedFormationRoleTelemetry struct {
 	AttestationStatus           string  `json:"attestation_status"`
 	AttestationVerified         bool    `json:"attestation_verified"`
 	AttestationDigest           string  `json:"attestation_digest,omitempty"`
+	PreflightAttemptID          string  `json:"preflight_attempt_id,omitempty"`
+	PreflightAttestationDigest  string  `json:"preflight_attestation_digest,omitempty"`
 	ProviderAttemptID           string  `json:"provider_attempt_id"`
 	ObserverObservationDigest   string  `json:"observer_observation_digest,omitempty"`
 	ProvenanceAttestationDigest string  `json:"provenance_attestation_digest,omitempty"`
@@ -284,6 +286,7 @@ func formationRunResultToPersisted(result *FormationRunResult) persistedFormatio
 	}
 	for _, role := range result.Roles {
 		observerDigest, provenanceDigest := formationRoleWitnessDigests(role)
+		preflightAttemptID, preflightDigest := formationRolePreflightEvidence(role)
 		out.Roles = append(out.Roles, persistedFormationRoleTelemetry{
 			Role:                        string(role.Role),
 			VariantID:                   role.Model.VariantID,
@@ -295,6 +298,8 @@ func formationRunResultToPersisted(result *FormationRunResult) persistedFormatio
 			AttestationStatus:           string(role.AttestationStatus),
 			AttestationVerified:         role.AttestationVerified,
 			AttestationDigest:           role.AttestationDigest,
+			PreflightAttemptID:          preflightAttemptID,
+			PreflightAttestationDigest:  preflightDigest,
 			ProviderAttemptID:           role.ProviderAttemptID,
 			ObserverObservationDigest:   observerDigest,
 			ProvenanceAttestationDigest: provenanceDigest,
@@ -342,6 +347,18 @@ func persistedFormationRunResultToDomain(result persistedFormationRunResult) *Fo
 			FinishReason:            role.FinishReason,
 			LoadState:               persistedFormationLoadState(role.LoadState),
 			RetryCount:              role.RetryCount,
+		}
+		if role.PreflightAttemptID != "" && role.PreflightAttestationDigest != "" {
+			telemetry.PreflightEvidence = &FormationAttestation{
+				Verified: true,
+				Digest:   role.AttestationDigest,
+				Window: &evalv1.ModelProvenanceAttestationWindow{
+					ProviderAttemptId:   role.PreflightAttemptID,
+					AttestationDigest:   role.PreflightAttestationDigest,
+					ExpectedModelDigest: role.ModelDigest,
+					ObservedModelDigest: role.ModelDigest,
+				},
+			}
 		}
 		if role.ObserverObservationDigest != "" {
 			telemetry.ObserverEvidence = &FormationObserverEvidence{

@@ -143,6 +143,24 @@ func (p *formationTestProvenance) Attest(_ context.Context, model FormationModel
 	return &FormationAttestation{Verified: true, Digest: model.ModelDigest}, nil
 }
 
+func (p *formationTestProvenance) AttestAttempt(_ context.Context, providerAttemptID string, model FormationModel) (*FormationAttestation, error) {
+	p.events = append(p.events, "attest-attempt:"+providerAttemptID+":"+model.VariantID)
+	if model.Trust == FormationTrustDelegated {
+		return &FormationAttestation{Verified: true}, nil
+	}
+	return &FormationAttestation{
+		Verified: true,
+		Digest:   model.ModelDigest,
+		Window: &evalv1.ModelProvenanceAttestationWindow{
+			ProviderAttemptId:   providerAttemptID,
+			AttestationDigest:   "test-provenance-" + providerAttemptID,
+			ExpectedModelDigest: model.ModelDigest,
+			ObservedModelDigest: model.ModelDigest,
+			DigestMatch:         true,
+		},
+	}, nil
+}
+
 type formationTestObserver struct {
 	events []string
 }
@@ -245,7 +263,14 @@ func TestFormationRunnerAttestsBeforeAllocationAndPassesStateThroughGovernance(t
 		"assistant:initial/lite",
 		"primary:initial/lite/assistant",
 	}, executor.states)
-	assert.Len(t, provenance.events, 3)
+	assert.Equal(t, []string{
+		"attest:qwen35-9b",
+		"attest:ministral-3b-qwen",
+		"attest:gemma3-1b",
+		"attest-attempt:qwen-powerhouse-lite-attempt:gemma3-1b",
+		"attest-attempt:qwen-powerhouse-assistant-attempt:ministral-3b-qwen",
+		"attest-attempt:qwen-powerhouse-primary-attempt:qwen35-9b",
+	}, provenance.events)
 	assert.Equal(t, []string{"allocate:qwen35-9b", "allocate:ministral-3b-qwen", "allocate:gemma3-1b"}, allocator.events[:3])
 	assert.Len(t, result.Roles, 3)
 	assert.Equal(t, []FormationRole{FormationRoleLite, FormationRoleAssistant, FormationRolePrimary}, roleProgress)
@@ -276,7 +301,7 @@ func TestFormationRunnerSkipsProvenanceForDelegatedPrimary(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Roles, 3)
 	assert.Equal(t, FormationAttestationNotNeeded, result.Roles[2].AttestationStatus)
-	assert.Len(t, provenance.events, 2)
+	assert.Len(t, provenance.events, 4)
 }
 
 type formationOOMExecutor struct{}

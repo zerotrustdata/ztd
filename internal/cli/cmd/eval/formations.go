@@ -727,6 +727,10 @@ func runFormationSmoke(cmd *cobra.Command, deps nativeEvalDeps, topology evaluat
 	if err != nil {
 		return nil, "", fmt.Errorf("evaluation: formations smoke: %w", err)
 	}
+	provenanceLoader, err := gwremote.NewCampaignFormationProvenanceLoader(fileSvc, cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("evaluation: formations smoke: %w", err)
+	}
 	runIDPart, err := deps.newID()
 	if err != nil {
 		return nil, "", err
@@ -753,6 +757,7 @@ func runFormationSmoke(cmd *cobra.Command, deps nativeEvalDeps, topology evaluat
 		},
 		Variants:               freeze.Variants,
 		ProvenancePreflight:    gatewayFormationProvenancePreflight{fileSvc: fileSvc, cfg: cfg},
+		ProvenanceLoader:       provenanceLoader,
 		ObservationLoader:      observationLoader,
 		InferenceDispatcher:    &harnessFormationInferenceDispatcher{client: appClient},
 		ModelCommandDispatcher: modelDispatcher,
@@ -920,9 +925,14 @@ func buildCampaignFormationProductionDeps(
 	if err != nil {
 		return evaluation.FormationProductionDependencies{}, fmt.Errorf("evaluation: campaign formation dependencies: %w", err)
 	}
+	provenanceLoader, err := gwremote.NewCampaignFormationProvenanceLoader(fileSvc, cfg)
+	if err != nil {
+		return evaluation.FormationProductionDependencies{}, fmt.Errorf("evaluation: campaign formation dependencies: %w", err)
+	}
 	return evaluation.FormationProductionDependencies{
 		Variants:               variants,
 		ProvenancePreflight:    gatewayFormationProvenancePreflight{fileSvc: fileSvc, cfg: cfg},
+		ProvenanceLoader:       provenanceLoader,
 		ObservationLoader:      observationLoader,
 		InferenceDispatcher:    &harnessFormationInferenceDispatcher{client: appClient},
 		ModelCommandDispatcher: modelDispatcher,

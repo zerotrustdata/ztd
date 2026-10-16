@@ -93,6 +93,14 @@ func NewCampaignModelProvenanceReader(fileSvc fs.RuntimeFileService, cfg *config
 	return evaluation.NewCampaignModelProvenanceReaderWithRemote(fileSvc, remote)
 }
 
+func NewCampaignFormationProvenanceLoader(fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.FormationProvenanceLoader, error) {
+	reader, err := NewCampaignModelProvenanceReader(fileSvc, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return evaluation.NewRetryingFormationProvenanceLoader(reader.LoadProvenanceWindow, 12, 250*time.Millisecond), nil
+}
+
 func preflightModelProvenanceDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {
 	if !IsGatewayHealthy() {
 		return constants.ErrEvaluationObservationUnavailable

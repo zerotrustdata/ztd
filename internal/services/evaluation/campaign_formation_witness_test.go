@@ -174,16 +174,20 @@ func TestVerifyFormationWitnessEvidence_AcceptsMatchingProvenanceDigest(t *testi
 	assert.Empty(t, failures)
 }
 
-func TestBindFormationProvenanceEvidence_RekeysProviderAttemptID(t *testing.T) {
+func TestBindFormationProvenanceEvidence_RejectsMismatchedAttemptID(t *testing.T) {
 	modelDigest := strings.Repeat("a", 64)
 	window := testFormationProvenanceWindow(t, "preflight-provenance", modelDigest)
 	attestation := &FormationAttestation{Verified: true, Digest: modelDigest, Window: window}
 
 	bound := bindFormationProvenanceEvidence(attestation, "attempt-lite")
-	require.NotNil(t, bound)
-	require.NotNil(t, bound.Window)
-	assert.Equal(t, "attempt-lite", bound.Window.GetProviderAttemptId())
-	assert.NotEqual(t, window.GetAttestationDigest(), bound.Window.GetAttestationDigest())
+	assert.Nil(t, bound)
+
+	matchingWindow := testFormationProvenanceWindow(t, "attempt-lite", modelDigest)
+	matchingAttestation := &FormationAttestation{Verified: true, Digest: modelDigest, Window: matchingWindow}
+	matchingBound := bindFormationProvenanceEvidence(matchingAttestation, "attempt-lite")
+	require.NotNil(t, matchingBound)
+	assert.Equal(t, "attempt-lite", matchingBound.Window.GetProviderAttemptId())
+	assert.Equal(t, matchingWindow.GetAttestationDigest(), matchingBound.Window.GetAttestationDigest())
 }
 
 func TestVerifyFormationWitnessEvidence_FailsOnObserverDigestMismatch(t *testing.T) {
@@ -260,4 +264,77 @@ func TestCollectRunAggregateState_AcceptsHeterogeneousAssignments(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, state)
 	assert.Equal(t, uint32(1), state.Scheduled)
+}
+
+func TestFormationProvenanceEvidence_PreservesPreflightSeparatelyFromAttempt(t *testing.T) {
+	files := newCampaignMemoryFileService()
+	observationReader, err := NewCampaignProviderObservationReader(files)
+	require.NoError(t, err)
+	provenanceReader, err := NewCampaignModelProvenanceReader(files)
+	require.NoError(t, err)
+	witnessReader := NewCampaignFormationWitnessReader(observationReader, provenanceReader)
+
+	modelDigest := strings.Repeat("a", 64)
+	preflightWindow := testFormationProvenanceWindow(t, "preflight-lite", modelDigest)
+	actualAttemptWindow := testFormationProvenanceWindow(t, "attempt-lite", modelDigest)
+	actualAttemptWindow.AttestedAtUnixMs = time.Unix(1_700_000_050, 0).UnixMilli()
+	actualDigest, err := model_provenance.ComputeAttestationDigest(actualAttemptWindow)
+	require.NoError(t, err)
+	actualAttemptWindow.AttestationDigest = actualDigest
+
+	preflightAttestation := &FormationAttestation{Verified: true, Digest: modelDigest, Window: preflightWindow}
+	actualAttestation := &FormationAttestation{Verified: true, Digest: modelDigest, Window: actualAttemptWindow}
+
+	// Formation run completes with both preflight and actual attempt evidence preserved
+	formationResult := &FormationRunResult{
+		FormationID: "formation-test",
+		Passed:      true,
+		Roles: []FormationRoleTelemetry{{
+			Role:               FormationRoleLite,
+			Model:              FormationModel{ServedModelTag: "probe-model:7b", ModelDigest: modelDigest},
+			ProviderAttemptID:  "attempt-lite",
+			PreflightEvidence:  preflightAttestation,
+			ProvenanceEvidence: bindFormationProvenanceEvidence(actualAttestation, "attempt-lite"),
+			AttestationStatus:  FormationAttestationVerified,
+		}},
+	}
+	require.NotNil(t, formationResult.Roles[0].ProvenanceEvidence)
+
+	// Persisting formation witness evidence stores preflight under preflight ID and attempt under attempt ID
+	require.NoError(t, witnessReader.PersistFormationWitnessEvidence(context.Background(), formationResult))
+
+	// Verify attempt window is intact and NOT overwritten by preflight
+	loadedAttempt, err := provenanceReader.LoadProvenanceWindow(context.Background(), "attempt-lite")
+	require.NoError(t, err)
+	assert.Equal(t, actualDigest, loadedAttempt.GetAttestationDigest())
+	assert.Equal(t, "attempt-lite", loadedAttempt.GetProviderAttemptId())
+
+	// Verify preflight window is intact under preflight ID
+	loadedPreflight, err := provenanceReader.LoadProvenanceWindow(context.Background(), "preflight-lite")
+	require.NoError(t, err)
+	assert.Equal(t, preflightWindow.GetAttestationDigest(), loadedPreflight.GetAttestationDigest())
+	assert.Equal(t, "preflight-lite", loadedPreflight.GetProviderAttemptId())
+
+	// Persisted formation run evidence captures both digests
+	persisted := formationRunResultToPersisted(formationResult)
+	require.Len(t, persisted.Roles, 1)
+	assert.Equal(t, "preflight-lite", persisted.Roles[0].PreflightAttemptID)
+	assert.Equal(t, preflightWindow.GetAttestationDigest(), persisted.Roles[0].PreflightAttestationDigest)
+	assert.Equal(t, actualDigest, persisted.Roles[0].ProvenanceAttestationDigest)
+
+	evidence := &FormationRunEvidence{
+		FormationID: "formation-test",
+		Result:      persisted,
+	}
+
+	// Verification succeeds without failures
+	failures := VerifyFormationWitnessEvidence(
+		context.Background(),
+		evidence,
+		nil,
+		provenanceReader,
+		ProviderObservationPolicyInterim,
+		ModelProvenancePolicyStrict,
+	)
+	assert.Empty(t, failures)
 }
