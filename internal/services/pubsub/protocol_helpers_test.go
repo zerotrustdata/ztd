@@ -8,6 +8,7 @@
 package pubsub
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -167,6 +168,7 @@ func TestBuildUniversalResultEnvelope(t *testing.T) {
 		payload := &operatorv1.CommandResult{ExecutionId: "exec-1"}
 
 		env, err := BuildUniversalResultEnvelope(
+			context.Background(),
 			cfg,
 			constants.Event.Operator.Command.Requested,
 			constants.Event.Operator.Command.Completed,
@@ -199,6 +201,7 @@ func TestBuildUniversalResultEnvelope(t *testing.T) {
 		payload := &operatorv1.CommandResult{ExecutionId: "exec-1"}
 
 		env, err := BuildUniversalResultEnvelope(
+			context.Background(),
 			cfg,
 			constants.Event.Operator.Command.Requested,
 			constants.Event.Operator.Command.Completed,
@@ -227,6 +230,7 @@ func TestBuildUniversalResultEnvelope(t *testing.T) {
 		taskID := "task-1"
 
 		env, err := BuildUniversalResultEnvelope(
+			context.Background(),
 			cfg,
 			constants.Event.Operator.Command.Requested,
 			constants.Event.Operator.Command.Completed,
@@ -253,6 +257,7 @@ func TestBuildUniversalResultEnvelope(t *testing.T) {
 		payload := &operatorv1.CommandResult{ExecutionId: "exec-1"}
 
 		env, err := BuildUniversalResultEnvelope(
+			context.Background(),
 			cfg,
 			constants.Event.Operator.Command.Requested,
 			constants.Event.Operator.Command.Completed,

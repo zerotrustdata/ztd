@@ -8,6 +8,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,20 +82,20 @@ func (c *AuditController) egressReady(w http.ResponseWriter) bool {
 // (target resource and result summary) scrubbed. The nested signed ActionReceipt is
 // returned unchanged: its content was scrubbed before it was signed and altering it
 // would break the signature.
-func (c *AuditController) scrubReceiptRecord(r *models.ActionReceiptRecord) *models.ActionReceiptRecord {
+func (c *AuditController) scrubReceiptRecord(ctx context.Context, r *models.ActionReceiptRecord) *models.ActionReceiptRecord {
 	if r == nil {
 		return nil
 	}
 	out := *r
-	out.TargetResource = c.scrubber.ScrubText(r.TargetResource)
-	out.ResultSummary = c.scrubber.ScrubText(r.ResultSummary)
+	out.TargetResource = c.scrubber.ScrubText(ctx, r.TargetResource)
+	out.ResultSummary = c.scrubber.ScrubText(ctx, r.ResultSummary)
 	return &out
 }
 
-func (c *AuditController) scrubReceiptRecords(records []*models.ActionReceiptRecord) []*models.ActionReceiptRecord {
+func (c *AuditController) scrubReceiptRecords(ctx context.Context, records []*models.ActionReceiptRecord) []*models.ActionReceiptRecord {
 	out := make([]*models.ActionReceiptRecord, len(records))
 	for i, r := range records {
-		out[i] = c.scrubReceiptRecord(r)
+		out[i] = c.scrubReceiptRecord(ctx, r)
 	}
 	return out
 }
@@ -242,7 +243,7 @@ func (c *AuditController) handleAuditReceipts(w http.ResponseWriter, r *http.Req
 
 	c.responder.JSON(w, http.StatusOK, models.AuditReceiptsResponse{
 		Success:  true,
-		Receipts: c.scrubReceiptRecords(receipts),
+		Receipts: c.scrubReceiptRecords(r.Context(), receipts),
 	})
 }
 
@@ -302,7 +303,7 @@ func (c *AuditController) handleAuditReceiptsExport(w http.ResponseWriter, r *ht
 
 	c.responder.JSON(w, http.StatusOK, models.AuditReceiptsResponse{
 		Success:  true,
-		Receipts: c.scrubReceiptRecords(receipts),
+		Receipts: c.scrubReceiptRecords(r.Context(), receipts),
 	})
 }
 
@@ -341,7 +342,7 @@ func (c *AuditController) handleAuditEvents(w http.ResponseWriter, r *http.Reque
 
 	eventRows := make([]models.AuditEventRow, len(events))
 	for i, e := range events {
-		eventRows[i] = c.toAuditEventRow(e)
+		eventRows[i] = c.toAuditEventRow(r.Context(), e)
 	}
 
 	c.responder.JSON(w, http.StatusOK, models.AuditEventsResponse{
@@ -355,7 +356,7 @@ func (c *AuditController) handleAuditEvents(w http.ResponseWriter, r *http.Reque
 // the only content-bearing field (decrypted command lines, file paths, tool arguments) and
 // is scrubbed; the rest are identifiers, the event type, a timestamp and an exit code.
 // Callers must have checked egressReady first.
-func (c *AuditController) toAuditEventRow(e *storage.Event) models.AuditEventRow {
+func (c *AuditController) toAuditEventRow(ctx context.Context, e *storage.Event) models.AuditEventRow {
 	if e == nil {
 		return models.AuditEventRow{}
 	}
@@ -365,7 +366,7 @@ func (c *AuditController) toAuditEventRow(e *storage.Event) models.AuditEventRow
 		OperatorSessionID: e.OperatorSessionID,
 		Timestamp:         e.Timestamp.Format(time.RFC3339),
 		Type:              string(e.Type),
-		CommandRaw:        c.scrubber.ScrubText(e.CommandRaw),
+		CommandRaw:        c.scrubber.ScrubText(ctx, e.CommandRaw),
 		CommandExitCode:   e.CommandExitCode,
 	}
 }
@@ -442,9 +443,10 @@ func (c *AuditController) handleAuditReport(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Build comprehensive report
+	ctx := r.Context()
 	eventRows := make([]json.RawMessage, len(events))
 	for i, e := range events {
-		data, err := json.Marshal(c.toAuditEventRow(e))
+		data, err := json.Marshal(c.toAuditEventRow(ctx, e))
 		if err != nil {
 			c.logger.Error("audit_controller: handleAuditReport: marshal event", string(constants.ConnectionStateError), err)
 			eventRows[i] = json.RawMessage("null")
@@ -455,7 +457,7 @@ func (c *AuditController) handleAuditReport(w http.ResponseWriter, r *http.Reque
 
 	receiptRows := make([]json.RawMessage, len(receipts))
 	for i, r := range receipts {
-		data, err := json.Marshal(c.scrubReceiptRecord(r))
+		data, err := json.Marshal(c.scrubReceiptRecord(ctx, r))
 		if err != nil {
 			c.logger.Error("audit_controller: handleAuditReport: marshal receipt", string(constants.ConnectionStateError), err)
 			receiptRows[i] = json.RawMessage("null")

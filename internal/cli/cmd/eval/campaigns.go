@@ -54,6 +54,7 @@ type campaignRowJSON struct {
 	ModelCount          int    `json:"model_count"`
 	ScenarioCount       uint32 `json:"scenario_count"`
 	RepetitionCount     uint32 `json:"repetition_count"`
+	HoldContext         bool   `json:"hold_context"`
 	ModelRegistryDigest string `json:"model_registry_digest"`
 	CatalogDigest       string `json:"catalog_digest"`
 	// Release is the platform release the campaign measured; ReleaseBasis says
@@ -260,6 +261,7 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 					ModelCount:          len(spec.GetModelRegistry()),
 					ScenarioCount:       spec.GetScenarioCount(),
 					RepetitionCount:     spec.GetRepetitionCount(),
+					HoldContext:         spec.GetHoldContext(),
 					ModelRegistryDigest: spec.GetModelRegistryDigest(),
 					CatalogDigest:       spec.GetCatalogDigest(),
 					Release:             release.Release,
@@ -285,9 +287,9 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
+			_, _ = fmt.Fprintf(out, "Campaign: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
 				campaignID, releaseLabel(release.Release, string(release.Basis)), lane, payload.Suite, payload.ModelCount, strings.Join(payload.Models, ", "), payload.ScenarioCount, payload.RepetitionCount,
-				payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
+				payload.HoldContext, payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
 			if stacks > 0 {
 				_, _ = fmt.Fprintf(out, "Stacks: %d\n", stacks)
 			}
@@ -337,9 +339,11 @@ func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.Evalu
 
 // campaignCreateSpec is everything that defines one campaign.
 type campaignCreateSpec struct {
-	CampaignID   string
-	Variants     []*evalv1.ModelVariant
-	Repetitions  uint32
+	CampaignID  string
+	Variants    []*evalv1.ModelVariant
+	Repetitions uint32
+	// HoldContext carries each cell's investigation into its next repetition.
+	HoldContext  bool
 	Formations   bool
 	FormationIDs []string
 	// SuiteID names the suite the campaign freezes; empty means the default suite.
@@ -416,6 +420,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 		Inventory:         freeze,
 		ScenarioArtifacts: artifacts,
 		RepetitionCount:   spec.Repetitions,
+		HoldContext:       spec.HoldContext,
 		Platform:          spec.Platform,
 	})
 	if err != nil {
@@ -448,6 +453,7 @@ type campaignCreateJSON struct {
 	ModelCount          int    `json:"model_count"`
 	ScenarioCount       uint32 `json:"scenario_count"`
 	RepetitionCount     uint32 `json:"repetition_count"`
+	HoldContext         bool   `json:"hold_context"`
 	CellsPerRun         uint64 `json:"cells_per_run"`
 	ModelRegistryDigest string `json:"model_registry_digest"`
 	CatalogDigest       string `json:"catalog_digest"`
@@ -457,6 +463,7 @@ type campaignCreateJSON struct {
 
 func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var reps uint32
+	var holdContext bool
 	var suite string
 	var formations []string
 	var allFormations bool
@@ -472,6 +479,13 @@ start).
 default-suite; see ztd eval suites). The suite is copied into the campaign, so
 editing or deleting it later never changes the campaign.
 
+With --reps greater than 1, every repetition after the first continues the
+previous repetition's investigation by default (--hold-context): the model
+receives that repetition's complete conversation (its tool calls, results,
+and answer), the scenario prompt again, and the same workspace, with the
+fixture files restored. Pass --hold-context=false to score each repetition
+from a fresh conversation instead.
+
 A model campaign takes a model selector (positional models, --family,
 --max-params, or --all) and scores each model on its own. A model campaign
 freezes exactly one model; the selector must resolve to a single model. Qualify
@@ -482,6 +496,7 @@ each formation as a set.
 
 Examples:
   ztd eval campaigns create eval-qwen qwen3:4b --reps 3
+  ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
   ztd eval campaigns create eval-gemma gemma4:e4b
   ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
   ztd eval campaigns create eval-formations --all-formations
@@ -501,6 +516,9 @@ Examples:
 				}
 				return fmt.Errorf("%s: %w", msg, constants.ErrEvaluationFlagsInvalid)
 			}
+			if cmd.Flags().Changed("hold-context") && (formationCampaign || reps <= 1) {
+				return fmt.Errorf("evaluation: campaigns create: --hold-context applies only to a model campaign with --reps greater than 1: %w", constants.ErrEvaluationFlagsInvalid)
+			}
 			if !formationCampaign && !selector.IsSet() {
 				return fmt.Errorf("evaluation: campaigns create: name models, pass --family, --max-params, or --all, or use --formations or --all-formations: %w", constants.ErrEvaluationSelectionEmpty)
 			}
@@ -515,7 +533,7 @@ Examples:
 			if len(registry) == 0 {
 				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
-			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, SuiteID: suite, Platform: platformIdentity(cmd)}
+			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext && !formationCampaign, SuiteID: suite, Platform: platformIdentity(cmd)}
 			if formationCampaign {
 				create.Formations = true
 				create.FormationIDs = formations
@@ -541,6 +559,7 @@ Examples:
 				ModelCount:          len(result.Spec.GetModelRegistry()),
 				ScenarioCount:       result.Spec.GetScenarioCount(),
 				RepetitionCount:     result.Spec.GetRepetitionCount(),
+				HoldContext:         result.Spec.GetHoldContext(),
 				CellsPerRun:         campaignCells(result.Catalog, result.Spec, result.Lane, stacks),
 				ModelRegistryDigest: result.Spec.GetModelRegistryDigest(),
 				CatalogDigest:       result.Spec.GetCatalogDigest(),
@@ -551,8 +570,8 @@ Examples:
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
-				payload.CampaignID, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
+			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
+				payload.CampaignID, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
 			if stacks > 0 {
 				_, _ = fmt.Fprintf(out, "Stacks: %d (set digest %s)\n", stacks, stackDigest)
 			}
@@ -561,6 +580,7 @@ Examples:
 		},
 	}
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
+	cmd.Flags().BoolVar(&holdContext, "hold-context", true, "With --reps > 1, continue each repetition from the previous repetition's investigation")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
 	cmd.Flags().StringSliceVar(&formations, "formations", nil, "Formation catalog IDs to evaluate")
 	cmd.Flags().BoolVar(&allFormations, "all-formations", false, "Evaluate every formation in the catalog")

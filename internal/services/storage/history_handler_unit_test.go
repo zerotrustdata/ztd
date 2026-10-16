@@ -239,7 +239,7 @@ func TestHandleFetchHistory_InvalidProtobuf(t *testing.T) {
 	invalidJSON := []byte("not a valid protobuf")
 
 	result, err := hh.HandleFetchHistory(invalidJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "invalid request format")
@@ -258,7 +258,7 @@ func TestHandleFetchHistory_MissingSessionID(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := hh.HandleFetchHistory(requestJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "operator_session_id is required")
@@ -310,7 +310,7 @@ func TestHandleFetchHistory_GetSessionError(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := hh.HandleFetchHistory(requestJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "failed to get session")
@@ -337,7 +337,7 @@ func TestHandleFetchHistory_GetEventsError(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := hh.HandleFetchHistory(requestJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "failed to get events")
@@ -573,7 +573,7 @@ func TestHandleFetchFileHistory_InvalidProtobuf(t *testing.T) {
 	invalidJSON := []byte("not a valid protobuf")
 
 	result, err := hh.HandleFetchFileHistory(invalidJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "invalid request format")
@@ -592,7 +592,7 @@ func TestHandleFetchFileHistory_MissingFilePath(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := hh.HandleFetchFileHistory(requestJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "file_path is required")
@@ -640,7 +640,7 @@ func TestHandleFetchFileHistory_GetHistoryError(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := hh.HandleFetchFileHistory(requestJSON)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "failed to get file history")
@@ -695,7 +695,8 @@ func TestHandleRestoreFile_InvalidProtobuf(t *testing.T) {
 
 	invalidJSON := []byte("not a valid protobuf")
 
-	result, _ := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, invalidJSON)
+	result, _, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, invalidJSON)
+	require.Error(t, restoreErr)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "invalid request format")
@@ -713,7 +714,8 @@ func TestHandleRestoreFile_MissingFilePath(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, _ := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	result, _, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	require.ErrorIs(t, restoreErr, constants.ErrMissingRequiredField)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "file_path is required")
@@ -731,7 +733,8 @@ func TestHandleRestoreFile_MissingCommitHash(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, _ := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	result, _, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	require.ErrorIs(t, restoreErr, constants.ErrMissingRequiredField)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "commit_hash is required")
@@ -749,7 +752,8 @@ func TestHandleRestoreFile_MissingSessionID(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, _ := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	result, _, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	require.ErrorIs(t, restoreErr, constants.ErrMissingRequiredField)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "operator_session_id is required")
@@ -775,7 +779,8 @@ func TestHandleRestoreFile_RestoreError(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, _ := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	result, _, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	require.Error(t, restoreErr)
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "failed to restore file")
@@ -801,7 +806,8 @@ func TestHandleRestoreFile_Success(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, restored := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	result, restored, restoreErr := hh.HandleRestoreFile(context.Background(), testRestoreSessionID, requestJSON)
+	require.NoError(t, restoreErr)
 
 	assert.True(t, result.Success)
 	require.NotNil(t, restored)
@@ -825,7 +831,8 @@ func TestHandleRestoreFile_MissingExecutingSession(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, restored := hh.HandleRestoreFile(context.Background(), "", requestJSON)
+	result, restored, restoreErr := hh.HandleRestoreFile(context.Background(), "", requestJSON)
+	require.ErrorIs(t, restoreErr, constants.ErrMissingRequiredField)
 
 	assert.False(t, result.Success)
 	assert.Nil(t, restored)
@@ -888,30 +895,33 @@ func TestGetFileAtCommit_LedgerError(t *testing.T) {
 func TestFetchHistoryError(t *testing.T) {
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
-	result := hh.fetchHistoryError("test error message")
+	result, failureErr := hh.fetchHistoryError(constants.ErrInternal)
+	assert.ErrorIs(t, failureErr, constants.ErrInternal)
 
 	assert.False(t, result.Success)
-	assert.Equal(t, "test error message", result.Error)
+	assert.Equal(t, constants.ErrInternal.Error(), result.Error)
 }
 
 // TestFetchFileHistoryError verifies error response construction
 func TestFetchFileHistoryError(t *testing.T) {
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
-	result := hh.fetchFileHistoryError("test error message")
+	result, failureErr := hh.fetchFileHistoryError(constants.ErrInternal)
+	assert.ErrorIs(t, failureErr, constants.ErrInternal)
 
 	assert.False(t, result.Success)
-	assert.Equal(t, "test error message", result.Error)
+	assert.Equal(t, constants.ErrInternal.Error(), result.Error)
 }
 
 // TestRestoreFileError verifies error response construction
 func TestRestoreFileError(t *testing.T) {
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
-	result := hh.restoreFileError("test error message")
+	result, _, restoreErr := hh.restoreFileError(constants.ErrInternal)
+	assert.ErrorIs(t, restoreErr, constants.ErrInternal)
 
 	assert.False(t, result.Success)
-	assert.Equal(t, "test error message", result.Error)
+	assert.Equal(t, constants.ErrInternal.Error(), result.Error)
 }
 
 // TestHandleFetchHistory_NilSession verifies handling when session is nil

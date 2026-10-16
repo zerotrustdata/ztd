@@ -8,6 +8,7 @@
 package pubsub
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -48,7 +49,7 @@ const (
 //   - an unclassified payload type yields an error wrapping constants.ErrEgressPayloadUnclassified;
 //   - a payload with non-empty content and a nil or disabled scrubber yields an error wrapping
 //     constants.ErrEgressScrubberUnavailable.
-func egressScrubbed(payload proto.Message, s *scrubbing.ScrubbingService) (proto.Message, error) {
+func egressScrubbed(ctx context.Context, payload proto.Message, s *scrubbing.ScrubbingService) (proto.Message, error) {
 	clone := proto.Clone(payload)
 	fields, class, err := egressContentFields(clone)
 	if err != nil {
@@ -74,7 +75,7 @@ func egressScrubbed(payload proto.Message, s *scrubbing.ScrubbingService) (proto
 
 	for _, f := range fields {
 		if *f != "" {
-			*f = s.ScrubText(*f)
+			*f = s.ScrubText(ctx, *f)
 		}
 	}
 	return clone, nil

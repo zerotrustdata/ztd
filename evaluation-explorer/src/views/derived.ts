@@ -93,11 +93,53 @@ function streamKindRank(kind: LiveEvent['kind']): number {
     case 'assignment_completed':
     case 'assignment_failed':
       return 4;
-    case 'metric_updated':
-      return 5;
     default:
-      return 6;
+      return 5;
   }
+}
+
+/** Kinds that feed the store and assignment detail but are not stream rows. */
+const STREAM_HIDDEN_KINDS = new Set<LiveEvent['kind']>(['metric_updated']);
+
+/** Assignment lifecycle kinds folded into one stream row per assignment. */
+const ASSIGNMENT_ROW_KINDS = new Set<LiveEvent['kind']>([
+  'assignment_started',
+  'stage_updated',
+  'assignment_completed',
+  'assignment_failed',
+]);
+
+function isTerminalStreamKind(kind: LiveEvent['kind']): boolean {
+  return kind === 'assignment_completed' || kind === 'assignment_failed';
+}
+
+/** The event that states an assignment's current status: a terminal result
+ *  over any in-progress event, otherwise the latest lifecycle event. */
+function currentAssignmentEvent(current: LiveEvent, candidate: LiveEvent): LiveEvent {
+  const currentTerminal = isTerminalStreamKind(current.kind);
+  const candidateTerminal = isTerminalStreamKind(candidate.kind);
+  if (currentTerminal !== candidateTerminal) return candidateTerminal ? candidate : current;
+  return compareStreamEventsOldestFirst(candidate, current) > 0 ? candidate : current;
+}
+
+/** One stream row per assignment, carrying the assignment's current status. */
+function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
+  const rows = new Map<string, LiveEvent>();
+  const order: string[] = [];
+  for (const event of events) {
+    const key =
+      event.assignment_id && ASSIGNMENT_ROW_KINDS.has(event.kind)
+        ? `${event.run_id}:${event.assignment_id}:row`
+        : `event:${event.event_id}`;
+    const existing = rows.get(key);
+    if (!existing) {
+      rows.set(key, event);
+      order.push(key);
+      continue;
+    }
+    rows.set(key, currentAssignmentEvent(existing, event));
+  }
+  return order.map((key) => rows.get(key)!);
 }
 
 function streamDedupeKey(event: LiveEvent): string {
@@ -158,7 +200,7 @@ export function upsertLiveEvent(events: LiveEvent[], incoming: LiveEvent): { eve
   return { events: [...events, incoming] };
 }
 
-/** One row per assignment start/result; keeps distinct stage ticks. */
+/** One event per assignment start/result and per role stage. */
 export function dedupeStreamEvents(events: LiveEvent[]): LiveEvent[] {
   const chosen = new Map<string, LiveEvent>();
   const order: string[] = [];
@@ -250,13 +292,6 @@ export function restampStreamProgress(events: LiveEvent[]): LiveEvent[] {
         restamped.push({ ...event, completed: terminalCount, total });
         continue;
       }
-      if (event.kind === 'assignment_started' && event.assignment_id) {
-        const completed = finished.has(event.assignment_id)
-          ? terminalCount
-          : Math.min(terminalCount + 1, Math.max(total, 1));
-        restamped.push({ ...event, completed, total: Math.max(total, completed) });
-        continue;
-      }
       restamped.push(total > 0 ? { ...event, total } : event);
     }
   }
@@ -277,23 +312,27 @@ export function assignmentLifecycleEvents(
   return [...byId.values()].sort(compareStreamEventsOldestFirst);
 }
 
-/** Live stream rows, newest first. Progress is restamped in observed_at order
- *  across the full filtered event set, then the feed tail is kept for display. */
+/** Live stream rows, newest first. Each assignment is one row showing its
+ *  current status (started, stage, then result); the kind filter matches that
+ *  current status. Progress is restamped in observed_at order across the full
+ *  filtered row set, then the feed tail is kept for display. */
 export function visibleStreamEvents(
   events: LiveEvent[],
   options: { modelFilter: string; kindFilter: string; assignmentFilter?: string; limit?: number },
 ): LiveEvent[] {
   const filtered = events
+    .filter((event) => !STREAM_HIDDEN_KINDS.has(event.kind))
     .filter((event) => options.modelFilter === 'all' || event.variant_id === options.modelFilter)
-    .filter((event) => options.kindFilter === 'all' || event.kind === options.kindFilter)
     .filter(
       (event) =>
         !options.assignmentFilter ||
         options.assignmentFilter === 'all' ||
         event.assignment_id === options.assignmentFilter,
     );
-  const deduped = dedupeStreamEvents(filtered);
-  const restamped = restampStreamProgress(deduped);
+  const rows = collapseAssignmentRows(dedupeStreamEvents(filtered)).filter(
+    (event) => options.kindFilter === 'all' || event.kind === options.kindFilter,
+  );
+  const restamped = restampStreamProgress(rows);
   const bounded =
     options.limit !== undefined ? retainLatestStreamEvents(restamped, options.limit) : restamped;
   return bounded.sort(compareStreamEventsNewestFirst);

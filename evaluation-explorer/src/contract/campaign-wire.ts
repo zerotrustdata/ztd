@@ -210,7 +210,7 @@ export interface WirePolicyDecisionActivityRecord {
 }
 
 export interface WireGovernedActionActivityRecord {
-  action_label: 'governed action';
+  action_label: string;
   reported_policy_outcome: (typeof POLICY_OUTCOMES)[number];
   receipt_status: (typeof RECEIPT_STATUSES)[number];
   evidence_source: (typeof EVIDENCE_SOURCES)[number];
@@ -611,7 +611,7 @@ function assertPolicyDecisionRecord(value: unknown, path: string): void {
 function assertGovernedActionRecord(value: unknown, path: string): void {
   assertObject(value, path);
   rejectUnknown(value, ['action_label', 'reported_policy_outcome', 'receipt_status', 'evidence_source'], path);
-  assert(value.action_label === 'governed action', `${path}.action_label`, 'unexpected governed action label');
+  assertString(value.action_label, `${path}.action_label`);
   assertEnum(value.reported_policy_outcome, POLICY_OUTCOMES, `${path}.reported_policy_outcome`);
   assertEnum(value.receipt_status, RECEIPT_STATUSES, `${path}.receipt_status`);
   assertEnum(value.evidence_source, EVIDENCE_SOURCES, `${path}.evidence_source`);

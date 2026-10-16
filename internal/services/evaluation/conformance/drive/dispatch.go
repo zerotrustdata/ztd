@@ -34,26 +34,15 @@ type Dispatch struct {
 	targets map[cases.Executor]operator.Target
 }
 
-// NewDispatch requires a target for every executor it drives: embedded and
-// outbound. A missing target is an error.
+// NewDispatch requires at least one target. Drive refuses an executor with no target.
 func NewDispatch(c *client.Client, p client.Persona, targets map[cases.Executor]operator.Target) (*Dispatch, error) {
 	if c == nil {
 		return nil, fmt.Errorf("dispatch: client: %w", constants.ErrMissingRequiredField)
 	}
-	if err := requireExecutorTargets("dispatch", targets); err != nil {
-		return nil, err
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("dispatch: targets: %w", constants.ErrMissingRequiredField)
 	}
 	return &Dispatch{client: c, persona: p, targets: targets}, nil
-}
-
-// requireExecutorTargets fails when either executor has no target.
-func requireExecutorTargets(op string, targets map[cases.Executor]operator.Target) error {
-	for _, ex := range []cases.Executor{cases.ExecutorEmbedded, cases.ExecutorOutbound} {
-		if _, ok := targets[ex]; !ok {
-			return fmt.Errorf("%s: target for executor %s: %w", op, ex, constants.ErrMissingRequiredField)
-		}
-	}
-	return nil
 }
 
 // Drive submits one attempt and returns its one observation. A transport error

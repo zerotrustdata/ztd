@@ -301,25 +301,25 @@ func TestL4Warden_EmptyPayload(t *testing.T) {
 	}
 }
 
-// TestNewGovernancePosture_ErrorsOnInvalidPosture verifies that invalid posture
+// TestParseGovernancePosture_ErrorsOnInvalidPosture verifies that invalid posture
 // strings return an error wrapping constants.ErrInvalidPosture rather than
 // panicking or silently defaulting (INV-CODE-06, INV-ERR-01).
-func TestNewGovernancePosture_ErrorsOnInvalidPosture(t *testing.T) {
+func TestParseGovernancePosture_ErrorsOnInvalidPosture(t *testing.T) {
 	t.Parallel()
-	_, err := NewGovernancePosture("invalid-posture")
+	_, err := ParseGovernancePosture("invalid-posture")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrInvalidPosture)
 }
 
-// TestNewGovernancePosture_AcceptsValidPostures verifies that all valid posture
+// TestParseGovernancePosture_AcceptsValidPostures verifies that all valid posture
 // strings are accepted and return no error.
-func TestNewGovernancePosture_AcceptsValidPostures(t *testing.T) {
+func TestParseGovernancePosture_AcceptsValidPostures(t *testing.T) {
 	t.Parallel()
 	validPostures := []string{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary}
 	for _, posture := range validPostures {
 		t.Run(posture, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewGovernancePosture(posture)
+			p, err := ParseGovernancePosture(posture)
 			require.NoError(t, err)
 			assert.NotNil(t, p)
 			assert.Equal(t, posture, p.Name())

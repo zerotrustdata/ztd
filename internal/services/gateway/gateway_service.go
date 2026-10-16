@@ -19,6 +19,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -313,8 +314,10 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	suspendedTxService := db.GetSuspendedStore()
 
 	// --- Scrubbing and MCP gateway ---
+	// UEI tokens persist encrypted in the canonical KV store, as on the outbound Operator, so every
+	// scrubbed value is a reversible {{UEI_N}} token rather than a lossy marker.
 	scrubbingConfig := scrubbing.DefaultConfig()
-	scrubbingService, err := scrubbing.NewScrubbingService(context.Background(), scrubbingConfig, logger, nil)
+	scrubbingService, err := scrubbing.NewScrubbingService(context.Background(), scrubbingConfig, logger, NewEncryptedKVAdapter(kvStore, db.GetVault()))
 	if err != nil {
 		return nil, fmt.Errorf("gateway: failed to initialize scrubbing service: %w", err)
 	}
@@ -1021,6 +1024,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		listenHost = constants.LocalhostIP
 	}
 	ls.server = &http.Server{
+		ErrorLog:          slog.NewLogLogger(ls.logger.With("server", "http").Handler(), slog.LevelError),
 		Addr:              net.JoinHostPort(listenHost, strconv.Itoa(cfg.Gateway.HTTPPort)),
 		Handler:           ls.handler.buildHTTPRouter(),
 		ReadHeaderTimeout: cfg.Gateway.ReadHeaderTimeout,
@@ -1032,6 +1036,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 
 	// HTTPS server: mTLS for all routes (API, public, enrollment)
 	ls.publicServer = &http.Server{
+		ErrorLog:          slog.NewLogLogger(ls.logger.With("server", "https").Handler(), slog.LevelError),
 		Addr:              net.JoinHostPort(listenHost, strconv.Itoa(cfg.Gateway.HTTPSPort)),
 		Handler:           ls.handler,
 		TLSConfig:         tlsConfig,
@@ -1385,7 +1390,11 @@ func (ls *GatewayModeService) Start(ctx context.Context) error {
 		}
 	}()
 
-	return <-errChan
+	err := <-errChan
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
 
 // Stop gracefully shuts down the HTTP server and closes the database.

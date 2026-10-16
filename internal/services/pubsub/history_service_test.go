@@ -243,7 +243,7 @@ func TestHistoryService_HandleRestoreFileRequest_RecordsFailedRestore(t *testing
 	require.NoError(t, err)
 	assert.Equal(t, constants.Event.Operator.RestoreFile.Failed, event.Type)
 	assert.Equal(t, 1, event.CommandExitCode)
-	assert.Equal(t, "commit_hash is required", event.CommandStderr)
+	assert.Contains(t, event.CommandStderr, "commit_hash is required")
 
 	published := client.LastPublished()
 	require.NotNil(t, published)
@@ -252,7 +252,7 @@ func TestHistoryService_HandleRestoreFileRequest_RecordsFailedRestore(t *testing
 	var result operatorv1.RestoreFileResult
 	require.NoError(t, proto.Unmarshal(env.Payload, &result))
 	assert.False(t, result.Success)
-	assert.Equal(t, "commit_hash is required", result.Error)
+	assert.Contains(t, result.Error, "commit_hash is required")
 }
 
 func TestHistoryService_HandleFetchFileDiffRequest(t *testing.T) {

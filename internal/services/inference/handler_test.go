@@ -8,9 +8,12 @@
 package inference
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,7 +22,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/proto"
@@ -36,7 +41,8 @@ func (m *testCommandMessage) InferenceResultDigest() string { return "" }
 
 func mustNewScrubbingSvc(t *testing.T) *scrubbing.ScrubbingService {
 	t.Helper()
-	svc, err := scrubbing.NewScrubbingService(context.Background(), &scrubbing.Config{Enabled: true, StrictMode: false}, testutil.NewTestLogger(), nil)
+	cfg := &scrubbing.Config{Enabled: true, StrictMode: false, RequirePersistence: true}
+	svc, err := scrubbing.NewScrubbingService(context.Background(), cfg, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return svc
 }
@@ -603,9 +609,9 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsTypedMessagesAndCanon
 	require.Len(t, backend.lastReq.Messages, 3)
 	assert.NotContains(t, backend.lastReq.Messages[0].Parts[0].GetText(), "user@example.com")
 	arguments := backend.lastReq.Messages[1].Parts[0].GetToolCall().GetArgumentsJson()
-	assert.Equal(t, `{"count":2,"nested":{"email":"[EMAIL]"}}`, arguments)
+	assert.Regexp(t, `^\{"count":2,"nested":\{"email":"\{\{UEI_\d+\}\}"\}\}$`, arguments)
 	result := backend.lastReq.Messages[2].Parts[0].GetToolResult().GetResultJson()
-	assert.Equal(t, `{"items":["[EMAIL]",3],"ok":true}`, result)
+	assert.Regexp(t, `^\{"items":\["\{\{UEI_\d+\}\}",3\],"ok":true\}$`, result)
 	require.Len(t, backend.lastReq.Tools, 1)
 	assert.Equal(t, schema, backend.lastReq.Tools[0].GetJsonSchema())
 }
@@ -1131,8 +1137,9 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(
 	t.Parallel()
 	logger := testutil.NewTestLogger()
 
+	scrubber := mustNewScrubbingSvc(t)
 	backend := &stubBackend{generateResp: outputScrubResponse()}
-	handler := mustNewHandler(t, backend, outputScrubConfig(), mustNewScrubbingSvc(t), logger)
+	handler := mustNewHandler(t, backend, outputScrubConfig(), scrubber, logger)
 	resp, err := handler.ExecuteInference(context.Background(), outputScrubCommand(t))
 	require.NoError(t, err)
 
@@ -1140,7 +1147,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(
 		assert.NotContains(t, part.String(), outputScrubEmail, "no raw output may leave the scrubber")
 	}
 	require.Len(t, resp.Parts, 3)
-	assert.Equal(t, mustNewScrubbingSvc(t).ScrubText("write to "+outputScrubEmail), resp.Parts[0].GetText())
+	assert.Equal(t, scrubber.ScrubText(context.Background(), "write to "+outputScrubEmail), resp.Parts[0].GetText())
+	assert.Equal(t, "write to "+outputScrubEmail, scrubber.RehydrateText(context.Background(), resp.Parts[0].GetText()))
 	assert.Equal(t, "stop", resp.FinishReason)
 	scrubbedHash, err := models.ComputeInferenceOutputHash(resp.Parts, resp.FinishReason)
 	require.NoError(t, err)
@@ -1148,7 +1156,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(
 
 	// The receipt summary the actuator signs is the digest of the scrubbed result.
 	summaryBackend := &stubBackend{generateResp: outputScrubResponse()}
-	summaryHandler := mustNewHandler(t, summaryBackend, outputScrubConfig(), mustNewScrubbingSvc(t), logger)
+	summaryHandler := mustNewHandler(t, summaryBackend, outputScrubConfig(), scrubber, logger)
 	summary, err := summaryHandler.ExecuteVerifiedTransaction(context.Background(), constants.Event.Operator.Inference.Requested, outputScrubCommand(t))
 	require.NoError(t, err)
 	assert.Equal(t, wantDigest(t, resp), summary)
@@ -1174,7 +1182,7 @@ func TestInferenceHandler_ExecuteInference_WithholdsOutputWithoutActiveScrubber(
 
 func TestScrubResponseParts_EmptyOutputNeedsNoScrubber(t *testing.T) {
 	t.Parallel()
-	out, err := scrubResponseParts(nil, nil)
+	out, err := scrubResponseParts(context.Background(), nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, out)
 }
@@ -1271,4 +1279,24 @@ func TestInferenceHandler_ProviderOutageFailsOnlyCurrentRequest(t *testing.T) {
 	backend.generateResp = &models.GenerateResponse{Parts: textInferenceResponseParts("recovered"), FinishReason: "stop", Model: "test-model"}
 	_, err = handler.ExecuteVerifiedTransaction(t.Context(), constants.Event.Operator.Inference.Requested, command)
 	require.NoError(t, err, "the same handler must serve requests after provider recovery")
+}
+
+func TestInferenceHandler_LogsProviderFailureWithSafeCauseAndAttemptID(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.NewLogger("info", &output)
+	require.NoError(t, err)
+	backend := &stubBackend{generateErr: fmt.Errorf("private backend detail: %w: %w", constants.ErrInferenceBackendUnavailable, syscall.ECONNRESET)}
+	handler := mustNewHandler(t, backend, &config.Config{Inference: config.InferenceConfig{Enabled: true}}, mustNewScrubbingSvc(t), logger)
+	payload := mustMarshalInferenceRequested(t, &operatorv1.InferenceRequested{
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 operatorv1.ModelRole_MODEL_ROLE_PRIMARY, Model: "test-model",
+		Messages: textInferenceMessages("private prompt"), ProviderAttemptId: "failed-provider-attempt",
+	})
+	_, err = handler.ExecuteVerifiedTransaction(t.Context(), constants.Event.Operator.Inference.Requested, &testCommandMessage{payload: payload})
+	require.ErrorIs(t, err, syscall.ECONNRESET)
+	assert.Contains(t, output.String(), "provider_attempt_id: failed-provider-attempt")
+	assert.Contains(t, output.String(), "error_kind: connection_reset")
+	assert.Contains(t, output.String(), "failure_class: backend_unavailable")
+	assert.NotContains(t, output.String(), "private backend detail")
+	assert.NotContains(t, output.String(), "private prompt")
 }

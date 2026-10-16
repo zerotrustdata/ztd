@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -439,8 +440,9 @@ func rejectTrailingPublicJSON(decoder *json.Decoder) error {
 	return nil
 }
 
-func newPublicMirrorHTTPServer(address string, handler http.Handler) *http.Server {
+func newPublicMirrorHTTPServer(address string, handler http.Handler, logger *slog.Logger) *http.Server {
 	return &http.Server{
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 		Addr:              address,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,

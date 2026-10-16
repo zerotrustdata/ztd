@@ -87,6 +87,52 @@ func newServedConformanceRig(t *testing.T, opts rigOptions) conformanceRig {
 	return newConformanceRig(t, opts)
 }
 
+func TestConformanceRun_UsesGatewayDataOperatorWithoutFlags(t *testing.T) {
+	var captured run.Config
+	embedded := &operatorv1.OperatorDocument{
+		Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: conformanceTestEmbeddedSession,
+		OperatorType: string(constants.OperatorTypeEmbedded), Status: string(constants.OperatorStatusActive),
+		RuntimeConfig: &operatorv1.OperatorRuntimeConfig{},
+	}
+	rig := newServedConformanceRig(t, rigOptions{
+		operators: []*operatorv1.OperatorDocument{embedded},
+		run: func(_ context.Context, cfg run.Config) (*evalv1.ConformanceRunRecord, error) {
+			captured = cfg
+			return &evalv1.ConformanceRunRecord{RunId: cfg.RunID}, nil
+		},
+	})
+	_, err := rig.execute(t, "conformance", "run")
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "the runner must be reached; this fake returns an unverifiable record")
+	require.Len(t, captured.Roots, 1)
+	assert.Equal(t, oracle.GatewayRuntimeID, captured.Roots[cases.ExecutorEmbedded].RuntimeID)
+	require.Len(t, captured.Drivers, 3)
+	require.Len(t, captured.Unavailable, 3)
+	assert.Equal(t, cases.IngressCLI.UnavailableObservation(), captured.Unavailable[cases.IngressCLI])
+}
+
+func TestConformanceRun_PromptsAndDiscoversSelectedOperatorRoot(t *testing.T) {
+	operators := conformanceSelectionOperators()
+	var captured run.Config
+	rig := newServedConformanceRig(t, rigOptions{operators: operators, run: func(_ context.Context, cfg run.Config) (*evalv1.ConformanceRunRecord, error) {
+		captured = cfg
+		return &evalv1.ConformanceRunRecord{RunId: cfg.RunID}, nil
+	}})
+	// The Gateway reads these documents when the command executes.
+	for _, op := range operators {
+		if op.GetId() == "beta" {
+			op.LocalDir = rig.opRoot
+		}
+	}
+	out, err := rig.executeInput(t, "2\n", "conformance", "run", "--attended")
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	assert.Contains(t, out, "Choose a Data Operator")
+	assert.Contains(t, out, "Data Operator: Beta")
+	assert.Equal(t, "beta", captured.Roots[cases.ExecutorOutbound].RuntimeID)
+	require.Len(t, captured.Drivers, 5)
+	require.Len(t, captured.Unavailable, 1)
+	assert.True(t, captured.Attended)
+}
+
 // flipRecordBytes serves the stored conformance record with one byte changed, so
 // verification sees bytes that no longer match their sha256 sidecar.
 type flipRecordBytes struct {
@@ -106,7 +152,7 @@ func (f flipRecordBytes) ReadFile(ctx context.Context, relPath string) ([]byte, 
 func TestConformanceRun_TargetSelectionRequiresExactlyOneSessionOfEachTarget(t *testing.T) {
 	embedded := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: conformanceTestEmbeddedSession}
 	active := func(session string) *operatorv1.OperatorDocument {
-		return &operatorv1.OperatorDocument{Id: conformanceTestOperatorID, OperatorSessionId: session, Status: string(constants.OperatorStatusActive)}
+		return &operatorv1.OperatorDocument{Id: conformanceTestOperatorID, OperatorSessionId: session, Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote)}
 	}
 	tests := []struct {
 		name      string
@@ -169,7 +215,7 @@ func TestConformanceRun_PassesConfiguredDriversAndRootsToRun(t *testing.T) {
 }
 
 func TestConformanceRun_OutboundWithoutEnrollmentBoundKeyFailsBeforeAnyCase(t *testing.T) {
-	unbound := &operatorv1.OperatorDocument{Id: conformanceTestOperatorID, OperatorSessionId: conformanceTestOutboundSession, Status: string(constants.OperatorStatusActive)}
+	unbound := &operatorv1.OperatorDocument{Id: conformanceTestOperatorID, OperatorSessionId: conformanceTestOutboundSession, Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote)}
 	operators := []*operatorv1.OperatorDocument{
 		{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: conformanceTestEmbeddedSession},
 		unbound,
@@ -208,8 +254,8 @@ func TestConformanceRun_PrintsVerdictsFromStoredBytesNotFromMemory(t *testing.T)
 	out, err := rig.execute(t, rig.runArgs()...)
 	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
 	assert.Contains(t, out, "Run: "+conformanceTestRunID)
-	assert.Contains(t, out, "CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE")
-	assert.Contains(t, out, "CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH", "the verdict comes from the digest check on the stored bytes")
+	assert.Contains(t, out, "Suite: INVALID_EVIDENCE")
+	assert.Contains(t, out, "RECORD_DIGEST_MISMATCH", "the verdict comes from the digest check on the stored bytes")
 }
 
 func TestConformanceVerify_FlippedByteIsInvalidEvidenceAndExitsNonZero(t *testing.T) {
@@ -237,8 +283,8 @@ func TestConformanceVerify_FlippedByteIsInvalidEvidenceAndExitsNonZero(t *testin
 				return
 			}
 			require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
-			assert.Contains(t, out, "CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE")
-			assert.Contains(t, out, "CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH")
+			assert.Contains(t, out, "Suite: INVALID_EVIDENCE")
+			assert.Contains(t, out, "RECORD_DIGEST_MISMATCH")
 		})
 	}
 }
@@ -262,8 +308,8 @@ func TestConformanceVerify_FlippedByteInRealSealedRecordIsDigestMismatchVerdict(
 	rig.deps.fileSvcFactory = func(string, *slog.Logger) (fs.RuntimeFileService, error) { return sealed, nil }
 	out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
-	assert.Contains(t, out, "CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE")
-	assert.Contains(t, out, "CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH", "the open vault refuses the changed ciphertext")
+	assert.Contains(t, out, "Suite: INVALID_EVIDENCE")
+	assert.Contains(t, out, "RECORD_DIGEST_MISMATCH", "the open vault refuses the changed ciphertext")
 
 	// The same bytes under a locked vault are a locked-vault error, never a tamper verdict.
 	locked, err := vault.NewVault(&vault.VaultConfig{FileSvc: raw, Logger: testutil.NewTestLogger()})

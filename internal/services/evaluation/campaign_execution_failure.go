@@ -63,6 +63,14 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
+	case errors.Is(err, constants.ErrFormationRegistryBinding), errors.Is(err, constants.ErrFormationStackMismatch), errors.Is(err, constants.ErrFormationInvalid):
+		return ExecutionFailureInvalidInput
+	case errors.Is(err, constants.ErrFormationAttestationFailed), errors.Is(err, constants.ErrFormationAttestationRequired):
+		return ExecutionFailureVerification
+	case errors.Is(err, constants.ErrFormationWitnessUnavailable):
+		return ExecutionFailureEvidence
+	case errors.Is(err, constants.ErrFormationOutOfMemory):
+		return ExecutionFailureProvider
 	default:
 		return ExecutionFailureInternal
 	}
@@ -110,6 +118,10 @@ func BuildExecutorFailureAssignmentResult(req AssignmentExecutionRequest, execEr
 			},
 		},
 		CompletedAt: timestamppb.New(now),
+	}
+	if class == ExecutionFailureProvider {
+		result.FailureReason = providerFailureReason(ProviderFailureClass(execErr))
+		result.PublicFailureReason = result.FailureReason
 	}
 	digest, err := ComputeAssignmentResultDigest(result)
 	if err != nil {

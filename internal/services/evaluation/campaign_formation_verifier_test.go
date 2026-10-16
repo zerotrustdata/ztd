@@ -33,7 +33,7 @@ func newDirectFormationFixture(t *testing.T) directFormationFixture {
 	t.Helper()
 	variants := testHeterogeneousVariants()
 	stack := mustHeterogeneousStack(t)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: stack, Variants: variants})
+	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
 	require.NoError(t, err)
 	_, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)

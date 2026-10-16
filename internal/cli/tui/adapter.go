@@ -208,15 +208,6 @@ func decodeSSEEvent(eventType, data string) (sse.Event, bool) {
 	return ev, ok
 }
 
-// translateSSEEvents maps a raw SSE frame to tea.Msg values.
-func translateSSEEvents(eventType, data string) []tea.Msg {
-	ev, ok := decodeSSEEvent(eventType, data)
-	if !ok {
-		return []tea.Msg{LedgerMsg{Level: LevelInfo, Message: data, Time: timeNow()}}
-	}
-	return translateEvent(ev)
-}
-
 // decodeFailure reports a malformed SSE payload as a warning line. The event is
 // dropped rather than rendered from the zero value of a failed decode.
 func decodeFailure(eventType string, err error) LedgerMsg {

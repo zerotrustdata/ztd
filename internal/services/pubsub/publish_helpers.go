@@ -10,6 +10,7 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -98,14 +99,14 @@ func publishLFAATypedResponseTo(
 	payload proto.Message,
 	auditStore *storage.SQLAuditStore, // records observed-state content evidence
 	scrubbingService *scrubbing.ScrubbingService, // egress scrubber, also scrubs the recorded evidence
-) {
+) error {
 	executionID := executionIDFromMessage(msg)
 	setExecutionIDOnPayload(payload, executionID)
 
 	originatingAction, err := constants.Registry.ActionFor(msg.EventType)
 	if err != nil {
 		logger.Error("Failed to resolve originating action for LFAA response", string(constants.ConnectionStateError), err)
-		return
+		return err
 	}
 	operatorID := cfg.OperatorID
 	if msg.OperatorID != nil && *msg.OperatorID != "" {
@@ -113,36 +114,37 @@ func publishLFAATypedResponseTo(
 	}
 	// Egress choke point: BuildUniversalResultEnvelope scrubs the payload. A withheld payload
 	// publishes the typed failure event instead.
-	env, err := BuildUniversalResultEnvelope(cfg, msg.EventType, eventType, originatingAction, payload, scrubbingService, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
+	env, err := BuildUniversalResultEnvelope(ctx, cfg, msg.EventType, eventType, originatingAction, payload, scrubbingService, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
 	if err != nil {
 		if isEgressWithheld(err) {
 			logger.Error("Withholding LFAA typed response: egress withheld", string(constants.ConnectionStateError), err)
 			if failure := egressFailureEvent(eventType, payload); failure != "" {
-				publishLFAAErrorTo(ctx, client, cfg, logger, msg, failure, egressWithheldText(err), auditStore, scrubbingService)
+				return errors.Join(err, publishLFAAErrorTo(ctx, client, cfg, logger, msg, failure, egressWithheldText(err), auditStore, scrubbingService))
 			}
-			return
+			return err
 		}
 		logger.Error("Failed to build LFAA typed response Governance Envelope", string(constants.ConnectionStateError), err)
-		return
+		return err
 	}
 
 	env.OperatorSessionId = msg.OperatorSessionID
 	data, err := protojson.Marshal(env)
 	if err != nil {
 		logger.Error("Failed to marshal LFAA typed response Governance Envelope", string(constants.ConnectionStateError), err)
-		return
+		return err
 	}
 
 	channelName := ResultsChannel(operatorID, msg.OperatorSessionID)
 	if err := client.Publish(ctx, channelName, data); err != nil {
 		logger.Error("Failed to publish LFAA typed response Universal", string(constants.ConnectionStateError), err)
-		return
+		return err
 	}
 
 	logger.Info("LFAA typed response published (Universal)", "event_type", eventType)
 
 	// §3: observed-state content evidence (best-effort, non-fatal)
-	publishObservedStateEvidence(logger, msg, eventType, payload, auditStore, scrubbingService)
+	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, auditStore, scrubbingService)
+	return nil
 }
 
 // publishLFAAErrorTo builds an error GovernanceEnvelope and publishes it to the results channel.
@@ -156,7 +158,7 @@ func publishLFAAErrorTo(
 	errorMsg string,
 	auditStore *storage.SQLAuditStore, // records observed-state content evidence
 	scrubbingService *scrubbing.ScrubbingService, // egress scrubber, also scrubs the recorded evidence
-) {
+) error {
 	executionID := executionIDFromMessage(msg)
 
 	// Error text can carry paths and command output, so it is scrubbed here. Without an active
@@ -164,7 +166,7 @@ func publishLFAAErrorTo(
 	// scrubbed or fixed before it reaches the envelope builder, so the builder runs without egress.
 	safeMsg := constants.ErrEgressScrubberUnavailable.Error()
 	if scrubbingService != nil && scrubbingService.IsEnabled() {
-		safeMsg = scrubbingService.ScrubText(errorMsg)
+		safeMsg = scrubbingService.ScrubText(ctx, errorMsg)
 	}
 
 	// Use CommandResult as a generic error container
@@ -177,7 +179,7 @@ func publishLFAAErrorTo(
 	originatingAction, err := constants.Registry.ActionFor(msg.EventType)
 	if err != nil {
 		logger.Error("Failed to resolve originating action for LFAA response", string(constants.ConnectionStateError), err)
-		return
+		return err
 	}
 	operatorID := cfg.OperatorID
 	if msg.OperatorID != nil && *msg.OperatorID != "" {
@@ -186,23 +188,25 @@ func publishLFAAErrorTo(
 	env, err := buildResultEnvelope(cfg, msg.EventType, eventType, originatingAction, payload, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
 	if err != nil {
 		logger.Error("Failed to build LFAA error Governance Envelope", string(constants.ConnectionStateError), err)
-		return
+		return err
 	}
 
 	env.OperatorSessionId = msg.OperatorSessionID
 	data, err := protojson.Marshal(env)
 	if err != nil {
 		logger.Error("Failed to marshal LFAA error Governance Envelope", string(constants.ConnectionStateError), err)
-		return
+		return err
 	}
 
 	channelName := ResultsChannel(operatorID, msg.OperatorSessionID)
 	if err := client.Publish(ctx, channelName, data); err != nil {
 		logger.Error("Failed to publish LFAA error Universal", string(constants.ConnectionStateError), err)
+		return fmt.Errorf("publish LFAA failure: %w", err)
 	}
 
 	// §3: observed-state content evidence (best-effort, non-fatal)
-	publishObservedStateEvidence(logger, msg, eventType, payload, auditStore, scrubbingService)
+	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, auditStore, scrubbingService)
+	return nil
 }
 
 // publishObservedStateEvidence persists observed-state content evidence to the audit store.
@@ -211,6 +215,7 @@ func publishLFAAErrorTo(
 // The audit store and an active scrubber are required: the publishing services take both at
 // construction, so neither is checked here.
 func publishObservedStateEvidence(
+	ctx context.Context,
 	logger *slog.Logger,
 	msg *PubSubCommandMessage,
 	eventType constants.EventType,
@@ -230,7 +235,7 @@ func publishObservedStateEvidence(
 	}
 
 	// Scrub content before persisting (per position paper §10: raw data belongs only in raw vault)
-	contentText = scrubbingService.ScrubText(contentText)
+	contentText = scrubbingService.ScrubText(ctx, contentText)
 
 	// Create event record
 	event := &storage.Event{
@@ -315,4 +320,13 @@ func extractContentText(payload proto.Message) string {
 		}
 		return ""
 	}
+}
+
+// executionResultError preserves a failed typed result at the synchronous L5 boundary.
+// Some execution services report operational failures in the result rather than a Go error.
+func executionResultError(status operatorv1.ExecutionStatus, message string) error {
+	if status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", constants.ErrActionExecutionFailed, message)
 }

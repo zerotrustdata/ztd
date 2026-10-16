@@ -87,7 +87,10 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 	}
 
 	// Construct RuntimeFileService early so all .ztd/ I/O goes through it
-	initLogger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	initLogger, err := logging.NewLogger(cfg.LogLevel, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("gateway: initialize logger: %w", err)
+	}
 	fileSvc, err := fs.NewRuntimeFileService(cfg.WorkingDir, initLogger)
 	if err != nil {
 		return fmt.Errorf("gateway: create file service: %w", err)

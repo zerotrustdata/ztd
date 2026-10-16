@@ -47,7 +47,7 @@ func TestBuildFormationRunEvidence_RoundTripsAndValidatesDigest(t *testing.T) {
 		func(prefix string) string { return prefix + "-attempt" },
 	)
 	require.NoError(t, err)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: req.Assignment.GetHeterogeneous().GetStack(), Variants: testHeterogeneousVariants()})
+	formation, err := BindFormation(FormationBindingRequest{Stack: req.Assignment.GetHeterogeneous().GetStack(), Variants: testHeterogeneousVariants()})
 	require.NoError(t, err)
 	initialState, err := BuildFormationInitialState(req.ScenarioInput)
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestBuildFailureAssignmentResult_RecoversFromPersistedFormationRun(t *testi
 		func(prefix string) string { return prefix + "-attempt" },
 	)
 	require.NoError(t, err)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: req.Assignment.GetHeterogeneous().GetStack(), Variants: testHeterogeneousVariants()})
+	formation, err := BindFormation(FormationBindingRequest{Stack: req.Assignment.GetHeterogeneous().GetStack(), Variants: testHeterogeneousVariants()})
 	require.NoError(t, err)
 	initialState, err := BuildFormationInitialState(req.ScenarioInput)
 	require.NoError(t, err)

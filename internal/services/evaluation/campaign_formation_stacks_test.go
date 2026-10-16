@@ -136,6 +136,10 @@ func TestValidateFormationCatalogStackSet_AcceptsSubsetsAndRejectsEmptySets(t *t
 	empty := *set
 	empty.Stacks = nil
 	require.Error(t, validateFormationCatalogStackSet(&empty))
+
+	unfrozen := *set
+	unfrozen.VariantIDs = set.VariantIDs[1:]
+	require.ErrorIs(t, validateFormationCatalogStackSet(&unfrozen), constants.ErrFormationRegistryBinding)
 }
 
 func TestGenerateFormationCatalogStackSet_RejectsEmptySovereignDigest(t *testing.T) {
@@ -154,55 +158,33 @@ func TestGenerateFormationCatalogStackSet_RejectsEmptySovereignDigest(t *testing
 	assert.ErrorIs(t, err, constants.ErrFormationAttestationRequired)
 }
 
-func TestResolveFormationBinding_UsesCatalogBindForFormationStack(t *testing.T) {
-	topologies, err := NewExecutionTopologies()
-	require.NoError(t, err)
-	formation, err := topologies.Formation("deepseek-reasoning-tower")
-	require.NoError(t, err)
-	stack, err := formation.ToStackDefinition()
-	require.NoError(t, err)
-
-	bound, err := ResolveFormationBinding(FormationBindingRequest{
-		FormationID: stack.GetStackId(),
-		Stack:       stack,
-		Variants:    testFormationCatalogVariants(),
+func TestGenerateFormationCatalogStackSet_SealsRegistryVariantIDs(t *testing.T) {
+	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
+		CampaignID:   "eval-formations-subset",
+		Variants:     testFormationCatalogVariants(),
+		FormationIDs: []string{"deepseek-reasoning-tower"},
 	})
 	require.NoError(t, err)
+	require.Len(t, set.Stacks, 1)
+	assert.Equal(t, "freeze-deepseek-r1-7b", set.Stacks[0].GetPrimarySlot().GetVariantId(), "slots carry frozen registry IDs, not catalog IDs")
+
+	bound, err := BindFormation(FormationBindingRequest{Stack: set.Stacks[0], Variants: testFormationCatalogVariants()})
+	require.NoError(t, err)
 	assert.Equal(t, "deepseek-reasoning-tower", bound.ID)
-	assert.False(t, bound.RelaxedValidation)
 	assert.Equal(t, repeatHex('4', 64), bound.Primary.ModelDigest)
 	assert.Equal(t, "freeze-deepseek-r1-7b", bound.Primary.VariantID)
 }
 
-func TestResolveFormationBinding_FallsBackToHeterogeneousStack(t *testing.T) {
-	stackSet, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
-		CampaignID: "heterogeneous-campaign",
-		Seed:       17,
-		Variants:   testHeterogeneousVariants(),
-	})
-	require.NoError(t, err)
-
-	bound, err := ResolveFormationBinding(FormationBindingRequest{
-		Stack:    stackSet.Stacks[0],
-		Variants: testHeterogeneousVariants(),
-	})
-	require.NoError(t, err)
-	assert.True(t, bound.RelaxedValidation)
-}
-
-func TestBindFormation_BindsAllCatalogFormationsFromServedTags(t *testing.T) {
+func TestBindFormation_BindsAllCatalogFormationsFromRegistry(t *testing.T) {
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 	variants := testFormationCatalogVariants()
+	registry := indexFormationVariants(variants)
 	for _, formation := range topologies.Formations() {
 		t.Run(formation.ID, func(t *testing.T) {
-			stack, stackErr := formation.ToStackDefinition()
+			stack, stackErr := formationRegistryStack(formation, registry)
 			require.NoError(t, stackErr)
-			bound, bindErr := BindFormation(FormationBindingRequest{
-				FormationID: formation.ID,
-				Stack:       stack,
-				Variants:    variants,
-			})
+			bound, bindErr := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
 			require.NoError(t, bindErr)
 			assert.Equal(t, formation.ID, bound.ID)
 			for _, role := range formation.Roles() {

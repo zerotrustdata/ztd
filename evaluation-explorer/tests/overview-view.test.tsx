@@ -3,9 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import type { CatalogSnapshot, EvaluationSummary, LiveEvent, SnapshotRecord, SuiteSummary } from '../src/contract/types';
+import type { CatalogSnapshot, EvaluationSummary, LiveEvent, ModelSummary, SnapshotRecord, SuiteSummary } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { OverviewView } from '../src/views/OverviewView';
 
@@ -130,29 +129,54 @@ describe('OverviewView', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('region', { name: 'Events' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Live activity' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Filter by release' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'System overview' })).not.toBeInTheDocument();
     expect(screen.queryByText('Active campaign')).not.toBeInTheDocument();
     expect(screen.queryByText(/live deployment of the ztd AI governance suite/i)).not.toBeInTheDocument();
   });
 
-  it('offers a condensed, interactive guide that links to Docs and Tasks', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={['/?release=all']}>
-        <OverviewView />
-      </MemoryRouter>,
-    );
+  it('shows activity from every run in the selected release, including events arriving before summaries', () => {
+    const secondEvent: LiveEvent = {
+      ...events[0]!,
+      dataset_id: 'ds-live-second-run',
+      run_id: 'second-run',
+      assignment_id: 'tiny-model-assignment',
+      event_id: 'tiny-model-event',
+      variant_id: 'smollm2-135m',
+      kind: 'assignment_failed',
+      terminal_status: 'provider_failed',
+      lifecycle_status: 'failed',
+      completed: 1,
+      total: 41,
+    };
+    evalStore.loadFixtures([catalog, evaluation], [...events, secondEvent]);
 
-    const guide = within(screen.getByRole('region', { name: 'What am I looking at?' }));
-    expect(guide.getByRole('tab', { name: /Freeze/ })).toHaveAttribute('aria-selected', 'true');
-    await user.click(guide.getByRole('tab', { name: /Verify/ }));
-    expect(guide.getByRole('tab', { name: /Verify/ })).toHaveAttribute('aria-selected', 'true');
-    expect(guide.getByText(/report\.json \+ verification\.json/)).toBeInTheDocument();
-    expect(guide.getByRole('link', { name: /Read the Docs/ })).toHaveAttribute('href', '/methodology');
-    expect(guide.getByRole('link', { name: /Browse all \d+ tasks/ })).toHaveAttribute('href', '/tasks');
-    expect(guide.getByRole('link', { name: /Tool selection/ })).toHaveAttribute('href', '/tasks#category-tool_selection');
+    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+
+    const stream = within(screen.getByRole('region', { name: 'Live activity' }));
+    expect(stream.getByRole('link', { name: /Provider Failed:.*View details/ })).toHaveAttribute('data-tone', 'neutral');
+    expect(stream.getByRole('link', { name: 'smollm2-135m' })).toBeInTheDocument();
+    expect(stream.getByRole('link', { name: /Stage Updated:.*View details/ })).toBeInTheDocument();
+  });
+
+  it('filters live events by release even before a catalog or run summary arrives', () => {
+    evalStore.loadFixtures([], [
+      { ...events[0]!, release: 'v1.1.2', release_basis: 'recorded', variant_id: 'current-model' },
+      { ...events[0]!, event_id: 'older-event', assignment_id: 'older-assignment', release: 'v1.1.1', release_basis: 'recorded', variant_id: 'older-model' },
+    ]);
+
+    render(<MemoryRouter initialEntries={['/?release=v1.1.2']}><OverviewView /></MemoryRouter>);
+
+    const stream = within(screen.getByRole('region', { name: 'Live activity' }));
+    expect(stream.getByRole('link', { name: 'current-model' })).toBeInTheDocument();
+    expect(stream.queryByRole('link', { name: 'older-model' })).not.toBeInTheDocument();
+  });
+
+  it('removes the landing page explainer while retaining recent runs', () => {
+    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    expect(screen.queryByRole('region', { name: 'What am I looking at?' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Recent runs' })).toBeInTheDocument();
   });
 
   it('presents recent runs with coverage for engineers without duplicate public data section', () => {
@@ -175,5 +199,38 @@ describe('OverviewView', () => {
 
     expect(screen.queryByRole('region', { name: 'Public data and APIs' })).not.toBeInTheDocument();
     expect(screen.queryByText('Public data & APIs')).not.toBeInTheDocument();
+  });
+
+  it.each(['primary', 'assistant'] as const)('links the %s model to its definition and the run ID to evaluation details', (role) => {
+    const model: ModelSummary = {
+      schema_version: '1.4.0',
+      kind: 'model_summary',
+      dataset_id: datasetId,
+      quality_state: 'live_in_progress',
+      observed_at: evaluation.observed_at,
+      variant_id: 'ministral-3-8b',
+      display_name: 'Ministral 3 8B',
+      role,
+      inventory_only: false,
+      evaluation_coverage: 1,
+    };
+    evalStore.loadFixtures([
+      catalog, model,
+      { ...evaluation, model_role_mapping: { [role]: model.variant_id } },
+    ], []);
+
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <OverviewView />
+      </MemoryRouter>,
+    );
+
+    const recent = within(screen.getByRole('region', { name: 'Recent runs' }));
+    expect(recent.getByRole('link', { name: model.display_name })).toHaveAttribute(
+      'href', `/models/${datasetId}/${model.variant_id}?role=${role}`,
+    );
+    expect(recent.getByRole('link', { name: evaluation.run_id })).toHaveAttribute(
+      'href', `/evaluations/${datasetId}/${evaluation.run_id}`,
+    );
   });
 });

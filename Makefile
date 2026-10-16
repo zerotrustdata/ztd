@@ -106,9 +106,13 @@ COVERAGE_THRESHOLD := 75
 # =============================================================================
 # TEST & COVERAGE EXCLUSIONS — single source of truth
 # =============================================================================
-# Packages excluded from test runs (and implicitly from coverage too).
-# Each pattern is matched against Go import paths.
-TEST_EXCLUDE_PKGS := \
+# Every Go package is tested, locally and in CI, so `make test` and `make ci`
+# run the same package set. Exclusions apply only to the coverage profile.
+#
+# Packages whose statements do not count toward the coverage threshold
+# (test harnesses, constants, generated code, example programs). They are
+# still tested. Each pattern is matched against Go import paths.
+COVERAGE_EXCLUDE_PKGS := \
 	ztd/test \
 	/cmd/ztd \
 	/internal/constants \
@@ -119,31 +123,20 @@ TEST_EXCLUDE_PKGS := \
 	/internal/services/gateway/docs \
 	/internal/services/gateway/scripts \
 	/internal/services/storage/storagetest \
-	/node_modules
-
-# Packages excluded from the coverage profile but NOT from test discovery.
-# These compile and may be tested, but their statements should not affect
-# the coverage threshold (e.g. generated protobuf code, example programs).
-COVERAGE_ONLY_EXCLUDE_PKGS := \
 	ztd/protocol/proto \
 	ztd/examples \
-	node_modules
-
-# All packages excluded from coverage: test exclusions + coverage-only exclusions.
-COVERAGE_EXCLUDE_PKGS := $(TEST_EXCLUDE_PKGS) $(COVERAGE_ONLY_EXCLUDE_PKGS)
+	/node_modules
 
 # Files excluded from coverage only (belong to otherwise-tested packages).
 EXCLUDE_FILES :=
 
 # Grep chains derived from the lists above — do not edit directly.
-_TEST_PKG_GREP := $(foreach p,$(TEST_EXCLUDE_PKGS),| grep -v "$(p)")
 _COV_PKG_GREP  := $(foreach p,$(COVERAGE_EXCLUDE_PKGS),| grep -v "$(p)")
 _FILE_GREP     := $(foreach f,$(EXCLUDE_FILES),| grep -v "$(f)")
 _COV_GREP      := $(_COV_PKG_GREP) $(_FILE_GREP)
 
 # Packages passed to go test.
-# Local CI includes every package; coverage exclusions still apply to the profile.
-TEST_PKGS = $$(go list ./... $(if $(CI_ALL_PACKAGES),| grep -v /node_modules,$(_TEST_PKG_GREP)))
+TEST_PKGS = $$(go list ./... | grep -v /node_modules)
 
 # Filter coverage.out (the raw profile) to remove excluded paths, then report %.
 # We operate on the profile data — not on the formatted output of go tool cover.
@@ -1037,7 +1030,6 @@ _ci-swagger:
 
 .PHONY: _ci-test
 _ci-test: export CI := 1
-_ci-test: export CI_ALL_PACKAGES := 1
 _ci-test: export ZTD_STRICT_CONSTANTS_LINT := 1
 _ci-test:
 	@echo "=== unit tests ==="

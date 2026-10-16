@@ -158,27 +158,13 @@ func (l *retryingFormationObservationLoader) LoadObservationWindow(ctx context.C
 	return nil, fmt.Errorf("formation: observation window %q: %w", providerAttemptID, lastErr)
 }
 
-// RunFormationProduction binds one catalog formation to frozen digests and
-// executes it through governed production adapters.
+// RunFormationProduction binds one frozen formation stack to frozen registry
+// digests and executes it through governed production adapters.
 func RunFormationProduction(ctx context.Context, binding FormationBindingRequest, deps FormationProductionDependencies, initialState []byte) (*FormationRunResult, error) {
 	formation, err := BindFormation(binding)
 	if err != nil {
 		return nil, err
 	}
-	return runBoundFormationProduction(ctx, formation, deps, initialState)
-}
-
-// RunHeterogeneousFormationProduction binds one campaign heterogeneous stack to
-// frozen digests and executes it through governed production adapters.
-func RunHeterogeneousFormationProduction(ctx context.Context, binding FormationBindingRequest, deps FormationProductionDependencies, initialState []byte) (*FormationRunResult, error) {
-	formation, err := ResolveFormationBinding(binding)
-	if err != nil {
-		return nil, err
-	}
-	return runBoundFormationProduction(ctx, formation, deps, initialState)
-}
-
-func runBoundFormationProduction(ctx context.Context, formation Formation, deps FormationProductionDependencies, initialState []byte) (*FormationRunResult, error) {
 	runner, err := NewFormationProductionRunner(deps)
 	if err != nil {
 		return nil, err

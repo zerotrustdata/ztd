@@ -148,11 +148,18 @@ func resolveLogKey(expr ast.Expr, constants map[string]string) (string, bool) {
 			v, err := strconv.Unquote(e.Value)
 			return v, err == nil
 		}
+	case *ast.Ident:
+		if e.Name == "ErrorKindKey" {
+			return ErrorKindKey, true
+		}
 	case *ast.CallExpr:
 		if ident, ok := e.Fun.(*ast.Ident); ok && ident.Name == "string" && len(e.Args) == 1 {
 			return resolveLogKey(e.Args[0], constants)
 		}
 	case *ast.SelectorExpr:
+		if ident, ok := e.X.(*ast.Ident); ok && ident.Name == "logging" && e.Sel.Name == "ErrorKindKey" {
+			return ErrorKindKey, true
+		}
 		v, ok := constants[e.Sel.Name]
 		return v, ok
 	}
@@ -374,6 +381,7 @@ func TestLogContentScanner_DetectsForbiddenPatterns(t *testing.T) {
 		{"sprintf message", `logger.Info(fmt.Sprintf("ran %s", cmd))`, []string{"non-literal message"}},
 		{"value named like a key is fine", `logger.Info("x", "execution_id", command)`, nil},
 		{"identifier keys are fine", `logger.Info("x", "execution_id", id, "stdout_size", n, string(constants.ConnectionStateError), err, logging.ErrorKind(err))`, nil},
+		{"error kind key-value is fine", `logger.Warn("x", "execution_id", id, logging.ErrorKindKey, logging.ErrorKindValue(err))`, nil},
 		{"non logger receiver is ignored", `t.Info("x", "command", c)`, nil},
 	}
 	for _, tt := range tests {
@@ -407,6 +415,7 @@ func TestErrorKind(t *testing.T) {
 			attr := ErrorKind(tt.err)
 			assert.Equal(t, ErrorKindKey, attr.Key)
 			assert.Equal(t, tt.want, attr.Value.String())
+			assert.Equal(t, tt.want, ErrorKindValue(tt.err))
 		})
 	}
 }

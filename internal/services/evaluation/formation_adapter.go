@@ -16,13 +16,13 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// FormationBindingRequest binds one campaign stack to frozen registry digests
-// before FormationRunner.Run. Catalog metadata supplies display estimates;
-// sovereign digests and variant IDs must come from the frozen inventory.
+// FormationBindingRequest binds one frozen campaign stack to frozen registry
+// variants before FormationRunner.Run. Slot variant IDs, served tags, and
+// sovereign digests all come from the frozen inventory; the live catalog is
+// never consulted at execution time.
 type FormationBindingRequest struct {
-	FormationID string
-	Stack       *evalv1.HeterogeneousStackDefinition
-	Variants    []*evalv1.ModelVariant
+	Stack    *evalv1.HeterogeneousStackDefinition
+	Variants []*evalv1.ModelVariant
 }
 
 // FormationRunContext carries opaque campaign identifiers into governed role
@@ -42,8 +42,8 @@ type FormationRunContext struct {
 	OnRoleProgress               func(context.Context, *FormationRunResult) error
 }
 
-// FormationBindingFromCatalog materializes the canonical stack for one catalog
-// formation and prepares a binding request against frozen registry variants.
+// FormationBindingFromCatalog materializes the stack for one catalog formation
+// against frozen registry variants and prepares its binding request.
 func FormationBindingFromCatalog(formationID string, variants []*evalv1.ModelVariant) (FormationBindingRequest, error) {
 	topologies, err := NewExecutionTopologies()
 	if err != nil {
@@ -53,76 +53,46 @@ func FormationBindingFromCatalog(formationID string, variants []*evalv1.ModelVar
 	if err != nil {
 		return FormationBindingRequest{}, err
 	}
-	stack, err := formation.ToStackDefinition()
+	stack, err := formationRegistryStack(formation, indexFormationVariants(variants))
 	if err != nil {
 		return FormationBindingRequest{}, err
 	}
-	return FormationBindingRequest{
-		FormationID: formationID,
-		Stack:       stack,
-		Variants:    variants,
-	}, nil
+	return FormationBindingRequest{Stack: stack, Variants: variants}, nil
 }
 
-// IsCatalogFormationID reports whether one stable ID matches the checked-in
-// ExecutionTopologies catalog.
-func IsCatalogFormationID(id string) bool {
-	if id == "" {
-		return false
-	}
-	topologies, err := NewExecutionTopologies()
-	if err != nil {
-		return false
-	}
-	_, err = topologies.Formation(id)
-	return err == nil
-}
-
-// ResolveFormationBinding binds one heterogeneous stack using catalog metadata
-// when the stack ID matches ExecutionTopologies, otherwise falling back to the
-// scheduler-derived heterogeneous binding path.
-func ResolveFormationBinding(req FormationBindingRequest) (Formation, error) {
-	formationID := req.FormationID
-	if formationID == "" && req.Stack != nil {
-		formationID = req.Stack.GetStackId()
-	}
-	if IsCatalogFormationID(formationID) {
-		req.FormationID = formationID
-		return BindFormation(req)
-	}
-	return BindHeterogeneousStack(req)
-}
-
-// BindHeterogeneousStack resolves one campaign heterogeneous stack against the
-// frozen registry without requiring a catalog formation entry.
-func BindHeterogeneousStack(req FormationBindingRequest) (Formation, error) {
+// BindFormation resolves one frozen campaign stack against the frozen registry
+// for a governed formation run. Catalog provider, family, and VRAM gates were
+// enforced when the stack was materialized; binding fails closed when the
+// stack digest is invalid, a slot variant is missing from the registry, or a
+// sovereign digest is empty.
+func BindFormation(req FormationBindingRequest) (Formation, error) {
 	if req.Stack == nil {
-		return Formation{}, fmt.Errorf("formation: bind heterogeneous stack: %w", constants.ErrMissingRequiredField)
+		return Formation{}, fmt.Errorf("formation: bind: %w", constants.ErrMissingRequiredField)
 	}
 	if err := ValidateHeterogeneousStackDigest(req.Stack); err != nil {
 		return Formation{}, err
 	}
 	stackID := req.Stack.GetStackId()
 	if stackID == "" {
-		return Formation{}, fmt.Errorf("formation: bind heterogeneous stack: %w", constants.ErrFormationInvalid)
+		return Formation{}, fmt.Errorf("formation: bind: %w", constants.ErrFormationInvalid)
 	}
 	registry := indexFormationVariants(req.Variants)
-	primary, err := bindHeterogeneousRole(FormationRolePrimary, req.Stack.GetPrimarySlot(), registry)
+	primary, err := bindFormationRole(stackID, FormationRolePrimary, req.Stack.GetPrimarySlot(), registry)
 	if err != nil {
 		return Formation{}, err
 	}
-	assistant, err := bindHeterogeneousRole(FormationRoleAssistant, req.Stack.GetAssistantSlot(), registry)
+	assistant, err := bindFormationRole(stackID, FormationRoleAssistant, req.Stack.GetAssistantSlot(), registry)
 	if err != nil {
 		return Formation{}, err
 	}
-	lite, err := bindHeterogeneousRole(FormationRoleLite, req.Stack.GetLiteSlot(), registry)
+	lite, err := bindFormationRole(stackID, FormationRoleLite, req.Stack.GetLiteSlot(), registry)
 	if err != nil {
 		return Formation{}, err
 	}
 	formation := Formation{
 		ID:                stackID,
 		DisplayName:       stackID,
-		Description:       "heterogeneous campaign stack",
+		Description:       "campaign formation stack",
 		MaxVRAMMiB:        FormationMaxVRAMMiB,
 		Primary:           primary,
 		Assistant:         assistant,
@@ -135,52 +105,35 @@ func BindHeterogeneousStack(req FormationBindingRequest) (Formation, error) {
 	return formation, nil
 }
 
-// BindFormation resolves catalog metadata and frozen-registry digests for one
-// governed formation run. It fails closed when the stack digest is invalid, a
-// sovereign role is missing from the registry, served tags diverge, or any
-// required digest is empty.
-func BindFormation(req FormationBindingRequest) (Formation, error) {
-	if req.Stack == nil {
-		return Formation{}, fmt.Errorf("formation: bind: %w", constants.ErrMissingRequiredField)
-	}
-	if err := ValidateHeterogeneousStackDigest(req.Stack); err != nil {
-		return Formation{}, err
-	}
-	formationID := req.FormationID
-	if formationID == "" {
-		formationID = req.Stack.GetStackId()
-	}
-	if formationID == "" {
-		return Formation{}, fmt.Errorf("formation %q: %w", formationID, constants.ErrFormationInvalid)
-	}
-	topologies, err := NewExecutionTopologies()
-	if err != nil {
-		return Formation{}, err
-	}
-	formation, err := topologies.Formation(formationID)
-	if err != nil {
-		return Formation{}, err
-	}
-	registry := indexFormationVariants(req.Variants)
-	primary, err := bindFormationRole(formation, FormationRolePrimary, req.Stack.GetPrimarySlot(), registry)
-	if err != nil {
-		return Formation{}, err
-	}
-	assistant, err := bindFormationRole(formation, FormationRoleAssistant, req.Stack.GetAssistantSlot(), registry)
-	if err != nil {
-		return Formation{}, err
-	}
-	lite, err := bindFormationRole(formation, FormationRoleLite, req.Stack.GetLiteSlot(), registry)
-	if err != nil {
-		return Formation{}, err
-	}
-	formation.Primary = primary
-	formation.Assistant = assistant
-	formation.Lite = lite
+// formationRegistryStack validates one catalog formation and materializes its
+// campaign stack with slot variant IDs taken from the frozen registry, so the
+// sealed stack binds by registry identity alone at execution time.
+func formationRegistryStack(formation Formation, registry formationVariantRegistry) (*evalv1.HeterogeneousStackDefinition, error) {
 	if err := formation.Validate(); err != nil {
-		return Formation{}, err
+		return nil, err
 	}
-	return formation, nil
+	bound := make(map[FormationRole]*evalv1.ModelVariant, 3)
+	for _, role := range formation.Roles() {
+		model, err := formation.Model(role)
+		if err != nil {
+			return nil, err
+		}
+		variant := lookupFormationVariant(registry, model.VariantID, model.ServedModelTag)
+		if variant == nil {
+			return nil, fmt.Errorf("formation %q role %s served tag %q: %w", formation.ID, role, model.ServedModelTag, constants.ErrFormationRegistryBinding)
+		}
+		if variant.GetServedModelTag() != model.ServedModelTag {
+			return nil, fmt.Errorf("formation %q role %s: served tag %q does not match catalog %q: %w", formation.ID, role, variant.GetServedModelTag(), model.ServedModelTag, constants.ErrFormationStackMismatch)
+		}
+		if variant.GetProviderClass() != model.ProviderClass {
+			return nil, fmt.Errorf("formation %q role %s: provider class %q does not match catalog %q: %w", formation.ID, role, variant.GetProviderClass(), model.ProviderClass, constants.ErrFormationStackMismatch)
+		}
+		if model.Trust == FormationTrustSovereign && variant.GetModelDigest() == "" {
+			return nil, fmt.Errorf("formation %q role %s: %w", formation.ID, role, constants.ErrFormationAttestationRequired)
+		}
+		bound[role] = variant
+	}
+	return materializeStack(formation.ID, bound[FormationRolePrimary], bound[FormationRoleAssistant], bound[FormationRoleLite])
 }
 
 type formationVariantRegistry struct {
@@ -216,49 +169,17 @@ func lookupFormationVariant(registry formationVariantRegistry, variantID, served
 	return registry.byVariantID[variantID]
 }
 
-func bindFormationRole(formation Formation, role FormationRole, slot *evalv1.RoleAssignment, registry formationVariantRegistry) (FormationModel, error) {
-	catalogModel, err := formation.Model(role)
-	if err != nil {
-		return FormationModel{}, err
-	}
+func bindFormationRole(stackID string, role FormationRole, slot *evalv1.RoleAssignment, registry formationVariantRegistry) (FormationModel, error) {
 	if slot == nil || slot.GetVariantId() == "" {
-		return FormationModel{}, fmt.Errorf("formation %q role %s: %w", formation.ID, role, constants.ErrFormationRegistryBinding)
-	}
-	if slot.GetVariantId() != catalogModel.VariantID {
-		return FormationModel{}, fmt.Errorf("formation %q role %s: variant %q does not match catalog %q: %w", formation.ID, role, slot.GetVariantId(), catalogModel.VariantID, constants.ErrFormationStackMismatch)
-	}
-	variant := lookupFormationVariant(registry, slot.GetVariantId(), catalogModel.ServedModelTag)
-	if variant == nil {
-		return FormationModel{}, fmt.Errorf("formation %q role %s: variant %q served tag %q: %w", formation.ID, role, slot.GetVariantId(), catalogModel.ServedModelTag, constants.ErrFormationRegistryBinding)
-	}
-	if variant.GetServedModelTag() != catalogModel.ServedModelTag {
-		return FormationModel{}, fmt.Errorf("formation %q role %s: served tag %q does not match catalog %q: %w", formation.ID, role, variant.GetServedModelTag(), catalogModel.ServedModelTag, constants.ErrFormationStackMismatch)
-	}
-	if variant.GetProviderClass() != catalogModel.ProviderClass {
-		return FormationModel{}, fmt.Errorf("formation %q role %s: provider class %q does not match catalog %q: %w", formation.ID, role, variant.GetProviderClass(), catalogModel.ProviderClass, constants.ErrFormationStackMismatch)
-	}
-	if catalogModel.Trust == FormationTrustSovereign {
-		if variant.GetModelDigest() == "" {
-			return FormationModel{}, fmt.Errorf("formation %q role %s: %w", formation.ID, role, constants.ErrFormationAttestationRequired)
-		}
-	}
-	bound := catalogModel
-	bound.VariantID = variant.GetVariantId()
-	bound.ModelDigest = variant.GetModelDigest()
-	return bound, nil
-}
-
-func bindHeterogeneousRole(role FormationRole, slot *evalv1.RoleAssignment, registry formationVariantRegistry) (FormationModel, error) {
-	if slot == nil || slot.GetVariantId() == "" {
-		return FormationModel{}, fmt.Errorf("formation role %s: %w", role, constants.ErrFormationRegistryBinding)
+		return FormationModel{}, fmt.Errorf("formation %q role %s: %w", stackID, role, constants.ErrFormationRegistryBinding)
 	}
 	variant := registry.byVariantID[slot.GetVariantId()]
 	if variant == nil {
-		return FormationModel{}, fmt.Errorf("formation role %s: variant %q: %w", role, slot.GetVariantId(), constants.ErrFormationRegistryBinding)
+		return FormationModel{}, fmt.Errorf("formation %q role %s: variant %q not in frozen registry: %w", stackID, role, slot.GetVariantId(), constants.ErrFormationRegistryBinding)
 	}
 	model := formationModelFromVariant(variant)
 	if model.Trust == FormationTrustSovereign && model.ModelDigest == "" {
-		return FormationModel{}, fmt.Errorf("formation role %s: %w", role, constants.ErrFormationAttestationRequired)
+		return FormationModel{}, fmt.Errorf("formation %q role %s: %w", stackID, role, constants.ErrFormationAttestationRequired)
 	}
 	return model, nil
 }

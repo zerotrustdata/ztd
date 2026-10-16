@@ -110,10 +110,10 @@ func rolloutAddCmd(deps nativeEvalDeps) *cobra.Command {
 status. New models are ordered by the checked-in intake priority
 (eval/rollout-intake-priority.json), then smallest first.
 
-A model whose tool-calling probe the provider rejected (recorded by
-ztd eval models freeze --probe-capabilities) is skipped, because every scenario
-declares tools. A model that shares a digest with a queued model, or with one
-earlier in the order, is an alias and is skipped. Both are listed.
+Capability probes are diagnostic observations. Every selected model is eligible;
+each evaluation sends its tools to the provider and records the current response.
+A model that shares a digest with a queued model, or with one earlier in the
+order, is an alias and is skipped with its kept tag listed.
 
 Examples:
   ztd eval rollout add qwen3:0.6b
@@ -330,11 +330,7 @@ func writeRolloutAdd(cmd *cobra.Command, intake evaluation.RolloutIntake, remain
 		_, _ = fmt.Fprintf(out, "Queued %s (%s)\n", entry.ServedModelTag, entry.VariantID)
 	}
 	for _, skip := range intake.Skipped {
-		if skip.Reason == evaluation.RolloutSkipAlias {
-			_, _ = fmt.Fprintf(out, "Skipped %s (%s): alias of %s\n", skip.ServedModelTag, skip.VariantID, skip.AliasOf)
-			continue
-		}
-		_, _ = fmt.Fprintf(out, "Skipped %s (%s): the provider rejected its tool-calling probe\n", skip.ServedModelTag, skip.VariantID)
+		_, _ = fmt.Fprintf(out, "Skipped %s (%s): alias of %s\n", skip.ServedModelTag, skip.VariantID, skip.AliasOf)
 	}
 	if intake.AlreadyQueued > 0 {
 		_, _ = fmt.Fprintf(out, "%d selected model(s) were already queued\n", intake.AlreadyQueued)

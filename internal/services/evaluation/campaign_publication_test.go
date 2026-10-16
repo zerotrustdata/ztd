@@ -967,7 +967,7 @@ func completedHeterogeneousFormationCampaign(t *testing.T, store *Store) *evalv1
 	execReq.Assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
 	require.NoError(t, store.SaveAssignment(context.Background(), execReq.Assignment))
 
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: stack, Variants: variants})
+	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
 	require.NoError(t, err)
 	initialState, err := BuildFormationInitialState(execReq.ScenarioInput)
 	require.NoError(t, err)

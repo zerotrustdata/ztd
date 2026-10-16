@@ -408,7 +408,7 @@ ConformanceCaseEvidence is the raw evidence for one case. It holds no verdict.
 ### ConformanceObservation
 ConformanceObservation is what one drive of one ingress returned. Exactly
 one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
-set, matching kind.
+set, matching kind. NOT_RUN kinds carry no outcome fields.
 
 
 | Field | Type | Label | Description |
@@ -479,7 +479,7 @@ executor whose commitment links must be adjacent.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | case_id | [string](#string) |  |  |
-| status | [EvaluationVerdictStatus](#ztd-eval-v1-EvaluationVerdictStatus) |  | PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for NOT_RUN_ATTENDED |
+| status | [EvaluationVerdictStatus](#ztd-eval-v1-EvaluationVerdictStatus) |  | PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for a case not run |
 | failure_class | [ConformanceFailureClass](#ztd-eval-v1-ConformanceFailureClass) |  |  |
 
 
@@ -741,6 +741,7 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | repetition_count | [uint32](#uint32) |  |  |
 | platform_release | [string](#string) |  | platform_release is the ztd build version that froze the campaign. It is part of campaign_digest, so a campaign cannot be re-labeled. Empty only on campaigns frozen before v2.3.0; their release is an operator-asserted tag held outside the digest. |
 | source_revision | [string](#string) |  | source_revision is the source commit of the build that froze the campaign. |
+| hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
 
 
 
@@ -1101,6 +1102,7 @@ EvaluationVerificationReport independently verifies one run or assignment.
 | persistence_attestation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | policy_decision | [string](#string) |  |  |
 | effect_observation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
+| action_type | [string](#string) |  | The registry governance class the signed receipt names (INFERENCE, FS_READ, FILE_EDIT, ...). |
 
 
 
@@ -2499,6 +2501,8 @@ AgentRole is the generic function a step performs in an agent pipeline.
 | CONFORMANCE_OBSERVATION_KIND_SUSPENDED | 4 | approval pending, tx hash returned |
 | CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED | 5 | attended case skipped in an unattended run |
 | CONFORMANCE_OBSERVATION_KIND_UNTYPED | 6 | anything else: always a failure |
+| CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND | 7 | no outbound Data Operator selected |
+| CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A | 8 | no harness-owned A2A downstream configured |
 
 
 

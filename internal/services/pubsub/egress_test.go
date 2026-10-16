@@ -19,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	pubsubtest "github.com/zerotrustdata/ztd/internal/services/pubsub/pubsubtest"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -30,7 +31,7 @@ func newEgressScrubber(t *testing.T, enabled bool) *scrubbing.ScrubbingService {
 	t.Helper()
 	cfg := scrubbing.DefaultConfig()
 	cfg.Enabled = enabled
-	svc, err := scrubbing.NewScrubbingService(context.Background(), cfg, testutil.NewTestLogger(), nil)
+	svc, err := scrubbing.NewScrubbingService(context.Background(), cfg, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return svc
 }
@@ -47,7 +48,7 @@ func TestEgressScrubbed_WithholdsContentWithoutActiveScrubber(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := egressScrubbed(payload, tt.s)
+			out, err := egressScrubbed(context.Background(), payload, tt.s)
 			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 			assert.Nil(t, out)
 		})
@@ -67,7 +68,7 @@ func TestEgressScrubbed_ScrubsContentFields(t *testing.T) {
 		},
 	}
 
-	out, err := egressScrubbed(payload, s)
+	out, err := egressScrubbed(context.Background(), payload, s)
 	require.NoError(t, err)
 	scrubbed, ok := out.(*operatorv1.FetchFileDiffResult)
 	require.True(t, ok)
@@ -84,7 +85,7 @@ func TestEgressScrubbed_ScrubsContentFields(t *testing.T) {
 
 func TestEgressScrubbed_PassesContentFreePayloadsThrough(t *testing.T) {
 	payload := &operatorv1.HeartbeatResult{}
-	out, err := egressScrubbed(payload, nil)
+	out, err := egressScrubbed(context.Background(), payload, nil)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(payload, out))
 }
@@ -206,7 +207,7 @@ func TestEgressScrubbed_UnclassifiedTypeFailsLoudly(t *testing.T) {
 	payload := &operatorv1.CheckPortRequested{Host: egressSecretEmail, Port: 22}
 	s := newEgressScrubber(t, true)
 
-	out, err := egressScrubbed(payload, s)
+	out, err := egressScrubbed(context.Background(), payload, s)
 	require.ErrorIs(t, err, constants.ErrEgressPayloadUnclassified)
 	assert.Nil(t, out)
 
@@ -224,7 +225,7 @@ func TestEgressScrubbed_ScrubsFileHistoryAndRestoreResults(t *testing.T) {
 			{CommitHash: "abc123", Timestamp: "2026-10-12", Message: "edit for " + egressSecretEmail},
 		},
 	}
-	out, err := egressScrubbed(history, s)
+	out, err := egressScrubbed(context.Background(), history, s)
 	require.NoError(t, err)
 	scrubbedHistory := out.(*operatorv1.FetchFileHistoryResult)
 	assert.NotContains(t, scrubbedHistory.FilePath, egressSecretEmail)
@@ -238,13 +239,13 @@ func TestEgressScrubbed_ScrubsFileHistoryAndRestoreResults(t *testing.T) {
 		CommitHash:  "def456",
 		ExecutionId: "exec-restore",
 	}
-	out, err = egressScrubbed(restore, s)
+	out, err = egressScrubbed(context.Background(), restore, s)
 	require.NoError(t, err)
 	scrubbedRestore := out.(*operatorv1.RestoreFileResult)
 	assert.NotContains(t, scrubbedRestore.FilePath, egressSecretEmail)
 	assert.Equal(t, "def456", scrubbedRestore.CommitHash)
 
-	_, err = egressScrubbed(restore, nil)
+	_, err = egressScrubbed(context.Background(), restore, nil)
 	require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 }
 
@@ -255,7 +256,7 @@ func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testin
 		ProviderAttemptId: "attempt-1",
 		Sequence:          1,
 		Parts: []*operatorv1.InferenceResponsePart{
-			{Part: &operatorv1.InferenceResponsePart_Text{Text: "[EMAIL] "}},
+			{Part: &operatorv1.InferenceResponsePart_Text{Text: "{{UEI_1}} "}},
 		},
 	}
 	for name, s := range map[string]*scrubbing.ScrubbingService{
@@ -263,7 +264,7 @@ func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testin
 		"nil scrubber":     nil,
 	} {
 		t.Run(name, func(t *testing.T) {
-			out, err := egressScrubbed(progress, s)
+			out, err := egressScrubbed(context.Background(), progress, s)
 			require.NoError(t, err)
 			assert.True(t, proto.Equal(progress, out.(*operatorv1.InferenceProgressEvent)))
 		})

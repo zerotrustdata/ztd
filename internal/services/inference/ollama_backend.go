@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -347,7 +348,7 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 	var decodeErr error
 	if resp.StatusCode == http.StatusOK {
 		allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
-		chatResp, parts, timeToFirstToken, decodeErr = b.decodeChatStream(capture, capture.arrivalTime, allowParallelToolCalls, req.ContextLimit, req.ProviderAttemptID, stream)
+		chatResp, parts, timeToFirstToken, decodeErr = b.decodeChatStream(ctx, capture, capture.arrivalTime, allowParallelToolCalls, req.ContextLimit, req.ProviderAttemptID, stream)
 	}
 	responseBody, readErr := capture.result()
 	// Only a 200 stream is bound to the attempt record, and only by digest and
@@ -622,6 +623,7 @@ type responseRead struct {
 }
 
 func (b *OllamaBackend) decodeChatStream(
+	ctx context.Context,
 	body io.Reader,
 	arrivalTime func(int64) *int64,
 	allowParallelToolCalls bool,
@@ -665,7 +667,7 @@ func (b *OllamaBackend) decodeChatStream(
 			timeToFirstToken = arrivalTime(decoder.InputOffset())
 		}
 		if stream != nil {
-			released, err := stream.accept(eventParts)
+			released, err := stream.accept(ctx, eventParts)
 			if err != nil {
 				return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: stream segments: %w", err)
 			}
@@ -681,7 +683,7 @@ func (b *OllamaBackend) decodeChatStream(
 	}
 	if terminal != nil && stream != nil {
 		// The buffered tail is released only once the terminal event has arrived.
-		tail := stream.finish()
+		tail := stream.finish(ctx)
 		if err := stream.publish(tail, servedModel, timeToFirstToken); err != nil {
 			b.logger.Warn("Inference progress delivery failed", "provider_attempt_id", providerAttemptID, "error", err)
 		}
@@ -837,11 +839,12 @@ func ollamaCapabilityRejection(statusCode int, body []byte) bool {
 // ErrInferenceBackendUnavailable with the underlying transport cause
 // preserved in the chain.
 func transportError(ctx context.Context, op string, err error) error {
+	var netErr net.Error
 	switch {
 	case errors.Is(ctx.Err(), context.Canceled):
-		return fmt.Errorf("ollama_backend: %s: %w", op, context.Canceled)
-	case errors.Is(err, context.DeadlineExceeded):
-		return fmt.Errorf("ollama_backend: %s: %w", op, constants.ErrInferenceBackendTimeout)
+		return fmt.Errorf("ollama_backend: %s: %w: %w", op, context.Canceled, err)
+	case errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
+		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceBackendTimeout, err)
 	default:
 		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceBackendUnavailable, err)
 	}

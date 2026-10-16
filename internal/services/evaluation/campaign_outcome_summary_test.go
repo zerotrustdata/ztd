@@ -39,3 +39,15 @@ func TestAssignmentOutcomeSummary_PassingResultListsNoFailures(t *testing.T) {
 
 	assert.Equal(t, "COMPLETED verdict=PASS pass_rate=100.0%", AssignmentOutcomeSummary(result))
 }
+
+func TestAssignmentOutcomeSummary_ProviderFailureShowsCauseWithoutCascadingGradeFailures(t *testing.T) {
+	result := &evalv1.EvaluationAssignmentResult{
+		LifecycleStatus:     evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED,
+		PublicFailureReason: "Provider rejected a requested capability (capability_unsupported); no final response was produced.",
+		DeterministicGrades: []*evalv1.DeterministicGrade{
+			{CriterionId: "role-invoked", Basis: evalv1.GradeBasis_GRADE_BASIS_STRUCTURAL, Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL},
+			{CriterionId: "scenario-content", Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION, Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL},
+		},
+	}
+	assert.Equal(t, `PROVIDER_FAILED verdict=INVALID_EVIDENCE reason="Provider rejected a requested capability (capability_unsupported); no final response was produced."`, AssignmentOutcomeSummary(result))
+}

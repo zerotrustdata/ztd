@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,6 +36,7 @@ import (
 type testGatewayOpts struct {
 	posture  config.GatewayPosture
 	httpPort int
+	logger   *slog.Logger
 }
 
 // newTestGatewayService creates a GatewayModeService via NewGatewayModeService
@@ -43,7 +45,10 @@ func newTestGatewayService(t *testing.T, opts testGatewayOpts) *GatewayModeServi
 	t.Helper()
 
 	cfg := testutil.NewTestConfig(t)
-	logger := testutil.NewTestLogger()
+	logger := opts.logger
+	if logger == nil {
+		logger = testutil.NewTestLogger()
+	}
 	fileSvc := newTestFileSvc(t)
 
 	cfg.Gateway.DataDir = testutil.TempDir(t)

@@ -2302,6 +2302,8 @@ const (
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED        ConformanceObservationKind = 4 // approval pending, tx hash returned
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED ConformanceObservationKind = 5 // attended case skipped in an unattended run
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED          ConformanceObservationKind = 6 // anything else: always a failure
+	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND ConformanceObservationKind = 7 // no outbound Data Operator selected
+	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A      ConformanceObservationKind = 8 // no harness-owned A2A downstream configured
 )
 
 // Enum value maps for ConformanceObservationKind.
@@ -2314,6 +2316,8 @@ var (
 		4: "CONFORMANCE_OBSERVATION_KIND_SUSPENDED",
 		5: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED",
 		6: "CONFORMANCE_OBSERVATION_KIND_UNTYPED",
+		7: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND",
+		8: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A",
 	}
 	ConformanceObservationKind_value = map[string]int32{
 		"CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED":      0,
@@ -2323,6 +2327,8 @@ var (
 		"CONFORMANCE_OBSERVATION_KIND_SUSPENDED":        4,
 		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED": 5,
 		"CONFORMANCE_OBSERVATION_KIND_UNTYPED":          6,
+		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND": 7,
+		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A":      8,
 	}
 )
 
@@ -4226,8 +4232,13 @@ type EvaluationCampaignSpec struct {
 	PlatformRelease string `protobuf:"bytes,11,opt,name=platform_release,json=platformRelease,proto3" json:"platform_release,omitempty"`
 	// source_revision is the source commit of the build that froze the campaign.
 	SourceRevision string `protobuf:"bytes,12,opt,name=source_revision,json=sourceRevision,proto3" json:"source_revision,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// hold_context makes every repetition after the first continue the previous
+	// repetition's investigation: the model receives that repetition's complete
+	// conversation and works in the same workspace. Only set when
+	// repetition_count > 1; false on campaigns frozen before it existed.
+	HoldContext   bool `protobuf:"varint,13,opt,name=hold_context,json=holdContext,proto3" json:"hold_context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvaluationCampaignSpec) Reset() {
@@ -4342,6 +4353,13 @@ func (x *EvaluationCampaignSpec) GetSourceRevision() string {
 		return x.SourceRevision
 	}
 	return ""
+}
+
+func (x *EvaluationCampaignSpec) GetHoldContext() bool {
+	if x != nil {
+		return x.HoldContext
+	}
+	return false
 }
 
 // EvaluationScenarioCatalog is the immutable 25-scenario private catalog.
@@ -7013,8 +7031,11 @@ type GovernedActionBinding struct {
 	PersistenceAttestationRef *v1.ComplianceEvidenceReference `protobuf:"bytes,7,opt,name=persistence_attestation_ref,json=persistenceAttestationRef,proto3" json:"persistence_attestation_ref,omitempty"`
 	PolicyDecision            string                          `protobuf:"bytes,8,opt,name=policy_decision,json=policyDecision,proto3" json:"policy_decision,omitempty"`
 	EffectObservationRef      *v1.ComplianceEvidenceReference `protobuf:"bytes,9,opt,name=effect_observation_ref,json=effectObservationRef,proto3" json:"effect_observation_ref,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	// The registry governance class the signed receipt names (INFERENCE,
+	// FS_READ, FILE_EDIT, ...).
+	ActionType    string `protobuf:"bytes,10,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GovernedActionBinding) Reset() {
@@ -7108,6 +7129,13 @@ func (x *GovernedActionBinding) GetEffectObservationRef() *v1.ComplianceEvidence
 		return x.EffectObservationRef
 	}
 	return nil
+}
+
+func (x *GovernedActionBinding) GetActionType() string {
+	if x != nil {
+		return x.ActionType
+	}
+	return ""
 }
 
 type DeterministicGrade struct {
@@ -10741,7 +10769,7 @@ func (x *CanaryManifest) GetEntries() []*CanaryEntry {
 
 // ConformanceObservation is what one drive of one ingress returned. Exactly
 // one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
-// set, matching kind.
+// set, matching kind. NOT_RUN kinds carry no outcome fields.
 type ConformanceObservation struct {
 	state           protoimpl.MessageState     `protogen:"open.v1"`
 	Kind            ConformanceObservationKind `protobuf:"varint,1,opt,name=kind,proto3,enum=ztd.eval.v1.ConformanceObservationKind" json:"kind,omitempty"`
@@ -11293,7 +11321,7 @@ func (x *ConformanceRunRecord) GetFinishedAt() *timestamppb.Timestamp {
 type ConformanceVerdict struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	CaseId        string                  `protobuf:"bytes,1,opt,name=case_id,json=caseId,proto3" json:"case_id,omitempty"`
-	Status        EvaluationVerdictStatus `protobuf:"varint,2,opt,name=status,proto3,enum=ztd.eval.v1.EvaluationVerdictStatus" json:"status,omitempty"` // PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for NOT_RUN_ATTENDED
+	Status        EvaluationVerdictStatus `protobuf:"varint,2,opt,name=status,proto3,enum=ztd.eval.v1.EvaluationVerdictStatus" json:"status,omitempty"` // PASS, FAIL, INVALID_EVIDENCE, or UNAVAILABLE for a case not run
 	FailureClass  ConformanceFailureClass `protobuf:"varint,3,opt,name=failure_class,json=failureClass,proto3,enum=ztd.eval.v1.ConformanceFailureClass" json:"failure_class,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -12874,7 +12902,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x0ecatalog_digest\x18\x04 \x01(\tR\rcatalogDigest\x122\n" +
 	"\x15model_registry_digest\x18\x05 \x01(\tR\x13modelRegistryDigest\x12A\n" +
 	"\x1dinference_operator_session_id\x18\x06 \x01(\tR\x1ainferenceOperatorSessionId\x127\n" +
-	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\xed\x04\n" +
+	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\x90\x05\n" +
 	"\x16EvaluationCampaignSpec\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1f\n" +
 	"\vcampaign_id\x18\x02 \x01(\tR\n" +
@@ -12890,7 +12918,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x10repetition_count\x18\n" +
 	" \x01(\rR\x0frepetitionCount\x12)\n" +
 	"\x10platform_release\x18\v \x01(\tR\x0fplatformRelease\x12'\n" +
-	"\x0fsource_revision\x18\f \x01(\tR\x0esourceRevision\"\xfa\x01\n" +
+	"\x0fsource_revision\x18\f \x01(\tR\x0esourceRevision\x12!\n" +
+	"\fhold_context\x18\r \x01(\bR\vholdContext\"\xfa\x01\n" +
 	"\x19EvaluationScenarioCatalog\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12F\n" +
 	"\vcatalog_ref\x18\x02 \x01(\v2%.ztd.compliance.v1.VersionedReferenceR\n" +
@@ -13168,7 +13197,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\rassignment_id\x18\x02 \x01(\tR\fassignmentId\x12#\n" +
 	"\rrecovery_kind\x18\x03 \x01(\tR\frecoveryKind\x12>\n" +
 	"\aoutcome\x18\x04 \x01(\x0e2$.ztd.eval.v1.EvaluationVerdictStatusR\aoutcome\x12\x16\n" +
-	"\x06detail\x18\x05 \x01(\tR\x06detail\"\xa3\x04\n" +
+	"\x06detail\x18\x05 \x01(\tR\x06detail\"\xc4\x04\n" +
 	"\x15GovernedActionBinding\x12\x1d\n" +
 	"\n" +
 	"binding_id\x18\x01 \x01(\tR\tbindingId\x12#\n" +
@@ -13181,7 +13210,10 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"receiptRef\x12n\n" +
 	"\x1bpersistence_attestation_ref\x18\a \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x19persistenceAttestationRef\x12'\n" +
 	"\x0fpolicy_decision\x18\b \x01(\tR\x0epolicyDecision\x12d\n" +
-	"\x16effect_observation_ref\x18\t \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x14effectObservationRef\"\xed\x01\n" +
+	"\x16effect_observation_ref\x18\t \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x14effectObservationRef\x12\x1f\n" +
+	"\vaction_type\x18\n" +
+	" \x01(\tR\n" +
+	"actionType\"\xed\x01\n" +
 	"\x12DeterministicGrade\x12\x19\n" +
 	"\bgrade_id\x18\x01 \x01(\tR\agradeId\x12!\n" +
 	"\fcriterion_id\x18\x02 \x01(\tR\vcriterionId\x12<\n" +
@@ -14007,7 +14039,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" PUBLIC_RELEASE_BASIS_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_RECORDED\x10\x01\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_ASSERTED\x10\x02\x12 \n" +
-	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xd3\x02\n" +
+	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xb4\x03\n" +
 	"\x1aConformanceObservationKind\x12,\n" +
 	"(CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CONFORMANCE_OBSERVATION_KIND_RECEIPT\x10\x01\x12*\n" +
@@ -14015,7 +14047,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"$CONFORMANCE_OBSERVATION_KIND_REFUSAL\x10\x03\x12*\n" +
 	"&CONFORMANCE_OBSERVATION_KIND_SUSPENDED\x10\x04\x121\n" +
 	"-CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED\x10\x05\x12(\n" +
-	"$CONFORMANCE_OBSERVATION_KIND_UNTYPED\x10\x06*\xcb\x06\n" +
+	"$CONFORMANCE_OBSERVATION_KIND_UNTYPED\x10\x06\x121\n" +
+	"-CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND\x10\a\x12,\n" +
+	"(CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A\x10\b*\xcb\x06\n" +
 	"\x17ConformanceFailureClass\x12)\n" +
 	"%CONFORMANCE_FAILURE_CLASS_UNSPECIFIED\x10\x00\x12.\n" +
 	"*CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH\x10\x01\x12+\n" +

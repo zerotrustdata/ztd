@@ -22,9 +22,11 @@ describe('AboutView', () => {
     );
 
     const panel = within(screen.getByRole('region', { name: 'About this deployment' }));
-    expect(panel.getByRole('heading', { level: 1, name: 'Capable help. Control stays with you.' })).toBeInTheDocument();
-    expect(panel.getByRole('heading', { name: 'Purpose' })).toBeInTheDocument();
-    expect(panel.getByRole('heading', { name: 'What ztd proves here' })).toBeInTheDocument();
+    expect(panel.getByRole('heading', { level: 1, name: 'Building ztd in the open.' })).toBeInTheDocument();
+    expect(panel.getByRole('heading', { name: 'What these evaluations are for' })).toBeInTheDocument();
+    expect(panel.getByRole('list', { name: 'Evaluation goals' })).toBeInTheDocument();
+    expect(panel.getByRole('heading', { name: 'Follow the evidence' })).toBeInTheDocument();
+    expect(panel.getByRole('heading', { name: 'The platform behind the evaluations' })).toBeInTheDocument();
     expect(panel.getByTestId('stream-status')).toHaveTextContent('Live');
     expect(panel.getByText(/live window into/i)).toBeInTheDocument();
     expect(panel.getByText(/ztd governs its execution path/i)).toBeInTheDocument();

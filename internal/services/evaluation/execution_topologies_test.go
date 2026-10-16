@@ -49,21 +49,6 @@ func TestFormationValidateRejectsProviderAndFamilyOverlap(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrFormationFamilyOverlap)
 }
 
-func TestFormationToStackDefinitionUsesCanonicalRoleBindings(t *testing.T) {
-	topologies, err := NewExecutionTopologies()
-	require.NoError(t, err)
-	formation, err := topologies.Formation("gemma-cascade")
-	require.NoError(t, err)
-
-	stack, err := formation.ToStackDefinition()
-	require.NoError(t, err)
-	assert.Equal(t, formation.ID, stack.GetStackId())
-	assert.Equal(t, formation.Primary.VariantID, stack.GetPrimarySlot().GetVariantId())
-	assert.Equal(t, formation.Assistant.VariantID, stack.GetAssistantSlot().GetVariantId())
-	assert.Equal(t, formation.Lite.VariantID, stack.GetLiteSlot().GetVariantId())
-	require.NoError(t, ValidateHeterogeneousStackDigest(stack))
-}
-
 func newTestFormation(id string) Formation {
 	return Formation{
 		ID: id, DisplayName: "Test Formation", Description: "A formation used for CRUD tests.", MaxVRAMMiB: FormationMaxVRAMMiB,
@@ -341,9 +326,6 @@ func TestUltraEfficientSpeedsterMeetsFrozenInventoryRequirements(t *testing.T) {
 	assert.Equal(t, uint64(7552), formation.EstimatedVRAMMiB())
 	assert.Less(t, formation.EstimatedVRAMMiB(), formation.MaxVRAMMiB)
 
-	stack, err := formation.ToStackDefinition()
-	require.NoError(t, err)
-	require.NoError(t, ValidateHeterogeneousStackDigest(stack))
 }
 
 func TestFormationRunnerRequiresNonEmptySovereignDigest(t *testing.T) {

@@ -24,8 +24,9 @@ type PlatformIdentity struct {
 
 // MaterializeCampaignSpec binds the frozen catalog and model registry
 // into one immutable campaign spec for Phase 4 controller initialization.
-// The platform release is part of the campaign digest.
-func MaterializeCampaignSpec(campaignID string, catalog *evalv1.EvaluationScenarioCatalog, inventory *ModelInventoryFreeze, repetitionCount uint32, platform PlatformIdentity) (*evalv1.EvaluationCampaignSpec, error) {
+// The platform release is part of the campaign digest. holdContext is frozen
+// only when there is a later repetition to carry the investigation into.
+func MaterializeCampaignSpec(campaignID string, catalog *evalv1.EvaluationScenarioCatalog, inventory *ModelInventoryFreeze, repetitionCount uint32, holdContext bool, platform PlatformIdentity) (*evalv1.EvaluationCampaignSpec, error) {
 	if campaignID == "" || catalog == nil || inventory == nil || len(inventory.Variants) == 0 || platform.Release == "" {
 		return nil, fmt.Errorf("evaluation: materialize campaign spec: %w", constants.ErrMissingRequiredField)
 	}
@@ -48,6 +49,7 @@ func MaterializeCampaignSpec(campaignID string, catalog *evalv1.EvaluationScenar
 		GovernancePosture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 		ScenarioCount:       uint32(len(catalog.GetScenarios())),
 		RepetitionCount:     repetitionCount,
+		HoldContext:         holdContext && repetitionCount > 1,
 		PlatformRelease:     platform.Release,
 		SourceRevision:      platform.SourceRevision,
 	}

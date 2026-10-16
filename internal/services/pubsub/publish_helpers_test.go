@@ -173,8 +173,8 @@ func TestPublishLFAATypedResponseTo(t *testing.T) {
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		}
 
-		publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
-		// Should log error and not panic
+		err := publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		require.ErrorIs(t, err, constants.ErrClientClosed)
 	})
 }
 
@@ -251,8 +251,8 @@ func TestPublishLFAAErrorTo(t *testing.T) {
 			Payload:           []byte("invalid protobuf"),
 		}
 
-		publishLFAAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
-		// Should log error and not panic
+		err := publishLFAAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		require.ErrorIs(t, err, constants.ErrClientClosed)
 	})
 }
 
@@ -274,7 +274,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 			},
 		}
 
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
 
 		events, err := auditStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
@@ -289,9 +289,9 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 		logger := testutil.NewTestLogger()
 		auditStore := storagetest.NewTestAuditStore(t, sessionID)
 
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.FsRead.Completed, &operatorv1.FsReadResult{Content: "file content here"}, auditStore, mustNewScrubbingSvc(t, logger))
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.FsRead.Failed, &operatorv1.FsReadResult{ErrorMessage: "read failed"}, auditStore, mustNewScrubbingSvc(t, logger))
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.RestoreFile.Failed, &operatorv1.RestoreFileResult{Error: "restore failed"}, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsRead.Completed, &operatorv1.FsReadResult{Content: "file content here"}, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsRead.Failed, &operatorv1.FsReadResult{ErrorMessage: "read failed"}, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.RestoreFile.Failed, &operatorv1.RestoreFileResult{Error: "restore failed"}, auditStore, mustNewScrubbingSvc(t, logger))
 
 		events, err := auditStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
@@ -309,7 +309,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 			},
 		}
 
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.PortCheck.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.PortCheck.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
 
 		events, err := auditStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
@@ -327,7 +327,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 			Entries: []*operatorv1.FsEntry{{Name: "password=secret123 api_key=ghp_test_token"}},
 		}
 
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
 
 		events, err := auditStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
@@ -349,7 +349,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 		}
 
 		// Command events should not be recorded via publishObservedStateEvidence
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.Command.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.Command.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
 
 		events, err := auditStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
@@ -367,7 +367,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 		}
 
 		assert.NotPanics(t, func() {
-			publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+			publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
 		})
 		events, err := auditStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
@@ -383,7 +383,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 			Entries: []*operatorv1.FsEntry{}, // Empty list
 		}
 
-		publishObservedStateEvidence(logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
 
 		events, err := auditStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)

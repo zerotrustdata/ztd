@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -291,6 +292,25 @@ func TestCampaignAgentExecutor_RunCommandsDispatchesModelWrittenCommandVerbatim(
 	assert.Equal(t, agentTestCommand, trace.ToolCalls[0].Command)
 }
 
+func TestCampaignAgentExecutor_DispatchesToolsDespiteRecordedProbeRejection(t *testing.T) {
+	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
+	f.req.Assignment.GetHomogeneous().CandidateVariant.CapabilityObservations = []*evalv1.ModelCapabilityObservation{
+		capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED, "provider rejected tool-call probe"),
+	}
+
+	result, err := f.execute()
+
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
+	require.Len(t, f.inference.requests, 2, "past probe results must not suppress current provider requests")
+	for _, request := range f.inference.requests {
+		assert.Len(t, request.GetTools(), len(f.executor.catalog.Declarations()), "the provider receives the full tool catalog")
+		require.NotNil(t, request.GetToolChoice())
+		assert.Equal(t, operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO, request.GetToolChoice().GetMode())
+	}
+	assert.Empty(t, f.storedTrace().ProviderFailure)
+}
+
 func TestCampaignAgentExecutor_TraceRecordsExactInputThinkingAndProviderCallIDs(t *testing.T) {
 	turns := runCommandTurns(agentTestCommand)
 	turns[0] = append([]*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "  Read the health file first.\n"}}}, turns[0]...)
@@ -336,6 +356,39 @@ func TestCampaignAgentExecutor_EmptyCommandFailsCallWithoutDispatch(t *testing.T
 	assert.False(t, call.Success)
 	assert.Equal(t, agentToolErrorExecution, call.ErrorType)
 	assert.Equal(t, "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required", call.Error)
+}
+
+func TestCampaignAgentExecutor_EmptyFileContentFailsValidationWithoutDispatch(t *testing.T) {
+	for _, tool := range []string{agentToolFileWrite, agentToolFileCreate} {
+		t.Run(tool, func(t *testing.T) {
+			turns := [][]*operatorv1.InferenceResponsePart{
+				{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+					CallId: "empty-write", Name: tool,
+					ArgumentsJson: `{"file_path":"notes.txt","content":"","justification":"update notes","target_operators":[]}`,
+				}}}},
+				{{Part: &operatorv1.InferenceResponsePart_Text{Text: "No file written."}}},
+			}
+			f := newAgentExecutorFixture(t, turns...)
+			_, err := f.execute()
+			require.NoError(t, err)
+			trace := f.storedTrace()
+			require.Len(t, trace.ToolCalls, 1)
+			assert.False(t, trace.ToolCalls[0].Success)
+			assert.Contains(t, trace.ToolCalls[0].Error, "content")
+			for _, request := range f.client.requests {
+				if request.ActionType == string(constants.ActionTypeFileEdit) {
+					edit := &operatorv1.FileEditRequested{}
+					require.NoError(t, proto.Unmarshal(request.Payload, edit))
+					assert.NotEqual(t, "notes.txt", filepath.Base(edit.GetFilePath()), "invalid tool call must not reach governed dispatch")
+				}
+			}
+			for _, declaration := range f.inference.requests[0].GetTools() {
+				if declaration.GetName() == tool {
+					assert.Contains(t, declaration.GetJsonSchema(), `"minLength":1`)
+				}
+			}
+		})
+	}
 }
 
 func TestCampaignAgentExecutor_BracketsToolLoopWithSentinelReadsInOrder(t *testing.T) {
@@ -453,9 +506,22 @@ func TestCampaignAgentExecutor_VerifiedToolCallCarriesReceiptReference(t *testin
 
 	require.NoError(t, err)
 	require.Len(t, result.GetEvidenceRefs(), 1)
-	require.Len(t, result.GetGovernedActions(), 1)
 	trace := f.storedTrace()
-	receiptRef := result.GetGovernedActions()[0].GetReceiptRef()
+	require.Len(t, trace.ModelCalls, 2)
+	actions := result.GetGovernedActions()
+	require.Len(t, actions, 3, "each governed inference, then the tool call it returned, in execution order")
+	assert.Equal(t, trace.ModelCalls[0].TransactionID, actions[0].GetTransactionId())
+	assert.Equal(t, trace.ToolCalls[0].TransactionID, actions[1].GetTransactionId())
+	assert.Equal(t, trace.ModelCalls[1].TransactionID, actions[2].GetTransactionId())
+	for _, i := range []int{0, 2} {
+		assert.Equal(t, string(constants.ActionTypeInference), actions[i].GetActionType())
+		assert.Equal(t, trace.Inference.OperatorID, actions[i].GetOperatorId())
+		assert.Equal(t, agentPolicyDecisionAllow, actions[i].GetPolicyDecision())
+	}
+	assert.Equal(t, trace.ToolCalls[0].Receipt.GetActionType(), actions[1].GetActionType())
+	assert.NotEmpty(t, actions[1].GetActionType())
+	assert.Equal(t, trace.Data.OperatorID, actions[1].GetOperatorId())
+	receiptRef := actions[1].GetReceiptRef()
 	assert.Equal(t, result.GetEvidenceRefs()[0].GetArtifactId(), receiptRef.GetArtifactId(), "the receipt lives inside the sealed trace")
 	assert.Equal(t, "ztd.operator.v1.ActionReceipt", receiptRef.GetSchemaRef())
 	assert.Equal(t, trace.ToolCalls[0].TransactionID, receiptRef.GetTransactionId())

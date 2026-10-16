@@ -5,4 +5,9 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-package catalog_test
+//go:build !windows
+
+package logging
+
+func isPlatformConnectionRefused(error) bool { return false }
+func isPlatformConnectionReset(error) bool   { return false }

@@ -53,10 +53,11 @@ const (
 type agentToolArgumentKind string
 
 const (
-	agentToolArgString     agentToolArgumentKind = "string"
-	agentToolArgInteger    agentToolArgumentKind = "integer"
-	agentToolArgBoolean    agentToolArgumentKind = "boolean"
-	agentToolArgStringList agentToolArgumentKind = "string_list"
+	agentToolArgString         agentToolArgumentKind = "string"
+	agentToolArgNonEmptyString agentToolArgumentKind = "non-empty string"
+	agentToolArgInteger        agentToolArgumentKind = "integer"
+	agentToolArgBoolean        agentToolArgumentKind = "boolean"
+	agentToolArgStringList     agentToolArgumentKind = "string_list"
 )
 
 type agentToolArgument struct {
@@ -75,7 +76,7 @@ type agentToolSpec struct {
 
 var agentToolArgumentCatalog = map[string]agentToolArgument{
 	"command":               {agentToolArgString, "The single shell command to run in the working directory."},
-	"content":               {agentToolArgString, "Full file content to write."},
+	"content":               {agentToolArgNonEmptyString, "Non-empty full file content to write."},
 	"create_backup":         {agentToolArgBoolean, "Keep a backup copy of the previous file content."},
 	"create_if_missing":     {agentToolArgBoolean, "Create the file when it does not exist."},
 	"data_type":             {agentToolArgString, "One of history_trail, investigation_status, operator_actions."},
@@ -162,6 +163,8 @@ func newAgentToolCatalog(registry *AgentToolRegistry) (*agentToolCatalog, error)
 
 func (a agentToolArgument) jsonSchema() map[string]any {
 	switch a.Kind {
+	case agentToolArgNonEmptyString:
+		return map[string]any{"type": "string", "minLength": 1, "description": a.Description}
 	case agentToolArgInteger:
 		return map[string]any{"type": "integer", "description": a.Description}
 	case agentToolArgBoolean:
@@ -245,6 +248,9 @@ func parseAgentToolArguments(spec agentToolSpec, required []string, raw string) 
 
 func (a agentToolArgument) accepts(value any) bool {
 	switch a.Kind {
+	case agentToolArgNonEmptyString:
+		text, ok := value.(string)
+		return ok && text != ""
 	case agentToolArgInteger:
 		number, ok := value.(json.Number)
 		if !ok {

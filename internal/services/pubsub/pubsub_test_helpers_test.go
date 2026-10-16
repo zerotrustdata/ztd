@@ -46,7 +46,7 @@ func mustNewStruct(t *testing.T, documentJSON string) *structpb.Struct {
 // mustNewScrubbingSvc creates a scrubbing service for tests, fatally failing on error.
 func mustNewScrubbingSvc(t *testing.T, logger *slog.Logger) *scrubbing.ScrubbingService {
 	t.Helper()
-	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, nil)
+	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return svc
 }

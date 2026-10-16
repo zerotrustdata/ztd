@@ -53,23 +53,16 @@ func ultraEfficientSpeedsterRegistryVariants() []*evalv1.ModelVariant {
 
 func ultraEfficientSpeedsterBindingRequest(t *testing.T) FormationBindingRequest {
 	t.Helper()
-	topologies, err := NewExecutionTopologies()
+	binding, err := FormationBindingFromCatalog("ultra-efficient-speedster", ultraEfficientSpeedsterRegistryVariants())
 	require.NoError(t, err)
-	formation, err := topologies.Formation("ultra-efficient-speedster")
-	require.NoError(t, err)
-	stack, err := formation.ToStackDefinition()
-	require.NoError(t, err)
-	return FormationBindingRequest{
-		Stack:    stack,
-		Variants: ultraEfficientSpeedsterRegistryVariants(),
-	}
+	return binding
 }
 
 func TestFormationBindingFromCatalog_MaterializesUltraEfficientSpeedsterStack(t *testing.T) {
 	binding, err := FormationBindingFromCatalog("ultra-efficient-speedster", ultraEfficientSpeedsterRegistryVariants())
 	require.NoError(t, err)
-	assert.Equal(t, "ultra-efficient-speedster", binding.FormationID)
 	assert.Equal(t, "ultra-efficient-speedster", binding.Stack.GetStackId())
+	assert.Equal(t, "qwen35-4b", binding.Stack.GetPrimarySlot().GetVariantId())
 	require.NoError(t, ValidateHeterogeneousStackDigest(binding.Stack))
 }
 
@@ -84,14 +77,7 @@ func TestBindFormation_BindsUltraEfficientSpeedsterDigestsFromFrozenRegistry(t *
 	assert.Equal(t, "qwen3.5:4b", formation.Primary.ServedModelTag)
 }
 
-func TestBindFormation_PrefersServedTagOverCollidingVariantID(t *testing.T) {
-	topologies, err := NewExecutionTopologies()
-	require.NoError(t, err)
-	formation, err := topologies.Formation("gemma-cascade")
-	require.NoError(t, err)
-	stack, err := formation.ToStackDefinition()
-	require.NoError(t, err)
-
+func TestFormationBindingFromCatalog_PrefersServedTagOverCollidingVariantID(t *testing.T) {
 	variants := formationCatalogTestVariants()
 	variants = append(variants, &evalv1.ModelVariant{
 		VariantId:      "gemma4-e4b",
@@ -102,19 +88,18 @@ func TestBindFormation_PrefersServedTagOverCollidingVariantID(t *testing.T) {
 		Quantization:   "Q4_0",
 	})
 
-	bound, err := BindFormation(FormationBindingRequest{
-		FormationID: "gemma-cascade",
-		Stack:       stack,
-		Variants:    variants,
-	})
+	binding, err := FormationBindingFromCatalog("gemma-cascade", variants)
+	require.NoError(t, err)
+	bound, err := BindFormation(binding)
 	require.NoError(t, err)
 	assert.Equal(t, "gemma4:e4b", bound.Primary.ServedModelTag)
 	assert.Equal(t, repeatHex('6', 64), bound.Primary.ModelDigest)
 }
 
-func TestBindFormation_BindsUltraEfficientSpeedsterByServedTagWhenFreezeVariantIDsDiffer(t *testing.T) {
-	req := ultraEfficientSpeedsterBindingRequest(t)
-	req.Variants = []*evalv1.ModelVariant{
+// Frozen inventory IDs routinely differ from catalog IDs; the sealed stack must
+// carry the inventory IDs so binding never depends on the live catalog.
+func TestFormationBindingFromCatalog_SealsFreezeVariantIDsWhenCatalogIDsDiffer(t *testing.T) {
+	variants := []*evalv1.ModelVariant{
 		{
 			VariantId:      "qwen3-5-4b",
 			ProviderClass:  "ollama",
@@ -144,7 +129,10 @@ func TestBindFormation_BindsUltraEfficientSpeedsterByServedTagWhenFreezeVariantI
 		},
 	}
 
-	formation, err := BindFormation(req)
+	binding, err := FormationBindingFromCatalog("ultra-efficient-speedster", variants)
+	require.NoError(t, err)
+	assert.Equal(t, "qwen3-5-4b", binding.Stack.GetPrimarySlot().GetVariantId())
+	formation, err := BindFormation(binding)
 	require.NoError(t, err)
 	assert.Equal(t, "qwen3-5-4b", formation.Primary.VariantID)
 	assert.Equal(t, repeatHex('a', 64), formation.Primary.ModelDigest)
@@ -170,11 +158,11 @@ func TestBindFormation_RejectsEmptySovereignDigest(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrFormationAttestationRequired)
 }
 
-func TestBindFormation_RejectsServedTagMismatch(t *testing.T) {
-	req := ultraEfficientSpeedsterBindingRequest(t)
-	req.Variants[0].ServedModelTag = "wrong:tag"
+func TestFormationBindingFromCatalog_RejectsServedTagMismatch(t *testing.T) {
+	variants := ultraEfficientSpeedsterRegistryVariants()
+	variants[0].ServedModelTag = "wrong:tag"
 
-	_, err := BindFormation(req)
+	_, err := FormationBindingFromCatalog("ultra-efficient-speedster", variants)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrFormationStackMismatch)
 }
@@ -187,33 +175,10 @@ func TestBindFormation_RejectsInvalidStackDigest(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestBindFormation_RejectsUnknownFormationID(t *testing.T) {
-	req := ultraEfficientSpeedsterBindingRequest(t)
-	req.FormationID = "missing-formation"
-
-	_, err := BindFormation(req)
+func TestFormationBindingFromCatalog_RejectsUnknownFormationID(t *testing.T) {
+	_, err := FormationBindingFromCatalog("missing-formation", ultraEfficientSpeedsterRegistryVariants())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrFormationInvalid)
-}
-
-func TestBindHeterogeneousStack_BindsSchedulerStackFromRegistry(t *testing.T) {
-	variants := ultraEfficientSpeedsterRegistryVariants()
-	topologies, err := NewExecutionTopologies()
-	require.NoError(t, err)
-	catalogFormation, err := topologies.Formation("ultra-efficient-speedster")
-	require.NoError(t, err)
-	stack, err := catalogFormation.ToStackDefinition()
-	require.NoError(t, err)
-
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{
-		FormationID: stack.GetStackId(),
-		Stack:       stack,
-		Variants:    variants,
-	})
-	require.NoError(t, err)
-	assert.True(t, formation.RelaxedValidation)
-	assert.Equal(t, repeatHex('a', 64), formation.Primary.ModelDigest)
-	assert.Equal(t, repeatHex('c', 64), formation.Lite.ModelDigest)
 }
 
 func TestFormationHarness_RunsBoundUltraEfficientSpeedsterFormation(t *testing.T) {

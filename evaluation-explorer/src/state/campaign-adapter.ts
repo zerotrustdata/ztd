@@ -553,7 +553,7 @@ function mapPolicyDecisionRecord(record: WirePolicyDecisionActivityRecord): Publ
 
 function mapGovernedActionRecord(record: WireGovernedActionActivityRecord): PublicGovernedActionActivityRecord {
   return {
-    action_label: 'governed action',
+    action_label: record.action_label,
     reported_policy_outcome: mapReportedPolicyOutcome(record.reported_policy_outcome),
     receipt_status: mapReceiptStatus(record.receipt_status),
     evidence_source: mapEvidenceSource(record.evidence_source),

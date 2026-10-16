@@ -379,8 +379,8 @@ func TestOperatorResponseRoundTrip(t *testing.T) {
 }
 
 // TestOperatorDocumentGoldenFixture marshals a fully populated OperatorDocument
-// and compares to the golden fixture. When ZTD_UPDATE_GOLDEN=1 is set, rewrites
-// the fixture instead.
+// and compares to the checked-in golden fixture shared with the console
+// contract test. A proto field change updates the fixture in the same change.
 func TestOperatorDocumentGoldenFixture(t *testing.T) {
 	t.Parallel()
 
@@ -448,6 +448,9 @@ func TestOperatorDocumentGoldenFixture(t *testing.T) {
 		OperatorCertChain:       "-----BEGIN CERTIFICATE-----\nchain...\n-----END CERTIFICATE-----",
 		TerminationReason:       "user_requested",
 		StaleAt:                 timestamppb.New(lastHeartbeatAt.Add(time.Minute)),
+		// RFC 8032 test vector 1 public key; key_id == hex(pub).
+		ActuatorPublicKey: "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+		ActuatorKeyId:     "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
 	}
 
 	// Marshal to JSON
@@ -464,14 +467,6 @@ func TestOperatorDocumentGoldenFixture(t *testing.T) {
 	prettyData = append(prettyData, '\n')
 
 	fixturePath := "../../protocol/test-fixtures/operator-document.json"
-
-	// Check for update flag
-	if os.Getenv("ZTD_UPDATE_GOLDEN") == "1" {
-		err := os.WriteFile(fixturePath, prettyData, 0o644)
-		require.NoError(t, err, "failed to write golden fixture")
-		t.Logf("Updated golden fixture at %s", fixturePath)
-		return
-	}
 
 	// Read and compare
 	storedData, err := os.ReadFile(fixturePath)

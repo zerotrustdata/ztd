@@ -2,17 +2,15 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 // Live SSE event feed for the overview page. Newest events at the top inside a
-// grid-matched scroll region so progress ticks do not move the page.
+// bounded scroll region. Detailed diagnostics live on the assignment page.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { FeedConnectionState, StreamConnectionState } from '../utils/feed-state';
 import { recordKey, resolveModelSummary, useStoreState } from '../state/store';
 import {
-  abbreviateAssignmentId,
   assignmentMetricFormatter,
   roleLabel,
-  streamProgressLabel,
   visibleStreamEvents,
 } from '../views/derived';
 import { EmptyState, ReconcilePlaceholder, StreamStatusIndicator } from './shared';
@@ -23,7 +21,6 @@ import {
   type LiveEvent,
   type MetricValue,
   type ModelRole,
-  type PublicModelActivityRecord,
 } from '../contract/types';
 import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
 const STREAM_PAGE_SIZE = 25;
@@ -39,44 +36,12 @@ function isAssignmentLevelEvent(event: LiveEvent): boolean {
   return (
     event.kind === 'assignment_started' ||
     event.kind === 'assignment_completed' ||
-    event.kind === 'assignment_failed' ||
-    event.kind === 'metric_updated'
+    event.kind === 'assignment_failed'
   );
 }
 
 function isTerminalAssignmentEvent(event: LiveEvent): boolean {
   return event.kind === 'assignment_completed' || event.kind === 'assignment_failed';
-}
-
-function findModelActivityRecord(
-  event: LiveEvent,
-  assignment: AssignmentResult | undefined,
-): PublicModelActivityRecord | undefined {
-  const modelActivity = assignment?.activity_summary?.model_activity;
-  const records = modelActivity?.availability === 'observed' ? modelActivity.records : undefined;
-  if (!records?.length || !event.role) return undefined;
-  const roleMatches = records.filter((record) => record.model_role === event.role);
-  if (roleMatches.length === 0) return undefined;
-  if (event.variant_id) {
-    const exact = roleMatches.find((record) => record.variant_id === event.variant_id);
-    if (exact) return exact;
-  }
-  return roleMatches[0];
-}
-
-function roleActivityMetricValues(record: PublicModelActivityRecord): Record<string, MetricValue> {
-  const values: Record<string, MetricValue> = {};
-  if (record.input_tokens) values.input_tokens = record.input_tokens;
-  if (record.output_tokens) values.output_tokens = record.output_tokens;
-  if (record.thinking_tokens) values.thinking_tokens = record.thinking_tokens;
-  if (record.cache_tokens) values.cache_tokens = record.cache_tokens;
-  if (record.retry_count) values.retries = record.retry_count;
-  if (record.total_duration_nanos?.value !== undefined) {
-    values.latency_ms = { value: record.total_duration_nanos.value / 1_000_000 };
-  } else if (record.total_duration_nanos?.unavailable_reason) {
-    values.latency_ms = { unavailable_reason: record.total_duration_nanos.unavailable_reason };
-  }
-  return values;
 }
 
 function applyAssignmentResourceSummary(
@@ -94,21 +59,13 @@ function applyAssignmentResourceSummary(
   return values;
 }
 
-/** Whether a stage row is the assignment's designated (graded) role or another
- *  role of the same assignment. Unknown until the designated role is known. */
-type StreamRoleGrading = 'graded' | 'chain';
-
-function isTerminalAssignment(assignment: AssignmentResult | undefined): assignment is AssignmentResult {
-  return assignment !== undefined && assignment.terminal_status !== 'running' && assignment.terminal_status !== 'queued';
-}
-
 /** Designated role per assignment, from assignment-level events (they carry the
- *  designated role) so rows are classified before the assignment result lands. */
+ *  designated role) so rows resolve a role before the assignment result lands. */
 function designatedRolesByAssignment(events: LiveEvent[]): Map<string, ModelRole> {
   const designated = new Map<string, ModelRole>();
   for (const event of events) {
-    if (event.assignment_id && event.role && isAssignmentLevelEvent(event) && event.kind !== 'metric_updated') {
-      designated.set(`${event.run_id}:${event.assignment_id}`, event.role);
+    if (event.assignment_id && event.role && isAssignmentLevelEvent(event)) {
+      designated.set(`${event.dataset_id}:${event.run_id}:${event.assignment_id}`, event.role);
     }
   }
   return designated;
@@ -123,82 +80,25 @@ function streamEventRoleLabel(
   designatedRoles: Map<string, ModelRole>,
 ): string {
   const role =
-    event.role ?? (event.assignment_id ? (assignment?.role ?? designatedRoles.get(`${event.run_id}:${event.assignment_id}`)) : undefined);
+    event.role ?? (event.assignment_id ? (assignment?.role ?? designatedRoles.get(`${event.dataset_id}:${event.run_id}:${event.assignment_id}`)) : undefined);
   if (role) return roleLabel(role);
   return event.assignment_id ? '—' : 'Platform';
 }
 
-function streamRoleGrading(
-  event: LiveEvent,
-  assignment: AssignmentResult | undefined,
-  designatedRoles: Map<string, ModelRole>,
-): StreamRoleGrading | undefined {
-  if (event.kind !== 'stage_updated' || !event.role || !event.assignment_id) return undefined;
-  const designated = assignment?.role ?? designatedRoles.get(`${event.run_id}:${event.assignment_id}`);
-  if (!designated) return undefined;
-  return event.role === designated ? 'graded' : 'chain';
-}
-
-/** Pass and Pass Rate for a stage row, available once the assignment is terminal.
- *  The designated role carries the assignment verdict; a chain role carries the
- *  share of its own graded players that passed (`tier_<role>`), and stays absent
- *  when the scenario declares no player gold for that tier. */
-function roleGradeMetricValues(event: LiveEvent, assignment: AssignmentResult | undefined): Record<string, MetricValue> {
-  if (event.kind !== 'stage_updated' || !event.role || !isTerminalAssignment(assignment)) return {};
-  const metrics = assignment.metric_values;
-  if (event.role === assignment.role) {
-    const values: Record<string, MetricValue> = {};
-    if (metrics.pass) values.pass = metrics.pass;
-    if (metrics.deterministic_pass_rate) values.deterministic_pass_rate = metrics.deterministic_pass_rate;
-    return values;
-  }
-  const tier = metrics[`tier_${event.role}`];
-  if (tier?.value === undefined) return {};
-  return {
-    pass: { value: tier.value >= 1 ? 1 : 0 },
-    deterministic_pass_rate: { value: tier.value },
-  };
-}
-
+/** A terminal row carries the assignment's final values over its event delta. */
 function assignmentMetricValues(event: LiveEvent, assignment: AssignmentResult | undefined): Record<string, MetricValue> {
   const delta = event.metric_delta ?? {};
   if (isTerminalAssignmentEvent(event)) {
     return applyAssignmentResourceSummary({ ...delta, ...(assignment?.metric_values ?? {}) }, assignment);
   }
-  // Started and metric_updated rows show only what their event stated; the
-  // assignment's final values belong to its terminal event.
-  if (isAssignmentLevelEvent(event)) return { ...delta };
-
-  const roleRecord = findModelActivityRecord(event, assignment);
-  return {
-    ...delta,
-    ...(roleRecord ? roleActivityMetricValues(roleRecord) : {}),
-    ...roleGradeMetricValues(event, assignment),
-  };
+  return { ...delta };
 }
 
 function displayLabel(value: string | undefined): string | undefined {
   return value?.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-/** A terminal assignment row shows its outcome; the lifecycle (`completed` for a
- *  failed model) stays on `lifecycle_status` for the detail view. */
-function eventStatus(event: LiveEvent): string | undefined {
-  if (event.terminal_status) return event.terminal_status;
-  if (event.kind === 'assignment_started' && event.lifecycle_status === 'running') return 'started';
-  return event.lifecycle_status;
-}
-
-function eventRoleStatus(event: LiveEvent): LiveEvent['lifecycle_status'] {
-  if (event.kind === 'assignment_failed') return 'failed';
-  if (event.kind === 'assignment_completed') return 'completed';
-  if (event.lifecycle_status === 'queued') return 'running';
-  return event.lifecycle_status;
-}
-
 type EventParts = {
-  kind: string;
-  status: string;
   category: string;
   task: string;
 };
@@ -235,48 +135,53 @@ function eventParts(event: LiveEvent, assignment: AssignmentResult | undefined):
     fallbackCategory;
 
   return {
-    kind: displayLabel(event.kind) ?? '—',
-    status: displayLabel(eventStatus(event)) ?? '—',
     category: displayLabel(rawCategory) ?? '—',
     task,
   };
 }
 
-type AssignmentMetricColumn =
-  | 'pass'
-  | 'deterministic_pass_rate'
-  | 'latency_ms'
-  | 'input_tokens'
-  | 'output_tokens'
-  | 'tokens_per_second'
-  | 'thinking_tokens'
-  | 'cache_tokens'
-  | 'retries';
-type StreamSortField = 'time' | 'role' | 'grading' | 'assignment' | keyof EventParts | AssignmentMetricColumn | 'model' | 'progress';
+type AssignmentMetricColumn = 'latency_ms' | 'output_tokens' | 'tokens_per_second';
+type StreamSortField = 'time' | 'result' | 'task' | 'model' | AssignmentMetricColumn;
 type StreamSortDirection = 'asc' | 'desc';
 
 const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: string }> = [
-  { key: 'pass', label: 'Pass' },
-  { key: 'deterministic_pass_rate', label: 'Pass Rate' },
   { key: 'latency_ms', label: 'Latency' },
-  { key: 'input_tokens', label: 'Input tokens' },
-  { key: 'output_tokens', label: 'Output tokens' },
+  { key: 'output_tokens', label: 'Output' },
   { key: 'tokens_per_second', label: 'Tokens/s' },
-  { key: 'retries', label: 'Retries' },
 ];
+
+type StreamResult = { label: string; symbol: string; tone: 'ok' | 'critical' | 'neutral' | 'info'; attention: boolean };
+
+/** Model verdicts stay distinct from infrastructure failures and run lifecycle. */
+function streamResult(event: LiveEvent, assignment: AssignmentResult | undefined): StreamResult {
+  if (isTerminalAssignmentEvent(event)) {
+    const status = event.terminal_status ?? assignment?.terminal_status;
+    if (status && status !== 'completed' && status !== 'model_failed') {
+      return { label: displayLabel(status)!, symbol: '!', tone: 'neutral', attention: true };
+    }
+    const pass = assignmentMetricValues(event, assignment).pass?.value;
+    if (status === 'model_failed' || pass === 0) {
+      return { label: 'Model failed', symbol: '×', tone: 'critical', attention: true };
+    }
+    if (event.kind === 'assignment_failed') return { label: 'Failed', symbol: '!', tone: 'neutral', attention: true };
+    return { label: pass === 1 ? 'Passed' : 'Completed', symbol: '✓', tone: 'ok', attention: false };
+  }
+  const label = displayLabel(event.kind) ?? 'Activity';
+  if (event.lifecycle_status === 'failed') return { label, symbol: '!', tone: 'neutral', attention: true };
+  if (event.lifecycle_status === 'stopped') return { label, symbol: 'Ⅱ', tone: 'neutral', attention: false };
+  if (event.lifecycle_status === 'completed') return { label, symbol: '■', tone: 'neutral', attention: false };
+  return { label, symbol: '•', tone: 'info', attention: false };
+}
+
+function matchingAssignment(event: LiveEvent, assignments: Map<string, AssignmentResult>): AssignmentResult | undefined {
+  const assignment = event.assignment_id ? assignments.get(recordKey(event.dataset_id, event.assignment_id)) : undefined;
+  return assignment?.run_id === event.run_id ? assignment : undefined;
+}
 
 function assignmentTokensPerSecond(
   event: LiveEvent,
   assignment: AssignmentResult | undefined,
 ): MetricValue | undefined {
-  const roleRecord = !isAssignmentLevelEvent(event) ? findModelActivityRecord(event, assignment) : undefined;
-  if (roleRecord?.output_tokens?.value !== undefined && roleRecord.generation_duration_nanos?.value !== undefined) {
-    const generationSeconds = roleRecord.generation_duration_nanos.value / 1_000_000_000;
-    if (generationSeconds > 0) {
-      return { value: roleRecord.output_tokens.value / generationSeconds };
-    }
-  }
-
   const values = assignmentMetricValues(event, assignment);
   const output = values.output_tokens?.value;
   const generationMs = assignment?.benchmark_observations?.timing?.generation_ms?.value;
@@ -312,25 +217,13 @@ function streamSortValue(
   event: LiveEvent,
   assignment: AssignmentResult | undefined,
   model: ReturnType<typeof resolveModelSummary>,
-  designatedRoles: Map<string, ModelRole>,
   field: StreamSortField,
 ): string | number {
   if (field === 'time') return event.observed_at;
-  if (field === 'role') return streamEventRoleLabel(event, assignment, designatedRoles).toLowerCase();
-  if (field === 'grading') return streamRoleGrading(event, assignment, designatedRoles) ?? '';
-  if (field === 'assignment') return (event.assignment_id ?? '').toLowerCase();
-  if (field === 'model') return (model?.served_model_tag ?? event.variant_id ?? event.kind.split('_')[0] ?? '').toLowerCase();
-  if (field === 'progress') return event.total > 0 ? event.completed / event.total : '';
-  const parts = eventParts(event, assignment);
-  if (field in parts) return parts[field as keyof EventParts].toLowerCase();
-  const metric = assignmentMetric(event, assignment, field as AssignmentMetricColumn);
-  if (field === 'latency_ms' && metric?.value === undefined && event.kind === 'assignment_started') {
-    const obsTime = new Date(event.observed_at).getTime();
-    if (!Number.isNaN(obsTime)) {
-      return Math.max(0, Date.now() - obsTime);
-    }
-  }
-  return String(metric?.value ?? metric?.unavailable_reason ?? '').toLowerCase();
+  if (field === 'result') return streamResult(event, assignment).label;
+  if (field === 'task') return eventParts(event, assignment).task;
+  if (field === 'model') return model?.served_model_tag ?? event.variant_id ?? '';
+  return assignmentMetric(event, assignment, field)?.value ?? '';
 }
 
 function SortHeader({
@@ -360,11 +253,11 @@ function SortHeader({
 }
 
 export function LiveEventStream({
-  events,
+  events: incomingEvents,
   connection,
   streamConnection,
   isReconciling = false,
-  title = 'Events',
+  title = 'Live activity',
   id = 'live-stream',
   className,
 }: {
@@ -380,473 +273,201 @@ export function LiveEventStream({
   const [kindFilter, setKindFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [assignmentFilter, setAssignmentFilter] = useState('all');
-  const [runScope, setRunScope] = useState<'all' | 'active'>('all');
-  const [sortField, setSortField] = useState<StreamSortField>();
-  const [sortDirection, setSortDirection] = useState<StreamSortDirection>('asc');
+  const [attentionOnly, setAttentionOnly] = useState(false);
+  const [runScope, setRunScope] = useState<'all' | 'latest'>('all');
+  const [sortField, setSortField] = useState<StreamSortField>('time');
+  const [sortDirection, setSortDirection] = useState<StreamSortDirection>('desc');
   const [page, setPage] = useState(0);
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const liveModels = useStoreState((state) => state.models);
+  const liveAssignments = useStoreState((state) => state.assignments);
+  const [paused, setPaused] = useState<{
+    events: LiveEvent[];
+    models: typeof liveModels;
+    assignments: typeof liveAssignments;
+  }>();
+  const events = paused?.events ?? incomingEvents;
+  const models = paused?.models ?? liveModels;
+  const assignments = paused?.assignments ?? liveAssignments;
 
-  const models = useStoreState((state) => state.models);
-  const assignments = useStoreState((state) => state.assignments);
+  const latestEvent = useMemo(() => events.reduce<LiveEvent | undefined>(
+    (latest, event) => !latest || event.observed_at > latest.observed_at ? event : latest, undefined,
+  ), [events]);
+  const targetEvents = useMemo(() => runScope === 'latest' && latestEvent
+    ? events.filter((event) => event.run_id === latestEvent.run_id && event.dataset_id === latestEvent.dataset_id)
+    : events, [events, runScope, latestEvent]);
+  const baseRows = useMemo(() => visibleStreamEvents(targetEvents, {
+    modelFilter: 'all', kindFilter: 'all',
+  }), [targetEvents]);
+  const visible = useMemo(() => baseRows.filter((event) => {
+    const assignment = matchingAssignment(event, assignments);
+    return (modelFilter === 'all' || event.variant_id === modelFilter)
+      && (kindFilter === 'all' || event.kind === kindFilter)
+      && (assignmentFilter === 'all' || event.assignment_id === assignmentFilter)
+      && (categoryFilter === 'all' || eventParts(event, assignment).category === categoryFilter)
+      && (!attentionOnly || streamResult(event, assignment).attention);
+  }).slice(0, runScope === 'all' ? LIVE_EVENT_RETENTION_LIMIT : undefined), [baseRows, assignments, modelFilter, kindFilter, assignmentFilter, categoryFilter, attentionOnly, runScope]);
 
-  // Terminal event time per assignment; a started row's timer resolves once present.
-  const terminalTimes = useMemo(() => {
-    const times = new Map<string, number>();
-    for (const e of events) {
-      if (e.assignment_id && isTerminalAssignmentEvent(e)) {
-        const t = new Date(e.observed_at).getTime();
-        if (!Number.isNaN(t)) times.set(`${e.run_id}:${e.assignment_id}`, t);
-      }
-    }
-    return times;
-  }, [events]);
-
-  const isPendingStart = (e: LiveEvent): boolean => {
-    if (e.kind !== 'assignment_started') return false;
-    if (e.lifecycle_status !== 'running' && e.lifecycle_status !== 'queued') return false;
-    if (!e.assignment_id) return true;
-    if (terminalTimes.has(`${e.run_id}:${e.assignment_id}`)) return false;
-    return !isTerminalAssignment(assignments.get(recordKey(e.dataset_id, e.assignment_id)));
-  };
-
-  useEffect(() => {
-    const hasRunning = events.some(isPendingStart);
-    if (!hasRunning) return;
-    const interval = setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [events, terminalTimes, assignments]);
-
-  const activeRunId = useMemo(() => {
-    if (events.length === 0) return undefined;
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i];
-      if (e && (e.lifecycle_status === 'running' || e.kind === 'assignment_started')) {
-        return e.run_id;
-      }
-    }
-    let newest = events[0];
-    if (!newest) return undefined;
-    for (let i = 1; i < events.length; i++) {
-      const candidate = events[i];
-      if (candidate && candidate.observed_at.localeCompare(newest.observed_at) > 0) {
-        newest = candidate;
-      }
-    }
-    return newest.run_id;
-  }, [events]);
-
-  const targetEvents = useMemo(() => {
-    if (runScope === 'active' && activeRunId) {
-      return events.filter((e) => e.run_id === activeRunId);
-    }
-    return events;
-  }, [events, runScope, activeRunId]);
-
-  const visibleBase = useMemo(
-    () =>
-      visibleStreamEvents(targetEvents, {
-        modelFilter,
-        kindFilter,
-        assignmentFilter,
-        limit: runScope === 'active' ? undefined : LIVE_EVENT_RETENTION_LIMIT,
-      }),
-    [targetEvents, modelFilter, kindFilter, assignmentFilter, runScope],
-  );
-
-  const visible = useMemo(() => {
-    if (categoryFilter === 'all') return visibleBase;
-    return visibleBase.filter((event) => {
-      const assignment = event.assignment_id
-        ? assignments.get(recordKey(event.dataset_id, event.assignment_id))
-        : undefined;
-      const parts = eventParts(event, assignment);
-      return parts.category.toLowerCase() === categoryFilter.toLowerCase();
-    });
-  }, [visibleBase, categoryFilter, assignments]);
-
-  const modelOptions = useMemo(
-    () =>
-      Array.from(new Set(visible.map((e) => e.variant_id).filter((v): v is string => Boolean(v)))).sort(),
-    [visible],
-  );
-  const kindOptions = useMemo(() => Array.from(new Set(visible.map((e) => e.kind))).sort(), [visible]);
-  const categoryOptions = useMemo(() => {
-    const categories = new Set<string>();
-    for (const event of events) {
-      const assignment = event.assignment_id
-        ? assignments.get(recordKey(event.dataset_id, event.assignment_id))
-        : undefined;
-      const parts = eventParts(event, assignment);
-      if (parts.category && parts.category !== '—') {
-        categories.add(parts.category);
-      }
-    }
-    return Array.from(categories).sort();
-  }, [events, assignments]);
-  const assignmentOptions = useMemo(() => {
-    const ids = new Set<string>();
-    for (const event of events) {
-      if (event.assignment_id) {
-        ids.add(event.assignment_id);
-      }
-    }
-    return Array.from(ids).sort();
-  }, [events]);
-
+  // Options come from the unfiltered feed so choosing one never hides the others.
+  const modelOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.variant_id)
+    .filter((value): value is string => Boolean(value)))).sort(), [baseRows]);
+  const kindOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.kind))).sort(), [baseRows]);
+  const categoryOptions = useMemo(() => Array.from(new Set(baseRows.map((event) =>
+    eventParts(event, matchingAssignment(event, assignments)).category,
+  ).filter((category) => category !== '—'))).sort(), [baseRows, assignments]);
+  const assignmentOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.assignment_id)
+    .filter((value): value is string => Boolean(value)))).sort(), [baseRows]);
   const designatedRoles = useMemo(() => designatedRolesByAssignment(events), [events]);
+  const advancedFilterCount = [kindFilter, categoryFilter, assignmentFilter, runScope].filter((value) => value !== 'all').length;
+  const hasFilters = advancedFilterCount > 0 || modelFilter !== 'all' || attentionOnly;
 
-  const sortedVisible = useMemo(() => {
-    if (!sortField) return visible;
-    return [...visible].sort((left, right) => {
-      const leftAssignment = left.assignment_id
-        ? assignments.get(recordKey(left.dataset_id, left.assignment_id))
-        : undefined;
-      const rightAssignment = right.assignment_id
-        ? assignments.get(recordKey(right.dataset_id, right.assignment_id))
-        : undefined;
-      const leftModel = left.variant_id
-        ? resolveModelSummary(models, left.dataset_id, left.variant_id)
-        : undefined;
-      const rightModel = right.variant_id
-        ? resolveModelSummary(models, right.dataset_id, right.variant_id)
-        : undefined;
-      const leftValue = streamSortValue(left, leftAssignment, leftModel, designatedRoles, sortField);
-      const rightValue = streamSortValue(right, rightAssignment, rightModel, designatedRoles, sortField);
-      const comparison =
-        typeof leftValue === 'number' && typeof rightValue === 'number'
-          ? leftValue - rightValue
-          : typeof leftValue === 'number'
-            ? 1
-            : typeof rightValue === 'number'
-              ? -1
-              : leftValue.localeCompare(rightValue, undefined, { numeric: true });
-      return comparison === 0
-        ? left.event_id.localeCompare(right.event_id)
-        : sortDirection === 'asc'
-          ? comparison
-          : -comparison;
-    });
-  }, [visible, assignments, models, designatedRoles, sortField, sortDirection]);
-
+  const sortedVisible = useMemo(() => [...visible].sort((left, right) => {
+    const value = (event: LiveEvent) => streamSortValue(event, matchingAssignment(event, assignments),
+      event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined, sortField);
+    const leftValue = value(left);
+    const rightValue = value(right);
+    // Missing observations always follow measured values, including measured zero.
+    if (leftValue === '' && rightValue !== '') return 1;
+    if (rightValue === '' && leftValue !== '') return -1;
+    const comparison = typeof leftValue === 'number' && typeof rightValue === 'number'
+      ? leftValue - rightValue : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+    return comparison === 0 ? 0
+      : sortDirection === 'asc' ? comparison : -comparison;
+  }), [visible, assignments, models, sortField, sortDirection]);
   const pageCount = Math.ceil(sortedVisible.length / STREAM_PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, pageCount - 1));
-  const pageEvents = useMemo(() => {
-    const start = safePage * STREAM_PAGE_SIZE;
-    return sortedVisible.slice(start, start + STREAM_PAGE_SIZE);
-  }, [sortedVisible, safePage]);
+  const pageEvents = sortedVisible.slice(safePage * STREAM_PAGE_SIZE, (safePage + 1) * STREAM_PAGE_SIZE);
 
   function handleSort(field: StreamSortField): void {
-    if (sortField === field) {
-      setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'));
-      return;
-    }
-    setSortField(field);
-    setSortDirection('asc');
+    if (sortField === field) setSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDirection(field === 'time' ? 'desc' : 'asc'); }
   }
-
-  useEffect(() => {
-    setPage(0);
-  }, [modelFilter, kindFilter, categoryFilter, assignmentFilter, runScope, sortField, sortDirection]);
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [safePage]);
+  function resetFilters(): void {
+    setModelFilter('all'); setKindFilter('all'); setCategoryFilter('all');
+    setAssignmentFilter('all'); setRunScope('all'); setAttentionOnly(false);
+  }
+  function togglePause(): void {
+    if (paused) { setPaused(undefined); setPage(0); }
+    else setPaused({ events: [...incomingEvents], models: new Map(liveModels), assignments: new Map(liveAssignments) });
+  }
+  useEffect(() => { setPage(0); }, [modelFilter, kindFilter, categoryFilter, assignmentFilter, runScope, attentionOnly, sortField, sortDirection]);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [safePage]);
 
   return (
     <section className={`panel stream-panel${className ? ` ${className}` : ''}`} id={id} aria-label={title}>
-      <div className="panel-head">
-        <h2>
-          {title}{' '}
-          <StreamStatusIndicator
-            streamConnection={streamConnection}
-            feedConnection={connection}
-            showLabel={false}
-          />
-        </h2>
+      <div className="panel-head stream-head">
+        <div className="stream-heading">
+          <h2>{title}</h2>
+          {paused ? <span className="stream-paused" role="status">Paused</span> : (
+            <StreamStatusIndicator streamConnection={streamConnection} feedConnection={connection} />
+          )}
+        </div>
         <div className="stream-controls">
-          <select
-            aria-label="Filter by run scope"
-            value={runScope}
-            onChange={(e) => setRunScope(e.target.value as 'all' | 'active')}
-          >
-            <option value="all">All runs (last {LIVE_EVENT_RETENTION_LIMIT})</option>
-            <option value="active">Active run only{activeRunId ? ` (${activeRunId})` : ''}</option>
-          </select>
-          <select
-            aria-label="Filter by model"
-            value={modelFilter}
-            onChange={(e) => setModelFilter(e.target.value)}
-          >
+          <select aria-label="Filter by model" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}>
             <option value="all">All models</option>
-            {modelOptions.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
+            {modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
           </select>
-          <select
-            aria-label="Filter by event kind"
-            value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value)}
-          >
-            <option value="all">All events</option>
-            {kindOptions.map((kind) => (
-              <option key={kind} value={kind}>
-                {kind.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by category"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-          >
-            <option value="all">All categories</option>
-            {categoryOptions.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by assignment"
-            title="Assignment"
-            value={assignmentFilter}
-            onChange={(e) => setAssignmentFilter(e.target.value)}
-          >
-            <option value="all">All assignments</option>
-            {assignmentOptions.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
+          <button type="button" className="stream-control" aria-pressed={attentionOnly} onClick={() => setAttentionOnly(!attentionOnly)}>Needs attention</button>
+          <button type="button" className="stream-control" onClick={togglePause} aria-label={paused ? 'Resume live updates' : 'Pause live updates'}>
+            <span aria-hidden="true">{paused ? '▶' : 'Ⅱ'}</span> {paused ? 'Resume' : 'Pause'}
+          </button>
+        </div>
+      </div>
+      <div className="stream-toolbar">
+        <details className="stream-filters">
+          <summary>Filters{advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ''}</summary>
+          <div className="stream-controls stream-filter-fields">
+            <label>Run<select aria-label="Filter by run scope" value={runScope} onChange={(event) => setRunScope(event.target.value as 'all' | 'latest')}>
+              <option value="all">All runs</option><option value="latest">Latest run</option>
+            </select></label>
+            <label>Event<select aria-label="Filter by event kind" value={kindFilter} onChange={(event) => setKindFilter(event.target.value)}>
+              <option value="all">All events</option>
+              {kindOptions.map((kind) => <option key={kind} value={kind}>{displayLabel(kind)}</option>)}
+            </select></label>
+            <label>Category<select aria-label="Filter by category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="all">All categories</option>
+              {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select></label>
+            <label>Assignment<select aria-label="Filter by assignment" value={assignmentFilter} onChange={(event) => setAssignmentFilter(event.target.value)}>
+              <option value="all">All assignments</option>
+              {assignmentOptions.map((assignment) => <option key={assignment} value={assignment}>{assignment}</option>)}
+            </select></label>
+          </div>
+        </details>
+        <div className="stream-view-meta">
+          {hasFilters ? <button type="button" className="stream-reset" onClick={resetFilters}>Clear filters</button> : null}
+          <span>{visible.length} {hasFilters ? 'matching' : 'recent'} events</span>
         </div>
       </div>
       {isReconciling ? <p className="panel-note">Syncing feed history…</p> : null}
       {visible.length === 0 ? (
-        isReconciling ? (
-          <ReconcilePlaceholder label="Loading feed history…" />
-        ) : (
-          <EmptyState
-            hasRecords={events.length > 0}
-            hasFilters={modelFilter !== 'all' || kindFilter !== 'all' || categoryFilter !== 'all' || assignmentFilter !== 'all' || runScope !== 'all'}
-            connection={connection}
-          />
-        )
+        isReconciling ? <ReconcilePlaceholder label="Loading feed history…" />
+          : <EmptyState hasRecords={events.length > 0} hasFilters={hasFilters} connection={connection} />
       ) : (
-        <div className="stream-scroll" ref={scrollRef}>
+        <div className="stream-scroll" ref={scrollRef} role="region" aria-label="Live activity results" tabIndex={0}>
           <table className="stream-table">
-            <thead>
-              <tr>
-                <SortHeader label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Role" field="role" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Grading" field="grading" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Event" field="kind" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Status" field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Category" field="category" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Assignment" field="assignment" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => (
-                  <SortHeader key={key} label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                ))}
-                <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortHeader label="Progress" field="progress" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              </tr>
-            </thead>
+            <thead><tr>
+              <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
+              <SortHeader label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            </tr></thead>
             <tbody>
-              {pageEvents.map((event, index) => {
-                const prevEvent = index > 0 ? pageEvents[index - 1] : undefined;
-                const isNewRun = prevEvent !== undefined && prevEvent.run_id !== event.run_id;
-                const model = event.variant_id
-                  ? resolveModelSummary(models, event.dataset_id, event.variant_id)
-                  : undefined;
-                const servedTag = model?.served_model_tag ?? event.variant_id ?? event.kind.split('_')[0];
-                const assignment = event.assignment_id
-                  ? assignments.get(recordKey(event.dataset_id, event.assignment_id))
-                  : undefined;
-                const failureReason = event.kind === 'assignment_failed' && assignment?.run_id === event.run_id
-                  ? assignment.failure_reason
-                  : undefined;
+              {pageEvents.map((event) => {
+                const assignment = matchingAssignment(event, assignments);
+                const model = event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined;
                 const parts = eventParts(event, assignment);
+                const result = streamResult(event, assignment);
                 const eventHref = event.assignment_id
                   ? `/evaluations/${event.dataset_id}/${event.run_id}/assignments/${event.assignment_id}`
                   : `/evaluations/${event.dataset_id}/${event.run_id}`;
-                const taskHref =
-                  parts.task !== '—' ? `/tasks/${encodeURIComponent(parts.task)}` : undefined;
-                const categoryHref = assignment?.scenario_category
-                  ? `/tasks#category-${assignment.scenario_category}`
-                  : undefined;
+                const task = parts.task !== '—' ? parts.task : displayLabel(event.kind)!;
+                const role = event.role ?? assignment?.role ?? designatedRoles.get(`${event.dataset_id}:${event.run_id}:${event.assignment_id}`);
                 const modelHref = event.variant_id
-                  ? `/models/${event.dataset_id}/${event.variant_id}${model?.role ? `?role=${model.role}` : ''}`
-                  : undefined;
-                const roleGrading = streamRoleGrading(event, assignment, designatedRoles);
-                const roleLabelText = streamEventRoleLabel(event, assignment, designatedRoles);
+                  ? `/models/${event.dataset_id}/${event.variant_id}${role ? `?role=${role}` : ''}` : undefined;
                 return (
-                  <Fragment key={event.event_id}>
-                    {isNewRun ? (
-                      <tr className="stream-run-divider-row" data-testid={`run-divider-${event.run_id}`}>
-                        <td colSpan={17} className="stream-run-divider-cell">
-                          <div className="stream-run-divider">
-                            <span className="stream-run-divider-badge">Run: {event.run_id}</span>
-                            <span className="stream-run-divider-line" />
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                    <tr className={roleGrading === 'chain' ? 'stream-row-chain' : undefined}>
-                      <td className="stream-time">{eventTime(event.observed_at)}</td>
-                      <td>
-                        <span className={`stream-role status-${eventRoleStatus(event)}`}>
-                          {roleLabelText}
+                  <tr key={`${event.dataset_id}:${event.run_id}:${event.assignment_id ?? event.event_id}`}>
+                    <td className="stream-result-cell">
+                      <Link to={eventHref} className="stream-result" data-tone={result.tone} aria-label={`${result.label}: ${task}. View details`}>
+                        <span aria-hidden="true">{result.symbol}</span>
+                        <span className="stream-result-label" aria-hidden="true">{result.label}</span>
+                      </Link>
+                    </td>
+                    <td className="stream-task-cell">
+                      <Link to={eventHref} className="stream-task-link" aria-label={`${task} — View details`}>
+                        <span title={task}>{task}</span><span className="stream-detail-cue" aria-hidden="true">Details →</span>
+                      </Link>
+                      {parts.category !== '—' ? <span className="stream-secondary">{parts.category}</span> : null}
+                    </td>
+                    <td className="stream-model-cell">
+                      {modelHref ? <Link to={modelHref} className="stream-model-link" title={model?.served_model_tag ?? event.variant_id}>{model?.served_model_tag ?? event.variant_id}</Link> : <span>Platform</span>}
+                      {event.assignment_id || event.role ? <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span> : null}
+                    </td>
+                    {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => {
+                      const displayed = event.assignment_id
+                        ? streamMetricDisplay(assignmentMetric(event, assignment, key), assignmentMetricFormatter(key))
+                        : { text: STREAM_EMPTY_METRIC, unavailable: true, reason: 'not applicable' };
+                      return <td className="stream-metric-cell" key={key} data-label={label}>
+                        <span className={`stream-metric-value${displayed.unavailable ? ' unavailable' : ''}`}
+                          title={displayed.unavailable ? displayed.reason?.replaceAll('_', ' ') : undefined}>
+                          {displayed.text}
                         </span>
-                      </td>
-                      <td>
-                        {roleGrading === 'graded' ? (
-                          <span className="stream-role-tag graded" title="Designated role: the assignment verdict grades this role">
-                            Graded
-                          </span>
-                        ) : roleGrading === 'chain' ? (
-                          <span
-                            className="stream-role-tag chain"
-                            title="Chain role: runs in the same assignment as the graded role. Its Pass is the share of its own graded players that passed."
-                          >
-                            Chain
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="stream-event-value">
-                        <Link to={eventHref} className="stream-event-link">
-                          {parts.kind}
-                        </Link>
-                      </td>
-                      <td title={failureReason}>{parts.status}</td>
-                      <td>
-                        {categoryHref ? (
-                          <Link to={categoryHref} className="stream-category-link">
-                            {parts.category}
-                          </Link>
-                        ) : (
-                          parts.category
-                        )}
-                      </td>
-                      <td>
-                        {taskHref ? (
-                          <Link to={taskHref} className="stream-task-link">
-                            {parts.task}
-                          </Link>
-                        ) : (
-                          parts.task
-                        )}
-                      </td>
-                      <td>
-                        {event.assignment_id ? (
-                          <Link
-                            to={`/evaluations/${event.dataset_id}/${event.run_id}/assignments/${event.assignment_id}`}
-                            className="stream-assignment-link"
-                            title={event.assignment_id}
-                          >
-                            {abbreviateAssignmentId(event.assignment_id)}
-                          </Link>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      {ASSIGNMENT_METRIC_COLUMNS.map(({ key }) => {
-                        const isRunningAssignment = isPendingStart(event);
-                        let displayed = !event.assignment_id
-                          ? { text: STREAM_EMPTY_METRIC, unavailable: true }
-                          : streamMetricDisplay(assignmentMetric(event, assignment, key), assignmentMetricFormatter(key));
-
-                        let isElapsed = false;
-                        if (key === 'latency_ms' && displayed.unavailable && event.kind === 'assignment_started' && event.assignment_id) {
-                          const obsTime = new Date(event.observed_at).getTime();
-                          if (!Number.isNaN(obsTime)) {
-                            if (isRunningAssignment) {
-                              const elapsedSec = Math.max(0, Math.floor((nowMs - obsTime) / 1000));
-                              displayed = { text: `${elapsedSec}s…`, unavailable: false };
-                              isElapsed = true;
-                            } else {
-                              // Resolved: prefer the final scored latency, else freeze at the terminal event.
-                              const final = isTerminalAssignment(assignment)
-                                ? streamMetricDisplay(
-                                    applyAssignmentResourceSummary({ ...assignment.metric_values }, assignment).latency_ms,
-                                    assignmentMetricFormatter(key),
-                                  )
-                                : undefined;
-                              const endMs = terminalTimes.get(`${event.run_id}:${event.assignment_id}`);
-                              if (final && !final.unavailable) {
-                                displayed = final;
-                              } else if (endMs !== undefined) {
-                                displayed = { text: `${Math.max(0, Math.floor((endMs - obsTime) / 1000))}s`, unavailable: false };
-                              }
-                            }
-                          }
-                        }
-
-                        return (
-                          <td className="stream-metric-cell" key={key}>
-                            <span
-                              className={
-                                isElapsed
-                                  ? 'stream-metric-value stream-metric-elapsed'
-                                  : displayed.unavailable
-                                    ? 'stream-metric-value unavailable'
-                                    : 'stream-metric-value'
-                              }
-                              title={isElapsed ? 'Active assignment duration' : undefined}
-                            >
-                              {displayed.text}
-                            </span>
-                          </td>
-                        );
-                      })}
-                      <td>
-                        {modelHref ? (
-                          <Link to={modelHref} className="stream-chip stream-chip-link">
-                            {servedTag}
-                          </Link>
-                        ) : (
-                          <code className="stream-chip">{servedTag}</code>
-                        )}
-                      </td>
-                      <td className="stream-progress">{streamProgressLabel(event)}</td>
-                    </tr>
-                  </Fragment>
+                      </td>;
+                    })}
+                    <td className="stream-time"><time dateTime={event.observed_at} title={new Date(event.observed_at).toLocaleString()}>{eventTime(event.observed_at)}</time></td>
+                  </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
       )}
-      {visible.length > 0 && pageCount > 1 ? (
-        <div className="table-pagination" data-testid="stream-pagination">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={safePage === 0}
-            aria-label="Previous page"
-          >
-            Previous
-          </button>
-          <span className="page-info">
-            Page {safePage + 1} of {pageCount} ({visible.length} events)
-          </span>
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-            disabled={safePage >= pageCount - 1}
-            aria-label="Next page"
-          >
-            Next
-          </button>
-        </div>
-      ) : null}
+      {pageCount > 1 ? <div className="table-pagination" data-testid="stream-pagination">
+        <button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={safePage === 0} aria-label="Previous page">Previous</button>
+        <span className="page-info">Page {safePage + 1} of {pageCount} ({visible.length} events)</span>
+        <button type="button" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={safePage >= pageCount - 1} aria-label="Next page">Next</button>
+      </div> : null}
     </section>
   );
 }

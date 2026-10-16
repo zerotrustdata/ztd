@@ -882,7 +882,8 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
 		require.NoError(t, v.Close())
 
 		result := &models.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: testFile}
-		svc.finishLedgerTwoPhaseCommit(session, ledgerResult, result)
+		finishErr := svc.finishLedgerTwoPhaseCommit(session, ledgerResult, result)
+		require.ErrorIs(t, finishErr, constants.ErrLedgerVaultRequired)
 
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
 		assert.Contains(t, result.ErrorMessage, "complete ledger two-phase commit")
@@ -901,5 +902,42 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
 		require.NotNil(t, published)
 		assert.Contains(t, string(published.Data), string(constants.Event.Operator.FileEdit.Failed))
 		assert.NotContains(t, string(published.Data), string(constants.Event.Operator.FileEdit.Completed))
+	})
+
+	t.Run("audit record failure fails the result and returns ErrExecutionRecordFailed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := testutil.OperatorDir(t)
+		cfg := testutil.NewTestConfig(t)
+		cfg.WorkDir = tmpDir
+		logger := testutil.NewTestLogger()
+		client := pubsubtest.NewMockOperatorPubSubClient()
+		fileEditSvc := newFileEditTestService(t, cfg, logger)
+		results := &fileEditResultsPublisher{}
+		// Audit store has no session row for "unregistered-session", so RecordEvent fails FK check.
+		svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{Results: results})
+
+		testFile := filepath.Join(tmpDir, "unrecorded.txt")
+		req := &operatorv1.FileEditRequested{
+			FilePath:        testFile,
+			Operation:       "write",
+			Content:         "new content",
+			CreateIfMissing: true,
+		}
+		payload, err := proto.Marshal(req)
+		require.NoError(t, err)
+		msg := &PubSubCommandMessage{
+			ID:                "msg-unrecorded-edit",
+			EventType:         constants.Event.Operator.FileEdit.Requested,
+			OperatorSessionID: "unregistered-session",
+			Payload:           payload,
+		}
+
+		_, err = svc.HandleFileEditRequest(context.Background(), msg)
+		require.ErrorIs(t, err, constants.ErrExecutionRecordFailed)
+		require.Len(t, results.results, 1)
+		published, ok := results.results[0].(*operatorv1.FileEditResult)
+		require.True(t, ok)
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, published.GetStatus())
+		assert.Equal(t, "audit_record_error", published.GetErrorType())
 	})
 }

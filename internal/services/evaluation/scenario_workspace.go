@@ -31,6 +31,8 @@ const scenarioWorkspaceDigestHexLength = 16
 // working directory, so the production `./` instruction and the prompt's
 // "Working Directory" line resolve to its parent, and it is unique per run and
 // attempt, so concurrent or repeated attempts never see each other's fixtures.
+// The one exception is a held-context repetition, which deliberately reuses
+// the previous repetition's workspace (heldScenarioWorkspace).
 type ScenarioWorkspace struct {
 	Root                     string
 	OperatorWorkingDirectory string
@@ -171,6 +173,23 @@ func (w ScenarioWorkspace) Validate(runID, attemptID string) error {
 	}
 	if expected.Root != w.Root {
 		return fmt.Errorf("%w: workspace root %q is not the attempt-scoped root %q", constants.ErrEvaluationWorkspaceUnavailable, w.Root, expected.Root)
+	}
+	return nil
+}
+
+// ValidateShape checks that the workspace is one NewScenarioWorkspace could
+// derive under its operator working directory, for a held-context repetition
+// that reuses an earlier attempt's workspace.
+func (w ScenarioWorkspace) ValidateShape() error {
+	workingDirectory, err := cleanOperatorWorkingDirectory(w.OperatorWorkingDirectory)
+	if err != nil {
+		return err
+	}
+	name := path.Base(w.Root)
+	digest := strings.TrimPrefix(name, constants.EvaluationWorkspacePrefix)
+	if path.Dir(w.Root) != path.Join(workingDirectory, constants.EvaluationWorkspaceDirname) || digest == name ||
+		len(digest) != scenarioWorkspaceDigestHexLength || strings.Trim(digest, "0123456789abcdef") != "" {
+		return fmt.Errorf("%w: workspace root %q is not an attempt-scoped root under %q", constants.ErrEvaluationWorkspaceUnavailable, w.Root, workingDirectory)
 	}
 	return nil
 }

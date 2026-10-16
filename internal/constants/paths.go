@@ -320,8 +320,6 @@ const (
 	ZtdBinariesDir              = "/opt/ztd/bin"
 	ZtdBinariesManifestFilename = "ztd-binaries.json"
 	ZtdBinaryChecksumSuffix     = ".sha256"
-	ZtdBinariesStagingPrefix    = ".ztd-binaries-export-"
-	ZtdBinariesPreviousSuffix   = ".previous"
 )
 
 // Deploy script filenames served by the gateway.

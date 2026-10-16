@@ -9,6 +9,7 @@ package pubsub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -60,18 +61,16 @@ func NewPortService(
 }
 
 // HandlePortCheckRequest processes an inbound port check request.
-func (ps *PortService) HandlePortCheckRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (ps *PortService) HandlePortCheckRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var protoPort operatorv1.CheckPortRequested
 	if err := proto.Unmarshal(msg.Payload, &protoPort); err != nil {
 		ps.logger.Error("Failed to decode port check payload as protobuf CheckPortRequested", string(constants.ConnectionStateError), err)
-		publishLFAAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "invalid request payload", ps.auditStore, ps.scrubbing)
-		return
+		return "", errors.Join(fmt.Errorf("port check: decode request: %w", err), publishLFAAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "invalid request payload", ps.auditStore, ps.scrubbing))
 	}
 
 	if protoPort.Port <= 0 || protoPort.Port > 65535 {
 		ps.logger.Warn("Port check request with invalid port", "port", protoPort.Port)
-		publishLFAAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "port must be between 1 and 65535", ps.auditStore, ps.scrubbing)
-		return
+		return "", errors.Join(fmt.Errorf("port must be between 1 and 65535: %w", constants.ErrValidationFailed), publishLFAAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "port must be between 1 and 65535", ps.auditStore, ps.scrubbing))
 	}
 
 	host := protoPort.Host
@@ -89,7 +88,7 @@ func (ps *PortService) HandlePortCheckRequest(ctx context.Context, msg *PubSubCo
 
 	start := time.Now()
 	address := net.JoinHostPort(host, fmt.Sprintf("%d", protoPort.Port))
-	conn, dialErr := net.DialTimeout(protocol, address, 5*time.Second)
+	conn, dialErr := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, protocol, address)
 	latencyMs := time.Since(start).Seconds() * 1000
 
 	entry := &operatorv1.PortCheckEntry{
@@ -109,5 +108,6 @@ func (ps *PortService) HandlePortCheckRequest(ctx context.Context, msg *PubSubCo
 		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		Results:     []*operatorv1.PortCheckEntry{entry},
 	}
-	publishLFAATypedResponseTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Completed, payload, ps.auditStore, ps.scrubbing)
+	// A closed port is a completed observation. Caller cancellation is an action failure.
+	return "", errors.Join(ctx.Err(), publishLFAATypedResponseTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Completed, payload, ps.auditStore, ps.scrubbing))
 }

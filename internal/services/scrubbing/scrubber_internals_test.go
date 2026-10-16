@@ -9,13 +9,12 @@ package scrubbing
 
 import (
 	"context"
-	"encoding/json"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestRegexScrubber_Name(t *testing.T) {
@@ -24,58 +23,84 @@ func TestRegexScrubber_Name(t *testing.T) {
 	assert.Equal(t, "test-scrubber", s.Name())
 }
 
-func TestScrubSlice(t *testing.T) {
+func TestRegexScrubber_Scrub(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	upper := strings.ToUpper
 
-	input := []json.RawMessage{
-		json.RawMessage(`"password=secret123"`),
-		json.RawMessage(`{"api_key":"sk-abc123"}`),
-		json.RawMessage(`["nested=secret",42]`),
-		json.RawMessage(`12345`),
-	}
+	t.Run("whole match without value group", func(t *testing.T) {
+		t.Parallel()
+		s := newRegexScrubber("id", regexp.MustCompile(`id-\d+`))
+		assert.Equal(t, "a ID-1 b ID-22", s.Scrub("a id-1 b id-22", upper))
+	})
 
-	result := service.scrubSlice(input)
-	require.Len(t, result, 4)
-	assert.NotContains(t, string(result[0]), "secret123")
-	var object map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(result[1], &object))
-	var array []json.RawMessage
-	require.NoError(t, json.Unmarshal(result[2], &array))
-	assert.JSONEq(t, `12345`, string(result[3]))
+	t.Run("only the value group", func(t *testing.T) {
+		t.Parallel()
+		s := newRegexScrubber("kv", regexp.MustCompile(`key=(?P<value>\w+)`))
+		assert.Equal(t, "key=ABC, key=DEF", s.Scrub("key=abc, key=def", upper))
+	})
+
+	t.Run("no match returns input", func(t *testing.T) {
+		t.Parallel()
+		s := newRegexScrubber("id", regexp.MustCompile(`id-\d+`))
+		assert.Equal(t, "nothing here", s.Scrub("nothing here", upper))
+	})
 }
 
-func TestScrubSlice_Empty(t *testing.T) {
+func TestTokenizeSensitivePairs(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-	result := service.scrubSlice([]json.RawMessage{})
-	assert.Empty(t, result)
+	service := newTestService(t, DefaultConfig())
+	mark := func(v string) string { return "<" + v + ">" }
+
+	tests := []struct {
+		input, expected string
+	}{
+		{"user=svc-deploy", "user=svc-deploy"},
+		{"password=abc user=svc", "password=<abc> user=svc"},
+		{`password="a b c"`, `password="<a b c>"`},
+		{"Authorization: Bearer abc def", "Authorization: <Bearer abc def>"},
+		{`{"token": "x", "id": "y"}`, `{"token": "<x>", "id": "y"}`},
+		{`{'secret':'z'}`, `{'secret':'<z>'}`},
+		{"auth://host", "auth://host"},
+		{"password={{UEI_3}}", "password=<{{UEI_3}}>"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.expected, service.tokenizeSensitivePairs(tt.input, mark), "input: %s", tt.input)
+	}
+}
+
+func TestTokenize_KeepsExistingTokens(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	service := newTestService(t, DefaultConfig())
+
+	inner, err := service.GetTokenForValue(ctx, "abc")
+	require.NoError(t, err)
+	assert.Equal(t, inner, service.tokenize(ctx, inner))
+
+	result := service.tokenize(ctx, "  Bearer "+inner)
+	assert.Regexp(t, `^  \{\{UEI_\d+\}\} `+regexp.QuoteMeta(inner)+`$`, result)
+	assert.Equal(t, "  Bearer abc", service.RehydrateText(ctx, result))
 }
 
 func TestTokenKeymapHash_Empty(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-	hash := service.TokenKeymapHash()
-	assert.Equal(t, "", hash)
+	assert.Equal(t, "", newTestService(t, nil).TokenKeymapHash())
 }
 
 func TestTokenKeymapHash_WithTokens(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
+	ctx := context.Background()
+	service := newTestService(t, lenientConfig())
 
-	service.GetTokenForValue(context.Background(), "secret123")
-	service.GetTokenForValue(context.Background(), "sk-abc123")
-
+	_, err := service.GetTokenForValue(ctx, "secret123")
+	require.NoError(t, err)
+	_, err = service.GetTokenForValue(ctx, "sk-abc123")
+	require.NoError(t, err)
 	hash1 := service.TokenKeymapHash()
 	assert.NotEmpty(t, hash1)
 
-	service.GetTokenForValue(context.Background(), "xyz789")
+	_, err = service.GetTokenForValue(ctx, "xyz789")
+	require.NoError(t, err)
 	hash2 := service.TokenKeymapHash()
 	assert.NotEmpty(t, hash2)
 	assert.NotEqual(t, hash1, hash2)
@@ -83,118 +108,14 @@ func TestTokenKeymapHash_WithTokens(t *testing.T) {
 
 func TestTokenKeymapHash_Deterministic(t *testing.T) {
 	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
+	ctx := context.Background()
+	service1 := newTestService(t, lenientConfig())
+	service2 := newTestService(t, lenientConfig())
 
-	service1 := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-	service2 := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	service1.GetTokenForValue(context.Background(), "secret123")
-	service2.GetTokenForValue(context.Background(), "secret123")
+	_, err := service1.GetTokenForValue(ctx, "secret123")
+	require.NoError(t, err)
+	_, err = service2.GetTokenForValue(ctx, "secret123")
+	require.NoError(t, err)
 
 	assert.Equal(t, service1.TokenKeymapHash(), service2.TokenKeymapHash())
-}
-
-func TestCategorizeWarning_AllCategories(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"This feature is deprecated", "deprecation_warning"},
-		{"Using insecure protocol", "security_warning"},
-		{"Performance issue detected", "performance_warning"},
-		{"Out of memory", "memory_warning"},
-		{"Disk space low", "disk_warning"},
-		{"Network timeout occurred", "network"},
-		{"SSL certificate expired", "certificate_warning"},
-		{"TLS handshake failed", "certificate_warning"},
-		{"Version mismatch detected", "version_warning"},
-		{"Unknown warning type", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := service.categorizeWarning(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestExtractKey_ColonSeparator(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	key := service.extractKey("API_KEY: abc123")
-	assert.NotEmpty(t, key)
-	assert.NotContains(t, key, "abc123")
-}
-
-func TestExtractKey_EqualsSeparator(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	config := &Config{Enabled: true, StrictMode: false}
-	service := mustNewScrubbingService(t, context.Background(), config, logger, nil)
-
-	key := service.extractKey("api_key=secret_value")
-	assert.NotEmpty(t, key)
-	assert.NotContains(t, key, "secret_value")
-}
-
-func TestExtractKey_NoSeparator(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	key := service.extractKey("no separator here")
-	assert.Equal(t, "[KEY]", key)
-}
-
-func TestDetermineStatus_SignalCodes(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-
-	tests := []struct {
-		exitCode int
-		expected string
-	}{
-		{129, string(constants.CommandExitStatusSignal1)},
-		{130, string(constants.CommandExitStatusInterrupted)},
-		{131, string(constants.CommandExitStatusSignal3)},
-		{134, string(constants.CommandExitStatusSignal6)},
-		{137, string(constants.CommandExitStatusKilled)},
-		{139, string(constants.CommandExitStatusSignal11)},
-		{141, string(constants.CommandExitStatusSignal13)},
-		{143, string(constants.CommandExitStatusTerminated)},
-		{200, string(constants.CommandExitStatusError)},
-		{50, string(constants.CommandExitStatusError)},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(rune(tt.exitCode)), func(t *testing.T) {
-			result := service.determineStatus(tt.exitCode)
-			assert.Equal(t, tt.expected, string(result))
-		})
-	}
-}
-
-func TestRehydrateText_Empty(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-	assert.Equal(t, "", service.RehydrateText(context.Background(), ""))
-}
-
-func TestRehydrateText_NoTokens(t *testing.T) {
-	t.Parallel()
-	logger := testutil.NewTestLogger()
-	service := mustNewScrubbingService(t, context.Background(), nil, logger, nil)
-	input := "no tokens here"
-	assert.Equal(t, input, service.RehydrateText(context.Background(), input))
 }

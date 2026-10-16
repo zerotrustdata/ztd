@@ -6,10 +6,9 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { matchesRelease, releaseLabel } from '../content/release';
-import { useDatasetOptions, useSelectedRelease } from '../state/dataset';
+import { useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
-import { WhatAmILookingAt } from '../components/WhatAmILookingAt';
 import { formatNumber } from '../components/shared';
 import { formatDuration, formatRelativeTime, formatTimestamp } from '../utils/format';
 import { recentCampaignRows, roleLabel, type RecentCampaignRow } from './derived';
@@ -55,10 +54,6 @@ function RecentRuns({
       <div className="panel-head campaign-evidence-head">
         <div>
           <h2>Recent Runs</h2>
-          <p className="panel-note">
-            The latest evaluation run from each dataset: the models under test, when it started and how long it ran,
-            and how many of its assignments have reached a final result.
-          </p>
         </div>
         <Link to="/evaluations" className="panel-link">
           Explore all →
@@ -92,6 +87,7 @@ function RecentRuns({
                     ? 'Verification not applicable'
                     : 'Verification not run';
             const title = campaign.modelName ?? campaign.label;
+            const titleModel = campaign.models.find((model) => model.role === 'primary') ?? campaign.models[0];
             const otherModels = campaign.models.filter((model) => model.name !== campaign.modelName);
             const duration = runDurationSeconds(campaign, now);
             const running = campaign.lifecycleState === 'running';
@@ -99,16 +95,26 @@ function RecentRuns({
             return (
               <li key={campaign.datasetId} className="campaign-evidence-row">
                 <div className="campaign-evidence-title-row">
-                  <Link to={href} className="campaign-evidence-title" title={title}>
-                    {title}
-                  </Link>
+                  {titleModel ? (
+                    <Link
+                      to={`/models/${campaign.datasetId}/${titleModel.variantId}?role=${titleModel.role}`}
+                      className="campaign-evidence-title"
+                      title={title}
+                    >
+                      {title}
+                    </Link>
+                  ) : (
+                    <span className="campaign-evidence-title" title={title}>{title}</span>
+                  )}
                   <span className={`campaign-evidence-state status-${status}`}>
                     <span className="status-dot" aria-hidden="true" />
                     {campaign.lifecycleState ? capitalize(campaign.lifecycleState) : capitalize(campaign.qualityState.replaceAll('_', ' '))}
                   </span>
                 </div>
                 <div className="campaign-evidence-meta">
-                  <span title={campaign.label}>{campaign.label}</span>
+                  <span title={campaign.runId ?? campaign.label}>
+                    <Link to={href}>{campaign.runId ?? campaign.label}</Link>
+                  </span>
                   <span>{campaign.detail}</span>
                   <span>{releaseLabel(campaign)}</span>
                 </div>
@@ -116,7 +122,10 @@ function RecentRuns({
                   <ul className="campaign-evidence-roles" aria-label="Models by role">
                     {campaign.models.map((model) => (
                       <li key={model.role} title={model.variantId}>
-                        <span className="campaign-evidence-role">{roleLabel(model.role)}</span> {model.name}
+                        <span className="campaign-evidence-role">{roleLabel(model.role)}</span>{' '}
+                        <Link to={`/models/${campaign.datasetId}/${model.variantId}?role=${model.role}`}>
+                          {model.name}
+                        </Link>
                       </li>
                     ))}
                   </ul>
@@ -167,12 +176,11 @@ function RecentRuns({
 
 export function OverviewView() {
   const release = useSelectedRelease();
-  const activeDatasetId = useDatasetOptions(release).find((option) => option.available && option.kind === 'live_run')?.id ?? '';
   const catalogs = useStoreState((state) => Array.from(state.catalogs.values()).filter((record) => matchesRelease(record, release)));
   const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)));
   const allModels = useStoreState((state) => Array.from(state.models.values()).filter((record) => matchesRelease(record, release)));
   const events = useStoreState((state) =>
-    state.events.filter((event) => event.dataset_id === activeDatasetId),
+    state.events.filter((event) => matchesRelease(event, release)),
   );
   const connection = useStoreState((state) => state.connection);
   const streamConnection = useStoreState((state) => state.streamConnection);
@@ -181,18 +189,14 @@ export function OverviewView() {
   return (
     <div className="overview">
       <LiveEventStream
+        key={release}
         events={events}
         connection={connection}
         streamConnection={streamConnection}
         isReconciling={isReconciling}
       />
 
-      <div className="overview-content">
-        <div className="overview-primary">
-          <RecentRuns catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
-        </div>
-        <WhatAmILookingAt />
-      </div>
+      <RecentRuns catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
     </div>
   );
 }

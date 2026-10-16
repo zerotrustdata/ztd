@@ -180,14 +180,14 @@ func buildPublicGovernedActionActivity(result *evalv1.EvaluationAssignmentResult
 	}
 	records := make([]*evalv1.PublicGovernedActionActivityRecord, 0, len(result.GetGovernedActions()))
 	for _, record := range result.GetGovernedActions() {
-		if record == nil {
-			return nil, fmt.Errorf("evaluation: build public assignment evidence: nil governed action: %w", constants.ErrEvidenceArtifactMalformed)
+		if record == nil || !validPublicLabel(record.GetActionType()) {
+			return nil, fmt.Errorf("evaluation: build public assignment evidence: malformed governed action: %w", constants.ErrEvidenceArtifactMalformed)
 		}
 		outcome, err := publicPolicyText(record.GetPolicyDecision())
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, &evalv1.PublicGovernedActionActivityRecord{ActionLabel: "governed action", ReportedPolicyOutcome: outcome, ReceiptStatus: evalv1.PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNAVAILABLE, EvidenceSource: evalv1.PublicEvidenceSource_PUBLIC_EVIDENCE_SOURCE_APPLICATION_REPORTED})
+		records = append(records, &evalv1.PublicGovernedActionActivityRecord{ActionLabel: record.GetActionType(), ReportedPolicyOutcome: outcome, ReceiptStatus: evalv1.PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNAVAILABLE, EvidenceSource: evalv1.PublicEvidenceSource_PUBLIC_EVIDENCE_SOURCE_APPLICATION_REPORTED})
 	}
 	return publicGovernedActionActivityObserved(records), nil
 }

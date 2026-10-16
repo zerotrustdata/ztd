@@ -2072,7 +2072,7 @@ func withAuditLogger(audit AuditLogger) testGatewayOption {
 // newTestScrubbingService builds an enabled egress scrubber with the default configuration.
 func newTestScrubbingService(t *testing.T) *scrubbing.ScrubbingService {
 	t.Helper()
-	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), slog.Default(), nil)
+	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), slog.Default(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return svc
 }

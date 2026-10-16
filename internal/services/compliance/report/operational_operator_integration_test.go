@@ -88,7 +88,7 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	receiptKeyID := hex.EncodeToString(receiptPublicKey)
 	auditorKeyID := hex.EncodeToString(auditorPublicKey)
 	stateRoot := testutil.NewMockStateRootProvider("operator-state-root")
-	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), nil)
+	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	actuator := &governance.L5Actuator{
 		Logger:            testutil.NewTestLogger(),

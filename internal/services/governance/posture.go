@@ -77,17 +77,11 @@ func (p *NotaryPosture) Description() string       { return "notary (L1/L2/L3 st
 func (p *NotaryPosture) RequiresL2Signature() bool { return true }
 func (p *NotaryPosture) RequiresL3Proof() bool     { return true }
 
-// NewGovernancePosture returns the GovernancePosture for the given name.
-// An unrecognized name returns an error wrapping constants.ErrInvalidPosture;
-// callers MUST propagate the error so misconfigured deployments fail fast
-// rather than silently running under a weaker posture (INV-CODE-06).
-func NewGovernancePosture(posture string) (GovernancePosture, error) {
-	return ParseGovernancePosture(posture)
-}
-
 // ParseGovernancePosture returns the GovernancePosture for the given name,
-// or an error if the name is not recognized. Use this for CLI flag validation
-// where a user-friendly error is preferable to a panic.
+// or an error if the name is not recognized. An unrecognized name returns an
+// error wrapping constants.ErrInvalidPosture; callers MUST propagate the error
+// so misconfigured deployments fail fast rather than silently running under a
+// weaker posture (INV-CODE-06). Use this for CLI flag and runtime posture validation.
 func ParseGovernancePosture(posture string) (GovernancePosture, error) {
 	switch posture {
 	case constants.PostureDoctrine:

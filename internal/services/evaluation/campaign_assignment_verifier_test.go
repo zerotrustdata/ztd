@@ -29,7 +29,7 @@ func TestCampaignAssignmentVerifier_PassesHeterogeneousFormationResult(t *testin
 		func(prefix string) string { return prefix + "-attempt" },
 	)
 	require.NoError(t, err)
-	formation, err := BindHeterogeneousStack(FormationBindingRequest{Stack: stack, Variants: variants})
+	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
 	require.NoError(t, err)
 	initialState, err := BuildFormationInitialState(req.ScenarioInput)
 	require.NoError(t, err)

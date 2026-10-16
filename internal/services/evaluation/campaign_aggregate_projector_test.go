@@ -197,6 +197,42 @@ func TestBuildRunAggregateViewRecordsScheduledNoProgress(t *testing.T) {
 	assert.Equal(t, "not_evaluated", summary.QualityState)
 }
 
+func TestBuildRunAggregateViewRecordsCancelledRunReportsStopped(t *testing.T) {
+	stopped := homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT)
+	stopped.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED
+	assignments := []*evalv1.EvaluationAssignment{
+		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
+		stopped,
+	}
+	results := map[string]*evalv1.EvaluationAssignmentResult{
+		"assign-1": {
+			AssignmentId:    "assign-1",
+			LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+			DeterministicGrades: []*evalv1.DeterministicGrade{{
+				Basis:  evalv1.GradeBasis_GRADE_BASIS_OBSERVATION,
+				Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+			}},
+		},
+	}
+	state, err := CollectRunAggregateState(assignments, results)
+	require.NoError(t, err)
+	run := &evalv1.EvaluationRun{
+		RunId:     "run-1",
+		StartedAt: timestamppb.New(time.Unix(1_700_000_000, 0).UTC()),
+		CampaignBinding: &evalv1.ModelCampaignBinding{
+			CampaignId: "eval-smoke-mini",
+		},
+	}
+	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+	require.NoError(t, err)
+
+	var summary evaluationSummaryRecord
+	require.NoError(t, json.Unmarshal(records[0].Body, &summary))
+	assert.Equal(t, "stopped", summary.LifecycleState)
+	assert.Equal(t, uint32(1), summary.AssignmentCompleted)
+	assert.Zero(t, summary.AssignmentFailed)
+}
+
 func TestBuildRunAggregateViewRecordsPartialProgress(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),

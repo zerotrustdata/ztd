@@ -3,7 +3,8 @@
 
 // The full sealed agent trace behind an assignment, fetched from its
 // content-addressed proof artifact and verified in the browser before any of
-// it renders: the exact model input, every model call (thinking, text, finish,
+// it renders: any held investigation from the previous repetition, the exact
+// model input, every model call (thinking, text, finish,
 // retries, failure), every tool call with its governance decision and signed
 // receipt, and the sentinel bracket around the run. Nothing is screened.
 
@@ -11,6 +12,7 @@ import { useEffect, useState } from 'react';
 import {
   verifyAgentTraceArtifact,
   type AgentTrace,
+  type AgentTraceHeldContext,
   type AgentTraceModelCall,
   type AgentTraceProto,
   type AgentTraceRuntime,
@@ -170,6 +172,41 @@ function Runtime({ title, runtime }: { title: string; runtime: AgentTraceRuntime
   );
 }
 
+function HeldContext({ held }: { held: AgentTraceHeldContext }) {
+  return (
+    <div className="model-response-block">
+      <div className="model-response-header">
+        <span className="model-response-label">Held investigation · repetition {held.repetition}</span>
+        <span className="agent-trace-turn-facts">{held.messages.length} messages</span>
+      </div>
+      <p className="task-section-note">
+        This repetition continued repetition {held.repetition}&apos;s investigation in its workspace{' '}
+        <code>{held.workspace.root}</code>. The model received this whole conversation ahead of the input below. Sealed trace{' '}
+        <code>{held.assignment_id}</code>, evidence digest <code>{held.evidence_digest}</code>.
+      </p>
+      <details className="agent-trace-held">
+        <summary>Held conversation</summary>
+        <ol className="agent-trace-messages">
+          {held.messages.map((message, index) => {
+            const role = enumLabel(message.role, 'INFERENCE_MESSAGE_ROLE_') ?? message.role;
+            return (
+              <li key={index}>
+                {message.text ? <TextBlock title={role} text={message.text} copyLabel={`held message ${index + 1}`} /> : null}
+                {message.tool_calls?.map((call, callIndex) => (
+                  <TextBlock key={callIndex} title={`${role} · ${call.name} arguments`} text={call.arguments_json} copyLabel={`held ${call.name} arguments`} json />
+                ))}
+                {message.tool_result ? (
+                  <TextBlock title={`${role} · ${message.tool_result.name} result`} text={message.tool_result.result_json} copyLabel={`held ${message.tool_result.name} result`} json />
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+      </details>
+    </div>
+  );
+}
+
 function TraceBody({ trace }: { trace: AgentTrace }) {
   const callsByModel = new Map<string, AgentTraceToolCall[]>();
   for (const call of trace.tool_calls) {
@@ -179,6 +216,7 @@ function TraceBody({ trace }: { trace: AgentTrace }) {
   const unattached = trace.tool_calls.filter((call) => !attached.has(call.model_call_id));
   return (
     <>
+      {trace.held_context ? <HeldContext held={trace.held_context} /> : null}
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Exact model input</span></div>
         {trace.input ? (

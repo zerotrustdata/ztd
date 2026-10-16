@@ -27,6 +27,15 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
+// translateSSEEvents maps a raw SSE frame to tea.Msg values for test assertions.
+func translateSSEEvents(eventType, data string) []tea.Msg {
+	ev, ok := decodeSSEEvent(eventType, data)
+	if !ok {
+		return []tea.Msg{LedgerMsg{Level: LevelInfo, Message: data, Time: timeNow()}}
+	}
+	return translateEvent(ev)
+}
+
 func TestTranslateSSEEvent(t *testing.T) {
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	originalTimeNow := timeNow

@@ -79,11 +79,11 @@ func NewHistoryHandler(auditStore auditStoreInterface, ledger ledgerInterface, l
 func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.FetchHistoryResult, error) {
 	var request operatorv1.FetchHistoryRequested
 	if err := proto.Unmarshal(requestJSON, &request); err != nil {
-		return hh.fetchHistoryError(fmt.Errorf("invalid request format as protobuf FetchHistoryRequested: %w", err).Error()), nil
+		return hh.fetchHistoryError(fmt.Errorf("invalid request format as protobuf FetchHistoryRequested: %w", err))
 	}
 
 	if request.OperatorSessionId == "" {
-		return hh.fetchHistoryError("operator_session_id is required"), nil
+		return hh.fetchHistoryError(fmt.Errorf("operator_session_id is required: %w", constants.ErrMissingRequiredField))
 	}
 
 	limit := int(request.Limit)
@@ -100,12 +100,12 @@ func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.Fe
 
 	session, err := hh.auditStore.GetOperatorSession(request.OperatorSessionId)
 	if err != nil {
-		return hh.fetchHistoryError(fmt.Errorf("failed to get session: %w", err).Error()), nil
+		return hh.fetchHistoryError(fmt.Errorf("failed to get session: %w", err))
 	}
 
 	events, err := hh.auditStore.GetEvents(models.AuditScope{OperatorSessionID: request.OperatorSessionId}, limit, offset)
 	if err != nil {
-		return hh.fetchHistoryError(fmt.Errorf("failed to get events: %w", err).Error()), nil
+		return hh.fetchHistoryError(fmt.Errorf("failed to get events: %w", err))
 	}
 
 	result := &operatorv1.FetchHistoryResult{
@@ -172,11 +172,11 @@ func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.Fe
 func (hh *HistoryHandler) HandleFetchFileHistory(requestJSON []byte) (*operatorv1.FetchFileHistoryResult, error) {
 	var request operatorv1.FetchFileHistoryRequested
 	if err := proto.Unmarshal(requestJSON, &request); err != nil {
-		return hh.fetchFileHistoryError(fmt.Errorf("invalid request format as protobuf FetchFileHistoryRequested: %w", err).Error()), nil
+		return hh.fetchFileHistoryError(fmt.Errorf("invalid request format as protobuf FetchFileHistoryRequested: %w", err))
 	}
 
 	if request.FilePath == "" {
-		return hh.fetchFileHistoryError("file_path is required"), nil
+		return hh.fetchFileHistoryError(fmt.Errorf("file_path is required: %w", constants.ErrMissingRequiredField))
 	}
 
 	limit := int(request.Limit)
@@ -190,7 +190,7 @@ func (hh *HistoryHandler) HandleFetchFileHistory(requestJSON []byte) (*operatorv
 
 	history, err := hh.ledger.GetFileHistory(request.FilePath, limit, request.OperatorSessionId)
 	if err != nil {
-		return hh.fetchFileHistoryError(fmt.Errorf("failed to get file history: %w", err).Error()), nil
+		return hh.fetchFileHistoryError(fmt.Errorf("failed to get file history: %w", err))
 	}
 
 	result := &operatorv1.FetchFileHistoryResult{
@@ -213,50 +213,50 @@ func (hh *HistoryHandler) HandleFetchFileHistory(requestJSON []byte) (*operatorv
 // HandleRestoreFile restores a file to its content at a commit of the request's
 // operator_session_id ledger. The restore is a file write by operatorSessionID, the verified
 // executing session, and is mirrored through that session's ledger. A successful restore returns
-// the ledger result for the file mutation record; failures are reported in the result.
-func (hh *HistoryHandler) HandleRestoreFile(ctx context.Context, operatorSessionID string, requestJSON []byte) (*operatorv1.RestoreFileResult, *LedgerResult) {
+// the ledger result for the file mutation record; failures return both the typed result and the underlying error.
+func (hh *HistoryHandler) HandleRestoreFile(ctx context.Context, operatorSessionID string, requestJSON []byte) (*operatorv1.RestoreFileResult, *LedgerResult, error) {
 	var request operatorv1.RestoreFileRequested
 	if err := proto.Unmarshal(requestJSON, &request); err != nil {
-		return hh.restoreFileError(fmt.Errorf("invalid request format as protobuf RestoreFileRequested: %w", err).Error()), nil
+		return hh.restoreFileError(fmt.Errorf("invalid request format as protobuf RestoreFileRequested: %w", err))
 	}
 
 	if request.FilePath == "" {
-		return hh.restoreFileError("file_path is required"), nil
+		return hh.restoreFileError(fmt.Errorf("file_path is required: %w", constants.ErrMissingRequiredField))
 	}
 	if request.CommitHash == "" {
-		return hh.restoreFileError("commit_hash is required"), nil
+		return hh.restoreFileError(fmt.Errorf("commit_hash is required: %w", constants.ErrMissingRequiredField))
 	}
 	if request.OperatorSessionId == "" {
-		return hh.restoreFileError("operator_session_id is required"), nil
+		return hh.restoreFileError(fmt.Errorf("operator_session_id is required: %w", constants.ErrMissingRequiredField))
 	}
 	if operatorSessionID == "" {
-		return hh.restoreFileError(fmt.Errorf("failed to restore file: executing session: %w", constants.ErrMissingRequiredField).Error()), nil
+		return hh.restoreFileError(fmt.Errorf("failed to restore file: executing session: %w", constants.ErrMissingRequiredField))
 	}
 
 	hh.logger.Info("Handling RESTORE_FILE request (via Protobuf)",
 		"commit_hash", request.CommitHash)
 
 	if hh.fileSvc == nil {
-		return hh.restoreFileError(fmt.Errorf("failed to restore file: file service: %w", constants.ErrMissingRequiredField).Error()), nil
+		return hh.restoreFileError(fmt.Errorf("failed to restore file: file service: %w", constants.ErrMissingRequiredField))
 	}
 	// A restore is a governed file mutation: the destination passes the same
 	// runtime path policy and rooted handle as FILE_EDIT.
 	target, err := hh.fileSvc.OpenFileEditTarget(ctx, request.FilePath, hh.workDir)
 	if err != nil {
-		return hh.restoreFileError(fmt.Errorf("failed to restore file: %w", err).Error()), nil
+		return hh.restoreFileError(fmt.Errorf("failed to restore file: %w", err))
 	}
 	defer func() { _ = target.Close() }()
 
 	ledgerResult, err := hh.ledger.RestoreFileFromCommit(target, request.CommitHash, request.OperatorSessionId, operatorSessionID)
 	if err != nil {
-		return hh.restoreFileError(fmt.Errorf("failed to restore file: %w", err).Error()), nil
+		return hh.restoreFileError(fmt.Errorf("failed to restore file: %w", err))
 	}
 
 	return &operatorv1.RestoreFileResult{
 		Success:    true,
 		FilePath:   target.Path(),
 		CommitHash: request.CommitHash,
-	}, ledgerResult
+	}, ledgerResult, nil
 }
 
 func (hh *HistoryHandler) GetFileAtCommit(filePath, commitHash, operatorSessionID string) (string, error) {
@@ -342,14 +342,14 @@ func (hh *HistoryHandler) fileDiffEntry(mutation *FileMutationLog, withContent b
 	return entry, nil
 }
 
-func (hh *HistoryHandler) fetchHistoryError(message string) *operatorv1.FetchHistoryResult {
-	return &operatorv1.FetchHistoryResult{Success: false, Error: message}
+func (hh *HistoryHandler) fetchHistoryError(err error) (*operatorv1.FetchHistoryResult, error) {
+	return &operatorv1.FetchHistoryResult{Success: false, Error: err.Error()}, err
 }
 
-func (hh *HistoryHandler) fetchFileHistoryError(message string) *operatorv1.FetchFileHistoryResult {
-	return &operatorv1.FetchFileHistoryResult{Success: false, Error: message}
+func (hh *HistoryHandler) fetchFileHistoryError(err error) (*operatorv1.FetchFileHistoryResult, error) {
+	return &operatorv1.FetchFileHistoryResult{Success: false, Error: err.Error()}, err
 }
 
-func (hh *HistoryHandler) restoreFileError(message string) *operatorv1.RestoreFileResult {
-	return &operatorv1.RestoreFileResult{Success: false, Error: message}
+func (hh *HistoryHandler) restoreFileError(err error) (*operatorv1.RestoreFileResult, *LedgerResult, error) {
+	return &operatorv1.RestoreFileResult{Success: false, Error: err.Error()}, nil, err
 }

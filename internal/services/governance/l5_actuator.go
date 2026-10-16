@@ -146,7 +146,7 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 	}
 
 	// Refuse before any receipt is signed or the handler runs when the target cannot be scrubbed.
-	signed, err := w.signedView(vt)
+	signed, err := w.signedView(ctx, vt)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +275,7 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 		return nil, err
 	}
 
-	signed, err := w.signedView(vt)
+	signed, err := w.signedView(ctx, vt)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 	}
 	receipt := w.buildInitialReceipt(ctx, vt)
 	receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-	receipt.ResultSummary = w.failedReceiptSummary("rejected", operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejection)
+	receipt.ResultSummary = w.failedReceiptSummary(ctx, "rejected", operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejection)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
 	receipt.RejectionCode = ClassifyGovernanceRejection(rejection)
 	receipt.ExecutedAtUnixMs = time.Now().UnixMilli()
@@ -521,14 +521,15 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 }
 
 // finalizeReceipt updates the receipt with execution result, state root after, and timestamp.
-// The mutation has already run, so the state root read ignores ctx cancellation.
+// The mutation has already run, so the summary tokenization and the state root read ignore ctx
+// cancellation.
 func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, summary, inferenceDigest string, execErr error) {
 	status := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	if execErr != nil {
 		status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-		receipt.ResultSummary = w.failedReceiptSummary("failed", classifyReceiptFailure(execErr), execErr)
+		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), "failed", classifyReceiptFailure(execErr), execErr)
 	} else {
-		receipt.ResultSummary = w.completedReceiptSummary(summary, inferenceDigest)
+		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest)
 	}
 
 	stateAfter := ""
@@ -568,7 +569,7 @@ func (w *L5Actuator) inferenceResultDigest(vt *VerifiedTransaction, cmdMsg Comma
 // signed as is. Every other handler text is content: it is scrubbed when a scrubber is active
 // and replaced by fixed text otherwise. The text is never inspected for a digest shape, so a
 // hex-encoded secret returned by a tool is scrubbed like any other output.
-func (w *L5Actuator) completedReceiptSummary(summary, inferenceDigest string) string {
+func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, inferenceDigest string) string {
 	switch {
 	case inferenceDigest != "":
 		return inferenceDigest
@@ -577,17 +578,17 @@ func (w *L5Actuator) completedReceiptSummary(summary, inferenceDigest string) st
 	case !w.scrubberActive():
 		return "completed"
 	default:
-		return w.Scrubbing.ScrubText(summary)
+		return w.Scrubbing.ScrubText(ctx, summary)
 	}
 }
 
 // failedReceiptSummary returns the signed ResultSummary of a failed execution or a rejection. The
 // cause text is scrubbed when a scrubber is active. Without one, only the typed failure code is signed.
-func (w *L5Actuator) failedReceiptSummary(verb string, code operatorv1.ReceiptFailureCode, cause error) string {
+func (w *L5Actuator) failedReceiptSummary(ctx context.Context, verb string, code operatorv1.ReceiptFailureCode, cause error) string {
 	if cause == nil || !w.scrubberActive() {
 		return verb + ": " + code.String()
 	}
-	return verb + ": " + w.Scrubbing.ScrubText(cause.Error())
+	return verb + ": " + w.Scrubbing.ScrubText(ctx, cause.Error())
 }
 
 // signedView returns the transaction as it is written into signed receipts, commitment attestations
@@ -595,7 +596,7 @@ func (w *L5Actuator) failedReceiptSummary(verb string, code operatorv1.ReceiptFa
 // envelope before anything is signed. The capability and the execution handler keep the real target.
 // It fails closed: a target with no active scrubber is refused before any receipt is signed or the
 // handler runs.
-func (w *L5Actuator) signedView(vt *VerifiedTransaction) (*VerifiedTransaction, error) {
+func (w *L5Actuator) signedView(ctx context.Context, vt *VerifiedTransaction) (*VerifiedTransaction, error) {
 	target := vt.Envelope.GetTargetResource()
 	if target == "" {
 		return vt, nil
@@ -604,7 +605,7 @@ func (w *L5Actuator) signedView(vt *VerifiedTransaction) (*VerifiedTransaction, 
 		return nil, fmt.Errorf("l5 actuator: scrub target resource: %w", constants.ErrEgressScrubberUnavailable)
 	}
 	env := proto.Clone(vt.Envelope).(*govtypes.GovernanceEnvelope)
-	env.TargetResource = w.Scrubbing.ScrubText(target)
+	env.TargetResource = w.Scrubbing.ScrubText(ctx, target)
 	view := *vt
 	view.Envelope = env
 	return &view, nil

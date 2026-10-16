@@ -259,7 +259,7 @@ func TestDispatchService_ShutdownPublishesReceiptThenAcknowledgementBeforeCancel
 	// The final receipt is accepted only under the Operator's bound Actuator key.
 	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
-	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)
+	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	results, err := pubsub.NewPubSubResultsService(&remoteCfg, infra.Logger, client, scrubbingSvc)
 	require.NoError(t, err)
@@ -590,7 +590,7 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 	remoteCfg.Inference.KeepAlive = "-1"
 
 	backend := &boundaryInferenceBackend{}
-	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)
+	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	inferenceHandler, err := inference.NewInferenceExecutionHandler(backend, &remoteCfg, scrubbingSvc, infra.Logger)
 	require.NoError(t, err)
@@ -658,7 +658,7 @@ func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, 
 	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
-	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, nil)
+	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	resultsSvc, err := pubsub.NewPubSubResultsService(&remoteCfg, infra.Logger, client, scrubbingSvc)
 	require.NoError(t, err)
@@ -997,6 +997,60 @@ func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 	}
 	require.NotNil(t, fileEditEvent, "file mutation event must be recorded under the claimed embedded session")
 	assert.Equal(t, constants.Event.Operator.FileEdit.Completed, fileEditEvent.Type)
+
+	readPayload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: filepath.Join(workDir, "missing.txt"), ExecutionId: "embedded-missing-read"})
+	require.NoError(t, err)
+	read, err := dispatchSvc.Dispatch(ctx, DispatchRequest{
+		TargetOperatorSessionID: sessionID,
+		EventType:               string(constants.Event.Operator.FsRead.Requested),
+		Payload:                 readPayload,
+		TargetResource:          workDir,
+		RequestorUserID:         "owner",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, read.Receipt)
+	assert.Equal(t, string(constants.Event.Operator.FsRead.Failed), read.ResultEnvelope.GetEventType())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, read.Receipt.GetStatus())
+}
+
+func TestDispatch_FailedActionsProduceSignedFailures(t *testing.T) {
+	const userID, operatorID, sessionID = "user-failed-action", "operator-failed-action", "session-failed-action"
+	infra := setupTestInfrastructure(t, false)
+	seedActiveUser(t, infra, userID)
+	seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
+	workDir := testutil.OperatorDir(t)
+	pubKey := startFileEditOperator(t, infra, operatorID, sessionID, workDir)
+	svc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	missing := filepath.Join(workDir, "missing.txt")
+	for _, test := range []struct {
+		name      string
+		requested constants.EventType
+		failed    constants.EventType
+		payload   proto.Message
+	}{
+		{"read", constants.Event.Operator.FsRead.Requested, constants.Event.Operator.FsRead.Failed, &operatorv1.FsReadRequested{Path: missing, ExecutionId: "failed-read"}},
+		{"list", constants.Event.Operator.FsList.Requested, constants.Event.Operator.FsList.Failed, &operatorv1.FsListRequested{Path: missing, ExecutionId: "failed-list"}},
+		{"grep", constants.Event.Operator.FsGrep.Requested, constants.Event.Operator.FsGrep.Failed, &operatorv1.FsGrepRequested{Path: workDir, Pattern: "[", ExecutionId: "failed-grep"}},
+		{"command", constants.Event.Operator.Command.Requested, constants.Event.Operator.Command.Failed, &operatorv1.CommandRequested{Command: "exit 7", ExecutionId: "failed-command"}},
+		{"restore", constants.Event.Operator.RestoreFile.Requested, constants.Event.Operator.RestoreFile.Failed, &operatorv1.RestoreFileRequested{FilePath: missing, CommitHash: strings.Repeat("a", 40), OperatorSessionId: sessionID, ExecutionId: "failed-restore"}},
+		{"history", constants.Event.Operator.FetchHistory.Requested, constants.Event.Operator.FetchHistory.Failed, &operatorv1.FetchHistoryRequested{ExecutionId: "failed-history"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			payload, err := proto.Marshal(test.payload)
+			require.NoError(t, err)
+			result, err := svc.Dispatch(t.Context(), DispatchRequest{
+				TargetOperatorSessionID: sessionID, EventType: string(test.requested), Payload: payload,
+				TargetResource: workDir, RequestorUserID: userID,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result.Receipt)
+			assert.Equal(t, string(test.failed), result.ResultEnvelope.GetEventType())
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Receipt.GetStatus())
+			assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.Receipt.GetFailureCode())
+			require.NoError(t, govsvc.VerifyActionReceiptSignature(result.Receipt, pubKey))
+			require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(result.Receipt, pubKey))
+		})
+	}
 }
 
 func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBeforeRemoteExecution(t *testing.T) {

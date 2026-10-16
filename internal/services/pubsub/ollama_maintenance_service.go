@@ -9,6 +9,7 @@ package pubsub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -64,12 +65,11 @@ func NewOllamaMaintenanceService(
 
 // HandleInventoryRequest lists installed provider models and returns a typed
 // OllamaModelInventoryResult without routing through EXECUTE_BASH stdout.
-func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var request operatorv1.OllamaModelInventoryRequested
 	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
 		s.logger.Error("Failed to decode Ollama inventory payload", string(constants.ConnectionStateError), err)
-		publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, "invalid request payload", s.auditStore, s.scrubbing)
-		return
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, "invalid request payload", s.auditStore, s.scrubbing))
 	}
 
 	executionID := request.GetExecutionId()
@@ -79,14 +79,12 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 
 	backend, err := s.ollamaBackend()
 	if err != nil {
-		publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, err.Error(), s.auditStore, s.scrubbing)
-		return
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, err.Error(), s.auditStore, s.scrubbing))
 	}
 
 	entries, err := backend.ListProviderModelInventory(ctx)
 	if err != nil {
-		publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, err.Error(), s.auditStore, s.scrubbing)
-		return
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, err.Error(), s.auditStore, s.scrubbing))
 	}
 
 	payload := &operatorv1.OllamaModelInventoryResult{
@@ -94,17 +92,16 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		Entries:     inference.ProviderModelInventoryEntriesToProto(entries),
 	}
-	publishLFAATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Completed, payload, s.auditStore, s.scrubbing)
+	return "", publishLFAATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Completed, payload, s.auditStore, s.scrubbing)
 }
 
 // HandleResidencyRequest reads typed /api/ps residency and returns a typed
 // OllamaModelResidencyResult without routing through EXECUTE_BASH stdout.
-func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, msg *PubSubCommandMessage) {
+func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var request operatorv1.OllamaModelResidencyRequested
 	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
 		s.logger.Error("Failed to decode Ollama residency payload", string(constants.ConnectionStateError), err)
-		publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, "invalid request payload", s.auditStore, s.scrubbing)
-		return
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, "invalid request payload", s.auditStore, s.scrubbing))
 	}
 
 	executionID := request.GetExecutionId()
@@ -114,20 +111,18 @@ func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, m
 
 	backend, err := s.ollamaBackend()
 	if err != nil {
-		publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, err.Error(), s.auditStore, s.scrubbing)
-		return
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, err.Error(), s.auditStore, s.scrubbing))
 	}
 
 	residency, err := backend.ReadResidency(ctx)
 	if err != nil {
-		publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, err.Error(), s.auditStore, s.scrubbing)
-		return
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, err.Error(), s.auditStore, s.scrubbing))
 	}
 
 	payload := inference.ProviderResidencyToProto(residency)
 	payload.ExecutionId = executionID
 	payload.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
-	publishLFAATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Completed, payload, s.auditStore, s.scrubbing)
+	return "", publishLFAATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Completed, payload, s.auditStore, s.scrubbing)
 }
 
 func (s *OllamaMaintenanceService) ollamaBackend() (*inference.OllamaBackend, error) {

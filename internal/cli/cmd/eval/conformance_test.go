@@ -15,6 +15,7 @@ import (
 	"errors"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,6 +56,7 @@ func conformanceTestOutboundDocument() *operatorv1.OperatorDocument {
 		Id:                conformanceTestOperatorID,
 		OperatorSessionId: conformanceTestOutboundSession,
 		Status:            string(constants.OperatorStatusActive),
+		OperatorType:      string(constants.OperatorTypeRemote),
 		ActuatorPublicKey: conformanceTestActuatorKey,
 		ActuatorKeyId:     conformanceTestActuatorKey,
 	}
@@ -161,11 +163,16 @@ func newConformanceRig(t *testing.T, opts rigOptions) conformanceRig {
 
 // execute runs the command tree with args and returns its combined output.
 func (r conformanceRig) execute(t *testing.T, args ...string) (string, error) {
+	return r.executeInput(t, "", args...)
+}
+
+func (r conformanceRig) executeInput(t *testing.T, input string, args ...string) (string, error) {
 	t.Helper()
 	command := evalCmdWithConfig(r.deps)
 	var out bytes.Buffer
 	command.SetOut(&out)
 	command.SetErr(&out)
+	command.SetIn(strings.NewReader(input))
 	command.SetArgs(args)
 	err := command.Execute()
 	return out.String(), err
@@ -235,44 +242,6 @@ func TestConformanceRoots_RefusesOutboundOperatorWithoutEnrollmentBoundKey(t *te
 			roots, err := conformanceRoots(conformanceTestRuntimeFiles(t), conformanceTestRuntimeFiles(t), conformanceTestOperatorID, tt.doc)
 			assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
 			assert.Nil(t, roots)
-		})
-	}
-}
-
-func TestConformanceRun_RequiresOutboundStubAndApproverBeforeDialing(t *testing.T) {
-	tests := []struct {
-		name string
-		args func(rig conformanceRig) []string
-	}{
-		{name: "no operator id", args: func(r conformanceRig) []string {
-			return []string{"conformance", "run", "--operator-root", r.opRoot, "--a2a-stub-listen", "127.0.0.1:0"}
-		}},
-		{name: "no operator root", args: func(conformanceRig) []string {
-			return []string{"conformance", "run", "--operator-id", conformanceTestOperatorID, "--a2a-stub-listen", "127.0.0.1:0"}
-		}},
-		{name: "no a2a stub listen", args: func(r conformanceRig) []string {
-			return []string{"conformance", "run", "--operator-id", conformanceTestOperatorID, "--operator-root", r.opRoot}
-		}},
-		{name: "attended without approver", args: func(r conformanceRig) []string {
-			return r.runArgs("--attended")
-		}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rig := newConformanceRig(t, rigOptions{run: func(context.Context, run.Config) (*evalv1.ConformanceRunRecord, error) {
-				t.Fatal("run called before the flags were validated")
-				return nil, nil
-			}})
-			rig.deps.clientFactory = func(harnessconfig.Config) (*harnessclient.Client, error) {
-				t.Fatal("client factory called before the flags were validated")
-				return nil, nil
-			}
-			rig.deps.configLoader = func(string) (*config.Config, error) {
-				t.Fatal("config loader called before the flags were validated")
-				return nil, nil
-			}
-			_, err := rig.execute(t, tt.args(rig)...)
-			assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 		})
 	}
 }
@@ -385,8 +354,8 @@ func TestConformanceVerify_SealedBytesThatFailAuthenticationAreTheDigestMismatch
 			out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 			require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "a changed sealed byte fails the exit rule")
 			assert.Contains(t, out, "Run: "+conformanceTestRunID)
-			assert.Contains(t, out, "CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE")
-			assert.Contains(t, out, "CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH")
+			assert.Contains(t, out, "Suite: INVALID_EVIDENCE")
+			assert.Contains(t, out, "RECORD_DIGEST_MISMATCH")
 		})
 	}
 }
