@@ -238,15 +238,30 @@ func readOperationalCommitments(ctx context.Context, tx *sql.Tx, encryptionVault
 	return nil
 }
 
+// readOperationalAuditChain exports the contiguous chain segment that spans every
+// chained receipt fact in the window. Every chained event between the first and
+// last of those facts is included whatever its type, so the segment has no
+// sequence gap and its prev_hash linkage verifies offline.
 func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault *vault.Vault, query OperationalEvidenceQuery, snapshot *OperationalEvidenceSnapshot) error {
+	// events.timestamp is stored in the fixed-width timesvc format, so the bounds must
+	// use it too: a variable-width RFC3339Nano bound compares wrong as a string and
+	// admits events up to a millisecond past the window end.
+	windowStart := timesvc.FormatTimestamp(query.WindowStart)
+	windowEnd := timesvc.FormatTimestamp(query.WindowEnd)
 	rows, err := tx.QueryContext(ctx, `
+		WITH bounds AS (
+			SELECT MIN(seq) AS first_seq, MAX(seq) AS last_seq
+			FROM events
+			WHERE seq IS NOT NULL
+			  AND type = ?
+			  AND timestamp >= ? AND timestamp <= ?
+		)
 		SELECT prev_hash, hash, type, operator_session_id, timestamp, transaction_id, `+auditEventContentColumns+`
-		FROM events
+		FROM events, bounds
 		WHERE seq IS NOT NULL
-		  AND type = ?
-		  AND timestamp >= ? AND timestamp <= ?
+		  AND seq >= bounds.first_seq AND seq <= bounds.last_seq
 		ORDER BY seq ASC
-	`, string(constants.EventOperatorReceiptRecorded), query.WindowStart.Format(time.RFC3339Nano), query.WindowEnd.Format(time.RFC3339Nano))
+	`, string(constants.EventOperatorReceiptRecorded), windowStart, windowEnd)
 	if err != nil {
 		return fmt.Errorf("operational evidence: query audit chain: %w", err)
 	}
@@ -269,7 +284,9 @@ func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault 
 		if err != nil {
 			return fmt.Errorf("operational evidence: verify audit chain content: %w", err)
 		}
-		if event.ContentText != "" {
+		// Only receipt facts carry a plain content hash: an importer matches it to the
+		// exported receipt body. Other chained content is never exported, so its hash is not.
+		if entry.EventType == string(constants.EventOperatorReceiptRecorded) && event.ContentText != "" {
 			sum := sha256.Sum256([]byte(event.ContentText))
 			entry.ContentSHA256 = hex.EncodeToString(sum[:])
 		}

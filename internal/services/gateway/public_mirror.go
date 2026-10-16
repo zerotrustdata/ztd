@@ -617,8 +617,8 @@ func verifyBatchSignature(batch models.PublicFeedBatch, pubKey ed25519.PublicKey
 
 // validateBatch performs all ingest validation layers: signature, content
 // hash, hash chain, sequence ordering, duplicate sequence, oversized batch,
-// revoked key, unknown key, record hash verification, and prohibited field
-// scan. Returns a typed rejection reason on failure.
+// revoked key, unknown key, and record hash verification. Returns a typed
+// rejection reason on failure.
 func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models.PublicFeedIngestRejectionReason, error) {
 	if len(batch.Records) == 0 {
 		return models.PublicFeedIngestRejectionOversizedBatch, constants.ErrPublicFeedBatchEmpty

@@ -125,7 +125,7 @@ func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings(t *testing.
 	require.NoError(t, err)
 	require.NotEmpty(t, liveRequests)
 
-	fixtures := testScenarioFixtures(t, "scenario-1")
+	fixtures := testScenarioFixtures(t)
 	bindings, err := coordinator.BuildAssignmentAuditBindings(context.Background(), assignment, result, fixtures, liveRequests, true)
 	require.NoError(t, err)
 	require.Len(t, bindings, 4)
@@ -205,7 +205,7 @@ func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings_EmptyLiveRe
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED,
 	}
 
-	bindings, err := coordinator.BuildAssignmentAuditBindings(context.Background(), assignment, result, testScenarioFixtures(t, "scenario-1"), nil, true)
+	bindings, err := coordinator.BuildAssignmentAuditBindings(context.Background(), assignment, result, testScenarioFixtures(t), nil, true)
 	require.NoError(t, err)
 	assert.Nil(t, bindings)
 	assert.Empty(t, proofPublisher.inputs)

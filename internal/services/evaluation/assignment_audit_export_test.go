@@ -128,17 +128,17 @@ func TestAssignmentAgentTraceArtifact_PublishesExactPersistedBodyAndBindsIt(t *t
 }
 
 // testScenarioFixtures returns one frozen built-in scenario's fixture bodies
-// keyed under scenarioID.
-func testScenarioFixtures(t *testing.T, scenarioID string) map[string]ScenarioArtifacts {
+// keyed under "scenario-1".
+func testScenarioFixtures(t *testing.T) map[string]ScenarioArtifacts {
 	t.Helper()
 	catalog, artifacts, err := BuildSmokeGateScenarioCatalog()
 	require.NoError(t, err)
 	require.NotEmpty(t, catalog.GetScenarios())
-	return map[string]ScenarioArtifacts{scenarioID: artifacts[catalog.GetScenarios()[0].GetScenarioId()]}
+	return map[string]ScenarioArtifacts{"scenario-1": artifacts[catalog.GetScenarios()[0].GetScenarioId()]}
 }
 
 func TestAttachScenarioFixture_PublishesFrozenBodiesAndBindsThem(t *testing.T) {
-	fixtures := testScenarioFixtures(t, "scenario-1")
+	fixtures := testScenarioFixtures(t)
 	artifacts := AssignmentAuditSliceArtifacts{DatabaseSHA256: strings.Repeat("a", 64), VaultKeySHA256: strings.Repeat("b", 64)}
 
 	require.NoError(t, artifacts.attachScenarioFixture(&evalv1.EvaluationAssignment{ScenarioId: "scenario-1"}, fixtures))
@@ -160,7 +160,7 @@ func TestAttachScenarioFixture_PublishesFrozenBodiesAndBindsThem(t *testing.T) {
 }
 
 func TestAttachScenarioFixture_RejectsMissingOrTamperedFixture(t *testing.T) {
-	fixtures := testScenarioFixtures(t, "scenario-1")
+	fixtures := testScenarioFixtures(t)
 	var artifacts AssignmentAuditSliceArtifacts
 	require.ErrorIs(t, artifacts.attachScenarioFixture(&evalv1.EvaluationAssignment{ScenarioId: "scenario-unknown"}, fixtures), constants.ErrEvidenceArtifactMalformed)
 

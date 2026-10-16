@@ -120,7 +120,7 @@ type testEvidenceEnv struct {
 	clock           func() time.Time
 }
 
-func setupTestEvidenceEnv(t *testing.T, shared bool, runSuffix string, singleRole bool, turns ...[][]*operatorv1.InferenceResponsePart) *testEvidenceEnv {
+func setupTestEvidenceEnv(t *testing.T, shared bool, runSuffix string, singleRole bool) *testEvidenceEnv {
 	t.Helper()
 	rt := newSealedRuntime(t)
 	store := NewStore(rt.files)
@@ -132,15 +132,8 @@ func setupTestEvidenceEnv(t *testing.T, shared bool, runSuffix string, singleRol
 		inferenceLedger = dataLedger
 	}
 
-	var flatTurns [][]*operatorv1.InferenceResponsePart
-	if len(turns) > 0 {
-		flatTurns = turns[0]
-	} else {
-		flatTurns = runCommandTurns(agentTestCommand)
-	}
-
 	laneClient := &testEvidenceLaneClient{ledger: dataLedger}
-	inferenceFake := &testEvidenceInferenceFake{ledger: inferenceLedger, turns: flatTurns}
+	inferenceFake := &testEvidenceInferenceFake{ledger: inferenceLedger, turns: runCommandTurns(agentTestCommand)}
 	sentinelFake := &testEvidenceSentinelFake{ledger: dataLedger}
 
 	clock := func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }

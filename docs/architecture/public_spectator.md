@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Architecture and Threat Model
 audience: architects and security reviewers
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - internal/services/gateway/public_mirror.go
   - internal/services/publicdisclosure/

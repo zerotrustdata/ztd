@@ -293,7 +293,7 @@ func ValidateAnalysis(analysis *compliancev1.ComplianceAnalysis) error {
 		return fmt.Errorf("%w: compliance analysis generation time is invalid", constants.ErrValidationFailed)
 	}
 	if !analysis.GetEvidenceGraphValid() || len(analysis.GetEvidenceGraphFailures()) != 0 {
-		return fmt.Errorf("%w: compliance analysis evidence graph is invalid", constants.ErrInvalidEvidenceGraph)
+		return fmt.Errorf("%w: compliance analysis evidence graph is invalid: %s", constants.ErrInvalidEvidenceGraph, strings.Join(analysis.GetEvidenceGraphFailures(), "; "))
 	}
 	return nil
 }

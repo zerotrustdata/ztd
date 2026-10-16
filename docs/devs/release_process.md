@@ -3,8 +3,8 @@ doc_id: release_process
 title: Release Process
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - VERSION
   - Makefile

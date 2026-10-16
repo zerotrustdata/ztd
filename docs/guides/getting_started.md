@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -247,7 +247,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.1.0`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.1.1`, then run both checks there.
 
 Run the checksum check:
 
@@ -271,7 +271,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.1.0' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.1.1' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -296,7 +296,7 @@ make up
 make gw
 ```
 
-`make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data,inference,observer`) to `--capabilities` on its embedded Operator. The embedded Operator always includes Data. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
+`make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data,inference,observer`) to `--capabilities` on its embedded Operator. The embedded Operator always includes Data and Inference. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
 
 ```bash
 make gw MODEL_STORAGE_ROOT=/srv/ollama/models
@@ -391,7 +391,7 @@ make down
 To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.1.0
+go get github.com/zerotrustdata/ztd@v1.1.1
 ```
 
 Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:

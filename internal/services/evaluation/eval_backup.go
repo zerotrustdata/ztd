@@ -803,6 +803,7 @@ func (b *EvalBackup) restoreContent(ctx context.Context, source evalBackupSource
 	}
 	plaintext, err := v.DecryptWithAAD(data, aad)
 	if err != nil {
+		//nolint:nilerr // intentional: the payload digest is already verified; a clear ExportRun bundle under a sealed root is restored as stored
 		return evalRestoreContent{data: data}, nil
 	}
 	return evalRestoreContent{data: plaintext, sealed: true}, nil

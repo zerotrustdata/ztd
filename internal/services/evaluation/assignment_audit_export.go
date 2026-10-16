@@ -544,7 +544,7 @@ func deriveAssignmentAuditVaultKey(assignmentID string, events []AssignmentAudit
 }
 
 // PublishedHashes returns the content-addressed proof hashes of the package.
-func (a AssignmentAuditSliceArtifacts) PublishedHashes() CampaignPublishedProofArtifacts {
+func (a *AssignmentAuditSliceArtifacts) PublishedHashes() CampaignPublishedProofArtifacts {
 	return CampaignPublishedProofArtifacts{
 		DatabaseSHA256:      a.DatabaseSHA256,
 		VaultKeySHA256:      a.VaultKeySHA256,

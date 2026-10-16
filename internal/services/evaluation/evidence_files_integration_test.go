@@ -243,7 +243,12 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 	})
 }
 
-// markerExecutor returns a terminal result whose private grade detail quotes
+// markerGradeDetail is the grader detail markerExecutor records. Grade detail
+// is public evidence published verbatim (INV-SPEC-DATA-02), so it carries no
+// marker.
+const markerGradeDetail = "expected hint not found in the public synthetic answer"
+
+// markerExecutor returns a terminal result whose private failure reason quotes
 // the marker on its first call and fails with an error that echoes the marker
 // on later calls.
 type markerExecutor struct {
@@ -269,7 +274,7 @@ func (m *markerExecutor) ExecuteAssignment(_ context.Context, req AssignmentExec
 			GradeId:     req.Assignment.GetAssignmentId() + ":scenario-content",
 			CriterionId: "scenario-content",
 			Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
-			Detail:      "expected hint not found in " + evidenceMarker,
+			Detail:      markerGradeDetail,
 			Basis:       basisObservation,
 		}},
 	}
@@ -339,11 +344,11 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, loadedFailure.String(), evidenceMarker)
 
-	// The completed result keeps its private grade detail, encrypted and readable.
+	// The completed result keeps its private failure reason, encrypted and readable.
 	loadedCompleted, err := store.LoadAssignmentResult(ctx, req.RunID, completed.GetAssignmentId())
 	require.NoError(t, err)
 	assert.Contains(t, loadedCompleted.GetFailureReason(), evidenceMarker)
-	assert.Contains(t, loadedCompleted.GetDeterministicGrades()[0].GetDetail(), evidenceMarker)
+	assert.Equal(t, markerGradeDetail, loadedCompleted.GetDeterministicGrades()[0].GetDetail())
 
 	// The frozen fixtures decrypt for the readers that grade against them.
 	run, err := store.LoadRun(ctx, req.RunID)
@@ -394,8 +399,8 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(exchangeBody), evidenceMarker, "the exchange evidence round-trips through the encrypted store")
 
-	// The export carries allowlisted public transcripts; private model-call
-	// text, errors, prompts, grading details, and exchange evidence stay sealed.
+	// The export carries public transcripts and grader detail verbatim; private
+	// model-call text, errors, prompts, and exchange evidence stay sealed.
 	exportReport, err := NewCampaignExporter(func() time.Time { return time.Unix(1_700_000_100, 0).UTC() }).ExportRun(ctx, store, rt.files, req.RunID, constants.EvaluationCampaignExportDirname)
 	require.NoError(t, err)
 	require.NotEmpty(t, exportReport.Files)
@@ -404,6 +409,7 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	assert.Contains(t, string(exportedAssignments), completed.GetAssignmentId(), "the export is a readable bundle, not ciphertext")
 	assert.Contains(t, string(exportedAssignments), publicAnswer, "allowlisted final response is available in the public export")
 	assert.Contains(t, string(exportedAssignments), "public synthetic evidence", "allowlisted tool result is available in the public export")
+	assert.Contains(t, string(exportedAssignments), markerGradeDetail, "grader detail is published verbatim")
 
 	scanned := assertNoPlaintextAnywhere(t, rt.raw.Resolve(""), evidenceMarker, prompt)
 	assert.Greater(t, scanned, 10, "the walk covered the evaluation records, vault, and export")

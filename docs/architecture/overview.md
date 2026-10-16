@@ -3,8 +3,8 @@ doc_id: overview
 title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -143,7 +143,7 @@ The platform ships as a single static Go binary (`ztd`) serving multiple operati
 
 1. **Governance Gateway (`ztd gw start`)**: The central Policy Decision Point (PDP) and protocol coordinator. The Gateway admits client transactions, manages PKI, runs L1 Doctrine screening, coordinates L2 Consensus deliberation, manages L3 Notary approval suspensions, brokers outbound-only pub/sub WebSocket channels to Operators, and persists Gateway coordination state. For local operations, the Gateway executes through an in-process embedded Operator substrate (`internal/services/gateway/embedded/`).
 2. **Governed Operator (`ztd operator start`)**: The sovereign Policy Execution Point (PEP) for target runtimes. The Operator exposes no inbound management listeners, initiates an outbound-only TLS 1.3 mTLS connection to the Gateway, pulls work exclusively from a dedicated session command channel (`cmd:<operator_id>:<operator_session_id>`), independently executes L4 Warden verification, and executes accepted actions through the L5 Actuator.
-3. **Embedded Operator**: The in-process Operator substrate inside the Gateway (`operator_type: embedded`). It runs concurrently with the Gateway, carries the `data` capability by default, and accesses local execution evidence via `storage.OpenLocalExecutionEvidence`.
+3. **Embedded Operator**: The in-process Operator substrate inside the Gateway (`operator_type: embedded`). It runs concurrently with the Gateway, always carries the `data` and `inference` capabilities, works in `.ztd/operators/embedded-operator`, and accesses local execution evidence via `storage.OpenLocalExecutionEvidence`.
 4. **CLI Client (`ztd`)**: Unified command-line interface encompassing command groups: `gw`, `auth`, `mcp`, `operator`, `vault`, `test`, `audit`, `report`, `public`, `swagger`, `tui`, `version`, `compliance`, and `eval`. Flags and defaults resolve via `./ztd <command> --help`.
 5. **Terminal UI (`ztd tui`)**: Interactive terminal interface monitoring Gateway state, connected Operators, session leases, and recent transactions.
 6. **Console**: React and TypeScript Single Page Application embedded into the Gateway binary and served at `/console/` on the Gateway HTTPS origin. It calls Gateway APIs for WebAuthn authentication, human approvals, Operator inventory, and audit telemetry; it does not communicate directly with Operators.

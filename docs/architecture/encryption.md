@@ -3,8 +3,8 @@ doc_id: encryption
 title: Encryption Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - internal/services/vault/
   - internal/services/keystore/
@@ -165,7 +165,7 @@ Vault encryption protects high-sensitivity fields across platform services:
   - `file_mutation_log`: `filepath`, `diff_stat` (BLOB).
   - `sessions`: `title`, `user_identity` (BLOB).
   - Plaintext by design: identifiers, hashes, signatures, `seq`, `prev_hash`, `content_digest` (an HMAC-SHA256 under a vault-derived subkey, not a hash of the content), `hash`, `transaction_id`, timestamps, event types, statuses, exit codes, durations, sizes, and truncation flags. Audit-chain checkpoint payloads (`events.content_text` rows of type `ztd.v1.platform.audit.chain.checkpointed`) are encrypted like other `content_text` values.
-  - Exports carry metadata, hashes, and signatures only. No compliance, operational, or `ztd report` export writes decrypted content. Chain-segment verification uses the stored `content_digest` and hash linkage; an exported receipt-recorded entry also carries the plain SHA-256 of the exported receipt body (`content_sha256`), recorded by the exporting runtime after it verified the keyed digest, because an offline importer cannot recompute the keyed digest.
+  - Exports carry metadata, hashes, and signatures only. No compliance, operational, or `ztd report` export writes decrypted content. Chain-segment verification uses the stored `content_digest` and hash linkage; an exported receipt-recorded entry also carries the plain SHA-256 of the exported receipt body (`content_sha256`), recorded by the exporting runtime after it verified the keyed digest, because an offline importer cannot recompute the keyed digest. Other chained entries in the segment carry no plain content hash, since their content is never exported.
 - **UEI Token Store** (`internal/services/gateway/encrypted_kv_adapter.go`): Reversible User-Explicit Information (UEI) token values are encrypted via `EncryptedKVAdapter` using the vault DEK before storage in `KVStoreService` under `constants.SentinelKeyPrefix` (`"__uei_token_"`). Each value is bound to its full KV key as associated data. Keys and TTL metadata remain visible.
 - **File Ledger** (`internal/services/storage/ledger.go`): Every file snapshot is encrypted and stored with an `.enc` suffix, bound to its git-relative snapshot path (`files/<keyed name>.enc`) as associated data. Mirroring fails closed with `ErrLedgerVaultRequired` when the vault is locked, and no plaintext copy is written. Ledger diffs are computed over decrypted snapshots in memory.
 

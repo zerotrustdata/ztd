@@ -3,8 +3,8 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - internal/services/ztdo.go
   - internal/services/operatorcapability/

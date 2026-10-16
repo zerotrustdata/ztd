@@ -117,6 +117,8 @@ func testRunOperators() []*operatorv1.OperatorDocument {
 				Capabilities:            []string{string(constants.OperatorCapabilityInference)},
 				InferenceOllamaEndpoint: "http://provider.example:11434",
 			},
+			ActuatorPublicKey: testInferenceOperatorActuatorKey,
+			ActuatorKeyId:     testInferenceOperatorActuatorKey,
 		},
 		{
 			Id:                      "data-op",

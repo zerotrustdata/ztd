@@ -67,13 +67,23 @@ func TestBuildPublicAssignmentProjectionRejectsInvalidPublicBinding(t *testing.T
 	assert.Error(t, err)
 }
 
-func TestMarshalPublicAssignmentRecordRejectsRestrictedBenchmarkDetail(t *testing.T) {
+// Grader detail is public evidence and is published verbatim (INV-SPEC-DATA-02).
+func TestMarshalPublicAssignmentRecordPublishesBenchmarkDetailVerbatim(t *testing.T) {
 	t.Parallel()
-	_, err := MarshalPublicAssignmentRecord(&PublicAssignmentRecord{
+	detail := "expected HEALTHY, got `rm -rf /` in turn 3"
+	body, err := MarshalPublicAssignmentRecord(&PublicAssignmentRecord{
 		Projection: &evalv1.PublicAssignmentResultProjection{AssignmentId: "assignment-1", RunId: "run-1", ScenarioId: "scenario-1"},
-		Extensions: PublicAssignmentRecordExtensions{BenchmarkObservations: &PublicBenchmarkObservations{GradeSummaries: []PublicGradeSummary{{CriterionID: "criterion-1", Status: "fail", Detail: "private detail"}}}},
+		Extensions: PublicAssignmentRecordExtensions{BenchmarkObservations: &PublicBenchmarkObservations{GradeSummaries: []PublicGradeSummary{{CriterionID: "criterion-1", Status: "fail", Detail: detail}}}},
 	})
-	assert.Error(t, err)
+	require.NoError(t, err)
+	var decoded struct {
+		BenchmarkObservations struct {
+			GradeSummaries []PublicGradeSummary `json:"grade_summaries"`
+		} `json:"benchmark_observations"`
+	}
+	require.NoError(t, json.Unmarshal(body, &decoded))
+	require.Len(t, decoded.BenchmarkObservations.GradeSummaries, 1)
+	assert.Equal(t, detail, decoded.BenchmarkObservations.GradeSummaries[0].Detail)
 }
 
 func TestBuildPublicAssignmentProjectionPreservesCanonicalZeroAndUint64Values(t *testing.T) {

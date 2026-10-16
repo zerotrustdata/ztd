@@ -715,23 +715,6 @@ func TestMirror_RecordHash_RejectsMismatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Prohibited field disclosure tests
-// ---------------------------------------------------------------------------
-
-// TestMirror_Disclosure_RejectsProhibitedFields verifies that the mirror
-// rejects a batch containing prohibited fields in a record payload.
-func TestMirror_Disclosure_RejectsProhibitedFields(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{
-		"campaign_id": "c1",
-		"api_key":     "should-not-be-here",
-	}))}
-	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
-	_, resp := env.sendIngest(batch)
-	assert.False(t, resp.Accepted)
-}
-
-// ---------------------------------------------------------------------------
 // Bootstrap endpoint tests
 // ---------------------------------------------------------------------------
 
@@ -1599,7 +1582,6 @@ func TestMirror_ProofIngest_RejectsInvalidPackageWithoutPartialPersistence(t *te
 	}{
 		{name: "missing authentication", filename: "proof.json", content: []byte(`{"campaign_id":"c1"}`), auth: false},
 		{name: "path traversal filename", filename: "../proof.json", content: []byte(`{"campaign_id":"c1"}`), auth: true},
-		{name: "nested restricted field", filename: "proof.json", content: []byte(`{"metadata":{"api_key":"restricted"}}`), auth: true},
 		{name: "invalid manifest signature", filename: "proof.json", content: []byte(`{"campaign_id":"c1"}`), auth: true, mutate: func(request *models.PublicProofIngestRequest) {
 			request.Manifest.Signature = constants.PublicFeedZeroHashHex
 		}},

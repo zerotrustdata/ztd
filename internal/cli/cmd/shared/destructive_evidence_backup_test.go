@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -213,6 +214,9 @@ func TestConfirmDestructive_WithEvidenceBackupPrintsTheSnapshotSummaryBeforeProc
 
 	require.NoError(t, err)
 	assert.True(t, proceed)
-	assert.Contains(t, out.String(), "Backed up evaluation evidence (1 file(s), 9 bytes)")
+	// The backup copies the record as stored: sealed, so larger than its plaintext.
+	stored, err := os.Stat(f.fileSvc.Resolve(runRecordRelPath))
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), fmt.Sprintf("Backed up evaluation evidence (1 file(s), %d bytes)", stored.Size()))
 	assert.Len(t, f.snapshotDirs(t), 1)
 }

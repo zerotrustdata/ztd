@@ -3,8 +3,8 @@ doc_id: unified_stack
 title: Unified Stack Guide
 audience: platform operators and evaluators
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.1
+last_updated: 2026-10-15
 owners:
   - Makefile
   - docs/guides/
@@ -95,7 +95,7 @@ make operator OPERATOR_ARGS='--endpoint localhost --capabilities data --working-
 make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --inference-ollama-endpoint http://192.168.1.2:11434 --working-dir ~/.ztd-inference'
 ```
 
-For a single process that carries every capability, start the Gateway with its embedded Operator instead. The embedded Operator always includes Data. `make gw` enables `GW_CAPABILITIES` (default `data,inference,observer`), and setting `MODEL_STORAGE_ROOT` adds Provenance over that model store:
+For a single process that carries every capability, start the Gateway with its embedded Operator instead. The embedded Operator always includes Data and Inference. `make gw` enables `GW_CAPABILITIES` (default `data,inference,observer`), and setting `MODEL_STORAGE_ROOT` adds Provenance over that model store:
 
 ```bash
 make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint http://192.168.1.2:11434'
