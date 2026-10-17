@@ -120,12 +120,20 @@ On first start, the Gateway creates the `.ztd/` runtime tree and PKI hierarchy. 
 Choose a stricter posture only after configuring required proofs:
 
 ```bash
-./ztd gw start --posture consensus --consensus-id <policy-id>
+./ztd gw start --posture consensus
 ./ztd gw start --posture ratify
-./ztd gw start --posture notary --consensus-id <policy-id>
+./ztd gw start --posture notary
 ```
 
-Consensus and notary require an enabled consensus policy, trusted signers, and an available in-process consensus service. Ratify and notary require L3 human authorization for mutations.
+Consensus and notary require a bound consensus application. Enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint:
+
+```bash
+./ztd auth enroll app <app-name> --signing-key
+./ztd auth enroll consensus bind <app-name> https://<app-host>/<deliberate-path>
+./ztd auth enroll consensus show
+```
+
+Ratify and notary require L3 human authorization for mutations, including the binding itself. See [Consensus](../architecture/consensus.md).
 
 Posture, capabilities, ports, listen host, and the other startup settings are fixed while the Gateway runs. `./ztd gw start` against a running Gateway compares the explicitly passed startup flags with its launch profile, lists any differences, and exits nonzero without changing it; stop it with `./ztd gw stop` first.
 

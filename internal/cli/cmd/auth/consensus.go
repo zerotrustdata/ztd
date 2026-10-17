@@ -33,6 +33,22 @@ func consensusEnrollmentCmdWithConfig(
 	clientFactory APIClientFactory,
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
 ) *cobra.Command {
+	newClient := func() (APIClient, error) {
+		cfg, err := configLoader("")
+		if err != nil {
+			return nil, err
+		}
+		fileSvc, err := fileSvcFactory("", slog.Default())
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+		}
+		client, err := clientFactory(fileSvc, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("consensus enrollment client: %w", err)
+		}
+		return client, nil
+	}
+
 	cmd := &cobra.Command{
 		Use:   "consensus",
 		Short: "Bind or inspect the enrolled consensus application",
@@ -41,65 +57,88 @@ Enroll the application with auth enroll app <name> --signing-key before binding 
 Binding traverses governance and requires passkey approval under ratify and notary.
 A pending binding prints its approval URL and transaction; use show after approval to inspect the binding.`,
 	}
-	for _, bind := range []bool{false, true} {
-		child := &cobra.Command{Use: "show", Short: "Print the current consensus binding as JSON", Args: cobra.NoArgs}
-		if bind {
-			child.Use = "bind <app-name> <https-endpoint>"
-			child.Short = "Bind an enrolled application through governance"
-			child.Args = cobra.ExactArgs(2)
-		}
-		child.RunE = func(cmd *cobra.Command, args []string) error {
-			var request models.PlatformEnrollmentBindConsensusRequest
-			if bind {
-				request = models.PlatformEnrollmentBindConsensusRequest{AppID: strings.TrimSpace(args[0]), EndpointURL: strings.TrimSpace(args[1])}
-				if request.AppID == "" {
-					return fmt.Errorf("consensus binding app name: %w", constants.ErrMissingRequiredField)
-				}
-				if err := models.ValidateConsensusEndpoint(request.EndpointURL); err != nil {
-					return err
-				}
+	cmd.AddCommand(consensusBindCmd(newClient), consensusShowCmd(newClient))
+	return cmd
+}
+
+func consensusBindCmd(newClient func() (APIClient, error)) *cobra.Command {
+	return &cobra.Command{
+		Use:   "bind <app-name> <https-endpoint>",
+		Short: "Bind an enrolled application through governance",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			request := models.PlatformEnrollmentBindConsensusRequest{
+				AppID:       strings.TrimSpace(args[0]),
+				EndpointURL: strings.TrimSpace(args[1]),
 			}
-			cfg, err := configLoader("")
+			if request.AppID == "" {
+				return fmt.Errorf("consensus binding app name: %w", constants.ErrMissingRequiredField)
+			}
+			if err := models.ValidateConsensusEndpoint(request.EndpointURL); err != nil {
+				return err
+			}
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			fileSvc, err := fileSvcFactory("", slog.Default())
+			body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentConsensus, request)
 			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-			}
-			client, err := clientFactory(fileSvc, cfg)
-			if err != nil {
-				return fmt.Errorf("consensus enrollment client: %w", err)
-			}
-			var body []byte
-			if bind {
-				body, err = client.Post(constants.APIPaths.AuthPlatformEnrollmentConsensus, request)
-			} else {
-				body, err = client.Get(constants.APIPaths.AuthPlatformEnrollmentConsensus)
-			}
-			if err != nil {
-				return fmt.Errorf("consensus enrollment: %w", err)
+				return fmt.Errorf("consensus bind: %w", err)
 			}
 			var suspension models.PlatformEnrollmentL3SuspensionResponse
-			if bind && json.Unmarshal(body, &suspension) == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
+			if json.Unmarshal(body, &suspension) == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
 				if output.JSONEnabled(cmd) {
 					return output.WriteJSON(cmd.OutOrStdout(), suspension)
 				}
 				return auth.WritePlatformEnrollmentSuspension(cmd.OutOrStdout(), suspension)
 			}
-			var policy models.ConsensusPolicy
-			if err := json.Unmarshal(body, &policy); err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+			policy, err := decodeConsensusBinding(body)
+			if err != nil {
+				return err
 			}
-			if policy.ID != string(constants.DocIDConsensusBinding) || !policy.Enabled || len(policy.MemberAppIDs) != 1 || policy.Quorum != 1 || models.ValidateConsensusEndpoint(policy.EndpointURL) != nil {
-				return constants.ErrInvalidJSONResponse
-			}
-			if bind && (policy.MemberAppIDs[0] != request.AppID || policy.EndpointURL != request.EndpointURL) {
-				return constants.ErrInvalidJSONResponse
+			if policy.MemberAppIDs[0] != request.AppID || policy.EndpointURL != request.EndpointURL {
+				return fmt.Errorf("consensus bind: binding does not match request: %w", constants.ErrInvalidJSONResponse)
 			}
 			return output.WriteJSON(cmd.OutOrStdout(), policy)
-		}
-		cmd.AddCommand(child)
+		},
 	}
-	return cmd
+}
+
+func consensusShowCmd(newClient func() (APIClient, error)) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "Print the current consensus binding as JSON",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			client, err := newClient()
+			if err != nil {
+				return err
+			}
+			body, err := client.Get(constants.APIPaths.AuthPlatformEnrollmentConsensus)
+			if err != nil {
+				return fmt.Errorf("consensus show: %w", err)
+			}
+			policy, err := decodeConsensusBinding(body)
+			if err != nil {
+				return err
+			}
+			return output.WriteJSON(cmd.OutOrStdout(), policy)
+		},
+	}
+}
+
+// decodeConsensusBinding accepts only the single-application binding shape the
+// Gateway's governed binding handler writes.
+func decodeConsensusBinding(body []byte) (*models.ConsensusPolicy, error) {
+	var policy models.ConsensusPolicy
+	if err := json.Unmarshal(body, &policy); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+	}
+	if policy.ID != string(constants.DocIDConsensusBinding) || !policy.Enabled || len(policy.MemberAppIDs) != 1 || policy.Quorum != 1 {
+		return nil, fmt.Errorf("consensus binding shape: %w", constants.ErrInvalidJSONResponse)
+	}
+	if err := models.ValidateConsensusEndpoint(policy.EndpointURL); err != nil {
+		return nil, fmt.Errorf("consensus binding endpoint: %w: %w", constants.ErrInvalidJSONResponse, err)
+	}
+	return &policy, nil
 }
