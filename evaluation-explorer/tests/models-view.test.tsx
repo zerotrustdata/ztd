@@ -174,9 +174,85 @@ describe('ModelsView', () => {
     );
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by quality state' }), { target: { value: 'exploratory_verified' } });
-    expect(screen.getByRole('link', { name: 'Verified model' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Other dataset model' })).not.toBeInTheDocument();
+    const catalogTable = within(screen.getByRole('table', { name: 'Model catalog' }));
+    expect(catalogTable.getByRole('link', { name: 'Verified model' })).toBeInTheDocument();
+    expect(catalogTable.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
+    expect(catalogTable.queryByRole('link', { name: 'Other dataset model' })).not.toBeInTheDocument();
     expect(screen.getByTestId('quality-exploratory_verified')).toHaveTextContent('Run-scoped verification passed');
+  });
+
+  it('shows only fully evaluated, verified role leaders and their ranking evidence on the Models view', () => {
+    const model: ModelSummary = {
+      schema_version: '1.7.0',
+      kind: 'model_summary',
+      dataset_id: 'ds-leader',
+      observed_at: '2026-10-06T00:00:00Z',
+      quality_state: 'exploratory_verified',
+      variant_id: 'leader',
+      served_model_tag: 'qwen:4b',
+      display_name: 'Qualified model',
+      role: 'assistant',
+      inventory_only: false,
+      evaluation_coverage: 1,
+      pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
+    };
+    evalStore.loadFixtures(
+      [
+        model,
+        { ...model, variant_id: 'unverified', display_name: 'Unverified model', role: 'primary', quality_state: 'exploratory_partial' },
+        { ...model, variant_id: 'partial', display_name: 'Partial model', role: 'lite', evaluation_coverage: 0.5 },
+        {
+          schema_version: '1.3.0',
+          kind: 'evaluation_summary',
+          dataset_id: 'ds-leader',
+          quality_state: 'live_in_progress',
+          observed_at: '2026-10-06T00:00:00Z',
+          run_id: 'run-leader',
+          suite_id: 'eval-init-suite',
+          arm: 'platform',
+          evaluation_unit: 'model',
+          model_role_mapping: {},
+          lifecycle_state: 'completed',
+          assignment_total: 75,
+          assignment_completed: 10,
+          assignment_failed: 0,
+          terminal_outcomes: { completed: 10, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+          started_at: '2026-10-06T00:00:00Z',
+          elapsed_seconds: 60,
+          verifier_state: 'not_applicable',
+          headline_metrics: {},
+        },
+      ],
+      [],
+    );
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <ModelsView />
+      </MemoryRouter>,
+    );
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('link', { name: 'Qualified model' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Unverified model' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
+    expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
+    expect(panel.getByText('4B')).toBeInTheDocument();
+    expect(panel.getByRole('columnheader', { name: 'Eval time' })).toBeInTheDocument();
+  });
+
+  it('displays model capabilities, architecture specs, and supports capability filtering', () => {
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <ModelsView />
+      </MemoryRouter>,
+    );
+
+    const catalogTable = within(screen.getByRole('table', { name: 'Model catalog' }));
+    expect(catalogTable.getByRole('columnheader', { name: /Architecture & specs/i })).toBeInTheDocument();
+    expect(catalogTable.getByRole('columnheader', { name: /Capabilities/i })).toBeInTheDocument();
+    expect(catalogTable.getByRole('columnheader', { name: /Evaluations/i })).toBeInTheDocument();
+
+    const capabilityBar = within(screen.getByRole('group', { name: 'Filter by probed capability' }));
+    expect(capabilityBar.getByRole('button', { name: /Tool Calling/i })).toBeInTheDocument();
+    expect(capabilityBar.getByRole('button', { name: /Structured JSON/i })).toBeInTheDocument();
   });
 });

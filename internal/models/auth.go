@@ -354,6 +354,12 @@ func (u *User) WebAuthnIcon() string {
 	return ""
 }
 
+// HasPasskey reports whether the user has at least one registered passkey,
+// which ratify and notary posture require for L3 approval.
+func (u *User) HasPasskey() bool {
+	return u != nil && len(u.PasskeyCredentials) > 0
+}
+
 func (u *User) WebAuthnCredentials() []webauthn.Credential {
 	res := make([]webauthn.Credential, len(u.PasskeyCredentials))
 	for i, c := range u.PasskeyCredentials {
@@ -802,10 +808,13 @@ type CLILogoutResponse struct {
 // operator document it resolves to. OperatorSessionID and OperatorID are
 // empty when the session has no operator binding; the caller (the CLI's
 // `auth context`) decides whether an unbound session is actionable.
+// PasskeyRegistered reports whether the session's user has a registered
+// passkey, which L3 approval requires under ratify and notary posture.
 type CLISessionInfoResponse struct {
 	Success           bool   `json:"success"`
 	CLISessionID      string `json:"cli_session_id"`
 	UserID            string `json:"user_id"`
+	PasskeyRegistered bool   `json:"passkey_registered"`
 	OperatorSessionID string `json:"operator_session_id,omitempty"`
 	OperatorID        string `json:"operator_id,omitempty"`
 	// BoundOperatorSessionIDs lists every operator session bound by `operator bind`, primary first.

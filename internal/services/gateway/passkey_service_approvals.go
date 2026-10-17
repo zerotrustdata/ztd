@@ -249,7 +249,7 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 			}
 		} else {
 			user, err := h.userStore.GetUser(r.Context(), userID)
-			if err != nil || user == nil || len(user.PasskeyCredentials) == 0 {
+			if err != nil || !user.HasPasskey() {
 				h.responder.Error(w, http.StatusForbidden, fmt.Sprintf("denial requires a WebAuthn grounded session under %s posture", posture))
 				return
 			}

@@ -476,6 +476,7 @@ func (c *EnrollmentClient) SessionInfo(ctx context.Context, fileSvc fs.RuntimeFi
 	return CLISessionInfo{
 		CLISessionID:      info.CLISessionID,
 		UserID:            info.UserID,
+		PasskeyRegistered: info.PasskeyRegistered,
 		OperatorSessionID: info.OperatorSessionID,
 		OperatorID:        info.OperatorID,
 
@@ -494,6 +495,7 @@ type CLISessionUnbind struct {
 type CLISessionInfo struct {
 	CLISessionID            string
 	UserID                  string
+	PasskeyRegistered       bool
 	OperatorSessionID       string
 	OperatorID              string
 	BoundOperatorSessionIDs []string

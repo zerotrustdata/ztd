@@ -80,6 +80,11 @@ type EnrollmentGateway interface {
 	//     (gateway unreachable, TLS handshake failure, etc.). The
 	//     coordinator treats this as best-effort — warn and proceed.
 	ProbeCLISession(ctx context.Context, fileSvc fs.RuntimeFileService) error
+
+	// SessionInfo returns the authenticated CLI session's server-side
+	// identity binding over mTLS. The coordinator reads PasskeyRegistered
+	// from it when EnrollmentOptions.PasskeyIfMissing is set.
+	SessionInfo(ctx context.Context, fileSvc fs.RuntimeFileService) (CLISessionInfo, error)
 }
 
 // KeyProvider is the key-generation abstraction used by the

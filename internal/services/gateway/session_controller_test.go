@@ -218,6 +218,37 @@ func TestHandleSessionInfo_UnboundSessionReturnsEmptyOperatorFields(t *testing.T
 	assert.Equal(t, user.ID, resp.UserID)
 	assert.Empty(t, resp.OperatorSessionID)
 	assert.Empty(t, resp.OperatorID)
+	assert.False(t, resp.PasskeyRegistered)
+}
+
+// TestHandleSessionInfo_ReportsRegisteredPasskey verifies passkey_registered
+// reflects the session user's persisted passkey credentials.
+func TestHandleSessionInfo_ReportsRegisteredPasskey(t *testing.T) {
+	h, _, infra := setupTestHTTPHandler(t)
+
+	user, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, infra.UserSvc.UpdatePasskeyCredentials(t.Context(), user.ID, []models.PasskeyCredential{
+		{ID: []byte("credential-1"), PublicKey: []byte("public-key")},
+	}))
+
+	cliSessionID := "cli-session-info-passkey"
+	seedActiveCLISession(t, infra, user.ID, cliSessionID, "")
+
+	wid := protocol.NewWorkloadIdentity()
+	cliURI, err := wid.CLISPIFFEURL(user.ID, cliSessionID)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.AuthCLISession, nil)
+	req.Header.Set(constants.HeaderCLISessionID, cliSessionID)
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{selfSignedCertForSPIFFE(t, cliURI)}}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code, "body: %s", rr.Body.String())
+	var resp models.CLISessionInfoResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.True(t, resp.PasskeyRegistered)
 }
 
 // TestHandleSessionInfo_NonCLIIdentityReturns401 verifies the endpoint

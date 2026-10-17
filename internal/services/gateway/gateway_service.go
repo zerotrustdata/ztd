@@ -855,6 +855,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		},
 		CLISessionControllerDeps: CLISessionControllerDeps{
 			Logger:    logger,
+			UserSvc:   userSvc,
 			Responder: ls.responder,
 		},
 		EnrollmentTokenControllerDeps: EnrollmentTokenControllerDeps{

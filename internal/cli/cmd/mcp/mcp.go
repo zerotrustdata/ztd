@@ -128,7 +128,7 @@ the gateway URL defaults to the local gateway (override with --gateway-url).
 This command is a credential CONSUMER, not an enrollment UI. It does NOT enroll,
 open a browser, install OS trust, or run a passkey ceremony. If credentials are
 absent, enroll or launch first with one of these commands:
-ztd auth enroll user
+ztd login
 ztd auth enroll app <name>
 ztd mcp agent run
 
@@ -795,6 +795,11 @@ L3 APPROVAL FLOW:
   3. Retry the tool call automatically
   4. Return the result to the tool
 
+  The launcher signs in like 'ztd login': a headless CLI session with no browser,
+  OS trust installation, or passkey ceremony. L3 WebAuthn approval needs a
+  registered passkey; register one once with:
+ztd login web
+
 For full L1-L5 governance (L2 consensus, L3 human approval via WebAuthn), start
 the gateway, then run this command:
 ztd mcp stdio`,
@@ -974,21 +979,19 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 		return fmt.Errorf("mcp: launch agent: %w", err)
 	}
 
-	// Use the shared interactive enrollment coordinator. mcp agent run is an
-	// interactive user-facing caller, so it uses the same trust and passkey
-	// policy as `auth enroll user`. The coordinator inspects local state and
-	// bootstraps, recovers, rotates, or reuses as needed. If a passkey
-	// already exists, the coordinator's passkey ceremony is still run (it
-	// is idempotent for an existing passkey); if no passkey exists, the
-	// browser ceremony runs after system trust is installed.
-	fmt.Fprintf(os.Stderr, "[ztd] Ensuring CLI credentials and passkey...\n")
+	// mcp agent run is a CLI session, so it ensures the identity exactly as
+	// `ztd login` does: headless, with no OS trust installation and no
+	// passkey ceremony. The coordinator inspects local state and bootstraps,
+	// recovers, rotates, or reuses as needed. Browser login stays an explicit
+	// `ztd login web`.
+	fmt.Fprintf(os.Stderr, "[ztd] Ensuring CLI credentials...\n")
 	coordinator, err := enrollerFactory(func(format string, args ...any) {
 		fmt.Fprintf(os.Stderr, format+"\n", args...)
 	}, fileSvc, cfg)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
 	}
-	enrollResult, err := coordinator.Enroll(context.Background(), auth.EnrollmentOptions{})
+	enrollResult, err := coordinator.Enroll(context.Background(), auth.CLILoginOptions(false))
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
 	}
