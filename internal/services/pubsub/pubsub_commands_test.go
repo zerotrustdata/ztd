@@ -28,7 +28,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -91,7 +90,7 @@ func TestNewOperatorPubSubService_StartsWithoutTrustedSignersButRejectsL2(t *tes
 	cfg := testutil.NewTestConfig(t)
 	tmpDir := testutil.TempDir(t)
 	cfg.PKIDir = filepath.Join(tmpDir, "pki")
-	cfg.Gateway.Posture = config.PostureConsensus // Set Consensus posture to enforce L2
+	cfg.Gateway.Posture = constants.PostureConsensus // Set Consensus posture to enforce L2
 	svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 		Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
 		Ledger:       storagetest.NewTestLedger(t),
@@ -140,7 +139,7 @@ func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg
 		Payload:         payload,
 		StateMerkleRoot: "test-state-root",
 		Nonce:           "nonce-missing-signer",
-		Posture:         constants.PostureConsensus,
+		Posture:         string(constants.PostureConsensus),
 	}
 	hash, err := govpkg.GenerateMessageID(env)
 	require.NoError(t, err)
@@ -194,7 +193,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 			Payload:         nil,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-1",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		f.Svc.handleGovernanceEnvelope(env)
 		// Should log error and return without panic
@@ -237,7 +236,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-1",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		svc.handleGovernanceEnvelope(env)
 		// Should log error and return without panic
@@ -260,7 +259,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 			TargetResource:  "localhost",
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-shutdown-empty",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 			Governance: &commonv1.GovernanceMetadata{
 				L2: &commonv1.L2Metadata{
 					ConsensusSetId: "test-consensus",
@@ -501,7 +500,7 @@ func buildL4RejectionEnvelope(t *testing.T, stateRoot, nonce string, mutate, pos
 		}),
 		StateMerkleRoot: stateRoot,
 		Nonce:           nonce,
-		Posture:         constants.PostureDoctrine,
+		Posture:         string(constants.PostureDoctrine),
 	}
 	if mutate != nil {
 		mutate(env)
@@ -639,7 +638,7 @@ func buildGatewayDispatchedDoctrineEnvelope(t *testing.T, stateRoot, nonce strin
 		}),
 		StateMerkleRoot: stateRoot,
 		Nonce:           nonce,
-		Posture:         constants.PostureDoctrine,
+		Posture:         string(constants.PostureDoctrine),
 	}
 	hash, err := govpkg.GenerateMessageID(env)
 	require.NoError(t, err)
@@ -741,7 +740,7 @@ func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) {
 					Payload:         tc.payload,
 					StateMerkleRoot: "test-state-root",
 					Nonce:           "nonce-" + tc.name,
-					Posture:         constants.PostureDoctrine,
+					Posture:         string(constants.PostureDoctrine),
 					Governance: &commonv1.GovernanceMetadata{
 						L2: &commonv1.L2Metadata{
 							ConsensusSetId: "test-consensus",
@@ -807,7 +806,7 @@ func TestOperatorPubSubService_CancellationReceipt(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-cancel",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 			Governance: &commonv1.GovernanceMetadata{
 				L2: &commonv1.L2Metadata{
 					ConsensusSetId: "test-consensus",
@@ -1333,7 +1332,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-sync",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 			Governance: &commonv1.GovernanceMetadata{
 				L2: &commonv1.L2Metadata{
 					ConsensusSetId: "test-consensus",
@@ -1403,7 +1402,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-mismatch",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
@@ -1431,7 +1430,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			TargetResource:  "localhost",
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-not-governed",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
@@ -1478,7 +1477,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-1",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
@@ -1564,7 +1563,7 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 					Payload:         payload,
 					StateMerkleRoot: "test-state-root",
 					Nonce:           fmt.Sprintf("nonce-det-%s-%d", tc.actionType, i),
-					Posture:         constants.PostureDoctrine,
+					Posture:         string(constants.PostureDoctrine),
 					Governance: &commonv1.GovernanceMetadata{
 						L2: &commonv1.L2Metadata{
 							ConsensusSetId: "test-consensus",
@@ -2093,7 +2092,7 @@ func TestNewOperatorPubSubService_NilDoctrine_NotDefaultedAtCallSite(t *testing.
 func newGatewayPubsubServiceForBindingTest(t *testing.T) *OperatorPubSubService {
 	t.Helper()
 	cfg := testutil.NewTestConfig(t)
-	govDeps := validTestGatewayModeDeps(config.PostureDoctrine)
+	govDeps := validTestGatewayModeDeps(constants.PostureDoctrine)
 	svc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
 		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
 			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),

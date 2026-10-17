@@ -88,14 +88,14 @@ func (fakeConformancePoster) Post(string, any) ([]byte, error) {
 
 // rigOptions tunes one conformance command under test.
 type rigOptions struct {
-	posture   string
+	posture   constants.Posture
 	operators []*operatorv1.OperatorDocument
 	run       func(context.Context, run.Config) (*evalv1.ConformanceRunRecord, error)
 	// wrapGateway wraps the Gateway's runtime file service, e.g. to corrupt reads.
 	wrapGateway func(fs.RuntimeFileService) fs.RuntimeFileService
 	// serveGateway starts the Gateway the rig's client dials and returns its base URL.
 	// Nil leaves the rig without a Gateway, so a test that never dials opens no socket.
-	serveGateway func(t *testing.T, posture string, operators []*operatorv1.OperatorDocument) string
+	serveGateway func(t *testing.T, posture constants.Posture, operators []*operatorv1.OperatorDocument) string
 }
 
 // conformanceRig is one conformance command: a Gateway served by httptest, two

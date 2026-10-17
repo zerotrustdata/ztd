@@ -21,14 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
 func TestGateway_HTTPSNegotiatesHTTP2(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
-		TestName: "gateway-http2", Posture: config.PostureDoctrine,
+		TestName: "gateway-http2", Posture: constants.PostureDoctrine,
 	})
 	identity := fixtures.EnrollClientIdentity(t, f, "http2-user", "http2-org", "http2-fingerprint", "http2-host")
 	client := fixtures.CreateMTLSClient(t, f, identity)

@@ -42,7 +42,7 @@ type GatewayConfig struct {
 	ProviderBoundaryObserverID         string                         `json:"provider_boundary_observer_id,omitempty"`
 	ProvenanceOperatorID               string                         `json:"provenance_operator_id,omitempty"`
 	ProvenanceOperatorModelStorageRoot string                         `json:"provenance_operator_model_storage_root,omitempty"`
-	Posture                            config.GatewayPosture          `json:"posture"`
+	Posture                            constants.Posture              `json:"posture"`
 	HTTPPort                           int                            `json:"http_port"`
 	HTTPSPort                          int                            `json:"https_port"`
 	ListenHost                         string                         `json:"listen_host,omitempty"`

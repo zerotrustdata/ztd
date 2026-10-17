@@ -70,6 +70,23 @@ func TestDefaultPostureIsDoctrine(t *testing.T) {
 	assert.Equal(t, PostureDoctrine, DefaultPosture)
 }
 
+func TestPostureDescription_AllPostures(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		posture  Posture
+		expected string
+	}{
+		{PostureDoctrine, "doctrine (L1 enforced, L2/L3 audited)"},
+		{PostureConsensus, "consensus (L1/L2 enforced, L3 audited)"},
+		{PostureRatify, "ratify (L1/L3 enforced, L2 audited)"},
+		{PostureNotary, "notary (L1/L2/L3 strictly enforced)"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.expected, tc.posture.Description(), "%s", tc.posture)
+	}
+}
+
 func TestPostureHumanApprovalReasonNamesPosture(t *testing.T) {
 	t.Parallel()
 

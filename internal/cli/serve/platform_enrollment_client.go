@@ -56,7 +56,7 @@ type OperatorIdentity struct {
 	TrustBundlePEM     []byte
 	OperatorID         string
 	OperatorSessionID  string
-	Posture            string
+	Posture            constants.Posture
 	SystemFingerprint  string
 	MaxConcurrentTasks int
 	MaxMemoryMB        int
@@ -370,6 +370,9 @@ func (a *operatorBootstrapAttempt) identity(bundle *models.OperatorBootstrapBund
 		return nil, fmt.Errorf("operator enrollment: bundle missing the Operator certificate, trust, or session")
 	}
 	creds := bundle.Credentials
+	if !creds.Posture.Valid() {
+		return nil, fmt.Errorf("operator enrollment: bundle posture %q: %w", creds.Posture, constants.ErrInvalidPosture)
+	}
 	cert, certPEM, err := operatorKeyPair(creds.OperatorCert, creds.OperatorCertChain, a.operatorKey)
 	if err != nil {
 		return nil, err

@@ -49,7 +49,7 @@ func TestVerifyEnvelope_ReadsPostureFromEnvelope(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, verified)
 		assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, verified.L3Status)
-		assert.Equal(t, "doctrine", verified.Posture.Name())
+		assert.Equal(t, constants.PostureDoctrine, verified.Posture)
 	})
 }
 
@@ -60,8 +60,8 @@ func TestVerifyEnvelope_ReadOnlyNeedsNoL3UnderAnyPosture(t *testing.T) {
 	t.Parallel()
 	require.False(t, constants.ActionTypeFsRead.IsMutation())
 
-	for _, posture := range []string{"ratify", "notary"} {
-		t.Run(posture, func(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
+		t.Run(string(posture), func(t *testing.T) {
 			t.Parallel()
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeFsRead, typedPayload(t, constants.ActionTypeFsRead), privKey, posture)
@@ -70,7 +70,7 @@ func TestVerifyEnvelope_ReadOnlyNeedsNoL3UnderAnyPosture(t *testing.T) {
 			verified, err := verifier.VerifyEnvelope(context.Background(), env)
 			require.NoError(t, err)
 			assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, verified.L3Status)
-			assert.Equal(t, posture, verified.Posture.Name())
+			assert.Equal(t, posture, verified.Posture)
 		})
 	}
 }
@@ -118,7 +118,7 @@ func TestVerifyEnvelope_RatifyRequiresL3WithoutL2(t *testing.T) {
 			}
 			assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, verified.L2Status)
 			assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, verified.L3Status)
-			assert.Equal(t, "ratify", verified.Posture.Name())
+			assert.Equal(t, constants.PostureRatify, verified.Posture)
 		})
 	}
 }
@@ -142,8 +142,8 @@ func TestVerifyEnvelope_MissingEnvelopePostureFailsClosed(t *testing.T) {
 func TestVerifyEnvelope_EnvelopePostureIsTheOnlyPosture(t *testing.T) {
 	t.Parallel()
 
-	for _, posture := range []string{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
-		t.Run(posture, func(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
+		t.Run(string(posture), func(t *testing.T) {
 			t.Parallel()
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, posture)
@@ -151,14 +151,14 @@ func TestVerifyEnvelope_EnvelopePostureIsTheOnlyPosture(t *testing.T) {
 			verified, err := verifier.VerifyEnvelope(context.Background(), env)
 			assert.NoError(t, err)
 			assert.NotNil(t, verified)
-			assert.Equal(t, posture, verified.Posture.Name())
+			assert.Equal(t, posture, verified.Posture)
 		})
 	}
 }
 
 // TestVerifyEnvelope_InvalidEnvelopePostureFailsClosed verifies that an
 // envelope with an unrecognized posture string is rejected. The warden
-// parses the posture via ParseGovernancePosture, which fails closed on
+// parses the posture via constants.ParsePosture, which fails closed on
 // unknown values.
 func TestVerifyEnvelope_InvalidEnvelopePostureFailsClosed(t *testing.T) {
 	t.Parallel()
@@ -182,30 +182,39 @@ func TestPostureGates_L2EnforcedAndL3RequiredByActionClass(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		posture GovernancePosture
+		posture constants.Posture
 		action  constants.ActionType
 		wantL2  bool
 		wantL3  bool
 	}{
-		{"doctrine mutation", &DoctrinePosture{}, constants.ActionTypeFileEdit, false, false},
-		{"doctrine read", &DoctrinePosture{}, constants.ActionTypeFsRead, false, false},
-		{"doctrine bootstrap", &DoctrinePosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
-		{"doctrine bootstrap mutation", &DoctrinePosture{}, constants.ActionTypePlatformEnrollmentDecide, false, false},
+		{"doctrine mutation", constants.PostureDoctrine, constants.ActionTypeFileEdit, false, false},
+		{"doctrine read", constants.PostureDoctrine, constants.ActionTypeFsRead, false, false},
+		{"doctrine bootstrap", constants.PostureDoctrine, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"doctrine bootstrap mutation", constants.PostureDoctrine, constants.ActionTypePlatformEnrollmentDecide, false, false},
 
-		{"consensus mutation", &ConsensusPosture{}, constants.ActionTypeFileEdit, true, false},
-		{"consensus read", &ConsensusPosture{}, constants.ActionTypeFsRead, true, false},
-		{"consensus bootstrap", &ConsensusPosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
-		{"consensus bootstrap mutation", &ConsensusPosture{}, constants.ActionTypePlatformEnrollmentDecide, false, false},
+		{"consensus mutation", constants.PostureConsensus, constants.ActionTypeFileEdit, true, false},
+		{"consensus read", constants.PostureConsensus, constants.ActionTypeFsRead, true, false},
+		{"consensus bootstrap", constants.PostureConsensus, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"consensus bootstrap mutation", constants.PostureConsensus, constants.ActionTypePlatformEnrollmentDecide, false, false},
 
-		{"ratify mutation", &RatifyPosture{}, constants.ActionTypeFileEdit, false, true},
-		{"ratify read", &RatifyPosture{}, constants.ActionTypeFsRead, false, false},
-		{"ratify bootstrap", &RatifyPosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
-		{"ratify bootstrap mutation", &RatifyPosture{}, constants.ActionTypePlatformEnrollmentDecide, false, true},
+		{"ratify mutation", constants.PostureRatify, constants.ActionTypeFileEdit, false, true},
+		{"ratify read", constants.PostureRatify, constants.ActionTypeFsRead, false, false},
+		{"ratify bootstrap", constants.PostureRatify, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"ratify bootstrap mutation", constants.PostureRatify, constants.ActionTypePlatformEnrollmentDecide, false, true},
 
-		{"notary mutation", &NotaryPosture{}, constants.ActionTypeFileEdit, true, true},
-		{"notary read", &NotaryPosture{}, constants.ActionTypeFsRead, true, false},
-		{"notary bootstrap", &NotaryPosture{}, constants.ActionTypePlatformEnrollmentCreate, false, false},
-		{"notary bootstrap mutation", &NotaryPosture{}, constants.ActionTypePlatformEnrollmentDecide, false, true},
+		{"notary mutation", constants.PostureNotary, constants.ActionTypeFileEdit, true, true},
+		{"notary read", constants.PostureNotary, constants.ActionTypeFsRead, true, false},
+		{"notary bootstrap", constants.PostureNotary, constants.ActionTypePlatformEnrollmentCreate, false, false},
+		{"notary bootstrap mutation", constants.PostureNotary, constants.ActionTypePlatformEnrollmentDecide, false, true},
+
+		// Follow-on actions carry out a committed DECIDE, so they are exempt from
+		// L3 under every posture, and they are bootstrap actions, so exempt from L2.
+		{"ratify issue authorized by decision", constants.PostureRatify, constants.ActionTypePlatformEnrollmentIssue, false, false},
+		{"ratify persist policy authorized by decision", constants.PostureRatify, constants.ActionTypePlatformEnrollmentPersistPolicy, false, false},
+		{"ratify create session authorized by decision", constants.PostureRatify, constants.ActionTypePlatformEnrollmentCreateSession, false, false},
+		{"notary issue authorized by decision", constants.PostureNotary, constants.ActionTypePlatformEnrollmentIssue, false, false},
+		{"notary persist policy authorized by decision", constants.PostureNotary, constants.ActionTypePlatformEnrollmentPersistPolicy, false, false},
+		{"notary create session authorized by decision", constants.PostureNotary, constants.ActionTypePlatformEnrollmentCreateSession, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

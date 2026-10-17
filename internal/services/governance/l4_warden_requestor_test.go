@@ -39,7 +39,7 @@ func TestL4Warden_L3VerifiesRequestorInsteadOfExecutionTarget(t *testing.T) {
 				ActionType: string(constants.ActionTypeExecuteBash),
 				Governance: &commonv1.GovernanceMetadata{L3: &commonv1.L3Metadata{Proof: &commonv1.L3Proof{CredentialId: "credential-1"}}},
 			}
-			valid, err := warden.verifyL3Posture(context.Background(), env, &RatifyPosture{})
+			valid, err := warden.verifyL3Posture(context.Background(), env, constants.PostureRatify)
 			require.NoError(t, err)
 			require.True(t, valid)
 			require.Equal(t, env.RequestorUserId, notary.userID)
@@ -48,9 +48,9 @@ func TestL4Warden_L3VerifiesRequestorInsteadOfExecutionTarget(t *testing.T) {
 }
 
 func TestL4Warden_L3DenyRejectsInEveryPosture(t *testing.T) {
-	postures := []GovernancePosture{&DoctrinePosture{}, &ConsensusPosture{}, &RatifyPosture{}, &NotaryPosture{}}
+	postures := []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary}
 	for _, posture := range postures {
-		t.Run(posture.Name(), func(t *testing.T) {
+		t.Run(string(posture), func(t *testing.T) {
 			notary := &requestorNotary{}
 			warden := &L4Warden{l3Notary: notary, logger: testutil.NewTestLogger()}
 			env := &govtypes.GovernanceEnvelope{

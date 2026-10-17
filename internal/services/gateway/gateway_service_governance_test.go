@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -27,7 +26,7 @@ import (
 
 func TestGatewayModeService_IsGovernanceReady(t *testing.T) {
 	t.Run("Doctrine posture returns true without signers", func(t *testing.T) {
-		ls := newTestGatewayService(t, testGatewayOpts{posture: config.PostureDoctrine})
+		ls := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureDoctrine})
 		assert.True(t, ls.IsGovernanceReady(t.Context()))
 	})
 
@@ -49,12 +48,12 @@ func TestGatewayModeService_IsGovernanceReady(t *testing.T) {
 	})
 
 	t.Run("Notary posture returns false without signers", func(t *testing.T) {
-		ls := newTestGatewayService(t, testGatewayOpts{posture: config.PostureNotary})
+		ls := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureNotary})
 		assert.False(t, ls.IsGovernanceReady(t.Context()))
 	})
 
 	t.Run("Notary posture returns true with signers", func(t *testing.T) {
-		ls := newTestGatewayService(t, testGatewayOpts{posture: config.PostureNotary})
+		ls := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureNotary})
 
 		signer := models.TrustedSigner{
 			ID:        "test-signer-1",

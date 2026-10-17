@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
@@ -576,10 +575,10 @@ func TestGatewayConfig_ConsensusBootstrapField(t *testing.T) {
 func TestGatewayConfig_ConsensusBootstrapDoesNotAffectOptions(t *testing.T) {
 	cfgWithBootstrap := GatewayConfig{
 		ConsensusBootstrap: "/path/to/bootstrap.json",
-		Posture:            config.PostureConsensus,
+		Posture:            constants.PostureConsensus,
 	}
 	cfgWithoutBootstrap := GatewayConfig{
-		Posture: config.PostureConsensus,
+		Posture: constants.PostureConsensus,
 	}
 
 	optsWith := gatewayConfigToOptions(cfgWithBootstrap)

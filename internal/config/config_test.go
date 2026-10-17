@@ -43,7 +43,6 @@ func TestLoad_Defaults(t *testing.T) {
 
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
-		Posture:          constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
@@ -51,8 +50,6 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, constants.ComponentNameZTDO, cfg.ComponentName)
 	assert.Equal(t, "ztd", cfg.ProjectID)
 	assert.Equal(t, 25, cfg.MaxConcurrentTasks)
-	// The operator uses the gateway-provided posture; it has no default of its own.
-	assert.Equal(t, constants.PostureDoctrine, cfg.Posture)
 	assert.Equal(t, 2048, cfg.MaxMemoryMB)
 	assert.Equal(t, 30*time.Second, cfg.HeartbeatInterval)
 	assert.Equal(t, constants.Ports.OperatorHttp, cfg.HTTPPort)
@@ -77,7 +74,6 @@ func TestLoad_NoPosture_Succeeds(t *testing.T) {
 func TestLoad_FieldPassthrough(t *testing.T) {
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
-		Posture:          constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 
@@ -88,7 +84,6 @@ func TestLoad_HTTPPortOverride(t *testing.T) {
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
 		HTTPPort:         constants.Ports.OperatorHttps,
-		Posture:          constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, constants.Ports.OperatorHttps, cfg.HTTPPort)
@@ -126,7 +121,6 @@ func TestLoad_TLSServerName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg, err := Load(LoadOptions{
 				OperatorEndpoint: tt.endpoint,
-				Posture:          constants.PostureDoctrine,
 			})
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantServerName, cfg.TLSServerName)
@@ -258,7 +252,6 @@ func TestLoadGateway_RejectsPortZeroInProduction(t *testing.T) {
 func TestLoad_HeartbeatIntervalDefault(t *testing.T) {
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
-		Posture:          constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 30*time.Second, cfg.HeartbeatInterval)
@@ -268,7 +261,6 @@ func TestLoad_HeartbeatIntervalOverride(t *testing.T) {
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint:  constants.DefaultEndpoint,
 		HeartbeatInterval: 90 * time.Second,
-		Posture:           constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 90*time.Second, cfg.HeartbeatInterval)
@@ -278,7 +270,6 @@ func TestLoad_HeartbeatIntervalZeroUsesDefault(t *testing.T) {
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint:  constants.DefaultEndpoint,
 		HeartbeatInterval: 0,
-		Posture:           constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 30*time.Second, cfg.HeartbeatInterval)

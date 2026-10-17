@@ -23,6 +23,6 @@ func TestStartGatewayIfNeeded_RejectsInvalidPostureBeforeAnyWork(t *testing.T) {
 	_, err := startGatewayIfNeeded(func(string, *slog.Logger) (fs.RuntimeFileService, error) {
 		t.Fatal("file service must not be built for an invalid posture")
 		return nil, nil
-	}, "strict")
+	}, constants.Posture("strict"))
 	require.ErrorIs(t, err, constants.ErrInvalidPosture)
 }

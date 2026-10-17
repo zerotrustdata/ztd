@@ -137,7 +137,7 @@ func (m Model) viewPosture() string {
 	b.WriteString(renderChoice(postures, m.postureChoice, m.focusIndex == 0))
 	b.WriteString("\n\n")
 
-	if m.postureChoice == 1 || m.postureChoice == 3 {
+	if m.selectedPosture().RequiresL2() {
 		b.WriteString(m.consensusIDInput.View())
 		b.WriteString("\n\n")
 		b.WriteString(m.consensusBootstrapInput.View())

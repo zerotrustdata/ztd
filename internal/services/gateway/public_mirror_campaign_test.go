@@ -102,7 +102,7 @@ func TestEvalCampaignPublicationControllerDeleteWithdrawsRunFromMirror(t *testin
 	require.True(t, response.Accepted)
 
 	controller := newEvalCampaignPublicationControllerTest(t)
-	controller.spectator = func() *PublicSpectatorRuntime { return &PublicSpectatorRuntime{mirror: env.mirror} }
+	controller.service.spectator = func() *PublicSpectatorRuntime { return &PublicSpectatorRuntime{mirror: env.mirror} }
 	path := constants.APIPaths.EvalCampaignPublicationStateByRun + runID + "/publication-state"
 	putRec := httptest.NewRecorder()
 	controller.handlePublicationState(putRec, httptest.NewRequest(http.MethodPut, path, bytes.NewReader(mustJSON(t, models.EvalCampaignPublicationState{

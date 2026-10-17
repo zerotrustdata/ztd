@@ -21,7 +21,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -388,7 +387,7 @@ func TestTransitionPlatformEnrollment_FencesIssuanceOnTheLeaseHolder(t *testing.
 }
 
 func TestEnrollmentBatchDecisionPreservesPosturePolicy(t *testing.T) {
-	for _, posture := range []config.GatewayPosture{config.PostureConsensus, config.PostureRatify, config.PostureNotary} {
+	for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
 			gateway := newTestGatewayService(t, testGatewayOpts{posture: posture})
 			owner, err := gateway.GetUserService().CreateUser(t.Context())
@@ -401,7 +400,7 @@ func TestEnrollmentBatchDecisionPreservesPosturePolicy(t *testing.T) {
 				Decision: models.PlatformEnrollmentDecisionApprove, Requests: []models.PlatformEnrollmentDecisionTarget{{RequestID: "request", Fingerprints: record.Fingerprints}},
 			})
 			want := models.PlatformEnrollmentStatePending
-			if posture == config.PostureConsensus {
+			if posture == constants.PostureConsensus {
 				// Existing enrollment bootstrap policy exempts DECIDE from L2.
 				require.NoError(t, err)
 				want = models.PlatformEnrollmentStateApproved

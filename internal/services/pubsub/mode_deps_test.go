@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -36,7 +35,7 @@ func validTestGovernanceCoreDeps() GovernanceCoreDeps {
 	}
 }
 
-func validTestGatewayModeDeps(posture config.GatewayPosture) GatewayModeDeps {
+func validTestGatewayModeDeps(posture constants.Posture) GatewayModeDeps {
 	deps := GatewayModeDeps{
 		GovernanceCoreDeps:     validTestGovernanceCoreDeps(),
 		GovernedDocStore:       &testutil.ConfigurableMockGovernedDocStore{},
@@ -45,7 +44,7 @@ func validTestGatewayModeDeps(posture config.GatewayPosture) GatewayModeDeps {
 		PlatformEnrollmentDeps: &PlatformEnrollmentDeps{},
 		Posture:                posture,
 	}
-	if posture != config.PostureDoctrine {
+	if posture != constants.PostureDoctrine {
 		deps.Consensus = &consensus.ConsensusService{}
 	}
 	return deps
@@ -153,13 +152,13 @@ func TestNewGatewayModeDeps_Success(t *testing.T) {
 
 	postures := []struct {
 		name              string
-		posture           config.GatewayPosture
+		posture           constants.Posture
 		requiresConsensus bool
 	}{
-		{name: "doctrine posture (consensus nil)", posture: config.PostureDoctrine},
-		{name: "consensus posture (consensus non-nil)", posture: config.PostureConsensus, requiresConsensus: true},
-		{name: "ratify posture (consensus nil)", posture: config.PostureRatify},
-		{name: "notary posture (consensus non-nil)", posture: config.PostureNotary, requiresConsensus: true},
+		{name: "doctrine posture (consensus nil)", posture: constants.PostureDoctrine},
+		{name: "consensus posture (consensus non-nil)", posture: constants.PostureConsensus, requiresConsensus: true},
+		{name: "ratify posture (consensus nil)", posture: constants.PostureRatify},
+		{name: "notary posture (consensus non-nil)", posture: constants.PostureNotary, requiresConsensus: true},
 	}
 
 	for _, p := range postures {
@@ -273,7 +272,7 @@ func TestNewGatewayModeDeps_ValidationErrors(t *testing.T) {
 		{
 			name: "nil Consensus under Consensus posture returns ErrConsensusServiceRequired",
 			modify: func(d *GatewayModeDeps) {
-				d.Posture = config.PostureConsensus
+				d.Posture = constants.PostureConsensus
 				d.Consensus = nil
 			},
 			expectedErr: constants.ErrConsensusServiceRequired,
@@ -281,16 +280,23 @@ func TestNewGatewayModeDeps_ValidationErrors(t *testing.T) {
 		{
 			name: "nil Consensus under Notary posture returns ErrConsensusServiceRequired",
 			modify: func(d *GatewayModeDeps) {
-				d.Posture = config.PostureNotary
+				d.Posture = constants.PostureNotary
 				d.Consensus = nil
 			},
 			expectedErr: constants.ErrConsensusServiceRequired,
+		},
+		{
+			name: "unrecognized Posture returns ErrInvalidPosture",
+			modify: func(d *GatewayModeDeps) {
+				d.Posture = constants.Posture("strict")
+			},
+			expectedErr: constants.ErrInvalidPosture,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			input := validTestGatewayModeDeps(config.PostureDoctrine)
+			input := validTestGatewayModeDeps(constants.PostureDoctrine)
 			tc.modify(&input)
 			deps, err := NewGatewayModeDeps(input)
 			require.Error(t, err)

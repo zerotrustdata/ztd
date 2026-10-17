@@ -525,6 +525,18 @@ definitions:
     x-enum-varnames:
     - GatewayModeGateway
     - GatewayModeStatusOK
+  constants.Posture:
+    enum:
+    - doctrine
+    - consensus
+    - ratify
+    - notary
+    type: string
+    x-enum-varnames:
+    - PostureDoctrine
+    - PostureConsensus
+    - PostureRatify
+    - PostureNotary
   constants.UserStatus:
     enum:
     - active
@@ -881,7 +893,7 @@ definitions:
       pid:
         type: integer
       posture:
-        type: string
+        $ref: '#/definitions/constants.Posture'
       state_merkle_root:
         type: string
       status:

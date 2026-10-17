@@ -293,6 +293,27 @@ func TestBuildGovernanceEnvelope_DeterministicTxHash(t *testing.T) {
 	assert.Equal(t, "doctrine", env1.Posture)
 }
 
+// TestBuildGovernanceEnvelope_InvalidPostureFailsClosed verifies that a posture
+// outside the defined set is refused at construction time rather than stamped
+// onto an envelope the operator would have to interpret.
+func TestBuildGovernanceEnvelope_InvalidPostureFailsClosed(t *testing.T) {
+	payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: "/etc/hostname", ExecutionId: "exec-1"})
+	require.NoError(t, err)
+	_, err = BuildGovernanceEnvelope(BuildEnvelopeParams{
+		OperatorID:        "op-001",
+		OperatorSessionID: "sess-001",
+		EventType:         string(constants.Event.Operator.FsRead.Requested),
+		Payload:           payload,
+		TargetResource:    "/etc/hostname",
+		StateMerkleRoot:   "root-abc",
+		Posture:           constants.Posture("permissive"),
+		Doctrine:          governance.NewL1Doctrine(),
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrInvalidPosture),
+		"unrecognized posture must fail closed with ErrInvalidPosture, got: %v", err)
+}
+
 // TestBuildGovernanceEnvelope_MissingPostureFailsClosed verifies that the
 // gateway never emits an envelope without posture. An empty posture
 // indicates a gateway bug (the constructor was called without wiring

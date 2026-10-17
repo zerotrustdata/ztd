@@ -32,7 +32,7 @@ import (
 func TestGatewayConfig_ZeroValue(t *testing.T) {
 	var cfg GatewayConfig
 
-	assert.Equal(t, config.GatewayPosture(""), cfg.Posture)
+	assert.Equal(t, constants.Posture(""), cfg.Posture)
 	assert.Equal(t, 0, cfg.HTTPPort)
 	assert.Equal(t, 0, cfg.HTTPSPort)
 	assert.Equal(t, "", cfg.DataDir)
@@ -54,7 +54,7 @@ func TestGatewayConfig_ZeroValue(t *testing.T) {
 
 func TestGatewayConfig_FullAssignment(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:             config.PostureConsensus,
+		Posture:             constants.PostureConsensus,
 		HTTPPort:            8080,
 		HTTPSPort:           8443,
 		DataDir:             constants.TestPathVarLibDataDir,
@@ -74,7 +74,7 @@ func TestGatewayConfig_FullAssignment(t *testing.T) {
 		A2ADownstreamURL:    "http://downstream:3001/a2a",
 	}
 
-	assert.Equal(t, config.PostureConsensus, cfg.Posture)
+	assert.Equal(t, constants.PostureConsensus, cfg.Posture)
 	assert.Equal(t, 8080, cfg.HTTPPort)
 	assert.Equal(t, 8443, cfg.HTTPSPort)
 	assert.Equal(t, constants.TestPathVarLibDataDir, cfg.DataDir)
@@ -96,7 +96,7 @@ func TestGatewayConfig_FullAssignment(t *testing.T) {
 
 func TestGatewayConfig_Equality(t *testing.T) {
 	a := GatewayConfig{
-		Posture:        config.PostureDoctrine,
+		Posture:        constants.PostureDoctrine,
 		HTTPPort:       8080,
 		HTTPSPort:      8443,
 		DataDir:        constants.TestPathShortData,
@@ -117,12 +117,12 @@ func TestGatewayConfig_Equality(t *testing.T) {
 
 func TestGatewayConfig_PartialAssignment(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:  config.PostureNotary,
+		Posture:  constants.PostureNotary,
 		HTTPPort: 8080,
 		LogLevel: "error",
 	}
 
-	assert.Equal(t, config.PostureNotary, cfg.Posture)
+	assert.Equal(t, constants.PostureNotary, cfg.Posture)
 	assert.Equal(t, 8080, cfg.HTTPPort)
 	assert.Equal(t, "error", cfg.LogLevel)
 	assert.Equal(t, 0, cfg.HTTPSPort, "unassigned HTTPSPort should be zero value")
@@ -137,7 +137,7 @@ func TestGatewayConfig_PartialAssignment(t *testing.T) {
 func TestGatewayConfig_AllFieldsExported(t *testing.T) {
 	cfg := GatewayConfig{}
 
-	cfg.Posture = config.PostureConsensus
+	cfg.Posture = constants.PostureConsensus
 	cfg.HTTPPort = 8080
 	cfg.HTTPSPort = 8443
 	cfg.DataDir = constants.TestPathShortData
@@ -156,7 +156,7 @@ func TestGatewayConfig_AllFieldsExported(t *testing.T) {
 	cfg.MCPDownstreamURL = "http://mcp.example.com"
 	cfg.A2ADownstreamURL = "http://a2a.example.com"
 
-	assert.Equal(t, config.PostureConsensus, cfg.Posture)
+	assert.Equal(t, constants.PostureConsensus, cfg.Posture)
 	assert.Equal(t, 8080, cfg.HTTPPort)
 	assert.Equal(t, 8443, cfg.HTTPSPort)
 	assert.Equal(t, constants.TestPathShortData, cfg.DataDir)
@@ -178,18 +178,18 @@ func TestGatewayConfig_AllFieldsExported(t *testing.T) {
 
 func TestGatewayConfig_Mutation(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:     config.PostureDoctrine,
+		Posture:     constants.PostureDoctrine,
 		HTTPPort:    8080,
 		HTTPSPort:   8443,
 		LogLevel:    "info",
 		ConsensusID: "trib-original",
 	}
 
-	cfg.Posture = config.PostureConsensus
+	cfg.Posture = constants.PostureConsensus
 	cfg.HTTPPort = 9090
 	cfg.ConsensusID = "trib-mutated"
 
-	assert.Equal(t, config.PostureConsensus, cfg.Posture)
+	assert.Equal(t, constants.PostureConsensus, cfg.Posture)
 	assert.Equal(t, 9090, cfg.HTTPPort)
 	assert.Equal(t, 8443, cfg.HTTPSPort, "unmodified fields should retain original values")
 	assert.Equal(t, "info", cfg.LogLevel, "unmodified fields should retain original values")
@@ -197,10 +197,10 @@ func TestGatewayConfig_Mutation(t *testing.T) {
 }
 
 func TestGatewayConfig_PostureValues(t *testing.T) {
-	postures := []config.GatewayPosture{
-		config.PostureDoctrine,
-		config.PostureConsensus,
-		config.PostureNotary,
+	postures := []constants.Posture{
+		constants.PostureDoctrine,
+		constants.PostureConsensus,
+		constants.PostureNotary,
 	}
 
 	for _, p := range postures {
@@ -212,12 +212,12 @@ func TestGatewayConfig_PostureValues(t *testing.T) {
 func TestGatewayConfig_PostureStringConversion(t *testing.T) {
 	tests := []struct {
 		name     string
-		posture  config.GatewayPosture
+		posture  constants.Posture
 		expected string
 	}{
-		{"doctrine", config.PostureDoctrine, "doctrine"},
-		{"consensus", config.PostureConsensus, "consensus"},
-		{"notary", config.PostureNotary, "notary"},
+		{"doctrine", constants.PostureDoctrine, "doctrine"},
+		{"consensus", constants.PostureConsensus, "consensus"},
+		{"notary", constants.PostureNotary, "notary"},
 	}
 
 	for _, tt := range tests {
@@ -261,7 +261,7 @@ func gatewayConfigToOptions(cfg GatewayConfig) config.GatewayOptions {
 
 func TestGatewayConfigToOptions_FullMapping(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:             config.PostureConsensus,
+		Posture:             constants.PostureConsensus,
 		HTTPPort:            8080,
 		HTTPSPort:           8443,
 		DataDir:             constants.TestPathShortData,
@@ -307,7 +307,7 @@ func TestGatewayConfigToOptions_EmptyConfig(t *testing.T) {
 
 	opts := gatewayConfigToOptions(cfg)
 
-	assert.Equal(t, config.GatewayPosture(""), opts.Posture)
+	assert.Equal(t, constants.Posture(""), opts.Posture)
 	assert.Equal(t, 0, opts.HTTPPort)
 	assert.Equal(t, 0, opts.HTTPSPort)
 	assert.Equal(t, "", opts.DataDir)
@@ -386,7 +386,7 @@ func TestGatewayConfigToOptions_VaultFieldsNotMapped(t *testing.T) {
 
 func TestGatewayConfig_FieldCount(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:             config.PostureDoctrine,
+		Posture:             constants.PostureDoctrine,
 		HTTPPort:            8080,
 		HTTPSPort:           8443,
 		DataDir:             constants.TestPathShortData,
@@ -471,7 +471,7 @@ func TestGatewayConfig_FieldCount(t *testing.T) {
 
 func TestGatewayConfig_DoctrinePostureScenario(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:       config.PostureDoctrine,
+		Posture:       constants.PostureDoctrine,
 		HTTPPort:      8080,
 		HTTPSPort:     8443,
 		DataDir:       constants.TestPathVarLibDataDir,
@@ -482,19 +482,19 @@ func TestGatewayConfig_DoctrinePostureScenario(t *testing.T) {
 		LogLevel:      "info",
 	}
 
-	assert.Equal(t, config.PostureDoctrine, cfg.Posture)
+	assert.Equal(t, constants.PostureDoctrine, cfg.Posture)
 	assert.Equal(t, "", cfg.ConsensusID, "doctrine posture does not require consensus")
 	assert.Equal(t, "", cfg.ConsensusURL, "doctrine posture does not require consensus URL")
 
 	opts := gatewayConfigToOptions(cfg)
-	assert.Equal(t, config.PostureDoctrine, opts.Posture)
+	assert.Equal(t, constants.PostureDoctrine, opts.Posture)
 	assert.Equal(t, "", opts.ConsensusID)
 	assert.Equal(t, "", opts.ConsensusURL)
 }
 
 func TestGatewayConfig_ConsensusPostureScenario(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:       config.PostureConsensus,
+		Posture:       constants.PostureConsensus,
 		HTTPPort:      8080,
 		HTTPSPort:     8443,
 		DataDir:       constants.TestPathVarLibDataDir,
@@ -507,19 +507,19 @@ func TestGatewayConfig_ConsensusPostureScenario(t *testing.T) {
 		ConsensusURL:  "https://localhost:8443/consensus/v1/deliberate",
 	}
 
-	assert.Equal(t, config.PostureConsensus, cfg.Posture)
+	assert.Equal(t, constants.PostureConsensus, cfg.Posture)
 	assert.NotEmpty(t, cfg.ConsensusID, "consensus posture requires consensus ID")
 	assert.NotEmpty(t, cfg.ConsensusURL, "consensus posture requires consensus URL")
 
 	opts := gatewayConfigToOptions(cfg)
-	assert.Equal(t, config.PostureConsensus, opts.Posture)
+	assert.Equal(t, constants.PostureConsensus, opts.Posture)
 	assert.Equal(t, "trib-001", opts.ConsensusID)
 	assert.Equal(t, "https://localhost:8443/consensus/v1/deliberate", opts.ConsensusURL)
 }
 
 func TestGatewayConfig_NotaryPostureScenario(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:       config.PostureNotary,
+		Posture:       constants.PostureNotary,
 		HTTPPort:      8080,
 		HTTPSPort:     8443,
 		DataDir:       constants.TestPathVarLibDataDir,
@@ -530,16 +530,16 @@ func TestGatewayConfig_NotaryPostureScenario(t *testing.T) {
 		LogLevel:      "info",
 	}
 
-	assert.Equal(t, config.PostureNotary, cfg.Posture)
+	assert.Equal(t, constants.PostureNotary, cfg.Posture)
 	assert.Equal(t, "", cfg.ConsensusID, "notary posture requires a consensus at startup validation, but the struct default is empty until configured")
 
 	opts := gatewayConfigToOptions(cfg)
-	assert.Equal(t, config.PostureNotary, opts.Posture)
+	assert.Equal(t, constants.PostureNotary, opts.Posture)
 }
 
 func TestGatewayConfig_ConsensusWithoutConsensusID(t *testing.T) {
 	cfg := GatewayConfig{
-		Posture:      config.PostureConsensus,
+		Posture:      constants.PostureConsensus,
 		ConsensusURL: "https://localhost:8443/consensus",
 	}
 
@@ -698,7 +698,7 @@ func TestGatewayConfigToOptions_AllowTestPortZeroAlwaysFalse(t *testing.T) {
 	}{
 		{"empty config", GatewayConfig{}},
 		{"full config", GatewayConfig{
-			Posture:   config.PostureConsensus,
+			Posture:   constants.PostureConsensus,
 			HTTPPort:  8080,
 			HTTPSPort: 8443,
 		}},
@@ -793,14 +793,14 @@ func TestGatewayConfigToOptions_ConsensusURLVariants(t *testing.T) {
 func TestGatewayConfigToOptions_DownstreamWithPosture(t *testing.T) {
 	tests := []struct {
 		name    string
-		posture config.GatewayPosture
+		posture constants.Posture
 		mcpURL  string
 		a2aURL  string
 	}{
-		{"doctrine with downstreams", config.PostureDoctrine, "http://mcp:3000", "http://a2a:3001"},
-		{"consensus with downstreams", config.PostureConsensus, "http://mcp:3000", "http://a2a:3001"},
-		{"notary without downstreams", config.PostureNotary, "", ""},
-		{"notary with MCP only", config.PostureNotary, "http://mcp:3000", ""},
+		{"doctrine with downstreams", constants.PostureDoctrine, "http://mcp:3000", "http://a2a:3001"},
+		{"consensus with downstreams", constants.PostureConsensus, "http://mcp:3000", "http://a2a:3001"},
+		{"notary without downstreams", constants.PostureNotary, "", ""},
+		{"notary with MCP only", constants.PostureNotary, "http://mcp:3000", ""},
 	}
 
 	for _, tt := range tests {
@@ -825,7 +825,7 @@ func TestGatewayConfigToOptions_DownstreamWithPosture(t *testing.T) {
 
 func TestGatewayConfigToOptions_RoundTripIntegrity(t *testing.T) {
 	original := GatewayConfig{
-		Posture:             config.PostureNotary,
+		Posture:             constants.PostureNotary,
 		HTTPPort:            8080,
 		HTTPSPort:           8443,
 		DataDir:             constants.TestPathShortData,

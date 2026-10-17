@@ -37,7 +37,7 @@ func (d *countingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []by
 }
 
 // postureDependencies returns the minimum valid Dependencies for NewGatewayService with the given posture name.
-func postureDependencies(t *testing.T, posture string) Dependencies {
+func postureDependencies(t *testing.T, posture constants.Posture) Dependencies {
 	t.Helper()
 	return Dependencies{
 		Logger:           slog.Default(),
@@ -52,7 +52,7 @@ func postureDependencies(t *testing.T, posture string) Dependencies {
 func TestNewGatewayService_RejectsEmptyOrUnknownPosture(t *testing.T) {
 	cases := []struct {
 		name    string
-		posture string
+		posture constants.Posture
 	}{
 		{name: "empty posture", posture: ""},
 		{name: "unrecognized posture", posture: "bogus"},
@@ -68,11 +68,11 @@ func TestNewGatewayService_RejectsEmptyOrUnknownPosture(t *testing.T) {
 }
 
 func TestNewGatewayService_StoresTypedPostureNamedByConfiguration(t *testing.T) {
-	for _, name := range []string{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
-		t.Run(name, func(t *testing.T) {
+	for _, name := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
+		t.Run(string(name), func(t *testing.T) {
 			g, err := NewGatewayService(postureDependencies(t, name))
 			require.NoError(t, err)
-			require.Equal(t, name, g.posture.Name())
+			require.Equal(t, name, g.posture)
 		})
 	}
 }
@@ -83,15 +83,15 @@ func TestNewGatewayService_StoresTypedPostureNamedByConfiguration(t *testing.T) 
 func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) {
 	cases := []struct {
 		name      string
-		posture   governance.GovernancePosture
+		posture   constants.Posture
 		eventType constants.EventType
 		wantCalls int
 	}{
-		{name: "doctrine does not deliberate MCP calls", posture: &governance.DoctrinePosture{}, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 0},
-		{name: "ratify does not deliberate MCP calls", posture: &governance.RatifyPosture{}, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 0},
-		{name: "consensus deliberates MCP calls", posture: &governance.ConsensusPosture{}, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 1},
-		{name: "notary deliberates MCP calls", posture: &governance.NotaryPosture{}, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 1},
-		{name: "notary does not deliberate platform enrollment bootstrap", posture: &governance.NotaryPosture{}, eventType: constants.EventPlatformEnrollmentCreateRequested, wantCalls: 0},
+		{name: "doctrine does not deliberate MCP calls", posture: constants.PostureDoctrine, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 0},
+		{name: "ratify does not deliberate MCP calls", posture: constants.PostureRatify, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 0},
+		{name: "consensus deliberates MCP calls", posture: constants.PostureConsensus, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 1},
+		{name: "notary deliberates MCP calls", posture: constants.PostureNotary, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 1},
+		{name: "notary does not deliberate platform enrollment bootstrap", posture: constants.PostureNotary, eventType: constants.EventPlatformEnrollmentCreateRequested, wantCalls: 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) 
 
 			env := &commonv1.GovernanceEnvelope{}
 			require.NoError(t, protojson.Unmarshal(wire, env))
-			assert.Equal(t, tc.posture.Name(), env.Posture, "the envelope is stamped with the typed posture's name")
+			assert.Equal(t, string(tc.posture), env.Posture, "the envelope is stamped with the typed posture's name")
 			assert.Equal(t, tc.wantCalls, deliberator.calls)
 		})
 	}
@@ -118,7 +118,7 @@ func TestGatewayService_SuspensionMessageNamesTypedPosture(t *testing.T) {
 	g := newTestGatewayService(t,
 		withEnvProc(&fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}),
 		withSuspendedStore(&fakeSuspendedStore{}))
-	g.posture = &governance.NotaryPosture{}
+	g.posture = constants.PostureNotary
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{}}}`))
 	req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyOperatorSessionID, "operator-session-1"))
@@ -126,5 +126,5 @@ func TestGatewayService_SuspensionMessageNamesTypedPosture(t *testing.T) {
 
 	g.HandleMCP(w, req)
 
-	require.Contains(t, w.Body.String(), "running in notary posture")
+	require.Contains(t, w.Body.String(), "runs under the notary posture")
 }

@@ -54,8 +54,6 @@ type ServeOperatorOptions struct {
 	// test Operators inject an isolated in-memory keyring.
 	Keyring keyring.Keyring
 
-	Posture string
-
 	// Inference (ztdllama) settings for an Operator with the inference
 	// capability calling the configured remote Ollama provider.
 	InferenceOllamaEndpoint string
@@ -131,7 +129,6 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		Lang:                 os.Getenv(string(constants.EnvVar.Lang)),
 		Term:                 os.Getenv(string(constants.EnvVar.Term)),
 		TZ:                   os.Getenv(string(constants.EnvVar.TZ)),
-		Posture:              config.GatewayPosture(opts.Posture),
 
 		InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint,
 		InferenceKeepAlive:      opts.InferenceKeepAlive,

@@ -64,7 +64,7 @@ type PlatformEnrollmentService struct {
 	userSvc   *UserService
 	envProc   governance.EnvelopeProcessor
 	stateRoot governance.StateRootProvider
-	posture   string
+	posture   constants.Posture
 	approvals *ApprovalsChangePublisher
 	logger    *slog.Logger
 
@@ -84,7 +84,7 @@ func NewPlatformEnrollmentService(
 	userSvc *UserService,
 	envProc governance.EnvelopeProcessor,
 	stateRoot governance.StateRootProvider,
-	posture string,
+	posture constants.Posture,
 	approvals *ApprovalsChangePublisher,
 	logger *slog.Logger,
 ) *PlatformEnrollmentService {
@@ -982,7 +982,7 @@ func (s *PlatformEnrollmentService) submitEnvelope(ctx context.Context, action c
 			Payload:         payloadBytes,
 			StateMerkleRoot: stateRoot,
 			Nonce:           nonce,
-			Posture:         s.posture,
+			Posture:         string(s.posture),
 			Governance: &commonv1.GovernanceMetadata{
 				L1: &commonv1.L1Metadata{Validated: true},
 			},

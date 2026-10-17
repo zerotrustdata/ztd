@@ -26,7 +26,6 @@ func TestLoad_WorkDir_Flag(t *testing.T) {
 	cfg, err := config.Load(config.LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
 		WorkDir:          tmpDir,
-		Posture:          constants.PostureDoctrine,
 	})
 	require.NoError(t, err)
 

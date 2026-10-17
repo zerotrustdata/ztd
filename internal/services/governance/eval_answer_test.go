@@ -19,7 +19,7 @@ import (
 // and does not require L3 verification.
 func TestEvalAnswerIsNotMutation(t *testing.T) {
 	t.Parallel()
-	notary := &NotaryPosture{}
+	notary := constants.PostureNotary
 
 	assert.False(t, L3Required(constants.ActionTypeEvalAnswer, notary), "EVAL_ANSWER should not be treated as a mutation")
 

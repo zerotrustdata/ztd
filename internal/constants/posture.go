@@ -32,8 +32,9 @@ const (
 	PostureNotary    Posture = "notary"
 )
 
-// DefaultPosture is the posture a Gateway starts under when none is given.
-const DefaultPosture = PostureDoctrine
+// DefaultPosture is the posture a Gateway starts under when none is given. It
+// is a var, not a const, so the Posture enum lists only the four postures.
+var DefaultPosture = PostureDoctrine
 
 // AllPostures lists every posture from weakest to strictest.
 var AllPostures = []Posture{PostureDoctrine, PostureConsensus, PostureRatify, PostureNotary}

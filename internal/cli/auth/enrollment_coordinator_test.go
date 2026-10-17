@@ -28,7 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -1070,7 +1069,7 @@ func TestEnroll_PasskeyIfMissing_RegisteredPasskeyStaysHeadless(t *testing.T) {
 		return true
 	}
 
-	result, err := coord.Enroll(context.Background(), PostureLoginOptions(ztdconfig.PostureNotary))
+	result, err := coord.Enroll(context.Background(), PostureLoginOptions(constants.PostureNotary))
 	require.NoError(t, err)
 	assert.Equal(t, EnrollmentSourceBootstrap, result.Source)
 	assert.False(t, result.SystemTrustInstalled)
@@ -1091,7 +1090,7 @@ func TestEnroll_PasskeyIfMissing_NoPasskeyRunsCeremony(t *testing.T) {
 	gw.bootstrapArtifacts = artifacts
 	keys.csr, keys.key = "test-csr", artifacts.CLIKey
 
-	result, err := coord.Enroll(context.Background(), PostureLoginOptions(ztdconfig.PostureRatify))
+	result, err := coord.Enroll(context.Background(), PostureLoginOptions(constants.PostureRatify))
 	require.NoError(t, err)
 	assert.True(t, result.SystemTrustInstalled)
 	assert.Equal(t, 1, gw.sessionInfoCalls)
@@ -1112,7 +1111,7 @@ func TestEnroll_PasskeyIfMissing_SessionInfoErrorFailsClosed(t *testing.T) {
 	gw.sessionInfoErr = constants.ErrServiceUnavailable
 	keys.csr, keys.key = "test-csr", artifacts.CLIKey
 
-	_, err := coord.Enroll(context.Background(), PostureLoginOptions(ztdconfig.PostureNotary))
+	_, err := coord.Enroll(context.Background(), PostureLoginOptions(constants.PostureNotary))
 	require.ErrorIs(t, err, constants.ErrEnrollmentFailed)
 	require.ErrorIs(t, err, constants.ErrServiceUnavailable)
 	assert.Equal(t, 0, trust.installCalls)
@@ -1121,10 +1120,10 @@ func TestEnroll_PasskeyIfMissing_SessionInfoErrorFailsClosed(t *testing.T) {
 
 func TestPostureLoginOptions(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, CLILoginOptions(false), PostureLoginOptions(ztdconfig.PostureDoctrine))
-	assert.Equal(t, CLILoginOptions(false), PostureLoginOptions(ztdconfig.PostureConsensus))
-	assert.Equal(t, EnrollmentOptions{PasskeyIfMissing: true}, PostureLoginOptions(ztdconfig.PostureRatify))
-	assert.Equal(t, EnrollmentOptions{PasskeyIfMissing: true}, PostureLoginOptions(ztdconfig.PostureNotary))
+	assert.Equal(t, CLILoginOptions(false), PostureLoginOptions(constants.PostureDoctrine))
+	assert.Equal(t, CLILoginOptions(false), PostureLoginOptions(constants.PostureConsensus))
+	assert.Equal(t, EnrollmentOptions{PasskeyIfMissing: true}, PostureLoginOptions(constants.PostureRatify))
+	assert.Equal(t, EnrollmentOptions{PasskeyIfMissing: true}, PostureLoginOptions(constants.PostureNotary))
 }
 
 // --- Headless tests ---

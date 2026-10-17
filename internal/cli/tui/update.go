@@ -14,7 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // requestTimeout bounds each Gateway request issued from a key press.
@@ -351,9 +351,9 @@ func (m Model) applyHealthMsg(msg HealthMsg) Model {
 	}
 	m.gatewayVersion = msg.Health.Version
 	m.health = msg.Health
-	posture, err := governance.ParseGovernancePosture(msg.Health.Posture)
+	posture, err := constants.ParsePosture(string(msg.Health.Posture))
 	if err != nil {
-		m.posture = nil
+		m.posture = ""
 		return m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Gateway reported an unknown posture: " + err.Error()})
 	}
 	m.posture = posture

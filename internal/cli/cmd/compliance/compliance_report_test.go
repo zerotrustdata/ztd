@@ -123,7 +123,7 @@ func writeComplianceAssessmentScopeForTest(t *testing.T, scopeID string, runIDs 
 		CryptographicMode:     "standard",
 		AssessmentWindowStart: timestamppb.New(assessmentAsOf.Add(-time.Hour)),
 		AssessmentWindowEnd:   timestamppb.New(assessmentAsOf),
-		ActivePosture:         constants.PostureDoctrine,
+		ActivePosture:         string(constants.PostureDoctrine),
 		SourceAdmissions:      admissions,
 		Applicability:         &compliancev1.AssessmentApplicabilitySelection{Components: []string{"operator"}, ActionClasses: []string{"governed_mutation"}, Arms: []string{"governed"}},
 		SelectedPopulation:    &compliancev1.AssessmentPopulationSelection{},

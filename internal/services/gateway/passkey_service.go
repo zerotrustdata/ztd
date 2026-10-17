@@ -319,7 +319,7 @@ type PasskeyHandler struct {
 	maxPayload         int64
 	orchestrator       *PasskeyOrchestrator
 	crossOrigin        bool
-	posture            string
+	posture            constants.Posture
 }
 
 // PasskeyHandlerDeps groups all dependencies for NewPasskeyHandler.
@@ -333,9 +333,9 @@ type PasskeyHandlerDeps struct {
 	MaxPayload         int64
 	Orchestrator       *PasskeyOrchestrator
 	CrossOrigin        bool
-	// Posture is the Gateway governance posture; ratify and notary require
-	// grounded sessions for direct approval responses.
-	Posture string
+	// Posture is the Gateway governance posture; postures that require L3
+	// require grounded sessions for direct approval responses.
+	Posture constants.Posture
 }
 
 // NewPasskeyHandler creates a new PasskeyHandler with all dependencies wired.

@@ -8,7 +8,7 @@
 package serve
 
 import (
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // validTestGatewayConfig returns a GatewayConfig with every field populated
@@ -17,7 +17,7 @@ import (
 // files, so it must not use file I/O or carry a build tag.
 func validTestGatewayConfig() GatewayConfig {
 	return GatewayConfig{
-		Posture:             ztdconfig.PostureConsensus,
+		Posture:             constants.PostureConsensus,
 		HTTPPort:            8080,
 		HTTPSPort:           8443,
 		DataDir:             "/data",

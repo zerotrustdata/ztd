@@ -88,7 +88,7 @@ type PlatformEnrollmentDeps struct {
 	CLISessions      PlatformEnrollmentCLISessions
 	OperatorSessions PlatformEnrollmentOperatorSessions
 	Connections      PlatformEnrollmentConnections
-	Posture          string
+	Posture          constants.Posture
 }
 
 // platformEnrollmentCollection is the canonical collection name for

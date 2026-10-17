@@ -40,7 +40,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -109,7 +108,7 @@ type platformEnrollmentTestEnv struct {
 func setupPlatformEnrollmentEnv(t *testing.T, createOwner bool) *platformEnrollmentTestEnv {
 	t.Helper()
 
-	ls := newTestGatewayService(t, testGatewayOpts{posture: config.PostureDoctrine})
+	ls := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureDoctrine})
 
 	env := &platformEnrollmentTestEnv{
 		svc:       ls,

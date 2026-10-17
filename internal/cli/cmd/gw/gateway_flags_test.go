@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
@@ -46,7 +45,7 @@ func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
 
 	cfg := gatewayFlagsToServeConfig(flags)
 
-	assert.Equal(t, ztdconfig.GatewayPosture("consensus"), cfg.Posture)
+	assert.Equal(t, constants.Posture("consensus"), cfg.Posture)
 	assert.Equal(t, 8080, cfg.HTTPPort)
 	assert.Equal(t, 8443, cfg.HTTPSPort)
 	assert.Equal(t, "/data", cfg.DataDir)
@@ -75,7 +74,7 @@ func TestGatewayFlagsToServeConfig_EmptyFlags(t *testing.T) {
 
 	cfg := gatewayFlagsToServeConfig(flags)
 
-	assert.Equal(t, ztdconfig.GatewayPosture(""), cfg.Posture)
+	assert.Equal(t, constants.Posture(""), cfg.Posture)
 	assert.Equal(t, 0, cfg.HTTPPort)
 	assert.Equal(t, 0, cfg.HTTPSPort)
 	assert.Empty(t, cfg.DataDir)

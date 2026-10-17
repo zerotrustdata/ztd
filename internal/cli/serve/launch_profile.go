@@ -124,7 +124,7 @@ func ValidateLaunchProfile(profile GatewayLaunchProfile) error {
 	if cfg.Posture == "" {
 		return fmt.Errorf("%w: posture is empty", constants.ErrLaunchProfileInvalid)
 	}
-	if _, valid := constants.GetGovernancePostureRequirements(string(cfg.Posture)); !valid {
+	if !cfg.Posture.Valid() {
 		return fmt.Errorf("%w: posture %q is not recognized", constants.ErrLaunchProfileInvalid, cfg.Posture)
 	}
 

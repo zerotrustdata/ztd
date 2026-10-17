@@ -419,7 +419,7 @@ func newEnrollTestEnv(t *testing.T) *enrollTestEnv {
 		CLISessions:      env.cli,
 		OperatorSessions: env.opSession,
 		Connections:      env.conns,
-		Posture:          "consensus",
+		Posture:          constants.PostureConsensus,
 	}, slog.New(slog.DiscardHandler))
 	return env
 }
@@ -1123,7 +1123,7 @@ func TestHandleIssue_OperatorSignsBothCSRsAndPersistsOwnedOperator(t *testing.T)
 	assert.Equal(t, "operator-chain", creds.OperatorCertChain)
 	assert.Equal(t, "cli-chain", creds.CLICertChain)
 	assert.Equal(t, "trust-bundle-pem", creds.HubTrustBundle)
-	assert.Equal(t, "consensus", creds.Posture)
+	assert.Equal(t, constants.PostureConsensus, creds.Posture)
 	assert.Equal(t, operatorID, creds.OperatorID)
 	assert.Equal(t, opSign.SessionID, creds.OperatorSessionID)
 	assert.Equal(t, cliSign.SessionID, creds.CLISessionID)

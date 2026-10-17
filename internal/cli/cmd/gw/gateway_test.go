@@ -19,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -61,7 +60,7 @@ func TestResolveStartConfig(t *testing.T) {
 			ConsensusURL:     "",
 		})
 
-		assert.Equal(t, "doctrine", cfg.Posture)
+		assert.Equal(t, string(constants.PostureDoctrine), cfg.Posture)
 		assert.Equal(t, 8080, cfg.HTTPPort)
 		assert.Equal(t, 8443, cfg.HTTPSPort)
 		assert.Equal(t, "/data", cfg.DataDir)
@@ -107,7 +106,7 @@ func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
 			ProvenanceOperatorID:               "provenance",
 			ProvenanceOperatorModelStorageRoot: "/models",
 
-			Posture:                           ztdconfig.GatewayPosture("doctrine"),
+			Posture:                           constants.Posture("doctrine"),
 			HTTPPort:                          8080,
 			HTTPSPort:                         8443,
 			DataDir:                           "/data",

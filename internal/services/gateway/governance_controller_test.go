@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/consensus"
@@ -41,7 +40,7 @@ func newTestGovernanceController(t *testing.T) *GovernanceController {
 	return newGovernanceController(GovernanceControllerDeps{Cfg: cfg, Logger: logger, Responder: responder, Consensus: nil})
 }
 
-func newTestRouterHandler(t *testing.T, posture config.GatewayPosture, cs *consensus.ConsensusService) *HTTPHandler {
+func newTestRouterHandler(t *testing.T, posture constants.Posture, cs *consensus.ConsensusService) *HTTPHandler {
 	t.Helper()
 	cfg := testutil.NewTestConfig(t)
 	cfg.Gateway.Posture = posture
@@ -92,31 +91,31 @@ func TestHTTPRouter_ConsensusDeliberate_PostureRouteRegistration(t *testing.T) {
 
 	cases := []struct {
 		name           string
-		posture        config.GatewayPosture
+		posture        constants.Posture
 		consensus      *consensus.ConsensusService
 		wantRegistered bool
 	}{
 		{
 			name:           "doctrine audits L2 so the deliberate route is absent",
-			posture:        config.PostureDoctrine,
+			posture:        constants.PostureDoctrine,
 			consensus:      nil,
 			wantRegistered: false,
 		},
 		{
 			name:           "ratify audits L2 so the deliberate route is absent",
-			posture:        config.PostureRatify,
+			posture:        constants.PostureRatify,
 			consensus:      nil,
 			wantRegistered: false,
 		},
 		{
 			name:           "consensus enforces L2 so the deliberate route reaches the handler",
-			posture:        config.PostureConsensus,
+			posture:        constants.PostureConsensus,
 			consensus:      cs,
 			wantRegistered: true,
 		},
 		{
 			name:           "notary enforces L2 so the deliberate route reaches the handler",
-			posture:        config.PostureNotary,
+			posture:        constants.PostureNotary,
 			consensus:      cs,
 			wantRegistered: true,
 		},

@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/uuid"
@@ -62,7 +61,7 @@ func buildTestEnvelope(
 		SourceComponent: commonv1.Component_COMPONENT_AGENT,
 		RequestorUserId: userID,
 		ActingAppId:     appID,
-		Posture:         constants.PostureDoctrine,
+		Posture:         string(constants.PostureDoctrine),
 	}
 
 	hash, err := governance.GenerateMessageID(env)
@@ -98,7 +97,7 @@ func rawJSONToBool(t *testing.T, raw json.RawMessage) bool {
 func TestProcessEnvelope_ConcurrentInvestigationTitleMergePreservesFields(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "governed-doc-merge",
-		Posture:  config.PostureDoctrine,
+		Posture:  constants.PostureDoctrine,
 	})
 
 	ctx := context.Background()

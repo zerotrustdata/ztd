@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -35,7 +35,7 @@ func TestBuildReExecArgs(t *testing.T) {
 			name: "minimal",
 			opts: OperatorStartOptions{
 				GatewayConfig: serve.GatewayConfig{
-					Posture:    ztdconfig.GatewayPosture("consensus"),
+					Posture:    constants.Posture("consensus"),
 					HTTPPort:   8080,
 					HTTPSPort:  8443,
 					DataDir:    "/data",
@@ -58,7 +58,7 @@ func TestBuildReExecArgs(t *testing.T) {
 			name: "all options",
 			opts: OperatorStartOptions{
 				GatewayConfig: serve.GatewayConfig{
-					Posture:            ztdconfig.GatewayPosture("notary"),
+					Posture:            constants.Posture("notary"),
 					HTTPPort:           9000,
 					HTTPSPort:          9443,
 					DataDir:            "/data",

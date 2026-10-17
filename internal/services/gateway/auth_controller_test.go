@@ -101,7 +101,7 @@ func setupTestPasskeyService(t *testing.T) (*PasskeyHandler, *UserService, stora
 		ScrubbingService: newTestScrubber(t),
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  cfg.Gateway.MaxPayloadBytes,
-		Posture:          string(cfg.Gateway.Posture),
+		Posture:          cfg.Gateway.Posture,
 		AuditStore:       noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 	})

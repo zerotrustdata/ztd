@@ -20,7 +20,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	// These regression tests verify the Phase 2 fix: gatewayRestartCmdWithConfig
 	// now reads the complete launch profile instead of posture-only state. See
@@ -82,7 +81,7 @@ func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing
 
 	// Write a complete launch profile with browser-relevant fields.
 	profileCfg := serve.GatewayConfig{
-		Posture:          ztdconfig.PostureConsensus,
+		Posture:          constants.PostureConsensus,
 		HTTPPort:         8080,
 		HTTPSPort:        8443,
 		LogLevel:         "info",
@@ -149,7 +148,7 @@ func TestGatewayRestartCmd_PreservesCompleteConfigFields_AfterFix(t *testing.T) 
 	// This is the exact configuration a `gw start` with browser flags
 	// would persist to the launch profile.
 	restartCfg := serve.GatewayConfig{
-		Posture:          ztdconfig.PostureConsensus,
+		Posture:          constants.PostureConsensus,
 		HTTPPort:         8080,
 		HTTPSPort:        8443,
 		LogLevel:         "info",

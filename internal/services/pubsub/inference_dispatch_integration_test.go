@@ -191,7 +191,7 @@ func buildInferenceEnvelope(t *testing.T, role operatorv1.ModelRole, model, prom
 		Payload:         payloadBytes,
 		StateMerkleRoot: "test-state-root",
 		Nonce:           fmt.Sprintf("nonce-inference-int-%d", inferenceEnvelopeNonce.Add(1)),
-		Posture:         constants.PostureDoctrine,
+		Posture:         string(constants.PostureDoctrine),
 	}
 
 	txHash, err := govpkg.GenerateMessageID(envelope)

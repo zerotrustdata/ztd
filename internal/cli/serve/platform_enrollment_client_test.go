@@ -294,7 +294,7 @@ func TestOperatorBootstrapAttempt_IdentityPairsBundleWithInMemoryKey(t *testing.
 
 	assert.Equal(t, "op-1", identity.OperatorID)
 	assert.Equal(t, "op-session-1", identity.OperatorSessionID)
-	assert.Equal(t, "doctrine", identity.Posture)
+	assert.Equal(t, constants.PostureDoctrine, identity.Posture)
 	assert.Equal(t, "system-fp", identity.SystemFingerprint)
 	assert.Equal(t, 25, identity.MaxConcurrentTasks)
 	assert.Equal(t, 2048, identity.MaxMemoryMB)

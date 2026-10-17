@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -139,7 +138,7 @@ func TestHandleHealth_GovernanceReadyFalseWhenCallbackNil(t *testing.T) {
 func TestHandleHealth_VersionAndStateRootPopulated(t *testing.T) {
 	h, cfg, infra := setupTestHTTPHandler(t)
 	cfg.Version = "9.9.9-test"
-	cfg.Gateway.Posture = config.PostureConsensus
+	cfg.Gateway.Posture = constants.PostureConsensus
 
 	settings := models.SettingsDocument{
 		Settings:  &models.PlatformSettings{ActuatorKeyID: "test-key-id"},
@@ -165,7 +164,7 @@ func TestHandleHealth_VersionAndStateRootPopulated(t *testing.T) {
 	assert.Equal(t, "9.9.9-test", resp.Version)
 	assert.Equal(t, constants.GatewayModeGateway, resp.Mode)
 	assert.NotEmpty(t, resp.StateMerkleRoot, "StateMerkleRoot should be populated from state root service")
-	assert.Equal(t, string(config.PostureConsensus), resp.Posture, "Posture should reflect the gateway's configured posture")
+	assert.Equal(t, constants.PostureConsensus, resp.Posture, "Posture should reflect the gateway's configured posture")
 }
 
 func TestHandleHealth_IsReadyNilProceedsToDBCheck(t *testing.T) {
@@ -240,7 +239,7 @@ func TestHandleBootstrapHealth_VersionPopulatedFromConfig(t *testing.T) {
 	h, cfg, _ := setupTestHTTPHandler(t)
 	h.healthController.isReady = func() bool { return true }
 	cfg.Version = "3.3.3-bootstrap"
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 
 	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
 	rr := httptest.NewRecorder()
@@ -254,7 +253,7 @@ func TestHandleBootstrapHealth_VersionPopulatedFromConfig(t *testing.T) {
 	assert.Equal(t, constants.GatewayModeStatusOK, resp.Status)
 	assert.Equal(t, constants.GatewayModeGateway, resp.Mode)
 	assert.Empty(t, resp.StateMerkleRoot, "Bootstrap health must not include state merkle root")
-	assert.Equal(t, string(config.PostureDoctrine), resp.Posture, "Posture should reflect the gateway's configured posture")
+	assert.Equal(t, constants.PostureDoctrine, resp.Posture, "Posture should reflect the gateway's configured posture")
 }
 
 func TestHandleBootstrapHealth_IsReadyNilReturns200(t *testing.T) {

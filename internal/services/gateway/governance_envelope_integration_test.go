@@ -30,7 +30,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -172,7 +171,7 @@ func assertEnvelopeRejectedAtIngress(t *testing.T, f *fixtures.GatewayFixture, c
 func TestGovernanceEnvelopeIntegration_ConsensusPostureRejectsMissingL2AtWarden(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "governance-envelope-consensus-missing-l2",
-		Posture:  config.PostureConsensus,
+		Posture:  constants.PostureConsensus,
 	})
 	f.WaitForReady(t)
 	client := seedUnprovenAppWorkload(t, f)
@@ -188,7 +187,7 @@ func TestGovernanceEnvelopeIntegration_ConsensusPostureRejectsMissingL2AtWarden(
 func TestGovernanceEnvelopeIntegration_RatifyPostureRejectsMissingL3ForMutationAtWarden(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "governance-envelope-ratify-missing-l3",
-		Posture:  config.PostureRatify,
+		Posture:  constants.PostureRatify,
 	})
 	f.WaitForReady(t)
 	client := seedUnprovenAppWorkload(t, f)

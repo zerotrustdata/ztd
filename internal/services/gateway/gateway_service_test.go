@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
@@ -34,7 +33,7 @@ import (
 // An unset posture selects doctrine, the Gateway's startup default; the Gateway
 // itself rejects an empty posture.
 type testGatewayOpts struct {
-	posture  config.GatewayPosture
+	posture  constants.Posture
 	httpPort int
 	logger   *slog.Logger
 }
@@ -56,7 +55,7 @@ func newTestGatewayService(t *testing.T, opts testGatewayOpts) *GatewayModeServi
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
 	cfg.Gateway.HTTPPort = opts.httpPort
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 	if opts.posture != "" {
 		cfg.Gateway.Posture = opts.posture
 	}
@@ -109,7 +108,7 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
 	cfg.Gateway.HTTPPort = 0
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 
 	ks, err := keystore.NewWithKeyringAndFS(logger, keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)

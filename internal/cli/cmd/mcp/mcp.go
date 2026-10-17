@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/agent"
+	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
@@ -808,7 +809,7 @@ ztd mcp stdio`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMCPAgentRun(args, verify, posture, fileSvcFactory, enrollerFactory)
+			return runMCPAgentRun(args, verify, constants.Posture(posture), fileSvcFactory, enrollerFactory)
 		},
 	}
 
@@ -819,15 +820,12 @@ ztd mcp stdio`,
 
 // validateRequestedPosture rejects an unrecognized --posture value. An empty
 // value means "not requested".
-func validateRequestedPosture(requested string) error {
-	if requested == "" {
+func validateRequestedPosture(requested constants.Posture) error {
+	if requested == "" || requested.Valid() {
 		return nil
 	}
-	if _, ok := constants.GetGovernancePostureRequirements(requested); !ok {
-		return fmt.Errorf("%w: %q (must be one of: %s, %s, %s, %s)", constants.ErrInvalidPosture, requested,
-			constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary)
-	}
-	return nil
+	return fmt.Errorf("%w: %q (must be one of: %s, %s, %s, %s)", constants.ErrInvalidPosture, requested,
+		constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary)
 }
 
 // resolveGatewayLaunchConfig builds the config for a gateway the launcher must
@@ -835,7 +833,7 @@ func validateRequestedPosture(requested string) error {
 // base so its ports, origins, and downstream settings survive; without one the
 // launcher starts a localhost gateway. The posture is the requested one, else
 // the profile's, else the doctrine default. A corrupt profile fails closed.
-func resolveGatewayLaunchConfig(fileSvc fs.RuntimeFileService, requested string) (serve.GatewayConfig, error) {
+func resolveGatewayLaunchConfig(fileSvc fs.RuntimeFileService, requested constants.Posture) (serve.GatewayConfig, error) {
 	cfg := serve.GatewayConfig{LogLevel: "info", CertIdentityMode: "localhost"}
 	profile, err := serve.ReadLaunchProfile(fileSvc)
 	switch {
@@ -847,9 +845,9 @@ func resolveGatewayLaunchConfig(fileSvc fs.RuntimeFileService, requested string)
 
 	switch {
 	case requested != "":
-		cfg.Posture = ztdconfig.GatewayPosture(requested)
+		cfg.Posture = requested
 	case cfg.Posture == "":
-		cfg.Posture = ztdconfig.PostureDoctrine
+		cfg.Posture = constants.DefaultPosture
 	}
 	return cfg, nil
 }
@@ -860,7 +858,7 @@ func resolveGatewayLaunchConfig(fileSvc fs.RuntimeFileService, requested string)
 // that cannot be read fails closed, and an explicit --posture that differs
 // fails closed rather than launching an agent under a different posture than
 // the user asked for.
-func runningGatewayPosture(fileSvc fs.RuntimeFileService, requested string) (ztdconfig.GatewayPosture, error) {
+func runningGatewayPosture(fileSvc fs.RuntimeFileService, requested constants.Posture) (constants.Posture, error) {
 	profile, err := serve.ReadLaunchProfile(fileSvc)
 	if err != nil {
 		if requested != "" {
@@ -868,7 +866,7 @@ func runningGatewayPosture(fileSvc fs.RuntimeFileService, requested string) (ztd
 		}
 		return "", fmt.Errorf("%w: %w; restart it with:\nztd gw restart", constants.ErrGatewayPostureUnknown, err)
 	}
-	if requested != "" && string(profile.Config.Posture) != requested {
+	if requested != "" && profile.Config.Posture != requested {
 		return "", fmt.Errorf("%w: running gateway posture is %q, requested %q; restart it with:\nztd gw restart\nor omit --posture",
 			constants.ErrGatewayPostureMismatch, profile.Config.Posture, requested)
 	}
@@ -883,7 +881,7 @@ func runningGatewayPosture(fileSvc fs.RuntimeFileService, requested string) (ztd
 // requestedPosture is the --posture flag value ("" when unset). It selects the
 // posture of a gateway the launcher starts; a gateway that is already running
 // keeps the posture it was started with, which must match an explicit request.
-func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), requestedPosture string) (ztdconfig.GatewayPosture, error) {
+func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), requestedPosture constants.Posture) (constants.Posture, error) {
 	if err := validateRequestedPosture(requestedPosture); err != nil {
 		return "", err
 	}
@@ -908,7 +906,7 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 		return "", fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 	}
 
-	var posture ztdconfig.GatewayPosture
+	var posture constants.Posture
 	if running {
 		posture, err = runningGatewayPosture(fileSvc, requestedPosture)
 		if err != nil {
@@ -966,7 +964,7 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 // then launches the requested agent with 'ztd mcp stdio --app <agent>' as its sole
 // MCP server. The stdio bridge loads the agent's managed application credentials by
 // name; no credential material or paths are passed through the environment.
-func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, posture string, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), enrollerFactory authcmd.EnrollerFactory) error {
+func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, posture constants.Posture, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), enrollerFactory authcmd.EnrollerFactory) error {
 	gatewayPosture, err := startGatewayIfNeeded(fileSvcFactory, posture)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrGatewayNotReady, err)
@@ -1012,7 +1010,11 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 
 	// Ensure the agent application is enrolled with the gateway
 	agentAppName := strings.ToLower(agentID)
-	appClient, err := auth.NewAppPlatformEnrollmentClient(agentAppName, fileSvc, cfg, slog.Default())
+	appOpts, err := agentAppEnrollmentOptions(fileSvc, cfg, gatewayPosture)
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
+	}
+	appClient, err := auth.NewAppPlatformEnrollmentClient(agentAppName, fileSvc, cfg, slog.Default(), appOpts)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
 	}
@@ -1032,6 +1034,24 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 		defer cleanup()
 	}
 	return launchAgentProcess(integration, extraArgs, launchArgs)
+}
+
+// agentAppEnrollmentOptions lets the launcher's authenticated owner CLI approve
+// the agent's own enrollment in-line. Under postures without L3 (doctrine,
+// consensus) that needs no passkey, so the approver is wired. Under ratify and
+// notary the owner decision needs a passkey, so no approver is set and the
+// enrollment keeps its manual approval path.
+func agentAppEnrollmentOptions(fileSvc fs.RuntimeFileService, cfg *config.Config, posture constants.Posture) (auth.AppEnrollmentOptions, error) {
+	if posture.RequiresL3() {
+		return auth.AppEnrollmentOptions{}, nil
+	}
+	ownerClient, err := api.NewClient(fileSvc, cfg)
+	if err != nil {
+		return auth.AppEnrollmentOptions{}, fmt.Errorf("owner API client: %w", err)
+	}
+	return auth.AppEnrollmentOptions{
+		Approver: authcmd.OwnerAppEnrollmentApprover(ownerClient, "ztd mcp agent run: enrolled by the authenticated owner"),
+	}, nil
 }
 
 // prepareAgentLaunch validates the agent binary, writes the agent config, computes launch
@@ -1090,7 +1110,7 @@ func launchAgentProcess(integration agent.Integration, extraArgs, launchArgs []s
 	return agentCmd.Run()
 }
 
-func runMCPAgentRun(args []string, verify bool, posture string, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), enrollerFactory authcmd.EnrollerFactory) error {
+func runMCPAgentRun(args []string, verify bool, posture constants.Posture, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), enrollerFactory authcmd.EnrollerFactory) error {
 	if len(args) == 0 {
 		return fmt.Errorf("%w: specify an agent name to launch with ztd governance\n\nUsage:\n  ztd mcp agent run <agent> [-- <args...>]\n\nList supported agents with:\nztd mcp agent list", constants.ErrAgentNotFound)
 	}

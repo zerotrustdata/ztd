@@ -75,7 +75,7 @@ type GatewayFixture struct {
 // GatewayFixtureOptions configures the gateway fixture.
 type GatewayFixtureOptions struct {
 	TestName         string
-	Posture          config.GatewayPosture
+	Posture          constants.Posture
 	DownstreamURL    string   // MCP downstream HTTP URL; creates mock server if empty and DownstreamCmd is empty
 	DownstreamCmd    string   // MCP downstream stdio subprocess command
 	DownstreamArgs   []string // MCP downstream stdio subprocess arguments
@@ -207,7 +207,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	// Setup gateway configuration
 	posture := opts.Posture
 	if posture == "" {
-		posture = config.PostureNotary
+		posture = constants.PostureNotary
 	}
 
 	// WorkDir roots the Gateway (and its embedded Operator's working directory)
@@ -265,7 +265,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 
 	var consensusSvc *consensus.ConsensusService
 	var l2Deliberator *consensus.LocalDeliberator
-	if posture == config.PostureConsensus || posture == config.PostureNotary {
+	if posture.RequiresL2() {
 		consensusID := opts.ConsensusID
 		if consensusID == "" {
 			consensusID = "test-consensus"

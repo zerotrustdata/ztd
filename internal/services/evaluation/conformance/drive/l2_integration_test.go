@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
-	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -97,7 +97,7 @@ func l2Cases(t *testing.T, posture evalv1.EvaluationGovernancePosture, rows ...i
 func TestL2DeliberatedProofAcceptsRow1AndRejectsEachRow18Fault(t *testing.T) {
 	gw := bootL2Gateway(t, fixtures.GatewayFixtureOptions{
 		TestName:                 "conformance-l2-consensus",
-		Posture:                  config.PostureConsensus,
+		Posture:                  constants.PostureConsensus,
 		ConsensusID:              "conformance-consensus",
 		ConsensusNMembers:        3,
 		ConsensusNServiceMembers: 3,
@@ -136,7 +136,7 @@ func TestL2DeliberatedProofAcceptsRow1AndRejectsEachRow18Fault(t *testing.T) {
 func TestL2SyntheticProofExecutesRow19UnderDoctrine(t *testing.T) {
 	gw := bootL2Gateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-l2-doctrine",
-		Posture:  config.PostureDoctrine,
+		Posture:  constants.PostureDoctrine,
 	})
 	synthetic, err := NewSyntheticL2(2)
 	require.NoError(t, err)

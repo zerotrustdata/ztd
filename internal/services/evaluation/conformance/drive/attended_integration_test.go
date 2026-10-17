@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
-	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -45,7 +45,7 @@ type l3Gateway struct {
 
 // bootL3Gateway boots a Gateway under posture and returns a harness client that
 // submits as the bootstrapped CLI identity to the embedded Operator.
-func bootL3Gateway(t *testing.T, testName string, posture config.GatewayPosture) *l3Gateway {
+func bootL3Gateway(t *testing.T, testName string, posture constants.Posture) *l3Gateway {
 	t.Helper()
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{TestName: testName, Posture: posture})
 	f.WaitForReady(t)
@@ -121,7 +121,7 @@ func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 	row24 := findCase(t, all, 24, cases.IngressMCP, ratify)
 
-	g := bootL3Gateway(t, "conformance-attended-mcp", config.PostureRatify)
+	g := bootL3Gateway(t, "conformance-attended-mcp", constants.PostureRatify)
 	mcpDriver, err := NewMCP(context.Background(), g.client, g.persona)
 	require.NoError(t, err)
 
@@ -162,7 +162,7 @@ func TestL3DirectRowsUnderRatify(t *testing.T) {
 	require.NoError(t, err)
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 
-	g := bootL3Gateway(t, "conformance-l3-ratify", config.PostureRatify)
+	g := bootL3Gateway(t, "conformance-l3-ratify", constants.PostureRatify)
 	direct, err := NewDirect(g.client, g.persona, g.target, nil, BaseMutators(), L3Mutators())
 	require.NoError(t, err)
 	fx := g.attempts()
@@ -194,7 +194,7 @@ func TestL3GarbageProofExecutesUnderDoctrine(t *testing.T) {
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	c := findCase(t, all, 21, cases.IngressDirect, doctrine)
 
-	g := bootL3Gateway(t, "conformance-l3-doctrine", config.PostureDoctrine)
+	g := bootL3Gateway(t, "conformance-l3-doctrine", constants.PostureDoctrine)
 	direct, err := NewDirect(g.client, g.persona, g.target, nil, BaseMutators(), L3Mutators())
 	require.NoError(t, err)
 	fx := g.attempts()

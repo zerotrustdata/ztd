@@ -36,7 +36,7 @@ func TestNewModel(t *testing.T) {
 	t.Run("starts with empty ledger, no posture, and ledger focus", func(t *testing.T) {
 		m := NewModel(Options{})
 		assert.Empty(t, m.ledger)
-		assert.Nil(t, m.posture)
+		assert.Empty(t, m.posture)
 		assert.Equal(t, paneLedger, m.focus)
 	})
 
@@ -409,12 +409,12 @@ func TestApplyOperatorsMsg(t *testing.T) {
 func TestApplyHealthMsg(t *testing.T) {
 	m := NewModel(Options{})
 	m = m.applyHealthMsg(HealthMsg{Health: models.HealthResponse{Posture: constants.PostureRatify, Version: "v2.3.2"}})
-	require.NotNil(t, m.posture)
-	assert.Equal(t, constants.PostureRatify, m.posture.Name())
+	require.NotEmpty(t, m.posture)
+	assert.Equal(t, constants.PostureRatify, m.posture)
 	assert.Equal(t, "v2.3.2", m.gatewayVersion)
 
 	m = m.applyHealthMsg(HealthMsg{Health: models.HealthResponse{Posture: "bogus"}})
-	assert.Nil(t, m.posture)
+	assert.Empty(t, m.posture)
 	assert.Equal(t, LevelWarn, m.ledger[len(m.ledger)-1].level)
 }
 

@@ -48,9 +48,9 @@ import (
 
 const (
 	appEnrollHTTPTimeout     = 10 * time.Second
-	appEnrollPollInitial     = 2 * time.Second
-	appEnrollPollMax         = 30 * time.Second
-	appEnrollPollJitter      = 500 * time.Millisecond
+	appEnrollRedialInitial   = 2 * time.Second
+	appEnrollRedialMax       = 30 * time.Second
+	appEnrollRedialJitter    = 500 * time.Millisecond
 	appEnrollDefaultDeadline = 30 * time.Minute
 
 	appEnrollSubmitInitial  = 3 * time.Second
@@ -265,12 +265,12 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 		}
 	}
 
-	// Step 3: Poll status until approved.
+	// Step 3: Hold on the status endpoint until the owner decides.
 	deadline := appEnrollDefaultDeadline
 	if pending != nil && !pending.ExpiresAt.IsZero() {
 		deadline = time.Until(pending.ExpiresAt)
 	}
-	if err := c.pollUntilApproved(ctx, token, deadline); err != nil {
+	if err := c.awaitDecision(ctx, token, deadline); err != nil {
 		if errors.Is(err, constants.ErrPlatformEnrollmentRequestDenied) || errors.Is(err, constants.ErrPlatformEnrollmentRequestExpired) {
 			// Terminal: the request can never complete, so the pending key and
 			// token are dead material. Remove them with the attempt.
@@ -522,28 +522,33 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM,
 	}
 }
 
-func (c *AppPlatformEnrollmentClient) pollUntilApproved(ctx context.Context, token string, deadline time.Duration) error {
-	endpoint := fmt.Sprintf("%s%s?token=%s", c.gatewayHTTPURL, constants.APIPaths.AuthPlatformEnrollmentStatus, url.QueryEscape(token))
-	pollCtx, cancelPoll := context.WithTimeout(ctx, deadline)
-	defer cancelPoll()
+// awaitDecision holds the status request until the owner decides. The Gateway
+// holds wait=true while the request is pending and answers on a committed
+// decision, expiry, or cancellation, so the requester wakes on the decision
+// instead of polling for it. A dropped connection or a rate-limited response
+// redials after a bounded delay.
+func (c *AppPlatformEnrollmentClient) awaitDecision(ctx context.Context, token string, deadline time.Duration) error {
+	endpoint := fmt.Sprintf("%s%s?token=%s&wait=true", c.gatewayHTTPURL, constants.APIPaths.AuthPlatformEnrollmentStatus, url.QueryEscape(token))
+	holdCtx, cancelHold := context.WithTimeout(ctx, deadline)
+	defer cancelHold()
 
-	delay := appEnrollPollInitial
+	delay := appEnrollRedialInitial
 	for {
-		if pollCtx.Err() != nil {
-			return fmt.Errorf("app enrollment: timed out waiting for owner approval: %w", pollCtx.Err())
+		if holdCtx.Err() != nil {
+			return fmt.Errorf("app enrollment: timed out waiting for owner approval: %w", holdCtx.Err())
 		}
 
-		req, err := http.NewRequestWithContext(pollCtx, http.MethodGet, endpoint, nil)
+		req, err := http.NewRequestWithContext(holdCtx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return fmt.Errorf("app enrollment: create status request: %w", err)
 		}
 
-		resp, err := doHTTPRequest(pollCtx, req)
+		resp, err := doHTTPRequest(holdCtx, req)
 		if err != nil {
-			if waitErr := c.sleep(pollCtx, delay, appEnrollPollJitter); waitErr != nil {
+			if waitErr := c.sleep(holdCtx, delay, appEnrollRedialJitter); waitErr != nil {
 				return waitErr
 			}
-			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollPollMax)))
+			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollRedialMax)))
 			continue
 		}
 
@@ -554,10 +559,10 @@ func (c *AppPlatformEnrollmentClient) pollUntilApproved(ctx context.Context, tok
 			if wait == 0 {
 				wait = delay
 			}
-			if waitErr := c.sleep(pollCtx, wait, appEnrollPollJitter); waitErr != nil {
+			if waitErr := c.sleep(holdCtx, wait, appEnrollRedialJitter); waitErr != nil {
 				return waitErr
 			}
-			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollPollMax)))
+			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollRedialMax)))
 			continue
 		}
 
@@ -585,15 +590,12 @@ func (c *AppPlatformEnrollmentClient) pollUntilApproved(ctx context.Context, tok
 			return fmt.Errorf("app enrollment: %w", constants.ErrPlatformEnrollmentRequestExpired)
 		}
 
-		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
-		wait := retryAfter
-		if wait == 0 {
-			wait = delay
-		}
-		if waitErr := c.sleep(pollCtx, wait, appEnrollPollJitter); waitErr != nil {
+		// The Gateway answered while still pending, so hold again after a
+		// bounded pause rather than spin on an early answer.
+		if waitErr := c.sleep(holdCtx, appEnrollRedialInitial, appEnrollRedialJitter); waitErr != nil {
 			return waitErr
 		}
-		delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollPollMax)))
+		delay = appEnrollRedialInitial
 	}
 }
 

@@ -102,7 +102,7 @@ func stopOperatorRequest(t *testing.T, controller *OperatorController, _, sessio
 
 func TestOperatorController_HandleStopOperatorAuthorizationAndDelivery(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
-	dispatch := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	dispatch := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 	controller := newOperatorController(OperatorControllerDeps{Cfg: infra.Cfg, Logger: infra.Logger, Reg: infra.Reg, Auth: infra.Auth, Dispatch: dispatch, Responder: infra.Responder})
 
 	remoteActuatorKey := seedStopOperator(t, infra, "stop-remote", "stop-remote-session", "stop-owner", constants.OperatorTypeRemote, constants.OperatorStatusActive)

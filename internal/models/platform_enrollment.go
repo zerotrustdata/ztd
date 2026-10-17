@@ -401,13 +401,13 @@ type PlatformEnrollmentAppCredentials struct {
 }
 
 type PlatformEnrollmentOperatorCredentials struct {
-	OperatorCert      string `json:"operator_cert"`
-	OperatorCertChain string `json:"operator_cert_chain"`
-	HubTrustBundle    string `json:"hub_trust_bundle"`
-	OperatorSessionID string `json:"operator_session_id"`
-	OperatorID        string `json:"operator_id"`
-	CLISessionID      string `json:"cli_session_id"`
-	CLICert           string `json:"cli_cert"`
+	OperatorCert      string            `json:"operator_cert"`
+	OperatorCertChain string            `json:"operator_cert_chain"`
+	HubTrustBundle    string            `json:"hub_trust_bundle"`
+	OperatorSessionID string            `json:"operator_session_id"`
+	OperatorID        string            `json:"operator_id"`
+	CLISessionID      string            `json:"cli_session_id"`
+	CLICert           string            `json:"cli_cert"`
 	CLICertChain      string            `json:"cli_cert_chain"`
 	Posture           constants.Posture `json:"posture,omitempty"`
 }

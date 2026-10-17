@@ -536,7 +536,7 @@ func TestVerifyL2Posture_VoteFaults(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		posture   string
+		posture   constants.Posture
 		signers   SignerStore
 		votes     func(hash string) []*commonv1.L2Vote
 		wantOK    bool
@@ -653,12 +653,7 @@ func TestVerifyL2Posture_VoteFaults(t *testing.T) {
 			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), priv1, "consensus")
 			env.Governance.L2.ConsensusSetId = "fault-consensus"
 			env.Governance.L2.Votes = tc.votes(env.TransactionHash)
-			posture, err := ParseGovernancePosture(tc.posture)
-			if err != nil {
-				t.Fatalf("ParseGovernancePosture(%s): %v", tc.posture, err)
-			}
-
-			ok, err := newWarden(tc.signers).verifyL2Posture(context.Background(), env, env.TransactionHash, posture)
+			ok, err := newWarden(tc.signers).verifyL2Posture(context.Background(), env, env.TransactionHash, tc.posture)
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
 					t.Fatalf("expected %v, got %v", tc.wantErr, err)

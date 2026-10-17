@@ -71,7 +71,7 @@ func BuildReleaseAssessmentScope(request ReleaseScopeRequest) (*compliancev1.Ass
 		AssessmentWindowStart: timestamppb.New(request.WindowStart.UTC()),
 		AssessmentWindowEnd:   timestamppb.New(request.WindowEnd.UTC()),
 		AssessmentAsOf:        timestamppb.New(request.WindowEnd.UTC()),
-		ActivePosture:         constants.PostureDoctrine,
+		ActivePosture:         string(constants.PostureDoctrine),
 		SourceAdmissions: []*compliancev1.AssessmentSourceAdmission{{
 			AdmissionId:              constants.ComplianceReleaseSourceAdmissionID,
 			SourceKind:               constants.ComplianceReleaseSourceKind,

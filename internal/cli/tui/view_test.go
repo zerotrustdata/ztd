@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
 
 func TestView_QuittingReturnsEmpty(t *testing.T) {
@@ -490,7 +490,7 @@ func TestRenderHeader_PostureUnknownBeforeHealth(t *testing.T) {
 		},
 	})
 	m.width = 120
-	m.posture = nil
+	m.posture = ""
 	out := m.renderHeader(120)
 	assert.Contains(t, out, "POSTURE: UNKNOWN")
 }
@@ -605,48 +605,27 @@ func TestListWindow_BoundsListLength(t *testing.T) {
 	assert.LessOrEqual(t, end, 5)
 }
 
-func TestStageAnnotation_NoAuditWhenPostureNil(t *testing.T) {
+func TestStageAnnotation_NoAuditWhenPostureUnknown(t *testing.T) {
 	m := NewModel(Options{})
-	m.posture = nil
+	m.posture = ""
 	result := m.stageAnnotation(StageL2)
 	assert.Equal(t, "", result)
 }
 
 func TestStageAnnotation_AuditedWhenNotEnforced(t *testing.T) {
 	m := NewModel(Options{})
-	// Create a mock posture that doesn't enforce L2
-	m.posture = &mockPosture{requiresL2: false, requiresL3: true}
+	// ratify audits L2 and enforces L3
+	m.posture = constants.PostureRatify
 	result := m.stageAnnotation(StageL2)
 	assert.Equal(t, " (audited)", result)
 }
 
 func TestStageAnnotation_NoMarkingWhenEnforced(t *testing.T) {
 	m := NewModel(Options{})
-	// Create a mock posture that enforces L2
-	m.posture = &mockPosture{requiresL2: true, requiresL3: true}
+	// notary enforces L2 and L3
+	m.posture = constants.PostureNotary
 	result := m.stageAnnotation(StageL2)
 	assert.Equal(t, "", result)
-}
-
-type mockPosture struct {
-	requiresL2 bool
-	requiresL3 bool
-}
-
-func (mp *mockPosture) Name() string {
-	return "DOCTRINE"
-}
-
-func (mp *mockPosture) Description() string {
-	return "mock posture"
-}
-
-func (mp *mockPosture) RequiresL2Signature() bool {
-	return mp.requiresL2
-}
-
-func (mp *mockPosture) RequiresL3Proof() bool {
-	return mp.requiresL3
 }
 
 // TestView_FitsTerminalExactly guards the layout math: borders count toward
@@ -664,7 +643,7 @@ func TestView_FitsTerminalExactly(t *testing.T) {
 			},
 		})
 		m.width, m.height = size.width, size.height
-		posture, err := governance.ParseGovernancePosture("notary")
+		posture, err := constants.ParsePosture("notary")
 		require.NoError(t, err)
 		m.posture = posture
 		for i := 0; i < 40; i++ {

@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
@@ -156,11 +155,11 @@ func TestValidateLaunchProfile_PublicBaseURLWithUserInfoReturnsErrLaunchProfileI
 }
 
 func TestValidateLaunchProfile_AcceptsAllValidPostures(t *testing.T) {
-	validPostures := []ztdconfig.GatewayPosture{
-		ztdconfig.PostureDoctrine,
-		ztdconfig.PostureConsensus,
-		ztdconfig.PostureRatify,
-		ztdconfig.PostureNotary,
+	validPostures := []constants.Posture{
+		constants.PostureDoctrine,
+		constants.PostureConsensus,
+		constants.PostureRatify,
+		constants.PostureNotary,
 	}
 	for _, p := range validPostures {
 		profile := validProfile()

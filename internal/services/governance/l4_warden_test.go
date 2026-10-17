@@ -180,7 +180,7 @@ func signL2Vote(privKey ed25519.PrivateKey, keyID, hash string, decision bool) *
 	}
 }
 
-func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, posture string) *govtypes.GovernanceEnvelope {
+func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, posture constants.Posture) *govtypes.GovernanceEnvelope {
 	t.Helper()
 	// Generate a safe nonce from action type and payload (handle empty payloads)
 	nonceSuffix := hex.EncodeToString(payload)
@@ -212,7 +212,7 @@ func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byt
 		// Posture is gateway policy metadata, not intent — it is not part of
 		// the transaction hash. Set it before hashing so the envelope reaches
 		// the warden with posture populated (the warden reads it per-envelope).
-		Posture: posture,
+		Posture: string(posture),
 	}
 	// Compute transaction hash before any governance metadata.
 	// Protocol ordering: L1 → L2 → L3 → L4. L2 signs the hash, then L3 is added.
@@ -301,32 +301,6 @@ func TestL4Warden_EmptyPayload(t *testing.T) {
 	}
 }
 
-// TestParseGovernancePosture_ErrorsOnInvalidPosture verifies that invalid posture
-// strings return an error wrapping constants.ErrInvalidPosture rather than
-// panicking or silently defaulting (INV-CODE-06, INV-ERR-01).
-func TestParseGovernancePosture_ErrorsOnInvalidPosture(t *testing.T) {
-	t.Parallel()
-	_, err := ParseGovernancePosture("invalid-posture")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidPosture)
-}
-
-// TestParseGovernancePosture_AcceptsValidPostures verifies that all valid posture
-// strings are accepted and return no error.
-func TestParseGovernancePosture_AcceptsValidPostures(t *testing.T) {
-	t.Parallel()
-	validPostures := []string{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary}
-	for _, posture := range validPostures {
-		t.Run(posture, func(t *testing.T) {
-			t.Parallel()
-			p, err := ParseGovernancePosture(posture)
-			require.NoError(t, err)
-			assert.NotNil(t, p)
-			assert.Equal(t, posture, p.Name())
-		})
-	}
-}
-
 // createVerifierWithAppPolicyStore creates a L4Warden with a custom signer key ID.
 func createVerifierWithAppPolicyStore(t *testing.T, replayStore ReplayStore, stateRootProvider StateRootProvider, l3Notary L3Notary) (*L4Warden, ed25519.PrivateKey) {
 	t.Helper()
@@ -358,7 +332,7 @@ func createVerifierWithAppPolicyStore(t *testing.T, replayStore ReplayStore, sta
 }
 
 // signedEnvelopeWithAppID creates a signed envelope with a specific L2 KeyId.
-func signedEnvelopeWithAppID(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, appID string, posture string) *govtypes.GovernanceEnvelope {
+func signedEnvelopeWithAppID(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, appID string, posture constants.Posture) *govtypes.GovernanceEnvelope {
 	t.Helper()
 	env := signedEnvelope(t, actionType, payload, privKey, posture)
 	if env.Governance != nil && env.Governance.L2 != nil && len(env.Governance.L2.Votes) > 0 {

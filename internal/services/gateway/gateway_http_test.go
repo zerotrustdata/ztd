@@ -106,7 +106,7 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 		ScrubbingService: newTestScrubber(t),
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  infra.Cfg.Gateway.MaxPayloadBytes,
-		Posture:          string(infra.Cfg.Gateway.Posture),
+		Posture:          infra.Cfg.Gateway.Posture,
 		AuditStore:       noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 	})
@@ -195,7 +195,7 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 			Responder: infra.Responder,
 		},
 		DispatchControllerDeps: DispatchControllerDeps{
-			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(infra.Cfg.Gateway.Posture), governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
+			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, infra.Cfg.Gateway.Posture, governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
 			Responder:   infra.Responder,
 			Logger:      infra.Logger,
 		},

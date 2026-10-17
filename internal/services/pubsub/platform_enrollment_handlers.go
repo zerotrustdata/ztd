@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/uuid"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -512,6 +513,43 @@ func (h *PlatformEnrollmentHandler) supersedeOperatorLeases(ctx context.Context,
 	return nil
 }
 
+// committedIssuance loads the enrollment request a follow-on mutation carries
+// out. PERSIST_POLICY and CREATE_SESSION hold no L3 proof of their own
+// (AuthorizedByDecision): their authority is the completed issuance the owner's
+// decision committed. Anything short of that completed request fails closed.
+func committedIssuance(ctx context.Context, deps PlatformEnrollmentDeps, requestID string) (*models.PlatformEnrollmentRequest, error) {
+	req, err := loadPlatformEnrollmentRequest(ctx, deps, requestID)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, constants.ErrPlatformEnrollmentRequestNotFound
+	}
+	if req.State != models.PlatformEnrollmentStateCompleted {
+		return nil, fmt.Errorf("%w: request %s is %s", constants.ErrPlatformEnrollmentIssuanceNotCommitted, requestID, req.State)
+	}
+	return req, nil
+}
+
+// issuanceField pairs one payload value with the committed issuance it must
+// equal.
+type issuanceField struct {
+	name      string
+	payload   string
+	committed string
+}
+
+// matchIssuance returns ErrPlatformEnrollmentIssuanceMismatch naming the first
+// field whose payload value differs from the committed issuance.
+func matchIssuance(fields ...issuanceField) error {
+	for _, f := range fields {
+		if f.payload != f.committed {
+			return fmt.Errorf("%w: %s", constants.ErrPlatformEnrollmentIssuanceMismatch, f.name)
+		}
+	}
+	return nil
+}
+
 // HandlePersistPolicy writes the app policy document via DocSet at the
 // target_collection/target_document_id carried in the payload. The
 // ownership and cert metadata come from the payload (populated by the
@@ -537,6 +575,24 @@ func (h *PlatformEnrollmentHandler) HandlePersistPolicy(ctx context.Context, msg
 	ownerUserID := payload.GetOwnerUserId()
 	if ownerUserID == "" {
 		return "", constants.ErrPlatformEnrollmentInvalidPayload
+	}
+
+	req, err := committedIssuance(ctx, h.deps, requestID)
+	if err != nil {
+		return "", err
+	}
+	if req.ComponentKind != models.PlatformComponentDashboard && req.ComponentKind != models.PlatformComponentApplication {
+		return "", constants.ErrPlatformEnrollmentInvalidComponent
+	}
+	if err := matchIssuance(
+		issuanceField{"target_collection", targetCollection, marshaler.CollectionName(constants.CollectionAppPolicies)},
+		issuanceField{"target_document_id", targetDocumentID, protocol.NewWorkloadIdentity().AppSPIFFEID(req.ComponentName)},
+		issuanceField{"owner_user_id", ownerUserID, req.ApprovedByUserID},
+		issuanceField{"actor_user_id", payload.GetActorUserId(), req.ApprovedByUserID},
+		issuanceField{"certificate_serial", payload.GetCertificateSerial(), req.CertificateSerial},
+		issuanceField{"certificate_fingerprint", payload.GetCertificateFingerprint(), req.CertificateFingerprint},
+	); err != nil {
+		return "", err
 	}
 
 	existingDoc, err := h.deps.DocStore.DocGet(ctx, targetCollection, targetDocumentID)
@@ -726,6 +782,23 @@ func (h *PlatformEnrollmentHandler) HandleCreateSession(ctx context.Context, msg
 	actorUserID := payload.GetActorUserId()
 	if actorUserID == "" {
 		return "", constants.ErrPlatformEnrollmentInvalidDecision
+	}
+	req, err := committedIssuance(ctx, h.deps, requestID)
+	if err != nil {
+		return "", err
+	}
+	if req.ComponentKind != models.PlatformComponentOperator {
+		return "", constants.ErrPlatformEnrollmentInvalidComponent
+	}
+	if err := matchIssuance(
+		issuanceField{"actor_user_id", actorUserID, req.ApprovedByUserID},
+		issuanceField{"operator_id", operatorID, req.OperatorID},
+		issuanceField{"operator_session_id", operatorSessionID, req.OperatorSessionID},
+		issuanceField{"cli_session_id", cliSessionID, req.CLISessionID},
+		issuanceField{"certificate_serial", payload.GetCertificateSerial(), req.CertificateSerial},
+		issuanceField{"certificate_fingerprint", payload.GetCertificateFingerprint(), req.CertificateFingerprint},
+	); err != nil {
+		return "", err
 	}
 	user, organization, err := loadPlatformEnrollmentOrganization(ctx, h.deps, actorUserID)
 	if err != nil {

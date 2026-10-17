@@ -36,10 +36,6 @@ type LoadOptions struct {
 	CloudMode     bool
 	CloudProvider string
 
-	// Posture of the Gateway this Operator enrolled with. Informational only:
-	// the Operator enforces the posture each GovernanceEnvelope carries.
-	Posture constants.Posture
-
 	Keyring keyring.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
 
 	// Working directory
@@ -80,8 +76,9 @@ type LoadOptions struct {
 // backbone for the entire ztd platform, replacing external databases.
 // No outbound authentication is required - the Operator simply starts and listens.
 type GatewayConfig struct {
-	Enabled           bool
-	Posture           constants.Posture // Governance enforcement posture, immutable for the Gateway's lifetime
+	Enabled bool
+	// Governance enforcement posture, immutable for the Gateway's lifetime
+	Posture           constants.Posture
 	HTTPPort          int             // Plain HTTP port for bootstrap, PKI discovery and enrollment (default: constants.Ports.OperatorHttp)
 	HTTPSPort         int             // HTTPS port for mTLS API (default: constants.Ports.OperatorHttps)
 	ListenHost        string          // Bind host for HTTP and HTTPS (default: constants.LocalhostIP; 0.0.0.0 must be requested explicitly)
@@ -621,15 +618,6 @@ func Load(opts LoadOptions) (*Config, error) {
 		Lang:  opts.Lang,
 		Term:  opts.Term,
 		TZ:    opts.TZ,
-
-		// Governance posture - the operator has no posture of its own; it
-		// reads posture per-envelope from GovernanceEnvelope.Posture at L4
-		// verification time. The gateway sets that field at envelope
-		// construction from cfg.Gateway.Posture. This config value is
-		// informational only (used for logging and non-envelope code paths);
-		// an empty posture is acceptable because the operator no longer
-		// needs config posture to start.
-		Posture: opts.Posture,
 
 		// Inference backend (ztdllama). Disabled by default; enabled when
 		// the operator runs as an Inference Node calling the configured

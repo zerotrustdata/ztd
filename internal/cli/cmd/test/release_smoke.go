@@ -342,7 +342,7 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 	r.summary.Source = releaseSmokeSource{rev, dirty, sum}
 	r.summary.Platform = runtime.GOOS + "/" + runtime.GOARCH
 	r.summary.BuildVersion = "sha256:" + sum
-	r.summary.Posture = constants.PostureDoctrine
+	r.summary.Posture = string(constants.PostureDoctrine)
 	r.summary.Ingress = []string{"governed HTTP dispatch: POST /api/v1/operators/commands", "embedded governed document update: POST /api/v1/governance/envelopes"}
 	r.summary.Gateway = releaseSmokeGateway{r.gwRoot, r.ports.http, r.ports.https}
 	return nil

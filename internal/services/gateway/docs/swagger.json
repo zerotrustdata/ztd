@@ -2892,6 +2892,21 @@
                 "GatewayModeStatusOK"
             ]
         },
+        "constants.Posture": {
+            "type": "string",
+            "enum": [
+                "doctrine",
+                "consensus",
+                "ratify",
+                "notary"
+            ],
+            "x-enum-varnames": [
+                "PostureDoctrine",
+                "PostureConsensus",
+                "PostureRatify",
+                "PostureNotary"
+            ]
+        },
         "constants.UserStatus": {
             "type": "string",
             "enum": [
@@ -3416,7 +3431,7 @@
                     "type": "integer"
                 },
                 "posture": {
-                    "type": "string"
+                    "$ref": "#/definitions/constants.Posture"
                 },
                 "state_merkle_root": {
                     "type": "string"

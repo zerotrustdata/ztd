@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -48,7 +47,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 
 	tests := []struct {
 		name    string
-		posture config.GatewayPosture
+		posture constants.Posture
 		// upFrontErr is the sentinel Dispatch returns before publishing, when the
 		// Gateway rejects the mutation at envelope construction.
 		upFrontErr error
@@ -58,17 +57,17 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 	}{
 		{
 			name:       "consensus_rejected_at_L4_for_missing_L2",
-			posture:    config.PostureConsensus,
+			posture:    constants.PostureConsensus,
 			l4Sentinel: constants.ErrTxL2SignatureMissing,
 		},
 		{
 			name:       "ratify_rejected_up_front_for_missing_L3",
-			posture:    config.PostureRatify,
+			posture:    constants.PostureRatify,
 			upFrontErr: constants.ErrTxL3ProofUnmintable,
 		},
 		{
 			name:       "notary_rejected_up_front_for_missing_L3",
-			posture:    config.PostureNotary,
+			posture:    constants.PostureNotary,
 			upFrontErr: constants.ErrTxL3ProofUnmintable,
 		},
 	}
@@ -121,7 +120,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			})
 			require.NoError(t, err)
 
-			dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(tc.posture), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+			dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, tc.posture, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 			result, dispatchErr := dispatchSvc.Dispatch(t.Context(), DispatchRequest{
 				TargetOperatorSessionID: sessionID,
 				EventType:               string(constants.Event.Operator.FileEdit.Requested),

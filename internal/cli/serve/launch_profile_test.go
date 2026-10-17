@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
@@ -150,7 +149,7 @@ func TestReadLaunchProfile_InvalidPostureReturnsErrLaunchProfileInvalid(t *testi
 	fileSvc := newTestFileSvc(t)
 
 	cfg := validTestGatewayConfig()
-	cfg.Posture = ztdconfig.GatewayPosture("bogus")
+	cfg.Posture = constants.Posture("bogus")
 	writeTestLaunchProfile(t, fileSvc, cfg)
 
 	_, err := ReadLaunchProfile(fileSvc)

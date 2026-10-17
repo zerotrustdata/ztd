@@ -53,7 +53,7 @@ func validGenerationScope(windowStart, windowEnd time.Time) *compliancev1.Assess
 		CryptographicMode:     "standard",
 		AssessmentWindowStart: timestamppb.New(windowStart),
 		AssessmentWindowEnd:   timestamppb.New(windowEnd),
-		ActivePosture:         constants.PostureDoctrine,
+		ActivePosture:         string(constants.PostureDoctrine),
 		SourceAdmissions: []*compliancev1.AssessmentSourceAdmission{{
 			AdmissionId:              "source-1",
 			SourceKind:               "native-evaluation",

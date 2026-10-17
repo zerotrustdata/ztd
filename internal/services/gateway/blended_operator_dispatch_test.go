@@ -56,7 +56,7 @@ func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T
 		return receipt, nil
 	})
 	signers := &stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}}
-	svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, signers, processor)
+	svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, signers, processor)
 	payload, err := proto.Marshal(&operatorv1.CommandRequested{Command: "echo hello", ExecutionId: "execution"})
 	require.NoError(t, err)
 	result, err := svc.Dispatch(t.Context(), DispatchRequest{TargetOperatorSessionID: op.OperatorSessionId, RequestorUserID: "user", EventType: string(constants.Event.Operator.Command.Requested), Payload: payload})
@@ -75,7 +75,7 @@ func TestPublishCommandRoutesEmbeddedOperatorThroughGovernanceProcessor(t *testi
 		require.NoError(t, protojson.Unmarshal(wire, processed))
 		return &operatorv1.ActionReceipt{}, nil
 	})
-	svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, processor)
+	svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, nil, processor)
 	payload, err := proto.Marshal(&operatorv1.CommandRequested{Command: "echo hello", ExecutionId: "execution"})
 	require.NoError(t, err)
 
@@ -89,7 +89,7 @@ func TestPublishCommandRoutesEmbeddedOperatorThroughGovernanceProcessor(t *testi
 	require.NotNil(t, processed)
 	require.Equal(t, txID, processed.Id)
 
-	noProcessor := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, nil)
+	noProcessor := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, nil, nil)
 	_, err = noProcessor.PublishCommand(t.Context(), PublishCommandRequest{TargetOperatorSessionID: op.OperatorSessionId, EventType: string(constants.Event.Operator.Command.Requested), Payload: payload, RequestorUserID: "user"})
 	require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
 }
@@ -136,7 +136,7 @@ func TestEmbeddedInferenceDispatchDrainsProgressWhileProcessing(t *testing.T) {
 					}
 					return nil, tc.processingError
 				})
-				svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, processor)
+				svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, nil, processor)
 
 				var seen int
 				_, err := svc.Dispatch(t.Context(), DispatchRequest{
@@ -203,7 +203,7 @@ func TestEmbeddedInferenceDispatchCancelsAndJoinsProcessor(t *testing.T) {
 					}
 					return nil, ctx.Err()
 				})
-				svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, processor)
+				svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, nil, processor)
 				_, err := svc.Dispatch(ctx, DispatchRequest{
 					TargetOperatorSessionID: op.OperatorSessionId,
 					RequestorUserID:         "user",
@@ -249,7 +249,7 @@ func TestEmbeddedDispatchDeadlineWhileAwaitingProcessor(t *testing.T) {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		})
-		svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, nil, processor)
+		svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, nil, processor)
 		payload, err := proto.Marshal(&operatorv1.CommandRequested{Command: "echo hello", ExecutionId: "execution"})
 		require.NoError(t, err)
 		_, err = svc.Dispatch(t.Context(), DispatchRequest{TargetOperatorSessionID: op.OperatorSessionId, RequestorUserID: "user", EventType: string(constants.Event.Operator.Command.Requested), Payload: payload, Timeout: time.Second})
@@ -291,7 +291,7 @@ func TestEmbeddedDispatchReturnsHandlerFailureResult(t *testing.T) {
 				return receipt, constants.ErrFileEditContentRequired
 			})
 			signers := &stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}}
-			svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, string(constants.PostureDoctrine), governance.NewL1Doctrine(), nil, signers, processor)
+			svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, signers, processor)
 			payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: "/tmp/ztd-eval/a.txt", Operation: string(constants.FileOperationWrite), ExecutionId: "execution"})
 			require.NoError(t, err)
 			result, err := svc.Dispatch(t.Context(), DispatchRequest{TargetOperatorSessionID: op.OperatorSessionId, RequestorUserID: "user", EventType: string(constants.EventOperatorFileEditRequested), Payload: payload, Timeout: 5 * time.Second})

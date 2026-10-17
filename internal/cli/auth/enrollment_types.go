@@ -12,7 +12,7 @@ import (
 	"crypto/x509"
 	"time"
 
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // LocalEnrollmentState is the coordinator's classification of the local CLI
@@ -310,7 +310,7 @@ func CLILoginOptions(rotateCLI bool) EnrollmentOptions {
 // gateway running under posture. Without L3 it is a headless CLI login
 // (CLILoginOptions). Under ratify and notary L3 approval needs a passkey, so
 // the session also registers one when the user does not hold one yet.
-func PostureLoginOptions(posture ztdconfig.GatewayPosture) EnrollmentOptions {
+func PostureLoginOptions(posture constants.Posture) EnrollmentOptions {
 	if !posture.RequiresL3() {
 		return CLILoginOptions(false)
 	}

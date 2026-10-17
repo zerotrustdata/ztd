@@ -9,6 +9,8 @@ package wizard
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // Update handles all messages for the wizard state machine.
@@ -149,7 +151,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 		}
 	case StepPosture:
 		if m.focusIndex == 0 {
-			if m.postureChoice < 3 {
+			if m.postureChoice < len(constants.AllPostures)-1 {
 				m.postureChoice++
 			}
 		}
@@ -231,15 +233,15 @@ func (m Model) handleTextInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 0:
 			// posture is a choice, not text input
 		case 1:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
+			if m.selectedPosture().RequiresL2() {
 				m.consensusIDInput, cmd = m.consensusIDInput.Update(msg)
 			}
 		case 2:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
+			if m.selectedPosture().RequiresL2() {
 				m.consensusBootstrapInput, cmd = m.consensusBootstrapInput.Update(msg)
 			}
 		case 3:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
+			if m.selectedPosture().RequiresL2() {
 				m.consensusURLInput, cmd = m.consensusURLInput.Update(msg)
 			}
 		case 4:
@@ -297,15 +299,15 @@ func focusFirstInput(m *Model) {
 	case StepPosture:
 		switch m.focusIndex {
 		case 1:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
+			if m.selectedPosture().RequiresL2() {
 				m.consensusIDInput.Focus()
 			}
 		case 2:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
+			if m.selectedPosture().RequiresL2() {
 				m.consensusBootstrapInput.Focus()
 			}
 		case 3:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
+			if m.selectedPosture().RequiresL2() {
 				m.consensusURLInput.Focus()
 			}
 		case 4:
@@ -349,7 +351,7 @@ func (m Model) validateNetwork() string {
 }
 
 func (m Model) validatePosture() string {
-	if m.postureChoice == 1 || m.postureChoice == 3 {
+	if m.selectedPosture().RequiresL2() {
 		consensusID := m.consensusIDInput.Value()
 		if err := validateConsensusID(consensusID); err != nil {
 			return err.Error()

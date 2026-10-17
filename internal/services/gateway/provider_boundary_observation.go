@@ -421,12 +421,8 @@ func (d *DispatchService) PublishCommand(ctx context.Context, req PublishCommand
 	if err != nil {
 		return "", fmt.Errorf("dispatch: publish command: marshal envelope: %w", err)
 	}
-	posture, perr := governance.ParseGovernancePosture(d.posture)
-	if perr != nil {
-		return "", fmt.Errorf("dispatch: publish command: %w", perr)
-	}
 	actionType := constants.ActionType(env.GetActionType())
-	if governance.L2Enforced(actionType, posture) && d.l2Deliberator != nil {
+	if governance.L2Enforced(actionType, d.posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return "", fmt.Errorf("dispatch: publish command: l2 deliberation: %w", derr)

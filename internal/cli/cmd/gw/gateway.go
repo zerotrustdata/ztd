@@ -33,11 +33,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/cli/wizard"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
 
@@ -104,7 +102,7 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringVar(&f.ProvenanceOperatorID, "provenance-operator-id", "", "Stable provenance identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory containing model weight blobs")
 
-	cmd.Flags().StringVar(&f.Posture, "posture", "doctrine", "Gateway posture: doctrine (L1 enforced, L2/L3 audited), consensus (L1/L2 enforced, L3 audited), ratify (L1/L3 enforced, L2 audited), notary (L1/L2/L3 strictly enforced)")
+	cmd.Flags().StringVar(&f.Posture, "posture", string(constants.DefaultPosture), postureFlagHelp())
 	cmd.Flags().IntVar(&f.HTTPPort, "http-port", 0, "Plain HTTP port for bootstrap, PKI discovery and enrollment (default: from constants.Ports.OperatorHttp)")
 	cmd.Flags().IntVar(&f.HTTPSPort, "https-port", 0, "HTTPS port for mTLS API (default: from constants.Ports.OperatorHttps)")
 	cmd.Flags().StringVar(&f.ListenHost, "listen-host", constants.LocalhostIP, "Bind host for the HTTP and HTTPS listeners (use 0.0.0.0 to listen on all interfaces, e.g. for container or LAN access)")
@@ -138,6 +136,16 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringArrayVar(&f.PublicSpectatorTrustedProxyCIDRs, "public-spectator-trusted-proxy-cidr", nil, "Trusted proxy CIDR allowed to provide exactly one CF-Connecting-IP address (repeatable)")
 }
 
+// postureFlagHelp describes every posture for the --posture flag, generated
+// from the constants.Posture owner so the help cannot drift from enforcement.
+func postureFlagHelp() string {
+	descriptions := make([]string, 0, len(constants.AllPostures))
+	for _, p := range constants.AllPostures {
+		descriptions = append(descriptions, p.Description())
+	}
+	return "Gateway posture: " + strings.Join(descriptions, ", ")
+}
+
 // resolveGatewayFlags finalizes gateway flag values. Gateway configuration is
 // flag-only, except that the user_endpoint ZTD_OLLAMA_ENDPOINT supplies
 // --inference-ollama-endpoint when the flag is blank.
@@ -157,7 +165,7 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		ProviderBoundaryObserverID:         f.ProviderBoundaryObserverID,
 		ProvenanceOperatorID:               f.ProvenanceOperatorID,
 		ProvenanceOperatorModelStorageRoot: f.ProvenanceOperatorModelStorageRoot,
-		Posture:                            ztdconfig.GatewayPosture(f.Posture),
+		Posture:                            constants.Posture(f.Posture),
 		HTTPPort:                           f.HTTPPort,
 		HTTPSPort:                          f.HTTPSPort,
 		ListenHost:                         f.ListenHost,
@@ -455,9 +463,9 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 
 			// Validate posture at CLI edge for clean error messages (before
 			// network detection to fail fast on invalid input)
-			postureObj, err := governance.ParseGovernancePosture(resolved.Posture)
+			posture, err := constants.ParsePosture(resolved.Posture)
 			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrInvalidPosture, err)
+				return err
 			}
 
 			// A running Gateway is checked before identity detection so a
@@ -494,7 +502,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			// Foreground mode: run gateway directly in the current process
 			if follow {
 				cmd.Println("[ztd] Starting ztd Gateway in foreground...")
-				cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
+				cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
 
 				// Write network identity to file if needed
 				var networkIdentityFile string
@@ -536,7 +544,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			}
 
 			cmd.Println("[ztd] Starting ztd Gateway service...")
-			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
+			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
 
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
@@ -565,7 +573,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			cmd.Printf("[ztd] Gateway started (PID: %d)\n", pid)
 			cmd.Println()
 			printListenHostNotice(cmd, gatewayCfg.ListenHost)
-			printNextSteps(cmd, postureObj, gatewayCfg, network.GetExternalInterfaceIP())
+			printNextSteps(cmd, posture, gatewayCfg, network.GetExternalInterfaceIP())
 
 			return nil
 		},
@@ -801,11 +809,10 @@ restart.`,
 			}
 
 			cmd.Println("ztd Gateway restarted successfully")
-			postureObj, _ := governance.ParseGovernancePosture(string(profile.Config.Posture))
-			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
+			cmd.Printf("[ztd] Gateway posture: %s\n", profile.Config.Posture.Description())
 			cmd.Println()
 			printListenHostNotice(cmd, profile.Config.ListenHost)
-			printNextSteps(cmd, postureObj, profile.Config, network.GetExternalInterfaceIP())
+			printNextSteps(cmd, profile.Config.Posture, profile.Config, network.GetExternalInterfaceIP())
 			return nil
 		},
 	}

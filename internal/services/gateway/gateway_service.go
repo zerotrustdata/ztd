@@ -384,7 +384,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 			CLISessions:      cliSessionSvc,
 			OperatorSessions: operatorSessionSvc,
 			Connections:      wsHandler,
-			Posture:          string(cfg.Gateway.Posture),
+			Posture:          cfg.Gateway.Posture,
 		}
 		govCore := pubsub.GovernanceCoreDeps{
 			ExecutionTarget:   embeddedOperator,
@@ -463,7 +463,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	}
 
 	// --- Platform enrollment service (C2: concrete cmdSvc injected) ---
-	platformEnrollmentSvc := NewPlatformEnrollmentService(docStore, userSvc, cmdSvc, stateRootSvc, string(cfg.Gateway.Posture), approvalsPublisher, logger)
+	platformEnrollmentSvc := NewPlatformEnrollmentService(docStore, userSvc, cmdSvc, stateRootSvc, cfg.Gateway.Posture, approvalsPublisher, logger)
 
 	// --- MCP gateway (C2: concrete cmdSvc, auditLogger, l2Deliberator injected) ---
 	var auditLogger mcp.AuditLogger
@@ -478,7 +478,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		ScrubbingService:       scrubbingService,
 		ThreatScanner:          doctrine,
 		MaxPayloadBytes:        cfg.Gateway.MaxPayloadBytes,
-		Posture:                string(cfg.Gateway.Posture),
+		Posture:                cfg.Gateway.Posture,
 		A2ADownstreamURL:       cfg.Gateway.A2ADownstreamURL,
 		PublicBaseURL:          publicBaseURL,
 		AuditStore:             auditStore,
@@ -520,7 +520,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		Responder:          res,
 		MaxPayload:         cfg.Gateway.MaxPayloadBytes,
 		Orchestrator:       passkeyOrchestrator,
-		Posture:            string(cfg.Gateway.Posture),
+		Posture:            cfg.Gateway.Posture,
 	})
 
 	// Construct the command dispatch service and the inference dispatch
@@ -532,7 +532,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	// L2 signatures). Under postures that require L3 proof (ratify, notary),
 	// mutation dispatches are rejected at envelope construction because the
 	// gateway dispatch path cannot mint human proofs.
-	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, string(cfg.Gateway.Posture), doctrine, l2Deliberator, signerStore, cmdSvc)
+	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, cfg.Gateway.Posture, doctrine, l2Deliberator, signerStore, cmdSvc)
 	inferenceDispatchSvc := dispatch.NewDispatchService(
 		&gatewayDispatcherAdapter{svc: dispatchSvc},
 		&gatewayOperatorListerAdapter{svc: reg},
@@ -1230,7 +1230,7 @@ func (ls *GatewayModeService) GetGovernanceDeps() *pubsub.GatewayModeDeps {
 		CLISessions:      ls.cliSessionSvc,
 		OperatorSessions: ls.operatorSessionSvc,
 		Connections:      ls.pubsub,
-		Posture:          string(ls.cfg.Gateway.Posture),
+		Posture:          ls.cfg.Gateway.Posture,
 	}
 
 	return &pubsub.GatewayModeDeps{
