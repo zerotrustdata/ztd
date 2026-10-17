@@ -35,7 +35,7 @@ function runDurationSeconds(row: RecentCampaignRow, now: number): number | undef
 }
 
 /** Most recent run for each dataset in the feed. */
-function RecentRuns({
+function Runs({
   catalogs,
   evaluations,
   models,
@@ -50,10 +50,10 @@ function RecentRuns({
   );
   const now = Date.now();
   return (
-    <section className="panel campaign-evidence-panel" aria-label="Recent runs">
+    <section className="panel campaign-evidence-panel" aria-label="Runs">
       <div className="panel-head campaign-evidence-head">
         <div>
-          <h2>Recent Runs</h2>
+          <h2>Runs</h2>
         </div>
         <Link to="/evaluations" className="panel-link">
           Explore all →
@@ -188,6 +188,7 @@ export function OverviewView() {
 
   return (
     <div className="overview">
+      <Runs catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
       <LiveEventStream
         key={release}
         events={events}
@@ -195,8 +196,6 @@ export function OverviewView() {
         streamConnection={streamConnection}
         isReconciling={isReconciling}
       />
-
-      <RecentRuns catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
     </div>
   );
 }

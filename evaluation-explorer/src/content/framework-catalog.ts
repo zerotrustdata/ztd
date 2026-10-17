@@ -2088,7 +2088,7 @@ export const EVALUATION_FRAMEWORK_VALUES = {
   pillars: [
     {
       id: "campaigns",
-      kicker: "PILLAR 01 · CAMPAIGNS",
+      kicker: "CAMPAIGNS",
       title: "Governed Campaign Programs",
       summary:
         "Three strict evaluation lanes: L1–L5 Native Conformance, 75-cell Homogeneous Model-Role Campaigns (25 scenarios × 3 roles), and 3-Role System Formation Campaigns.",
@@ -2096,7 +2096,7 @@ export const EVALUATION_FRAMEWORK_VALUES = {
     },
     {
       id: "runs",
-      kicker: "PILLAR 02 · RUNS & VERIFICATION",
+      kicker: "RUNS & VERIFICATION",
       title: "Cryptographic Evidence & Verifier v2.0",
       summary:
         "Every assignment emits Ed25519-signed execution receipts and SHA-256 population digests. Non-verdict outcomes (provider, grader, harness) are never conflated with model failures.",
@@ -2104,7 +2104,7 @@ export const EVALUATION_FRAMEWORK_VALUES = {
     },
     {
       id: "formations",
-      kicker: "PILLAR 03 · FORMATIONS",
+      kicker: "FORMATIONS",
       title: "3-Role Sovereign Execution Topologies",
       summary:
         "1,005 validated 3-model stacks (Lite → Assistant → Primary) enforcing distinct model families, sovereign local execution, and a strict 12,288 MiB (12 GiB) combined VRAM ceiling.",
@@ -2112,7 +2112,7 @@ export const EVALUATION_FRAMEWORK_VALUES = {
     },
     {
       id: "capabilities",
-      kicker: "PILLAR 04 · CAPABILITY GATES",
+      kicker: "CAPABILITY GATES",
       title: "5-Probe Pre-Flight Capability Matrix",
       summary:
         "Every registered model is probed for Completion, Tool Calling (probe_echo), Structured JSON, Deliberative Thinking, and Context Window before campaign scheduling.",

@@ -122,7 +122,7 @@ describe('OverviewView', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders the live event stream full width without the system overview panel', () => {
+  it('renders the live event stream without the system overview panel', () => {
     render(
       <MemoryRouter initialEntries={['/?dataset=ds-verified-archive&release=all']}>
         <OverviewView />
@@ -176,7 +176,7 @@ describe('OverviewView', () => {
   it('removes the landing page explainer while retaining recent runs', () => {
     render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
     expect(screen.queryByRole('region', { name: 'What am I looking at?' })).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Recent runs' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Runs' })).toBeInTheDocument();
   });
 
   it('presents recent runs with coverage for engineers without duplicate public data section', () => {
@@ -186,8 +186,8 @@ describe('OverviewView', () => {
       </MemoryRouter>,
     );
 
-    const evidence = within(screen.getByRole('region', { name: 'Recent runs' }));
-    expect(evidence.getByRole('heading', { name: 'Recent Runs' })).toBeInTheDocument();
+    const evidence = within(screen.getByRole('region', { name: 'Runs' }));
+    expect(evidence.getByRole('heading', { name: 'Runs' })).toBeInTheDocument();
     expect(evidence.getByText('Completed')).toBeInTheDocument();
     expect(evidence.getByText('Failed')).toBeInTheDocument();
     expect(evidence.getByText('Remaining')).toBeInTheDocument();
@@ -225,7 +225,7 @@ describe('OverviewView', () => {
       </MemoryRouter>,
     );
 
-    const recent = within(screen.getByRole('region', { name: 'Recent runs' }));
+    const recent = within(screen.getByRole('region', { name: 'Runs' }));
     expect(recent.getByRole('link', { name: model.display_name })).toHaveAttribute(
       'href', `/models/${datasetId}/${model.variant_id}?role=${role}`,
     );

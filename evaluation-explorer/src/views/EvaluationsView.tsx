@@ -533,9 +533,21 @@ export function EvaluationsView() {
                           <code className="campaign-id-chip">{group.campaign_id}</code>
                         </div>
                         <div className="campaign-card-badges">
-                          <TonePill tone={group.verified_runs > 0 ? 'ok' : group.verifier_failed_runs > 0 ? 'critical' : 'neutral'}>
-                            {group.verified_runs}/{group.total_runs} verified
-                          </TonePill>
+                          {group.verified_runs === group.total_runs ? (
+                            <span
+                              className="stream-result"
+                              data-tone="ok"
+                              role="img"
+                              aria-label={`${group.verified_runs}/${group.total_runs} verified`}
+                              title={`${group.verified_runs}/${group.total_runs} verified`}
+                            >
+                              <span aria-hidden="true">✓</span>
+                            </span>
+                          ) : (
+                            <TonePill tone={group.verified_runs > 0 ? 'ok' : group.verifier_failed_runs > 0 ? 'critical' : 'neutral'}>
+                              {group.verified_runs}/{group.total_runs} verified
+                            </TonePill>
+                          )}
                         </div>
                       </div>
                       <div className="campaign-card-meta">

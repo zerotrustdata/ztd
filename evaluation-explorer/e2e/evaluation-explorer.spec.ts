@@ -243,6 +243,16 @@ for (const viewport of [
     await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), viewport.theme);
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(6);
+    const runs = page.getByRole('region', { name: 'Runs', exact: true });
+    await expect(runs.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
+    const runsBox = (await runs.boundingBox())!;
+    const liveBox = (await live.boundingBox())!;
+    if (viewport.width > 1000) {
+      expect(runsBox.x + runsBox.width).toBeLessThan(liveBox.x);
+      expect(Math.abs(runsBox.y - liveBox.y)).toBeLessThan(1);
+    } else {
+      expect(runsBox.y + runsBox.height).toBeLessThan(liveBox.y);
+    }
     await expect(live.getByText(failureReason)).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'What am I looking at?' })).toHaveCount(0);
     await expect(live.getByRole('combobox', { name: 'Filter by category' })).not.toBeVisible();

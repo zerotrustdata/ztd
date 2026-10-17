@@ -594,6 +594,8 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Main */
 .app-main { flex: 1; padding: 24px 24px 72px; max-width: 1400px; width: 100%; margin: 0 auto; }
+/* Data-dense views (Live, Models, Evaluations) span the full viewport width. */
+.app-main:has(> .overview, > .models-view, > .evaluations-view) { max-width: none; }
 .app-footer {
   position: fixed;
   bottom: 0;
@@ -1269,16 +1271,17 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 /* ===== Overview (landing) ===== */
 
 .overview {
-  --page-gutter: 24px;
   --overview-title-size: 17px;
   --overview-subtitle-size: 14px;
   --overview-body-size: 14px;
   --overview-meta-size: 13px;
   --overview-label-size: 12px;
-  width: calc(100vw - (2 * var(--page-gutter)));
-  max-width: none;
-  margin-left: calc(50% - 50vw + var(--page-gutter));
+  display: grid;
+  grid-template-columns: clamp(300px, 26vw, 380px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
 }
+.overview > .panel { min-width: 0; }
 
 /* Panels */
 .panel {
@@ -1587,7 +1590,7 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .campaign-evidence-panel { min-width: 0; }
 .campaign-evidence-head { margin-bottom: 8px; }
 .campaign-legend {
-  display: flex; justify-content: flex-end; gap: 12px; margin: 0 0 12px; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; padding: 0;
   color: var(--fg-dim); font-size: var(--overview-label-size, var(--text-sm)); list-style: none;
 }
 .campaign-legend li { display: inline-flex; align-items: center; gap: 5px; }
@@ -1595,7 +1598,7 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .campaign-legend-completed, .campaign-outcome-completed { background: var(--tone-ok); }
 .campaign-legend-failed, .campaign-outcome-failed { background: var(--tone-critical); }
 .campaign-legend-remaining { background: var(--bg-elev2); border: 1px solid var(--border); }
-.campaign-evidence-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px 28px; margin: 0; padding: 0; list-style: none; }
+.campaign-evidence-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .campaign-evidence-row { padding: 11px 4px; border-top: 1px solid var(--border); }
 .campaign-evidence-title-row, .campaign-evidence-meta, .campaign-evidence-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1606,10 +1609,10 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 }
 .campaign-evidence-title:hover { color: var(--accent); }
 .campaign-evidence-time { flex-shrink: 0; color: var(--fg-dim); font-size: var(--overview-label-size, var(--text-sm)); }
-.campaign-evidence-meta { margin-top: 3px; justify-content: flex-start; color: var(--fg-muted); font-size: var(--overview-meta-size, var(--text-md)); }
+.campaign-evidence-meta { flex-wrap: wrap; gap: 3px 12px; margin-top: 3px; justify-content: flex-start; color: var(--fg-muted); font-size: var(--overview-meta-size, var(--text-md)); }
 .campaign-evidence-meta > span { flex-shrink: 0; }
-.campaign-evidence-meta > span:first-child { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
-.campaign-evidence-meta > span:not(:first-child)::before { content: '·'; margin-right: 12px; color: var(--fg-dim); }
+.campaign-evidence-meta > span:first-child { min-width: 0; flex-basis: 100%; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.campaign-evidence-meta > span:nth-child(n+3)::before { content: '·'; margin-right: 12px; color: var(--fg-dim); }
 .campaign-evidence-state { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; font-weight: 600; }
 .campaign-evidence-state .status-dot { width: 6px; height: 6px; }
 .campaign-outcome-track {
@@ -1789,9 +1792,6 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
   border-left-color: var(--accent);
 }
 
-/* Overview section spacing */
-.overview > section, .overview > .panel { margin-bottom: 16px; }
-
 /* Dark mode scrollbar styling */
 @media (prefers-color-scheme: dark) {
   ::-webkit-scrollbar {
@@ -1826,6 +1826,7 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
   .header-cta-github { gap: 0; padding-inline: 10px; }
 }
 @media (max-width: 1000px) {
+  .overview { grid-template-columns: minmax(0, 1fr); }
   .app-header { --header-sticky-offset: 92px; }
   .header-primary {
     grid-template-columns: auto 1fr;
@@ -1874,7 +1875,6 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 @media (max-width: 768px) {
   .app-header { --header-sticky-offset: 102px; padding: 10px 14px 8px; }
   .app-main { padding: 14px 14px 80px; }
-  .overview { --page-gutter: 14px; }
   .header-primary { gap: 8px 10px; }
   .header-utilities { flex-wrap: wrap; justify-content: flex-end; }
   .header-campaign-bar { min-height: 38px; padding: 6px 10px; gap: 8px; }
@@ -1907,7 +1907,6 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 
 @media (max-width: 320px) {
   .app-main { padding: 10px 10px 88px; }
-  .overview { --page-gutter: 10px; }
   .stat-grid { grid-template-columns: 1fr; }
   .metric-grid { grid-template-columns: 1fr; }
   .agents-grid { grid-template-columns: 1fr; }
@@ -3513,6 +3512,10 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+}
+.campaign-card-badges {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .campaign-program-tag {
   display: inline-block;
