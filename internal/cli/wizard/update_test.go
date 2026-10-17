@@ -139,11 +139,11 @@ func TestUpdate_EnterFromRouting_MCPEnabled_InvalidURL_KeepsStep(t *testing.T) {
 	assert.NotEmpty(t, m2.(Model).validationError)
 }
 
-func TestUpdate_EnterFromPosture_Consensus_EmptyConsensusID_KeepsStep(t *testing.T) {
+func TestUpdate_EnterFromPosture_EmptyRpName_KeepsStep(t *testing.T) {
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.postureChoice = 1
-	m.consensusIDInput.SetValue("")
+	m.passkeyRpNameInput.SetValue("")
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, StepPosture, m2.(Model).step)
 	assert.NotEmpty(t, m2.(Model).validationError)
@@ -365,9 +365,9 @@ func TestHandleTab_NetworkStep_AdvancesFromZero(t *testing.T) {
 func TestHandleTab_PostureStep_WrapsAtMax(t *testing.T) {
 	m := NewModel(Options{})
 	m.step = StepPosture
-	m.focusIndex = 6
+	m.focusIndex = 3
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	assert.Equal(t, 0, m2.(Model).focusIndex, "Tab should wrap from 6 to 0")
+	assert.Equal(t, 0, m2.(Model).focusIndex, "Tab should wrap from 3 to 0")
 }
 
 func TestHandleTab_RoutingStep_WrapsWithA2A(t *testing.T) {
@@ -420,7 +420,7 @@ func TestHandleShiftTab_PostureStep_WrapsFromZeroToMax(t *testing.T) {
 	m.step = StepPosture
 	m.focusIndex = 0
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	assert.Equal(t, 6, m2.(Model).focusIndex)
+	assert.Equal(t, 3, m2.(Model).focusIndex)
 }
 
 // --- stepFocusMax (Bug #6) ---
@@ -442,7 +442,7 @@ func TestStepFocusMax_NetworkWithWebFrontend(t *testing.T) {
 func TestStepFocusMax_Posture(t *testing.T) {
 	m := NewModel(Options{})
 	m.step = StepPosture
-	assert.Equal(t, 6, m.stepFocusMax())
+	assert.Equal(t, 3, m.stepFocusMax())
 }
 
 func TestStepFocusMax_RoutingWithoutA2A(t *testing.T) {
@@ -538,23 +538,6 @@ func TestValidatePosture_Ratify_NoConsensusRequired(t *testing.T) {
 	assert.Empty(t, m.validatePosture())
 }
 
-func TestValidatePosture_Consensus_RequiresConsensusID(t *testing.T) {
-	m := NewModel(Options{})
-	m.step = StepPosture
-	m.postureChoice = 1
-	m.consensusIDInput.SetValue("")
-	m.passkeyRpNameInput.SetValue("ztd")
-	assert.NotEmpty(t, m.validatePosture())
-}
-
-func TestValidatePosture_Consensus_ValidConsensus_NoError(t *testing.T) {
-	m := NewModel(Options{})
-	m.step = StepPosture
-	m.postureChoice = 1
-	m.consensusIDInput.SetValue("trib-prod-01")
-	m.passkeyRpNameInput.SetValue("ztd")
-	assert.Empty(t, m.validatePosture())
-}
 
 func TestValidatePosture_EmptyRpName_ReturnsError(t *testing.T) {
 	m := NewModel(Options{})

@@ -107,6 +107,7 @@ var APIPaths = struct {
 	AuthPlatformEnrollmentBatchDecision      string `json:"auth_platform_enrollment_batch_decision"`
 	AuthPlatformEnrollmentDecision           string `json:"auth_platform_enrollment_decision"`
 	AuthPlatformEnrollmentRevoke             string `json:"auth_platform_enrollment_revoke"`
+	AuthPlatformEnrollmentConsensus          string `json:"auth_platform_enrollment_consensus"`
 	AuthOperatorBootstrapWebSocket           string `json:"auth_operator_bootstrap_websocket"`
 	AuthCLIRecoveryRequest                   string `json:"auth_cli_recovery_request"`
 	AuthCLIRecoveryStatus                    string `json:"auth_cli_recovery_status"`
@@ -282,6 +283,7 @@ var APIPaths = struct {
 	AuthPlatformEnrollmentDecision:           "/api/v1/auth/platform-enrollments/decision",
 	AuthPlatformEnrollmentBatchDecision:      "/api/v1/auth/platform-enrollments/decisions",
 	AuthPlatformEnrollmentRevoke:             "/api/v1/auth/platform-enrollments/revoke",
+	AuthPlatformEnrollmentConsensus:          "/api/v1/auth/platform-enrollments/consensus",
 	AuthOperatorBootstrapWebSocket:           "/ws/operator/bootstrap",
 	AuthCLIRecoveryRequest:                   "/api/v1/auth/cli/recovery/request",
 	AuthCLIRecoveryStatus:                    "/api/v1/auth/cli/recovery/status",

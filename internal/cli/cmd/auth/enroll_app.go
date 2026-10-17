@@ -31,11 +31,11 @@ type AppEnroller interface {
 }
 
 // AppEnrollerFactory creates an AppEnroller instance.
-type AppEnrollerFactory func(appName string, fileSvc fs.RuntimeFileService, cfg *config.Config, logger *slog.Logger) (AppEnroller, error)
+type AppEnrollerFactory func(appName string, fileSvc fs.RuntimeFileService, cfg *config.Config, logger *slog.Logger, opts ...auth.AppEnrollmentOptions) (AppEnroller, error)
 
 // DefaultAppEnrollerFactory creates a production AppPlatformEnrollmentClient.
-func DefaultAppEnrollerFactory(appName string, fileSvc fs.RuntimeFileService, cfg *config.Config, logger *slog.Logger) (AppEnroller, error) {
-	return auth.NewAppPlatformEnrollmentClient(appName, fileSvc, cfg, logger)
+func DefaultAppEnrollerFactory(appName string, fileSvc fs.RuntimeFileService, cfg *config.Config, logger *slog.Logger, opts ...auth.AppEnrollmentOptions) (AppEnroller, error) {
+	return auth.NewAppPlatformEnrollmentClient(appName, fileSvc, cfg, logger, opts...)
 }
 
 // OwnerAppEnrollmentApprover approves an application's own pending platform
@@ -103,7 +103,14 @@ the certificate and private key are securely stored in the managed runtime PKI d
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 
-			enroller, err := enrollerFactory(appName, fileSvc, cfg, slog.Default())
+			var opts []auth.AppEnrollmentOptions
+			if client, clientErr := DefaultAPIClientFactory(fileSvc, cfg); clientErr == nil {
+				opts = append(opts, auth.AppEnrollmentOptions{
+					Approver: OwnerAppEnrollmentApprover(client, "ztd auth enroll app: enrolled by the authenticated owner"),
+				})
+			}
+
+			enroller, err := enrollerFactory(appName, fileSvc, cfg, slog.Default(), opts...)
 			if err != nil {
 				return err
 			}

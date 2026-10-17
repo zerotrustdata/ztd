@@ -218,7 +218,7 @@ func (s *DocumentStoreService) DecidePlatformEnrollments(ctx context.Context, ac
 	if req.Decision == models.PlatformEnrollmentDecisionDeny {
 		state = models.PlatformEnrollmentStateDenied
 	}
-	return s.db.ExecInImmediateTxWithRetry(ctx, func(conn *sql.Conn) error {
+	if err := s.db.ExecInImmediateTxWithRetry(ctx, func(conn *sql.Conn) error {
 		var ownerID string
 		var ownerData []byte
 		err := conn.QueryRowContext(ctx, `SELECT id, data FROM documents WHERE collection = ? ORDER BY created_at, rowid LIMIT 1`,
@@ -281,5 +281,11 @@ func (s *DocumentStoreService) DecidePlatformEnrollments(ctx context.Context, ac
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if notifier := s.approvalsNotifier.Load(); notifier != nil {
+		notifier.EnrollmentsDecided(ctx)
+	}
+	return nil
 }

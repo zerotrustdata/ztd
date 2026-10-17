@@ -72,6 +72,7 @@ type AppEnrollmentOptions struct {
 	InstanceID     string
 	Hostname       string
 	Approver       AppEnrollmentApprover
+	HTTPClient     *http.Client
 }
 
 // appPendingState is the resumable pending enrollment attempt,
@@ -101,6 +102,7 @@ type AppPlatformEnrollmentClient struct {
 	fileSvc        fs.RuntimeFileService
 	cfg            *config.Config
 	logger         *slog.Logger
+	httpClient     *http.Client
 }
 
 // NewAppPlatformEnrollmentClient constructs an app platform enrollment client.
@@ -144,6 +146,11 @@ func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileServic
 	}
 	gatewayHTTPURL = strings.TrimRight(gatewayHTTPURL, "/")
 
+	httpClient := opt.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+
 	return &AppPlatformEnrollmentClient{
 		appName:        appName,
 		gatewayHTTPURL: gatewayHTTPURL,
@@ -153,6 +160,7 @@ func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileServic
 		fileSvc:        fileSvc,
 		cfg:            cfg,
 		logger:         logger,
+		httpClient:     httpClient,
 	}, nil
 }
 
@@ -251,6 +259,9 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 			fmt.Fprintf(out, "Enrollment request submitted for application %q.\n", c.appName)
 			if c.approver == nil {
 				fmt.Fprintf(out, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, requestID)
+				if url := strings.TrimSpace(createResp.ApprovalURL); url != "" {
+					fmt.Fprintf(out, "Passkey approval URL: %s\n", url)
+				}
 			}
 		}
 	}
@@ -261,7 +272,22 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 			Fingerprints: models.PlatformEnrollmentCSRFingerprints{App: appFP},
 		}
 		if err := c.approver(ctx, target); err != nil {
-			return nil, fmt.Errorf("app enrollment: owner approval of %s: %w", requestID, err)
+			var l3Err *models.PlatformEnrollmentL3RequiredError
+			if errors.As(err, &l3Err) {
+				if out != nil {
+					reason := l3Err.Suspension.Posture.HumanApprovalReason()
+					if reason == "" {
+						reason = l3Err.Suspension.Message
+					}
+					fmt.Fprintf(out, "\n%s\n", reason)
+					fmt.Fprintf(out, "Approval URL: %s\n", l3Err.Suspension.ApprovalURL)
+					fmt.Fprintf(out, "Transaction:  %s\n", l3Err.Suspension.TxHash)
+					fmt.Fprintf(out, "Expires At:   %s\n\n", l3Err.Suspension.ExpiresAt.Format(time.RFC3339))
+					fmt.Fprintf(out, "Awaiting passkey approval...\n")
+				}
+			} else {
+				return nil, fmt.Errorf("app enrollment: owner approval of %s: %w", requestID, err)
+			}
 		}
 	}
 
@@ -484,7 +510,7 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM,
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := doHTTPRequest(ctx, req)
+		resp, err := c.doHTTPRequest(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("app enrollment: submit request: %w", err)
 		}
@@ -495,7 +521,7 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM,
 			return nil, fmt.Errorf("app enrollment: read request response: %w", err)
 		}
 
-		if resp.StatusCode == http.StatusForbidden && strings.Contains(string(respBody), "bootstrapped") {
+		if resp.StatusCode == http.StatusForbidden && isGatewayRequiresBootstrap(respBody) {
 			if time.Now().After(deadline) {
 				return nil, fmt.Errorf("app enrollment: timed out waiting for gateway bootstrap: %s", string(respBody))
 			}
@@ -543,7 +569,7 @@ func (c *AppPlatformEnrollmentClient) awaitDecision(ctx context.Context, token s
 			return fmt.Errorf("app enrollment: create status request: %w", err)
 		}
 
-		resp, err := doHTTPRequest(holdCtx, req)
+		resp, err := c.doHTTPRequest(holdCtx, req)
 		if err != nil {
 			if waitErr := c.sleep(holdCtx, delay, appEnrollRedialJitter); waitErr != nil {
 				return waitErr
@@ -621,7 +647,7 @@ func (c *AppPlatformEnrollmentClient) submitCompletion(ctx context.Context, toke
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cache-Control", "no-store")
 
-	resp, err := doHTTPRequest(compCtx, req)
+	resp, err := c.doHTTPRequest(compCtx, req)
 	if err != nil {
 		return nil, fmt.Errorf("app enrollment: submit completion: %w", err)
 	}
@@ -758,8 +784,11 @@ func encodeECPrivateKeyPEM(key *ecdsa.PrivateKey) (string, error) {
 	return string(pemBytes), nil
 }
 
-func doHTTPRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
-	client := &http.Client{}
+func (c *AppPlatformEnrollmentClient) doHTTPRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
+	client := c.httpClient
+	if client == nil {
+		client = &http.Client{}
+	}
 	return client.Do(req.WithContext(ctx))
 }
 
@@ -819,4 +848,14 @@ func isReservedPlatformName(name string) bool {
 	default:
 		return false
 	}
+}
+
+func isGatewayRequiresBootstrap(body []byte) bool {
+	var gwErr struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &gwErr); err == nil {
+		return gwErr.Error == constants.ErrPlatformEnrollmentRequiresBootstrap.Error()
+	}
+	return false
 }

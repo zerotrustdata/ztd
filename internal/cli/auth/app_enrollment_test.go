@@ -8,14 +8,18 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
@@ -25,6 +29,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
@@ -166,3 +171,104 @@ func TestLoadAppIdentity_Valid(t *testing.T) {
 	assert.NotNil(t, cert)
 	assert.True(t, HasValidAppIdentity(fileSvc, cfg, appName))
 }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestAppPlatformEnrollmentClient_Enroll_ApproverL3RequiredPrintsSuspensionAndAwaitsDecision(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	appName := "claude"
+
+	expiresAt := time.Now().Add(10 * time.Minute).UTC().Truncate(time.Second)
+	approverCalled := false
+
+	mockTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		switch r.URL.Path {
+		case constants.APIPaths.AuthPlatformEnrollmentRequest:
+			rec.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(rec).Encode(models.PlatformEnrollmentCreateResponse{
+				RequestID: "req-l3-1",
+				ExpiresAt: expiresAt,
+			})
+		case constants.APIPaths.AuthPlatformEnrollmentStatus:
+			rec.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(rec).Encode(models.PlatformEnrollmentStatusResponse{
+				RequestID: "req-l3-1",
+				State:     models.PlatformEnrollmentStateApproved,
+			})
+		case constants.APIPaths.AuthPlatformEnrollmentComplete:
+			rec.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(rec).Encode(models.PlatformEnrollmentCompleteResponse{
+				App: &models.PlatformEnrollmentAppCredentials{
+					AppID:   "spiffe://ztd.local/app/claude",
+					AppCert: "dummy-cert",
+				},
+			})
+		default:
+			http.NotFound(rec, r)
+		}
+		return rec.Result(), nil
+	})
+
+	client, err := NewAppPlatformEnrollmentClient(appName, fileSvc, cfg, nil, AppEnrollmentOptions{
+		GatewayHTTPURL: "http://localhost:8080",
+		HTTPClient:     &http.Client{Transport: mockTransport},
+		Approver: func(_ context.Context, target models.PlatformEnrollmentDecisionTarget) error {
+			approverCalled = true
+			assert.Equal(t, "req-l3-1", target.RequestID)
+			return &models.PlatformEnrollmentL3RequiredError{
+				Suspension: models.PlatformEnrollmentL3SuspensionResponse{
+					Status:      models.PlatformEnrollmentStatusL3Required,
+					Posture:     constants.PostureRatify,
+					TxHash:      "tx-ratify-123",
+					ApprovalURL: "https://localhost:8443/console/approve/tx-ratify-123",
+					ExpiresAt:   expiresAt,
+					Message:     constants.PostureRatify.HumanApprovalReason(),
+				},
+			}
+		},
+	})
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	resp, err := client.Enroll(context.Background(), &out)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, approverCalled)
+
+	output := out.String()
+	assert.Contains(t, output, constants.PostureRatify.HumanApprovalReason())
+	assert.Contains(t, output, "https://localhost:8443/console/approve/tx-ratify-123")
+	assert.Contains(t, output, "tx-ratify-123")
+	assert.Contains(t, output, expiresAt.Format(time.RFC3339))
+}
+
+func TestAppPlatformEnrollmentClient_SubmitRequest_RejectsUnrelated403ContainingBootstrappedSubstring(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	var hits int
+	mockTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		hits++
+		rec := httptest.NewRecorder()
+		rec.Header().Set("Content-Type", "application/json")
+		rec.WriteHeader(http.StatusForbidden)
+		_, _ = rec.Write([]byte(`{"error":"forbidden: custom policy on bootstrapped node"}`))
+		return rec.Result(), nil
+	})
+
+	client, err := NewAppPlatformEnrollmentClient("claude", fileSvc, cfg, nil, AppEnrollmentOptions{
+		GatewayHTTPURL: "http://localhost:8080",
+		HTTPClient:     &http.Client{Transport: mockTransport},
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_, err = client.Enroll(ctx, nil)
+	require.Error(t, err)
+	assert.Equal(t, 1, hits, "unrelated 403 containing 'bootstrapped' substring must not trigger bootstrap retry loop")
+}
+

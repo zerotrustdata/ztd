@@ -21,9 +21,6 @@ type Config struct {
 	CertIdentityMode   string
 	AllowedOrigins     []string
 	Posture            string
-	ConsensusID        string
-	ConsensusURL       string
-	ConsensusBootstrap string
 	PasskeyRpID        string
 	PasskeyRpName      string
 	PasskeyRpOrigins   []string

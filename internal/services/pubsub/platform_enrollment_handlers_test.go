@@ -1880,7 +1880,8 @@ func TestHandleRevoke_AppComponentRevokesCertificateDeletesPolicyAndDisconnects(
 	assert.Equal(t, "platform enrollment revoke request_id=req-1 component=dashboard", summary)
 	assert.Equal(t, []enrollTestRevocation{{Serial: "4242", Reason: "key compromise"}}, env.pki.revocations,
 		"the reason must be trimmed before it reaches the CA")
-	assert.Equal(t, []string{policyColl + "/dashboard-app"}, env.store.deletes)
+	signersColl := marshaler.CollectionName(constants.CollectionTrustedSigners)
+	assert.Equal(t, []string{policyColl + "/dashboard-app", signersColl + "/dashboard-app"}, env.store.deletes)
 	assert.Equal(t, []string{"dashboard-app"}, env.conns.disconnected, "live connections for the revoked app must be dropped")
 
 	coll := platformEnrollmentCollection()

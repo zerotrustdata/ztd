@@ -119,6 +119,7 @@ func TestAllActionTypes_ContainsAllConstants(t *testing.T) {
 		ActionTypePlatformEnrollmentPersistPolicy,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentRevoke,
+		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePortCheck,
 		ActionTypeOllamaModelInventory,
 		ActionTypeOllamaModelResidency,

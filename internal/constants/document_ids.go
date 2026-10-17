@@ -25,4 +25,5 @@ type DocumentID string
 const (
 	DocIDPlatformSettings DocumentID = "platform_settings"
 	DocIDEmbeddedOperator DocumentID = "embedded-operator"
+	DocIDConsensusBinding DocumentID = "consensus_binding"
 )

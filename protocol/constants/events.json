@@ -2460,6 +2460,24 @@
       ],
       "persistence": "gateway.docstore"
     },
+    "PlatformEnrollmentBindConsensusRequested": {
+      "_go_const": "EventPlatformEnrollmentBindConsensusRequested",
+      "value": "ztd.v1.platform.enrollment.bind_consensus.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
     "PlatformExternalServiceConfigured": {
       "_go_const": "EventPlatformExternalServiceConfigured",
       "value": "ztd.v1.platform.external.service.configured",

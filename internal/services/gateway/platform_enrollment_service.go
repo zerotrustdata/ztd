@@ -35,6 +35,20 @@ import (
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
+// PlatformEnrollmentL3Suspender suspends a governance envelope that failed L4
+// verification with ErrL3ProofMissing so the owner can approve it via WebAuthn
+// or a signed CLI approval ceremony.
+type PlatformEnrollmentL3Suspender interface {
+	SuspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.GovernanceEnvelope) (models.PlatformEnrollmentL3SuspensionResponse, error)
+}
+
+// PlatformEnrollmentRuntimeIdentity resolves the embedded Operator's current
+// runtime identity so Gateway-local enrollment envelopes carry the active
+// OperatorSessionId required by L4Warden and suspended transaction audit chains.
+type PlatformEnrollmentRuntimeIdentity interface {
+	RuntimeIdentity(ctx context.Context) (govpkg.RuntimeIdentity, error)
+}
+
 // PlatformEnrollmentService owns the platform workload enrollment
 // lifecycle: request creation/deduplication/quotas, owner decisions,
 // issuance leases, idempotent component issuance, reconciliation of
@@ -60,13 +74,15 @@ import (
 // an expired lease by transitioning issuing -> approved so a new
 // completion attempt can re-acquire.
 type PlatformEnrollmentService struct {
-	db        *DocumentStoreService
-	userSvc   *UserService
-	envProc   governance.EnvelopeProcessor
-	stateRoot governance.StateRootProvider
-	posture   constants.Posture
-	approvals *ApprovalsChangePublisher
-	logger    *slog.Logger
+	db              *DocumentStoreService
+	userSvc         *UserService
+	envProc         governance.EnvelopeProcessor
+	stateRoot       governance.StateRootProvider
+	posture         constants.Posture
+	approvals       *ApprovalsChangePublisher
+	l3Suspender     PlatformEnrollmentL3Suspender
+	runtimeIdentity PlatformEnrollmentRuntimeIdentity
+	logger          *slog.Logger
 
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
@@ -86,16 +102,23 @@ func NewPlatformEnrollmentService(
 	stateRoot governance.StateRootProvider,
 	posture constants.Posture,
 	approvals *ApprovalsChangePublisher,
+	l3Suspender PlatformEnrollmentL3Suspender,
+	runtimeIdentity PlatformEnrollmentRuntimeIdentity,
 	logger *slog.Logger,
 ) *PlatformEnrollmentService {
+	if db != nil && approvals != nil {
+		db.BindApprovalsNotifier(approvals)
+	}
 	return &PlatformEnrollmentService{
-		db:        db,
-		userSvc:   userSvc,
-		envProc:   envProc,
-		stateRoot: stateRoot,
-		posture:   posture,
-		approvals: approvals,
-		logger:    logger,
+		db:              db,
+		userSvc:         userSvc,
+		envProc:         envProc,
+		stateRoot:       stateRoot,
+		posture:         posture,
+		approvals:       approvals,
+		l3Suspender:     l3Suspender,
+		runtimeIdentity: runtimeIdentity,
+		logger:          logger,
 	}
 }
 
@@ -466,6 +489,10 @@ func (s *PlatformEnrollmentService) Decide(ctx context.Context, actorUserID stri
 		Reason:        req.Reason,
 		Fingerprints:  payloadFingerprints(existing.Fingerprints),
 	}); err != nil {
+		var l3Err *models.PlatformEnrollmentL3RequiredError
+		if errors.As(err, &l3Err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("platform enrollment: decide envelope: %w", err)
 	}
 
@@ -482,7 +509,6 @@ func (s *PlatformEnrollmentService) Decide(ctx context.Context, actorUserID stri
 		"request_id", req.RequestID,
 		"decision", string(req.Decision),
 		"actor_user_id", actorUserID)
-	s.approvals.EnrollmentsDecided(ctx)
 
 	return &models.PlatformEnrollmentDecisionResponse{
 		RequestID: req.RequestID,
@@ -527,13 +553,16 @@ func (s *PlatformEnrollmentService) DecideBatch(ctx context.Context, actorUserID
 	}
 	env, err := s.submitEnvelope(ctx, constants.PlatformEnrollmentActionDecide, payload)
 	if err != nil {
+		var l3Err *models.PlatformEnrollmentL3RequiredError
+		if errors.As(err, &l3Err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("platform enrollment: batch decision envelope: %w", err)
 	}
 	resp := &models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: env.GetId(), Requests: make([]models.PlatformEnrollmentDecisionResponse, len(req.Requests))}
 	for i, target := range req.Requests {
 		resp.Requests[i] = models.PlatformEnrollmentDecisionResponse{RequestID: target.RequestID, State: state}
 	}
-	s.approvals.EnrollmentsDecided(ctx)
 	return resp, nil
 }
 
@@ -589,6 +618,10 @@ func (s *PlatformEnrollmentService) Revoke(ctx context.Context, actorUserID stri
 		TargetDocumentId: targetDocumentID,
 		Reason:           strings.TrimSpace(req.Reason),
 	}); err != nil {
+		var l3Err *models.PlatformEnrollmentL3RequiredError
+		if errors.As(err, &l3Err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("platform enrollment: revoke envelope: %w", err)
 	}
 	updated, err := s.loadByID(ctx, existing.ID)
@@ -599,6 +632,79 @@ func (s *PlatformEnrollmentService) Revoke(ctx context.Context, actorUserID stri
 		return nil, constants.ErrPlatformEnrollmentInvalidState
 	}
 	return &models.PlatformEnrollmentRevokeResponse{RequestID: updated.ID, ComponentKind: updated.ComponentKind, State: updated.State}, nil
+}
+
+// BindConsensusApplication binds an enrolled application as the Gateway consensus application.
+func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context, actorUserID string, req models.PlatformEnrollmentBindConsensusRequest) (*models.ConsensusPolicy, error) {
+	appID := strings.TrimSpace(req.AppID)
+	if appID == "" {
+		return nil, fmt.Errorf("%w: app_id", constants.ErrMissingRequiredField)
+	}
+	endpointURL := strings.TrimSpace(req.EndpointURL)
+	if endpointURL == "" {
+		return nil, fmt.Errorf("%w: endpoint_url", constants.ErrMissingRequiredField)
+	}
+	user, err := s.userSvc.GetByID(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: authorize consensus binding: %w", err)
+	}
+	if user == nil || !user.IsActive() {
+		return nil, constants.ErrPlatformEnrollmentInvalidDecision
+	}
+	isFirst, err := s.userSvc.IsFirstUser(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: authorize consensus binding: %w", err)
+	}
+	if !isFirst {
+		return nil, constants.ErrPlatformEnrollmentInvalidDecision
+	}
+
+	// Verify app is enrolled
+	spiffeID := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
+	appDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: check app policy: %w", err)
+	}
+	if appDoc == nil {
+		appDoc, err = s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), appID)
+		if err != nil {
+			return nil, fmt.Errorf("platform enrollment: check app policy: %w", err)
+		}
+	}
+	if appDoc == nil {
+		return nil, constants.ErrConsensusAppNotEnrolled
+	}
+
+	payload := &commonv1.PlatformEnrollmentGovernancePayload{
+		Action:               string(constants.PlatformEnrollmentActionBindConsensus),
+		ComponentKind:        commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
+		InstanceId:           appID,
+		ConsensusEndpointUrl: endpointURL,
+		ActorUserId:          actorUserID,
+	}
+	_, err = s.submitEnvelope(ctx, constants.PlatformEnrollmentActionBindConsensus, payload)
+	if err != nil {
+		var l3Err *models.PlatformEnrollmentL3RequiredError
+		if errors.As(err, &l3Err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("platform enrollment: bind consensus envelope: %w", err)
+	}
+
+	boundDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err != nil || boundDoc == nil {
+		return nil, fmt.Errorf("read bound consensus: %w", err)
+	}
+	bData, err := json.Marshal(boundDoc.Data)
+	if err != nil {
+		return nil, fmt.Errorf("marshal bound consensus: %w", err)
+	}
+	var policy models.ConsensusPolicy
+	if err := json.Unmarshal(bData, &policy); err != nil {
+		return nil, fmt.Errorf("unmarshal bound consensus: %w", err)
+	}
+	policy.ID = boundDoc.ID
+	return &policy, nil
 }
 
 // ListEnrolled returns owner-visible metadata for completed and revoked
@@ -942,6 +1048,8 @@ func platformEnrollmentRequestEvent(action constants.PlatformEnrollmentGovernanc
 		return constants.EventPlatformEnrollmentCreateSessionRequested
 	case constants.PlatformEnrollmentActionRevoke:
 		return constants.EventPlatformEnrollmentRevokeRequested
+	case constants.PlatformEnrollmentActionBindConsensus:
+		return constants.EventPlatformEnrollmentBindConsensusRequested
 	default:
 		return ""
 	}
@@ -959,6 +1067,23 @@ func (s *PlatformEnrollmentService) submitEnvelope(ctx context.Context, action c
 		return nil, fmt.Errorf("marshal payload: %w", err)
 	}
 
+	operatorSessionID := constants.EmbeddedOperatorBootstrapSessionID
+	if s.runtimeIdentity != nil {
+		identity, err := s.runtimeIdentity.RuntimeIdentity(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("resolve embedded operator runtime identity: %w", err)
+		}
+		if strings.TrimSpace(identity.SessionID) != "" {
+			operatorSessionID = strings.TrimSpace(identity.SessionID)
+		}
+	}
+
+	requestorUserID := strings.TrimSpace(payload.GetActorUserId())
+	if requestorUserID == "" {
+		requestorUserID, _ = ctx.Value(constants.ContextKeyUserID).(string)
+	}
+	cliSessionID, _ := ctx.Value(constants.ContextKeyCLISessionID).(string)
+
 	var lastErr error
 	for attempt := 0; attempt <= platformEnrollmentStateRootMaxRetries; attempt++ {
 		stateRoot, err := s.stateRoot.GetCurrentStateRoot(ctx)
@@ -972,17 +1097,20 @@ func (s *PlatformEnrollmentService) submitEnvelope(ctx context.Context, action c
 		}
 
 		env := &commonv1.GovernanceEnvelope{
-			ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
-			Timestamp:       timestamppb.Now(),
-			ExpiresAt:       timestamppb.New(time.Now().Add(5 * time.Minute)),
-			SourceComponent: commonv1.Component_COMPONENT_ZTDO,
-			OperatorId:      string(constants.DocIDEmbeddedOperator),
-			ActionType:      string(action),
-			EventType:       string(platformEnrollmentRequestEvent(action)),
-			Payload:         payloadBytes,
-			StateMerkleRoot: stateRoot,
-			Nonce:           nonce,
-			Posture:         string(s.posture),
+			ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
+			Timestamp:         timestamppb.Now(),
+			ExpiresAt:         timestamppb.New(time.Now().Add(5 * time.Minute)),
+			SourceComponent:   commonv1.Component_COMPONENT_ZTDO,
+			OperatorId:        string(constants.DocIDEmbeddedOperator),
+			OperatorSessionId: operatorSessionID,
+			RequestorUserId:   requestorUserID,
+			CliSessionId:      strings.TrimSpace(cliSessionID),
+			ActionType:        string(action),
+			EventType:         string(platformEnrollmentRequestEvent(action)),
+			Payload:           payloadBytes,
+			StateMerkleRoot:   stateRoot,
+			Nonce:             nonce,
+			Posture:           string(s.posture),
 			Governance: &commonv1.GovernanceMetadata{
 				L1: &commonv1.L1Metadata{Validated: true},
 			},
@@ -1011,6 +1139,15 @@ func (s *PlatformEnrollmentService) submitEnvelope(ctx context.Context, action c
 				return nil, constants.ErrPlatformEnrollmentGovernanceRejected
 			}
 			return env, nil
+		}
+		if errors.Is(err, governance.ErrL3ProofMissing) &&
+			(action == constants.PlatformEnrollmentActionDecide || action == constants.PlatformEnrollmentActionRevoke || action == constants.PlatformEnrollmentActionBindConsensus) &&
+			s.l3Suspender != nil {
+			suspension, suspendErr := s.l3Suspender.SuspendGovernanceEnvelope(submitCtx, env)
+			if suspendErr != nil {
+				return nil, fmt.Errorf("suspend platform enrollment envelope for L3 approval: %w", suspendErr)
+			}
+			return nil, &models.PlatformEnrollmentL3RequiredError{Suspension: suspension}
 		}
 		lastErr = err
 		if errors.Is(err, constants.ErrTxStateRootMismatch) && attempt < platformEnrollmentStateRootMaxRetries {

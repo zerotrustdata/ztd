@@ -36,6 +36,14 @@
       }
     },
 
+    "endpoint": {
+      "endpoint_url": {
+        "type": "string",
+        "required": false,
+        "description": "HTTPS deliberation endpoint URL for the bound consensus application."
+      }
+    },
+
     "lifecycle": {
       "enabled": {
         "type": "boolean",

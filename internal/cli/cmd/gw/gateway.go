@@ -71,9 +71,6 @@ type GatewayFlags struct {
 	RateLimitBurst     int
 	LogLevel           string
 	CertIdentityMode   string
-	ConsensusID        string
-	ConsensusURL       string
-	ConsensusBootstrap string
 	MCPDownstreamURL   string
 	MCPDownstreamCmd   string
 	MCPDownstreamArgs  string
@@ -117,9 +114,6 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().IntVar(&f.RateLimitBurst, "rate-limit-burst", 0, "Gateway rate limit burst size")
 	cmd.Flags().StringVar(&f.LogLevel, "log", "info", "Log level: info, error, debug")
 	cmd.Flags().StringVar(&f.CertIdentityMode, "cert-mode", "", "Certificate mode: full (all hostnames/IPs), localhost (only localhost)")
-	cmd.Flags().StringVar(&f.ConsensusID, "consensus-id", "", "ID of the ConsensusPolicy for L2 consensus (required for --consensus)")
-	cmd.Flags().StringVar(&f.ConsensusURL, "consensus-url", "", "URL of the Consensus service for L2 deliberation (e.g. https://localhost:8443/consensus/v1/deliberate)")
-	cmd.Flags().StringVar(&f.ConsensusBootstrap, "consensus-bootstrap", "", "Path to a JSON file that seeds a ConsensusPolicy and trusted signers at startup (for deterministic demo deployments)")
 	cmd.Flags().StringVar(&f.MCPDownstreamURL, "mcp-downstream-url", "", "URL of a downstream MCP server to proxy discovery and execution to (default: none)")
 	cmd.Flags().StringVar(&f.MCPDownstreamCmd, "mcp-downstream-cmd", "", "Command of a downstream MCP subprocess to proxy discovery and execution to (default: none)")
 	cmd.Flags().StringVar(&f.MCPDownstreamArgs, "mcp-downstream-args", "", "Comma-separated arguments for the downstream MCP subprocess (default: none)")
@@ -180,9 +174,6 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		RateLimitBurst:                     f.RateLimitBurst,
 		LogLevel:                           f.LogLevel,
 		CertIdentityMode:                   f.CertIdentityMode,
-		ConsensusID:                        f.ConsensusID,
-		ConsensusURL:                       f.ConsensusURL,
-		ConsensusBootstrap:                 f.ConsensusBootstrap,
 		MCPDownstreamURL:                   f.MCPDownstreamURL,
 		MCPDownstreamCmd:                   f.MCPDownstreamCmd,
 		MCPDownstreamArgs:                  parseDownstreamArgs(f.MCPDownstreamArgs),
@@ -227,18 +218,15 @@ func defaultWizardRunner(opts wizard.Options) (wizard.Result, error) {
 // Only wizard-owned fields are included — the wizard never sees flags it cannot edit.
 func wizardConfigFromFlags(f GatewayFlags) wizard.Config {
 	return wizard.Config{
-		PublicBaseURL:      f.PublicBaseURL,
-		CertIdentityMode:   f.CertIdentityMode,
-		AllowedOrigins:     f.AllowedOrigins,
-		Posture:            f.Posture,
-		ConsensusID:        f.ConsensusID,
-		ConsensusURL:       f.ConsensusURL,
-		ConsensusBootstrap: f.ConsensusBootstrap,
-		PasskeyRpID:        f.PasskeyRpID,
-		PasskeyRpName:      f.PasskeyRpName,
-		PasskeyRpOrigins:   f.PasskeyRpOrigins,
-		MCPDownstreamURL:   f.MCPDownstreamURL,
-		A2ADownstreamURL:   f.A2ADownstreamURL,
+		PublicBaseURL:    f.PublicBaseURL,
+		CertIdentityMode: f.CertIdentityMode,
+		AllowedOrigins:   f.AllowedOrigins,
+		Posture:          f.Posture,
+		PasskeyRpID:      f.PasskeyRpID,
+		PasskeyRpName:    f.PasskeyRpName,
+		PasskeyRpOrigins: f.PasskeyRpOrigins,
+		MCPDownstreamURL: f.MCPDownstreamURL,
+		A2ADownstreamURL: f.A2ADownstreamURL,
 	}
 }
 
@@ -250,9 +238,6 @@ func applyWizardConfig(f GatewayFlags, wc wizard.Config) GatewayFlags {
 	f.CertIdentityMode = wc.CertIdentityMode
 	f.AllowedOrigins = wc.AllowedOrigins
 	f.Posture = wc.Posture
-	f.ConsensusID = wc.ConsensusID
-	f.ConsensusURL = wc.ConsensusURL
-	f.ConsensusBootstrap = wc.ConsensusBootstrap
 	f.PasskeyRpID = wc.PasskeyRpID
 	f.PasskeyRpName = wc.PasskeyRpName
 	f.PasskeyRpOrigins = wc.PasskeyRpOrigins
@@ -370,8 +355,6 @@ Any flags provided on the command line are used as initial values in the wizard.
 			cmd.Printf("  Posture:            %s\n", resolved.Posture)
 			cmd.Printf("  Public Base URL:    %s\n", resolved.PublicBaseURL)
 			cmd.Printf("  Cert Identity Mode: %s\n", resolved.CertIdentityMode)
-			cmd.Printf("  Consensus ID:       %s\n", resolved.ConsensusID)
-			cmd.Printf("  Consensus URL:      %s\n", resolved.ConsensusURL)
 			cmd.Printf("  MCP Downstream URL: %s\n", resolved.MCPDownstreamURL)
 			cmd.Printf("  A2A Downstream URL: %s\n", resolved.A2ADownstreamURL)
 			cmd.Printf("  Passkey RP ID:      %s\n", resolved.PasskeyRpID)

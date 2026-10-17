@@ -23,9 +23,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
-	"github.com/zerotrustdata/ztd/internal/services/consensus"
-	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
-	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
@@ -37,110 +34,7 @@ func newTestGovernanceController(t *testing.T) *GovernanceController {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	responder := response.NewWriter(logger)
-	return newGovernanceController(GovernanceControllerDeps{Cfg: cfg, Logger: logger, Responder: responder, Consensus: nil})
-}
-
-func newTestRouterHandler(t *testing.T, posture constants.Posture, cs *consensus.ConsensusService) *HTTPHandler {
-	t.Helper()
-	cfg := testutil.NewTestConfig(t)
-	cfg.Gateway.Posture = posture
-	logger := testutil.NewTestLogger()
-	responder := response.NewWriter(logger)
-	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, storagetest.NewTestTokenStore())
-	require.NoError(t, err)
-	h, err := newHTTPHandler(HTTPHandlerDependencies{
-		Cfg:    cfg,
-		Logger: logger,
-		AuditControllerDeps: AuditControllerDeps{
-			Cfg:       cfg,
-			Logger:    logger,
-			Responder: responder,
-			Scrubber:  scrubber,
-		},
-		GovernanceControllerDeps: GovernanceControllerDeps{
-			Cfg:       cfg,
-			Logger:    logger,
-			Responder: responder,
-			Consensus: cs,
-		},
-		PKIControllerDeps: PKIControllerDeps{
-			Cfg:       cfg,
-			Logger:    logger,
-			Responder: responder,
-		},
-	})
-	require.NoError(t, err)
-	return h
-}
-
-// TestHTTPRouter_ConsensusDeliberate_PostureRouteRegistration locks the
-// posture-gated registration of the consensus deliberate route across all four
-// governance postures. The route is registered only when the posture requires
-// L2 consensus (consensus and notary); doctrine and ratify audit L2 rather than
-// enforce it, so the route is absent and the router returns 404. When the route
-// is registered, a request reaches the deliberate handler rather than returning
-// 404 — an empty body yields 400 Bad Request from the handler, which
-// distinguishes "route absent" (404) from "route present, handler rejected
-// input" (400). No nil consensus guard or 503 behavior is asserted: the route
-// is simply not registered when L2 is audited, so handleConsensusDeliberate is
-// only ever called with a non-nil consensus service.
-func TestHTTPRouter_ConsensusDeliberate_PostureRouteRegistration(t *testing.T) {
-	logger := testutil.NewTestLogger()
-	responder := response.NewWriter(logger)
-	cs := consensus.NewConsensusService("test-cluster", nil, nil, logger, responder)
-
-	cases := []struct {
-		name           string
-		posture        constants.Posture
-		consensus      *consensus.ConsensusService
-		wantRegistered bool
-	}{
-		{
-			name:           "doctrine audits L2 so the deliberate route is absent",
-			posture:        constants.PostureDoctrine,
-			consensus:      nil,
-			wantRegistered: false,
-		},
-		{
-			name:           "ratify audits L2 so the deliberate route is absent",
-			posture:        constants.PostureRatify,
-			consensus:      nil,
-			wantRegistered: false,
-		},
-		{
-			name:           "consensus enforces L2 so the deliberate route reaches the handler",
-			posture:        constants.PostureConsensus,
-			consensus:      cs,
-			wantRegistered: true,
-		},
-		{
-			name:           "notary enforces L2 so the deliberate route reaches the handler",
-			posture:        constants.PostureNotary,
-			consensus:      cs,
-			wantRegistered: true,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			h := newTestRouterHandler(t, tc.posture, tc.consensus)
-			router := h.buildPublicRouter()
-
-			req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ConsensusDeliberate, bytes.NewReader([]byte(`{}`)))
-			w := httptest.NewRecorder()
-			router.ServeHTTP(w, req)
-
-			if !tc.wantRegistered {
-				require.Equal(t, http.StatusNotFound, w.Code, "posture %q must not register the deliberate route", tc.posture)
-				return
-			}
-			// Route present: the handler is reached. An empty body is rejected
-			// by the deliberate handler as 400 Bad Request, which proves the
-			// request was not short-circuited by a missing route (404).
-			require.NotEqual(t, http.StatusNotFound, w.Code, "posture %q must register the deliberate route", tc.posture)
-			require.Equal(t, http.StatusBadRequest, w.Code, "posture %q deliberate handler should reject an empty body with 400", tc.posture)
-		})
-	}
+	return newGovernanceController(GovernanceControllerDeps{Cfg: cfg, Logger: logger, Responder: responder})
 }
 
 func TestGovernanceEnvelope_NotConfigured_Returns503_Unit(t *testing.T) {

@@ -79,3 +79,25 @@ export interface PlatformEnrollmentRequest {
   expires_at?: string;
   fingerprints?: { app?: string; operator?: string; cli?: string };
 }
+
+export interface PlatformEnrollmentL3SuspensionResponse {
+  status: 'l3_required';
+  posture: string;
+  tx_hash: string;
+  approval_url: string;
+  expires_at: string;
+  message: string;
+}
+
+export type PlatformEnrollmentDecisionResponse =
+  | PlatformEnrollmentRequest
+  | PlatformEnrollmentL3SuspensionResponse;
+
+export function isPlatformEnrollmentL3Suspension(
+  v: unknown,
+): v is PlatformEnrollmentL3SuspensionResponse {
+  if (!v || typeof v !== 'object') return false;
+  const r = v as Record<string, unknown>;
+  return r.status === 'l3_required' && typeof r.tx_hash === 'string' && r.tx_hash.length > 0;
+}
+

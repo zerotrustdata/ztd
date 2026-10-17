@@ -121,10 +121,6 @@ type GatewayConfig struct {
 	// renewal (default: 7 days).
 	OperatorLeafCertTTL time.Duration
 
-	// Consensus configuration for consensus posture
-	ConsensusID  string // ID of the ConsensusPolicy to use for L2 deliberation (required for --consensus)
-	ConsensusURL string // URL of the Consensus service for L2 deliberation (e.g. https://localhost:8443/consensus/v1/deliberate)
-
 	// CORS allowed origins for cross-origin browser access (e.g. https://lovable.dev)
 	AllowedOrigins []string
 
@@ -321,9 +317,6 @@ type GatewayOptions struct {
 
 	CertMode            string
 	NetworkIdentityFile string
-
-	ConsensusID  string
-	ConsensusURL string
 
 	AllowedOrigins []string
 
@@ -534,10 +527,6 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 			CertMode:            opts.CertMode,
 			NetworkIdentityFile: opts.NetworkIdentityFile,
 			OperatorLeafCertTTL: 7 * 24 * time.Hour,
-
-			// Consensus configuration
-			ConsensusID:  opts.ConsensusID,
-			ConsensusURL: opts.ConsensusURL,
 
 			AllowedOrigins: opts.AllowedOrigins,
 			DoctrineDir:    opts.DoctrineDir,

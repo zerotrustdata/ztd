@@ -10,9 +10,11 @@ package authcmd
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 
@@ -145,6 +147,19 @@ func revokePlatformEnrollmentCmdWithConfig(
 			body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentRevoke, request)
 			if err != nil {
 				return fmt.Errorf("enroll revoke: post revocation: %w", err)
+			}
+			var suspension models.PlatformEnrollmentL3SuspensionResponse
+			if err := json.Unmarshal(body, &suspension); err == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
+				reason := suspension.Posture.HumanApprovalReason()
+				if reason == "" {
+					reason = suspension.Message
+				}
+				cmd.Printf("Revocation submitted for L3 human approval (%s posture).\n", suspension.Posture)
+				cmd.Printf("Reason:       %s\n", reason)
+				cmd.Printf("Approval URL: %s\n", suspension.ApprovalURL)
+				cmd.Printf("Transaction:  %s\n", suspension.TxHash)
+				cmd.Printf("Expires At:   %s\n", suspension.ExpiresAt.Format(time.RFC3339))
+				return nil
 			}
 			response, err := auth.DecodePlatformEnrollmentRevoke(body)
 			if err != nil {
@@ -283,6 +298,19 @@ func platformEnrollmentDecisionCmdWithConfig(
 
 			resp, err := PostPlatformEnrollmentBatchDecision(client, decision)
 			if err != nil {
+				var l3Err *models.PlatformEnrollmentL3RequiredError
+				if errors.As(err, &l3Err) {
+					reason := l3Err.Suspension.Posture.HumanApprovalReason()
+					if reason == "" {
+						reason = l3Err.Suspension.Message
+					}
+					cmd.Printf("Decision submitted for L3 human approval (%s posture).\n", l3Err.Suspension.Posture)
+					cmd.Printf("Reason:       %s\n", reason)
+					cmd.Printf("Approval URL: %s\n", l3Err.Suspension.ApprovalURL)
+					cmd.Printf("Transaction:  %s\n", l3Err.Suspension.TxHash)
+					cmd.Printf("Expires At:   %s\n", l3Err.Suspension.ExpiresAt.Format(time.RFC3339))
+					return nil
+				}
 				return fmt.Errorf("enroll %s: %w", spec.verb, err)
 			}
 			for _, result := range resp.Requests {
@@ -324,6 +352,10 @@ func PostPlatformEnrollmentBatchDecision(client APIClient, req models.PlatformEn
 	body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentBatchDecision, req)
 	if err != nil {
 		return nil, fmt.Errorf("post batch decision: %w", err)
+	}
+	var suspension models.PlatformEnrollmentL3SuspensionResponse
+	if err := json.Unmarshal(body, &suspension); err == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
+		return nil, &models.PlatformEnrollmentL3RequiredError{Suspension: suspension}
 	}
 	var resp models.PlatformEnrollmentBatchDecisionResponse
 	if err := json.Unmarshal(body, &resp); err != nil {

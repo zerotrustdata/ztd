@@ -212,6 +212,7 @@ const EventPlatformAuthUserAuthenticated EventType = "ztd.v1.platform.auth.user.
 const EventPlatformAuthUserUnauthenticated EventType = "ztd.v1.platform.auth.user.unauthenticated"
 const EventPlatformConsoleLogConnectedConfirmed EventType = "ztd.v1.platform.console.log.connected.confirmed"
 const EventPlatformConsoleLogEntryReceived EventType = "ztd.v1.platform.console.log.entry.received"
+const EventPlatformEnrollmentBindConsensusRequested EventType = "ztd.v1.platform.enrollment.bind_consensus.requested"
 const EventPlatformEnrollmentCreateRequested EventType = "ztd.v1.platform.enrollment.create.requested"
 const EventPlatformEnrollmentCreateSessionRequested EventType = "ztd.v1.platform.enrollment.create_session.requested"
 const EventPlatformEnrollmentDecideRequested EventType = "ztd.v1.platform.enrollment.decide.requested"
@@ -1826,6 +1827,15 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Transport:   nil,
 		Producers:   []string{"gateway"},
 		Persistence: "ephemeral",
+	},
+	EventPlatformEnrollmentBindConsensusRequested: {
+		Key:               "PlatformEnrollmentBindConsensusRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "gateway", "operator"},
+		Persistence:       "gateway.docstore",
+		GovernanceAction:  ActionTypePlatformEnrollmentBindConsensus,
+		GovernancePayload: "ztd.common.v1.PlatformEnrollmentGovernancePayload",
 	},
 	EventPlatformEnrollmentCreateRequested: {
 		Key:               "PlatformEnrollmentCreateRequested",

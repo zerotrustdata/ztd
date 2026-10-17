@@ -56,8 +56,6 @@ func TestResolveStartConfig(t *testing.T) {
 			RateLimitBurst:   50,
 			LogLevel:         "info",
 			CertIdentityMode: "full",
-			ConsensusID:      "",
-			ConsensusURL:     "",
 		})
 
 		assert.Equal(t, string(constants.PostureDoctrine), cfg.Posture)
@@ -120,9 +118,6 @@ func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
 			RateLimitBurst:                    50,
 			LogLevel:                          "info",
 			CertIdentityMode:                  "full",
-			ConsensusID:                       "trib-1",
-			ConsensusURL:                      "https://localhost:8443/consensus/v1/deliberate",
-			ConsensusBootstrap:                "/etc/ztd/consensus-bootstrap.json",
 			MCPDownstreamURL:                  "https://downstream.example.com/mcp",
 			MCPDownstreamCmd:                  "npx",
 			MCPDownstreamArgs:                 []string{"-y", "@modelcontextprotocol/server-filesystem", "/tmp"},

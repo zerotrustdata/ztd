@@ -190,6 +190,8 @@ message PlatformEnrollmentGovernancePayload {
   // writes only while the stored lease still names this owner, so a holder
   // whose lease was reclaimed cannot complete or roll back the request.
   string issuance_lease_owner = 20;
+  // HTTPS deliberation endpoint for a bound consensus application.
+  string consensus_endpoint_url = 21;
 }
 
 message PlatformEnrollmentDecisionTarget {

@@ -37,6 +37,7 @@ const (
 	ActionTypeModelProvenanceObservation      ActionType = "MODEL_PROVENANCE_OBSERVATION"
 	ActionTypeOllamaModelInventory            ActionType = "OLLAMA_MODEL_INVENTORY"
 	ActionTypeOllamaModelResidency            ActionType = "OLLAMA_MODEL_RESIDENCY"
+	ActionTypePlatformEnrollmentBindConsensus ActionType = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
 	ActionTypePlatformEnrollmentCreate        ActionType = "PLATFORM_ENROLLMENT_CREATE"
 	ActionTypePlatformEnrollmentCreateSession ActionType = "PLATFORM_ENROLLMENT_CREATE_SESSION"
 	ActionTypePlatformEnrollmentDecide        ActionType = "PLATFORM_ENROLLMENT_DECIDE"
@@ -75,6 +76,7 @@ var AllActionTypes = []ActionType{
 	ActionTypeModelProvenanceObservation,
 	ActionTypeOllamaModelInventory,
 	ActionTypeOllamaModelResidency,
+	ActionTypePlatformEnrollmentBindConsensus,
 	ActionTypePlatformEnrollmentCreate,
 	ActionTypePlatformEnrollmentCreateSession,
 	ActionTypePlatformEnrollmentDecide,
@@ -98,6 +100,7 @@ func (a ActionType) IsMutation() bool {
 		ActionTypeFileEdit,
 		ActionTypeInference,
 		ActionTypeMcpCall,
+		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
 		ActionTypePlatformEnrollmentIssue,
@@ -114,7 +117,8 @@ func (a ActionType) IsMutation() bool {
 // IsBootstrapAction returns true for platform enrollment bootstrap actions.
 func (a ActionType) IsBootstrapAction() bool {
 	switch a {
-	case ActionTypePlatformEnrollmentCreate,
+	case ActionTypePlatformEnrollmentBindConsensus,
+		ActionTypePlatformEnrollmentCreate,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
 		ActionTypePlatformEnrollmentIssue,

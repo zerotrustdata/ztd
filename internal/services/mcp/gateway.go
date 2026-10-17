@@ -1197,6 +1197,32 @@ func extractCertFingerprint(r *http.Request) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func (g *GatewayService) storeSuspendedTransaction(ctx context.Context, tx *models.SuspendedTransaction) error {
+	if g.suspendedStore == nil {
+		return fmt.Errorf("gateway: store suspended transaction %s: %w", tx.TransactionHash, constants.ErrSuspendedStoreRequired)
+	}
+	if err := g.suspendedStore.StoreSuspendedTransaction(ctx, tx); err != nil {
+		return fmt.Errorf("gateway: store suspended transaction %s: %w", tx.TransactionHash, err)
+	}
+
+	// Emit approval.requested to the targeted Operator session's audit chain.
+	// This is the opening bookend for the approval lifecycle.
+	event := &storage.Event{
+		OperatorSessionID: tx.OperatorSessionID,
+		Timestamp:         time.Now().UTC(),
+		Type:              constants.Event.Operator.Notary.ApprovalRequested,
+		ContentText:       fmt.Sprintf("Transaction %s approval requested (tool: %s, expires at: %s)", tx.TransactionHash, tx.ToolName, tx.ExpiresAt.Format(time.RFC3339)),
+	}
+	if _, err := g.auditStore.RecordEvent(event); err != nil {
+		auditErr := fmt.Errorf("gateway: record approval requested for transaction %s on session %s: %w", tx.TransactionHash, tx.OperatorSessionID, err)
+		if delErr := g.suspendedStore.DeleteSuspendedTransaction(ctx, tx.TransactionHash); delErr != nil {
+			return errors.Join(auditErr, fmt.Errorf("gateway: roll back suspended transaction %s: %w", tx.TransactionHash, delErr))
+		}
+		return auditErr
+	}
+	return nil
+}
+
 // StoreSuspendedTransaction stores a transaction awaiting L3 approval and records
 // the approval.requested event on the audit chain of the Operator session the
 // envelope targets. The suspension fails closed: an envelope without an Operator
@@ -1212,11 +1238,12 @@ func (g *GatewayService) StoreSuspendedTransaction(ctx context.Context, txHash s
 		return fmt.Errorf("gateway: store suspended transaction %s: decode envelope: %w", txHash, err)
 	}
 	cliSessionID, _ := ctx.Value(constants.ContextKeyCLISessionID).(string)
+	now := time.Now().UTC()
 	tx := &models.SuspendedTransaction{
 		TransactionHash:         txHash,
 		Envelope:                json.RawMessage(envelope),
-		CreatedAt:               time.Now().UTC(),
-		ExpiresAt:               time.Now().UTC().Add(ApprovalRequestTTL),
+		CreatedAt:               now,
+		ExpiresAt:               now.Add(ApprovalRequestTTL),
 		ToolName:                toolName,
 		ToolArguments:           toolArgs,
 		UserID:                  userID,
@@ -1225,26 +1252,58 @@ func (g *GatewayService) StoreSuspendedTransaction(ctx context.Context, txHash s
 		SubmitterCLISessionID:   cliSessionID,
 		ExpectedCertFingerprint: certFingerprint,
 	}
-	if err := g.suspendedStore.StoreSuspendedTransaction(ctx, tx); err != nil {
-		return fmt.Errorf("gateway: store suspended transaction %s: %w", txHash, err)
-	}
+	return g.storeSuspendedTransaction(ctx, tx)
+}
 
-	// Emit approval.requested to the targeted Operator session's audit chain.
-	// This is the opening bookend for the approval lifecycle.
-	event := &storage.Event{
-		OperatorSessionID: tx.OperatorSessionID,
-		Timestamp:         time.Now().UTC(),
-		Type:              constants.Event.Operator.Notary.ApprovalRequested,
-		ContentText:       fmt.Sprintf("Transaction %s approval requested (tool: %s, expires at: %s)", txHash, toolName, tx.ExpiresAt.Format(time.RFC3339)),
+// SuspendGovernanceEnvelope suspends a GovernanceEnvelope awaiting L3 human approval
+// and returns the typed suspension metadata including the console approval URL.
+func (g *GatewayService) SuspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.GovernanceEnvelope) (models.PlatformEnrollmentL3SuspensionResponse, error) {
+	if envelope == nil || strings.TrimSpace(envelope.GetTransactionHash()) == "" || strings.TrimSpace(envelope.GetOperatorSessionId()) == "" {
+		return models.PlatformEnrollmentL3SuspensionResponse{}, fmt.Errorf("gateway: suspend governance envelope: %w", constants.ErrMissingRequiredField)
 	}
-	if _, err := g.auditStore.RecordEvent(event); err != nil {
-		auditErr := fmt.Errorf("gateway: record approval requested for transaction %s on session %s: %w", txHash, tx.OperatorSessionID, err)
-		if delErr := g.suspendedStore.DeleteSuspendedTransaction(ctx, txHash); delErr != nil {
-			return errors.Join(auditErr, fmt.Errorf("gateway: roll back suspended transaction %s: %w", txHash, delErr))
-		}
-		return auditErr
+	rawEnvelope, err := (protojson.MarshalOptions{Multiline: false}).Marshal(envelope)
+	if err != nil {
+		return models.PlatformEnrollmentL3SuspensionResponse{}, fmt.Errorf("gateway: marshal suspended governance envelope %s: %w", envelope.GetTransactionHash(), err)
 	}
-	return nil
+	userID := strings.TrimSpace(envelope.GetRequestorUserId())
+	if userID == "" {
+		userID, _ = ctx.Value(constants.ContextKeyUserID).(string)
+	}
+	cliSessionID := strings.TrimSpace(envelope.GetCliSessionId())
+	if cliSessionID == "" {
+		cliSessionID, _ = ctx.Value(constants.ContextKeyCLISessionID).(string)
+	}
+	toolName := strings.TrimSpace(envelope.GetTargetResource())
+	if toolName == "" {
+		toolName = strings.TrimSpace(envelope.GetActionType())
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(ApprovalRequestTTL)
+	txHash := envelope.GetTransactionHash()
+	tx := &models.SuspendedTransaction{
+		TransactionHash:       txHash,
+		Envelope:              json.RawMessage(rawEnvelope),
+		CreatedAt:             now,
+		ExpiresAt:             expiresAt,
+		ToolName:              toolName,
+		ToolArguments:         json.RawMessage(envelope.GetPayload()),
+		UserID:                userID,
+		OperatorID:            strings.TrimSpace(envelope.GetOperatorId()),
+		OperatorSessionID:     strings.TrimSpace(envelope.GetOperatorSessionId()),
+		SubmitterCLISessionID: cliSessionID,
+	}
+	if err := g.storeSuspendedTransaction(ctx, tx); err != nil {
+		return models.PlatformEnrollmentL3SuspensionResponse{}, err
+	}
+	approvalURL := g.publicBaseURL + constants.APIPaths.ApprovePagePrefix + txHash
+	return models.PlatformEnrollmentL3SuspensionResponse{
+		Status:      models.PlatformEnrollmentStatusL3Required,
+		Posture:     g.posture,
+		TxHash:      txHash,
+		ApprovalURL: approvalURL,
+		ExpiresAt:   expiresAt,
+		Message:     g.posture.HumanApprovalReason(),
+	}, nil
 }
 
 // GetSuspendedTransaction retrieves a suspended transaction by hash.

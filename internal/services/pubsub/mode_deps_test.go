@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -43,9 +42,6 @@ func validTestGatewayModeDeps(posture constants.Posture) GatewayModeDeps {
 		FieldReader:            noopFieldReader{},
 		PlatformEnrollmentDeps: &PlatformEnrollmentDeps{},
 		Posture:                posture,
-	}
-	if posture != constants.PostureDoctrine {
-		deps.Consensus = &consensus.ConsensusService{}
 	}
 	return deps
 }
@@ -150,36 +146,17 @@ func TestNewOutboundModeDeps_ValidationErrors(t *testing.T) {
 func TestNewGatewayModeDeps_Success(t *testing.T) {
 	t.Parallel()
 
-	postures := []struct {
-		name              string
-		posture           constants.Posture
-		requiresConsensus bool
-	}{
-		{name: "doctrine posture (consensus nil)", posture: constants.PostureDoctrine},
-		{name: "consensus posture (consensus non-nil)", posture: constants.PostureConsensus, requiresConsensus: true},
-		{name: "ratify posture (consensus nil)", posture: constants.PostureRatify},
-		{name: "notary posture (consensus non-nil)", posture: constants.PostureNotary, requiresConsensus: true},
-	}
-
-	for _, p := range postures {
-		t.Run(p.name, func(t *testing.T) {
-			input := validTestGatewayModeDeps(p.posture)
-			if !p.requiresConsensus {
-				input.Consensus = nil
-			}
+	for _, posture := range constants.AllPostures {
+		t.Run(string(posture), func(t *testing.T) {
+			input := validTestGatewayModeDeps(posture)
 			deps, err := NewGatewayModeDeps(input)
 			require.NoError(t, err)
 			require.NotNil(t, deps)
-			assert.Equal(t, p.posture, deps.Posture)
+			assert.Equal(t, posture, deps.Posture)
 			assert.Equal(t, input.GovernedDocStore, deps.GovernedDocStore)
 			assert.Equal(t, input.ConsensusPolicyStore, deps.ConsensusPolicyStore)
 			assert.Equal(t, input.FieldReader, deps.FieldReader)
 			assert.Equal(t, input.PlatformEnrollmentDeps, deps.PlatformEnrollmentDeps)
-			if p.requiresConsensus {
-				assert.NotNil(t, deps.Consensus)
-			} else {
-				assert.Nil(t, deps.Consensus)
-			}
 		})
 	}
 }
@@ -268,22 +245,6 @@ func TestNewGatewayModeDeps_ValidationErrors(t *testing.T) {
 				d.PlatformEnrollmentDeps = nil
 			},
 			expectedErr: constants.ErrPlatformEnrollmentDepsRequired,
-		},
-		{
-			name: "nil Consensus under Consensus posture returns ErrConsensusServiceRequired",
-			modify: func(d *GatewayModeDeps) {
-				d.Posture = constants.PostureConsensus
-				d.Consensus = nil
-			},
-			expectedErr: constants.ErrConsensusServiceRequired,
-		},
-		{
-			name: "nil Consensus under Notary posture returns ErrConsensusServiceRequired",
-			modify: func(d *GatewayModeDeps) {
-				d.Posture = constants.PostureNotary
-				d.Consensus = nil
-			},
-			expectedErr: constants.ErrConsensusServiceRequired,
 		},
 		{
 			name: "unrecognized Posture returns ErrInvalidPosture",

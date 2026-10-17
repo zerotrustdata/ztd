@@ -19,6 +19,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -316,8 +317,18 @@ func (c *OperatorBootstrapClient) observeCreated(ctx context.Context, attempt *o
 		"cli_fingerprint", attempt.fingerprints.CLI,
 		"approval_url", created.ApprovalURL,
 		"expires_at", created.ExpiresAt)
-	fmt.Fprintf(os.Stderr, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, created.RequestID)
+	renderOperatorEnrollmentInstructions(os.Stderr, created)
 	return c.cfg.Deployment.Record(ctx, models.OperatorDeploymentState{Phase: models.OperatorDeploymentPhasePendingApproval, RequestID: created.RequestID})
+}
+
+func renderOperatorEnrollmentInstructions(w io.Writer, created *models.PlatformEnrollmentCreateResponse) {
+	if w == nil || created == nil {
+		return
+	}
+	fmt.Fprintf(w, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, created.RequestID)
+	if url := strings.TrimSpace(created.ApprovalURL); url != "" {
+		fmt.Fprintf(w, "Passkey approval URL: %s\n", url)
+	}
 }
 
 // readOperatorBootstrapFrame reads the next frame and requires want. A read

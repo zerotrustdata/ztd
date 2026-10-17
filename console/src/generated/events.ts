@@ -202,6 +202,7 @@ export const EventType = Object.freeze({
     PLATFORM_AUTH_USER_UNAUTHENTICATED: 'ztd.v1.platform.auth.user.unauthenticated',
     PLATFORM_CONSOLE_LOG_CONNECTED_CONFIRMED: 'ztd.v1.platform.console.log.connected.confirmed',
     PLATFORM_CONSOLE_LOG_ENTRY_RECEIVED: 'ztd.v1.platform.console.log.entry.received',
+    PLATFORM_ENROLLMENT_BIND_CONSENSUS_REQUESTED: 'ztd.v1.platform.enrollment.bind_consensus.requested',
     PLATFORM_ENROLLMENT_CREATE_REQUESTED: 'ztd.v1.platform.enrollment.create.requested',
     PLATFORM_ENROLLMENT_CREATE_SESSION_REQUESTED: 'ztd.v1.platform.enrollment.create_session.requested',
     PLATFORM_ENROLLMENT_DECIDE_REQUESTED: 'ztd.v1.platform.enrollment.decide.requested',
@@ -1430,6 +1431,14 @@ export const EventRegistry = Object.freeze({
         kind: 'outcome',
         producers: ['gateway'],
         persistence: 'ephemeral',
+    }),
+    PLATFORM_ENROLLMENT_BIND_CONSENSUS_REQUESTED: Object.freeze({
+        kind: 'request',
+        transport: ['governed'],
+        producers: ['cli', 'gateway', 'operator'],
+        persistence: 'gateway.docstore',
+        actionType: 'PLATFORM_ENROLLMENT_BIND_CONSENSUS',
+        payload: 'ztd.common.v1.PlatformEnrollmentGovernancePayload',
     }),
     PLATFORM_ENROLLMENT_CREATE_REQUESTED: Object.freeze({
         kind: 'request',

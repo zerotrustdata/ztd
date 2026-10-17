@@ -291,6 +291,7 @@ should be populated per instance.
 | reason | [string](#string) |  |  |
 | decision_targets | [PlatformEnrollmentDecisionTarget](#ztd-common-v1-PlatformEnrollmentDecisionTarget) | repeated | A fixed, bounded decision cohort. Every member is fingerprint-bound and committed atomically by the existing PLATFORM_ENROLLMENT_DECIDE action. |
 | issuance_lease_owner | [string](#string) |  | The issuance lease the ISSUE submitter holds. The handler signs and writes only while the stored lease still names this owner, so a holder whose lease was reclaimed cannot complete or roll back the request. |
+| consensus_endpoint_url | [string](#string) |  | HTTPS deliberation endpoint for a bound consensus application. |
 
 
 

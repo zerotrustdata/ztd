@@ -441,3 +441,12 @@ func TestMcpStdioCmd_FlagsRegistered(t *testing.T) {
 		assert.Equal(t, "string", f.Value.Type(), "--%s should be a string flag", name)
 	}
 }
+
+func TestAgentRunPostureHelp(t *testing.T) {
+	help := agentRunPostureHelp()
+	assert.Contains(t, help, "GATEWAY POSTURE:")
+	for _, p := range constants.AllPostures {
+		assert.Contains(t, help, string(p))
+		assert.Contains(t, help, p.Description())
+	}
+}

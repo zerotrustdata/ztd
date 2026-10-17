@@ -52,7 +52,7 @@ func TestGatewayStartCmdFlags(t *testing.T) {
 			"vault-dir",
 			"passkey-rp-id", "passkey-rp-name",
 			"rate-limit-rps", "rate-limit-burst",
-			"log", "cert-mode", "consensus-id", "consensus-url",
+			"log", "cert-mode",
 			"mcp-downstream-url", "mcp-downstream-cmd", "mcp-downstream-args", "a2a-downstream-url", "follow",
 			"doctrine-dir",
 		}

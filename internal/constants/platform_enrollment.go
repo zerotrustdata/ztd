@@ -20,12 +20,14 @@ const (
 	PlatformEnrollmentActionPersistPolicy PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_PERSIST_POLICY"
 	PlatformEnrollmentActionCreateSession PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_CREATE_SESSION"
 	PlatformEnrollmentActionRevoke        PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_REVOKE"
+	PlatformEnrollmentActionBindConsensus PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
 
-	PlatformEnrollmentIntentRequest PlatformEnrollmentGovernanceIntent = "platform_enrollment.request"
-	PlatformEnrollmentIntentApprove PlatformEnrollmentGovernanceIntent = "platform_enrollment.approve"
-	PlatformEnrollmentIntentDeny    PlatformEnrollmentGovernanceIntent = "platform_enrollment.deny"
-	PlatformEnrollmentIntentIssue   PlatformEnrollmentGovernanceIntent = "platform_enrollment.issue"
-	PlatformEnrollmentIntentRevoke  PlatformEnrollmentGovernanceIntent = "platform_enrollment.revoke"
+	PlatformEnrollmentIntentRequest       PlatformEnrollmentGovernanceIntent = "platform_enrollment.request"
+	PlatformEnrollmentIntentApprove       PlatformEnrollmentGovernanceIntent = "platform_enrollment.approve"
+	PlatformEnrollmentIntentDeny          PlatformEnrollmentGovernanceIntent = "platform_enrollment.deny"
+	PlatformEnrollmentIntentIssue         PlatformEnrollmentGovernanceIntent = "platform_enrollment.issue"
+	PlatformEnrollmentIntentRevoke        PlatformEnrollmentGovernanceIntent = "platform_enrollment.revoke"
+	PlatformEnrollmentIntentBindConsensus PlatformEnrollmentGovernanceIntent = "platform_enrollment.bind_consensus"
 
 	PlatformEnrollmentRequestTTL               = 30 * time.Minute
 	PlatformEnrollmentTokenBytes               = 32

@@ -137,15 +137,6 @@ func (m Model) viewPosture() string {
 	b.WriteString(renderChoice(postures, m.postureChoice, m.focusIndex == 0))
 	b.WriteString("\n\n")
 
-	if m.selectedPosture().RequiresL2() {
-		b.WriteString(m.consensusIDInput.View())
-		b.WriteString("\n\n")
-		b.WriteString(m.consensusBootstrapInput.View())
-		b.WriteString("\n\n")
-		b.WriteString(m.consensusURLInput.View())
-		b.WriteString("\n\n")
-	}
-
 	b.WriteString(m.passkeyRpIDInput.View())
 	b.WriteString("\n\n")
 	b.WriteString(m.passkeyRpNameInput.View())
@@ -200,9 +191,6 @@ func (m Model) viewReview() string {
 		{"Network Exposure", certModeLabel(cfg.CertIdentityMode)},
 		{"CORS Origins", joinOrNone(cfg.AllowedOrigins)},
 		{"Posture", cfg.Posture},
-		{"Consensus ID", orNone(cfg.ConsensusID)},
-		{"Consensus URL", orNone(cfg.ConsensusURL)},
-		{"Consensus Bootstrap", orNone(cfg.ConsensusBootstrap)},
 		{"Passkey RP ID", cfg.PasskeyRpID},
 		{"Passkey RP Name", cfg.PasskeyRpName},
 		{"Passkey RP Origins", joinOrNone(cfg.PasskeyRpOrigins)},

@@ -33,9 +33,6 @@ func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
 		RateLimitBurst:     50,
 		LogLevel:           "debug",
 		CertIdentityMode:   "full",
-		ConsensusID:        "trib-1",
-		ConsensusURL:       "https://localhost:8443/consensus/v1/deliberate",
-		ConsensusBootstrap: "/etc/ztd/consensus.json",
 		MCPDownstreamURL:   "https://downstream/mcp",
 		A2ADownstreamURL:   "https://downstream/a2a",
 		PublicBaseURL:      "https://demo.example.com",
@@ -59,9 +56,6 @@ func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
 	assert.Equal(t, 50, cfg.RateLimitBurst)
 	assert.Equal(t, "debug", cfg.LogLevel)
 	assert.Equal(t, "full", cfg.CertIdentityMode)
-	assert.Equal(t, "trib-1", cfg.ConsensusID)
-	assert.Equal(t, "https://localhost:8443/consensus/v1/deliberate", cfg.ConsensusURL)
-	assert.Equal(t, "/etc/ztd/consensus.json", cfg.ConsensusBootstrap)
 	assert.Equal(t, "https://downstream/mcp", cfg.MCPDownstreamURL)
 	assert.Equal(t, "https://downstream/a2a", cfg.A2ADownstreamURL)
 	assert.Equal(t, "https://demo.example.com", cfg.PublicBaseURL)
@@ -88,9 +82,6 @@ func TestGatewayFlagsToServeConfig_EmptyFlags(t *testing.T) {
 	assert.Equal(t, 0, cfg.RateLimitBurst)
 	assert.Empty(t, cfg.LogLevel)
 	assert.Empty(t, cfg.CertIdentityMode)
-	assert.Empty(t, cfg.ConsensusID)
-	assert.Empty(t, cfg.ConsensusURL)
-	assert.Empty(t, cfg.ConsensusBootstrap)
 	assert.Empty(t, cfg.MCPDownstreamURL)
 	assert.Empty(t, cfg.A2ADownstreamURL)
 	assert.Empty(t, cfg.PublicBaseURL)
@@ -120,9 +111,6 @@ func TestAddGatewayFlags_RegistersAllFlags(t *testing.T) {
 		{"rate-limit-burst", "0"},
 		{"log", "info"},
 		{"cert-mode", ""},
-		{"consensus-id", ""},
-		{"consensus-url", ""},
-		{"consensus-bootstrap", ""},
 		{"mcp-downstream-url", ""},
 		{"mcp-downstream-cmd", ""},
 		{"mcp-downstream-args", ""},
@@ -144,30 +132,12 @@ func TestAddGatewayFlags_RegistersAllFlags(t *testing.T) {
 	assert.NotNil(t, corsFlag)
 }
 
-func TestResolveGatewayFlags_ConsensusFlagsPassThrough(t *testing.T) {
-	result := resolveGatewayFlags(GatewayFlags{
-		ConsensusID:        "cli-trib-id",
-		ConsensusURL:       "https://cli:8443/consensus",
-		ConsensusBootstrap: "/cli/consensus.json",
-	})
-
-	assert.Equal(t, "cli-trib-id", result.ConsensusID)
-	assert.Equal(t, "https://cli:8443/consensus", result.ConsensusURL)
-	assert.Equal(t, "/cli/consensus.json", result.ConsensusBootstrap)
-}
-
 func TestResolveGatewayFlags_FlagValuesPassThrough(t *testing.T) {
 	result := resolveGatewayFlags(GatewayFlags{
-		VaultDir:           "/cli/vault",
-		ConsensusID:        "cli-id",
-		ConsensusURL:       "https://cli/consensus",
-		ConsensusBootstrap: "/cli/bootstrap.json",
+		VaultDir: "/cli/vault",
 	})
 
 	assert.Equal(t, "/cli/vault", result.VaultDir)
-	assert.Equal(t, "cli-id", result.ConsensusID)
-	assert.Equal(t, "https://cli/consensus", result.ConsensusURL)
-	assert.Equal(t, "/cli/bootstrap.json", result.ConsensusBootstrap)
 }
 
 func TestResolveGatewayFlags_OllamaEndpointFromEnv(t *testing.T) {

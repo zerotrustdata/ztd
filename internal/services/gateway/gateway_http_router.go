@@ -75,6 +75,7 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	mux.HandleFunc(constants.APIPaths.AuthPlatformEnrollmentDecision, h.platformEnrollmentController.handlePlatformEnrollmentDecision)
 	mux.HandleFunc(constants.APIPaths.AuthPlatformEnrollmentBatchDecision, h.platformEnrollmentController.handlePlatformEnrollmentBatchDecision)
 	mux.HandleFunc(constants.APIPaths.AuthPlatformEnrollmentRevoke, h.platformEnrollmentController.handlePlatformEnrollmentRevoke)
+	mux.HandleFunc(constants.APIPaths.AuthPlatformEnrollmentConsensus, h.platformEnrollmentController.handlePlatformEnrollmentConsensus)
 	mux.HandleFunc(constants.APIPaths.AuthOperatorBootstrapWebSocket, h.platformEnrollmentController.handleOperatorBootstrap)
 
 	// CLI rotation — mTLS-protected; the caller's identity is derived from
@@ -167,14 +168,6 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	mux.Handle(constants.APIPaths.GovernanceSignersByID, http.HandlerFunc(h.signerController.handleGovernanceSignerByID))
 	mux.Handle(constants.APIPaths.AdminAppPoliciesBySigner, http.HandlerFunc(h.adminController.handleAppPolicySigner))
 	mux.HandleFunc(constants.APIPaths.AdminAppsRevoke, h.adminController.handleRevokeApp)
-	mux.HandleFunc(constants.APIPaths.AdminConsensus, h.adminController.handleConsensus)
-	mux.Handle(constants.APIPaths.AdminConsensusByID, http.HandlerFunc(h.adminController.handleDeleteConsensus))
-
-	// Consensus deliberate endpoint (mTLS-guarded, enrolled principal).
-	// Posture-gated (B1): registered only when the posture requires L2 consensus.
-	if h.cfg.Gateway.Posture.RequiresL2() {
-		mux.HandleFunc(constants.APIPaths.ConsensusDeliberate, h.governanceController.handleConsensusDeliberate)
-	}
 
 	// Rate-limited governance envelope
 	govEnvMux := http.NewServeMux()

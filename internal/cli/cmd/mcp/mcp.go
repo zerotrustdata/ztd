@@ -706,6 +706,20 @@ func printAgentShow(cmd *cobra.Command, agentID string) error {
 
 // ─── agent run ──────────────────────────────────────────────────────────────
 
+func agentRunPostureHelp() string {
+	var sb strings.Builder
+	sb.WriteString("GATEWAY POSTURE:\n")
+	sb.WriteString("  If the launcher has to start the gateway, it uses --posture, else the posture of\n")
+	sb.WriteString(fmt.Sprintf("  the previous managed gateway (its launch profile), else %s. Posture is\n", constants.DefaultPosture))
+	sb.WriteString("  immutable on a running gateway; an explicit --posture that does not match it is\n")
+	sb.WriteString("  an error. Available postures:\n")
+	for _, p := range constants.AllPostures {
+		sb.WriteString(fmt.Sprintf("    - %-10s %s\n", p, p.Description()))
+	}
+	sb.WriteString("  Change it with:\n    ztd gw restart\n  or with:\n    ztd gw start --posture <p>")
+	return sb.String()
+}
+
 func agentRunCmd() *cobra.Command {
 	return agentRunCmdWithConfig(shared.NewFileSvc, authcmd.NewDefaultEnrollmentCoordinator)
 }
@@ -754,14 +768,7 @@ EXTERNAL MCP SERVERS:
     ztd serve gateway --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,/path'
     ztd serve gateway --mcp-downstream-url http://localhost:3000
 
-GATEWAY POSTURE:
-  If the launcher has to start the gateway, it uses --posture, else the posture of
-  the previous managed gateway (its launch profile), else doctrine. Posture is
-  immutable on a running gateway; an explicit --posture that does not match it is
-  an error. Change it with:
-ztd gw restart
-or with:
-ztd gw start --posture <p>
+` + agentRunPostureHelp() + `
 
 AUDIT TRAIL:
   When launching an agent, the agent is automatically enrolled as an external app
@@ -1038,13 +1045,9 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 
 // agentAppEnrollmentOptions lets the launcher's authenticated owner CLI approve
 // the agent's own enrollment in-line. Under postures without L3 (doctrine,
-// consensus) that needs no passkey, so the approver is wired. Under ratify and
-// notary the owner decision needs a passkey, so no approver is set and the
-// enrollment keeps its manual approval path.
+// consensus) that needs no passkey. Under ratify and notary the owner decision
+// suspends at L3 and prints the passkey approval URL and expiry while awaiting decision.
 func agentAppEnrollmentOptions(fileSvc fs.RuntimeFileService, cfg *config.Config, posture constants.Posture) (auth.AppEnrollmentOptions, error) {
-	if posture.RequiresL3() {
-		return auth.AppEnrollmentOptions{}, nil
-	}
 	ownerClient, err := api.NewClient(fileSvc, cfg)
 	if err != nil {
 		return auth.AppEnrollmentOptions{}, fmt.Errorf("owner API client: %w", err)
@@ -1080,9 +1083,6 @@ func prepareAgentLaunch(ctx context.Context, fileSvc fs.RuntimeFileService, agen
 	prepared, err := integration.Prepare(ctx, fileSvc, homeDir, binaryPath, appName, verify)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("mcp: prepare launch: %w", err)
-	}
-	if verify {
-		fmt.Fprintf(os.Stderr, "[ztd] Tool interception verified — ztd is the only MCP server (%s tool lockdown)\n", integration.ToolLockdown)
 	}
 
 	return prepared.ConfigPath, prepared.Cleanup, prepared.LaunchArgs, nil

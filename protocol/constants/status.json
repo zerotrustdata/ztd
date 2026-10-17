@@ -139,6 +139,12 @@
         "_mutation": true,
         "value": "PLATFORM_ENROLLMENT_REVOKE"
       },
+      "PLATFORM_ENROLLMENT_BIND_CONSENSUS": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentBindConsensus",
+        "_mutation": true,
+        "value": "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
+      },
       "PORT_CHECK": {
         "_go_const": "ActionTypePortCheck",
         "value": "PORT_CHECK"

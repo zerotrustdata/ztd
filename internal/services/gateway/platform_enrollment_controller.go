@@ -467,6 +467,57 @@ func (c *PlatformEnrollmentController) requireActiveFirstUser(ctx context.Contex
 	return nil
 }
 
+// handlePlatformEnrollmentConsensus handles binding and querying the consensus application.
+// POST /api/v1/auth/platform-enrollments/consensus: binds an enrolled app as the consensus app.
+// GET  /api/v1/auth/platform-enrollments/consensus: returns the bound consensus app.
+// RouteAuthDual (active first user owner required).
+func (c *PlatformEnrollmentController) handlePlatformEnrollmentConsensus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(constants.ContextKeyUserID).(string)
+	if !ok || userID == "" {
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrWebSessionAuthRequired.Error())
+		return
+	}
+	if err := c.requireActiveFirstUser(r.Context(), userID); err != nil {
+		c.writeEnrollmentError(w, err)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		bound, err := c.consensus.GetBoundConsensusApp(r.Context())
+		if err != nil {
+			c.writeEnrollmentError(w, err)
+			return
+		}
+		if bound == nil {
+			c.responder.Error(w, http.StatusNotFound, constants.ErrConsensusBindingNotFound.Error())
+			return
+		}
+		c.responder.JSON(w, http.StatusOK, bound)
+
+	case http.MethodPost:
+		body, err := readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
+		if err != nil {
+			c.responder.Error(w, http.StatusBadRequest, "failed to read body")
+			return
+		}
+		var req models.PlatformEnrollmentBindConsensusRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
+			return
+		}
+		policy, err := c.enrollSvc.BindConsensusApplication(r.Context(), userID, req)
+		if err != nil {
+			c.writeEnrollmentError(w, err)
+			return
+		}
+		c.responder.JSON(w, http.StatusOK, policy)
+
+	default:
+		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
 // approvalURLBase constructs the base URL for the approval console. The
 // request ID is placed in the URL fragment so it never reaches
 // server-side access logs. The base is derived from the configured
@@ -485,6 +536,10 @@ var platformEnrollmentPublicErrors = []struct {
 	sentinel error
 	status   int
 }{
+	{constants.ErrConsensusAppNotEnrolled, http.StatusBadRequest},
+	{constants.ErrConsensusAppMissingSignerKey, http.StatusBadRequest},
+	{constants.ErrConsensusEndpointInvalid, http.StatusBadRequest},
+	{constants.ErrConsensusBindingNotFound, http.StatusNotFound},
 	{constants.ErrPlatformEnrollmentRequiresBootstrap, http.StatusForbidden},
 	{constants.ErrPlatformEnrollmentInvalidComponent, http.StatusBadRequest},
 	{constants.ErrPlatformEnrollmentInstanceIDRequired, http.StatusBadRequest},
@@ -519,6 +574,7 @@ var platformEnrollmentPublicErrors = []struct {
 	{constants.ErrPlatformEnrollmentIssuanceFailed, http.StatusInternalServerError},
 	{constants.ErrPlatformEnrollmentStoredRequestInvalid, http.StatusInternalServerError},
 	{constants.ErrPlatformEnrollmentRevoked, http.StatusGone},
+	{constants.ErrPlatformEnrollmentL3Required, http.StatusAccepted},
 	{constants.ErrOperatorHeartbeatIntervalInvalid, http.StatusBadRequest},
 }
 
@@ -541,6 +597,15 @@ func platformEnrollmentPublicError(err error) (int, error) {
 // error; the full error is logged.
 func (c *PlatformEnrollmentController) writeEnrollmentError(w http.ResponseWriter, err error) {
 	if err == nil {
+		return
+	}
+	var l3Err *models.PlatformEnrollmentL3RequiredError
+	if errors.As(err, &l3Err) && l3Err != nil {
+		c.logger.Info("platform enrollment: suspended awaiting L3 human approval",
+			"tx_hash", l3Err.Suspension.TxHash,
+			"posture", string(l3Err.Suspension.Posture))
+		w.Header().Set("Cache-Control", "no-store")
+		c.responder.JSON(w, http.StatusAccepted, l3Err.Suspension)
 		return
 	}
 	status, public := platformEnrollmentPublicError(err)

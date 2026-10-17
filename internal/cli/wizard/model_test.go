@@ -74,27 +74,6 @@ func TestNewModel_CorsOriginEmptyWhenNoInitialConfig(t *testing.T) {
 	assert.Empty(t, m.corsOriginInput.Value())
 }
 
-func TestNewModel_ConsensusIDPreFilled(t *testing.T) {
-	m := NewModel(Options{
-		InitialConfig: Config{ConsensusID: "trib-prod-01"},
-	})
-	assert.Equal(t, "trib-prod-01", m.consensusIDInput.Value())
-}
-
-func TestNewModel_ConsensusURLPreFilled(t *testing.T) {
-	m := NewModel(Options{
-		InitialConfig: Config{ConsensusURL: "https://consensus.zerotrustdata.io"},
-	})
-	assert.Equal(t, "https://consensus.zerotrustdata.io", m.consensusURLInput.Value())
-}
-
-func TestNewModel_ConsensusBootstrapPreFilled(t *testing.T) {
-	m := NewModel(Options{
-		InitialConfig: Config{ConsensusBootstrap: "/etc/ztd/bootstrap.json"},
-	})
-	assert.Equal(t, "/etc/ztd/bootstrap.json", m.consensusBootstrapInput.Value())
-}
-
 func TestNewModel_PasskeyRpIDPreFilled(t *testing.T) {
 	m := NewModel(Options{
 		InitialConfig: Config{PasskeyRpID: "demo.zerotrustdata.io"},
@@ -217,18 +196,15 @@ func TestInit_ReturnsBlink(t *testing.T) {
 func TestResult_AllFieldsPopulated(t *testing.T) {
 	m := NewModel(Options{
 		InitialConfig: Config{
-			PublicBaseURL:      "https://demo.zerotrustdata.io",
-			CertIdentityMode:   "full",
-			AllowedOrigins:     []string{"https://console.zerotrustdata.io"},
-			Posture:            "consensus",
-			ConsensusID:        "trib-prod-01",
-			ConsensusURL:       "https://consensus.zerotrustdata.io",
-			ConsensusBootstrap: "/etc/ztd/bootstrap.json",
-			PasskeyRpID:        "demo.zerotrustdata.io",
-			PasskeyRpName:      "ztd",
-			PasskeyRpOrigins:   []string{"https://demo.zerotrustdata.io"},
-			MCPDownstreamURL:   "http://mcp:3000",
-			A2ADownstreamURL:   "http://a2a:3001",
+			PublicBaseURL:    "https://demo.zerotrustdata.io",
+			CertIdentityMode: "full",
+			AllowedOrigins:   []string{"https://console.zerotrustdata.io"},
+			Posture:          "consensus",
+			PasskeyRpID:      "demo.zerotrustdata.io",
+			PasskeyRpName:    "ztd",
+			PasskeyRpOrigins: []string{"https://demo.zerotrustdata.io"},
+			MCPDownstreamURL: "http://mcp:3000",
+			A2ADownstreamURL: "http://a2a:3001",
 		},
 	})
 
@@ -239,9 +215,6 @@ func TestResult_AllFieldsPopulated(t *testing.T) {
 	assert.Equal(t, "full", cfg.CertIdentityMode)
 	assert.Equal(t, []string{"https://console.zerotrustdata.io"}, cfg.AllowedOrigins)
 	assert.Equal(t, "consensus", cfg.Posture)
-	assert.Equal(t, "trib-prod-01", cfg.ConsensusID)
-	assert.Equal(t, "https://consensus.zerotrustdata.io", cfg.ConsensusURL)
-	assert.Equal(t, "/etc/ztd/bootstrap.json", cfg.ConsensusBootstrap)
 	assert.Equal(t, "demo.zerotrustdata.io", cfg.PasskeyRpID)
 	assert.Equal(t, "ztd", cfg.PasskeyRpName)
 	assert.Equal(t, "http://mcp:3000", cfg.MCPDownstreamURL)
@@ -325,35 +298,6 @@ func TestResult_CancelReturnsCancelTrue(t *testing.T) {
 	m.quitting = true
 	result := m.result()
 	assert.True(t, result.Cancel)
-}
-
-// --- result(): conditional consensus ---
-
-func TestResult_ConditionalConsensus_DoctrineKeepsValuesFromInputs(t *testing.T) {
-	m := NewModel(Options{
-		InitialConfig: Config{
-			Posture:      "doctrine",
-			ConsensusID:  "stale-id",
-			ConsensusURL: "https://stale.example.com",
-		},
-	})
-	result := m.result()
-	assert.Equal(t, "doctrine", result.Config.Posture)
-	assert.Equal(t, "stale-id", result.Config.ConsensusID)
-}
-
-func TestResult_ConditionalConsensus_ConsensusPreservesValues(t *testing.T) {
-	m := NewModel(Options{
-		InitialConfig: Config{
-			Posture:      "consensus",
-			ConsensusID:  "trib-prod-01",
-			ConsensusURL: "https://consensus.zerotrustdata.io",
-		},
-	})
-	result := m.result()
-	assert.Equal(t, "consensus", result.Config.Posture)
-	assert.Equal(t, "trib-prod-01", result.Config.ConsensusID)
-	assert.Equal(t, "https://consensus.zerotrustdata.io", result.Config.ConsensusURL)
 }
 
 // --- newTextInput ---

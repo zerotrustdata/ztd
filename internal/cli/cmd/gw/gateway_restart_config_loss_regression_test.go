@@ -91,8 +91,6 @@ func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing
 		PasskeyRpOrigins: []string{"https://your-app.lovable.app"},
 		AllowedOrigins:   []string{"https://your-app.lovable.app"},
 		PublicBaseURL:    "https://your-app.lovable.app",
-		ConsensusID:      "trib-001",
-		ConsensusURL:     "https://localhost:8443/consensus/v1/deliberate",
 		MCPDownstreamURL: "http://downstream:3000/mcp",
 		A2ADownstreamURL: "http://downstream:3001/a2a",
 		RateLimitRPS:     5.0,
@@ -132,7 +130,6 @@ func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing
 	assert.Equal(t, "https://your-app.lovable.app", profile.Config.PublicBaseURL, cmdtest.RegressionMarkerAfterFix)
 	assert.Equal(t, 8080, profile.Config.HTTPPort, cmdtest.RegressionMarkerAfterFix)
 	assert.Equal(t, 8443, profile.Config.HTTPSPort, cmdtest.RegressionMarkerAfterFix)
-	assert.Equal(t, "trib-001", profile.Config.ConsensusID, cmdtest.RegressionMarkerAfterFix)
 
 	_ = cmdtest.RegressionMarkerIssue
 }
@@ -158,8 +155,6 @@ func TestGatewayRestartCmd_PreservesCompleteConfigFields_AfterFix(t *testing.T) 
 		PasskeyRpOrigins: []string{"https://your-app.lovable.app"},
 		AllowedOrigins:   []string{"https://your-app.lovable.app"},
 		PublicBaseURL:    "https://your-app.lovable.app",
-		ConsensusID:      "trib-001",
-		ConsensusURL:     "https://localhost:8443/consensus/v1/deliberate",
 		MCPDownstreamURL: "http://downstream:3000/mcp",
 		A2ADownstreamURL: "http://downstream:3001/a2a",
 		RateLimitRPS:     5.0,
@@ -175,8 +170,6 @@ func TestGatewayRestartCmd_PreservesCompleteConfigFields_AfterFix(t *testing.T) 
 	assert.NotZero(t, restartCfg.HTTPPort, cmdtest.RegressionMarkerAfterFix)
 	assert.NotZero(t, restartCfg.HTTPSPort, cmdtest.RegressionMarkerAfterFix)
 	assert.NotEmpty(t, restartCfg.CertIdentityMode, cmdtest.RegressionMarkerAfterFix)
-	assert.NotEmpty(t, restartCfg.ConsensusID, cmdtest.RegressionMarkerAfterFix)
-	assert.NotEmpty(t, restartCfg.ConsensusURL, cmdtest.RegressionMarkerAfterFix)
 	assert.NotEmpty(t, restartCfg.MCPDownstreamURL, cmdtest.RegressionMarkerAfterFix)
 	assert.NotEmpty(t, restartCfg.A2ADownstreamURL, cmdtest.RegressionMarkerAfterFix)
 	assert.NotZero(t, restartCfg.RateLimitRPS, cmdtest.RegressionMarkerAfterFix)

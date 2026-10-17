@@ -922,8 +922,10 @@ type PlatformEnrollmentGovernancePayload struct {
 	// writes only while the stored lease still names this owner, so a holder
 	// whose lease was reclaimed cannot complete or roll back the request.
 	IssuanceLeaseOwner string `protobuf:"bytes,20,opt,name=issuance_lease_owner,json=issuanceLeaseOwner,proto3" json:"issuance_lease_owner,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// HTTPS deliberation endpoint for a bound consensus application.
+	ConsensusEndpointUrl string `protobuf:"bytes,21,opt,name=consensus_endpoint_url,json=consensusEndpointUrl,proto3" json:"consensus_endpoint_url,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *PlatformEnrollmentGovernancePayload) Reset() {
@@ -1092,6 +1094,13 @@ func (x *PlatformEnrollmentGovernancePayload) GetDecisionTargets() []*PlatformEn
 func (x *PlatformEnrollmentGovernancePayload) GetIssuanceLeaseOwner() string {
 	if x != nil {
 		return x.IssuanceLeaseOwner
+	}
+	return ""
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusEndpointUrl() string {
+	if x != nil {
+		return x.ConsensusEndpointUrl
 	}
 	return ""
 }
@@ -1467,7 +1476,7 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x1ePlatformEnrollmentFingerprints\x12\x10\n" +
 	"\x03app\x18\x01 \x01(\tR\x03app\x12\x1a\n" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x10\n" +
-	"\x03cli\x18\x03 \x01(\tR\x03cli\"\xc1\a\n" +
+	"\x03cli\x18\x03 \x01(\tR\x03cli\"\xf7\a\n" +
 	"#PlatformEnrollmentGovernancePayload\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x1d\n" +
@@ -1492,7 +1501,8 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\rowner_user_id\x18\x11 \x01(\tR\vownerUserId\x12\x16\n" +
 	"\x06reason\x18\x12 \x01(\tR\x06reason\x12Z\n" +
 	"\x10decision_targets\x18\x13 \x03(\v2/.ztd.common.v1.PlatformEnrollmentDecisionTargetR\x0fdecisionTargets\x120\n" +
-	"\x14issuance_lease_owner\x18\x14 \x01(\tR\x12issuanceLeaseOwner\"\x94\x01\n" +
+	"\x14issuance_lease_owner\x18\x14 \x01(\tR\x12issuanceLeaseOwner\x124\n" +
+	"\x16consensus_endpoint_url\x18\x15 \x01(\tR\x14consensusEndpointUrl\"\x94\x01\n" +
 	" PlatformEnrollmentDecisionTarget\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12Q\n" +

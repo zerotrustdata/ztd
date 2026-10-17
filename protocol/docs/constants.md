@@ -23,6 +23,8 @@ internal/tools/constgen/operator_hierarchy.json ┘                   ├──�
 
 Before generating, `constgen` validates `protocol/constants/env_vars.json` (categories, `_go_const`, names, descriptions) and requires every `secret` and `user_endpoint` key to appear in `.env.example` (`internal/tools/constgen/check_env.go`). The env registry produces no generated output.
 
+Action classifications in `status.action_type` generate `ActionType.IsMutation()`, `IsBootstrapAction()`, and `AuthorizedByDecision()` from `_mutation`, `_bootstrap`, and `_authorized_by_decision`, respectively. Each predicate matches only explicitly flagged actions and returns false for other values. Empty registries and classifications with no matching actions produce valid Go predicates that always return false; the generator omits the matching case entirely.
+
 ### 1.2 Build Automation Targets
 - **`make constants-generate`**: Executes `go run ./internal/tools/constgen -write`. Validates the registry syntax, grammar, and taxonomy, then writes out the formatted Go and TypeScript artifacts.
 - **`make constants-check`**: Executes `go run ./internal/tools/constgen -check`. Runs within CI to validate the env registry and ensure committed generated files are byte-for-byte identical to the output derived from the registry JSON files.

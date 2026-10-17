@@ -31,11 +31,8 @@ type Model struct {
 	corsOriginInput    textinput.Model
 
 	// Step 2: Posture
-	postureChoice           int // 0=doctrine, 1=consensus, 2=ratify, 3=notary
-	consensusURLInput       textinput.Model
-	consensusIDInput        textinput.Model
-	consensusBootstrapInput textinput.Model
-	passkeyRpIDInput        textinput.Model
+	postureChoice        int // 0=doctrine, 1=consensus, 2=ratify, 3=notary
+	passkeyRpIDInput     textinput.Model
 	passkeyRpNameInput      textinput.Model
 	passkeyRpOriginInput    textinput.Model
 
@@ -70,15 +67,6 @@ func NewModel(opts Options) Model {
 	if len(opts.InitialConfig.AllowedOrigins) > 0 {
 		m.corsOriginInput.SetValue(opts.InitialConfig.AllowedOrigins[0])
 	}
-
-	m.consensusIDInput = newTextInput("trib-prod-01", "Consensus Policy ID", 30)
-	m.consensusIDInput.SetValue(opts.InitialConfig.ConsensusID)
-
-	m.consensusURLInput = newTextInput("https://consensus.zerotrustdata.io", "Consensus Service URL (optional)", 40)
-	m.consensusURLInput.SetValue(opts.InitialConfig.ConsensusURL)
-
-	m.consensusBootstrapInput = newTextInput("", "Path to bootstrap JSON file (optional)", 50)
-	m.consensusBootstrapInput.SetValue(opts.InitialConfig.ConsensusBootstrap)
 
 	m.passkeyRpIDInput = newTextInput("localhost", "Passkey RP ID", 30)
 	rpID := opts.InitialConfig.PasskeyRpID
@@ -163,9 +151,6 @@ func (m Model) result() Result {
 
 	// Step 2: Posture
 	cfg.Posture = string(m.selectedPosture())
-	cfg.ConsensusID = m.consensusIDInput.Value()
-	cfg.ConsensusURL = m.consensusURLInput.Value()
-	cfg.ConsensusBootstrap = m.consensusBootstrapInput.Value()
 	cfg.PasskeyRpID = m.passkeyRpIDInput.Value()
 	cfg.PasskeyRpName = m.passkeyRpNameInput.Value()
 	if m.passkeyRpOriginInput.Value() != "" {

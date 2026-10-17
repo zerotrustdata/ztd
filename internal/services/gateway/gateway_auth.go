@@ -208,6 +208,7 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	r.addExact(constants.APIPaths.AuthPlatformEnrollmentDecision, RouteAuthDual)
 	r.addExact(constants.APIPaths.AuthPlatformEnrollmentBatchDecision, RouteAuthDual)
 	r.addExact(constants.APIPaths.AuthPlatformEnrollmentRevoke, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuthPlatformEnrollmentConsensus, RouteAuthDual)
 
 	// --- RouteAuthMTLS: mTLS-protected sub-paths under WebSession prefixes ---
 	// These exact paths must be checked before the WebSession prefix matches.

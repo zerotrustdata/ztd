@@ -1061,3 +1061,106 @@ func TestListPlatformEnrollmentCmd_CommandStructure(t *testing.T) {
 	assert.Equal(t, "list", cmd.Use)
 	assert.NotNil(t, cmd.RunE)
 }
+
+func TestApprovePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+
+	pendingBody, err := json.Marshal(samplePendingResponse())
+	require.NoError(t, err)
+
+	expiresAt := time.Date(2026, 10, 17, 21, 0, 0, 0, time.UTC)
+	postResp, err := json.Marshal(models.PlatformEnrollmentL3SuspensionResponse{
+		Status:      models.PlatformEnrollmentStatusL3Required,
+		Posture:     constants.PostureRatify,
+		TxHash:      "tx-approve-l3",
+		ApprovalURL: "https://localhost:8443/console/approve/tx-approve-l3",
+		ExpiresAt:   expiresAt,
+		Message:     constants.PostureRatify.HumanApprovalReason(),
+	})
+	require.NoError(t, err)
+
+	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
+	cmd := approvePlatformEnrollmentCmdWithConfig(
+		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
+	require.NoError(t, cmd.Flags().Set("yes", "true"))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err = cmd.RunE(cmd, []string{"req-operator-001"})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Reason:       "+constants.PostureRatify.HumanApprovalReason())
+	assert.Contains(t, output, "Approval URL: https://localhost:8443/console/approve/tx-approve-l3")
+	assert.Contains(t, output, "Transaction:  tx-approve-l3")
+	assert.Contains(t, output, "Expires At:   "+expiresAt.Format(time.RFC3339))
+}
+
+func TestDenyPlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+
+	pendingBody, err := json.Marshal(samplePendingResponse())
+	require.NoError(t, err)
+
+	expiresAt := time.Date(2026, 10, 17, 21, 15, 0, 0, time.UTC)
+	postResp, err := json.Marshal(models.PlatformEnrollmentL3SuspensionResponse{
+		Status:      models.PlatformEnrollmentStatusL3Required,
+		Posture:     constants.PostureNotary,
+		TxHash:      "tx-deny-l3",
+		ApprovalURL: "https://localhost:8443/console/approve/tx-deny-l3",
+		ExpiresAt:   expiresAt,
+		Message:     constants.PostureNotary.HumanApprovalReason(),
+	})
+	require.NoError(t, err)
+
+	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
+	cmd := denyPlatformEnrollmentCmdWithConfig(
+		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
+	require.NoError(t, cmd.Flags().Set("yes", "true"))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err = cmd.RunE(cmd, []string{"req-dashboard-002"})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Reason:       "+constants.PostureNotary.HumanApprovalReason())
+	assert.Contains(t, output, "Approval URL: https://localhost:8443/console/approve/tx-deny-l3")
+	assert.Contains(t, output, "Transaction:  tx-deny-l3")
+	assert.Contains(t, output, "Expires At:   "+expiresAt.Format(time.RFC3339))
+}
+
+func TestRevokePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+
+	expiresAt := time.Date(2026, 10, 17, 21, 30, 0, 0, time.UTC)
+	responseBody, err := json.Marshal(models.PlatformEnrollmentL3SuspensionResponse{
+		Status:      models.PlatformEnrollmentStatusL3Required,
+		Posture:     constants.PostureRatify,
+		TxHash:      "tx-revoke-l3",
+		ApprovalURL: "https://localhost:8443/console/approve/tx-revoke-l3",
+		ExpiresAt:   expiresAt,
+		Message:     constants.PostureRatify.HumanApprovalReason(),
+	})
+	require.NoError(t, err)
+	mockClient := &cmdtest.MockAPIClient{PostResp: responseBody}
+
+	cmd := revokePlatformEnrollmentCmdWithConfig(
+		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
+	require.NoError(t, cmd.Flags().Set("yes", "true"))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err = cmd.RunE(cmd, []string{"req-operator-001"})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Reason:       "+constants.PostureRatify.HumanApprovalReason())
+	assert.Contains(t, output, "Approval URL: https://localhost:8443/console/approve/tx-revoke-l3")
+	assert.Contains(t, output, "Transaction:  tx-revoke-l3")
+	assert.Contains(t, output, "Expires At:   "+expiresAt.Format(time.RFC3339))
+}
+

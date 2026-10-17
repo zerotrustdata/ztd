@@ -8,10 +8,8 @@
 package wizard
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 
 	"github.com/zerotrustdata/ztd/internal/cli/browserorigin"
 )
@@ -48,78 +46,6 @@ func validatePublicBaseURL(s string) error {
 	return nil
 }
 
-// validateConsensusURL validates an optional consensus service URL.
-// Must be an absolute https URL when supplied. Rejects user info and fragments.
-func validateConsensusURL(s string) error {
-	if s == "" {
-		return nil
-	}
-	u, err := url.Parse(s)
-	if err != nil {
-		return fmt.Errorf("wizard: validate consensus URL: %w", err)
-	}
-	if u.Scheme != "https" {
-		return fmt.Errorf("consensus URL must use https scheme, got %q", u.Scheme)
-	}
-	if u.User != nil {
-		return fmt.Errorf("consensus URL must not contain user info")
-	}
-	if u.Fragment != "" {
-		return fmt.Errorf("consensus URL must not contain a fragment")
-	}
-	if u.Host == "" {
-		return fmt.Errorf("consensus URL must have a host")
-	}
-	return nil
-}
-
-// validateConsensusID validates a consensus policy ID.
-// Required for L2 postures; letters, digits, hyphens, and underscores only.
-func validateConsensusID(s string) error {
-	if s == "" {
-		return fmt.Errorf("consensus ID is required for consensus and notary postures")
-	}
-	for _, r := range s {
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') &&
-			(r < '0' || r > '9') && r != '-' && r != '_' {
-			return fmt.Errorf("consensus ID must contain only letters, digits, hyphens, and underscores")
-		}
-	}
-	return nil
-}
-
-// validateConsensusBootstrap validates a consensus bootstrap JSON file.
-// Must be a readable regular JSON file with a consensus_id field matching the given ID.
-//
-// This function uses os.Stat/os.ReadFile directly because the bootstrap path is
-// user-supplied and may live outside the .ztd/ runtime tree. RuntimeFileService is
-// scoped to .ztd/ paths and is not appropriate for arbitrary filesystem paths.
-func validateConsensusBootstrap(path, consensusID string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("wizard: validate bootstrap: %w", err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("wizard: validate bootstrap: path must be a file, not a directory")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("wizard: validate bootstrap: %w", err)
-	}
-	var doc struct {
-		ConsensusID string `json:"consensus_id"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("wizard: validate bootstrap: not valid JSON: %w", err)
-	}
-	if doc.ConsensusID == "" {
-		return fmt.Errorf("wizard: validate bootstrap: file must contain a consensus_id field")
-	}
-	if doc.ConsensusID != consensusID {
-		return fmt.Errorf("wizard: validate bootstrap: consensus_id %q does not match configured consensus ID %q", doc.ConsensusID, consensusID)
-	}
-	return nil
-}
 
 // validatePasskeyRP validates the passkey RP ID and origin together.
 // The RP ID must equal or be a registrable suffix of the origin hostname.

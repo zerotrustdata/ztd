@@ -39,6 +39,20 @@ type DocumentStoreService struct {
 	// during Gateway construction; an unbound store, as in unit tests, reports
 	// to no one.
 	statusObserver atomic.Pointer[OperatorStatusObserver]
+
+	// approvalsNotifier receives enrollment decision commit notifications so
+	// token-authenticated WaitForDecision callers and owner SSE streams wake
+	// whether the decision committed synchronously or after L3 resume.
+	approvalsNotifier atomic.Pointer[ApprovalsChangePublisher]
+}
+
+// BindApprovalsNotifier registers the publisher told when a platform enrollment
+// decision commits in DecidePlatformEnrollments.
+func (s *DocumentStoreService) BindApprovalsNotifier(notifier *ApprovalsChangePublisher) {
+	if s == nil || notifier == nil {
+		return
+	}
+	s.approvalsNotifier.Store(notifier)
 }
 
 // BindOperatorStatusObserver registers the observer told about every Operator

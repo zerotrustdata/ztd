@@ -11,7 +11,6 @@ import (
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 )
@@ -39,7 +38,6 @@ type GatewayModeDeps struct {
 	GovernedDocStore       governance.GovernedDocumentStore
 	ConsensusPolicyStore   governance.L2ConsensusPolicyStore
 	FieldReader            mcp.FieldReader
-	Consensus              *consensus.ConsensusService
 	PlatformEnrollmentDeps *PlatformEnrollmentDeps
 	Posture                constants.Posture
 }
@@ -110,9 +108,6 @@ func NewGatewayModeDeps(deps GatewayModeDeps) (*GatewayModeDeps, error) {
 	}
 	if !deps.Posture.Valid() {
 		return nil, fmt.Errorf("mode_deps: posture: %w: %q", constants.ErrInvalidPosture, deps.Posture)
-	}
-	if deps.Posture.RequiresL2() && deps.Consensus == nil {
-		return nil, fmt.Errorf("mode_deps: consensus: %w", constants.ErrConsensusServiceRequired)
 	}
 	return &deps, nil
 }

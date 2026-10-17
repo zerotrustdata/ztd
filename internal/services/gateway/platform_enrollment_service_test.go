@@ -19,6 +19,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -31,10 +32,13 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/stretchr/testify/assert"
@@ -43,6 +47,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 var platformEnrollmentTestTokens sync.Map       // request ID -> requester token
@@ -1785,3 +1790,198 @@ func TestPlatformEnrollmentService_InvalidDecisionFails(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision)
 }
+
+func TestPlatformEnrollmentService_L3Suspension_DecideBatchAndRevoke(t *testing.T) {
+	ls := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureNotary})
+	owner, err := ls.GetUserService().CreateUser(t.Context())
+	require.NoError(t, err)
+
+	passkey := testutil.NewSoftwarePasskey(t)
+	require.NoError(t, ls.passkey.addCredential(t.Context(), owner.ID, passkey.Credential(t)))
+
+	enrollSvc := ls.GetPlatformEnrollmentService()
+	docStore := ls.GetDocStore()
+	env := &platformEnrollmentTestEnv{
+		svc:       ls,
+		enrollSvc: enrollSvc,
+		docStore:  docStore,
+		userSvc:   ls.GetUserService(),
+		pki:       ls.GetPKI(),
+		cliSess:   ls.GetCLISessionService(),
+		opSess:    ls.GetOperatorSessionService(),
+		ownerID:   owner.ID,
+	}
+	ctrl := newPlatformEnrollmentController(PlatformEnrollmentControllerDeps{
+		Cfg:       ls.cfg,
+		Logger:    ls.logger,
+		EnrollSvc: enrollSvc,
+		UserSvc:   ls.GetUserService(),
+		Reg:       ls.GetRegistrationService(),
+		Responder: ls.responder,
+		Consensus: ls.consensusStore,
+	})
+
+	resumeWithPasskey := func(t *testing.T, txHash string) {
+		t.Helper()
+		options, err := ls.passkey.GenerateApprovalChallenge(t.Context(), owner.ID, txHash)
+		require.NoError(t, err)
+		assertion := passkey.Assert(t, options.Response.RelyingPartyID, options.Response.Challenge)
+		l3Proof := &commonv1.L3Proof{
+			CredentialId:      assertion.ID,
+			ClientDataJson:    assertion.ClientDataJSON,
+			AuthenticatorData: assertion.AuthenticatorData,
+			Signature:         assertion.Signature,
+		}
+		result, err := ls.mcpGateway.ResumeWithL3Proof(t.Context(), txHash, owner.ID, l3Proof)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+	}
+
+	// 1. Single Decide via controller returns 202 Accepted with suspension metadata;
+	// WaitForDecision remains blocked while suspended and wakes up after ResumeWithL3Proof.
+	csr1, key1 := generateAppCSRAndKey(t)
+	create1, err := createPlatformEnrollmentRequest(t, enrollSvc, t.Context(), models.PlatformEnrollmentCreateRequest{
+		ComponentKind: models.PlatformComponentDashboard,
+		InstanceID:    "dashboard-l3-1",
+		Hostname:      "dashboard-l3-1.local",
+		App:           &models.PlatformAppCSRPayload{CSRPEM: csr1},
+	}, "https://gateway.local/console")
+	require.NoError(t, err)
+	token1 := platformEnrollmentTestToken(t, create1.RequestID)
+
+	waitCtx, cancelWait := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancelWait()
+	waitCh := make(chan *models.PlatformEnrollmentStatusResponse, 1)
+	waitErrCh := make(chan error, 1)
+	go func() {
+		status, waitErr := enrollSvc.WaitForDecision(waitCtx, models.PlatformEnrollmentTokenHash(token1))
+		if waitErr != nil {
+			waitErrCh <- waitErr
+			return
+		}
+		waitCh <- status
+	}()
+
+	decideBody, err := json.Marshal(models.PlatformEnrollmentDecisionRequest{
+		RequestID: create1.RequestID,
+		Decision:  models.PlatformEnrollmentDecisionApprove,
+		Reason:    "owner approve l3",
+	})
+	require.NoError(t, err)
+	decideReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/platform-enrollments/decision", bytes.NewReader(decideBody))
+	decideReq = decideReq.WithContext(context.WithValue(t.Context(), constants.ContextKeyUserID, owner.ID))
+	decideRec := httptest.NewRecorder()
+	ctrl.handlePlatformEnrollmentDecision(decideRec, decideReq)
+
+	require.Equal(t, http.StatusAccepted, decideRec.Code)
+	var suspension1 models.PlatformEnrollmentL3SuspensionResponse
+	require.NoError(t, json.Unmarshal(decideRec.Body.Bytes(), &suspension1))
+	assert.Equal(t, models.PlatformEnrollmentStatusL3Required, suspension1.Status)
+	assert.Equal(t, constants.PostureNotary, suspension1.Posture)
+	assert.NotEmpty(t, suspension1.TxHash)
+	assert.Contains(t, suspension1.ApprovalURL, constants.APIPaths.ApprovePagePrefix+suspension1.TxHash)
+	assert.False(t, suspension1.ExpiresAt.IsZero())
+
+	// Request must still be pending while L3 approval is suspended.
+	stored1 := loadStoredRequest(t, env, create1.RequestID)
+	assert.Equal(t, models.PlatformEnrollmentStatePending, stored1.State)
+	select {
+	case status := <-waitCh:
+		t.Fatalf("WaitForDecision woke before L3 resume with state %s", status.State)
+	case waitErr := <-waitErrCh:
+		t.Fatalf("WaitForDecision failed before L3 resume: %v", waitErr)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Resume with real WebAuthn passkey proof; WaitForDecision wakes and request is approved.
+	resumeWithPasskey(t, suspension1.TxHash)
+
+	select {
+	case status := <-waitCh:
+		require.NotNil(t, status)
+		assert.Equal(t, models.PlatformEnrollmentStateApproved, status.State)
+	case waitErr := <-waitErrCh:
+		t.Fatalf("WaitForDecision failed: %v", waitErr)
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitForDecision did not wake after L3 resume")
+	}
+
+	approved1 := loadStoredRequest(t, env, create1.RequestID)
+	require.Equal(t, models.PlatformEnrollmentStateApproved, approved1.State)
+
+	// Complete enrollment 1 so we can also test Revoke under L3 suspension.
+	completeResp1, err := enrollSvc.Complete(t.Context(), token1, models.PlatformEnrollmentProofs{
+		App: signCompletionTranscript(t, approved1, key1),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, completeResp1.App)
+
+	// 2. Revoke under L3 posture returns PlatformEnrollmentL3RequiredError (and 202 via controller),
+	// then transitions to revoked after ResumeWithL3Proof.
+	revokeBody, err := json.Marshal(models.PlatformEnrollmentRevokeRequest{
+		RequestID: create1.RequestID,
+		Reason:    "decommission dashboard",
+	})
+	require.NoError(t, err)
+	revokeReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/platform-enrollments/revoke", bytes.NewReader(revokeBody))
+	revokeReq = revokeReq.WithContext(context.WithValue(t.Context(), constants.ContextKeyUserID, owner.ID))
+	revokeRec := httptest.NewRecorder()
+	ctrl.handlePlatformEnrollmentRevoke(revokeRec, revokeReq)
+
+	require.Equal(t, http.StatusAccepted, revokeRec.Code)
+	var revokeSuspension models.PlatformEnrollmentL3SuspensionResponse
+	require.NoError(t, json.Unmarshal(revokeRec.Body.Bytes(), &revokeSuspension))
+	assert.Equal(t, models.PlatformEnrollmentStatusL3Required, revokeSuspension.Status)
+	assert.NotEmpty(t, revokeSuspension.TxHash)
+
+	storedBeforeRevokeResume := loadStoredRequest(t, env, create1.RequestID)
+	assert.Equal(t, models.PlatformEnrollmentStateCompleted, storedBeforeRevokeResume.State)
+
+	resumeWithPasskey(t, revokeSuspension.TxHash)
+
+	storedAfterRevokeResume := loadStoredRequest(t, env, create1.RequestID)
+	assert.Equal(t, models.PlatformEnrollmentStateRevoked, storedAfterRevokeResume.State)
+
+	// 3. Batch Decide under L3 posture suspends with PlatformEnrollmentL3RequiredError and
+	// approves the entire cohort atomically upon ResumeWithL3Proof.
+	csr2, _ := generateAppCSRAndKey(t)
+	create2, err := createPlatformEnrollmentRequest(t, enrollSvc, t.Context(), models.PlatformEnrollmentCreateRequest{
+		ComponentKind: models.PlatformComponentDashboard,
+		InstanceID:    "dashboard-l3-2",
+		Hostname:      "dashboard-l3-2.local",
+		App:           &models.PlatformAppCSRPayload{CSRPEM: csr2},
+	}, "https://gateway.local/console")
+	require.NoError(t, err)
+
+	csr3, _ := generateAppCSRAndKey(t)
+	create3, err := createPlatformEnrollmentRequest(t, enrollSvc, t.Context(), models.PlatformEnrollmentCreateRequest{
+		ComponentKind: models.PlatformComponentApplication,
+		AppName:       "observer",
+		InstanceID:    "app-l3-3",
+		Hostname:      "app-l3-3.local",
+		App:           &models.PlatformAppCSRPayload{CSRPEM: csr3},
+	}, "https://gateway.local/console")
+	require.NoError(t, err)
+
+	_, batchErr := enrollSvc.DecideBatch(t.Context(), owner.ID, models.PlatformEnrollmentBatchDecisionRequest{
+		Requests: []models.PlatformEnrollmentDecisionTarget{
+			{RequestID: create2.RequestID, Fingerprints: create2.Fingerprints},
+			{RequestID: create3.RequestID, Fingerprints: create3.Fingerprints},
+		},
+		Decision: models.PlatformEnrollmentDecisionApprove,
+		Reason:   "batch approve l3",
+	})
+	require.ErrorIs(t, batchErr, constants.ErrPlatformEnrollmentL3Required)
+	var l3Err *models.PlatformEnrollmentL3RequiredError
+	require.ErrorAs(t, batchErr, &l3Err)
+	require.NotEmpty(t, l3Err.Suspension.TxHash)
+
+	assert.Equal(t, models.PlatformEnrollmentStatePending, loadStoredRequest(t, env, create2.RequestID).State)
+	assert.Equal(t, models.PlatformEnrollmentStatePending, loadStoredRequest(t, env, create3.RequestID).State)
+
+	resumeWithPasskey(t, l3Err.Suspension.TxHash)
+
+	assert.Equal(t, models.PlatformEnrollmentStateApproved, loadStoredRequest(t, env, create2.RequestID).State)
+	assert.Equal(t, models.PlatformEnrollmentStateApproved, loadStoredRequest(t, env, create3.RequestID).State)
+}
+

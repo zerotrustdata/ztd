@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
@@ -133,9 +134,34 @@ func (e *StatusError) Error() string {
 	return fmt.Sprintf("%s: status %d: %s", constants.ErrHTTPStatusError, e.StatusCode, e.Body)
 }
 
-// Is reports whether target is constants.ErrHTTPStatusError.
+// Is reports whether target is constants.ErrHTTPStatusError or a recognized gateway error.
 func (e *StatusError) Is(target error) bool {
-	return target == constants.ErrHTTPStatusError
+	if target == constants.ErrHTTPStatusError {
+		return true
+	}
+	if e == nil || e.Body == "" {
+		return false
+	}
+	var gwErr struct {
+		Error  string `json:"error"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(e.Body), &gwErr); err == nil {
+		if target == constants.ErrPlatformEnrollmentRequiresBootstrap &&
+			(gwErr.Error == constants.ErrPlatformEnrollmentRequiresBootstrap.Error() || strings.Contains(gwErr.Error, "bootstrapped")) {
+			return true
+		}
+	}
+	return false
+}
+
+// DecodeGatewayError decodes an HTTP status and body into an error matching
+// constants.ErrHTTPStatusError and any recognized gateway sentinel errors.
+func DecodeGatewayError(statusCode int, body []byte) error {
+	return &StatusError{
+		StatusCode: statusCode,
+		Body:       string(body),
+	}
 }
 
 // IsUnauthorized reports whether err carries a Gateway 401: the CLI session

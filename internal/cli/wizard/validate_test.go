@@ -8,15 +8,12 @@
 package wizard
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // --- validatePublicBaseURL ---
@@ -63,97 +60,6 @@ func TestValidatePublicBaseURL_RejectsUserInfo(t *testing.T) {
 
 func TestValidatePublicBaseURL_RejectsUnsupportedScheme(t *testing.T) {
 	assert.Error(t, validatePublicBaseURL("ftp://demo.zerotrustdata.io"))
-}
-
-// --- validateConsensusURL ---
-
-func TestValidateConsensusURL_EmptyIsOptional(t *testing.T) {
-	assert.NoError(t, validateConsensusURL(""))
-}
-
-func TestValidateConsensusURL_ValidHTTPS(t *testing.T) {
-	assert.NoError(t, validateConsensusURL("https://consensus.zerotrustdata.io"))
-}
-
-func TestValidateConsensusURL_RejectsHTTP(t *testing.T) {
-	assert.Error(t, validateConsensusURL("http://consensus.zerotrustdata.io"))
-}
-
-func TestValidateConsensusURL_RejectsFragment(t *testing.T) {
-	assert.Error(t, validateConsensusURL("https://consensus.zerotrustdata.io#frag"))
-}
-
-func TestValidateConsensusURL_RejectsUserInfo(t *testing.T) {
-	assert.Error(t, validateConsensusURL("https://user@consensus.zerotrustdata.io"))
-}
-
-func TestValidateConsensusURL_RejectsUnsupportedScheme(t *testing.T) {
-	assert.Error(t, validateConsensusURL("ftp://consensus.zerotrustdata.io"))
-}
-
-// --- validateConsensusID ---
-
-func TestValidateConsensusID_EmptyRejected(t *testing.T) {
-	assert.Error(t, validateConsensusID(""))
-}
-
-func TestValidateConsensusID_ValidAlphaNumeric(t *testing.T) {
-	assert.NoError(t, validateConsensusID("trib-prod-01"))
-}
-
-func TestValidateConsensusID_ValidUnderscore(t *testing.T) {
-	assert.NoError(t, validateConsensusID("trib_prod_01"))
-}
-
-func TestValidateConsensusID_RejectsSpecialChars(t *testing.T) {
-	assert.Error(t, validateConsensusID("trib!prod"))
-}
-
-func TestValidateConsensusID_RejectsSpaces(t *testing.T) {
-	assert.Error(t, validateConsensusID("trib prod"))
-}
-
-func TestValidateConsensusID_RejectsDots(t *testing.T) {
-	assert.Error(t, validateConsensusID("trib.prod"))
-}
-
-// --- validateConsensusBootstrap ---
-
-func TestValidateConsensusBootstrap_MatchingID(t *testing.T) {
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "bootstrap.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"consensus_id":"trib-001","members":[]}`), 0644))
-	assert.NoError(t, validateConsensusBootstrap(path, "trib-001"))
-}
-
-func TestValidateConsensusBootstrap_MismatchedID(t *testing.T) {
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "bootstrap.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"consensus_id":"trib-001","members":[]}`), 0644))
-	assert.Error(t, validateConsensusBootstrap(path, "trib-999"))
-}
-
-func TestValidateConsensusBootstrap_NotJSON(t *testing.T) {
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "bootstrap.json")
-	require.NoError(t, os.WriteFile(path, []byte("not json"), 0644))
-	assert.Error(t, validateConsensusBootstrap(path, "trib-001"))
-}
-
-func TestValidateConsensusBootstrap_MissingFile(t *testing.T) {
-	assert.Error(t, validateConsensusBootstrap("/nonexistent/path.json", "trib-001"))
-}
-
-func TestValidateConsensusBootstrap_Directory(t *testing.T) {
-	dir := testutil.TempDir(t)
-	assert.Error(t, validateConsensusBootstrap(dir, "trib-001"))
-}
-
-func TestValidateConsensusBootstrap_MissingConsensusIDField(t *testing.T) {
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "bootstrap.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"members":[]}`), 0644))
-	assert.Error(t, validateConsensusBootstrap(path, "trib-001"))
 }
 
 // --- validatePasskeyRP ---

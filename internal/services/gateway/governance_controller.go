@@ -18,7 +18,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
-	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/protocol"
@@ -27,29 +26,22 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-// GovernanceController handles governance envelope submission and consensus
-// deliberation endpoints. Consensus is wired directly as *consensus.ConsensusService.
-// Under doctrine posture, the consensus route is not registered on the router
-// (returning 404), ensuring handleConsensusDeliberate is only called when consensus
-// is non-nil. EnvProc is injected at construction time; a nil value means envelope
+// GovernanceController handles governance envelope submission endpoints.
+// EnvProc is injected at construction time; a nil value means envelope
 // submission is not enabled.
 type GovernanceController struct {
 	cfg       *config.Config
 	logger    *slog.Logger
 	responder *response.Writer
-	consensus *consensus.ConsensusService
 	envProc   governance.EnvelopeProcessor
 }
 
 // GovernanceControllerDeps groups all dependencies for GovernanceController.
-// Consensus is a *consensus.ConsensusService (nil only when the gateway posture
-// is doctrine, where the deliberate route is not registered).
 // EnvProc may be nil if envelope submission is not enabled.
 type GovernanceControllerDeps struct {
 	Cfg       *config.Config
 	Logger    *slog.Logger
 	Responder *response.Writer
-	Consensus *consensus.ConsensusService
 	EnvProc   governance.EnvelopeProcessor
 }
 
@@ -58,14 +50,8 @@ func newGovernanceController(d GovernanceControllerDeps) *GovernanceController {
 		cfg:       d.Cfg,
 		logger:    d.Logger,
 		responder: d.Responder,
-		consensus: d.Consensus,
 		envProc:   d.EnvProc,
 	}
-}
-
-// handleConsensusDeliberate is the HTTP handler for the consensus deliberate endpoint.
-func (c *GovernanceController) handleConsensusDeliberate(w http.ResponseWriter, r *http.Request) {
-	c.consensus.HandleDeliberate(w, r)
 }
 
 // verifyEnvelopeIdentityBinding enforces transport-to-envelope identity binding

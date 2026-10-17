@@ -257,13 +257,12 @@ const (
 	SecretsFileActuatorKeyID            = "actuator_key_id"
 	SecretsFileAuditorSigningKey        = "auditor_signing_key"
 	SecretsFileAuditorKeyID             = "auditor_key_id"
-	SecretsFileAuditorHMACKey           = "auditor_hmac_key"
-	SecretsFileNotarySigningKey         = "notary_signing_key"
-	SecretsFileOperatorPrivateKey       = "operator_private_key"
-	SecretsFileCLIPrivateKey            = "cli_private_key"
-	SecretsFileConsensusMemberKeyPrefix = "consensus_member_"
-	SecretsFileVaultKey                 = "vault_key"
-	SecretsFileVaultKeyStaged           = "vault_key.rekey"
+	SecretsFileAuditorHMACKey     = "auditor_hmac_key"
+	SecretsFileNotarySigningKey   = "notary_signing_key"
+	SecretsFileOperatorPrivateKey = "operator_private_key"
+	SecretsFileCLIPrivateKey      = "cli_private_key"
+	SecretsFileVaultKey           = "vault_key"
+	SecretsFileVaultKeyStaged     = "vault_key.rekey"
 )
 
 // Evaluation target observation constants.

@@ -2176,3 +2176,65 @@ func TestGatewayService_HandleA2aCall(t *testing.T) {
 		}
 	})
 }
+
+func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {
+	t.Run("suspends envelope and returns typed L3 suspension response", func(t *testing.T) {
+		store := &fakeSuspendedStore{}
+		recorder := &recordingAuditEventRecorder{}
+		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
+		g.posture = constants.PostureRatify
+		g.publicBaseURL = "https://gateway.local:8443"
+
+		env := &commonv1.GovernanceEnvelope{
+			Id:                "tx-enroll-decide-1",
+			TransactionHash:   "tx-enroll-decide-1",
+			OperatorId:        string(constants.DocIDEmbeddedOperator),
+			OperatorSessionId: "embedded-session-1",
+			RequestorUserId:   "owner-user-1",
+			CliSessionId:      "cli-session-1",
+			ActionType:        string(constants.PlatformEnrollmentActionDecide),
+			EventType:         string(constants.EventPlatformEnrollmentDecideRequested),
+			Posture:           string(constants.PostureRatify),
+		}
+
+		before := time.Now().UTC()
+		resp, err := g.SuspendGovernanceEnvelope(context.Background(), env)
+		require.NoError(t, err)
+
+		require.Equal(t, models.PlatformEnrollmentStatusL3Required, resp.Status)
+		require.Equal(t, constants.PostureRatify, resp.Posture)
+		require.Equal(t, "tx-enroll-decide-1", resp.TxHash)
+		require.Equal(t, "https://gateway.local:8443"+constants.APIPaths.ApprovePagePrefix+"tx-enroll-decide-1", resp.ApprovalURL)
+		require.Equal(t, constants.PostureRatify.HumanApprovalReason(), resp.Message)
+		require.True(t, resp.ExpiresAt.After(before))
+
+		tx, ok := store.txs["tx-enroll-decide-1"]
+		require.True(t, ok)
+		require.Equal(t, "embedded-session-1", tx.OperatorSessionID)
+		require.Equal(t, "owner-user-1", tx.UserID)
+		require.Equal(t, string(constants.DocIDEmbeddedOperator), tx.OperatorID)
+		require.Equal(t, "cli-session-1", tx.SubmitterCLISessionID)
+		require.Len(t, recorder.events, 1)
+		require.Equal(t, constants.Event.Operator.Notary.ApprovalRequested, recorder.events[0].Type)
+	})
+
+	t.Run("fails closed when OperatorSessionId is empty", func(t *testing.T) {
+		store := &fakeSuspendedStore{}
+		recorder := &recordingAuditEventRecorder{}
+		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
+		g.posture = constants.PostureNotary
+
+		env := &commonv1.GovernanceEnvelope{
+			Id:              "tx-missing-session",
+			TransactionHash: "tx-missing-session",
+			OperatorId:      string(constants.DocIDEmbeddedOperator),
+			ActionType:      string(constants.PlatformEnrollmentActionDecide),
+		}
+
+		_, err := g.SuspendGovernanceEnvelope(context.Background(), env)
+		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+		require.Empty(t, store.txs)
+		require.Empty(t, recorder.events)
+	})
+}
+

@@ -380,6 +380,35 @@ type PlatformEnrollmentRevokeResponse struct {
 	State         PlatformEnrollmentState `json:"state"`
 }
 
+const PlatformEnrollmentStatusL3Required = "l3_required"
+
+type PlatformEnrollmentL3SuspensionResponse struct {
+	Status      string            `json:"status"`
+	Posture     constants.Posture `json:"posture"`
+	TxHash      string            `json:"tx_hash"`
+	ApprovalURL string            `json:"approval_url"`
+	ExpiresAt   time.Time         `json:"expires_at"`
+	Message     string            `json:"message"`
+}
+
+type PlatformEnrollmentL3RequiredError struct {
+	Suspension PlatformEnrollmentL3SuspensionResponse
+}
+
+func (e *PlatformEnrollmentL3RequiredError) Error() string {
+	if e == nil {
+		return constants.ErrPlatformEnrollmentL3Required.Error()
+	}
+	if e.Suspension.Message != "" {
+		return fmt.Sprintf("%s: %s", constants.ErrPlatformEnrollmentL3Required.Error(), e.Suspension.Message)
+	}
+	return constants.ErrPlatformEnrollmentL3Required.Error()
+}
+
+func (e *PlatformEnrollmentL3RequiredError) Unwrap() error {
+	return constants.ErrPlatformEnrollmentL3Required
+}
+
 type PlatformEnrollmentProofs struct {
 	App      string `json:"app,omitempty"`
 	Operator string `json:"operator,omitempty"`
