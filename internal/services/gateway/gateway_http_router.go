@@ -50,7 +50,7 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 
 	// Landing page and health
 	mux.HandleFunc(constants.APIPaths.Landing, h.healthController.handleLandingPage)
-	mux.HandleFunc(constants.APIPaths.AuthLogout, h.sessionController.handlePublicAuthLogout)
+	mux.HandleFunc(constants.APIPaths.AuthLogout, h.webSessionController.handlePublicAuthLogout)
 	mux.HandleFunc(constants.APIPaths.AuthBootstrap, h.bootstrapController.handleLocalBootstrapWithURL)
 	mux.HandleFunc(constants.APIPaths.AuthBootstrapStatus, h.bootstrapController.handleBootstrapStatus)
 	mux.HandleFunc(constants.APIPaths.PKIDevicesEnroll, h.pkiController.handlePKIDevicesEnroll)
@@ -236,7 +236,7 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 
 	// Browser-facing routes (RouteAuthWebSession — unified middleware validates cookie)
 	mux.HandleFunc(constants.APIPaths.UsersMe, h.userController.handleUserMe)
-	mux.HandleFunc(constants.APIPaths.AuthSessionsMe, h.sessionController.handleWebSession)
+	mux.HandleFunc(constants.APIPaths.AuthSessionsMe, h.webSessionController.handleWebSession)
 	mux.Handle(constants.APIPaths.ApprovalsByID, http.HandlerFunc(h.passkeyController.handleApprovalAction))
 	mux.HandleFunc(constants.APIPaths.Approvals, h.passkeyController.handleListSuspendedTransactions)
 	mux.HandleFunc(constants.APIPaths.AuthPasskeys, h.passkeyController.listCredentials)

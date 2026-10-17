@@ -79,7 +79,7 @@ type L2ConsensusDeliberator interface {
 // It is read-only: an unclaimed embedded Operator yields
 // constants.ErrEmbeddedOperatorUnclaimed. *embedded.Service satisfies it.
 type EmbeddedSessionResolver interface {
-	SessionID(ctx context.Context) (string, error)
+	OperatorSessionID(ctx context.Context) (string, error)
 }
 
 // GatewayService handles MCP/A2A protocol translation and downstream dispatch.
@@ -952,7 +952,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		// its approval, expiry, and execution evidence is recorded on that
 		// Operator's session chain. An unclaimed embedded Operator has no session
 		// and the call fails closed.
-		embeddedSessionID, err := g.embeddedSession.SessionID(ctx)
+		embeddedSessionID, err := g.embeddedSession.OperatorSessionID(ctx)
 		if err != nil {
 			return "", nil, "", fmt.Errorf("gateway: resolve embedded operator session for app %s: %w", appID, err)
 		}

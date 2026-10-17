@@ -39,7 +39,7 @@ func TestStartGatewayIfNeeded_ConfigLoadError(t *testing.T) {
 		}
 		t.Cleanup(func() { shared.ConfigLoad = originalLoad })
 
-		err := startGatewayIfNeeded(shared.NewFileSvc, "")
+		_, err := startGatewayIfNeeded(shared.NewFileSvc, "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "mcp: load config")
 	})

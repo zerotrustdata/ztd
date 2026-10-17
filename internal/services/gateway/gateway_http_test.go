@@ -167,7 +167,12 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 			UserSvc:   infra.UserSvc,
 			Responder: infra.Responder,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		CLISessionControllerDeps: CLISessionControllerDeps{
+			Logger:    infra.Logger,
+			UserSvc:   infra.UserSvc,
+			Responder: infra.Responder,
+		},
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      infra.Logger,
 			DocStore:    infra.DocStore,
 			Responder:   infra.Responder,
@@ -345,7 +350,7 @@ func TestNewHTTPHandler(t *testing.T) {
 	assert.NotNil(t, h.bootstrapController)
 	assert.NotNil(t, h.enrollmentTokenController)
 	assert.NotNil(t, h.userController)
-	assert.NotNil(t, h.sessionController)
+	assert.NotNil(t, h.webSessionController)
 	assert.NotNil(t, h.adminController)
 	assert.NotNil(t, h.operatorController)
 	assert.Equal(t, cfg, h.cfg)

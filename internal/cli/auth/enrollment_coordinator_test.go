@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
+	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -68,6 +69,20 @@ type mockGateway struct {
 	// ProbeCLISession mock fields.
 	probeErr   error
 	probeCalls int
+
+	// SessionInfo mock fields.
+	sessionInfo      CLISessionInfo
+	sessionInfoErr   error
+	sessionInfoCalls int
+}
+
+// SessionInfo returns the configured mock session info. The zero value
+// reports a session whose user has no registered passkey.
+func (m *mockGateway) SessionInfo(ctx context.Context, fileSvc fs.RuntimeFileService) (CLISessionInfo, error) {
+	m.mu.Lock()
+	m.sessionInfoCalls++
+	m.mu.Unlock()
+	return m.sessionInfo, m.sessionInfoErr
 }
 
 func (m *mockGateway) CheckBootstrapStatus(ctx context.Context, baseURL string) (bool, error) {
@@ -1033,6 +1048,83 @@ func TestEnroll_SkipPasskey_SuppressesCeremony(t *testing.T) {
 	_, err := coord.Enroll(context.Background(), EnrollmentOptions{SkipPasskey: true})
 	require.NoError(t, err)
 	assert.Equal(t, 0, passkey.calls, "passkey should be suppressed")
+}
+
+// --- PasskeyIfMissing tests ---
+
+// TestEnroll_PasskeyIfMissing_RegisteredPasskeyStaysHeadless verifies that a
+// user who already holds a passkey finishes with only the CLI credentials:
+// no OS trust installation, no browser-restart prompt, no ceremony.
+func TestEnroll_PasskeyIfMissing_RegisteredPasskeyStaysHeadless(t *testing.T) {
+	t.Parallel()
+	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
+
+	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
+	gw.bootstrapped = false
+	gw.bootstrapArtifacts = artifacts
+	gw.sessionInfo = CLISessionInfo{PasskeyRegistered: true}
+	keys.csr, keys.key = "test-csr", artifacts.CLIKey
+	continueCalled := false
+	coord.continueFn = func(string) bool {
+		continueCalled = true
+		return true
+	}
+
+	result, err := coord.Enroll(context.Background(), PostureLoginOptions(ztdconfig.PostureNotary))
+	require.NoError(t, err)
+	assert.Equal(t, EnrollmentSourceBootstrap, result.Source)
+	assert.False(t, result.SystemTrustInstalled)
+	assert.Equal(t, 1, gw.sessionInfoCalls)
+	assert.Equal(t, 0, trust.installCalls, "trust must not be installed when a passkey exists")
+	assert.False(t, continueCalled, "browser-restart prompt must not run when a passkey exists")
+	assert.Equal(t, 0, passkey.calls, "ceremony must not run when a passkey exists")
+}
+
+// TestEnroll_PasskeyIfMissing_NoPasskeyRunsCeremony verifies that a user with
+// no passkey gets the full web path: trust installation and the ceremony.
+func TestEnroll_PasskeyIfMissing_NoPasskeyRunsCeremony(t *testing.T) {
+	t.Parallel()
+	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
+
+	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
+	gw.bootstrapped = false
+	gw.bootstrapArtifacts = artifacts
+	keys.csr, keys.key = "test-csr", artifacts.CLIKey
+
+	result, err := coord.Enroll(context.Background(), PostureLoginOptions(ztdconfig.PostureRatify))
+	require.NoError(t, err)
+	assert.True(t, result.SystemTrustInstalled)
+	assert.Equal(t, 1, gw.sessionInfoCalls)
+	assert.Equal(t, 1, trust.installCalls)
+	assert.Equal(t, 1, passkey.calls)
+	assert.True(t, recorder.contains("requires passkey approval"))
+}
+
+// TestEnroll_PasskeyIfMissing_SessionInfoErrorFailsClosed verifies that an
+// unverifiable passkey state aborts rather than guessing either way.
+func TestEnroll_PasskeyIfMissing_SessionInfoErrorFailsClosed(t *testing.T) {
+	t.Parallel()
+	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
+
+	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
+	gw.bootstrapped = false
+	gw.bootstrapArtifacts = artifacts
+	gw.sessionInfoErr = constants.ErrServiceUnavailable
+	keys.csr, keys.key = "test-csr", artifacts.CLIKey
+
+	_, err := coord.Enroll(context.Background(), PostureLoginOptions(ztdconfig.PostureNotary))
+	require.ErrorIs(t, err, constants.ErrEnrollmentFailed)
+	require.ErrorIs(t, err, constants.ErrServiceUnavailable)
+	assert.Equal(t, 0, trust.installCalls)
+	assert.Equal(t, 0, passkey.calls)
+}
+
+func TestPostureLoginOptions(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, CLILoginOptions(false), PostureLoginOptions(ztdconfig.PostureDoctrine))
+	assert.Equal(t, CLILoginOptions(false), PostureLoginOptions(ztdconfig.PostureConsensus))
+	assert.Equal(t, EnrollmentOptions{PasskeyIfMissing: true}, PostureLoginOptions(ztdconfig.PostureRatify))
+	assert.Equal(t, EnrollmentOptions{PasskeyIfMissing: true}, PostureLoginOptions(ztdconfig.PostureNotary))
 }
 
 // --- Headless tests ---

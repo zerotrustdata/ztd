@@ -11,6 +11,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"time"
+
+	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 )
 
 // LocalEnrollmentState is the coordinator's classification of the local CLI
@@ -279,8 +281,17 @@ type EnrollmentOptions struct {
 	// Console SPA. Headless implies SkipPasskey but also drives the
 	// recovery-branch output change (printing the approve-recovery command
 	// instead of opening a browser). CLI-session callers (`ztd login`,
-	// `mcp agent run`) build these options with CLILoginOptions.
+	// `mcp agent run` without L3) build these options with CLILoginOptions.
 	Headless bool
+
+	// PasskeyIfMissing runs OS trust installation, the browser-restart gate,
+	// and the passkey ceremony only when the gateway reports that the
+	// session's user has no registered passkey. A user who already holds a
+	// passkey finishes headless once the CLI credentials are in place. It is
+	// for CLI sessions under a posture that requires L3, where every
+	// governed action needs a passkey approval. Mutually exclusive with
+	// Headless and SkipPasskey; PostureLoginOptions builds it.
+	PasskeyIfMissing bool
 }
 
 // CLILoginOptions returns the options for a headless CLI session: no OS
@@ -293,4 +304,15 @@ func CLILoginOptions(rotateCLI bool) EnrollmentOptions {
 		RotateCLI:     rotateCLI,
 		Headless:      true,
 	}
+}
+
+// PostureLoginOptions returns the options for a CLI session against a
+// gateway running under posture. Without L3 it is a headless CLI login
+// (CLILoginOptions). Under ratify and notary L3 approval needs a passkey, so
+// the session also registers one when the user does not hold one yet.
+func PostureLoginOptions(posture ztdconfig.GatewayPosture) EnrollmentOptions {
+	if !posture.RequiresL3() {
+		return CLILoginOptions(false)
+	}
+	return EnrollmentOptions{PasskeyIfMissing: true}
 }

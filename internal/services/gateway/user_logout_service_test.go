@@ -30,8 +30,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 )
 
-func newLogoutService(infra *TestInfrastructure, pki cliCertificateRevoker) *SessionLogoutService {
-	return NewSessionLogoutService(SessionLogoutServiceDeps{
+func newLogoutService(infra *TestInfrastructure, pki cliCertificateRevoker) *UserLogoutService {
+	return NewUserLogoutService(UserLogoutServiceDeps{
 		Logger:      infra.Logger,
 		CLISessions: infra.CLISessionSvc,
 		WebSessions: infra.WebSessionSvc,
@@ -158,7 +158,7 @@ func revocationReason(t *testing.T, infra *TestInfrastructure, serial string) st
 	return rev.Reason
 }
 
-func TestSessionLogout_All_TerminatesWebAndCLISessionsUnbindsOperatorsAndRevokesCerts(t *testing.T) {
+func TestUserLogout_All_TerminatesWebAndCLISessionsUnbindsOperatorsAndRevokesCerts(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	svc := newLogoutService(infra, infra.PKI)
 	user := newLogoutUser(t, infra)
@@ -213,7 +213,7 @@ func TestSessionLogout_All_TerminatesWebAndCLISessionsUnbindsOperatorsAndRevokes
 	assert.False(t, revoked)
 }
 
-func TestSessionLogout_WebScope_LeavesCLISessionsAndCertsAlone(t *testing.T) {
+func TestUserLogout_WebScope_LeavesCLISessionsAndCertsAlone(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	svc := newLogoutService(infra, infra.PKI)
 	user := newLogoutUser(t, infra)
@@ -238,7 +238,7 @@ func TestSessionLogout_WebScope_LeavesCLISessionsAndCertsAlone(t *testing.T) {
 	assert.False(t, revoked)
 }
 
-func TestSessionLogout_CLIScope_LeavesWebSessionsAndWebBindingsAlone(t *testing.T) {
+func TestUserLogout_CLIScope_LeavesWebSessionsAndWebBindingsAlone(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	svc := newLogoutService(infra, infra.PKI)
 	user := newLogoutUser(t, infra)
@@ -259,7 +259,7 @@ func TestSessionLogout_CLIScope_LeavesWebSessionsAndWebBindingsAlone(t *testing.
 	assert.False(t, loadLogoutCLISession(t, infra, "logout-cli-only").IsActive)
 }
 
-func TestSessionLogout_RepeatedLogoutIsIdempotentAndKeepsEarlierRevocation(t *testing.T) {
+func TestUserLogout_RepeatedLogoutIsIdempotentAndKeepsEarlierRevocation(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	svc := newLogoutService(infra, infra.PKI)
 	user := newLogoutUser(t, infra)
@@ -283,7 +283,7 @@ func TestSessionLogout_RepeatedLogoutIsIdempotentAndKeepsEarlierRevocation(t *te
 	assert.Equal(t, "cli_rotation", revocationReason(t, infra, "7302"), "an earlier revocation reason must not be overwritten")
 }
 
-func TestSessionLogout_ExpiredActiveSession_IsTerminatedUnreportedAndItsCertRevoked(t *testing.T) {
+func TestUserLogout_ExpiredActiveSession_IsTerminatedUnreportedAndItsCertRevoked(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	svc := newLogoutService(infra, infra.PKI)
 	user := newLogoutUser(t, infra)
@@ -303,7 +303,7 @@ func TestSessionLogout_ExpiredActiveSession_IsTerminatedUnreportedAndItsCertRevo
 	assert.False(t, loadLogoutCLISession(t, infra, "logout-stale").IsActive)
 }
 
-func TestSessionLogout_RevokesPresentedCertificateEvenWithoutSessionDocument(t *testing.T) {
+func TestUserLogout_RevokesPresentedCertificateEvenWithoutSessionDocument(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	svc := newLogoutService(infra, infra.PKI)
 	user := newLogoutUser(t, infra)
@@ -315,7 +315,7 @@ func TestSessionLogout_RevokesPresentedCertificateEvenWithoutSessionDocument(t *
 	assert.Equal(t, constants.CLILogoutCertRevocationReason, revocationReason(t, infra, "7501"))
 }
 
-func TestSessionLogout_RejectsInvalidScopeAndMissingUser(t *testing.T) {
+func TestUserLogout_RejectsInvalidScopeAndMissingUser(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	svc := newLogoutService(infra, infra.PKI)
 	user := newLogoutUser(t, infra)
@@ -345,7 +345,7 @@ func (f *failingRevoker) RevokeCertificate(_ context.Context, serial, _ string) 
 	return nil
 }
 
-func TestSessionLogout_RevocationFailureIsReportedAfterTryingEverySerial(t *testing.T) {
+func TestUserLogout_RevocationFailureIsReportedAfterTryingEverySerial(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	user := newLogoutUser(t, infra)
 	persistLogoutCLISession(t, infra, user.ID, logoutCLISessionSpec{id: "logout-fail-a", serial: "7601", bound: []string{"logout-fail-op"}})
@@ -364,7 +364,7 @@ func TestSessionLogout_RevocationFailureIsReportedAfterTryingEverySerial(t *test
 	assert.Contains(t, err.Error(), "7602", "every serial is attempted, not just the first")
 }
 
-func TestSessionLogout_RevocationCheckFailureIsReported(t *testing.T) {
+func TestUserLogout_RevocationCheckFailureIsReported(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	user := newLogoutUser(t, infra)
 	persistLogoutCLISession(t, infra, user.ID, logoutCLISessionSpec{id: "logout-check-fail", serial: "7701"})
@@ -379,7 +379,7 @@ func TestSessionLogout_RevocationCheckFailureIsReported(t *testing.T) {
 	assert.Empty(t, revoker.revoked, "a serial whose status could not be checked is not revoked blindly")
 }
 
-func TestSessionLogout_CLIScopeWithoutPKIFailsClosed(t *testing.T) {
+func TestUserLogout_CLIScopeWithoutPKIFailsClosed(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	user := newLogoutUser(t, infra)
 	persistLogoutCLISession(t, infra, user.ID, logoutCLISessionSpec{id: "logout-nopki", serial: "7801"})

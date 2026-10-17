@@ -844,7 +844,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Reg:                ls.reg,
 			Auth:               ls.auth,
 			UserSvc:            userSvc,
-			LogoutSvc: NewSessionLogoutService(SessionLogoutServiceDeps{
+			LogoutSvc: NewUserLogoutService(UserLogoutServiceDeps{
 				Logger:      logger,
 				CLISessions: cliSessionSvc,
 				WebSessions: ls.webSessionSvc,
@@ -870,7 +870,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			UserSvc:   userSvc,
 			Responder: ls.responder,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      logger,
 			DocStore:    ls.docStore,
 			Responder:   ls.responder,

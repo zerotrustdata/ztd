@@ -18,6 +18,6 @@ const testEmbeddedSessionID = "test-embedded-operator-session"
 // claimed embedded Operator session.
 type fixedEmbeddedSession struct{}
 
-func (fixedEmbeddedSession) SessionID(context.Context) (string, error) {
+func (fixedEmbeddedSession) OperatorSessionID(context.Context) (string, error) {
 	return testEmbeddedSessionID, nil
 }

@@ -108,12 +108,12 @@ type persistCall struct {
 	loginMethod       string
 }
 
-type memSessions struct {
+type memOperatorSessions struct {
 	calls []persistCall
 	err   error
 }
 
-func (m *memSessions) PersistOperatorSession(_ context.Context, operatorSessionID, userID, orgID, operatorID, loginMethod string) error {
+func (m *memOperatorSessions) PersistOperatorSession(_ context.Context, operatorSessionID, userID, orgID, operatorID, loginMethod string) error {
 	m.calls = append(m.calls, persistCall{
 		operatorSessionID: operatorSessionID,
 		userID:            userID,
@@ -155,7 +155,7 @@ func loadOperator(t *testing.T, store *memStore) *operatorv1.OperatorDocument {
 
 func TestRegisterPending_Idempotent(t *testing.T) {
 	store := newMemStore()
-	svc := New(store, &memSessions{})
+	svc := New(store, &memOperatorSessions{})
 
 	require.NoError(t, svc.RegisterPending(context.Background()))
 
@@ -186,7 +186,7 @@ func TestRegisterPending_Idempotent(t *testing.T) {
 
 func TestClaim_SameUserReclaimIsIdempotent(t *testing.T) {
 	store := newMemStore()
-	svc := New(store, &memSessions{})
+	svc := New(store, &memOperatorSessions{})
 	now := time.Now().UTC()
 
 	operatorID, sessionID, err := svc.Claim(context.Background(), "user-same", "fp", now)
@@ -202,7 +202,7 @@ func TestClaim_SameUserReclaimIsIdempotent(t *testing.T) {
 
 func TestClaim_DifferentUserRejected(t *testing.T) {
 	store := newMemStore()
-	svc := New(store, &memSessions{})
+	svc := New(store, &memOperatorSessions{})
 	now := time.Now().UTC()
 
 	_, _, err := svc.Claim(context.Background(), "user-owner", "fp", now)
@@ -215,7 +215,7 @@ func TestClaim_DifferentUserRejected(t *testing.T) {
 
 func TestClaim_MissingPendingDoc_ClaimsAnyway(t *testing.T) {
 	store := newMemStore()
-	svc := New(store, &memSessions{})
+	svc := New(store, &memOperatorSessions{})
 
 	operatorID, sessionID, err := svc.Claim(context.Background(), "user-heal", "fp-heal", time.Now().UTC())
 	require.NoError(t, err)
@@ -233,44 +233,44 @@ func TestClaim_MissingPendingDoc_ClaimsAnyway(t *testing.T) {
 
 func TestClaimEmbeddedOperator_PersistsBootstrapSession(t *testing.T) {
 	store := newMemStore()
-	sessions := &memSessions{}
-	svc := New(store, sessions)
+	operatorSessions := &memOperatorSessions{}
+	svc := New(store, operatorSessions)
 
 	operatorID, sessionID, err := svc.ClaimEmbeddedOperator(context.Background(), "user-browser")
 	require.NoError(t, err)
 	assert.Equal(t, string(constants.DocIDEmbeddedOperator), operatorID)
-	require.Len(t, sessions.calls, 1)
+	require.Len(t, operatorSessions.calls, 1)
 	assert.Equal(t, persistCall{
 		operatorSessionID: sessionID,
 		userID:            "user-browser",
 		orgID:             "user-browser",
 		operatorID:        operatorID,
 		loginMethod:       string(constants.HeartbeatTypeBootstrap),
-	}, sessions.calls[0])
+	}, operatorSessions.calls[0])
 
 	operatorID2, sessionID2, err := svc.ClaimEmbeddedOperator(context.Background(), "user-browser")
 	require.NoError(t, err)
 	assert.Equal(t, operatorID, operatorID2)
 	assert.Equal(t, sessionID, sessionID2)
-	require.Len(t, sessions.calls, 2)
-	assert.Equal(t, sessions.calls[0], sessions.calls[1])
+	require.Len(t, operatorSessions.calls, 2)
+	assert.Equal(t, operatorSessions.calls[0], operatorSessions.calls[1])
 
 	_, _, err = svc.ClaimEmbeddedOperator(context.Background(), "user-other")
 	require.ErrorIs(t, err, constants.ErrEmbeddedOperatorClaimed)
-	assert.Len(t, sessions.calls, 2)
+	assert.Len(t, operatorSessions.calls, 2)
 }
 
-func TestService_SessionID(t *testing.T) {
+func TestService_OperatorSessionID(t *testing.T) {
 	ctx := context.Background()
 	opsCollection := marshaler.CollectionName(constants.CollectionOperators)
 
 	t.Run("claimed operator returns its session", func(t *testing.T) {
-		svc := New(newMemStore(), &memSessions{})
+		svc := New(newMemStore(), &memOperatorSessions{})
 		require.NoError(t, svc.RegisterPending(ctx))
 		_, want, err := svc.ClaimEmbeddedOperator(ctx, "user-1")
 		require.NoError(t, err)
 
-		got, err := svc.SessionID(ctx)
+		got, err := svc.OperatorSessionID(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, want, got)
 	})
@@ -279,7 +279,7 @@ func TestService_SessionID(t *testing.T) {
 		svc := New(newMemStore(), nil)
 		require.NoError(t, svc.RegisterPending(ctx))
 
-		got, err := svc.SessionID(ctx)
+		got, err := svc.OperatorSessionID(ctx)
 		require.ErrorIs(t, err, constants.ErrEmbeddedOperatorUnclaimed)
 		assert.Empty(t, got)
 	})
@@ -288,10 +288,10 @@ func TestService_SessionID(t *testing.T) {
 		store := newMemStore()
 		svc := New(store, nil)
 
-		got, err := svc.SessionID(ctx)
+		got, err := svc.OperatorSessionID(ctx)
 		require.ErrorIs(t, err, constants.ErrEmbeddedOperatorUnclaimed)
 		assert.Empty(t, got)
-		assert.Zero(t, store.count(opsCollection), "SessionID must not write the pending document")
+		assert.Zero(t, store.count(opsCollection), "OperatorSessionID must not write the pending document")
 	})
 }
 
@@ -299,7 +299,7 @@ func TestService_RuntimeIdentity(t *testing.T) {
 	ctx := context.Background()
 	svc := New(newMemStore(), nil)
 	require.NoError(t, svc.RegisterPending(ctx))
-	_, err := svc.SessionID(ctx)
+	_, err := svc.OperatorSessionID(ctx)
 	require.ErrorIs(t, err, constants.ErrEmbeddedOperatorUnclaimed, "an unclaimed Operator has no operator session")
 	identity, err := svc.RuntimeIdentity(ctx)
 	require.NoError(t, err)

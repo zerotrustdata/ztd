@@ -50,11 +50,11 @@ type userStore interface {
 	HasAnyUsers(ctx context.Context) (bool, error)
 }
 
-// sessionStore defines the interface for WebAuthn session storage.
-type sessionStore interface {
-	StoreSession(ctx context.Context, userID string, session *webauthn.SessionData) error
-	GetSession(ctx context.Context, userID string) (*webauthn.SessionData, error)
-	DeleteSession(ctx context.Context, userID string) error
+// webauthnCeremonyStore defines the interface for WebAuthn ceremony storage.
+type webauthnCeremonyStore interface {
+	StoreCeremony(ctx context.Context, userID string, session *webauthn.SessionData) error
+	GetCeremony(ctx context.Context, userID string) (*webauthn.SessionData, error)
+	DeleteCeremony(ctx context.Context, userID string) error
 }
 
 // webauthnClient defines the interface for WebAuthn operations.
@@ -68,12 +68,12 @@ type webauthnClient interface {
 // PasskeyService handles L3 proof brokerage for passkey/WebAuthn operations.
 // This moves the L3 authorization from client into ztdo as the sovereign authority.
 type PasskeyService struct {
-	userStore    userStore
-	sessionStore sessionStore
-	webauthn     webauthnClient
-	logger       *slog.Logger
-	rpID         string
-	rpName       string
+	userStore     userStore
+	ceremonyStore webauthnCeremonyStore
+	webauthn      webauthnClient
+	logger        *slog.Logger
+	rpID          string
+	rpName        string
 }
 
 // PasskeyConfig holds configuration for passkey operations.
@@ -169,12 +169,12 @@ func (s *dbUserStore) HasAnyUsers(ctx context.Context) (bool, error) {
 	return len(docs) > 0, nil
 }
 
-// dbSessionStore implements sessionStore using DocumentStoreService.
-type dbSessionStore struct {
+// dbWebAuthnCeremonyStore implements webauthnCeremonyStore using DocumentStoreService.
+type dbWebAuthnCeremonyStore struct {
 	db *DocumentStoreService
 }
 
-func (s *dbSessionStore) StoreSession(ctx context.Context, userID string, session *webauthn.SessionData) error {
+func (s *dbWebAuthnCeremonyStore) StoreCeremony(ctx context.Context, userID string, session *webauthn.SessionData) error {
 	data, err := json.Marshal(session)
 	if err != nil {
 		return err
@@ -182,7 +182,7 @@ func (s *dbSessionStore) StoreSession(ctx context.Context, userID string, sessio
 	return s.db.DocSet(ctx, marshaler.CollectionName(constants.CollectionPasskeyChallenges), userID, data)
 }
 
-func (s *dbSessionStore) GetSession(ctx context.Context, userID string) (*webauthn.SessionData, error) {
+func (s *dbWebAuthnCeremonyStore) GetCeremony(ctx context.Context, userID string) (*webauthn.SessionData, error) {
 	doc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionPasskeyChallenges), userID)
 	if err != nil {
 		return nil, err
@@ -203,7 +203,7 @@ func (s *dbSessionStore) GetSession(ctx context.Context, userID string) (*webaut
 	return &session, nil
 }
 
-func (s *dbSessionStore) DeleteSession(ctx context.Context, userID string) error {
+func (s *dbWebAuthnCeremonyStore) DeleteCeremony(ctx context.Context, userID string) error {
 	err := s.db.DocDelete(ctx, marshaler.CollectionName(constants.CollectionPasskeyChallenges), userID)
 	return err
 }
@@ -283,12 +283,12 @@ func NewPasskeyService(docStore *DocumentStoreService, logger *slog.Logger, cfg 
 	}
 
 	return &PasskeyService{
-		userStore:    &dbUserStore{db: docStore},
-		sessionStore: &dbSessionStore{db: docStore},
-		webauthn:     &realWebauthnClient{w: w},
-		logger:       logger,
-		rpID:         cfg.RpID,
-		rpName:       rpName,
+		userStore:     &dbUserStore{db: docStore},
+		ceremonyStore: &dbWebAuthnCeremonyStore{db: docStore},
+		webauthn:      &realWebauthnClient{w: w},
+		logger:        logger,
+		rpID:          cfg.RpID,
+		rpName:        rpName,
 	}, nil
 }
 
@@ -386,7 +386,7 @@ func (s *PasskeyService) GenerateRegistrationChallenge(ctx context.Context, user
 	}
 
 	// Store session data
-	if err := s.storeWebAuthnSession(ctx, userID, session); err != nil {
+	if err := s.storeWebAuthnCeremony(ctx, userID, session); err != nil {
 		return nil, err
 	}
 
@@ -404,7 +404,7 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, 
 		return nil, constants.ErrUserNotFound
 	}
 
-	session, err := s.getWebAuthnSession(ctx, userID)
+	session, err := s.getWebAuthnCeremony(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +462,7 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, 
 		return nil, err
 	}
 
-	if delErr := s.deleteWebAuthnSession(ctx, userID); delErr != nil {
+	if delErr := s.deleteWebAuthnCeremony(ctx, userID); delErr != nil {
 		s.logger.Warn("Failed to delete WebAuthn session after registration", "error", delErr, "userID", userID)
 	}
 
@@ -488,7 +488,7 @@ func (s *PasskeyService) GenerateAuthenticationChallenge(ctx context.Context, us
 		return nil, fmt.Errorf("failed to begin login: %w", err)
 	}
 
-	if err := s.storeWebAuthnSession(ctx, userID, session); err != nil {
+	if err := s.storeWebAuthnCeremony(ctx, userID, session); err != nil {
 		return nil, err
 	}
 
@@ -540,7 +540,7 @@ func (s *PasskeyService) VerifyAuthentication(ctx context.Context, userID string
 		return nil, constants.ErrUserNotFound
 	}
 
-	session, err := s.getWebAuthnSession(ctx, userID)
+	session, err := s.getWebAuthnCeremony(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -560,7 +560,7 @@ func (s *PasskeyService) VerifyAuthentication(ctx context.Context, userID string
 		return nil, err
 	}
 
-	if delErr := s.deleteWebAuthnSession(ctx, userID); delErr != nil {
+	if delErr := s.deleteWebAuthnCeremony(ctx, userID); delErr != nil {
 		s.logger.Warn("Failed to delete WebAuthn session after authentication", "error", delErr, "userID", userID)
 	}
 
@@ -805,14 +805,14 @@ func (s *PasskeyService) updateUser(ctx context.Context, userID string, user *mo
 	return s.userStore.UpdateUser(ctx, userID, user)
 }
 
-func (s *PasskeyService) storeWebAuthnSession(ctx context.Context, userID string, session *webauthn.SessionData) error {
-	return s.sessionStore.StoreSession(ctx, userID, session)
+func (s *PasskeyService) storeWebAuthnCeremony(ctx context.Context, userID string, session *webauthn.SessionData) error {
+	return s.ceremonyStore.StoreCeremony(ctx, userID, session)
 }
 
-func (s *PasskeyService) getWebAuthnSession(ctx context.Context, userID string) (*webauthn.SessionData, error) {
-	return s.sessionStore.GetSession(ctx, userID)
+func (s *PasskeyService) getWebAuthnCeremony(ctx context.Context, userID string) (*webauthn.SessionData, error) {
+	return s.ceremonyStore.GetCeremony(ctx, userID)
 }
 
-func (s *PasskeyService) deleteWebAuthnSession(ctx context.Context, userID string) error {
-	return s.sessionStore.DeleteSession(ctx, userID)
+func (s *PasskeyService) deleteWebAuthnCeremony(ctx context.Context, userID string) error {
+	return s.ceremonyStore.DeleteCeremony(ctx, userID)
 }

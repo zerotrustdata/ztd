@@ -230,7 +230,7 @@ func TestGateway_JWTIntegration(t *testing.T) {
 			UserSvc:   userSvc,
 			Responder: resp,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      logger,
 			DocStore:    db.GetDocStore(),
 			Responder:   resp,
@@ -470,7 +470,7 @@ func TestGateway_JITPasskeyBootstrapWithURL(t *testing.T) {
 			UserSvc:   userSvc,
 			Responder: resp,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      logger,
 			DocStore:    db.GetDocStore(),
 			Responder:   resp,
@@ -725,7 +725,7 @@ func TestGateway_JITPasskeyStepUpRequired(t *testing.T) {
 			UserSvc:   userSvc,
 			Responder: resp,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      logger,
 			DocStore:    db.GetDocStore(),
 			Responder:   resp,

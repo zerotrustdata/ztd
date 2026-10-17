@@ -795,10 +795,12 @@ L3 APPROVAL FLOW:
   3. Retry the tool call automatically
   4. Return the result to the tool
 
-  The launcher signs in like 'ztd login': a headless CLI session with no browser,
-  OS trust installation, or passkey ceremony. L3 WebAuthn approval needs a
-  registered passkey; register one once with:
-ztd login web
+  Sign-in follows the gateway posture. Under doctrine and consensus the launcher
+  signs in like 'ztd login': a headless CLI session with no browser, OS trust
+  installation, or passkey ceremony. Under ratify and notary L3 approval needs a
+  registered passkey: if your user already has one the launcher stays headless;
+  otherwise it installs OS trust and runs the passkey ceremony once, as
+  'ztd login web' does.
 
 For full L1-L5 governance (L2 consensus, L3 human approval via WebAuthn), start
 the gateway, then run this command:
@@ -852,78 +854,83 @@ func resolveGatewayLaunchConfig(fileSvc fs.RuntimeFileService, requested string)
 	return cfg, nil
 }
 
-// confirmRunningGatewayPosture checks an explicit --posture against the running
-// gateway. Posture is immutable at runtime, so a request that cannot be shown
-// to match fails closed rather than launching an agent under a different
-// posture than the user asked for.
-func confirmRunningGatewayPosture(fileSvc fs.RuntimeFileService, requested string) error {
-	if requested == "" {
-		return nil
-	}
+// runningGatewayPosture returns the posture of the running gateway from its
+// launch profile, which every managed gateway start persists. Posture is
+// immutable at runtime and decides how the launcher signs in, so a posture
+// that cannot be read fails closed, and an explicit --posture that differs
+// fails closed rather than launching an agent under a different posture than
+// the user asked for.
+func runningGatewayPosture(fileSvc fs.RuntimeFileService, requested string) (ztdconfig.GatewayPosture, error) {
 	profile, err := serve.ReadLaunchProfile(fileSvc)
 	if err != nil {
-		return fmt.Errorf("%w: cannot confirm the running gateway's posture is %q: %w", constants.ErrGatewayPostureMismatch, requested, err)
+		if requested != "" {
+			return "", fmt.Errorf("%w: cannot confirm the running gateway's posture is %q: %w", constants.ErrGatewayPostureMismatch, requested, err)
+		}
+		return "", fmt.Errorf("%w: %w; restart it with:\nztd gw restart", constants.ErrGatewayPostureUnknown, err)
 	}
-	if string(profile.Config.Posture) != requested {
-		return fmt.Errorf("%w: running gateway posture is %q, requested %q; restart it with:\nztd gw restart\nor omit --posture",
+	if requested != "" && string(profile.Config.Posture) != requested {
+		return "", fmt.Errorf("%w: running gateway posture is %q, requested %q; restart it with:\nztd gw restart\nor omit --posture",
 			constants.ErrGatewayPostureMismatch, profile.Config.Posture, requested)
 	}
-	return nil
+	return profile.Config.Posture, nil
 }
 
 // startGatewayIfNeeded starts the gateway if it is not already running and
-// waits until it is healthy, then ensures CLI mTLS credentials exist.
+// waits until it is healthy, then returns the gateway's posture.
 // HTTP is only used here to poll the bootstrap health endpoint before mTLS
 // certs have been issued — all subsequent traffic uses mTLS.
 //
 // requestedPosture is the --posture flag value ("" when unset). It selects the
 // posture of a gateway the launcher starts; a gateway that is already running
 // keeps the posture it was started with, which must match an explicit request.
-func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), requestedPosture string) error {
+func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), requestedPosture string) (ztdconfig.GatewayPosture, error) {
 	if err := validateRequestedPosture(requestedPosture); err != nil {
-		return err
+		return "", err
 	}
 
 	_, err := shared.LoadConfig("")
 	if err != nil {
-		return fmt.Errorf("mcp: load config: %w", err)
+		return "", fmt.Errorf("mcp: load config: %w", err)
 	}
 
 	fileSvc, err := fileSvcFactory("", slog.Default())
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+		return "", fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
 
 	pm, err := platform.NewProcessManager(fileSvc)
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
+		return "", fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 	}
 
 	running, pid, err := pm.OperatorStatus()
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
+		return "", fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 	}
 
+	var posture ztdconfig.GatewayPosture
 	if running {
-		if err := confirmRunningGatewayPosture(fileSvc, requestedPosture); err != nil {
-			return err
+		posture, err = runningGatewayPosture(fileSvc, requestedPosture)
+		if err != nil {
+			return "", err
 		}
-		fmt.Fprintf(os.Stderr, "[ztd] Gateway already running (PID %d)\n", pid)
+		fmt.Fprintf(os.Stderr, "[ztd] Gateway already running (PID %d, posture: %s)\n", pid, posture)
 	} else {
 		gatewayCfg, err := resolveGatewayLaunchConfig(fileSvc, requestedPosture)
 		if err != nil {
-			return err
+			return "", err
 		}
-		fmt.Fprintf(os.Stderr, "[ztd] Starting gateway (posture: %s)...\n", gatewayCfg.Posture)
+		posture = gatewayCfg.Posture
+		fmt.Fprintf(os.Stderr, "[ztd] Starting gateway (posture: %s)...\n", posture)
 		startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: os.Stderr}
 		if err := pm.StartOperator(&startOpts); err != nil {
-			return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
+			return "", fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 		}
 		if err := serve.WriteLaunchProfile(fileSvc, startOpts.GatewayConfig); err != nil {
 			if stopErr := pm.StopOperator(); stopErr != nil {
-				return fmt.Errorf("%w: persist launch profile: %w; stop untracked gateway: %w", constants.ErrInternal, err, stopErr)
+				return "", fmt.Errorf("%w: persist launch profile: %w; stop untracked gateway: %w", constants.ErrInternal, err, stopErr)
 			}
-			return fmt.Errorf("%w: persist launch profile: %w", constants.ErrInternal, err)
+			return "", fmt.Errorf("%w: persist launch profile: %w", constants.ErrInternal, err)
 		}
 
 		// Poll plain HTTP health until the gateway is ready.
@@ -944,7 +951,7 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 				}
 			}
 			if i == maxAttempts-1 {
-				return fmt.Errorf("%w: gateway did not become healthy after %v",
+				return "", fmt.Errorf("%w: gateway did not become healthy after %v",
 					constants.ErrGatewayNotReady, time.Duration(maxAttempts)*pollInterval)
 			}
 			time.Sleep(pollInterval)
@@ -952,7 +959,7 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 	}
 
 	fmt.Fprintf(os.Stderr, "[ztd] Gateway ready (L1-L5 governance active)\n")
-	return nil
+	return posture, nil
 }
 
 // launchAgentWithGovernance starts the gateway if needed, performs CLI auth,
@@ -960,7 +967,8 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 // MCP server. The stdio bridge loads the agent's managed application credentials by
 // name; no credential material or paths are passed through the environment.
 func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, posture string, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), enrollerFactory authcmd.EnrollerFactory) error {
-	if err := startGatewayIfNeeded(fileSvcFactory, posture); err != nil {
+	gatewayPosture, err := startGatewayIfNeeded(fileSvcFactory, posture)
+	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrGatewayNotReady, err)
 	}
 
@@ -979,11 +987,14 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 		return fmt.Errorf("mcp: launch agent: %w", err)
 	}
 
-	// mcp agent run is a CLI session, so it ensures the identity exactly as
-	// `ztd login` does: headless, with no OS trust installation and no
-	// passkey ceremony. The coordinator inspects local state and bootstraps,
-	// recovers, rotates, or reuses as needed. Browser login stays an explicit
-	// `ztd login web`.
+	// mcp agent run is a CLI session. Under a posture without L3 it ensures
+	// the identity exactly as `ztd login` does: headless, with no OS trust
+	// installation and no passkey ceremony. Under ratify and notary every
+	// governed action needs a passkey approval, so the user must hold a
+	// passkey: an identity that already has one stays headless, and one that
+	// does not gets the trust installation and passkey ceremony of
+	// `ztd login web`. The coordinator inspects local state and bootstraps,
+	// recovers, rotates, or reuses as needed.
 	fmt.Fprintf(os.Stderr, "[ztd] Ensuring CLI credentials...\n")
 	coordinator, err := enrollerFactory(func(format string, args ...any) {
 		fmt.Fprintf(os.Stderr, format+"\n", args...)
@@ -991,7 +1002,7 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
 	}
-	enrollResult, err := coordinator.Enroll(context.Background(), auth.CLILoginOptions(false))
+	enrollResult, err := coordinator.Enroll(context.Background(), auth.PostureLoginOptions(gatewayPosture))
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
 	}

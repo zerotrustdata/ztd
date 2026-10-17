@@ -34,83 +34,6 @@ import (
 	"github.com/zerotrustdata/ztd/protocol"
 )
 
-func TestHandlePublicAuthLogout(t *testing.T) {
-	t.Run("Success - clears cookie", func(t *testing.T) {
-		c := setupTestSessionController(t)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
-		req.AddCookie(&http.Cookie{Name: constants.WebSessionCookieName, Value: "test-session"})
-		rr := httptest.NewRecorder()
-
-		c.handlePublicAuthLogout(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		cookies := rr.Result().Cookies()
-		assert.Len(t, cookies, 1)
-		assert.Equal(t, constants.WebSessionCookieName, cookies[0].Name)
-		assert.Equal(t, -1, cookies[0].MaxAge)
-	})
-
-	t.Run("Success - no cookie present", func(t *testing.T) {
-		c := setupTestSessionController(t)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
-		rr := httptest.NewRecorder()
-
-		c.handlePublicAuthLogout(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-	})
-}
-
-func TestHandleWebSession(t *testing.T) {
-	t.Run("Failure - missing user_id in context", func(t *testing.T) {
-		c := setupTestSessionController(t)
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/websession", nil)
-		rr := httptest.NewRecorder()
-
-		c.handleWebSession(rr, req)
-
-		assert.Equal(t, http.StatusUnauthorized, rr.Code)
-		assert.Contains(t, rr.Body.String(), constants.ErrNotAuthenticated.Error())
-	})
-
-	t.Run("Success - returns session data with cookie", func(t *testing.T) {
-		c := setupTestSessionController(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/websession", nil)
-		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, "user-test-1"))
-		req.AddCookie(&http.Cookie{Name: constants.WebSessionCookieName, Value: "test-session-id"})
-		rr := httptest.NewRecorder()
-
-		c.handleWebSession(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		var resp models.WebSessionResponse
-		err := json.Unmarshal(rr.Body.Bytes(), &resp)
-		require.NoError(t, err)
-		assert.True(t, resp.Success)
-		assert.Equal(t, "user-test-1", resp.UserID)
-		assert.Equal(t, "test-session-id", resp.WebSessionID)
-	})
-
-	t.Run("Success - returns session data without cookie", func(t *testing.T) {
-		c := setupTestSessionController(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/websession", nil)
-		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, "user-test-2"))
-		rr := httptest.NewRecorder()
-
-		c.handleWebSession(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		var resp models.WebSessionResponse
-		err := json.Unmarshal(rr.Body.Bytes(), &resp)
-		require.NoError(t, err)
-		assert.True(t, resp.Success)
-		assert.Equal(t, "user-test-2", resp.UserID)
-		assert.Empty(t, resp.WebSessionID)
-	})
-}
-
 // selfSignedCertForSPIFFE builds a self-signed certificate carrying the
 // given SPIFFE URI SAN so tests can drive the mTLS auth paths through
 // ServeHTTP.
@@ -149,11 +72,11 @@ func seedActiveCLISession(t *testing.T, infra *TestInfrastructure, userID, cliSe
 	require.NoError(t, infra.DocStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, cliBytes))
 }
 
-// TestHandleSessionInfo_ReturnsPersistedBinding drives GET
+// TestHandleCLISessionInfo_ReturnsPersistedBinding drives GET
 // /api/v1/auth/cli/session through the full public router: the auth
 // middleware validates the CLI cert against the persisted session, stamps
 // the persisted operator binding, and the handler reports it verbatim.
-func TestHandleSessionInfo_ReturnsPersistedBinding(t *testing.T) {
+func TestHandleCLISessionInfo_ReturnsPersistedBinding(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 
 	user, err := infra.UserSvc.CreateUser(t.Context())
@@ -187,11 +110,11 @@ func TestHandleSessionInfo_ReturnsPersistedBinding(t *testing.T) {
 	assert.Equal(t, operatorID, resp.OperatorID)
 }
 
-// TestHandleSessionInfo_UnboundSessionReturnsEmptyOperatorFields verifies
+// TestHandleCLISessionInfo_UnboundSessionReturnsEmptyOperatorFields verifies
 // that a CLI session with no persisted operator binding reports empty
 // operator fields — the endpoint reports state verbatim and the caller
 // decides whether the missing binding is actionable.
-func TestHandleSessionInfo_UnboundSessionReturnsEmptyOperatorFields(t *testing.T) {
+func TestHandleCLISessionInfo_UnboundSessionReturnsEmptyOperatorFields(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 
 	user, err := infra.UserSvc.CreateUser(t.Context())
@@ -221,9 +144,9 @@ func TestHandleSessionInfo_UnboundSessionReturnsEmptyOperatorFields(t *testing.T
 	assert.False(t, resp.PasskeyRegistered)
 }
 
-// TestHandleSessionInfo_ReportsRegisteredPasskey verifies passkey_registered
+// TestHandleCLISessionInfo_ReportsRegisteredPasskey verifies passkey_registered
 // reflects the session user's persisted passkey credentials.
-func TestHandleSessionInfo_ReportsRegisteredPasskey(t *testing.T) {
+func TestHandleCLISessionInfo_ReportsRegisteredPasskey(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 
 	user, err := infra.UserSvc.CreateUser(t.Context())
@@ -251,12 +174,12 @@ func TestHandleSessionInfo_ReportsRegisteredPasskey(t *testing.T) {
 	assert.True(t, resp.PasskeyRegistered)
 }
 
-// TestHandleSessionInfo_NonCLIIdentityReturns401 verifies the endpoint
+// TestHandleCLISessionInfo_NonCLIIdentityReturns401 verifies the endpoint
 // fails closed for authenticated callers that are not CLI sessions: an
 // operator certificate reaches the handler without ContextKeyCLISessionID
 // and is rejected, and a request with no client certificate is rejected
 // by the mTLS middleware before the handler runs.
-func TestHandleSessionInfo_NonCLIIdentityReturns401(t *testing.T) {
+func TestHandleCLISessionInfo_NonCLIIdentityReturns401(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 
 	user, err := infra.UserSvc.CreateUser(t.Context())
@@ -287,10 +210,10 @@ func TestHandleSessionInfo_NonCLIIdentityReturns401(t *testing.T) {
 	})
 }
 
-// TestHandleSessionInfo_MissingSessionContextReturns401 verifies the
+// TestHandleCLISessionInfo_MissingSessionContextReturns401 verifies the
 // handler fails closed when the auth middleware did not stamp the session
 // context (a misconfigured route must never report an identity).
-func TestHandleSessionInfo_MissingSessionContextReturns401(t *testing.T) {
+func TestHandleCLISessionInfo_MissingSessionContextReturns401(t *testing.T) {
 	h, _, _ := setupTestHTTPHandler(t)
 
 	t.Run("no context", func(t *testing.T) {
@@ -309,9 +232,9 @@ func TestHandleSessionInfo_MissingSessionContextReturns401(t *testing.T) {
 	})
 }
 
-// TestHandleSessionInfo_MethodNotAllowed verifies non-GET requests are
+// TestHandleCLISessionInfo_MethodNotAllowed verifies non-GET requests are
 // rejected.
-func TestHandleSessionInfo_MethodNotAllowed(t *testing.T) {
+func TestHandleCLISessionInfo_MethodNotAllowed(t *testing.T) {
 	h, _, _ := setupTestHTTPHandler(t)
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.AuthCLISession, nil)
 	rr := httptest.NewRecorder()

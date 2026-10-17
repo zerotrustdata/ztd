@@ -479,23 +479,23 @@ func newPasskeyServiceWithMock(t *testing.T) (*PasskeyService, *models.User) {
 	return svc, user
 }
 
-func TestPasskeyService_PurgeSessionAfterVerifyRegistration(t *testing.T) {
+func TestPasskeyService_PurgeWebAuthnCeremonyAfterVerifyRegistration(t *testing.T) {
 	svc, user := newPasskeyServiceWithMock(t)
 
 	_, err := svc.GenerateRegistrationChallenge(t.Context(), user.ID, "test-user")
 	require.NoError(t, err)
 
-	_, err = svc.getWebAuthnSession(t.Context(), user.ID)
+	_, err = svc.getWebAuthnCeremony(t.Context(), user.ID)
 	require.NoError(t, err)
 
 	_, err = svc.VerifyRegistration(t.Context(), user.ID, []byte(`{"id":"mock","rawId":"mock","response":{"clientDataJSON":"{}","attestationObject":""}}`))
 	require.NoError(t, err)
 
-	_, err = svc.getWebAuthnSession(t.Context(), user.ID)
+	_, err = svc.getWebAuthnCeremony(t.Context(), user.ID)
 	require.ErrorIs(t, err, constants.ErrExpired)
 }
 
-func TestPasskeyService_PurgeSessionAfterVerifyAuthentication(t *testing.T) {
+func TestPasskeyService_PurgeWebAuthnCeremonyAfterVerifyAuthentication(t *testing.T) {
 	svc, user := newPasskeyServiceWithMock(t)
 
 	err := svc.addCredential(t.Context(), user.ID, testCredential("mock-cred-id"))
@@ -504,17 +504,17 @@ func TestPasskeyService_PurgeSessionAfterVerifyAuthentication(t *testing.T) {
 	_, err = svc.GenerateAuthenticationChallenge(t.Context(), user.ID)
 	require.NoError(t, err)
 
-	_, err = svc.getWebAuthnSession(t.Context(), user.ID)
+	_, err = svc.getWebAuthnCeremony(t.Context(), user.ID)
 	require.NoError(t, err)
 
 	_, err = svc.VerifyAuthentication(t.Context(), user.ID, makeTestAssertion([]byte("mock-cred-id"), "mock-challenge"))
 	require.NoError(t, err)
 
-	_, err = svc.getWebAuthnSession(t.Context(), user.ID)
+	_, err = svc.getWebAuthnCeremony(t.Context(), user.ID)
 	require.ErrorIs(t, err, constants.ErrExpired)
 }
 
-func TestPasskeyService_storeWebAuthnSession(t *testing.T) {
+func TestPasskeyService_storeWebAuthnCeremony(t *testing.T) {
 
 	t.Run("Success - stores session", func(t *testing.T) {
 		svc, user := newPasskeyServiceForTest(t)
@@ -524,12 +524,12 @@ func TestPasskeyService_storeWebAuthnSession(t *testing.T) {
 			UserID:    []byte(user.ID),
 		}
 
-		err := svc.storeWebAuthnSession(t.Context(), user.ID, session)
+		err := svc.storeWebAuthnCeremony(t.Context(), user.ID, session)
 		require.NoError(t, err)
 	})
 }
 
-func TestPasskeyService_getWebAuthnSession(t *testing.T) {
+func TestPasskeyService_getWebAuthnCeremony(t *testing.T) {
 
 	t.Run("Success - retrieves session", func(t *testing.T) {
 		svc, user := newPasskeyServiceForTest(t)
@@ -539,10 +539,10 @@ func TestPasskeyService_getWebAuthnSession(t *testing.T) {
 			UserID:    []byte(user.ID),
 		}
 
-		err := svc.storeWebAuthnSession(t.Context(), user.ID, session)
+		err := svc.storeWebAuthnCeremony(t.Context(), user.ID, session)
 		require.NoError(t, err)
 
-		retrieved, err := svc.getWebAuthnSession(t.Context(), user.ID)
+		retrieved, err := svc.getWebAuthnCeremony(t.Context(), user.ID)
 		require.NoError(t, err)
 		require.NotNil(t, retrieved)
 		require.Equal(t, "test-challenge", retrieved.Challenge)
@@ -551,7 +551,7 @@ func TestPasskeyService_getWebAuthnSession(t *testing.T) {
 	t.Run("Error - session not found", func(t *testing.T) {
 		svc, _ := newPasskeyServiceForTest(t)
 
-		_, err := svc.getWebAuthnSession(t.Context(), "non-existent-user")
+		_, err := svc.getWebAuthnCeremony(t.Context(), "non-existent-user")
 		require.Error(t, err)
 	})
 }

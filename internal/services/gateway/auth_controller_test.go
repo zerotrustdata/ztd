@@ -64,10 +64,10 @@ func setupTestUserController(t *testing.T) *UserController {
 	})
 }
 
-func setupTestSessionController(t *testing.T) *SessionController {
+func setupTestWebSessionController(t *testing.T) *WebSessionController {
 	t.Helper()
 	infra := setupTestInfrastructure(t, false)
-	return newSessionController(SessionControllerDeps{
+	return newWebSessionController(WebSessionControllerDeps{
 		Logger:      infra.Logger,
 		DocStore:    infra.DocStore,
 		Responder:   infra.Responder,

@@ -131,7 +131,7 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 			UserSvc:   infra.UserSvc,
 			Responder: infra.Responder,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      infra.Logger,
 			DocStore:    infra.DocStore,
 			Responder:   infra.Responder,

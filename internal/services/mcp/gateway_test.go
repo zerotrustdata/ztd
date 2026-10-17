@@ -1470,7 +1470,7 @@ type fakeEmbeddedSession struct {
 	err       error
 }
 
-func (f fakeEmbeddedSession) SessionID(context.Context) (string, error) {
+func (f fakeEmbeddedSession) OperatorSessionID(context.Context) (string, error) {
 	return f.sessionID, f.err
 }
 

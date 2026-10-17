@@ -110,7 +110,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Claim | Path | Verify |
 | --- | --- | --- |
 | CLI auth commands | `internal/cli/cmd/auth/` | `./ztd login --help`, `./ztd logout --help`, `./ztd auth --help` |
-| Session logout | `internal/services/gateway/session_logout_service.go`, `cli_logout_controller.go`, `internal/cli/auth/logout.go` | `./ztd test integration --pkg ./internal/services/gateway --run SessionLogout` |
+| User logout | `internal/services/gateway/user_logout_service.go`, `cli_logout_controller.go`, `internal/cli/auth/logout.go` | `./ztd test integration --pkg ./internal/services/gateway --run UserLogout` |
 | Operator bind commands | `internal/cli/cmd/operator/operator_bind.go` | `./ztd operator bind --help` |
 | Gateway auth middleware | `internal/services/gateway/gateway_auth.go` | Route classification, web-session cookie validation, and admission logic |
 | CLI enrollment state machine | `internal/cli/auth/enrollment.go`, `internal/cli/auth/` | Decision matrix, credential store, and session binding |

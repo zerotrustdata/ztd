@@ -17,24 +17,24 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 )
 
-// SessionControllerDeps groups all dependencies for SessionController.
-type SessionControllerDeps struct {
+// WebSessionControllerDeps groups all dependencies for WebSessionController.
+type WebSessionControllerDeps struct {
 	Logger      *slog.Logger
 	DocStore    *DocumentStoreService
 	Responder   *response.Writer
 	CrossOrigin bool
 }
 
-// SessionController handles web session lifecycle (logout, session info).
-type SessionController struct {
+// WebSessionController handles web session lifecycle (logout, session info).
+type WebSessionController struct {
 	logger      *slog.Logger
 	docStore    *DocumentStoreService
 	responder   *response.Writer
 	crossOrigin bool
 }
 
-func newSessionController(deps SessionControllerDeps) *SessionController {
-	return &SessionController{
+func newWebSessionController(deps WebSessionControllerDeps) *WebSessionController {
+	return &WebSessionController{
 		logger:      deps.Logger,
 		docStore:    deps.DocStore,
 		responder:   deps.Responder,
@@ -48,7 +48,7 @@ func newSessionController(deps SessionControllerDeps) *SessionController {
 // @Produce		json
 // @Success		200	{object}	models.StatusResponse
 // @Router			/api/v1/auth/logout [post]
-func (c *SessionController) handlePublicAuthLogout(w http.ResponseWriter, r *http.Request) {
+func (c *WebSessionController) handlePublicAuthLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(constants.WebSessionCookieName)
 	if err == nil {
 		// Best effort delete web session from DB
@@ -82,7 +82,7 @@ func (c *SessionController) handlePublicAuthLogout(w http.ResponseWriter, r *htt
 // @Success		200	{object}	models.WebSessionResponse
 // @Failure		401	{string}	string	"Unauthorized"
 // @Router			/api/v1/auth/sessions/me [get]
-func (c *SessionController) handleWebSession(w http.ResponseWriter, r *http.Request) {
+func (c *WebSessionController) handleWebSession(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(constants.ContextKeyUserID).(string)
 	if !ok {
 		c.responder.Error(w, http.StatusUnauthorized, constants.ErrNotAuthenticated.Error())

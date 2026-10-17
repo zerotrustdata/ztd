@@ -95,27 +95,39 @@ func TestResolveGatewayLaunchConfig_CorruptProfileFailsClosed(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLaunchProfileCorrupted)
 }
 
-func TestConfirmRunningGatewayPosture(t *testing.T) {
-	t.Run("no explicit request never checks", func(t *testing.T) {
-		require.NoError(t, confirmRunningGatewayPosture(newPostureTestFileSvc(t), ""))
+func TestRunningGatewayPosture(t *testing.T) {
+	t.Run("no explicit request returns the profile posture", func(t *testing.T) {
+		fileSvc := newPostureTestFileSvc(t)
+		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: ztdconfig.PostureRatify, LogLevel: "info"})
+		posture, err := runningGatewayPosture(fileSvc, "")
+		require.NoError(t, err)
+		require.Equal(t, ztdconfig.PostureRatify, posture)
 	})
 
 	t.Run("matching profile passes", func(t *testing.T) {
 		fileSvc := newPostureTestFileSvc(t)
 		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: ztdconfig.PostureNotary, LogLevel: "info"})
-		require.NoError(t, confirmRunningGatewayPosture(fileSvc, constants.PostureNotary))
+		posture, err := runningGatewayPosture(fileSvc, constants.PostureNotary)
+		require.NoError(t, err)
+		require.Equal(t, ztdconfig.PostureNotary, posture)
 	})
 
 	t.Run("different posture fails closed", func(t *testing.T) {
 		fileSvc := newPostureTestFileSvc(t)
 		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: ztdconfig.PostureDoctrine, LogLevel: "info"})
-		err := confirmRunningGatewayPosture(fileSvc, constants.PostureNotary)
+		_, err := runningGatewayPosture(fileSvc, constants.PostureNotary)
 		require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
 	})
 
-	t.Run("unverifiable posture fails closed", func(t *testing.T) {
-		err := confirmRunningGatewayPosture(newPostureTestFileSvc(t), constants.PostureNotary)
+	t.Run("unverifiable requested posture fails closed", func(t *testing.T) {
+		_, err := runningGatewayPosture(newPostureTestFileSvc(t), constants.PostureNotary)
 		require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+		require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
+	})
+
+	t.Run("unknown posture without a request fails closed", func(t *testing.T) {
+		_, err := runningGatewayPosture(newPostureTestFileSvc(t), "")
+		require.ErrorIs(t, err, constants.ErrGatewayPostureUnknown)
 		require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
 	})
 }
