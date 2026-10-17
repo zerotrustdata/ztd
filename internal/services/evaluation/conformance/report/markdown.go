@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 )
 
@@ -29,32 +30,32 @@ func writeCoverage(b *strings.Builder, cells []Cell) {
 		row     int
 		ingress cases.Ingress
 	}
-	byRow := make(map[rowKey]map[string]Cell)
+	byRow := make(map[rowKey]map[constants.Posture]Cell)
 	var order []rowKey
 	for _, c := range cells {
 		k := rowKey{c.Row, c.Ingress}
 		if _, ok := byRow[k]; !ok {
-			byRow[k] = make(map[string]Cell)
+			byRow[k] = make(map[constants.Posture]Cell)
 			order = append(order, k)
 		}
 		byRow[k][c.Posture] = c
 	}
 
 	b.WriteString("| Row | Ingress |")
-	for _, col := range postureColumns {
-		b.WriteString(" " + col.name + " |")
+	for _, col := range cases.Postures {
+		b.WriteString(" " + string(col.Posture) + " |")
 	}
 	b.WriteString("\n| --- | --- |")
-	for range postureColumns {
+	for range cases.Postures {
 		b.WriteString(" --- |")
 	}
 	b.WriteString("\n")
 
 	for _, k := range order {
 		fmt.Fprintf(b, "| %d | %s |", k.row, k.ingress)
-		for _, col := range postureColumns {
+		for _, col := range cases.Postures {
 			text := "-"
-			if c, ok := byRow[k][col.name]; ok {
+			if c, ok := byRow[k][col.Posture]; ok {
 				text = renderCell(c)
 			}
 			b.WriteString(" " + text + " |")

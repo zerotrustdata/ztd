@@ -313,30 +313,18 @@ Each run is verified from its stored bytes before it enters the report. At most 
 	return command
 }
 
-// conformancePosture maps the posture name the Gateway health reports to its
-// evaluation enum. An unknown name is ErrConformancePostureUnknown.
-func conformancePosture(name string) (evalv1.EvaluationGovernancePosture, error) {
-	switch name {
-	case constants.PostureDoctrine:
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, nil
-	case constants.PostureConsensus:
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, nil
-	case constants.PostureRatify:
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, nil
-	case constants.PostureNotary:
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY, nil
-	default:
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("evaluation: gateway posture %q: %w", name, constants.ErrConformancePostureUnknown)
-	}
-}
-
-// gatewayPosture reads the Gateway's governance posture from its health.
+// gatewayPosture reads the Gateway's governance posture from its health. An
+// unknown posture is ErrConformancePostureUnknown.
 func gatewayPosture(ctx context.Context, client *harnessclient.Client) (evalv1.EvaluationGovernancePosture, error) {
 	health, _, err := client.Health(ctx)
 	if err != nil {
 		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("evaluation: read gateway health: %w", err)
 	}
-	return conformancePosture(health.Posture)
+	posture, err := cases.WirePosture(health.Posture)
+	if err != nil {
+		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("evaluation: gateway posture: %w", err)
+	}
+	return posture, nil
 }
 
 // conformanceTargets selects the Gateway's embedded session and, when selected,
@@ -436,22 +424,21 @@ type conformanceSetup struct {
 // synthetic proof stands in under doctrine and ratify. Attended runs wrap the MCP
 // and A2A drivers.
 func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingress]cases.Driver, *drive.Sentinel, error) {
+	posture, err := cases.GovernancePosture(s.posture)
+	if err != nil {
+		return nil, nil, fmt.Errorf("evaluation: conformance drivers: %w", err)
+	}
 	// directL2 stays nil where the base direct cases need no L2 proof.
 	var directL2, mutatorL2 drive.L2Source
-	switch s.posture {
-	case evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
-		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY:
+	if posture.RequiresL2() {
+		deliberator := drive.NewDeliberator(s.client, s.persona)
+		directL2, mutatorL2 = deliberator, deliberator
+	} else {
 		synthetic, err := drive.NewSyntheticL2(conformanceSyntheticVotes)
 		if err != nil {
 			return nil, nil, fmt.Errorf("evaluation: synthetic L2 source: %w", err)
 		}
 		mutatorL2 = synthetic
-	case evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
-		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY:
-		deliberator := drive.NewDeliberator(s.client, s.persona)
-		directL2, mutatorL2 = deliberator, deliberator
-	default:
-		return nil, nil, fmt.Errorf("evaluation: conformance drivers: posture %s: %w", s.posture, constants.ErrConformancePostureUnknown)
 	}
 
 	direct, err := drive.NewDirect(s.client, s.persona, s.embedded, directL2, drive.BaseMutators(), drive.L2Mutators(mutatorL2), drive.L3Mutators())
@@ -562,7 +549,10 @@ func writeConformanceVerdicts(cmd *cobra.Command, runID string, set *evalv1.Conf
 		_, err = fmt.Fprintln(out, string(body))
 		return err
 	}
-	posture := strings.ToLower(strings.TrimPrefix(set.GetPosture().String(), "EVALUATION_GOVERNANCE_POSTURE_"))
+	posture := set.GetPosture().String()
+	if gp, err := cases.GovernancePosture(set.GetPosture()); err == nil {
+		posture = string(gp)
+	}
 	verdict := strings.TrimPrefix(set.GetSuiteVerdict().String(), "CONFORMANCE_SUITE_VERDICT_")
 	if _, err := fmt.Fprintf(out, "Run: %s\nPosture: %s\nSuite: %s\n", runID, posture, verdict); err != nil {
 		return err

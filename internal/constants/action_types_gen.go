@@ -125,3 +125,17 @@ func (a ActionType) IsBootstrapAction() bool {
 		return false
 	}
 }
+
+// AuthorizedByDecision returns true for enrollment actions that carry out an
+// owner decision already committed under the posture's L3 gate. They need no
+// L3 proof of their own; their handler requires the committed decision.
+func (a ActionType) AuthorizedByDecision() bool {
+	switch a {
+	case ActionTypePlatformEnrollmentCreateSession,
+		ActionTypePlatformEnrollmentIssue,
+		ActionTypePlatformEnrollmentPersistPolicy:
+		return true
+	default:
+		return false
+	}
+}

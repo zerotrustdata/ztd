@@ -138,7 +138,7 @@ func evidenceOf(t *testing.T, run VerifiedRun, id string) *evalv1.ConformanceCas
 }
 
 // cellAt returns the report cell for (row, ingress, posture).
-func cellAt(t *testing.T, rep *Report, row int, ingress cases.Ingress, posture string) Cell {
+func cellAt(t *testing.T, rep *Report, row int, ingress cases.Ingress, posture constants.Posture) Cell {
 	t.Helper()
 	for _, c := range rep.Cells {
 		if c.Row == row && c.Ingress == ingress && c.Posture == posture {
@@ -365,7 +365,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 func TestBuildRecallCountsMatchCatalogue(t *testing.T) {
 	type key struct {
 		category doctrinecorpus.Category
-		posture  string
+		posture  constants.Posture
 		ingress  cases.Ingress
 	}
 	corpus, err := doctrinecorpus.Load()
@@ -387,9 +387,9 @@ func TestBuildRecallCountsMatchCatalogue(t *testing.T) {
 			continue
 		}
 		wantCases++
-		name, err := postureName(c.Posture)
+		name, err := cases.GovernancePosture(c.Posture)
 		if err != nil {
-			t.Fatalf("postureName: %v", err)
+			t.Fatalf("cases.GovernancePosture: %v", err)
 		}
 		wantTotal[key{categoryOf[c.CorpusEntryID], name, c.Ingress}]++
 	}

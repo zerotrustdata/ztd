@@ -16,10 +16,11 @@ import (
 )
 
 type actionTypeMeta struct {
-	GoConst   string
-	Value     string
-	Mutation  bool
-	Bootstrap bool
+	GoConst              string
+	Value                string
+	Mutation             bool
+	Bootstrap            bool
+	AuthorizedByDecision bool
 }
 
 func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
@@ -30,10 +31,11 @@ func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
 	var raw struct {
 		Status struct {
 			ActionType map[string]struct {
-				GoConst   string `json:"_go_const"`
-				Value     string `json:"value"`
-				Mutation  bool   `json:"_mutation"`
-				Bootstrap bool   `json:"_bootstrap"`
+				GoConst              string `json:"_go_const"`
+				Value                string `json:"value"`
+				Mutation             bool   `json:"_mutation"`
+				Bootstrap            bool   `json:"_bootstrap"`
+				AuthorizedByDecision bool   `json:"_authorized_by_decision"`
 			} `json:"action_type"`
 		} `json:"status"`
 	}
@@ -42,11 +44,15 @@ func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
 	}
 	out := make(map[string]actionTypeMeta, len(raw.Status.ActionType))
 	for key, meta := range raw.Status.ActionType {
+		if meta.AuthorizedByDecision && !meta.Bootstrap {
+			return nil, fmt.Errorf("decode %s: action %s: _authorized_by_decision requires _bootstrap", path, key)
+		}
 		out[key] = actionTypeMeta{
-			GoConst:   meta.GoConst,
-			Value:     meta.Value,
-			Mutation:  meta.Mutation,
-			Bootstrap: meta.Bootstrap,
+			GoConst:              meta.GoConst,
+			Value:                meta.Value,
+			Mutation:             meta.Mutation,
+			Bootstrap:            meta.Bootstrap,
+			AuthorizedByDecision: meta.AuthorizedByDecision,
 		}
 	}
 	return out, nil
@@ -61,6 +67,7 @@ func generateActionTypesGo(actionTypes map[string]actionTypeMeta) string {
 
 	var mutations []string
 	var bootstraps []string
+	var decisionAuthorized []string
 	for _, key := range keys {
 		meta := actionTypes[key]
 		if meta.Mutation {
@@ -68,6 +75,9 @@ func generateActionTypesGo(actionTypes map[string]actionTypeMeta) string {
 		}
 		if meta.Bootstrap {
 			bootstraps = append(bootstraps, meta.GoConst)
+		}
+		if meta.AuthorizedByDecision {
+			decisionAuthorized = append(decisionAuthorized, meta.GoConst)
 		}
 	}
 
@@ -124,6 +134,25 @@ func (a ActionType) IsBootstrapAction() bool {
 			}
 			b.WriteString(goConst)
 		}
+	}
+	b.WriteString(`:
+		return true
+	default:
+		return false
+	}
+}
+
+// AuthorizedByDecision returns true for enrollment actions that carry out an
+// owner decision already committed under the posture's L3 gate. They need no
+// L3 proof of their own; their handler requires the committed decision.
+func (a ActionType) AuthorizedByDecision() bool {
+	switch a {
+	case `)
+	for i, goConst := range decisionAuthorized {
+		if i > 0 {
+			b.WriteString(",\n\t\t")
+		}
+		b.WriteString(goConst)
 	}
 	b.WriteString(`:
 		return true

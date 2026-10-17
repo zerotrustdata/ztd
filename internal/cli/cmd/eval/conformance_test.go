@@ -184,35 +184,6 @@ func (r conformanceRig) runArgs(extra ...string) []string {
 	return append(args, extra...)
 }
 
-func TestConformancePosture_MapsEachGatewayPostureAndRejectsAnyOtherName(t *testing.T) {
-	tests := []struct {
-		name    string
-		posture string
-		want    evalv1.EvaluationGovernancePosture
-		wantErr bool
-	}{
-		{name: "doctrine", posture: constants.PostureDoctrine, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE},
-		{name: "consensus", posture: constants.PostureConsensus, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS},
-		{name: "ratify", posture: constants.PostureRatify, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY},
-		{name: "notary", posture: constants.PostureNotary, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY},
-		{name: "empty", posture: "", wantErr: true},
-		{name: "unknown", posture: "bogus", wantErr: true},
-		{name: "upper case", posture: "DOCTRINE", wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := conformancePosture(tt.posture)
-			if tt.wantErr {
-				require.ErrorIs(t, err, constants.ErrConformancePostureUnknown)
-				assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, got)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
 func TestConformanceRoots_OutboundRootCarriesTheEnrollmentBoundKeyOnly(t *testing.T) {
 	roots, err := conformanceRoots(conformanceTestRuntimeFiles(t), conformanceTestRuntimeFiles(t), conformanceTestOperatorID, conformanceTestOutboundDocument())
 	require.NoError(t, err)

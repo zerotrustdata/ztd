@@ -113,18 +113,21 @@
         "value": "PLATFORM_ENROLLMENT_DECIDE"
       },
       "PLATFORM_ENROLLMENT_ISSUE": {
+        "_authorized_by_decision": true,
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentIssue",
         "_mutation": true,
         "value": "PLATFORM_ENROLLMENT_ISSUE"
       },
       "PLATFORM_ENROLLMENT_PERSIST_POLICY": {
+        "_authorized_by_decision": true,
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentPersistPolicy",
         "_mutation": true,
         "value": "PLATFORM_ENROLLMENT_PERSIST_POLICY"
       },
       "PLATFORM_ENROLLMENT_CREATE_SESSION": {
+        "_authorized_by_decision": true,
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentCreateSession",
         "_mutation": true,

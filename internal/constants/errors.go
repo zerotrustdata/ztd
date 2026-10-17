@@ -556,6 +556,8 @@ var (
 	ErrPlatformEnrollmentGovernanceRejected   = errors.New("platform enrollment governance verification rejected")
 	ErrPlatformEnrollmentPersistenceFailed    = errors.New("platform enrollment persistence failed")
 	ErrPlatformEnrollmentIssuanceFailed       = errors.New("platform enrollment issuance failed")
+	ErrPlatformEnrollmentIssuanceNotCommitted = errors.New("platform enrollment issuance has not been committed")
+	ErrPlatformEnrollmentIssuanceMismatch     = errors.New("platform enrollment payload does not match the committed issuance")
 	ErrPlatformEnrollmentReservedIdentity     = errors.New("platform identity requires owner-approved enrollment")
 	ErrPlatformEnrollmentRevoked              = errors.New("platform enrollment has been revoked")
 

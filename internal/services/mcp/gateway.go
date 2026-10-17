@@ -57,14 +57,13 @@ const ApprovalRequestTTL = 2 * time.Minute
 // It is phrased as an instruction to the AI: what happened, what a human must do,
 // the short deadline, and—critically—what to do once that deadline passes (retry
 // the call to open a fresh approval request).
-func approvalPausedMessage(posture, approvalURL string) string {
-	return fmt.Sprintf("Execution paused: this is a state-changing action and the gateway is running in "+
-		"%s posture, which REQUIRES live human passkey (WebAuthn) authorization before it can run. "+
+func approvalPausedMessage(posture constants.Posture, approvalURL string) string {
+	return fmt.Sprintf("Execution paused: this is a state-changing action. %s "+
 		"A human must approve this exact change at %s within %d minutes. "+
 		"Wait for the human to approve, then retry this identical tool call to proceed. "+
 		"This window is intentionally short so the approval proves a human was present for this specific action. "+
 		"If it lapses before approval the request is voided for security — call this tool again to open a fresh approval request.",
-		posture, approvalURL, int(ApprovalRequestTTL.Minutes()))
+		posture.HumanApprovalReason(), approvalURL, int(ApprovalRequestTTL.Minutes()))
 }
 
 // L2ConsensusDeliberator sends an envelope to an L2 consensus service for deliberation.
@@ -97,9 +96,9 @@ type GatewayService struct {
 	nativeToolHandler *NativeToolHandler
 	scrubbingService  *scrubbing.ScrubbingService
 	threatScanner     ThreatScanner
-	posture           governance.GovernancePosture // parsed once in NewGatewayService
-	a2aDownstreamURL  string                       // construction-phase (immutable after NewGatewayService)
-	publicBaseURL     string                       // construction-phase (immutable after NewGatewayService)
+	posture           constants.Posture // validated once in NewGatewayService
+	a2aDownstreamURL  string            // construction-phase (immutable after NewGatewayService)
+	publicBaseURL     string            // construction-phase (immutable after NewGatewayService)
 	maxPayloadBytes   int64
 
 	envProc                governance.EnvelopeProcessor
@@ -170,7 +169,7 @@ type Dependencies struct {
 	ScrubbingService *scrubbing.ScrubbingService
 	ThreatScanner    ThreatScanner
 	MaxPayloadBytes  int64
-	Posture          string // Gateway posture: doctrine, consensus, ratify, or notary
+	Posture          constants.Posture
 	A2ADownstreamURL string // A2A downstream server URL
 	PublicBaseURL    string // Public base URL for approval links
 
@@ -213,11 +212,10 @@ type Dependencies struct {
 }
 
 func NewGatewayService(deps Dependencies) (*GatewayService, error) {
-	// Parse the configured posture once. An empty or unknown name fails construction:
-	// every envelope is stamped with this posture and L2/L3 gating reads it.
-	posture, err := governance.ParseGovernancePosture(deps.Posture)
-	if err != nil {
-		return nil, fmt.Errorf("gateway: parse posture: %w", err)
+	// An empty or unknown posture fails construction: every envelope is stamped
+	// with this posture and L2/L3 gating reads it.
+	if !deps.Posture.Valid() {
+		return nil, fmt.Errorf("gateway: posture: %w: %q", constants.ErrInvalidPosture, deps.Posture)
 	}
 
 	if deps.DownstreamURL != "" && deps.DownstreamCmd != "" {
@@ -267,7 +265,7 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		nativeToolHandler:      nativeToolHandler,
 		scrubbingService:       deps.ScrubbingService,
 		threatScanner:          deps.ThreatScanner,
-		posture:                posture,
+		posture:                deps.Posture,
 		a2aDownstreamURL:       deps.A2ADownstreamURL,
 		publicBaseURL:          deps.PublicBaseURL,
 		maxFailures:            5,
@@ -929,7 +927,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
 		Nonce:           nonce,
 		StateMerkleRoot: stateRoot,
-		Posture:         g.posture.Name(),
+		Posture:         string(g.posture),
 		Governance:      &commonv1.GovernanceMetadata{},
 	}
 	if opts.investigationID != "" {
@@ -1113,13 +1111,13 @@ func (g *GatewayService) suspendGovernedCall(ctx context.Context, r *http.Reques
 		return nil, err
 	}
 
-	approvalURL := fmt.Sprintf("%s/approve/%s", g.publicBaseURL, hash)
+	approvalURL := g.publicBaseURL + constants.APIPaths.ApprovePagePrefix + hash
 	return &GovernedSuspension{
 		ID:          hash,
 		Status:      string(constants.GatewayResponseStatusSuspended),
 		TxHash:      hash,
 		ApprovalURL: approvalURL,
-		Message:     approvalPausedMessage(g.posture.Name(), approvalURL),
+		Message:     approvalPausedMessage(g.posture, approvalURL),
 	}, nil
 }
 

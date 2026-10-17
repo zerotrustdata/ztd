@@ -408,8 +408,8 @@ type PlatformEnrollmentOperatorCredentials struct {
 	OperatorID        string `json:"operator_id"`
 	CLISessionID      string `json:"cli_session_id"`
 	CLICert           string `json:"cli_cert"`
-	CLICertChain      string `json:"cli_cert_chain"`
-	Posture           string `json:"posture,omitempty"`
+	CLICertChain      string            `json:"cli_cert_chain"`
+	Posture           constants.Posture `json:"posture,omitempty"`
 }
 
 type PlatformEnrollmentCompleteResponse struct {

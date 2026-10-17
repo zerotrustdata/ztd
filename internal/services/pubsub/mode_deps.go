@@ -42,7 +42,7 @@ type GatewayModeDeps struct {
 	FieldReader            mcp.FieldReader
 	Consensus              *consensus.ConsensusService
 	PlatformEnrollmentDeps *PlatformEnrollmentDeps
-	Posture                config.GatewayPosture
+	Posture                constants.Posture
 }
 
 // OutboundModeDeps embeds GovernanceCoreDeps and adds the consensus policy
@@ -108,6 +108,9 @@ func NewGatewayModeDeps(deps GatewayModeDeps) (*GatewayModeDeps, error) {
 	}
 	if deps.PlatformEnrollmentDeps == nil {
 		return nil, fmt.Errorf("mode_deps: platform enrollment deps: %w", constants.ErrPlatformEnrollmentDepsRequired)
+	}
+	if !deps.Posture.Valid() {
+		return nil, fmt.Errorf("mode_deps: posture: %w: %q", constants.ErrInvalidPosture, deps.Posture)
 	}
 	if deps.Posture.RequiresL2() && deps.Consensus == nil {
 		return nil, fmt.Errorf("mode_deps: consensus: %w", constants.ErrConsensusServiceRequired)

@@ -36,7 +36,7 @@ type VerifiedTransaction struct {
 	ExpiresAt                  time.Time
 	L2Status                   operatorv1.L2Status // Warden's L2 decision; L5 copies it into the receipt
 	L3Status                   operatorv1.L3Status // Warden's L3 decision; L5 copies it into the receipt
-	Posture                    GovernancePosture
+	Posture                    constants.Posture
 	DeterministicStageEvidence []*operatorv1.DeterministicStageEvidence
 }
 
@@ -163,11 +163,11 @@ func NewL4Warden(
 // was called without wiring cfg.Gateway.Posture), not an operator config
 // gap. The envelope is the authoritative source of posture for
 // operator-side L2/L3 gating.
-func postureFromEnvelope(envelope *govtypes.GovernanceEnvelope) (GovernancePosture, error) {
+func postureFromEnvelope(envelope *govtypes.GovernanceEnvelope) (constants.Posture, error) {
 	if envelope.Posture == "" {
-		return nil, constants.ErrEnvelopePostureMissing
+		return "", constants.ErrEnvelopePostureMissing
 	}
-	return ParseGovernancePosture(envelope.Posture)
+	return constants.ParsePosture(envelope.Posture)
 }
 
 // VerifyEnvelope performs all required verification checks on a decoded GovernanceEnvelope JSON GovernanceEnvelope.
@@ -343,7 +343,7 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 		tv.logger.Error("Transaction rejected: POSTURE_VALIDATION_FAILED",
 			"nonce", envelope.Nonce,
 			"tx_id", envelope.Id,
-			"posture", posture.Name(),
+			"posture", posture,
 			string(constants.ConnectionStateError), err)
 		// A missing or invalid proof can be retried, so its nonce is released.
 		// A human deny is final: the nonce stays spent so the denied
@@ -596,7 +596,7 @@ func (tv *L4Warden) verifyStateful(ctx context.Context, envelope *govtypes.Gover
 // the active posture requires L2 consensus. Each stage outcome is derived from
 // its status through the same table ValidateDeterministicProtocolChain reads, so
 // a stage and the receipt status it is checked against cannot disagree.
-func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (operatorv1.L2Status, operatorv1.L3Status, []*operatorv1.DeterministicStageEvidence, error) {
+func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture constants.Posture) (operatorv1.L2Status, operatorv1.L3Status, []*operatorv1.DeterministicStageEvidence, error) {
 	actionType := constants.ActionType(envelope.ActionType)
 	l2Start := governanceMonotonicNow()
 	l2Valid, err := tv.verifyL2Posture(ctx, envelope, computedHash, posture)
@@ -648,18 +648,21 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 // L3Required reports whether posture gates this action on an L3 notary proof.
 // Only mutations are gated, and only under postures that require L3. Mutation
 // classification is owned by the action registry (constants.ActionType.IsMutation).
+// An action the registry marks AuthorizedByDecision carries out an owner decision
+// that already passed this gate, so it needs no proof of its own; its handler
+// refuses to run without that committed decision.
 //
 // This is the single owner of the L3 gate. L4 verification and the Gateway
 // dispatch refusal both call it.
-func L3Required(actionType constants.ActionType, posture GovernancePosture) bool {
-	return actionType.IsMutation() && posture.RequiresL3Proof()
+func L3Required(actionType constants.ActionType, posture constants.Posture) bool {
+	return actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()
 }
 
 // l3StatusFor maps the L3 result of one envelope to the status its receipt
 // records. A valid proof is REQUIRED_VALID even where L3 is not required, because
 // its verified stage is recorded as audit evidence. A required proof that did not
 // verify is REQUIRED_FAILED. Everything else is NOT_REQUIRED.
-func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture GovernancePosture, valid bool) operatorv1.L3Status {
+func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture constants.Posture, valid bool) operatorv1.L3Status {
 	switch {
 	case valid:
 		return operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
@@ -670,7 +673,7 @@ func (tv *L4Warden) l3StatusFor(actionType constants.ActionType, posture Governa
 	}
 }
 
-func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, posture GovernancePosture) (bool, error) {
+func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, posture constants.Posture) (bool, error) {
 	// A human deny ends the transaction in every posture. It needs no proof:
 	// it can only stop execution, never authorize it.
 	if envelope.Governance.GetL3().GetDenied() {
@@ -684,7 +687,7 @@ func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.Gove
 
 	if !hasProof {
 		if required {
-			tv.logger.Error("L3 proof missing but required by posture", "posture", posture.Name())
+			tv.logger.Error("L3 proof missing but required by posture", "posture", posture)
 			return false, constants.ErrTxL3ProofMissing
 		}
 		return false, nil
@@ -692,7 +695,7 @@ func (tv *L4Warden) verifyL3Posture(ctx context.Context, envelope *govtypes.Gove
 
 	if tv.l3Notary == nil {
 		if required {
-			tv.logger.Error("L3 notary not configured but required by posture", "posture", posture.Name())
+			tv.logger.Error("L3 notary not configured but required by posture", "posture", posture)
 			return false, constants.ErrTxL3NotaryNotConfigured
 		}
 		return false, nil

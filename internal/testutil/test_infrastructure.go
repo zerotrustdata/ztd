@@ -85,14 +85,14 @@ func NewTestConfig(t *testing.T) *config.Config {
 		// Tests use a mock L3Notary, so NotaryPosture mirrors the prior default
 		// behavior. The operator has no posture of its own; this represents the
 		// gateway-provided posture that the operator would receive at enrollment.
-		Posture: config.PostureNotary,
+		Posture: constants.PostureNotary,
 		Gateway: config.GatewayConfig{
 			MaxPayloadBytes: 10 * 1024 * 1024,
 			ListenHost:      "127.0.0.1",
 			CertMode:        "localhost",
 			PasskeyRpID:     "localhost",
 			PasskeyRpName:   "ztd",
-			Posture:         config.PostureNotary,
+			Posture:         constants.PostureNotary,
 		},
 		WorkDir:    workDir,
 		PKIDir:     pkiDir,

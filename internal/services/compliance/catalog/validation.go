@@ -256,8 +256,8 @@ func ValidateAssessmentScope(scope *compliancev1.AssessmentScope) error {
 			return fmt.Errorf("%w: assessment %s context must be available or explicitly unavailable", constants.ErrInvalidEvidenceGraph, requirement.name)
 		}
 	}
-	postureRequirements, postureValid := constants.GetGovernancePostureRequirements(scope.ActivePosture)
-	if !postureValid || postureRequirements.RequiresL2 && len(scope.ConsensusPolicyHashes) == 0 {
+	posture, err := constants.ParsePosture(scope.ActivePosture)
+	if err != nil || posture.RequiresL2() && len(scope.ConsensusPolicyHashes) == 0 {
 		return fmt.Errorf("%w: assessment posture is invalid or missing required consensus policy", constants.ErrInvalidEvidenceGraph)
 	}
 	if scope.GetNetworkTopologyHash() != "" {

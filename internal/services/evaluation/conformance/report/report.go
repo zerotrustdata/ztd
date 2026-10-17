@@ -36,26 +36,12 @@ const (
 // l1RecallRows are the catalogue rows that feed the L1 recall report.
 var l1RecallRows = map[int]bool{13: true, 14: true}
 
-// postureColumn pairs a report posture name with its wire enum. The slice order is
-// the column order of every report table.
-type postureColumn struct {
-	name    string
-	posture evalv1.EvaluationGovernancePosture
-}
-
-var postureColumns = []postureColumn{
-	{name: constants.PostureDoctrine, posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE},
-	{name: constants.PostureConsensus, posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS},
-	{name: constants.PostureRatify, posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY},
-	{name: constants.PostureNotary, posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY},
-}
-
 // Cell is the coverage of one (row, ingress, posture). Reason is the gap reason for
 // NOT_EXPRESSIBLE, the sorted distinct failure classes for MISSING, and empty otherwise.
 type Cell struct {
 	Row     int
 	Ingress cases.Ingress
-	Posture string // doctrine | consensus | ratify | notary
+	Posture constants.Posture
 	Status  CellStatus
 	Reason  string
 }
@@ -64,7 +50,7 @@ type Cell struct {
 // blocked. DoctrineBundleHash is "" on ingresses that refuse before an envelope.
 type Recall struct {
 	Category           doctrinecorpus.Category
-	Posture            string
+	Posture            constants.Posture
 	Ingress            cases.Ingress
 	Blocked, Total     int
 	DoctrineBundleHash string
@@ -73,7 +59,7 @@ type Recall struct {
 // RunSummary is one verified run's identity and suite verdict.
 type RunSummary struct {
 	RunID        string
-	Posture      string
+	Posture      constants.Posture
 	SuiteVerdict evalv1.ConformanceSuiteVerdict
 }
 
@@ -118,7 +104,7 @@ func Build(runs []VerifiedRun) (*Report, error) {
 		categoryOf[e.ID] = e.Category
 	}
 
-	views := make(map[string]*runView, len(runs))
+	views := make(map[constants.Posture]*runView, len(runs))
 	for _, run := range runs {
 		name, view, err := indexRun(run, all)
 		if err != nil {
@@ -143,17 +129,17 @@ func Build(runs []VerifiedRun) (*Report, error) {
 	}
 
 	rep := &Report{SuiteID: cases.SuiteID, SuiteVersion: cases.SuiteVersion, Cells: cells, Recall: recall}
-	for _, col := range postureColumns {
-		if view, ok := views[col.name]; ok {
+	for _, col := range cases.Postures {
+		if view, ok := views[col.Posture]; ok {
 			rep.Runs = append(rep.Runs, view.summary)
 		}
 	}
 	return rep, nil
 }
 
-// indexRun checks one run against the catalogue and returns its posture name and view.
+// indexRun checks one run against the catalogue and returns its posture and view.
 // A run whose suite verdict is INVALID_EVIDENCE carries no per-case verdicts to check.
-func indexRun(run VerifiedRun, all []cases.Case) (string, *runView, error) {
+func indexRun(run VerifiedRun, all []cases.Case) (constants.Posture, *runView, error) {
 	record, set := run.Record, run.Verdicts
 	if record == nil || set == nil {
 		return "", nil, fmt.Errorf("conformance report: run without record or verdict set: %w", constants.ErrConformanceRecordInvalid)
@@ -164,9 +150,9 @@ func indexRun(run VerifiedRun, all []cases.Case) (string, *runView, error) {
 	if record.GetSuiteId() != cases.SuiteID || record.GetSuiteVersion() != cases.SuiteVersion {
 		return "", nil, fmt.Errorf("conformance report: run %s suite %s@%s: %w", record.GetRunId(), record.GetSuiteId(), record.GetSuiteVersion(), constants.ErrConformanceRecordInvalid)
 	}
-	name, err := postureName(record.GetPosture())
+	name, err := cases.GovernancePosture(record.GetPosture())
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("conformance report: run %s: %w", record.GetRunId(), err)
 	}
 
 	view := &runView{
@@ -217,14 +203,14 @@ func indexRun(run VerifiedRun, all []cases.Case) (string, *runView, error) {
 // collectBundleHashes reads the doctrine bundle hash of every PASS L1 rejection in
 // the recall rows, requires all of one posture's hashes to agree, and records which
 // ingresses produced signed rejections.
-func collectBundleHashes(all []cases.Case, views map[string]*runView) error {
-	for _, col := range postureColumns {
-		view, ok := views[col.name]
+func collectBundleHashes(all []cases.Case, views map[constants.Posture]*runView) error {
+	for _, col := range cases.Postures {
+		view, ok := views[col.Posture]
 		if !ok || view.verdicts == nil {
 			continue
 		}
 		for _, c := range all {
-			if c.Posture != col.posture || !l1RecallRows[c.Row] || !isL1Rejection(c) {
+			if c.Posture != col.Wire || !l1RecallRows[c.Row] || !isL1Rejection(c) {
 				continue
 			}
 			if view.verdicts[c.ID].GetStatus() != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
@@ -237,7 +223,7 @@ func collectBundleHashes(all []cases.Case, views map[string]*runView) error {
 			if view.bundleHash == "" {
 				view.bundleHash = hash
 			} else if view.bundleHash != hash {
-				return fmt.Errorf("conformance report: posture %s: L1 stages disagree on doctrine bundle hash: %w", col.name, constants.ErrConformanceRecordInvalid)
+				return fmt.Errorf("conformance report: posture %s: L1 stages disagree on doctrine bundle hash: %w", col.Posture, constants.ErrConformanceRecordInvalid)
 			}
 			view.signedIngress[c.Ingress] = true
 		}
@@ -279,7 +265,7 @@ type cellKey struct {
 }
 
 // buildCells returns one cell per (row, ingress) and posture, rows sorted by row then ingress.
-func buildCells(all []cases.Case, gaps []cases.Gap, views map[string]*runView) ([]Cell, error) {
+func buildCells(all []cases.Case, gaps []cases.Gap, views map[constants.Posture]*runView) ([]Cell, error) {
 	keySet := make(map[cellKey]bool)
 	for _, c := range all {
 		keySet[cellKey{c.Row, c.Ingress}] = true
@@ -300,8 +286,8 @@ func buildCells(all []cases.Case, gaps []cases.Gap, views map[string]*runView) (
 
 	var cells []Cell
 	for _, k := range keys {
-		for _, col := range postureColumns {
-			cell, err := cellFor(k, col, all, gaps, views[col.name])
+		for _, col := range cases.Postures {
+			cell, err := cellFor(k, col, all, gaps, views[col.Posture])
 			if err != nil {
 				return nil, err
 			}
@@ -313,8 +299,8 @@ func buildCells(all []cases.Case, gaps []cases.Gap, views map[string]*runView) (
 
 // cellFor applies the cell rules in order: gap, not applicable, no run, invalid run,
 // failed or invalid case, unrun attended case, covered.
-func cellFor(k cellKey, col postureColumn, all []cases.Case, gaps []cases.Gap, view *runView) (Cell, error) {
-	cell := Cell{Row: k.row, Ingress: k.ingress, Posture: col.name}
+func cellFor(k cellKey, col cases.PostureBinding, all []cases.Case, gaps []cases.Gap, view *runView) (Cell, error) {
+	cell := Cell{Row: k.row, Ingress: k.ingress, Posture: col.Posture}
 	for _, g := range gaps {
 		if g.Row == k.row && g.Ingress == k.ingress {
 			cell.Status, cell.Reason = CellNotExpressible, g.Reason
@@ -324,7 +310,7 @@ func cellFor(k cellKey, col postureColumn, all []cases.Case, gaps []cases.Gap, v
 
 	var inCell []cases.Case
 	for _, c := range all {
-		if c.Row == k.row && c.Ingress == k.ingress && c.Posture == col.posture {
+		if c.Row == k.row && c.Ingress == k.ingress && c.Posture == col.Wire {
 			inCell = append(inCell, c)
 		}
 	}
@@ -372,13 +358,13 @@ func cellFor(k cellKey, col postureColumn, all []cases.Case, gaps []cases.Gap, v
 
 type recallKey struct {
 	category doctrinecorpus.Category
-	posture  string
+	posture  constants.Posture
 	ingress  cases.Ingress
 }
 
 // buildRecall counts the rows 13 and 14 cases per (category, posture, ingress) that
 // PASS. Lines are ordered by category, posture, then ingress.
-func buildRecall(all []cases.Case, categoryOf map[string]doctrinecorpus.Category, views map[string]*runView) ([]Recall, error) {
+func buildRecall(all []cases.Case, categoryOf map[string]doctrinecorpus.Category, views map[constants.Posture]*runView) ([]Recall, error) {
 	lines := make(map[recallKey]*Recall)
 	ingressSet := make(map[cases.Ingress]bool)
 	for _, c := range all {
@@ -389,9 +375,9 @@ func buildRecall(all []cases.Case, categoryOf map[string]doctrinecorpus.Category
 		if !ok {
 			return nil, fmt.Errorf("conformance report: case %s has no corpus category: %w", c.ID, constants.ErrConformanceRecordInvalid)
 		}
-		name, err := postureName(c.Posture)
+		name, err := cases.GovernancePosture(c.Posture)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("conformance report: case %s: %w", c.ID, err)
 		}
 		ingressSet[c.Ingress] = true
 		key := recallKey{category: category, posture: name, ingress: c.Ingress}
@@ -417,25 +403,15 @@ func buildRecall(all []cases.Case, categoryOf map[string]doctrinecorpus.Category
 
 	var recall []Recall
 	for _, category := range doctrinecorpus.Categories() {
-		for _, col := range postureColumns {
+		for _, col := range cases.Postures {
 			for _, in := range ingresses {
-				if line, ok := lines[recallKey{category: category, posture: col.name, ingress: in}]; ok {
+				if line, ok := lines[recallKey{category: category, posture: col.Posture, ingress: in}]; ok {
 					recall = append(recall, *line)
 				}
 			}
 		}
 	}
 	return recall, nil
-}
-
-// postureName maps a wire posture to its report name.
-func postureName(p evalv1.EvaluationGovernancePosture) (string, error) {
-	for _, col := range postureColumns {
-		if col.posture == p {
-			return col.name, nil
-		}
-	}
-	return "", fmt.Errorf("conformance report: posture %s: %w", p, constants.ErrConformancePostureUnknown)
 }
 
 // distinctSorted returns the sorted distinct values of in.
