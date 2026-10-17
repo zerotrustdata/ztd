@@ -19,6 +19,7 @@ import {
   EVALUATION_FRAMEWORK_VALUES,
   FORMATION_CATALOG,
   formatParameterCount,
+  type CampaignSummaryGroup,
   type FormationRoleBinding,
   type FormationTopologySpec,
 } from '../content/framework-catalog';
@@ -52,129 +53,35 @@ import { useSelectedRelease } from '../state/dataset';
 type FrameworkSectionTab = 'all' | 'campaigns' | 'runs' | 'formations';
 type FormationKindFilter = 'all' | 'curated' | 'heterogeneous';
 
-function FormationStageNode({
-  role,
-  stageNumber,
-  binding,
-  datasetId,
-}: {
-  role: ModelRole;
-  stageNumber: number;
+function FormationModelCell({ binding, role, datasetId }: {
   binding: FormationRoleBinding;
+  role: ModelRole;
   datasetId?: string;
 }) {
-  const totalRoleVram = binding.estimated_model_vram_mib + binding.estimated_kv_cache_mib;
-  const paramLabel = formatParameterCount(binding.parameter_count);
   const targetUrl = datasetId
     ? `/models/${datasetId}/${binding.variant_id}?role=${role}`
     : `/models/${binding.variant_id}?role=${role}`;
-
   return (
-    <div className={`formation-stage-node formation-stage-${role}`}>
-      <div className="formation-stage-header">
-        <span className={`role-badge role-badge-${role}`}>
-          Stage {stageNumber} · {roleLabel(role)}
-        </span>
-        <span className="formation-stage-vram" title={`Weights: ${binding.estimated_model_vram_mib} MiB + KV cache: ${binding.estimated_kv_cache_mib} MiB`}>
-          {totalRoleVram.toLocaleString('en-US')} MiB
-        </span>
-      </div>
-      <Link to={targetUrl} className="formation-stage-model">
-        {roleLabel(role)}: {binding.display_name}
-      </Link>
-      <code className="served-tag-code">{binding.served_model_tag}</code>
-      <div className="formation-stage-specs">
-        <span className="spec-pill spec-family">{binding.family}</span>
-        {paramLabel ? <span className="spec-pill spec-params">{paramLabel}</span> : null}
-        <span className="spec-pill spec-quant">{binding.quantization}</span>
-        <span className="spec-pill spec-provider">{binding.provider}</span>
-      </div>
+    <div className="eval-cell-stack eval-model-cell">
+      <Link to={targetUrl}>{binding.display_name}</Link>
+      <code>{binding.served_model_tag}</code>
+      <span className="eval-cell-detail">
+        {binding.family} · {formatParameterCount(binding.parameter_count)} · {binding.quantization}
+      </span>
+      <span className="eval-cell-detail">{binding.provider} · {binding.trust}</span>
+      <span className="eval-cell-detail">
+        Weights {formatNumber(binding.estimated_model_vram_mib)} + KV {formatNumber(binding.estimated_kv_cache_mib)} MiB
+      </span>
     </div>
   );
 }
 
-function FormationCard({
-  formation,
-  defaultDatasetId,
-}: {
-  formation: FormationTopologySpec;
-  defaultDatasetId?: string;
-}) {
-  const vramPct = Math.min(100, Math.round(formation.vram_utilization_pct * 100));
-  const modelVram =
-    formation.lite.estimated_model_vram_mib +
-    formation.assistant.estimated_model_vram_mib +
-    formation.primary.estimated_model_vram_mib;
-  const kvVram =
-    formation.lite.estimated_kv_cache_mib +
-    formation.assistant.estimated_kv_cache_mib +
-    formation.primary.estimated_kv_cache_mib;
-
-  return (
-    <article className="formation-card" data-testid={`formation-${formation.id}`}>
-      <div className="formation-card-head">
-        <div>
-          <div className="formation-title-row">
-            <h3 className="formation-title">{formation.display_name}</h3>
-            <TonePill tone={formation.kind === 'curated' ? 'info' : 'neutral'}>
-              {formation.kind === 'curated' ? 'Curated Stack' : 'Heterogeneous Stack'}
-            </TonePill>
-          </div>
-          <code className="formation-id-code">{formation.id}</code>
-          <p className="formation-desc">{formation.description}</p>
-        </div>
-        <div className="formation-diversity-pills">
-          <span className="spec-pill spec-family">{formation.family_diversity_count} Model Families</span>
-          <span className="spec-pill spec-provider">{formation.provider_diversity_count} Providers</span>
-          <span className="spec-pill spec-trust">Sovereign Local</span>
-        </div>
-      </div>
-
-      <div className="formation-vram-bar-wrap" aria-label={`${formation.display_name} VRAM budget`}>
-        <div className="formation-vram-labels">
-          <span>
-            Combined VRAM Budget:{' '}
-            <strong>
-              {formation.total_vram_mib.toLocaleString('en-US')} / {formation.max_vram_mib.toLocaleString('en-US')} MiB
-            </strong>{' '}
-            ({vramPct}%)
-          </span>
-          <span className="formation-vram-sub">
-            Weights {modelVram.toLocaleString('en-US')} MiB · KV Cache {kvVram.toLocaleString('en-US')} MiB
-          </span>
-        </div>
-        <div className="formation-vram-track">
-          <div
-            className="formation-vram-fill"
-            style={{ width: `${vramPct}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="formation-pipeline" aria-label="Execution order Lite to Assistant to Primary">
-        <FormationStageNode
-          role="lite"
-          stageNumber={1}
-          binding={formation.lite}
-          datasetId={defaultDatasetId}
-        />
-        <div className="formation-pipeline-arrow" aria-hidden="true">→</div>
-        <FormationStageNode
-          role="assistant"
-          stageNumber={2}
-          binding={formation.assistant}
-          datasetId={defaultDatasetId}
-        />
-        <div className="formation-pipeline-arrow" aria-hidden="true">→</div>
-        <FormationStageNode
-          role="primary"
-          stageNumber={3}
-          binding={formation.primary}
-          datasetId={defaultDatasetId}
-        />
-      </div>
-    </article>
-  );
+function runProgress(run: EvaluationSummary) {
+  const terminal = campaignTerminalProgress(run);
+  return {
+    done: run.native_result?.passed_verdict_count ?? terminal.done,
+    total: run.native_result?.required_verdict_count ?? terminal.total,
+  };
 }
 
 export function EvaluationsView() {
@@ -278,24 +185,30 @@ export function EvaluationsView() {
       { id: 'suite', header: 'Suite', accessorKey: 'suite_id' },
       { id: 'release', header: 'Release', accessorFn: releaseLabel },
       { id: 'arm', header: 'Arm', accessorKey: 'arm' },
+      { id: 'status', header: 'Status', accessorKey: 'lifecycle_state' },
+      { id: 'assignments', header: 'Assignments', accessorKey: 'assignment_total' },
       {
         id: 'progress',
         header: 'Progress',
+        accessorFn: (run: EvaluationSummary) => {
+          const { done, total } = runProgress(run);
+          return total > 0 ? done / total : -1;
+        },
         cell: ({ row }) => {
-          const terminal = campaignTerminalProgress(row.original);
+          const progress = runProgress(row.original);
           return (
             <ProgressBar
-              completed={row.original.native_result?.passed_verdict_count ?? terminal.done}
-              total={row.original.native_result?.required_verdict_count ?? terminal.total}
+              completed={progress.done}
+              total={progress.total}
               label={`${row.original.run_id} progress`}
             />
           );
         },
-        enableSorting: false,
       },
       {
         id: 'outcomes',
         header: 'Outcomes',
+        accessorFn: (run: EvaluationSummary) => run.native_result?.summary_status ?? run.terminal_outcomes.completed,
         cell: ({ row }) =>
           row.original.native_result ? (
             <>
@@ -310,7 +223,6 @@ export function EvaluationsView() {
           ) : (
             <OutcomeBreakdown outcomes={row.original.terminal_outcomes} />
           ),
-        enableSorting: false,
       },
       {
         id: 'verifier',
@@ -334,7 +246,7 @@ export function EvaluationsView() {
       {
         id: 'elapsed',
         header: 'Elapsed',
-        accessorFn: (row: EvaluationSummary) => row.elapsed_seconds ?? 0,
+        accessorFn: (row: EvaluationSummary) => row.elapsed_seconds ?? -1,
         cell: ({ row }) =>
           row.original.elapsed_seconds !== undefined ? formatDuration(row.original.elapsed_seconds) : '—',
       },
@@ -350,14 +262,105 @@ export function EvaluationsView() {
       {
         id: 'quality',
         header: 'Quality',
+        accessorKey: 'quality_state',
         cell: ({ row }) => <QualityBadge state={row.original.quality_state} />,
-        enableSorting: false,
       },
     ],
     [],
   );
 
   const defaultDatasetId = filtered[0]?.dataset_id ?? evaluations[0]?.dataset_id;
+  const campaignColumns = useMemo<DataTableColumn<CampaignSummaryGroup>[]>(() => [
+    {
+      id: 'campaign', header: 'Campaign', accessorKey: 'title',
+      cell: ({ row: { original: group } }) => (
+        <div className="eval-cell-stack eval-identity-cell">
+          <Link to={`/evaluations/${group.runs[0]!.dataset_id}/${group.runs[0]!.run_id}`}>{group.title}</Link>
+          <code className="campaign-id-chip">{group.campaign_id}</code>
+        </div>
+      ),
+    },
+    { id: 'program', header: 'Program', accessorKey: 'program' },
+    { id: 'arm', header: 'Arm', accessorKey: 'arm' },
+    { id: 'suites', header: 'Suites', accessorFn: (group) => group.suites.join(', ') },
+    { id: 'runs', header: 'Runs', accessorKey: 'total_runs' },
+    { id: 'completed', header: 'Completed runs', accessorKey: 'completed_runs' },
+    { id: 'active', header: 'Active runs', accessorKey: 'running_runs' },
+    { id: 'failed', header: 'Failed / stopped runs', accessorKey: 'failed_runs' },
+    {
+      id: 'assignments', header: 'Assignments', accessorKey: 'total_assignments',
+      cell: ({ row: { original: group } }) => (
+        <div className="eval-cell-stack eval-progress-cell">
+          <strong>{formatNumber(group.total_assignments)}</strong>
+          <span className="eval-cell-detail">{formatNumber(group.completed_assignments)} completed · {formatNumber(group.failed_assignments)} failed</span>
+        </div>
+      ),
+    },
+    {
+      id: 'progress', header: 'Progress',
+      accessorFn: (group) => group.total_assignments > 0 ? (group.completed_assignments + group.failed_assignments) / group.total_assignments : -1,
+      cell: ({ row: { original: group } }) => (
+        <div className="eval-progress-cell">
+          <ProgressBar completed={group.completed_assignments + group.failed_assignments}
+            total={group.total_assignments} label={`${group.campaign_id} assignments`} />
+        </div>
+      ),
+    },
+    {
+      id: 'verification', header: 'Verified runs', accessorKey: 'verified_runs',
+      cell: ({ row: { original: group } }) => (
+        <div className="eval-cell-stack">
+          <TonePill tone={group.verified_runs === group.total_runs ? 'ok' : group.verifier_failed_runs > 0 ? 'critical' : 'neutral'}>
+            {group.verified_runs === group.total_runs ? '✓ ' : ''}{group.verified_runs}/{group.total_runs} verified
+          </TonePill>
+          <span className="eval-cell-detail">{group.verifier_failed_runs} verifier failed</span>
+        </div>
+      ),
+    },
+    {
+      id: 'pass_rate', header: 'Median pass rate', accessorFn: (group) => group.pass_rate_median ?? -1,
+      cell: ({ row: { original: group } }) => group.pass_rate_median === undefined ? '—' : formatPercent(group.pass_rate_median),
+    },
+    {
+      id: 'latest', header: 'Latest run', accessorFn: (group) => group.latest_activity ?? '',
+      cell: ({ row: { original: group } }) => group.latest_activity ? formatTimestamp(group.latest_activity) : '—',
+    },
+  ], []);
+
+  const formationColumns = useMemo<DataTableColumn<FormationTopologySpec>[]>(() => [
+    {
+      id: 'formation', header: 'Formation', accessorKey: 'display_name',
+      cell: ({ row: { original: formation } }) => (
+        <div className="eval-cell-stack eval-identity-cell" data-testid={`formation-${formation.id}`}>
+          <strong>{formation.display_name}</strong>
+          <code>{formation.id}</code>
+          <span className="eval-cell-detail">{formation.description}</span>
+        </div>
+      ),
+    },
+    { id: 'kind', header: 'Kind', accessorKey: 'kind' },
+    ...(['lite', 'assistant', 'primary'] as const).map((role, index): DataTableColumn<FormationTopologySpec> => ({
+      id: role, header: `${index + 1}. ${roleLabel(role)}`, accessorFn: (formation) => formation[role].display_name,
+      cell: ({ row }) => <FormationModelCell binding={row.original[role]} role={role} datasetId={defaultDatasetId} />,
+    })),
+    {
+      id: 'vram', header: 'Total VRAM', accessorKey: 'total_vram_mib',
+      cell: ({ row: { original: formation } }) => (
+        <div className="eval-cell-stack eval-progress-cell">
+          <strong>{formatNumber(formation.total_vram_mib)} MiB</strong>
+          <span className="eval-cell-detail">of {formatNumber(formation.max_vram_mib)} MiB · {formatPercent(formation.vram_utilization_pct)}</span>
+          <div className="formation-vram-track" aria-hidden="true">
+            <div className="formation-vram-fill" style={{ width: `${Math.min(100, formation.vram_utilization_pct * 100)}%` }} />
+          </div>
+        </div>
+      ),
+    },
+    { id: 'weights', header: 'Weights (MiB)', accessorFn: (formation) => formation.lite.estimated_model_vram_mib + formation.assistant.estimated_model_vram_mib + formation.primary.estimated_model_vram_mib },
+    { id: 'kv', header: 'KV cache (MiB)', accessorFn: (formation) => formation.lite.estimated_kv_cache_mib + formation.assistant.estimated_kv_cache_mib + formation.primary.estimated_kv_cache_mib },
+    { id: 'families', header: 'Families', accessorKey: 'family_diversity_count' },
+    { id: 'providers', header: 'Providers', accessorKey: 'provider_diversity_count' },
+  ], [defaultDatasetId]);
+
   const showCampaigns = activeTab === 'all' || activeTab === 'campaigns';
   const showRuns = activeTab === 'all' || activeTab === 'runs';
   const showFormations = activeTab === 'all' || activeTab === 'formations';
@@ -371,18 +374,20 @@ export function EvaluationsView() {
       />
 
       <section className="framework-values-banner" aria-label="Evaluation framework values">
-        <div className="framework-pillars-grid">
-          {EVALUATION_FRAMEWORK_VALUES.pillars.map((pillar) => (
-            <article key={pillar.id} className="framework-pillar-card">
-              <div className="framework-pillar-top">
-                <span className="framework-pillar-kicker">{pillar.kicker}</span>
-                <span className="framework-pillar-metric">{pillar.metric}</span>
-              </div>
-              <h3 className="framework-pillar-title">{pillar.title}</h3>
-              <p className="framework-pillar-copy">{pillar.summary}</p>
-            </article>
-          ))}
-        </div>
+        <details className="framework-reference">
+          <summary>Framework reference · campaigns, verification, formations & capability gates</summary>
+          <DataTable
+            data={[...EVALUATION_FRAMEWORK_VALUES.pillars]}
+            columns={[
+              { id: 'area', header: 'Area', accessorKey: 'kicker' },
+              { id: 'capability', header: 'Capability', accessorKey: 'title' },
+              { id: 'specification', header: 'Specification', accessorKey: 'metric' },
+              { id: 'details', header: 'Details', accessorKey: 'summary' },
+            ]}
+            caption="Evaluation framework reference"
+            enableColumnVisibility={false}
+          />
+        </details>
         <div className="framework-spec-strip" aria-label="Framework specification values">
           <span>
             <strong>Schema:</strong> <code>{EVALUATION_FRAMEWORK_VALUES.schemaVersion}</code>
@@ -521,60 +526,7 @@ export function EvaluationsView() {
               <p className="disclosure">
                 Campaign programs group evaluation runs by governed campaign binding, execution arm, and scenario suite.
               </p>
-              <div className="campaign-cards-grid">
-                {campaignGroups.map((group) => {
-                  const doneAssignments = group.completed_assignments + group.failed_assignments;
-                  return (
-                    <article key={group.campaign_id} className="campaign-summary-card">
-                      <div className="campaign-card-head">
-                        <div>
-                          <span className="campaign-program-tag">{group.program}</span>
-                          <h3 className="campaign-card-title">{group.title}</h3>
-                          <code className="campaign-id-chip">{group.campaign_id}</code>
-                        </div>
-                        <div className="campaign-card-badges">
-                          {group.verified_runs === group.total_runs ? (
-                            <span
-                              className="stream-result"
-                              data-tone="ok"
-                              role="img"
-                              aria-label={`${group.verified_runs}/${group.total_runs} verified`}
-                              title={`${group.verified_runs}/${group.total_runs} verified`}
-                            >
-                              <span aria-hidden="true">✓</span>
-                            </span>
-                          ) : (
-                            <TonePill tone={group.verified_runs > 0 ? 'ok' : group.verifier_failed_runs > 0 ? 'critical' : 'neutral'}>
-                              {group.verified_runs}/{group.total_runs} verified
-                            </TonePill>
-                          )}
-                        </div>
-                      </div>
-                      <div className="campaign-card-meta">
-                        <span>
-                          <strong>Arm:</strong> <code>{group.arm}</code>
-                        </span>
-                        <span>
-                          <strong>Suites:</strong> {group.suites.join(', ')}
-                        </span>
-                        <span>
-                          <strong>Runs:</strong> {formatNumber(group.total_runs)} ({group.completed_runs} completed · {group.running_runs} active · {group.failed_runs} failed)
-                        </span>
-                        {group.pass_rate_median !== undefined ? (
-                          <span>
-                            <strong>Median pass rate:</strong> {formatPercent(group.pass_rate_median)}
-                          </span>
-                        ) : null}
-                      </div>
-                      <ProgressBar
-                        completed={doneAssignments}
-                        total={group.total_assignments > 0 ? group.total_assignments : doneAssignments}
-                        label={`${group.campaign_id} assignments`}
-                      />
-                    </article>
-                  );
-                })}
-              </div>
+              <DataTable data={campaignGroups} columns={campaignColumns} pageSize={25} caption="Campaigns" />
             </PanelSection>
           ) : null}
 
@@ -592,34 +544,6 @@ export function EvaluationsView() {
                       columns={columns}
                       pageSize={25}
                       caption={program}
-                      renderCard={(run) => {
-                        const progress = campaignTerminalProgress(run);
-                        return (
-                          <article className="run-card">
-                            <Link to={`/evaluations/${run.dataset_id}/${run.run_id}`}>{run.run_id}</Link>
-                            <p>
-                              {run.suite_id} · {releaseLabel(run)}
-                            </p>
-                            <TonePill
-                              tone={verifierStateTone(run.verifier_state)}
-                              title={run.verifier_failure_summary}
-                            >
-                              {run.verifier_state.replace(/_/g, ' ')}
-                            </TonePill>
-                            {run.native_result ? (
-                              <TonePill tone={nativeResultTone(run.native_result.summary_status)}>
-                                {run.native_result.summary_status}
-                              </TonePill>
-                            ) : null}
-                            <ProgressBar
-                              completed={run.native_result?.passed_verdict_count ?? progress.done}
-                              total={run.native_result?.required_verdict_count ?? progress.total}
-                              label={`${run.run_id} progress`}
-                            />
-                            <QualityBadge state={run.quality_state} />
-                          </article>
-                        );
-                      }}
                     />
                   </PanelSection>
                 );
@@ -673,15 +597,8 @@ export function EvaluationsView() {
               />
             </div>
           </div>
-          <div className="formations-grid">
-            {filteredFormations.map((formation) => (
-              <FormationCard
-                key={formation.id}
-                formation={formation}
-                defaultDatasetId={defaultDatasetId}
-              />
-            ))}
-          </div>
+          <DataTable data={filteredFormations} columns={formationColumns} pageSize={25}
+            caption="Execution formations" empty={<p className="table-empty">No formations match these filters.</p>} />
         </PanelSection>
       ) : null}
     </div>

@@ -52,6 +52,14 @@ describe('DataTable', () => {
     expect(bodyCells()).toEqual(['a', 'b', 'c']);
   });
 
+  it('gives each table its own column visibility panel', () => {
+    render(<><DataTable data={data} columns={columns} caption="First table" />
+      <DataTable data={data} columns={columns} caption="Second table" /></>);
+    const toggles = screen.getAllByRole('button', { name: /Columns/ });
+    const panelIds = toggles.map((button) => button.getAttribute('aria-controls'));
+    expect(new Set(panelIds).size).toBe(2);
+  });
+
   it('hides a column and its cells when its visibility toggle is cleared', async () => {
     const user = userEvent.setup();
 

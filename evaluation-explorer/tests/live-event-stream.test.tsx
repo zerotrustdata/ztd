@@ -123,28 +123,25 @@ describe('LiveEventStream', () => {
     expect(screen.queryByText('999 tok')).not.toBeInTheDocument();
   });
 
-  it('keeps model choices available after filtering and clears an empty attention filter', async () => {
+  it('keeps model choices available after filtering and clears the model filter', async () => {
     const user = userEvent.setup();
     render(stream([liveEvent(), liveEvent({ assignment_id: 'second', event_id: 'second', variant_id: 'model-b' })]));
     const select = screen.getByRole('combobox', { name: 'Filter by model' });
     await user.selectOptions(select, 'model-a');
     expect(within(select).getByRole('option', { name: 'model-b' })).toBeInTheDocument();
     expect(rows()).toHaveLength(1);
-    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(rows()).toHaveLength(2);
   });
 
-  it('includes model failures and non-verdict errors in Needs attention', async () => {
-    const user = userEvent.setup();
+  it('shows successful results, model failures, and non-verdict errors together', () => {
     render(stream([
       liveEvent(),
       liveEvent({ event_id: 'failed', assignment_id: 'failed', kind: 'assignment_failed', terminal_status: 'model_failed' }),
       liveEvent({ event_id: 'provider', assignment_id: 'provider', kind: 'assignment_failed', terminal_status: 'provider_failed' }),
     ]));
-    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
-    expect(rows()).toHaveLength(2);
+    expect(rows()).toHaveLength(3);
+    expect(screen.getByRole('link', { name: /Completed:/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Model failed:/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Provider Failed:/ })).toBeInTheDocument();
   });
@@ -198,17 +195,15 @@ describe('LiveEventStream', () => {
     expect(output()).toEqual(['10 tok', '2 tok', '--']);
   });
 
-  it('freezes rows and metrics while paused, then resumes the latest state', async () => {
-    const user = userEvent.setup();
+  it('updates rows and metrics as new activity arrives', () => {
     evalStore.loadFixtures([assignment({ resource_summary: { output_tokens: { value: 10 } } })], []);
     const { rerender } = render(stream([liveEvent()]));
-    await user.click(screen.getByRole('button', { name: 'Pause live updates' }));
+    expect(screen.getByText('10 tok')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Needs attention|Pause|Resume/i })).not.toBeInTheDocument();
     act(() => evalStore.loadFixtures([assignment({ resource_summary: { output_tokens: { value: 20 } } })], []));
     rerender(stream([liveEvent(), liveEvent({ event_id: 'new', assignment_id: 'new', task_id: 'new-task' })]));
-    expect(screen.getByText('Paused')).toBeInTheDocument();
-    expect(rows()).toHaveLength(1);
-    expect(screen.getByText('10 tok')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Resume live updates' }));
+    expect(screen.getByText('Live', { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText('10 tok')).not.toBeInTheDocument();
     expect(rows()).toHaveLength(2);
     expect(screen.getByText('20 tok')).toBeInTheDocument();
     expect(screen.getByText('new-task')).toBeInTheDocument();

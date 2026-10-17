@@ -336,13 +336,59 @@ for (const viewport of [
       expect(Math.max(...heights)).toBeLessThan(80);
     }
     await page.screenshot({ path: testInfo.outputPath('live-view.png'), fullPage: true });
-    await live.getByRole('button', { name: 'Pause live updates' }).click();
-    await expect(live.getByText('Paused', { exact: true })).toBeVisible();
-    await live.getByRole('button', { name: 'Resume live updates' }).click();
-    await live.getByRole('button', { name: 'Needs attention' }).click();
-    await expect(live.locator('tbody tr')).toHaveCount(2);
+    await expect(live.getByRole('button', { name: /Needs attention|Pause|Resume/i })).toHaveCount(0);
     await live.getByRole('link', { name: 'tool-arg-run-commands — View details' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'tool-arg-run-commands' })).toBeVisible();
     await expect(page.getByText(failureReason, { exact: true }).first()).toBeVisible();
   });
 }
+
+
+test('Evals tables keep sortable detail columns at desktop and mobile widths', async ({ page }) => {
+  const records = [
+    { ...fixtureEvaluationSummaries[0]!, run_id: 'alpha-run', campaign_id: 'Alpha campaign' },
+    { ...fixtureEvaluationSummaries[0]!, run_id: 'beta-run', campaign_id: 'Beta campaign' },
+  ];
+  await installMirror(page, records);
+  await page.goto('/evaluations?release=all');
+  const campaigns = page.getByRole('table', { name: 'Campaigns', exact: true });
+  await expect(campaigns.locator('tbody tr')).toHaveCount(2);
+  await campaigns.getByRole('button', { name: 'Sort by Campaign', exact: true }).click();
+  await expect(campaigns.locator('tbody tr').first()).toContainText('Alpha campaign');
+  await campaigns.getByRole('button', { name: 'Sort by Campaign', exact: true }).click();
+  await expect(campaigns.locator('tbody tr').first()).toContainText('Beta campaign');
+  await expect(campaigns.getByRole('columnheader', { name: /Campaign/ })).toHaveAttribute('aria-sort', 'descending');
+  const campaignPanel = page.getByRole('region', { name: 'Campaigns', exact: true });
+  await campaignPanel.getByRole('button', { name: /Columns/ }).click();
+  await campaignPanel.getByRole('checkbox', { name: 'Arm', exact: true }).uncheck();
+  await expect(campaigns.getByRole('columnheader', { name: 'Arm', exact: true })).toHaveCount(0);
+  await campaignPanel.getByRole('checkbox', { name: 'Arm', exact: true }).check();
+  await campaignPanel.getByRole('button', { name: /Columns/ }).click();
+
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await expect(campaigns).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Model campaigns', exact: true })).toBeVisible();
+    const formations = page.getByRole('table', { name: 'Execution formations', exact: true });
+    await expect(formations).toBeVisible();
+    await expect(page.locator('.campaign-cards-grid, .formations-grid, .data-card-list')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const scrollArea = campaigns.locator('..');
+    await scrollArea.evaluate((element) => { element.scrollLeft = 0; });
+    await scrollArea.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => scrollArea.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    await page.getByRole('tab', { name: /Formations/ }).click();
+    await page.getByRole('searchbox', { name: 'Search formations' }).fill('Qwen Powerhouse');
+    await expect(formations.locator('tbody tr')).toHaveCount(1);
+    await expect(formations.locator('tbody a')).toHaveCount(3);
+    await page.getByRole('searchbox', { name: 'Search formations' }).fill('');
+    await formations.getByRole('button', { name: 'Sort by Total VRAM', exact: true }).click();
+    await expect(formations.getByRole('columnheader', { name: /Total VRAM/ })).toHaveAttribute('aria-sort', /ascending|descending/);
+    await page.getByRole('tab', { name: 'All Framework Views', exact: true }).click();
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.locator('.evaluations-view .data-table-wrap').evaluateAll((elements) => elements.forEach((element) => { element.scrollLeft = 0; }));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: 'test-results/evals-tables-desktop.png', fullPage: true });
+});

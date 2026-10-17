@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { EvaluationSummary, SnapshotRecord } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 import { EvaluationsView } from '../src/views/EvaluationsView';
+import { FORMATION_CATALOG } from '../src/content/framework-catalog';
 
 function evaluation(
   datasetId: string,
@@ -37,6 +38,7 @@ function evaluation(
 }
 
 describe('EvaluationsView', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     evalStore.loadFixtures(
       [
@@ -73,6 +75,58 @@ describe('EvaluationsView', () => {
     fireEvent.click(formationsPanel.getByRole('button', { name: /Curated reference stacks/i }));
     expect(formationsPanel.getByTestId('formation-qwen-powerhouse')).toBeInTheDocument();
     expect(formationsPanel.queryByTestId('formation-heterogeneous-0000')).not.toBeInTheDocument();
+  });
+
+  it('sorts campaign progress and numeric pass rates while preserving filtered run links', () => {
+    evalStore.loadFixtures([
+      { ...evaluation('ds-alpha', 'run-alpha', '2026-10-06T10:00:00Z'), campaign_id: 'Alpha', assignment_total: 100,
+        assignment_completed: 90, headline_metrics: { pass_rate: { value: 0.95 } } },
+      { ...evaluation('ds-beta', 'run-beta', '2026-10-06T12:00:00Z'), campaign_id: 'Beta', assignment_total: 10,
+        assignment_completed: 2, headline_metrics: { pass_rate: { value: 0.8 } } },
+    ] as EvaluationSummary[], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
+    const table = screen.getByRole('table', { name: 'Campaigns' });
+    const campaignOrder = () => within(table).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent);
+    fireEvent.click(within(table).getByRole('button', { name: 'Sort by Campaign' }));
+    expect(campaignOrder()).toEqual(['Alpha', 'Beta']);
+    expect(within(table).getByRole('columnheader', { name: /Campaign/ })).toHaveAttribute('aria-sort', 'ascending');
+    fireEvent.click(within(table).getByRole('button', { name: 'Sort by Campaign' }));
+    expect(campaignOrder()).toEqual(['Beta', 'Alpha']);
+    fireEvent.click(within(table).getByRole('button', { name: 'Sort by Progress' }));
+    const progressSort = within(table).getByRole('columnheader', { name: /Progress/ }).getAttribute('aria-sort');
+    expect(campaignOrder()).toEqual(progressSort === 'ascending' ? ['Beta', 'Alpha'] : ['Alpha', 'Beta']);
+    expect(within(table).getByRole('link', { name: 'Alpha' })).toHaveAttribute('href', '/evaluations/ds-alpha/run-alpha');
+
+    const runs = screen.getByRole('table', { name: 'Model campaigns' });
+    fireEvent.click(within(runs).getByRole('button', { name: 'Sort by Pass rate' }));
+    const passRateSort = within(runs).getByRole('columnheader', { name: /Pass rate/ }).getAttribute('aria-sort');
+    const runOrder = within(runs).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent);
+    expect(runOrder).toEqual(passRateSort === 'ascending' ? ['run-beta', 'run-alpha'] : ['run-alpha', 'run-beta']);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), { target: { value: 'completed' } });
+    expect(screen.queryByRole('table', { name: 'Campaigns' })).not.toBeInTheDocument();
+  });
+
+  it('sorts formations by numeric VRAM, searches models, and keeps tables on mobile', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
+    expect(screen.getByRole('table', { name: 'Campaigns' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Model campaigns' })).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Execution formations' });
+    fireEvent.click(within(table).getByRole('button', { name: 'Sort by Total VRAM' }));
+    const direction = within(table).getByRole('columnheader', { name: /Total VRAM/ }).getAttribute('aria-sort');
+    const expected = [...FORMATION_CATALOG].sort((a, b) => direction === 'ascending' ? a.total_vram_mib - b.total_vram_mib : b.total_vram_mib - a.total_vram_mib);
+    const ids = within(table).getAllByTestId(/^formation-/).map((cell) => cell.dataset.testid);
+    expect(ids).toEqual(expected.map((formation) => `formation-${formation.id}`));
+    const qwen = within(table).getByTestId('formation-qwen-powerhouse').closest('tr')!;
+    expect(within(qwen).getAllByRole('link')).toHaveLength(3);
+    expect(qwen).toHaveTextContent('Weights');
+    expect(qwen).toHaveTextContent('KV');
+    expect(qwen).toHaveTextContent('MiB');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'Qwen Powerhouse' } });
+    expect(within(table).getAllByRole('row')).toHaveLength(2);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'no-such-formation' } });
+    expect(screen.getByText('No formations match these filters.')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Sort cards' })).not.toBeInTheDocument();
   });
 
   it('counts filtered evidence and separates conformance from campaigns with verifier tones', () => {

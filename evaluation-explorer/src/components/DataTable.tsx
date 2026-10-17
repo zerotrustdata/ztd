@@ -7,7 +7,7 @@
 // Includes column-visibility controls so users can hide columns on wide
 // tables (e.g. the 1,125-row assignment table) and keep the view scannable.
 
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from 'react';
 import {
   type ColumnDef,
   type ColumnVisibilityState,
@@ -72,6 +72,7 @@ export function DataTable<T extends RowData>({
   const [page, setPage] = useState(0);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
   const [showColumns, setShowColumns] = useState(false);
+  const columnPanelId = useId();
 
   const table = useTable({
     features: dataTableFeatures,
@@ -99,20 +100,20 @@ export function DataTable<T extends RowData>({
   const toggleableColumns = table.getAllLeafColumns().filter((c) => c.getCanHide());
 
   return (
-    <div className="data-table-wrap" data-testid="data-table">
+    <div className="data-table-wrap" data-testid="data-table" tabIndex={0} aria-label={caption ? `${caption} table controls` : undefined}>
       {!(mobile && renderCard) && enableColumnVisibility && toggleableColumns.length > 1 ? (
         <div className="column-visibility">
           <button
             type="button"
             className="column-visibility-toggle"
             aria-expanded={showColumns}
-            aria-controls="column-visibility-panel"
+            aria-controls={columnPanelId}
             onClick={() => setShowColumns((v) => !v)}
           >
             Columns {showColumns ? '▲' : '▼'}
           </button>
           {showColumns ? (
-            <ul id="column-visibility-panel" className="column-visibility-panel" role="group" aria-label="Toggle columns">
+            <ul id={columnPanelId} className="column-visibility-panel" role="group" aria-label="Toggle columns">
               {toggleableColumns.map((column) => {
                 const label = String(column.columnDef.header ?? column.id);
                 return (
