@@ -141,6 +141,11 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 	assert.Equal(t, "evaluation_summary", summary.Kind)
 	assert.Equal(t, "model", summary.EvaluationUnit)
 	assert.Equal(t, "completed", summary.LifecycleState)
+	var publicSummary struct {
+		RunStatus string `json:"run_status"`
+	}
+	require.NoError(t, json.Unmarshal(records[0].Body, &publicSummary))
+	assert.Equal(t, "completed", publicSummary.RunStatus)
 	assert.Equal(t, "exploratory_partial", summary.QualityState)
 	require.NotNil(t, summary.ElapsedSeconds)
 	assert.Equal(t, 50.0, *summary.ElapsedSeconds)
@@ -984,6 +989,7 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 		require.NoError(t, err)
 		summary := decodeSummary(t, records)
 		assert.Equal(t, "not_run", summary.VerifierState)
+		assert.Equal(t, "completed", summary.RunStatus)
 		assert.Nil(t, summary.VerificationMetadata)
 	})
 
@@ -993,6 +999,7 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 		require.NoError(t, err)
 		summary := decodeSummary(t, records)
 		assert.Equal(t, "passed", summary.VerifierState)
+		assert.Equal(t, "verified", summary.RunStatus)
 		assert.Equal(t, "exploratory_verified", summary.QualityState)
 		require.NotNil(t, summary.VerificationMetadata)
 		assert.Equal(t, "bound", summary.VerificationMetadata.Provenance)
@@ -1011,6 +1018,7 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 		require.NoError(t, err)
 		summary := decodeSummary(t, records)
 		assert.Equal(t, "failed", summary.VerifierState)
+		assert.Equal(t, "verify_failed", summary.RunStatus)
 		assert.Equal(t, "assignment assign-1: missing window", summary.VerifierFailureSummary)
 		require.NotNil(t, summary.VerificationMetadata)
 		assert.Equal(t, "failed", summary.VerificationMetadata.VerifierState)

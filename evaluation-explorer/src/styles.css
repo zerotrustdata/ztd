@@ -664,11 +664,11 @@ button { font-family: inherit; cursor: pointer; }
 .freshness-dot, .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; flex-shrink: 0; }
 
 /* Status tones */
-.status-ok, .status-completed { color: var(--tone-ok); }
+.status-ok, .status-completed, .status-verified { color: var(--tone-ok); }
 .status-info, .status-running { color: var(--tone-info); }
-.status-warn, .status-stopped { color: var(--tone-warn); }
-.status-critical, .status-failed { color: var(--tone-critical); }
-.status-neutral, .status-queued { color: var(--tone-neutral); }
+.status-warn, .status-stopped, .status-cancelled, .status-interrupted, .status-in_progress { color: var(--tone-warn); }
+.status-critical, .status-failed, .status-verify_failed { color: var(--tone-critical); }
+.status-neutral, .status-queued, .status-scheduled, .status-initialized, .status-unknown { color: var(--tone-neutral); }
 
 /* Stat tiles */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
@@ -1615,6 +1615,7 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .campaign-legend-swatch { width: 8px; height: 8px; border-radius: 2px; }
 .campaign-legend-completed, .campaign-outcome-completed { background: var(--tone-ok); }
 .campaign-legend-failed, .campaign-outcome-failed { background: var(--tone-critical); }
+.campaign-legend-stopped, .campaign-outcome-stopped { background: var(--tone-warn); }
 .campaign-legend-remaining { background: var(--bg-elev2); border: 1px solid var(--border); }
 .campaign-evidence-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .campaign-evidence-row { padding: 11px 4px; border-top: 1px solid var(--border); }

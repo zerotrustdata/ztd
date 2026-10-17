@@ -642,6 +642,51 @@ func evaluationSummaries(t *testing.T, records []CampaignPublicFeedRecord) []eva
 	return summaries
 }
 
+func TestPublishRunAggregatesUsesLeaseStatusWithoutProgressChanges(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	controller := NewCampaignController(store, nil, nil, nil)
+	run, err := controller.InitializeCampaign(ctx, testCampaignInitRequest(t))
+	require.NoError(t, err)
+	_, err = scheduleModelRoleAssignments(ctx, controller, run.GetRunId())
+	require.NoError(t, err)
+	exporter := &recordingCampaignFeedExporter{}
+	alive := true
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).
+		WithLeaseLiveness(func(RunLease) bool { return alive })
+	observed := time.Unix(1_700_000_000, 0).UTC()
+	assertPublished := func(want string) {
+		t.Helper()
+		observed = observed.Add(time.Second)
+		before := len(evaluationSummaries(t, exporter.records))
+		_, err := coordinator.PublishRunAggregates(ctx, run.GetRunId(), observed)
+		require.NoError(t, err)
+		summaries := evaluationSummaries(t, exporter.records)
+		require.Len(t, summaries, before+1, "status changes must not be deduplicated by assignment counts")
+		assert.Equal(t, want, summaries[len(summaries)-1].RunStatus)
+	}
+	assertPublished("scheduled")
+	lease := RunLease{RunID: run.GetRunId(), PID: 100, Host: "test-host", StartedAt: observed}
+	_, err = store.AcquireRunLease(ctx, lease, nil)
+	require.NoError(t, err)
+	assertPublished("running")
+	require.NoError(t, store.ReleaseRunLease(ctx, run.GetRunId(), lease.PID))
+	assertPublished("scheduled")
+	_, err = store.AcquireRunLease(ctx, lease, nil)
+	require.NoError(t, err)
+	assertPublished("running")
+	assignments, err := store.ListAssignments(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assignments[0].LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING
+	require.NoError(t, store.SaveAssignment(ctx, assignments[0]))
+	alive = false
+	assertPublished("interrupted")
+	_, err = controller.CancelRun(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assertPublished("cancelled")
+}
+
 // Regression: a published applicable verification result must remain
 // authoritative through later aggregate, completion, and catch-up emissions.
 // Before the fix, later aggregate revisions re-emitted verifier_state

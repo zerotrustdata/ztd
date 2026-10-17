@@ -32,6 +32,7 @@ import {
   NATIVE_SCENARIO_STATUSES,
   type ProjectionRecord,
   QUALITY_STATES,
+  RUN_STATUSES,
   SCENARIO_CATEGORIES,
   SECURITY_PRIVACY_EVENTS,
   type SnapshotRecord,
@@ -522,7 +523,7 @@ function assertCurrentHeadlineMetrics(value: unknown, path: string): void {
 
 export function isEvaluationSummary(value: unknown): asserts value is EvaluationSummary {
   assertObject(value, 'evaluation_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
   assertEnvelope(value, 'evaluation_summary', ['evaluation_summary']);
   assertString(value.run_id, 'evaluation_summary.run_id');
   assertOptional(value.campaign_id, 'evaluation_summary.campaign_id', assertString);
@@ -550,6 +551,7 @@ export function isEvaluationSummary(value: unknown): asserts value is Evaluation
     for (const [role, variant] of Object.entries(value.model_role_mapping)) assertString(variant, `evaluation_summary.model_role_mapping.${role}`);
   }
   assertEnum(value.lifecycle_state, LIFECYCLE_STATUSES, 'evaluation_summary.lifecycle_state');
+  assertOptional(value.run_status, 'evaluation_summary.run_status', (v, p) => assertEnum(v, RUN_STATUSES, p));
   assertInteger(value.assignment_total, 'evaluation_summary.assignment_total');
   assertInteger(value.assignment_completed, 'evaluation_summary.assignment_completed');
   assertInteger(value.assignment_failed, 'evaluation_summary.assignment_failed');

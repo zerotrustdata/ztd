@@ -61,6 +61,14 @@ type CampaignPublicationCoordinator struct {
 	pendingProofMirrorPush bool
 	pendingProofInputs     []AssignmentAuditProofInput
 	publicationStateCache  *CampaignPublicationState
+	leaseLiveness          LeaseLiveness
+}
+
+// WithLeaseLiveness lets host publications report the same process-aware status
+// as eval runs. It is evaluated only when publishing, never on a timer.
+func (c *CampaignPublicationCoordinator) WithLeaseLiveness(live LeaseLiveness) *CampaignPublicationCoordinator {
+	c.leaseLiveness = live
+	return c
 }
 
 func NewCampaignPublicationCoordinator(store CampaignStore, files fs.RuntimeFileService, publicationState CampaignPublicationStateStore, exporter CampaignFeedExporter, observationRemote ProviderObservationRemote) *CampaignPublicationCoordinator {
@@ -911,6 +919,19 @@ func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Conte
 	}
 	state.Suite = methodologySuiteFromCatalog(catalog)
 	state.Release = release
+	if c.leaseLiveness != nil {
+		state.RunSummary, err = NewCampaignController(c.store, nil, nil, nil).RunSummary(ctx, runID)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		lease, leaseErr := NewStore(c.files).LoadRunLease(ctx, runID)
+		switch {
+		case leaseErr == nil:
+			state.Executing = c.leaseLiveness(*lease)
+		case !errors.Is(leaseErr, constants.ErrNotFound):
+			return nil, nil, nil, nil, fmt.Errorf("evaluation: publish run lease status: %w", leaseErr)
+		}
+	}
 	if RunAggregateComplete(assignments, results, state) {
 		// Only a finished run claims an environment: a live dataset is
 		// provisional and must not be matched against another run's.

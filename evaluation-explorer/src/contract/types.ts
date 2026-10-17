@@ -10,12 +10,12 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.8.0 on 2026-10-15. A change to any enum value
+// FROZEN at schema_version 1.9.0 on 2026-10-17. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.8.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.9.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -225,6 +225,14 @@ export const LIFECYCLE_STATUSES = [
   'stopped',
 ] as const;
 export type LifecycleStatus = (typeof LIFECYCLE_STATUSES)[number];
+
+/** Host-observed status from CampaignRunStatus, shared with `ztd eval runs`. */
+export const RUN_STATUSES = [
+  'unknown', 'initialized', 'scheduled', 'running', 'in_progress',
+  'interrupted', 'cancelled', 'completed', 'verified', 'verify_failed',
+  'unspecified', 'unavailable', 'unsupported', 'invalid_evidence',
+] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
 
 /** Repeatability composition classes for a model across repetitions. */
 export const REPEATABILITY_CLASSES = [
@@ -531,6 +539,8 @@ export interface EvaluationSummary extends ViewRecordEnvelope {
   benchmark_unavailable_reasons?: string[];
   model_role_mapping?: Partial<Record<ModelRole, string>>;
   lifecycle_state: LifecycleStatus;
+  /** Process-aware host observation; absent in historical snapshots. */
+  run_status?: RunStatus;
   assignment_total: number;
   assignment_completed: number;
   assignment_failed: number;

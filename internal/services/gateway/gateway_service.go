@@ -756,6 +756,10 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 	modelProvenanceDeps := modelProvenanceControllerDeps(logger, ls.responder, ls.fileSvc)
 	modelProvenanceDeps.ProvenanceCoordinator = ls.modelProvenanceCoord
 	modelProvenanceDeps.ProgressPublisher = NewSSEEventPublisher(ls.sseStore, ls.pubsub)
+	evalCampaignPublicationSvc, err := NewEvalCampaignPublicationService(ls.docStore, func() *PublicSpectatorRuntime { return ls.publicSpectator })
+	if err != nil {
+		return fmt.Errorf("gateway: %w", err)
+	}
 
 	ztdReader, err := ztdbinaries.OpenReader(constants.ZtdBinariesDir)
 	if err != nil {
@@ -970,8 +974,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		EvalCampaignPublicationControllerDeps: EvalCampaignPublicationControllerDeps{
 			Logger:    logger,
 			Responder: ls.responder,
-			Service:   NewEvalCampaignPublicationService(ls.docStore),
-			Spectator: func() *PublicSpectatorRuntime { return ls.publicSpectator },
+			Service:   evalCampaignPublicationSvc,
 		},
 		ProviderObservationControllerDeps: providerObservationDeps,
 		ModelProvenanceControllerDeps:     modelProvenanceDeps,

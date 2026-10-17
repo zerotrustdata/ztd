@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
@@ -59,7 +60,7 @@ func newDeleter(cmd *cobra.Command, deps nativeEvalDeps) (*evaluation.Deleter, e
 	if err != nil {
 		return nil, err
 	}
-	publication, err := newGatewayCampaignPublicationStateStoreFromConfig(fileSvc, cfg)
+	publication, err := gwremote.NewCampaignPublicationStateStore(fileSvc, cfg)
 	if err != nil {
 		return nil, err
 	}

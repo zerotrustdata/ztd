@@ -35,6 +35,7 @@ import type {
   NativeScenarioStatus,
   ProviderEnvironment,
   ReleaseProvenance,
+  RunStatus,
   SecurityPrivacyEvent,
   PublicActivityFamily,
   PublicGovernedActionActivityRecord,
@@ -1219,11 +1220,27 @@ export interface RecentCampaignRow extends ReleaseProvenance {
   observedAt: string;
   qualityState: QualityState;
   lifecycleState?: EvaluationSummary['lifecycle_state'];
+  runStatus: RunStatus;
   verifierState?: VerifierState;
   assignmentTotal: number;
   assignmentCompleted: number;
   assignmentFailed: number;
+  assignmentStopped: number;
   runId?: string;
+}
+
+/** Historical assignment lifecycle does not establish whether a process is alive. */
+function publishedRunStatus(run: EvaluationSummary | undefined): RunStatus {
+  if (!run) return 'unknown';
+  if (run.run_status) return run.run_status;
+  if (run.verifier_state === 'passed') return 'verified';
+  if (run.verifier_state === 'failed') return 'verify_failed';
+  const terminal = Object.values(run.terminal_outcomes).reduce((sum, count) => sum + (count ?? 0), 0);
+  if (run.assignment_total > 0 && terminal >= run.assignment_total) {
+    if ((run.terminal_outcomes.stopped ?? 0) > 0) return 'cancelled';
+    if (run.lifecycle_state === 'completed') return 'completed';
+  }
+  return 'unknown';
 }
 
 function compareEvaluationRecency(a: EvaluationSummary, b: EvaluationSummary): number {
@@ -1294,10 +1311,12 @@ export function recentCampaignRows(
       observedAt,
       qualityState: catalog?.quality_state ?? primary?.quality_state ?? 'not_evaluated',
       lifecycleState: primary?.lifecycle_state,
+      runStatus: publishedRunStatus(primary),
       verifierState: primary?.verifier_state,
       assignmentTotal: primary?.assignment_total ?? 0,
       assignmentCompleted: primary?.assignment_completed ?? 0,
       assignmentFailed: primary?.assignment_failed ?? 0,
+      assignmentStopped: primary?.terminal_outcomes.stopped ?? 0,
       runId: primary?.run_id,
     });
   }

@@ -53,7 +53,7 @@ type runExecuteOptions struct {
 // streams only: it quotes grade detail and model-derived text, so it is never
 // written to a file under the runtime root.
 func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions) (executed int, runErr error) {
-	_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
+	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return 0, err
 	}
@@ -88,9 +88,19 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	if err != nil {
 		return 0, err
 	}
+	var publication *evaluation.CampaignPublicationCoordinator
 	defer func() {
 		if releaseErr := store.ReleaseRunLease(context.WithoutCancel(cmd.Context()), opts.RunID, control.PID()); releaseErr != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("evaluation: release run lease: %w", releaseErr))
+			return
+		}
+		if publication != nil {
+			publishCtx, cancel := context.WithTimeout(context.WithoutCancel(cmd.Context()), constants.DefaultHTTPTimeout)
+			defer cancel()
+			_, publishErr := publication.PublishRunAggregates(publishCtx, opts.RunID, deps.now().UTC())
+			if publishErr != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("evaluation: publish released run status: %w", publishErr))
+			}
 		}
 	}()
 	if stale != nil && !opts.JSONOutput {
@@ -107,10 +117,21 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	watcher := startRunStopWatcher(hardCtx, store, opts.RunID, deps.runControl.interval(), signals, hardCancel, deps.runControl.onSignalHandled)
 	defer watcher.Stop()
 
-	return executeAssignments(cmd, deps, opts, watcher)
+	if opts.Publish {
+		publication, err = NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
+		if err != nil {
+			return 0, err
+		}
+		publication.WithLeaseLiveness(leaseLiveness(control))
+		if _, err := publication.PublishRunAggregates(cmd.Context(), opts.RunID, deps.now().UTC()); err != nil {
+			return 0, fmt.Errorf("evaluation: publish acquired run status: %w", err)
+		}
+	}
+
+	return executeAssignments(cmd, deps, opts, watcher, publication)
 }
 
-func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, watcher *runStopWatcher) (executed int, runErr error) {
+func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, watcher *runStopWatcher, publication *evaluation.CampaignPublicationCoordinator) (executed int, runErr error) {
 	if opts.Daemon {
 		opts.Limit = ^uint32(0)
 	} else if opts.Limit == 0 {
@@ -229,12 +250,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return evaluation.NewCampaignAgentExecutor(&harnessFormationInferenceDispatcher{client: appClient}, lane, sentinel, store, deps.now, newID)
 	}
 	controller := controllerFactory(evaluation.NewCampaignAssignmentRouter(buildFormation, buildAgent))
-	var publication *evaluation.CampaignPublicationCoordinator
-	if opts.Publish {
-		publication, err = NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
-		if err != nil {
-			return 0, fmt.Errorf("evaluation: run execute: %w", err)
-		}
+	if publication != nil {
 		controller = controller.WithPublication(publication)
 	}
 	executionBinding := evaluation.CampaignExecutionBinding{

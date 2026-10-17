@@ -119,7 +119,7 @@ type methodologySnapshotRecord struct {
 }
 
 const (
-	explorerViewSchemaVersion = "1.8.0"
+	explorerViewSchemaVersion = "1.9.0"
 	campaignSourceRevision    = "ztd-eval-campaign"
 )
 
@@ -157,9 +157,13 @@ type CampaignViewRecord struct {
 }
 
 type runAggregateState struct {
-	Release   CampaignRelease
-	Scheduled uint32
-	Terminal  uint32
+	// RunSummary and Executing are captured by the host at publication time.
+	// Assignment counters alone cannot establish process liveness.
+	RunSummary *CampaignRunSummary
+	Executing  bool
+	Release    CampaignRelease
+	Scheduled  uint32
+	Terminal   uint32
 	// Judged counts terminal assignments that ended in a verdict on the model
 	// (completed or model_failed). It is the pass-rate denominator: a provider,
 	// harness, grader, escalation, policy, or stopped ending is terminal but
@@ -663,8 +667,14 @@ func BuildRunAggregateViewRecords(run *evalv1.EvaluationRun, state *runAggregate
 	if err != nil {
 		return nil, err
 	}
+	summaryKey := EvaluationSummaryIdempotencyKey(runID, state.Scheduled, state.Terminal)
+	if state.RunSummary != nil {
+		// Process transitions can occur without any assignment count changing.
+		// Preserve each host observation, including stop/resume at the same count.
+		summaryKey += ":" + summaryRecord.RunStatus + ":" + observed
+	}
 	records = append(records, CampaignViewRecord{
-		IdempotencyKey: EvaluationSummaryIdempotencyKey(runID, state.Scheduled, state.Terminal),
+		IdempotencyKey: summaryKey,
 		Body:           summaryBody,
 	})
 
@@ -1135,6 +1145,7 @@ type evaluationSummaryRecord struct {
 	EvaluationUnit         string                             `json:"evaluation_unit"`
 	ModelRoleMapping       map[string]string                  `json:"model_role_mapping"`
 	LifecycleState         string                             `json:"lifecycle_state"`
+	RunStatus              string                             `json:"run_status"`
 	AssignmentTotal        uint32                             `json:"assignment_total"`
 	AssignmentCompleted    uint32                             `json:"assignment_completed"`
 	AssignmentFailed       uint32                             `json:"assignment_failed"`
@@ -1169,6 +1180,10 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 		return nil, fmt.Errorf("evaluation: build evaluation summary record: %w", constants.ErrMissingRequiredField)
 	}
 	settled := runAggregateSettled(state)
+	summary := state.RunSummary
+	if summary == nil && settled {
+		summary = &CampaignRunSummary{ExpectedAssignment: uint64(state.Scheduled), TerminalCount: state.Terminal, StoppedCount: state.Stopped}
+	}
 	record := &evaluationSummaryRecord{
 		CampaignRelease:     state.Release.publicIdentity(),
 		SchemaVersion:       explorerViewSchemaVersion,
@@ -1184,6 +1199,7 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 		EvaluationUnit:      evaluationUnitForRun(run),
 		ModelRoleMapping:    buildModelRoleMapping(state),
 		LifecycleState:      lifecycleStateForAggregate(state),
+		RunStatus:           CampaignRunStatus(summary, input.Report, state.Executing),
 		AssignmentTotal:     state.Scheduled,
 		AssignmentCompleted: state.Passed,
 		AssignmentFailed:    state.Failed,

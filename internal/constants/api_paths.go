@@ -7,6 +7,15 @@
 
 package constants
 
+// EvalCampaignPublicationStateSuffix ends the per-run publication-state route
+// under APIPaths.EvalCampaignPublicationStateByRun.
+const EvalCampaignPublicationStateSuffix = "/publication-state"
+
+// EvalCampaignPublicationStatePath is the publication-state route for one run.
+func EvalCampaignPublicationStatePath(runID string) string {
+	return APIPaths.EvalCampaignPublicationStateByRun + runID + EvalCampaignPublicationStateSuffix
+}
+
 // APIPaths defines the canonical ZTD API paths.
 var APIPaths = struct {
 	InternalPrefix string `json:"internal_prefix"`

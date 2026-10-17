@@ -20,32 +20,37 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
-	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func newEvalCampaignPublicationControllerTest(t *testing.T) *EvalCampaignPublicationController {
 	t.Helper()
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	_, err = db.Exec(gatewaySchema)
-	require.NoError(t, err)
-
-	service := NewEvalCampaignPublicationService(NewDocumentStoreService(db, logger))
-	controller := newEvalCampaignPublicationController(EvalCampaignPublicationControllerDeps{
+	return newEvalCampaignPublicationController(EvalCampaignPublicationControllerDeps{
 		Logger:    logger,
 		Responder: response.NewWriter(logger),
-		Service:   service,
+		Service:   newEvalCampaignPublicationServiceTest(t),
 	})
-	return controller
+}
+
+func TestEvalCampaignPublicationController_HandlePublicationState_DeleteReturnsDiscardResponse(t *testing.T) {
+	controller := newEvalCampaignPublicationControllerTest(t)
+	runID := "eval-init-nemotron-3-nano-4b-1792241875"
+
+	req := httptest.NewRequest(http.MethodDelete, constants.EvalCampaignPublicationStatePath(runID), nil)
+	rec := httptest.NewRecorder()
+	controller.handlePublicationState(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var discarded models.EvalCampaignPublicationDiscardResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &discarded))
+	assert.Equal(t, models.EvalCampaignPublicationDiscardResponse{RunID: runID, Discarded: true}, discarded)
 }
 
 func TestEvalCampaignPublicationController_HandlePublicationState_GetEmptyState(t *testing.T) {
 	controller := newEvalCampaignPublicationControllerTest(t)
 	runID := "eval-init-qwen3-4b-1789739892"
-	path := constants.APIPaths.EvalCampaignPublicationStateByRun + runID + "/publication-state"
+	path := constants.EvalCampaignPublicationStatePath(runID)
 
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	rec := httptest.NewRecorder()
@@ -61,7 +66,7 @@ func TestEvalCampaignPublicationController_HandlePublicationState_GetEmptyState(
 func TestEvalCampaignPublicationController_HandlePublicationState_PutAndGet(t *testing.T) {
 	controller := newEvalCampaignPublicationControllerTest(t)
 	runID := "eval-init-gemma3-4b-1789739892"
-	path := constants.APIPaths.EvalCampaignPublicationStateByRun + runID + "/publication-state"
+	path := constants.EvalCampaignPublicationStatePath(runID)
 	body := models.EvalCampaignPublicationState{
 		RunID:                 runID,
 		PublishedIdempotency:  []string{"run:key-a"},
@@ -90,7 +95,7 @@ func TestEvalCampaignPublicationController_HandlePublicationState_PutAndGet(t *t
 func TestEvalCampaignPublicationController_HandlePublicationState_RejectsInvalidRequests(t *testing.T) {
 	controller := newEvalCampaignPublicationControllerTest(t)
 	runID := "eval-init-qwen3-4b-1789739892"
-	path := constants.APIPaths.EvalCampaignPublicationStateByRun + runID + "/publication-state"
+	path := constants.EvalCampaignPublicationStatePath(runID)
 
 	tests := []struct {
 		name       string
@@ -100,7 +105,7 @@ func TestEvalCampaignPublicationController_HandlePublicationState_RejectsInvalid
 		wantStatus int
 	}{
 		{name: "wrong suffix", method: http.MethodGet, path: constants.APIPaths.EvalCampaignPublicationStateByRun + runID, wantStatus: http.StatusNotFound},
-		{name: "missing run id", method: http.MethodGet, path: constants.APIPaths.EvalCampaignPublicationStateByRun + "/publication-state", wantStatus: http.StatusBadRequest},
+		{name: "missing run id", method: http.MethodGet, path: constants.EvalCampaignPublicationStatePath(""), wantStatus: http.StatusBadRequest},
 		{name: "delete ok", method: http.MethodDelete, path: path, wantStatus: http.StatusOK},
 		{name: "invalid json body", method: http.MethodPut, path: path, body: []byte("{"), wantStatus: http.StatusBadRequest},
 		{

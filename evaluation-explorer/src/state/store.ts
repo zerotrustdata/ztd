@@ -104,6 +104,7 @@ function mergeEvaluationSummary(existing: EvaluationSummary, incoming: Evaluatio
   return {
     ...incoming,
     quality_state: existing.quality_state,
+    run_status: existing.verifier_state === 'passed' ? 'verified' : 'verify_failed',
     verifier_state: existing.verifier_state,
     verifier_failure_summary: existing.verifier_failure_summary,
     verification_metadata: existing.verification_metadata,
@@ -531,7 +532,7 @@ export class EvalStore {
     if (!existing) return;
     state.evaluations.set(key, {
       ...existing,
-      lifecycle_state: event.lifecycle_status,
+      lifecycle_state: isRunLevelQualityEvent(event.kind) ? event.lifecycle_status : existing.lifecycle_state,
       assignment_total: event.total > 0 ? event.total : existing.assignment_total,
       quality_state: isRunLevelQualityEvent(event.kind)
         ? mergeQualityState(existing.quality_state, event.quality_state)
