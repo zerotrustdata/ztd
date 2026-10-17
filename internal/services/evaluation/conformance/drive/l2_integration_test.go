@@ -52,6 +52,9 @@ func bootL2Gateway(t *testing.T, opts fixtures.GatewayFixtureOptions) *l2Gateway
 	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
 	require.NoError(t, err)
 	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
+	if f.ConsensusServer != nil {
+		caBundle = append(caBundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.ConsensusServer.Certificate().Raw})...)
+	}
 	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
 	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
 
@@ -95,13 +98,22 @@ func l2Cases(t *testing.T, posture evalv1.EvaluationGovernancePosture, rows ...i
 // deliberation endpoint. The set has three members and quorum three, so keeping
 // K-1 votes is below quorum.
 func TestL2DeliberatedProofAcceptsRow1AndRejectsEachRow18Fault(t *testing.T) {
+	testDeliberatedL2(t, 3)
+}
+
+func TestL2SingleApplicationProofAcceptsRow1AndRejectsEachRow18Fault(t *testing.T) {
+	testDeliberatedL2(t, 1)
+}
+
+func testDeliberatedL2(t *testing.T, members int) {
+	t.Helper()
 	gw := bootL2Gateway(t, fixtures.GatewayFixtureOptions{
 		TestName:                 "conformance-l2-consensus",
 		Posture:                  constants.PostureConsensus,
 		ConsensusID:              "conformance-consensus",
-		ConsensusNMembers:        3,
-		ConsensusNServiceMembers: 3,
-		ConsensusQuorum:          3,
+		ConsensusNMembers:        members,
+		ConsensusNServiceMembers: members,
+		ConsensusQuorum:          members,
 	})
 	deliberator := NewDeliberator(gw.client, gw.persona)
 	direct, err := NewDirect(gw.client, gw.persona, gw.target, deliberator, BaseMutators(), L2Mutators(deliberator))

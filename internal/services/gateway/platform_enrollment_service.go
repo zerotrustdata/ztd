@@ -644,6 +644,9 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	if endpointURL == "" {
 		return nil, fmt.Errorf("%w: endpoint_url", constants.ErrMissingRequiredField)
 	}
+	if err := models.ValidateConsensusEndpoint(endpointURL); err != nil {
+		return nil, fmt.Errorf("platform enrollment: consensus endpoint: %w", err)
+	}
 	user, err := s.userSvc.GetByID(ctx, actorUserID)
 	if err != nil {
 		return nil, fmt.Errorf("platform enrollment: authorize consensus binding: %w", err)
@@ -664,12 +667,6 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	appDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID)
 	if err != nil {
 		return nil, fmt.Errorf("platform enrollment: check app policy: %w", err)
-	}
-	if appDoc == nil {
-		appDoc, err = s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), appID)
-		if err != nil {
-			return nil, fmt.Errorf("platform enrollment: check app policy: %w", err)
-		}
 	}
 	if appDoc == nil {
 		return nil, constants.ErrConsensusAppNotEnrolled
@@ -1286,7 +1283,8 @@ func decodePlatformEnrollmentRequest(doc *models.Document) (*models.PlatformEnro
 func fingerprintsMatch(a, b models.PlatformEnrollmentCSRFingerprints) bool {
 	return constantTimeEqual(a.App, b.App) &&
 		constantTimeEqual(a.Operator, b.Operator) &&
-		constantTimeEqual(a.CLI, b.CLI)
+		constantTimeEqual(a.CLI, b.CLI) &&
+		constantTimeEqual(a.SigningKey, b.SigningKey)
 }
 
 func constantTimeEqual(a, b string) bool {
@@ -1355,8 +1353,9 @@ func payloadDecision(decision models.PlatformEnrollmentDecision) commonv1.Platfo
 // message.
 func payloadFingerprints(fp models.PlatformEnrollmentCSRFingerprints) *commonv1.PlatformEnrollmentFingerprints {
 	return &commonv1.PlatformEnrollmentFingerprints{
-		App:      fp.App,
-		Operator: fp.Operator,
-		Cli:      fp.CLI,
+		App:        fp.App,
+		Operator:   fp.Operator,
+		Cli:        fp.CLI,
+		SigningKey: fp.SigningKey,
 	}
 }

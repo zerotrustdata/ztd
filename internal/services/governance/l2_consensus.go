@@ -82,7 +82,8 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	actionType := constants.ActionType(envelope.ActionType)
 	enforced := L2Enforced(actionType, posture)
 
-	if envelope.Governance == nil || envelope.Governance.L2 == nil || len(envelope.Governance.L2.Votes) == 0 {
+	if envelope.Governance == nil || envelope.Governance.L2 == nil ||
+		(len(envelope.Governance.L2.Votes) == 0 && envelope.Governance.L2.ConsensusSetId == "") {
 		if enforced {
 			tv.logger.Error("L2 votes missing but required by posture", "posture", posture)
 			return false, constants.ErrTxL2SignatureMissing
@@ -91,6 +92,8 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	}
 
 	l2 := envelope.Governance.L2
+	// A named set with zero votes is a quorum failure, including the K=1
+	// application binding. Keep it distinct from an absent L2 proof above.
 
 	if tv.signerStore == nil {
 		if enforced {

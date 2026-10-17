@@ -69,7 +69,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-AGT-06 | Governed HTTP dispatch (`POST /api/v1/operators/commands`) cannot mint human L3 proofs and MUST fail closed under `ratify` or `notary` postures when L3 proof is required. MCP/A2A submission paths support L3 suspension; direct envelope submission and HTTP dispatch do not. Direct envelopes MUST supply posture-required L2/L3 proofs and fail closed at L4 when they are missing. A doctrine violation on this path is refused as L1 (`ErrTxL1ValidationFailed`) in every posture, before the L3 refusal. MCP and A2A suspend only on a missing L3 proof (`ErrTxL3ProofMissing`); an invalid proof is a rejection. Every other L4 rejection is a JSON-RPC error whose `error.data` is a `GovernanceRejection` carrying the signed rejection receipt (`INV-GOV-ACT-10`). |
 | INV-AGT-07 | Third-party MCP servers (subprocess or HTTP) are governed exclusively through Gateway downstream egress with full L1–L5 governance, envelope construction, and signed receipts. `ztd mcp agent run` is a launcher only and MUST NOT serve as an external MCP reverse proxy. |
 | INV-AGT-08 | The Go agent harness (`internal/tools/agent_harness/`) is a typed governed client used by evaluation and integration workflows. It contains no model, consensus, or reasoning loop and is not an agent. |
-| INV-AGT-09 | Every agent supported by the launcher MUST correspond to exactly one `agent.Integration` entry in `internal/cli/agent/registry.go`. An unrecognized agent name MUST fail closed with `ErrAgentNotFound` before execution. |
+| INV-AGT-09 | Every agent supported by the launcher MUST correspond to exactly one `agent.Integration` entry in `internal/cli/agent/registry.go`. An unrecognized agent name MUST fail closed with `ErrAgentNotFound` before Gateway startup, posture discovery, or enrollment. |
 
 ## Owned surfaces
 
@@ -216,7 +216,7 @@ The launcher defines exact tool lockdown levels across registered agents (INV-AG
 
 Every agent tool call crossing the boundary is subject to the five-layer pipeline:
 1. **L1 Doctrine**: Scans tool arguments and payloads against regex patterns and MITRE threat rules.
-2. **L2 Consensus**: Evaluates $K$-of-$N$ Ed25519 machine signatures under `consensus` and `notary` postures.
+2. **L2 Consensus**: Evaluates the bound consensus application's Ed25519 machine signature under `consensus` and `notary` postures.
 3. **L3 Notary**: Suspends mutation actions for human WebAuthn approval under `ratify` and `notary` postures.
 4. **L4 Warden**: Reserves the transaction nonce in SQLite, verifies expiration, recomputes the transaction hash, and validates state Merkle root.
 5. **L5 Actuator**: Logs an initial `EXECUTING` receipt, mints a single-action capability, dispatches the tool call, dissolves the capability, captures the final state root, and signs the `COMPLETED` or `FAILED` receipt.
@@ -250,7 +250,7 @@ Every JSON-RPC error from `POST /mcp` and `POST /api/v1/a2a/call` carries a type
 - [Gateway Architecture](gateway.md): Policy Decision Point, operational modes, MCP endpoint, and HTTP routing.
 - [Operator Architecture](operator.md): Policy Execution Point, outbound mTLS transport, native tools, and L4/L5 execution.
 - [Governance Architecture](governance.md): Five-layer verification pipeline, posture enforcement rules, and receipt attestation.
-- [Consensus Architecture](consensus.md): Protocol L2 machine consensus, Ed25519 signer policies, and deliberation mechanics.
+- [Consensus Architecture](consensus.md): Protocol L2 machine consensus, bound application Ed25519 deliberation, and verification mechanics.
 - [Authentication Architecture](auth.md): mTLS identities, platform application enrollments, CLI sessions, and WebAuthn ceremonies.
 - [Network Architecture](network.md): PKI hierarchy, TLS 1.3/mTLS configurations, and pub/sub transport channels.
 - [Storage Architecture](storage.md): SQLite persistence, audit vaults, evidence chains, and commitment ledgers.

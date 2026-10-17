@@ -272,6 +272,8 @@ Selecting the embedded Operator needs no separate runtime root. Selecting an out
 
 The catalogue is data in `cases/catalogue.go`: `rowSpecs` holds the cases of rows 1 to 25, and `gapSpecs` holds the cells an ingress cannot express (rows 2 and 26). Row 26 has no case. It expands to 433 cases: 279 on `DIRECT`, 35 on `DISPATCH_EMBEDDED`, 35 on `DISPATCH_OUTBOUND`, 32 on `MCP`, 28 on `A2A`, and 24 on `CLI`. Per posture: doctrine 113, consensus 104, ratify 108, notary 108. Row 13 expands over the 49 doctrine attack entries, and row 14 over the first entry of each of the five corpus categories. There are 4 gaps: row 2 on `A2A` (every A2A call is a mutation) and `CLI` (the CLI sends only `EXECUTE_BASH`), and row 26 on `MCP` and `A2A` (no argument carries an L3 proof). Eight cases are attended: rows 24 (approve) and 25 (deny) on `MCP` and `A2A` under ratify and notary. Row 25 expects the Operator-signed `L3_DENIED` rejection.
 
+For DIRECT cases under consensus and notary, the harness discovers the bound consensus application through `GET /api/v1/auth/platform-enrollments/consensus`, then posts the full envelope to that application's HTTPS endpoint using `application/x-protobuf`. It preserves the Gateway CLI identity headers only on discovery, rejects redirects and plaintext endpoints, and submits the returned proof through direct ingress. Row 18's below-quorum fault retains the set ID while removing votes; for a single application it removes the sole vote. Direct ingress does not acquire missing proofs.
+
 | Package | Owns |
 | :--- | :--- |
 | `oracle` | Anchors (`LoadAnchor`, `BoundAnchor`, `CheckedBoundAnchor`, `AnchorSet`), receipt verification (`VerifyReceipt`), outcome classification (`Classify`), and the ledger bracket (`VerifyBracket`). |

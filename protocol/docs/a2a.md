@@ -132,7 +132,7 @@ message A2aCallRequested {
 - **Threat Indicator Analysis**: The `payload_json` content is scanned via `AnalyzeMCPArguments` against active MITRE ATT&CK patterns, detecting reverse shells, injection attempts, and credential access vectors before deliberation.
 
 ### 4.2 Layer 2: Consensus
-- Under `consensus` and `notary` postures, the Gateway submits the canonical envelope to the Consensus service (`/consensus/v1/deliberate`).
+- Under `consensus` and `notary` postures, the Gateway submits the canonical envelope to the bound enrolled consensus application's HTTPS protobuf endpoint. See [Consensus Architecture](../../docs/architecture/consensus.md).
 - Independent consensus agents evaluate the skill name and task payload.
 - Members return signed `L2Vote` records containing Ed25519 signatures over `<transaction_hash>|<decision>`.
 - The L4 Warden verifies that $K$-of-$N$ distinct trusted keys satisfy the consensus policy quorum.

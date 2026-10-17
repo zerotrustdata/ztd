@@ -392,56 +392,24 @@ func csrPublicKey(t *testing.T, csrPEM string) *ecdsa.PublicKey {
 }
 
 func TestRenderOperatorEnrollmentInstructions(t *testing.T) {
-	t.Run("doctrine posture prints CLI approve command without passkey prompt", func(t *testing.T) {
+	t.Run("with approval URL prints CLI approve command and passkey URL", func(t *testing.T) {
 		var buf bytes.Buffer
 		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
-			RequestID:   "req-doc-1",
-			Posture:     constants.PostureDoctrine,
+			RequestID:   "req-1",
 			ApprovalURL: "https://localhost:8443/console/#enrollments",
 		})
 		out := buf.String()
-		assert.Contains(t, out, "ztd auth enroll approve req-doc-1")
-		assert.NotContains(t, out, "Passkey approval is required")
+		assert.Contains(t, out, "ztd auth enroll approve req-1")
+		assert.Contains(t, out, "Passkey approval URL: https://localhost:8443/console/#enrollments")
 	})
 
-	t.Run("consensus posture prints CLI approve command without passkey prompt", func(t *testing.T) {
+	t.Run("without approval URL prints CLI approve command only", func(t *testing.T) {
 		var buf bytes.Buffer
 		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
-			RequestID:   "req-con-1",
-			Posture:     constants.PostureConsensus,
-			ApprovalURL: "https://localhost:8443/console/#enrollments",
+			RequestID: "req-2",
 		})
 		out := buf.String()
-		assert.Contains(t, out, "ztd auth enroll approve req-con-1")
-		assert.NotContains(t, out, "Passkey approval is required")
-	})
-
-	t.Run("ratify posture prints CLI approve command and passkey approval URL", func(t *testing.T) {
-		var buf bytes.Buffer
-		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
-			RequestID:       "req-rat-1",
-			Posture:         constants.PostureRatify,
-			RequiresPasskey: true,
-			ApprovalURL:     "https://localhost:8443/console/#enrollments",
-		})
-		out := buf.String()
-		assert.Contains(t, out, "ztd auth enroll approve req-rat-1")
-		assert.Contains(t, out, "Passkey approval is required under ratify posture")
-		assert.Contains(t, out, "https://localhost:8443/console/#enrollments")
-	})
-
-	t.Run("notary posture prints CLI approve command and passkey approval URL", func(t *testing.T) {
-		var buf bytes.Buffer
-		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
-			RequestID:       "req-not-1",
-			Posture:         constants.PostureNotary,
-			RequiresPasskey: true,
-			ApprovalURL:     "https://localhost:8443/console/#enrollments",
-		})
-		out := buf.String()
-		assert.Contains(t, out, "ztd auth enroll approve req-not-1")
-		assert.Contains(t, out, "Passkey approval is required under notary posture")
-		assert.Contains(t, out, "https://localhost:8443/console/#enrollments")
+		assert.Contains(t, out, "ztd auth enroll approve req-2")
+		assert.NotContains(t, out, "Passkey approval URL:")
 	})
 }
-

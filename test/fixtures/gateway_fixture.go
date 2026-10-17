@@ -24,6 +24,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +71,8 @@ type GatewayFixture struct {
 	DownstreamCmd    string // Command of downstream subprocess MCP server
 	DownstreamArgs   []string
 	Keystore         *keystore.Keystore
-	A2ADownstreamURL string // URL used for A2A (same as DownstreamURL if not overridden)
+	A2ADownstreamURL string           // URL used for A2A (same as DownstreamURL if not overridden)
+	ConsensusServer  *httptest.Server // External HTTPS protobuf deliberation endpoint, when configured
 }
 
 // GatewayFixtureOptions configures the gateway fixture.
@@ -256,15 +258,14 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 
-	// C2 inverted construction order: open DB first, seed consensus
-	// policy into the DB before NewGatewayModeServiceWithDB (build() reads the
-	// policy from the DB and wires the ConsensusService at construction via
-	// GatewayModeDeps — no SetConsensusService, no second pubsub construction,
-	// no adapter wiring).
+	// Open DB and seed consensus policy and binding before constructing the
+	// Gateway. The fixture injects its test deliberator for Gateway ingress;
+	// direct conformance clients use the bound HTTPS protobuf endpoint.
 	db, err := gateway.OpenCanonicalDBService(testutil.NewTestLogger(), ks, fileSvc)
 	require.NoError(t, err)
 
 	var l2Deliberator mcp.L2ConsensusDeliberator
+	var consensusServer *httptest.Server
 	if posture.RequiresL2() {
 		consensusID := opts.ConsensusID
 		if consensusID == "" {
@@ -284,6 +285,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		}
 		cs := SetupConsensus(t, db.GetConsensusStore(), db.GetSignerStore(), consensusID, nMembers, quorum, nServiceMembers)
 		l2Deliberator = cs.Deliberator
+		consensusServer = cs.Server
 	}
 
 	ls, err := gateway.NewGatewayModeServiceWithDB(cfg, fileSvc, testutil.NewTestLogger(), db, l2Deliberator)
@@ -362,6 +364,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		DownstreamArgs:   opts.DownstreamArgs,
 		Keystore:         ks,
 		A2ADownstreamURL: a2aURL,
+		ConsensusServer:  consensusServer,
 	}
 }
 
@@ -651,6 +654,7 @@ type ConsensusSetup struct {
 	ConsensusID string
 	Members     []TestConsensusMember
 	Deliberator mcp.L2ConsensusDeliberator
+	Server      *httptest.Server
 }
 
 // TestConsensusDeliberator implements mcp.L2ConsensusDeliberator for test fixtures.
@@ -766,18 +770,40 @@ func SetupConsensus(t *testing.T, consensusStore *gateway.ConsensusStoreService,
 	err := consensusStore.AddConsensus(t.Context(), policy)
 	require.NoError(t, err)
 
-	_, err = consensusStore.BindConsensusApp(t.Context(), memberAppIDs[0], "https://localhost:8443/consensus")
-	require.NoError(t, err)
-
 	deliberator := &TestConsensusDeliberator{
 		ConsensusID: consensusID,
 		Members:     signingMembers,
 		Doctrine:    govsvc.NewL1Doctrine(),
 	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-protobuf" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		wire, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		signed, err := deliberator.Deliberate(r.Context(), wire)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(signed)
+	}))
+	t.Cleanup(server.Close)
+	err = consensusStore.AddConsensus(t.Context(), models.ConsensusPolicy{
+		ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{memberAppIDs[0]},
+		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Enabled: true,
+	})
+	require.NoError(t, err)
 
 	return &ConsensusSetup{
 		ConsensusID: consensusID,
 		Members:     signingMembers,
 		Deliberator: deliberator,
+		Server:      server,
 	}
 }

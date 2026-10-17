@@ -2237,4 +2237,3 @@ func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {
 		require.Empty(t, recorder.events)
 	})
 }
-

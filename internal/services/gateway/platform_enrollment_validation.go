@@ -9,6 +9,7 @@ package gateway
 
 import (
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -56,6 +57,17 @@ func validatePlatformEnrollmentRequest(request models.PlatformEnrollmentCreateRe
 			return fingerprints, err
 		}
 		fingerprints.App = fingerprint
+		key, err := request.App.SigningKey()
+		if err != nil {
+			return fingerprints, err
+		}
+		if key != nil {
+			if request.ComponentKind != models.PlatformComponentApplication {
+				return fingerprints, constants.ErrPlatformEnrollmentInvalidComponent
+			}
+			digest := sha256.Sum256(key)
+			fingerprints.SigningKey = hex.EncodeToString(digest[:])
+		}
 		return fingerprints, nil
 	}
 
@@ -110,11 +122,7 @@ func platformEnrollmentCompletionTranscript(request *models.PlatformEnrollmentRe
 		TokenHash:       request.TokenHash,
 		ComponentKind:   componentKind,
 		InstanceId:      request.InstanceID,
-		Fingerprints: &commonv1.PlatformEnrollmentFingerprints{
-			App:      request.Fingerprints.App,
-			Operator: request.Fingerprints.Operator,
-			Cli:      request.Fingerprints.CLI,
-		},
+		Fingerprints:    payloadFingerprints(request.Fingerprints),
 	}
 	encoded, err := (proto.MarshalOptions{Deterministic: true}).Marshal(message)
 	if err != nil {
@@ -130,7 +138,21 @@ func verifyPlatformEnrollmentProofs(request *models.PlatformEnrollmentRequest, p
 	}
 	digest := sha256.Sum256(transcript)
 	if request.App != nil {
-		return verifyPlatformEnrollmentProof(request.App.CSRPEM, proofs.App, digest[:])
+		if err := verifyPlatformEnrollmentProof(request.App.CSRPEM, proofs.App, digest[:]); err != nil {
+			return err
+		}
+		key, err := request.App.SigningKey()
+		if err != nil || key == nil {
+			return err
+		}
+		if proofs.SigningKey == "" {
+			return constants.ErrPlatformEnrollmentProofRequired
+		}
+		signature, err := base64.RawURLEncoding.DecodeString(proofs.SigningKey)
+		if err != nil || !ed25519.Verify(key, digest[:], signature) {
+			return constants.ErrPlatformEnrollmentProofInvalid
+		}
+		return nil
 	}
 	if proofs.Operator == "" || proofs.CLI == "" {
 		return constants.ErrPlatformEnrollmentProofRequired

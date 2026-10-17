@@ -209,7 +209,6 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
   - `A2ACall`: `/api/v1/a2a/call`
   - `GovernanceEnvelopes`: `/api/v1/governance/envelopes`
   - `OperatorsCommands`: `/api/v1/operators/commands`
-  - `ConsensusDeliberate`: `/consensus/v1/deliberate`
 - **Session & Identity**:
   - `AuthPasskeys*`: Passkey registration, verification, and authentication routes
   - `AuthCLISession`: `/api/v1/auth/cli/session`

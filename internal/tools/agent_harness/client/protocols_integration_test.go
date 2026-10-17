@@ -157,7 +157,7 @@ func TestHealth_ReturnsTypedPostureAndRecordsExchange(t *testing.T) {
 	health, raw, err := client.Health(context.Background())
 
 	require.NoError(t, err)
-	assert.Equal(t, "doctrine", health.Posture)
+	assert.Equal(t, constants.PostureDoctrine, health.Posture)
 	assert.True(t, health.GovernanceReady)
 	assert.JSONEq(t, `{"status":"ok","mode":"gateway","version":"2.1.8","pid":1,"governance_ready":true,"posture":"doctrine"}`, string(raw))
 	require.Len(t, exchanges, 1)

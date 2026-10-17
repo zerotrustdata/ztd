@@ -710,11 +710,11 @@ func agentRunPostureHelp() string {
 	var sb strings.Builder
 	sb.WriteString("GATEWAY POSTURE:\n")
 	sb.WriteString("  If the launcher has to start the gateway, it uses --posture, else the posture of\n")
-	sb.WriteString(fmt.Sprintf("  the previous managed gateway (its launch profile), else %s. Posture is\n", constants.DefaultPosture))
+	fmt.Fprintf(&sb, "  the previous managed gateway (its launch profile), else %s. Posture is\n", constants.DefaultPosture)
 	sb.WriteString("  immutable on a running gateway; an explicit --posture that does not match it is\n")
 	sb.WriteString("  an error. Available postures:\n")
 	for _, p := range constants.AllPostures {
-		sb.WriteString(fmt.Sprintf("    - %-10s %s\n", p, p.Description()))
+		fmt.Fprintf(&sb, "    - %-10s %s\n", p, p.Description())
 	}
 	sb.WriteString("  Change it with:\n    ztd gw restart\n  or with:\n    ztd gw start --posture <p>")
 	return sb.String()
@@ -972,6 +972,11 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 // MCP server. The stdio bridge loads the agent's managed application credentials by
 // name; no credential material or paths are passed through the environment.
 func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, posture constants.Posture, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), enrollerFactory authcmd.EnrollerFactory) error {
+	integration, err := agent.Lookup(agentID)
+	if err != nil {
+		return fmt.Errorf("mcp: launch agent: %w", err)
+	}
+
 	gatewayPosture, err := startGatewayIfNeeded(fileSvcFactory, posture)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrGatewayNotReady, err)
@@ -985,11 +990,6 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 	fileSvc, err := fileSvcFactory("", slog.Default())
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-	}
-
-	integration, err := agent.Lookup(agentID)
-	if err != nil {
-		return fmt.Errorf("mcp: launch agent: %w", err)
 	}
 
 	// mcp agent run is a CLI session. Under a posture without L3 it ensures
@@ -1017,7 +1017,7 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 
 	// Ensure the agent application is enrolled with the gateway
 	agentAppName := strings.ToLower(agentID)
-	appOpts, err := agentAppEnrollmentOptions(fileSvc, cfg, gatewayPosture)
+	appOpts, err := agentAppEnrollmentOptions(fileSvc, cfg)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
 	}
@@ -1047,7 +1047,7 @@ func launchAgentWithGovernance(agentID string, extraArgs []string, verify bool, 
 // the agent's own enrollment in-line. Under postures without L3 (doctrine,
 // consensus) that needs no passkey. Under ratify and notary the owner decision
 // suspends at L3 and prints the passkey approval URL and expiry while awaiting decision.
-func agentAppEnrollmentOptions(fileSvc fs.RuntimeFileService, cfg *config.Config, posture constants.Posture) (auth.AppEnrollmentOptions, error) {
+func agentAppEnrollmentOptions(fileSvc fs.RuntimeFileService, cfg *config.Config) (auth.AppEnrollmentOptions, error) {
 	ownerClient, err := api.NewClient(fileSvc, cfg)
 	if err != nil {
 		return auth.AppEnrollmentOptions{}, fmt.Errorf("owner API client: %w", err)

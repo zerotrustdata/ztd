@@ -46,7 +46,6 @@ func validatePublicBaseURL(s string) error {
 	return nil
 }
 
-
 // validatePasskeyRP validates the passkey RP ID and origin together.
 // The RP ID must equal or be a registrable suffix of the origin hostname.
 // Validation is delegated to the centralized browserorigin package so the

@@ -29,6 +29,9 @@ func PlatformEnrollmentFingerprints(fps models.PlatformEnrollmentCSRFingerprints
 	if fps.App != "" {
 		out = append(out, EnrollmentFingerprint{Label: "App key", Value: fps.App})
 	}
+	if fps.SigningKey != "" {
+		out = append(out, EnrollmentFingerprint{Label: "L2 signing key", Value: fps.SigningKey})
+	}
 	if fps.Operator != "" {
 		out = append(out, EnrollmentFingerprint{Label: "Operator key", Value: fps.Operator})
 	}

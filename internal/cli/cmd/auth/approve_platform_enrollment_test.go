@@ -1163,4 +1163,3 @@ func TestRevokePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
 	assert.Contains(t, output, "Transaction:  tx-revoke-l3")
 	assert.Contains(t, output, "Expires At:   "+expiresAt.Format(time.RFC3339))
 }
-

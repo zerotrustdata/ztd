@@ -66,6 +66,7 @@ type enrollTestDocStore struct {
 
 	getErr        map[string]error // keyed by collection
 	setErr        error
+	setErrFor     map[string]error
 	queryErr      error
 	transitionErr error
 	updErr        error
@@ -115,11 +116,34 @@ func (s *enrollTestDocStore) field(t *testing.T, collection, id, name string) st
 	return out
 }
 
+func (s *enrollTestDocStore) DocCreate(_ context.Context, collection, id string, data json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.setErr != nil {
+		return s.setErr
+	}
+	if err := s.setErrFor[collection]; err != nil {
+		return err
+	}
+	if s.docs[collection][id] != nil {
+		return constants.ErrAlreadyExists
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	s.put(collection, id, fields)
+	return nil
+}
+
 func (s *enrollTestDocStore) DocSet(_ context.Context, collection, id string, data json.RawMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.setErr != nil {
 		return s.setErr
+	}
+	if err := s.setErrFor[collection]; err != nil {
+		return err
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
@@ -525,6 +549,50 @@ func TestProtoComponentKind_MapsEveryKnownKindAndRejectsOthers(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func TestHandleBindConsensus_RejectsUnsafeEndpointsBeforePersistence(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://consensus.example/deliberate",
+		"https://user:password@consensus.example/deliberate",
+		"https:///deliberate",
+		"https://consensus.example/deliberate#fragment",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			env := newEnrollTestEnv(t)
+			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
+				constants.EventPlatformEnrollmentBindConsensusRequested,
+				&commonv1.PlatformEnrollmentGovernancePayload{
+					InstanceId: "consensus-app", ConsensusEndpointUrl: endpoint, ActorUserId: enrollTestOwnerID,
+				}))
+			require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
+			doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+			require.NoError(t, err)
+			require.Nil(t, doc)
+		})
+	}
+}
+
+func TestHandleBindConsensus_RequiresAnEnabledEd25519Signer(t *testing.T) {
+	for _, signer := range []models.TrustedSigner{
+		{PublicKey: strings.Repeat("ab", 32), Enabled: false},
+		{PublicKey: "invalid", Enabled: true},
+		{PublicKey: "ab", Enabled: true},
+	} {
+		env := newEnrollTestEnv(t)
+		appID := "ordinary-consensus"
+		env.store.seed(t, marshaler.CollectionName(constants.CollectionAppPolicies), protocol.NewWorkloadIdentity().AppSPIFFEID(appID), models.AppPolicy{AppID: appID})
+		env.store.seed(t, marshaler.CollectionName(constants.CollectionTrustedSigners), appID, signer)
+		_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
+			constants.EventPlatformEnrollmentBindConsensusRequested,
+			&commonv1.PlatformEnrollmentGovernancePayload{
+				InstanceId: appID, ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID,
+			}))
+		require.ErrorIs(t, err, constants.ErrConsensusAppMissingSignerKey)
+		doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+		require.NoError(t, err)
+		require.Nil(t, doc)
 	}
 }
 
@@ -1459,6 +1527,43 @@ func TestHandlePersistPolicy_RetainsExistingPolicyInsteadOfOverwriting(t *testin
 	var rps int
 	require.NoError(t, json.Unmarshal(env.store.docs[policyColl][enrollTestAppPolicyDocument].Data["rate_limit_rps"], &rps))
 	assert.Equal(t, 50, rps, "operator-tuned policy must survive re-enrollment")
+}
+
+func TestHandlePersistPolicy_SigningKeyFailurePropagatesAndRetryCompletesRegistration(t *testing.T) {
+	env := newPersistPolicyEnv(t)
+	req := committedAppIssuance(models.PlatformEnrollmentStateCompleted)
+	req.ComponentKind = models.PlatformComponentApplication
+	req.App.SigningPublicKey = strings.Repeat("ab", 32)
+	key, err := req.App.SigningKey()
+	require.NoError(t, err)
+	digest := sha256.Sum256(key)
+	req.Fingerprints.SigningKey = hex.EncodeToString(digest[:])
+	env.seedRequest(t, req)
+	signers := marshaler.CollectionName(constants.CollectionTrustedSigners)
+	env.store.setErrFor = map[string]error{signers: errEnrollTestBoom}
+	msg := enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, persistPolicyPayload())
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.ErrorIs(t, err, errEnrollTestBoom)
+	require.NotNil(t, env.store.docs[marshaler.CollectionName(constants.CollectionAppPolicies)][enrollTestAppPolicyDocument])
+	require.Empty(t, env.store.docs[signers])
+	delete(env.store.setErrFor, signers)
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.NoError(t, err)
+	require.NotNil(t, env.store.docs[signers][req.ComponentName])
+	require.Equal(t, req.App.SigningPublicKey, env.store.field(t, signers, req.ComponentName, "public_key_hex"))
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.NoError(t, err)
+
+	// Replaying another completed issuance must not replace an active key.
+	req.App.SigningPublicKey = strings.Repeat("cd", 32)
+	key, err = req.App.SigningKey()
+	require.NoError(t, err)
+	digest = sha256.Sum256(key)
+	req.Fingerprints.SigningKey = hex.EncodeToString(digest[:])
+	env.seedRequest(t, req)
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentIssuanceMismatch)
+	require.Equal(t, strings.Repeat("ab", 32), env.store.field(t, signers, req.ComponentName, "public_key_hex"))
 }
 
 // PERSIST_POLICY carries no L3 proof of its own (AuthorizedByDecision). Its

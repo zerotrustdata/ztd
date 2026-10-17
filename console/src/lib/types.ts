@@ -77,7 +77,7 @@ export interface PlatformEnrollmentRequest {
   state: string;
   created_at?: string;
   expires_at?: string;
-  fingerprints?: { app?: string; operator?: string; cli?: string };
+  fingerprints?: { app?: string; operator?: string; cli?: string; signing_key?: string };
 }
 
 export interface PlatformEnrollmentL3SuspensionResponse {

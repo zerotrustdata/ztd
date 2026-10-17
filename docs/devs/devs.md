@@ -315,7 +315,7 @@ make lint
 
 1. Open canonical database and obtain typed stores.
 2. After stores exist, and before `InitializePKI` or `InitializePKIWithNames`, construct in-process substrate with `embedded.New` and `RegisterPending`.
-3. Load L1 doctrine with `NewL1DoctrineFromDir`, then bootstrap posture-required L2 consensus when configured.
+3. Load L1 doctrine with `NewL1DoctrineFromDir`, then configure posture-required L2 consensus store.
 4. Construct gateway-mode `OperatorPubSubService` with governance and platform-enrollment dependencies. The builder assigns `GatewayModeDeps` directly (`INV-DEP-03`).
 5. Construct `PlatformEnrollmentService` with command service as envelope processor.
 6. Construct `mcp.GatewayService` with command service as envelope processor and session validator, supplying audit and L2 dependencies at construction.

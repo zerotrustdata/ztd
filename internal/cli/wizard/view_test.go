@@ -82,8 +82,6 @@ func TestView_CertModeNoFocusIndicatorAtFocusIndexZero(t *testing.T) {
 	assert.NotContains(t, s, "▶▶", "cert mode choice should not show double indicator at focusIndex 0")
 }
 
-
-
 // --- View: conditional rendering — web frontend / CORS ---
 
 func TestView_WebFrontendNo_CorsFieldHidden(t *testing.T) {

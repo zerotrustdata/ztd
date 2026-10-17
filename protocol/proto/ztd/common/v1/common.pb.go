@@ -832,10 +832,12 @@ func (x *GovernanceEnvelope) GetPosture() string {
 }
 
 type PlatformEnrollmentFingerprints struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	App           string                 `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
-	Operator      string                 `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
-	Cli           string                 `protobuf:"bytes,3,opt,name=cli,proto3" json:"cli,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	App      string                 `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
+	Operator string                 `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
+	Cli      string                 `protobuf:"bytes,3,opt,name=cli,proto3" json:"cli,omitempty"`
+	// SHA-256 of the optional raw Ed25519 application signing public key.
+	SigningKey    string `protobuf:"bytes,4,opt,name=signing_key,json=signingKey,proto3" json:"signing_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -887,6 +889,13 @@ func (x *PlatformEnrollmentFingerprints) GetOperator() string {
 func (x *PlatformEnrollmentFingerprints) GetCli() string {
 	if x != nil {
 		return x.Cli
+	}
+	return ""
+}
+
+func (x *PlatformEnrollmentFingerprints) GetSigningKey() string {
+	if x != nil {
+		return x.SigningKey
 	}
 	return ""
 }
@@ -1472,11 +1481,13 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x12system_fingerprint\x18\x12 \x01(\tR\x11systemFingerprint\x12\x1b\n" +
 	"\ttenant_id\x18\x17 \x01(\tR\btenantId\x12'\n" +
 	"\x0fbinding_persona\x18\x18 \x01(\tR\x0ebindingPersona\x12\x18\n" +
-	"\aposture\x18\x1b \x01(\tR\aposture\"`\n" +
+	"\aposture\x18\x1b \x01(\tR\aposture\"\x81\x01\n" +
 	"\x1ePlatformEnrollmentFingerprints\x12\x10\n" +
 	"\x03app\x18\x01 \x01(\tR\x03app\x12\x1a\n" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x10\n" +
-	"\x03cli\x18\x03 \x01(\tR\x03cli\"\xf7\a\n" +
+	"\x03cli\x18\x03 \x01(\tR\x03cli\x12\x1f\n" +
+	"\vsigning_key\x18\x04 \x01(\tR\n" +
+	"signingKey\"\xf7\a\n" +
 	"#PlatformEnrollmentGovernancePayload\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x1d\n" +

@@ -25,6 +25,7 @@ import (
 // invert the dependency direction: gateway already imports pubsub).
 type PlatformEnrollmentDocStore interface {
 	DecidePlatformEnrollments(context.Context, string, models.PlatformEnrollmentBatchDecisionRequest, string) error
+	DocCreate(ctx context.Context, collection, id string, data json.RawMessage) error
 	DocSet(ctx context.Context, collection, id string, data json.RawMessage) error
 	DocGet(ctx context.Context, collection, id string) (*models.Document, error)
 	FindOperatorLeases(ctx context.Context, ownerID, systemFingerprint string) ([]*models.Document, error)

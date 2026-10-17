@@ -538,7 +538,6 @@ func TestValidatePosture_Ratify_NoConsensusRequired(t *testing.T) {
 	assert.Empty(t, m.validatePosture())
 }
 
-
 func TestValidatePosture_EmptyRpName_ReturnsError(t *testing.T) {
 	m := NewModel(Options{})
 	m.step = StepPosture

@@ -116,14 +116,6 @@ func TestValidateLaunchProfile_InvalidPublicBaseURLReturnsErrLaunchProfileInvali
 	assert.Contains(t, err.Error(), "public_base_url")
 }
 
-func TestValidateLaunchProfile_ConsensusURLMustBeHTTPSReturnsErrLaunchProfileInvalid(t *testing.T) {
-	p := validProfile()
-	p.Config.ConsensusURL = "http://insecure.example/deliberate"
-	err := ValidateLaunchProfile(p)
-	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
-	assert.Contains(t, err.Error(), "consensus_url")
-}
-
 func TestValidateLaunchProfile_InvalidMCPDownstreamURLReturnsErrLaunchProfileInvalid(t *testing.T) {
 	p := validProfile()
 	p.Config.MCPDownstreamURL = "ftp://bad.example/mcp"
@@ -177,7 +169,6 @@ func TestValidateLaunchProfile_AcceptsEmptyCertIdentityMode(t *testing.T) {
 func TestValidateLaunchProfile_AcceptsEmptyServiceURLs(t *testing.T) {
 	p := validProfile()
 	p.Config.PublicBaseURL = ""
-	p.Config.ConsensusURL = ""
 	p.Config.MCPDownstreamURL = ""
 	p.Config.A2ADownstreamURL = ""
 	assert.NoError(t, ValidateLaunchProfile(p))

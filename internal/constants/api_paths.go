@@ -156,7 +156,6 @@ var APIPaths = struct {
 	AdminConsensusByID       string `json:"admin_consensus_by_id"`
 	AdminConsensusPrefix     string `json:"admin_consensus_prefix"`
 	// Consensus routes
-	ConsensusDeliberate string `json:"consensus_deliberate"`
 	// Well-known routes
 	WellKnownPKICABundle    string `json:"well_known_pki_ca_bundle"`
 	WellKnownPKIFingerprint string `json:"well_known_pki_fingerprint"`
@@ -332,7 +331,6 @@ var APIPaths = struct {
 	AdminConsensusByID:       "/api/v1/admin/consensus/",
 	AdminConsensusPrefix:     "/api/v1/admin/consensus/",
 	// Consensus routes
-	ConsensusDeliberate: "/consensus/v1/deliberate",
 	// Well-known routes
 	WellKnownPKICABundle:    "/.well-known/ztd/pki/ca-bundle",
 	WellKnownPKIFingerprint: "/.well-known/ztd/pki/fingerprint",

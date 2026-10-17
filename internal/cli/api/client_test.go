@@ -316,4 +316,3 @@ func TestDecodeGatewayError_PlatformEnrollmentRequiresBootstrap(t *testing.T) {
 	statusErr := &StatusError{StatusCode: http.StatusForbidden, Body: string(body)}
 	assert.ErrorIs(t, statusErr, constants.ErrPlatformEnrollmentRequiresBootstrap)
 }
-

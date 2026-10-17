@@ -88,6 +88,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-CON-WARD-05 | Under `consensus` and `notary` postures (`posture.RequiresL2() == true`), a missing `ConsensusProof`, an unbound consensus application, or a negative decision MUST reject the transaction fail closed. Under `doctrine` and `ratify` postures, L2 proofs are evaluated for deterministic audit evidence without gating transaction admission. |
 | INV-CON-WARD-06 | Under `consensus` and `notary` postures, a `ConsensusProof` whose signature fails verification or whose signer cannot be resolved against the bound consensus application MUST reject the transaction with `ErrTxL2SignatureInvalid` (`L2_SIGNATURE_INVALID`). |
 
+An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSING`. A proof naming an enabled, known set with zero votes yields `L2_QUORUM_NOT_MET`: zero affirmative votes cannot meet its quorum, including a single application's quorum of one. Both reject execution when L2 is enforced.
+
 ### Receipt and Audit Evidence (`INV-CON-RCPT`)
 
 | ID | Rule |
@@ -128,15 +130,18 @@ L2 Consensus occupies the second layer of the platform governance interlock:
 
 ### Consensus Application Enrollment and Binding
 
+Ordinary application enrollment accepts a separate Ed25519 signing public key alongside its P-256 transport CSR. Owner approval and completion bind both keys as described in [Platform Workload Enrollment](auth.md#platform-workload-enrollment). `TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensus` exercises enrollment, binding, HTTPS protobuf deliberation, Operator trust export, and revocation without seeding a trusted signer.
+
 Any third-party application or agent that serves as a consensus deliberator enrolls and binds through two standard governed steps:
 
 1. **Application Enrollment (`PLATFORM_COMPONENT_KIND_APPLICATION`)**:
-   - The application generates its local key pair and CSR, submits an enrollment request to `POST /api/v1/auth/platform-enrollments/request`, and awaits owner approval (`ztd auth enroll approve` or Console).
+   - The application generates its P-256 transport key and CSR plus a separate Ed25519 signing key, submits both public identities to `POST /api/v1/auth/platform-enrollments/request`, and awaits posture-dependent owner approval.
    - Upon completion (`POST /api/v1/auth/platform-enrollments/complete`), the application receives its mTLS client certificate (`spiffe://ztd.local/app/<app_id>`) and its Ed25519 public key is registered in `trusted_signers` (`SignerStoreService`).
 2. **Consensus Binding (`PLATFORM_ENROLLMENT_BIND_CONSENSUS`)**:
    - An authenticated owner binds the enrolled application as the Gateway's consensus provider via `POST /api/v1/auth/platform-enrollments/consensus`, which executes the governed bootstrap action `PLATFORM_ENROLLMENT_BIND_CONSENSUS`.
    - Because `PLATFORM_ENROLLMENT_BIND_CONSENSUS` is a bootstrap action (`IsBootstrapAction() == true`), it is exempt from L2 gating so it can execute under `consensus` and `notary` postures before a consensus provider exists. It is not marked `_authorized_by_decision`, so it remains L3-gated under `ratify` and `notary`.
    - The handler persists the single bound consensus record at `constants.DocIDConsensusBinding` in `constants.CollectionConsensus` (`ConsensusStoreService`), recording the enrolled application ID and its HTTPS deliberation endpoint URL.
+   - `models.ValidateConsensusEndpoint` requires absolute HTTPS URLs without credentials or fragments at admission, authoritative persistence, and egress. `ConsensusAppDeliberator` rejects all redirects and accepts protobuf envelope responses. Its client configuration is copied so caller-owned clients retain their redirect policy.
 
 ### Vote Production and Deliberation Mechanics
 

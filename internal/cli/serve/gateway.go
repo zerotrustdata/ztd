@@ -279,4 +279,3 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 		return shutdownErr
 	}
 }
-

@@ -32,7 +32,7 @@ const unknownSetID = "conformance-unknown-set"
 const nonMemberSignerID = "conformance-non-member"
 
 // Deliberator is an L2Source that gets a valid L2 proof for a final envelope
-// from the Gateway deliberation endpoint.
+// from the Gateway's bound consensus application's HTTPS protobuf endpoint.
 type Deliberator struct {
 	client  *client.Client
 	persona client.Persona
@@ -43,7 +43,7 @@ func NewDeliberator(c *client.Client, p client.Persona) *Deliberator {
 	return &Deliberator{client: c, persona: p}
 }
 
-// Proof returns the L2 proof the Gateway attaches to env.
+// Proof returns the L2 proof the bound application attaches to env.
 func (d *Deliberator) Proof(ctx context.Context, env *commonv1.GovernanceEnvelope) (*commonv1.L2Metadata, error) {
 	if d.client == nil || env == nil {
 		return nil, fmt.Errorf("deliberator proof: %w", constants.ErrMissingRequiredField)
@@ -112,7 +112,7 @@ func L2Mutators(src L2Source) MutatorSet {
 		}),
 		cases.FaultL2BelowQuorum: l2Mutator(src, func(_ *commonv1.GovernanceEnvelope, base *commonv1.L2Metadata) (*commonv1.L2Metadata, error) {
 			k := len(base.GetVotes())
-			if k < 2 {
+			if k < 1 {
 				return nil, fmt.Errorf("below quorum: proof holds %d votes: %w", k, constants.ErrMissingRequiredField)
 			}
 			base.Votes = base.Votes[:k-1]

@@ -16,7 +16,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -27,9 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
-	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -79,59 +76,6 @@ func (s *ConsensusStoreService) GetConsensus(ctx context.Context, id string) (*m
 // GetBoundConsensusApp retrieves the single bound consensus application policy.
 func (s *ConsensusStoreService) GetBoundConsensusApp(ctx context.Context) (*models.ConsensusPolicy, error) {
 	return s.GetConsensus(ctx, string(constants.DocIDConsensusBinding))
-}
-
-// BindConsensusApp binds an enrolled application as the Gateway consensus application.
-func (s *ConsensusStoreService) BindConsensusApp(ctx context.Context, appID, endpointURL string) (*models.ConsensusPolicy, error) {
-	appID = strings.TrimSpace(appID)
-	if appID == "" {
-		return nil, fmt.Errorf("%w: app_id", constants.ErrMissingRequiredField)
-	}
-	endpointURL = strings.TrimSpace(endpointURL)
-	if endpointURL == "" {
-		return nil, fmt.Errorf("%w: endpoint_url", constants.ErrMissingRequiredField)
-	}
-	u, err := url.Parse(endpointURL)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, constants.ErrConsensusEndpointInvalid
-	}
-
-	pubKey, err := s.signerSvc.GetTrustedSigner(ctx, appID)
-	if err != nil {
-		return nil, fmt.Errorf("verify signer key: %w", err)
-	}
-	if pubKey == nil {
-		pubKey, err = s.signerSvc.GetTrustedSigner(ctx, protocol.NewWorkloadIdentity().AppSPIFFEID(appID))
-		if err != nil {
-			return nil, fmt.Errorf("verify signer key: %w", err)
-		}
-	}
-	if pubKey == nil {
-		return nil, constants.ErrConsensusAppMissingSignerKey
-	}
-
-	now := time.Now().UTC()
-	policy := models.ConsensusPolicy{
-		ID:              string(constants.DocIDConsensusBinding),
-		MemberAppIDs:    []string{appID},
-		Quorum:          1,
-		RequireDistinct: true,
-		EndpointURL:     endpointURL,
-		Enabled:         true,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	}
-
-	data, err := json.Marshal(policy)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-
-	if err := s.docSvc.DocSet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding), data); err != nil {
-		return nil, fmt.Errorf("persist consensus binding: %w", err)
-	}
-
-	return &policy, nil
 }
 
 // ClearConsensusBinding removes the bound consensus app if it matches appID (or if appID is empty).
@@ -217,9 +161,13 @@ func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Clie
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
+	appClient := *httpClient
+	appClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return constants.ErrConsensusEndpointInvalid
+	}
 	return &ConsensusAppDeliberator{
 		store:      s,
-		httpClient: httpClient,
+		httpClient: &appClient,
 	}
 }
 
@@ -231,6 +179,9 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 	}
 	if bound == nil || !bound.Enabled || strings.TrimSpace(bound.EndpointURL) == "" {
 		return nil, constants.ErrTxL2ConsensusNotConfigured
+	}
+	if err := models.ValidateConsensusEndpoint(bound.EndpointURL); err != nil {
+		return nil, fmt.Errorf("consensus deliberation endpoint: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(envelopeBytes))
@@ -257,9 +208,7 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 
 	var updated commonv1.GovernanceEnvelope
 	if err := proto.Unmarshal(respBytes, &updated); err != nil {
-		if jsonErr := protojson.Unmarshal(respBytes, &updated); jsonErr != nil {
-			return nil, fmt.Errorf("unmarshal consensus envelope response: %w", err)
-		}
+		return nil, fmt.Errorf("unmarshal consensus envelope response: %w", err)
 	}
 	if updated.GetGovernance() == nil || updated.GetGovernance().GetL2() == nil || len(updated.GetGovernance().GetL2().GetVotes()) == 0 {
 		return nil, constants.ErrTxL2SignatureMissing
@@ -277,6 +226,11 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 // - No duplicate member IDs
 // - New consensus must be created with Enabled=true (updates may disable)
 func (s *ConsensusStoreService) AddConsensus(ctx context.Context, policy models.ConsensusPolicy) error {
+	if policy.EndpointURL != "" || policy.ID == string(constants.DocIDConsensusBinding) {
+		if err := models.ValidateConsensusEndpoint(policy.EndpointURL); err != nil {
+			return err
+		}
+	}
 	if policy.ID == "" {
 		return fmt.Errorf("%w: consensus ID", constants.ErrMissingRequiredField)
 	}

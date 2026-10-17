@@ -327,15 +327,15 @@ Every completed or failed transaction that reaches the Actuator generates a dete
 - **Trusting Client-Supplied Posture**: Allowing clients to set or override governance posture per request. Posture is immutable and set at Gateway startup.
 - **Executing Before Initial Receipt Persistence**: Invoking execution handlers before the initial `EXECUTING` receipt and commitment attestation are persisted to durable storage (INV-GOV-ACT-02).
 - **Retaining Standing Privileges**: Maintaining persistent credentials or long-lived capabilities. Capabilities must be minted just-in-time and dissolved immediately (INV-GOV-ACT-04).
-- **Hashing Posture or Proofs**: Including `posture`, `governance.l2`, or `governance.l3` in `GenerateMessageID`. Hashing governance metadata prevents L2 members from signing prior to human authorization (INV-GOV-ENV-05).
+- **Hashing Posture or Proofs**: Including `posture`, `governance.l2`, or `governance.l3` in `GenerateMessageID`. Hashing governance metadata prevents the L2 consensus deliberator from signing prior to human authorization (INV-GOV-ENV-05).
 - **Dangling Nonce Reservations**: Failing an envelope verification without releasing the nonce reservation in `ReplayStore` (INV-GOV-WARD-05).
 - **Treating Gateway Mirrors as Sovereign Truth**: Relying on Gateway receipt mirrors rather than the executing Operator's local SQLite database under LFAA (INV-GOV-ACT-06).
-- **Blocking Bootstrap Actions on Consensus Quorums**: Requiring L2 consensus for platform bootstrap actions. Bootstrap actions must succeed to create the consensus quorum (INV-GOV-LAY-03).
+- **Blocking Bootstrap Actions on Consensus**: Requiring L2 consensus for platform bootstrap actions. Bootstrap actions must succeed to bind the consensus application (INV-GOV-LAY-03).
 
 ## Links out
 
 - [Platform Architecture Overview](overview.md): High-level system topology and node boundaries.
-- [Consensus Architecture](consensus.md): L2 multi-member Ed25519 policies, deliberation mechanics, and quorum verification.
+- [Consensus Architecture](consensus.md): L2 bound application Ed25519 deliberation, verification, and receipt evidence.
 - [Gateway Architecture](gateway.md): Gateway operational modes, reverse proxy routing, and admission control.
 - [Operator Architecture](operator.md): Operator runtime daemon, command execution boundary, and local audit storage.
 - [Authentication Architecture](auth.md): mTLS identity binding, WebAuthn passkey enrollment, and CLI session verification.

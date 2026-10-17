@@ -77,9 +77,10 @@ func (s *PlatformEnrollmentService) createRequestRecord(ctx context.Context, req
    AND COALESCE(json_extract(data, '$.fingerprints.app'), '') = ?
    AND COALESCE(json_extract(data, '$.fingerprints.operator'), '') = ?
    AND COALESCE(json_extract(data, '$.fingerprints.cli'), '') = ?
+   AND COALESCE(json_extract(data, '$.fingerprints.signing_key'), '') = ?
    AND `+enrollmentLivePredicate+` ORDER BY created_at, id LIMIT 1`,
 			platformEnrollmentCollectionName(), req.ComponentKind, req.InstanceID,
-			req.Fingerprints.App, req.Fingerprints.Operator, req.Fingerprints.CLI, now).Scan(&stored)
+			req.Fingerprints.App, req.Fingerprints.Operator, req.Fingerprints.CLI, req.Fingerprints.SigningKey, now).Scan(&stored)
 		if err == nil {
 			existing = new(models.PlatformEnrollmentRequest)
 			if err := json.Unmarshal([]byte(stored), existing); err != nil {

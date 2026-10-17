@@ -210,10 +210,10 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 - Analyzes commands and arguments against active doctrine files from `protocol/constants/doctrine/` (MITRE ATT&CK patterns, injection vectors, reverse shells).
 - Enforces absolute path denylists on critical system resources (`/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/`, `/bin/`, `/sbin/`, `/usr/bin/`).
 
-#### L2 Consensus: Multi-Agent Deliberation
-- Under `consensus` and `notary` postures, requires an enrolled consensus set of independent agents to evaluate envelope safety.
-- Members return signed `L2Vote` records containing an Ed25519 signature over `<transaction_hash>|<decision>`.
-- The Gateway never self-signs L2 votes; it delegates deliberation to the enrolled Consensus service (`/consensus/v1/deliberate`).
+#### L2 Consensus: Enrolled Application Deliberation
+- Under `consensus` and `notary` postures, requires the bound enrolled consensus application to evaluate envelope safety.
+- The application returns a signed `L2Vote` containing an Ed25519 signature over `<transaction_hash>|<decision>`.
+- The Gateway never self-signs L2 votes; it delegates deliberation to the bound enrolled consensus application's HTTPS protobuf endpoint. See [Consensus Architecture](../../docs/architecture/consensus.md).
 - Operator L4 Warden verifies that at least $K$ distinct, valid signatures from trusted keys in the `SignerStore` are present.
 
 #### L3 Notary: Hardware-Bound Human Presence

@@ -420,7 +420,7 @@ type conformanceSetup struct {
 }
 
 // conformanceDrivers builds one driver per ingress and the sentinel. The L2 source
-// follows the posture. The Gateway deliberates under consensus and notary, and a
+// follows the posture. The bound app deliberates under consensus and notary, and a
 // synthetic proof stands in under doctrine and ratify. Attended runs wrap the MCP
 // and A2A drivers.
 func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingress]cases.Driver, *drive.Sentinel, error) {

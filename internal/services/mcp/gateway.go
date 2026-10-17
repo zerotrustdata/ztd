@@ -66,10 +66,9 @@ func approvalPausedMessage(posture constants.Posture, approvalURL string) string
 		posture.HumanApprovalReason(), approvalURL, int(ApprovalRequestTTL.Minutes()))
 }
 
-// L2ConsensusDeliberator sends an envelope to an L2 consensus service for deliberation.
-// The consensus service collects signed votes from its members and returns the envelope
-// with L2 metadata populated. This interface is implemented by an HTTP client that calls
-// the consensus service's /consensus/v1/deliberate endpoint, or by an in-process adapter.
+// L2ConsensusDeliberator sends an envelope to the bound consensus application
+// over HTTPS protobuf and returns the envelope with L2 metadata populated.
+// Integration fixtures may inject a test deliberator.
 type L2ConsensusDeliberator interface {
 	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
 }

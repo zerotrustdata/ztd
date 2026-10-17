@@ -210,6 +210,21 @@ func PlatformEnrollmentTokenHash(token string) string {
 
 type PlatformAppCSRPayload struct {
 	CSRPEM string `json:"csr_pem"`
+	// SigningPublicKey is an optional hex Ed25519 L2 key, independent of the
+	// P-256 transport CSR. Completion proves possession of both keys.
+	SigningPublicKey string `json:"signing_public_key,omitempty"`
+}
+
+// SigningKey decodes the optional L2 public key without changing transport PKI.
+func (p *PlatformAppCSRPayload) SigningKey() (ed25519.PublicKey, error) {
+	if p.SigningPublicKey == "" {
+		return nil, nil
+	}
+	key, err := hex.DecodeString(p.SigningPublicKey)
+	if err != nil || len(key) != ed25519.PublicKeySize {
+		return nil, constants.ErrPlatformEnrollmentSigningKeyInvalid
+	}
+	return ed25519.PublicKey(key), nil
 }
 
 type PlatformOperatorCSRPayload struct {
@@ -241,9 +256,10 @@ func DecodeActuatorPublicKey(keyHex string) (ed25519.PublicKey, error) {
 }
 
 type PlatformEnrollmentCSRFingerprints struct {
-	App      string `json:"app,omitempty"`
-	Operator string `json:"operator,omitempty"`
-	CLI      string `json:"cli,omitempty"`
+	App        string `json:"app,omitempty"`
+	Operator   string `json:"operator,omitempty"`
+	CLI        string `json:"cli,omitempty"`
+	SigningKey string `json:"signing_key,omitempty"`
 }
 
 type PlatformEnrollmentCreateResponse struct {
@@ -410,9 +426,10 @@ func (e *PlatformEnrollmentL3RequiredError) Unwrap() error {
 }
 
 type PlatformEnrollmentProofs struct {
-	App      string `json:"app,omitempty"`
-	Operator string `json:"operator,omitempty"`
-	CLI      string `json:"cli,omitempty"`
+	App        string `json:"app,omitempty"`
+	Operator   string `json:"operator,omitempty"`
+	CLI        string `json:"cli,omitempty"`
+	SigningKey string `json:"signing_key,omitempty"`
 }
 
 type PlatformEnrollmentCompleteRequest struct {

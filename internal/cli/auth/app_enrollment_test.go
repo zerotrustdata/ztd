@@ -255,7 +255,7 @@ func TestAppPlatformEnrollmentClient_SubmitRequest_RejectsUnrelated403Containing
 		rec := httptest.NewRecorder()
 		rec.Header().Set("Content-Type", "application/json")
 		rec.WriteHeader(http.StatusForbidden)
-		_, _ = rec.Write([]byte(`{"error":"forbidden: custom policy on bootstrapped node"}`))
+		_, _ = rec.WriteString(`{"error":"forbidden: custom policy on bootstrapped node"}`)
 		return rec.Result(), nil
 	})
 
@@ -271,4 +271,3 @@ func TestAppPlatformEnrollmentClient_SubmitRequest_RejectsUnrelated403Containing
 	require.Error(t, err)
 	assert.Equal(t, 1, hits, "unrelated 403 containing 'bootstrapped' substring must not trigger bootstrap retry loop")
 }
-

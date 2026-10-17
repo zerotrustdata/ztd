@@ -71,6 +71,20 @@ func TestValidatePlatformEnrollmentRequestRejectsDuplicateOperatorKeys(t *testin
 	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentDuplicateKey)
 }
 
+func TestValidatePlatformEnrollmentRequestRejectsInvalidSigningKeys(t *testing.T) {
+	csr, _ := newPlatformEnrollmentCSR(t)
+	for _, key := range []string{"not-hex", "ab", strings.Repeat("ab", 31), strings.Repeat("ab", 33)} {
+		t.Run(key, func(t *testing.T) {
+			_, err := validatePlatformEnrollmentRequest(models.PlatformEnrollmentCreateRequest{
+				TokenHash: models.PlatformEnrollmentTokenHash("signing-key"), ComponentKind: models.PlatformComponentApplication,
+				AppName: "ordinary-app", InstanceID: "ordinary-app-1", Hostname: "app.local",
+				App: &models.PlatformAppCSRPayload{CSRPEM: csr, SigningPublicKey: key},
+			})
+			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentSigningKeyInvalid)
+		})
+	}
+}
+
 func TestVerifyPlatformEnrollmentProofsRequiresEverySubmittedKey(t *testing.T) {
 	operatorCSR, operatorKey := newPlatformEnrollmentCSR(t)
 	cliCSR, cliKey := newPlatformEnrollmentCSR(t)

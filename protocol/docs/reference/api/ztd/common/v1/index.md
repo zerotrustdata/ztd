@@ -257,6 +257,7 @@ should be populated per instance.
 | app | [string](#string) |  |  |
 | operator | [string](#string) |  |  |
 | cli | [string](#string) |  |  |
+| signing_key | [string](#string) |  | SHA-256 of the optional raw Ed25519 application signing public key. |
 
 
 

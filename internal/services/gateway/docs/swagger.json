@@ -2384,6 +2384,7 @@
                 "MODEL_PROVENANCE_OBSERVATION",
                 "OLLAMA_MODEL_INVENTORY",
                 "OLLAMA_MODEL_RESIDENCY",
+                "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
                 "PLATFORM_ENROLLMENT_CREATE",
                 "PLATFORM_ENROLLMENT_CREATE_SESSION",
                 "PLATFORM_ENROLLMENT_DECIDE",
@@ -2420,6 +2421,7 @@
                 "ActionTypeModelProvenanceObservation",
                 "ActionTypeOllamaModelInventory",
                 "ActionTypeOllamaModelResidency",
+                "ActionTypePlatformEnrollmentBindConsensus",
                 "ActionTypePlatformEnrollmentCreate",
                 "ActionTypePlatformEnrollmentCreateSession",
                 "ActionTypePlatformEnrollmentDecide",
@@ -2633,6 +2635,7 @@
                 "ztd.v1.platform.auth.user.unauthenticated",
                 "ztd.v1.platform.console.log.connected.confirmed",
                 "ztd.v1.platform.console.log.entry.received",
+                "ztd.v1.platform.enrollment.bind_consensus.requested",
                 "ztd.v1.platform.enrollment.create.requested",
                 "ztd.v1.platform.enrollment.create_session.requested",
                 "ztd.v1.platform.enrollment.decide.requested",
@@ -2856,6 +2859,7 @@
                 "EventPlatformAuthUserUnauthenticated",
                 "EventPlatformConsoleLogConnectedConfirmed",
                 "EventPlatformConsoleLogEntryReceived",
+                "EventPlatformEnrollmentBindConsensusRequested",
                 "EventPlatformEnrollmentCreateRequested",
                 "EventPlatformEnrollmentCreateSessionRequested",
                 "EventPlatformEnrollmentDecideRequested",
@@ -3917,6 +3921,10 @@
             "properties": {
                 "csr_pem": {
                     "type": "string"
+                },
+                "signing_public_key": {
+                    "description": "SigningPublicKey is an optional hex Ed25519 L2 key, independent of the\nP-256 transport CSR. Completion proves possession of both keys.",
+                    "type": "string"
                 }
             }
         },
@@ -3943,6 +3951,9 @@
                     "type": "string"
                 },
                 "operator": {
+                    "type": "string"
+                },
+                "signing_key": {
                     "type": "string"
                 }
             }

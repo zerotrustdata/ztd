@@ -232,6 +232,12 @@ function EnrollmentRequest({
             <dd className="mono">{fps.app}</dd>
           </>
         )}
+        {fps.signing_key && (
+          <>
+            <dt>L2 signing key</dt>
+            <dd className="mono">{fps.signing_key}</dd>
+          </>
+        )}
         {fps.operator && (
           <>
             <dt>Operator key</dt>

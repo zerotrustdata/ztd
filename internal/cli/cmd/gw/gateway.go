@@ -57,27 +57,27 @@ type GatewayFlags struct {
 	ProvenanceOperatorID               string
 	ProvenanceOperatorModelStorageRoot string
 
-	Posture            string
-	HTTPPort           int
-	HTTPSPort          int
-	DataDir            string
-	PKIDir             string
-	SecretsDir         string
-	VaultDir           string
-	PasskeyRpID        string
-	PasskeyRpName      string
-	PasskeyRpOrigins   []string
-	RateLimitRPS       float64
-	RateLimitBurst     int
-	LogLevel           string
-	CertIdentityMode   string
-	MCPDownstreamURL   string
-	MCPDownstreamCmd   string
-	MCPDownstreamArgs  string
-	A2ADownstreamURL   string
-	PublicBaseURL      string
-	AllowedOrigins     []string
-	DoctrineDir        string
+	Posture           string
+	HTTPPort          int
+	HTTPSPort         int
+	DataDir           string
+	PKIDir            string
+	SecretsDir        string
+	VaultDir          string
+	PasskeyRpID       string
+	PasskeyRpName     string
+	PasskeyRpOrigins  []string
+	RateLimitRPS      float64
+	RateLimitBurst    int
+	LogLevel          string
+	CertIdentityMode  string
+	MCPDownstreamURL  string
+	MCPDownstreamCmd  string
+	MCPDownstreamArgs string
+	A2ADownstreamURL  string
+	PublicBaseURL     string
+	AllowedOrigins    []string
+	DoctrineDir       string
 
 	ListenHost                        string
 	PublicSpectatorEnabled            bool

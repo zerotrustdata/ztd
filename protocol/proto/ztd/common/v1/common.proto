@@ -158,6 +158,8 @@ message PlatformEnrollmentFingerprints {
   string app = 1;
   string operator = 2;
   string cli = 3;
+  // SHA-256 of the optional raw Ed25519 application signing public key.
+  string signing_key = 4;
 }
 
 message PlatformEnrollmentGovernancePayload {

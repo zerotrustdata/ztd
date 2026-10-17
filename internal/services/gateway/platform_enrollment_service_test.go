@@ -1984,4 +1984,3 @@ func TestPlatformEnrollmentService_L3Suspension_DecideBatchAndRevoke(t *testing.
 	assert.Equal(t, models.PlatformEnrollmentStateApproved, loadStoredRequest(t, env, create2.RequestID).State)
 	assert.Equal(t, models.PlatformEnrollmentStateApproved, loadStoredRequest(t, env, create3.RequestID).State)
 }
-

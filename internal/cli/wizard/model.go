@@ -33,8 +33,8 @@ type Model struct {
 	// Step 2: Posture
 	postureChoice        int // 0=doctrine, 1=consensus, 2=ratify, 3=notary
 	passkeyRpIDInput     textinput.Model
-	passkeyRpNameInput      textinput.Model
-	passkeyRpOriginInput    textinput.Model
+	passkeyRpNameInput   textinput.Model
+	passkeyRpOriginInput textinput.Model
 
 	// Step 3: Routing
 	routeToMCP         bool
