@@ -69,7 +69,7 @@ func TestSecurityValidateCmd_API_ValidPEMSuccess(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "warden_pub.pem"), []byte("dummy warden"), 0644))
 
 	require.NoError(t, os.MkdirAll(secretsDir, 0700))
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "session_encryption_key"), []byte("dummy key"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "bootstrap_digest.json"), []byte("{}"), 0644))
 
 	cmd := securityValidateCmdWithConfig(shared.NewFileSvc)
@@ -99,7 +99,7 @@ func TestSecurityValidateCmd_API_InvalidPEM(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "warden_pub.pem"), []byte("dummy warden"), 0644))
 
 	require.NoError(t, os.MkdirAll(secretsDir, 0700))
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "session_encryption_key"), []byte("dummy key"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "bootstrap_digest.json"), []byte("{}"), 0644))
 
 	cmd := securityValidateCmdWithConfig(shared.NewFileSvc)
@@ -131,7 +131,7 @@ func TestSecurityValidateCmd_API_PortCheckOutput(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "warden_pub.pem"), []byte("dummy warden"), 0644))
 
 	require.NoError(t, os.MkdirAll(secretsDir, 0700))
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "session_encryption_key"), []byte("dummy key"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "bootstrap_digest.json"), []byte("{}"), 0644))
 
 	cmd := securityValidateCmdWithConfig(shared.NewFileSvc)

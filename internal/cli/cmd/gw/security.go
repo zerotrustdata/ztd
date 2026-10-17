@@ -111,12 +111,12 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 			var secretEntries []pathEntry
 			if secretsDir == "" {
 				secretEntries = []pathEntry{
-					{fileSvc.Resolve(filepath.Join(constants.SecretsDirname, constants.SecretsFileSessionEncryptionKey)), filepath.Join(constants.SecretsDirname, constants.SecretsFileSessionEncryptionKey)},
+					{fileSvc.Resolve(filepath.Join(constants.SecretsDirname, constants.SecretsFileActuatorSigningKey)), filepath.Join(constants.SecretsDirname, constants.SecretsFileActuatorSigningKey)},
 					{fileSvc.Resolve(filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest)), filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest)},
 				}
 			} else {
 				secretEntries = []pathEntry{
-					{filepath.Join(secretsDir, constants.SecretsFileSessionEncryptionKey), ""},
+					{filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), ""},
 					{filepath.Join(secretsDir, constants.SecretsFileBootstrapDigest), ""},
 				}
 			}

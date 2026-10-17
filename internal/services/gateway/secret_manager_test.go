@@ -14,12 +14,10 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,7 +114,7 @@ func TestSecretManager_InitAppSettings_CreatesSecretsAndFiles(t *testing.T) {
 
 	require.NoError(t, sm.InitAppSettings())
 
-	key, err := sm.keystore.DecryptSecret("session_encryption_key")
+	key, err := sm.keystore.DecryptSecret(constants.SecretsFileAuditorHMACKey)
 	require.NoError(t, err)
 	assert.NotEmpty(t, key)
 	// Secrets are now stored in keystore, not in DB
@@ -274,7 +272,7 @@ func TestSecretManager_InitAppSettings_DetectsDBFileDivergence(t *testing.T) {
 
 	// Write corrupted encrypted data (simulating manual file tampering)
 	corruptedData := []byte(`{"version":1,"nonce":"AAAA","ciphertext":"corrupted"}`)
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileSessionEncryptionKey), corruptedData, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileAuditorHMACKey), corruptedData, 0600))
 
 	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	err := sm2.InitAppSettings()
@@ -329,7 +327,7 @@ func TestSecretManager_InitAppSettings_RejectsUncoordinatedSecretRotation(t *tes
 
 	// Write corrupted encrypted data (simulating manual file tampering)
 	corruptedData := []byte(`{"version":1,"nonce":"AAAA","ciphertext":"corrupted"}`)
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileSessionEncryptionKey), corruptedData, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileAuditorHMACKey), corruptedData, 0600))
 
 	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	err := sm2.InitAppSettings()
@@ -343,7 +341,7 @@ func TestSecretManager_InitAppSettings_RejectsPreexistingSecretWithoutAppSetting
 	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
 
 	preSeeded := strings.Repeat("c", 64)
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileSessionEncryptionKey), []byte(preSeeded), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileAuditorHMACKey), []byte(preSeeded), 0600))
 
 	sm := newTestSecretManager(t, db, fileSvc)
 	err := sm.InitAppSettings()
@@ -357,7 +355,7 @@ func TestSecretManager_InitAppSettings_FailsWhenRequiredSecretFileMissing(t *tes
 
 	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	require.NoError(t, sm.InitAppSettings())
-	require.NoError(t, fileSvc.Remove(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileSessionEncryptionKey)))
+	require.NoError(t, fileSvc.Remove(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileAuditorHMACKey)))
 
 	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	err := sm2.InitAppSettings()
@@ -405,7 +403,7 @@ func TestSecretManager_InitAppSettings_FailsWhenDigestManifestEntryMissing(t *te
 	require.NoError(t, err)
 	var manifest bootstrapDigestManifest
 	require.NoError(t, json.Unmarshal(data, &manifest))
-	delete(manifest.Secrets, "session_encryption_key")
+	delete(manifest.Secrets, constants.SecretsFileAuditorHMACKey)
 	mutated, err := json.Marshal(manifest)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(manifestPath, mutated, 0600))
@@ -515,52 +513,6 @@ func TestSecretManager_CLIPrivateKey(t *testing.T) {
 	assert.Equal(t, privKey.Public().(ed25519.PublicKey), retrieved.Public().(ed25519.PublicKey))
 }
 
-func TestSecretManager_SessionToken(t *testing.T) {
-	db := newSecretManagerTestDB(t)
-	fileSvc := newTestFileSvc(t)
-	sm := newTestSecretManager(t, db, fileSvc)
-
-	// Store session token with 1 hour TTL
-	token := "session-abc-123"
-	err := sm.StoreSessionToken(token, time.Hour)
-	require.NoError(t, err)
-
-	// Retrieve valid token
-	retrieved, err := sm.GetSessionToken()
-	require.NoError(t, err)
-	assert.Equal(t, token, retrieved)
-}
-
-func TestSecretManager_SessionToken_Expires(t *testing.T) {
-	db := newSecretManagerTestDB(t)
-	fileSvc := newTestFileSvc(t)
-	sm := newTestSecretManager(t, db, fileSvc)
-
-	// Store session token with 1 millisecond TTL
-	token := "session-expired"
-	err := sm.StoreSessionToken(token, time.Millisecond)
-	require.NoError(t, err)
-
-	// Wait for expiry with polling
-	require.Eventually(t, func() bool {
-		_, err := sm.GetSessionToken()
-		return errors.Is(err, constants.ErrExpired)
-	}, 100*time.Millisecond, 10*time.Millisecond, "session token should expire")
-}
-
-func TestSecretManager_SessionToken_InvalidFormat(t *testing.T) {
-	db := newSecretManagerTestDB(t)
-	fileSvc := newTestFileSvc(t)
-	sm := newTestSecretManager(t, db, fileSvc)
-
-	// Store malformed token data
-	err := sm.keystore.EncryptSecret("session_token", "invalid-format-no-pipe")
-	require.NoError(t, err)
-
-	_, err = sm.GetSessionToken()
-	require.Error(t, err)
-}
-
 func TestSecretManager_GetKeystore(t *testing.T) {
 	db := newSecretManagerTestDB(t)
 	fileSvc := newTestFileSvc(t)
@@ -569,31 +521,6 @@ func TestSecretManager_GetKeystore(t *testing.T) {
 	ks := sm.GetKeystore()
 	assert.NotNil(t, ks)
 	assert.Same(t, sm.keystore, ks)
-}
-
-func TestSecretManager_GetSessionEncryptionKey(t *testing.T) {
-	db := newSecretManagerTestDB(t)
-	fileSvc := newTestFileSvc(t)
-	sm := newTestSecretManager(t, db, fileSvc)
-
-	// Initialize to create the key
-	require.NoError(t, sm.InitAppSettings())
-
-	// Retrieve the key
-	key, err := sm.GetSessionEncryptionKey()
-	require.NoError(t, err)
-	assert.NotEmpty(t, key)
-	assert.Len(t, key, 64) // 32 bytes hex encoded
-}
-
-func TestSecretManager_GetSessionEncryptionKey_NotInitialized(t *testing.T) {
-	db := newSecretManagerTestDB(t)
-	fileSvc := newTestFileSvc(t)
-	sm := newTestSecretManager(t, db, fileSvc)
-
-	// Try to retrieve without initialization
-	_, err := sm.GetSessionEncryptionKey()
-	require.Error(t, err)
 }
 
 func TestSecretManager_GetAuditorHMACKey(t *testing.T) {

@@ -135,10 +135,10 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 	require.NoError(t, err)
 	auditorSeed := auditorPriv.Seed()
 
-	sessionKeyHex, err := sm.GetSessionEncryptionKey()
+	auditorHMACKeyHex, err := sm.GetAuditorHMACKey()
 	require.NoError(t, err)
-	require.NotEmpty(t, sessionKeyHex)
-	sessionKeyBytes, err := hex.DecodeString(sessionKeyHex)
+	require.NotEmpty(t, auditorHMACKeyHex)
+	auditorHMACKeyBytes, err := hex.DecodeString(auditorHMACKeyHex)
 	require.NoError(t, err)
 
 	vaultKey, err := ks.LoadVaultKey()
@@ -153,7 +153,7 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 		{"vault key", vaultKey},
 		{"actuator seed", actuatorSeed},
 		{"auditor seed", auditorSeed},
-		{"session encryption key", sessionKeyBytes},
+		{"auditor HMAC key", auditorHMACKeyBytes},
 	}
 
 	var forbiddenRaw [][]byte
@@ -170,7 +170,7 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 			base64.RawURLEncoding.EncodeToString(k.raw),
 		)
 	}
-	forbiddenStrings = append(forbiddenStrings, sessionKeyHex)
+	forbiddenStrings = append(forbiddenStrings, auditorHMACKeyHex)
 
 	dirsToScan := []string{constants.SecretsDirname, constants.VaultDirname}
 	scannedFiles := 0

@@ -205,7 +205,6 @@ The platform keystore protects:
 - Notary signing key (`notary_signing_key`)
 - Operator private key (`operator_private_key`)
 - CLI private key (`cli_private_key`)
-- Session encryption key (`session_encryption_key`) and session tokens (`session_token`)
 - Consensus member seeds (`consensus_member_<id>`)
 - Public-feed signing keys (`public_feed_signing_key`), ingest tokens (`public_feed_ingest_token`), and rotation keys (`sealed_new_private_key`)
 - Root CA, Hub CA, Operator CA, and Gateway Peer CA private keys

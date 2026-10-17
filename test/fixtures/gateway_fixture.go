@@ -311,7 +311,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	require.NotNil(t, mcpGateway)
 
 	// Seed platform_settings required for health check
-	err = ls.GetDocStore().DocSet(t.Context(), string(constants.CollectionSettings), "platform_settings", json.RawMessage(`{"session_encryption_key":"test-key"}`))
+	err = ls.GetDocStore().DocSet(t.Context(), string(constants.CollectionSettings), "platform_settings", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
 	// Start the gateway service. The Start error is delivered on a buffered

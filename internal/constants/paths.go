@@ -252,7 +252,6 @@ const (
 
 // Secrets filenames for bootstrap and runtime secret material.
 const (
-	SecretsFileSessionEncryptionKey     = "session_encryption_key"
 	SecretsFileBootstrapDigest          = "bootstrap_digest.json"
 	SecretsFileActuatorSigningKey       = "actuator_signing_key"
 	SecretsFileActuatorKeyID            = "actuator_key_id"
@@ -262,7 +261,6 @@ const (
 	SecretsFileNotarySigningKey         = "notary_signing_key"
 	SecretsFileOperatorPrivateKey       = "operator_private_key"
 	SecretsFileCLIPrivateKey            = "cli_private_key"
-	SecretsFileSessionToken             = "session_token"
 	SecretsFileConsensusMemberKeyPrefix = "consensus_member_"
 	SecretsFileVaultKey                 = "vault_key"
 	SecretsFileVaultKeyStaged           = "vault_key.rekey"
