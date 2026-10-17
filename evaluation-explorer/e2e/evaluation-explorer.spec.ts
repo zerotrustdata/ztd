@@ -209,6 +209,78 @@ test('follows the evidence from a campaign through its assignment, model and tas
   await expect(page.getByRole('region', { name: 'Recent assignments of this task' }).getByRole('link', { name: assignment.assignment_id })).toBeVisible();
 });
 
+test('Live panels fit above the footer and scroll independently through resizing', async ({ page }) => {
+  const runs = Array.from({ length: 5 }, (_, index) => ({
+    ...fixtureEvaluationSummaries[0]!,
+    dataset_id: `ds-live-scroll-${index}`, run_id: `scroll-run-${index}`,
+  }));
+  const events = Array.from({ length: 60 }, (_, index) => ({
+    schema_version: '1.4.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED',
+    kind: 'assignment_completed', dataset_id: runs[0]!.dataset_id, run_id: runs[0]!.run_id,
+    event_id: `scroll-event-${index}`, assignment_id: `scroll-assignment-${index}`,
+    task_id: 'tool-arg-run-commands', variant_id: 'qwen3:8b', role: 'primary',
+    quality_state: 'live_in_progress', lifecycle_status: 'completed', completed: index + 1, total: 60,
+    observed_at: new Date(Date.UTC(2026, 9, 16, 14, index)).toISOString(),
+  }));
+  await installMirror(page, [...runs, ...events]);
+  await page.goto('/?release=all');
+  const runPanel = page.getByRole('region', { name: 'Runs', exact: true });
+  const livePanel = page.getByRole('region', { name: 'Live activity', exact: true });
+  const runList = runPanel.locator('.campaign-evidence-list');
+  const eventList = page.getByRole('region', { name: 'Live activity results', exact: true });
+  const footer = page.getByRole('contentinfo');
+  await expect(runList.locator(':scope > li')).toHaveCount(5);
+  await expect(eventList.locator('tbody tr')).toHaveCount(25);
+
+  // Smaller CSS viewports also cover the space available when the browser is zoomed in.
+  for (const viewport of [
+    { width: 1920, height: 1080 }, { width: 1440, height: 720 },
+    { width: 1100, height: 600 }, { width: 900, height: 900 }, { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+    const footerBox = (await footer.boundingBox())!;
+    expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(viewport.height);
+    const liveBox = (await livePanel.boundingBox())!;
+    expect(liveBox.y + liveBox.height).toBeLessThanOrEqual(footerBox.y);
+    expect(footerBox.y - liveBox.y - liveBox.height).toBeLessThanOrEqual(24);
+    for (const list of [runList, eventList]) {
+      expect(await list.evaluate((element) => element.clientHeight)).toBeGreaterThan(0);
+      await list.evaluate((element) => { element.scrollTop = 0; });
+    }
+    const runBox = (await runPanel.boundingBox())!;
+    expect(runBox.y + runBox.height).toBeLessThanOrEqual(footerBox.y);
+    await expect(livePanel.getByRole('button', { name: 'Next page' })).toBeInViewport();
+
+    const runsOverflow = await runList.evaluate((element) => element.scrollHeight > element.clientHeight);
+    await runList.hover();
+    await page.mouse.wheel(0, 300);
+    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await eventList.evaluate((element) => element.scrollTop)).toBe(0);
+    const runScroll = await runList.evaluate((element) => element.scrollTop);
+    await eventList.hover();
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => eventList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await runList.evaluate((element) => element.scrollTop)).toBe(runScroll);
+    // Reaching the end of either list must not transfer wheel scrolling to the page.
+    for (const list of [runList, eventList]) {
+      await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      await list.hover();
+      await page.mouse.wheel(0, 600);
+    }
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await livePanel.locator('summary').click();
+    expect(await eventList.evaluate((element) => element.clientHeight)).toBeGreaterThan(0);
+    await expect(livePanel.getByRole('button', { name: 'Next page' })).toBeInViewport();
+    await livePanel.locator('summary').click();
+
+    await runList.evaluate((element) => { element.scrollTop = 0; });
+    await runList.focus();
+    await page.keyboard.press('PageDown');
+    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  }
+});
+
 for (const viewport of [
   { width: 1440, height: 1000, theme: 'dark' },
   { width: 1440, height: 1000, theme: 'light' },

@@ -614,6 +614,15 @@ button { font-family: inherit; cursor: pointer; }
 .app-footer-links code { margin-left: 3px; color: var(--fg-dim); font-size: var(--text-xs); }
 .app-footer-unavailable { color: var(--fg-dim); }
 
+/* Live fills the space between the header and the footer, including wrapped chrome. */
+.app-shell:has(.overview) { height: 100dvh; min-height: 0; overflow: hidden; }
+.app-shell:has(.overview) > :not(.app-main) { flex-shrink: 0; }
+.app-shell:has(.overview) .app-footer { position: static; }
+.app-main:has(> .overview) {
+  display: flex; min-height: 0; overflow: hidden;
+  padding-bottom: 8px;
+}
+
 /* Section heading */
 .section-heading { margin-bottom: 20px; }
 .section-kicker { font-size: var(--text-sm); font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1.2px; margin: 0 0 4px; }
@@ -1277,11 +1286,26 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
   --overview-meta-size: 13px;
   --overview-label-size: 12px;
   display: grid;
+  flex: 1;
+  min-height: 0;
   grid-template-columns: clamp(300px, 26vw, 380px) minmax(0, 1fr);
-  align-items: start;
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
 }
-.overview > .panel { min-width: 0; }
+.overview > .panel { min-width: 0; min-height: 0; overflow: hidden; }
+.overview .campaign-evidence-panel { display: flex; flex-direction: column; }
+.overview .campaign-evidence-panel > :not(.campaign-evidence-list),
+.overview .stream-panel > :not(.stream-scroll) { flex-shrink: 0; }
+.overview .campaign-evidence-list, .overview .stream-panel .stream-scroll {
+  flex: 1; min-height: 0; max-height: none; overflow: auto;
+  overscroll-behavior: contain; scrollbar-gutter: stable;
+}
+.overview .campaign-evidence-list { align-content: start; }
+.overview .stream-panel > .stream-toolbar {
+  flex-shrink: 1; min-height: 32px; max-height: 40%; overflow: auto;
+  overscroll-behavior: contain;
+}
+.campaign-evidence-list:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Panels */
 .panel {
@@ -1430,8 +1454,6 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
   .stream-table .stream-metric-cell:nth-child(4) { grid-column: 2; }
   .stream-table .stream-metric-cell:nth-child(6) { grid-column: 3; justify-content: flex-end; }
   .stream-metric-cell::before { content: attr(data-label); color: var(--fg-muted); }
-  .app-shell:has(.overview) .app-footer { position: static; }
-  .app-main:has(.overview) { padding-bottom: 20px; }
   .stream-table .stream-metric-cell:nth-child(5) { display: none; }
 }
 
@@ -1826,7 +1848,7 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
   .header-cta-github { gap: 0; padding-inline: 10px; }
 }
 @media (max-width: 1000px) {
-  .overview { grid-template-columns: minmax(0, 1fr); }
+  .overview { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 2fr); }
   .app-header { --header-sticky-offset: 92px; }
   .header-primary {
     grid-template-columns: auto 1fr;

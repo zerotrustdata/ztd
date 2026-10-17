@@ -67,7 +67,7 @@ function Runs({
       {recent.length === 0 ? (
         <p className="panel-empty">No runs recorded yet.</p>
       ) : (
-        <ul className="campaign-evidence-list">
+        <ul className="campaign-evidence-list" aria-label="Recent runs" tabIndex={0}>
           {recent.map((campaign) => {
             const status = campaign.lifecycleState ?? campaign.qualityState;
             const href = campaign.runId
