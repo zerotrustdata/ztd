@@ -75,6 +75,17 @@ func TestOwnerAppEnrollmentApprover_RejectsFingerprintMismatch(t *testing.T) {
 	assert.Empty(t, client.PostCalls)
 }
 
+func TestOwnerAppEnrollmentApprover_RejectsSigningFingerprintMismatch(t *testing.T) {
+	target := ownerApproverTarget()
+	target.Fingerprints.SigningKey = "expected-signing-key"
+	client := &cmdtest.MockAPIClient{GetResp: ownerApproverPending(t, models.PlatformEnrollmentPendingRequest{
+		RequestID: target.RequestID, ComponentKind: models.PlatformComponentApplication,
+		Fingerprints: models.PlatformEnrollmentCSRFingerprints{App: target.Fingerprints.App, SigningKey: "substituted-signing-key"},
+	})}
+	require.ErrorIs(t, OwnerAppEnrollmentApprover(client, "")(t.Context(), target), constants.ErrPlatformEnrollmentCSRMismatch)
+	require.Empty(t, client.PostCalls)
+}
+
 func TestOwnerAppEnrollmentApprover_RejectsNonApplicationRequest(t *testing.T) {
 	target := ownerApproverTarget()
 	client := &cmdtest.MockAPIClient{GetResp: ownerApproverPending(t, models.PlatformEnrollmentPendingRequest{

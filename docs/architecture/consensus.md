@@ -132,6 +132,8 @@ L2 Consensus occupies the second layer of the platform governance interlock:
 
 Ordinary application enrollment accepts a separate Ed25519 signing public key alongside its P-256 transport CSR. Owner approval and completion bind both keys as described in [Platform Workload Enrollment](auth.md#platform-workload-enrollment). `TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensus` exercises enrollment, binding, HTTPS protobuf deliberation, Operator trust export, and revocation without seeding a trusted signer.
 
+For the CLI enrollment, sealed signing identity, binding/query commands, and posture-dependent approval behavior, see [Platform Workload Enrollment](auth.md#platform-workload-enrollment). Consensus enrollment and binding depend on local account authority, independently of the account's sign-in provider.
+
 Any third-party application or agent that serves as a consensus deliberator enrolls and binds through two standard governed steps:
 
 1. **Application Enrollment (`PLATFORM_COMPONENT_KIND_APPLICATION`)**:

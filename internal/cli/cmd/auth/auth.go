@@ -116,9 +116,11 @@ func enrollCmd() *cobra.Command {
             WebAuthn passkey ceremony. Produces a CLI session bound to a user
             identity.
 
-  app       Application platform workload enrollment. Generates a private key
-            and CSR, submits an enrollment request to the Gateway, and polls
-            until approved by an owner.
+  app       Application platform workload enrollment. Generates a transport
+            identity and optional L2 signing key, then waits for the
+            posture-dependent owner decision.
+
+  consensus Bind or inspect the enrolled consensus application.
 
   pending   List pending platform workload enrollment requests (dashboard,
             application, or operator) awaiting an owner decision.
@@ -139,6 +141,7 @@ Bare ` + "`auth enroll`" + ` (no subcommand) prints this help and exits non-zero
 	cmd.AddCommand(
 		enrollUserCmd(),
 		enrollAppCmd(),
+		consensusEnrollmentCmd(),
 		pendingPlatformEnrollmentCmd(),
 		listPlatformEnrollmentCmd(),
 		approvePlatformEnrollmentCmd(),

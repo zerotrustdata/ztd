@@ -10,9 +10,22 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/models"
 )
+
+// WritePlatformEnrollmentSuspension describes a pending L3 decision without
+// claiming the governed mutation has completed.
+func WritePlatformEnrollmentSuspension(out io.Writer, suspension models.PlatformEnrollmentL3SuspensionResponse) error {
+	reason := suspension.Posture.HumanApprovalReason()
+	if reason == "" {
+		reason = suspension.Message
+	}
+	_, err := fmt.Fprintf(out, "Submitted for L3 human approval (%s posture).\nReason:       %s\nApproval URL: %s\nTransaction:  %s\nExpires At:   %s\n", suspension.Posture, reason, suspension.ApprovalURL, suspension.TxHash, suspension.ExpiresAt.Format(time.RFC3339))
+	return err
+}
 
 // EnrollmentFingerprint is one labeled CSR key fingerprint of a pending
 // platform enrollment request, as the owner compares it with the workload.

@@ -81,14 +81,19 @@ func enrollAppCmdWithConfig(
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
 	enrollerFactory AppEnrollerFactory,
 ) *cobra.Command {
+	var signingKey bool
 	cmd := &cobra.Command{
 		Use:   "app <name>",
 		Short: "Enroll an application workload with the running Gateway via owner-approved platform enrollment",
 		Long: `Enroll an application workload with the running Gateway via owner-approved platform enrollment.
 
-Submits a platform enrollment request for the specified application name, prints the approval command,
-and polls until an owner approves the request (with ztd auth enroll approve <request-id>). Upon approval,
-the certificate and private key are securely stored in the managed runtime PKI directory.`,
+The authenticated owner approves inline under doctrine and consensus. Ratify and notary require
+passkey approval at the printed URL. The client holds a status request until the owner decides.
+Without an owner CLI identity, approve with ztd auth enroll approve <request-id>.
+
+Use --signing-key to generate an independent Ed25519 L2 signing identity alongside the P-256
+transport identity. Both keys are bound to owner approval and completion. Private material is
+sealed in managed runtime storage, including interrupted attempts.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appName := strings.TrimSpace(args[0])
@@ -103,14 +108,12 @@ the certificate and private key are securely stored in the managed runtime PKI d
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 
-			var opts []auth.AppEnrollmentOptions
+			opt := auth.AppEnrollmentOptions{GenerateSigningKey: signingKey}
 			if client, clientErr := DefaultAPIClientFactory(fileSvc, cfg); clientErr == nil {
-				opts = append(opts, auth.AppEnrollmentOptions{
-					Approver: OwnerAppEnrollmentApprover(client, "ztd auth enroll app: enrolled by the authenticated owner"),
-				})
+				opt.Approver = OwnerAppEnrollmentApprover(client, "ztd auth enroll app: enrolled by the authenticated owner")
 			}
 
-			enroller, err := enrollerFactory(appName, fileSvc, cfg, slog.Default(), opts...)
+			enroller, err := enrollerFactory(appName, fileSvc, cfg, slog.Default(), opt)
 			if err != nil {
 				return err
 			}
@@ -120,5 +123,6 @@ the certificate and private key are securely stored in the managed runtime PKI d
 		},
 	}
 
+	cmd.Flags().BoolVar(&signingKey, "signing-key", false, "Generate and enroll a separate sealed Ed25519 L2 signing identity")
 	return cmd
 }

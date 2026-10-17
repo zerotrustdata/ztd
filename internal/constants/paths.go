@@ -146,9 +146,10 @@ const (
 	PkiSubdirPendingEnroll = "pending-enrollment"
 
 	// File extensions
-	FileExtCert = ".crt"
-	FileExtKey  = ".key"
-	FileExtJSON = ".json"
+	FileExtCert         = ".crt"
+	FileExtKey          = ".key"
+	AppSigningKeySuffix = ".signing.key"
+	FileExtJSON         = ".json"
 
 	// CA and bundle filenames
 	PkiFileRootCA          = "root_ca.crt"

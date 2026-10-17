@@ -796,6 +796,7 @@ var (
 	ErrAppIdentityNotFound  = errors.New("app identity not found")
 	ErrAppIdentityExpired   = errors.New("app identity certificate expired")
 	ErrAppIdentityUntrusted = errors.New("app identity certificate untrusted")
+	ErrAppSigningKeyInvalid = errors.New("app signing identity must contain an Ed25519 seed")
 
 	// Sealed client identity files (CLI/app private keys, pending enrollment state)
 	ErrIdentityFilePlaintext = errors.New("identity file is stored in the clear; plaintext private keys are refused, delete it and re-enroll")

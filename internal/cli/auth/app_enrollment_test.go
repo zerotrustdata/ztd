@@ -11,10 +11,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"math/big"
@@ -31,6 +35,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // generateTestCertificateWithSPIFFE generates a test certificate with a SPIFFE URI SAN.
@@ -176,6 +182,118 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestAppPlatformEnrollmentClient_SigningIdentitySurvivesResume(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	var submitted models.PlatformEnrollmentCreateRequest
+	var approved models.PlatformEnrollmentDecisionTarget
+	createCalls := 0
+	completeCalls := 0
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		switch r.URL.Path {
+		case constants.APIPaths.AuthPlatformEnrollmentRequest:
+			createCalls++
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&submitted))
+			rec.WriteHeader(http.StatusCreated)
+			require.NoError(t, json.NewEncoder(rec).Encode(models.PlatformEnrollmentCreateResponse{RequestID: "signing-request", ExpiresAt: time.Now().Add(time.Hour)}))
+		case constants.APIPaths.AuthPlatformEnrollmentStatus:
+			require.Equal(t, "true", r.URL.Query().Get("wait"))
+			require.NoError(t, json.NewEncoder(rec).Encode(models.PlatformEnrollmentStatusResponse{State: models.PlatformEnrollmentStateApproved}))
+		case constants.APIPaths.AuthPlatformEnrollmentComplete:
+			completeCalls++
+			var completion models.PlatformEnrollmentCompleteRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&completion))
+			publicKey, err := submitted.App.SigningKey()
+			require.NoError(t, err)
+			require.Len(t, publicKey, ed25519.PublicKeySize)
+			fingerprint := sha256.Sum256(publicKey)
+			require.Equal(t, hex.EncodeToString(fingerprint[:]), approved.Fingerprints.SigningKey)
+			transcript, err := proto.MarshalOptions{Deterministic: true}.Marshal(&commonv1.PlatformEnrollmentCompletionTranscript{
+				ProtocolVersion: constants.PlatformEnrollmentProtocolVersion,
+				RequestId:       approved.RequestID, TokenHash: submitted.TokenHash,
+				ComponentKind: commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
+				InstanceId:    submitted.InstanceID,
+				Fingerprints:  &commonv1.PlatformEnrollmentFingerprints{App: approved.Fingerprints.App, SigningKey: approved.Fingerprints.SigningKey},
+			})
+			require.NoError(t, err)
+			digest := sha256.Sum256(transcript)
+			signature, err := base64.RawURLEncoding.DecodeString(completion.Proofs.SigningKey)
+			require.NoError(t, err)
+			require.True(t, ed25519.Verify(publicKey, digest[:], signature))
+			block, _ := pem.Decode([]byte(submitted.App.CSRPEM))
+			csr, err := x509.ParseCertificateRequest(block.Bytes)
+			require.NoError(t, err)
+			transportProof, err := base64.RawURLEncoding.DecodeString(completion.Proofs.App)
+			require.NoError(t, err)
+			require.True(t, ecdsa.VerifyASN1(csr.PublicKey.(*ecdsa.PublicKey), digest[:], transportProof))
+			if completeCalls == 1 {
+				return nil, constants.ErrInternal
+			}
+			rec.WriteHeader(http.StatusCreated)
+			require.NoError(t, json.NewEncoder(rec).Encode(models.PlatformEnrollmentCompleteResponse{App: &models.PlatformEnrollmentAppCredentials{AppID: "reviewer", AppCert: "test-cert"}}))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		return rec.Result(), nil
+	})
+	opts := AppEnrollmentOptions{GenerateSigningKey: true, InstanceID: "original-instance", HTTPClient: &http.Client{Transport: transport}, Approver: func(_ context.Context, target models.PlatformEnrollmentDecisionTarget) error {
+		approved = target
+		return nil
+	}}
+	client, err := NewAppPlatformEnrollmentClient("reviewer", fileSvc, cfg, nil, opts)
+	require.NoError(t, err)
+	_, err = client.Enroll(t.Context(), nil)
+	require.ErrorIs(t, err, constants.ErrInternal)
+	pending, err := client.loadPendingState(client.pendingStatePath())
+	require.NoError(t, err)
+	require.Len(t, pending.SigningSeed, ed25519.SeedSize)
+	sealed, err := fileSvc.ReadFile(t.Context(), client.pendingStatePath())
+	require.NoError(t, err)
+	require.NotContains(t, string(sealed), base64.StdEncoding.EncodeToString(pending.SigningSeed))
+	opts.InstanceID = "changed-instance"
+	opts.GenerateSigningKey = false // Resuming must retain the original intent even without the flag.
+	client, err = NewAppPlatformEnrollmentClient("reviewer", fileSvc, cfg, nil, opts)
+	require.NoError(t, err)
+	_, err = client.Enroll(t.Context(), nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, createCalls)
+	key, err := LoadAppSigningKey(t.Context(), fileSvc, cfg, "reviewer")
+	require.NoError(t, err)
+	require.Equal(t, submitted.App.SigningPublicKey, hex.EncodeToString(key.Public().(ed25519.PublicKey)))
+	pending, err = client.loadPendingState(client.pendingStatePath())
+	require.NoError(t, err)
+	require.Nil(t, pending)
+}
+
+func TestAppPlatformEnrollmentClient_RejectsInvalidPendingSigningIdentity(t *testing.T) {
+	for _, seed := range [][]byte{nil, {1, 2, 3}} {
+		fileSvc, cfg := newAuthTestEnv(t)
+		client, err := NewAppPlatformEnrollmentClient("reviewer", fileSvc, cfg, nil, AppEnrollmentOptions{
+			GenerateSigningKey: true,
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				t.Fatal("invalid pending identity must fail before contacting the Gateway")
+				return nil, constants.ErrInternal
+			})},
+		})
+		require.NoError(t, err)
+		require.NoError(t, client.persistPendingState(client.pendingStatePath(), &appPendingState{Token: "pending-token", SigningSeed: seed}))
+		_, err = client.Enroll(t.Context(), nil)
+		require.ErrorIs(t, err, constants.ErrAppSigningKeyInvalid)
+	}
+}
+
+func TestLoadAppSigningKey_RejectsPlaintextAndMalformedSeed(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	rel, err := fileSvc.RelFromAbs(cfg.AppSigningKeyFile("reviewer"))
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.WriteFile(t.Context(), rel, bytes.Repeat([]byte{1}, ed25519.SeedSize), constants.PermFilePrivate))
+	_, err = LoadAppSigningKey(t.Context(), fileSvc, cfg, "reviewer")
+	require.ErrorIs(t, err, constants.ErrIdentityFileUnseal)
+	require.NoError(t, sealIdentityFile(t.Context(), fileSvc, cfg, rel, []byte{1, 2, 3}))
+	_, err = LoadAppSigningKey(t.Context(), fileSvc, cfg, "reviewer")
+	require.ErrorIs(t, err, constants.ErrAppSigningKeyInvalid)
 }
 
 func TestAppPlatformEnrollmentClient_Enroll_ApproverL3RequiredPrintsSuspensionAndAwaitsDecision(t *testing.T) {
