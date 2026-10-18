@@ -8,6 +8,7 @@ import type {
   CatalogSnapshot,
   EvaluationSummary,
   LiveEvent,
+  ModelRole,
   ModelSummary,
 } from '../src/contract/types';
 import {

@@ -12,13 +12,7 @@ package gateway
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -633,27 +627,6 @@ func TestHTTPHandler_GetGatewayWebSocketHandler(t *testing.T) {
 
 	pubsub := h.GetGatewayWebSocketHandler()
 	assert.NotNil(t, pubsub, "GetGatewayWebSocketHandler should return non-nil service")
-}
-
-// makeTestAppWorkloadCert returns a self-signed cert with a SPIFFE URI SAN for an app workload identity.
-func makeTestAppWorkloadCert(t *testing.T, appID string) *x509.Certificate {
-	t.Helper()
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	spiffeURI, err := url.Parse("spiffe://ztd.local/app/" + appID)
-	require.NoError(t, err)
-	tmpl := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "test-app-cert"},
-		NotBefore:    time.Now().Add(-time.Minute),
-		NotAfter:     time.Now().Add(time.Hour),
-		URIs:         []*url.URL{spiffeURI},
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
-	require.NoError(t, err)
-	cert, err := x509.ParseCertificate(certDER)
-	require.NoError(t, err)
-	return cert
 }
 
 func TestHTTPHandler_handleInternalSSEEvents(t *testing.T) {

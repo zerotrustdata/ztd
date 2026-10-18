@@ -10,6 +10,7 @@ package gwremote
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -36,8 +37,42 @@ const modelProvenanceAttestationPreflightAPIClientTimeout = constants.ModelProve
 
 type remoteModelProvenanceClient struct {
 	client authcmd.APIClient
+	stream func() *sse.Client
 	mu     sync.Mutex
 	cache  map[string]*evalv1.ModelProvenanceAttestationWindow
+}
+
+// WatchAttestations follows the CLI session's Gateway SSE stream, reconnecting
+// with backoff, and reports every attestation-recorded event. It stops when ctx
+// ends or the Gateway rejects the CLI session.
+func (c *remoteModelProvenanceClient) WatchAttestations(ctx context.Context, connected func(), recorded func(string)) error {
+	if c == nil || c.stream == nil || connected == nil || recorded == nil {
+		return fmt.Errorf("model provenance: watch attestations: %w", constants.ErrMissingRequiredField)
+	}
+	stream := c.stream()
+	stream.SetReconnectOnClose(true)
+	stream.SetOnConnect(connected)
+	var terminal error
+	stream.SetOnDisconnect(func(err error) {
+		if errors.Is(err, constants.ErrCLISessionRefreshRequired) {
+			terminal = err
+		}
+	})
+	stream.Run(ctx, func(eventType, data string) {
+		event, ok := sse.DecodeEvent(eventType, data)
+		if !ok || event.Type != string(constants.EventModelProvenanceAttestationRecorded) {
+			return
+		}
+		var update models.ModelProvenanceAttestationRecorded
+		if json.Unmarshal(event.Data, &update) != nil || update.ProviderAttemptID == "" {
+			return
+		}
+		recorded(update.ProviderAttemptID)
+	})
+	if terminal != nil {
+		return fmt.Errorf("model provenance: watch attestations: %w", terminal)
+	}
+	return nil
 }
 
 func (c *remoteModelProvenanceClient) Load(ctx context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error) {
@@ -78,11 +113,11 @@ func newModelProvenanceRemote(fileSvc fs.RuntimeFileService, cfg *config.Config)
 	if !IsGatewayHealthy() {
 		return nil, nil
 	}
-	client, err := authcmd.DefaultAPIClientFactory(fileSvc, cfg)
+	client, err := api.NewClient(fileSvc, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("model provenance: create gateway client: %w", err)
 	}
-	return &remoteModelProvenanceClient{client: client}, nil
+	return &remoteModelProvenanceClient{client: client, stream: client.NewSSEClient}, nil
 }
 
 func NewCampaignModelProvenanceReader(fileSvc fs.RuntimeFileService, cfg *config.Config) (*evaluation.CampaignModelProvenanceReader, error) {

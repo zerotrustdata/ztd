@@ -168,7 +168,7 @@ func WaitForCampaignRunModelProvenanceEvidence(ctx context.Context, store *Store
 			attemptIDs = append(attemptIDs, record.GetProviderAttemptId())
 		}
 	}
-	return reader.WaitForEvidence(ctx, attemptIDs, constants.ModelProvenanceCompletionPollInterval)
+	return reader.WaitForEvidence(ctx, attemptIDs)
 }
 
 // VerifyRun recomputes assignment verification for every terminal assignment

@@ -36,6 +36,7 @@ const EventAppInvestigationCreated EventType = "ztd.v1.app.investigation.created
 const EventAppInvestigationUpdated EventType = "ztd.v1.app.investigation.updated"
 const EventAppRunStatusUpdated EventType = "ztd.v1.app.run.status.updated"
 const EventAppTaskCompleted EventType = "ztd.v1.app.task.completed"
+const EventModelProvenanceAttestationRecorded EventType = "ztd.v1.inference.model.provenance.attestation.recorded"
 const EventModelProvenancePreflightProgress EventType = "ztd.v1.inference.model.provenance.preflight.updated"
 const EventOperatorA2aCallRequested EventType = "ztd.v1.operator.a2a.call.requested"
 const EventOperatorAuditAiRecordRequested EventType = "ztd.v1.operator.audit.ai.record.requested"
@@ -441,6 +442,13 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Kind:        EventKindOutcome,
 		Transport:   nil,
 		Producers:   []string{"cli"},
+		Persistence: "ephemeral",
+	},
+	EventModelProvenanceAttestationRecorded: {
+		Key:         "ModelProvenanceAttestationRecorded",
+		Kind:        EventKindFact,
+		Transport:   []string{"sse"},
+		Producers:   []string{"gateway"},
 		Persistence: "ephemeral",
 	},
 	EventModelProvenancePreflightProgress: {

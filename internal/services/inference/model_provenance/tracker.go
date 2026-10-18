@@ -17,7 +17,7 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.1.0"
 
 // TrackerConfig configures the pubsub-command-driven model provenance tracker.
 type TrackerConfig struct {
@@ -29,10 +29,9 @@ type TrackerConfig struct {
 // Tracker maintains in-memory active attestation contexts keyed by
 // provider_attempt_id between BEGIN and FINALIZE commands.
 type Tracker struct {
-	cfg       TrackerConfig
-	mu        sync.Mutex
-	active    map[string]*trackedAttestation
-	hashSlots chan struct{}
+	cfg    TrackerConfig
+	mu     sync.Mutex
+	active map[string]*trackedAttestation
 }
 
 type trackedAttestation struct {
@@ -50,7 +49,7 @@ func NewTracker(cfg TrackerConfig) (*Tracker, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Tracker{cfg: cfg, active: make(map[string]*trackedAttestation), hashSlots: make(chan struct{}, constants.ModelProvenanceHashConcurrency)}, nil
+	return &Tracker{cfg: cfg, active: make(map[string]*trackedAttestation)}, nil
 }
 
 // Begin records the expected model binding for one provider attempt.
@@ -103,14 +102,6 @@ func (t *Tracker) Finalize(ctx context.Context, command *evalv1.ModelProvenanceO
 		return nil, fmt.Errorf("model provenance tracker: finalize: missing model binding")
 	}
 
-	// Command delivery is asynchronous. Bound full storage reads so a fast
-	// campaign cannot launch hundreds of competing multi-gigabyte hashes.
-	select {
-	case t.hashSlots <- struct{}{}:
-		defer func() { <-t.hashSlots }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

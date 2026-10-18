@@ -32,3 +32,10 @@ type ModelProvenancePreflightProgress struct {
 	Phase          string `json:"phase"`
 	Error          string `json:"error,omitempty"`
 }
+
+// ModelProvenanceAttestationRecorded announces that the Gateway persisted the
+// attestation window for one provider attempt. It is an invalidation, not
+// evidence: consumers load the window through the attestation read path.
+type ModelProvenanceAttestationRecorded struct {
+	ProviderAttemptID string `json:"provider_attempt_id"`
+}

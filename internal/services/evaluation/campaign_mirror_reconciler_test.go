@@ -53,7 +53,7 @@ func (blockingCampaignMirrorProbe) DatasetPresent(ctx context.Context, _ string)
 	return false, ctx.Err()
 }
 
-func TestCampaignMirrorReconciler_ReconcileVerifiedQueueReportsProgressAndBoundsEachRun(t *testing.T) {
+func TestCampaignMirrorReconciler_ReconcileAllVerifiedRunsFromStoreReportsProgressAndBoundsEachRun(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		files := newCampaignRuntimeFileService(t)
 		store := NewStore(files)
@@ -61,10 +61,9 @@ func TestCampaignMirrorReconciler_ReconcileVerifiedQueueReportsProgressAndBounds
 		coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
 		reconciler := NewCampaignMirrorReconciler(coordinator, store, blockingCampaignMirrorProbe{})
 		run := completedVerifiedMirrorTestCampaign(t, store)
-		queue := &CampaignQueue{Models: []CampaignQueueModel{{Status: "verified", VerifiedRunID: run.GetRunId()}}}
 		var progress []CampaignMirrorReconcileProgress
 
-		result, err := reconciler.ReconcileVerifiedQueue(context.Background(), queue, time.Millisecond, true, false, func(update CampaignMirrorReconcileProgress) {
+		result, err := reconciler.ReconcileAllVerifiedRunsFromStore(context.Background(), time.Millisecond, true, false, func(update CampaignMirrorReconcileProgress) {
 			progress = append(progress, update)
 		})
 
@@ -94,14 +93,7 @@ func TestCampaignMirrorReconcilerRestoresMissingVerifiedRuns(t *testing.T) {
 
 	exporter.records = nil
 	reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
-	queue := &CampaignQueue{
-		Models: []CampaignQueueModel{{
-			VariantID:     "gemma4-e4b",
-			Status:        "verified",
-			VerifiedRunID: run.GetRunId(),
-		}},
-	}
-	result, err := reconciler.ReconcileVerifiedQueue(context.Background(), queue, time.Minute, true, false, nil)
+	result, err := reconciler.ReconcileAllVerifiedRunsFromStore(context.Background(), time.Minute, true, false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{run.GetRunId()}, result.RestoredRunIDs)
 	assert.Greater(t, len(exporter.records), 0)
@@ -115,13 +107,13 @@ func TestCampaignMirrorReconcilerRestoresMissingVerifiedRuns(t *testing.T) {
 	}
 	require.NoError(t, store.SaveCampaignVerification(context.Background(), run.GetRunId(), legacyReport))
 	exporter.records = nil
-	result, err = reconciler.ReconcileVerifiedQueue(context.Background(), queue, time.Minute, true, false, nil)
+	result, err = reconciler.ReconcileAllVerifiedRunsFromStore(context.Background(), time.Minute, true, false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{run.GetRunId()}, result.RestoredRunIDs)
 	assert.Greater(t, len(exporter.records), 0)
 }
 
-func TestCampaignMirrorReconciler_ReconcileVerifiedQueueForceSkipsPresentDataset(t *testing.T) {
+func TestCampaignMirrorReconciler_ReconcileAllVerifiedRunsFromStoreForceSkipsPresentDataset(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -137,8 +129,7 @@ func TestCampaignMirrorReconciler_ReconcileVerifiedQueueForceSkipsPresentDataset
 	before := len(exporter.records)
 
 	reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
-	queue := &CampaignQueue{Models: []CampaignQueueModel{{Status: "verified", VerifiedRunID: run.GetRunId()}}}
-	result, err := reconciler.ReconcileVerifiedQueue(context.Background(), queue, time.Minute, true, true, nil)
+	result, err := reconciler.ReconcileAllVerifiedRunsFromStore(context.Background(), time.Minute, true, true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{run.GetRunId()}, result.SkippedRunIDs)
 	assert.Empty(t, result.RestoredRunIDs)
@@ -223,76 +214,66 @@ func TestCampaignPublicationCoordinatorResetsIdempotencyWhenMirrorDatasetMissing
 }
 
 func TestCampaignMirrorReconciler_EligibilityUsesCanonicalCampaignState(t *testing.T) {
-	for _, source := range []string{"queue", "store"} {
-		for _, state := range []string{"verified", "unfinished", "unverified", "verification_failed", "corrupt_verification"} {
-			t.Run(source+"/"+state, func(t *testing.T) {
-				ctx := context.Background()
-				files := newCampaignRuntimeFileService(t)
-				store := NewStore(files)
-				run := completedVerifiedMirrorTestCampaign(t, store)
-				runID := run.GetRunId()
-				switch state {
-				case "unfinished":
-					assignments, err := store.ListAssignments(ctx, runID)
-					require.NoError(t, err)
-					assignment := assignments[0]
-					require.NoError(t, files.Remove(ctx, store.layout.assignmentResultPath(runID, assignment.GetAssignmentId())))
-					assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED
-					require.NoError(t, store.SaveAssignment(ctx, assignment))
-				case "unverified":
-					require.NoError(t, files.Remove(ctx, store.layout.campaignVerificationPath(runID)))
-				case "verification_failed":
-					report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL)
-					require.NoError(t, store.SaveCampaignVerification(ctx, runID, report))
-				case "corrupt_verification":
-					require.NoError(t, files.WriteFile(ctx, store.layout.campaignVerificationPath(runID), []byte("invalid"), constants.PermFilePrivate))
-				}
-				exporter := &recordingCampaignFeedExporter{}
-				probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-				coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
-				reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
-				var updates []CampaignMirrorReconcileProgress
-				progress := func(update CampaignMirrorReconcileProgress) { updates = append(updates, update) }
-				var result *CampaignMirrorReconcileResult
-				var err error
-				if source == "queue" {
-					queue := &CampaignQueue{Models: []CampaignQueueModel{{Status: "verified", VerifiedRunID: runID}}}
-					result, err = reconciler.ReconcileVerifiedQueue(ctx, queue, time.Minute, true, true, progress)
-				} else {
-					result, err = reconciler.ReconcileAllVerifiedRunsFromStore(ctx, time.Minute, true, true, progress)
-				}
+	for _, state := range []string{"verified", "unfinished", "unverified", "verification_failed", "corrupt_verification"} {
+		t.Run(state, func(t *testing.T) {
+			ctx := context.Background()
+			files := newCampaignRuntimeFileService(t)
+			store := NewStore(files)
+			run := completedVerifiedMirrorTestCampaign(t, store)
+			runID := run.GetRunId()
+			switch state {
+			case "unfinished":
+				assignments, err := store.ListAssignments(ctx, runID)
 				require.NoError(t, err)
-				require.Len(t, updates, 2)
-				if state == "verified" {
-					assert.Equal(t, []string{runID}, result.RestoredRunIDs)
-					assert.NotEmpty(t, exporter.records)
+				assignment := assignments[0]
+				require.NoError(t, files.Remove(ctx, store.layout.assignmentResultPath(runID, assignment.GetAssignmentId())))
+				assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED
+				require.NoError(t, store.SaveAssignment(ctx, assignment))
+			case "unverified":
+				require.NoError(t, files.Remove(ctx, store.layout.campaignVerificationPath(runID)))
+			case "verification_failed":
+				report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL)
+				require.NoError(t, store.SaveCampaignVerification(ctx, runID, report))
+			case "corrupt_verification":
+				require.NoError(t, files.WriteFile(ctx, store.layout.campaignVerificationPath(runID), []byte("invalid"), constants.PermFilePrivate))
+			}
+			exporter := &recordingCampaignFeedExporter{}
+			probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
+			coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+			reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
+			var updates []CampaignMirrorReconcileProgress
+			progress := func(update CampaignMirrorReconcileProgress) { updates = append(updates, update) }
+			result, err := reconciler.ReconcileAllVerifiedRunsFromStore(ctx, time.Minute, true, true, progress)
+			require.NoError(t, err)
+			require.Len(t, updates, 2)
+			if state == "verified" {
+				assert.Equal(t, []string{runID}, result.RestoredRunIDs)
+				assert.NotEmpty(t, exporter.records)
+			} else {
+				assert.Empty(t, exporter.records, "force must preserve eligibility requirements")
+				assert.Empty(t, result.RestoredRunIDs)
+				if state == "corrupt_verification" {
+					assert.ErrorIs(t, updates[1].Err, constants.ErrEvidenceArtifactMalformed)
+					assert.Contains(t, result.FailedRuns, runID)
 				} else {
-					assert.Empty(t, exporter.records, "force must preserve eligibility requirements")
-					assert.Empty(t, result.RestoredRunIDs)
-					if state == "corrupt_verification" {
-						assert.ErrorIs(t, updates[1].Err, constants.ErrEvidenceArtifactMalformed)
-						assert.Contains(t, result.FailedRuns, runID)
-					} else {
-						assert.Equal(t, []string{runID}, result.IneligibleRunIDs)
-						assert.Empty(t, result.FailedRuns)
-					}
-					_, err := reconciler.ReconcileRun(ctx, runID, true)
-					require.Error(t, err)
-					assert.Empty(t, exporter.records)
+					assert.Equal(t, []string{runID}, result.IneligibleRunIDs)
+					assert.Empty(t, result.FailedRuns)
 				}
-			})
-		}
+				_, err := reconciler.ReconcileRun(ctx, runID, true)
+				require.Error(t, err)
+				assert.Empty(t, exporter.records)
+			}
+		})
 	}
 }
 
-func TestCampaignMirrorReconciler_QueueReportsMissingHostEvidence(t *testing.T) {
+func TestCampaignMirrorReconciler_ReportsMissingHostEvidence(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
 	reconciler := NewCampaignMirrorReconciler(coordinator, store, blockingCampaignMirrorProbe{})
-	queue := &CampaignQueue{Models: []CampaignQueueModel{{Status: "verified", VerifiedRunID: "run-absent"}}}
-	result, err := reconciler.ReconcileVerifiedQueue(context.Background(), queue, time.Minute, true, true, nil)
+	result, err := reconciler.reconcileRuns(context.Background(), []string{"run-absent"}, time.Minute, true, true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"run-absent"}, result.HostAbsentRunIDs)
 	assert.Empty(t, result.FailedRuns)

@@ -29,9 +29,14 @@ const (
 	ModelProvenanceCommandAcknowledgementTimeout    = 10 * time.Second
 	ModelProvenanceAttestationPreflightTimeout      = 5 * time.Minute
 	ModelProvenanceAttestationPreflightClientMargin = 15 * time.Second
-	// Bound storage I/O independently of the command-channel goroutine count.
+	// Bound full blob hashes independently of the command-channel goroutine count.
 	ModelProvenanceHashConcurrency = 2
-	// Strict verification waits on durable completion coverage, never a fixed sleep.
-	ModelProvenanceCompletionTimeout      = 5 * time.Minute
-	ModelProvenanceCompletionPollInterval = 2 * time.Second
+	ModelProvenanceHashBufferBytes = 1 << 20
+	// A blob whose identity changed within this window of its hash start is
+	// re-hashed on next use: coarse filesystem timestamps cannot order the
+	// change against the hash.
+	ModelProvenanceBlobIdentitySettleWindow = time.Second
+	// Strict verification waits on attestation-recorded events for durable
+	// completion coverage, never a fixed sleep or a re-read timer.
+	ModelProvenanceCompletionTimeout = 5 * time.Minute
 )

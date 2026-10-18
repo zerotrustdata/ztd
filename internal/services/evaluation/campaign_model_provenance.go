@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -23,6 +22,11 @@ import (
 // remote gateway when local runtime files are unavailable.
 type ModelProvenanceRemote interface {
 	Load(ctx context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error)
+	// WatchAttestations delivers the provider attempt ID of every window the
+	// Gateway records. connected runs on each (re)connect of the event stream;
+	// recordings before it were not delivered, so the consumer reconciles there.
+	// It returns nil when ctx ends and an error when the stream cannot continue.
+	WatchAttestations(ctx context.Context, connected func(), recorded func(providerAttemptID string)) error
 }
 
 // ModelProvenancePolicy controls whether missing provenance attestations are
@@ -137,60 +141,97 @@ func isModelProvenanceEvidenceNotFound(err error) bool {
 }
 
 // WaitForEvidence captures durable completion windows before strict verification.
-// Only missing windows are retried; malformed evidence and read failures return
-// immediately. The caller owns the deadline for the whole run, not each attempt.
-func (r *CampaignModelProvenanceReader) WaitForEvidence(ctx context.Context, attemptIDs []string, interval time.Duration) error {
-	if r == nil || interval <= 0 {
+// It is driven by the Gateway's attestation-recorded events: each (re)connect
+// of the stream reconciles every pending attempt, and each event captures its
+// attempt. Nothing is re-read on a timer. Malformed evidence and read failures
+// return immediately. The caller owns the deadline for the whole run.
+func (r *CampaignModelProvenanceReader) WaitForEvidence(ctx context.Context, attemptIDs []string) error {
+	if r == nil {
 		return fmt.Errorf("evaluation: wait for model provenance: %w", constants.ErrMissingRequiredField)
 	}
 	pending := make(map[string]struct{}, len(attemptIDs))
 	for _, id := range attemptIDs {
-		if id != "" {
-			pending[id] = struct{}{}
+		if id == "" {
+			continue
 		}
+		_, err := r.local.Load(ctx, id)
+		if err == nil {
+			continue
+		}
+		if !isModelProvenanceEvidenceNotFound(err) {
+			return fmt.Errorf("evaluation: wait for model provenance %s: %w", id, err)
+		}
+		pending[id] = struct{}{}
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	if len(pending) == 0 {
+		return nil
+	}
+	if r.remote == nil {
+		return missingProvenanceError(constants.ErrEvaluationObservationUnavailable, pending)
+	}
+
+	watchCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	connected := make(chan struct{}, 1)
+	recorded := make(chan string)
+	watchDone := make(chan error, 1)
+	go func() {
+		watchDone <- r.remote.WatchAttestations(watchCtx, func() {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}, func(id string) {
+			select {
+			case recorded <- id:
+			case <-watchCtx.Done():
+			}
+		})
+	}()
 	for len(pending) > 0 {
-		for id := range pending {
-			if ctx.Err() != nil {
-				return missingProvenanceError(ctx.Err(), pending)
-			}
-			_, err := r.local.Load(ctx, id)
-			if err == nil {
-				delete(pending, id)
-				continue
-			}
-			if !isModelProvenanceEvidenceNotFound(err) {
-				return fmt.Errorf("evaluation: wait for model provenance %s: %w", id, err)
-			}
-			if r.remote == nil {
-				continue
-			}
-			window, err := r.remote.Load(ctx, id)
-			if err != nil {
-				if ctx.Err() != nil {
-					return missingProvenanceError(ctx.Err(), pending)
-				}
-				if isModelProvenanceEvidenceNotFound(err) {
-					continue
-				}
-				return fmt.Errorf("evaluation: wait for model provenance %s: %w", id, err)
-			}
-			if err := r.local.Save(ctx, window); err != nil {
-				return fmt.Errorf("evaluation: capture model provenance %s: %w", id, err)
-			}
-			delete(pending, id)
-		}
-		if len(pending) == 0 {
-			return nil
-		}
 		select {
 		case <-ctx.Done():
 			return missingProvenanceError(ctx.Err(), pending)
-		case <-ticker.C:
+		case err := <-watchDone:
+			if err == nil {
+				err = constants.ErrSSEStreamClosed
+			}
+			return missingProvenanceError(err, pending)
+		case <-connected:
+			for id := range pending {
+				if err := r.captureRemoteEvidence(ctx, pending, id); err != nil {
+					return err
+				}
+			}
+		case id := <-recorded:
+			if _, ok := pending[id]; ok {
+				if err := r.captureRemoteEvidence(ctx, pending, id); err != nil {
+					return err
+				}
+			}
 		}
 	}
+	return nil
+}
+
+// captureRemoteEvidence persists the Gateway window for one pending attempt
+// and removes it from pending. A window the Gateway has not recorded yet stays
+// pending for its recording event.
+func (r *CampaignModelProvenanceReader) captureRemoteEvidence(ctx context.Context, pending map[string]struct{}, id string) error {
+	window, err := r.remote.Load(ctx, id)
+	if err != nil {
+		if ctx.Err() != nil {
+			return missingProvenanceError(ctx.Err(), pending)
+		}
+		if isModelProvenanceEvidenceNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("evaluation: wait for model provenance %s: %w", id, err)
+	}
+	if err := r.local.Save(ctx, window); err != nil {
+		return fmt.Errorf("evaluation: capture model provenance %s: %w", id, err)
+	}
+	delete(pending, id)
 	return nil
 }
 

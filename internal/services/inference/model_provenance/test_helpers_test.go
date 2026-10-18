@@ -27,8 +27,15 @@ func testAttestationWindow(t *testing.T, providerAttemptID string) *evalv1.Model
 		ObservedModelDigest:        digest,
 		ManifestDigest:             strings.Repeat("b", 64),
 		ManifestVerificationStatus: evalv1.ModelManifestVerificationStatus_MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED,
-		AttestedAtUnixMs:           1_700_000_000_000,
-		DigestMatch:                true,
+		WeightAttestations: []*evalv1.ModelWeightAttestation{{
+			BlobDigest:                strings.Repeat("c", 64),
+			SizeBytes:                 7,
+			MediaType:                 "application/vnd.ollama.image.model",
+			VerificationMode:          evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED,
+			FullHashCompletedAtUnixMs: 1_699_999_999_000,
+		}},
+		AttestedAtUnixMs: 1_700_000_000_000,
+		DigestMatch:      true,
 	}
 	attestationDigest, err := ComputeAttestationDigest(window)
 	require.NoError(t, err)

@@ -115,9 +115,6 @@ var (
 	ErrLedgerSessionNotFound    = errors.New("ledger: no ledger exists for this operator session")
 	ErrLedgerDiffHashesRequired = errors.New("ledger: both commit hashes are required to compute a diff")
 
-	// Ledger status messages
-	LedgerStatusFileDeleted = "file deleted"
-
 	// CLI approval errors
 	ErrKeyReadFailed             = errors.New("failed to read CLI private key")
 	ErrKeyParseFailed            = errors.New("failed to parse private key")
@@ -398,7 +395,6 @@ var (
 	ErrGovernedDocStoreRequired       = errors.New("governed document store is required")
 	ErrConsensusPolicyStoreRequired   = errors.New("consensus policy store is required")
 	ErrFieldReaderRequired            = errors.New("field reader is required")
-	ErrConsensusServiceRequired       = errors.New("consensus service is required for an L2-enforcing posture")
 	ErrPlatformEnrollmentDepsRequired = errors.New("platform enrollment deps are required")
 
 	// Storage errors
@@ -965,7 +961,6 @@ var (
 	ErrTxL2ConsensusNotConfigured      = errors.New("TX_QUORUM_L2_CONSENSUS_MISSING: consensus policy store not configured")
 	ErrTxL2ConsensusSetUnknown         = errors.New("TX_QUORUM_L2_CONSENSUS_SET_UNKNOWN: L2 proof names a consensus set that is unknown or disabled")
 	ErrTxL2DuplicateSigner             = errors.New("TX_QUORUM_L2_DUP_SIGNER: duplicate signer key in vote set with require_distinct")
-	ErrConsensusHashMismatch           = errors.New("CONSENSUS_HASH_MISMATCH: envelope id does not match recomputed transaction hash")
 	ErrConsensusInvalidID              = errors.New("CONSENSUS_INVALID_ID: consensus ID must contain only alphanumeric characters, hyphens, and underscores")
 	ErrConsensusMustBeEnabled          = errors.New("CONSENSUS_MUST_BE_ENABLED: new consensus must be created with enabled=true")
 	ErrConsensusAppNotEnrolled         = errors.New("consensus application must be an enrolled, completed application")
@@ -1089,15 +1084,6 @@ var (
 
 	// Stream errors
 	ErrStreamMarshalEvent = errors.New("failed to marshal stream event")
-
-	// Consensus bootstrap errors
-	ErrConsensusBootstrapMissingFields = errors.New("consensus bootstrap: consensus_id, member_app_ids, and quorum are required")
-	ErrInvalidSeedLength               = errors.New("invalid seed length")
-	ErrConsensusMemberKeyNotFound      = errors.New("no private key for member")
-	ErrConsensusBootstrapParseConfig   = errors.New("consensus bootstrap: parse config")
-	ErrConsensusBootstrapReadConfig    = errors.New("consensus bootstrap: read config")
-	ErrConsensusBootstrapDecodeSeed    = errors.New("consensus bootstrap: decode seed hex")
-	ErrGatewayStoresNil                = errors.New("gateway stores is nil")
 
 	// SSE stream errors
 	ErrSSEStreamClosed = errors.New("SSE stream closed by server")
@@ -1333,6 +1319,8 @@ var (
 	ErrProvenanceOperatorAmbiguous        = errors.New("provenance operator: multiple provenance operator sessions; explicit target required")
 	ErrProvenanceOperatorNotCapable       = errors.New("provenance operator: target operator session is not a provenance operator")
 	ErrModelProvenanceDigestMismatch      = errors.New("model provenance: observed model digest does not match expected digest")
+	ErrModelProvenanceBlobChanged         = errors.New("model provenance: weight blob changed while it was hashed")
+	ErrModelProvenanceBlobIdentity        = errors.New("model provenance: weight blob file identity unavailable")
 	ErrInferenceModelOverrideDenied       = errors.New("inference: model not permitted by the frozen campaign registry")
 	ErrInferenceModelTagInvalid           = errors.New("inference: served model tag is invalid")
 	ErrInferenceOutcomeUnknown            = errors.New("inference: dispatch deadline exceeded; remote provider outcome unknown")

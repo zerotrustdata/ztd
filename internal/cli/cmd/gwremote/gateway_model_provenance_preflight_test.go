@@ -62,19 +62,3 @@ func writeJSONBody(t *testing.T, w http.ResponseWriter, body string) {
 	_, err := w.Write([]byte(body))
 	require.NoError(t, err)
 }
-
-// campaignGatewayHandler answers the delivery preflight as ready and answers
-// attestation probes with the status chosen per served model tag (default ready).
-func campaignGatewayHandler(t *testing.T, statusByTag map[string]string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == provenanceAttestPath {
-			status := "ready"
-			if override, ok := statusByTag[r.URL.Query().Get("served_model_tag")]; ok {
-				status = override
-			}
-			writeJSONBody(t, w, `{"status":"`+status+`"}`)
-			return
-		}
-		writeJSONBody(t, w, `{"status":"ready"}`)
-	}
-}

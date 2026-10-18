@@ -521,7 +521,8 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	}
 	var modelProvenanceCoord *ModelProvenanceObservationCoordinator
 	if provenanceWindowStore, err := model_provenance.NewWindowStore(b.fileSvc); err == nil {
-		modelProvenanceCoord = NewModelProvenanceObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, provenanceWindowStore, logger)
+		attestations := NewModelProvenanceAttestationPublisher(docStore, NewSSEEventPublisher(sseStore, wsHandler), logger)
+		modelProvenanceCoord = NewModelProvenanceObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, provenanceWindowStore, attestations, logger)
 		inferenceDispatchSvc.SetProvenanceObservationNotifier(modelProvenanceCoord)
 	} else {
 		logger.Warn("Model provenance attestation window store unavailable", "error", err)

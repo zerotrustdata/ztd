@@ -20,6 +20,7 @@ import (
 type ProvenanceOperatorStatus struct {
 	OperatorID        string
 	OperatorSessionID string
+	UserID            string
 	Status            string
 	ProvenanceEnabled bool
 	ModelStorageRoot  string
@@ -37,6 +38,7 @@ func ActiveProvenanceOperators(operators []*operatorv1.OperatorDocument) []Prove
 		matches = append(matches, ProvenanceOperatorStatus{
 			OperatorID:        op.Id,
 			OperatorSessionID: op.OperatorSessionId,
+			UserID:            op.GetUserId(),
 			Status:            op.Status,
 			ProvenanceEnabled: true,
 			ModelStorageRoot:  op.RuntimeConfig.ProvenanceOperatorModelStorageRoot,

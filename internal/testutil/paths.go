@@ -115,10 +115,3 @@ func runtimeTestDir(t testing.TB, subdir, prefix string) string {
 	})
 	return dir
 }
-
-// NewTestPathsFromTemp creates a TestPaths instance using TempDir(t) as the base.
-// This is the recommended way to get isolated test paths.
-func NewTestPathsFromTemp(t testing.TB) *TestPaths {
-	t.Helper()
-	return NewTestPaths(TempDir(t))
-}

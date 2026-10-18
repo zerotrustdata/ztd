@@ -59,7 +59,9 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-PROV-ATTEST-01 | Attestation is triggered only when a campaign model has a non-empty served tag and expected model digest. Commands with missing attempt ID, served tag, or expected digest are not sent. |
-| INV-PROV-ATTEST-02 | On FINALIZE, `OllamaStorageAttestor` reads the manifest via `ollama.ParseName`, computes its SHA-256 digest, and hashes every referenced blob under `blobs/sha256-<digest>`. |
+| INV-PROV-ATTEST-02 | On FINALIZE, `OllamaStorageAttestor` reads the manifest via `ollama.ParseName`, computes its SHA-256 digest, and verifies every referenced blob under `blobs/sha256-<digest>` through the attestor's blob verifier. |
+| INV-PROV-ATTEST-06 | A blob is streamed through SHA-256 once per file identity (file ID, size, modification time, change time). A later window re-reads only that identity and records `MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED` with the `full_hash_completed_at_unix_ms` it rests on; a window that hashed records `MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH`. A changed or replaced file is hashed again before reuse, a blob whose identity moved during its hash fails attestation, and a hash is reusable only when the blob's identity predates the hash start by `ModelProvenanceBlobIdentitySettleWindow`. |
+| INV-PROV-ATTEST-07 | Concurrent windows for one blob share a single in-flight hash, and full hashes across blobs are bounded by `ModelProvenanceHashConcurrency`. Hash cost is per blob change, not per scored inference. |
 | INV-PROV-ATTEST-03 | Digest mismatch, missing blob, invalid digest reference, content hash mismatch, or size mismatch fails attestation and prevents publishing a completion window. |
 | INV-PROV-ATTEST-04 | The attestation window records `MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED`. Sigstore, Cosign, and SPIFFE/SPIRE attestation tokens are not implemented. |
 | INV-PROV-ATTEST-05 | A multi-runner tag (Ollama 0.40+) stores a wrapper manifest whose layers include one `application/vnd.docker.distribution.manifest.v2+json` manifest per runner, and the provider reports the served runner manifest's digest. When the expected digest is not the wrapper's own, the attestor attests the referenced runner manifest blob whose digest equals it: the blob's hash is verified and only its config and layers are attested. A digest the wrapper does not reference is a mismatch. |
@@ -70,7 +72,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | --- | --- |
 | INV-PROV-PERSIST-01 | Gateway-local windows are canonical protojson files owned by the Gateway's runtime file service under `.ztd/data/inference/model-provenance/windows/`, keyed by `provider_attempt_id` (1–128 ASCII letters, digits, `-`, `_`, `.`). They hold identifiers, digests, tags, and attestation metadata only (no prompt or model output) and are private runtime evidence, not public spectator data. |
 | INV-PROV-PERSIST-02 | Authenticated owner mTLS clients read windows via `GET /api/v1/inference/model-provenance/attestations/{provider_attempt_id}`, which returns the window wrapped in a `window` field. |
-| INV-PROV-PERSIST-03 | Campaign verification validates the window's `attestation_digest` and checks the expected campaign digest binding. `ztd eval runs verify --require-provenance` enforces strict policy, requiring a valid window and `digest_match=true` for every scored inference. |
+| INV-PROV-PERSIST-03 | Campaign verification validates the window's `attestation_digest`, requires a recognized `verification_mode` and a nonzero `full_hash_completed_at_unix_ms` on every weight attestation, and checks the expected campaign digest binding. `ztd eval runs verify --require-provenance` enforces strict policy, requiring a valid window and `digest_match=true` for every scored inference. |
 | INV-PROV-PERSIST-04 | Missing windows are recorded as unavailable telemetry under interim policy. Strict policy requires a valid window for every scored inference. |
 
 ## Owned surfaces
@@ -118,12 +120,14 @@ Campaign Coordinator (Gateway)
    ├── Computes SHA-256 of manifest file -> compares with expected_digest
    ├── Multi-runner tag: attests the referenced runner manifest named by expected_digest
    ├── Parses config and layer blobs (blobs/sha256-<digest>)
-   └── Opens and streams each blob through SHA-256 hasher -> checks byte size
+   └── Verifies each blob -> checks byte size
+       ├── File identity unchanged since a settled hash -> FILE_IDENTITY_UNCHANGED
+       └── Otherwise streams it through SHA-256 (shared per blob) -> FULL_HASH
                           │
                           ▼
 5. ModelProvenanceAttestationWindow constructed:
    ├── manifest_digest, observed_model_digest, digest_match (boolean)
-   ├── ModelWeightAttestation per blob
+   ├── ModelWeightAttestation per blob (verification_mode, full_hash_completed_at_unix_ms)
    └── attestation_digest (deterministic SHA-256 over canonical window)
                           │
                           ▼
@@ -131,7 +135,7 @@ Campaign Coordinator (Gateway)
 ```
 
 1. **Tag Resolution**: Resolves library models, tagged variants (`smollm3:3b-q4_k_m`), and Hugging Face deep pulls on the local storage filesystem.
-2. **Blob Hashing**: Streams all layer files under `blobs/sha256-<digest>` through SHA-256, verifying byte counts against manifest declarations. Concurrency is limited to 2 simultaneous attestations to prevent I/O starvation.
+2. **Blob Hashing**: Streams each layer file under `blobs/sha256-<digest>` through SHA-256 the first time it is seen and after any change to its file identity, verifying byte counts against manifest declarations. Every other window reuses that hash after confirming the identity is unchanged, so a campaign hashes a multi-gigabyte model once instead of once per scored inference. Concurrent windows for one blob share its in-flight hash, and at most 2 full hashes run at once to prevent I/O starvation.
 3. **Digest Validation**: If any blob hash mismatches or is missing, attestation fails and no completion window is published.
 
 ## Evidence Persistence and Campaign Verification

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 )
 
 // customSuite returns a small valid custom suite carved from the default one.
@@ -165,10 +166,10 @@ func TestDecodeScenarioSuite_RejectsUnknownFieldsAndTrailingContent(t *testing.T
 
 func TestCatalogRecomputesGrades(t *testing.T) {
 	assert.True(t, CatalogRecomputesGrades(nil))
-	assert.True(t, CatalogRecomputesGrades(versioned(DefaultSuiteID, DefaultSuiteVersion)))
-	assert.False(t, CatalogRecomputesGrades(versioned(DefaultSuiteID, "0.9.0")), "an older default-suite version was graded against fixtures this build no longer carries")
-	assert.True(t, CatalogRecomputesGrades(versioned("my-suite", "3.1.4")), "a custom suite grades from its own frozen fixtures at any version")
-	assert.False(t, CatalogRecomputesGrades(versioned(LegacyDefaultSuiteID, "1.0.0")), "campaigns frozen before the suite rename carry the legacy built-in id and were graded against fixtures this build no longer carries")
+	assert.True(t, CatalogRecomputesGrades(&compliancev1.VersionedReference{Id: DefaultSuiteID, Version: DefaultSuiteVersion}))
+	assert.False(t, CatalogRecomputesGrades(&compliancev1.VersionedReference{Id: DefaultSuiteID, Version: "0.9.0"}), "an older default-suite version was graded against fixtures this build no longer carries")
+	assert.True(t, CatalogRecomputesGrades(&compliancev1.VersionedReference{Id: "my-suite", Version: "3.1.4"}), "a custom suite grades from its own frozen fixtures at any version")
+	assert.False(t, CatalogRecomputesGrades(&compliancev1.VersionedReference{Id: LegacyDefaultSuiteID, Version: "1.0.0"}), "campaigns frozen before the suite rename carry the legacy built-in id and were graded against fixtures this build no longer carries")
 }
 
 func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {

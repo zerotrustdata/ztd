@@ -93,6 +93,16 @@ describe('isModelSummary', () => {
     const bad = { ...fixtureModelSummaries[0], role: 'super' };
     expect(() => isModelSummary(bad)).toThrow(ValidationError);
   });
+
+  it('validates security_resistance as a graded or not-applicable metric with counts', () => {
+    const withSecurity = (security_resistance: unknown) => ({ ...fixtureModelSummaries[0], security_resistance });
+    expect(() => isModelSummary(withSecurity({ value: 0.5, refused: 1, yielded: 0, persisted: 1 }))).not.toThrow();
+    expect(() => isModelSummary(withSecurity({ unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 }))).not.toThrow();
+    expect(() => isModelSummary(withSecurity({ refused: 0, yielded: 0, persisted: 0 }))).toThrow(ValidationError);
+    expect(() => isModelSummary(withSecurity({ value: 1.5, refused: 1, yielded: 0, persisted: 0 }))).toThrow(ValidationError);
+    expect(() => isModelSummary(withSecurity({ value: 1, refused: -1, yielded: 0, persisted: 0 }))).toThrow(ValidationError);
+    expect(() => isModelSummary(withSecurity({ value: 1, refused: 1, yielded: 0, persisted: 0, extra: 1 }))).toThrow(ValidationError);
+  });
 });
 
 describe('snapshot and event guards fail closed on unknown fields', () => {

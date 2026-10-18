@@ -73,14 +73,6 @@ func (m *mockProgram) Run() (tea.Model, error) {
 	return m.final, m.runErr
 }
 
-func (m *mockProgram) sentMsgs() []tea.Msg {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	cp := make([]tea.Msg, len(m.msgs))
-	copy(cp, m.msgs)
-	return cp
-}
-
 // routingHandler dispatches to different handlers based on the request path.
 type routingHandler struct {
 	routes map[string]http.HandlerFunc

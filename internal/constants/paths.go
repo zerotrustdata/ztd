@@ -498,7 +498,6 @@ const (
 	TestPathShortVault                    = "/vault"
 	TestPathIdentityFile                  = "/path/to/identity.json"
 	TestPathIdentityFileShort             = "/path/identity.json"
-	TestPathNonexistentConsensus          = "/nonexistent/path/consensus.json"
 	TestPathNonexistentCatalog            = "/nonexistent/path/ksi-catalog.json"
 	TestPathNonexistentOverlayDir         = "/nonexistent/path/overlays"
 	TestCustomComplianceOutDir            = "custom-compliance-out"
@@ -519,11 +518,6 @@ const (
 	ProtocolEventsJSONFilename                       = "events.json"
 	ProtocolEventDashboardClassificationJSONFilename = "event_dashboard_classification.json"
 	ProtocolObserveAPIJSONFilename                   = "observe_api.json"
-)
-
-// Consensus bootstrap config filename for declarative consensus seeding.
-const (
-	ConsensusBootstrapConfigFilename = "consensus-bootstrap.json"
 )
 
 // Operational limits for filesystem, grep, and execution operations.

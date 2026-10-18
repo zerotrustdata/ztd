@@ -8,6 +8,8 @@
 package compliance_test
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -93,8 +95,11 @@ func TestCanonicalFrameworkCatalogResolvesKSIAndOverlayControlReferences(t *test
 	}
 
 	overlayPath := filepath.Join(constants.TestPathRepoRootFromCompliancePackage, constants.DefaultOverlayDirPath, constants.COSAiSOverlaysFilename)
-	overlayCatalog, err := legacycompliance.LoadOverlayCatalog(overlayPath)
+	data, err := os.ReadFile(overlayPath)
 	require.NoError(t, err)
+	var overlayCatalog legacycompliance.OverlayCatalog
+	require.NoError(t, json.Unmarshal(data, &overlayCatalog))
+	require.NoError(t, overlayCatalog.Validate())
 	for _, overlay := range overlayCatalog.Overlays {
 		for _, controlRef := range overlay.ControlRefs {
 			assert.NotNil(t, catalog.FindFrameworkControl(nist, controlRef), "%s references %s", overlay.ID, controlRef)

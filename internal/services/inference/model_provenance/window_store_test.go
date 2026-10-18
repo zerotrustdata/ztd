@@ -46,6 +46,23 @@ func TestValidateAttestationWindow_RejectsDigestMismatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "digest mismatch")
 }
 
+func TestValidateAttestationWindow_RequiresWeightVerificationMode(t *testing.T) {
+	t.Parallel()
+	for name, mutate := range map[string]func(*evalv1.ModelWeightAttestation){
+		"unspecified mode": func(w *evalv1.ModelWeightAttestation) {
+			w.VerificationMode = evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_UNSPECIFIED
+		},
+		"missing hash time": func(w *evalv1.ModelWeightAttestation) { w.FullHashCompletedAtUnixMs = 0 },
+	} {
+		window := testAttestationWindow(t, "attempt-1")
+		mutate(window.GetWeightAttestations()[0])
+		digest, err := ComputeAttestationDigest(window)
+		require.NoError(t, err)
+		window.AttestationDigest = digest
+		require.Error(t, ValidateAttestationWindow(window), name)
+	}
+}
+
 func TestWindowStore_LoadMissingWindow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

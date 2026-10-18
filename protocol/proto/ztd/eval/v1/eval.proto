@@ -683,12 +683,27 @@ message ProviderBoundaryObservationCompleted {
   ProviderBoundaryObservationWindow window = 1;
 }
 
+// ModelWeightVerificationMode reports how the Provenance Operator verified one
+// weight blob for one attestation window.
+enum ModelWeightVerificationMode {
+  MODEL_WEIGHT_VERIFICATION_MODE_UNSPECIFIED = 0;
+  // The blob was streamed through SHA-256 for this window.
+  MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH = 1;
+  // The blob's file identity (file ID, size, modification time, change time)
+  // is unchanged since the full hash that completed at
+  // full_hash_completed_at_unix_ms.
+  MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED = 2;
+}
+
 // ModelWeightAttestation is one content-addressed model weight blob attested
 // by the storage-side Provenance Operator at the model file site.
 message ModelWeightAttestation {
   string blob_digest = 1;
   uint64 size_bytes = 2;
   string media_type = 3;
+  ModelWeightVerificationMode verification_mode = 4;
+  // Completion time of the full SHA-256 hash this attestation rests on.
+  int64 full_hash_completed_at_unix_ms = 5;
 }
 
 // ModelManifestVerificationStatus reports signed-manifest verification outcome.

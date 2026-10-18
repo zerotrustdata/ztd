@@ -99,7 +99,7 @@ func TestVerifyFormationWitnessEvidence_AcceptsMatchingObserverDigest(t *testing
 func testFormationProvenanceWindow(t *testing.T, providerAttemptID, modelDigest string) *evalv1.ModelProvenanceAttestationWindow {
 	t.Helper()
 	window := &evalv1.ModelProvenanceAttestationWindow{
-		SchemaVersion:              "1.0.0",
+		SchemaVersion:              model_provenance.SchemaVersion,
 		ProviderAttemptId:          providerAttemptID,
 		ProvenanceOperatorId:       "formation-test-provenance",
 		ServedModelTag:             "probe-model:7b",

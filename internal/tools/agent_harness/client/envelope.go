@@ -9,7 +9,6 @@ package client
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -39,95 +38,6 @@ const (
 	ProtocolVersion = "2"
 )
 
-// VoterPool is Agent Harness's L2 consensus voter pool: N agents that each
-// vote on a transaction hash. When memberKeys is populated (per-member seed
-// mode), each vote is signed with the member's own Ed25519 private key and
-// the corresponding public key is registered as a trusted signer for that
-// member. When memberKeys is nil (single-key mode), all votes share one
-// signature from the pool key.
-type VoterPool struct {
-	KeyID        string
-	ConsensusID  string
-	MemberKeyIDs []string // when set, Vote produces one vote per member key ID
-	priv         ed25519.PrivateKey
-	pub          ed25519.PublicKey
-	agents       []string
-	memberKeys   map[string]ed25519.PrivateKey // per-member private keys (optional)
-	memberPubs   map[string]ed25519.PublicKey  // per-member public keys (optional)
-}
-
-// MemberPubHex returns the hex-encoded public key for a specific member.
-// Returns empty string if the member is not found or per-member keys are not
-// in use.
-func (e *VoterPool) MemberPubHex(appID string) string {
-	if e.memberPubs == nil {
-		return ""
-	}
-	pub, ok := e.memberPubs[appID]
-	if !ok {
-		return ""
-	}
-	return hex.EncodeToString(pub)
-}
-
-// HasPerMemberKeys returns true when the pool uses distinct per-member
-// keys rather than a single shared key.
-func (e *VoterPool) HasPerMemberKeys() bool {
-	return len(e.memberKeys) > 0
-}
-
-// PubHex is the consensus public key for trusted-signer registration.
-func (e *VoterPool) PubHex() string { return hex.EncodeToString(e.pub) }
-
-// SeedHex returns the hex-encoded Ed25519 seed for persistence (demo bootstrap).
-func (e *VoterPool) SeedHex() string { return hex.EncodeToString(e.priv.Seed()) }
-
-// AgentCount is the number of mock voters in the pool.
-func (e *VoterPool) AgentCount() int { return len(e.agents) }
-
-// Vote produces the L2 metadata for a decision over the transaction hash.
-// decision==true means "the pool agreed this mutation is safe."
-// When per-member keys are in use, each vote is signed with the member's own
-// private key. Otherwise, all votes share the pool's single signature.
-func (e *VoterPool) Vote(txHash string, decision bool) *commonv1.L2Metadata {
-	basis := fmt.Sprintf("%s|%v", txHash, decision) // matches l2_consensus.SignDecision
-
-	var votes []*commonv1.L2Vote
-	if len(e.MemberKeyIDs) > 0 {
-		votes = make([]*commonv1.L2Vote, 0, len(e.MemberKeyIDs))
-		for _, keyID := range e.MemberKeyIDs {
-			var sigHex string
-			if e.memberKeys != nil {
-				if mk, ok := e.memberKeys[keyID]; ok {
-					sig := ed25519.Sign(mk, []byte(basis))
-					sigHex = hex.EncodeToString(sig)
-				}
-			} else {
-				sig := ed25519.Sign(e.priv, []byte(basis))
-				sigHex = hex.EncodeToString(sig)
-			}
-			votes = append(votes, &commonv1.L2Vote{
-				SignerKeyId:        keyID,
-				ConsensusSignature: sigHex,
-				Decision:           decision,
-			})
-		}
-	} else {
-		sig := ed25519.Sign(e.priv, []byte(basis))
-		sigHex := hex.EncodeToString(sig)
-		votes = []*commonv1.L2Vote{{
-			SignerKeyId:        e.KeyID,
-			ConsensusSignature: sigHex,
-			Decision:           decision,
-		}}
-	}
-
-	return &commonv1.L2Metadata{
-		ConsensusSetId: e.ConsensusID,
-		Votes:          votes,
-	}
-}
-
 // MaximalEnvelope is the input for an official governance envelope submission.
 type MaximalEnvelope struct {
 	OperatorID        string
@@ -136,7 +46,6 @@ type MaximalEnvelope struct {
 	ArgumentsJSON     string
 	TargetResource    string
 	StateRoot         string
-	VoterPool         *VoterPool // attach L2 when non-nil
 	TTL               time.Duration
 }
 
@@ -216,17 +125,14 @@ func buildMaximalEnvelope(p Persona, m MaximalEnvelope) (*governance.GovernanceE
 	env.Id = txHash
 	env.TransactionHash = txHash
 
-	// 4. Governance proofs over the hash.
+	// 4. Record doctrine validation; required L2/L3 proofs are verified at ingress.
 	env.Governance = &commonv1.GovernanceMetadata{L1: &commonv1.L1Metadata{Validated: true}}
-	if m.VoterPool != nil {
-		env.Governance.L2 = m.VoterPool.Vote(txHash, true)
-	}
 	return env, txHash, nil
 }
 
 // SubmitMaximal builds a real GovernanceEnvelope wrapping an MCP_CALL, computes the
-// canonical transaction hash with ztd's own hasher, attaches L2 (and optionally
-// mock L3), marshals it as protojson, and POSTs it to the admission API.
+// canonical transaction hash with ztd's own hasher, marshals it as protojson,
+// and POSTs it to the admission API.
 // Returns the computed hash so callers can drive the OOB approve flow.
 func (c *Client) SubmitMaximal(ctx context.Context, p Persona, m MaximalEnvelope) (string, *GovernedOutcome, error) {
 	env, txHash, err := buildMaximalEnvelope(p, m)
