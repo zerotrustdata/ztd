@@ -404,3 +404,16 @@ func TestNormalizeRuntimeExportDir_RejectsAbsoluteAndEscapingPaths(t *testing.T)
 	require.NoError(t, err)
 	assert.Equal(t, "nested/export", got)
 }
+
+func TestNormalizeRuntimeExportDir_RejectsSealedRootsAndDefaultsOutsideThem(t *testing.T) {
+	t.Parallel()
+	for _, dir := range []string{"data/eval", "data/eval/runs/run-1/export", constants.ComplianceBundlesDirname + "/x"} {
+		_, err := normalizeRuntimeExportDir("run-1", dir)
+		assert.ErrorIs(t, err, constants.ErrEvaluationExportDirSealed, dir)
+	}
+	got, err := normalizeRuntimeExportDir("run-1", "")
+	require.NoError(t, err)
+	assert.Equal(t, constants.EvaluationCampaignExportDirname+"/run-1", got)
+	_, sealed := sealedPathAAD(got)
+	assert.False(t, sealed, "the default export directory is outside every sealed root")
+}

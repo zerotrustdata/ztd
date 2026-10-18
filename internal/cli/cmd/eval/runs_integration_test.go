@@ -176,7 +176,7 @@ func TestRunsVerify_RejectsMissingRun(t *testing.T) {
 func TestRunsExport_WritesArtifacts(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
-	outputRelDir := filepath.Join("data", "eval", "runs", "run-a-1", "export")
+	outputRelDir := filepath.Join(constants.EvaluationCampaignExportDirname, "run-a-1")
 
 	out := env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", outputRelDir)
 	assert.Contains(t, out, "run-a-1")
@@ -184,6 +184,15 @@ func TestRunsExport_WritesArtifacts(t *testing.T) {
 	exists, err := env.fileSvc(t).FileExists(context.Background(), filepath.Join(outputRelDir, constants.EvaluationRunSummaryFilename))
 	require.NoError(t, err)
 	assert.True(t, exists)
+}
+
+func TestRunsExport_RejectsSealedOutputDir(t *testing.T) {
+	env := setupRunEnv(t)
+	env.prepareRun(t, "eval-a", "run-a-1")
+
+	_, err := env.run(t, "runs", "export", "run-a-1", "--output-dir", filepath.Join("data", "eval", "runs", "run-a-1", "export"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEvaluationExportDirSealed)
 }
 
 func TestRunsExport_RejectsExternalOutputDir(t *testing.T) {

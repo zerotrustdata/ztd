@@ -539,6 +539,29 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	artifactCount, err := store.ProofArtifactCount(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 2, artifactCount)
+
+	// Export the mirror's signed log, disconnect, and run the documented
+	// offline verifier against the content-addressed publisher artifacts.
+	response, err := http.Get(server.URL + "/proof-segments?source=" + exportConfig.SourceID)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	var exported models.PublicProofSegmentsResponse
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&exported))
+	require.Len(t, exported.Segments, 2)
+	var log bytes.Buffer
+	for _, segment := range exported.Segments {
+		require.NoError(t, json.NewEncoder(&log).Encode(segment))
+	}
+	const exportedLog = "downloaded-proof-segments.jsonl"
+	require.NoError(t, fileSvc.WriteFile(context.Background(), exportedLog, log.Bytes(), constants.PermFilePrivate))
+	server.Close()
+	verify := publicVerifyProofCmd()
+	var output bytes.Buffer
+	verify.SetOut(&output)
+	verify.SetArgs([]string{"--segments", fileSvc.Resolve(exportedLog), "--artifacts", fileSvc.Resolve(constants.PublicProofsDirname), "--public-key", hex.EncodeToString(ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey))})
+	require.NoError(t, verify.Execute())
+	assert.Contains(t, output.String(), "2 segments, 2 active artifacts")
 }
 
 // openTestPublicMirrorStore opens the durable mirror store under fileSvc and

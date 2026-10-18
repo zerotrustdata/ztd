@@ -381,6 +381,59 @@ func TestEvalBackup_RestoreRequiresTheEvidenceFileService(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrEvaluationEvidenceVaultRequired)
 }
 
+// foreignCiphertext is backupRunReportPath sealed under a vault no fixture
+// key chain opens, as a record left behind by a lost vault is.
+func foreignCiphertext(t *testing.T) []byte {
+	t.Helper()
+	return newEvalBackupFixture(t).stored(t, backupRunReportPath)
+}
+
+func TestEvalBackup_CreateRejectsEvidenceTheRuntimeVaultCannotOpen(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	require.NoError(t, f.raw.WriteFile(context.Background(), backupRunReportPath, foreignCiphertext(t), constants.PermFilePrivate))
+
+	_, err := f.backup.Create(context.Background(), f.outRoot)
+
+	require.ErrorIs(t, err, constants.ErrEvaluationEvidenceDecryptFailed)
+	assert.Contains(t, err.Error(), backupRunReportPath)
+	_, err = AllEvalBackupSnapshots(f.outRoot)
+	assert.ErrorIs(t, err, constants.ErrEvaluationBackupNone, "a snapshot never lists a record its key chain cannot open")
+}
+
+func TestEvalBackup_RestoreRejectsEvidenceItsKeyChainCannotOpen(t *testing.T) {
+	f := newEvalBackupFixture(t)
+	report := f.create(t)
+	ctx := context.Background()
+	foreign := foreignCiphertext(t)
+	foreignFile := EvalBackupFile{Path: backupRunReportPath, Size: int64(len(foreign)), SHA256: evalBackupDigest(foreign)}
+	require.NoError(t, storeEvalBackupObject(f.outRoot, foreignFile, foreign))
+	manifestPath := filepath.Join(report.SnapshotDir, constants.EvaluationBackupManifestFilename)
+	raw, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+	var manifest EvalBackupManifest
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	for i := range manifest.Files {
+		if manifest.Files[i].Path == backupRunReportPath {
+			manifest.Files[i] = foreignFile
+		}
+	}
+	raw, err = json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, raw, constants.PermFilePrivate))
+	require.NoError(t, f.raw.Remove(ctx, backupRunReportPath))
+	require.NoError(t, f.raw.Remove(ctx, backupCampaignPath))
+
+	_, err = f.backup.RestoreAll(ctx, f.outRoot, true)
+
+	require.ErrorIs(t, err, constants.ErrEvaluationBackupEvidenceUnopenable)
+	assert.Contains(t, err.Error(), backupRunReportPath)
+	for _, rel := range []string{backupRunReportPath, backupCampaignPath} {
+		exists, err := f.raw.FileExists(ctx, rel)
+		require.NoError(t, err)
+		assert.False(t, exists, "%s: a record the key chain cannot open restores nothing, not even as stored", rel)
+	}
+}
+
 func TestEvalBackup_RestoreIsIdempotent(t *testing.T) {
 	f := newEvalBackupFixture(t)
 	report := f.create(t)

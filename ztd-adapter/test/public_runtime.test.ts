@@ -43,7 +43,7 @@ describe('public spectator runtime boundary', () => {
   });
 
   it('omits credentials on every allowlisted request', async () => {
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('{"protocol_version":"1.0.0"}', {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response('{"protocol_version":"1.0.0"}', {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }));
@@ -53,6 +53,8 @@ describe('public spectator runtime boundary', () => {
     );
 
     await publicFetch('snapshot', '?source=deployment-a');
+    await publicFetch('proofSegments', '?source=deployment-a');
+    expect(fetchImpl).toHaveBeenCalledWith('https://feed.example.com/proof-segments?source=deployment-a', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
 
     expect(fetchImpl).toHaveBeenCalledWith('https://feed.example.com/snapshot?source=deployment-a', expect.objectContaining({
       method: 'GET',

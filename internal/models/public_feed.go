@@ -210,7 +210,7 @@ type PublicProofIngestArtifact struct {
 
 type PublicProofIngestRequest struct {
 	SourceID  string                      `json:"source_id"`
-	Manifest  PublicProofManifest         `json:"manifest,omitempty"`
+	Manifest  PublicProofManifest         `json:"manifest,omitzero"`
 	Segment   *PublicProofManifestSegment `json:"segment,omitempty"`
 	Artifacts []PublicProofIngestArtifact `json:"artifacts,omitempty"`
 }
@@ -227,6 +227,7 @@ type PublicProofIngestResponse struct {
 // PublicProofRootResponse is the mirror's current proof root for one source,
 // served on the private ingest listener at GET /proof-root.
 type PublicProofRootResponse struct {
+	SegmentIndex    int64  `json:"segment_index,omitempty"`
 	SourceID        string `json:"source_id"`
 	ProofRootSHA256 string `json:"proof_root_sha256"`
 	ArtifactCount   int    `json:"artifact_count"`
@@ -285,10 +286,10 @@ type PublicProofCatalogPruneResponse struct {
 	RemainingCount int  `json:"remaining_count"`
 }
 
-// PublicProofMirrorSyncState records the last proof manifest the mirror
-// accepted. Manifests only append between prunes, so while the mirror still
-// holds this root, the entries after ArtifactCount are the ones to push.
+// PublicProofMirrorSyncState checkpoints the last accepted segment. The mirror
+// head remains authoritative when resuming delivery.
 type PublicProofMirrorSyncState struct {
+	SegmentIndex    int64     `json:"segment_index,omitempty"`
 	SchemaVersion   string    `json:"schema_version"`
 	SourceID        string    `json:"source_id"`
 	ProofRootSHA256 string    `json:"proof_root_sha256"`
@@ -340,9 +341,7 @@ type PublicProofCatalogEntry struct {
 
 // PublicProofManifest is the root manifest for a public proof package.
 type PublicProofManifest struct {
-	SchemaVersion string `json:"schema_version"`
-	// SegmentIndex identifies a derived chain projection. Its signature and
-	// root belong to that segment, rather than a legacy full-list manifest.
+	SchemaVersion               string                    `json:"schema_version"`
 	SegmentIndex                int64                     `json:"segment_index,omitempty"`
 	ProofRootSHA256             string                    `json:"proof_root_sha256"`
 	CampaignID                  string                    `json:"campaign_id"`

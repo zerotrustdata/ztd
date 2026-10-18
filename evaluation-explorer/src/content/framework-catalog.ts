@@ -2072,53 +2072,8 @@ export function formationsForVariant(variantId: string): Array<{ formation: Form
 }
 
 export const EVALUATION_FRAMEWORK_VALUES = {
-  schemaVersion: "execution-topologies.v1",
-  verifierContractVersion: "2.0.0",
-  scenarioCount: 27,
-  scenarioCategories: 10,
-  homogeneousRoles: 3,
-  homogeneousCellsPerVariant: 75,
-  registeredVariantsCount: 94,
-  baseCampaignVariantsCount: 75,
   totalFormationsCount: 1005,
-  curatedFormationsCount: 5,
-  heterogeneousFormationsCount: 1000,
   maxVramBudgetMib: 12288,
-  executionOrder: ["lite", "assistant", "primary"] as const,
-  pillars: [
-    {
-      id: "campaigns",
-      kicker: "CAMPAIGNS",
-      title: "Governed Campaign Programs",
-      summary:
-        "Three strict evaluation lanes: L1–L5 Native Conformance, 75-cell Homogeneous Model-Role Campaigns (25 scenarios × 3 roles), and 3-Role System Formation Campaigns.",
-      metric: "3 Lanes · 75 Cells/Run",
-    },
-    {
-      id: "runs",
-      kicker: "RUNS & VERIFICATION",
-      title: "Cryptographic Evidence & Verifier v2.0",
-      summary:
-        "Every assignment emits Ed25519-signed execution receipts and SHA-256 population digests. Non-verdict outcomes (provider, grader, harness) are never conflated with model failures.",
-      metric: "Ed25519 + SHA-256",
-    },
-    {
-      id: "formations",
-      kicker: "FORMATIONS",
-      title: "3-Role Sovereign Execution Topologies",
-      summary:
-        "1,005 validated 3-model stacks (Lite → Assistant → Primary) enforcing distinct model families, sovereign local execution, and a strict 12,288 MiB (12 GiB) combined VRAM ceiling.",
-      metric: "1,005 Stacks · ≤12 GiB VRAM",
-    },
-    {
-      id: "capabilities",
-      kicker: "CAPABILITY GATES",
-      title: "5-Probe Pre-Flight Capability Matrix",
-      summary:
-        "Every registered model is probed for Completion, Tool Calling (probe_echo), Structured JSON, Deliberative Thinking, and Context Window before campaign scheduling.",
-      metric: "5 Governed Probes",
-    },
-  ],
 } as const;
 
 export interface CampaignSummaryGroup {

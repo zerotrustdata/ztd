@@ -130,12 +130,12 @@ test('replaces partial model revisions with verified revisions and keeps scope i
   const requests = await installMirror(page, records);
 
   await page.goto('/evaluations');
-  await expect(page.getByRole('heading', { name: 'Evaluation runs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evaluations', exact: true })).toBeVisible();
   await expect(page.getByTestId('quality-exploratory_verified')).toBeVisible();
   await expect(page.getByTestId('quality-exploratory_verified')).toHaveText('Run-scoped verification passed');
 
   await page.goto('/models');
-  await expect(page.locator(`a[href="/models/${verifiedDataset}/quality-model?role=primary"]`)).toBeVisible();
+  await expect(page.locator(`a.model-link[href="/models/${verifiedDataset}/quality-model?role=primary"]`)).toBeVisible();
   await expect(page.getByTestId('quality-exploratory_verified')).toBeVisible();
   await expect(page.getByTestId('quality-exploratory_verified')).toHaveText('Run-scoped verification passed');
   await expect(page.getByText('Quality Model Assistant')).toBeVisible();
@@ -145,12 +145,12 @@ test('replaces partial model revisions with verified revisions and keeps scope i
   ).toContainText('Not fully verified');
 
   await page.getByLabel('Filter by quality state').selectOption('exploratory_verified');
-  await expect(page.locator(`a[href="/models/${verifiedDataset}/quality-model?role=primary"]`)).toBeVisible();
+  await expect(page.locator(`a.model-link[href="/models/${verifiedDataset}/quality-model?role=primary"]`)).toBeVisible();
   await expect(page.getByRole('link', { name: 'Quality Model Assistant' })).not.toBeVisible();
   await expect(page.getByText('Quality Model Assistant')).not.toBeVisible();
 
   await page.reload();
-  await expect(page.locator(`a[href="/models/${verifiedDataset}/quality-model?role=primary"]`)).toBeVisible();
+  await expect(page.locator(`a.model-link[href="/models/${verifiedDataset}/quality-model?role=primary"]`)).toBeVisible();
   await expect(page.getByTestId('quality-exploratory_verified')).toBeVisible();
   expectPublicOnly(requests);
 });

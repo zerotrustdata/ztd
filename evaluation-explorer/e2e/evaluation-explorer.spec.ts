@@ -168,7 +168,7 @@ test('reconstructs native evaluations from public mirror history', async ({ page
   });
 
   await page.goto('/evaluations');
-  await expect(page.getByRole('heading', { name: 'Evaluation runs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evaluations', exact: true })).toBeVisible();
   for (const runId of runIds) await expect(page.getByRole('link', { name: runId })).toBeVisible();
   await expect.poll(() => mirrorResponses.some((url) => url.endsWith('/bootstrap'))).toBe(true);
   await expect.poll(() => mirrorResponses.some((url) => url.includes('/history?'))).toBe(true);
@@ -351,6 +351,7 @@ test('Evals tables keep sortable detail columns at desktop and mobile widths', a
   ];
   await installMirror(page, records);
   await page.goto('/evaluations?release=all');
+  await page.getByRole('tab', { name: /Campaigns/ }).click();
   const campaigns = page.getByRole('table', { name: 'Campaigns', exact: true });
   await expect(campaigns.locator('tbody tr')).toHaveCount(2);
   await campaigns.getByRole('button', { name: 'Sort by Campaign', exact: true }).click();
@@ -358,35 +359,33 @@ test('Evals tables keep sortable detail columns at desktop and mobile widths', a
   await campaigns.getByRole('button', { name: 'Sort by Campaign', exact: true }).click();
   await expect(campaigns.locator('tbody tr').first()).toContainText('Beta campaign');
   await expect(campaigns.getByRole('columnheader', { name: /Campaign/ })).toHaveAttribute('aria-sort', 'descending');
-  const campaignPanel = page.getByRole('region', { name: 'Campaigns', exact: true });
-  await campaignPanel.getByRole('button', { name: /Columns/ }).click();
-  await campaignPanel.getByRole('checkbox', { name: 'Arm', exact: true }).uncheck();
-  await expect(campaigns.getByRole('columnheader', { name: 'Arm', exact: true })).toHaveCount(0);
-  await campaignPanel.getByRole('checkbox', { name: 'Arm', exact: true }).check();
-  await campaignPanel.getByRole('button', { name: /Columns/ }).click();
 
   for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
-    await expect(campaigns).toBeVisible();
+    await page.getByRole('tab', { name: /Runs/ }).click();
     await expect(page.getByRole('table', { name: 'Model campaigns', exact: true })).toBeVisible();
-    const formations = page.getByRole('table', { name: 'Execution formations', exact: true });
-    await expect(formations).toBeVisible();
+    await page.getByRole('tab', { name: /Campaigns/ }).click();
+    await expect(campaigns).toBeVisible();
     await expect(page.locator('.campaign-cards-grid, .formations-grid, .data-card-list')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    const scrollArea = campaigns.locator('..');
-    await scrollArea.evaluate((element) => { element.scrollLeft = 0; });
-    await scrollArea.focus();
-    await page.keyboard.press('ArrowRight');
-    await expect.poll(() => scrollArea.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    if (viewport.width < 960) {
+      const scrollArea = campaigns.locator('..');
+      await scrollArea.evaluate((element) => { element.scrollLeft = 0; });
+      await scrollArea.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => scrollArea.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    }
     await page.getByRole('tab', { name: /Formations/ }).click();
+    const formations = page.getByRole('table', { name: 'Execution formations', exact: true });
+    await expect(formations).toBeVisible();
     await page.getByRole('searchbox', { name: 'Search formations' }).fill('Qwen Powerhouse');
     await expect(formations.locator('tbody tr')).toHaveCount(1);
     await expect(formations.locator('tbody a')).toHaveCount(3);
     await page.getByRole('searchbox', { name: 'Search formations' }).fill('');
     await formations.getByRole('button', { name: 'Sort by Total VRAM', exact: true }).click();
     await expect(formations.getByRole('columnheader', { name: /Total VRAM/ })).toHaveAttribute('aria-sort', /ascending|descending/);
-    await page.getByRole('tab', { name: 'All Framework Views', exact: true }).click();
   }
+  await page.getByRole('tab', { name: /Runs/ }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.evaluations-view .data-table-wrap').evaluateAll((elements) => elements.forEach((element) => { element.scrollLeft = 0; }));
   await page.evaluate(() => window.scrollTo(0, 0));

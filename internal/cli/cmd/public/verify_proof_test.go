@@ -425,4 +425,3 @@ func TestVerifyProofCmd_ValidatesKeyRegistryWithRotation(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, out.String(), "Proof package verified (2 segments, 2 active artifacts")
 }
-

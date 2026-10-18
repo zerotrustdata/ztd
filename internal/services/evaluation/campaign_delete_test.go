@@ -105,7 +105,7 @@ func TestDeleterDeleteRunDiscardsPublicationAndRemovesRun(t *testing.T) {
 
 	report, err := f.deleter(t, false, publication).DeleteRun(ctx, "run-a")
 	require.NoError(t, err)
-	assert.Equal(t, f.req.CampaignID, report.CampaignID)
+	assert.Empty(t, report.CampaignID)
 	assert.Equal(t, []string{"run-a"}, report.RunIDs)
 	assert.False(t, report.BackupsOnly)
 	assert.Equal(t, []string{"run-a"}, publication.discarded)
@@ -114,6 +114,22 @@ func TestDeleterDeleteRunDiscardsPublicationAndRemovesRun(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrNotFound)
 	_, _, err = LocateRun(ctx, f.files, "run-b")
 	require.NoError(t, err)
+}
+
+func TestDeleterDeleteRunRemovesRunWhoseEvidenceNoLongerAuthenticates(t *testing.T) {
+	f := newArchiveFixture(t)
+	ctx := context.Background()
+	require.NoError(t, SealedFiles(f.files).WriteFile(ctx, activeEvalLayout().runStatePath("run-a"), foreignCiphertext(t), constants.PermFilePrivate))
+	_, err := f.store.LoadRun(ctx, "run-a")
+	require.ErrorIs(t, err, constants.ErrEvaluationEvidenceDecryptFailed)
+	publication := newRecordingPublicationStateStore()
+
+	_, err = f.deleter(t, false, publication).DeleteRun(ctx, "run-a")
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"run-a"}, publication.discarded)
+	_, _, err = LocateRun(ctx, f.files, "run-a")
+	require.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestDeleterDeleteRunRemovesArchivedRun(t *testing.T) {

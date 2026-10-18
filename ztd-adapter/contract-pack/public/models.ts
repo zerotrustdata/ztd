@@ -70,6 +70,7 @@ export interface PublicFeedCursorPage {
 
 export interface PublicProofManifest {
   schema_version: string;
+  segment_index?: number;
   proof_root_sha256: string;
   campaign_id: string;
   campaign_revision: string;
@@ -81,6 +82,30 @@ export interface PublicProofManifest {
   generated_at: string;
   signing_key_id: string;
   signature: string;
+}
+
+export interface PublicProofManifestSegment {
+  schema_version: string;
+  source_id: string;
+  segment_index: number;
+  previous_root: string;
+  campaign_id?: string;
+  campaign_revision?: string;
+  verified_index_generation_hash?: string;
+  verification_ok: boolean;
+  entries?: PublicProofCatalogEntry[];
+  withdrawn_artifact_ids?: String[];
+  generated_at: string;
+  signing_key_id: string;
+  proof_root_sha256: string;
+  signature: string;
+  verifier_instructions?: string;
+}
+
+export interface PublicProofSegmentsResponse {
+  schema_version: string;
+  source_id: string;
+  segments: PublicProofManifestSegment[];
 }
 
 export interface PublicProofCatalogEntry {
@@ -178,6 +203,7 @@ export function isPublicProofManifest(value: unknown): value is PublicProofManif
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   if (!(typeof v.schema_version === 'string')) return false; /* schema_version */
+  if (v.segment_index !== undefined && !(typeof v.segment_index === 'number' && Number.isInteger(v.segment_index))) return false; /* segment_index */
   if (!(typeof v.proof_root_sha256 === 'string')) return false; /* proof_root_sha256 */
   if (!(typeof v.campaign_id === 'string')) return false; /* campaign_id */
   if (!(typeof v.campaign_revision === 'string')) return false; /* campaign_revision */
@@ -189,6 +215,36 @@ export function isPublicProofManifest(value: unknown): value is PublicProofManif
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
   if (!(typeof v.signing_key_id === 'string')) return false; /* signing_key_id */
   if (!(typeof v.signature === 'string')) return false; /* signature */
+  return true;
+}
+
+export function isPublicProofManifestSegment(value: unknown): value is PublicProofManifestSegment {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.schema_version === 'string')) return false; /* schema_version */
+  if (!(typeof v.source_id === 'string')) return false; /* source_id */
+  if (!(typeof v.segment_index === 'number' && Number.isInteger(v.segment_index))) return false; /* segment_index */
+  if (!(typeof v.previous_root === 'string')) return false; /* previous_root */
+  if (v.campaign_id !== undefined && !(typeof v.campaign_id === 'string')) return false; /* campaign_id */
+  if (v.campaign_revision !== undefined && !(typeof v.campaign_revision === 'string')) return false; /* campaign_revision */
+  if (v.verified_index_generation_hash !== undefined && !(typeof v.verified_index_generation_hash === 'string')) return false; /* verified_index_generation_hash */
+  if (!(typeof v.verification_ok === 'boolean')) return false; /* verification_ok */
+  if (v.entries !== undefined && !(Array.isArray(v.entries) && v.entries.every((x) => isPublicProofCatalogEntry(x)))) return false; /* entries */
+  if (v.withdrawn_artifact_ids !== undefined && !(Array.isArray(v.withdrawn_artifact_ids) && v.withdrawn_artifact_ids.every((x) => typeof x === 'string'))) return false; /* withdrawn_artifact_ids */
+  if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
+  if (!(typeof v.signing_key_id === 'string')) return false; /* signing_key_id */
+  if (!(typeof v.proof_root_sha256 === 'string')) return false; /* proof_root_sha256 */
+  if (!(typeof v.signature === 'string')) return false; /* signature */
+  if (v.verifier_instructions !== undefined && !(typeof v.verifier_instructions === 'string')) return false; /* verifier_instructions */
+  return true;
+}
+
+export function isPublicProofSegmentsResponse(value: unknown): value is PublicProofSegmentsResponse {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.schema_version === 'string')) return false; /* schema_version */
+  if (!(typeof v.source_id === 'string')) return false; /* source_id */
+  if (!(Array.isArray(v.segments) && v.segments.every((x) => isPublicProofManifestSegment(x)))) return false; /* segments */
   return true;
 }
 

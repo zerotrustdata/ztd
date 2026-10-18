@@ -209,7 +209,7 @@ func TestRunsArchive_ArchivedRunsStayReadable(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "an incomplete archived run is still verifiable, and reports as incomplete")
 
-	env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", "data/eval/exports/run-a-1")
+	env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", "export/run-a-1")
 
 	var compared runCompareJSON
 	require.NoError(t, env.runJSON(t, &compared, "runs", "compare", "run-a-1", "run-a-2"))

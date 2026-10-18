@@ -1632,6 +1632,7 @@ func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Requ
 	}
 	m.writeJSON(w, http.StatusOK, models.PublicProofRootResponse{
 		SourceID:        sourceID,
+		SegmentIndex:    summary.SegmentIndex,
 		ProofRootSHA256: summary.ProofRootSHA256,
 		ArtifactCount:   summary.ArtifactCount,
 	})

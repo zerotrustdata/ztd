@@ -49,30 +49,33 @@ describe('EvaluationsView', () => {
     );
   });
 
-  it('renders evaluation framework values, campaigns, and 3-role execution formations', () => {
+  it('shows one section at a time: runs by default, then campaigns and formations tabs', () => {
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
         <EvaluationsView />
       </MemoryRouter>,
     );
 
-    const valuesBanner = within(screen.getByRole('region', { name: 'Evaluation framework values' }));
-    expect(valuesBanner.getByText('Governed Campaign Programs')).toBeInTheDocument();
-    expect(valuesBanner.getByText('Cryptographic Evidence & Verifier v2.0')).toBeInTheDocument();
-    expect(valuesBanner.getByText('3-Role Sovereign Execution Topologies')).toBeInTheDocument();
-    expect(valuesBanner.getByText('execution-topologies.v1')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Runs (2)' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('table', { name: 'Model campaigns' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Campaigns' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Formations' })).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('tab', { name: /Campaigns/ }));
     const campaignsPanel = within(screen.getByRole('region', { name: 'Campaigns' }));
     expect(campaignsPanel.getByText('Genesis Homogeneous Model-Role Campaign')).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Model campaigns' })).not.toBeInTheDocument();
 
-    const formationsPanel = within(screen.getByRole('region', { name: 'Formations — 3-role execution topologies' }));
+    fireEvent.click(screen.getByRole('tab', { name: /Formations/ }));
+    const formationsPanel = within(screen.getByRole('region', { name: 'Formations' }));
     expect(formationsPanel.getByText('Qwen Powerhouse')).toBeInTheDocument();
     expect(formationsPanel.getByText('DeepSeek Reasoning Tower')).toBeInTheDocument();
     expect(formationsPanel.getByText('Gemma Cascade')).toBeInTheDocument();
     expect(formationsPanel.getByText('Llama Meta Stack')).toBeInTheDocument();
     expect(formationsPanel.getByText('Ultra-Efficient Speedster')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Filter by status' })).not.toBeInTheDocument();
 
-    fireEvent.click(formationsPanel.getByRole('button', { name: /Curated reference stacks/i }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter formations by kind' }), { target: { value: 'curated' } });
     expect(formationsPanel.getByTestId('formation-qwen-powerhouse')).toBeInTheDocument();
     expect(formationsPanel.queryByTestId('formation-heterogeneous-0000')).not.toBeInTheDocument();
   });
@@ -84,7 +87,7 @@ describe('EvaluationsView', () => {
       { ...evaluation('ds-beta', 'run-beta', '2026-10-06T12:00:00Z'), campaign_id: 'Beta', assignment_total: 10,
         assignment_completed: 2, headline_metrics: { pass_rate: { value: 0.8 } } },
     ] as EvaluationSummary[], []);
-    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/?release=all&view=campaigns']}><EvaluationsView /></MemoryRouter>);
     const table = screen.getByRole('table', { name: 'Campaigns' });
     const campaignOrder = () => within(table).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent);
     fireEvent.click(within(table).getByRole('button', { name: 'Sort by Campaign' }));
@@ -96,21 +99,25 @@ describe('EvaluationsView', () => {
     const progressSort = within(table).getByRole('columnheader', { name: /Progress/ }).getAttribute('aria-sort');
     expect(campaignOrder()).toEqual(progressSort === 'ascending' ? ['Beta', 'Alpha'] : ['Alpha', 'Beta']);
     expect(within(table).getByRole('link', { name: 'Alpha' })).toHaveAttribute('href', '/evaluations/ds-alpha/run-alpha');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), { target: { value: 'completed' } });
+    expect(screen.queryByRole('table', { name: 'Campaigns' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), { target: { value: 'all' } });
 
+    fireEvent.click(screen.getByRole('tab', { name: /Runs/ }));
     const runs = screen.getByRole('table', { name: 'Model campaigns' });
     fireEvent.click(within(runs).getByRole('button', { name: 'Sort by Pass rate' }));
     const passRateSort = within(runs).getByRole('columnheader', { name: /Pass rate/ }).getAttribute('aria-sort');
     const runOrder = within(runs).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent);
     expect(runOrder).toEqual(passRateSort === 'ascending' ? ['run-beta', 'run-alpha'] : ['run-alpha', 'run-beta']);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), { target: { value: 'completed' } });
-    expect(screen.queryByRole('table', { name: 'Campaigns' })).not.toBeInTheDocument();
   });
 
   it('sorts formations by numeric VRAM, searches models, and keeps tables on mobile', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
-    expect(screen.getByRole('table', { name: 'Campaigns' })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Model campaigns' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Campaigns/ }));
+    expect(screen.getByRole('table', { name: 'Campaigns' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Formations/ }));
     const table = screen.getByRole('table', { name: 'Execution formations' });
     fireEvent.click(within(table).getByRole('button', { name: 'Sort by Total VRAM' }));
     const direction = within(table).getByRole('columnheader', { name: /Total VRAM/ }).getAttribute('aria-sort');
@@ -119,8 +126,6 @@ describe('EvaluationsView', () => {
     expect(ids).toEqual(expected.map((formation) => `formation-${formation.id}`));
     const qwen = within(table).getByTestId('formation-qwen-powerhouse').closest('tr')!;
     expect(within(qwen).getAllByRole('link')).toHaveLength(3);
-    expect(qwen).toHaveTextContent('Weights');
-    expect(qwen).toHaveTextContent('KV');
     expect(qwen).toHaveTextContent('MiB');
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'Qwen Powerhouse' } });
     expect(within(table).getAllByRole('row')).toHaveLength(2);
@@ -135,11 +140,10 @@ describe('EvaluationsView', () => {
       native_result: { active_posture: 'doctrine', lane: 'platform', summary_status: 'invalid_evidence', summary: 'Invalid evidence', required_verdict_count: 2, passed_verdict_count: 1, verification_valid: false, verification_failure_count: 1, scenarios: [], metrics: [] } };
     evalStore.loadFixtures([campaign, native], []);
     render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
-    expect(screen.getByTestId('stat-runs')).toHaveTextContent('2');
+    expect(screen.getByRole('tab', { name: 'Runs (2)' })).toBeInTheDocument();
     expect(screen.getByTestId('stat-assignments')).toHaveTextContent('77');
     expect(screen.getByTestId('stat-verifier-passed')).toHaveTextContent('1');
     expect(screen.getByTestId('stat-verifier-failed')).toHaveTextContent('1');
-    expect(screen.getByTestId('stat-conformance-runs')).toHaveTextContent('1');
     const conformance = within(screen.getByRole('region', { name: 'Governance conformance' }));
     expect(conformance.getByText('invalid_evidence')).toHaveAttribute('data-tone', 'warn');
     expect(conformance.getByText('1/2 verdicts passed')).toBeInTheDocument();
@@ -147,10 +151,10 @@ describe('EvaluationsView', () => {
     const campaigns = within(screen.getByRole('region', { name: 'Model campaigns' }));
     expect(campaigns.getByTitle('Digest mismatch')).toHaveAttribute('data-tone', 'critical');
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), { target: { value: 'stopped' } });
-    expect(screen.getByText(/Active filters:.*status stopped/)).toBeInTheDocument();
-    expect(screen.getByTestId('stat-runs')).toHaveTextContent('0');
+    expect(screen.getByRole('tab', { name: 'Runs (0)' })).toBeInTheDocument();
+    expect(screen.queryByTestId('stat-assignments')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('link', { name: 'Reset filters' }));
-    expect(screen.getByTestId('stat-runs')).toHaveTextContent('2');
+    expect(screen.getByRole('tab', { name: 'Runs (2)' })).toBeInTheDocument();
   });
 
   it('only lists quality filter options that exist in the current runs', () => {

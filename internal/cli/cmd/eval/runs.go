@@ -362,7 +362,7 @@ func runsExportCmd(deps nativeEvalDeps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&outputDir, "output-dir", "", "Runtime-relative directory to write the export into")
+	cmd.Flags().StringVar(&outputDir, "output-dir", "", "Runtime-relative directory to write the export into, outside data/eval and reports (default export/<run>)")
 	_ = cmd.MarkFlagRequired("output-dir")
 	return cmd
 }

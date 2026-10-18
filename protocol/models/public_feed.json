@@ -100,9 +100,10 @@
   },
 
   "public_proof_manifest": {
-    "_description": "Root manifest for a public proof package. Binds the proof root SHA-256, campaign identity, verified index generation hash, artifact count, artifact catalog, verifier instructions, and generation time. A network-disabled verifier reproduces the root from the manifest and the listed artifacts.",
+    "_description": "Public proof manifest or derived active view. With nonzero segment_index, its root and signature belong to that signed segment; offline verification requires the segment log. Index zero denotes a legacy full-list manifest.",
     "schema_version": {"type": "string", "required": true, "description": "Proof manifest schema version"},
-    "proof_root_sha256": {"type": "string", "required": true, "description": "SHA-256 over the canonical encoding of all artifact hashes and manifest metadata (64-char hex)"},
+    "segment_index": {"type": "integer", "required": false, "description": "Nonzero for a derived segment-chain projection; verify its root and signature using the signed segment log"},
+    "proof_root_sha256": {"type": "string", "required": true, "description": "Signed segment root for a chain projection, or legacy full-manifest root (64-char hex)"},
     "campaign_id": {"type": "string", "required": true, "description": "Campaign identity from the campaign manifest"},
     "campaign_revision": {"type": "string", "required": true, "description": "Campaign revision from the frozen profile hash"},
     "verified_index_generation_hash": {"type": "string", "required": true, "description": "SHA-256 of the verified index generation's content hash (64-char hex)"},
@@ -113,6 +114,32 @@
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the proof package was generated"},
     "signing_key_id": {"type": "string", "required": true, "description": "Identifier of the signing key used to sign the proof root"},
     "signature": {"type": "string", "required": true, "description": "Ed25519 signature over the proof root SHA-256, hex-encoded"}
+  },
+
+  "public_proof_manifest_segment": {
+    "_description": "One source-signed append-only proof log link. The root binds every field except root and signature using the domain-separated length-prefixed encoding defined by models.ComputePublicProofSegmentRoot.",
+    "schema_version": {"type": "string", "required": true, "description": "Signed segment schema version"},
+    "source_id": {"type": "string", "required": true, "description": "Pseudonymous source deployment identifier"},
+    "segment_index": {"type": "integer", "required": true, "description": "Consecutive chain position starting at one"},
+    "previous_root": {"type": "string", "required": true, "description": "Preceding segment root, or zero SHA-256 for genesis"},
+    "campaign_id": {"type": "string", "required": false},
+    "campaign_revision": {"type": "string", "required": false},
+    "verified_index_generation_hash": {"type": "string", "required": false},
+    "verification_ok": {"type": "boolean", "required": true},
+    "entries": {"type": "array", "items": "public_proof_catalog_entry", "required": false, "description": "New artifacts introduced by this segment only"},
+    "withdrawn_artifact_ids": {"type": "array", "items": "string", "required": false, "description": "Previously active content IDs withdrawn by this segment"},
+    "generated_at": {"type": "string", "format": "iso8601", "required": true},
+    "signing_key_id": {"type": "string", "required": true},
+    "proof_root_sha256": {"type": "string", "required": true},
+    "signature": {"type": "string", "required": true},
+    "verifier_instructions": {"type": "string", "required": false}
+  },
+
+  "public_proof_segments_response": {
+    "_description": "The signed proof log for one source, served by anonymous GET /proof-segments.",
+    "schema_version": {"type": "string", "required": true},
+    "source_id": {"type": "string", "required": true},
+    "segments": {"type": "array", "items": "public_proof_manifest_segment", "required": true}
   },
 
   "public_proof_catalog_entry": {
