@@ -879,11 +879,16 @@ const (
 	PublicFeedArchiveDirname            = "public-feed-archive"
 	PublicFeedArchiveGenerationsDirname = "public-feed-archive/generations"
 	PublicMirrorDirname                 = "public-mirror"
-	PublicMirrorStatePath               = "public-mirror/state.json"
-	PublicProofsDirname                 = "public-proofs"
-	PublicProofCatalogFilename          = "proof-catalog.json"
-	PublicProofManifestFilename         = "proof-manifest.json"
-	PublicProofMirrorSyncFilename       = "proof-mirror-sync.json"
+	PublicMirrorDBPath                  = "public-mirror/mirror.db"
+	PublicMirrorImportDBPath            = "public-mirror/mirror-import.db"
+	PublicMirrorProofsDir               = "public-mirror/proofs"
+	// PublicMirrorStatePath is the legacy JSON mirror store, read only by the
+	// one-time import into PublicMirrorDBPath. Remove after v1.1.3.
+	PublicMirrorStatePath         = "public-mirror/state.json"
+	PublicProofsDirname           = "public-proofs"
+	PublicProofCatalogFilename    = "proof-catalog.json"
+	PublicProofManifestFilename   = "proof-manifest.json"
+	PublicProofMirrorSyncFilename = "proof-mirror-sync.json"
 )
 
 // Public feed schema and protocol version constants.

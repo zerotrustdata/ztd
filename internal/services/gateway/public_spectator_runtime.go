@@ -62,6 +62,7 @@ type PublicSpectatorRuntime struct {
 	logger    *slog.Logger
 	publisher *PublicPublisherService
 	mirror    *PublicMirrorServer
+	store     *PublicMirrorStore
 
 	privateServer  *http.Server
 	publicServer   *http.Server
@@ -147,7 +148,17 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 		return fmt.Errorf("public spectator: %w", err)
 	}
 
-	mirror, err := NewPublicMirrorServer(runtime.logger, NewRuntimePublicMirrorStore(runtime.fileSvc), PublicMirrorConfig{
+	store, err := OpenPublicMirrorStore(ctx, runtime.fileSvc, runtime.logger)
+	if err != nil {
+		return fmt.Errorf("public spectator: %w", err)
+	}
+	started := false
+	defer func() {
+		if !started {
+			_ = store.Close()
+		}
+	}()
+	mirror, err := NewPublicMirrorServer(runtime.logger, store, PublicMirrorConfig{
 		TrustedProxyCIDRs: runtime.cfg.TrustedProxyCIDRs,
 	})
 	if err != nil {
@@ -224,7 +235,9 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 		}()
 	}
 
+	started = true
 	runtime.mu.Lock()
+	runtime.store = store
 	runtime.running = true
 	runtime.mu.Unlock()
 
@@ -265,19 +278,31 @@ func (runtime *PublicSpectatorRuntime) Stop(ctx context.Context) error {
 		return nil
 	}
 	runtime.running = false
+	store := runtime.store
+	runtime.store = nil
 	runtime.mu.Unlock()
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+	// Ending open SSE streams lets Shutdown drain instead of waiting them out.
+	if runtime.mirror != nil {
+		runtime.mirror.CloseAllSubscribers()
+	}
+	var errs []error
 	for _, server := range []*http.Server{runtime.privateServer, runtime.publicServer, runtime.explorerServer} {
 		if server == nil {
 			continue
 		}
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("public spectator: shutdown %s: %w", server.Addr, err)
+			errs = append(errs, fmt.Errorf("public spectator: shutdown %s: %w", server.Addr, err))
 		}
 	}
-	return nil
+	if store != nil {
+		if err := store.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("public spectator: close mirror store: %w", err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Running reports whether the spectator listeners were started.

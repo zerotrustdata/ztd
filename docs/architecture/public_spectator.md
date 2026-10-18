@@ -7,6 +7,7 @@ version: v1.1.1
 last_updated: 2026-10-15
 owners:
   - internal/services/gateway/public_mirror.go
+  - internal/services/gateway/public_mirror_store.go
   - internal/services/publicdisclosure/
   - internal/cli/cmd/public/
   - docs/architecture/
@@ -82,7 +83,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | Claim | Path | Verify |
 | --- | --- | --- |
-| Public mirror state storage | `public-mirror/state.json` | Validates against `PublicMirrorStoreState` schema |
+| Public mirror durable store | `public-mirror/mirror.db`, `public-mirror/proofs/<artifact-id>` (`internal/services/gateway/public_mirror_store.go`) | `./ztd test integration --pkg ./internal/services/gateway --run 'TestMirror\|TestPublicMirrorStore'` |
 | Public feed configuration | `public-feed/` | Key, token, snapshot persist with 0700/0600 permissions |
 | Public publisher commands | `internal/cli/cmd/public/` | `./ztd public status`, `./ztd public publish --help` |
 | Disclosure validation | `internal/services/publicdisclosure/validator.go` | `./ztd test unit --pkg ./internal/services/publicdisclosure` |
@@ -201,6 +202,15 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 - **Batches**: Retains up to 25,000 batches by default.
 - **Proof Artifacts**: Content-addressed storage persists indefinitely until explicit operator cleanup.
 - **Publisher Outbox**: Unacknowledged batches persist until acknowledged by the mirror.
+
+### Durable Mirror Store
+
+The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `internal/services/gateway/db/public_mirror_schema.sql`) owned by `PublicMirrorStore`. Proof artifact bytes are stored as content-addressed files under `public-mirror/proofs/<sha256>`; the database holds only artifact metadata and proof manifests.
+
+- **Incremental writes**: Each accepted batch, key registration, revocation, withdrawal, and proof ingest is one SQLite transaction. Retention pruning of the oldest batches and their records runs inside the same transaction as the append, so the retained window and chain anchor (`retained_from_sequence`, `retained_previous_batch_hash`) never diverge from the stored rows.
+- **Verified on open**: Every open re-verifies the retained chain (contiguous sequences, `previous_batch_hash` links, `content_hash` recomputation, Ed25519 signatures against the key registry, record hashes against stored record bytes), each proof manifest's root and entries, and each stored artifact file's SHA-256. Any mismatch fails startup with `ErrPublicFeedMirrorStoreCorrupt`.
+- **Proof ingest**: `POST /proof-ingest` carries the manifest and only the artifacts the mirror does not already hold. The manifest is the sole artifact list; `GET /proof-catalog` is derived from it. A new manifest entry whose artifact is neither in the request nor stored is rejected.
+- **Legacy import**: A Gateway upgraded from the JSON store imports `public-mirror/state.json` once at open. The import builds `public-mirror/mirror-import.db`, verifies it with the same open-time checks, renames it to `mirror.db`, and only then removes `state.json`; a failed import leaves `state.json` untouched. If both `state.json` and `mirror.db` exist, open fails with `ErrPublicFeedMirrorLegacyStateConflict`. The import is removed after v1.1.3.
 
 ## Relationship to Platform Architecture
 

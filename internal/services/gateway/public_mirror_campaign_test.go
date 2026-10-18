@@ -39,7 +39,7 @@ func TestMirrorWithdrawCampaignDatasetHidesHistoryAndBootstrap(t *testing.T) {
 	_, response := env.sendIngest(batch)
 	require.True(t, response.Accepted)
 	sourceID := batch.SourceID
-	assert.Equal(t, constants.PublicFeedZeroHashHex, env.mirror.getSnapshotForSSE(sourceID).WithdrawalDigest)
+	assert.Equal(t, constants.PublicFeedZeroHashHex, env.mirror.snapshotOf(sourceID, env.sourceSummary()).WithdrawalDigest)
 	subscriber, accepted := env.mirror.addSSESubscriber(sourceID)
 	require.True(t, accepted)
 	t.Cleanup(func() { env.mirror.removeSSESubscriber(subscriber) })

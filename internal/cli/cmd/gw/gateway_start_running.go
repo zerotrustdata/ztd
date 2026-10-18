@@ -60,6 +60,7 @@ var startupSettings = []startupSetting{
 	{flag: "passkey-rp-id", value: func(c serve.GatewayConfig) string { return c.PasskeyRpID }},
 	{flag: "passkey-rp-name", value: func(c serve.GatewayConfig) string { return c.PasskeyRpName }},
 	{flag: "passkey-rp-origin", value: func(c serve.GatewayConfig) string { return joinOrigins(c.PasskeyRpOrigins) }},
+	{flag: "pprof-listen", value: func(c serve.GatewayConfig) string { return c.PprofListenAddr }},
 }
 
 func portOrDefault(port, fallback int) string {

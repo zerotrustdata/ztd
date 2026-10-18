@@ -1259,8 +1259,7 @@ func (s *PublicPublisherService) postProofIngest(ctx context.Context, manifest *
 	if err != nil {
 		return err
 	}
-	catalog := proofCatalogFromManifest(*manifest)
-	request := models.PublicProofIngestRequest{SourceID: s.cfg.SourceID, Manifest: *manifest, Catalog: catalog, Artifacts: artifacts}
+	request := models.PublicProofIngestRequest{SourceID: s.cfg.SourceID, Manifest: *manifest, Artifacts: artifacts}
 	body, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("public-feed: encode proof ingest: %w", err)
@@ -1274,7 +1273,7 @@ func (s *PublicPublisherService) postProofIngest(ctx context.Context, manifest *
 	}
 	s.logger.Info("public-feed: pushing proof package to mirror",
 		"artifact_count", len(artifacts),
-		"catalog_count", len(catalog.Entries),
+		"manifest_count", manifest.ArtifactCount,
 		"chunk_index", chunkIndex,
 		"request_bytes", len(body),
 	)

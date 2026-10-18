@@ -1274,6 +1274,7 @@ var (
 	ErrPublicFeedMirrorUnreachable            = errors.New("public-feed: mirror is unreachable")
 	ErrPublicFeedMirrorStoreCorrupt           = errors.New("public-feed: mirror store is corrupt")
 	ErrPublicFeedMirrorStoreWrite             = errors.New("public-feed: mirror store write failed")
+	ErrPublicFeedMirrorLegacyStateConflict    = errors.New("public-feed: legacy mirror state.json exists alongside mirror.db; remove one of them")
 	ErrPublicFeedRateLimited                  = errors.New("public-feed: anonymous read rate limit exceeded")
 	ErrPublicFeedRateLimitConfig              = errors.New("public-feed: anonymous read rate limit configuration is invalid")
 	ErrPublicFeedTrustedProxyConfig           = errors.New("public-feed: trusted proxy configuration is invalid")
@@ -1293,6 +1294,7 @@ var (
 	ErrPublicFeedProofManifestInvalid         = errors.New("public-feed: proof manifest is invalid")
 	ErrPublicFeedProofCatalogMismatch         = errors.New("public-feed: proof catalog does not match manifest")
 	ErrPublicFeedProofIngestRejected          = errors.New("public-feed: mirror rejected proof package")
+	ErrPublicFeedProofArtifactsMissing        = errors.New("public-feed: proof manifest lists artifacts the mirror does not hold")
 	ErrPublicFeedProofIDRequired              = errors.New("public-feed: proof_id is required")
 	ErrPublicFeedRecordTypeInvalid            = errors.New("public-feed: invalid record type")
 	ErrPublicFeedRecordSchemaInvalid          = errors.New("public-feed: invalid record schema")
@@ -1392,6 +1394,9 @@ var (
 	ErrJSONRPCMethodRequired       = errors.New("json-rpc method required")
 	ErrJSONRPCMethodNotFound       = errors.New("json-rpc method not found")
 	ErrJSONRPCErrorResponse        = errors.New("json-rpc error response")
+
+	// Runtime profiling errors.
+	ErrProfilingListenAddress = errors.New("profiling: listen address must be host:port on localhost or a loopback IP")
 )
 
 // Native evaluation errors.

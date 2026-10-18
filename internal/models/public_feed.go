@@ -205,7 +205,6 @@ type PublicProofIngestArtifact struct {
 type PublicProofIngestRequest struct {
 	SourceID  string                      `json:"source_id"`
 	Manifest  PublicProofManifest         `json:"manifest"`
-	Catalog   PublicProofCatalog          `json:"catalog"`
 	Artifacts []PublicProofIngestArtifact `json:"artifacts"`
 }
 
@@ -213,6 +212,17 @@ type PublicProofIngestResponse struct {
 	Accepted      bool   `json:"accepted"`
 	ArtifactCount int    `json:"artifact_count,omitempty"`
 	ProofRoot     string `json:"proof_root,omitempty"`
+	// MissingArtifactIDs lists, on rejection, the manifest artifacts the
+	// mirror neither holds nor received inline.
+	MissingArtifactIDs []string `json:"missing_artifact_ids,omitempty"`
+}
+
+// PublicProofRootResponse is the mirror's current proof root for one source,
+// served on the private ingest listener at GET /proof-root.
+type PublicProofRootResponse struct {
+	SourceID        string `json:"source_id"`
+	ProofRootSHA256 string `json:"proof_root_sha256"`
+	ArtifactCount   int    `json:"artifact_count"`
 }
 
 // PublicAssignmentAuditProofPublishRequest ingests one assignment audit export

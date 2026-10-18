@@ -13,6 +13,7 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"syscall"
 	"testing"
@@ -329,8 +330,30 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 		}
 	})
 
+	t.Run("skips the calling process", func(t *testing.T) {
+		executor := &mockCommandExecutor{
+			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				return []byte(fmt.Sprintf("%d\n54321\n", os.Getpid())), nil
+			},
+		}
+		if result := pm.findOperatorProcessWithExecutor(executor); result != 54321 {
+			t.Errorf("expected 54321, got %d", result)
+		}
+	})
+
+	t.Run("returns 0 when only the calling process matches", func(t *testing.T) {
+		executor := &mockCommandExecutor{
+			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				return []byte(fmt.Sprintf("%d\n", os.Getpid())), nil
+			},
+		}
+		if result := pm.findOperatorProcessWithExecutor(executor); result != 0 {
+			t.Errorf("expected 0, got %d", result)
+		}
+	})
+
 	t.Run("passes correct arguments to command", func(t *testing.T) {
-		expectedPattern := fmt.Sprintf("ztd gw start.*--data-dir %s([[:space:]]|$)", fileSvc.Resolve(constants.DataDirname))
+		expectedPattern := fmt.Sprintf("^[^[:space:]]*ztd gw start.*--data-dir %s([[:space:]]|$)", fileSvc.Resolve(constants.DataDirname))
 		executor := &mockCommandExecutor{
 			commandFunc: func(name string, args ...string) *exec.Cmd {
 				if name != "pgrep" {

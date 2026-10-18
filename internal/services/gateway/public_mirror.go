@@ -22,7 +22,6 @@ import (
 	"net"
 	"net/http"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,265 +29,13 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 )
 
-type PublicMirrorSourceState struct {
-	HighWaterSequence         int64                     `json:"high_water_sequence"`
-	FeedChainHash             string                    `json:"feed_chain_hash"`
-	BatchCount                int                       `json:"batch_count"`
-	RetainedFromSequence      int64                     `json:"retained_from_sequence"`
-	RetainedPreviousBatchHash string                    `json:"retained_previous_batch_hash"`
-	Records                   []models.PublicFeedRecord `json:"records"`
-	Batches                   []models.PublicFeedBatch  `json:"batches"`
-	Freshness                 models.CampaignFreshness  `json:"freshness"`
-	LastAcceptedAt            time.Time                 `json:"last_accepted_at"`
-	WithdrawnDatasetIDs       map[string]bool           `json:"withdrawn_dataset_ids,omitempty"`
-}
-
-type PublicMirrorStoreState struct {
-	ActiveSourceID string                                `json:"active_source_id"`
-	Sources        map[string]*PublicMirrorSourceState   `json:"sources"`
-	KeyRegistry    map[string]ed25519.PublicKey          `json:"key_registry"`
-	RevokedKeys    map[string]time.Time                  `json:"revoked_keys"`
-	ProofArtifacts map[string][]byte                     `json:"proof_artifacts"`
-	ProofCatalogs  map[string]models.PublicProofCatalog  `json:"proof_catalogs"`
-	ProofManifests map[string]models.PublicProofManifest `json:"proof_manifests"`
-}
-
-type PublicMirrorStore interface {
-	Load(context.Context) (PublicMirrorStoreState, error)
-	Save(context.Context, PublicMirrorStoreState) error
-}
-
-type runtimePublicMirrorStore struct {
-	fileSvc fs.RuntimeFileService
-	mu      sync.Mutex
-}
-
-func NewRuntimePublicMirrorStore(fileSvc fs.RuntimeFileService) PublicMirrorStore {
-	return &runtimePublicMirrorStore{fileSvc: fileSvc}
-}
-
-func (s *runtimePublicMirrorStore) Load(ctx context.Context) (PublicMirrorStoreState, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	exists, err := s.fileSvc.FileExists(ctx, constants.PublicMirrorStatePath)
-	if err != nil {
-		return PublicMirrorStoreState{}, fmt.Errorf("public mirror store: stat: %w", err)
-	}
-	if !exists {
-		return newPublicMirrorStoreState(), nil
-	}
-	data, err := s.fileSvc.ReadFile(ctx, constants.PublicMirrorStatePath)
-	if err != nil {
-		return PublicMirrorStoreState{}, fmt.Errorf("public mirror store: read: %w", err)
-	}
-	var state PublicMirrorStoreState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return PublicMirrorStoreState{}, fmt.Errorf("%w: decode state: %v", constants.ErrPublicFeedMirrorStoreCorrupt, err)
-	}
-	normalizePublicMirrorStoreState(&state)
-	if err := validatePublicMirrorStoreState(state); err != nil {
-		return PublicMirrorStoreState{}, err
-	}
-	return state, nil
-}
-
-func (s *runtimePublicMirrorStore) Save(ctx context.Context, state PublicMirrorStoreState) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := validatePublicMirrorStoreState(state); err != nil {
-		return err
-	}
-	data, err := json.Marshal(state)
-	if err != nil {
-		return fmt.Errorf("%w: encode state: %v", constants.ErrPublicFeedMirrorStoreWrite, err)
-	}
-	if err := s.fileSvc.WriteFile(ctx, constants.PublicMirrorStatePath, data, constants.PermFilePrivate); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorStoreWrite, err)
-	}
-	return nil
-}
-
-func newPublicMirrorStoreState() PublicMirrorStoreState {
-	return PublicMirrorStoreState{
-		Sources:        make(map[string]*PublicMirrorSourceState),
-		KeyRegistry:    make(map[string]ed25519.PublicKey),
-		RevokedKeys:    make(map[string]time.Time),
-		ProofArtifacts: make(map[string][]byte),
-		ProofCatalogs:  make(map[string]models.PublicProofCatalog),
-		ProofManifests: make(map[string]models.PublicProofManifest),
-	}
-}
-
-func normalizePublicMirrorStoreState(state *PublicMirrorStoreState) {
-	if state.Sources == nil {
-		state.Sources = make(map[string]*PublicMirrorSourceState)
-	}
-	if state.KeyRegistry == nil {
-		state.KeyRegistry = make(map[string]ed25519.PublicKey)
-	}
-	if state.RevokedKeys == nil {
-		state.RevokedKeys = make(map[string]time.Time)
-	}
-	if state.ProofArtifacts == nil {
-		state.ProofArtifacts = make(map[string][]byte)
-	}
-	if state.ProofCatalogs == nil {
-		state.ProofCatalogs = make(map[string]models.PublicProofCatalog)
-	}
-	if state.ProofManifests == nil {
-		state.ProofManifests = make(map[string]models.PublicProofManifest)
-	}
-	for _, source := range state.Sources {
-		if source == nil {
-			continue
-		}
-		if source.RetainedFromSequence == 0 {
-			source.RetainedFromSequence = 1
-		}
-		if source.RetainedPreviousBatchHash == "" {
-			source.RetainedPreviousBatchHash = constants.PublicFeedZeroHashHex
-		}
-		if source.WithdrawnDatasetIDs == nil {
-			source.WithdrawnDatasetIDs = make(map[string]bool)
-		}
-	}
-	if state.ActiveSourceID == "" && len(state.Sources) == 1 {
-		for sourceID := range state.Sources {
-			state.ActiveSourceID = sourceID
-		}
-	}
-}
-
-func activePublicMirrorSourceID(state PublicMirrorStoreState) string {
-	if state.ActiveSourceID != "" {
-		return state.ActiveSourceID
-	}
-	sourceIDs := make([]string, 0, len(state.Sources))
-	for sourceID := range state.Sources {
-		sourceIDs = append(sourceIDs, sourceID)
-	}
-	sort.Strings(sourceIDs)
-	if len(sourceIDs) == 0 {
-		return ""
-	}
-	return sourceIDs[0]
-}
-
-func validatePublicMirrorStoreState(state PublicMirrorStoreState) error {
-	if state.ActiveSourceID != "" {
-		activeKeyPrefix := state.ActiveSourceID + ":"
-		activeKeyKnown := false
-		for registryID := range state.KeyRegistry {
-			if strings.HasPrefix(registryID, activeKeyPrefix) {
-				activeKeyKnown = true
-				break
-			}
-		}
-		if !activeKeyKnown {
-			return fmt.Errorf("%w: active source key is missing", constants.ErrPublicFeedMirrorStoreCorrupt)
-		}
-	}
-	for keyID, key := range state.KeyRegistry {
-		if keyID == "" || len(key) != ed25519.PublicKeySize {
-			return fmt.Errorf("%w: invalid key registry entry", constants.ErrPublicFeedMirrorStoreCorrupt)
-		}
-	}
-	for sourceID, source := range state.Sources {
-		if sourceID == "" || source == nil || source.BatchCount < len(source.Batches) || source.RetainedFromSequence <= 0 || source.RetainedPreviousBatchHash == "" {
-			return fmt.Errorf("%w: invalid source state", constants.ErrPublicFeedMirrorStoreCorrupt)
-		}
-		previousHash := source.RetainedPreviousBatchHash
-		previousSequence := source.RetainedFromSequence - 1
-		var recordCount int
-		for _, batch := range source.Batches {
-			if batch.SourceID != sourceID || batch.FirstSequence != previousSequence+1 || batch.PreviousBatchHash != previousHash || computeBatchContentHash(batch) != batch.ContentHash {
-				return fmt.Errorf("%w: invalid source batch chain", constants.ErrPublicFeedMirrorStoreCorrupt)
-			}
-			key, ok := state.KeyRegistry[sourceID+":"+batch.SigningKeyID]
-			if !ok || verifyBatchSignature(batch, key) != nil {
-				return fmt.Errorf("%w: invalid source batch signature", constants.ErrPublicFeedMirrorStoreCorrupt)
-			}
-			if len(batch.RecordHashes) != len(batch.Records) || batch.LastSequence-batch.FirstSequence+1 != int64(len(batch.Records)) {
-				return fmt.Errorf("%w: invalid source batch records", constants.ErrPublicFeedMirrorStoreCorrupt)
-			}
-			revocations, err := validatePublicKeyRevocations(batch, state)
-			if err != nil {
-				return fmt.Errorf("%w: invalid key revocation: %v", constants.ErrPublicFeedMirrorStoreCorrupt, err)
-			}
-			for _, revocation := range revocations {
-				revokedAt, ok := state.RevokedKeys[revocation.SourceID+":"+revocation.RevokedKeyID]
-				if !ok || !revokedAt.Equal(revocation.RevokedAt) {
-					return fmt.Errorf("%w: key revocation state mismatch", constants.ErrPublicFeedMirrorStoreCorrupt)
-				}
-			}
-			if recordCount+len(batch.Records) > len(source.Records) {
-				return fmt.Errorf("%w: missing source records", constants.ErrPublicFeedMirrorStoreCorrupt)
-			}
-			for index, record := range batch.Records {
-				hash := sha256.Sum256([]byte(record.RecordBytes))
-				if record.Sequence != batch.FirstSequence+int64(index) || record.RecordHash != batch.RecordHashes[index] || record.RecordHash != hex.EncodeToString(hash[:]) || record != source.Records[recordCount+index] {
-					return fmt.Errorf("%w: invalid source record", constants.ErrPublicFeedMirrorStoreCorrupt)
-				}
-			}
-			previousHash = batch.ContentHash
-			previousSequence = batch.LastSequence
-			recordCount += len(batch.Records)
-		}
-		if len(source.Batches) > 0 {
-			if source.HighWaterSequence != previousSequence || source.FeedChainHash != previousHash || len(source.Records) != recordCount || source.LastAcceptedAt.IsZero() {
-				return fmt.Errorf("%w: source summary mismatch", constants.ErrPublicFeedMirrorStoreCorrupt)
-			}
-		} else if source.HighWaterSequence != 0 || source.BatchCount != 0 || len(source.Records) != 0 {
-			return fmt.Errorf("%w: empty source summary mismatch", constants.ErrPublicFeedMirrorStoreCorrupt)
-		}
-	}
-	for artifactID, content := range state.ProofArtifacts {
-		hash := sha256.Sum256(content)
-		if artifactID != hex.EncodeToString(hash[:]) || len(content) > constants.PublicFeedMaxArtifactBytes {
-			return fmt.Errorf("%w: invalid proof artifact", constants.ErrPublicFeedMirrorStoreCorrupt)
-		}
-	}
-	if len(state.ProofCatalogs) != len(state.ProofManifests) {
-		return fmt.Errorf("%w: incomplete proof metadata", constants.ErrPublicFeedMirrorStoreCorrupt)
-	}
-	for sourceID, catalog := range state.ProofCatalogs {
-		manifest, ok := state.ProofManifests[sourceID]
-		if !ok {
-			return fmt.Errorf("%w: missing proof manifest", constants.ErrPublicFeedMirrorStoreCorrupt)
-		}
-		artifacts := make([]models.PublicProofIngestArtifact, 0, len(catalog.Entries))
-		for _, entry := range catalog.Entries {
-			content, ok := state.ProofArtifacts[entry.ArtifactID]
-			if !ok {
-				return fmt.Errorf("%w: missing proof artifact", constants.ErrPublicFeedMirrorStoreCorrupt)
-			}
-			artifacts = append(artifacts, models.PublicProofIngestArtifact{ArtifactID: entry.ArtifactID, Content: content})
-		}
-		request := models.PublicProofIngestRequest{SourceID: sourceID, Manifest: manifest, Catalog: catalog, Artifacts: artifacts}
-		if err := validatePublicProofPackage(request, state, false); err != nil {
-			return fmt.Errorf("%w: proof metadata for %s: %w", constants.ErrPublicFeedMirrorStoreCorrupt, sourceID, err)
-		}
-	}
-	return nil
-}
-
-func clonePublicMirrorStoreState(state PublicMirrorStoreState) (PublicMirrorStoreState, error) {
-	data, err := json.Marshal(state)
-	if err != nil {
-		return PublicMirrorStoreState{}, fmt.Errorf("public mirror store: clone encode: %w", err)
-	}
-	var cloned PublicMirrorStoreState
-	if err := json.Unmarshal(data, &cloned); err != nil {
-		return PublicMirrorStoreState{}, fmt.Errorf("public mirror store: clone decode: %w", err)
-	}
-	normalizePublicMirrorStoreState(&cloned)
-	return cloned, nil
-}
+// publicMirrorReadPageRecords bounds how many records one read handler pulls
+// from the store per query while filtering withdrawn or off-kind records.
+const publicMirrorReadPageRecords = 256
 
 // PublicMirrorConfig configures trust for proxy-provided visitor identity.
 // An empty trusted-proxy set disables forwarded visitor identity entirely.
@@ -308,14 +55,25 @@ type PublicMirrorConfig struct {
 // no mutation, eval-launch, approval, producer, audit, filesystem, pub/sub,
 // MCP, A2A, or tool route.
 //
+// Memory holds only bounded state: per-source summaries and the key registry.
+// Records, batches, and proofs live in the PublicMirrorStore and are read per
+// request, bounded by the summary high-water mark the reader observed.
+//
 // This implementation is the reference for the OpenDevOps.ai conformance
 // suite. A production mirror (Cloudflare Workers, Supabase, or equivalent)
 // must pass the same conformance tests.
 type PublicMirrorServer struct {
 	mu     sync.RWMutex
 	logger *slog.Logger
-	store  PublicMirrorStore
-	state  PublicMirrorStoreState
+	store  *PublicMirrorStore
+
+	// writeMu serializes every durable mutation so each one computes its next
+	// state from the latest committed state, and orders live broadcasts.
+	writeMu sync.Mutex
+
+	activeSourceID string
+	sources        map[string]*PublicMirrorSourceSummary
+	keys           PublicMirrorKeys
 
 	// sseSubscribers tracks active SSE connections for broadcast.
 	sseSubscribers map[*mirrorSSESubscriber]struct{}
@@ -374,21 +132,27 @@ type publicMirrorRateExpiry struct {
 }
 
 // NewPublicMirrorServer creates a new reference mirror server with default
-// limits. The caller registers source public keys via RegisterSourceKey
-// before starting ingest.
-func NewPublicMirrorServer(logger *slog.Logger, store PublicMirrorStore, cfg PublicMirrorConfig) (*PublicMirrorServer, error) {
+// limits over an open, verified store. The caller owns the store and closes
+// it after the server stops. Source public keys are registered via
+// RegisterSourceKey before starting ingest.
+func NewPublicMirrorServer(logger *slog.Logger, store *PublicMirrorStore, cfg PublicMirrorConfig) (*PublicMirrorServer, error) {
+	if store == nil {
+		return nil, fmt.Errorf("public mirror: %w: store", constants.ErrMissingRequiredField)
+	}
 	trustedProxyNetworks, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
 	if err != nil {
 		return nil, err
 	}
-	state, err := store.Load(context.Background())
+	state, err := store.loadState(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("public mirror: load store: %w", err)
 	}
 	return &PublicMirrorServer{
 		logger:                   logger,
 		store:                    store,
-		state:                    state,
+		activeSourceID:           state.activeSourceID,
+		sources:                  state.sources,
+		keys:                     state.keys,
 		sseSubscribers:           make(map[*mirrorSSESubscriber]struct{}),
 		maxBootstrapProjections:  50,
 		maxSSEQueueSize:          100,
@@ -513,69 +277,95 @@ func (m *PublicMirrorServer) removeSSESubscriber(subscriber *mirrorSSESubscriber
 	subscriber.close()
 }
 
+// activeSourceIDLocked returns the active source, falling back to the lowest
+// known source ID. The caller holds m.mu.
+func (m *PublicMirrorServer) activeSourceIDLocked() string {
+	if m.activeSourceID != "" {
+		return m.activeSourceID
+	}
+	active := ""
+	for sourceID := range m.sources {
+		if active == "" || sourceID < active {
+			active = sourceID
+		}
+	}
+	return active
+}
+
+// sourceView resolves a requested source (or the active source when empty)
+// and returns its current immutable summary, nil when the mirror has none.
+func (m *PublicMirrorServer) sourceView(requested string) (string, *PublicMirrorSourceSummary) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	sourceID := requested
+	if sourceID == "" {
+		sourceID = m.activeSourceIDLocked()
+	}
+	return sourceID, m.sources[sourceID]
+}
+
 // RegisterSourceKey registers a public key for a source deployment. The
 // mirror accepts batches signed by this key until it is revoked.
 func (m *PublicMirrorServer) RegisterSourceKey(ctx context.Context, sourceID, keyID string, pubKey ed25519.PublicKey) error {
-	return m.mutateState(ctx, func(state *PublicMirrorStoreState) error {
-		state.KeyRegistry[m.keyRegistryKey(sourceID, keyID)] = append(ed25519.PublicKey(nil), pubKey...)
-		state.ActiveSourceID = sourceID
-		return nil
-	})
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	registryID := publicMirrorKeyRegistryID(sourceID, keyID)
+	key := append(ed25519.PublicKey(nil), pubKey...)
+	if err := m.store.putSourceKey(ctx, registryID, key, sourceID); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	keys := m.keys.clone()
+	keys.Registry[registryID] = key
+	m.keys = keys
+	m.activeSourceID = sourceID
+	return nil
 }
 
 // RevokeSourceKey revokes a signing key for a source deployment. Subsequent
 // batches signed by the revoked key are rejected with revoked_key.
 func (m *PublicMirrorServer) RevokeSourceKey(ctx context.Context, sourceID, keyID string) error {
-	return m.mutateState(ctx, func(state *PublicMirrorStoreState) error {
-		state.RevokedKeys[m.keyRegistryKey(sourceID, keyID)] = time.Now().UTC()
-		return nil
-	})
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	registryID := publicMirrorKeyRegistryID(sourceID, keyID)
+	revokedAt := time.Now().UTC()
+	if err := m.store.revokeKey(ctx, registryID, revokedAt); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	keys := m.keys.clone()
+	keys.Revoked[registryID] = revokedAt
+	m.keys = keys
+	return nil
 }
 
 // SetSourceFreshness sets the freshness label for a source deployment. Used
 // by tests to simulate stale, stopped, or offline sources.
 func (m *PublicMirrorServer) SetSourceFreshness(ctx context.Context, sourceID string, freshness models.CampaignFreshness) error {
-	return m.mutateState(ctx, func(storeState *PublicMirrorStoreState) error {
-		state, ok := storeState.Sources[sourceID]
-		if !ok {
-			state = newPublicMirrorSourceState()
-			storeState.Sources[sourceID] = state
-		}
-		state.Freshness = freshness
-		return nil
-	})
-}
-
-// keyRegistryKey computes the composite registry key.
-func (m *PublicMirrorServer) keyRegistryKey(sourceID, keyID string) string {
-	return sourceID + ":" + keyID
-}
-
-func newPublicMirrorSourceState() *PublicMirrorSourceState {
-	return &PublicMirrorSourceState{
-		FeedChainHash:             constants.PublicFeedZeroHashHex,
-		RetainedFromSequence:      1,
-		RetainedPreviousBatchHash: constants.PublicFeedZeroHashHex,
-		Freshness:                 models.CampaignFreshnessActive,
-		WithdrawnDatasetIDs:       make(map[string]bool),
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	next := m.currentSourceSummary(sourceID)
+	next.Freshness = freshness
+	if err := m.store.putSourceSummary(ctx, next); err != nil {
+		return err
 	}
-}
-
-func (m *PublicMirrorServer) mutateState(ctx context.Context, mutate func(*PublicMirrorStoreState) error) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	next, err := clonePublicMirrorStoreState(m.state)
-	if err != nil {
-		return err
-	}
-	if err := mutate(&next); err != nil {
-		return err
-	}
-	if err := m.store.Save(ctx, next); err != nil {
-		return err
-	}
-	m.state = next
+	m.sources[sourceID] = &next
+	m.mu.Unlock()
 	return nil
+}
+
+// currentSourceSummary copies the current summary of one source, or a fresh
+// summary when the mirror has none. The caller holds m.writeMu.
+func (m *PublicMirrorServer) currentSourceSummary(sourceID string) PublicMirrorSourceSummary {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if current, ok := m.sources[sourceID]; ok {
+		return *current
+	}
+	return newPublicMirrorSourceSummary(sourceID)
 }
 
 // computeBatchContentHash recomputes the SHA-256 content hash over the
@@ -619,8 +409,9 @@ func verifyBatchSignature(batch models.PublicFeedBatch, pubKey ed25519.PublicKey
 // validateBatch performs all ingest validation layers: signature, content
 // hash, hash chain, sequence ordering, duplicate sequence, oversized batch,
 // revoked key, unknown key, and record hash verification. Returns a typed
-// rejection reason on failure.
-func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models.PublicFeedIngestRejectionReason, error) {
+// rejection reason on failure. A batch identical to one already accepted
+// validates cleanly so publisher retries are idempotent.
+func (m *PublicMirrorServer) validateBatch(ctx context.Context, batch models.PublicFeedBatch) (models.PublicFeedIngestRejectionReason, error) {
 	if len(batch.Records) == 0 {
 		return models.PublicFeedIngestRejectionOversizedBatch, constants.ErrPublicFeedBatchEmpty
 	}
@@ -639,14 +430,12 @@ func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models
 	}
 
 	m.mu.RLock()
-	storeState, cloneErr := clonePublicMirrorStoreState(m.state)
+	keys := m.keys
+	summary := m.sources[batch.SourceID]
 	m.mu.RUnlock()
-	if cloneErr != nil {
-		return models.PublicFeedIngestRejectionSignatureInvalid, cloneErr
-	}
-	pubKey, keyKnown := storeState.KeyRegistry[m.keyRegistryKey(batch.SourceID, batch.SigningKeyID)]
-	_, isRevoked := storeState.RevokedKeys[m.keyRegistryKey(batch.SourceID, batch.SigningKeyID)]
-	state, sourceExists := storeState.Sources[batch.SourceID]
+	registryID := publicMirrorKeyRegistryID(batch.SourceID, batch.SigningKeyID)
+	pubKey, keyKnown := keys.Registry[registryID]
+	_, isRevoked := keys.Revoked[registryID]
 
 	if !keyKnown {
 		return models.PublicFeedIngestRejectionUnknownKey, constants.ErrPublicFeedUnknownKey
@@ -672,14 +461,22 @@ func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models
 			return models.PublicFeedIngestRejectionSignatureInvalid, fmt.Errorf("public mirror: validate record: %w", err)
 		}
 	}
-	if _, err := validatePublicKeyRevocations(batch, storeState); err != nil {
+	if _, err := validatePublicKeyRevocations(batch, keys); err != nil {
 		return models.PublicFeedIngestRejectionSignatureInvalid, err
 	}
-	if sourceExists {
-		for _, accepted := range state.Batches {
-			if accepted.FirstSequence == batch.FirstSequence && accepted.LastSequence == batch.LastSequence && accepted.ContentHash == batch.ContentHash {
-				return "", nil
-			}
+
+	// A batch at or below the high-water mark is a retry when it matches the
+	// retained batch at the same position, else equivocation or a duplicate.
+	var accepted publicMirrorBatchHeader
+	var acceptedFound bool
+	if summary != nil && batch.FirstSequence <= summary.HighWaterSequence {
+		header, found, err := m.store.batchHeader(ctx, batch.SourceID, batch.FirstSequence)
+		if err != nil {
+			return models.PublicFeedIngestRejectionSignatureInvalid, err
+		}
+		accepted, acceptedFound = header, found && header.LastSequence == batch.LastSequence
+		if acceptedFound && accepted.ContentHash == batch.ContentHash {
+			return "", nil
 		}
 	}
 	if isRevoked {
@@ -687,36 +484,23 @@ func (m *PublicMirrorServer) validateBatch(batch models.PublicFeedBatch) (models
 	}
 
 	// Sequence and hash chain validation.
-	var highWater int64
-	var feedChainHash string
-	if sourceExists {
-		highWater = state.HighWaterSequence
-		feedChainHash = state.FeedChainHash
-	}
-
-	if batch.FirstSequence <= highWater {
-		for _, accepted := range state.Batches {
-			if accepted.FirstSequence != batch.FirstSequence || accepted.LastSequence != batch.LastSequence {
-				continue
-			}
-			if accepted.ContentHash == batch.ContentHash {
-				return "", nil
-			}
+	if summary != nil && batch.FirstSequence <= summary.HighWaterSequence {
+		if acceptedFound {
 			return models.PublicFeedIngestRejectionEquivocation, constants.ErrPublicFeedEquivocation
 		}
 		return models.PublicFeedIngestRejectionDuplicateSequence, constants.ErrPublicFeedDuplicateSequence
 	}
-	if sourceExists && batch.PreviousBatchHash != feedChainHash {
+	if summary != nil && batch.PreviousBatchHash != summary.FeedChainHash {
 		return models.PublicFeedIngestRejectionHashChainMismatch, constants.ErrPublicFeedHashChainMismatch
 	}
-	if !sourceExists && batch.PreviousBatchHash != constants.PublicFeedZeroHashHex {
+	if summary == nil && batch.PreviousBatchHash != constants.PublicFeedZeroHashHex {
 		return models.PublicFeedIngestRejectionHashChainMismatch, constants.ErrPublicFeedHashChainMismatch
 	}
 
 	return "", nil
 }
 
-func validatePublicKeyRevocations(batch models.PublicFeedBatch, state PublicMirrorStoreState) ([]models.PublicKeyRevocationRecord, error) {
+func validatePublicKeyRevocations(batch models.PublicFeedBatch, keys PublicMirrorKeys) ([]models.PublicKeyRevocationRecord, error) {
 	revocations := make([]models.PublicKeyRevocationRecord, 0, 1)
 	for _, record := range batch.Records {
 		if record.RecordType != models.PublicFeedRecordTypeKeyRevocation {
@@ -738,8 +522,8 @@ func validatePublicKeyRevocations(batch models.PublicFeedBatch, state PublicMirr
 		if revocation.SourceID != batch.SourceID || revocation.RevokedKeyID != batch.SigningKeyID || revocation.NewKeyID == "" || revocation.NewKeyID == revocation.RevokedKeyID || revocation.RevokedAt.IsZero() {
 			return nil, constants.ErrPublicFeedKeyRevocation
 		}
-		oldKey, oldKeyKnown := state.KeyRegistry[revocation.SourceID+":"+revocation.RevokedKeyID]
-		_, newKeyKnown := state.KeyRegistry[revocation.SourceID+":"+revocation.NewKeyID]
+		oldKey, oldKeyKnown := keys.Registry[publicMirrorKeyRegistryID(revocation.SourceID, revocation.RevokedKeyID)]
+		_, newKeyKnown := keys.Registry[publicMirrorKeyRegistryID(revocation.SourceID, revocation.NewKeyID)]
 		if !oldKeyKnown || !newKeyKnown {
 			return nil, constants.ErrPublicFeedKeyRevocation
 		}
@@ -756,91 +540,85 @@ func validatePublicKeyRevocations(batch models.PublicFeedBatch, state PublicMirr
 	return revocations, nil
 }
 
-func (m *PublicMirrorServer) sourceFreshness(state *PublicMirrorSourceState) models.CampaignFreshness {
-	if state.Freshness == models.CampaignFreshnessIntentionallyStopped || state.Freshness == models.CampaignFreshnessSafetyStopped {
-		return state.Freshness
+// sourceFreshness derives one source's freshness label. The caller must not
+// hold m.mu.
+func (m *PublicMirrorServer) sourceFreshness(summary *PublicMirrorSourceSummary) models.CampaignFreshness {
+	if summary.Freshness == models.CampaignFreshnessIntentionallyStopped || summary.Freshness == models.CampaignFreshnessSafetyStopped {
+		return summary.Freshness
 	}
-	if state.LastAcceptedAt.IsZero() {
+	if summary.LastAcceptedAt.IsZero() {
 		return models.CampaignFreshnessSourceOffline
 	}
-	age := m.now().UTC().Sub(state.LastAcceptedAt)
+	m.mu.RLock()
+	delayed, stale, offline := m.freshnessDelayed, m.freshnessStale, m.freshnessOffline
+	m.mu.RUnlock()
+	age := m.now().UTC().Sub(summary.LastAcceptedAt)
 	switch {
-	case age >= m.freshnessOffline:
+	case age >= offline:
 		return models.CampaignFreshnessSourceOffline
-	case age >= m.freshnessStale:
+	case age >= stale:
 		return models.CampaignFreshnessStale
-	case age >= m.freshnessDelayed:
+	case age >= delayed:
 		return models.CampaignFreshnessDelayed
 	default:
 		return models.CampaignFreshnessActive
 	}
 }
 
-func (m *PublicMirrorServer) batchAlreadyAccepted(batch models.PublicFeedBatch) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	state, ok := m.state.Sources[batch.SourceID]
-	if !ok {
-		return false
-	}
-	for _, accepted := range state.Batches {
-		if accepted.FirstSequence == batch.FirstSequence && accepted.LastSequence == batch.LastSequence && accepted.ContentHash == batch.ContentHash {
-			return true
-		}
-	}
-	return false
-}
-
-// acceptBatch atomically persists an accepted batch before broadcasting its
-// records to in-memory SSE subscribers.
+// acceptBatch durably appends a validated batch before broadcasting its
+// records to SSE subscribers. Re-submitting an accepted batch is a no-op.
 func (m *PublicMirrorServer) acceptBatch(ctx context.Context, batch models.PublicFeedBatch) error {
-	if err := m.mutateState(ctx, func(storeState *PublicMirrorStoreState) error {
-		revocations, err := validatePublicKeyRevocations(batch, *storeState)
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	m.mu.RLock()
+	keys := m.keys
+	maxRetainedBatches := m.maxRetainedBatches
+	m.mu.RUnlock()
+	revocations, err := validatePublicKeyRevocations(batch, keys)
+	if err != nil {
+		return err
+	}
+	next := m.currentSourceSummary(batch.SourceID)
+	if batch.FirstSequence <= next.HighWaterSequence {
+		header, found, err := m.store.batchHeader(ctx, batch.SourceID, batch.FirstSequence)
 		if err != nil {
 			return err
 		}
-		state, ok := storeState.Sources[batch.SourceID]
-		if !ok {
-			state = newPublicMirrorSourceState()
-			storeState.Sources[batch.SourceID] = state
+		if found && header.LastSequence == batch.LastSequence && header.ContentHash == batch.ContentHash {
+			return nil
 		}
-		if batch.FirstSequence != state.HighWaterSequence+1 || batch.PreviousBatchHash != state.FeedChainHash {
-			return constants.ErrPublicFeedHashChainMismatch
-		}
-		state.Records = append(state.Records, batch.Records...)
-		state.Batches = append(state.Batches, batch)
-		state.HighWaterSequence = batch.LastSequence
-		state.FeedChainHash = batch.ContentHash
-		state.BatchCount++
-		if excess := len(state.Batches) - m.maxRetainedBatches; excess > 0 {
-			lastRemoved := state.Batches[excess-1]
-			state.RetainedFromSequence = lastRemoved.LastSequence + 1
-			state.RetainedPreviousBatchHash = lastRemoved.ContentHash
-			state.Batches = append([]models.PublicFeedBatch(nil), state.Batches[excess:]...)
-			firstRetainedRecord := 0
-			for firstRetainedRecord < len(state.Records) && state.Records[firstRetainedRecord].Sequence < state.RetainedFromSequence {
-				firstRetainedRecord++
-			}
-			state.Records = append([]models.PublicFeedRecord(nil), state.Records[firstRetainedRecord:]...)
-		}
-		state.LastAcceptedAt = m.now().UTC()
-		state.Freshness = models.CampaignFreshnessActive
-		for _, revocation := range revocations {
-			storeState.RevokedKeys[m.keyRegistryKey(revocation.SourceID, revocation.RevokedKeyID)] = revocation.RevokedAt
-		}
-		return nil
-	}); err != nil {
+	}
+	if batch.FirstSequence != next.HighWaterSequence+1 || batch.PreviousBatchHash != next.FeedChainHash {
+		return constants.ErrPublicFeedHashChainMismatch
+	}
+	next.HighWaterSequence = batch.LastSequence
+	next.FeedChainHash = batch.ContentHash
+	next.BatchCount++
+	next.RetainedBatchCount++
+	next.RetainedRecordCount += len(batch.Records)
+	next.LastAcceptedAt = m.now().UTC()
+	next.Freshness = models.CampaignFreshnessActive
+	stored, err := m.store.appendBatch(ctx, batch, next, revocations, maxRetainedBatches)
+	if err != nil {
 		return err
 	}
 
-	m.mu.RLock()
+	m.mu.Lock()
+	m.sources[batch.SourceID] = &stored
+	if len(revocations) > 0 {
+		updated := m.keys.clone()
+		for _, revocation := range revocations {
+			updated.Revoked[publicMirrorKeyRegistryID(revocation.SourceID, revocation.RevokedKeyID)] = revocation.RevokedAt
+		}
+		m.keys = updated
+	}
 	subscribers := make([]*mirrorSSESubscriber, 0, len(m.sseSubscribers))
 	for sub := range m.sseSubscribers {
 		if sub.sourceID == batch.SourceID {
 			subscribers = append(subscribers, sub)
 		}
 	}
-	m.mu.RUnlock()
+	m.mu.Unlock()
 	for _, sub := range subscribers {
 		for _, record := range batch.Records {
 			sub.send(record)
@@ -1089,25 +867,49 @@ func (m *PublicMirrorServer) admitSourceKey(ctx context.Context, request models.
 	if err != nil {
 		return fmt.Errorf("%w: encode request: %v", constants.ErrPublicFeedKeyRegistration, err)
 	}
-	return m.mutateState(ctx, func(state *PublicMirrorStoreState) error {
-		currentRegistryID := m.keyRegistryKey(request.SourceID, request.CurrentKeyID)
-		currentKey, ok := state.KeyRegistry[currentRegistryID]
-		if !ok || !ed25519.Verify(currentKey, signingBytes, signature) {
-			return constants.ErrPublicFeedKeyRegistration
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	m.mu.RLock()
+	keys := m.keys
+	m.mu.RUnlock()
+	currentRegistryID := publicMirrorKeyRegistryID(request.SourceID, request.CurrentKeyID)
+	currentKey, ok := keys.Registry[currentRegistryID]
+	if !ok || !ed25519.Verify(currentKey, signingBytes, signature) {
+		return constants.ErrPublicFeedKeyRegistration
+	}
+	newRegistryID := publicMirrorKeyRegistryID(request.SourceID, request.NewKeyID)
+	if existing, exists := keys.Registry[newRegistryID]; exists {
+		if !bytes.Equal(existing, publicKey) {
+			return constants.ErrPublicFeedEquivocation
 		}
-		newRegistryID := m.keyRegistryKey(request.SourceID, request.NewKeyID)
-		if existing, exists := state.KeyRegistry[newRegistryID]; exists {
-			if !bytes.Equal(existing, publicKey) {
-				return constants.ErrPublicFeedEquivocation
-			}
-			return nil
-		}
-		if _, revoked := state.RevokedKeys[currentRegistryID]; revoked {
-			return constants.ErrPublicFeedRevokedKey
-		}
-		state.KeyRegistry[newRegistryID] = append(ed25519.PublicKey(nil), publicKey...)
 		return nil
-	})
+	}
+	if _, revoked := keys.Revoked[currentRegistryID]; revoked {
+		return constants.ErrPublicFeedRevokedKey
+	}
+	key := ed25519.PublicKey(publicKey)
+	if err := m.store.putSourceKey(ctx, newRegistryID, key, ""); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	updated := m.keys.clone()
+	updated.Registry[newRegistryID] = key
+	m.keys = updated
+	return nil
+}
+
+// sourceIngestResponse reports one source's accepted chain position.
+func (m *PublicMirrorServer) sourceIngestResponse(sourceID string, resp models.PublicIngestResponse) models.PublicIngestResponse {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if summary := m.sources[sourceID]; summary != nil {
+		resp.SourceID = sourceID
+		resp.HighWaterSequence = summary.HighWaterSequence
+		resp.FeedChainHash = summary.FeedChainHash
+		resp.BatchCount = summary.BatchCount
+	}
+	return resp
 }
 
 // handleIngest handles POST /ingest — the authenticated ingest endpoint.
@@ -1131,46 +933,22 @@ func (m *PublicMirrorServer) handleIngest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	reason, err := m.validateBatch(req.Batch)
+	reason, err := m.validateBatch(r.Context(), req.Batch)
 	if err != nil {
 		m.logger.Warn("mirror: ingest rejected", "source_id", req.Batch.SourceID, "reason", reason, "error", err)
-		resp := models.PublicIngestResponse{Accepted: false, RejectionReason: reason}
-		m.mu.RLock()
-		if state := m.state.Sources[req.Batch.SourceID]; state != nil {
-			resp.SourceID = req.Batch.SourceID
-			resp.HighWaterSequence = state.HighWaterSequence
-			resp.FeedChainHash = state.FeedChainHash
-			resp.BatchCount = state.BatchCount
-		}
-		m.mu.RUnlock()
+		resp := m.sourceIngestResponse(req.Batch.SourceID, models.PublicIngestResponse{Accepted: false, RejectionReason: reason})
 		m.writeJSON(w, http.StatusOK, resp)
 		return
 	}
 
-	if !m.batchAlreadyAccepted(req.Batch) {
-		if err := m.acceptBatch(r.Context(), req.Batch); err != nil {
-			m.logger.Error("mirror: persist accepted batch", "source_id", req.Batch.SourceID, "error", err)
-			resp := models.PublicIngestResponse{Accepted: false}
-			m.writeJSON(w, http.StatusInternalServerError, resp)
-			return
-		}
+	if err := m.acceptBatch(r.Context(), req.Batch); err != nil {
+		m.logger.Error("mirror: persist accepted batch", "source_id", req.Batch.SourceID, "error", err)
+		resp := models.PublicIngestResponse{Accepted: false}
+		m.writeJSON(w, http.StatusInternalServerError, resp)
+		return
 	}
 
-	m.mu.RLock()
-	state := m.state.Sources[req.Batch.SourceID]
-	hw := state.HighWaterSequence
-	fch := state.FeedChainHash
-	batchCount := state.BatchCount
-	m.mu.RUnlock()
-
-	resp := models.PublicIngestResponse{
-		Accepted:          true,
-		SourceID:          req.Batch.SourceID,
-		HighWaterSequence: hw,
-		FeedChainHash:     fch,
-		BatchCount:        batchCount,
-	}
-	m.writeJSON(w, http.StatusOK, resp)
+	m.writeJSON(w, http.StatusOK, m.sourceIngestResponse(req.Batch.SourceID, models.PublicIngestResponse{Accepted: true}))
 }
 
 func (m *PublicMirrorServer) handleProofIngest(w http.ResponseWriter, r *http.Request) {
@@ -1207,40 +985,51 @@ func (m *PublicMirrorServer) handleProofIngest(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// storeProofPackage verifies a signed proof manifest and the artifacts it
+// carries inline, then stores them. Manifest entries not carried inline must
+// already be stored with a matching size; only new artifact bytes are hashed
+// and written.
 func (m *PublicMirrorServer) storeProofPackage(ctx context.Context, request models.PublicProofIngestRequest) error {
-	return m.mutateState(ctx, func(state *PublicMirrorStoreState) error {
-		if err := validatePublicProofIngest(request, *state); err != nil {
-			return err
-		}
-		for _, artifact := range request.Artifacts {
-			if existing, ok := state.ProofArtifacts[artifact.ArtifactID]; ok && !bytes.Equal(existing, artifact.Content) {
-				return constants.ErrPublicFeedEquivocation
-			}
-			state.ProofArtifacts[artifact.ArtifactID] = append([]byte(nil), artifact.Content...)
-		}
-		state.ProofCatalogs[request.SourceID] = request.Catalog
-		state.ProofManifests[request.SourceID] = request.Manifest
-		return nil
-	})
-}
-
-func validatePublicProofIngest(request models.PublicProofIngestRequest, state PublicMirrorStoreState) error {
-	return validatePublicProofPackage(request, state, true)
-}
-
-func validatePublicProofPackage(request models.PublicProofIngestRequest, state PublicMirrorStoreState, rejectRevoked bool) error {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	m.mu.RLock()
+	keys := m.keys
+	m.mu.RUnlock()
 	manifest := request.Manifest
-	if request.SourceID == "" || !manifest.VerificationOK || manifest.SchemaVersion != constants.PublicProofManifestSchemaVersion || request.Catalog.SchemaVersion != constants.PublicProofCatalogSchemaVersion {
-		return constants.ErrPublicFeedProofManifestInvalid
+	if err := validatePublicProofManifest(request.SourceID, manifest, keys, true); err != nil {
+		return err
 	}
-	if manifest.ArtifactCount <= 0 || manifest.ArtifactCount > constants.PublicFeedProofMaxArtifacts || manifest.ArtifactCount != len(manifest.Artifacts) || manifest.ArtifactCount != len(request.Catalog.Entries) || len(request.Artifacts) == 0 || len(request.Artifacts) > manifest.ArtifactCount {
+	if len(request.Artifacts) == 0 || len(request.Artifacts) > manifest.ArtifactCount {
 		return constants.ErrPublicFeedProofCatalogMismatch
 	}
-	keyRegistryID := request.SourceID + ":" + manifest.SigningKeyID
-	if _, revoked := state.RevokedKeys[keyRegistryID]; rejectRevoked && revoked {
+	artifactIDs := make([]string, len(manifest.Artifacts))
+	for index, entry := range manifest.Artifacts {
+		artifactIDs[index] = entry.ArtifactID
+	}
+	storedSizes, err := m.store.proofArtifactSizes(ctx, artifactIDs)
+	if err != nil {
+		return err
+	}
+	if err := validatePublicProofEntries(manifest, request.Artifacts, storedSizes); err != nil {
+		return err
+	}
+	return m.store.putProofPackage(ctx, request.SourceID, manifest, request.Artifacts, storedSizes)
+}
+
+// validatePublicProofManifest verifies a proof manifest's shape, signing key,
+// recomputed proof root, and root signature.
+func validatePublicProofManifest(sourceID string, manifest models.PublicProofManifest, keys PublicMirrorKeys, rejectRevoked bool) error {
+	if sourceID == "" || !manifest.VerificationOK || manifest.SchemaVersion != constants.PublicProofManifestSchemaVersion {
+		return constants.ErrPublicFeedProofManifestInvalid
+	}
+	if manifest.ArtifactCount <= 0 || manifest.ArtifactCount > constants.PublicFeedProofMaxArtifacts || manifest.ArtifactCount != len(manifest.Artifacts) {
+		return constants.ErrPublicFeedProofCatalogMismatch
+	}
+	keyRegistryID := publicMirrorKeyRegistryID(sourceID, manifest.SigningKeyID)
+	if _, revoked := keys.Revoked[keyRegistryID]; rejectRevoked && revoked {
 		return constants.ErrPublicFeedRevokedKey
 	}
-	key, ok := state.KeyRegistry[keyRegistryID]
+	key, ok := keys.Registry[keyRegistryID]
 	if !ok {
 		return constants.ErrPublicFeedUnknownKey
 	}
@@ -1256,14 +1045,15 @@ func validatePublicProofPackage(request models.PublicProofIngestRequest, state P
 	if err != nil || !ed25519.Verify(key, rootBytes, signature) {
 		return constants.ErrPublicFeedSignatureInvalid
 	}
-
-	return validatePublicProofCatalogArtifacts(request, state.ProofArtifacts)
+	return nil
 }
 
-func validatePublicProofCatalogArtifacts(request models.PublicProofIngestRequest, existingArtifacts map[string][]byte) error {
-	manifest := request.Manifest
-	inlineArtifacts := make(map[string][]byte, len(request.Artifacts))
-	for _, artifact := range request.Artifacts {
+// validatePublicProofEntries checks every manifest entry against either an
+// inline artifact (size and SHA-256 of the carried bytes) or a stored
+// artifact (recorded size). Every inline artifact must be listed.
+func validatePublicProofEntries(manifest models.PublicProofManifest, inline []models.PublicProofIngestArtifact, storedSizes map[string]int64) error {
+	inlineArtifacts := make(map[string][]byte, len(inline))
+	for _, artifact := range inline {
 		if artifact.ArtifactID == "" {
 			return constants.ErrPublicFeedProofHashMismatch
 		}
@@ -1272,20 +1062,25 @@ func validatePublicProofCatalogArtifacts(request models.PublicProofIngestRequest
 		}
 		inlineArtifacts[artifact.ArtifactID] = artifact.Content
 	}
-	for index, entry := range request.Catalog.Entries {
-		if entry != manifest.Artifacts[index] || entry.Classification != models.PublicFeedProofClassificationPublicSafe || entry.ArtifactID != entry.SHA256 {
+	referenced := make(map[string]bool, len(manifest.Artifacts))
+	for _, entry := range manifest.Artifacts {
+		if entry.Classification != models.PublicFeedProofClassificationPublicSafe || entry.ArtifactID != entry.SHA256 {
 			return constants.ErrPublicFeedProofCatalogMismatch
 		}
 		if !safePublicProofFilename(entry.Filename) || entry.ImmutableURL != "/proofs/"+entry.ArtifactID {
 			return constants.ErrPublicFeedProofPathTraversal
 		}
+		referenced[entry.ArtifactID] = true
 		content, ok := inlineArtifacts[entry.ArtifactID]
 		if !ok {
-			stored, storedOK := existingArtifacts[entry.ArtifactID]
-			if !storedOK {
+			size, stored := storedSizes[entry.ArtifactID]
+			if !stored {
 				return constants.ErrPublicFeedProofCatalogMismatch
 			}
-			content = stored
+			if size > constants.PublicFeedMaxArtifactBytes || size != entry.ByteSize {
+				return constants.ErrPublicFeedProofSizeMismatch
+			}
+			continue
 		}
 		if len(content) > constants.PublicFeedMaxArtifactBytes || int64(len(content)) != entry.ByteSize {
 			return constants.ErrPublicFeedProofSizeMismatch
@@ -1293,6 +1088,11 @@ func validatePublicProofCatalogArtifacts(request models.PublicProofIngestRequest
 		hash := sha256.Sum256(content)
 		if entry.SHA256 != hex.EncodeToString(hash[:]) {
 			return constants.ErrPublicFeedProofHashMismatch
+		}
+	}
+	for artifactID := range inlineArtifacts {
+		if !referenced[artifactID] {
+			return constants.ErrPublicFeedProofCatalogMismatch
 		}
 	}
 	return nil
@@ -1306,6 +1106,12 @@ func safePublicProofFilename(filename string) bool {
 	return cleaned == filename && cleaned != "." && cleaned != ".." && path.Base(cleaned) == cleaned
 }
 
+// writeStoreUnavailable reports a mirror store read failure.
+func (m *PublicMirrorServer) writeStoreUnavailable(w http.ResponseWriter, message string, err error) {
+	m.logger.Error(message, "error", err)
+	http.Error(w, "mirror store unavailable", http.StatusInternalServerError)
+}
+
 // handleBootstrap handles GET /bootstrap — bounded initial snapshot for
 // public first paint.
 func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Request) {
@@ -1313,16 +1119,8 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID := r.URL.Query().Get("source")
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if sourceID == "" {
-		sourceID = activePublicMirrorSourceID(m.state)
-	}
-
-	state, ok := m.state.Sources[sourceID]
-	if !ok {
+	sourceID, summary := m.sourceView(r.URL.Query().Get("source"))
+	if summary == nil {
 		m.writeJSON(w, http.StatusOK, models.PublicFeedBootstrap{
 			ProtocolVersion:     constants.PublicFeedProtocolVersion,
 			Snapshot:            offlinePublicMirrorSnapshot(sourceID),
@@ -1334,25 +1132,32 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	recent := m.recentProjectionsLocked(state, m.maxBootstrapProjections)
-	catalog, hasCatalog := m.state.ProofCatalogs[sourceID]
-	summary := models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0}
-	if hasCatalog && len(catalog.Entries) > 0 {
-		summary.ArtifactCount = len(catalog.Entries)
-		var total int64
-		for _, e := range catalog.Entries {
-			total += e.ByteSize
-		}
-		summary.TotalByteSize = total
-		summary.LastGeneratedAt = &catalog.GeneratedAt
+	m.mu.RLock()
+	maxProjections := m.maxBootstrapProjections
+	m.mu.RUnlock()
+	recent, err := m.recentProjections(r.Context(), summary, maxProjections)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read recent projections", err)
+		return
+	}
+	proofSummary, hasProof, err := m.store.proofSummary(r.Context(), sourceID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read proof summary", err)
+		return
+	}
+	catalogSummary := models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0}
+	if hasProof && proofSummary.ArtifactCount > 0 {
+		catalogSummary.ArtifactCount = proofSummary.ArtifactCount
+		catalogSummary.TotalByteSize = proofSummary.TotalByteSize
+		catalogSummary.LastGeneratedAt = &proofSummary.GeneratedAt
 	}
 
 	m.writeJSON(w, http.StatusOK, models.PublicFeedBootstrap{
 		ProtocolVersion:     constants.PublicFeedProtocolVersion,
-		Snapshot:            m.snapshotLocked(sourceID, state),
-		SourceFreshness:     m.sourceFreshness(state),
+		Snapshot:            m.snapshotOf(sourceID, summary),
+		SourceFreshness:     m.sourceFreshness(summary),
 		RecentProjections:   recent,
-		ProofCatalogSummary: summary,
+		ProofCatalogSummary: catalogSummary,
 		GeneratedAt:         time.Now().UTC(),
 	})
 }
@@ -1364,18 +1169,9 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID := r.URL.Query().Get("source")
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if sourceID == "" {
-		sourceID = activePublicMirrorSourceID(m.state)
-	}
-
-	state, ok := m.state.Sources[sourceID]
-	if !ok {
-		resp := offlinePublicMirrorSnapshot(sourceID)
-		m.writeJSON(w, http.StatusOK, resp)
+	sourceID, summary := m.sourceView(r.URL.Query().Get("source"))
+	if summary == nil {
+		m.writeJSON(w, http.StatusOK, offlinePublicMirrorSnapshot(sourceID))
 		return
 	}
 
@@ -1385,22 +1181,24 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 			http.Error(w, constants.ErrPublicFeedSnapshotNotFound.Error(), http.StatusNotFound)
 			return
 		}
-		for index, batch := range state.Batches {
-			if batch.LastSequence != sequence {
-				continue
-			}
-			anchor := m.snapshotLocked(sourceID, state)
-			anchor.HighWaterSequence = batch.LastSequence
-			anchor.FeedChainHash = batch.ContentHash
-			anchor.BatchCount = state.BatchCount - len(state.Batches) + index + 1
-			m.writeJSON(w, http.StatusOK, anchor)
+		contentHash, later, found, err := m.store.batchAnchor(r.Context(), sourceID, sequence, summary.HighWaterSequence)
+		if err != nil {
+			m.writeStoreUnavailable(w, "mirror: read snapshot anchor", err)
 			return
 		}
-		http.Error(w, constants.ErrPublicFeedSnapshotNotFound.Error(), http.StatusNotFound)
+		if !found {
+			http.Error(w, constants.ErrPublicFeedSnapshotNotFound.Error(), http.StatusNotFound)
+			return
+		}
+		anchor := m.snapshotOf(sourceID, summary)
+		anchor.HighWaterSequence = sequence
+		anchor.FeedChainHash = contentHash
+		anchor.BatchCount = summary.BatchCount - later
+		m.writeJSON(w, http.StatusOK, anchor)
 		return
 	}
 
-	m.writeJSON(w, http.StatusOK, m.snapshotLocked(sourceID, state))
+	m.writeJSON(w, http.StatusOK, m.snapshotOf(sourceID, summary))
 }
 
 // handleHistory handles GET /history — cursor-paginated page of public
@@ -1411,7 +1209,6 @@ func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID := r.URL.Query().Get("source")
 	cursorStr := r.URL.Query().Get("cursor")
 	limitStr := r.URL.Query().Get("limit")
 	recordKind := r.URL.Query().Get("kind")
@@ -1432,15 +1229,8 @@ func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if sourceID == "" {
-		sourceID = activePublicMirrorSourceID(m.state)
-	}
-
-	state, ok := m.state.Sources[sourceID]
-	if !ok {
+	sourceID, summary := m.sourceView(r.URL.Query().Get("source"))
+	if summary == nil {
 		m.writeJSON(w, http.StatusOK, models.PublicFeedCursorPage{
 			ProtocolVersion: constants.PublicFeedProtocolVersion,
 			Items:           []models.PublicFeedObject{},
@@ -1450,43 +1240,50 @@ func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var items []models.PublicFeedObject
+	items := []models.PublicFeedObject{}
 	var lastSeq int64
 	hasMore := false
-	for _, rec := range state.Records {
-		if rec.Sequence <= cursor {
-			continue
+	pageSize := max(limit+1, publicMirrorReadPageRecords)
+	after := cursor
+scan:
+	for {
+		records, err := m.store.recordsAfter(r.Context(), sourceID, after, summary.HighWaterSequence, pageSize)
+		if err != nil {
+			m.writeStoreUnavailable(w, "mirror: read history", err)
+			return
 		}
-		if mirrorRecordWithdrawn(state, rec) {
-			continue
-		}
-		var item models.PublicFeedObject
-		if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
-			continue
-		}
-		if recordKind != "" {
-			kind, ok := item.StringField("kind")
-			if !ok || kind != recordKind {
+		for _, rec := range records {
+			if mirrorRecordWithdrawn(summary.WithdrawnDatasetIDs, rec) {
 				continue
 			}
+			var item models.PublicFeedObject
+			if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
+				continue
+			}
+			if recordKind != "" {
+				kind, ok := item.StringField("kind")
+				if !ok || kind != recordKind {
+					continue
+				}
+			}
+			if len(items) >= limit {
+				hasMore = true
+				break scan
+			}
+			item.SetInt64Field("sequence", rec.Sequence)
+			item["record_type"] = json.RawMessage(strconv.Quote(string(rec.RecordType)))
+			items = append(items, item)
+			lastSeq = rec.Sequence
 		}
-		if len(items) >= limit {
-			hasMore = true
+		if len(records) < pageSize {
 			break
 		}
-		item.SetInt64Field("sequence", rec.Sequence)
-		item["record_type"] = json.RawMessage(strconv.Quote(string(rec.RecordType)))
-		items = append(items, item)
-		lastSeq = rec.Sequence
+		after = records[len(records)-1].Sequence
 	}
 
 	nextCursor := ""
 	if hasMore {
 		nextCursor = strconv.FormatInt(lastSeq, 10)
-	}
-
-	if items == nil {
-		items = []models.PublicFeedObject{}
 	}
 
 	m.writeJSON(w, http.StatusOK, models.PublicFeedCursorPage{
@@ -1500,17 +1297,17 @@ func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Reques
 
 // handleStream handles GET /stream — replayable SSE. The client connects with
 // an optional since_id query parameter (or Last-Event-ID header) to resume
-// from a specific sequence. The server sends existing records after the
-// cursor, then live records as they arrive. A bounded queue prevents
-// unbounded memory growth; overflow sends a truncation sentinel.
+// from a specific sequence. The server subscribes first, then sends a
+// snapshot and the retained records after the cursor through that snapshot,
+// then live records past it. A bounded queue prevents unbounded memory
+// growth; overflow sends a truncation sentinel.
 func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	sourceID := r.URL.Query().Get("source")
-	explicitSource := sourceID != ""
+	requestedSource := r.URL.Query().Get("source")
 	sinceIDStr := r.URL.Query().Get("since_id")
 	if sinceIDStr == "" {
 		sinceIDStr = r.Header.Get("Last-Event-ID")
@@ -1533,24 +1330,9 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	m.mu.RLock()
-	if sourceID == "" {
-		sourceID = activePublicMirrorSourceID(m.state)
-	}
-	state, stateExists := m.state.Sources[sourceID]
-	var replayRecords []models.PublicFeedRecord
-	if stateExists {
-		for _, rec := range state.Records {
-			if rec.Sequence <= sinceID || mirrorRecordWithdrawn(state, rec) {
-				continue
-			}
-			replayRecords = append(replayRecords, rec)
-		}
-	}
-	m.mu.RUnlock()
-
+	sourceID, summary := m.sourceView(requestedSource)
 	var sub *mirrorSSESubscriber
-	if stateExists || explicitSource {
+	if summary != nil || requestedSource != "" {
 		var accepted bool
 		sub, accepted = m.addSSESubscriber(sourceID)
 		if !accepted {
@@ -1559,24 +1341,35 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 			return
 		}
 		defer m.removeSSESubscriber(sub)
+		// Re-read after subscribing so every record accepted from here on is
+		// either replayed below or delivered live.
+		_, summary = m.sourceView(sourceID)
 	}
 
 	// Send snapshot event first.
-	snapshot := m.getSnapshotForSSE(sourceID)
-	sseWriteEvent(w, flusher, "snapshot", snapshot)
+	if summary == nil {
+		sseWriteEvent(w, flusher, "snapshot", offlinePublicMirrorSnapshot(sourceID))
+	} else {
+		sseWriteEvent(w, flusher, "snapshot", m.snapshotOf(sourceID, summary))
+	}
 
-	// Send replay records (oldest first, bounded so reconnects do not replay
-	// the full retained feed over SSE).
-	replayTruncated := false
-	if m.maxSSEReplayRecords > 0 && len(replayRecords) > m.maxSSEReplayRecords {
-		replayRecords = replayRecords[:m.maxSSEReplayRecords]
-		replayTruncated = true
-	}
-	for _, rec := range replayRecords {
-		sseWriteRecord(w, flusher, rec)
-	}
-	if replayTruncated {
-		sseWriteSentinel(w, flusher, "truncated", "replay limit reached")
+	// Replay retained records through the snapshot, oldest first, bounded so
+	// reconnects do not replay the full retained feed over SSE.
+	skipThrough := sinceID
+	if summary != nil {
+		m.mu.RLock()
+		maxReplay := m.maxSSEReplayRecords
+		m.mu.RUnlock()
+		skipThrough = max(sinceID, summary.HighWaterSequence)
+		truncated, err := m.replayRecords(r.Context(), w, flusher, sourceID, summary, sinceID, maxReplay)
+		if err != nil {
+			m.logger.Error("mirror: replay stream records", "source_id", sourceID, "error", err)
+			sseWriteSentinel(w, flusher, "error", "replay unavailable")
+			return
+		}
+		if truncated {
+			sseWriteSentinel(w, flusher, "truncated", "replay limit reached")
+		}
 	}
 
 	if sub == nil {
@@ -1595,7 +1388,12 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 		case <-keepalive.C:
 			sseWriteComment(w, flusher)
 		case <-sub.resync:
-			sseWriteEvent(w, flusher, "snapshot", m.getSnapshotForSSE(sourceID))
+			_, current := m.sourceView(sourceID)
+			if current == nil {
+				sseWriteEvent(w, flusher, "snapshot", offlinePublicMirrorSnapshot(sourceID))
+			} else {
+				sseWriteEvent(w, flusher, "snapshot", m.snapshotOf(sourceID, current))
+			}
 		case rec, open := <-sub.ch:
 			if !open {
 				sseWriteSentinel(w, flusher, "error", "stream closed")
@@ -1605,7 +1403,7 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 			if sub.consumeTruncated() {
 				sseWriteSentinel(w, flusher, "truncated", "subscriber buffer overflow")
 			}
-			if rec.Sequence <= sinceID {
+			if rec.Sequence <= skipThrough {
 				continue
 			}
 			sseWriteRecord(w, flusher, rec)
@@ -1613,33 +1411,77 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// replayRecords streams the retained, non-withdrawn records after sinceID
+// through the summary high-water mark, at most maxReplay when positive, and
+// reports whether more remained.
+func (m *PublicMirrorServer) replayRecords(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, sourceID string, summary *PublicMirrorSourceSummary, sinceID int64, maxReplay int) (bool, error) {
+	sent := 0
+	after := sinceID
+	for {
+		records, err := m.store.recordsAfter(ctx, sourceID, after, summary.HighWaterSequence, publicMirrorReadPageRecords)
+		if err != nil {
+			return false, err
+		}
+		for _, rec := range records {
+			if mirrorRecordWithdrawn(summary.WithdrawnDatasetIDs, rec) {
+				continue
+			}
+			if maxReplay > 0 && sent >= maxReplay {
+				return true, nil
+			}
+			sseWriteRecord(w, flusher, rec)
+			sent++
+		}
+		if len(records) < publicMirrorReadPageRecords {
+			return false, nil
+		}
+		after = records[len(records)-1].Sequence
+	}
+}
+
+// resolveProofManifestSource returns the source whose proof manifest a read
+// serves: the requested one, else the active source's, else the lowest.
+func (m *PublicMirrorServer) resolveProofManifestSource(ctx context.Context, requested string) (string, bool, error) {
+	if requested != "" {
+		return requested, true, nil
+	}
+	m.mu.RLock()
+	active := m.activeSourceIDLocked()
+	m.mu.RUnlock()
+	return m.store.proofManifestSourceID(ctx, active)
+}
+
 // handleProofCatalog handles GET /proof-catalog — the full public proof
-// catalog.
+// catalog, derived from the stored signed manifest.
 func (m *PublicMirrorServer) handleProofCatalog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID := r.URL.Query().Get("source")
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if sourceID == "" {
-		for sid := range m.state.ProofCatalogs {
-			sourceID = sid
-			break
-		}
+	emptyCatalog := models.PublicProofCatalog{
+		SchemaVersion: constants.PublicProofCatalogSchemaVersion,
+		Entries:       []models.PublicProofCatalogEntry{},
+		GeneratedAt:   time.Now().UTC(),
 	}
-
-	catalog, ok := m.state.ProofCatalogs[sourceID]
-	if !ok {
-		m.writeJSON(w, http.StatusOK, models.PublicProofCatalog{
-			SchemaVersion: constants.PublicProofCatalogSchemaVersion,
-			Entries:       []models.PublicProofCatalogEntry{},
-			GeneratedAt:   time.Now().UTC(),
-		})
+	sourceID, ok, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: resolve proof catalog source", err)
 		return
 	}
+	if !ok {
+		m.writeJSON(w, http.StatusOK, emptyCatalog)
+		return
+	}
+	manifest, found, err := m.store.ProofManifest(r.Context(), sourceID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read proof catalog", err)
+		return
+	}
+	if !found {
+		m.writeJSON(w, http.StatusOK, emptyCatalog)
+		return
+	}
+	catalog := proofCatalogFromManifest(manifest)
 	if catalog.Entries == nil {
 		catalog.Entries = []models.PublicProofCatalogEntry{}
 	}
@@ -1652,19 +1494,21 @@ func (m *PublicMirrorServer) handleProofManifest(w http.ResponseWriter, r *http.
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID := r.URL.Query().Get("source")
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if sourceID == "" {
-		for sid := range m.state.ProofManifests {
-			sourceID = sid
-			break
-		}
+	sourceID, ok, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: resolve proof manifest source", err)
+		return
 	}
-
-	manifest, ok := m.state.ProofManifests[sourceID]
 	if !ok {
+		http.Error(w, "proof manifest not found", http.StatusNotFound)
+		return
+	}
+	manifest, found, err := m.store.ProofManifest(r.Context(), sourceID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read proof manifest", err)
+		return
+	}
+	if !found {
 		http.Error(w, "proof manifest not found", http.StatusNotFound)
 		return
 	}
@@ -1672,7 +1516,8 @@ func (m *PublicMirrorServer) handleProofManifest(w http.ResponseWriter, r *http.
 }
 
 // handleProofDownload handles GET /proofs/:artifactID — content-addressed
-// proof artifact download with safe headers.
+// proof artifact download with safe headers. The stored file is rehashed
+// before any byte is served.
 func (m *PublicMirrorServer) handleProofDownload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1683,86 +1528,85 @@ func (m *PublicMirrorServer) handleProofDownload(w http.ResponseWriter, r *http.
 		http.Error(w, "artifact id required", http.StatusBadRequest)
 		return
 	}
-
-	m.mu.RLock()
-	content, ok := m.state.ProofArtifacts[artifactID]
-	catalogs := m.state.ProofCatalogs
-	m.mu.RUnlock()
-
-	if !ok {
+	if !validPublicProofArtifactID(artifactID) {
 		http.Error(w, "proof not found", http.StatusNotFound)
 		return
 	}
-
-	// Find the catalog entry for safe headers.
-	var entry *models.PublicProofCatalogEntry
-	for _, cat := range catalogs {
-		for i := range cat.Entries {
-			if cat.Entries[i].ArtifactID == artifactID {
-				entry = &cat.Entries[i]
-				break
-			}
-		}
-		if entry != nil {
-			break
-		}
+	artifact, found, err := m.store.proofArtifact(r.Context(), artifactID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read proof artifact", err)
+		return
 	}
+	if !found {
+		http.Error(w, "proof not found", http.StatusNotFound)
+		return
+	}
+	file, err := m.store.openProofArtifact(r.Context(), artifactID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: open proof artifact", err)
+		return
+	}
+	defer file.Close()
 
 	// Verify hash before serving.
-	h := sha256.Sum256(content)
-	computedHash := hex.EncodeToString(h[:])
-	if computedHash != artifactID {
+	hash := sha256.New()
+	hashed, err := io.Copy(hash, file)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read proof artifact", err)
+		return
+	}
+	if hashed != artifact.ByteSize || hex.EncodeToString(hash.Sum(nil)) != artifactID {
 		http.Error(w, "proof hash mismatch", http.StatusInternalServerError)
 		return
 	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		m.writeStoreUnavailable(w, "mirror: rewind proof artifact", err)
+		return
+	}
 
-	if entry != nil {
-		w.Header().Set("Content-Type", entry.MediaType)
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", entry.Filename))
+	if artifact.Entry != nil {
+		w.Header().Set("Content-Type", artifact.Entry.MediaType)
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", artifact.Entry.Filename))
 	} else {
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
-	if _, err := w.Write(content); err != nil {
+	w.Header().Set("Content-Length", strconv.FormatInt(artifact.ByteSize, 10))
+	if _, err := io.CopyN(w, file, artifact.ByteSize); err != nil {
 		m.logResponseError("mirror: write proof response", err)
 	}
 }
 
-// recentProjectionsLocked returns the most recent projection records as
-// deserialized JSON objects. Caller must hold the read lock.
-func (m *PublicMirrorServer) recentProjectionsLocked(state *PublicMirrorSourceState, max int) []models.PublicFeedObject {
-	var projections []models.PublicFeedObject
-	for i := len(state.Records) - 1; i >= 0 && len(projections) < max; i-- {
-		rec := state.Records[i]
-		if rec.RecordType != models.PublicFeedRecordTypeProjection {
-			continue
+// recentProjections returns up to max of the newest non-withdrawn projection
+// records through the summary high-water mark as deserialized JSON objects.
+func (m *PublicMirrorServer) recentProjections(ctx context.Context, summary *PublicMirrorSourceSummary, max int) ([]models.PublicFeedObject, error) {
+	projections := []models.PublicFeedObject{}
+	before := summary.HighWaterSequence + 1
+	for len(projections) < max {
+		records, err := m.store.recordsBefore(ctx, summary.SourceID, models.PublicFeedRecordTypeProjection, before, publicMirrorReadPageRecords)
+		if err != nil {
+			return nil, err
 		}
-		if mirrorRecordWithdrawn(state, rec) {
-			continue
+		for _, rec := range records {
+			if len(projections) >= max {
+				break
+			}
+			if mirrorRecordWithdrawn(summary.WithdrawnDatasetIDs, rec) {
+				continue
+			}
+			var item models.PublicFeedObject
+			if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
+				continue
+			}
+			item.SetInt64Field("sequence", rec.Sequence)
+			projections = append(projections, item)
 		}
-		var item models.PublicFeedObject
-		if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
-			continue
+		if len(records) < publicMirrorReadPageRecords {
+			break
 		}
-		item.SetInt64Field("sequence", rec.Sequence)
-		projections = append(projections, item)
+		before = records[len(records)-1].Sequence
 	}
-	if projections == nil {
-		return []models.PublicFeedObject{}
-	}
-	return projections
-}
-
-// getSnapshotForSSE returns the current snapshot for a source.
-func (m *PublicMirrorServer) getSnapshotForSSE(sourceID string) models.PublicFeedSnapshot {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	state, ok := m.state.Sources[sourceID]
-	if !ok {
-		return offlinePublicMirrorSnapshot(sourceID)
-	}
-	return m.snapshotLocked(sourceID, state)
+	return projections, nil
 }
 
 // offlinePublicMirrorSnapshot is the snapshot of a source the mirror has
@@ -1780,18 +1624,18 @@ func offlinePublicMirrorSnapshot(sourceID string) models.PublicFeedSnapshot {
 	}
 }
 
-// snapshotLocked returns the current snapshot of one accepted source. The
-// caller holds m.mu.
-func (m *PublicMirrorServer) snapshotLocked(sourceID string, state *PublicMirrorSourceState) models.PublicFeedSnapshot {
+// snapshotOf returns the snapshot of one accepted source summary. The caller
+// must not hold m.mu.
+func (m *PublicMirrorServer) snapshotOf(sourceID string, summary *PublicMirrorSourceSummary) models.PublicFeedSnapshot {
 	return models.PublicFeedSnapshot{
 		ProtocolVersion:   constants.PublicFeedProtocolVersion,
 		SourceID:          sourceID,
-		HighWaterSequence: state.HighWaterSequence,
-		FeedChainHash:     state.FeedChainHash,
-		BatchCount:        state.BatchCount,
-		WithdrawalDigest:  mirrorWithdrawalDigest(state),
+		HighWaterSequence: summary.HighWaterSequence,
+		FeedChainHash:     summary.FeedChainHash,
+		BatchCount:        summary.BatchCount,
+		WithdrawalDigest:  mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs),
 		GeneratedAt:       time.Now().UTC(),
-		Freshness:         m.sourceFreshness(state),
+		Freshness:         m.sourceFreshness(summary),
 	}
 }
 
@@ -1883,16 +1727,16 @@ func sseWriteComment(w http.ResponseWriter, flusher http.Flusher) {
 	flusher.Flush()
 }
 
-// GetSourceState returns a copy of the source state for testing. Returns nil
-// if the source has no accepted batches.
+// GetSourceState returns one source's chain position and retained record
+// count for testing. Returns zero values if the source is unknown.
 func (m *PublicMirrorServer) GetSourceState(sourceID string) (highWater int64, feedChainHash string, batchCount int, recordCount int) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	state, ok := m.state.Sources[sourceID]
+	summary, ok := m.sources[sourceID]
 	if !ok {
 		return 0, "", 0, 0
 	}
-	return state.HighWaterSequence, state.FeedChainHash, state.BatchCount, len(state.Records)
+	return summary.HighWaterSequence, summary.FeedChainHash, summary.BatchCount, summary.RetainedRecordCount
 }
 
 // InjectBatch directly stores a batch without validation. Used by tests that
@@ -1914,7 +1758,8 @@ func (m *PublicMirrorServer) CloseAllSubscribers() {
 // FlushForTests waits for pending operations to settle. Used in tests after
 // ingest to ensure records are visible before reading.
 func (m *PublicMirrorServer) FlushForTests() {
-	// The acceptBatch method updates state synchronously under the lock,
-	// so no flush is needed. This method exists for future async paths.
+	// The acceptBatch method commits to the store and updates state
+	// synchronously, so no flush is needed. This method exists for future
+	// async paths.
 	_ = context.Background()
 }

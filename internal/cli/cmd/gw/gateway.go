@@ -37,6 +37,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/network"
+	"github.com/zerotrustdata/ztd/internal/services/profiling"
 )
 
 func getBinaryName() string {
@@ -87,6 +88,7 @@ type GatewayFlags struct {
 	EvalExplorerAddr                  string
 	EvalExplorerRoot                  string
 	PublicSpectatorTrustedProxyCIDRs  []string
+	PprofListenAddr                   string
 }
 
 // addGatewayFlags registers all shared gateway flags on the given cobra command,
@@ -128,6 +130,7 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringVar(&f.EvalExplorerAddr, "eval-explorer-listen", "", fmt.Sprintf("Loopback address for the evaluation explorer SPA (default: 127.0.0.1:%d)", constants.EvalExplorerDefaultPort))
 	cmd.Flags().StringVar(&f.EvalExplorerRoot, "eval-explorer-root", "", "Directory containing the built evaluation explorer dist assets")
 	cmd.Flags().StringArrayVar(&f.PublicSpectatorTrustedProxyCIDRs, "public-spectator-trusted-proxy-cidr", nil, "Trusted proxy CIDR allowed to provide exactly one CF-Connecting-IP address (repeatable)")
+	cmd.Flags().StringVar(&f.PprofListenAddr, "pprof-listen", "", fmt.Sprintf("Loopback address serving Go pprof profiles at /debug/pprof/, e.g. 127.0.0.1:%d (default: disabled)", constants.ProfilingSuggestedPort))
 }
 
 // postureFlagHelp describes every posture for the --posture flag, generated
@@ -188,6 +191,7 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		EvalExplorerAddr:                   f.EvalExplorerAddr,
 		EvalExplorerRoot:                   f.EvalExplorerRoot,
 		PublicSpectatorTrustedProxyCIDRs:   f.PublicSpectatorTrustedProxyCIDRs,
+		PprofListenAddr:                    f.PprofListenAddr,
 	}
 }
 
@@ -449,6 +453,11 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			posture, err := constants.ParsePosture(resolved.Posture)
 			if err != nil {
 				return err
+			}
+			if resolved.PprofListenAddr != "" {
+				if err := profiling.ValidateListenAddress(resolved.PprofListenAddr); err != nil {
+					return err
+				}
 			}
 
 			// A running Gateway is checked before identity detection so a

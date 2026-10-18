@@ -1,0 +1,101 @@
+-- Public Mirror SQLite Schema
+-- Canonical schema for the Gateway-owned public spectator mirror store
+-- (`.ztd/public-mirror/mirror.db`). Embedded into `public_mirror_store.go` via
+-- `//go:embed db/public_mirror_schema.sql` and applied on open by
+-- `OpenPublicMirrorStore`. This file is the SINGLE source of truth for the
+-- mirror schema - do not duplicate it elsewhere.
+--
+-- Every row holds public, already-signed data. Proof artifact bytes live in
+-- content-addressed files under `public-mirror/proofs/<sha256>`; this store
+-- holds only their identity and size.
+
+-- Singleton mirror-wide state.
+CREATE TABLE IF NOT EXISTS mirror_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    active_source_id TEXT NOT NULL DEFAULT ''
+);
+
+-- Per-source summary of the accepted signed batch chain.
+CREATE TABLE IF NOT EXISTS sources (
+    source_id TEXT PRIMARY KEY,
+    high_water_sequence INTEGER NOT NULL,
+    feed_chain_hash TEXT NOT NULL,
+    batch_count INTEGER NOT NULL,
+    retained_from_sequence INTEGER NOT NULL,
+    retained_previous_batch_hash TEXT NOT NULL,
+    freshness TEXT NOT NULL,
+    last_accepted_at TEXT NOT NULL DEFAULT ''
+);
+
+-- Retained signed batches. Record hashes are reconstructed from records.
+CREATE TABLE IF NOT EXISTS batches (
+    source_id TEXT NOT NULL REFERENCES sources(source_id),
+    first_sequence INTEGER NOT NULL,
+    last_sequence INTEGER NOT NULL,
+    protocol_version TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    previous_batch_hash TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    signing_key_id TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    PRIMARY KEY (source_id, first_sequence)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_public_mirror_batches_last ON batches(source_id, last_sequence);
+
+-- Retained public feed records.
+CREATE TABLE IF NOT EXISTS records (
+    source_id TEXT NOT NULL REFERENCES sources(source_id),
+    sequence INTEGER NOT NULL,
+    record_type TEXT NOT NULL,
+    record_hash TEXT NOT NULL,
+    record_bytes TEXT NOT NULL,
+    PRIMARY KEY (source_id, sequence)
+);
+
+-- Source signing keys, keyed "<source_id>:<key_id>".
+CREATE TABLE IF NOT EXISTS key_registry (
+    registry_id TEXT PRIMARY KEY,
+    public_key BLOB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS revoked_keys (
+    registry_id TEXT PRIMARY KEY,
+    revoked_at TEXT NOT NULL
+);
+
+-- Campaign datasets hidden from anonymous reads without touching the chain.
+CREATE TABLE IF NOT EXISTS withdrawn_datasets (
+    source_id TEXT NOT NULL REFERENCES sources(source_id),
+    dataset_id TEXT NOT NULL,
+    PRIMARY KEY (source_id, dataset_id)
+);
+
+-- Content-addressed proof artifacts stored at public-mirror/proofs/<artifact_id>.
+CREATE TABLE IF NOT EXISTS proof_artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    byte_size INTEGER NOT NULL,
+    stored_at TEXT NOT NULL
+);
+
+-- Signed proof manifest per source. manifest_json carries every header field;
+-- its artifacts list is held row by row in proof_manifest_entries.
+CREATE TABLE IF NOT EXISTS proof_manifests (
+    source_id TEXT PRIMARY KEY,
+    manifest_json TEXT NOT NULL,
+    proof_root_sha256 TEXT NOT NULL,
+    artifact_count INTEGER NOT NULL,
+    total_byte_size INTEGER NOT NULL,
+    generated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS proof_manifest_entries (
+    source_id TEXT NOT NULL REFERENCES proof_manifests(source_id),
+    ordinal INTEGER NOT NULL,
+    artifact_id TEXT NOT NULL REFERENCES proof_artifacts(artifact_id),
+    entry_json TEXT NOT NULL,
+    PRIMARY KEY (source_id, ordinal)
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_mirror_manifest_entries_artifact ON proof_manifest_entries(artifact_id);

@@ -364,6 +364,9 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	for _, cidr := range opts.PublicSpectatorTrustedProxyCIDRs {
 		args = append(args, "--public-spectator-trusted-proxy-cidr", cidr)
 	}
+	if opts.PprofListenAddr != "" {
+		args = append(args, "--pprof-listen", opts.PprofListenAddr)
+	}
 
 	return args, nil
 }

@@ -278,6 +278,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/docs/` | Generated OpenAPI (`swagger.json` embedded by `docs.go`, plus `swagger.yaml`). Generator: `make swagger-generate`. |
 | `internal/services/gateway/explorer/` | Embedded evaluation-explorer assets. |
 | `internal/services/gateway/db/schema.sql` | Canonical SQLite schema embedded by `CanonicalDBService`. |
+| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. |
 
 ### Persistence
 
@@ -288,6 +289,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `RuntimeFileService` | `internal/services/fs/file_service.go` | Canonical `.ztd/` file service. Startup calls `CreateRuntimeTree` from `internal/cli/serve/gateway.go` and `internal/cli/serve/operator.go`. |
 | Path constants | `internal/constants/paths.go` | Reusable system, repository, and runtime path strings. |
 | `CanonicalDBService` | `internal/services/gateway/gateway_db.go` | Primary SQLite connection, schema lifecycle, encrypted vault, secret manager, maintenance, and store lifetimes. Constructor: `OpenCanonicalDBService`. Gateway builder and `ZtdoService` both call it. |
+| `PublicMirrorStore` | `internal/services/gateway/public_mirror_store.go` | Public spectator mirror store: `public-mirror/mirror.db` plus content-addressed `public-mirror/proofs/`. Constructor: `OpenPublicMirrorStore`, which verifies the chain and proofs on every open. `public_mirror_import.go` is the one-time `state.json` import, removed after v1.1.3. |
 
 `CanonicalDBService` accessors:
 
@@ -330,6 +332,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/mcp/` | MCP and A2A gateway, native tools, field-path governance, suspension, and downstream clients. |
 | `internal/services/network/` | Network identity detection and endpoint construction. |
 | `internal/services/operatorcapability/` | Capability resolution and selection for provider-boundary observer, provenance operator, inference, and governed data operators, plus Ollama command construction. |
+| `internal/services/profiling/` | Opt-in loopback-only `net/http/pprof` listener behind `gw start --pprof-listen`. |
 | `internal/services/publicdisclosure/` | Validation of public-disclosure records. Gateway publisher and mirror orchestration stay in `internal/services/gateway/`. |
 | `internal/services/pubsub/` | Gateway and Operator pub/sub clients, command dispatch, results, heartbeats, mode dependency types, and capability handlers (`NewCapabilityHandlers`) shared by Gateway-local executor and outbound Operator. |
 | `internal/services/reporting/` | Deterministic CSV evidence reports and verification. Exposed by `ztd report`. |

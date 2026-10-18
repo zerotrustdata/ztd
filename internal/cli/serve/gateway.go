@@ -24,6 +24,7 @@ import (
 	gateway "github.com/zerotrustdata/ztd/internal/services/gateway"
 	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
+	"github.com/zerotrustdata/ztd/internal/services/profiling"
 )
 
 // GatewayConfig holds configuration for starting the gateway in gateway mode.
@@ -65,6 +66,7 @@ type GatewayConfig struct {
 	EvalExplorerAddr                   string                         `json:"eval_explorer_addr,omitempty"`
 	EvalExplorerRoot                   string                         `json:"eval_explorer_root,omitempty"`
 	PublicSpectatorTrustedProxyCIDRs   []string                       `json:"public_spectator_trusted_proxy_cidrs,omitempty"`
+	PprofListenAddr                    string                         `json:"pprof_listen_addr,omitempty"`
 }
 
 // RunGateway starts the Operator in gateway mode - the platform's central
@@ -100,6 +102,22 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 			logger.Error("gateway: close log handle", "error", closeErr)
 		}
 	}()
+
+	// Profiling starts before service construction so startup cost is
+	// visible in CPU profiles and execution traces.
+	if cfg.PprofListenAddr != "" {
+		profiler, err := profiling.Start(cfg.PprofListenAddr, logger)
+		if err != nil {
+			return fmt.Errorf("gateway: start profiling: %w", err)
+		}
+		defer func() {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer stopCancel()
+			if stopErr := profiler.Stop(stopCtx); stopErr != nil {
+				logger.Error("gateway: stop profiling", "error", stopErr)
+			}
+		}()
+	}
 
 	// Apply defaults for empty directory flags
 	if cfg.DataDir == "" {
