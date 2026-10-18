@@ -177,6 +177,10 @@ func (s *PublicMirrorStore) importLegacy(ctx context.Context, legacy legacyPubli
 		}
 		for _, sourceID := range sourceIDs {
 			source := legacy.Sources[sourceID]
+			var retainedBytes int64
+			for _, r := range source.Records {
+				retainedBytes += int64(len(r.RecordBytes))
+			}
 			summary := PublicMirrorSourceSummary{
 				SourceID:                  sourceID,
 				HighWaterSequence:         source.HighWaterSequence,
@@ -184,6 +188,9 @@ func (s *PublicMirrorStore) importLegacy(ctx context.Context, legacy legacyPubli
 				BatchCount:                source.BatchCount,
 				RetainedFromSequence:      source.RetainedFromSequence,
 				RetainedPreviousBatchHash: source.RetainedPreviousBatchHash,
+				RetainedBatchCount:        len(source.Batches),
+				RetainedRecordCount:       len(source.Records),
+				RetainedRecordBytes:       retainedBytes,
 				Freshness:                 source.Freshness,
 				LastAcceptedAt:            source.LastAcceptedAt,
 			}

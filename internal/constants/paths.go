@@ -923,7 +923,8 @@ const (
 	// Retain enough batches for a full homogeneous smoke matrix (~2.6k cells
 	// plus lifecycle, result, and aggregate projections) without pruning the
 	// prefix the evaluation explorer replays on cold load.
-	PublicFeedMirrorRetainedBatches = 25000
-	PublicFeedIngestTokenBytes      = 32
+	PublicFeedMirrorRetainedBatches     = 25000
+	PublicFeedMirrorRetainedRecordBytes = 128 << 20
+	PublicFeedIngestTokenBytes          = 32
 	PublicFeedZeroHashHex           = "0000000000000000000000000000000000000000000000000000000000000000"
 )

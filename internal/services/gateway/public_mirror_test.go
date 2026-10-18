@@ -595,6 +595,100 @@ func TestMirror_RetentionPrunesOldestHistoryAndRecoversChain(t *testing.T) {
 	assert.Equal(t, int64(4), retained[1].Sequence)
 }
 
+func TestMirror_SetMaxRetainedRecordBytesValidates(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	assert.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(0), constants.ErrPublicFeedRetentionConfig)
+	assert.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(-10), constants.ErrPublicFeedRetentionConfig)
+	assert.NoError(t, env.mirror.SetMaxRetainedRecordBytes(1024))
+}
+
+func TestMirror_RetentionPrunesByByteLimitAndRecoversChain(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	r1 := env.makeRecord(1, projectionWithInt64Field("sequence", 1))
+	recordBytesSize := int64(len(r1.RecordBytes))
+	require.Greater(t, recordBytesSize, int64(0))
+
+	// Allow 2 records of bytes (so 3rd batch exceeds byte budget).
+	maxBytes := recordBytesSize*2 + 10
+	require.NoError(t, env.mirror.SetMaxRetainedBatches(10))
+	require.NoError(t, env.mirror.SetMaxRetainedRecordBytes(maxBytes))
+
+	previousHash := constants.PublicFeedZeroHashHex
+	for sequence := int64(1); sequence <= 3; sequence++ {
+		batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(sequence, projectionWithInt64Field("sequence", sequence))}, previousHash)
+		_, response := env.sendIngest(batch)
+		require.True(t, response.Accepted)
+		previousHash = batch.ContentHash
+	}
+
+	summary := env.sourceSummary()
+	assert.Equal(t, int64(2), summary.RetainedFromSequence)
+	assert.Equal(t, int64(3), summary.HighWaterSequence)
+	assert.Equal(t, 3, summary.BatchCount)
+	assert.Equal(t, 2, env.retainedBatchCount())
+	assert.Equal(t, 2, summary.RetainedRecordCount)
+	assert.Equal(t, recordBytesSize*2, summary.RetainedRecordBytes)
+
+	retained, err := env.store.recordsInRange(context.Background(), env.sourceID, 1, 3)
+	require.NoError(t, err)
+	require.Len(t, retained, 2)
+	assert.Equal(t, int64(2), retained[0].Sequence)
+	assert.Equal(t, int64(3), retained[1].Sequence)
+
+	// Reopen mirror and verify startup verification passes with RetainedRecordBytes.
+	mirror2 := env.reopenMirror()
+	require.NoError(t, mirror2.SetMaxRetainedBatches(10))
+	require.NoError(t, mirror2.SetMaxRetainedRecordBytes(maxBytes))
+	batch4 := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(4, projectionWithInt64Field("sequence", 4))}, previousHash)
+	_, err = mirror2.validateBatch(context.Background(), batch4)
+	require.NoError(t, err)
+	require.NoError(t, mirror2.acceptBatch(context.Background(), batch4))
+
+	env.mirror = mirror2
+	summary = env.sourceSummary()
+	assert.Equal(t, int64(3), summary.RetainedFromSequence)
+	assert.Equal(t, 4, summary.BatchCount)
+	assert.Equal(t, 2, env.retainedBatchCount())
+	assert.Equal(t, 2, summary.RetainedRecordCount)
+	assert.Equal(t, recordBytesSize*2, summary.RetainedRecordBytes)
+}
+
+func TestMirror_RetentionPrunesWhicheverLimitHitFirst(t *testing.T) {
+	t.Run("batch cap hit first", func(t *testing.T) {
+		env := newMirrorTestEnv(t)
+		require.NoError(t, env.mirror.SetMaxRetainedBatches(2))
+		require.NoError(t, env.mirror.SetMaxRetainedRecordBytes(1000000))
+		prevHash := constants.PublicFeedZeroHashHex
+		for seq := int64(1); seq <= 3; seq++ {
+			batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(seq, projectionWithInt64Field("s", seq))}, prevHash)
+			_, resp := env.sendIngest(batch)
+			require.True(t, resp.Accepted)
+			prevHash = batch.ContentHash
+		}
+		summary := env.sourceSummary()
+		assert.Equal(t, int64(2), summary.RetainedFromSequence)
+		assert.Equal(t, 2, env.retainedBatchCount())
+	})
+
+	t.Run("byte budget hit first", func(t *testing.T) {
+		env := newMirrorTestEnv(t)
+		r1 := env.makeRecord(1, projectionWithInt64Field("s", 1))
+		rSize := int64(len(r1.RecordBytes))
+		require.NoError(t, env.mirror.SetMaxRetainedBatches(100))
+		require.NoError(t, env.mirror.SetMaxRetainedRecordBytes(rSize*2+5))
+		prevHash := constants.PublicFeedZeroHashHex
+		for seq := int64(1); seq <= 3; seq++ {
+			batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(seq, projectionWithInt64Field("s", seq))}, prevHash)
+			_, resp := env.sendIngest(batch)
+			require.True(t, resp.Accepted)
+			prevHash = batch.ContentHash
+		}
+		summary := env.sourceSummary()
+		assert.Equal(t, int64(2), summary.RetainedFromSequence)
+		assert.Equal(t, 2, env.retainedBatchCount())
+	})
+}
+
 // TestMirror_RestartRejectsCorruptDurableState verifies every durable
 // corruption the store can detect fails closed on reopen.
 func TestMirror_RestartRejectsCorruptDurableState(t *testing.T) {

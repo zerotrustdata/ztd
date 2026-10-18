@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS sources (
     retained_from_sequence INTEGER NOT NULL,
     retained_previous_batch_hash TEXT NOT NULL,
     freshness TEXT NOT NULL,
-    last_accepted_at TEXT NOT NULL DEFAULT ''
+    last_accepted_at TEXT NOT NULL DEFAULT '',
+    retained_batch_count INTEGER NOT NULL DEFAULT 0,
+    retained_record_count INTEGER NOT NULL DEFAULT 0,
+    retained_record_bytes INTEGER NOT NULL DEFAULT 0
 );
 
 -- Retained signed batches. Record hashes are reconstructed from records.
@@ -32,6 +35,8 @@ CREATE TABLE IF NOT EXISTS batches (
     source_id TEXT NOT NULL REFERENCES sources(source_id),
     first_sequence INTEGER NOT NULL,
     last_sequence INTEGER NOT NULL,
+    record_count INTEGER NOT NULL DEFAULT 0,
+    byte_size INTEGER NOT NULL DEFAULT 0,
     protocol_version TEXT NOT NULL,
     schema_version TEXT NOT NULL,
     previous_batch_hash TEXT NOT NULL,

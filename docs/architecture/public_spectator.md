@@ -199,7 +199,7 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 
 ### Retention
 
-- **Batches**: Retains up to 25,000 batches by default.
+- **Batches and Records**: Retains up to 25,000 batches and 128 MiB of record payload bytes per source by default (`PublicFeedMirrorRetainedBatches`, `PublicFeedMirrorRetainedRecordBytes`). Whichever limit is hit first advances `retained_from_sequence`.
 - **Proof Artifacts**: Content-addressed storage persists indefinitely until explicit operator cleanup.
 - **Publisher Outbox**: Unacknowledged batches persist until acknowledged by the mirror.
 

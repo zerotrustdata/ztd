@@ -58,6 +58,7 @@ type PublicMirrorSourceSummary struct {
 	RetainedPreviousBatchHash string
 	RetainedBatchCount        int
 	RetainedRecordCount       int
+	RetainedRecordBytes       int64
 	Freshness                 models.CampaignFreshness
 	LastAcceptedAt            time.Time
 	WithdrawnDatasetIDs       map[string]bool
@@ -242,16 +243,15 @@ func (s *PublicMirrorStore) loadState(ctx context.Context) (publicMirrorState, e
 		return publicMirrorState{}, fmt.Errorf("public mirror store: read mirror state: %w", err)
 	}
 	summaries, err := sqliteutil.MaterializeRows(ctx, s.db, `
-		SELECT s.source_id, s.high_water_sequence, s.feed_chain_hash, s.batch_count,
-		       s.retained_from_sequence, s.retained_previous_batch_hash, s.freshness, s.last_accepted_at,
-		       (SELECT COUNT(*) FROM batches b WHERE b.source_id = s.source_id),
-		       (SELECT COUNT(*) FROM records r WHERE r.source_id = s.source_id)
-		FROM sources s`, nil, func(rows *sql.Rows) (PublicMirrorSourceSummary, error) {
+		SELECT source_id, high_water_sequence, feed_chain_hash, batch_count,
+		       retained_from_sequence, retained_previous_batch_hash, freshness, last_accepted_at,
+		       retained_batch_count, retained_record_count, retained_record_bytes
+		FROM sources`, nil, func(rows *sql.Rows) (PublicMirrorSourceSummary, error) {
 		var summary PublicMirrorSourceSummary
 		var freshness, lastAcceptedAt string
 		if err := rows.Scan(&summary.SourceID, &summary.HighWaterSequence, &summary.FeedChainHash, &summary.BatchCount,
 			&summary.RetainedFromSequence, &summary.RetainedPreviousBatchHash, &freshness, &lastAcceptedAt,
-			&summary.RetainedBatchCount, &summary.RetainedRecordCount); err != nil {
+			&summary.RetainedBatchCount, &summary.RetainedRecordCount, &summary.RetainedRecordBytes); err != nil {
 			return PublicMirrorSourceSummary{}, err
 		}
 		summary.Freshness = models.CampaignFreshness(freshness)
@@ -351,8 +351,9 @@ func (s *PublicMirrorStore) ProofArtifactCount(ctx context.Context) (int, error)
 func upsertPublicMirrorSource(ctx context.Context, tx *sql.Tx, summary PublicMirrorSourceSummary) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO sources (source_id, high_water_sequence, feed_chain_hash, batch_count,
-		                     retained_from_sequence, retained_previous_batch_hash, freshness, last_accepted_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		                     retained_from_sequence, retained_previous_batch_hash, freshness, last_accepted_at,
+		                     retained_batch_count, retained_record_count, retained_record_bytes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(source_id) DO UPDATE SET
 			high_water_sequence = excluded.high_water_sequence,
 			feed_chain_hash = excluded.feed_chain_hash,
@@ -360,9 +361,13 @@ func upsertPublicMirrorSource(ctx context.Context, tx *sql.Tx, summary PublicMir
 			retained_from_sequence = excluded.retained_from_sequence,
 			retained_previous_batch_hash = excluded.retained_previous_batch_hash,
 			freshness = excluded.freshness,
-			last_accepted_at = excluded.last_accepted_at`,
+			last_accepted_at = excluded.last_accepted_at,
+			retained_batch_count = excluded.retained_batch_count,
+			retained_record_count = excluded.retained_record_count,
+			retained_record_bytes = excluded.retained_record_bytes`,
 		summary.SourceID, summary.HighWaterSequence, summary.FeedChainHash, summary.BatchCount,
-		summary.RetainedFromSequence, summary.RetainedPreviousBatchHash, string(summary.Freshness), formatPublicMirrorTime(summary.LastAcceptedAt))
+		summary.RetainedFromSequence, summary.RetainedPreviousBatchHash, string(summary.Freshness), formatPublicMirrorTime(summary.LastAcceptedAt),
+		summary.RetainedBatchCount, summary.RetainedRecordCount, summary.RetainedRecordBytes)
 	if err != nil {
 		return fmt.Errorf("upsert source %s: %w", summary.SourceID, err)
 	}
@@ -426,12 +431,25 @@ func insertPublicMirrorBatch(ctx context.Context, tx *sql.Tx, batch models.Publi
 // insertPublicMirrorBatchHeader stores the signed batch header without its
 // records.
 func insertPublicMirrorBatchHeader(ctx context.Context, tx *sql.Tx, batch models.PublicFeedBatch) error {
+	recordCount := len(batch.Records)
+	var byteSize int64
+	for _, r := range batch.Records {
+		byteSize += int64(len(r.RecordBytes))
+	}
+	if recordCount == 0 && batch.LastSequence >= batch.FirstSequence {
+		recordCount = int(batch.LastSequence - batch.FirstSequence + 1)
+		_ = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(LENGTH(record_bytes)), 0) FROM records
+			WHERE source_id = ? AND sequence BETWEEN ? AND ?`,
+			batch.SourceID, batch.FirstSequence, batch.LastSequence).Scan(&byteSize)
+	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO batches (source_id, first_sequence, last_sequence, protocol_version, schema_version,
-		                     previous_batch_hash, generated_at, content_hash, signing_key_id, signature)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		batch.SourceID, batch.FirstSequence, batch.LastSequence, batch.ProtocolVersion, batch.SchemaVersion,
-		batch.PreviousBatchHash, batch.GeneratedAt.UTC().Format(time.RFC3339Nano), batch.ContentHash, batch.SigningKeyID, batch.Signature); err != nil {
+		INSERT INTO batches (source_id, first_sequence, last_sequence, record_count, byte_size,
+		                     protocol_version, schema_version, previous_batch_hash,
+		                     generated_at, content_hash, signing_key_id, signature)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		batch.SourceID, batch.FirstSequence, batch.LastSequence, recordCount, byteSize,
+		batch.ProtocolVersion, batch.SchemaVersion, batch.PreviousBatchHash,
+		batch.GeneratedAt.UTC().Format(time.RFC3339Nano), batch.ContentHash, batch.SigningKeyID, batch.Signature); err != nil {
 		return fmt.Errorf("insert batch %s@%d: %w", batch.SourceID, batch.FirstSequence, err)
 	}
 	return nil
@@ -464,9 +482,10 @@ func insertPublicMirrorRevocations(ctx context.Context, tx *sql.Tx, revocations 
 
 // appendBatch durably appends one accepted batch in a single transaction:
 // batch and records, revocations, the source summary, and retention pruning
-// of the oldest batches once more than maxRetainedBatches are retained. next
-// is the summary after the append; the returned summary reflects pruning.
-func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.PublicFeedBatch, next PublicMirrorSourceSummary, revocations []models.PublicKeyRevocationRecord, maxRetainedBatches int) (PublicMirrorSourceSummary, error) {
+// of the oldest batches once more than maxRetainedBatches or maxRetainedBytes
+// are retained. next is the summary after the append; the returned summary
+// reflects pruning.
+func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.PublicFeedBatch, next PublicMirrorSourceSummary, revocations []models.PublicKeyRevocationRecord, maxRetainedBatches int, maxRetainedBytes int64) (PublicMirrorSourceSummary, error) {
 	var stored PublicMirrorSourceSummary
 	err := s.write(ctx, "append batch", func(tx *sql.Tx) error {
 		summary := next
@@ -476,31 +495,78 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 		if err := insertPublicMirrorBatch(ctx, tx, batch); err != nil {
 			return err
 		}
-		if excess := summary.RetainedBatchCount - maxRetainedBatches; excess > 0 {
-			var lastRemoved int64
-			var lastRemovedHash string
-			if err := tx.QueryRowContext(ctx, `SELECT last_sequence, content_hash FROM batches WHERE source_id = ?
-				ORDER BY first_sequence LIMIT 1 OFFSET ?`, summary.SourceID, excess-1).Scan(&lastRemoved, &lastRemovedHash); err != nil {
+		if (maxRetainedBatches > 0 && summary.RetainedBatchCount > maxRetainedBatches) ||
+			(maxRetainedBytes > 0 && summary.RetainedRecordBytes > maxRetainedBytes) {
+			rows, err := tx.QueryContext(ctx, `SELECT first_sequence, last_sequence, content_hash, record_count, byte_size
+				FROM batches
+				WHERE source_id = ?
+				ORDER BY first_sequence ASC`, summary.SourceID)
+			if err != nil {
 				return fmt.Errorf("select retention boundary: %w", err)
 			}
-			retainedFrom := lastRemoved + 1
-			if _, err := tx.ExecContext(ctx, `DELETE FROM batches WHERE source_id = ? AND first_sequence < ?`, summary.SourceID, retainedFrom); err != nil {
-				return fmt.Errorf("prune batches: %w", err)
+			prunedBatches := 0
+			prunedRecords := 0
+			var prunedBytes int64
+			var lastRemoved int64
+			var lastRemovedHash string
+
+			for rows.Next() {
+				var firstSeq, lastSeq int64
+				var contentHash string
+				var batchRecordCount int
+				var batchByteCount int64
+				if err := rows.Scan(&firstSeq, &lastSeq, &contentHash, &batchRecordCount, &batchByteCount); err != nil {
+					_ = rows.Close()
+					return fmt.Errorf("scan retention candidate: %w", err)
+				}
+				prunedBatches++
+				prunedRecords += batchRecordCount
+				prunedBytes += batchByteCount
+				lastRemoved = lastSeq
+				lastRemovedHash = contentHash
+
+				batchesRemaining := summary.RetainedBatchCount - prunedBatches
+				bytesRemaining := summary.RetainedRecordBytes - prunedBytes
+
+				batchLimitMet := maxRetainedBatches <= 0 || batchesRemaining <= maxRetainedBatches
+				byteLimitMet := maxRetainedBytes <= 0 || bytesRemaining <= maxRetainedBytes
+
+				if (batchLimitMet && byteLimitMet) || batchesRemaining <= 1 {
+					break
+				}
 			}
-			result, err := tx.ExecContext(ctx, `DELETE FROM records WHERE source_id = ? AND sequence < ?`, summary.SourceID, retainedFrom)
-			if err != nil {
-				return fmt.Errorf("prune records: %w", err)
+			if err := rows.Err(); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("read retention candidates: %w", err)
 			}
-			pruned, err := result.RowsAffected()
-			if err != nil {
-				return fmt.Errorf("count pruned records: %w", err)
+			if err := rows.Close(); err != nil {
+				return fmt.Errorf("close retention candidates: %w", err)
 			}
-			summary.RetainedFromSequence = retainedFrom
-			summary.RetainedPreviousBatchHash = lastRemovedHash
-			summary.RetainedBatchCount -= excess
-			summary.RetainedRecordCount -= int(pruned)
-			if err := upsertPublicMirrorSource(ctx, tx, summary); err != nil {
-				return err
+
+			if prunedBatches > 0 {
+				retainedFrom := lastRemoved + 1
+				if _, err := tx.ExecContext(ctx, `DELETE FROM batches WHERE source_id = ? AND first_sequence < ?`, summary.SourceID, retainedFrom); err != nil {
+					return fmt.Errorf("prune batches: %w", err)
+				}
+				result, err := tx.ExecContext(ctx, `DELETE FROM records WHERE source_id = ? AND sequence < ?`, summary.SourceID, retainedFrom)
+				if err != nil {
+					return fmt.Errorf("prune records: %w", err)
+				}
+				actualPrunedRecords, err := result.RowsAffected()
+				if err != nil {
+					return fmt.Errorf("count pruned records: %w", err)
+				}
+				summary.RetainedFromSequence = retainedFrom
+				summary.RetainedPreviousBatchHash = lastRemovedHash
+				summary.RetainedBatchCount -= prunedBatches
+				summary.RetainedRecordCount -= int(actualPrunedRecords)
+				summary.RetainedRecordBytes -= prunedBytes
+				if summary.RetainedRecordBytes < 0 {
+					summary.RetainedRecordBytes = 0
+				}
+				if err := upsertPublicMirrorSource(ctx, tx, summary); err != nil {
+					return err
+				}
 			}
 		}
 		if err := insertPublicMirrorRevocations(ctx, tx, revocations); err != nil {
@@ -899,6 +965,7 @@ func (s *PublicMirrorStore) verifySource(ctx context.Context, summary PublicMirr
 	previousHash := summary.RetainedPreviousBatchHash
 	previousSequence := summary.RetainedFromSequence - 1
 	verifiedRecords := 0
+	var verifiedBytes int64
 	after := int64(0)
 	for {
 		headers, err := sqliteutil.MaterializeRows(ctx, s.db, `
@@ -944,6 +1011,7 @@ func (s *PublicMirrorStore) verifySource(ctx context.Context, summary PublicMirr
 					return publicMirrorCorrupt("invalid source record %s@%d", sourceID, record.Sequence)
 				}
 				batch.RecordHashes[index] = record.RecordHash
+				verifiedBytes += int64(len(record.RecordBytes))
 			}
 			key, ok := keys.Registry[publicMirrorKeyRegistryID(sourceID, batch.SigningKeyID)]
 			if !ok || verifyBatchSignature(batch, key) != nil {
@@ -966,10 +1034,10 @@ func (s *PublicMirrorStore) verifySource(ctx context.Context, summary PublicMirr
 		after = headers[len(headers)-1].FirstSequence
 	}
 	if summary.RetainedBatchCount > 0 {
-		if summary.HighWaterSequence != previousSequence || summary.FeedChainHash != previousHash || summary.RetainedRecordCount != verifiedRecords || summary.LastAcceptedAt.IsZero() {
+		if summary.HighWaterSequence != previousSequence || summary.FeedChainHash != previousHash || summary.RetainedRecordCount != verifiedRecords || summary.RetainedRecordBytes != verifiedBytes || summary.LastAcceptedAt.IsZero() {
 			return publicMirrorCorrupt("source summary mismatch %s", sourceID)
 		}
-	} else if summary.HighWaterSequence != 0 || summary.BatchCount != 0 || summary.RetainedRecordCount != 0 {
+	} else if summary.HighWaterSequence != 0 || summary.BatchCount != 0 || summary.RetainedRecordCount != 0 || summary.RetainedRecordBytes != 0 {
 		return publicMirrorCorrupt("empty source summary mismatch %s", sourceID)
 	}
 	return nil

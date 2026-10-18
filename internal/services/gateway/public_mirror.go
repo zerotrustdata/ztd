@@ -90,8 +90,9 @@ type PublicMirrorServer struct {
 	// maxSSEQueueSize is the bounded SSE queue size per subscriber.
 	maxSSEQueueSize int
 	// maxSSEReplayRecords caps how many backlog records are sent on connect.
-	maxSSEReplayRecords int
-	maxRetainedBatches  int
+	maxSSEReplayRecords    int
+	maxRetainedBatches     int
+	maxRetainedRecordBytes int64
 
 	// defaultPageSize is the default cursor page size.
 	defaultPageSize int
@@ -159,6 +160,7 @@ func NewPublicMirrorServer(logger *slog.Logger, store *PublicMirrorStore, cfg Pu
 		maxSSEQueueSize:          100,
 		maxSSEReplayRecords:      constants.PublicFeedSSEReplayMaxRecords,
 		maxRetainedBatches:       constants.PublicFeedMirrorRetainedBatches,
+		maxRetainedRecordBytes:   constants.PublicFeedMirrorRetainedRecordBytes,
 		defaultPageSize:          20,
 		maxPageSize:              500,
 		now:                      time.Now,
@@ -211,6 +213,16 @@ func (m *PublicMirrorServer) SetMaxRetainedBatches(maxBatches int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.maxRetainedBatches = maxBatches
+	return nil
+}
+
+func (m *PublicMirrorServer) SetMaxRetainedRecordBytes(maxBytes int64) error {
+	if maxBytes <= 0 {
+		return constants.ErrPublicFeedRetentionConfig
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.maxRetainedRecordBytes = maxBytes
 	return nil
 }
 
@@ -574,6 +586,7 @@ func (m *PublicMirrorServer) acceptBatch(ctx context.Context, batch models.Publi
 	m.mu.RLock()
 	keys := m.keys
 	maxRetainedBatches := m.maxRetainedBatches
+	maxRetainedRecordBytes := m.maxRetainedRecordBytes
 	m.mu.RUnlock()
 	revocations, err := validatePublicKeyRevocations(batch, keys)
 	if err != nil {
@@ -597,9 +610,12 @@ func (m *PublicMirrorServer) acceptBatch(ctx context.Context, batch models.Publi
 	next.BatchCount++
 	next.RetainedBatchCount++
 	next.RetainedRecordCount += len(batch.Records)
+	for _, r := range batch.Records {
+		next.RetainedRecordBytes += int64(len(r.RecordBytes))
+	}
 	next.LastAcceptedAt = m.now().UTC()
 	next.Freshness = models.CampaignFreshnessActive
-	stored, err := m.store.appendBatch(ctx, batch, next, revocations, maxRetainedBatches)
+	stored, err := m.store.appendBatch(ctx, batch, next, revocations, maxRetainedBatches, maxRetainedRecordBytes)
 	if err != nil {
 		return err
 	}
