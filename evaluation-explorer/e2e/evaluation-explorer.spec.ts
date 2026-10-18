@@ -25,7 +25,7 @@ function nativeEvaluation(runId: string) {
     kind: 'evaluation_summary',
     ...FIXTURE_RELEASE,
     dataset_id: datasetId,
-    quality_state: 'verified_public',
+    quality_state: 'exploratory_verified',
     observed_at: '2026-09-15T23:38:22Z',
     run_id: runId,
     suite_id: 'core-execution-boundary@1.0.0',

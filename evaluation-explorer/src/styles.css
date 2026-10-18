@@ -690,10 +690,10 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* Toolbar */
-.models-toolbar, .eval-toolbar {
+.table-toolbar, .eval-toolbar {
   display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;
 }
-.models-toolbar input, .models-toolbar select, .eval-toolbar select {
+.table-toolbar input, .table-toolbar select, .eval-toolbar select {
   background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px 10px; font-size: 14px;
 }
@@ -720,13 +720,16 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: 6px; padding: 6px 12px;
 }
 .table-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
-.column-visibility { margin-bottom: 8px; }
+.column-visibility { position: relative; margin-bottom: 8px; }
+.table-toolbar .column-visibility { margin-bottom: 0; }
+.table-toolbar .result-count { order: 1; }
 .column-visibility-toggle {
   background: var(--bg-elev2); color: var(--fg); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 6px 12px; font-size: 13px; cursor: pointer;
 }
 .column-visibility-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .column-visibility-panel {
+  position: absolute; top: 100%; left: 0; z-index: 20; width: max-content;
   list-style: none; margin: 8px 0 0; padding: 12px; background: var(--bg-elev);
   border: 1px solid var(--border); border-radius: var(--radius);
   display: flex; flex-wrap: wrap; gap: 8px 16px; max-width: 480px;

@@ -43,33 +43,15 @@ describe('ModelsView', () => {
     );
 
     expect(screen.getAllByTestId('quality-exploratory_verified').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Run-scoped verification passed').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Verified').length).toBeGreaterThan(0);
   });
 
-  it('downgrades a stale verified-public record to legacy before rendering', () => {
+  it('prevents incomplete coverage from rendering as verified', () => {
     const source = allFixtureSnapshotRecords.find(
       (record): record is ModelSummary => record.kind === 'model_summary' && record.variant_id === 'gemma4-12b',
     );
     expect(source).toBeDefined();
-    evalStore.loadFixtures([{ ...source!, schema_version: '1.2.0', quality_state: 'verified_public' }], []);
-    render(
-      <MemoryRouter initialEntries={['/?release=all']}>
-        <ModelsView />
-      </MemoryRouter>,
-    );
-
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by evaluation status' }), { target: { value: 'all' } });
-    expect(screen.getByRole('link', { name: 'Gemma 4 12B' }).closest('tr')).toHaveTextContent(
-      'Legacy · not current-standard verified',
-    );
-  });
-
-  it('prevents incomplete current-schema coverage from rendering as verified', () => {
-    const source = allFixtureSnapshotRecords.find(
-      (record): record is ModelSummary => record.kind === 'model_summary' && record.variant_id === 'gemma4-12b',
-    );
-    expect(source).toBeDefined();
-    evalStore.loadFixtures([{ ...source!, schema_version: VIEW_SCHEMA_VERSION, quality_state: 'verified_public' }], []);
+    evalStore.loadFixtures([{ ...source!, schema_version: VIEW_SCHEMA_VERSION, quality_state: 'exploratory_verified' }], []);
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
         <ModelsView />
@@ -80,7 +62,7 @@ describe('ModelsView', () => {
     expect(screen.getByRole('link', { name: 'Gemma 4 12B' }).closest('tr')).toHaveTextContent('Not fully verified');
   });
 
-  it('labels the historical Gemma 4 12B result as not verified to current standards', () => {
+  it('labels the historical Gemma 4 12B result as legacy unverified', () => {
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
         <ModelsView />
@@ -89,7 +71,7 @@ describe('ModelsView', () => {
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by evaluation status' }), { target: { value: 'all' } });
     const gemma12b = screen.getByRole('link', { name: 'Gemma 4 12B' });
-    expect(gemma12b.closest('tr')).toHaveTextContent('Legacy · not current-standard verified');
+    expect(gemma12b.closest('tr')).toHaveTextContent('Legacy · unverified');
   });
 
   it('lists models from every dataset without a dataset selector', () => {
@@ -149,7 +131,7 @@ describe('ModelsView', () => {
     const labels = Array.from(qualityFilter.querySelectorAll('option')).map((option) => option.textContent);
     expect(labels).toEqual([
       'All quality states',
-      'Run-scoped verification passed',
+      'Verified',
       'Not fully verified',
     ]);
     expect(labels).not.toContain('Current-standard verified');
@@ -176,7 +158,7 @@ describe('ModelsView', () => {
     expect(catalogTable.getByRole('link', { name: 'Verified model' })).toBeInTheDocument();
     expect(catalogTable.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
     expect(catalogTable.queryByRole('link', { name: 'Other dataset model' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('quality-exploratory_verified')).toHaveTextContent('Run-scoped verification passed');
+    expect(screen.getByTestId('quality-exploratory_verified')).toHaveTextContent('Verified');
   });
 
   it('shows only fully evaluated, verified role leaders and their ranking evidence on the Models view', () => {

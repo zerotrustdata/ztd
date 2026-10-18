@@ -540,8 +540,7 @@ export function nativeScenarioTone(state: NativeScenarioStatus): EvidenceTone {
 
 export function qualityStateTone(state: QualityState): EvidenceTone {
   switch (state) {
-    case 'verified_public': return 'ok';
-    case 'exploratory_verified':
+    case 'exploratory_verified': return 'ok';
     case 'live_in_progress': return 'info';
     case 'exploratory_partial':
     case 'legacy_unverified': return 'warn';
@@ -1374,7 +1373,7 @@ export function modelRoleLeaderboardRows(
   const measured = models.filter((model) => {
     if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
     if (model.evaluation_coverage !== 1) return false;
-    if (model.quality_state !== 'verified_public' && model.quality_state !== 'exploratory_verified') return false;
+    if (model.quality_state !== 'exploratory_verified') return false;
     if (role !== 'all' && model.role !== role) return false;
     return true;
   });

@@ -40,13 +40,13 @@ describe('useActiveDatasetId', () => {
     expect(result.current).toBe('ds-live-smoke-campaign-1789575779');
   });
 
-  it('prefers verified public live run over in-progress live run', () => {
+  it('prefers verified live run over in-progress live run', () => {
     evalStore.loadFixtures([], []);
     evalStore.getState().evaluations.set('ds-live-verified:run-verified', {
       schema_version: VIEW_SCHEMA_VERSION,
       kind: 'evaluation_summary',
       dataset_id: 'ds-live-verified',
-      quality_state: 'verified_public',
+      quality_state: 'exploratory_verified',
       observed_at: '2026-09-18T10:00:00Z',
       source_revision_label: 'test',
       run_id: 'run-verified',

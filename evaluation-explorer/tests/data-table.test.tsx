@@ -60,6 +60,19 @@ describe('DataTable', () => {
     expect(new Set(panelIds).size).toBe(2);
   });
 
+  it('renders toolbar controls in one row with the column toggle and keeps them when empty', () => {
+    const toolbar = <input aria-label="Search rows" />;
+    const { rerender } = render(<DataTable data={data} columns={columns} caption="Toolbar rows" toolbar={toolbar} />);
+    const row = screen.getByRole('textbox', { name: 'Search rows' }).parentElement;
+    expect(row).toHaveClass('table-toolbar');
+    expect(row).toContainElement(screen.getByRole('button', { name: /Columns/ }));
+
+    rerender(<DataTable data={[]} columns={columns} caption="Toolbar rows" toolbar={toolbar} empty={<p>Nothing</p>} />);
+    expect(screen.getByRole('textbox', { name: 'Search rows' })).toBeInTheDocument();
+    expect(screen.getByText('Nothing')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Columns/ })).not.toBeInTheDocument();
+  });
+
   it('hides a column and its cells when its visibility toggle is cleared', async () => {
     const user = userEvent.setup();
 

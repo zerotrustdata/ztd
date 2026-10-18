@@ -50,7 +50,7 @@ describe('nativeScenarioTone', () => {
 });
 
 describe('qualityStateTone', () => {
-  const expected = { verified_public: 'ok', exploratory_verified: 'info', exploratory_partial: 'warn', legacy_unverified: 'warn', live_in_progress: 'info', terminal_failed: 'critical', dead_evidence: 'critical', not_evaluated: 'neutral', unavailable: 'neutral' };
+  const expected = { exploratory_verified: 'ok', exploratory_partial: 'warn', legacy_unverified: 'warn', live_in_progress: 'info', terminal_failed: 'critical', dead_evidence: 'critical', not_evaluated: 'neutral', unavailable: 'neutral' };
   it.each(QUALITY_STATES)('maps %s', (state) => expect(qualityStateTone(state)).toBe(expected[state]));
 });
 
@@ -690,7 +690,7 @@ describe('recentCampaignRows', () => {
         started_at: '2026-09-17T12:00:00Z',
         observed_at: '2026-09-17T12:00:00Z',
         lifecycle_state: 'completed',
-        quality_state: 'verified_public',
+        quality_state: 'exploratory_verified',
       }),
     ];
 

@@ -738,7 +738,7 @@ func publicFeedEventKind(value string) bool {
 
 func publicFeedQualityState(value string) bool {
 	switch value {
-	case "verified_public", "exploratory_verified", "exploratory_partial", "legacy_unverified", "live_in_progress", "terminal_failed", "dead_evidence", "not_evaluated", "unavailable":
+	case "exploratory_verified", "exploratory_partial", "legacy_unverified", "live_in_progress", "terminal_failed", "dead_evidence", "not_evaluated", "unavailable":
 		return true
 	default:
 		return false

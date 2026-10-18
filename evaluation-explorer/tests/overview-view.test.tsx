@@ -37,7 +37,7 @@ const archivedCatalog: CatalogSnapshot = {
   ...catalog,
   dataset_id: 'ds-verified-archive',
   dataset_kind: 'verified_public_snapshot',
-  quality_state: 'verified_public',
+  quality_state: 'legacy_unverified',
   title: 'Archived campaign',
 };
 

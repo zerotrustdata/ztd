@@ -410,6 +410,65 @@ export function ModelsView() {
       .map((assignment) => `${assignment.dataset_id}:${assignment.run_id}`),
   );
 
+  const filterControls = (
+    <>
+      <ReleaseSelector />
+      <input
+        type="search"
+        placeholder="Search models, tags, or families..."
+        value={filters.search}
+        aria-label="Search models"
+        onChange={(e) => updateFilter({ search: e.target.value })}
+      />
+      <select
+        aria-label="Filter by family"
+        value={activeFamily}
+        onChange={(e) => updateFilter({ family: e.target.value })}
+      >
+        <option value="all">All families</option>
+        {availableFamilies.map((fam) => (
+          <option key={fam} value={fam}>
+            {fam}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="Filter by role"
+        value={filters.role}
+        onChange={(e) => updateFilter({ role: e.target.value as ModelFilters['role'] })}
+      >
+        <option value="all">All roles</option>
+        <option value="primary">Primary</option>
+        <option value="assistant">Assistant</option>
+        <option value="lite">Lite</option>
+      </select>
+      <select
+        aria-label="Filter by evaluation status"
+        value={filters.evaluated}
+        onChange={(e) => updateFilter({ evaluated: e.target.value as ModelFilters['evaluated'] })}
+      >
+        <option value="all">All models</option>
+        <option value="evaluated">Evaluated</option>
+        <option value="not_evaluated">Not evaluated</option>
+      </select>
+      <select
+        aria-label="Filter by quality state"
+        value={effectiveQuality}
+        onChange={(e) => updateFilter({ quality: e.target.value })}
+      >
+        <option value="all">All quality states</option>
+        {qualityOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <span className="result-count">
+        {formatNumber(measuredCount)} measured · {formatNumber(models.length)} total
+      </span>
+    </>
+  );
+
   return (
     <div className="models-view">
       <SectionHeading
@@ -461,97 +520,40 @@ export function ModelsView() {
         })}
       </div>
 
-      <div className="models-toolbar">
-        <ReleaseSelector />
-        <input
-          type="search"
-          placeholder="Search models, tags, or families..."
-          value={filters.search}
-          aria-label="Search models"
-          onChange={(e) => updateFilter({ search: e.target.value })}
-        />
-        <select
-          aria-label="Filter by family"
-          value={activeFamily}
-          onChange={(e) => updateFilter({ family: e.target.value })}
-        >
-          <option value="all">All families</option>
-          {availableFamilies.map((fam) => (
-            <option key={fam} value={fam}>
-              {fam}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by role"
-          value={filters.role}
-          onChange={(e) => updateFilter({ role: e.target.value as ModelFilters['role'] })}
-        >
-          <option value="all">All roles</option>
-          <option value="primary">Primary</option>
-          <option value="assistant">Assistant</option>
-          <option value="lite">Lite</option>
-        </select>
-        <select
-          aria-label="Filter by evaluation status"
-          value={filters.evaluated}
-          onChange={(e) => updateFilter({ evaluated: e.target.value as ModelFilters['evaluated'] })}
-        >
-          <option value="all">All models</option>
-          <option value="evaluated">Evaluated</option>
-          <option value="not_evaluated">Not evaluated</option>
-        </select>
-        <select
-          aria-label="Filter by quality state"
-          value={effectiveQuality}
-          onChange={(e) => updateFilter({ quality: e.target.value })}
-        >
-          <option value="all">All quality states</option>
-          {qualityOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <span className="result-count">
-          {formatNumber(measuredCount)} measured · {formatNumber(models.length)} total
-        </span>
-      </div>
-
-      {filtered.length === 0 ? (
-        <EmptyState
-          hasRecords={models.length > 0}
-          hasFilters={filtersActive(filters, effectiveQuality)}
-          connection={connection}
-        />
-      ) : (
-        <DataTable
-          data={filtered}
-          columns={columns}
-          pageSize={25}
-          caption="Model catalog"
-          renderCard={(model) => {
-            const profile =
-              profilesByKey.get(`${model.dataset_id}:${model.variant_id}:${model.role}`) ??
-              resolveModelProfile(model);
-            return (
-              <article className="run-card">
-                <Link to={`/models/${model.dataset_id}/${model.variant_id}?role=${model.role}`}>
-                  {model.display_name}
-                </Link>
-                <p>
-                  {profile.served_model_tag} · {profile.family} · {roleLabel(model.role)}
-                </p>
-                <CapabilityProbeBadges capabilities={profile.capability_list} compact />
-                {model.inventory_only ? <TonePill tone="neutral">inventory</TonePill> : null}
-                <PassRateBar interval={model.pass_rate} />
-                <OutcomeBreakdown outcomes={model.terminal_outcomes} />
-                <QualityBadge state={model.quality_state} />
-              </article>
-            );
-          }}
-        />
-      )}
+      <DataTable
+        data={filtered}
+        columns={columns}
+        pageSize={25}
+        caption="Model catalog"
+        empty={
+          <EmptyState
+            hasRecords={models.length > 0}
+            hasFilters={filtersActive(filters, effectiveQuality)}
+            connection={connection}
+          />
+        }
+        toolbar={filterControls}
+        renderCard={(model) => {
+          const profile =
+            profilesByKey.get(`${model.dataset_id}:${model.variant_id}:${model.role}`) ??
+            resolveModelProfile(model);
+          return (
+            <article className="run-card">
+              <Link to={`/models/${model.dataset_id}/${model.variant_id}?role=${model.role}`}>
+                {model.display_name}
+              </Link>
+              <p>
+                {profile.served_model_tag} · {profile.family} · {roleLabel(model.role)}
+              </p>
+              <CapabilityProbeBadges capabilities={profile.capability_list} compact />
+              {model.inventory_only ? <TonePill tone="neutral">inventory</TonePill> : null}
+              <PassRateBar interval={model.pass_rate} />
+              <OutcomeBreakdown outcomes={model.terminal_outcomes} />
+              <QualityBadge state={model.quality_state} />
+            </article>
+          );
+        }}
+      />
     </div>
   );
 }

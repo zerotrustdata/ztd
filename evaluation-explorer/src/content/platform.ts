@@ -191,7 +191,7 @@ export const ZTD_MEASURED_TOGETHER = [
   'Governed inference dispatch to Ollama — never a direct provider API shortcut',
   'Provenance attestation of model weights and provider-boundary hardware observation around each role',
   'Formation pass/fail, per-role telemetry, and timing when observed',
-  'Signed campaign evidence with explicit current-standard, run-scoped, incomplete, legacy, live, and failed quality states',
+  'Signed campaign evidence with explicit verified, incomplete, legacy, live, and failed quality states',
 ] as const;
 
 export const ZTD_CAMPAIGN_OPERATORS = [

@@ -21,7 +21,6 @@ const RUN_LEVEL_QUALITY_EVENT_KINDS = new Set<LiveEventKind>([
 ]);
 
 const QUALITY_STATE_RANK: Record<QualityState, number> = {
-  verified_public: 7,
   exploratory_verified: 6,
   exploratory_partial: 5,
   legacy_unverified: 4,
@@ -169,14 +168,12 @@ export function isTerminalFailure(status: LifecycleStatus): boolean {
 
 export function qualityStateLabel(state: QualityState): string {
   switch (state) {
-    case 'verified_public':
-      return 'Current-standard verified';
     case 'exploratory_verified':
-      return 'Run-scoped verification passed';
+      return 'Verified';
     case 'exploratory_partial':
       return 'Not fully verified';
     case 'legacy_unverified':
-      return 'Legacy · not current-standard verified';
+      return 'Legacy · unverified';
     case 'live_in_progress':
       return 'In progress · unverified';
     case 'terminal_failed':
@@ -197,7 +194,6 @@ export interface QualityFilterOption {
 
 /** Quality states exposed by the Models view filter, in preferred display order. */
 export const MODEL_QUALITY_FILTER_STATES: readonly QualityState[] = [
-  'verified_public',
   'exploratory_verified',
   'exploratory_partial',
   'legacy_unverified',
@@ -207,7 +203,6 @@ export const MODEL_QUALITY_FILTER_STATES: readonly QualityState[] = [
 
 /** Quality states exposed by the Evaluations view filter, in preferred display order. */
 export const EVALUATION_QUALITY_FILTER_STATES: readonly QualityState[] = [
-  'verified_public',
   'exploratory_verified',
   'exploratory_partial',
   'legacy_unverified',

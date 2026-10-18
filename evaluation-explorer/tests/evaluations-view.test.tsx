@@ -170,7 +170,7 @@ describe('EvaluationsView', () => {
       'All quality states',
       'In progress · unverified',
     ]);
-    expect(labels).not.toContain('Run-scoped verification passed');
+    expect(labels).not.toContain('Verified');
   });
 
   it('shows running and failed runs alongside verified history by default', () => {

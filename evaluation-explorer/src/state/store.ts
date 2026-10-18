@@ -13,7 +13,6 @@
 // so bare-identity keys would let one dataset overwrite another.
 
 import { useRef, useSyncExternalStore } from 'react';
-import { VIEW_SCHEMA_VERSION } from '../contract/types';
 import type {
   AssignmentResult,
   CatalogSnapshot,
@@ -84,13 +83,7 @@ function isCampaignProjectionPayload(payload: Record<string, unknown>): boolean 
 
 function normalizeQualityRecord<T extends SnapshotRecord | LiveEvent>(record: T): T {
   let qualityState = record.quality_state;
-  if (qualityState === 'verified_public' && record.schema_version !== VIEW_SCHEMA_VERSION) {
-    qualityState = 'legacy_unverified';
-  } else if (
-    record.kind === 'model_summary' &&
-    record.evaluation_coverage < 1 &&
-    (qualityState === 'verified_public' || qualityState === 'exploratory_verified')
-  ) {
+  if (record.kind === 'model_summary' && record.evaluation_coverage < 1 && qualityState === 'exploratory_verified') {
     qualityState = 'exploratory_partial';
   }
   return qualityState === record.quality_state ? record : { ...record, quality_state: qualityState };

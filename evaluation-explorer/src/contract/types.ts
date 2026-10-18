@@ -111,7 +111,6 @@ export type PublicHintArgumentSource = (typeof PUBLIC_HINT_ARGUMENT_SOURCES)[num
 
 /** Quality state for every dataset, run, metric, and task shown in the site. */
 export const QUALITY_STATES = [
-  'verified_public',
   'exploratory_verified',
   'exploratory_partial',
   'legacy_unverified',

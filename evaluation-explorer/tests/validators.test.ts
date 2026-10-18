@@ -544,7 +544,7 @@ const nativeEvaluation = {
   schema_version: '1.3.0',
   kind: 'evaluation_summary',
   dataset_id: 'native-core-execution-boundary',
-  quality_state: 'verified_public',
+  quality_state: 'exploratory_verified',
   observed_at: '2026-09-15T23:38:22Z',
   run_id: 'native-run-1',
   suite_id: 'core-execution-boundary@1.0.0',

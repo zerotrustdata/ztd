@@ -46,6 +46,8 @@ export interface DataTableProps<T extends RowData> {
   enableColumnVisibility?: boolean;
   /** Cards share the table's sorted, paginated row model below 900px. */
   renderCard?: (record: T) => ReactNode;
+  /** Filter controls rendered in one row with the column-visibility toggle; stays visible when data is empty. */
+  toolbar?: ReactNode;
 }
 
 const cardMedia = '(max-width: 899px)';
@@ -64,6 +66,7 @@ export function DataTable<T extends RowData>({
   caption,
   enableColumnVisibility = true,
   renderCard,
+  toolbar,
 }: DataTableProps<T>) {
   const mobile = useSyncExternalStore(subscribeToCardViewport, cardViewport, () => false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -91,46 +94,48 @@ export function DataTable<T extends RowData>({
   const rows = table.getRowModel().rows;
   const pageRows = rows.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
-  if (data.length === 0) {
-    return <>{empty ?? <p className="table-empty">No rows.</p>}</>;
-  }
-
   const toggleableColumns = table.getAllLeafColumns().filter((c) => c.getCanHide());
+  const columnControl = data.length > 0 && !(mobile && renderCard) && enableColumnVisibility && toggleableColumns.length > 1 ? (
+    <div className="column-visibility">
+      <button
+        type="button"
+        className="column-visibility-toggle"
+        aria-expanded={showColumns}
+        aria-controls={columnPanelId}
+        onClick={() => setShowColumns((v) => !v)}
+      >
+        Columns {showColumns ? '▲' : '▼'}
+      </button>
+      {showColumns ? (
+        <ul id={columnPanelId} className="column-visibility-panel" role="group" aria-label="Toggle columns">
+          {toggleableColumns.map((column) => {
+            const label = String(column.columnDef.header ?? column.id);
+            return (
+              <li key={column.id}>
+                <label className="column-visibility-item">
+                  <input
+                    type="checkbox"
+                    checked={column.getIsVisible()}
+                    onChange={column.getToggleVisibilityHandler()}
+                  />
+                  <span>{label}</span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  ) : null;
+  const toolbarRow = toolbar ? <div className="table-toolbar">{toolbar}{columnControl}</div> : columnControl;
+
+  if (data.length === 0) {
+    return <>{toolbarRow}{empty ?? <p className="table-empty">No rows.</p>}</>;
+  }
 
   return (
     <div className="data-table-wrap" data-testid="data-table" tabIndex={0} aria-label={caption ? `${caption} table controls` : undefined}>
-      {!(mobile && renderCard) && enableColumnVisibility && toggleableColumns.length > 1 ? (
-        <div className="column-visibility">
-          <button
-            type="button"
-            className="column-visibility-toggle"
-            aria-expanded={showColumns}
-            aria-controls={columnPanelId}
-            onClick={() => setShowColumns((v) => !v)}
-          >
-            Columns {showColumns ? '▲' : '▼'}
-          </button>
-          {showColumns ? (
-            <ul id={columnPanelId} className="column-visibility-panel" role="group" aria-label="Toggle columns">
-              {toggleableColumns.map((column) => {
-                const label = String(column.columnDef.header ?? column.id);
-                return (
-                  <li key={column.id}>
-                    <label className="column-visibility-item">
-                      <input
-                        type="checkbox"
-                        checked={column.getIsVisible()}
-                        onChange={column.getToggleVisibilityHandler()}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
+      {toolbarRow}
       {mobile && renderCard ? <>
         <label className="card-sort">Sort runs or models
           <select aria-label="Sort cards" value={sorting[0] ? `${sorting[0].id}:${sorting[0].desc ? 'desc' : 'asc'}` : ''}
