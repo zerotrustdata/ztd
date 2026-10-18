@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,9 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -180,17 +184,107 @@ func TestNewFormationProductionRunner_RequiresGovernedBinding(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrFormationRunnerDependency)
 }
 
-func TestRetryingFormationObservationLoader_WaitsForWindow(t *testing.T) {
-	attempts := 0
-	loader := NewRetryingFormationObservationLoader(func(_ context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, error) {
-		attempts++
-		if attempts < 3 {
-			return nil, constants.ErrNotFound
+// lateObservationRemote records its window only after the connect reconcile
+// has missed it, then announces it like the Gateway's observation-recorded
+// event.
+type lateObservationRemote struct {
+	window  *evalv1.ProviderBoundaryObservationWindow
+	attempt *operatorv1.InferenceProviderAttemptRecord
+	missed  chan struct{}
+
+	mu         sync.Mutex
+	isRecorded bool
+	loads      int
+}
+
+func newLateObservationRemote(window *evalv1.ProviderBoundaryObservationWindow, attempt *operatorv1.InferenceProviderAttemptRecord) *lateObservationRemote {
+	return &lateObservationRemote{window: window, attempt: attempt, missed: make(chan struct{})}
+}
+
+func (r *lateObservationRemote) Load(_ context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.loads++
+	if !r.isRecorded || r.window.GetProviderAttemptId() != providerAttemptID {
+		if r.loads == 1 {
+			close(r.missed)
 		}
-		return &evalv1.ProviderBoundaryObservationWindow{ProviderAttemptId: providerAttemptID}, nil
-	}, 5, 1*time.Millisecond)
-	window, err := loader.LoadObservationWindow(context.Background(), "attempt-1")
+		return nil, nil, constants.ErrNotFound
+	}
+	return r.window, r.attempt, nil
+}
+
+func (r *lateObservationRemote) WatchRecorded(ctx context.Context, connected func(), recorded func(string)) error {
+	connected()
+	select {
+	case <-r.missed:
+	case <-ctx.Done():
+		return nil
+	}
+	r.mu.Lock()
+	r.isRecorded = true
+	r.mu.Unlock()
+	recorded(r.window.GetProviderAttemptId())
+	<-ctx.Done()
+	return nil
+}
+
+func formationObservationWindow(t *testing.T, attemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord) {
+	t.Helper()
+	attempt := &operatorv1.InferenceProviderAttemptRecord{
+		ProviderAttemptId: attemptID,
+		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
+		StartedAtUnixMs:   time.Unix(1_700_000_000, 0).UnixMilli(),
+		CompletedAtUnixMs: time.Unix(1_700_000_010, 0).UnixMilli(),
+	}
+	window := &evalv1.ProviderBoundaryObservationWindow{
+		SchemaVersion:              provider_observer.SchemaVersion,
+		ProviderAttemptId:          attemptID,
+		ObserverId:                 "observer-test",
+		ObserverClockSource:        provider_observer.DefaultObserverClockSource,
+		WindowStartedAtUnixNanos:   uint64(time.Unix(1_700_000_000, 0).UnixNano()),
+		WindowCompletedAtUnixNanos: uint64(time.Unix(1_700_000_010, 0).UnixNano()),
+		AttemptStartedAtUnixMs:     attempt.GetStartedAtUnixMs(),
+		AttemptCompletedAtUnixMs:   attempt.GetCompletedAtUnixMs(),
+		Samples: []*evalv1.ProviderBoundaryHardwareSample{{
+			ObservedAtUnixNanos:        uint64(time.Unix(1_700_000_001, 0).UnixNano()),
+			GpuUtilizationAvailability: evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED,
+			GpuUtilizationPercent:      10,
+		}},
+	}
+	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
-	require.NotNil(t, window)
-	assert.Equal(t, 3, attempts)
+	window.ObservationDigest = digest
+	return window, attempt
+}
+
+func TestAwaitingFormationObservationLoader_LoadsWindowOnRecordedEvent(t *testing.T) {
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	window, attempt := formationObservationWindow(t, "attempt-late")
+	remote := newLateObservationRemote(window, attempt)
+	reader, err := NewCampaignProviderObservationReaderWithRemote(fileSvc, remote)
+	require.NoError(t, err)
+
+	loaded, err := NewAwaitingFormationObservationLoader(reader).LoadObservationWindow(context.Background(), "attempt-late")
+	require.NoError(t, err)
+	assert.Equal(t, window.GetObservationDigest(), loaded.GetObservationDigest())
+	remote.mu.Lock()
+	defer remote.mu.Unlock()
+	assert.Equal(t, 2, remote.loads, "connect reconcile misses, recorded event captures")
+}
+
+func TestAwaitingFormationObservationLoader_WithoutGatewayIsWitnessUnavailable(t *testing.T) {
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	reader, err := NewCampaignProviderObservationReader(fileSvc)
+	require.NoError(t, err)
+
+	_, err = NewAwaitingFormationObservationLoader(reader).LoadObservationWindow(context.Background(), "attempt-missing")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrFormationWitnessUnavailable)
+	assert.ErrorIs(t, err, constants.ErrGatewayNotReachable)
+}
+
+func TestAwaitingFormationObservationLoader_RequiresReader(t *testing.T) {
+	_, err := NewAwaitingFormationObservationLoader(nil).LoadObservationWindow(context.Background(), "attempt-1")
+	assert.ErrorIs(t, err, constants.ErrFormationRunnerDependency)
 }

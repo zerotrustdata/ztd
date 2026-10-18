@@ -223,6 +223,7 @@ export const EventType = Object.freeze({
     PLATFORM_TELEMETRY_HEALTH_REPORTED: 'ztd.v1.platform.telemetry.health.reported',
     PLATFORM_TELEMETRY_PERFORMANCE_RECORDED: 'ztd.v1.platform.telemetry.performance.recorded',
     PLATFORM_USAGE_UPDATED: 'ztd.v1.platform.usage.updated',
+    PROVIDER_BOUNDARY_OBSERVATION_RECORDED: 'ztd.v1.inference.provider.boundary.observation.recorded',
     PUBLIC_FEED_BATCH_ACKNOWLEDGED: 'ztd.v1.public.feed.batch.acknowledged',
     PUBLIC_FEED_BATCH_EXPORTED: 'ztd.v1.public.feed.batch.exported',
     PUBLIC_FEED_KEY_ROTATED: 'ztd.v1.public.feed.key.rotated',
@@ -1571,6 +1572,12 @@ export const EventRegistry = Object.freeze({
         producers: ['gateway'],
         persistence: 'ephemeral',
         reserved: true,
+    }),
+    PROVIDER_BOUNDARY_OBSERVATION_RECORDED: Object.freeze({
+        kind: 'fact',
+        transport: ['sse'],
+        producers: ['gateway'],
+        persistence: 'ephemeral',
     }),
     PUBLIC_FEED_BATCH_ACKNOWLEDGED: Object.freeze({
         kind: 'outcome',

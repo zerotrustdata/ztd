@@ -74,6 +74,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-PROV-PERSIST-02 | Authenticated owner mTLS clients read windows via `GET /api/v1/inference/model-provenance/attestations/{provider_attempt_id}`, which returns the window wrapped in a `window` field. |
 | INV-PROV-PERSIST-03 | Campaign verification validates the window's `attestation_digest`, requires a recognized `verification_mode` and a nonzero `full_hash_completed_at_unix_ms` on every weight attestation, and checks the expected campaign digest binding. `ztd eval runs verify --require-provenance` enforces strict policy, requiring a valid window and `digest_match=true` for every scored inference. |
 | INV-PROV-PERSIST-04 | Missing windows are recorded as unavailable telemetry under interim policy. Strict policy requires a valid window for every scored inference. |
+| INV-PROV-PERSIST-05 | After storing a window, the Gateway publishes the ephemeral `ztd.v1.inference.model.provenance.attestation.recorded` event (`provider_attempt_id` only) to the owner's connected CLISessions. Strict verification and the formation provenance loader wait on that event, never on a timer: on every SSE (re)connect they read each still-pending window once, and on each event they read that attempt's window. A window not captured within `ModelProvenanceCompletionTimeout` (five minutes) fails closed as unavailable evidence. |
 
 ## Owned surfaces
 
@@ -132,6 +133,9 @@ Campaign Coordinator (Gateway)
                           │
                           ▼
 6. Publishes ModelProvenanceObservationCompleted -> Gateway stores window
+                          │
+                          ▼
+7. Gateway emits model.provenance.attestation.recorded (SSE, ephemeral) -> CLI reads window
 ```
 
 1. **Tag Resolution**: Resolves library models, tagged variants (`smollm3:3b-q4_k_m`), and Hugging Face deep pulls on the local storage filesystem.
@@ -143,7 +147,7 @@ Campaign Coordinator (Gateway)
 Attestation windows are persisted as canonical protojson files under `.ztd/data/inference/model-provenance/windows/<provider_attempt_id>.json`:
 
 - **Interim Policy**: Missing windows are logged as incomplete telemetry without disqualifying the assignment.
-- **Strict Policy (`--require-provenance` / `--require-witness`)**: Strict verification requires a valid, verified window where `digest_match = true` for 100% of scored inferences. A missing window fails the run.
+- **Strict Policy (`--require-provenance` / `--require-witness`)**: Strict verification requires a valid, verified window where `digest_match = true` for 100% of scored inferences. A missing window fails the run. The verifier waits for each window's attestation-recorded event, reconciling once per SSE (re)connect because ephemeral events are not replayed, for up to five minutes (`INV-PROV-PERSIST-05`).
 
 ## Procedures
 

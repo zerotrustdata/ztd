@@ -20,6 +20,7 @@ import (
 type ProviderBoundaryObserverStatus struct {
 	OperatorID        string
 	OperatorSessionID string
+	UserID            string
 	Status            string
 	ObserverEnabled   bool
 	Platform          string
@@ -36,6 +37,7 @@ func ActiveProviderBoundaryObservers(operators []*operatorv1.OperatorDocument) [
 		matches = append(matches, ProviderBoundaryObserverStatus{
 			OperatorID:        op.Id,
 			OperatorSessionID: op.OperatorSessionId,
+			UserID:            op.GetUserId(),
 			Status:            op.Status,
 			ObserverEnabled:   true,
 			Platform:          op.RuntimeConfig.Platform,

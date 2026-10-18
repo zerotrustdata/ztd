@@ -10,7 +10,6 @@ package gwremote
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -42,37 +41,13 @@ type remoteModelProvenanceClient struct {
 	cache  map[string]*evalv1.ModelProvenanceAttestationWindow
 }
 
-// WatchAttestations follows the CLI session's Gateway SSE stream, reconnecting
-// with backoff, and reports every attestation-recorded event. It stops when ctx
-// ends or the Gateway rejects the CLI session.
-func (c *remoteModelProvenanceClient) WatchAttestations(ctx context.Context, connected func(), recorded func(string)) error {
-	if c == nil || c.stream == nil || connected == nil || recorded == nil {
+// WatchRecorded reports every attestation-recorded event on the CLI session's
+// Gateway SSE stream.
+func (c *remoteModelProvenanceClient) WatchRecorded(ctx context.Context, connected func(), recorded func(string)) error {
+	if c == nil {
 		return fmt.Errorf("model provenance: watch attestations: %w", constants.ErrMissingRequiredField)
 	}
-	stream := c.stream()
-	stream.SetReconnectOnClose(true)
-	stream.SetOnConnect(connected)
-	var terminal error
-	stream.SetOnDisconnect(func(err error) {
-		if errors.Is(err, constants.ErrCLISessionRefreshRequired) {
-			terminal = err
-		}
-	})
-	stream.Run(ctx, func(eventType, data string) {
-		event, ok := sse.DecodeEvent(eventType, data)
-		if !ok || event.Type != string(constants.EventModelProvenanceAttestationRecorded) {
-			return
-		}
-		var update models.ModelProvenanceAttestationRecorded
-		if json.Unmarshal(event.Data, &update) != nil || update.ProviderAttemptID == "" {
-			return
-		}
-		recorded(update.ProviderAttemptID)
-	})
-	if terminal != nil {
-		return fmt.Errorf("model provenance: watch attestations: %w", terminal)
-	}
-	return nil
+	return watchEvidenceWindows(ctx, c.stream, constants.EventModelProvenanceAttestationRecorded, connected, recorded)
 }
 
 func (c *remoteModelProvenanceClient) Load(ctx context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error) {
@@ -133,7 +108,7 @@ func NewCampaignFormationProvenanceLoader(fileSvc fs.RuntimeFileService, cfg *co
 	if err != nil {
 		return nil, err
 	}
-	return evaluation.NewRetryingFormationProvenanceLoader(reader.LoadProvenanceWindow, 12, 250*time.Millisecond), nil
+	return evaluation.NewAwaitingFormationProvenanceLoader(reader), nil
 }
 
 func preflightModelProvenanceDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {

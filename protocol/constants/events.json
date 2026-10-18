@@ -2352,6 +2352,18 @@
       ],
       "persistence": "ephemeral"
     },
+    "ProviderBoundaryObservationRecorded": {
+      "_go_const": "EventProviderBoundaryObservationRecorded",
+      "value": "ztd.v1.inference.provider.boundary.observation.recorded",
+      "kind": "fact",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
     "PlatformApprovalsChanged": {
       "_go_const": "EventPlatformApprovalsChanged",
       "value": "ztd.v1.platform.approvals.changed",

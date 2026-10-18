@@ -116,108 +116,62 @@ func NewFormationProductionRunner(deps FormationProductionDependencies) (*Format
 	return runner.WithRoleProgress(deps.RunContext.OnRoleProgress), nil
 }
 
-type retryingFormationObservationLoader struct {
-	load     func(context.Context, string) (*evalv1.ProviderBoundaryObservationWindow, error)
-	attempts int
-	delay    time.Duration
+type awaitingFormationObservationLoader struct {
+	reader *CampaignProviderObservationReader
 }
 
-// NewRetryingFormationObservationLoader polls for provider-boundary windows when
-// gateway evidence persistence trails governed inference completion.
-func NewRetryingFormationObservationLoader(
-	load func(context.Context, string) (*evalv1.ProviderBoundaryObservationWindow, error),
-	attempts int,
-	delay time.Duration,
-) FormationObservationLoader {
-	if attempts <= 0 {
-		attempts = 1
-	}
-	return &retryingFormationObservationLoader{load: load, attempts: attempts, delay: delay}
+// NewAwaitingFormationObservationLoader loads each attempt's provider-boundary
+// window once the Gateway announces it recorded, bounded by
+// constants.ProviderObservationCompletionTimeout. The Observer finalizes after
+// governed inference returns, so the window is awaited, never re-read.
+func NewAwaitingFormationObservationLoader(reader *CampaignProviderObservationReader) FormationObservationLoader {
+	return &awaitingFormationObservationLoader{reader: reader}
 }
 
-func (l *retryingFormationObservationLoader) LoadObservationWindow(ctx context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, error) {
-	if l == nil || l.load == nil {
+func (l *awaitingFormationObservationLoader) LoadObservationWindow(ctx context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, error) {
+	if l == nil || l.reader == nil {
 		return nil, fmt.Errorf("formation: observation loader: %w", constants.ErrFormationRunnerDependency)
 	}
-	var lastErr error
-	for attempt := 0; attempt < l.attempts; attempt++ {
-		window, err := l.load(ctx, providerAttemptID)
-		if err == nil && window != nil {
-			return window, nil
-		}
-		lastErr = err
-		if attempt+1 == l.attempts {
-			break
-		}
-		if l.delay > 0 {
-			timer := time.NewTimer(l.delay)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil, ctx.Err()
-			case <-timer.C:
-			}
-		}
+	waitCtx, cancel := context.WithTimeout(ctx, constants.ProviderObservationCompletionTimeout)
+	defer cancel()
+	if err := l.reader.WaitForObservationWindow(waitCtx, providerAttemptID); err != nil {
+		return nil, formationWitnessWaitError(ctx, "observation", providerAttemptID, err)
 	}
-	if lastErr == nil {
-		lastErr = constants.ErrFormationWitnessUnavailable
-	}
-	if errors.Is(lastErr, constants.ErrNotFound) {
-		return nil, fmt.Errorf("formation: observation window %q: %w", providerAttemptID, constants.ErrFormationWitnessUnavailable)
-	}
-	return nil, fmt.Errorf("formation: observation window %q: %w", providerAttemptID, lastErr)
+	return l.reader.LoadObservationWindow(ctx, providerAttemptID)
 }
 
-type retryingFormationProvenanceLoader struct {
-	load     func(context.Context, string) (*evalv1.ModelProvenanceAttestationWindow, error)
-	attempts int
-	delay    time.Duration
-}
-
-// NewRetryingFormationProvenanceLoader polls for model provenance attestation windows when
-// gateway evidence persistence trails governed inference completion.
-func NewRetryingFormationProvenanceLoader(
-	load func(context.Context, string) (*evalv1.ModelProvenanceAttestationWindow, error),
-	attempts int,
-	delay time.Duration,
-) FormationProvenanceLoader {
-	if attempts <= 0 {
-		attempts = 1
+// formationWitnessWaitError marks a witness window that never arrived as
+// unavailable formation evidence; read failures and cancellation keep their
+// own classification.
+func formationWitnessWaitError(ctx context.Context, kind, providerAttemptID string, err error) error {
+	if ctx.Err() == nil && errors.Is(err, constants.ErrEvaluationObservationUnavailable) {
+		return fmt.Errorf("formation: %s window %q: %w: %w", kind, providerAttemptID, constants.ErrFormationWitnessUnavailable, err)
 	}
-	return &retryingFormationProvenanceLoader{load: load, attempts: attempts, delay: delay}
+	return fmt.Errorf("formation: %s window %q: %w", kind, providerAttemptID, err)
 }
 
-func (l *retryingFormationProvenanceLoader) LoadProvenanceWindow(ctx context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error) {
-	if l == nil || l.load == nil {
+type awaitingFormationProvenanceLoader struct {
+	reader *CampaignModelProvenanceReader
+}
+
+// NewAwaitingFormationProvenanceLoader loads each attempt's attestation window
+// once the Gateway announces it recorded, bounded by
+// constants.ModelProvenanceCompletionTimeout. Attestation completes after
+// governed inference returns, so the window is awaited, never re-read.
+func NewAwaitingFormationProvenanceLoader(reader *CampaignModelProvenanceReader) FormationProvenanceLoader {
+	return &awaitingFormationProvenanceLoader{reader: reader}
+}
+
+func (l *awaitingFormationProvenanceLoader) LoadProvenanceWindow(ctx context.Context, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error) {
+	if l == nil || l.reader == nil {
 		return nil, fmt.Errorf("formation: provenance loader: %w", constants.ErrFormationRunnerDependency)
 	}
-	var lastErr error
-	for attempt := 0; attempt < l.attempts; attempt++ {
-		window, err := l.load(ctx, providerAttemptID)
-		if err == nil && window != nil {
-			return window, nil
-		}
-		lastErr = err
-		if attempt+1 == l.attempts {
-			break
-		}
-		if l.delay > 0 {
-			timer := time.NewTimer(l.delay)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil, ctx.Err()
-			case <-timer.C:
-			}
-		}
+	waitCtx, cancel := context.WithTimeout(ctx, constants.ModelProvenanceCompletionTimeout)
+	defer cancel()
+	if err := l.reader.WaitForEvidence(waitCtx, []string{providerAttemptID}); err != nil {
+		return nil, formationWitnessWaitError(ctx, "provenance", providerAttemptID, err)
 	}
-	if lastErr == nil {
-		lastErr = constants.ErrFormationWitnessUnavailable
-	}
-	if errors.Is(lastErr, constants.ErrNotFound) {
-		return nil, fmt.Errorf("formation: provenance window %q: %w", providerAttemptID, constants.ErrFormationWitnessUnavailable)
-	}
-	return nil, fmt.Errorf("formation: provenance window %q: %w", providerAttemptID, lastErr)
+	return l.reader.LoadProvenanceWindow(ctx, providerAttemptID)
 }
 
 // RunFormationProduction binds one frozen formation stack to frozen registry

@@ -153,7 +153,7 @@ func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
 
-	announcer := &recordingAttestationAnnouncer{}
+	announcer := &recordingEvidenceAnnouncer{}
 	coordinator := NewModelProvenanceObservationCoordinator(
 		&DispatchService{},
 		&stubModelProvenanceOperatorLister{operators: []*operatorv1.OperatorDocument{
@@ -189,13 +189,13 @@ func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t
 	loaded, err := windowStore.Load(context.Background(), "attempt-async-1")
 	require.NoError(t, err)
 	assert.Equal(t, "attempt-async-1", loaded.GetProviderAttemptId())
-	assert.Equal(t, []string{"owner-1/attempt-async-1"}, announcer.recorded)
+	assert.Equal(t, []string{string(constants.EventModelProvenanceAttestationRecorded) + "/owner-1/attempt-async-1"}, announcer.recorded)
 }
 
-type recordingAttestationAnnouncer struct{ recorded []string }
+type recordingEvidenceAnnouncer struct{ recorded []string }
 
-func (r *recordingAttestationAnnouncer) AttestationRecorded(_ context.Context, userID, providerAttemptID string) {
-	r.recorded = append(r.recorded, userID+"/"+providerAttemptID)
+func (r *recordingEvidenceAnnouncer) WindowRecorded(_ context.Context, eventType constants.EventType, userID, providerAttemptID string) {
+	r.recorded = append(r.recorded, string(eventType)+"/"+userID+"/"+providerAttemptID)
 }
 
 func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCmdSubscriber(t *testing.T) {

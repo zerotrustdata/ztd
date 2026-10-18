@@ -233,6 +233,7 @@ const EventPlatformTelemetryErrorLogged EventType = "ztd.v1.platform.telemetry.e
 const EventPlatformTelemetryHealthReported EventType = "ztd.v1.platform.telemetry.health.reported"
 const EventPlatformTelemetryPerformanceRecorded EventType = "ztd.v1.platform.telemetry.performance.recorded"
 const EventPlatformUsageUpdated EventType = "ztd.v1.platform.usage.updated"
+const EventProviderBoundaryObservationRecorded EventType = "ztd.v1.inference.provider.boundary.observation.recorded"
 const EventPublicFeedBatchAcknowledged EventType = "ztd.v1.public.feed.batch.acknowledged"
 const EventPublicFeedBatchExported EventType = "ztd.v1.public.feed.batch.exported"
 const EventPublicFeedKeyRotated EventType = "ztd.v1.public.feed.key.rotated"
@@ -1995,6 +1996,13 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:   []string{"gateway"},
 		Persistence: "ephemeral",
 		Reserved:    true,
+	},
+	EventProviderBoundaryObservationRecorded: {
+		Key:         "ProviderBoundaryObservationRecorded",
+		Kind:        EventKindFact,
+		Transport:   []string{"sse"},
+		Producers:   []string{"gateway"},
+		Persistence: "ephemeral",
 	},
 	EventPublicFeedBatchAcknowledged: {
 		Key:         "PublicFeedBatchAcknowledged",

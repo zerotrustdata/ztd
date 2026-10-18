@@ -512,17 +512,17 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		logger,
 	)
 	ownerOperatorLister := &registrationOwnerOperatorLister{reg: reg, userSvc: userSvc}
-	providerObservationCoord := NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, nil, logger)
+	evidenceWindows := NewEvidenceWindowPublisher(docStore, NewSSEEventPublisher(sseStore, wsHandler), logger)
+	providerObservationCoord := NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, nil, nil, logger)
 	if windowStore, err := provider_observer.NewWindowStore(b.fileSvc); err == nil {
-		providerObservationCoord = NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, windowStore, logger)
+		providerObservationCoord = NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, windowStore, evidenceWindows, logger)
 		inferenceDispatchSvc.SetProviderObservationNotifier(providerObservationCoord)
 	} else {
 		logger.Warn("Provider-boundary observation window store unavailable", "error", err)
 	}
 	var modelProvenanceCoord *ModelProvenanceObservationCoordinator
 	if provenanceWindowStore, err := model_provenance.NewWindowStore(b.fileSvc); err == nil {
-		attestations := NewModelProvenanceAttestationPublisher(docStore, NewSSEEventPublisher(sseStore, wsHandler), logger)
-		modelProvenanceCoord = NewModelProvenanceObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, provenanceWindowStore, attestations, logger)
+		modelProvenanceCoord = NewModelProvenanceObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, provenanceWindowStore, evidenceWindows, logger)
 		inferenceDispatchSvc.SetProvenanceObservationNotifier(modelProvenanceCoord)
 	} else {
 		logger.Warn("Model provenance attestation window store unavailable", "error", err)

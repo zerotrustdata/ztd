@@ -36,54 +36,6 @@ type modelProvenanceOperatorLister interface {
 	ListOperatorsForProvenance(ctx context.Context) ([]*operatorv1.OperatorDocument, error)
 }
 
-// modelProvenanceAttestationAnnouncer tells the provenance operator owner's
-// consumers that an attestation window was persisted.
-type modelProvenanceAttestationAnnouncer interface {
-	AttestationRecorded(ctx context.Context, userID, providerAttemptID string)
-}
-
-// ModelProvenanceAttestationPublisher pushes
-// ztd.v1.inference.model.provenance.attestation.recorded to the owner's
-// connected CLI sessions, so strict campaign verification captures each window
-// as it is ingested instead of polling the attestation read path.
-//
-// The event is ephemeral and carries only the provider attempt ID. A failed
-// push is logged and never fails ingest; a consumer that missed one reconciles
-// by re-reading its pending attempts when its stream reconnects.
-type ModelProvenanceAttestationPublisher struct {
-	docStore  *DocumentStoreService
-	publisher *SSEEventPublisher
-	logger    *slog.Logger
-}
-
-// NewModelProvenanceAttestationPublisher creates a publisher that resolves the
-// owner's connected CLI sessions from docStore.
-func NewModelProvenanceAttestationPublisher(docStore *DocumentStoreService, publisher *SSEEventPublisher, logger *slog.Logger) *ModelProvenanceAttestationPublisher {
-	return &ModelProvenanceAttestationPublisher{docStore: docStore, publisher: publisher, logger: logger}
-}
-
-// AttestationRecorded announces the persisted window for providerAttemptID to
-// every connected CLI session of userID.
-func (p *ModelProvenanceAttestationPublisher) AttestationRecorded(ctx context.Context, userID, providerAttemptID string) {
-	if p == nil || userID == "" || providerAttemptID == "" {
-		return
-	}
-	cliIDs, err := ownerConnectedCLISessionIDs(ctx, p.docStore, p.publisher, userID)
-	if err != nil {
-		p.logger.Warn("model provenance attestation event not delivered: resolve cli sessions",
-			"provider_attempt_id", providerAttemptID, "user_id", userID, "error", err)
-		return
-	}
-	payload := models.ModelProvenanceAttestationRecorded{ProviderAttemptID: providerAttemptID}
-	for _, cliID := range cliIDs {
-		route := SSERoute{UserID: userID, CLISessionID: cliID}
-		if err := p.publisher.PublishEphemeral(route, string(constants.EventModelProvenanceAttestationRecorded), payload); err != nil {
-			p.logger.Warn("model provenance attestation event not delivered",
-				"provider_attempt_id", providerAttemptID, "cli_session_id", cliID, "error", err)
-		}
-	}
-}
-
 // ModelProvenanceObservationCoordinator fans out BEGIN/FINALIZE provenance
 // commands to the remote storage-side Provenance Operator and ingests
 // completed attestation windows on the campaign Gateway host.
@@ -92,7 +44,7 @@ type ModelProvenanceObservationCoordinator struct {
 	operatorLister modelProvenanceOperatorLister
 	pubsub         *GatewayWebSocketHandler
 	windows        model_provenance.WindowStore
-	attestations   modelProvenanceAttestationAnnouncer
+	attestations   evidenceWindowAnnouncer
 	logger         *slog.Logger
 
 	mu         sync.Mutex
@@ -120,7 +72,7 @@ func NewModelProvenanceObservationCoordinator(
 	operatorLister modelProvenanceOperatorLister,
 	pubsubHandler *GatewayWebSocketHandler,
 	windows model_provenance.WindowStore,
-	attestations modelProvenanceAttestationAnnouncer,
+	attestations evidenceWindowAnnouncer,
 	logger *slog.Logger,
 ) *ModelProvenanceObservationCoordinator {
 	return &ModelProvenanceObservationCoordinator{
@@ -557,6 +509,6 @@ func (c *ModelProvenanceObservationCoordinator) ingestResult(ctx context.Context
 		"observed_model_digest", window.GetObservedModelDigest(),
 		"attestation_digest", window.GetAttestationDigest())
 	if c.attestations != nil {
-		c.attestations.AttestationRecorded(ctx, operator.UserID, window.GetProviderAttemptId())
+		c.attestations.WindowRecorded(ctx, constants.EventModelProvenanceAttestationRecorded, operator.UserID, window.GetProviderAttemptId())
 	}
 }

@@ -91,7 +91,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-EVAL-CAMP-01 | Model campaigns bind scored inference to frozen `served_model_tag` and `model_digest` pairs registered in the campaign's frozen model inventory. Placeholder digests lacking provenance authority MUST be re-frozen from the provider prior to scored runs. |
 | INV-EVAL-CAMP-02 | Campaign execution routes each assignment by target kind (`CampaignAssignmentRouter`): heterogeneous assignments to the formation executor, and homogeneous assignments to the agent executor (`CampaignAgentExecutor`). Every agent turn MUST be a governed Inference Operator dispatch, and every tool call a governed Data Operator action through the Gateway. |
-| INV-EVAL-CAMP-03 | On `ztd eval rollout run`, strict witness verification (provider-boundary observation and model provenance) MUST be enabled unconditionally and MUST fail closed when coverage is missing. On `ztd eval runs start`, witness requirements are opt-in via `--require-observation`, `--require-provenance`, or `--require-witness`. When strict provenance verification is required, the verifier MUST wait up to five minutes for durable attestation completion windows before failing closed. |
+| INV-EVAL-CAMP-03 | On `ztd eval rollout run`, strict witness verification (provider-boundary observation and model provenance) MUST be enabled unconditionally and MUST fail closed when coverage is missing. On `ztd eval runs start`, witness requirements are opt-in via `--require-observation`, `--require-provenance`, or `--require-witness`. When strict provenance verification is required, the verifier MUST wait up to five minutes for durable attestation completion windows before failing closed. Witness waits MUST be driven by the Gateway's ephemeral `attestation.recorded` and `observation.recorded` SSE events, with one read of each pending window per SSE (re)connect, and MUST NOT re-read on a timer. |
 | INV-EVAL-CAMP-05 | Each catalog scenario MUST declare `eligible_roles`. The model-role scheduler MUST assign a scenario only to its eligible roles and MUST fail closed (`ErrEvaluationScenarioRolesUnassigned`) on a scenario with none. |
 | INV-EVAL-CAMP-06 | A `model_role` run MUST have exactly one subject model. `CampaignController.StartRun` MUST reject a `model_role` run whose campaign freezes any other number of models (`ErrEvaluationCampaignSubjectInvalid`). System-lane campaigns are exempt. |
 | INV-EVAL-CAMP-08 | A campaign scores exactly one suite and freezes it at creation. Every subsequent reader of a campaign's scenarios MUST load the frozen catalog and artifacts (`Store.LoadScenarioCatalog`, `Store.LoadScenarioArtifacts`) and MUST NOT regenerate them from built-in or stored suites. |
@@ -359,11 +359,11 @@ The repository ships the protobuf scored-turn contract (`ScoredTurnRequest`, `Sc
 - **Observer Operator**:
   - Enrolled on the provider host via `ztd operator start --capabilities observer`.
   - Listens for BEGIN and FINALIZE commands over pub/sub. Samples GPU memory, core utilization, temperature, power, clock rates, and host RAM.
-  - Emits `ProviderBoundaryObservationCompleted` windows ingested by the Gateway.
+  - Emits `ProviderBoundaryObservationCompleted` windows ingested by the Gateway, which announces each stored window with `ztd.v1.inference.provider.boundary.observation.recorded`. The formation observation loader waits up to `ProviderObservationCompletionTimeout` (30 seconds) for that event.
 - **Provenance Operator**:
   - Enrolled at the model storage site via `ztd operator start --capabilities provenance --model-storage-root <path>`.
   - On FINALIZE, resolves the served tag against Ollama manifests, computes SHA-256 digests over all model weight blobs, and verifies against the campaign's expected digest.
-  - Emits `ModelProvenanceObservationCompleted` windows. Verification waits up to five minutes for durable attestation windows to land.
+  - Emits `ModelProvenanceObservationCompleted` windows, which the Gateway announces with `ztd.v1.inference.model.provenance.attestation.recorded`. Verification waits up to five minutes for that event per window.
 
 ### Evidence Persistence, Backups, and Offline Verification
 
