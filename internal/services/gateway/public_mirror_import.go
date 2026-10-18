@@ -77,7 +77,6 @@ func importLegacyPublicMirrorState(ctx context.Context, fileSvc fs.RuntimeFileSe
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return publicMirrorCorrupt("decode legacy state: %v", err)
 	}
-	data = nil
 	if err := normalizeLegacyPublicMirrorState(&legacy); err != nil {
 		return err
 	}

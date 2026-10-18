@@ -242,6 +242,7 @@ type PublicFeedArchivePathSet struct {
 	Proofs        string
 	ProofCatalog  string
 	ProofManifest string
+	ProofSegments string
 }
 
 func PublicFeedArchivePathsFor(sourceID string) (PublicFeedArchivePathSet, error) {
@@ -260,6 +261,7 @@ func PublicFeedArchivePathsFor(sourceID string) (PublicFeedArchivePathSet, error
 		Proofs:        path.Join(root, constants.PublicProofsDirname),
 		ProofCatalog:  path.Join(root, constants.PublicProofCatalogFilename),
 		ProofManifest: path.Join(root, constants.PublicProofManifestFilename),
+		ProofSegments: path.Join(root, constants.PublicProofSegmentsFilename),
 	}, nil
 }
 
@@ -274,6 +276,7 @@ func archivePathPairs(archive PublicFeedArchivePathSet) []publicFeedArchivePath 
 		{active: constants.PublicProofsDirname, archive: archive.Proofs},
 		{active: constants.PublicProofCatalogFilename, archive: archive.ProofCatalog},
 		{active: constants.PublicProofManifestFilename, archive: archive.ProofManifest},
+		{active: constants.PublicProofSegmentsFilename, archive: archive.ProofSegments},
 	}
 }
 

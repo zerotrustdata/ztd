@@ -95,12 +95,37 @@ CREATE TABLE IF NOT EXISTS proof_manifests (
     generated_at TEXT NOT NULL
 );
 
+-- Signed chained proof manifest segments per source.
+CREATE TABLE IF NOT EXISTS proof_manifest_segments (
+    source_id TEXT NOT NULL,
+    segment_index INTEGER NOT NULL,
+    previous_root TEXT NOT NULL,
+    proof_root_sha256 TEXT NOT NULL,
+    signing_key_id TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    segment_json TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    PRIMARY KEY (source_id, segment_index)
+);
+
+-- Manifest entries keyed by segment and ordinal within segment.
 CREATE TABLE IF NOT EXISTS proof_manifest_entries (
-    source_id TEXT NOT NULL REFERENCES proof_manifests(source_id),
+    source_id TEXT NOT NULL,
+    segment_index INTEGER NOT NULL DEFAULT 0,
     ordinal INTEGER NOT NULL,
     artifact_id TEXT NOT NULL REFERENCES proof_artifacts(artifact_id),
     entry_json TEXT NOT NULL,
-    PRIMARY KEY (source_id, ordinal)
+    PRIMARY KEY (source_id, segment_index, ordinal)
 );
 
 CREATE INDEX IF NOT EXISTS idx_public_mirror_manifest_entries_artifact ON proof_manifest_entries(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_manifest_entries_source_artifact ON proof_manifest_entries(source_id, artifact_id);
+
+-- Withdrawn artifact IDs recorded by signed withdrawal segments.
+CREATE TABLE IF NOT EXISTS proof_withdrawn_artifacts (
+    source_id TEXT NOT NULL,
+    artifact_id TEXT NOT NULL,
+    segment_index INTEGER NOT NULL,
+    withdrawn_at TEXT NOT NULL,
+    PRIMARY KEY (source_id, artifact_id)
+);

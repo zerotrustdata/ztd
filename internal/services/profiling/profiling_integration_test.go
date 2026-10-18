@@ -22,7 +22,7 @@ import (
 )
 
 func TestServer_ServesHeapProfileUntilStopped(t *testing.T) {
-	srv, err := Start("127.0.0.1:0", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv, err := Start("127.0.0.1:0", slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 	url := "http://" + srv.Addr() + "/debug/pprof/heap"
 
@@ -38,6 +38,9 @@ func TestServer_ServesHeapProfileUntilStopped(t *testing.T) {
 	defer cancel()
 	require.NoError(t, srv.Stop(ctx))
 
-	_, err = http.Get(url)
+	resp2, err := http.Get(url)
+	if err == nil {
+		_ = resp2.Body.Close()
+	}
 	assert.Error(t, err)
 }

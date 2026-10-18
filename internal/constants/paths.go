@@ -886,6 +886,7 @@ const (
 	// one-time import into PublicMirrorDBPath. Remove after v1.1.3.
 	PublicMirrorStatePath         = "public-mirror/state.json"
 	PublicProofsDirname           = "public-proofs"
+	PublicProofSegmentsFilename   = "public-proofs/proof-segments.jsonl"
 	PublicProofCatalogFilename    = "proof-catalog.json"
 	PublicProofManifestFilename   = "proof-manifest.json"
 	PublicProofMirrorSyncFilename = "proof-mirror-sync.json"
@@ -896,6 +897,7 @@ const (
 	PublicFeedProtocolVersion          = "1.0.0"
 	PublicFeedSchemaVersion            = "1.0.0"
 	PublicProofManifestSchemaVersion   = "1.0.0"
+	PublicProofSegmentSchemaVersion    = "1.0.0"
 	PublicProofCatalogSchemaVersion    = "1.0.0"
 	PublicProofMirrorSyncSchemaVersion = "2.0.0"
 	PublicFeedBatchMaxRecords          = 100
@@ -926,5 +928,5 @@ const (
 	PublicFeedMirrorRetainedBatches     = 25000
 	PublicFeedMirrorRetainedRecordBytes = 128 << 20
 	PublicFeedIngestTokenBytes          = 32
-	PublicFeedZeroHashHex           = "0000000000000000000000000000000000000000000000000000000000000000"
+	PublicFeedZeroHashHex               = "0000000000000000000000000000000000000000000000000000000000000000"
 )

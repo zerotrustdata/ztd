@@ -74,7 +74,7 @@ func useTestKeystore(t *testing.T, fileSvc fs.RuntimeFileService) *keystore.Keys
 
 func TestPublicCmd_ExposesProductionSurface(t *testing.T) {
 	cmd := Cmd()
-	expected := []string{"config", "init", "publish", "push", "repair-outbox", "restore", "rotate-key", "source", "status", "verify-agent-trace", "verify-assignment"}
+	expected := []string{"config", "init", "publish", "push", "repair-outbox", "restore", "rotate-key", "source", "status", "verify-agent-trace", "verify-assignment", "verify-proof"}
 	require.Len(t, cmd.Commands(), len(expected))
 	for _, name := range expected {
 		child, _, err := cmd.Find([]string{name})

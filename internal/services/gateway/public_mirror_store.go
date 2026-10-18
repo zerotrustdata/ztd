@@ -37,6 +37,9 @@ import (
 //go:embed db/public_mirror_schema.sql
 var publicMirrorSchema string
 
+//go:embed db/public_mirror_segments_migration.sql
+var publicMirrorSegmentsMigration string
+
 const (
 	// publicMirrorVerifyPageBatches bounds how many batch headers startup
 	// verification holds at once.
@@ -128,8 +131,8 @@ type publicMirrorProofArtifact struct {
 type PublicMirrorProofSummary struct {
 	ProofRootSHA256 string
 	ArtifactCount   int
-	TotalByteSize int64
-	GeneratedAt   time.Time
+	TotalByteSize   int64
+	GeneratedAt     time.Time
 }
 
 // PublicMirrorStore is the durable public mirror store: a SQLite database at
@@ -179,6 +182,17 @@ func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService,
 	if _, err := db.ExecWithRetry(ctx, publicMirrorSchema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("%w: apply schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
+	}
+	var segmentColumnCount int
+	if err := db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM pragma_table_info('proof_manifest_entries') WHERE name = 'segment_index'`).Scan(&segmentColumnCount); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("%w: inspect proof schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
+	}
+	if segmentColumnCount == 0 {
+		if _, err := db.ExecWithRetry(ctx, publicMirrorSegmentsMigration); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("%w: migrate proof schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
+		}
 	}
 	if _, err := db.ExecWithRetry(ctx, `INSERT OR IGNORE INTO mirror_state (id, active_source_id) VALUES (1, '')`); err != nil {
 		_ = db.Close()
@@ -504,6 +518,7 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 			if err != nil {
 				return fmt.Errorf("select retention boundary: %w", err)
 			}
+			defer rows.Close()
 			prunedBatches := 0
 			prunedRecords := 0
 			var prunedBytes int64
@@ -516,7 +531,6 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 				var batchRecordCount int
 				var batchByteCount int64
 				if err := rows.Scan(&firstSeq, &lastSeq, &contentHash, &batchRecordCount, &batchByteCount); err != nil {
-					_ = rows.Close()
 					return fmt.Errorf("scan retention candidate: %w", err)
 				}
 				prunedBatches++
@@ -536,11 +550,7 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 				}
 			}
 			if err := rows.Err(); err != nil {
-				_ = rows.Close()
 				return fmt.Errorf("read retention candidates: %w", err)
-			}
-			if err := rows.Close(); err != nil {
-				return fmt.Errorf("close retention candidates: %w", err)
 			}
 
 			if prunedBatches > 0 {
@@ -579,11 +589,6 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 		return PublicMirrorSourceSummary{}, err
 	}
 	return stored, nil
-}
-
-func scanPublicMirrorBatchHeader(rows *sql.Rows) (publicMirrorBatchHeader, error) {
-	var header publicMirrorBatchHeader
-	return header, rows.Scan(&header.FirstSequence, &header.LastSequence, &header.ContentHash)
 }
 
 // batchHeader returns the retained batch starting at firstSequence.
@@ -679,8 +684,8 @@ func (s *PublicMirrorStore) proofManifestSourceID(ctx context.Context, preferred
 	return sourceID, true, nil
 }
 
-// ProofManifest returns one source's signed proof manifest with its full
-// artifact list.
+// ProofManifest returns a legacy signed manifest or a segment-backed active
+// projection. For a projection, the root and signature belong to SegmentIndex.
 func (s *PublicMirrorStore) ProofManifest(ctx context.Context, sourceID string) (models.PublicProofManifest, bool, error) {
 	var headerJSON, root string
 	var count int
@@ -696,31 +701,83 @@ func (s *PublicMirrorStore) ProofManifest(ctx context.Context, sourceID string) 
 	if err := decodePublicMirrorJSON(headerJSON, &manifest); err != nil {
 		return models.PublicProofManifest{}, false, publicMirrorCorrupt("decode proof manifest %s: %v", sourceID, err)
 	}
-	type entryRow struct {
-		ordinal int
-		json    string
-	}
-	rows, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT ordinal, entry_json FROM proof_manifest_entries WHERE source_id = ? ORDER BY ordinal`,
-		[]interface{}{sourceID}, func(rows *sql.Rows) (entryRow, error) {
-			var row entryRow
-			return row, rows.Scan(&row.ordinal, &row.json)
+	rows, err := sqliteutil.MaterializeRows(ctx, s.db, `
+		SELECT entry_json FROM proof_manifest_entries
+		WHERE source_id = ?
+		  AND artifact_id NOT IN (SELECT artifact_id FROM proof_withdrawn_artifacts WHERE source_id = ?)
+		ORDER BY segment_index, ordinal`,
+		[]interface{}{sourceID, sourceID}, func(rows *sql.Rows) (string, error) {
+			var jsonStr string
+			return jsonStr, rows.Scan(&jsonStr)
 		})
 	if err != nil {
 		return models.PublicProofManifest{}, false, fmt.Errorf("public mirror store: read proof manifest entries: %w", err)
 	}
 	manifest.Artifacts = make([]models.PublicProofCatalogEntry, len(rows))
-	for index, row := range rows {
-		if row.ordinal != index {
-			return models.PublicProofManifest{}, false, publicMirrorCorrupt("proof manifest %s entry ordinal gap", sourceID)
-		}
-		if err := decodePublicMirrorJSON(row.json, &manifest.Artifacts[index]); err != nil {
+	for index, rawJSON := range rows {
+		if err := decodePublicMirrorJSON(rawJSON, &manifest.Artifacts[index]); err != nil {
 			return models.PublicProofManifest{}, false, publicMirrorCorrupt("decode proof manifest %s entry: %v", sourceID, err)
 		}
 	}
-	if manifest.ProofRootSHA256 != root || manifest.ArtifactCount != count || len(manifest.Artifacts) != count {
+	manifest.ArtifactCount = len(manifest.Artifacts)
+	if manifest.ProofRootSHA256 != root || manifest.ArtifactCount != count {
 		return models.PublicProofManifest{}, false, publicMirrorCorrupt("proof manifest %s summary mismatch", sourceID)
 	}
 	return manifest, true, nil
+}
+
+// proofSegmentHead reads one indexed chain position. Index zero means the head.
+func (s *PublicMirrorStore) proofSegmentHead(ctx context.Context, sourceID string, index int64) (int64, string, error) {
+	query := `SELECT segment_index, proof_root_sha256 FROM proof_manifest_segments WHERE source_id = ? ORDER BY segment_index DESC LIMIT 1`
+	args := []interface{}{sourceID}
+	if index > 0 {
+		query = `SELECT segment_index, proof_root_sha256 FROM proof_manifest_segments WHERE source_id = ? AND segment_index = ?`
+		args = append(args, index)
+	}
+	var foundIndex int64
+	var root string
+	err := s.db.QueryRowWithRetry(ctx, query, args...).Scan(&foundIndex, &root)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, constants.PublicFeedZeroHashHex, nil
+	}
+	if err != nil {
+		return 0, "", fmt.Errorf("public mirror store: read proof chain position: %w", err)
+	}
+	return foundIndex, root, nil
+}
+
+// ProofSegments returns all signed proof manifest segments for one source in order.
+func (s *PublicMirrorStore) ProofSegments(ctx context.Context, sourceID string) ([]models.PublicProofManifestSegment, error) {
+	segments, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT segment_index, previous_root, proof_root_sha256, signing_key_id, signature, generated_at, segment_json FROM proof_manifest_segments WHERE source_id = ? ORDER BY segment_index`,
+		[]interface{}{sourceID}, func(rows *sql.Rows) (models.PublicProofManifestSegment, error) {
+			var seg models.PublicProofManifestSegment
+			var index int64
+			var previousRoot, root, keyID, signature, generatedAt, raw string
+			if err := rows.Scan(&index, &previousRoot, &root, &keyID, &signature, &generatedAt, &raw); err != nil {
+				return seg, err
+			}
+			if err := decodePublicMirrorJSON(raw, &seg); err != nil {
+				return seg, publicMirrorCorrupt("decode proof segment %s #%d: %v", sourceID, index, err)
+			}
+			if seg.SourceID != sourceID || seg.SegmentIndex != index || seg.PreviousRoot != previousRoot ||
+				seg.ProofRootSHA256 != root || seg.SigningKeyID != keyID || seg.Signature != signature || formatPublicMirrorTime(seg.GeneratedAt) != generatedAt {
+				return seg, publicMirrorCorrupt("proof segment columns differ from signed data for %s #%d", sourceID, index)
+			}
+			return seg, nil
+		})
+	if err != nil {
+		return nil, fmt.Errorf("public mirror store: read proof segments: %w", err)
+	}
+	return segments, nil
+}
+
+// ProofCatalog returns the derived catalog of active proof artifacts.
+func (s *PublicMirrorStore) ProofCatalog(ctx context.Context, sourceID string) (models.PublicProofCatalog, bool, error) {
+	manifest, found, err := s.ProofManifest(ctx, sourceID)
+	if err != nil || !found {
+		return models.PublicProofCatalog{}, found, err
+	}
+	return proofCatalogFromManifest(manifest), true, nil
 }
 
 func decodePublicMirrorJSON(value string, target any) error {
@@ -761,13 +818,18 @@ func (s *PublicMirrorStore) proofArtifact(ctx context.Context, artifactID string
 	var artifact publicMirrorProofArtifact
 	var entryJSON sql.NullString
 	err := s.db.QueryRowWithRetry(ctx, `SELECT a.byte_size,
-		(SELECT e.entry_json FROM proof_manifest_entries e WHERE e.artifact_id = a.artifact_id ORDER BY e.source_id, e.ordinal LIMIT 1)
+		(SELECT e.entry_json FROM proof_manifest_entries e WHERE e.artifact_id = a.artifact_id
+		 AND NOT EXISTS (SELECT 1 FROM proof_withdrawn_artifacts w WHERE w.source_id = e.source_id AND w.artifact_id = e.artifact_id)
+		 ORDER BY e.source_id, e.segment_index, e.ordinal LIMIT 1)
 		FROM proof_artifacts a WHERE a.artifact_id = ?`, artifactID).Scan(&artifact.ByteSize, &entryJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return publicMirrorProofArtifact{}, false, nil
 	}
 	if err != nil {
 		return publicMirrorProofArtifact{}, false, fmt.Errorf("public mirror store: read proof artifact: %w", err)
+	}
+	if !entryJSON.Valid {
+		return publicMirrorProofArtifact{}, false, nil
 	}
 	if entryJSON.Valid {
 		var entry models.PublicProofCatalogEntry
@@ -802,6 +864,19 @@ func (s *PublicMirrorStore) proofArtifactSizes(ctx context.Context, artifactIDs 
 			return nil, fmt.Errorf("public mirror store: read proof artifact sizes: %w", err)
 		}
 		for _, row := range rows {
+			info, err := s.fileSvc.Lstat(ctx, publicMirrorProofArtifactPath(row.id))
+			if errors.Is(err, constants.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return nil, fmt.Errorf("public mirror store: inspect proof artifact: %w", err)
+			}
+			if !info.Mode().IsRegular() {
+				return nil, constants.ErrPublicFeedProofSymlinkRejected
+			}
+			if info.Size() != row.size {
+				return nil, constants.ErrPublicFeedProofSizeMismatch
+			}
 			sizes[row.id] = row.size
 		}
 	}
@@ -820,10 +895,152 @@ func (s *PublicMirrorStore) openProofArtifact(ctx context.Context, artifactID st
 	return file, nil
 }
 
-// putProofPackage writes the new content-addressed artifact files, then in
-// one transaction records them and replaces the source's manifest, rewriting
-// only manifest entries that changed. storedSizes lists the manifest
-// artifacts the store already held; their files are not rewritten.
+// putProofSegment writes any new inline proof artifact files and in one
+// transaction records the signed segment, appends its entries, records any
+// withdrawals, and updates the source's proof summary.
+func (s *PublicMirrorStore) putProofSegment(ctx context.Context, sourceID string, segment models.PublicProofManifestSegment, artifacts []models.PublicProofIngestArtifact, storedSizes map[string]int64) error {
+	newArtifacts := make([]models.PublicProofIngestArtifact, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if _, stored := storedSizes[artifact.ArtifactID]; stored {
+			continue
+		}
+		if !validPublicProofArtifactID(artifact.ArtifactID) {
+			return constants.ErrPublicFeedProofHashMismatch
+		}
+		if err := s.fileSvc.WriteFile(ctx, publicMirrorProofArtifactPath(artifact.ArtifactID), artifact.Content, constants.PermFilePrivate); err != nil {
+			return fmt.Errorf("%w: write proof artifact %s: %w", constants.ErrPublicFeedMirrorStoreWrite, artifact.ArtifactID, err)
+		}
+		newArtifacts = append(newArtifacts, artifact)
+	}
+
+	segmentJSON, err := json.Marshal(segment)
+	if err != nil {
+		return fmt.Errorf("%w: encode proof segment: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
+	}
+
+	entryJSON := make([]string, len(segment.Entries))
+	for index, entry := range segment.Entries {
+		encoded, err := json.Marshal(entry)
+		if err != nil {
+			return fmt.Errorf("%w: encode proof manifest entry: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
+		}
+		entryJSON[index] = string(encoded)
+	}
+
+	storedAt := formatPublicMirrorTime(time.Now())
+	return s.write(ctx, "put proof segment", func(tx *sql.Tx) error {
+		for _, artifact := range newArtifacts {
+			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO proof_artifacts (artifact_id, byte_size, stored_at) VALUES (?, ?, ?)`,
+				artifact.ArtifactID, len(artifact.Content), storedAt); err != nil {
+				return fmt.Errorf("insert proof artifact: %w", err)
+			}
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO proof_manifest_segments (source_id, segment_index, previous_root, proof_root_sha256, signing_key_id, signature, segment_json, generated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			sourceID, segment.SegmentIndex, segment.PreviousRoot, segment.ProofRootSHA256, segment.SigningKeyID, segment.Signature, string(segmentJSON), formatPublicMirrorTime(segment.GeneratedAt)); err != nil {
+			return fmt.Errorf("upsert proof manifest segment: %w", err)
+		}
+
+		var activeCount int
+		var totalByteSize int64
+		if segment.SegmentIndex == 1 {
+			// The source signs its first segment with the complete initial set.
+			// Replace the legacy projection without inventing signed links.
+			if _, err := tx.ExecContext(ctx, `DELETE FROM proof_manifest_entries WHERE source_id = ? AND segment_index = 0`, sourceID); err != nil {
+				return fmt.Errorf("remove legacy proof projection: %w", err)
+			}
+		} else if err := tx.QueryRowContext(ctx, `SELECT artifact_count, total_byte_size FROM proof_manifests WHERE source_id = ?`, sourceID).Scan(&activeCount, &totalByteSize); err != nil {
+			return fmt.Errorf("read proof summary: %w", err)
+		}
+		for _, entry := range segment.Entries {
+			var exists bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM proof_manifest_entries WHERE source_id = ? AND artifact_id = ?)`, sourceID, entry.ArtifactID).Scan(&exists); err != nil {
+				return fmt.Errorf("read prior proof entry: %w", err)
+			}
+			if exists {
+				return constants.ErrPublicFeedProofSegmentEquivocation
+			}
+			activeCount++
+			totalByteSize += entry.ByteSize
+		}
+		if activeCount > constants.PublicFeedProofMaxArtifacts {
+			return constants.ErrPublicFeedProofCatalogMismatch
+		}
+
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO proof_manifest_entries (source_id, segment_index, ordinal, artifact_id, entry_json) VALUES (?, ?, ?, ?, ?)`)
+		if err != nil {
+			return fmt.Errorf("prepare proof manifest entry upsert: %w", err)
+		}
+		defer stmt.Close()
+		for index, encoded := range entryJSON {
+			if _, err := stmt.ExecContext(ctx, sourceID, segment.SegmentIndex, index, segment.Entries[index].ArtifactID, encoded); err != nil {
+				return fmt.Errorf("upsert proof manifest entry: %w", err)
+			}
+		}
+
+		withdrawnStmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO proof_withdrawn_artifacts (source_id, artifact_id, segment_index, withdrawn_at) VALUES (?, ?, ?, ?)`)
+		if err != nil {
+			return fmt.Errorf("prepare proof withdrawn insert: %w", err)
+		}
+		defer withdrawnStmt.Close()
+		for _, artID := range segment.WithdrawnArtifactIDs {
+			var byteSize int64
+			err := tx.QueryRowContext(ctx, `SELECT a.byte_size FROM proof_manifest_entries e
+				JOIN proof_artifacts a ON a.artifact_id = e.artifact_id
+				WHERE e.source_id = ? AND e.artifact_id = ? AND NOT EXISTS
+				(SELECT 1 FROM proof_withdrawn_artifacts w WHERE w.source_id = e.source_id AND w.artifact_id = e.artifact_id)`, sourceID, artID).Scan(&byteSize)
+			if errors.Is(err, sql.ErrNoRows) {
+				return constants.ErrPublicFeedProofSegmentInvalid
+			}
+			if err != nil {
+				return fmt.Errorf("read withdrawn proof entry: %w", err)
+			}
+			activeCount--
+			totalByteSize -= byteSize
+
+			if _, err := withdrawnStmt.ExecContext(ctx, sourceID, artID, segment.SegmentIndex, storedAt); err != nil {
+				return fmt.Errorf("insert proof withdrawn: %w", err)
+			}
+		}
+
+		header := models.PublicProofManifest{
+			SchemaVersion:               constants.PublicProofManifestSchemaVersion,
+			SegmentIndex:                segment.SegmentIndex,
+			ProofRootSHA256:             segment.ProofRootSHA256,
+			CampaignID:                  segment.CampaignID,
+			CampaignRevision:            segment.CampaignRevision,
+			VerifiedIndexGenerationHash: segment.VerifiedIndexGenerationHash,
+			VerificationOK:              segment.VerificationOK,
+			ArtifactCount:               activeCount,
+			VerifierInstructions:        segment.VerifierInstructions,
+			GeneratedAt:                 segment.GeneratedAt,
+			SigningKeyID:                segment.SigningKeyID,
+			Signature:                   segment.Signature,
+		}
+		headerJSON, err := json.Marshal(header)
+		if err != nil {
+			return fmt.Errorf("encode proof manifest header: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO proof_manifests (source_id, manifest_json, proof_root_sha256, artifact_count, total_byte_size, generated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT(source_id) DO UPDATE SET
+				manifest_json = excluded.manifest_json,
+				proof_root_sha256 = excluded.proof_root_sha256,
+				artifact_count = excluded.artifact_count,
+				total_byte_size = excluded.total_byte_size,
+				generated_at = excluded.generated_at`,
+			sourceID, string(headerJSON), segment.ProofRootSHA256, activeCount, totalByteSize, formatPublicMirrorTime(segment.GeneratedAt)); err != nil {
+			return fmt.Errorf("upsert proof manifest summary: %w", err)
+		}
+
+		return nil
+	})
+}
+
 func (s *PublicMirrorStore) putProofPackage(ctx context.Context, sourceID string, manifest models.PublicProofManifest, artifacts []models.PublicProofIngestArtifact, storedSizes map[string]int64) error {
 	newArtifacts := make([]models.PublicProofIngestArtifact, 0, len(artifacts))
 	for _, artifact := range artifacts {
@@ -878,8 +1095,8 @@ func (s *PublicMirrorStore) putProofPackage(ctx context.Context, sourceID string
 		if err != nil {
 			return err
 		}
-		stmt, err := tx.PrepareContext(ctx, `INSERT INTO proof_manifest_entries (source_id, ordinal, artifact_id, entry_json) VALUES (?, ?, ?, ?)
-			ON CONFLICT(source_id, ordinal) DO UPDATE SET artifact_id = excluded.artifact_id, entry_json = excluded.entry_json`)
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO proof_manifest_entries (source_id, segment_index, ordinal, artifact_id, entry_json) VALUES (?, 0, ?, ?, ?)
+			ON CONFLICT(source_id, segment_index, ordinal) DO UPDATE SET artifact_id = excluded.artifact_id, entry_json = excluded.entry_json`)
 		if err != nil {
 			return fmt.Errorf("prepare proof manifest entry upsert: %w", err)
 		}
@@ -900,7 +1117,7 @@ func (s *PublicMirrorStore) putProofPackage(ctx context.Context, sourceID string
 }
 
 func queryPublicMirrorManifestEntries(ctx context.Context, tx *sql.Tx, sourceID string) ([]string, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT entry_json FROM proof_manifest_entries WHERE source_id = ? ORDER BY ordinal`, sourceID)
+	rows, err := tx.QueryContext(ctx, `SELECT entry_json FROM proof_manifest_entries WHERE source_id = ? ORDER BY segment_index, ordinal`, sourceID)
 	if err != nil {
 		return nil, fmt.Errorf("read proof manifest entries: %w", err)
 	}
@@ -1095,7 +1312,7 @@ func (s *PublicMirrorStore) hashProofArtifact(ctx context.Context, artifactID st
 }
 
 func (s *PublicMirrorStore) verifyProofManifests(ctx context.Context, keys PublicMirrorKeys, sizes map[string]int64) error {
-	sourceIDs, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT source_id FROM proof_manifests ORDER BY source_id`, nil, func(rows *sql.Rows) (string, error) {
+	sourceIDs, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT source_id FROM proof_manifests UNION SELECT source_id FROM proof_manifest_segments ORDER BY source_id`, nil, func(rows *sql.Rows) (string, error) {
 		var sourceID string
 		return sourceID, rows.Scan(&sourceID)
 	})
@@ -1103,14 +1320,57 @@ func (s *PublicMirrorStore) verifyProofManifests(ctx context.Context, keys Publi
 		return fmt.Errorf("public mirror store: read proof manifests: %w", err)
 	}
 	for _, sourceID := range sourceIDs {
-		manifest, _, err := s.ProofManifest(ctx, sourceID)
+		segments, err := s.ProofSegments(ctx, sourceID)
 		if err != nil {
 			return err
 		}
-		if err := validatePublicProofManifest(sourceID, manifest, keys, false); err != nil {
-			return publicMirrorCorrupt("proof metadata for %s: %v", sourceID, err)
+		if len(segments) > 0 {
+			expectedPrevRoot := constants.PublicFeedZeroHashHex
+			for i, seg := range segments {
+				if seg.SegmentIndex != int64(i+1) {
+					return publicMirrorCorrupt("proof segment sequence out of order for %s: index %d expected %d", sourceID, seg.SegmentIndex, i+1)
+				}
+				if seg.PreviousRoot != expectedPrevRoot {
+					return publicMirrorCorrupt("proof segment link broken for %s: got %s expected %s", sourceID, seg.PreviousRoot, expectedPrevRoot)
+				}
+				if err := validatePublicProofSegment(sourceID, seg, keys, false); err != nil {
+					return publicMirrorCorrupt("proof segment invalid for %s #%d: %v", sourceID, seg.SegmentIndex, err)
+				}
+				for _, entry := range seg.Entries {
+					if size, ok := sizes[entry.ArtifactID]; !ok || size != entry.ByteSize {
+						return publicMirrorCorrupt("proof segment entry missing stored artifact %s for %s", entry.ArtifactID, sourceID)
+					}
+				}
+				expectedPrevRoot = seg.ProofRootSHA256
+			}
+			summary, _, err := s.proofSummary(ctx, sourceID)
+			if err != nil {
+				return err
+			}
+			lastSeg := segments[len(segments)-1]
+			if summary.ProofRootSHA256 != lastSeg.ProofRootSHA256 {
+				return publicMirrorCorrupt("proof summary root mismatch for %s: got %s expected %s", sourceID, summary.ProofRootSHA256, lastSeg.ProofRootSHA256)
+			}
 		}
-		if err := validatePublicProofEntries(manifest, nil, sizes); err != nil {
+
+		manifest, found, err := s.ProofManifest(ctx, sourceID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return publicMirrorCorrupt("proof manifest missing for %s", sourceID)
+		}
+		if len(segments) > 0 {
+			if err := s.verifyProofSegmentProjection(ctx, sourceID, segments, manifest); err != nil {
+				return err
+			}
+		}
+		if len(segments) == 0 {
+			if err := validatePublicProofManifest(sourceID, manifest, keys, false); err != nil {
+				return publicMirrorCorrupt("proof metadata for %s: %v", sourceID, err)
+			}
+		}
+		if err := validatePublicProofEntryList(manifest.Artifacts, nil, sizes); err != nil {
 			return publicMirrorCorrupt("proof metadata for %s: %v", sourceID, err)
 		}
 		summary, _, err := s.proofSummary(ctx, sourceID)
@@ -1125,6 +1385,86 @@ func (s *PublicMirrorStore) verifyProofManifests(ctx context.Context, keys Publi
 			summary.TotalByteSize != total || !summary.GeneratedAt.Equal(manifest.GeneratedAt) {
 			return publicMirrorCorrupt("proof summary mismatch for %s", sourceID)
 		}
+	}
+	return nil
+}
+
+// verifyProofSegmentProjection compares every persisted projection row (including
+// withdrawn entries) with the signed log. Content hashes alone cannot detect
+// tampered filenames, membership, or withdrawal state.
+func (s *PublicMirrorStore) verifyProofSegmentProjection(ctx context.Context, sourceID string, segments []models.PublicProofManifestSegment, manifest models.PublicProofManifest) error {
+	type position struct {
+		segment int64
+		ordinal int
+	}
+	expected := make(map[position]models.PublicProofCatalogEntry)
+	listed := make(map[string]bool)
+	withdrawn := make(map[string]int64)
+	for _, seg := range segments {
+		for ordinal, entry := range seg.Entries {
+			if listed[entry.ArtifactID] {
+				return publicMirrorCorrupt("repeated segment artifact %s for %s", entry.ArtifactID, sourceID)
+			}
+			listed[entry.ArtifactID] = true
+			entry.GeneratedAt = entry.GeneratedAt.UTC()
+			expected[position{seg.SegmentIndex, ordinal}] = entry
+		}
+		for _, id := range seg.WithdrawnArtifactIDs {
+			if !listed[id] || withdrawn[id] != 0 {
+				return publicMirrorCorrupt("invalid withdrawal %s for %s", id, sourceID)
+			}
+			withdrawn[id] = seg.SegmentIndex
+		}
+	}
+	_, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT segment_index, ordinal, artifact_id, entry_json FROM proof_manifest_entries WHERE source_id = ?`, []interface{}{sourceID}, func(rows *sql.Rows) (bool, error) {
+		var pos position
+		var id, raw string
+		if err := rows.Scan(&pos.segment, &pos.ordinal, &id, &raw); err != nil {
+			return false, err
+		}
+		var actual models.PublicProofCatalogEntry
+		if err := decodePublicMirrorJSON(raw, &actual); err != nil {
+			return false, publicMirrorCorrupt("decode proof projection for %s: %v", sourceID, err)
+		}
+		actual.GeneratedAt = actual.GeneratedAt.UTC()
+		entry, ok := expected[pos]
+		if !ok || actual != entry || id != entry.ArtifactID {
+			return false, publicMirrorCorrupt("proof projection differs from segment for %s #%d entry %d", sourceID, pos.segment, pos.ordinal)
+		}
+		delete(expected, pos)
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("verify proof entries: %w", err)
+	}
+	if len(expected) != 0 {
+		return publicMirrorCorrupt("proof projection entries missing for %s", sourceID)
+	}
+	_, err = sqliteutil.MaterializeRows(ctx, s.db, `SELECT artifact_id, segment_index FROM proof_withdrawn_artifacts WHERE source_id = ?`, []interface{}{sourceID}, func(rows *sql.Rows) (bool, error) {
+		var id string
+		var index int64
+		if err := rows.Scan(&id, &index); err != nil {
+			return false, err
+		}
+		if expectedIndex, ok := withdrawn[id]; !ok || index != expectedIndex {
+			return false, publicMirrorCorrupt("withdrawal projection differs from segment for %s artifact %s", sourceID, id)
+		}
+		delete(withdrawn, id)
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("verify proof withdrawals: %w", err)
+	}
+	if len(withdrawn) != 0 {
+		return publicMirrorCorrupt("proof withdrawal entries missing for %s", sourceID)
+	}
+	last := segments[len(segments)-1]
+	if manifest.SchemaVersion != constants.PublicProofManifestSchemaVersion || manifest.SegmentIndex != last.SegmentIndex || manifest.ProofRootSHA256 != last.ProofRootSHA256 ||
+		manifest.CampaignID != last.CampaignID || manifest.CampaignRevision != last.CampaignRevision ||
+		manifest.VerifiedIndexGenerationHash != last.VerifiedIndexGenerationHash || manifest.VerificationOK != last.VerificationOK ||
+		manifest.SigningKeyID != last.SigningKeyID || manifest.Signature != last.Signature ||
+		manifest.VerifierInstructions != last.VerifierInstructions || !manifest.GeneratedAt.Equal(last.GeneratedAt) {
+		return publicMirrorCorrupt("proof header differs from last segment for %s", sourceID)
 	}
 	return nil
 }

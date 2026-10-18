@@ -59,7 +59,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SPEC-ISO-01 | Owner-local observe mode and anonymous public spectator mode MUST NOT share state, configuration, credentials, or endpoints. Public visitors NEVER connect directly to the private Gateway API. |
-| INV-SPEC-ISO-02 | The public mirror listener MUST expose only read-only endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, and `GET /proofs/<artifact-id>`), plus the read-only evaluation explorer static host (`GET` and `HEAD`, from embedded assets or the `--eval-explorer-root` directory). It MUST NOT mount mutation, producer, governance, audit, or runtime-state filesystem routes. |
+| INV-SPEC-ISO-02 | The public mirror listener MUST expose only read-only endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proof-segments`, and `GET /proofs/<artifact-id>`), plus the read-only evaluation explorer static host (`GET` and `HEAD`, from embedded assets or the `--eval-explorer-root` directory). It MUST NOT mount mutation, producer, governance, audit, or runtime-state filesystem routes. |
 | INV-SPEC-ISO-03 | Private ingest operations (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`) MUST be served on an isolated loopback listener accessible only to the authenticated publisher. |
 
 ### Data Classification and Projection (`INV-SPEC-DATA`)
@@ -78,6 +78,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-SPEC-CRYPTO-02 | Proof artifacts MUST be immutable, content-addressed files served under paths derived from their SHA-256 digests. |
 | INV-SPEC-CRYPTO-03 | Key rotation MUST occur via a signed revocation batch. Batches signed by revoked keys are rejected. Historical batches remain verifiable against the retained key registry. |
 | INV-SPEC-CRYPTO-04 | Withdrawing a campaign run (`WithdrawCampaignDataset`, reached through the Gateway's publication-state `DELETE` that `ztd eval runs delete` calls) MUST NOT remove or rewrite signed batches. The mirror records the run's dataset as withdrawn and filters its projections from `/bootstrap`, `/history`, and `/stream`; the publisher prunes the run's proof artifacts from the proof catalog and pushes it. Every mirror snapshot carries `withdrawal_digest` (SHA-256 over the sorted withdrawn dataset IDs, zero hash when none), and withdrawal pushes a fresh `snapshot` event to open streams. A client MUST discard cached or in-memory records and refetch history when the digest changes, because the signed chain alone cannot reveal a withdrawal. |
+| INV-SPEC-CRYPTO-05 | A proof segment MUST bind its source, index, predecessor root, every entry field, withdrawals, timestamp, signing key ID, and verifier instructions to its Ed25519-signed root. The mirror MUST reject gaps, conflicting roots at an accepted index, repeated artifact IDs, unknown or repeated withdrawals, and a legacy manifest signature presented as a segment signature. |
 
 ## Owned surfaces
 
@@ -173,6 +174,24 @@ Every exported batch forms an immutable, verifiable link in a cryptographic chai
 | `signing_key_id` | String | Identifier of the Ed25519 signing key |
 | `signature` | Hex String | Ed25519 signature over `content_hash` |
 
+### Signed Proof Segments
+
+The mirror accepts a typed `PublicProofManifestSegment` on private `/proof-ingest` and exposes its signed log through anonymous `GET /proof-segments?source=...`. Segment indexes start at 1, and the first `previous_root` is the zero SHA-256 hash. Each later segment links to the preceding signed root. Exact root replays are idempotent. New segments append their entries or withdrawal IDs; withdrawals remove that source's entries from the active catalog and download lookup while preserving signed history and stored bytes. An artifact remains downloadable if another source still lists the same content ID. A withdrawn content ID cannot be added again to the same source's segment chain.
+
+`models.ComputePublicProofSegmentRoot` defines the signed encoding. Each value is UTF-8 bytes prefixed by its decimal byte length and `:`. The hash is SHA-256 of the concatenated fields, in this order:
+
+1. Domain `ztd-public-proof-segment-v1`, schema version, source ID, decimal segment index, previous root (lowercase hex), campaign ID, campaign revision, verified index-generation hash, verification boolean (`true` or `false`), decimal entry count.
+2. For each entry in order: artifact ID, SHA-256, filename, media type, decimal byte size, classification, campaign ID, source run ID, generated-at timestamp, verification command, immutable URL.
+3. Decimal withdrawal count, each withdrawn artifact ID in order, segment generated-at timestamp, signing key ID, verifier instructions.
+
+Timestamps use UTC RFC 3339 with trailing fractional zeroes omitted (`time.RFC3339Nano`). The signature covers the decoded 32-byte root. The root and signature fields themselves are excluded from the hash. Entry metadata and adjacent variable-length fields therefore cannot be substituted without invalidating the signature.
+
+Ingest verifies only the incoming segment and its inline artifact bytes. Reused artifacts require an existing metadata row and a regular file of the verified size. Indexed chain-position reads and count/byte deltas keep mutations proportional to the incoming entries and withdrawals. Startup re-verifies every signature, chain link, artifact hash, indexed chain column, entry projection, withdrawal projection, and source proof summary before serving requests.
+
+The SQLite upgrade retains existing full-manifest rows at segment index zero and preserves their actual signatures. It does not manufacture signed segments. A source can replace that projection by sending its own first signed segment with the initial artifact set. Once the mirror accepts a segment for a source, it rejects full-manifest submissions for that source. For segment-backed sources, `/proof-manifest` is a derived active view with a nonzero `segment_index`; its root and signature belong to that segment and MUST be verified using the signed log.
+
+Publisher cutover is still in progress: the current publisher appends a local `public-proofs/proof-segments.jsonl` but pushes full signed manifests to the mirror. Consequently, its mirror has no signed segments to export until segment transport is enabled. Full manifests retain their existing verification procedure; the segment procedure below applies to sources ingesting segments and to the publisher's local log. Multi-key offline verification across signing-key rotations remains pending; `verify-proof --public-key` verifies a log signed by one pinned key.
+
 ## Threat Model and Mitigations
 
 | Threat Vector | Mitigation Strategy | Fail-Closed Behavior |
@@ -239,12 +258,30 @@ The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `int
 
 ### Offline Proof Verification
 
-1. Download the proof manifest, catalog, and artifact files.
-2. Disconnect network connectivity.
-3. Compute SHA-256 of all artifacts and compare against catalog entries.
-4. Verify catalog entries match the signed root manifest.
-5. Verify Ed25519 signature over manifest root using trusted public key.
-6. Verify a downloaded agent trace with `./ztd public verify-agent-trace --trace assignment-<id>.agent-trace.json`: it checks `evidence_digest`, every model and tool receipt signature against the trace's actuator anchors, and the sentinel bracket ordering. `./ztd public verify-assignment` verifies an assignment audit slice.
+For a source publishing segments, export the JSON response as JSONL and download the active artifacts before disconnecting:
+
+```bash
+MIRROR_URL="https://mirror.example"
+SOURCE_ID="source-id"
+curl -fsS "${MIRROR_URL}/proof-segments?source=${SOURCE_ID}" | jq -c '.segments[]' > proof-segments.jsonl
+curl -fsS "${MIRROR_URL}/proof-catalog?source=${SOURCE_ID}" > proof-catalog.json
+mkdir -p proofs
+jq -r '.entries[].artifact_id' proof-catalog.json | while IFS= read -r artifact_id; do
+  curl -fsS "${MIRROR_URL}/proofs/${artifact_id}" -o "proofs/${artifact_id}"
+done
+```
+
+Alternatively, copy the publisher's local `public-proofs/proof-segments.jsonl` and its content-addressed artifact files. Disconnect network connectivity, then verify using a public key pinned through a trusted channel:
+
+```bash
+./ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key <ed25519-public-key-hex>
+```
+
+The command checks one source's consecutive indexes and root links from zero, recomputes every segment root, verifies every Ed25519 signature, applies signed withdrawals, and checks active artifact hashes and sizes. Artifact filenames in the supplied directory MUST be the lowercase SHA-256 IDs. It rejects traversal, symlinks, repeated entries, unknown withdrawals, and mixed sources. Verification establishes the integrity of the supplied prefix; determining whether the prefix is current requires an independently trusted latest root. Previously downloaded or cached bytes are not erased by a withdrawal.
+
+For sources still publishing full manifests, download `/proof-manifest`, `/proof-catalog`, and their artifact files. Offline, compare every artifact's SHA-256 and size with the catalog, check catalog membership against the signed manifest, recompute the legacy manifest root, and verify its Ed25519 signature with the trusted source key. Do not present a legacy manifest signature as proof of a segment link or withdrawal.
+
+Verify a downloaded agent trace with `./ztd public verify-agent-trace --trace assignment-<id>.agent-trace.json`: it checks `evidence_digest`, every model and tool receipt signature against the trace's actuator anchors, and the sentinel bracket ordering. `./ztd public verify-assignment` verifies an assignment audit slice with its vault key.
 
 ## Anti-patterns
 

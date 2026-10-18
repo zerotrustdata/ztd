@@ -667,6 +667,7 @@ func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux.HandleFunc("/stream", m.handleStream)
 	mux.HandleFunc("/proof-catalog", m.handleProofCatalog)
 	mux.HandleFunc("/proof-manifest", m.handleProofManifest)
+	mux.HandleFunc("/proof-segments", m.handleProofSegments)
 	mux.HandleFunc("/proofs/", m.handleProofDownload)
 	return mux
 }
@@ -698,7 +699,7 @@ func (m *PublicMirrorServer) withGzip(next http.Handler) http.Handler {
 
 func publicMirrorAnonymousReadPath(requestPath string) bool {
 	switch requestPath {
-	case "/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-manifest":
+	case "/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-manifest", "/proof-segments":
 		return true
 	default:
 		return strings.HasPrefix(requestPath, "/proofs/")
@@ -1001,10 +1002,14 @@ func (m *PublicMirrorServer) handleProofIngest(w http.ResponseWriter, r *http.Re
 		m.writeJSON(w, http.StatusBadRequest, models.PublicProofIngestResponse{Accepted: false})
 		return
 	}
+	root := request.Manifest.ProofRootSHA256
+	if request.Segment != nil {
+		root = request.Segment.ProofRootSHA256
+	}
 	m.writeJSON(w, http.StatusOK, models.PublicProofIngestResponse{
 		Accepted:      true,
 		ArtifactCount: len(request.Artifacts),
-		ProofRoot:     request.Manifest.ProofRootSHA256,
+		ProofRoot:     root,
 	})
 }
 
@@ -1023,16 +1028,26 @@ func (e *publicProofMissingArtifactsError) Unwrap() error {
 	return constants.ErrPublicFeedProofArtifactsMissing
 }
 
-// storeProofPackage verifies a signed proof manifest and the artifacts it
-// carries inline, then stores them. Manifest entries not carried inline must
-// already be stored with a matching size; only new artifact bytes are hashed
-// and written.
+// storeProofPackage verifies a signed proof manifest or segment and the artifacts it
+// carries inline, then stores them.
 func (m *PublicMirrorServer) storeProofPackage(ctx context.Context, request models.PublicProofIngestRequest) error {
+	if request.Segment != nil {
+		if request.Manifest.SchemaVersion != "" {
+			return constants.ErrPublicFeedProofSegmentInvalid
+		}
+		return m.storeProofSegment(ctx, request.SourceID, *request.Segment, request.Artifacts)
+	}
 	m.writeMu.Lock()
 	defer m.writeMu.Unlock()
 	m.mu.RLock()
 	keys := m.keys
 	m.mu.RUnlock()
+	if index, _, err := m.store.proofSegmentHead(ctx, request.SourceID, 0); err != nil {
+		return err
+	} else if index != 0 {
+		return constants.ErrPublicFeedProofSegmentInvalid
+	}
+
 	manifest := request.Manifest
 	if err := validatePublicProofManifest(request.SourceID, manifest, keys, true); err != nil {
 		return err
@@ -1048,16 +1063,74 @@ func (m *PublicMirrorServer) storeProofPackage(ctx context.Context, request mode
 	if err != nil {
 		return err
 	}
-	if err := validatePublicProofEntries(manifest, request.Artifacts, storedSizes); err != nil {
+	if err := validatePublicProofEntryList(manifest.Artifacts, request.Artifacts, storedSizes); err != nil {
 		return err
 	}
 	return m.store.putProofPackage(ctx, request.SourceID, manifest, request.Artifacts, storedSizes)
 }
 
+func (m *PublicMirrorServer) storeProofSegment(ctx context.Context, sourceID string, segment models.PublicProofManifestSegment, artifacts []models.PublicProofIngestArtifact) error {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	m.mu.RLock()
+	keys := m.keys
+	m.mu.RUnlock()
+
+	if err := validatePublicProofSegment(sourceID, segment, keys, true); err != nil {
+		return err
+	}
+
+	lastIndex, lastRoot, err := m.store.proofSegmentHead(ctx, sourceID, 0)
+	if err != nil {
+		return err
+	}
+	if segment.SegmentIndex <= lastIndex {
+		_, existingRoot, err := m.store.proofSegmentHead(ctx, sourceID, segment.SegmentIndex)
+		if err != nil {
+			return err
+		}
+		if existingRoot == segment.ProofRootSHA256 {
+			return nil
+		}
+		return constants.ErrPublicFeedProofSegmentEquivocation
+	}
+	if segment.SegmentIndex != lastIndex+1 {
+		return constants.ErrPublicFeedProofSegmentOutOfOrder
+	}
+	if segment.PreviousRoot != lastRoot {
+		return constants.ErrPublicFeedProofSegmentLinkMismatch
+	}
+
+	artifactIDs := make([]string, len(segment.Entries))
+	for index, entry := range segment.Entries {
+		artifactIDs[index] = entry.ArtifactID
+	}
+	storedSizes, err := m.store.proofArtifactSizes(ctx, artifactIDs)
+	if err != nil {
+		return err
+	}
+	if err := validatePublicProofEntryList(segment.Entries, artifacts, storedSizes); err != nil {
+		return err
+	}
+	return m.store.putProofSegment(ctx, sourceID, segment, artifacts, storedSizes)
+}
+
+func validatePublicProofSegment(sourceID string, segment models.PublicProofManifestSegment, keys PublicMirrorKeys, rejectRevoked bool) error {
+	keyRegistryID := publicMirrorKeyRegistryID(sourceID, segment.SigningKeyID)
+	if _, revoked := keys.Revoked[keyRegistryID]; rejectRevoked && revoked {
+		return constants.ErrPublicFeedRevokedKey
+	}
+	key, ok := keys.Registry[keyRegistryID]
+	if !ok {
+		return constants.ErrPublicFeedUnknownKey
+	}
+	return models.VerifyPublicProofSegment(sourceID, segment, key)
+}
+
 // validatePublicProofManifest verifies a proof manifest's shape, signing key,
 // recomputed proof root, and root signature.
 func validatePublicProofManifest(sourceID string, manifest models.PublicProofManifest, keys PublicMirrorKeys, rejectRevoked bool) error {
-	if sourceID == "" || !manifest.VerificationOK || manifest.SchemaVersion != constants.PublicProofManifestSchemaVersion {
+	if sourceID == "" || !manifest.VerificationOK || manifest.SegmentIndex != 0 || manifest.SchemaVersion != constants.PublicProofManifestSchemaVersion {
 		return constants.ErrPublicFeedProofManifestInvalid
 	}
 	if manifest.ArtifactCount <= 0 || manifest.ArtifactCount > constants.PublicFeedProofMaxArtifacts || manifest.ArtifactCount != len(manifest.Artifacts) {
@@ -1086,11 +1159,7 @@ func validatePublicProofManifest(sourceID string, manifest models.PublicProofMan
 	return nil
 }
 
-// validatePublicProofEntries checks every manifest entry against either an
-// inline artifact (size and SHA-256 of the carried bytes) or a stored
-// artifact (recorded size). Every inline artifact must be listed. Entries
-// with neither are reported together as a publicProofMissingArtifactsError.
-func validatePublicProofEntries(manifest models.PublicProofManifest, inline []models.PublicProofIngestArtifact, storedSizes map[string]int64) error {
+func validatePublicProofEntryList(entries []models.PublicProofCatalogEntry, inline []models.PublicProofIngestArtifact, storedSizes map[string]int64) error {
 	inlineArtifacts := make(map[string][]byte, len(inline))
 	for _, artifact := range inline {
 		if artifact.ArtifactID == "" {
@@ -1101,9 +1170,12 @@ func validatePublicProofEntries(manifest models.PublicProofManifest, inline []mo
 		}
 		inlineArtifacts[artifact.ArtifactID] = artifact.Content
 	}
-	referenced := make(map[string]bool, len(manifest.Artifacts))
+	referenced := make(map[string]bool, len(entries))
 	var missing []string
-	for _, entry := range manifest.Artifacts {
+	for _, entry := range entries {
+		if referenced[entry.ArtifactID] || !validPublicProofArtifactID(entry.ArtifactID) || entry.ByteSize < 0 {
+			return constants.ErrPublicFeedProofCatalogMismatch
+		}
 		if entry.Classification != models.PublicFeedProofClassificationPublicSafe || entry.ArtifactID != entry.SHA256 {
 			return constants.ErrPublicFeedProofCatalogMismatch
 		}
@@ -1592,6 +1664,42 @@ func (m *PublicMirrorServer) handleProofManifest(w http.ResponseWriter, r *http.
 	m.writeJSON(w, http.StatusOK, manifest)
 }
 
+// handleProofSegments handles GET /proof-segments — the list of chained proof manifest segments.
+func (m *PublicMirrorServer) handleProofSegments(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	emptySegments := models.PublicProofSegmentsResponse{
+		SchemaVersion: constants.PublicProofSegmentSchemaVersion,
+		SourceID:      "",
+		Segments:      []models.PublicProofManifestSegment{},
+	}
+	sourceID, ok, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: resolve proof segments source", err)
+		return
+	}
+	if !ok {
+		m.writeJSON(w, http.StatusOK, emptySegments)
+		return
+	}
+	emptySegments.SourceID = sourceID
+	segments, err := m.store.ProofSegments(r.Context(), sourceID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read proof segments", err)
+		return
+	}
+	if segments == nil {
+		segments = []models.PublicProofManifestSegment{}
+	}
+	m.writeJSON(w, http.StatusOK, models.PublicProofSegmentsResponse{
+		SchemaVersion: constants.PublicProofSegmentSchemaVersion,
+		SourceID:      sourceID,
+		Segments:      segments,
+	})
+}
+
 // handleProofDownload handles GET /proofs/:artifactID — content-addressed
 // proof artifact download with safe headers. The stored file is rehashed
 // before any byte is served.
@@ -1777,7 +1885,7 @@ func (m *PublicMirrorServer) logResponseError(message string, err error) {
 }
 
 // sseWriteEvent writes a named SSE event with a JSON payload.
-func sseWriteEvent(w http.ResponseWriter, flusher http.Flusher, eventType string, payload any) {
+func sseWriteEvent(w http.ResponseWriter, flusher http.Flusher, eventType string, payload any) { //nolint:unparam // Keep eventType parameter for future SSE event kinds.
 	data, _ := json.Marshal(payload)
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, string(data))
 	flusher.Flush()
