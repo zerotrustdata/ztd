@@ -97,7 +97,7 @@ definitions:
     - ztd.v1.app.investigation.updated
     - ztd.v1.app.run.status.updated
     - ztd.v1.app.task.completed
-    - ztd.v1.inference.model.provenance.preflight.updated
+    - ztd.v1.inference.model.provenance.attestation.recorded
     - ztd.v1.operator.a2a.call.requested
     - ztd.v1.operator.audit.ai.record.requested
     - ztd.v1.operator.audit.ai.recorded
@@ -293,6 +293,7 @@ definitions:
     - ztd.v1.platform.telemetry.health.reported
     - ztd.v1.platform.telemetry.performance.recorded
     - ztd.v1.platform.usage.updated
+    - ztd.v1.inference.provider.boundary.observation.recorded
     - ztd.v1.public.feed.batch.acknowledged
     - ztd.v1.public.feed.batch.exported
     - ztd.v1.public.feed.key.rotated
@@ -321,7 +322,7 @@ definitions:
     - EventAppInvestigationUpdated
     - EventAppRunStatusUpdated
     - EventAppTaskCompleted
-    - EventModelProvenancePreflightProgress
+    - EventModelProvenanceAttestationRecorded
     - EventOperatorA2aCallRequested
     - EventOperatorAuditAiRecordRequested
     - EventOperatorAuditAiRecorded
@@ -517,6 +518,7 @@ definitions:
     - EventPlatformTelemetryHealthReported
     - EventPlatformTelemetryPerformanceRecorded
     - EventPlatformUsageUpdated
+    - EventProviderBoundaryObservationRecorded
     - EventPublicFeedBatchAcknowledged
     - EventPublicFeedBatchExported
     - EventPublicFeedKeyRotated

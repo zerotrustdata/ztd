@@ -23,7 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
@@ -238,31 +237,6 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		if err := releaseResidentProviderModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID, endpoint); err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
-	}
-	modelBindings, err := evaluation.CampaignModelBindingsFromSpec(spec)
-	if err != nil {
-		return executed, fmt.Errorf("evaluation: run execute: %w", err)
-	}
-	var preflightProgress func(models.ModelProvenancePreflightProgress)
-	if !opts.JSONOutput {
-		fmt.Fprintf(cmd.OutOrStdout(), "Preflight: model storage attestation (operator acknowledgement: %s; maximum per model: %s)\n", constants.ModelProvenanceCommandAcknowledgementTimeout, constants.ModelProvenanceAttestationPreflightTimeout)
-		preflightProgress = func(event models.ModelProvenancePreflightProgress) {
-			phase := event.Phase
-			switch phase {
-			case "awaiting_operator":
-				phase = "waiting for operator acknowledgement"
-			case "attesting_storage":
-				phase = "hashing model storage"
-			case "ready":
-				phase = "storage attestation ready"
-			case "failed":
-				phase = "storage attestation failed"
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", event.ServedModelTag, phase)
-		}
-	}
-	if err := gwremote.PreflightCampaignModelProvenanceContext(cmd.Context(), fileSvc, cfg, modelBindings, preflightProgress); err != nil {
-		return executed, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	iterations := int64(opts.Limit)
 	stopped := false

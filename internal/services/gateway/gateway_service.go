@@ -736,8 +736,6 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 	providerObservationDeps := providerObservationControllerDeps(logger, ls.responder, ls.fileSvc)
 	providerObservationDeps.ObservationCoordinator = ls.providerObservationCoord
 	modelProvenanceDeps := modelProvenanceControllerDeps(logger, ls.responder, ls.fileSvc)
-	modelProvenanceDeps.ProvenanceCoordinator = ls.modelProvenanceCoord
-	modelProvenanceDeps.ProgressPublisher = NewSSEEventPublisher(ls.sseStore, ls.pubsub)
 	evalCampaignPublicationSvc, err := NewEvalCampaignPublicationService(ls.docStore, func() *PublicSpectatorRuntime { return ls.publicSpectator })
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)

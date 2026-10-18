@@ -341,8 +341,8 @@ func (c *SSEController) handleInternalSSEStream(w http.ResponseWriter, r *http.R
 	// the WebSocket path. Drop-oldest is the correct policy for an append-only
 	// event log: the consumer can recover evicted events via DB replay on
 	// reconnect, while a dropped newest event would be lost until the next
-	// reconnect. The buffer is closed on handler exit so the writer goroutine
-	// (this loop) cannot block on a closed channel after unregister.
+	// reconnect. The request context ends the receiving loop. Leave the buffer
+	// open because an already-selected callback may finish after unregister.
 	buf := newDropOldestBuf(100)
 	unregister := c.pubsub.RegisterHandler(channel, func(ch string, data []byte) {
 		if ok, dropped := buf.send(data); !ok {
@@ -353,10 +353,7 @@ func (c *SSEController) handleInternalSSEStream(w http.ResponseWriter, r *http.R
 				"channel", channel, "dropped_total", dropped)
 		}
 	})
-	defer func() {
-		unregister()
-		buf.Close()
-	}()
+	defer unregister()
 
 	// HTTP 200 lets clients start producing events immediately. Register the
 	// listener and clear the write deadline before exposing that boundary:
@@ -448,12 +445,7 @@ func (c *SSEController) handleInternalSSEStream(w http.ResponseWriter, r *http.R
 				return
 			}
 			flusher.Flush()
-		case raw, ok := <-buf.recv():
-			// buf.Close() (on handler exit) closes the channel; exit cleanly.
-			if !ok {
-				c.logger.Info("SSE Stream: event buffer closed, disconnecting", "channel", channel)
-				return
-			}
+		case raw := <-buf.recv():
 			// R1/R2: unmarshal the SSEPublishedEvent envelope, dedup against
 			// lastEmittedID, and emit `id:` + `data:` (no `event:` field — R14).
 			var pubEvent models.SSEPublishedEvent

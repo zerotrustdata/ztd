@@ -16,7 +16,6 @@ import (
 	"encoding/pem"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -153,9 +152,7 @@ func writeWitnessPreflightResponse(w http.ResponseWriter, r *http.Request) bool 
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 		return true
-	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.InferenceProviderObservations+"_preflight",
-		r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.InferenceModelProvenanceAttestations+"_preflight",
-		r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, constants.APIPaths.InferenceModelProvenanceAttestations+"_attest"):
+	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.InferenceProviderObservations+"_preflight":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ready"}`))
 		return true

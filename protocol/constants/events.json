@@ -2328,18 +2328,6 @@
       ],
       "persistence": "ephemeral"
     },
-    "ModelProvenancePreflightProgress": {
-      "_go_const": "EventModelProvenancePreflightProgress",
-      "value": "ztd.v1.inference.model.provenance.preflight.updated",
-      "kind": "fact",
-      "transport": [
-        "sse"
-      ],
-      "producers": [
-        "gateway"
-      ],
-      "persistence": "ephemeral"
-    },
     "ModelProvenanceAttestationRecorded": {
       "_go_const": "EventModelProvenanceAttestationRecorded",
       "value": "ztd.v1.inference.model.provenance.attestation.recorded",

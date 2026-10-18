@@ -9,6 +9,9 @@ package pubsub
 
 import (
 	"context"
+	"io"
+	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +20,33 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+func TestInProcessPubSubClient_CancellationDuringSelectedCallbacks(t *testing.T) {
+	broker := &mockBroker{}
+	client := NewInProcessPubSubClient(broker, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ch, err := client.Subscribe(ctx, "results")
+	require.NoError(t, err)
+	// Publish can select a callback before cancellation unregisters it.
+	handler := broker.handlers["results"]
+	var senders sync.WaitGroup
+	for range 16 {
+		senders.Go(func() {
+			for range 128 {
+				handler("results", []byte("result"))
+			}
+		})
+	}
+	<-ch
+	cancel()
+	for range ch {
+	}
+	senders.Wait()
+	// Even a callback held across teardown must be safe after channel close.
+	require.NotPanics(t, func() { handler("results", []byte("late result")) })
+	client.Close()
+}
 
 type mockBroker struct {
 	handlers map[string]func(string, []byte)

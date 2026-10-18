@@ -50,7 +50,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-PROV-TOPO-01 | The Provenance Operator does not run inference, sample provider hardware, manage Ollama, or authorize execution. It attests model weight integrity only. |
-| INV-PROV-TOPO-02 | The Gateway selects exactly one active Provenance Operator whose runtime configuration `capabilities` includes `provenance`. Zero or multiple matching sessions cause preflight or observation setup to fail. |
+| INV-PROV-TOPO-02 | The Gateway selects exactly one active Provenance Operator whose runtime configuration `capabilities` includes `provenance`. Zero or multiple matching sessions cause observation setup to fail. |
 | INV-PROV-TOPO-03 | The Observer Operator and Provenance Operator can coexist on the same physical host only when they use separate `ztd operator start` processes and governed sessions. |
 | INV-PROV-TOPO-04 | A container on the campaign host cannot authoritatively attest files or hardware on a different provider host. The Provenance Operator remains the storage-side authority. |
 
@@ -106,6 +106,8 @@ Campaign Coordinator (Gateway)
 - **Observer Operator**: Optional witness for GPU, VRAM, and system metrics.
 
 ## Attestation Flow and Storage Verification
+
+Each inference attempt triggers governed BEGIN and FINALIZE commands over the Provenance Operator's existing outbound WebSocket connection. Campaign execution starts without a separate storage-attestation preflight or synchronous HTTP attestation request. The first FINALIZE hashes uncached blobs; later attempts reuse verified file identities. HTTP evidence reads retrieve windows already persisted by the Gateway and never trigger an attestation.
 
 ```text
 1. Campaign Gateway sends BEGIN (provider_attempt_id, served_tag, expected_digest)

@@ -19,16 +19,7 @@ const EvaluationAppName = "ztd-eval"
 // no models: each governed request carries the model the user chose.
 const InferenceDefaultKeepAlive = "-1"
 
-// ModelProvenanceAttestationPreflightTimeout bounds the synchronous storage
-// attestation probe: the Gateway waits this long for the Provenance Operator
-// to hash the model's blobs, and the CLI client allows this plus
-// ModelProvenanceAttestationPreflightClientMargin. Hashing a multi-gigabyte
-// model over a mounted filesystem takes well over 30 seconds.
 const (
-	// BEGIN does no hashing; a silent operator must fail quickly.
-	ModelProvenanceCommandAcknowledgementTimeout    = 10 * time.Second
-	ModelProvenanceAttestationPreflightTimeout      = 5 * time.Minute
-	ModelProvenanceAttestationPreflightClientMargin = 15 * time.Second
 	// Bound full blob hashes independently of the command-channel goroutine count.
 	ModelProvenanceHashConcurrency = 2
 	ModelProvenanceHashBufferBytes = 1 << 20
