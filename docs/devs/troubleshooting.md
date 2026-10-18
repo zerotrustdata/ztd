@@ -3,8 +3,8 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.3
+last_updated: 2026-10-18
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/

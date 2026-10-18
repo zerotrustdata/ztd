@@ -9,7 +9,6 @@ package pubsub
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"sync"
 	"testing"
@@ -23,7 +22,7 @@ import (
 
 func TestInProcessPubSubClient_CancellationDuringSelectedCallbacks(t *testing.T) {
 	broker := &mockBroker{}
-	client := NewInProcessPubSubClient(broker, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	client := NewInProcessPubSubClient(broker, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	ch, err := client.Subscribe(ctx, "results")

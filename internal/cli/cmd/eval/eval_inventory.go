@@ -8,53 +8,15 @@
 package eval
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
-	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
-
-func resolveEvaluationInventorySource(explicitPath, projectRoot string) (runtimePath string, externalPath string) {
-	explicitPath = strings.TrimSpace(explicitPath)
-	if explicitPath == "" {
-		return "", ""
-	}
-	if filepath.IsAbs(explicitPath) {
-		return "", explicitPath
-	}
-	normalized := filepath.ToSlash(explicitPath)
-	if strings.HasPrefix(normalized, constants.RuntimeDirname+"/") {
-		return strings.TrimPrefix(normalized, constants.RuntimeDirname+"/"), ""
-	}
-	if normalized == evaluation.DefaultBaseModelInventoryRelPath {
-		return "", filepath.Join(projectRoot, normalized)
-	}
-	return normalized, ""
-}
-
-func loadEvaluationInventoryFreeze(ctx context.Context, fileSvc fs.RuntimeFileService, projectRoot, explicitPath string) (*evaluation.ModelInventoryFreeze, error) {
-	runtimePath, externalPath := resolveEvaluationInventorySource(explicitPath, projectRoot)
-	if externalPath != "" {
-		return evaluation.LoadModelInventoryFreezeFile(externalPath)
-	}
-	if runtimePath == "" {
-		if exists, err := fileSvc.FileExists(ctx, evaluation.DefaultModelInventoryRelPath); err != nil {
-			return nil, fmt.Errorf("evaluation: inventory: check runtime freeze: %w", err)
-		} else if exists {
-			return evaluation.LoadModelInventoryFreezeFromRuntime(ctx, fileSvc, evaluation.DefaultModelInventoryRelPath)
-		}
-		return evaluation.LoadModelInventoryFreezeFile(filepath.Join(projectRoot, evaluation.DefaultBaseModelInventoryRelPath))
-	}
-	return evaluation.LoadModelInventoryFreezeFromRuntime(ctx, fileSvc, runtimePath)
-}
 
 func modelInventoryFreezeJSON(freeze *evaluation.ModelInventoryFreeze) ([]byte, error) {
 	if freeze == nil {

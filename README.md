@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.1.2-green.svg)](docs/release_notes/v1.1.x/v1.1.2.md)
+[![Version](https://img.shields.io/badge/version-v1.1.3-green.svg)](docs/release_notes/v1.1.x/v1.1.3.md)
 
 **A model can ask, but it cannot directly act.**
 

@@ -9,7 +9,6 @@ package gateway
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ import (
 )
 
 func TestPubSubPublish_HandlerTeardownDuringEvidenceNotification(t *testing.T) {
-	broker := NewGatewayWebSocketHandler(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	broker := NewGatewayWebSocketHandler(slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 

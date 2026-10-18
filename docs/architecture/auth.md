@@ -3,8 +3,8 @@ doc_id: auth
 title: Authentication & Authorization Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.1.3
+last_updated: 2026-10-18
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/auth/
