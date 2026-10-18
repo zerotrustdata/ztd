@@ -1394,7 +1394,8 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .role-leader-name { font-weight: 600; color: var(--fg); }
 .role-leader-scope { font-size: var(--text-md); color: var(--fg-muted); line-height: 1.35; }
 .role-leader-empty td { color: var(--fg-muted); font-size: var(--text-lg); }
-.role-leader-points { font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+.role-leader-points, .role-leader-score { font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+.role-leader-accuracy { color: var(--fg); font-variant-numeric: tabular-nums; }
 .role-leader-axis { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
 .role-leader-axis-points { color: var(--fg); font-variant-numeric: tabular-nums; }
 .role-leader-axis-raw { font-size: var(--text-md); color: var(--fg-muted); }

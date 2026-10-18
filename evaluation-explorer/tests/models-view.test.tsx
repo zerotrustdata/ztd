@@ -218,16 +218,19 @@ describe('ModelsView', () => {
     expect(panel.queryByRole('link', { name: 'Unverified model' })).not.toBeInTheDocument();
     expect(panel.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
     expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
-    // Sole model in its role: every axis at full weight, so 100 × 0.8 × 0.5 = 40 points.
+    // Sole model in its role: every axis at full weight, so 100 × 0.8 × 0.5 = 40 points/score.
     expect(panel.getByText('40.0')).toBeInTheDocument();
+    expect(panel.getByText('80.0%')).toBeInTheDocument();
     expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
     expect(panel.getByText('1.20 s')).toBeInTheDocument();
-    for (const header of ['Points', 'Security', 'Speed', 'Tokens', 'Size', 'Eval time']) {
+    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Size', 'Eval time']) {
       expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
+    expect(panel.queryByRole('columnheader', { name: 'Points' })).not.toBeInTheDocument();
     expect(panel.queryByRole('columnheader', { name: 'Pass rate' })).not.toBeInTheDocument();
     expect(panel.queryByRole('columnheader', { name: 'Coverage' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: /View all models/i })).not.toBeInTheDocument();
   });
 
   it('displays model capabilities, architecture specs, and supports capability filtering', () => {

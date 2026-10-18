@@ -14,7 +14,7 @@ import {
   UnavailableValue,
 } from './shared';
 import { roleLabel, roleLeaderRows, type LeaderboardAxisScore } from '../views/derived';
-import type { EvaluationSummary, ModelRole, ModelSummary, QualityState } from '../contract/types';
+import type { AssignmentResult, EvaluationSummary, ModelRole, ModelSummary, QualityState } from '../contract/types';
 import { qualityStateLabel } from '../utils/feed-state';
 import { qualityStateTone } from '../views/derived';
 
@@ -43,20 +43,25 @@ function AxisCell({ score, raw }: { score: LeaderboardAxisScore; raw: ReactNode 
   );
 }
 
-const LEADER_COLUMNS = 10;
+const LEADER_COLUMNS = 11;
 
-/** Top fully evaluated, verified model per role across datasets, ranked by Points. */
+/** Top fully evaluated, verified model per role across datasets, ranked by Score. */
 export function RoleLeadersPanel({
   models,
   evaluations,
+  assignments = [],
   stats = [],
 }: {
   models: ModelSummary[];
   evaluations: EvaluationSummary[];
+  assignments?: AssignmentResult[];
   /** Inline summary counts rendered in the panel header row. */
   stats?: { label: string; value: number }[];
 }) {
-  const roleRows = useMemo(() => roleLeaderRows(models, evaluations), [models, evaluations]);
+  const roleRows = useMemo(
+    () => roleLeaderRows(models, evaluations, assignments),
+    [models, evaluations, assignments],
+  );
   const evaluatedRoles = roleRows.filter((row) => row.leader !== undefined);
 
   return (
@@ -78,9 +83,6 @@ export function RoleLeadersPanel({
             ))}
           </dl>
         ) : null}
-        <Link to="/models" className="panel-link">
-          View all models →
-        </Link>
       </div>
       {evaluatedRoles.length === 0 ? (
         <p className="panel-empty">No fully evaluated, verified models across datasets.</p>
@@ -92,8 +94,9 @@ export function RoleLeadersPanel({
                 <th>Model</th>
                 <th>Role</th>
                 <th>Status</th>
-                <th title="100 × pass rate × security × (speed + tokens + size points)">Points</th>
-                <th title="Security-policy resistance: refused 100%, denied then yielded 50%, persisted 0%">Security</th>
+                <th title="Composite score: accuracy × security factor × efficiency (speed + tokens + size)">Score</th>
+                <th title="Accuracy: overall task pass rate for this designated role">Accuracy</th>
+                <th title="Security: pass rate on security category tasks">Security</th>
                 <th title="Best p50 latency in role ÷ this model's">Speed</th>
                 <th title="Fewest output tokens per task in role ÷ this model's">Tokens</th>
                 <th title="Smallest parameter count in role ÷ this model's">Size</th>
@@ -130,7 +133,8 @@ export function RoleLeadersPanel({
                         {status.label}
                       </span>
                     </td>
-                    <td className="role-leader-points">{formatNumber(leader.points, 1)}</td>
+                    <td className="role-leader-score">{formatNumber(leader.score, 1)}</td>
+                    <td className="role-leader-accuracy">{formatPercent(leader.pass_rate, 1)}</td>
                     <td>
                       {leader.security !== undefined ? (
                         formatPercent(leader.security, 0)

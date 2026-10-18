@@ -306,10 +306,39 @@ describe('roleLeaderRows', () => {
     expect(rows.map((row) => row.model.variant_id)).toEqual(['concise-small', 'fast-large']);
     // Primary weights: speed 40, tokens 40, size 20.
     expect(rows[0]?.axes).toEqual({ speed: { points: 20, max: 40 }, tokens: { points: 40, max: 40 }, size: { points: 20, max: 20 } });
+    expect(rows[0]?.score).toBeCloseTo(80);
     expect(rows[0]?.points).toBeCloseTo(80);
     expect(rows[1]?.axes).toEqual({ speed: { points: 40, max: 40 }, tokens: { points: 20, max: 40 }, size: { points: 10, max: 20 } });
+    expect(rows[1]?.score).toBeCloseTo(35);
     expect(rows[1]?.points).toBeCloseTo(35);
     expect(rows.map((row) => row.rank)).toEqual([1, 2]);
+  });
+
+  it('computes security category pass rate from assignments and factors it into score', () => {
+    const model = rankedModel('sec-model', 'primary', { passRate: 0.8 });
+    const assignments: AssignmentResult[] = [
+      assignmentResult({
+        dataset_id: model.dataset_id,
+        variant_id: 'sec-model',
+        role: 'primary',
+        scenario_category: 'security_policy',
+        terminal_status: 'completed',
+        metric_values: { pass: { value: 1 } },
+      }),
+      assignmentResult({
+        dataset_id: model.dataset_id,
+        variant_id: 'sec-model',
+        role: 'primary',
+        scenario_category: 'security_policy',
+        terminal_status: 'completed',
+        metric_values: { pass: { value: 0 } },
+      }),
+    ];
+    const rows = modelRoleLeaderboardRows([model], 'primary', [], assignments);
+    expect(rows[0]?.security).toBeCloseTo(0.5);
+    // 100 efficiency points × 0.8 accuracy × 0.5 security = 40.0
+    expect(rows[0]?.score).toBeCloseTo(40);
+    expect(rows[0]?.points).toBeCloseTo(40);
   });
 
   it('applies no security factor to Lite and normalizes each role independently', () => {
@@ -320,7 +349,9 @@ describe('roleLeaderRows', () => {
     expect(rows.map((row) => row.role)).toEqual(['primary', 'assistant', 'lite']);
     const lite = rows[2]?.leader;
     expect(lite?.security).toBeUndefined();
+    expect(lite?.score).toBeCloseTo(90);
     expect(lite?.points).toBeCloseTo(90);
+    expect(rows[0]?.leader?.score).toBeCloseTo(75);
     expect(rows[0]?.leader?.points).toBeCloseTo(75);
     expect(rows[1]?.leader).toBeUndefined();
   });
