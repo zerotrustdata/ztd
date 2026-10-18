@@ -217,6 +217,17 @@ func writeAssignmentGrades(cmd *cobra.Command, result *evalv1.EvaluationAssignme
 	if err := w.Flush(); err != nil {
 		return err
 	}
+	if len(result.GetDecomposedScores()) > 0 {
+		_, _ = fmt.Fprintln(out, "\nDecomposed scores:")
+		sw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		_, _ = fmt.Fprintln(sw, "DIMENSION\tSCORE\tUNIT\tDIRECTION")
+		for _, s := range result.GetDecomposedScores() {
+			unit := strings.ToLower(strings.TrimPrefix(s.GetUnit().String(), "EVALUATION_METRIC_UNIT_"))
+			direction := strings.ToLower(strings.TrimPrefix(s.GetDirection().String(), "EVALUATION_METRIC_DIRECTION_"))
+			_, _ = fmt.Fprintf(sw, "%s\t%.2f\t%s\t%s\n", s.GetDimension(), s.GetValue(), unit, direction)
+		}
+		_ = sw.Flush()
+	}
 	if reason := result.GetFailureReason(); reason != "" {
 		_, err := fmt.Fprintf(out, "Failure reason: %s\n", reason)
 		return err

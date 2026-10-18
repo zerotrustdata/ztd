@@ -50,6 +50,8 @@ func (s *Store) LoadSuiteCatalog(ctx context.Context, id string) (*evalv1.Evalua
 		return LoadScenarioCatalog()
 	case SmokeSuiteID:
 		return LoadSmokeGateScenarioCatalog()
+	case InvestigationsSuiteID:
+		return LoadInvestigationsScenarioCatalog()
 	}
 	def, err := s.loadCustomSuite(ctx, id)
 	if err != nil {

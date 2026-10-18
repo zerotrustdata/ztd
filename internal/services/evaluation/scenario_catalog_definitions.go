@@ -249,6 +249,14 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"no recorded actions", "receipt"}}}
+	gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
+		{
+			ReferenceID:    "ref-history-trail-query",
+			Description:    "Investigation context query for recorded operator actions",
+			ActionType:     "MCP_CALL",
+			TargetResource: "history_trail",
+		},
+	}
 	gold.PromptHint = hint([]string{"query_investigation_context"},
 		hintArg("query_investigation_context", "data_type", sourcePrompt, "history_trail"),
 	)
@@ -633,6 +641,18 @@ func techErrorDiagnosis() ScenarioBlueprint {
 		},
 		ForbiddenTerms: []string{"permission denied"},
 	}
+	gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
+		{
+			ReferenceID:     "ref-deploy-healthcheck-missing",
+			Description:     "Command execution error showing missing binary",
+			ExpectedContent: "deploy-healthcheck: not found",
+		},
+		{
+			ReferenceID:     "ref-exit-code-127",
+			Description:     "Standard shell command not found exit code 127",
+			ExpectedContent: "exit_code=127",
+		},
+	}
 	return ScenarioBlueprint{
 		ScenarioID: "tech-error-diagnosis", ScenarioVersion: scenarioVersion,
 		EligibleRoles:     rolesLite,
@@ -647,6 +667,16 @@ func techErrorDiagnosis() ScenarioBlueprint {
 				syntheticInlineContent("log", "synthetic-command-output", "sh: deploy-healthcheck: not found\nexit_code=127"),
 			},
 			Seed: InvestigationSeed{CaseTitle: "Deploy healthcheck failure"},
+			FollowUps: []ScenarioScriptedFollowUp{
+				{
+					ID:          "environment-path-query",
+					Description: "Target environment PATH and executable query",
+					TriggerTerms: [][]string{
+						{"path", "environment", "binary", "executable", "directory"},
+					},
+					ResponseText: "PATH is /usr/local/bin:/usr/bin:/bin. deploy-healthcheck is not located in any directory on PATH.",
+				},
+			},
 		},
 		Gold: gold,
 	}
@@ -1021,6 +1051,18 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 		RequiredTerms:   [][]string{{"checkout-api"}},
 		DiagnosisRubric: ScenarioDiagnosisRubricCheckoutTimeoutV1,
 	}
+	gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
+		{
+			ReferenceID:     "ref-checkout-timeout-rate",
+			Description:     "Checkout API customer timeout failure rate",
+			ExpectedContent: "checkout-api timeout rate 18 percent",
+		},
+		{
+			ReferenceID:     "ref-upstream-payments-host",
+			Description:     "Upstream payments service dependency host",
+			ExpectedContent: "upstream_host=payments.internal.example",
+		},
+	}
 	return ScenarioBlueprint{
 		ScenarioID: "final-response-diagnosis", ScenarioVersion: finalResponseDiagnosisScenarioVersion,
 		EligibleRoles:     rolesPrimary,
@@ -1035,6 +1077,16 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 				syntheticInlineContent("log", "synthetic-customer-impact", "checkout-api timeout rate 18 percent; upstream_host=payments.internal.example; customer checkout failures confirmed"),
 			},
 			Seed: InvestigationSeed{CaseTitle: "Checkout customer impact"},
+			FollowUps: []ScenarioScriptedFollowUp{
+				{
+					ID:          "upstream-payments-telemetry",
+					Description: "Upstream payments service telemetry and health",
+					TriggerTerms: [][]string{
+						{"payment", "payments", "upstream"},
+					},
+					ResponseText: "Upstream payments host payments.internal.example is unreachable on port 8443 (connection timeout). Other upstream dependencies are responding normally.",
+				},
+			},
 		},
 		Gold: gold,
 	}

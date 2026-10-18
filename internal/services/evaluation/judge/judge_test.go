@@ -141,6 +141,8 @@ func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatc
 		JudgeModelTag:    judgeModelTag,
 		JudgeModelDigest: strings.Repeat("d", 64),
 		TransactionID:    "tx-judge-final_reply",
+		Receipt:          &operatorv1.ActionReceipt{ResultSummary: "digest"},
+		RubricVersion:    RubricVersion,
 	}, scores[0])
 	assert.Equal(t, SubjectMemory, scores[1].Subject)
 	assert.Equal(t, StatusScored, scores[1].Status)

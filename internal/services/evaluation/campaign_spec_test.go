@@ -158,3 +158,27 @@ func TestMaterializeCampaignSpec_HoldContextIsPartOfTheDigest(t *testing.T) {
 	flipped.HoldContext = false
 	require.ErrorIs(t, ValidateCampaignSpecDigest(flipped), constants.ErrChecksumMismatch)
 }
+
+func TestCampaignCondition(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, CampaignConditionControl, CampaignCondition(nil))
+
+	held := &evalv1.EvaluationCampaignSpec{HoldContext: true}
+	assert.Equal(t, CampaignConditionHeldContext, CampaignCondition(held))
+
+	persistent := &evalv1.EvaluationCampaignSpec{
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "inv-1",
+			DataOperatorId:  "op-1",
+		},
+	}
+	assert.Equal(t, CampaignConditionLongitudinal, CampaignCondition(persistent))
+
+	fresh := &evalv1.EvaluationCampaignSpec{
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode: evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH,
+		},
+	}
+	assert.Equal(t, CampaignConditionControl, CampaignCondition(fresh))
+}

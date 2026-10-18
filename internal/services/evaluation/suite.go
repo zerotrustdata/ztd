@@ -124,6 +124,12 @@ func BuiltinScenarioSuite(id string) (ScenarioSuite, bool) {
 		return DefaultScenarioSuite(), true
 	case SmokeSuiteID:
 		return SmokeScenarioSuite(), true
+	case InvestigationsSuiteID:
+		suite, err := InvestigationsScenarioSuite()
+		if err != nil {
+			return ScenarioSuite{}, false
+		}
+		return suite, true
 	default:
 		return ScenarioSuite{}, false
 	}

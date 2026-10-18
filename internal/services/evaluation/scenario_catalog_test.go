@@ -185,6 +185,21 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"codex expectation has no constraint", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Gold.Players = &ScenarioPlayerExpectations{Codex: &ScenarioContentCheck{}}
 		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has empty id", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: "", ExpectedContent: "error"}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has whitespace in id", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: " ref-1 ", ExpectedContent: "error"}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has duplicate id", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
+				{ReferenceID: "ref-1", ExpectedContent: "error"},
+				{ReferenceID: "ref-1", ExpectedContent: "timeout"},
+			}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has no criteria", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: "ref-1"}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

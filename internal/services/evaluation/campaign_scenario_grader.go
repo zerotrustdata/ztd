@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/persona"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -122,11 +123,14 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	grades = append(grades, g.gradeRoleCriteria(traj.Passed, contentPassed)...)
 	grades = append(grades, g.gradePipelineCriteria(invoked)...)
 	grades = append(grades, g.gradeRequiredEvidenceTypes(traj, contentPassed)...)
+	grades = append(grades, g.gradePlayerCriteria()...)
 
 	scores, err := deriveScenarioDecomposedScores(g.assignmentID, grades)
 	if err != nil {
 		return nil, err
 	}
+	metricScores := ComputeInvestigationMetrics(g.assignmentID, trace, g.req.ScenarioGold, contentPassed, g.req.ScenarioInput)
+	scores = append(scores, metricScores...)
 	// A provider failure is not an observed model answer or a missing tool call.
 	// Keep canonical grades and trajectory evidence intact, but lead diagnostics
 	// with the classified dispatch outcome instead of its downstream grade misses.
@@ -262,6 +266,113 @@ func (g homogeneousGrader) gradeRequiredEvidenceTypes(traj trajectoryResult, con
 	for _, evidenceType := range g.req.ScenarioGold.RequiredEvidenceTypes {
 		status, detail, score := g.requiredEvidenceGrade(evidenceType, traj, contentPassed)
 		grades = append(grades, newDeterministicGrade(g.assignmentID, "required-evidence:"+evidenceType, g.requiredEvidenceBasis(evidenceType), status, detail, score))
+	}
+	return grades
+}
+
+func playersToPersonaLabels(players *ScenarioPlayerExpectations) persona.Labels {
+	if players == nil {
+		return persona.Labels{}
+	}
+	var labels persona.Labels
+	if players.Triage != nil {
+		complexity := ""
+		if len(players.Triage.Complexity) > 0 {
+			complexity = string(players.Triage.Complexity[0])
+		}
+		intent := ""
+		if len(players.Triage.Intent) > 0 {
+			intent = string(players.Triage.Intent[0])
+		}
+		posture := ""
+		if len(players.Triage.Posture) > 0 {
+			posture = string(players.Triage.Posture[0])
+		}
+		if complexity != "" && intent != "" && posture != "" {
+			labels.Router = &persona.RouterLabels{
+				Complexity: complexity,
+				Intent:     intent,
+				Posture:    posture,
+			}
+		}
+	}
+	if players.Marshal != nil {
+		for _, risk := range players.Marshal.Risk {
+			labels.Risks = append(labels.Risks, persona.RiskLabel{
+				SubjectKind: "command",
+				Subject:     "command",
+				Risk:        string(risk),
+			})
+			if players.Command != nil && players.Command.ExactToken != "" {
+				labels.Risks = append(labels.Risks, persona.RiskLabel{
+					SubjectKind: "command",
+					Subject:     players.Command.ExactToken,
+					Risk:        string(risk),
+				})
+			}
+		}
+	}
+	if players.Codex != nil {
+		if players.Codex.ExactToken != "" {
+			labels.MemoryFacts = append(labels.MemoryFacts, players.Codex.ExactToken)
+		}
+		for _, terms := range players.Codex.RequiredTerms {
+			if len(terms) > 0 && terms[0] != "" {
+				labels.MemoryFacts = append(labels.MemoryFacts, terms[0])
+			}
+		}
+	}
+	return labels
+}
+
+// gradePlayerCriteria evaluates Gold.Players against the roles that actually ran
+// in the trace using persona/ deterministically. Absent roles remain ungraded,
+// not failed (D11).
+func (g homogeneousGrader) gradePlayerCriteria() []*evalv1.DeterministicGrade {
+	players := g.req.ScenarioGold.Players
+	if players == nil {
+		return nil
+	}
+	protoTrace := g.view.Trace.ToProto()
+	if protoTrace == nil || len(protoTrace.GetSteps()) == 0 {
+		return nil
+	}
+	labels := playersToPersonaLabels(players)
+	if err := labels.Validate(); err != nil {
+		return nil
+	}
+	input := persona.Input{
+		Trace:  protoTrace,
+		Lane:   evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
+		Labels: labels,
+	}
+	stepGrades, err := persona.Grade(input)
+	if err != nil {
+		return nil
+	}
+	roleCounts := make(map[evalv1.AgentRole]int, len(stepGrades))
+	for _, sg := range stepGrades {
+		if sg.Status != persona.StatusUnlabeled {
+			roleCounts[sg.Role]++
+		}
+	}
+	var grades []*evalv1.DeterministicGrade
+	for _, sg := range stepGrades {
+		if sg.Status == persona.StatusUnlabeled {
+			continue
+		}
+		roleName := strings.ToLower(strings.TrimPrefix(sg.Role.String(), "AGENT_ROLE_"))
+		criterionID := fmt.Sprintf("player-%s", strings.ReplaceAll(roleName, "_", "-"))
+		if roleCounts[sg.Role] > 1 {
+			criterionID = fmt.Sprintf("%s-%d", criterionID, sg.StepIndex)
+		}
+		passed := sg.Status == persona.StatusPass
+		passDetail := fmt.Sprintf("role %s satisfied persona expectations", roleName)
+		failDetail := fmt.Sprintf("role %s failed persona expectations", roleName)
+		if sg.Fail != "" {
+			failDetail = fmt.Sprintf("role %s failed persona expectations: %s", roleName, sg.Fail)
+		}
+		grades = append(grades, g.newGrade(criterionID, basisObservation, passed, passDetail, failDetail))
 	}
 	return grades
 }

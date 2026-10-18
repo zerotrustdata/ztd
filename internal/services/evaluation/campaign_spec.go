@@ -19,6 +19,29 @@ import (
 
 const harnessInvestigationIDPrefix = "eval-harness:"
 
+const (
+	CampaignConditionLongitudinal = "longitudinal"
+	CampaignConditionControl      = "control"
+	CampaignConditionHeldContext  = "held_context"
+)
+
+// CampaignCondition derives the operational condition of the campaign:
+// - "held_context": legacy repetition behavior carrying prompt conversation and dirty workspace.
+// - "longitudinal": sequential runs on one persistent investigation, restoring the workspace each time.
+// - "control": fresh-investigation control with identical model, settings, and budget.
+func CampaignCondition(spec *evalv1.EvaluationCampaignSpec) string {
+	if spec == nil {
+		return CampaignConditionControl
+	}
+	if spec.GetHoldContext() {
+		return CampaignConditionHeldContext
+	}
+	if spec.GetInvestigation().GetMode() == evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT {
+		return CampaignConditionLongitudinal
+	}
+	return CampaignConditionControl
+}
+
 // ValidateCampaignInvestigation checks the campaign's scored investigation
 // scope. A nil value means the caller omitted the option; materialization
 // resolves that to an explicit fresh mode. A missing field on a stored spec is

@@ -12,6 +12,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -116,8 +119,10 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err := e.tools.WriteWorkspaceFile(ctx, run.target, assignment.GetRunId(), assignment.GetScenarioId(), req.AttemptID, sentinelPath, req.AttemptID); err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: write ledger sentinel file", err)
 	}
-	if err := materializeScenarioWorkspace(ctx, e.tools, run.target, assignment.GetRunId(), assignment.GetScenarioId(), req.AttemptID, run.workspace, req.ScenarioInput.WorkspaceFiles); err != nil {
-		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: materialize workspace", err)
+	if req.HeldContext == nil {
+		if err := materializeScenarioWorkspace(ctx, e.tools, run.target, assignment.GetRunId(), assignment.GetScenarioId(), req.AttemptID, run.workspace, req.ScenarioInput.WorkspaceFiles); err != nil {
+			return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: materialize workspace", err)
+		}
 	}
 	before, err := e.sentinel.Read(ctx, cases.ExecutorOutbound, sentinelPath)
 	if err != nil {
@@ -148,7 +153,172 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: import homogeneous assignment result", err)
 	}
+	if semanticGrades, judgeScores := e.scoreWithJudge(ctx, req, run.trace); len(semanticGrades) > 0 {
+		result.SemanticGrades = semanticGrades
+		result.DecomposedScores = append(result.DecomposedScores, judgeScores...)
+		for _, sg := range semanticGrades {
+			if sg.GraderCallRef != nil {
+				result.GraderCalls = append(result.GraderCalls, &evalv1.GraderModelCallRecord{
+					GraderCallId:       e.newID("grader-call"),
+					AssignmentId:       assignment.GetAssignmentId(),
+					JudgeVariantId:     sg.JudgeVariantId,
+					InferenceRecordRef: sg.GraderCallRef,
+				})
+				result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
+					BindingId:         e.newID("judge-binding"),
+					AssignmentId:      assignment.GetAssignmentId(),
+					TransactionId:     strings.TrimPrefix(sg.GraderCallRef.ArtifactId, "receipt:"),
+					OperatorId:        run.trace.Inference.OperatorID,
+					OperatorSessionId: run.trace.Inference.SessionID,
+					ReceiptRef:        sg.GraderCallRef,
+					PolicyDecision:    agentPolicyDecisionAllow,
+					ActionType:        string(constants.ActionTypeInference),
+				})
+			}
+		}
+		if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
+			hasEvidence := false
+			for _, sg := range semanticGrades {
+				if sg.GraderCallRef != nil {
+					hasEvidence = true
+					break
+				}
+			}
+			if hasEvidence {
+				result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
+			}
+		}
+		digest, err := ComputeAssignmentResultDigest(result)
+		if err != nil {
+			return nil, assignmentExecutionError("evaluation: recompute assignment result digest", err)
+		}
+		result.ResultDigest = digest
+	}
 	return result, nil
+}
+
+func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequest, trace *AgentTrace) bool {
+	if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
+		return true
+	}
+	if req.ScenarioGold.ContentCheck != nil && req.ScenarioGold.ContentCheck.DiagnosisRubric != "" {
+		return true
+	}
+	return false
+}
+
+func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) ([]*evalv1.SemanticGrade, []*evalv1.DecomposedScoreRecord) {
+	if !e.shouldScoreWithJudge(req, trace) || e.inference == nil || req.Assignment == nil {
+		return nil, nil
+	}
+	homogeneous, ok := req.Assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous)
+	if !ok || homogeneous.Homogeneous == nil || homogeneous.Homogeneous.GetCandidateVariant() == nil {
+		return nil, nil
+	}
+	variant := homogeneous.Homogeneous.GetCandidateVariant()
+	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" {
+		return nil, nil
+	}
+	cfg := judge.Config{
+		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
+		Variant:             variant,
+		CampaignID:          req.Assignment.GetCampaignId(),
+		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
+		ModelRegistry:       req.Binding.ModelRegistry,
+		NewID:               e.newID,
+	}
+	j, err := judge.New(e.inference, cfg)
+	if err != nil {
+		return []*evalv1.SemanticGrade{{
+			GradeId:        req.Assignment.GetAssignmentId() + ":diagnosis-quality",
+			CriterionId:    "diagnosis-quality",
+			Status:         evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
+			JudgeVariantId: variant.GetVariantId(),
+			Detail:         fmt.Sprintf("judge construction failed: %v", err),
+		}}, nil
+	}
+	objective := req.ScenarioGold.ExpectedBehavior
+	if objective == "" {
+		objective = req.ScenarioInput.UserPrompt
+	}
+	var memoryFacts []string
+	if req.ScenarioGold.Players != nil && req.ScenarioGold.Players.Codex != nil {
+		if req.ScenarioGold.Players.Codex.ExactToken != "" {
+			memoryFacts = append(memoryFacts, req.ScenarioGold.Players.Codex.ExactToken)
+		}
+		for _, termGroup := range req.ScenarioGold.Players.Codex.RequiredTerms {
+			if len(termGroup) > 0 && termGroup[0] != "" {
+				memoryFacts = append(memoryFacts, termGroup[0])
+			}
+		}
+	}
+	protoTrace := trace.ToProto()
+	scores := j.ScoreTrace(ctx, protoTrace, objective, memoryFacts)
+	if len(scores) == 0 {
+		return nil, nil
+	}
+	now := e.now().UTC()
+	var (
+		semanticGrades   []*evalv1.SemanticGrade
+		decomposedScores []*evalv1.DecomposedScoreRecord
+	)
+	for _, sc := range scores {
+		criterionID := "diagnosis-quality"
+		dimension := "diagnosis_quality"
+		if sc.Subject == judge.SubjectMemory {
+			criterionID = "memory-quality"
+			dimension = "memory_quality"
+		}
+		gradeID := fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), criterionID)
+		var graderCallRef *compliancev1.ComplianceEvidenceReference
+		if sc.TransactionID != "" {
+			graderCallRef = &compliancev1.ComplianceEvidenceReference{
+				ArtifactId:         "receipt:" + sc.TransactionID,
+				ArtifactType:       "action_receipt",
+				ProducerIdentity:   "ztd-eval-judge",
+				ProducedAt:         timestamppb.New(now),
+				ScopeId:            req.Assignment.GetCampaignId(),
+				RunId:              req.Assignment.GetRunId(),
+				ScenarioId:         req.Assignment.GetScenarioId(),
+				VerificationStatus: "verified",
+				VerifierId:         GraderID,
+				VerifierVersion:    GraderVersion,
+				VerifiedAt:         timestamppb.New(now),
+			}
+		}
+		status := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+		var detail string
+		if sc.Status == judge.StatusFailed {
+			status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+			detail = fmt.Sprintf("judge failed: %s", sc.Detail)
+		} else {
+			if sc.Value < 3 {
+				status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+			}
+			rubric := sc.RubricVersion
+			if rubric == "" {
+				rubric = judge.RubricVersion
+			}
+			detail = fmt.Sprintf("score: %d/5; rubric: %s; rationale: %s", sc.Value, rubric, sc.Rationale)
+			decomposedScores = append(decomposedScores, &evalv1.DecomposedScoreRecord{
+				ScoreId:           fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), dimension),
+				Dimension:         dimension,
+				Value:             float64(sc.Value),
+				Unit:              evalv1.EvaluationMetricUnit_EVALUATION_METRIC_UNIT_COUNT,
+				Direction:         evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_HIGHER_IS_BETTER,
+				MissingDataPolicy: evalv1.EvaluationMissingDataPolicy_EVALUATION_MISSING_DATA_POLICY_EXCLUDE,
+			})
+		}
+		semanticGrades = append(semanticGrades, &evalv1.SemanticGrade{
+			GradeId:        gradeID,
+			CriterionId:    criterionID,
+			Status:         status,
+			JudgeVariantId: variant.GetVariantId(),
+			GraderCallRef:  graderCallRef,
+			Detail:         detail,
+		})
+	}
+	return semanticGrades, decomposedScores
 }
 
 func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRun, error) {
@@ -246,6 +416,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
 		result, call := r.infer(ctx, agentModelCallPurposeTurn, turn, messages, tools)
 		if call == nil {
+			r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
 			return nil
 		}
 		text, thinking, toolCalls := agentResponseParts(result)
@@ -253,8 +424,58 @@ func (r *agentRun) loop(ctx context.Context) error {
 		call.Thinking = thinking
 		call.ToolCallCount = len(toolCalls)
 		modelCallID := call.ProviderAttemptID
+
+		questions, isInterrogation := parseInterrogationQuestions(text)
+		if isInterrogation {
+			// Interrogation hand-off: drop any pending tool calls.
+			toolCalls = nil
+			call.ToolCallCount = 0
+
+			var matchedFollowUp *ScenarioScriptedFollowUp
+			for i := range r.req.ScenarioInput.FollowUps {
+				fu := &r.req.ScenarioInput.FollowUps[i]
+				if matchesFollowUp(text, questions, fu) {
+					matchedFollowUp = fu
+					break
+				}
+			}
+
+			if matchedFollowUp != nil {
+				r.trace.Clarifications = append(r.trace.Clarifications, AgentClarificationTurn{
+					LoopTurn:       turn,
+					Questions:      questions,
+					SelectedBranch: matchedFollowUp.ID,
+					UserResponse:   matchedFollowUp.ResponseText,
+				})
+				assistant := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT}
+				if text != "" {
+					assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: text}})
+				}
+				userMsg := &operatorv1.InferenceMessage{
+					Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER,
+					Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: matchedFollowUp.ResponseText}}},
+				}
+				messages = append(messages, assistant, userMsg)
+				if len(messages) > agentMaxMessages {
+					break
+				}
+				continue
+			}
+
+			// Unmatched clarification ends the episode as unsupported_clarification.
+			r.trace.Clarifications = append(r.trace.Clarifications, AgentClarificationTurn{
+				LoopTurn:       turn,
+				Questions:      questions,
+				SelectedBranch: "",
+			})
+			r.trace.FinalOutput = text
+			r.trace.TerminalClassification = AgentTerminalClassificationUnsupportedClarification
+			return nil
+		}
+
 		if len(toolCalls) == 0 {
 			r.trace.FinalOutput = text
+			r.trace.TerminalClassification = classifyTerminalState(r.trace, call)
 			return nil
 		}
 		assistant := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT}
@@ -285,7 +506,113 @@ func (r *agentRun) loop(ctx context.Context) error {
 		}
 	}
 	r.trace.ToolTurnLimitReached = true
+	r.trace.TerminalClassification = AgentTerminalClassificationBudgetExhaustion
 	return nil
+}
+
+var (
+	interrogationBlockPattern = regexp.MustCompile(`(?si)<interrogation>\s*(.*?)(?:</interrogation>|$)`)
+	interrogationLinePattern  = regexp.MustCompile(`^\d+[.)]\s*(\S.*?)$`)
+)
+
+func parseInterrogationQuestions(text string) ([]string, bool) {
+	match := interrogationBlockPattern.FindStringSubmatch(text)
+	if match == nil {
+		return nil, false
+	}
+	content := strings.TrimSpace(match[1])
+	if content == "" {
+		return nil, false
+	}
+	var questions []string
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if qMatch := interrogationLinePattern.FindStringSubmatch(line); qMatch != nil {
+			q := strings.TrimSpace(qMatch[1])
+			if q != "" {
+				questions = append(questions, q)
+			}
+		} else if strings.HasSuffix(line, "?") {
+			questions = append(questions, line)
+		}
+	}
+	if len(questions) == 0 || len(questions) > 3 {
+		return nil, false
+	}
+	for _, q := range questions {
+		words := strings.Fields(strings.ToLower(q))
+		if len(words) == 0 {
+			return nil, false
+		}
+		firstWord := strings.Trim(words[0], "\"'`*_?,.:;")
+		if !slices.Contains(binaryOpeners, firstWord) || slices.Contains(words, "or") {
+			return nil, false
+		}
+	}
+	return questions, true
+}
+
+func matchesFollowUp(text string, questions []string, fu *ScenarioScriptedFollowUp) bool {
+	if fu == nil {
+		return false
+	}
+	if len(fu.TriggerTerms) == 0 {
+		return true
+	}
+	combined := strings.ToLower(text) + " " + strings.ToLower(strings.Join(questions, " "))
+	for _, termGroup := range fu.TriggerTerms {
+		groupMatched := false
+		for _, term := range termGroup {
+			if strings.Contains(combined, strings.ToLower(term)) {
+				groupMatched = true
+				break
+			}
+		}
+		if !groupMatched {
+			return false
+		}
+	}
+	return true
+}
+
+func classifyTerminalState(trace *AgentTrace, lastCall *AgentModelCall) string {
+	if trace.ProviderFailure != "" {
+		return AgentTerminalClassificationHarnessFailure
+	}
+	if trace.ToolTurnLimitReached {
+		return AgentTerminalClassificationBudgetExhaustion
+	}
+	if trace.TerminalClassification != "" {
+		return trace.TerminalClassification
+	}
+	hasDenial := false
+	for _, tc := range trace.ToolCalls {
+		if tc.PolicyDecision == agentPolicyDecisionDeny || (!tc.Success && tc.ErrorType == "policy_denied") {
+			hasDenial = true
+			break
+		}
+	}
+	textLower := strings.ToLower(trace.FinalOutput)
+	isRefusal := false
+	for _, term := range refusalTerms {
+		if strings.Contains(textLower, term) {
+			isRefusal = true
+			break
+		}
+	}
+	if hasDenial && isRefusal {
+		return AgentTerminalClassificationPolicyDenial
+	}
+	if isRefusal {
+		return AgentTerminalClassificationEscalationOrRefusal
+	}
+	if hasDenial {
+		return AgentTerminalClassificationPolicyDenial
+	}
+	return AgentTerminalClassificationFinalDiagnosis
 }
 
 // conversation builds the scored turn's ordered messages: the system context,

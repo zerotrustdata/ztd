@@ -131,17 +131,27 @@ type InvestigationSeed struct {
 	CaseMemory      *InvestigationSeedMemory        `json:"case_memory,omitempty"`
 }
 
+// ScenarioScriptedFollowUp defines one frozen scripted user response to a clarification
+// question in an investigation episode. Each follow-up has a declared trigger.
+type ScenarioScriptedFollowUp struct {
+	ID           string     `json:"id"`
+	Description  string     `json:"description,omitempty"`
+	TriggerTerms [][]string `json:"trigger_terms,omitempty"`
+	ResponseText string     `json:"response_text"`
+}
+
 // ScenarioInputFixture is the typed prompt/input payload for one scenario. Its
 // campaign-frozen canonical bytes are published unredacted as a public proof
 // artifact alongside each assignment result that ran it.
 type ScenarioInputFixture struct {
-	SchemaVersion  string                  `json:"schema_version"`
-	ScenarioID     string                  `json:"scenario_id"`
-	SyntheticLabel string                  `json:"synthetic_label"`
-	UserPrompt     string                  `json:"user_prompt"`
-	InlineContext  []ScenarioInlineContent `json:"inline_context,omitempty"`
-	WorkspaceFiles []ScenarioWorkspaceFile `json:"workspace_files,omitempty"`
-	Seed           InvestigationSeed       `json:"seed"`
+	SchemaVersion  string                     `json:"schema_version"`
+	ScenarioID     string                     `json:"scenario_id"`
+	SyntheticLabel string                     `json:"synthetic_label"`
+	UserPrompt     string                     `json:"user_prompt"`
+	InlineContext  []ScenarioInlineContent    `json:"inline_context,omitempty"`
+	WorkspaceFiles []ScenarioWorkspaceFile    `json:"workspace_files,omitempty"`
+	Seed           InvestigationSeed          `json:"seed"`
+	FollowUps      []ScenarioScriptedFollowUp `json:"follow_ups,omitempty"`
 }
 
 // ScenarioCriterion describes one responsibility-specific scoring criterion.
@@ -256,23 +266,36 @@ type ScenarioRecoveryExpectation struct {
 	Detail   string `json:"detail,omitempty"`
 }
 
+// ScenarioGoldEvidenceReference defines one authoritative evidence reference
+// (receipt or observation) that a correct investigation should retrieve or
+// produce. Kept strictly out of every model-visible input.
+type ScenarioGoldEvidenceReference struct {
+	ReferenceID     string `json:"reference_id"`
+	Description     string `json:"description,omitempty"`
+	ActionType      string `json:"action_type,omitempty"`
+	TargetResource  string `json:"target_resource,omitempty"`
+	CommandPattern  string `json:"command_pattern,omitempty"`
+	ExpectedContent string `json:"expected_content,omitempty"`
+}
+
 // ScenarioGoldCriteria is the typed gold standard for one scenario. Its
 // campaign-frozen canonical bytes are published unredacted as a public proof
 // artifact alongside each assignment result graded against it.
 type ScenarioGoldCriteria struct {
-	SchemaVersion         string                        `json:"schema_version"`
-	ScenarioID            string                        `json:"scenario_id"`
-	ExpectedBehavior      string                        `json:"expected_behavior"`
-	RoleCriteria          []ScenarioRoleCriteria        `json:"role_criteria"`
-	PipelineCriteria      []ScenarioPipelineCriteria    `json:"pipeline_criteria"`
-	ContentCheck          *ScenarioContentCheck         `json:"content_check,omitempty"`
-	ArgumentValidators    []ToolArgumentValidator       `json:"argument_validators,omitempty"`
-	Players               *ScenarioPlayerExpectations   `json:"players,omitempty"`
-	PromptHint            *ScenarioPromptHint           `json:"prompt_hint,omitempty"`
-	PolicyExpectation     ScenarioPolicyExpectation     `json:"policy_expectation"`
-	EscalationExpectation ScenarioEscalationExpectation `json:"escalation_expectation"`
-	RecoveryExpectation   ScenarioRecoveryExpectation   `json:"recovery_expectation"`
-	RequiredEvidenceTypes []string                      `json:"required_evidence_types"`
+	SchemaVersion          string                          `json:"schema_version"`
+	ScenarioID             string                          `json:"scenario_id"`
+	ExpectedBehavior       string                          `json:"expected_behavior"`
+	RoleCriteria           []ScenarioRoleCriteria          `json:"role_criteria"`
+	PipelineCriteria       []ScenarioPipelineCriteria      `json:"pipeline_criteria"`
+	ContentCheck           *ScenarioContentCheck           `json:"content_check,omitempty"`
+	ArgumentValidators     []ToolArgumentValidator         `json:"argument_validators,omitempty"`
+	Players                *ScenarioPlayerExpectations     `json:"players,omitempty"`
+	PromptHint             *ScenarioPromptHint             `json:"prompt_hint,omitempty"`
+	PolicyExpectation      ScenarioPolicyExpectation       `json:"policy_expectation"`
+	EscalationExpectation  ScenarioEscalationExpectation   `json:"escalation_expectation"`
+	RecoveryExpectation    ScenarioRecoveryExpectation     `json:"recovery_expectation"`
+	RequiredEvidenceTypes  []string                        `json:"required_evidence_types"`
+	GoldEvidenceReferences []ScenarioGoldEvidenceReference `json:"gold_evidence_references,omitempty"`
 }
 
 // ScenarioArtifactPair holds canonical fixture bytes and their evidence reference.

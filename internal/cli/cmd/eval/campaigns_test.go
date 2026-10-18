@@ -66,3 +66,8 @@ func threeModelRegistry() []*evalv1.ModelVariant {
 		{VariantId: "llama3-8b", ServedModelTag: "llama3:8b", ModelDigest: repeatTestHex('c'), ProviderClass: "ollama", ParameterCount: 8_000_000_000, ModelFamily: "Llama"},
 	}
 }
+
+func TestExtractCampaignMetricsCurve_EmptyOnNoResults(t *testing.T) {
+	curve := extractCampaignMetricsCurve(t.Context(), nil, []string{"run-empty"})
+	assert.Empty(t, curve)
+}

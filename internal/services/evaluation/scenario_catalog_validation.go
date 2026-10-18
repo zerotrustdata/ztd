@@ -82,6 +82,12 @@ func validateScenarioContract(blueprint ScenarioBlueprint, registry *AgentToolRe
 	if err := validatePlayerExpectations(blueprint); err != nil {
 		return err
 	}
+	if err := validateFollowUps(blueprint); err != nil {
+		return err
+	}
+	if err := validateGoldEvidenceReferences(blueprint); err != nil {
+		return err
+	}
 	return validateRequiredEvidenceTypes(blueprint)
 }
 
@@ -189,8 +195,8 @@ func validateTrajectoryPolicyShape(blueprint ScenarioBlueprint) error {
 	hint := blueprint.Gold.PromptHint
 	switch blueprint.TrajectoryPolicy {
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER:
-		if len(blueprint.ExpectedTools) > 0 || len(blueprint.AllowedTools) > 0 || hint != nil {
-			return scenarioContractError(blueprint, "ANSWER scenarios declare no expected tools, allowed tools, or prompt hint")
+		if len(blueprint.ExpectedTools) > 0 || hint != nil {
+			return scenarioContractError(blueprint, "ANSWER scenarios declare no expected tools or prompt hint")
 		}
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE, evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED:
 		if len(blueprint.ExpectedTools) == 0 {
@@ -390,3 +396,41 @@ func validateWorkspaceRelPath(relPath string) error {
 	}
 	return nil
 }
+
+func validateFollowUps(blueprint ScenarioBlueprint) error {
+	seen := make(map[string]bool, len(blueprint.Input.FollowUps))
+	for _, fu := range blueprint.Input.FollowUps {
+		if fu.ID == "" {
+			return scenarioContractError(blueprint, "scripted follow-up has empty ID")
+		}
+		if fu.ResponseText == "" {
+			return scenarioContractError(blueprint, "scripted follow-up %q has empty response_text", fu.ID)
+		}
+		if seen[fu.ID] {
+			return scenarioContractError(blueprint, "duplicate scripted follow-up ID %q", fu.ID)
+		}
+		seen[fu.ID] = true
+	}
+	return nil
+}
+
+func validateGoldEvidenceReferences(blueprint ScenarioBlueprint) error {
+	seen := make(map[string]bool, len(blueprint.Gold.GoldEvidenceReferences))
+	for _, ref := range blueprint.Gold.GoldEvidenceReferences {
+		if strings.TrimSpace(ref.ReferenceID) == "" {
+			return scenarioContractError(blueprint, "gold evidence reference has empty reference_id")
+		}
+		if ref.ReferenceID != strings.TrimSpace(ref.ReferenceID) {
+			return scenarioContractError(blueprint, "gold evidence reference %q has surrounding whitespace", ref.ReferenceID)
+		}
+		if seen[ref.ReferenceID] {
+			return scenarioContractError(blueprint, "duplicate gold evidence reference ID %q", ref.ReferenceID)
+		}
+		seen[ref.ReferenceID] = true
+		if ref.ActionType == "" && ref.TargetResource == "" && ref.CommandPattern == "" && ref.ExpectedContent == "" {
+			return scenarioContractError(blueprint, "gold evidence reference %q must specify at least one criterion (action_type, target_resource, command_pattern, expected_content)", ref.ReferenceID)
+		}
+	}
+	return nil
+}
+

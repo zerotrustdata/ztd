@@ -72,11 +72,25 @@ type campaignListJSON struct {
 	Campaigns []campaignRowJSON `json:"campaigns"`
 }
 
+type runMetricsCurveJSON struct {
+	RunID                    string  `json:"run_id"`
+	AssignmentID             string  `json:"assignment_id,omitempty"`
+	ScenarioID               string  `json:"scenario_id,omitempty"`
+	Repetition               uint32  `json:"repetition"`
+	RetrievalHitRate         float64 `json:"retrieval_hit_rate"`
+	RedundantCommandRate     float64 `json:"redundant_command_rate"`
+	StepsToDiagnosis         float64 `json:"steps_to_diagnosis"`
+	DiagnosisCorrectness     float64 `json:"diagnosis_correctness"`
+	EvidenceBackedConclusion float64 `json:"evidence_backed_conclusion"`
+}
+
 type campaignShowJSON struct {
 	campaignRowJSON
+	Condition         string                      `json:"condition"`
 	Suite             string                      `json:"suite"`
 	Models            []string                    `json:"models"`
 	Runs              []runRow                    `json:"runs"`
+	MetricsCurve      []runMetricsCurveJSON       `json:"metrics_curve,omitempty"`
 	Archive           *evaluation.ArchiveManifest `json:"archive,omitempty"`
 	CellsPer          uint64                      `json:"cells_per_run"`
 	InvestigationMode string                      `json:"investigation_mode,omitempty"`
@@ -295,8 +309,10 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 					Status:              latestRunStatus(runRows),
 					RunIDs:              runIDs,
 				},
+				Condition:         evaluation.CampaignCondition(spec),
 				Suite:             spec.GetCatalogRef().GetId() + "@" + spec.GetCatalogRef().GetVersion(),
 				Runs:              runRows,
+				MetricsCurve:      extractCampaignMetricsCurve(cmd.Context(), store, runIDs),
 				CellsPer:          campaignCells(catalog, spec, lane, stacks),
 				InvestigationMode: investigationModeLabel(spec.GetInvestigation()),
 				InvestigationID:   spec.GetInvestigation().GetInvestigationId(),
@@ -314,8 +330,8 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nInvestigation: %s\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
-				campaignID, releaseLabel(release.Release, string(release.Basis)), lane, payload.Suite, payload.ModelCount, strings.Join(payload.Models, ", "), payload.ScenarioCount, payload.RepetitionCount,
+			_, _ = fmt.Fprintf(out, "Campaign: %s\nCondition: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nInvestigation: %s\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
+				campaignID, payload.Condition, releaseLabel(release.Release, string(release.Basis)), lane, payload.Suite, payload.ModelCount, strings.Join(payload.Models, ", "), payload.ScenarioCount, payload.RepetitionCount,
 				payload.HoldContext, investigationLabel(payload), payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
 			if payload.InvestigationID != "" {
 				_, _ = fmt.Fprintf(out, "Investigation ID: %s\nData Operator ID: %s\n", payload.InvestigationID, payload.DataOperatorID)
@@ -335,9 +351,60 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 			for _, row := range runRows {
 				_, _ = fmt.Fprintf(w, "%s\t%s\t%d/%d\t%s\n", row.RunID, row.Status, row.Terminal, row.ExpectedAssignments, row.StartedAt)
 			}
-			return w.Flush()
+			if err := w.Flush(); err != nil {
+				return err
+			}
+			if len(payload.MetricsCurve) > 0 {
+				_, _ = fmt.Fprintln(out, "\nLongitudinal Metrics Curve:")
+				mw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+				_, _ = fmt.Fprintln(mw, "RUN\tREP\tSCENARIO\tRETRIEVAL\tREDUNDANT\tSTEPS\tCORRECT\tEVIDENCE-BACKED")
+				for _, pt := range payload.MetricsCurve {
+					_, _ = fmt.Fprintf(mw, "%s\t%d\t%s\t%.1f%%\t%.1f%%\t%.0f\t%.0f%%\t%.0f%%\n",
+						pt.RunID, pt.Repetition, pt.ScenarioID, pt.RetrievalHitRate*100, pt.RedundantCommandRate*100, pt.StepsToDiagnosis, pt.DiagnosisCorrectness*100, pt.EvidenceBackedConclusion*100)
+				}
+				return mw.Flush()
+			}
+			return nil
 		},
 	}
+}
+
+func extractCampaignMetricsCurve(ctx context.Context, store *evaluation.Store, runIDs []string) []runMetricsCurveJSON {
+	var curve []runMetricsCurveJSON
+	for _, runID := range runIDs {
+		assignments, err := store.ListAssignments(ctx, runID)
+		if err != nil || len(assignments) == 0 {
+			continue
+		}
+		results, err := store.LoadAssignmentResults(ctx, runID, assignments)
+		if err != nil {
+			continue
+		}
+		for _, assignment := range assignments {
+			result, ok := results[assignment.GetAssignmentId()]
+			if !ok || result == nil || len(result.GetDecomposedScores()) == 0 {
+				continue
+			}
+			scoreMap := make(map[string]float64)
+			for _, score := range result.GetDecomposedScores() {
+				scoreMap[score.GetDimension()] = score.GetValue()
+			}
+			if _, hasMetrics := scoreMap[evaluation.MetricStepsToDiagnosis]; hasMetrics {
+				curve = append(curve, runMetricsCurveJSON{
+					RunID:                    runID,
+					AssignmentID:             assignment.GetAssignmentId(),
+					ScenarioID:               assignment.GetScenarioId(),
+					Repetition:               assignment.GetRepetition(),
+					RetrievalHitRate:         scoreMap[evaluation.MetricRetrievalHitRate],
+					RedundantCommandRate:     scoreMap[evaluation.MetricRedundantCommandRate],
+					StepsToDiagnosis:         scoreMap[evaluation.MetricStepsToDiagnosis],
+					DiagnosisCorrectness:     scoreMap[evaluation.MetricDiagnosisCorrectness],
+					EvidenceBackedConclusion: scoreMap[evaluation.MetricEvidenceBackedConclusion],
+				})
+			}
+		}
+	}
+	return curve
 }
 
 // campaignRunIDs lists every run of a campaign, active and archived.
@@ -456,6 +523,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 
 type campaignCreateJSON struct {
 	CampaignID          string `json:"campaign_id"`
+	Condition           string `json:"condition"`
 	Lane                string `json:"lane"`
 	Suite               string `json:"suite"`
 	ModelCount          int    `json:"model_count"`
@@ -470,6 +538,7 @@ type campaignCreateJSON struct {
 func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var reps uint32
 	var holdContext bool
+	var condition string
 	var suite string
 	var investigationMode string
 	var dataOperatorID string
@@ -481,6 +550,11 @@ func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 and the repetition count. Nothing executes until a run starts (ztd eval runs
 start).
 
+--condition declares the operational condition: "longitudinal" (runs sequential
+repetitions on one persistent investigation, restoring the workspace each time),
+"control" (runs fresh investigations for comparison), or "held-context" (replays
+conversation and leaves workspace dirty across repetitions).
+
 --suite picks the suite whose scenarios the campaign scores (default:
 default-suite; see ztd eval suites). The suite is copied into the campaign, so
 editing or deleting it later never changes the campaign.
@@ -491,12 +565,8 @@ default) to give each assignment its own investigation, or
 persistent investigation requires --data-operator to name the stable Operator
 identity whose authoritative ledger owns that investigation.
 
-With --reps greater than 1, every repetition after the first continues the
-previous repetition's conversation and workspace by default (--hold-context): the model
-receives that repetition's complete conversation (its tool calls, results,
-and answer), the scenario prompt again, and the same workspace, with the
-fixture files restored. Pass --hold-context=false to score each repetition
-from a fresh conversation instead.
+With --reps greater than 1, repetitions run sequentially. Pass --hold-context
+to carry the previous repetition's conversation into the prompt.
 
 A model campaign takes a model selector (positional models, --family,
 --max-params, or --all) and scores each model on its own. A model campaign
@@ -505,19 +575,39 @@ several models with ztd eval rollout, which runs one campaign per model.
 
 Examples:
   ztd eval campaigns create eval-qwen qwen3:4b --reps 3
-  ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
+  ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3 --hold-context
   ztd eval campaigns create eval-gemma gemma4:e4b
   ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
-  ztd eval campaigns create eval-repeat qwen3:4b --investigation persistent:checkout-incident --data-operator op-123`,
+  ztd eval campaigns create eval-repeat qwen3:4b --investigation persistent:checkout-incident --data-operator op-123
+  ztd eval campaigns create eval-longitudinal qwen3:4b --condition longitudinal --reps 3 --data-operator op-123`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			campaignID := args[0]
 			selector = *selector.withArgs(args[1:])
+			condition = strings.ToLower(strings.TrimSpace(condition))
+			switch condition {
+			case "":
+				// Keep investigationMode and holdContext from flags
+			case "longitudinal", "persistent":
+				if investigationMode == "fresh" && dataOperatorID != "" {
+					investigationMode = "persistent:" + campaignID + "-inv"
+				}
+				holdContext = false
+			case "control", "fresh":
+				investigationMode = "fresh"
+				holdContext = false
+			case "held-context", "held_context":
+				holdContext = true
+			default:
+				return fmt.Errorf("evaluation: campaigns create: unknown --condition %q (expected longitudinal, control, or held-context): %w", condition, constants.ErrEvaluationFlagsInvalid)
+			}
 			investigation, err := parseCampaignInvestigation(investigationMode, dataOperatorID)
 			if err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("hold-context") && reps <= 1 {
+			if !cmd.Flags().Changed("hold-context") && condition == "" {
+				holdContext = reps > 1
+			} else if holdContext && reps <= 1 {
 				return fmt.Errorf("evaluation: campaigns create: --hold-context applies only with --reps greater than 1: %w", constants.ErrEvaluationFlagsInvalid)
 			}
 			if !selector.IsSet() {
@@ -544,6 +634,7 @@ Examples:
 			}
 			payload := campaignCreateJSON{
 				CampaignID:          campaignID,
+				Condition:           evaluation.CampaignCondition(result.Spec),
 				Lane:                campaignLaneModelRole,
 				Suite:               result.Spec.GetCatalogRef().GetId() + "@" + result.Spec.GetCatalogRef().GetVersion(),
 				ModelCount:          len(result.Spec.GetModelRegistry()),
@@ -558,14 +649,15 @@ Examples:
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
-				payload.CampaignID, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
+			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
+				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
 			_, err = fmt.Fprintf(out, "\nNext, start the run with:\nztd eval runs start %s\n", campaignID)
 			return err
 		},
 	}
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
-	cmd.Flags().BoolVar(&holdContext, "hold-context", true, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace")
+	cmd.Flags().BoolVar(&holdContext, "hold-context", false, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace (legacy behavior)")
+	cmd.Flags().StringVar(&condition, "condition", "", "Operational condition: longitudinal (persistent sequential runs), control (fresh investigation control), or held-context")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
 	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")
 	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")
