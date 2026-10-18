@@ -56,7 +56,7 @@ func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsComplete
 	dispatch := fakeClient.dispatchRequests[0]
 	assert.Equal(t, target.SessionID, dispatch.TargetOperatorSessionID)
 	assert.Equal(t, absPath, dispatch.TargetResource)
-	assert.Equal(t, "run-1", dispatch.CaseID)
+	assert.Empty(t, dispatch.CaseID, "a run ID must not impersonate a case ID")
 	assert.Equal(t, "eval-harness:attempt-1", dispatch.InvestigationID)
 	assert.Equal(t, "fixture-setup:attempt-1", dispatch.TaskID)
 	fileEdit := &operatorv1.FileEditRequested{}

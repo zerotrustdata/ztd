@@ -993,7 +993,7 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 	if len(args) == 0 {
 		args = json.RawMessage("{}")
 	}
-	if mcpReq.ToolName == "audit_receipt_list" {
+	if mcpReq.ToolName == "audit_receipt_list" && rs.useOperatorLocalAuditReceiptRoute(args) {
 		if rs.localAuditReceipts == nil {
 			return "", constants.ErrMCPAuditReceiptQueryNotConfigured
 		}
@@ -1041,6 +1041,22 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 	}
 
 	return summary, nil
+}
+
+// useOperatorLocalAuditReceiptRoute selects the authoritative Data Operator
+// ledger query. Outbound Operators always own this route. Gateway mode also
+// owns an embedded Operator ledger, but session-only public Gateway queries
+// keep using the Gateway's existing native MCP handler; the explicit local
+// query shape is investigation_id plus exclude_action_type=MCP_CALL.
+func (rs *OperatorPubSubService) useOperatorLocalAuditReceiptRoute(args json.RawMessage) bool {
+	if rs == nil || !rs.gatewayMode {
+		return true
+	}
+	var request mcp.AuditReceiptListRequest
+	if err := json.Unmarshal(args, &request); err != nil {
+		return false
+	}
+	return request.InvestigationID != "" && request.ExcludeActionType == string(constants.ActionTypeMcpCall)
 }
 
 func mcpGatewayOrErr(rs *OperatorPubSubService) (*mcp.GatewayService, error) {

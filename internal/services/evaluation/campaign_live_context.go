@@ -74,7 +74,7 @@ func (r *agentRun) runInvestigationContext(ctx context.Context, record AgentTool
 	if limit > investigationContextMaxReceipts {
 		limit = investigationContextMaxReceipts
 	}
-	query := mcp.AuditReceiptListRequest{InvestigationID: r.trace.InvestigationID, Limit: limit}
+	query := mcp.AuditReceiptListRequest{InvestigationID: r.trace.InvestigationID, Limit: limit, ExcludeActionType: string(constants.ActionTypeMcpCall)}
 	queryJSON, err := json.Marshal(query)
 	if err != nil {
 		return AgentToolCall{}, fmt.Errorf("evaluation: encode investigation query: %w", err)
@@ -136,7 +136,7 @@ func decodeInvestigationReceipts(trace *AgentTrace, query mcp.AuditReceiptListRe
 			return fail(constants.ErrActionReceiptMissing)
 		}
 		r := row
-		if r.GetTransactionId() == "" || seen[r.GetTransactionId()] {
+		if r.GetTransactionId() == "" || seen[r.GetTransactionId()] || r.GetActionType() == string(constants.ActionTypeMcpCall) {
 			return fail(constants.ErrEvidenceScopeMismatch)
 		}
 		if _, err := oracle.VerifyReceipt(anchors, trace.Data.OperatorID, r); err != nil {
@@ -168,10 +168,24 @@ func investigationReceiptContext(dataType, investigationID string, result mcp.Op
 // signed query answer, so a resealed trace cannot invent retrieved evidence.
 func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	if call.Retrieval == nil {
-		if trace.SchemaVersion == agentTraceSchemaVersion && call.ToolName == agentToolInvestigationCtx && call.Success {
-			var args struct { DataType string `json:"data_type"` }
-			if err := json.Unmarshal([]byte(call.ArgumentsJSON), &args); err != nil { return err }
-			if args.DataType != investigationDataStatus { return constants.ErrEvaluationEvidenceTraceMismatch }
+		if trace.SchemaVersion == agentTraceSchemaVersion && call.ToolName == agentToolInvestigationCtx {
+			// A completed query cannot suppress its evidence by changing the
+			// unsigned Success flag. Denied and failed calls have no retrieval.
+			if call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+				return constants.ErrEvaluationEvidenceTraceMismatch
+			}
+			if !call.Success {
+				return nil
+			}
+			var args struct {
+				DataType string `json:"data_type"`
+			}
+			if err := json.Unmarshal([]byte(call.ArgumentsJSON), &args); err != nil {
+				return err
+			}
+			if args.DataType != investigationDataStatus {
+				return constants.ErrEvaluationEvidenceTraceMismatch
+			}
 		}
 		return nil
 	}
@@ -192,7 +206,7 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	}
 	var args struct {
 		DataType string `json:"data_type"`
-		Limit int `json:"limit"`
+		Limit    int    `json:"limit"`
 	}
 	if err := json.Unmarshal([]byte(call.ArgumentsJSON), &args); err != nil {
 		return err
@@ -201,9 +215,15 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	limit := args.Limit
-	if limit < 1 { limit = agentToolDefaultHistoryLimit }
-	if limit > investigationContextMaxReceipts { limit = investigationContextMaxReceipts }
-	if call.Retrieval.Query != (mcp.AuditReceiptListRequest{InvestigationID: trace.InvestigationID, Limit: limit}) { return constants.ErrEvaluationEvidenceTraceMismatch }
+	if limit < 1 {
+		limit = agentToolDefaultHistoryLimit
+	}
+	if limit > investigationContextMaxReceipts {
+		limit = investigationContextMaxReceipts
+	}
+	if call.Retrieval.Query != (mcp.AuditReceiptListRequest{InvestigationID: trace.InvestigationID, Limit: limit, ExcludeActionType: string(constants.ActionTypeMcpCall)}) {
+		return constants.ErrEvaluationEvidenceTraceMismatch
+	}
 	want, err := canonicalToolJSON(investigationReceiptContext(args.DataType, trace.InvestigationID, result, refs))
 	if err != nil {
 		return err

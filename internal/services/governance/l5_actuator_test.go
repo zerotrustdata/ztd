@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -124,6 +125,119 @@ func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) 
 				return
 			}
 			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
+type operatorAuditSummaryCommand struct {
+	result *models.OperatorAuditReceiptListResult
+}
+
+func (*operatorAuditSummaryCommand) GetPayload() []byte            { return nil }
+func (*operatorAuditSummaryCommand) SetPayload([]byte)             {}
+func (*operatorAuditSummaryCommand) InferenceResultDigest() string { return "" }
+func (c *operatorAuditSummaryCommand) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+	return c.result
+}
+
+type operatorAuditSummaryCommandWithoutTypedResult struct{}
+
+func (*operatorAuditSummaryCommandWithoutTypedResult) GetPayload() []byte            { return nil }
+func (*operatorAuditSummaryCommandWithoutTypedResult) SetPayload([]byte)             {}
+func (*operatorAuditSummaryCommandWithoutTypedResult) InferenceResultDigest() string { return "" }
+
+func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testing.T) {
+	actuator, publicKey := newTestActuator(t)
+	request, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_list"})
+	require.NoError(t, err)
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId:   "tx-command",
+		TransactionHash: "hash-command",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		SignerKeyId:     actuator.KeyID,
+	}
+	receipt.Signature, err = actuator.signReceipt(receipt)
+	require.NoError(t, err)
+	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
+	result := &models.OperatorAuditReceiptListResult{
+		Receipts:        []*operatorv1.ActionReceipt{receipt},
+		Count:           1,
+		OperatorID:      "op-1",
+		Authority:       "operator_local_ledger",
+		InvestigationID: "investigation-1",
+	}
+	summaryBytes, err := json.Marshal(result)
+	require.NoError(t, err)
+	summary := string(summaryBytes)
+	vt := &VerifiedTransaction{
+		Envelope: &govtypes.GovernanceEnvelope{
+			OperatorId:      "op-1",
+			InvestigationId: "investigation-1",
+			Payload:         request,
+		},
+		ActionType: constants.ActionTypeMcpCall,
+	}
+	command := &operatorAuditSummaryCommand{result: result}
+
+	assert.Equal(t, summary, actuator.auditReceiptListSummary(vt, command, summary))
+	assert.Contains(t, summary, receipt.GetSignature())
+	assert.Empty(t, actuator.auditReceiptListSummary(vt, command, `{"authority":"operator_local_ledger"}`))
+	assert.Empty(t, actuator.auditReceiptListSummary(vt, &operatorAuditSummaryCommandWithoutTypedResult{}, summary))
+
+	tests := []struct {
+		name   string
+		mutate func(*VerifiedTransaction, *models.OperatorAuditReceiptListResult)
+	}{
+		{
+			name: "wrong action",
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
+				v.ActionType = constants.ActionTypeExecuteBash
+			},
+		},
+		{
+			name: "wrong tool",
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
+				v.Envelope.Payload, _ = proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_get"})
+			},
+		},
+		{
+			name: "wrong authority",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.Authority = "gateway_mirror"
+			},
+		},
+		{
+			name: "wrong operator",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.OperatorID = "op-2"
+			},
+		},
+		{
+			name: "wrong investigation",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.InvestigationID = "investigation-2"
+			},
+		},
+		{
+			name: "count mismatch",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.Count = 2
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vtCopy := proto.Clone(vt.Envelope).(*govtypes.GovernanceEnvelope)
+			verified := *vt
+			verified.Envelope = vtCopy
+			resultCopy := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+			copied := *result
+			copied.Receipts = []*operatorv1.ActionReceipt{resultCopy}
+			commandCopy := &operatorAuditSummaryCommand{result: &copied}
+			tt.mutate(&verified, &copied)
+			mutatedSummary, marshalErr := json.Marshal(&copied)
+			require.NoError(t, marshalErr)
+			assert.Empty(t, actuator.auditReceiptListSummary(&verified, commandCopy, string(mutatedSummary)))
 		})
 	}
 }

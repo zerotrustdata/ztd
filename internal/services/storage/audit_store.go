@@ -1114,6 +1114,10 @@ func (ass *SQLAuditStore) ListActionReceipts(scope models.AuditScope, limit, off
 		predicates = append(predicates, "investigation_id = ?")
 		args = append(args, scope.InvestigationID)
 	}
+	if scope.ExcludeActionType != "" {
+		predicates = append(predicates, "action_type != ?")
+		args = append(args, string(scope.ExcludeActionType))
+	}
 
 	if scope.ActingAppID != "" {
 		predicates = append(predicates, "acting_app_id = ?")

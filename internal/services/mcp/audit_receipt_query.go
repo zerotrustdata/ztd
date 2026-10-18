@@ -74,7 +74,7 @@ func (t *AuditReceiptListTool) Name() string {
 
 // Description returns a human-readable description.
 func (t *AuditReceiptListTool) Description() string {
-	return "Lists signed ActionReceipt records from the Gateway's local audit store, scoped to a required operator session and optionally narrowed to an investigation. When both filters are supplied they are intersected. Remote Operator receipts in this store are best-effort projections, not authoritative evidence. Supports optional action_type and not_before (RFC3339) filtering with limit/offset pagination. This read-only query runs as a governed MCP_CALL."
+	return "Lists signed ActionReceipt records. Gateway-native queries require an operator session and optionally intersect an investigation; remote receipts there are best-effort projections. Explicit Operator-local queries require investigation_id and exclude_action_type=MCP_CALL, return the executing Operator's authoritative signed receipts, and may omit the session filter to span reconnects. Supports optional action_type and not_before (RFC3339) filtering with limit/offset pagination. This read-only query runs as a governed MCP_CALL."
 }
 
 // InputSchema returns the JSON Schema for tool validation.
@@ -155,6 +155,9 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 		if req.InvestigationID == "" {
 			return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w", constants.ErrMCPAuditReceiptListInvestigationReq)
 		}
+		if req.ExcludeActionType != string(constants.ActionTypeMcpCall) {
+			return CallToolResult{}, fmt.Errorf("audit_receipt_list: exclude_action_type: %w", constants.ErrMissingRequiredField)
+		}
 	} else if req.OperatorSessionID == "" {
 		return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w", constants.ErrMCPAuditReceiptListOperatorSessionReq)
 	}
@@ -172,11 +175,10 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 	scope := models.AuditScope{
 		OperatorSessionID: req.OperatorSessionID,
 		InvestigationID:   req.InvestigationID,
-		ExcludeActionType: req.ExcludeActionType,
+		ExcludeActionType: constants.ActionType(req.ExcludeActionType),
 	}
 	if operatorLocal {
 		scope.OperatorID = authority.operatorID
-		scope.ExcludeActionType = string(constants.ActionTypeMcpCall)
 	}
 	receipts, err := q.ListActionReceipts(scope, limit, req.Offset)
 	if err != nil {

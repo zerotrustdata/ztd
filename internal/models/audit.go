@@ -7,7 +7,11 @@
 
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
 
 // AuditScope selects evidence by ingress identity and investigation. Empty
 // fields leave that dimension unrestricted; app records need not have an
@@ -16,6 +20,7 @@ type AuditScope struct {
 	OperatorID        string
 	OperatorSessionID string
 	InvestigationID   string
+	ExcludeActionType constants.ActionType
 	ActingAppID       string
 }
 

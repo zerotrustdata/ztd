@@ -50,6 +50,7 @@ function traceTail(schemaVersion: string, overrides: Record<string, unknown> = {
     evaluation_attempt_id: 'attempt-1',
     campaign_id: 'campaign-1',
     scenario_id: 'scenario-1',
+    ...(schemaVersion === 'agent-trace.v6' ? { investigation_id: 'investigation-1' } : {}),
     designated_role: 'diagnostician',
     served_model_tag: 'qwen3:8b',
     model_digest: 'a'.repeat(64),
@@ -57,7 +58,7 @@ function traceTail(schemaVersion: string, overrides: Record<string, unknown> = {
     inference: { operator_id: 'operator-inference', session_id: 'session-inference', anchor: { runtime_id: 'operator-inference', key_id: 'key-inference', public_key_hex: 'ab', export_sha256: 'c'.repeat(64) } },
     data: { operator_id: 'operator-data', session_id: 'session-data' },
     workspace: { root: '/work', operator_working_directory: '/work/run-1' },
-    ...(schemaVersion === 'agent-trace.v5' ? { held_context: heldContext } : {}),
+    ...(schemaVersion === 'agent-trace.v5' || schemaVersion === 'agent-trace.v6' ? { held_context: heldContext } : {}),
     ...(schemaVersion !== 'agent-trace.v3'
       ? { input: { messages: [{ role: 'INFERENCE_MESSAGE_ROLE_USER', text: 'Why is checkout failing? 2>&1 <out>' }], tools: [{ name: 'fs_read', description: 'Read a file.', json_schema: '{"type":"object"}' }] } }
       : {}),
@@ -86,6 +87,19 @@ function sealedBody(schemaVersion = 'agent-trace.v4', overrides: Record<string, 
 }
 
 const scope = (body: Uint8Array) => ({ sha256: sha256(body), runId: 'run-1', assignmentId: 'assignment-1' });
+
+function investigationRetrievalToolCall(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    call_id: 'call-context', model_call_id: 'attempt-a', tool_name: 'query_investigation_context',
+    arguments_json: '{"data_type":"history_trail","limit":10}', success: true, is_operator_tool: true,
+    loop_turn: 2, action_type: 'MCP_CALL', receipt: receipt('tx-context', 'MCP_CALL'),
+    retrieval: {
+      query: { operator_session_id: '', investigation_id: 'investigation-1', exclude_action_type: 'MCP_CALL', limit: 10 },
+      receipts: [{ receipt_id: 'receipt-1', sha256: 'e'.repeat(64) }],
+    },
+    ...overrides,
+  };
+}
 
 describe('verifyAgentTraceArtifact', () => {
   it('verifies a sealed v4 trace and decodes it', async () => {
@@ -136,6 +150,57 @@ describe('verifyAgentTraceArtifact', () => {
     expect(trace.held_context?.repetition).toBe(1);
     expect(trace.held_context?.messages[2]?.tool_calls?.[0]?.arguments_json).toBe('{"path":"held.log"}');
     expect(trace.held_context?.messages[3]?.tool_result?.result_json).toBe('{"content":"held OOM"}');
+  });
+
+  it('verifies a v6 trace with investigation identity and authoritative receipt retrieval', async () => {
+    const body = sealedBody('agent-trace.v6', { tool_calls: [investigationRetrievalToolCall()] });
+
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+
+    expect(trace.investigation_id).toBe('investigation-1');
+    expect(trace.held_context?.repetition).toBe(1);
+    expect(trace.tool_calls[0]?.retrieval?.query.investigation_id).toBe('investigation-1');
+    expect(trace.tool_calls[0]?.retrieval?.receipts[0]?.sha256).toBe('e'.repeat(64));
+  });
+
+  it('rejects malformed v6 retrieval and completed context calls without retrieval', async () => {
+    const malformedDigest = sealedBody('agent-trace.v6', {
+      tool_calls: [investigationRetrievalToolCall({ retrieval: {
+        query: { investigation_id: 'investigation-1', exclude_action_type: 'MCP_CALL', limit: 10 },
+        receipts: [{ receipt_id: 'receipt-1', sha256: 'BAD' }],
+      } })],
+    });
+    const wrongInvestigation = sealedBody('agent-trace.v6', {
+      tool_calls: [investigationRetrievalToolCall({ retrieval: {
+        query: { investigation_id: 'another-investigation', exclude_action_type: 'MCP_CALL', limit: 10 },
+        receipts: [],
+      } })],
+    });
+    const completedWithoutRetrieval = sealedBody('agent-trace.v6', {
+      tool_calls: [investigationRetrievalToolCall({ success: false, retrieval: undefined })],
+    });
+    const successfulWithoutRetrieval = sealedBody('agent-trace.v6', {
+      tool_calls: [investigationRetrievalToolCall({ success: true, receipt: { status: 'EXECUTION_STATUS_FAILED' }, retrieval: undefined })],
+    });
+    const statusWithoutRetrieval = sealedBody('agent-trace.v6', {
+      tool_calls: [investigationRetrievalToolCall({
+        arguments_json: '{"data_type":"investigation_status"}', action_type: undefined, receipt: undefined, retrieval: undefined,
+      })],
+    });
+
+    await expect(verifyAgentTraceArtifact(malformedDigest, scope(malformedDigest))).rejects.toMatchObject({ path: 'agent_trace.tool_calls[0].retrieval.receipts[0].sha256' });
+    await expect(verifyAgentTraceArtifact(wrongInvestigation, scope(wrongInvestigation))).rejects.toThrow(/must match trace investigation_id/u);
+    await expect(verifyAgentTraceArtifact(completedWithoutRetrieval, scope(completedWithoutRetrieval))).rejects.toThrow(/completed context query must carry retrieval evidence/u);
+    await expect(verifyAgentTraceArtifact(successfulWithoutRetrieval, scope(successfulWithoutRetrieval))).rejects.toThrow(/successful non-status context query must carry retrieval evidence/u);
+    await expect(verifyAgentTraceArtifact(statusWithoutRetrieval, scope(statusWithoutRetrieval))).resolves.toMatchObject({ tool_calls: [{ retrieval: undefined }] });
+  });
+
+  it('keeps v5 closed to v6 investigation and retrieval fields', async () => {
+    const investigation = sealedBody('agent-trace.v5', { investigation_id: 'investigation-1' });
+    const retrieval = sealedBody('agent-trace.v5', { tool_calls: [investigationRetrievalToolCall()] });
+
+    await expect(verifyAgentTraceArtifact(investigation, scope(investigation))).rejects.toThrow(/never carries investigation ID/u);
+    await expect(verifyAgentTraceArtifact(retrieval, scope(retrieval))).rejects.toThrow(/retrieval/u);
   });
 
   it('rejects held context outside v5 and unknown held fields', async () => {

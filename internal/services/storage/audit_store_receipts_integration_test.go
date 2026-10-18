@@ -68,8 +68,8 @@ func TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
 	assert.Equal(t, "hash-first", got.TransactionHash, "transaction_hash is not rewritten by the upsert")
 }
 
-// TestListActionReceipts_FiltersBySessionAndActingApp verifies the session, acting-app, combined,
-// and unfiltered scopes of ListActionReceipts.
+// TestListActionReceipts_FiltersBySessionInvestigationAndActingApp verifies
+// intersected identity scopes, including stable Operator filtering before pagination.
 func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("scope-a", constants.SessionTypeOperator, "A", "user-a"))
@@ -125,6 +125,26 @@ func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing
 	unfiltered, err := ass.ListActionReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, unfiltered, 3)
+}
+
+func TestListActionReceipts_ExcludesQueryReceiptsBeforePagination(t *testing.T) {
+	ass := newIntegrationAuditStore(t)
+	require.NoError(t, ass.CreateSession("query-session", constants.SessionTypeOperator, "Query", "query-user"))
+	for i, txID := range []string{"query-before", "command", "query-after"} {
+		record := receiptFor(t, txID, "query-session", "", time.Now().UTC())
+		record.InvestigationID = "investigation"
+		record.ActionType = constants.ActionTypeMcpCall
+		if i == 1 {
+			record.ActionType = constants.ActionTypeExecuteBash
+		}
+		require.NoError(t, ass.RecordActionReceipt(record))
+	}
+	rows, err := ass.ListActionReceipts(models.AuditScope{
+		InvestigationID: "investigation", ExcludeActionType: constants.ActionTypeMcpCall,
+	}, 1, 0)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "command", rows[0].TransactionID)
 }
 
 // TestListActionReceipts_PaginatesNewestFirst verifies limit/offset paging returns receipts

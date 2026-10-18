@@ -59,6 +59,44 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 	}
 }
 
+func TestOperatorLocalAuditRouteSelectionPreservesGatewaySessionQueries(t *testing.T) {
+	gateway := &OperatorPubSubService{gatewayMode: true}
+	local := &OperatorPubSubService{}
+	tests := []struct {
+		name      string
+		args      string
+		wantLocal bool
+	}{
+		{
+			name:      "Gateway public session query",
+			args:      `{"operator_session_id":"session-1"}`,
+			wantLocal: false,
+		},
+		{
+			name:      "explicit investigation query selects embedded Operator ledger",
+			args:      `{"investigation_id":"investigation-1","exclude_action_type":"MCP_CALL"}`,
+			wantLocal: true,
+		},
+		{
+			name:      "wrong local exclusion remains on public Gateway policy",
+			args:      `{"investigation_id":"investigation-1","exclude_action_type":"EXECUTE_BASH"}`,
+			wantLocal: false,
+		},
+		{
+			name:      "malformed arguments remain on public Gateway policy",
+			args:      `{`,
+			wantLocal: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useLocal := gateway.useOperatorLocalAuditReceiptRoute(json.RawMessage(tt.args))
+			assert.Equal(t, tt.wantLocal, useLocal)
+			assert.True(t, local.useOperatorLocalAuditReceiptRoute(json.RawMessage(tt.args)), "outbound Operators never fall back to a Gateway mirror")
+		})
+	}
+}
+
 func TestNewOperatorPubSubService(t *testing.T) {
 	t.Run("returns non-nil service without error", func(t *testing.T) {
 		t.Parallel()

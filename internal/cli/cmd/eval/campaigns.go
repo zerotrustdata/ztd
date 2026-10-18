@@ -492,7 +492,7 @@ persistent investigation requires --data-operator to name the stable Operator
 identity whose authoritative ledger owns that investigation.
 
 With --reps greater than 1, every repetition after the first continues the
-previous repetition's investigation by default (--hold-context): the model
+previous repetition's conversation and workspace by default (--hold-context): the model
 receives that repetition's complete conversation (its tool calls, results,
 and answer), the scenario prompt again, and the same workspace, with the
 fixture files restored. Pass --hold-context=false to score each repetition
@@ -565,7 +565,7 @@ Examples:
 		},
 	}
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
-	cmd.Flags().BoolVar(&holdContext, "hold-context", true, "With --reps > 1, continue each repetition from the previous repetition's investigation")
+	cmd.Flags().BoolVar(&holdContext, "hold-context", true, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
 	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")
 	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")

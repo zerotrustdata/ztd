@@ -143,6 +143,25 @@ func TestAgentTrace_V4TraceRequiresInput(t *testing.T) {
 	assert.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrMissingRequiredField)
 }
 
+func TestAgentTrace_V5TraceVerifiesWithoutInvestigationMetadata(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	trace.SchemaVersion = agentTraceSchemaVersionV5
+	trace.InvestigationID = ""
+	digest, err := ComputeAgentTraceDigest(trace)
+	require.NoError(t, err)
+	trace.EvidenceDigest = digest
+	before, err := MarshalCanonicalJSONObject(trace)
+	require.NoError(t, err)
+	decoded, err := DecodeAgentTrace(before)
+	require.NoError(t, err)
+	require.NoError(t, VerifyAgentTraceEvidence(decoded))
+	after, err := MarshalCanonicalJSONObject(decoded)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "old evidence must retain its exact digest and schema")
+	_, err = SealAgentTrace(decoded)
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+}
+
 func TestDecodeAgentTrace_PublishedBodyDecodesAndVerifies(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
 	body, err := SealAgentTrace(trace)

@@ -50,7 +50,7 @@ func (s *stubAuditReceiptQuery) ListActionReceipts(scope models.AuditScope, limi
 	s.lastListSession = scope.OperatorSessionID
 	s.lastListInvestigation = scope.InvestigationID
 	s.lastListOperator = scope.OperatorID
-	s.lastExcludeActionType = scope.ExcludeActionType
+	s.lastExcludeActionType = string(scope.ExcludeActionType)
 	s.lastListLimit = limit
 	s.lastListOffset = offset
 	if s.listErr != nil {
@@ -175,7 +175,10 @@ func TestOperatorAuditReceiptHandler_UsesSharedToolWithLocalAuthority(t *testing
 	}
 	handler, err := NewOperatorAuditReceiptHandler("op-1", stub)
 	require.NoError(t, err)
-	args, err := json.Marshal(AuditReceiptListRequest{InvestigationID: "investigation-1"})
+	args, err := json.Marshal(AuditReceiptListRequest{
+		InvestigationID:   "investigation-1",
+		ExcludeActionType: string(constants.ActionTypeMcpCall),
+	})
 	require.NoError(t, err)
 
 	result, err := handler.Handle(context.Background(), CallToolRequest{
@@ -206,6 +209,20 @@ func TestOperatorAuditReceiptHandler_RequiresInvestigationAndOnlyServesList(t *t
 		Arguments: json.RawMessage(`{"operator_session_id":"session-1"}`),
 	})
 	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptListInvestigationReq)
+	assert.Zero(t, stub.listCalls)
+
+	_, err = handler.Handle(context.Background(), CallToolRequest{
+		Name:      "audit_receipt_list",
+		Arguments: json.RawMessage(`{"investigation_id":"investigation-1"}`),
+	})
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Zero(t, stub.listCalls)
+
+	_, err = handler.Handle(context.Background(), CallToolRequest{
+		Name:      "audit_receipt_list",
+		Arguments: json.RawMessage(`{"investigation_id":"investigation-1","exclude_action_type":"EXECUTE_BASH"}`),
+	})
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Zero(t, stub.listCalls)
 
 	_, err = handler.Handle(context.Background(), CallToolRequest{Name: "audit_receipt_get"})

@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
@@ -32,6 +33,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestRunsList_EmptyProject(t *testing.T) {
@@ -334,6 +336,45 @@ func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t
 	runIDs, err := env.store(t).ListRunIDs(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, runIDs, "preflight must fail before a run is persisted")
+}
+
+func TestRunsExecute_PersistentFollowsDataOperatorSessionRotation(t *testing.T) {
+	operators := testRunOperators()
+	env := setupRunEnvWithOperatorSource(t, func() []*operatorv1.OperatorDocument { return operators })
+	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
+		Platform:    testPlatform,
+		CampaignID:  "eval-session-rotation",
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: 1,
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "checkout-incident",
+			DataOperatorId:  "data-op",
+		},
+	})
+	require.NoError(t, err)
+	_, err = runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+		CampaignID:  "eval-session-rotation",
+		RunID:       "run-session-rotation",
+		PrepareOnly: true,
+	})
+	require.NoError(t, err)
+
+	rotated := proto.Clone(operators[1]).(*operatorv1.OperatorDocument)
+	rotated.OperatorSessionId = "data-session-rotated"
+	operators[1] = rotated
+	bindClient := &fakeBindClient{bound: []string{testDataSession}}
+	env.deps.bindClientFactory = func(*config.Config) evalBindClient { return bindClient }
+	writeGatewayCredentials(t, env)
+
+	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{
+		RunID:      "run-session-rotation",
+		Limit:      1,
+		JSONOutput: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, executed)
+	assert.Equal(t, [][]string{{"data-session-rotated"}}, bindClient.binds)
 }
 
 func TestRunsStart_RejectsUnknownCampaign(t *testing.T) {
