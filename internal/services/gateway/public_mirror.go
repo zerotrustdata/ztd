@@ -16,6 +16,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -634,6 +635,7 @@ func (m *PublicMirrorServer) Handler() http.Handler {
 	mux.HandleFunc("/ingest", m.handleIngest)
 	mux.HandleFunc("/keys/register", m.handleKeyRegistration)
 	mux.HandleFunc("/proof-ingest", m.handleProofIngest)
+	mux.HandleFunc("/proof-root", m.handleProofRoot)
 	return m.withCORS(mux)
 }
 
@@ -785,11 +787,11 @@ func (m *PublicMirrorServer) expireAnonymousRateWindows(now time.Time) {
 	m.anonymousRateExpiryHead = 0
 }
 
-// withCORS wraps the handler with CORS headers for anonymous read endpoints.
-// Ingest does not need CORS (it is server-to-server).
+// withCORS wraps the handler with CORS headers for anonymous read endpoints
+// only. Ingest routes are server-to-server and never carry CORS headers.
 func (m *PublicMirrorServer) withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ingest" && r.URL.Path != "/keys/register" && r.URL.Path != "/proof-ingest" {
+		if publicMirrorAnonymousReadPath(r.URL.Path) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID")
@@ -974,6 +976,11 @@ func (m *PublicMirrorServer) handleProofIngest(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := m.storeProofPackage(r.Context(), request); err != nil {
+		var missing *publicProofMissingArtifactsError
+		if errors.As(err, &missing) {
+			m.writeJSON(w, http.StatusBadRequest, models.PublicProofIngestResponse{Accepted: false, MissingArtifactIDs: missing.artifactIDs})
+			return
+		}
 		m.logger.Warn("mirror: proof ingest rejected", "source_id", request.SourceID, "error", err)
 		m.writeJSON(w, http.StatusBadRequest, models.PublicProofIngestResponse{Accepted: false})
 		return
@@ -983,6 +990,21 @@ func (m *PublicMirrorServer) handleProofIngest(w http.ResponseWriter, r *http.Re
 		ArtifactCount: len(request.Artifacts),
 		ProofRoot:     request.Manifest.ProofRootSHA256,
 	})
+}
+
+// publicProofMissingArtifactsError names the manifest artifacts a proof
+// ingest neither carried inline nor found stored, so the publisher can resend
+// exactly those.
+type publicProofMissingArtifactsError struct {
+	artifactIDs []string
+}
+
+func (e *publicProofMissingArtifactsError) Error() string {
+	return fmt.Sprintf("%v: %d artifacts", constants.ErrPublicFeedProofArtifactsMissing, len(e.artifactIDs))
+}
+
+func (e *publicProofMissingArtifactsError) Unwrap() error {
+	return constants.ErrPublicFeedProofArtifactsMissing
 }
 
 // storeProofPackage verifies a signed proof manifest and the artifacts it
@@ -999,7 +1021,7 @@ func (m *PublicMirrorServer) storeProofPackage(ctx context.Context, request mode
 	if err := validatePublicProofManifest(request.SourceID, manifest, keys, true); err != nil {
 		return err
 	}
-	if len(request.Artifacts) == 0 || len(request.Artifacts) > manifest.ArtifactCount {
+	if len(request.Artifacts) > manifest.ArtifactCount {
 		return constants.ErrPublicFeedProofCatalogMismatch
 	}
 	artifactIDs := make([]string, len(manifest.Artifacts))
@@ -1050,7 +1072,8 @@ func validatePublicProofManifest(sourceID string, manifest models.PublicProofMan
 
 // validatePublicProofEntries checks every manifest entry against either an
 // inline artifact (size and SHA-256 of the carried bytes) or a stored
-// artifact (recorded size). Every inline artifact must be listed.
+// artifact (recorded size). Every inline artifact must be listed. Entries
+// with neither are reported together as a publicProofMissingArtifactsError.
 func validatePublicProofEntries(manifest models.PublicProofManifest, inline []models.PublicProofIngestArtifact, storedSizes map[string]int64) error {
 	inlineArtifacts := make(map[string][]byte, len(inline))
 	for _, artifact := range inline {
@@ -1063,6 +1086,7 @@ func validatePublicProofEntries(manifest models.PublicProofManifest, inline []mo
 		inlineArtifacts[artifact.ArtifactID] = artifact.Content
 	}
 	referenced := make(map[string]bool, len(manifest.Artifacts))
+	var missing []string
 	for _, entry := range manifest.Artifacts {
 		if entry.Classification != models.PublicFeedProofClassificationPublicSafe || entry.ArtifactID != entry.SHA256 {
 			return constants.ErrPublicFeedProofCatalogMismatch
@@ -1075,7 +1099,8 @@ func validatePublicProofEntries(manifest models.PublicProofManifest, inline []mo
 		if !ok {
 			size, stored := storedSizes[entry.ArtifactID]
 			if !stored {
-				return constants.ErrPublicFeedProofCatalogMismatch
+				missing = append(missing, entry.ArtifactID)
+				continue
 			}
 			if size > constants.PublicFeedMaxArtifactBytes || size != entry.ByteSize {
 				return constants.ErrPublicFeedProofSizeMismatch
@@ -1094,6 +1119,9 @@ func validatePublicProofEntries(manifest models.PublicProofManifest, inline []mo
 		if !referenced[artifactID] {
 			return constants.ErrPublicFeedProofCatalogMismatch
 		}
+	}
+	if len(missing) > 0 {
+		return &publicProofMissingArtifactsError{artifactIDs: missing}
 	}
 	return nil
 }
@@ -1486,6 +1514,39 @@ func (m *PublicMirrorServer) handleProofCatalog(w http.ResponseWriter, r *http.R
 		catalog.Entries = []models.PublicProofCatalogEntry{}
 	}
 	m.writeJSON(w, http.StatusOK, catalog)
+}
+
+// handleProofRoot handles GET /proof-root?source= on the private ingest
+// listener: the source's stored proof root and artifact count, so the
+// publisher can decide what to push without fetching the full manifest.
+func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !m.ingestAuthorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	sourceID := r.URL.Query().Get("source")
+	if sourceID == "" {
+		http.Error(w, "source is required", http.StatusBadRequest)
+		return
+	}
+	summary, found, err := m.store.proofSummary(r.Context(), sourceID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read proof root", err)
+		return
+	}
+	if !found {
+		http.Error(w, "proof manifest not found", http.StatusNotFound)
+		return
+	}
+	m.writeJSON(w, http.StatusOK, models.PublicProofRootResponse{
+		SourceID:        sourceID,
+		ProofRootSHA256: summary.ProofRootSHA256,
+		ArtifactCount:   summary.ArtifactCount,
+	})
 }
 
 // handleProofManifest handles GET /proof-manifest — the proof root manifest.

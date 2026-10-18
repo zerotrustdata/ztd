@@ -242,7 +242,7 @@ func TestPublicMirror_PublicHandlerExposesOnlyAnonymousReadRoutes(t *testing.T) 
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, "*", response.Header.Get("Access-Control-Allow-Origin"))
 
-	for _, path := range []string{"/ingest", "/keys/register", "/proof-ingest"} {
+	for _, path := range []string{"/ingest", "/keys/register", "/proof-ingest", "/proof-root"} {
 		t.Run(path, func(t *testing.T) {
 			request, requestErr := http.NewRequest(http.MethodPost, server.URL+path, strings.NewReader("{}"))
 			require.NoError(t, requestErr)
@@ -1684,6 +1684,89 @@ func TestMirror_ProofIngest_RejectsInvalidPackageWithoutPartialPersistence(t *te
 			env.assertNoProofState()
 		})
 	}
+}
+
+// sendProofIngest posts a proof ingest request with the given bearer token
+// and decodes the mirror's response.
+func (e *mirrorTestEnv) sendProofIngest(request models.PublicProofIngestRequest, token string) (int, models.PublicProofIngestResponse) {
+	e.t.Helper()
+	requestBody, err := json.Marshal(request)
+	require.NoError(e.t, err)
+	req, err := http.NewRequest(http.MethodPost, e.server.URL+"/proof-ingest", bytes.NewReader(requestBody))
+	require.NoError(e.t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	response, err := e.client.Do(req)
+	require.NoError(e.t, err)
+	defer response.Body.Close()
+	var ingestResponse models.PublicProofIngestResponse
+	require.NoError(e.t, json.NewDecoder(response.Body).Decode(&ingestResponse))
+	return response.StatusCode, ingestResponse
+}
+
+func TestMirror_ProofIngest_ReportsMissingArtifactIDs(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	env.mirror.SetIngestAuthToken("proof-token")
+	request := env.makeProofIngestRequest("proof.json", []byte(`{"campaign_id":"c1"}`))
+	artifacts := request.Artifacts
+	request.Artifacts = nil
+
+	status, response := env.sendProofIngest(request, "proof-token")
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.False(t, response.Accepted)
+	assert.Equal(t, []string{artifacts[0].ArtifactID}, response.MissingArtifactIDs)
+	env.assertNoProofState()
+
+	request.Artifacts = artifacts
+	status, response = env.sendProofIngest(request, "proof-token")
+	assert.Equal(t, http.StatusOK, status)
+	assert.True(t, response.Accepted)
+	assert.Empty(t, response.MissingArtifactIDs)
+
+	request.Artifacts = nil
+	status, response = env.sendProofIngest(request, "proof-token")
+	assert.Equal(t, http.StatusOK, status, "a manifest whose artifacts are all stored needs no inline content")
+	assert.True(t, response.Accepted)
+}
+
+func TestMirror_ProofRoot_AuthenticatesAndReportsStoredRoot(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	env.mirror.SetIngestAuthToken("proof-token")
+	getRoot := func(method, query, token string) (int, models.PublicProofRootResponse) {
+		req, err := http.NewRequest(method, env.server.URL+"/proof-root"+query, nil)
+		require.NoError(t, err)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		response, err := env.client.Do(req)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		var root models.PublicProofRootResponse
+		if response.StatusCode == http.StatusOK {
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&root))
+		}
+		return response.StatusCode, root
+	}
+	sourceQuery := "?source=" + env.sourceID
+
+	status, _ := getRoot(http.MethodGet, sourceQuery, "")
+	assert.Equal(t, http.StatusUnauthorized, status)
+	status, _ = getRoot(http.MethodPost, sourceQuery, "proof-token")
+	assert.Equal(t, http.StatusMethodNotAllowed, status)
+	status, _ = getRoot(http.MethodGet, "", "proof-token")
+	assert.Equal(t, http.StatusBadRequest, status)
+	status, _ = getRoot(http.MethodGet, sourceQuery, "proof-token")
+	assert.Equal(t, http.StatusNotFound, status)
+
+	request := env.makeProofIngestRequest("proof.json", []byte(`{"campaign_id":"c1"}`))
+	require.NoError(t, env.mirror.storeProofPackage(context.Background(), request))
+	status, root := getRoot(http.MethodGet, sourceQuery, "proof-token")
+	assert.Equal(t, http.StatusOK, status)
+	assert.Equal(t, models.PublicProofRootResponse{
+		SourceID:        env.sourceID,
+		ProofRootSHA256: request.Manifest.ProofRootSHA256,
+		ArtifactCount:   1,
+	}, root)
 }
 
 // TestMirror_ProofDownload_ServesContentAddressedArtifact verifies that the

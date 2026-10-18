@@ -897,7 +897,7 @@ const (
 	PublicFeedSchemaVersion            = "1.0.0"
 	PublicProofManifestSchemaVersion   = "1.0.0"
 	PublicProofCatalogSchemaVersion    = "1.0.0"
-	PublicProofMirrorSyncSchemaVersion = "1.0.0"
+	PublicProofMirrorSyncSchemaVersion = "2.0.0"
 	PublicFeedBatchMaxRecords          = 100
 	PublicFeedBatchMaxBytes            = 4 << 20
 	PublicFeedRetryMaxAttempts         = 5

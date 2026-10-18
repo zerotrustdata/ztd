@@ -10,29 +10,37 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 )
 
-func TestProofMirrorPendingArtifactIDs_ReturnsOnlyMirrorMissing(t *testing.T) {
-	manifest := &models.PublicProofManifest{
+func pendingTestManifest() *models.PublicProofManifest {
+	return &models.PublicProofManifest{
+		ProofRootSHA256: "root-3",
+		ArtifactCount:   3,
 		Artifacts: []models.PublicProofCatalogEntry{
 			{ArtifactID: "aaa"},
 			{ArtifactID: "bbb"},
 			{ArtifactID: "ccc"},
 		},
 	}
-	mirror := map[string]struct{}{
-		"aaa": {},
-		"ccc": {},
-	}
-	pending := proofMirrorPendingArtifactIDs(manifest, mirror)
-	assert.Equal(t, []string{"bbb"}, pending)
 }
 
-func TestProofMirrorPendingArtifactIDs_EmptyMirrorRequiresAll(t *testing.T) {
-	manifest := &models.PublicProofManifest{
-		Artifacts: []models.PublicProofCatalogEntry{
-			{ArtifactID: "one"},
-			{ArtifactID: "two"},
-		},
-	}
-	pending := proofMirrorPendingArtifactIDs(manifest, map[string]struct{}{})
-	assert.Equal(t, []string{"one", "two"}, pending)
+func TestProofMirrorPendingArtifactIDs_ReturnsSuffixAfterSyncedRoot(t *testing.T) {
+	syncState := &models.PublicProofMirrorSyncState{ProofRootSHA256: "root-1", ArtifactCount: 1}
+	pending := proofMirrorPendingArtifactIDs(pendingTestManifest(), syncState, models.PublicProofRootResponse{ProofRootSHA256: "root-1"})
+	assert.Equal(t, []string{"bbb", "ccc"}, pending)
+}
+
+func TestProofMirrorPendingArtifactIDs_NoneWhenMirrorRootDiffers(t *testing.T) {
+	syncState := &models.PublicProofMirrorSyncState{ProofRootSHA256: "root-1", ArtifactCount: 1}
+	pending := proofMirrorPendingArtifactIDs(pendingTestManifest(), syncState, models.PublicProofRootResponse{ProofRootSHA256: "other"})
+	assert.Empty(t, pending)
+}
+
+func TestProofMirrorPendingArtifactIDs_NoneWithoutSyncState(t *testing.T) {
+	assert.Empty(t, proofMirrorPendingArtifactIDs(pendingTestManifest(), nil, models.PublicProofRootResponse{}))
+	assert.Empty(t, proofMirrorPendingArtifactIDs(pendingTestManifest(), &models.PublicProofMirrorSyncState{}, models.PublicProofRootResponse{}))
+}
+
+func TestProofMirrorPendingArtifactIDs_NoneWhenSyncedCountExceedsManifest(t *testing.T) {
+	syncState := &models.PublicProofMirrorSyncState{ProofRootSHA256: "root-9", ArtifactCount: 9}
+	pending := proofMirrorPendingArtifactIDs(pendingTestManifest(), syncState, models.PublicProofRootResponse{ProofRootSHA256: "root-9"})
+	assert.Empty(t, pending)
 }

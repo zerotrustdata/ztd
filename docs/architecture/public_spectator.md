@@ -60,7 +60,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | --- | --- |
 | INV-SPEC-ISO-01 | Owner-local observe mode and anonymous public spectator mode MUST NOT share state, configuration, credentials, or endpoints. Public visitors NEVER connect directly to the private Gateway API. |
 | INV-SPEC-ISO-02 | The public mirror listener MUST expose only read-only endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, and `GET /proofs/<artifact-id>`), plus the read-only evaluation explorer static host (`GET` and `HEAD`, from embedded assets or the `--eval-explorer-root` directory). It MUST NOT mount mutation, producer, governance, audit, or runtime-state filesystem routes. |
-| INV-SPEC-ISO-03 | Private ingest operations (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`) MUST be served on an isolated loopback listener accessible only to the authenticated publisher. |
+| INV-SPEC-ISO-03 | Private ingest operations (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`) MUST be served on an isolated loopback listener accessible only to the authenticated publisher. |
 
 ### Data Classification and Projection (`INV-SPEC-DATA`)
 
@@ -133,7 +133,7 @@ POST /api/v1/public-feed/batches ──► PublicSpectatorRuntime
                                                                              Public Browser
 ```
 
-1. **Private Ingest Listener**: Accepts authenticated batch submissions from the publisher (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`).
+1. **Private Ingest Listener**: Accepts authenticated batch submissions from the publisher (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`).
 2. **Public Read Listener**: Exposes anonymous read endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proofs/<id>`). Unknown paths and mutation methods are rejected. When explorer assets are available, the same listener also serves the explorer static host for `GET` and `HEAD`; other methods on those paths return HTTP 404.
 3. **Explorer Listener**: When explorer assets are available and `ExplorerListenAddress` differs from the public listener, the runtime binds it as a dedicated listener for the same explorer host. The default address is `127.0.0.1:5173`; `--eval-explorer-listen` overrides it.
 4. **Loopback Binding**: Listeners bind only to loopback interfaces unless the explicit `--public-spectator-allow-container-bind` gateway flag is set. External visitors reach the public listener solely via `cloudflared` tunnel configured with trusted proxy CIDRs.
@@ -209,7 +209,7 @@ The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `int
 
 - **Incremental writes**: Each accepted batch, key registration, revocation, withdrawal, and proof ingest is one SQLite transaction. Retention pruning of the oldest batches and their records runs inside the same transaction as the append, so the retained window and chain anchor (`retained_from_sequence`, `retained_previous_batch_hash`) never diverge from the stored rows.
 - **Verified on open**: Every open re-verifies the retained chain (contiguous sequences, `previous_batch_hash` links, `content_hash` recomputation, Ed25519 signatures against the key registry, record hashes against stored record bytes), each proof manifest's root and entries, and each stored artifact file's SHA-256. Any mismatch fails startup with `ErrPublicFeedMirrorStoreCorrupt`.
-- **Proof ingest**: `POST /proof-ingest` carries the manifest and only the artifacts the mirror does not already hold. The manifest is the sole artifact list; `GET /proof-catalog` is derived from it. A new manifest entry whose artifact is neither in the request nor stored is rejected.
+- **Proof ingest**: `POST /proof-ingest` carries the manifest and only the artifacts the mirror does not already hold. The manifest is the sole artifact list; `GET /proof-catalog` is derived from it. A new manifest entry whose artifact is neither in the request nor stored is rejected with HTTP 400 and `missing_artifact_ids` naming those artifacts; nothing is stored. The publisher reads the mirror's current root from `GET /proof-root`. When that root matches its last accepted push, it sends only the entries appended since then. Otherwise it sends none and resends once with the artifacts the mirror reports missing. Pruning a run deletes the publisher's sync state.
 - **Legacy import**: A Gateway upgraded from the JSON store imports `public-mirror/state.json` once at open. The import builds `public-mirror/mirror-import.db`, verifies it with the same open-time checks, renames it to `mirror.db`, and only then removes `state.json`; a failed import leaves `state.json` untouched. If both `state.json` and `mirror.db` exist, open fails with `ErrPublicFeedMirrorLegacyStateConflict`. The import is removed after v1.1.3.
 
 ## Relationship to Platform Architecture

@@ -122,10 +122,11 @@ type publicMirrorProofArtifact struct {
 	Entry    *models.PublicProofCatalogEntry
 }
 
-// PublicMirrorProofSummary is the bootstrap summary of one source's proof
+// PublicMirrorProofSummary is the stored summary of one source's proof
 // manifest.
 type PublicMirrorProofSummary struct {
-	ArtifactCount int
+	ProofRootSHA256 string
+	ArtifactCount   int
 	TotalByteSize int64
 	GeneratedAt   time.Time
 }
@@ -672,8 +673,8 @@ func decodePublicMirrorJSON(value string, target any) error {
 func (s *PublicMirrorStore) proofSummary(ctx context.Context, sourceID string) (PublicMirrorProofSummary, bool, error) {
 	var summary PublicMirrorProofSummary
 	var generatedAt string
-	err := s.db.QueryRowWithRetry(ctx, `SELECT artifact_count, total_byte_size, generated_at FROM proof_manifests WHERE source_id = ?`, sourceID).
-		Scan(&summary.ArtifactCount, &summary.TotalByteSize, &generatedAt)
+	err := s.db.QueryRowWithRetry(ctx, `SELECT proof_root_sha256, artifact_count, total_byte_size, generated_at FROM proof_manifests WHERE source_id = ?`, sourceID).
+		Scan(&summary.ProofRootSHA256, &summary.ArtifactCount, &summary.TotalByteSize, &generatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PublicMirrorProofSummary{}, false, nil
 	}
@@ -1052,7 +1053,8 @@ func (s *PublicMirrorStore) verifyProofManifests(ctx context.Context, keys Publi
 		for _, entry := range manifest.Artifacts {
 			total += entry.ByteSize
 		}
-		if summary.TotalByteSize != total || !summary.GeneratedAt.Equal(manifest.GeneratedAt) {
+		if summary.ProofRootSHA256 != manifest.ProofRootSHA256 || summary.ArtifactCount != manifest.ArtifactCount ||
+			summary.TotalByteSize != total || !summary.GeneratedAt.Equal(manifest.GeneratedAt) {
 			return publicMirrorCorrupt("proof summary mismatch for %s", sourceID)
 		}
 	}

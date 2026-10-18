@@ -271,14 +271,15 @@ type PublicProofCatalogPruneResponse struct {
 	RemainingCount int  `json:"remaining_count"`
 }
 
-// PublicProofMirrorSyncState tracks the last proof package successfully pushed
-// to the public mirror so incremental pushes can omit already-synced artifacts.
+// PublicProofMirrorSyncState records the last proof manifest the mirror
+// accepted. Manifests only append between prunes, so while the mirror still
+// holds this root, the entries after ArtifactCount are the ones to push.
 type PublicProofMirrorSyncState struct {
-	SchemaVersion     string    `json:"schema_version"`
-	SourceID          string    `json:"source_id"`
-	ProofRootSHA256   string    `json:"proof_root_sha256"`
-	SyncedArtifactIDs []string  `json:"synced_artifact_ids"`
-	SyncedAt          time.Time `json:"synced_at"`
+	SchemaVersion   string    `json:"schema_version"`
+	SourceID        string    `json:"source_id"`
+	ProofRootSHA256 string    `json:"proof_root_sha256"`
+	ArtifactCount   int       `json:"artifact_count"`
+	SyncedAt        time.Time `json:"synced_at"`
 }
 
 type PublicAssignmentAuditProofPublishResponse struct {
