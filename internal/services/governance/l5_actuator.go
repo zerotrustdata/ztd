@@ -238,7 +238,7 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 	cap.Dissolve()
 	w.Logger.Info("Dissolved JIT capability", "message_id", vt.Envelope.Id, "action_type", vt.ActionType)
 
-	w.finalizeReceipt(ctx, receipt, summary, w.inferenceResultDigest(vt, cmdMsg), execErr)
+	w.finalizeReceipt(ctx, receipt, summary, w.inferenceResultDigest(vt, cmdMsg), w.auditReceiptListSummary(vt, cmdMsg, summary), execErr)
 	executionStage.StateRootAfter = receipt.StateRootAfter
 
 	if err := w.signAndLogFinalReceipt(context.WithoutCancel(ctx), signed, audit, receipt); err != nil {
@@ -523,13 +523,13 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 // finalizeReceipt updates the receipt with execution result, state root after, and timestamp.
 // The mutation has already run, so the summary tokenization and the state root read ignore ctx
 // cancellation.
-func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, summary, inferenceDigest string, execErr error) {
+func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, summary, inferenceDigest, auditReceiptListSummary string, execErr error) {
 	status := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	if execErr != nil {
 		status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), "failed", classifyReceiptFailure(execErr), execErr)
 	} else {
-		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest)
+		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest, auditReceiptListSummary)
 	}
 
 	stateAfter := ""
@@ -569,10 +569,12 @@ func (w *L5Actuator) inferenceResultDigest(vt *VerifiedTransaction, cmdMsg Comma
 // signed as is. Every other handler text is content: it is scrubbed when a scrubber is active
 // and replaced by fixed text otherwise. The text is never inspected for a digest shape, so a
 // hex-encoded secret returned by a tool is scrubbed like any other output.
-func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, inferenceDigest string) string {
+func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, inferenceDigest, auditReceiptListSummary string) string {
 	switch {
 	case inferenceDigest != "":
 		return inferenceDigest
+	case auditReceiptListSummary != "":
+		return auditReceiptListSummary
 	case summary == "":
 		return "completed"
 	case !w.scrubberActive():
@@ -580,6 +582,48 @@ func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, infer
 	default:
 		return w.Scrubbing.ScrubText(ctx, summary)
 	}
+}
+
+// auditReceiptListSummary preserves only the allowlisted typed result for a
+// verified MCP_CALL(audit_receipt_list). That result contains canonical signed
+// receipts, already scrubbed before their original L5 signature, plus scope
+// metadata. Arbitrary text summaries continue through completedReceiptSummary's
+// normal scrub path.
+func (w *L5Actuator) auditReceiptListSummary(vt *VerifiedTransaction, cmdMsg CommandMessage, summary string) string {
+	if vt == nil || vt.ActionType != constants.ActionTypeMcpCall || cmdMsg == nil || summary == "" {
+		return ""
+	}
+	request := &operatorv1.McpCallRequested{}
+	if err := proto.Unmarshal(vt.Envelope.GetPayload(), request); err != nil || request.GetToolName() != "audit_receipt_list" {
+		return ""
+	}
+	provider, ok := cmdMsg.(interface {
+		AuditReceiptListSummary() *models.OperatorAuditReceiptListResult
+	})
+	if !ok {
+		return ""
+	}
+	result := provider.AuditReceiptListSummary()
+	if result == nil || result.OperatorID != vt.Envelope.GetOperatorId() || result.Authority != "operator_local_ledger" ||
+		result.InvestigationID == "" || result.InvestigationID != vt.Envelope.GetInvestigationId() ||
+		result.Count != len(result.Receipts) {
+		return ""
+	}
+	seen := make(map[string]struct{}, len(result.Receipts))
+	for _, receipt := range result.Receipts {
+		if receipt == nil || receipt.GetTransactionId() == "" || receipt.GetTransactionHash() == "" || receipt.GetSignature() == "" {
+			return ""
+		}
+		if _, exists := seen[receipt.GetTransactionId()]; exists {
+			return ""
+		}
+		seen[receipt.GetTransactionId()] = struct{}{}
+	}
+	wire, err := json.Marshal(result)
+	if err != nil || string(wire) != summary {
+		return ""
+	}
+	return summary
 }
 
 // failedReceiptSummary returns the signed ResultSummary of a failed execution or a rejection. The

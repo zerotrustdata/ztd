@@ -70,7 +70,7 @@ func TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
 
 // TestListActionReceipts_FiltersBySessionAndActingApp verifies the session, acting-app, combined,
 // and unfiltered scopes of ListActionReceipts.
-func TestListActionReceipts_FiltersBySessionAndActingApp(t *testing.T) {
+func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("scope-a", constants.SessionTypeOperator, "A", "user-a"))
 	require.NoError(t, ass.CreateSession("scope-b", constants.SessionTypeOperator, "B", "user-b"))
@@ -81,6 +81,10 @@ func TestListActionReceipts_FiltersBySessionAndActingApp(t *testing.T) {
 		receiptFor(t, "tx-scope-2", "scope-a", "app-y", now.Add(-2*time.Minute)),
 		receiptFor(t, "tx-scope-3", "scope-b", "app-y", now.Add(-1*time.Minute)),
 	}
+	fixtures[0].InvestigationID = "investigation-shared"
+	fixtures[1].InvestigationID = "investigation-other"
+	fixtures[2].InvestigationID = "investigation-shared"
+	fixtures[2].OperatorID = "other-operator"
 	for _, record := range fixtures {
 		require.NoError(t, ass.RecordActionReceipt(record))
 	}
@@ -104,6 +108,19 @@ func TestListActionReceipts_FiltersBySessionAndActingApp(t *testing.T) {
 	combined, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "scope-a", ActingAppID: "app-y"}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"tx-scope-2": true}, ids(combined))
+
+	byInvestigation, err := ass.ListActionReceipts(models.AuditScope{InvestigationID: "investigation-shared"}, 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"tx-scope-1": true, "tx-scope-3": true}, ids(byInvestigation))
+
+	byOperator, err := ass.ListActionReceipts(models.AuditScope{OperatorID: fixtures[0].OperatorID, InvestigationID: "investigation-shared"}, 1, 0)
+	require.NoError(t, err)
+	require.Len(t, byOperator, 1, "operator filtering must precede pagination")
+	assert.Equal(t, "tx-scope-1", byOperator[0].TransactionID)
+
+	intersection, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "scope-a", InvestigationID: "investigation-shared"}, 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"tx-scope-1": true}, ids(intersection))
 
 	unfiltered, err := ass.ListActionReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)

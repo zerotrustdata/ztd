@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -21,11 +22,13 @@ import (
 )
 
 type stubCampaignExecutor struct {
-	calls int
+	calls         int
+	investigation *evalv1.EvaluationInvestigation
 }
 
 func (s *stubCampaignExecutor) ExecuteAssignment(_ context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
 	s.calls++
+	s.investigation = req.Investigation
 	result := &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   CampaignSchemaVersion,
 		AssignmentId:    req.Assignment.GetAssignmentId(),
@@ -69,6 +72,11 @@ func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
 	executor := &stubCampaignExecutor{}
 	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)
+	req.Investigation = &evalv1.EvaluationInvestigation{
+		Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+		InvestigationId: "checkout-incident",
+		DataOperatorId:  "operator-primary",
+	}
 	catalog := req.Catalog
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
@@ -102,6 +110,8 @@ func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
 	require.True(t, executed)
 	require.NotNil(t, result)
 	assert.Equal(t, 1, executor.calls)
+	require.NotNil(t, executor.investigation)
+	assert.True(t, proto.Equal(req.Investigation, executor.investigation))
 
 	exists, err := store.AssignmentResultExists(context.Background(), req.RunID, first.GetAssignmentId())
 	require.NoError(t, err)

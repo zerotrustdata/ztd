@@ -437,18 +437,23 @@ type agentCommandConstraintsResult struct {
 }
 
 type agentInvestigationEvent struct {
-	EventType string `json:"event_type"`
-	Actor     string `json:"actor"`
-	Summary   string `json:"summary"`
-	ToolName  string `json:"tool_name,omitempty"`
-	Command   string `json:"command,omitempty"`
-	ErrorType string `json:"error_type,omitempty"`
-	Error     string `json:"error,omitempty"`
+	ReceiptID     string `json:"receipt_id,omitempty"`
+	ReceiptDigest string `json:"receipt_digest,omitempty"`
+	EventType     string `json:"event_type"`
+	Actor         string `json:"actor"`
+	Summary       string `json:"summary"`
+	ToolName      string `json:"tool_name,omitempty"`
+	Command       string `json:"command,omitempty"`
+	ErrorType     string `json:"error_type,omitempty"`
+	Error         string `json:"error,omitempty"`
 }
 
 type agentInvestigationContextResult struct {
 	Success         bool                      `json:"success"`
 	DataType        string                    `json:"data_type"`
+	InvestigationID string                    `json:"investigation_id,omitempty"`
+	OperatorID      string                    `json:"operator_id,omitempty"`
+	Authority       string                    `json:"authority,omitempty"`
 	CaseTitle       string                    `json:"case_title,omitempty"`
 	CaseDescription string                    `json:"case_description,omitempty"`
 	Summary         string                    `json:"summary,omitempty"`
@@ -550,41 +555,4 @@ func commandConstraints(operatorID, workingDirectory string) agentCommandConstra
 		}
 	}
 	return result
-}
-
-// investigationContext answers query_investigation_context from the frozen
-// investigation seed the scored turn runs in.
-func investigationContext(seed InvestigationSeed, args agentToolArguments) (agentInvestigationContextResult, *agentToolFailure) {
-	dataType := args.String("data_type")
-	limit := args.Int("limit", agentToolDefaultHistoryLimit)
-	if limit < 1 {
-		limit = agentToolDefaultHistoryLimit
-	}
-	result := agentInvestigationContextResult{Success: true, DataType: dataType}
-	switch dataType {
-	case investigationDataStatus:
-		result.CaseTitle = seed.CaseTitle
-		result.CaseDescription = seed.CaseDescription
-		if seed.CaseMemory != nil {
-			result.Summary = seed.CaseMemory.InvestigationSummary
-		}
-	case investigationDataHistoryTrail, investigationDataOperatorActions:
-		for _, event := range seed.HistoryEvents {
-			if dataType == investigationDataOperatorActions && event.Actor != investigationOperatorActor {
-				continue
-			}
-			result.Events = append(result.Events, agentInvestigationEvent{
-				EventType: event.EventType, Actor: event.Actor, Summary: event.Summary, ToolName: event.ToolName,
-				Command: event.Command, ErrorType: event.ErrorType, Error: event.Error,
-			})
-		}
-		if len(result.Events) > limit {
-			result.Events = result.Events[len(result.Events)-limit:]
-		}
-	default:
-		return agentInvestigationContextResult{}, agentToolValidationFailure(agentToolInvestigationCtx, []string{
-			fmt.Sprintf("data_type\n  Input should be '%s', '%s' or '%s'", investigationDataHistoryTrail, investigationDataStatus, investigationDataOperatorActions),
-		})
-	}
-	return result, nil
 }

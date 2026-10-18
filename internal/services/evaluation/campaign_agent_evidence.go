@@ -63,6 +63,9 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		}
 	}
 	for _, call := range trace.ToolCalls {
+		if err := verifyContextRetrieval(trace, call); err != nil {
+			return agentEvidenceError("context retrieval "+call.CallID, err)
+		}
 		outcome, err := verifyToolCallEvidence(anchors, trace.Data.OperatorID, call)
 		if err != nil {
 			return agentEvidenceError("tool call "+call.CallID, err)

@@ -57,7 +57,9 @@ type CampaignChatGradingContext struct {
 
 // AssignmentExecutionRequest carries one resumable controller execution attempt.
 type AssignmentExecutionRequest struct {
-	Assignment       *evalv1.EvaluationAssignment
+	Assignment *evalv1.EvaluationAssignment
+	// Investigation is the digest-bound campaign policy for scored history.
+	Investigation    *evalv1.EvaluationInvestigation
 	AttemptID        string
 	ScenarioInput    ScenarioInputFixture
 	ScenarioGold     ScenarioGoldCriteria

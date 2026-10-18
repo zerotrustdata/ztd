@@ -139,7 +139,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	}
 	var topology evaluation.CampaignOperatorTopology
 	if !opts.DryRun {
-		topology, err = resolveOperatorTopology(cmd, deps)
+		investigation := spec.GetInvestigation()
+		if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: campaign investigation: %w", err)
+		}
+		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
@@ -257,8 +261,9 @@ persists its full assignment matrix, and then executes it. Progress is
 resumable (ztd eval runs resume) and cancellable (ztd eval runs cancel).
 
 Operator sessions are resolved from the active Inference Operator and the
-data-operator. The data-operator is bound to the CLI session unless --no-auto-bind
-is set.
+campaign's Data Operator. A persistent campaign resolves its frozen Data
+Operator ID to the current active session on every run. The selected Data
+Operator session is bound to the CLI session unless --no-auto-bind is set.
 
 Examples:
   ztd eval runs start eval-qwen

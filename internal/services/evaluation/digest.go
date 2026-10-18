@@ -41,6 +41,11 @@ func ValidateCampaignSpecDigest(spec *evalv1.EvaluationCampaignSpec) error {
 	if spec == nil {
 		return fmt.Errorf("evaluation: validate campaign spec digest: %w", constants.ErrMissingRequiredField)
 	}
+	if spec.GetInvestigation() != nil {
+		if err := ValidateCampaignInvestigation(spec.GetInvestigation()); err != nil {
+			return fmt.Errorf("evaluation: validate campaign spec digest: %w", err)
+		}
+	}
 	expected, err := ComputeCampaignSpecDigest(spec)
 	if err != nil {
 		return err

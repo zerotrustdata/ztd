@@ -29,6 +29,14 @@ enum ModelCampaignRole {
   MODEL_CAMPAIGN_ROLE_LITE = 3;
 }
 
+enum EvaluationInvestigationMode {
+  EVALUATION_INVESTIGATION_MODE_UNSPECIFIED = 0;
+  // Each assignment starts with an independent investigation identity.
+  EVALUATION_INVESTIGATION_MODE_FRESH = 1;
+  // Assignments in the campaign reuse the declared investigation identity.
+  EVALUATION_INVESTIGATION_MODE_PERSISTENT = 2;
+}
+
 enum EvaluationScenarioCategory {
   EVALUATION_SCENARIO_CATEGORY_UNSPECIFIED = 0;
   EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE = 1;
@@ -484,6 +492,18 @@ message EvaluationCampaignSpec {
   // conversation and works in the same workspace. Only set when
   // repetition_count > 1; false on campaigns frozen before it existed.
   bool hold_context = 13;
+  // Investigation identity and its authoritative Data Operator are frozen
+  // into campaign_digest. Absent only on legacy specs frozen before this field.
+  EvaluationInvestigation investigation = 14;
+}
+
+// EvaluationInvestigation declares the campaign's scored investigation scope.
+// Persistent investigations require both a stable investigation_id and the
+// stable identity (not session ID) of the Data Operator that owns its ledger.
+message EvaluationInvestigation {
+  EvaluationInvestigationMode mode = 1;
+  string investigation_id = 2;
+  string data_operator_id = 3;
 }
 
 // EvaluationScenarioCatalog is the immutable 25-scenario private catalog.

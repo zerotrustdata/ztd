@@ -232,6 +232,8 @@ Every admitted tool execution produces a signed `ActionReceipt` containing:
 
 Receipts are persisted authoritatively in the executing Operator's local SQLite database. Mirrored receipts at the Gateway provide query access via `ztd audit receipts --app <spiffe-id>`.
 
+The governed native `audit_receipt_list` tool also reads the Gateway's local audit store. Its optional `investigation_id` filter intersects the required `operator_session_id` scope. This query does not contact an outbound Operator or replace its authoritative ledger; cross-session investigation retrieval from a bound Data Operator still requires a governed routing capability. See the [MCP audit query contract](../../protocol/docs/mcp.md#46-audit--forensics-tools).
+
 MCP `tools/call` and A2A `a2a/call` return that signed `ActionReceipt` as canonical protojson, not as a reference. The execution and investigation IDs are inside the receipt's envelope and payload. A suspended call returns one `GovernedSuspension` (`id`, `status`, `tx_hash`, `approval_url`, `message`) on both ingresses. Only a missing L3 proof suspends. An invalid L3 proof returns a signed `L3_PROOF_INVALID` rejection (`INV-GOV-ACT-13`).
 
 Every JSON-RPC error from `POST /mcp` and `POST /api/v1/a2a/call` carries a typed `error.data`: exactly one of `GovernanceRejection` (a signed L4 rejection) or `IngressRefusal{code, error}` (every other refusal, `INV-GOV-ACT-11`). The JSON-RPC `error.message` is the sentinel text only, never a wrapped error chain, path, or `err.Error()`. The JSON-RPC `error.code` values are unchanged.

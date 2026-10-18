@@ -67,6 +67,9 @@ func validateScenarioContract(blueprint ScenarioBlueprint, registry *AgentToolRe
 	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) {
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
+	if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
+		return err
+	}
 	if err := validateArgumentValidators(blueprint, registry); err != nil {
 		return err
 	}
@@ -114,6 +117,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Command != nil && !contentCheckHasConstraint(players.Command) {
 		return scenarioContractError(blueprint, "command expectation has no constraint")
 	}
+	if players.Command != nil && players.Command.DiagnosisRubric != "" {
+		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
+	}
 	if marshal := players.Marshal; marshal != nil {
 		if len(marshal.Risk) == 0 {
 			return scenarioContractError(blueprint, "marshal expectation accepts no risk level")
@@ -126,6 +132,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	}
 	if players.Codex != nil && !contentCheckHasConstraint(players.Codex) {
 		return scenarioContractError(blueprint, "codex expectation has no constraint")
+	}
+	if players.Codex != nil && players.Codex.DiagnosisRubric != "" {
+		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
 	return nil
 }
@@ -212,7 +221,14 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 	}
 	return check.ExactToken != "" || len(check.ExactLabels) > 0 || check.LeadingLabel != "" || check.WordCount > 0 ||
 		check.MaxSentences > 0 || len(check.RequiredTerms) > 0 || len(check.ForbiddenTerms) > 0 ||
-		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation
+		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != ""
+}
+
+func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
+	if check == nil || check.DiagnosisRubric == "" || check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV1 {
+		return nil
+	}
+	return scenarioContractError(blueprint, "unknown diagnosis rubric %q", check.DiagnosisRubric)
 }
 
 func validateArgumentValidators(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {

@@ -23,6 +23,11 @@ export type ScenarioTrajectoryPolicy = 'answer' | 'first_choice' | 'guided' | 'g
 /** Where a required tool argument can be derived from. The value is private. */
 export type ScenarioHintSource = 'prompt' | 'seed' | 'workspace' | 'operator_context' | 'model_authored';
 
+/** True when a scenario's expected behavior is direct command execution. */
+export function isCapabilityQualificationScenario(expectedTools: readonly string[] | undefined): boolean {
+  return expectedTools?.includes('run_commands_with_operator') ?? false;
+}
+
 export type ScenarioInlineContent = {
   kind: string;
   label: string;

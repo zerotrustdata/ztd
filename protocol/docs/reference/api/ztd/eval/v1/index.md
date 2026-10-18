@@ -32,6 +32,7 @@
     - [EvaluationAttempt](#ztd-eval-v1-EvaluationAttempt)
     - [EvaluationCampaignSpec](#ztd-eval-v1-EvaluationCampaignSpec)
     - [EvaluationDeploymentIdentity](#ztd-eval-v1-EvaluationDeploymentIdentity)
+    - [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation)
     - [EvaluationMetric](#ztd-eval-v1-EvaluationMetric)
     - [EvaluationObservation](#ztd-eval-v1-EvaluationObservation)
     - [EvaluationReport](#ztd-eval-v1-EvaluationReport)
@@ -126,6 +127,7 @@
     - [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture)
     - [EvaluationGradingMethod](#ztd-eval-v1-EvaluationGradingMethod)
     - [EvaluationHintArgumentSource](#ztd-eval-v1-EvaluationHintArgumentSource)
+    - [EvaluationInvestigationMode](#ztd-eval-v1-EvaluationInvestigationMode)
     - [EvaluationLane](#ztd-eval-v1-EvaluationLane)
     - [EvaluationLoadState](#ztd-eval-v1-EvaluationLoadState)
     - [EvaluationMetricDirection](#ztd-eval-v1-EvaluationMetricDirection)
@@ -743,6 +745,7 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | platform_release | [string](#string) |  | platform_release is the ztd build version that froze the campaign. It is part of campaign_digest, so a campaign cannot be re-labeled. Empty only on campaigns frozen before v2.3.0; their release is an operator-asserted tag held outside the digest. |
 | source_revision | [string](#string) |  | source_revision is the source commit of the build that froze the campaign. |
 | hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
+| investigation | [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation) |  | Investigation identity and its authoritative Data Operator are frozen into campaign_digest. Absent only on legacy specs frozen before this field. |
 
 
 
@@ -762,6 +765,25 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | runtime_boundaries | [EvaluationRuntimeBoundary](#ztd-eval-v1-EvaluationRuntimeBoundary) | repeated |  |
 | controlled_target | [string](#string) |  |  |
 | independent_observer | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-EvaluationInvestigation"></a>
+
+### EvaluationInvestigation
+EvaluationInvestigation declares the campaign&#39;s scored investigation scope.
+Persistent investigations require both a stable investigation_id and the
+stable identity (not session ID) of the Data Operator that owns its ledger.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| mode | [EvaluationInvestigationMode](#ztd-eval-v1-EvaluationInvestigationMode) |  |  |
+| investigation_id | [string](#string) |  |  |
+| data_operator_id | [string](#string) |  |  |
 
 
 
@@ -2684,6 +2706,19 @@ derivable from, so catalog lint can prove a prompt is answerable.
 | EVALUATION_HINT_ARGUMENT_SOURCE_WORKSPACE | 3 | The value is the attempt-scoped fixture workspace named in the prompt. |
 | EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT | 4 | The value comes from the bound-operator context supplied by the external client. |
 | EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED | 5 | Free-text rationale the model authors (for example a justification). |
+
+
+
+<a name="ztd-eval-v1-EvaluationInvestigationMode"></a>
+
+### EvaluationInvestigationMode
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| EVALUATION_INVESTIGATION_MODE_UNSPECIFIED | 0 |  |
+| EVALUATION_INVESTIGATION_MODE_FRESH | 1 | Each assignment starts with an independent investigation identity. |
+| EVALUATION_INVESTIGATION_MODE_PERSISTENT | 2 | Assignments in the campaign reuse the declared investigation identity. |
 
 
 

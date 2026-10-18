@@ -9,10 +9,13 @@ package models
 
 import "encoding/json"
 
-// AuditScope selects evidence by ingress identity. Empty fields leave that
-// dimension unrestricted; app records need not have an Operator session.
+// AuditScope selects evidence by ingress identity and investigation. Empty
+// fields leave that dimension unrestricted; app records need not have an
+// Operator session.
 type AuditScope struct {
+	OperatorID        string
 	OperatorSessionID string
+	InvestigationID   string
 	ActingAppID       string
 }
 

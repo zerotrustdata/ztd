@@ -1,6 +1,6 @@
 # Model Context Protocol (MCP) Integration
 
-Last Updated: 2026-10-12
+Last Updated: 2026-10-18
 Version: v1.1.3
 
 The ztd Gateway implements native support for the **Model Context Protocol (MCP)**. Autonomous AI agents and coding assistants connect to the Gateway via standardized JSON-RPC 2.0 interfaces. The Gateway acts as a Policy Decision Point (PDP), intercepting every tool invocation, encapsulating it into a strongly typed `GovernanceEnvelope`, subjecting it to the 5-layer governance sequence (L1–L5), and executing it either via host-native tools or by proxying to an authorized downstream MCP server.
@@ -224,7 +224,7 @@ The Operator ships with **32 native tools** registered explicitly in `RegisterNa
 30. **`operator_deploy`**: Deploys the ztd operator binary to remote hosts over SSH using verified deploy scripts.
 
 ### 4.6 Audit & Forensics Tools
-31. **`audit_receipt_list`**: Lists signed `ActionReceipt` records from the audit vault, scoped to the caller's session, with pagination and action type filters.
+31. **`audit_receipt_list`**: Lists signed `ActionReceipt` records from the Gateway's local audit store. `operator_session_id` is required; optional `investigation_id` further narrows that session's receipts. When both filters are supplied they intersect. The read-only query also supports pagination, action type, and execution-time filters, and runs as a governed `MCP_CALL`. Remote Operator receipts in the Gateway store are best-effort projections and do not replace the executing Operator's authoritative local ledger.
 32. **`audit_receipt_get`**: Retrieves a single, complete signed `ActionReceipt` by its `transaction_id`.
 
 ---

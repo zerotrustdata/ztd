@@ -8,8 +8,56 @@
 package eval
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+func TestParseCampaignInvestigation(t *testing.T) {
+	tests := []struct {
+		name           string
+		mode           string
+		dataOperatorID string
+		want           *evalv1.EvaluationInvestigation
+		wantErr        error
+	}{
+		{
+			name: "fresh default",
+			mode: "fresh",
+			want: &evalv1.EvaluationInvestigation{Mode: evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH},
+		},
+		{
+			name:           "persistent identity",
+			mode:           "persistent:checkout-incident",
+			dataOperatorID: "operator-stable",
+			want: &evalv1.EvaluationInvestigation{
+				Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+				InvestigationId: "checkout-incident",
+				DataOperatorId:  "operator-stable",
+			},
+		},
+		{name: "persistent ID is required", mode: "persistent:", dataOperatorID: "operator-stable", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "persistent Data Operator is required", mode: "persistent:checkout-incident", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "Data Operator is invalid for fresh mode", mode: "fresh", dataOperatorID: "operator-stable", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "unknown mode is rejected", mode: "hold-context", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "reserved harness ID is rejected", mode: "persistent:eval-harness:case", dataOperatorID: "operator-stable", wantErr: constants.ErrEvaluationInvestigationInvalid},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseCampaignInvestigation(test.mode, test.dataOperatorID)
+			if test.wantErr != nil {
+				require.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.want, got)
+		})
+	}
+}
 
 func threeModelRegistry() []*evalv1.ModelVariant {
 	return []*evalv1.ModelVariant{

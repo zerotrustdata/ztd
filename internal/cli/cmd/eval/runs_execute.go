@@ -158,11 +158,19 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if binding == nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign binding: %w", constants.ErrMissingRequiredField)
 	}
+	spec, err := store.LoadCampaignSpec(cmd.Context(), binding.GetCampaignId())
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	investigation := spec.GetInvestigation()
+	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: campaign investigation: %w", err)
+	}
 	operators, err := evalListOperators(cmd, gatewayDeps, cfg, authContext)
 	if err != nil {
 		return 0, err
 	}
-	topology, err := evaluation.ResolveCampaignOperatorTopology(operators, "")
+	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", investigation.GetDataOperatorId())
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
@@ -180,10 +188,6 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		}
 	}
 	authContext, err = evalBindDataOperator(cmd, gatewayDeps, cfg, fileSvc, authContext, operators, topology.Data.OperatorSessionID, !opts.NoAutoBind)
-	if err != nil {
-		return 0, fmt.Errorf("evaluation: run execute: %w", err)
-	}
-	spec, err := store.LoadCampaignSpec(cmd.Context(), binding.GetCampaignId())
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}

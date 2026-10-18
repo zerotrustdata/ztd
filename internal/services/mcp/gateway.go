@@ -177,7 +177,7 @@ type Dependencies struct {
 	// when nil — a missing audit store is a wiring bug, not a no-op condition.
 	AuditStore AuditEventRecorder
 
-	// AuditReceiptQuery provides read access to the operator audit vault for
+	// AuditReceiptQuery provides read access to the Gateway's local audit store for
 	// the governed audit_receipt_list and audit_receipt_get native tools.
 	// Optional: when nil, those tools fail closed with
 	// constants.ErrMCPAuditReceiptQueryNotConfigured. Production wires

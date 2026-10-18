@@ -44,17 +44,24 @@ import (
 )
 
 func setupRunEnv(t *testing.T) *runEnv {
+	return setupRunEnvWithOperatorSource(t, testRunOperators)
+}
+
+func setupRunEnvWithOperatorSource(t *testing.T, operatorSource func() []*operatorv1.OperatorDocument) *runEnv {
 	t.Helper()
 	root := testutil.TempDir(t)
 	writeTestFrozenInventory(t, root, testQwenVariant())
 
-	body, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: testRunOperators()})
-	require.NoError(t, err)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if writeWitnessPreflightResponse(w, r) {
 			return
 		}
 		if r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.Operators {
+			body, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: operatorSource()})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(body)
 			return

@@ -55,6 +55,10 @@ type PubSubCommandMessage struct {
 	// handleInferenceRequestSync so the post-actuation completion
 	// publication can bind it to the final signed receipt.
 	InferenceResult *operatorv1.InferenceResult `json:"-"`
+
+	// auditReceiptListSummary carries only the local route's typed allowlisted
+	// receipt result to L5 for its verified MCP_CALL summary path.
+	auditReceiptListSummary *models.OperatorAuditReceiptListResult
 }
 
 // verifiedActionHandler executes a governed action class after L4 verification.
@@ -114,8 +118,9 @@ type OperatorPubSubService struct {
 	governedDocStore governance.GovernedDocumentStore
 
 	// MCP gateway for protocol translation egress
-	mcpGateway   *mcp.GatewayService
-	mcpGatewayMu sync.RWMutex
+	mcpGateway         *mcp.GatewayService
+	mcpGatewayMu       sync.RWMutex
+	localAuditReceipts *mcp.OperatorAuditReceiptHandler
 
 	// platformEnrollment dispatches the five platform enrollment
 	// governance actions. Nil in outbound (operator) mode; the handlers
@@ -232,6 +237,13 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	rs.ollama = ollama
 
 	rs.audit = NewAuditService(c.Config, c.Logger, c.AuditStore)
+	if c.Config != nil && c.Config.OperatorID != "" && c.AuditStore != nil {
+		rs.localAuditReceipts, err = mcp.NewOperatorAuditReceiptHandler(c.Config.OperatorID, c.AuditStore)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("pubsub: local audit receipt handler: %w", err)
+		}
+	}
 
 	history, err := NewHistoryService(c.Config, c.Logger, client, c.HistoryHandler, c.Scrubbing, c.AuditStore)
 	if err != nil {
@@ -425,6 +437,7 @@ func (rs *OperatorPubSubService) buildHandlers() {
 		constants.ActionTypeInference:                   rs.handleInferenceRequestSync,
 		constants.ActionTypeProviderBoundaryObservation: rs.handleProviderBoundaryObservationSync,
 		constants.ActionTypeModelProvenanceObservation:  rs.handleModelProvenanceObservationSync,
+		constants.ActionTypeMcpCall:                     rs.handleMcpCallRequestSync,
 		constants.ActionTypeShutdown: func(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 			return rs.handleShutdownRequest(msg)
 		},
@@ -445,7 +458,6 @@ func (rs *OperatorPubSubService) registerPlatformEnrollmentHandlers() {
 }
 
 func (rs *OperatorPubSubService) buildGatewayHandlers() {
-	rs.actionHandlers[constants.ActionTypeMcpCall] = rs.handleMcpCallRequestSync
 	rs.actionHandlers[constants.ActionTypeA2aCall] = rs.handleA2aCallRequestSync
 	rs.actionHandlers[constants.ActionTypeMcpResourceRead] = rs.handleMcpResourceReadSync
 	rs.actionHandlers[constants.ActionTypeMcpPromptGet] = rs.handleMcpPromptGetSync
@@ -964,11 +976,6 @@ func (rs *OperatorPubSubService) ExecuteVerifiedTransaction(ctx context.Context,
 // server via the gateway, and returns the textual result so the Actuator can
 // stamp it into the signed ActionReceipt.
 func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
-	gw := rs.GetMCPGateway()
-	if gw == nil {
-		return "", constants.ErrPubSubMCPGateway
-	}
-
 	req, err := unmarshalPayload(msg.EventType, msg.Payload)
 	if err != nil {
 		rs.logger.Error("Failed to unmarshal MCP call payload", string(constants.ConnectionStateError), err)
@@ -985,6 +992,38 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 	args := json.RawMessage(mcpReq.ArgumentsJson)
 	if len(args) == 0 {
 		args = json.RawMessage("{}")
+	}
+	if mcpReq.ToolName == "audit_receipt_list" {
+		if rs.localAuditReceipts == nil {
+			return "", constants.ErrMCPAuditReceiptQueryNotConfigured
+		}
+		result, err := rs.localAuditReceipts.Handle(ctx, mcp.CallToolRequest{
+			Name:      mcpReq.ToolName,
+			Arguments: args,
+		})
+		if err != nil {
+			return "", err
+		}
+		var summary string
+		for _, content := range result.Content {
+			if content.Type == "text" {
+				summary += content.Text
+			}
+		}
+		var typedResult mcp.OperatorAuditReceiptListResult
+		if err := json.Unmarshal([]byte(summary), &typedResult); err != nil {
+			return "", fmt.Errorf("operator audit receipt result: %w: %w", constants.ErrMCPUnmarshalArguments, err)
+		}
+		msg.auditReceiptListSummary = &typedResult
+		if rs.scrubbing == nil || !rs.scrubbing.IsEnabled() {
+			return "", constants.ErrEgressScrubberUnavailable
+		}
+		return summary, nil
+	}
+
+	gw := rs.GetMCPGateway()
+	if gw == nil {
+		return "", constants.ErrPubSubMCPGateway
 	}
 
 	rs.logger.Info("Dispatching verified MCP call to downstream",
@@ -1495,6 +1534,15 @@ func (m *PubSubCommandMessage) InferenceResultDigest() string {
 		return ""
 	}
 	return m.InferenceResult.GetResultDigest()
+}
+
+// AuditReceiptListSummary returns the local tool's typed, allowlisted result.
+// L5 checks the verified MCP request and serialized output before preserving it.
+func (m *PubSubCommandMessage) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+	if m == nil {
+		return nil
+	}
+	return m.auditReceiptListSummary
 }
 
 // ResultOrigin preserves request identity when a witness completion is published.

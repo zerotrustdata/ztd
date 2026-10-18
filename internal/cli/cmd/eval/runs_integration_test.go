@@ -282,6 +282,60 @@ func TestRunsStart_PrepareOnlyBindsTheOperatorSessions(t *testing.T) {
 	assert.Equal(t, testDataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
 }
 
+func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
+	env := setupRunEnv(t)
+	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
+		Platform:    testPlatform,
+		CampaignID:  "eval-persistent",
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: 1,
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "checkout-incident",
+			DataOperatorId:  "data-op",
+		},
+	})
+	require.NoError(t, err)
+
+	result, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+		CampaignID:  "eval-persistent",
+		RunID:       "run-persistent",
+		PrepareOnly: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "data-op", result.Topology.Data.OperatorID)
+	assert.Equal(t, testDataSession, result.Topology.Data.OperatorSessionID)
+
+	run, err := env.store(t).LoadRun(context.Background(), "run-persistent")
+	require.NoError(t, err)
+	assert.Equal(t, testDataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+}
+
+func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t *testing.T) {
+	env := setupRunEnv(t)
+	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
+		Platform:    testPlatform,
+		CampaignID:  "eval-missing-operator",
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: 1,
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "checkout-incident",
+			DataOperatorId:  "operator-offline",
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+		CampaignID: "eval-missing-operator",
+		RunID:      "run-missing-operator",
+	})
+	require.ErrorIs(t, err, constants.ErrDataOperatorNotFound)
+	runIDs, err := env.store(t).ListRunIDs(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, runIDs, "preflight must fail before a run is persisted")
+}
+
 func TestRunsStart_RejectsUnknownCampaign(t *testing.T) {
 	env := setupRunEnv(t)
 

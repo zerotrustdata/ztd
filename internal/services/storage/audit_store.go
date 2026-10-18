@@ -1102,9 +1102,17 @@ func (ass *SQLAuditStore) ListActionReceipts(scope models.AuditScope, limit, off
 
 	args := []interface{}{}
 	predicates := []string{}
+	if scope.OperatorID != "" {
+		predicates = append(predicates, "operator_id = ?")
+		args = append(args, scope.OperatorID)
+	}
 	if scope.OperatorSessionID != "" {
 		predicates = append(predicates, "operator_session_id = ?")
 		args = append(args, scope.OperatorSessionID)
+	}
+	if scope.InvestigationID != "" {
+		predicates = append(predicates, "investigation_id = ?")
+		args = append(args, scope.InvestigationID)
 	}
 
 	if scope.ActingAppID != "" {

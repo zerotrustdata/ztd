@@ -10,6 +10,7 @@ package evaluation
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
@@ -89,6 +90,15 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	if g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge() {
 		if g.req.ScenarioGold.ContentCheck != nil {
 			contentPassed, contentDetail = evaluateContentCheck(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws)
+			if contentPassed {
+				switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
+				case "":
+				case ScenarioDiagnosisRubricCheckoutTimeoutV1:
+					contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput)
+				default:
+					contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
+				}
+			}
 		} else {
 			contentPassed, contentDetail = false, "scenario content check is missing"
 		}
@@ -289,6 +299,213 @@ func evidenceVerdict(passed bool, passDetail, failDetail string) (evalv1.Evaluat
 	return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, failDetail, 0
 }
 
+// evaluateFinalResponseDiagnosis checks the one catalog scenario whose grade
+// makes an evidence-backed diagnosis claim. Its evidence must exist in the
+// frozen inline fixture, and the response must populate each requested part.
+func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture) (bool, string) {
+	var evidence strings.Builder
+	for _, item := range input.InlineContext {
+		evidence.WriteString(strings.ToLower(item.Content))
+		evidence.WriteByte(' ')
+	}
+	source := evidence.String()
+	for _, fact := range []string{
+		"checkout-api timeout rate 18 percent",
+		"upstream_host=payments.internal.example",
+		"customer checkout failures confirmed",
+	} {
+		if !strings.Contains(source, fact) {
+			return false, "frozen scenario evidence is missing " + fact
+		}
+	}
+
+	sections := parseFinalDiagnosisSections(output)
+	for _, section := range []string{"diagnosis", "confidence", "action", "summary"} {
+		if strings.TrimSpace(sections[section]) == "" {
+			return false, "final response is missing a populated " + section + " section"
+		}
+	}
+
+	diagnosis := strings.ToLower(sections["diagnosis"])
+	responseSections := strings.Join([]string{
+		diagnosis,
+		strings.ToLower(sections["confidence"]),
+		strings.ToLower(sections["action"]),
+		strings.ToLower(sections["summary"]),
+	}, "\n")
+	for _, unsupportedCause := range []string{
+		"database corruption", "corrupted database", "database failure",
+		"disk full", "disk failure", "disk space exhaustion",
+		"dns failure", "dns outage",
+	} {
+		if assertsUnsupportedCause(responseSections, unsupportedCause) {
+			return false, "final response asserts an unobserved cause: " + unsupportedCause
+		}
+	}
+	if !strings.Contains(diagnosis, "checkout-api") || !containsAny(diagnosis, "timeout", "timed out", "timing out", "deadline", "latency") ||
+		!containsAny(diagnosis, "payments.internal.example", "payments service", "payment service", "upstream payments") ||
+		!containsAny(diagnosis, "configured upstream", "upstream host", "upstream is") {
+		return false, "diagnosis does not identify the checkout-api timeout and describe payments as a configured upstream"
+	}
+	if assertsDefinitiveRootCause(responseSections) {
+		return false, "the frozen evidence does not establish a definitive root cause"
+	}
+	confidence := strings.ToLower(sections["confidence"])
+	if !containsAny(confidence, "moderate", "low", "uncertain", "uncertainty", "not conclusive", "cannot confirm", "cannot establish", "limited evidence", "incomplete evidence") {
+		return false, "confidence does not reflect the limits of the available evidence"
+	}
+
+	customerSummary := strings.ToLower(sections["summary"])
+	if !containsAny(customerSummary, "customer", "customers") || !containsAny(customerSummary, "checkout", "payment") || !containsAny(customerSummary, "fail", "unable", "cannot", "trouble", "issue", "impact") {
+		return false, "customer-safe summary does not describe the observed customer checkout impact"
+	}
+	return true, "final response contains a populated diagnosis supported by the frozen timeout and customer-impact evidence"
+}
+
+func assertsUnsupportedCause(response, cause string) bool {
+	for _, clause := range splitDiagnosisClauses(response) {
+		index := strings.Index(clause, cause)
+		if index < 0 {
+			continue
+		}
+		prefix := clause[:index]
+		if !containsAny(prefix,
+			"no evidence of", "no indication of", "not supported by",
+			"not shown in", "not established by", "cannot confirm",
+			"cannot be confirmed", "cannot establish", "not evidenced by",
+		) {
+			return true
+		}
+	}
+	return false
+}
+
+func assertsDefinitiveRootCause(response string) bool {
+	causal := []string{
+		"root cause is", "root cause was", "cause is", "cause was",
+		"caused by", "causes the", "caused the", "is due to", "was due to",
+		"is responsible for", "are responsible for", "resulted in", "led to",
+	}
+	qualified := []string{
+		"may be", "might be", "could be", "possibly", "potentially",
+		"not proven", "not established", "cannot confirm", "cannot establish",
+		"does not prove", "does not establish", "does not show", "does not demonstrate",
+		"no evidence", "not supported", "not enough evidence",
+		"not due to", "uncertain", "unclear", "unknown", "unconfirmed", "unproven",
+		"cannot conclude", "cannot determine",
+	}
+	for _, clause := range splitDiagnosisClauses(response) {
+		if containsAny(clause, causal...) && !containsAny(clause, qualified...) {
+			return true
+		}
+	}
+	return false
+}
+
+// splitDiagnosisClauses keeps negation and uncertainty local to one claim, so
+// a qualifier about a different cause or sentence cannot shield an assertion.
+func splitDiagnosisClauses(text string) []string {
+	var clauses []string
+	var sentence strings.Builder
+	runes := []rune(strings.ToLower(text))
+	for i, r := range runes {
+		boundary := strings.ContainsRune(";!?\n\r,", r)
+		if r == '.' && (i+1 == len(runes) || unicode.IsSpace(runes[i+1])) {
+			boundary = true
+		}
+		if boundary {
+			clauses = appendDiagnosisWords(clauses, sentence.String())
+			sentence.Reset()
+			continue
+		}
+		sentence.WriteRune(r)
+	}
+	clauses = appendDiagnosisWords(clauses, sentence.String())
+	return clauses
+}
+
+func appendDiagnosisWords(clauses []string, sentence string) []string {
+	var clause strings.Builder
+	for _, word := range strings.Fields(sentence) {
+		switch word {
+		case "and", "but", "however", "yet", "although", "though", "while", "whereas":
+			if clause.Len() > 0 {
+				clauses = append(clauses, clause.String())
+				clause.Reset()
+			}
+		default:
+			if clause.Len() > 0 {
+				clause.WriteByte(' ')
+			}
+			clause.WriteString(word)
+		}
+	}
+	if clause.Len() > 0 {
+		clauses = append(clauses, clause.String())
+	}
+	return clauses
+}
+
+// parseFinalDiagnosisSections accepts the response labels named in the
+// scenario contract and common alternatives while retaining continuation
+// lines as part of the current section.
+func parseFinalDiagnosisSections(output string) map[string]string {
+	sections := map[string]string{}
+	current := ""
+	for _, rawLine := range strings.Split(output, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+		line = strings.TrimLeft(line, "#-*> ")
+		line = strings.TrimSpace(strings.Trim(line, "*"))
+		label, value, hasColon := strings.Cut(line, ":")
+		section := finalDiagnosisSection(strings.ToLower(strings.TrimSpace(strings.Trim(label, "* "))))
+		if section != "" && (hasColon || strings.EqualFold(strings.TrimSpace(line), strings.TrimSpace(label))) {
+			current = section
+			if value != "" {
+				sections[current] = appendSectionLine(sections[current], strings.TrimSpace(strings.Trim(value, "* ")))
+			}
+			continue
+		}
+		if current != "" {
+			sections[current] = appendSectionLine(sections[current], line)
+		}
+	}
+	return sections
+}
+
+func finalDiagnosisSection(label string) string {
+	switch label {
+	case "diagnosis", "assessment", "root cause":
+		return "diagnosis"
+	case "confidence", "certainty":
+		return "confidence"
+	case "recommended action", "next step", "next steps", "action":
+		return "action"
+	case "customer-safe summary", "customer summary", "customer update", "summary":
+		return "summary"
+	default:
+		return ""
+	}
+}
+
+func appendSectionLine(current, line string) string {
+	if current == "" {
+		return line
+	}
+	return current + " " + line
+}
+
+func containsAny(text string, terms ...string) bool {
+	for _, term := range terms {
+		if strings.Contains(text, term) {
+			return true
+		}
+	}
+	return false
+}
+
 func (g homogeneousGrader) requiredEvidenceGrade(evidenceType string, traj trajectoryResult, contentPassed bool) (evalv1.EvaluationVerdictStatus, string, float64) {
 	switch evidenceType {
 	case "model_inference":
@@ -318,9 +535,9 @@ func (g homogeneousGrader) requiredEvidenceGrade(evidenceType string, traj traje
 	case "recovery":
 		return g.recoveryEvidenceGrade(traj, contentPassed)
 	case "final_response":
-		return evidenceVerdict(strings.TrimSpace(g.view.Trace.FinalOutput) != "",
-			"designated role produced a final response",
-			"designated role produced no final response")
+		return evidenceVerdict(contentPassed && traj.Passed,
+			"final response satisfies the observed scenario content and trajectory",
+			"final response does not satisfy the observed scenario content and trajectory")
 	case "semantic_grade":
 		return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE, "semantic judge is unavailable in the agent executor", 0
 	default:

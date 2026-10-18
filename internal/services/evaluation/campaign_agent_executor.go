@@ -46,7 +46,7 @@ const (
 // *CommandLane implements it.
 type AgentToolDispatcher interface {
 	WorkspaceFileWriter
-	DispatchAgentTool(ctx context.Context, target Target, runID, scenarioID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error)
+	DispatchAgentTool(ctx context.Context, target Target, runID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error)
 }
 
 // CampaignAgentExecutor runs homogeneous model-role assignments: the frozen
@@ -178,6 +178,10 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	if err := topology.ValidateAnchored(); err != nil {
 		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", err)
 	}
+	investigationID, err := e.investigationID(req)
+	if err != nil {
+		return nil, err
+	}
 	var (
 		workspace   ScenarioWorkspace
 		heldContext *AgentTraceHeldContext
@@ -208,6 +212,7 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 		tools:     tools,
 		target:    Target{OperatorID: topology.Data.OperatorID, SessionID: topology.Data.OperatorSessionID},
 		trace: &AgentTrace{
+			InvestigationID:     investigationID,
 			HeldContext:         heldContext,
 			RunID:               assignment.GetRunId(),
 			AssignmentID:        assignment.GetAssignmentId(),
@@ -328,20 +333,7 @@ func (r *agentRun) systemPrompt() string {
 	if seed.CaseDescription != "" {
 		fmt.Fprintf(&b, "Case description: %s\n", r.workspace.Render(seed.CaseDescription))
 	}
-	if memory := seed.CaseMemory; memory != nil {
-		for _, line := range [][2]string{
-			{"Investigation summary", memory.InvestigationSummary},
-			{"Communication preferences", memory.CommunicationPreferences},
-			{"Technical background", memory.TechnicalBackground},
-			{"Response style", memory.ResponseStyle},
-			{"Problem solving approach", memory.ProblemSolvingApproach},
-			{"Interaction style", memory.InteractionStyle},
-		} {
-			if line[1] != "" {
-				fmt.Fprintf(&b, "%s: %s\n", line[0], line[1])
-			}
-		}
-	}
+
 	return b.String()
 }
 
@@ -493,11 +485,7 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 	case agentToolCommandConstraints:
 		return r.succeed(record, commandConstraints(r.target.OperatorID, r.workspace.OperatorWorkingDirectory))
 	case agentToolInvestigationCtx:
-		answer, failure := investigationContext(r.req.ScenarioInput.Seed, args)
-		if failure != nil {
-			return r.fail(record, *failure)
-		}
-		return r.succeed(record, answer)
+		return r.runInvestigationContext(ctx, record, args)
 	case agentToolRunCommands:
 		return r.runCommand(ctx, record, args)
 	default:
@@ -593,7 +581,7 @@ func (r *agentRun) runFileTool(ctx context.Context, record AgentToolCall, tool s
 // rejection or an ingress refusal.
 func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, bool, error) {
 	assignment := r.req.Assignment
-	dispatched, err := r.executor.tools.DispatchAgentTool(ctx, r.target, assignment.GetRunId(), assignment.GetScenarioId(), r.req.AttemptID, action, resource, payload)
+	dispatched, err := r.executor.tools.DispatchAgentTool(ctx, r.target, assignment.GetRunId(), r.trace.InvestigationID, r.req.AttemptID, action, resource, payload)
 	if err != nil {
 		return GovernedToolDispatch{}, false, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}

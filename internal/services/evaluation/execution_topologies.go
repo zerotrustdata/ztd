@@ -57,7 +57,10 @@ type FormationModel struct {
 	ModelDigest           string
 }
 
-// Formation binds models to the three roles of the investigation loop.
+// Formation binds models to the three roles of the investigation loop:
+// Primary runs Sage, Assistant runs Tribunal and Dash, and Lite runs Triage
+// and Codex. A frozen binding is reference data until that loop executes;
+// it has no independent grade. Executed role behavior is graded separately.
 type Formation struct {
 	ID          string
 	DisplayName string

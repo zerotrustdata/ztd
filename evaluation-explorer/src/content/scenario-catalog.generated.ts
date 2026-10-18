@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.2.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.2.0";
+export const SCENARIO_CATALOG_VERSION = "1.4.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.4.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -27,7 +27,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         "content": "checkout-api timeout rate 18 percent; upstream_host=payments.internal.example; customer checkout failures confirmed"
       }
     ],
-    "expectedBehavior": "The final response cites the synthetic evidence and states a diagnosis, confidence, recommended action, and a customer-safe summary.",
+    "expectedBehavior": "The final response states a qualified diagnosis, confidence, recommended action, and customer-safe summary. It identifies the checkout-api timeout signal and configured payments upstream without claiming the configured host is a proven root cause.",
     "requiredConcepts": [
       "final-response",
       "diagnosis",
@@ -747,11 +747,11 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
     "id": "tool-select-investigation",
     "category": "tool_selection",
-    "publicDescription": "Choose investigation context lookup instead of a plausible wrong tool.",
+    "publicDescription": "Query current investigation history and report an empty result or cite a returned receipt.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "first_choice",
-    "userPrompt": "Before we go further: does this investigation's history already record a payment timeout? Look it up in the investigation context (data type history_trail) instead of running anything new, and quote what you find.",
-    "expectedBehavior": "The model looks the payment timeout up in the investigation history trail with query_investigation_context instead of running a new command, and quotes what it finds.",
+    "userPrompt": "Use the investigation context with data_type history_trail to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one action and quote its receipt ID. Do not run a command or infer history from the case details.",
+    "expectedBehavior": "The model queries the current investigation's action history and reports only data returned, including an empty result when there are no receipts.",
     "requiredConcepts": [
       "tool-selection",
       "investigation"

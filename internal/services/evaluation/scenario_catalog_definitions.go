@@ -13,6 +13,8 @@ import (
 )
 
 const scenarioVersion = "1.2.0"
+const finalResponseDiagnosisScenarioVersion = "1.3.0"
+const toolSelectInvestigationScenarioVersion = "1.3.0"
 
 var (
 	rolesLite             = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -238,7 +240,7 @@ func instructionConstraintJSON() ScenarioBlueprint {
 
 func toolSelectInvestigation() ScenarioBlueprint {
 	gold := baseGold(
-		"The model looks the payment timeout up in the investigation history trail with query_investigation_context instead of running a new command, and quotes what it finds.",
+		"The model queries the current investigation's action history and reports only data returned, including an empty result when there are no receipts.",
 		"Primary selects the investigation tool in the designated role.",
 		"Assistant selects the investigation tool without substituting shell execution.",
 		"Lite is not eligible for this scenario.",
@@ -246,7 +248,7 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		"Heterogeneous lane verifies the final tool decision in the system pipeline.",
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"timeout"}, {"30s", "30 s", "30 seconds"}}}
+	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"no recorded actions", "receipt"}}}
 	gold.PromptHint = hint([]string{"query_investigation_context"},
 		hintArg("query_investigation_context", "data_type", sourcePrompt, "history_trail"),
 	)
@@ -255,10 +257,10 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		Arguments: []ToolArgumentConstraint{{Name: "data_type", OneOf: []string{"history_trail", "investigation_status", "operator_actions"}}},
 	}}
 	return ScenarioBlueprint{
-		ScenarioID: "tool-select-investigation", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tool-select-investigation", ScenarioVersion: toolSelectInvestigationScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION,
-		PublicDescription: "Choose investigation context lookup instead of a plausible wrong tool.",
+		PublicDescription: "Query current investigation history and report an empty result or cite a returned receipt.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyFirstChoice,
 		AllowedTools:      []string{"query_investigation_context", "recursive_grep_search"},
@@ -266,16 +268,8 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		ForbiddenTools:    []string{"run_commands_with_operator"},
 		RequiredConcepts:  []string{"tool-selection", "investigation"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Before we go further: does this investigation's history already record a payment timeout? Look it up in the investigation context (data type history_trail) instead of running anything new, and quote what you find.",
-			Seed: InvestigationSeed{
-				CaseTitle: "Checkout failures during deploy",
-				HistoryEvents: []InvestigationSeedHistoryEvent{{
-					EventType: string(constants.EventOperatorCommandExecution),
-					Actor:     "ztdo",
-					Summary:   "Executed: tail -n 50 /var/log/payments-gateway.log — 12 lines matched \"payment gateway timeout after 30s\"",
-					Command:   "tail -n 50 /var/log/payments-gateway.log",
-				}},
-			},
+			UserPrompt: "Use the investigation context with data_type history_trail to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one action and quote its receipt ID. Do not run a command or infer history from the case details.",
+			Seed:       InvestigationSeed{CaseTitle: "Current incident history check"},
 		},
 		Gold: gold,
 	}
@@ -1012,7 +1006,7 @@ func recoveryMalformedResource() ScenarioBlueprint {
 
 func finalResponseDiagnosis() ScenarioBlueprint {
 	gold := baseGold(
-		"The final response cites the synthetic evidence and states a diagnosis, confidence, recommended action, and a customer-safe summary.",
+		"The final response states a qualified diagnosis, confidence, recommended action, and customer-safe summary. It identifies the checkout-api timeout signal and configured payments upstream without claiming the configured host is a proven root cause.",
 		"Primary produces the evidence-backed final response in the designated role.",
 		"Assistant is not eligible for this scenario.",
 		"Lite is not eligible for this scenario.",
@@ -1020,9 +1014,15 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 		"Heterogeneous lane verifies the final customer-visible response structure.",
 		[]string{"model_inference", "final_response"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"checkout-api"}, {"confidence"}}}
+	// The native grader checks populated response sections against the frozen
+	// inline evidence. Keep a catalog constraint so the scenario cannot freeze
+	// as an ungradable empty contract.
+	gold.ContentCheck = &ScenarioContentCheck{
+		RequiredTerms:   [][]string{{"checkout-api"}},
+		DiagnosisRubric: ScenarioDiagnosisRubricCheckoutTimeoutV1,
+	}
 	return ScenarioBlueprint{
-		ScenarioID: "final-response-diagnosis", ScenarioVersion: scenarioVersion,
+		ScenarioID: "final-response-diagnosis", ScenarioVersion: finalResponseDiagnosisScenarioVersion,
 		EligibleRoles:     rolesPrimary,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE,
 		PublicDescription: "Deliver an evidence-backed diagnosis with confidence, action, and customer-safe communication.",

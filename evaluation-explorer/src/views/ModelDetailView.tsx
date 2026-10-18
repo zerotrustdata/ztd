@@ -16,6 +16,7 @@ import {
   resolveModelProfile,
   type CapabilityProbeStatus,
 } from '../content/framework-catalog';
+import { isCapabilityQualificationScenario } from '../content/scenario-task';
 import {
   DetailRow,
   EmptyState,
@@ -478,6 +479,9 @@ export function ModelDetailView() {
                         >
                           {asg.assignment_id} · {asg.task_id}
                         </Link>
+                        {isCapabilityQualificationScenario(asg.scenario_summary?.expected_tools) ? (
+                          <TonePill tone="warn" title="This result measures direct command handling, not investigation context retrieval or continuity.">Capability qualification</TonePill>
+                        ) : null}
                         <span className="sibling-rep">rep {asg.repetition}</span>
                         <span
                           className={`sibling-status sibling-status-${assignmentVerdictTone(

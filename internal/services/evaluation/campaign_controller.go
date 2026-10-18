@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -28,6 +29,7 @@ type CampaignInitRequest struct {
 	ScenarioArtifacts          map[string]ScenarioArtifacts
 	RepetitionCount            uint32
 	Platform                   PlatformIdentity
+	Investigation              *evalv1.EvaluationInvestigation
 	InferenceOperatorSessionID string
 	DataOperatorSessionID      string
 	Deployment                 *evalv1.EvaluationDeploymentIdentity
@@ -114,7 +116,8 @@ type CampaignCreateRequest struct {
 	// the next. It is frozen only when RepetitionCount > 1.
 	HoldContext bool
 	// Platform is the build that freezes the campaign; its release is digest-bound.
-	Platform PlatformIdentity
+	Platform      PlatformIdentity
+	Investigation *evalv1.EvaluationInvestigation
 }
 
 // RunStartRequest binds one new run to an existing campaign.
@@ -140,7 +143,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	if req.CampaignID == "" || req.Catalog == nil || req.Inventory == nil {
 		return nil, fmt.Errorf("evaluation: create campaign: %w", constants.ErrMissingRequiredField)
 	}
-	spec, err := MaterializeCampaignSpec(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.HoldContext, req.Platform)
+	spec, err := MaterializeCampaignSpecWithInvestigation(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.HoldContext, req.Platform, req.Investigation)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +154,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 			existing.GetModelRegistryDigest() != spec.GetModelRegistryDigest() ||
 			existing.GetRepetitionCount() != spec.GetRepetitionCount() ||
 			existing.GetHoldContext() != spec.GetHoldContext() ||
+			!proto.Equal(existing.GetInvestigation(), spec.GetInvestigation()) ||
 			(existing.GetPlatformRelease() != "" && existing.GetPlatformRelease() != spec.GetPlatformRelease()) {
 			return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, constants.ErrEvaluationCampaignConflict)
 		}
@@ -249,6 +253,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount,
 		Platform:          req.Platform,
+		Investigation:     req.Investigation,
 	}); err != nil {
 		return nil, err
 	}
@@ -464,6 +469,20 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if err != nil || !ok {
 		return nil, ok, err
 	}
+	run, err := c.store.LoadRun(ctx, runID)
+	if err != nil {
+		return nil, false, err
+	}
+	campaignSpec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return nil, false, err
+	}
+	if err := ValidateCampaignSpecDigest(campaignSpec); err != nil {
+		return nil, false, fmt.Errorf("evaluation: execute next assignment: campaign spec: %w", err)
+	}
+	if campaignSpec.GetCampaignDigest() != run.GetCampaignBinding().GetCampaignDigest() {
+		return nil, false, fmt.Errorf("evaluation: execute next assignment: campaign spec does not match run binding: %w", constants.ErrChecksumMismatch)
+	}
 	if exists, err := c.store.AssignmentResultExists(ctx, runID, assignment.GetAssignmentId()); err != nil {
 		return nil, false, err
 	} else if exists {
@@ -494,10 +513,6 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if err := json.Unmarshal(artifact.Gold.Body, &scenarioGold); err != nil {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: decode scenario gold: %w", err)
 	}
-	run, err := c.store.LoadRun(ctx, runID)
-	if err != nil {
-		return nil, false, err
-	}
 	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
 		return nil, false, err
@@ -517,6 +532,7 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	attemptID := c.newID("attempt")
 	execReq := AssignmentExecutionRequest{
 		Assignment:       assignment,
+		Investigation:    campaignSpec.GetInvestigation(),
 		AttemptID:        attemptID,
 		ScenarioInput:    scenarioInput,
 		ScenarioGold:     scenarioGold,

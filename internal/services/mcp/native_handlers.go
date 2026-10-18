@@ -61,10 +61,10 @@ func NewNativeToolHandler(logger *slog.Logger) (*NativeToolHandler, error) {
 	}, nil
 }
 
-// SetAuditReceiptQuery wires the operator audit vault read interface into the
+// SetAuditReceiptQuery wires the configured local audit-store read interface into the
 // handler so the audit_receipt_list and audit_receipt_get native tools can
 // query signed ActionReceipt records under governed dispatch. Called after
-// construction once the audit store is available.
+// construction once the Gateway's local audit store is available.
 func (h *NativeToolHandler) SetAuditReceiptQuery(q AuditReceiptQuery) {
 	h.auditReceiptQuery = q
 }

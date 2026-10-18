@@ -126,6 +126,46 @@ func TestCampaignsCreate_HoldContextFlag(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
+func TestCampaignsCreate_FreezesPersistentInvestigationAndDataOperator(t *testing.T) {
+	env := setupRunEnv(t)
+
+	_, err := env.run(t, "campaigns", "create", "eval-persistent", "qwen3:4b",
+		"--investigation", "persistent:checkout-incident",
+		"--data-operator", "operator-stable",
+	)
+	require.NoError(t, err)
+
+	spec, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-persistent")
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT, spec.GetInvestigation().GetMode())
+	assert.Equal(t, "checkout-incident", spec.GetInvestigation().GetInvestigationId())
+	assert.Equal(t, "operator-stable", spec.GetInvestigation().GetDataOperatorId())
+
+	var show campaignShowJSON
+	require.NoError(t, env.runJSON(t, &show, "campaigns", "show", "eval-persistent"))
+	assert.Equal(t, "persistent", show.InvestigationMode)
+	assert.Equal(t, "checkout-incident", show.InvestigationID)
+	assert.Equal(t, "operator-stable", show.DataOperatorID)
+}
+
+func TestCampaignsCreate_RejectsInvalidInvestigationFlagCombinations(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "persistent requires a Data Operator", args: []string{"--investigation", "persistent:checkout-incident"}},
+		{name: "fresh rejects a Data Operator", args: []string{"--data-operator", "operator-stable"}},
+		{name: "unknown investigation mode", args: []string{"--investigation", "shared:checkout-incident"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			env := setupRunEnv(t)
+			args := append([]string{"campaigns", "create", "eval-invalid", "qwen3:4b"}, test.args...)
+			_, err := env.run(t, args...)
+			require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+		})
+	}
+}
+
 func TestCampaignsCreate_JSONReportsFrozenSpec(t *testing.T) {
 	env := setupRunEnv(t)
 

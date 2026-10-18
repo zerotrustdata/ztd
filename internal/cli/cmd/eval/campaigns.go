@@ -74,11 +74,35 @@ type campaignListJSON struct {
 
 type campaignShowJSON struct {
 	campaignRowJSON
-	Suite    string                      `json:"suite"`
-	Models   []string                    `json:"models"`
-	Runs     []runRow                    `json:"runs"`
-	Archive  *evaluation.ArchiveManifest `json:"archive,omitempty"`
-	CellsPer uint64                      `json:"cells_per_run"`
+	Suite             string                      `json:"suite"`
+	Models            []string                    `json:"models"`
+	Runs              []runRow                    `json:"runs"`
+	Archive           *evaluation.ArchiveManifest `json:"archive,omitempty"`
+	CellsPer          uint64                      `json:"cells_per_run"`
+	InvestigationMode string                      `json:"investigation_mode,omitempty"`
+	InvestigationID   string                      `json:"investigation_id,omitempty"`
+	DataOperatorID    string                      `json:"data_operator_id,omitempty"`
+}
+
+func investigationModeLabel(investigation *evalv1.EvaluationInvestigation) string {
+	if investigation == nil {
+		return "legacy"
+	}
+	switch investigation.GetMode() {
+	case evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH:
+		return "fresh"
+	case evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT:
+		return "persistent"
+	default:
+		return "unspecified"
+	}
+}
+
+func investigationLabel(show campaignShowJSON) string {
+	if show.InvestigationID == "" {
+		return show.InvestigationMode
+	}
+	return show.InvestigationMode + ":" + show.InvestigationID
 }
 
 // campaignLane reports the lane of a campaign from its frozen stack set: a
@@ -271,9 +295,12 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 					Status:              latestRunStatus(runRows),
 					RunIDs:              runIDs,
 				},
-				Suite:    spec.GetCatalogRef().GetId() + "@" + spec.GetCatalogRef().GetVersion(),
-				Runs:     runRows,
-				CellsPer: campaignCells(catalog, spec, lane, stacks),
+				Suite:             spec.GetCatalogRef().GetId() + "@" + spec.GetCatalogRef().GetVersion(),
+				Runs:              runRows,
+				CellsPer:          campaignCells(catalog, spec, lane, stacks),
+				InvestigationMode: investigationModeLabel(spec.GetInvestigation()),
+				InvestigationID:   spec.GetInvestigation().GetInvestigationId(),
+				DataOperatorID:    spec.GetInvestigation().GetDataOperatorId(),
 			}
 			for _, variant := range spec.GetModelRegistry() {
 				payload.Models = append(payload.Models, variant.GetServedModelTag())
@@ -287,9 +314,12 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
+			_, _ = fmt.Fprintf(out, "Campaign: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nInvestigation: %s\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
 				campaignID, releaseLabel(release.Release, string(release.Basis)), lane, payload.Suite, payload.ModelCount, strings.Join(payload.Models, ", "), payload.ScenarioCount, payload.RepetitionCount,
-				payload.HoldContext, payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
+				payload.HoldContext, investigationLabel(payload), payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
+			if payload.InvestigationID != "" {
+				_, _ = fmt.Fprintf(out, "Investigation ID: %s\nData Operator ID: %s\n", payload.InvestigationID, payload.DataOperatorID)
+			}
 			if stacks > 0 {
 				_, _ = fmt.Fprintf(out, "Stacks: %d\n", stacks)
 			}
@@ -339,9 +369,10 @@ func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.Evalu
 
 // campaignCreateSpec is everything that defines one campaign.
 type campaignCreateSpec struct {
-	CampaignID  string
-	Variants    []*evalv1.ModelVariant
-	Repetitions uint32
+	CampaignID    string
+	Variants      []*evalv1.ModelVariant
+	Repetitions   uint32
+	Investigation *evalv1.EvaluationInvestigation
 	// HoldContext carries each cell's investigation into its next repetition.
 	HoldContext bool
 	// SuiteID names the suite the campaign freezes; empty means the default suite.
@@ -407,6 +438,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 		RepetitionCount:   spec.Repetitions,
 		HoldContext:       spec.HoldContext,
 		Platform:          spec.Platform,
+		Investigation:     spec.Investigation,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
@@ -439,6 +471,8 @@ func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var reps uint32
 	var holdContext bool
 	var suite string
+	var investigationMode string
+	var dataOperatorID string
 	var selector ModelSelector
 	cmd := &cobra.Command{
 		Use:   "create <campaign> <selector>",
@@ -450,6 +484,12 @@ start).
 --suite picks the suite whose scenarios the campaign scores (default:
 default-suite; see ztd eval suites). The suite is copied into the campaign, so
 editing or deleting it later never changes the campaign.
+
+--investigation freezes the scored investigation scope. Use "fresh" (the
+default) to give each assignment its own investigation, or
+"persistent:<investigation-id>" to reuse one investigation across runs. A
+persistent investigation requires --data-operator to name the stable Operator
+identity whose authoritative ledger owns that investigation.
 
 With --reps greater than 1, every repetition after the first continues the
 previous repetition's investigation by default (--hold-context): the model
@@ -467,11 +507,16 @@ Examples:
   ztd eval campaigns create eval-qwen qwen3:4b --reps 3
   ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
   ztd eval campaigns create eval-gemma gemma4:e4b
-  ztd eval campaigns create eval-custom qwen3:4b --suite my-suite`,
+  ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
+  ztd eval campaigns create eval-repeat qwen3:4b --investigation persistent:checkout-incident --data-operator op-123`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			campaignID := args[0]
 			selector = *selector.withArgs(args[1:])
+			investigation, err := parseCampaignInvestigation(investigationMode, dataOperatorID)
+			if err != nil {
+				return err
+			}
 			if cmd.Flags().Changed("hold-context") && reps <= 1 {
 				return fmt.Errorf("evaluation: campaigns create: --hold-context applies only with --reps greater than 1: %w", constants.ErrEvaluationFlagsInvalid)
 			}
@@ -489,7 +534,7 @@ Examples:
 			if len(registry) == 0 {
 				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
-			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd)}
+			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation}
 			if create.Variants, err = selector.Resolve(registry); err != nil {
 				return fmt.Errorf("evaluation: campaigns create: %w", err)
 			}
@@ -522,8 +567,39 @@ Examples:
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
 	cmd.Flags().BoolVar(&holdContext, "hold-context", true, "With --reps > 1, continue each repetition from the previous repetition's investigation")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
+	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")
+	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")
 	selector.bindFlags(cmd)
 	return cmd
+}
+
+func parseCampaignInvestigation(mode, dataOperatorID string) (*evalv1.EvaluationInvestigation, error) {
+	mode = strings.TrimSpace(mode)
+	dataOperatorID = strings.TrimSpace(dataOperatorID)
+	var investigation *evalv1.EvaluationInvestigation
+	switch {
+	case mode == "fresh":
+		if dataOperatorID != "" {
+			return nil, fmt.Errorf("evaluation: campaigns create: --data-operator applies only to a persistent investigation: %w", constants.ErrEvaluationFlagsInvalid)
+		}
+		investigation = &evalv1.EvaluationInvestigation{Mode: evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH}
+	case strings.HasPrefix(mode, "persistent:"):
+		investigationID := strings.TrimPrefix(mode, "persistent:")
+		if investigationID == "" || dataOperatorID == "" {
+			return nil, fmt.Errorf("evaluation: campaigns create: persistent investigations require an ID and --data-operator: %w", constants.ErrEvaluationFlagsInvalid)
+		}
+		investigation = &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: investigationID,
+			DataOperatorId:  dataOperatorID,
+		}
+	default:
+		return nil, fmt.Errorf("evaluation: campaigns create: --investigation must be fresh or persistent:<investigation-id>: %w", constants.ErrEvaluationFlagsInvalid)
+	}
+	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
+		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
+	}
+	return investigation, nil
 }
 
 // releaseLabel renders a campaign's release with how it is known: a recorded

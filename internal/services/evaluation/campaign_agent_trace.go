@@ -28,13 +28,15 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v5
-// adds the held context a repetition continued; v4 added the exact model
+// agentTraceSchemaVersion is the version every new trace is sealed with. v6
+// binds scored investigation identity and authoritative context retrievals; v5
+// added the held context a repetition continued; v4 added the exact model
 // input, per-turn thinking, and provider tool-call IDs. v4 and v3 traces
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v5"
+	agentTraceSchemaVersion   = "agent-trace.v6"
+	agentTraceSchemaVersionV5 = "agent-trace.v5"
 	agentTraceSchemaVersionV4 = "agent-trace.v4"
 	agentTraceSchemaVersionV3 = "agent-trace.v3"
 )
@@ -114,6 +116,8 @@ type AgentToolCall struct {
 	// Receipt is the signed receipt the Gateway answered the dispatch with: the
 	// executed receipt, or a governance rejection's receipt. A refusal has none.
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
+	// Retrieval binds the authoritative query and the receipts it returned.
+	Retrieval *AgentContextRetrieval `json:"retrieval,omitempty"`
 	// Seeded marks a prior failing call replayed from the scenario seed for
 	// trajectory analysis only; it is never persisted.
 	Seeded bool `json:"-"`
@@ -137,6 +141,7 @@ type AgentTrace struct {
 	EvaluationAttemptID string `json:"evaluation_attempt_id"`
 	CampaignID          string `json:"campaign_id"`
 	ScenarioID          string `json:"scenario_id"`
+	InvestigationID     string `json:"investigation_id,omitempty"`
 	DesignatedRole      string `json:"designated_role"`
 	ServedModelTag      string `json:"served_model_tag"`
 	ModelDigest         string `json:"model_digest"`
@@ -512,7 +517,7 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}

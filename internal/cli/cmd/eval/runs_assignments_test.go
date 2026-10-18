@@ -103,3 +103,45 @@ func TestExecutedAssignmentLine_NamesWhatRanHowLongAndHowItWent(t *testing.T) {
 		"Executed a-1 [security-policy-deny-delete | gemma4:e4b/primary | rep 2, 9s]: COMPLETED verdict=FAIL pass_rate=50.0% failed=[scenario-content [observation] ()]",
 		line)
 }
+
+func TestScenarioResultClass_LabelsOnlyDirectCommandQualification(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		scenario *evalv1.EvaluationScenarioDefinition
+		want     string
+	}{
+		{
+			name: "direct command",
+			scenario: &evalv1.EvaluationScenarioDefinition{
+				ExpectedTools: []string{"run_commands_with_operator"},
+			},
+			want: scenarioClassCapabilityQualification,
+		},
+		{
+			name: "ordinary tool scenario",
+			scenario: &evalv1.EvaluationScenarioDefinition{
+				ExpectedTools: []string{"file_read_on_operator"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			class := scenarioResultClass(tt.scenario)
+			assert.Equal(t, tt.want, class)
+			view := runAssignmentView{
+				assignment: &evalv1.EvaluationAssignment{
+					AssignmentId: "assignment-1",
+					RunId:        "run-1",
+					ScenarioId:   "scenario-1",
+				},
+				scenarioClass: class,
+			}
+			row, err := view.toJSON()
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, row.ScenarioClass)
+		})
+	}
+}

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { HINT_SOURCE_LABEL, TRAJECTORY_POLICY_META } from '../content/scenario-task';
+import { HINT_SOURCE_LABEL, isCapabilityQualificationScenario, TRAJECTORY_POLICY_META } from '../content/scenario-task';
 import type { PublicPromptHint, PublicScenarioSummary } from '../contract/types';
 
 function hintText(hint: PublicPromptHint): string {
@@ -14,6 +14,8 @@ function hintText(hint: PublicPromptHint): string {
 export function ScenarioContextCard({ scenario }: { scenario: PublicScenarioSummary | undefined }) {
   if (!scenario) return null;
 
+  const capabilityQualification = isCapabilityQualificationScenario(scenario.expected_tools);
+
   const toolNotes = [
     scenario.allowed_tools.length > 0 ? `Allowed: ${scenario.allowed_tools.join(', ')}` : undefined,
     scenario.expected_tools.length > 0 ? `Expected: ${scenario.expected_tools.join(', ')}` : undefined,
@@ -22,6 +24,12 @@ export function ScenarioContextCard({ scenario }: { scenario: PublicScenarioSumm
 
   return (
     <div className="assignment-scenario">
+      {capabilityQualification ? (
+        <p className="assignment-scenario-policy">
+          <strong>Capability qualification.</strong> This result measures direct command handling; it does not measure
+          investigation context retrieval or continuity.
+        </p>
+      ) : null}
       <p className="assignment-scenario-description">{scenario.public_description}</p>
       {toolNotes.length > 0 ? <p className="assignment-scenario-tools">{toolNotes.join(' · ')}</p> : null}
       {scenario.trajectory_policy ? (

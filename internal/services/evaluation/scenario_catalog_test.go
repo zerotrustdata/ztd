@@ -41,6 +41,24 @@ func TestBuildScenarioCatalog_HasTwentySevenScenariosWithExpectedCategoryCounts(
 	assert.Equal(t, 3, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY])
 	assert.Equal(t, 3, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY])
 	assert.Equal(t, 1, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE])
+
+	for _, scenario := range catalog.GetScenarios() {
+		if scenario.GetScenarioId() == "final-response-diagnosis" {
+			assert.Equal(t, finalResponseDiagnosisScenarioVersion, scenario.GetScenarioVersion())
+		}
+	}
+}
+
+func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
+	defaultCatalog, _, err := BuildScenarioCatalog()
+	require.NoError(t, err)
+	smokeCatalog, _, err := BuildSmokeGateScenarioCatalog()
+	require.NoError(t, err)
+
+	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
+	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
+	assert.Equal(t, "1.4.0", DefaultSuiteVersion)
+	assert.Equal(t, "1.1.0", GraderVersion)
 }
 
 func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
@@ -49,6 +67,24 @@ func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
 	for _, blueprint := range scenarioBlueprints() {
 		assert.NoError(t, validateScenarioContract(blueprint, registry), blueprint.ScenarioID)
 	}
+}
+
+func TestScenarioDiagnosisRubric_IsBoundIntoFrozenGoldArtifact(t *testing.T) {
+	blueprint := finalResponseDiagnosis()
+	selected := blueprint.Gold
+	selected.ScenarioID = blueprint.ScenarioID
+	unselected := selected
+	plainCheck := *selected.ContentCheck
+	plainCheck.DiagnosisRubric = ""
+	unselected.ContentCheck = &plainCheck
+
+	selectedArtifact, err := buildScenarioGoldArtifact(DefaultSuiteID, selected)
+	require.NoError(t, err)
+	unselectedArtifact, err := buildScenarioGoldArtifact(DefaultSuiteID, unselected)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, selectedArtifact.Reference.GetArtifactId(), unselectedArtifact.Reference.GetArtifactId())
+	assert.NotEqual(t, selectedArtifact.Body, unselectedArtifact.Body)
 }
 
 func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
@@ -79,6 +115,9 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"GOVERNED scenario has no forbidden tools", securityPolicyBlockRun, func(b *ScenarioBlueprint) { b.ForbiddenTools = nil }, constants.ErrEvaluationScenarioContractInvalid},
 		{"deterministic scenario has no content check", techNetworkSummary, func(b *ScenarioBlueprint) { b.Gold.ContentCheck = nil }, constants.ErrEvaluationScenarioContractInvalid},
+		{"unknown diagnosis rubric", finalResponseDiagnosis, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.DiagnosisRubric = "checkout-timeout-v999"
+		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"validator constrains unknown argument", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Gold.ArgumentValidators[0].Arguments[0].Name = "no_such_argument"
 		}, constants.ErrEvaluationScenarioContractInvalid},

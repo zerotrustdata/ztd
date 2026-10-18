@@ -22,12 +22,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.0.0"
+	GraderVersion = "1.1.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.2.0"
+	DefaultSuiteVersion = "1.4.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -46,6 +46,12 @@ const (
 	// validator runs; nothing else is templated.
 	ScenarioWorkspaceToken = "{{workspace}}"
 )
+
+// ScenarioDiagnosisRubric selects a versioned deterministic diagnosis rule
+// frozen as part of a scenario's gold content check.
+type ScenarioDiagnosisRubric string
+
+const ScenarioDiagnosisRubricCheckoutTimeoutV1 ScenarioDiagnosisRubric = "checkout-timeout-v1"
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
 // every catalog fixture artifact, so identical suite content always yields
@@ -161,15 +167,16 @@ type ScenarioPipelineCriteria struct {
 // final output. Every set constraint must hold. Term matching is
 // case-insensitive; each RequiredTerms group must match at least one term.
 type ScenarioContentCheck struct {
-	ExactToken        string            `json:"exact_token,omitempty"`
-	ExactLabels       []string          `json:"exact_labels,omitempty"`
-	LeadingLabel      string            `json:"leading_label,omitempty"`
-	WordCount         int               `json:"word_count,omitempty"`
-	MaxSentences      int               `json:"max_sentences,omitempty"`
-	RequiredTerms     [][]string        `json:"required_terms,omitempty"`
-	ForbiddenTerms    []string          `json:"forbidden_terms,omitempty"`
-	JSONStringFields  map[string]string `json:"json_string_fields,omitempty"`
-	JSONIntegerFields map[string]int64  `json:"json_integer_fields,omitempty"`
+	ExactToken        string                  `json:"exact_token,omitempty"`
+	ExactLabels       []string                `json:"exact_labels,omitempty"`
+	LeadingLabel      string                  `json:"leading_label,omitempty"`
+	WordCount         int                     `json:"word_count,omitempty"`
+	MaxSentences      int                     `json:"max_sentences,omitempty"`
+	RequiredTerms     [][]string              `json:"required_terms,omitempty"`
+	ForbiddenTerms    []string                `json:"forbidden_terms,omitempty"`
+	JSONStringFields  map[string]string       `json:"json_string_fields,omitempty"`
+	JSONIntegerFields map[string]int64        `json:"json_integer_fields,omitempty"`
+	DiagnosisRubric   ScenarioDiagnosisRubric `json:"diagnosis_rubric,omitempty"`
 	// Interrogation requires the whole answer to be the Interrogation Protocol
 	// block Sage and Dash are told to emit when context is missing: one
 	// <interrogation> element holding exactly three numbered, strictly binary

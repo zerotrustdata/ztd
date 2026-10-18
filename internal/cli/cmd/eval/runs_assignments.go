@@ -27,17 +27,18 @@ import (
 // `outcome` state what the platform's own verdict and scoring say, so a zero rate
 // is a stated 0 and an absent score is a stated null, never a dropped field.
 type runAssignmentJSON struct {
-	AssignmentID string          `json:"assignment_id"`
-	ScenarioID   string          `json:"scenario_id"`
-	Target       string          `json:"target"`
-	Repetition   uint32          `json:"repetition"`
-	Lifecycle    string          `json:"lifecycle"`
-	Verdict      string          `json:"verdict,omitempty"`
-	PassRate     *float64        `json:"pass_rate"`
-	DurationMs   *int64          `json:"duration_ms"`
-	Outcome      string          `json:"outcome,omitempty"`
-	Assignment   json.RawMessage `json:"assignment"`
-	Result       json.RawMessage `json:"result,omitempty"`
+	AssignmentID  string          `json:"assignment_id"`
+	ScenarioID    string          `json:"scenario_id"`
+	ScenarioClass string          `json:"scenario_class,omitempty"`
+	Target        string          `json:"target"`
+	Repetition    uint32          `json:"repetition"`
+	Lifecycle     string          `json:"lifecycle"`
+	Verdict       string          `json:"verdict,omitempty"`
+	PassRate      *float64        `json:"pass_rate"`
+	DurationMs    *int64          `json:"duration_ms"`
+	Outcome       string          `json:"outcome,omitempty"`
+	Assignment    json.RawMessage `json:"assignment"`
+	Result        json.RawMessage `json:"result,omitempty"`
 }
 
 type runAssignmentsJSON struct {
@@ -47,8 +48,23 @@ type runAssignmentsJSON struct {
 
 // runAssignmentView is one assignment with its terminal result, when it has one.
 type runAssignmentView struct {
-	assignment *evalv1.EvaluationAssignment
-	result     *evalv1.EvaluationAssignmentResult
+	assignment    *evalv1.EvaluationAssignment
+	result        *evalv1.EvaluationAssignmentResult
+	scenarioClass string
+}
+
+const scenarioClassCapabilityQualification = "capability_qualification"
+
+func scenarioResultClass(scenario *evalv1.EvaluationScenarioDefinition) string {
+	if scenario == nil {
+		return ""
+	}
+	for _, tool := range scenario.GetExpectedTools() {
+		if tool == "run_commands_with_operator" {
+			return scenarioClassCapabilityQualification
+		}
+	}
+	return ""
 }
 
 // passed reports a terminal result whose verdict is PASS.
@@ -82,12 +98,13 @@ func (v runAssignmentView) toJSON() (runAssignmentJSON, error) {
 		return runAssignmentJSON{}, err
 	}
 	row := runAssignmentJSON{
-		AssignmentID: v.assignment.GetAssignmentId(),
-		ScenarioID:   v.assignment.GetScenarioId(),
-		Target:       assignmentTarget(v.assignment),
-		Repetition:   v.assignment.GetRepetition(),
-		Lifecycle:    strings.ToLower(strings.TrimPrefix(v.assignment.GetLifecycleStatus().String(), "EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_")),
-		Assignment:   assignmentBody,
+		AssignmentID:  v.assignment.GetAssignmentId(),
+		ScenarioID:    v.assignment.GetScenarioId(),
+		ScenarioClass: v.scenarioClass,
+		Target:        assignmentTarget(v.assignment),
+		Repetition:    v.assignment.GetRepetition(),
+		Lifecycle:     strings.ToLower(strings.TrimPrefix(v.assignment.GetLifecycleStatus().String(), "EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_")),
+		Assignment:    assignmentBody,
 	}
 	if v.result == nil {
 		return row, nil
@@ -111,6 +128,24 @@ func (v runAssignmentView) toJSON() (runAssignmentJSON, error) {
 
 // loadRunAssignmentViews pairs every assignment of a run with its result.
 func loadRunAssignmentViews(cmd *cobra.Command, store *evaluation.Store, runID string) ([]runAssignmentView, error) {
+	run, err := store.LoadRun(cmd.Context(), runID)
+	if err != nil {
+		return nil, err
+	}
+	binding := run.GetCampaignBinding()
+	if binding == nil || binding.GetCampaignId() == "" {
+		return nil, fmt.Errorf("evaluation: runs assignments: campaign binding is required: %w", constants.ErrEvidenceArtifactMalformed)
+	}
+	catalog, err := store.LoadScenarioCatalog(cmd.Context(), binding.GetCampaignId())
+	if err != nil {
+		return nil, err
+	}
+	scenarioClasses := make(map[string]string, len(catalog.GetScenarios()))
+	for _, scenario := range catalog.GetScenarios() {
+		if scenario != nil {
+			scenarioClasses[scenario.GetScenarioId()] = scenarioResultClass(scenario)
+		}
+	}
 	assignments, err := store.ListAssignments(cmd.Context(), runID)
 	if err != nil {
 		return nil, err
@@ -121,7 +156,7 @@ func loadRunAssignmentViews(cmd *cobra.Command, store *evaluation.Store, runID s
 	}
 	views := make([]runAssignmentView, 0, len(assignments))
 	for _, assignment := range assignments {
-		views = append(views, runAssignmentView{assignment: assignment, result: results[assignment.GetAssignmentId()]})
+		views = append(views, runAssignmentView{assignment: assignment, result: results[assignment.GetAssignmentId()], scenarioClass: scenarioClasses[assignment.GetScenarioId()]})
 	}
 	return views, nil
 }
@@ -133,7 +168,7 @@ func writeRunAssignments(cmd *cobra.Command, views []runAssignmentView, detail b
 		return err
 	}
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ASSIGNMENT\tSCENARIO\tTARGET\tREP\tDURATION\tOUTCOME")
+	_, _ = fmt.Fprintln(w, "ASSIGNMENT\tSCENARIO\tCLASS\tTARGET\tREP\tDURATION\tOUTCOME")
 	for _, view := range views {
 		duration := "-"
 		outcome := strings.ToLower(strings.TrimPrefix(view.assignment.GetLifecycleStatus().String(), "EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_"))
@@ -143,7 +178,11 @@ func writeRunAssignments(cmd *cobra.Command, views []runAssignmentView, detail b
 				duration = elapsed.Round(time.Millisecond).String()
 			}
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n", view.assignment.GetAssignmentId(), view.assignment.GetScenarioId(), assignmentTarget(view.assignment), view.assignment.GetRepetition(), duration, outcome)
+		class := view.scenarioClass
+		if class == "" {
+			class = "-"
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n", view.assignment.GetAssignmentId(), view.assignment.GetScenarioId(), class, assignmentTarget(view.assignment), view.assignment.GetRepetition(), duration, outcome)
 	}
 	if err := w.Flush(); err != nil {
 		return err

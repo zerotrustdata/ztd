@@ -34,6 +34,7 @@ import {
   formatNumber,
 } from '../components/shared';
 import type { AssignmentResult, VerifierState } from '../contract/types';
+import { isCapabilityQualificationScenario } from '../content/scenario-task';
 import { assignmentVerdictTone, campaignTerminalProgress, isNonVerdictOutcome, lifecycleStateTone, nativeResultTone, nativeScenarioTone, roleLabel, verifierStateTone } from './derived';
 
 const verifierStateLabels: Record<VerifierState, string> = {
@@ -93,6 +94,14 @@ export function EvaluationDetailView() {
         ),
       },
       { id: 'task', header: 'Task', accessorKey: 'task_id' },
+      {
+        id: 'scope',
+        header: 'Scope',
+        accessorFn: (row: AssignmentResult) => isCapabilityQualificationScenario(row.scenario_summary?.expected_tools) ? 'capability qualification' : '',
+        cell: ({ row }) => isCapabilityQualificationScenario(row.original.scenario_summary?.expected_tools)
+          ? <TonePill tone="warn" title="This result measures direct command handling, not investigation context retrieval or continuity.">Capability qualification</TonePill>
+          : '—',
+      },
       { id: 'variant', header: 'Variant', accessorKey: 'variant_id' },
       {
         id: 'role',
