@@ -1930,7 +1930,6 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 }
 
 /* ===== Evidence primitives ===== */
-.summary-strip { margin: 16px 0; }
 .evaluations-view, .models-view, .evaluation-detail, .model-detail, .assignment-detail, .docs-layout, .about { padding-bottom: 40px; }
 .program-groups { display: grid; gap: 16px; }
 .data-card-list, .run-card-list { display: grid; gap: 12px; list-style: none; margin: 12px 0; padding: 0; }
@@ -2062,7 +2061,7 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .terminal-pill-warn { --pill-tone: var(--tone-warn); }
 .terminal-pill-critical { --pill-tone: var(--tone-critical); }
 .evidence-kicker, .evidence-step-label, .evidence-step-detail, .evidence-verdict-note,
-.evidence-panel .stat-label, .summary-strip .stat-label { color: var(--fg-muted); }
+.evidence-panel .stat-label { color: var(--fg-muted); }
 .tone-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tone-neutral); flex-shrink: 0; }
 .tone-dot-ok { background: var(--tone-ok); }
 .tone-dot-info { background: var(--tone-info); }

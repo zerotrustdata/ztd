@@ -24,7 +24,6 @@ import {
   ProgressBar,
   QualityBadge,
   SectionHeading,
-  StatTile,
   formatTimestamp,
   formatPercent,
   formatNumber,
@@ -395,12 +394,6 @@ export function EvaluationsView() {
         </div>
       ) : (
         <>
-          <div className="stat-tile-grid stat-tile-grid-compact summary-strip" aria-label="Filtered evaluation summary">
-            <StatTile label="Assignments" value={formatNumber(filtered.reduce((sum, run) => sum + run.assignment_total, 0))} />
-            <StatTile label="Verifier passed" value={filtered.filter((run) => run.verifier_state === 'passed').length} />
-            <StatTile label="Verifier failed" value={filtered.filter((run) => run.verifier_state === 'failed').length} />
-          </div>
-
           {activeTab === 'campaigns' ? (
             <PanelSection title="Campaigns">
               <DataTable data={campaignGroups} columns={campaignColumns} pageSize={25} enableColumnVisibility={false}
