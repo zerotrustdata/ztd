@@ -45,6 +45,7 @@ type ScenarioToolExpectations struct {
 	ExpectedTools    []string
 	ForbiddenTools   []string
 	TrajectoryPolicy evalv1.EvaluationTrajectoryPolicy
+	IntentPipeline   bool
 }
 
 // CampaignChatGradingContext carries private grading inputs for one assignment.

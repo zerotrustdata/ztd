@@ -24,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/tribunal"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -99,9 +100,10 @@ type agentRun struct {
 	// context; the model receives it ahead of this repetition's input.
 	held []*operatorv1.InferenceMessage
 	// tools is the scenario's declared tool surface for every turn.
-	tools  agentToolScope
-	target Target
-	trace  *AgentTrace
+	tools              agentToolScope
+	target             Target
+	trace              *AgentTrace
+	marshalStrikeCount int
 }
 
 // ExecuteAssignment runs one homogeneous assignment to a terminal result. A
@@ -1028,13 +1030,101 @@ func (r *agentRun) decodeFileResult(record AgentToolCall, tool string, args agen
 	}
 }
 
-// runCommand runs the command the model wrote in its arguments as one governed
-// EXECUTE_BASH. The model is the only author of the command.
+// runCommand runs governed command execution. When intent is provided or the
+// scenario requests the intent pipeline, it routes through the sealed 5-member
+// Tribunal, weighted voting, Marshal risk analysis, and Auditor review (D9).
 func (r *agentRun) runCommand(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
 	command := strings.TrimSpace(args.String("command"))
-	if command == "" {
+	request := strings.TrimSpace(args.String("request"))
+	guidelines := strings.TrimSpace(args.String("guidelines"))
+
+	useIntentPipeline := r.req.ScenarioTools.IntentPipeline || args.Bool("intent_pipeline")
+	if !useIntentPipeline && command == "" {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required"})
 	}
+	if useIntentPipeline && command == "" && request == "" {
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required"})
+	}
+
+	if useIntentPipeline && r.executor.inference != nil && r.variant != nil {
+		intentReq := request
+		if intentReq == "" {
+			intentReq = command
+		}
+		pipelineReq := tribunal.PipelineRequest{
+			Request:                   intentReq,
+			Guidelines:                guidelines,
+			WorkingDirectory:          r.workspace.OperatorWorkingDirectory,
+			OS:                        "linux",
+			Shell:                     "bash",
+			Turn:                      len(r.trace.ModelCalls) + 1,
+			AttemptID:                 r.req.AttemptID,
+			CircuitBreakerStrikeCount: r.marshalStrikeCount,
+		}
+		pipelineCfg := tribunal.PipelineConfig{
+			Dispatcher:          r.executor.inference,
+			InferenceSessionID:  r.trace.Inference.SessionID,
+			Variant:             r.variant,
+			CampaignID:          r.trace.CampaignID,
+			ModelRegistryDigest: r.trace.ModelRegistryDigest,
+			ModelRegistry:       r.registry,
+			NewID:               r.executor.newID,
+			Now:                 r.executor.now,
+		}
+		pipelineRes, err := tribunal.RunPipeline(ctx, pipelineCfg, pipelineReq, uint32(len(r.trace.Steps)))
+		if pipelineRes != nil {
+			r.trace.Steps = append(r.trace.Steps, pipelineRes.Steps...)
+			for _, c := range pipelineRes.Candidates {
+				if c.Receipt != nil {
+					r.trace.ModelCalls = append(r.trace.ModelCalls, AgentModelCall{
+						ProviderAttemptID: c.ProviderCallID,
+						TransactionID:     c.TransactionID,
+						Purpose:           "tribunal_candidate_" + string(c.Member),
+						LoopTurn:          pipelineReq.Turn,
+						Receipt:           &AgentTraceReceipt{ActionReceipt: c.Receipt},
+					})
+				}
+			}
+			if pipelineRes.Risk != nil && pipelineRes.Risk.Receipt != nil {
+				r.trace.ModelCalls = append(r.trace.ModelCalls, AgentModelCall{
+					ProviderAttemptID: r.executor.newID("tribunal-marshal"),
+					TransactionID:     pipelineRes.Risk.TransactionID,
+					Purpose:           "tribunal_marshal",
+					LoopTurn:          pipelineReq.Turn,
+					Receipt:           &AgentTraceReceipt{ActionReceipt: pipelineRes.Risk.Receipt},
+				})
+			}
+			if pipelineRes.Audit != nil && pipelineRes.Audit.Receipt != nil {
+				r.trace.ModelCalls = append(r.trace.ModelCalls, AgentModelCall{
+					ProviderAttemptID: r.executor.newID("tribunal-audit"),
+					TransactionID:     pipelineRes.Audit.TransactionID,
+					Purpose:           "tribunal_audit",
+					LoopTurn:          pipelineReq.Turn,
+					Receipt:           &AgentTraceReceipt{ActionReceipt: pipelineRes.Audit.Receipt},
+				})
+			}
+			if pipelineRes.HighRiskBlocked {
+				if pipelineRes.CircuitBreakerTripped {
+					r.marshalStrikeCount = 0
+					return r.fail(record, agentToolFailure{
+						ErrorType: agentToolErrorSecurity,
+						Error:     "AGENT CONFLICT: Marshal blocked command twice. Human intervention required.",
+					})
+				}
+				r.marshalStrikeCount++
+				return r.fail(record, agentToolFailure{
+					ErrorType: agentToolErrorSecurity,
+					Error:     fmt.Sprintf("MARSHAL BLOCKED: %s (feedback: %s)", pipelineRes.Risk.Rationale, pipelineRes.Feedback),
+				})
+			}
+		}
+		if err != nil {
+			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: err.Error()})
+		}
+		r.marshalStrikeCount = 0
+		command = pipelineRes.FinalCommand
+	}
+
 	record.Command = command
 	payload, err := proto.Marshal(&operatorv1.CommandRequested{
 		Command:          command,
