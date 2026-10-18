@@ -1628,6 +1628,37 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("missing session validator rejects field read", func(t *testing.T) {
+		registry, err := NewFieldPathRegistry(slog.Default())
+		require.NoError(t, err)
+		db := &fakeDBService{}
+		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(db), withSessionValidator(nil))
+
+		args := `{"collection":"investigations","document_id":"doc1","field_path":"status","operator_session_id":"sess1"}`
+		result, err := g.handleReadField(t.Context(), json.RawMessage(args))
+		require.ErrorIs(t, err, constants.ErrGatewayOperatorSessionInvalid)
+		require.Nil(t, result)
+		require.Zero(t, db.reads)
+	})
+
+	t.Run("session lookup error rejects field read", func(t *testing.T) {
+		registry, err := NewFieldPathRegistry(slog.Default())
+		require.NoError(t, err)
+		db := &fakeDBService{}
+		validator := &fakeSessionValidator{err: context.Canceled}
+		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(db), withSessionValidator(validator))
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		args := `{"collection":"investigations","document_id":"doc1","field_path":"status","operator_session_id":"sess1"}`
+		result, err := g.handleReadField(ctx, json.RawMessage(args))
+		require.ErrorIs(t, err, constants.ErrInternal)
+		require.Nil(t, result)
+		require.Zero(t, db.reads)
+		require.Equal(t, ctx, validator.ctx)
+		require.Equal(t, "sess1", validator.sessionID)
+	})
+
 	t.Run("session validation failed", func(t *testing.T) {
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		validator := &fakeSessionValidator{valid: false}
@@ -1955,9 +1986,11 @@ func TestGatewayService_RunMaintenance(t *testing.T) {
 
 type fakeDBService struct {
 	fieldValue *FieldValue
+	reads      int
 }
 
 func (f *fakeDBService) GetField(_ context.Context, collection, id, fieldPath string) (FieldValue, error) {
+	f.reads++
 	if f.fieldValue != nil {
 		return *f.fieldValue, nil
 	}
@@ -1966,11 +1999,15 @@ func (f *fakeDBService) GetField(_ context.Context, collection, id, fieldPath st
 }
 
 type fakeSessionValidator struct {
-	valid bool
+	valid     bool
+	err       error
+	ctx       context.Context
+	sessionID string
 }
 
-func (f *fakeSessionValidator) ValidateSession(operatorSessionID string) (bool, error) {
-	return f.valid, nil
+func (f *fakeSessionValidator) ValidateSession(ctx context.Context, operatorSessionID string) (bool, error) {
+	f.ctx, f.sessionID = ctx, operatorSessionID
+	return f.valid, f.err
 }
 
 type fakeAuditLogger struct{}

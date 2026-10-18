@@ -34,8 +34,6 @@ type FileEditRequest struct {
 	StartLine int `json:"start_line,omitempty"`
 	EndLine   int `json:"end_line,omitempty"`
 
-	PatchContent string `json:"patch_content,omitempty"`
-
 	CreateBackup    bool   `json:"create_backup"`
 	CreateIfMissing bool   `json:"create_if_missing"`
 	Encoding        string `json:"encoding,omitempty"`

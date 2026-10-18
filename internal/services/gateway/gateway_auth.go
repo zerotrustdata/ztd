@@ -14,6 +14,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -478,6 +479,19 @@ func (s *AuthService) getAndValidateUser(ctx context.Context, userID string) err
 // Call this after user status changes (disable, delete, etc.) to ensure cache consistency.
 func (s *AuthService) InvalidateUserCache(userID string) {
 	s.invalidateUserCache(userID)
+}
+
+// ValidateSession implements mcp.SessionValidator using the authoritative session lookup.
+func (s *AuthService) ValidateSession(ctx context.Context, operatorSessionID string) (bool, error) {
+	_, err := s.ValidateOperatorSession(ctx, operatorSessionID)
+	if err == nil {
+		return true, nil
+	}
+	var authErr *AuthError
+	if errors.As(err, &authErr) {
+		return false, nil
+	}
+	return false, err
 }
 
 // ValidateOperatorSession checks if a session ID is valid and returns the Operator document.

@@ -132,7 +132,7 @@ type FieldReader interface {
 
 // SessionValidator validates Operator sessions for L3 authorization
 type SessionValidator interface {
-	ValidateSession(operatorSessionID string) (bool, error)
+	ValidateSession(ctx context.Context, operatorSessionID string) (bool, error)
 }
 
 // AuditLogger logs field read operations to the audit vault
@@ -643,14 +643,15 @@ func (g *GatewayService) handleReadField(ctx context.Context, arguments json.Raw
 	}
 
 	// L3: Validate Operator session
-	if g.sessionValidator != nil {
-		valid, err := g.sessionValidator.ValidateSession(req.OperatorSessionID)
-		if err != nil {
-			return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
-		}
-		if !valid {
-			return nil, constants.ErrGatewayOperatorSessionInvalid
-		}
+	if g.sessionValidator == nil {
+		return nil, constants.ErrGatewayOperatorSessionInvalid
+	}
+	valid, err := g.sessionValidator.ValidateSession(ctx, req.OperatorSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
+	}
+	if !valid {
+		return nil, constants.ErrGatewayOperatorSessionInvalid
 	}
 
 	// Extract field value from database

@@ -9,6 +9,7 @@ package execution
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -414,111 +415,42 @@ func TestFileEditService_ExecuteFileEdit_Delete(t *testing.T) {
 	})
 }
 
-func TestFileEditService_ExecuteFileEdit_Patch(t *testing.T) {
-	t.Parallel()
+func TestFileEditService_RejectsPatchWithoutFilesystemChanges(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
-	logger := testutil.NewTestLogger()
-	svc := newTestFileEditService(t, cfg, logger)
-
-	t.Run("patch not implemented", func(t *testing.T) {
-		t.Parallel()
-		tmpDir := testutil.OperatorDir(t)
-		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
-		os.WriteFile(tmpFile, []byte("test"), constants.PermFilePublic)
-
-		patchContent := "diff patch"
-		req := &models.FileEditRequest{
-			ExecutionID:  "test-req-1",
-			CaseID:       "test-case-1",
-			Operation:    constants.FileOperationPatch,
-			FilePath:     tmpFile,
-			PatchContent: patchContent,
-			RequestedBy:  "test-user",
-		}
-
-		result, err := svc.ExecuteFileEdit(context.Background(), req)
-
-		require.NoError(t, err)
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-		assert.Contains(t, result.ErrorMessage, "not yet implemented")
-	})
-
-	t.Run("missing patch content returns error", func(t *testing.T) {
-		t.Parallel()
-		tmpDir := testutil.OperatorDir(t)
-		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
-		os.WriteFile(tmpFile, []byte("test"), constants.PermFilePublic)
-
-		req := &models.FileEditRequest{
-			ExecutionID: "test-req-2",
-			CaseID:      "test-case-2",
-			Operation:   constants.FileOperationPatch,
-			FilePath:    tmpFile,
-			RequestedBy: "test-user",
-			// PatchContent is nil
-		}
-
-		result, err := svc.ExecuteFileEdit(context.Background(), req)
-
-		require.NoError(t, err)
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-		assert.Contains(t, result.ErrorMessage, "patch_content is required")
-	})
-
-	t.Run("backup creation attempted before patch", func(t *testing.T) {
-		t.Parallel()
-		tmpDir := testutil.OperatorDir(t)
-		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
-		os.WriteFile(tmpFile, []byte("original content"), constants.PermFilePublic)
-
-		patchContent := "diff patch"
-		req := &models.FileEditRequest{
-			ExecutionID:  "test-req-3",
-			CaseID:       "test-case-3",
-			Operation:    constants.FileOperationPatch,
-			FilePath:     tmpFile,
-			PatchContent: patchContent,
-			CreateBackup: true,
-			RequestedBy:  "test-user",
-		}
-
-		result, err := svc.ExecuteFileEdit(context.Background(), req)
-
-		require.NoError(t, err)
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-		// Should still fail with not implemented, but backup should be created
-		assert.Contains(t, result.ErrorMessage, "not yet implemented")
-		// Backup path should be set even though operation failed
-		if result.BackupPath != "" {
-			assert.NotEmpty(t, result.BackupPath)
-			// Verify backup exists
-			_, err := os.Stat(result.BackupPath)
+	svc := newTestFileEditService(t, cfg, testutil.NewTestLogger())
+	for _, exists := range []bool{true, false} {
+		t.Run(fmt.Sprintf("file_exists_%t", exists), func(t *testing.T) {
+			tmpDir := testutil.OperatorDir(t)
+			tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
+			const content = "original content"
+			if exists {
+				require.NoError(t, os.WriteFile(tmpFile, []byte(content), constants.PermFilePublic))
+			}
+			before, err := os.ReadDir(tmpDir)
 			require.NoError(t, err)
-		}
-	})
-
-	t.Run("backup creation fails with non-existent file", func(t *testing.T) {
-		t.Parallel()
-		tmpDir := testutil.OperatorDir(t)
-		nonExistentFile := filepath.Join(tmpDir, constants.TestNonexistentTxtFilename)
-
-		patchContent := "diff patch"
-		req := &models.FileEditRequest{
-			ExecutionID:  "test-req-4",
-			CaseID:       "test-case-4",
-			Operation:    constants.FileOperationPatch,
-			FilePath:     nonExistentFile,
-			PatchContent: patchContent,
-			CreateBackup: true,
-			RequestedBy:  "test-user",
-		}
-
-		result, err := svc.ExecuteFileEdit(context.Background(), req)
-
-		require.NoError(t, err)
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-		assert.Contains(t, result.ErrorMessage, constants.ErrPathNotFound.Error())
-	})
+			result, err := svc.ExecuteFileEdit(t.Context(), &models.FileEditRequest{
+				ExecutionID:     "unsupported-patch",
+				Operation:       "patch",
+				FilePath:        tmpFile,
+				CreateBackup:    true,
+				CreateIfMissing: true,
+			})
+			require.NoError(t, err)
+			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+			require.Equal(t, constants.ErrFileEditUnsupportedOperation.Error(), result.ErrorMessage)
+			require.Empty(t, result.BackupPath)
+			after, err := os.ReadDir(tmpDir)
+			require.NoError(t, err)
+			require.Equal(t, len(before), len(after))
+			if exists {
+				data, err := os.ReadFile(tmpFile)
+				require.NoError(t, err)
+				require.Equal(t, content, string(data))
+			} else {
+				require.NoFileExists(t, tmpFile)
+			}
+		})
+	}
 }
 
 func TestFileEditService_CreateBackup(t *testing.T) {

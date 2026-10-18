@@ -271,7 +271,7 @@ func LocalGatewayPorts() (httpPort, httpsPort int) {
 }
 
 // SetEndpointOverride sets both HTTP and HTTPS endpoint overrides to the same value.
-// Backward-compatible — used by tests that pass full URLs.
+// Tests with one URL use this to keep both discovery paths in agreement.
 func SetEndpointOverride(endpoint string) {
 	endpointMu.Lock()
 	defer endpointMu.Unlock()

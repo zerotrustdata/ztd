@@ -19,10 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 // inMemoryGovernedDocStore is a faithful in-memory implementation of
@@ -312,8 +309,3 @@ func rawBool(t *testing.T, raw json.RawMessage) bool {
 	require.NoError(t, json.Unmarshal(raw, &b))
 	return b
 }
-
-// Ensure protojson and proto imports are used (suppress unused import in some build configurations).
-var _ = protojson.Marshal
-var _ = proto.Marshal
-var _ = testutil.NewTestLogger

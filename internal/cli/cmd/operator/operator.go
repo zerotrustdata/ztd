@@ -541,7 +541,7 @@ func operatorScpCmd() *cobra.Command {
 
 	cmd.Flags().IntVarP(&port, "port", "P", 0, "Port to connect to on the remote host")
 	cmd.Flags().StringVarP(&identityFile, "identity", "i", "", "Selects the file from which the identity (private key) for public key authentication is read")
-	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursive copy (not applicable for single file, but included for compatibility)")
+	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Pass -r through to scp")
 	cmd.Flags().BoolVar(&preserve, "preserve", false, "Preserves modification times, access times, and modes from the source file")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose mode")
 	cmd.Flags().BoolVarP(&compression, "compression", "C", false, "Enable compression")

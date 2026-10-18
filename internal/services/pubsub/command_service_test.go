@@ -338,7 +338,6 @@ func TestIsValidFileOperation(t *testing.T) {
 		constants.FileOperationCreate,
 		constants.FileOperationDelete,
 		constants.FileOperationInsert,
-		constants.FileOperationPatch,
 		constants.FileOperationRead,
 		constants.FileOperationReplace,
 		constants.FileOperationUpdate,
@@ -349,6 +348,8 @@ func TestIsValidFileOperation(t *testing.T) {
 			t.Errorf("expected %s to be valid", op)
 		}
 	}
+
+	assert.False(t, isValidFileOperation("patch"))
 
 	if isValidFileOperation("invalid") {
 		t.Error("expected 'invalid' to be invalid")

@@ -574,7 +574,7 @@ type integrationTestSessionValidator struct {
 	validSessions map[string]bool
 }
 
-func (f *integrationTestSessionValidator) ValidateSession(sessionID string) (bool, error) {
+func (f *integrationTestSessionValidator) ValidateSession(ctx context.Context, sessionID string) (bool, error) {
 	valid, ok := f.validSessions[sessionID]
 	if !ok {
 		return false, nil

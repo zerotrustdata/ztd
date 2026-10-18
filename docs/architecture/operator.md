@@ -199,6 +199,7 @@ The canonical `system_fingerprint` is a SHA-256 hash combining immutable host at
 ### Liveness, Heartbeats, and Staleness Derivation
 
 - **Heartbeat Transmission**: Outbound Operators publish heartbeat frames every 30 seconds (configurable via `--heartbeat-interval 0-300`) to the Gateway pub/sub broker. Heartbeats are observed-tier telemetry that do not alter the Bound State Merkle root.
+- **Requested Heartbeats**: Governed heartbeat requests dispatch through the `HEARTBEAT` action handler. Heartbeat result events are telemetry and are rejected on the command dispatch path.
 - **Staleness Window**: Twice the declared interval (`constants.OperatorHeartbeatStaleMultiplier`), with a floor of 60 seconds and a ceiling of 10 minutes.
 - **On-Read Derivation**: Staleness is computed dynamically during `DocGet`, `DocList`, or `DocQuery` calls via `deriveOperatorStaleness`. Silent Operators return `status: stale` without modifying persisted database rows.
 - **Recovery**: Receiving a fresh heartbeat immediately restores derived status to `active`. Heartbeats cannot revive `stopped` or `terminated` Operators.
@@ -264,6 +265,7 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 - **State Directory (`.ztd/`)**: Contains SQLite database `data/ztd.db` (audit records, nonces, suspended transactions), encrypted vault storage (`vault/`), and Git file ledger (`data/ledger/`).
 - **Git File Ledger**: Every governed `FILE_EDIT` or `RESTORE_FILE` action creates an encrypted snapshot in Git before and after modification.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
+- **Unsupported Patches**: File editing rejects the `patch` operation without creating a backup or changing the target. Protobuf field 12 (`patch_content`) remains in the wire contract for compatibility and is not consumed by the file-edit handler.
 - **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
 - **Model Store Isolation**: An Operator's runtime state (`.ztd/`) must never reside inside the model storage root (`--model-storage-root`). `operator start` validates this pre-flight via `refuseModelStoreRuntime` and fails closed with `ErrOperatorModelStoreRuntime` (INV-OP-STOR-04), preserving the provenance model store as a pure read-only witness.
 

@@ -186,6 +186,8 @@ The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/nat
 
 All tools enforce fail-closed input validation: SQL tools reject multi-statement injection; URLs reject private IP ranges (SSRF prevention); filesystem tools reject directory traversal; command tools restrict metacharacters.
 
+The `read_field` operation validates the supplied Operator session through `AuthService.ValidateSession` before reading the document store. A missing validator or invalid session rejects the read; a session lookup failure returns an internal error. The lookup uses the request context and the same identity checks as `ValidateOperatorSession`.
+
 ### Agent Integration and MCP Stdio Bridge
 
 The Gateway provides seamless integration for external AI coding tools (Claude Code, OpenAI Codex, Devin CLI, Gemini CLI, Goose) through `ztd mcp agent`:

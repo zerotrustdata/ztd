@@ -64,7 +64,6 @@ const (
 	FileOperationCreate  FileOperation = "create"
 	FileOperationDelete  FileOperation = "delete"
 	FileOperationInsert  FileOperation = "insert"
-	FileOperationPatch   FileOperation = "patch"
 	FileOperationRead    FileOperation = "read"
 	FileOperationReplace FileOperation = "replace"
 	FileOperationUpdate  FileOperation = "update"

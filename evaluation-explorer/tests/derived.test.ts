@@ -260,10 +260,28 @@ function modelSummary(partial: Partial<ModelSummary> & Pick<ModelSummary, 'varia
   };
 }
 
+function rankedModel(
+  variantID: string,
+  role: ModelRole,
+  { tag = 'qwen:4b', passRate = 1, latency = 1000, tokens = 100, security = 1 }:
+    { tag?: string; passRate?: number; latency?: number; tokens?: number; security?: number } = {},
+): ModelSummary {
+  return modelSummary({
+    variant_id: variantID,
+    role,
+    served_model_tag: tag,
+    pass_rate: { estimate: passRate, lower: 0, upper: 1, denominator: 10 },
+    latency_p50_ms: { value: latency },
+    output_tokens: { value: tokens },
+    security_resistance: role === 'lite'
+      ? { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 }
+      : { value: security, refused: 1, yielded: 0, persisted: 0 },
+  });
+}
+
 describe('roleLeaderRows', () => {
-  it('excludes incomplete, unverified, inventory-only, and unscored models', () => {
-    const base = modelSummary({ variant_id: 'eligible', role: 'primary',
-      pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 } });
+  it('excludes incomplete, unverified, inventory-only, unscored, and axis-incomplete models', () => {
+    const base = rankedModel('eligible', 'primary');
     const models = [base, ...[
       { variant_id: 'partial', evaluation_coverage: 0.999 },
       { variant_id: 'unverified', quality_state: 'exploratory_partial' as const },
@@ -271,74 +289,47 @@ describe('roleLeaderRows', () => {
       { variant_id: 'inventory', inventory_only: true },
       { variant_id: 'unscored', pass_rate: undefined },
       { variant_id: 'zero-scored', pass_rate: { ...base.pass_rate!, denominator: 0 } },
+      { variant_id: 'no-latency', latency_p50_ms: { unavailable_reason: 'source_unavailable' } },
+      { variant_id: 'no-tokens', output_tokens: undefined },
+      { variant_id: 'unknown-size', served_model_tag: 'model:latest' },
+      { variant_id: 'no-security', security_resistance: undefined },
     ].map((overrides) => ({ ...base, ...overrides }))];
     expect(modelRoleLeaderboardRows(models).map((row) => row.model.variant_id)).toEqual(['eligible']);
   });
 
-  it('breaks score ties by smaller parameter size, then faster completed run', () => {
-    const models = [
-      ['large', 'qwen:8b', 10, 0.8],
-      ['small-slow', 'gemma:e4b', 120, 0.8],
-      ['small-fast', 'qwen:4b', 60, 0.8],
-      ['best-score', 'qwen:32b', 300, 0.9],
-      ['unknown-size', 'model:latest', 1, 0.8],
-      ['unknown-time', 'qwen:4b', undefined, 0.8],
-      ['tiny', 'model:500m', 200, 0.8],
-    ].map(([id, tag, , score]) => modelSummary({
-      variant_id: id as string, dataset_id: id as string, role: 'primary', served_model_tag: tag as string,
-      pass_rate: { estimate: score as number, lower: 0, upper: 1, denominator: 10 },
-    }));
-    const evaluations = models.map((model) => ({
-      ...evaluationSummary({ dataset_id: model.dataset_id, run_id: model.dataset_id }), lifecycle_state: 'completed' as const,
-      elapsed_seconds: ({ large: 10, 'small-slow': 120, 'small-fast': 60, 'best-score': 300,
-        'unknown-size': 1, tiny: 200 } as Record<string, number>)[model.variant_id],
-    }));
-    expect(modelRoleLeaderboardRows(models, 'all', evaluations).map((row) => row.model.variant_id))
-      .toEqual(['best-score', 'tiny', 'small-fast', 'small-slow', 'unknown-time', 'large', 'unknown-size']);
+  it('scores pass rate × security × weighted best-in-role efficiency', () => {
+    const rows = modelRoleLeaderboardRows([
+      rankedModel('fast-large', 'primary', { tag: 'qwen:8b', latency: 500, tokens: 200, security: 0.5 }),
+      rankedModel('concise-small', 'primary', { tag: 'qwen:4b', latency: 1000, tokens: 100 }),
+    ]);
+    expect(rows.map((row) => row.model.variant_id)).toEqual(['concise-small', 'fast-large']);
+    // Primary weights: speed 40, tokens 40, size 20.
+    expect(rows[0]?.axes).toEqual({ speed: { points: 20, max: 40 }, tokens: { points: 40, max: 40 }, size: { points: 20, max: 20 } });
+    expect(rows[0]?.points).toBeCloseTo(80);
+    expect(rows[1]?.axes).toEqual({ speed: { points: 40, max: 40 }, tokens: { points: 20, max: 40 }, size: { points: 10, max: 20 } });
+    expect(rows[1]?.points).toBeCloseTo(35);
+    expect(rows.map((row) => row.rank)).toEqual([1, 2]);
   });
 
-  it('returns one leader per role ordered Primary, Assistant, Lite', () => {
-    const models = [
-      modelSummary({
-        variant_id: 'qwen3-4b',
-        role: 'lite',
-        pass_rate: { estimate: 0.82, lower: 0.82, upper: 0.82, denominator: 18 },
-        evaluation_coverage: 1,
-      }),
-      modelSummary({
-        variant_id: 'qwen3-4b',
-        role: 'assistant',
-        pass_rate: { estimate: 0.77, lower: 0.77, upper: 0.77, denominator: 18 },
-        evaluation_coverage: 1,
-      }),
-      modelSummary({
-        variant_id: 'qwen3-4b',
-        role: 'primary',
-        pass_rate: { estimate: 0.78, lower: 0.78, upper: 0.78, denominator: 18 },
-        evaluation_coverage: 1,
-      }),
-    ];
-    const rows = roleLeaderRows(models);
+  it('applies no security factor to Lite and normalizes each role independently', () => {
+    const rows = roleLeaderRows([
+      rankedModel('lite-model', 'lite', { tag: 'gemma:2b', passRate: 0.9, latency: 4000, tokens: 400 }),
+      rankedModel('primary-model', 'primary', { tag: 'qwen:32b', latency: 100, tokens: 10, security: 0.75 }),
+    ]);
     expect(rows.map((row) => row.role)).toEqual(['primary', 'assistant', 'lite']);
-    expect(rows.every((row) => row.leader?.model.variant_id === 'qwen3-4b')).toBe(true);
-    expect(rows[0]?.leader?.pass_rate).toBe(0.78);
+    const lite = rows[2]?.leader;
+    expect(lite?.security).toBeUndefined();
+    expect(lite?.points).toBeCloseTo(90);
+    expect(rows[0]?.leader?.points).toBeCloseTo(75);
+    expect(rows[1]?.leader).toBeUndefined();
   });
 
-  it('picks the highest pass-rate model per role', () => {
-    const models = [
-      modelSummary({
-        variant_id: 'model-a',
-        role: 'primary',
-        pass_rate: { estimate: 0.6, lower: 0.6, upper: 0.6, denominator: 10 },
-      }),
-      modelSummary({
-        variant_id: 'model-b',
-        role: 'primary',
-        pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
-      }),
-    ];
-    const primary = roleLeaderRows(models).find((row) => row.role === 'primary');
-    expect(primary?.leader?.model.variant_id).toBe('model-b');
+  it('breaks equal points by smaller size, then name', () => {
+    const rows = modelRoleLeaderboardRows([
+      rankedModel('b-model', 'assistant'),
+      rankedModel('a-model', 'assistant'),
+    ]);
+    expect(rows.map((row) => row.model.variant_id)).toEqual(['a-model', 'b-model']);
   });
 });
 

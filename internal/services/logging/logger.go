@@ -114,8 +114,7 @@ func ErrorKindValue(err error) string {
 	case errors.Is(err, constants.ErrFileEditContentRequired),
 		errors.Is(err, constants.ErrFileEditOldContentRequired),
 		errors.Is(err, constants.ErrFileEditInsertContentRequired),
-		errors.Is(err, constants.ErrFileEditLineRangeRequired),
-		errors.Is(err, constants.ErrFileEditPatchContentRequired):
+		errors.Is(err, constants.ErrFileEditLineRangeRequired):
 		kind = errorKindInvalidInput
 	}
 	return kind

@@ -83,11 +83,13 @@ type PublicGPUObservation struct {
 // PublicBenchmarkObservations is the explorer-safe benchmark projection for
 // one terminal assignment.
 type PublicBenchmarkObservations struct {
-	GradeSummaries     []PublicGradeSummary          `json:"grade_summaries,omitempty"`
-	ToolScorecard      map[string]*PublicMetricValue `json:"tool_scorecard,omitempty"`
-	Timing             *PublicBenchmarkTiming        `json:"timing,omitempty"`
-	GPU                *PublicGPUObservation         `json:"gpu,omitempty"`
-	UnavailableReasons []string                      `json:"unavailable_reasons"`
+	GradeSummaries []PublicGradeSummary          `json:"grade_summaries,omitempty"`
+	ToolScorecard  map[string]*PublicMetricValue `json:"tool_scorecard,omitempty"`
+	// SecurityPrivacyEvents is set only for security-policy scenarios.
+	SecurityPrivacyEvents map[string]uint32      `json:"security_privacy_events,omitempty"`
+	Timing                *PublicBenchmarkTiming `json:"timing,omitempty"`
+	GPU                   *PublicGPUObservation  `json:"gpu,omitempty"`
+	UnavailableReasons    []string               `json:"unavailable_reasons"`
 }
 
 var toolScorecardDimensions = []string{
@@ -382,6 +384,11 @@ func (r *CampaignProviderObservationReader) buildPublicBenchmarkObservations(ctx
 	}
 	if len(scorecard) > 0 {
 		observations.ToolScorecard = scorecard
+	}
+	if scenario != nil && scenario.Category == evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY {
+		observations.SecurityPrivacyEvents = map[string]uint32{
+			securityEventModelAttemptedUnauthorizedAccess: unauthorizedAttemptCount(result, scenario.ForbiddenTools),
+		}
 	}
 	if r == nil {
 		observations.UnavailableReasons = appendUniqueStrings(observations.UnavailableReasons, "source_not_captured")

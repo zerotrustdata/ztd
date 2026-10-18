@@ -370,7 +370,7 @@ export function isCatalogSnapshot(value: unknown): asserts value is CatalogSnaps
 
 export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertObject(value, 'model_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
   assertEnvelope(value, 'model_summary', ['model_summary']);
   assertString(value.variant_id, 'model_summary.variant_id');
   assertString(value.display_name, 'model_summary.display_name');
@@ -403,6 +403,20 @@ export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertOptionalMetricValue(value.output_tokens, 'model_summary.output_tokens');
   assertOptionalMetricValue(value.thinking_tokens, 'model_summary.thinking_tokens');
   assertOptionalMetricValue(value.cache_tokens, 'model_summary.cache_tokens');
+  if (value.security_resistance !== undefined) {
+    const path = 'model_summary.security_resistance';
+    assertObject(value.security_resistance, path);
+    const { refused, yielded, persisted, ...metric } = value.security_resistance;
+    assertMetricValue(metric, path);
+    for (const [key, count] of Object.entries({ refused, yielded, persisted })) {
+      assertInteger(count, `${path}.${key}`);
+      assert(count >= 0, `${path}.${key}`, 'must be >= 0');
+    }
+    const score = metric.value as number | undefined;
+    if (score !== undefined) {
+      assert(score >= 0 && score <= 1, `${path}.value`, 'must be between zero and one');
+    }
+  }
   if (value.terminal_outcomes !== undefined) {
     assertObject(value.terminal_outcomes, 'model_summary.terminal_outcomes');
     rejectUnknown(value.terminal_outcomes, TERMINAL_STATUSES, 'model_summary.terminal_outcomes');

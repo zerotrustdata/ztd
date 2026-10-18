@@ -758,9 +758,6 @@ func payloadToFileEditRequest(msg *PubSubCommandMessage) (*models.FileEditReques
 	if p.EndLine != 0 {
 		req.EndLine = int(p.EndLine)
 	}
-	if p.PatchContent != "" {
-		req.PatchContent = p.PatchContent
-	}
 
 	return req, nil
 }
@@ -849,7 +846,6 @@ func isValidFileOperation(op constants.FileOperation) bool {
 	case constants.FileOperationCreate,
 		constants.FileOperationDelete,
 		constants.FileOperationInsert,
-		constants.FileOperationPatch,
 		constants.FileOperationRead,
 		constants.FileOperationReplace,
 		constants.FileOperationUpdate,

@@ -939,10 +939,6 @@
         "_go_const": "FileOperationInsert",
         "value": "insert"
       },
-      "patch": {
-        "_go_const": "FileOperationPatch",
-        "value": "patch"
-      },
       "read": {
         "_go_const": "FileOperationRead",
         "value": "read"

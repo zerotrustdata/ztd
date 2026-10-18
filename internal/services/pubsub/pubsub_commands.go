@@ -91,8 +91,7 @@ type OperatorPubSubService struct {
 
 	ShutdownChan chan string
 
-	actionHandlers      map[constants.ActionType]verifiedActionHandler
-	legacyEventHandlers map[constants.EventType]func(context.Context, *PubSubCommandMessage)
+	actionHandlers map[constants.ActionType]verifiedActionHandler
 
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -404,10 +403,6 @@ func (rs *OperatorPubSubService) initializeGovernance(c CommandServiceConfig, co
 }
 
 func (rs *OperatorPubSubService) buildHandlers() {
-	rs.legacyEventHandlers = map[constants.EventType]func(context.Context, *PubSubCommandMessage){
-		constants.Event.Operator.Heartbeat: rs.handleHeartbeatEvent,
-	}
-
 	rs.actionHandlers = map[constants.ActionType]verifiedActionHandler{
 		constants.ActionTypeHeartbeat:                   rs.heartbeat.HandleRequest,
 		constants.ActionTypeExecuteBash:                 rs.commands.HandleExecutionRequest,
@@ -949,11 +944,6 @@ func (rs *OperatorPubSubService) ExecuteVerifiedTransaction(ctx context.Context,
 	}
 	rs.logger.Info("Executing verified transaction through Actuator", "event_type", eventType)
 
-	if handler, ok := rs.legacyEventHandlers[eventType]; ok {
-		handler(ctx, pubsubMsg)
-		return "", nil
-	}
-
 	actionType, err := constants.ValidateGovernedRequest(eventType)
 	if err != nil {
 		rs.logger.Error("No governed action for event type", "event_type", string(eventType), string(constants.ConnectionStateError), err)
@@ -1404,18 +1394,6 @@ func (rs *OperatorPubSubService) publishInferenceCompletion(ctx context.Context,
 	}
 }
 
-// handleHeartbeatEvent processes a heartbeat event through the heartbeat service for publication.
-func (rs *OperatorPubSubService) handleHeartbeatEvent(ctx context.Context, msg *PubSubCommandMessage) {
-	var heartbeat operatorv1.HeartbeatResult
-	if err := proto.Unmarshal(msg.Payload, &heartbeat); err != nil {
-		rs.logger.Error("Failed to unmarshal heartbeat payload", "error", err)
-		return
-	}
-	if err := rs.heartbeat.Publish(ctx, &heartbeat); err != nil {
-		rs.logger.Error("Failed to publish heartbeat", "error", err)
-	}
-}
-
 // SendAutomaticHeartbeat publishes an automatic heartbeat immediately.
 func (rs *OperatorPubSubService) SendAutomaticHeartbeat() error {
 	return rs.heartbeat.SendAutomatic()
@@ -1450,15 +1428,6 @@ func (l *pubsubAuditLogger) LogFieldRead(operatorSessionID, collection, document
 		return err
 	}
 	return nil
-}
-
-// ValidateSession implements mcp.SessionValidator for operator mode.
-// In operator mode, session validation is handled by the L3Notary during
-// envelope verification, so this is a no-op that always returns true.
-func (rs *OperatorPubSubService) ValidateSession(operatorSessionID string) (bool, error) {
-	// Operator mode validates sessions via L3Notary during envelope verification
-	// This is a placeholder for the SessionValidator interface
-	return true, nil
 }
 
 // blockedSummary returns the ResultSummary of a blocked transaction. The rejection text is scrubbed

@@ -888,6 +888,25 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) {
 		assert.Contains(t, err.Error(), "no handler for")
 	})
 
+	t.Run("rejects heartbeat results on the command map", func(t *testing.T) {
+		msg := &PubSubCommandMessage{
+			EventType: constants.Event.Operator.Heartbeat,
+			ID:        "msg-heartbeat-result",
+		}
+		_, err := f.Svc.ExecuteVerifiedTransaction(t.Context(), msg.EventType, msg)
+		require.ErrorIs(t, err, constants.ErrTxEventNotRequest)
+	})
+
+	t.Run("heartbeat requests propagate handler decode failures", func(t *testing.T) {
+		msg := &PubSubCommandMessage{
+			EventType: constants.Event.Operator.HeartbeatRequested,
+			ID:        "msg-heartbeat-request",
+			Payload:   []byte{0xff},
+		}
+		_, err := f.Svc.ExecuteVerifiedTransaction(t.Context(), msg.EventType, msg)
+		require.ErrorIs(t, err, proto.Error)
+	})
+
 	t.Run("rejects LFAA recorded facts on the command map", func(t *testing.T) {
 		t.Parallel()
 		msg := &PubSubCommandMessage{
@@ -1857,82 +1876,6 @@ func TestOperatorPubSubService_handleEvalAnswerRequest(t *testing.T) {
 	})
 }
 
-func TestOperatorPubSubService_handleHeartbeatEvent(t *testing.T) {
-	t.Run("handles heartbeat event and publishes", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		// Set up heartbeat service with mock publisher
-		mockPublisher := &mockResultsPublisher{}
-		svc.heartbeat.SetResultsPublisher(mockPublisher)
-
-		heartbeat := &operatorv1.HeartbeatResult{
-			OperatorId:        "op-1",
-			OperatorSessionId: "session-1",
-			Status:            "automatic",
-		}
-		payload, _ := proto.Marshal(heartbeat)
-		msg := &PubSubCommandMessage{
-			ID:        "msg-1",
-			EventType: constants.Event.Operator.Heartbeat,
-			Payload:   payload,
-		}
-
-		svc.handleHeartbeatEvent(context.Background(), msg)
-		assert.True(t, mockPublisher.publishHeartbeatCalled)
-	})
-
-	t.Run("logs error when payload unmarshal fails", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		msg := &PubSubCommandMessage{
-			ID:        "msg-1",
-			EventType: constants.Event.Operator.Heartbeat,
-			Payload:   []byte("invalid protobuf"),
-		}
-
-		// Should not panic, should log error
-		svc.handleHeartbeatEvent(context.Background(), msg)
-	})
-}
-
 func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 	t.Run("records field read event in audit store", func(t *testing.T) {
 		t.Parallel()
@@ -1969,62 +1912,6 @@ func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 		testVal := "test-value"
 		err := auditLogger.LogFieldRead("session-1", "collection", "doc-1", "field.path", mcp.FieldValue{Str: &testVal})
 		assert.Error(t, err)
-	})
-}
-
-func TestOperatorPubSubService_ValidateSession(t *testing.T) {
-	t.Run("always returns true for operator mode", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		valid, err := svc.ValidateSession("session-1")
-		assert.True(t, valid)
-		assert.NoError(t, err)
-	})
-
-	t.Run("always returns true for any session ID", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		valid, err := svc.ValidateSession("")
-		assert.True(t, valid)
-		assert.NoError(t, err)
 	})
 }
 

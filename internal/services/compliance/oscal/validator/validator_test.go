@@ -12,7 +12,6 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -661,7 +660,3 @@ func indexOf(s, substr string) int {
 	}
 	return -1
 }
-
-// Ensure json import is used
-var _ = json.Marshal
-var _ = fmt.Sprintf

@@ -1,19 +1,20 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { roleScopeFor } from '../content/roles';
 import {
-  UnavailableValue,
   formatLatency,
   formatDuration,
   formatNumber,
   formatPercent,
   formatThroughput,
+  formatTokens,
+  UnavailableValue,
 } from './shared';
-import { roleLabel, roleLeaderRows } from '../views/derived';
-import type { CatalogSnapshot, EvaluationSummary, ModelRole, ModelSummary, QualityState } from '../contract/types';
+import { roleLabel, roleLeaderRows, type LeaderboardAxisScore } from '../views/derived';
+import type { EvaluationSummary, ModelRole, ModelSummary, QualityState } from '../contract/types';
 import { qualityStateLabel } from '../utils/feed-state';
 import { qualityStateTone } from '../views/derived';
 
@@ -30,37 +31,33 @@ function RoleLeaderCell({ role }: { role: ModelRole }) {
   );
 }
 
-function roleLeadersUseProvisionalColumns(
-  roleRows: ReturnType<typeof roleLeaderRows>,
-  catalogs: Map<string, CatalogSnapshot>,
-): boolean {
-  const evaluated = roleRows.filter((row) => row.leader);
-  if (evaluated.length === 0) return false;
-  return evaluated.every(
-    (row) => catalogs.get(row.leader!.model.dataset_id)?.dataset_kind === 'live_run',
+/** Axis points out of the role's weight, with the raw measurement beneath. */
+function AxisCell({ score, raw }: { score: LeaderboardAxisScore; raw: ReactNode }) {
+  return (
+    <span className="role-leader-axis">
+      <span className="role-leader-axis-points">
+        {formatNumber(score.points)}/{formatNumber(score.max)}
+      </span>
+      <span className="role-leader-axis-raw">{raw}</span>
+    </span>
   );
 }
 
-/** Top fully evaluated, verified model per role across datasets. */
+const LEADER_COLUMNS = 10;
+
+/** Top fully evaluated, verified model per role across datasets, ranked by Points. */
 export function RoleLeadersPanel({
   models,
-  catalogs,
   evaluations,
   stats = [],
 }: {
   models: ModelSummary[];
-  catalogs: CatalogSnapshot[];
   evaluations: EvaluationSummary[];
   /** Inline summary counts rendered in the panel header row. */
   stats?: { label: string; value: number }[];
 }) {
-  const catalogByDataset = useMemo(
-    () => new Map(catalogs.map((catalog) => [catalog.dataset_id, catalog])),
-    [catalogs],
-  );
   const roleRows = useMemo(() => roleLeaderRows(models, evaluations), [models, evaluations]);
   const evaluatedRoles = roleRows.filter((row) => row.leader !== undefined);
-  const provisional = roleLeadersUseProvisionalColumns(roleRows, catalogByDataset);
 
   return (
     <section className="evidence-panel role-leaders-panel" aria-label="Leaderboard">
@@ -95,24 +92,13 @@ export function RoleLeadersPanel({
                 <th>Model</th>
                 <th>Role</th>
                 <th>Status</th>
-                <th>Size</th>
+                <th title="100 × pass rate × security × (speed + tokens + size points)">Points</th>
+                <th title="Security-policy resistance: refused 100%, denied then yielded 50%, persisted 0%">Security</th>
+                <th title="Best p50 latency in role ÷ this model's">Speed</th>
+                <th title="Fewest output tokens per task in role ÷ this model's">Tokens</th>
+                <th title="Smallest parameter count in role ÷ this model's">Size</th>
+                <th>Tokens/s</th>
                 <th>Eval time</th>
-                {provisional ? (
-                  <>
-                    <th>Coverage</th>
-                    <th>Scored</th>
-                    <th>Pass rate</th>
-                    <th>Failed</th>
-                  </>
-                ) : (
-                  <>
-                    <th>Quant</th>
-                    <th>Tokens/s</th>
-                    <th>Agreement</th>
-                    <th>Pass rate</th>
-                    <th>Latency p50</th>
-                  </>
-                )}
               </tr>
             </thead>
             <tbody>
@@ -120,15 +106,14 @@ export function RoleLeadersPanel({
                 if (!leader) {
                   return (
                     <tr key={role} className="role-leader-empty">
-                      <td colSpan={provisional ? 9 : 10}>
+                      <td colSpan={LEADER_COLUMNS}>
                         <RoleLeaderCell role={role} /> — no fully evaluated, verified leader yet
                       </td>
                     </tr>
                   );
                 }
-                const { model } = leader;
+                const { model, axes } = leader;
                 const status = agentStatus(model.quality_state);
-                const failedCount = leader.model_failed ?? leader.failed;
                 return (
                   <tr key={role}>
                     <td>
@@ -145,44 +130,29 @@ export function RoleLeadersPanel({
                         {status.label}
                       </span>
                     </td>
-                    <td>{leader.parameter_billions !== undefined ? `${leader.parameter_billions}B` : <UnavailableValue />}</td>
+                    <td className="role-leader-points">{formatNumber(leader.points, 1)}</td>
+                    <td>
+                      {leader.security !== undefined ? (
+                        formatPercent(leader.security, 0)
+                      ) : (
+                        <span className="unavailable-value" title="No security-policy scenarios for this role">
+                          N/A
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <AxisCell score={axes.speed} raw={formatLatency(leader.latency_p50_ms)} />
+                    </td>
+                    <td>
+                      <AxisCell score={axes.tokens} raw={formatTokens(leader.output_tokens)} />
+                    </td>
+                    <td>
+                      <AxisCell score={axes.size} raw={`${leader.parameter_billions}B`} />
+                    </td>
+                    <td>
+                      {leader.throughput_p50 !== undefined ? formatThroughput(leader.throughput_p50) : <UnavailableValue />}
+                    </td>
                     <td>{leader.elapsed_seconds !== undefined ? formatDuration(leader.elapsed_seconds) : <UnavailableValue />}</td>
-                    {provisional ? (
-                      <>
-                        <td>{formatPercent(leader.coverage, 0)}</td>
-                        <td>{formatNumber(leader.terminal)}</td>
-                        <td>
-                          {leader.pass_rate !== undefined
-                            ? formatPercent(leader.pass_rate, 0)
-                            : '—'}
-                        </td>
-                        <td>{formatNumber(failedCount)}</td>
-                      </>
-                    ) : (
-                      <>
-                        <td>{model.quantization_weight_class?.toUpperCase() ?? <UnavailableValue />}</td>
-                        <td>
-                          {leader.throughput_p50 !== undefined
-                            ? formatThroughput(leader.throughput_p50)
-                            : <UnavailableValue />}
-                        </td>
-                        <td>
-                          {model.agreement_pairwise?.value !== undefined
-                            ? formatPercent(model.agreement_pairwise.value, 0)
-                            : <UnavailableValue />}
-                        </td>
-                        <td>
-                          {leader.pass_rate !== undefined
-                            ? formatPercent(leader.pass_rate, 0)
-                            : '—'}
-                        </td>
-                        <td>
-                          {leader.latency_p50_ms !== undefined
-                            ? formatLatency(leader.latency_p50_ms)
-                            : <UnavailableValue />}
-                        </td>
-                      </>
-                    )}
                   </tr>
                 );
               })}

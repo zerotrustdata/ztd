@@ -175,6 +175,9 @@ describe('ModelsView', () => {
       inventory_only: false,
       evaluation_coverage: 1,
       pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
+      latency_p50_ms: { value: 1200 },
+      output_tokens: { value: 150 },
+      security_resistance: { value: 0.5, refused: 1, yielded: 0, persisted: 1 },
     };
     evalStore.loadFixtures(
       [
@@ -215,8 +218,16 @@ describe('ModelsView', () => {
     expect(panel.queryByRole('link', { name: 'Unverified model' })).not.toBeInTheDocument();
     expect(panel.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
     expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
+    // Sole model in its role: every axis at full weight, so 100 × 0.8 × 0.5 = 40 points.
+    expect(panel.getByText('40.0')).toBeInTheDocument();
+    expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
-    expect(panel.getByRole('columnheader', { name: 'Eval time' })).toBeInTheDocument();
+    expect(panel.getByText('1.20 s')).toBeInTheDocument();
+    for (const header of ['Points', 'Security', 'Speed', 'Tokens', 'Size', 'Eval time']) {
+      expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
+    }
+    expect(panel.queryByRole('columnheader', { name: 'Pass rate' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('columnheader', { name: 'Coverage' })).not.toBeInTheDocument();
   });
 
   it('displays model capabilities, architecture specs, and supports capability filtering', () => {

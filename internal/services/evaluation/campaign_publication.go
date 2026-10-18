@@ -917,7 +917,9 @@ func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Conte
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	state.Suite = methodologySuiteFromCatalog(catalog)
+	if err := state.attachScenarioCatalog(catalog, assignments, results); err != nil {
+		return nil, nil, nil, nil, err
+	}
 	state.Release = release
 	if c.leaseLiveness != nil {
 		state.RunSummary, err = NewCampaignController(c.store, nil, nil, nil).RunSummary(ctx, runID)

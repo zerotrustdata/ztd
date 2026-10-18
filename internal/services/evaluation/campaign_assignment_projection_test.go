@@ -147,5 +147,3 @@ func projectionStringValue(t *testing.T, raw json.RawMessage) string {
 	require.NoError(t, json.Unmarshal(raw, &value))
 	return value
 }
-
-var _ = context.Background

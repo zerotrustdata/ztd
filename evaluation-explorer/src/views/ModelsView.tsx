@@ -141,9 +141,6 @@ export function ModelsView() {
       ? 'all'
       : filters.evaluated;
 
-  const catalogs = useStoreState((state) =>
-    Array.from(state.catalogs.values()).filter((record) => matchesRelease(record, release)),
-  );
   const evaluations = useStoreState((state) =>
     Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)),
   );
@@ -479,7 +476,6 @@ export function ModelsView() {
 
       <RoleLeadersPanel
         models={models}
-        catalogs={catalogs}
         evaluations={evaluations}
         stats={[
           { label: 'Measured models', value: models.filter((model) => model.pass_rate).length },

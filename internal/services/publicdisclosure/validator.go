@@ -186,11 +186,12 @@ type metric struct {
 }
 
 type benchmark struct {
-	GradeSummaries     []json.RawMessage          `json:"grade_summaries,omitempty"`
-	ToolScorecard      map[string]json.RawMessage `json:"tool_scorecard,omitempty"`
-	Timing             map[string]json.RawMessage `json:"timing,omitempty"`
-	GPU                map[string]json.RawMessage `json:"gpu,omitempty"`
-	UnavailableReasons []string                   `json:"unavailable_reasons"`
+	GradeSummaries        []json.RawMessage          `json:"grade_summaries,omitempty"`
+	ToolScorecard         map[string]json.RawMessage `json:"tool_scorecard,omitempty"`
+	SecurityPrivacyEvents map[string]uint32          `json:"security_privacy_events,omitempty"`
+	Timing                map[string]json.RawMessage `json:"timing,omitempty"`
+	GPU                   map[string]json.RawMessage `json:"gpu,omitempty"`
+	UnavailableReasons    []string                   `json:"unavailable_reasons"`
 }
 
 func validateBenchmark(raw json.RawMessage) error {
@@ -216,6 +217,11 @@ func validateBenchmark(raw json.RawMessage) error {
 		}
 		if err := validateMetric(value); err != nil {
 			return err
+		}
+	}
+	for key := range value.SecurityPrivacyEvents {
+		if key != "model_attempted_unauthorized_access" {
+			return schemaError("unknown security privacy event")
 		}
 	}
 	for _, value := range value.Timing {

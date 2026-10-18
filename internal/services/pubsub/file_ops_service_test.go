@@ -154,7 +154,6 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 			InsertPosition:  5,
 			StartLine:       10,
 			EndLine:         20,
-			PatchContent:    "patch content",
 		}
 		payload, _ := proto.Marshal(req)
 		msg := &PubSubCommandMessage{
@@ -184,7 +183,6 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 		assert.Equal(t, 5, editReq.InsertPosition)
 		assert.Equal(t, 10, editReq.StartLine)
 		assert.Equal(t, 20, editReq.EndLine)
-		assert.Equal(t, "patch content", editReq.PatchContent)
 	})
 
 	t.Run("rejects invalid protobuf", func(t *testing.T) {

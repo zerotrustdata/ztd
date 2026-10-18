@@ -461,7 +461,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		DownstreamCmd:          cfg.Gateway.MCPDownstreamCmd,
 		DownstreamArgs:         cfg.Gateway.MCPDownstreamArgs,
 		DBService:              docStore,
-		SessionValidator:       cmdSvc,
+		SessionValidator:       auth,
 		AuditLogger:            auditLogger,
 		L2ConsensusDeliberator: l2Deliberator,
 		EmbeddedSession:        embeddedOperator,

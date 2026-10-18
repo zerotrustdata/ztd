@@ -733,8 +733,6 @@ var (
 	ErrFileEditOldContentRequired    = errors.New("old_content is required for replace operation")
 	ErrFileEditInsertContentRequired = errors.New("insert_content is required for insert operation")
 	ErrFileEditLineRangeRequired     = errors.New("start_line and end_line are required for delete operation")
-	ErrFileEditPatchContentRequired  = errors.New("patch_content is required for patch operation")
-	ErrFileEditPatchNotImplemented   = errors.New("patch operation not yet implemented")
 
 	// Response writer errors
 	ErrResponseEncodeJSON               = errors.New("failed to encode JSON response")
