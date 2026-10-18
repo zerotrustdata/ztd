@@ -147,11 +147,6 @@
       "required": false,
       "description": "End line for line-range operations. Omitted when zero."
     },
-    "patch_content": {
-      "type": "string",
-      "required": false,
-      "description": "Patch content for patch operations. Omitted when empty."
-    },
     "create_backup": {
       "type": "boolean",
       "required": true,

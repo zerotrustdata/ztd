@@ -89,9 +89,6 @@ func TestEvalCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 		{name: "rollout skip", args: []string{"rollout", "skip", "qwen3:4b"}},
 		{name: "rollout run", args: []string{"rollout", "run"}},
 
-		// formations
-		{name: "formations smoke", args: []string{"formations", "smoke", "qwen-powerhouse"}},
-
 		// gates
 		{name: "gates inference", args: []string{"gates", "inference", "--model", "qwen3:4b"}},
 		{name: "gates probe", args: []string{"gates", "probe", "qwen3:4b", "--prompt", "hi"}},

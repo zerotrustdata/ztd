@@ -115,7 +115,10 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 		AckWindowSecs:           constants.PublicFeedAckWindowSeconds,
 	}
 	publisher := gateway.NewPublicPublisherService(nil, newPublicCampaignFileService(t), testutil.NewTestLogger(), exportConfig, privateKey, exportConfig.SigningKeyID)
-	mirror, err := gateway.NewPublicMirrorServer(testutil.NewTestLogger(), gateway.NewRuntimePublicMirrorStore(newPublicCampaignFileService(t)), gateway.PublicMirrorConfig{})
+	mirrorStore, err := gateway.OpenPublicMirrorStore(ctx, newPublicCampaignFileService(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mirrorStore.Close() })
+	mirror, err := gateway.NewPublicMirrorServer(testutil.NewTestLogger(), mirrorStore, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
 	require.NoError(t, mirror.RegisterSourceKey(ctx, exportConfig.SourceID, exportConfig.SigningKeyID, publicKey))
 	server := httptest.NewServer(mirror.Handler())
@@ -246,7 +249,7 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	assert.Equal(t, evaluationSummaryFromRecords(t, verificationRecords), history.Items[1])
 	assert.Equal(t, "not_run", history.Items[0].VerifierState)
 	summary := history.Items[1]
-	assert.Equal(t, "1.8.0", summary.SchemaVersion)
+	assert.Equal(t, "1.9.0", summary.SchemaVersion)
 	assert.Equal(t, "evaluation_summary", summary.Kind)
 	assert.Equal(t, "passed", summary.VerifierState)
 	assert.Equal(t, 1.0, summary.HeadlineMetrics.PassRate.Value)

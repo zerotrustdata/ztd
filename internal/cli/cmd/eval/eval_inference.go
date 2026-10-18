@@ -379,6 +379,23 @@ func resolveInferenceProbeAppCredentials(fileSvc fs.RuntimeFileService, cfg *con
 	return cert, nil
 }
 
+// governedInferenceDispatcher sends evaluation inference turns through the
+// governed Inference Operator path under the ztd-eval application identity.
+type governedInferenceDispatcher struct {
+	client *harnessclient.Client
+}
+
+func (d *governedInferenceDispatcher) DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	if d == nil || d.client == nil || req == nil {
+		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", constants.ErrMissingRequiredField)
+	}
+	response, _, err := d.client.DispatchInference(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", err)
+	}
+	return response, nil
+}
+
 func parseInferenceProbeRole(role string) (models.InferenceModelRole, error) {
 	switch strings.ToLower(strings.TrimSpace(role)) {
 	case "primary":

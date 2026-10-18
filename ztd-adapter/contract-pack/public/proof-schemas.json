@@ -103,7 +103,7 @@
       }
     },
     "public_proof_manifest": {
-      "_description": "Root manifest for a public proof package. Binds the proof root SHA-256, campaign identity, verified index generation hash, artifact count, artifact catalog, verifier instructions, and generation time. A network-disabled verifier reproduces the root from the manifest and the listed artifacts.",
+      "_description": "Public proof manifest or derived active view. With nonzero segment_index, its root and signature belong to that signed segment; offline verification requires the segment log. Index zero denotes a legacy full-list manifest.",
       "artifact_count": {
         "description": "Number of artifacts in the proof package",
         "required": true,
@@ -132,7 +132,7 @@
         "type": "string"
       },
       "proof_root_sha256": {
-        "description": "SHA-256 over the canonical encoding of all artifact hashes and manifest metadata (64-char hex)",
+        "description": "Signed segment root for a chain projection, or legacy full-manifest root (64-char hex)",
         "required": true,
         "type": "string"
       },
@@ -140,6 +140,11 @@
         "description": "Proof manifest schema version",
         "required": true,
         "type": "string"
+      },
+      "segment_index": {
+        "description": "Nonzero for a derived segment-chain projection; verify its root and signature using the signed segment log",
+        "required": false,
+        "type": "integer"
       },
       "signature": {
         "description": "Ed25519 signature over the proof root SHA-256, hex-encoded",
@@ -163,6 +168,94 @@
       },
       "verifier_instructions": {
         "description": "Human-readable offline verification instructions",
+        "required": true,
+        "type": "string"
+      }
+    },
+    "public_proof_manifest_segment": {
+      "_description": "One source-signed append-only proof log link. The root binds every field except root and signature using the domain-separated length-prefixed encoding defined by models.ComputePublicProofSegmentRoot.",
+      "campaign_id": {
+        "required": false,
+        "type": "string"
+      },
+      "campaign_revision": {
+        "required": false,
+        "type": "string"
+      },
+      "entries": {
+        "description": "New artifacts introduced by this segment only",
+        "items": "public_proof_catalog_entry",
+        "required": false,
+        "type": "array"
+      },
+      "generated_at": {
+        "format": "iso8601",
+        "required": true,
+        "type": "string"
+      },
+      "previous_root": {
+        "description": "Preceding segment root, or zero SHA-256 for genesis",
+        "required": true,
+        "type": "string"
+      },
+      "proof_root_sha256": {
+        "required": true,
+        "type": "string"
+      },
+      "schema_version": {
+        "description": "Signed segment schema version",
+        "required": true,
+        "type": "string"
+      },
+      "segment_index": {
+        "description": "Consecutive chain position starting at one",
+        "required": true,
+        "type": "integer"
+      },
+      "signature": {
+        "required": true,
+        "type": "string"
+      },
+      "signing_key_id": {
+        "required": true,
+        "type": "string"
+      },
+      "source_id": {
+        "description": "Pseudonymous source deployment identifier",
+        "required": true,
+        "type": "string"
+      },
+      "verification_ok": {
+        "required": true,
+        "type": "boolean"
+      },
+      "verified_index_generation_hash": {
+        "required": false,
+        "type": "string"
+      },
+      "verifier_instructions": {
+        "required": false,
+        "type": "string"
+      },
+      "withdrawn_artifact_ids": {
+        "description": "Previously active content IDs withdrawn by this segment",
+        "items": "string",
+        "required": false,
+        "type": "array"
+      }
+    },
+    "public_proof_segments_response": {
+      "_description": "The signed proof log for one source, served by anonymous GET /proof-segments.",
+      "schema_version": {
+        "required": true,
+        "type": "string"
+      },
+      "segments": {
+        "items": "public_proof_manifest_segment",
+        "required": true,
+        "type": "array"
+      },
+      "source_id": {
         "required": true,
         "type": "string"
       }

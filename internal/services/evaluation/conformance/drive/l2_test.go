@@ -132,6 +132,16 @@ func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
 		assert.Equal(t, syntheticSetID, got.GetConsensusSetId())
 	})
 
+	t.Run("a single application falls below quorum with zero votes", func(t *testing.T) {
+		one, err := NewSyntheticL2(1)
+		require.NoError(t, err)
+		env, a := l2Envelope(t, cases.FaultL2BelowQuorum)
+		require.NoError(t, L2Mutators(one)[cases.FaultL2BelowQuorum].Apply(ctx, env, a))
+		require.NotNil(t, env.GetGovernance().GetL2())
+		assert.Empty(t, env.GetGovernance().GetL2().GetVotes())
+		assert.Equal(t, syntheticSetID, env.GetGovernance().GetL2().GetConsensusSetId())
+	})
+
 	t.Run("duplicate signer appends a copy of vote 0 to the full quorum", func(t *testing.T) {
 		env, a := l2Envelope(t, cases.FaultL2DuplicateSigner)
 		valid, err := src.Proof(ctx, env)
@@ -235,15 +245,13 @@ func TestSyntheticL2_ProofVerifiesUnderItsMemberKeys(t *testing.T) {
 
 func TestL2Mutators_FailWhenTheProofCannotBeCut(t *testing.T) {
 	ctx := context.Background()
-	one, err := NewSyntheticL2(1)
-	require.NoError(t, err)
 
 	tests := []struct {
 		name  string
 		fault cases.Fault
 		src   L2Source
 	}{
-		{"below quorum with a single vote", cases.FaultL2BelowQuorum, one},
+		{"below quorum with no votes", cases.FaultL2BelowQuorum, emptyL2{}},
 		{"duplicate signer with no votes", cases.FaultL2DuplicateSigner, emptyL2{}},
 		{"signature flipped with no votes", cases.FaultL2SignatureFlipped, emptyL2{}},
 		{"non-member with no votes", cases.FaultL2NonMember, emptyL2{}},

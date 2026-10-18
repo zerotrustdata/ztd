@@ -9,11 +9,8 @@ package model_provenance
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +33,7 @@ type Attestor interface {
 type OllamaStorageAttestor struct {
 	modelStorageRoot string
 	operatorID       string
+	blobs            *blobVerifier
 }
 
 // NewOllamaStorageAttestor constructs a storage-side attestor for one model
@@ -48,7 +46,7 @@ func NewOllamaStorageAttestor(modelStorageRoot, operatorID string) (*OllamaStora
 	if operatorID == "" {
 		operatorID = "ztd-model-provenance-operator"
 	}
-	return &OllamaStorageAttestor{modelStorageRoot: root, operatorID: operatorID}, nil
+	return &OllamaStorageAttestor{modelStorageRoot: root, operatorID: operatorID, blobs: newBlobVerifier(filepath.Join(root, "blobs"), time.Now)}, nil
 }
 
 // ollamaRunnerManifestMediaType marks a wrapper layer that is itself one
@@ -172,47 +170,20 @@ func (a *OllamaStorageAttestor) attestBlob(ctx context.Context, digestRef, media
 	if err != nil {
 		return nil, err
 	}
-	blobPath := filepath.Join(a.modelStorageRoot, "blobs", "sha256-"+digestHex)
-	file, err := os.Open(blobPath)
+	verification, err := a.blobs.verify(ctx, digestHex)
 	if err != nil {
-		return nil, fmt.Errorf("model provenance attestor: open blob %s: %w", digestHex, err)
+		return nil, err
 	}
-	defer file.Close()
-
-	hasher := sha256.New()
-	size, err := io.Copy(hasher, &provenanceContextReader{ctx: ctx, reader: file})
-	if err != nil {
-		return nil, fmt.Errorf("model provenance attestor: hash blob %s: %w", digestHex, err)
-	}
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-	observed := hex.EncodeToString(hasher.Sum(nil))
-	if observed != digestHex {
-		return nil, fmt.Errorf("model provenance attestor: blob digest mismatch for %s", digestHex)
-	}
-	if declaredSize > 0 && size != declaredSize {
+	if declaredSize > 0 && verification.sizeBytes != declaredSize {
 		return nil, fmt.Errorf("model provenance attestor: blob size mismatch for %s", digestHex)
 	}
 	return &evalv1.ModelWeightAttestation{
-		BlobDigest: digestHex,
-		SizeBytes:  uint64(size),
-		MediaType:  mediaType,
+		BlobDigest:                digestHex,
+		SizeBytes:                 uint64(verification.sizeBytes),
+		MediaType:                 mediaType,
+		VerificationMode:          verification.mode,
+		FullHashCompletedAtUnixMs: verification.hashCompletedAt.UTC().UnixMilli(),
 	}, nil
-}
-
-// Check cancellation between filesystem reads rather than after the entire
-// multi-gigabyte blob. An in-flight OS read still completes normally.
-type provenanceContextReader struct {
-	ctx    context.Context
-	reader io.Reader
-}
-
-func (r *provenanceContextReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.reader.Read(p)
 }
 
 func resolveOllamaManifestPath(storageRoot, servedModelTag string) (string, error) {

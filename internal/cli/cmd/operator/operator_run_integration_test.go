@@ -30,7 +30,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -48,7 +47,7 @@ func TestOperatorRun_ExecutesThroughGovernedPipeline(t *testing.T) {
 	ctx := t.Context()
 	fixture := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: t.Name(),
-		Posture:  config.PostureDoctrine,
+		Posture:  constants.PostureDoctrine,
 	})
 	fixture.WaitForReady(t)
 

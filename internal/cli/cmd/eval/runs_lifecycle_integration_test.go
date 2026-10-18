@@ -28,12 +28,12 @@ func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
-	assert.Contains(t, out, fmt.Sprintf("Cancelled run run-a-1: stopped %d assignment(s)", evaluation.DefaultSuiteScenarioCount))
+	assert.Contains(t, out, fmt.Sprintf("Cancelled run run-a-1: stopped %d assignment(s)", testModelRoleCells(t)))
 
 	var show runShowJSON
 	require.NoError(t, env.runJSON(t, &show, "runs", "show", "run-a-1"))
 	assert.Equal(t, "cancelled", show.Status)
-	assert.Equal(t, uint32(evaluation.DefaultSuiteScenarioCount), show.Stopped)
+	assert.Equal(t, uint32(testModelRoleCells(t)), show.Stopped)
 	assert.Zero(t, show.Queued)
 }
 
@@ -44,7 +44,7 @@ func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
 	var payload runCancelJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "cancel", "run-a-1", "--publish=false"))
 	assert.Equal(t, "run-a-1", payload.RunID)
-	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Stopped)
+	assert.Equal(t, testModelRoleCells(t), payload.Stopped)
 	assert.False(t, payload.WasRunning)
 	assert.False(t, payload.ClearedStale)
 }
@@ -89,7 +89,7 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	case result := <-done:
 		require.NoError(t, result.err, result.out)
 		assert.Contains(t, result.out, "Waiting for process 9999")
-		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", evaluation.DefaultSuiteScenarioCount))
+		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", testModelRoleCells(t)))
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancel did not finish after the process exited")
 	}
@@ -209,12 +209,12 @@ func TestRunsArchive_ArchivedRunsStayReadable(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "an incomplete archived run is still verifiable, and reports as incomplete")
 
-	env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", "data/eval/exports/run-a-1")
+	env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", "export/run-a-1")
 
 	var compared runCompareJSON
 	require.NoError(t, env.runJSON(t, &compared, "runs", "compare", "run-a-1", "run-a-2"))
-	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, compared.Left.Cells)
-	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, compared.Right.Cells)
+	assert.Equal(t, testModelRoleCells(t), compared.Left.Cells)
+	assert.Equal(t, testModelRoleCells(t), compared.Right.Cells)
 }
 
 func TestRunsArchive_ArchivedRunsAreRejectedByMutatingCommands(t *testing.T) {

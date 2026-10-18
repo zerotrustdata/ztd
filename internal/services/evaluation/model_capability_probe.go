@@ -34,14 +34,14 @@ func RequiredModelCapabilityKinds() []evalv1.ModelCapabilityKind {
 }
 
 type governedCapabilityProbeRunner struct {
-	dispatcher FormationInferenceDispatcher
+	dispatcher GovernedInferenceDispatcher
 	sessionID  string
 	newID      func(string) string
 }
 
 // NewGovernedCapabilityProbeRunner executes bounded inventory capability probes
 // through the exact Inference Operator session.
-func NewGovernedCapabilityProbeRunner(dispatcher FormationInferenceDispatcher, inferenceSessionID string, newID func(string) string) GovernedCapabilityProbeRunner {
+func NewGovernedCapabilityProbeRunner(dispatcher GovernedInferenceDispatcher, inferenceSessionID string, newID func(string) string) GovernedCapabilityProbeRunner {
 	return &governedCapabilityProbeRunner{
 		dispatcher: dispatcher,
 		sessionID:  inferenceSessionID,

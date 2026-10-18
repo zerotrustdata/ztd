@@ -186,12 +186,12 @@ export const ZTD_DIFFERENTIATORS = [
 
 /** The complete package every model candidate is measured against. */
 export const ZTD_MEASURED_TOGETHER = [
-  'A frozen scenario catalog of case inputs, each scored as one governed heterogeneous formation',
-  'Lite, Assistant, and Primary role stack, run in order through the direct formation runner',
+  'A frozen scenario catalog of case inputs, each scored against one registry model in its designated Lite, Assistant, or Primary role',
+  'A bounded tool-calling agent loop: every turn is a governed Inference Operator dispatch and every tool call a governed Data Operator action',
   'Governed inference dispatch to Ollama — never a direct provider API shortcut',
-  'Provenance attestation of model weights and provider-boundary hardware observation around each role',
-  'Formation pass/fail, per-role telemetry, and timing when observed',
-  'Signed campaign evidence with explicit current-standard, run-scoped, incomplete, legacy, live, and failed quality states',
+  'Provenance attestation of model weights and provider-boundary hardware observation around each inference',
+  'Deterministic pass/fail, a sealed agent trace with signed receipts, and timing when observed',
+  'Signed campaign evidence with explicit verified, incomplete, legacy, live, and failed quality states',
 ] as const;
 
 export const ZTD_CAMPAIGN_OPERATORS = [

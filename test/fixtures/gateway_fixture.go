@@ -24,6 +24,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -39,8 +40,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/response"
-	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
@@ -50,6 +49,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/uuid"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // GatewayFixture provides a reusable gateway setup for integration tests.
@@ -69,13 +71,14 @@ type GatewayFixture struct {
 	DownstreamCmd    string // Command of downstream subprocess MCP server
 	DownstreamArgs   []string
 	Keystore         *keystore.Keystore
-	A2ADownstreamURL string // URL used for A2A (same as DownstreamURL if not overridden)
+	A2ADownstreamURL string           // URL used for A2A (same as DownstreamURL if not overridden)
+	ConsensusServer  *httptest.Server // External HTTPS protobuf deliberation endpoint, when configured
 }
 
 // GatewayFixtureOptions configures the gateway fixture.
 type GatewayFixtureOptions struct {
 	TestName         string
-	Posture          config.GatewayPosture
+	Posture          constants.Posture
 	DownstreamURL    string   // MCP downstream HTTP URL; creates mock server if empty and DownstreamCmd is empty
 	DownstreamCmd    string   // MCP downstream stdio subprocess command
 	DownstreamArgs   []string // MCP downstream stdio subprocess arguments
@@ -207,7 +210,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	// Setup gateway configuration
 	posture := opts.Posture
 	if posture == "" {
-		posture = config.PostureNotary
+		posture = constants.PostureNotary
 	}
 
 	// WorkDir roots the Gateway (and its embedded Operator's working directory)
@@ -255,17 +258,15 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 
-	// C2 inverted construction order: open DB first, seed consensus
-	// policy into the DB before NewGatewayModeServiceWithDB (build() reads the
-	// policy from the DB and wires the ConsensusService at construction via
-	// GatewayModeDeps — no SetConsensusService, no second pubsub construction,
-	// no adapter wiring).
+	// Open DB and seed consensus policy and binding before constructing the
+	// Gateway. The fixture injects its test deliberator for Gateway ingress;
+	// direct conformance clients use the bound HTTPS protobuf endpoint.
 	db, err := gateway.OpenCanonicalDBService(testutil.NewTestLogger(), ks, fileSvc)
 	require.NoError(t, err)
 
-	var consensusSvc *consensus.ConsensusService
-	var l2Deliberator *consensus.LocalDeliberator
-	if posture == config.PostureConsensus || posture == config.PostureNotary {
+	var l2Deliberator mcp.L2ConsensusDeliberator
+	var consensusServer *httptest.Server
+	if posture.RequiresL2() {
 		consensusID := opts.ConsensusID
 		if consensusID == "" {
 			consensusID = "test-consensus"
@@ -283,11 +284,11 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 			nServiceMembers = 1
 		}
 		cs := SetupConsensus(t, db.GetConsensusStore(), db.GetSignerStore(), consensusID, nMembers, quorum, nServiceMembers)
-		consensusSvc = cs.Service
 		l2Deliberator = cs.Deliberator
+		consensusServer = cs.Server
 	}
 
-	ls, err := gateway.NewGatewayModeServiceWithDB(cfg, fileSvc, testutil.NewTestLogger(), db, consensusSvc, l2Deliberator)
+	ls, err := gateway.NewGatewayModeServiceWithDB(cfg, fileSvc, testutil.NewTestLogger(), db, l2Deliberator)
 	require.NoError(t, err)
 
 	// Obtain the actuator signing key and MCP gateway from the constructed
@@ -311,7 +312,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	require.NotNil(t, mcpGateway)
 
 	// Seed platform_settings required for health check
-	err = ls.GetDocStore().DocSet(t.Context(), string(constants.CollectionSettings), "platform_settings", json.RawMessage(`{"session_encryption_key":"test-key"}`))
+	err = ls.GetDocStore().DocSet(t.Context(), string(constants.CollectionSettings), "platform_settings", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
 	// Start the gateway service. The Start error is delivered on a buffered
@@ -363,6 +364,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		DownstreamArgs:   opts.DownstreamArgs,
 		Keystore:         ks,
 		A2ADownstreamURL: a2aURL,
+		ConsensusServer:  consensusServer,
 	}
 }
 
@@ -641,43 +643,99 @@ func (rt *cliSessionRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	return rt.base.RoundTrip(clone)
 }
 
-// ConsensusSetup holds the result of wiring a real ConsensusService into a gateway fixture.
-type ConsensusSetup struct {
-	ConsensusID string
-	Members     []consensus.ConsensusMember
-	Service     *consensus.ConsensusService
-	Deliberator *consensus.LocalDeliberator
+// TestConsensusMember represents a test consensus member holding an Ed25519 key.
+type TestConsensusMember struct {
+	AppID      string
+	PrivateKey ed25519.PrivateKey
 }
 
-// SetupConsensus seeds a real ConsensusService for consensus/notary posture
-// integration tests. It generates nMembers Ed25519 key pairs, registers each
-// member's public key as a TrustedSigner via the signerStore, creates a
-// ConsensusPolicy in the consensusStore, constructs a ConsensusService via the
-// shared consensus.NewConsensusFromPolicy factory, and returns a
-// LocalDeliberator via ConsensusSetup.Deliberator. The caller passes the
-// returned ConsensusService and Deliberator to NewGatewayModeServiceWithDB so
-// they are wired at construction via the builder's withConsensus path (no
-// SetConsensusService, no second pubsub construction).
-//
-// SetupConsensus operates against the narrow consensus and signer stores so it
-// can run BEFORE NewGatewayModeServiceWithDB — the consensus policy must be
-// seeded into the DB before build() reads it, and the consensus service must be
-// constructed before build() wires it into GatewayModeDeps and
-// mcp.GatewayService.
-//
-// If nServiceMembers < nMembers, only the first nServiceMembers are given private keys
-// — the remaining policy members exist in the store but cannot vote (their keys resolve
-// to nil via the KeyProvider, and Deliberate skips nil-key members). This lets tests
-// simulate quorum-not-reached by producing fewer votes than the quorum threshold requires.
-//
-// This uses the same consensus.NewConsensusFromPolicy factory as production ConsensusBootstrap
-// in internal/cli/serve/gateway.go, eliminating the duplication identified in CS-12.
+// ConsensusSetup holds the result of wiring a test consensus deliberator into a gateway fixture.
+type ConsensusSetup struct {
+	ConsensusID string
+	Members     []TestConsensusMember
+	Deliberator mcp.L2ConsensusDeliberator
+	Server      *httptest.Server
+}
+
+// TestConsensusDeliberator implements mcp.L2ConsensusDeliberator for test fixtures.
+type TestConsensusDeliberator struct {
+	ConsensusID string
+	Members     []TestConsensusMember
+	Doctrine    *govsvc.L1Doctrine
+}
+
+// Deliberate implements mcp.L2ConsensusDeliberator.
+func (d *TestConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
+	var env commonv1.GovernanceEnvelope
+	isJSON := false
+	if err := proto.Unmarshal(envelopeBytes, &env); err != nil {
+		if jsonErr := protojson.Unmarshal(envelopeBytes, &env); jsonErr != nil {
+			return nil, fmt.Errorf("test consensus deliberator: unmarshal envelope: %w", err)
+		}
+		isJSON = true
+	}
+
+	var cmdData string
+	if env.IntentData != nil && len(env.IntentData.AsMap()) > 0 {
+		jsonBytes, err := json.Marshal(env.IntentData.AsMap())
+		if err == nil {
+			cmdData = string(jsonBytes)
+		}
+	}
+	if cmdData == "" {
+		cmdData = string(env.Payload)
+	}
+
+	isSafe := true
+	if d.Doctrine != nil && cmdData != "" {
+		signals := d.Doctrine.AnalyzeCommand(cmdData)
+		for _, sig := range signals {
+			if sig.BlockRecommended {
+				isSafe = false
+				break
+			}
+		}
+	}
+
+	var votes []*commonv1.L2Vote
+	for _, member := range d.Members {
+		if member.PrivateKey == nil {
+			continue
+		}
+		payload := fmt.Sprintf("%s|%v", env.Id, isSafe)
+		sig := ed25519.Sign(member.PrivateKey, []byte(payload))
+		votes = append(votes, &commonv1.L2Vote{
+			SignerKeyId:        member.AppID,
+			ConsensusSignature: hex.EncodeToString(sig),
+			Decision:           isSafe,
+		})
+	}
+	if len(votes) == 0 {
+		return nil, constants.ErrConsensusNoSigningMembers
+	}
+
+	if env.Governance == nil {
+		env.Governance = &commonv1.GovernanceMetadata{}
+	}
+	if env.Governance.L2 == nil {
+		env.Governance.L2 = &commonv1.L2Metadata{}
+	}
+	env.Governance.L2.ConsensusSetId = d.ConsensusID
+	env.Governance.L2.Votes = votes
+
+	if isJSON {
+		return protojson.Marshal(&env)
+	}
+	return proto.Marshal(&env)
+}
+
+// SetupConsensus seeds consensus policy and trusted signers into the stores and
+// returns a ConsensusSetup with a TestConsensusDeliberator.
 func SetupConsensus(t *testing.T, consensusStore *gateway.ConsensusStoreService, signerStore *gateway.SignerStoreService, consensusID string, nMembers, quorum, nServiceMembers int) *ConsensusSetup {
 	t.Helper()
 
 	memberAppIDs := make([]string, nMembers)
-	memberKeys := make(map[string]ed25519.PrivateKey, nServiceMembers)
-	signingMembers := make([]consensus.ConsensusMember, 0, nServiceMembers)
+	signingMembers := make([]TestConsensusMember, 0, nServiceMembers)
 
 	for i := 0; i < nMembers; i++ {
 		appID := fmt.Sprintf("%s-member-%d", consensusID, i)
@@ -695,8 +753,7 @@ func SetupConsensus(t *testing.T, consensusStore *gateway.ConsensusStoreService,
 		require.NoError(t, err)
 
 		if i < nServiceMembers {
-			memberKeys[appID] = priv
-			signingMembers = append(signingMembers, consensus.ConsensusMember{
+			signingMembers = append(signingMembers, TestConsensusMember{
 				AppID:      appID,
 				PrivateKey: priv,
 			})
@@ -713,24 +770,40 @@ func SetupConsensus(t *testing.T, consensusStore *gateway.ConsensusStoreService,
 	err := consensusStore.AddConsensus(t.Context(), policy)
 	require.NoError(t, err)
 
-	keyProvider := consensus.KeyProviderFunc(func(appID string) (ed25519.PrivateKey, error) {
-		if key, ok := memberKeys[appID]; ok {
-			return key, nil
+	deliberator := &TestConsensusDeliberator{
+		ConsensusID: consensusID,
+		Members:     signingMembers,
+		Doctrine:    govsvc.NewL1Doctrine(),
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-protobuf" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
-		return nil, fmt.Errorf("no private key for member %s (quorum-not-reached simulation)", appID)
+		wire, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		signed, err := deliberator.Deliberate(r.Context(), wire)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(signed)
+	}))
+	t.Cleanup(server.Close)
+	err = consensusStore.AddConsensus(t.Context(), models.ConsensusPolicy{
+		ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{memberAppIDs[0]},
+		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Enabled: true,
 	})
-
-	doctrine := govsvc.NewL1Doctrine()
-	responder := response.NewWriter(testutil.NewTestLogger())
-	consensusSvc, err := consensus.NewConsensusFromPolicy(&policy, keyProvider, doctrine, testutil.NewTestLogger(), responder)
 	require.NoError(t, err)
-
-	deliberator := consensus.NewLocalDeliberator(consensusSvc)
 
 	return &ConsensusSetup{
 		ConsensusID: consensusID,
 		Members:     signingMembers,
-		Service:     consensusSvc,
 		Deliberator: deliberator,
+		Server:      server,
 	}
 }

@@ -43,7 +43,7 @@ type nativeEvalDeps struct {
 	authLoader                 nativeEvalAuthLoader
 	bindClientFactory          func(*config.Config) evalBindClient
 	campaignPublicationFactory campaignVerificationPublicationFactory
-	formationRunnerFactory     campaignFormationRunnerFactory
+	agentExecutorFactory       campaignAgentExecutorFactory
 	appEnroller                evalAppEnroller
 	runControl                 runControlDeps
 	conformance                conformanceDeps
@@ -95,12 +95,12 @@ func Cmd() *cobra.Command {
 		campaignPublicationFactory: func(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (campaignVerificationPublication, error) {
 			return NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		},
-		formationRunnerFactory: newProductionCampaignFormationRunner,
-		appEnroller:            enrollEvalAppIdentity,
-		runControl:             defaultRunControlDeps(),
-		conformance:            defaultConformanceDeps(),
-		now:                    time.Now,
-		newID:                  uuid.NewString,
+		agentExecutorFactory: newProductionCampaignAgentExecutor,
+		appEnroller:          enrollEvalAppIdentity,
+		runControl:           defaultRunControlDeps(),
+		conformance:          defaultConformanceDeps(),
+		now:                  time.Now,
+		newID:                uuid.NewString,
 	})
 }
 
@@ -117,7 +117,7 @@ func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {
 		runsEvalCmd(deps),
 		suitesEvalCmd(deps),
 		rolloutEvalCmd(deps),
-		formationsEvalCmd(deps),
+		formationsEvalCmd(),
 		gatesEvalCmd(deps),
 		conformanceEvalCmd(deps),
 		jsonLeaf(backupEvalCmd(deps)),
@@ -126,7 +126,7 @@ func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {
 	return cmd
 }
 
-func formationsEvalCmd(deps nativeEvalDeps) *cobra.Command {
+func formationsEvalCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "formations",
 		Short: "Heterogeneous model sets",
@@ -136,7 +136,6 @@ func formationsEvalCmd(deps nativeEvalDeps) *cobra.Command {
 		formationsShowEvalCmd(),
 		formationsAddEvalCmd(),
 		formationsRemoveEvalCmd(),
-		formationsSmokeEvalCmd(deps),
 	)
 	return cmd
 }

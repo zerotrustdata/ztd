@@ -7,6 +7,15 @@
 
 package constants
 
+// EvalCampaignPublicationStateSuffix ends the per-run publication-state route
+// under APIPaths.EvalCampaignPublicationStateByRun.
+const EvalCampaignPublicationStateSuffix = "/publication-state"
+
+// EvalCampaignPublicationStatePath is the publication-state route for one run.
+func EvalCampaignPublicationStatePath(runID string) string {
+	return APIPaths.EvalCampaignPublicationStateByRun + runID + EvalCampaignPublicationStateSuffix
+}
+
 // APIPaths defines the canonical ZTD API paths.
 var APIPaths = struct {
 	InternalPrefix string `json:"internal_prefix"`
@@ -98,6 +107,7 @@ var APIPaths = struct {
 	AuthPlatformEnrollmentBatchDecision      string `json:"auth_platform_enrollment_batch_decision"`
 	AuthPlatformEnrollmentDecision           string `json:"auth_platform_enrollment_decision"`
 	AuthPlatformEnrollmentRevoke             string `json:"auth_platform_enrollment_revoke"`
+	AuthPlatformEnrollmentConsensus          string `json:"auth_platform_enrollment_consensus"`
 	AuthOperatorBootstrapWebSocket           string `json:"auth_operator_bootstrap_websocket"`
 	AuthCLIRecoveryRequest                   string `json:"auth_cli_recovery_request"`
 	AuthCLIRecoveryStatus                    string `json:"auth_cli_recovery_status"`
@@ -146,7 +156,6 @@ var APIPaths = struct {
 	AdminConsensusByID       string `json:"admin_consensus_by_id"`
 	AdminConsensusPrefix     string `json:"admin_consensus_prefix"`
 	// Consensus routes
-	ConsensusDeliberate string `json:"consensus_deliberate"`
 	// Well-known routes
 	WellKnownPKICABundle    string `json:"well_known_pki_ca_bundle"`
 	WellKnownPKIFingerprint string `json:"well_known_pki_fingerprint"`
@@ -273,6 +282,7 @@ var APIPaths = struct {
 	AuthPlatformEnrollmentDecision:           "/api/v1/auth/platform-enrollments/decision",
 	AuthPlatformEnrollmentBatchDecision:      "/api/v1/auth/platform-enrollments/decisions",
 	AuthPlatformEnrollmentRevoke:             "/api/v1/auth/platform-enrollments/revoke",
+	AuthPlatformEnrollmentConsensus:          "/api/v1/auth/platform-enrollments/consensus",
 	AuthOperatorBootstrapWebSocket:           "/ws/operator/bootstrap",
 	AuthCLIRecoveryRequest:                   "/api/v1/auth/cli/recovery/request",
 	AuthCLIRecoveryStatus:                    "/api/v1/auth/cli/recovery/status",
@@ -321,7 +331,6 @@ var APIPaths = struct {
 	AdminConsensusByID:       "/api/v1/admin/consensus/",
 	AdminConsensusPrefix:     "/api/v1/admin/consensus/",
 	// Consensus routes
-	ConsensusDeliberate: "/consensus/v1/deliberate",
 	// Well-known routes
 	WellKnownPKICABundle:    "/.well-known/ztd/pki/ca-bundle",
 	WellKnownPKIFingerprint: "/.well-known/ztd/pki/fingerprint",

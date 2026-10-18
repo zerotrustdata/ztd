@@ -1,7 +1,7 @@
 # Protocol Constants System
 
 Last Updated: 2026-10-12
-Version: v1.1.2
+Version: v1.1.3
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the absolute **Single Source of Truth (SSOT)** for all platform contracts, collection definitions, action types, event registries, route paths, and configuration identifiers.
 
@@ -22,6 +22,8 @@ internal/tools/constgen/operator_hierarchy.json ┘                   ├──�
 ```
 
 Before generating, `constgen` validates `protocol/constants/env_vars.json` (categories, `_go_const`, names, descriptions) and requires every `secret` and `user_endpoint` key to appear in `.env.example` (`internal/tools/constgen/check_env.go`). The env registry produces no generated output.
+
+Action classifications in `status.action_type` generate `ActionType.IsMutation()`, `IsBootstrapAction()`, and `AuthorizedByDecision()` from `_mutation`, `_bootstrap`, and `_authorized_by_decision`, respectively. Each predicate matches only explicitly flagged actions and returns false for other values. Empty registries and classifications with no matching actions produce valid Go predicates that always return false; the generator omits the matching case entirely.
 
 ### 1.2 Build Automation Targets
 - **`make constants-generate`**: Executes `go run ./internal/tools/constgen -write`. Validates the registry syntax, grammar, and taxonomy, then writes out the formatted Go and TypeScript artifacts.
@@ -207,7 +209,6 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
   - `A2ACall`: `/api/v1/a2a/call`
   - `GovernanceEnvelopes`: `/api/v1/governance/envelopes`
   - `OperatorsCommands`: `/api/v1/operators/commands`
-  - `ConsensusDeliberate`: `/consensus/v1/deliberate`
 - **Session & Identity**:
   - `AuthPasskeys*`: Passkey registration, verification, and authentication routes
   - `AuthCLISession`: `/api/v1/auth/cli/session`

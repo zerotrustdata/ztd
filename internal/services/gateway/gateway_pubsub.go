@@ -329,15 +329,19 @@ func (b *GatewayWebSocketHandler) Publish(channel string, data []byte) int {
 		}
 	}
 
-	// Dispatch to in-process handlers (governance command processing and SSE streaming)
+	// Snapshot in-process handlers before invoking them. A handler may publish
+	// another event while a waiter unregisters; holding handlersMu across the
+	// callback would deadlock its nested RLock behind the pending writer.
 	b.handlersMu.RLock()
-	if hs, ok := b.handlers[channel]; ok {
-		for _, handler := range hs {
-			handler(channel, data)
-			count++
-		}
+	handlers := make([]func(string, []byte), 0, len(b.handlers[channel]))
+	for _, handler := range b.handlers[channel] {
+		handlers = append(handlers, handler)
 	}
 	b.handlersMu.RUnlock()
+	for _, handler := range handlers {
+		handler(channel, data)
+		count++
+	}
 
 	// Dispatch heartbeat publishes to the dedicated heartbeat handler.
 	if strings.HasPrefix(channel, "heartbeat:") {
@@ -363,7 +367,9 @@ func (b *GatewayWebSocketHandler) ChannelSubscriberCount(channel string) int {
 
 // RegisterHandler registers an in-process handler for a channel.
 // Used for governance command processing in gateway mode and SSE streaming.
-// Returns a function that unregisters the handler.
+// Returns a function that unregisters the handler from future publishes.
+// A concurrent Publish may already have selected the callback; its resources
+// must remain safe to use after unregistration.
 func (b *GatewayWebSocketHandler) RegisterHandler(channel string, handler func(string, []byte)) func() {
 	b.handlersMu.Lock()
 	defer b.handlersMu.Unlock()

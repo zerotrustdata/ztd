@@ -181,7 +181,7 @@ func setupTestEvidenceEnv(t *testing.T, shared bool, runSuffix string, singleRol
 	_, err = controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
 
-	scheduledCount, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	scheduledCount, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	if singleRole {
 		require.Equal(t, 1, scheduledCount)

@@ -67,7 +67,7 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 		ScrubbingService: newTestScrubber(t),
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  infra.Cfg.Gateway.MaxPayloadBytes,
-		Posture:          string(infra.Cfg.Gateway.Posture),
+		Posture:          infra.Cfg.Gateway.Posture,
 		AuditStore:       noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 	})
@@ -131,20 +131,19 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 			UserSvc:   infra.UserSvc,
 			Responder: infra.Responder,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      infra.Logger,
 			DocStore:    infra.DocStore,
 			Responder:   infra.Responder,
 			CrossOrigin: len(infra.Cfg.Gateway.AllowedOrigins) > 0,
 		},
 		AdminControllerDeps: AdminControllerDeps{
-			Cfg:            infra.Cfg,
-			Logger:         infra.Logger,
-			DocStore:       infra.DocStore,
-			SignerStore:    infra.SignerStore,
-			ConsensusStore: infra.ConsensusStore,
-			UserSvc:        infra.UserSvc,
-			Responder:      infra.Responder,
+			Cfg:         infra.Cfg,
+			Logger:      infra.Logger,
+			DocStore:    infra.DocStore,
+			SignerStore: infra.SignerStore,
+			UserSvc:     infra.UserSvc,
+			Responder:   infra.Responder,
 		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       infra.Cfg,
@@ -154,7 +153,7 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 			Responder: infra.Responder,
 		},
 		DispatchControllerDeps: DispatchControllerDeps{
-			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(infra.Cfg.Gateway.Posture), governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
+			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, infra.Cfg.Gateway.Posture, governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
 			Responder:   infra.Responder,
 			Logger:      infra.Logger,
 		},

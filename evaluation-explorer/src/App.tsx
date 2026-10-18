@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useFeedStatus, useConnection, useStoreState, evalStore } from './state/store';
 import { startFeed, stopFeed } from './state/startup';
 import { ActiveCampaignBar } from './components/ActiveCampaignBar';
@@ -20,12 +20,6 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { NavDrawer } from './components/NavDrawer';
 import { AppFooter } from './components/AppFooter';
 import { ZTD_REPO_URL, GITHUB_SPONSORS_URL } from './content/platform';
-
-function CompareRedirect() {
-  const [params] = useSearchParams();
-  const dest = params.toString() ? `/models?${params.toString()}` : '/models';
-  return <Navigate to={dest} replace />;
-}
 
 function Shell() {
   const feedStatus = useFeedStatus();
@@ -96,7 +90,6 @@ function Shell() {
           <Route path="/evaluations/:datasetId?/:runId" element={<EvaluationDetailView />} />
           <Route path="/evaluations/:datasetId?/:runId/assignments/:assignmentId" element={<AssignmentDetailView />} />
           <Route path="/failures" element={<Navigate to="/evaluations" replace />} />
-          <Route path="/compare" element={<CompareRedirect />} />
           <Route path="/about" element={<AboutView />} />
           <Route path="/tasks" element={<TasksView />} />
           <Route path="/tasks/:taskId" element={<TasksView />} />

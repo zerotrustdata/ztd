@@ -13,7 +13,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,16 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/pkg/ssh"
 	"github.com/zerotrustdata/ztd/internal/testutil"
-	sshlib "golang.org/x/crypto/ssh"
 )
-
-// mockSSHServer is a minimal SSH server for testing streamToHost.
-type mockSSHServer struct {
-	gateway net.Listener
-	config  *sshlib.ServerConfig
-	addr    string
-	hostKey sshlib.PublicKey
-}
 
 func testutil_GenerateRSAPrivateKey(t *testing.T) []byte {
 	t.Helper()

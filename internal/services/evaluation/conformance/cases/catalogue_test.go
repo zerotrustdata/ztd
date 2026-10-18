@@ -96,9 +96,9 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 	if got := countCases(cs, row(13)); got != 49*4 {
 		t.Errorf("row 13: got %d cases, want %d", got, 49*4)
 	}
-	for _, p := range postureAll {
-		if got := countCases(cs, row(13), posture(p)); got != 49 {
-			t.Errorf("row 13 posture %s: got %d cases, want 49", governancePostures[p].Name(), got)
+	for _, p := range Postures {
+		if got := countCases(cs, row(13), posture(p.Wire)); got != 49 {
+			t.Errorf("row 13 posture %s: got %d cases, want 49", p.Posture, got)
 		}
 	}
 
@@ -182,6 +182,36 @@ func TestApplicableRatifyExcludesRowOne(t *testing.T) {
 	}
 }
 
+func TestPosturesBindEveryGovernancePostureInOrder(t *testing.T) {
+	got := make([]constants.Posture, 0, len(Postures))
+	for _, binding := range Postures {
+		got = append(got, binding.Posture)
+		wire, err := WirePosture(binding.Posture)
+		if err != nil || wire != binding.Wire {
+			t.Fatalf("WirePosture(%s) = %s, %v; want %s", binding.Posture, wire, err, binding.Wire)
+		}
+		posture, err := GovernancePosture(binding.Wire)
+		if err != nil || posture != binding.Posture {
+			t.Fatalf("GovernancePosture(%s) = %s, %v; want %s", binding.Wire, posture, err, binding.Posture)
+		}
+	}
+	if !slices.Equal(got, constants.AllPostures) {
+		t.Fatalf("Postures order = %v, want constants.AllPostures %v", got, constants.AllPostures)
+	}
+}
+
+func TestPostureMappingRejectsUnknown(t *testing.T) {
+	if _, err := GovernancePosture(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED); !errors.Is(err, constants.ErrConformancePostureUnknown) {
+		t.Fatalf("GovernancePosture(UNSPECIFIED) = %v, want ErrConformancePostureUnknown", err)
+	}
+	for _, name := range []constants.Posture{"", "bogus", "DOCTRINE"} {
+		wire, err := WirePosture(name)
+		if !errors.Is(err, constants.ErrConformancePostureUnknown) || wire != evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
+			t.Fatalf("WirePosture(%q) = %s, %v; want UNSPECIFIED, ErrConformancePostureUnknown", name, wire, err)
+		}
+	}
+}
+
 func TestApplicableRejectsUnknownPosture(t *testing.T) {
 	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED)
 	if !errors.Is(err, constants.ErrConformancePostureUnknown) {
@@ -199,19 +229,20 @@ func TestExecutedExpectPerPostureAndAction(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		posture evalv1.EvaluationGovernancePosture
+		posture constants.Posture
 		action  Action
 		l2      operatorv1.L2Status
 		l3      operatorv1.L3Status
 	}{
-		{"doctrine mutation", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, ActionMutation, notReq, l3NotReq},
-		{"doctrine read", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, ActionRead, notReq, l3NotReq},
-		{"consensus mutation", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, ActionMutation, reqOK, l3NotReq},
-		{"consensus read", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, ActionRead, reqOK, l3NotReq},
-		{"ratify mutation", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, ActionMutation, notReq, l3Req},
-		{"ratify read", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, ActionRead, notReq, l3NotReq},
-		{"notary mutation", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY, ActionMutation, reqOK, l3Req},
-		{"notary read", evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY, ActionRead, reqOK, l3NotReq},
+		{"doctrine mutation", constants.PostureDoctrine, ActionMutation, notReq, l3NotReq},
+		{"doctrine read", constants.PostureDoctrine, ActionRead, notReq, l3NotReq},
+		{"consensus mutation", constants.PostureConsensus, ActionMutation, reqOK, l3NotReq},
+		{"consensus read", constants.PostureConsensus, ActionRead, reqOK, l3NotReq},
+		{"ratify mutation", constants.PostureRatify, ActionMutation, notReq, l3Req},
+		{"ratify read", constants.PostureRatify, ActionRead, notReq, l3NotReq},
+		{"notary mutation", constants.PostureNotary, ActionMutation, reqOK, l3Req},
+		{"notary read", constants.PostureNotary, ActionRead, reqOK, l3NotReq},
+		{"unknown posture fails closed", constants.Posture("bogus"), ActionMutation, reqOK, l3Req},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

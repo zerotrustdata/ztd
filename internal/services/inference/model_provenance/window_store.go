@@ -118,6 +118,17 @@ func ValidateAttestationWindow(window *evalv1.ModelProvenanceAttestationWindow) 
 	if window.GetSchemaVersion() != "" && window.GetSchemaVersion() != SchemaVersion {
 		return fmt.Errorf("model provenance: validate attestation window: unsupported schema version")
 	}
+	for _, weight := range window.GetWeightAttestations() {
+		switch weight.GetVerificationMode() {
+		case evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH,
+			evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED:
+		default:
+			return fmt.Errorf("model provenance: validate attestation window: blob %s: unrecognized verification mode", weight.GetBlobDigest())
+		}
+		if weight.GetFullHashCompletedAtUnixMs() <= 0 {
+			return fmt.Errorf("model provenance: validate attestation window: blob %s: %w", weight.GetBlobDigest(), constants.ErrMissingRequiredField)
+		}
+	}
 	expected, err := ComputeAttestationDigest(window)
 	if err != nil {
 		return err

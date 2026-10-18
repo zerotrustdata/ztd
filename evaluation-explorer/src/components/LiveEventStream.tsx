@@ -150,27 +150,27 @@ const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: str
   { key: 'tokens_per_second', label: 'Tokens/s' },
 ];
 
-type StreamResult = { label: string; symbol: string; tone: 'ok' | 'critical' | 'neutral' | 'info'; attention: boolean };
+type StreamResult = { label: string; symbol: string; tone: 'ok' | 'critical' | 'neutral' | 'info' };
 
 /** Model verdicts stay distinct from infrastructure failures and run lifecycle. */
 function streamResult(event: LiveEvent, assignment: AssignmentResult | undefined): StreamResult {
   if (isTerminalAssignmentEvent(event)) {
     const status = event.terminal_status ?? assignment?.terminal_status;
     if (status && status !== 'completed' && status !== 'model_failed') {
-      return { label: displayLabel(status)!, symbol: '!', tone: 'neutral', attention: true };
+      return { label: displayLabel(status)!, symbol: '!', tone: 'neutral' };
     }
     const pass = assignmentMetricValues(event, assignment).pass?.value;
     if (status === 'model_failed' || pass === 0) {
-      return { label: 'Model failed', symbol: '×', tone: 'critical', attention: true };
+      return { label: 'Model failed', symbol: '×', tone: 'critical' };
     }
-    if (event.kind === 'assignment_failed') return { label: 'Failed', symbol: '!', tone: 'neutral', attention: true };
-    return { label: pass === 1 ? 'Passed' : 'Completed', symbol: '✓', tone: 'ok', attention: false };
+    if (event.kind === 'assignment_failed') return { label: 'Failed', symbol: '!', tone: 'neutral' };
+    return { label: pass === 1 ? 'Passed' : 'Completed', symbol: '✓', tone: 'ok' };
   }
   const label = displayLabel(event.kind) ?? 'Activity';
-  if (event.lifecycle_status === 'failed') return { label, symbol: '!', tone: 'neutral', attention: true };
-  if (event.lifecycle_status === 'stopped') return { label, symbol: 'Ⅱ', tone: 'neutral', attention: false };
-  if (event.lifecycle_status === 'completed') return { label, symbol: '■', tone: 'neutral', attention: false };
-  return { label, symbol: '•', tone: 'info', attention: false };
+  if (event.lifecycle_status === 'failed') return { label, symbol: '!', tone: 'neutral' };
+  if (event.lifecycle_status === 'stopped') return { label, symbol: 'Ⅱ', tone: 'neutral' };
+  if (event.lifecycle_status === 'completed') return { label, symbol: '■', tone: 'neutral' };
+  return { label, symbol: '•', tone: 'info' };
 }
 
 function matchingAssignment(event: LiveEvent, assignments: Map<string, AssignmentResult>): AssignmentResult | undefined {
@@ -253,7 +253,7 @@ function SortHeader({
 }
 
 export function LiveEventStream({
-  events: incomingEvents,
+  events,
   connection,
   streamConnection,
   isReconciling = false,
@@ -273,22 +273,13 @@ export function LiveEventStream({
   const [kindFilter, setKindFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [assignmentFilter, setAssignmentFilter] = useState('all');
-  const [attentionOnly, setAttentionOnly] = useState(false);
   const [runScope, setRunScope] = useState<'all' | 'latest'>('all');
   const [sortField, setSortField] = useState<StreamSortField>('time');
   const [sortDirection, setSortDirection] = useState<StreamSortDirection>('desc');
   const [page, setPage] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const liveModels = useStoreState((state) => state.models);
-  const liveAssignments = useStoreState((state) => state.assignments);
-  const [paused, setPaused] = useState<{
-    events: LiveEvent[];
-    models: typeof liveModels;
-    assignments: typeof liveAssignments;
-  }>();
-  const events = paused?.events ?? incomingEvents;
-  const models = paused?.models ?? liveModels;
-  const assignments = paused?.assignments ?? liveAssignments;
+  const models = useStoreState((state) => state.models);
+  const assignments = useStoreState((state) => state.assignments);
 
   const latestEvent = useMemo(() => events.reduce<LiveEvent | undefined>(
     (latest, event) => !latest || event.observed_at > latest.observed_at ? event : latest, undefined,
@@ -304,9 +295,8 @@ export function LiveEventStream({
     return (modelFilter === 'all' || event.variant_id === modelFilter)
       && (kindFilter === 'all' || event.kind === kindFilter)
       && (assignmentFilter === 'all' || event.assignment_id === assignmentFilter)
-      && (categoryFilter === 'all' || eventParts(event, assignment).category === categoryFilter)
-      && (!attentionOnly || streamResult(event, assignment).attention);
-  }).slice(0, runScope === 'all' ? LIVE_EVENT_RETENTION_LIMIT : undefined), [baseRows, assignments, modelFilter, kindFilter, assignmentFilter, categoryFilter, attentionOnly, runScope]);
+      && (categoryFilter === 'all' || eventParts(event, assignment).category === categoryFilter);
+  }).slice(0, runScope === 'all' ? LIVE_EVENT_RETENTION_LIMIT : undefined), [baseRows, assignments, modelFilter, kindFilter, assignmentFilter, categoryFilter, runScope]);
 
   // Options come from the unfiltered feed so choosing one never hides the others.
   const modelOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.variant_id)
@@ -319,7 +309,7 @@ export function LiveEventStream({
     .filter((value): value is string => Boolean(value)))).sort(), [baseRows]);
   const designatedRoles = useMemo(() => designatedRolesByAssignment(events), [events]);
   const advancedFilterCount = [kindFilter, categoryFilter, assignmentFilter, runScope].filter((value) => value !== 'all').length;
-  const hasFilters = advancedFilterCount > 0 || modelFilter !== 'all' || attentionOnly;
+  const hasFilters = advancedFilterCount > 0 || modelFilter !== 'all';
 
   const sortedVisible = useMemo(() => [...visible].sort((left, right) => {
     const value = (event: LiveEvent) => streamSortValue(event, matchingAssignment(event, assignments),
@@ -344,13 +334,9 @@ export function LiveEventStream({
   }
   function resetFilters(): void {
     setModelFilter('all'); setKindFilter('all'); setCategoryFilter('all');
-    setAssignmentFilter('all'); setRunScope('all'); setAttentionOnly(false);
+    setAssignmentFilter('all'); setRunScope('all');
   }
-  function togglePause(): void {
-    if (paused) { setPaused(undefined); setPage(0); }
-    else setPaused({ events: [...incomingEvents], models: new Map(liveModels), assignments: new Map(liveAssignments) });
-  }
-  useEffect(() => { setPage(0); }, [modelFilter, kindFilter, categoryFilter, assignmentFilter, runScope, attentionOnly, sortField, sortDirection]);
+  useEffect(() => { setPage(0); }, [modelFilter, kindFilter, categoryFilter, assignmentFilter, runScope, sortField, sortDirection]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [safePage]);
 
   return (
@@ -358,19 +344,13 @@ export function LiveEventStream({
       <div className="panel-head stream-head">
         <div className="stream-heading">
           <h2>{title}</h2>
-          {paused ? <span className="stream-paused" role="status">Paused</span> : (
-            <StreamStatusIndicator streamConnection={streamConnection} feedConnection={connection} />
-          )}
+          <StreamStatusIndicator streamConnection={streamConnection} feedConnection={connection} />
         </div>
         <div className="stream-controls">
           <select aria-label="Filter by model" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}>
             <option value="all">All models</option>
             {modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
           </select>
-          <button type="button" className="stream-control" aria-pressed={attentionOnly} onClick={() => setAttentionOnly(!attentionOnly)}>Needs attention</button>
-          <button type="button" className="stream-control" onClick={togglePause} aria-label={paused ? 'Resume live updates' : 'Pause live updates'}>
-            <span aria-hidden="true">{paused ? '▶' : 'Ⅱ'}</span> {paused ? 'Resume' : 'Pause'}
-          </button>
         </div>
       </div>
       <div className="stream-toolbar">

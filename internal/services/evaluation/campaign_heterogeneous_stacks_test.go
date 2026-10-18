@@ -27,6 +27,44 @@ func testHeterogeneousVariants() []*evalv1.ModelVariant {
 	}
 }
 
+func mustHeterogeneousStack(t *testing.T) *evalv1.HeterogeneousStackDefinition {
+	t.Helper()
+	stackSet, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
+		CampaignID: "heterogeneous-campaign",
+		Seed:       11,
+		Variants:   testHeterogeneousVariants(),
+	})
+	require.NoError(t, err)
+	return stackSet.Stacks[0]
+}
+
+func heterogeneousAssignmentExecutionRequest(t *testing.T, stack *evalv1.HeterogeneousStackDefinition, variants []*evalv1.ModelVariant) AssignmentExecutionRequest {
+	t.Helper()
+	return AssignmentExecutionRequest{
+		Assignment: &evalv1.EvaluationAssignment{
+			AssignmentId: "assignment-heterogeneous-1",
+			RunId:        "run-heterogeneous-1",
+			CampaignId:   "campaign-heterogeneous-1",
+			ScenarioId:   "instruction-exact-format",
+			Lane:         evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
+			Target: &evalv1.EvaluationAssignment_Heterogeneous{
+				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack},
+			},
+		},
+		AttemptID: "attempt-heterogeneous-1",
+		ScenarioInput: ScenarioInputFixture{
+			ScenarioID: "instruction-exact-format",
+			UserPrompt: "Reply with exactly: SUITE-OK",
+		},
+		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC,
+		Binding: CampaignExecutionBinding{
+			Topology:            testOperatorTopology("infer-session", "data-session"),
+			ModelRegistryDigest: "d" + repeatHex('d', 63),
+			ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
+		},
+	}
+}
+
 // A stack set persisted under the pre-formation generation rule must keep
 // validating so its runs stay resumable and verifiable.
 func TestValidateHeterogeneousStackSet_AcceptsAPersistedLegacyRuleSet(t *testing.T) {

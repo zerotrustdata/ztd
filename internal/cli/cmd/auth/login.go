@@ -104,11 +104,7 @@ already-enrolled CLI via ztd auth approve-recovery <token>. The resulting
 identity is mTLS-only and cannot authenticate to the Console.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUserEnrollment(cmd, deps, auth.EnrollmentOptions{
-				NoSystemTrust: true,
-				RotateCLI:     rotateCLI,
-				Headless:      true,
-			})
+			return runUserEnrollment(cmd, deps, auth.CLILoginOptions(rotateCLI))
 		},
 	}
 	cmd.Flags().BoolVar(&rotateCLI, "rotate-cli", false,

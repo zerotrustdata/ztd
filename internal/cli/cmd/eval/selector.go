@@ -57,28 +57,6 @@ func (s *ModelSelector) IsSet() bool {
 	return len(s.IDs) > 0 || len(s.Family) > 0 || s.MaxParams != "" || s.All
 }
 
-// describe renders whatever the selector carries, for error messages that
-// need to say what was unexpectedly set rather than just that it was set.
-func (s *ModelSelector) describe() string {
-	if s == nil {
-		return ""
-	}
-	var parts []string
-	if len(s.IDs) > 0 {
-		parts = append(parts, fmt.Sprintf("model ID(s) %q", s.IDs))
-	}
-	if len(s.Family) > 0 {
-		parts = append(parts, fmt.Sprintf("--family %q", s.Family))
-	}
-	if s.MaxParams != "" {
-		parts = append(parts, fmt.Sprintf("--max-params %q", s.MaxParams))
-	}
-	if s.All {
-		parts = append(parts, "--all")
-	}
-	return strings.Join(parts, ", ")
-}
-
 func (s *ModelSelector) validate() error {
 	if s == nil {
 		return nil

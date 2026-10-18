@@ -74,12 +74,13 @@ type EvidenceVaultProvider func(keys fs.RuntimeFileService) (EvidenceVault, erro
 // clear, and a reader never sees ciphertext. There is no plaintext branch: a
 // missing or locked vault, or a file that does not authenticate, is an error.
 //
-// The exceptions are by code path, not by name: ExportRun writes its
-// disclosure-safe public projection, including bounded allowlisted model/tool
-// transcripts (INV-EVAL-EVID-04), through SealedFiles,
-// and "compliance report export" writes an owner-chosen plaintext copy of a
-// report bundle outside the runtime root, because those are meant to be
-// opened by people and tools outside ztd.
+// Every file under a sealed root is ciphertext, without exception. Clear
+// output lives outside them: ExportRun writes its disclosure-safe public
+// projection, including bounded allowlisted model/tool transcripts
+// (INV-EVAL-EVID-04), through SealedFiles to a directory it refuses to place
+// under a sealed root, and "compliance report export" writes an owner-chosen
+// plaintext copy of a report bundle outside the runtime root, because those
+// are meant to be opened by people and tools outside ztd.
 type evidenceFiles struct {
 	fs.RuntimeFileService
 	provider EvidenceVaultProvider

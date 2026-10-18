@@ -44,7 +44,7 @@ function bootstrapItem(record: object, sequence: number): object {
 }
 
 const nativeEvaluation = {
-  schema_version: '1.3.0', kind: 'evaluation_summary', dataset_id: 'native-core-execution-boundary', quality_state: 'verified_public', observed_at: '2026-09-15T23:38:22Z',
+  schema_version: '1.3.0', kind: 'evaluation_summary', dataset_id: 'native-core-execution-boundary', quality_state: 'exploratory_verified', observed_at: '2026-09-15T23:38:22Z',
   run_id: 'native-run-transport', suite_id: 'core-execution-boundary@1.0.0', arm: 'platform', evaluation_unit: 'system', lifecycle_state: 'completed',
   assignment_total: 1, assignment_completed: 1, assignment_failed: 0, terminal_outcomes: { completed: 1, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0 },
   verifier_state: 'passed', headline_metrics: { pass_rate: { value: 1 } },

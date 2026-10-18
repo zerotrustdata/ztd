@@ -28,7 +28,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -91,7 +90,7 @@ func TestNewOperatorPubSubService_StartsWithoutTrustedSignersButRejectsL2(t *tes
 	cfg := testutil.NewTestConfig(t)
 	tmpDir := testutil.TempDir(t)
 	cfg.PKIDir = filepath.Join(tmpDir, "pki")
-	cfg.Gateway.Posture = config.PostureConsensus // Set Consensus posture to enforce L2
+	cfg.Gateway.Posture = constants.PostureConsensus // Set Consensus posture to enforce L2
 	svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 		Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
 		Ledger:       storagetest.NewTestLedger(t),
@@ -140,7 +139,7 @@ func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg
 		Payload:         payload,
 		StateMerkleRoot: "test-state-root",
 		Nonce:           "nonce-missing-signer",
-		Posture:         constants.PostureConsensus,
+		Posture:         string(constants.PostureConsensus),
 	}
 	hash, err := govpkg.GenerateMessageID(env)
 	require.NoError(t, err)
@@ -194,7 +193,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 			Payload:         nil,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-1",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		f.Svc.handleGovernanceEnvelope(env)
 		// Should log error and return without panic
@@ -237,7 +236,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-1",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		svc.handleGovernanceEnvelope(env)
 		// Should log error and return without panic
@@ -260,7 +259,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 			TargetResource:  "localhost",
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-shutdown-empty",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 			Governance: &commonv1.GovernanceMetadata{
 				L2: &commonv1.L2Metadata{
 					ConsensusSetId: "test-consensus",
@@ -501,7 +500,7 @@ func buildL4RejectionEnvelope(t *testing.T, stateRoot, nonce string, mutate, pos
 		}),
 		StateMerkleRoot: stateRoot,
 		Nonce:           nonce,
-		Posture:         constants.PostureDoctrine,
+		Posture:         string(constants.PostureDoctrine),
 	}
 	if mutate != nil {
 		mutate(env)
@@ -639,7 +638,7 @@ func buildGatewayDispatchedDoctrineEnvelope(t *testing.T, stateRoot, nonce strin
 		}),
 		StateMerkleRoot: stateRoot,
 		Nonce:           nonce,
-		Posture:         constants.PostureDoctrine,
+		Posture:         string(constants.PostureDoctrine),
 	}
 	hash, err := govpkg.GenerateMessageID(env)
 	require.NoError(t, err)
@@ -741,7 +740,7 @@ func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) {
 					Payload:         tc.payload,
 					StateMerkleRoot: "test-state-root",
 					Nonce:           "nonce-" + tc.name,
-					Posture:         constants.PostureDoctrine,
+					Posture:         string(constants.PostureDoctrine),
 					Governance: &commonv1.GovernanceMetadata{
 						L2: &commonv1.L2Metadata{
 							ConsensusSetId: "test-consensus",
@@ -807,7 +806,7 @@ func TestOperatorPubSubService_CancellationReceipt(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-cancel",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 			Governance: &commonv1.GovernanceMetadata{
 				L2: &commonv1.L2Metadata{
 					ConsensusSetId: "test-consensus",
@@ -887,6 +886,25 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) {
 		_, err := f.Svc.ExecuteVerifiedTransaction(context.Background(), msg.EventType, msg)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no handler for")
+	})
+
+	t.Run("rejects heartbeat results on the command map", func(t *testing.T) {
+		msg := &PubSubCommandMessage{
+			EventType: constants.Event.Operator.Heartbeat,
+			ID:        "msg-heartbeat-result",
+		}
+		_, err := f.Svc.ExecuteVerifiedTransaction(t.Context(), msg.EventType, msg)
+		require.ErrorIs(t, err, constants.ErrTxEventNotRequest)
+	})
+
+	t.Run("heartbeat requests propagate handler decode failures", func(t *testing.T) {
+		msg := &PubSubCommandMessage{
+			EventType: constants.Event.Operator.HeartbeatRequested,
+			ID:        "msg-heartbeat-request",
+			Payload:   []byte{0xff},
+		}
+		_, err := f.Svc.ExecuteVerifiedTransaction(t.Context(), msg.EventType, msg)
+		require.ErrorIs(t, err, proto.Error)
 	})
 
 	t.Run("rejects LFAA recorded facts on the command map", func(t *testing.T) {
@@ -1333,7 +1351,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-sync",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 			Governance: &commonv1.GovernanceMetadata{
 				L2: &commonv1.L2Metadata{
 					ConsensusSetId: "test-consensus",
@@ -1403,7 +1421,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-mismatch",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
@@ -1431,7 +1449,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			TargetResource:  "localhost",
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-not-governed",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
@@ -1478,7 +1496,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 			Payload:         payload,
 			StateMerkleRoot: "test-state-root",
 			Nonce:           "nonce-1",
-			Posture:         constants.PostureDoctrine,
+			Posture:         string(constants.PostureDoctrine),
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
@@ -1564,7 +1582,7 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 					Payload:         payload,
 					StateMerkleRoot: "test-state-root",
 					Nonce:           fmt.Sprintf("nonce-det-%s-%d", tc.actionType, i),
-					Posture:         constants.PostureDoctrine,
+					Posture:         string(constants.PostureDoctrine),
 					Governance: &commonv1.GovernanceMetadata{
 						L2: &commonv1.L2Metadata{
 							ConsensusSetId: "test-consensus",
@@ -1858,82 +1876,6 @@ func TestOperatorPubSubService_handleEvalAnswerRequest(t *testing.T) {
 	})
 }
 
-func TestOperatorPubSubService_handleHeartbeatEvent(t *testing.T) {
-	t.Run("handles heartbeat event and publishes", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		// Set up heartbeat service with mock publisher
-		mockPublisher := &mockResultsPublisher{}
-		svc.heartbeat.SetResultsPublisher(mockPublisher)
-
-		heartbeat := &operatorv1.HeartbeatResult{
-			OperatorId:        "op-1",
-			OperatorSessionId: "session-1",
-			Status:            "automatic",
-		}
-		payload, _ := proto.Marshal(heartbeat)
-		msg := &PubSubCommandMessage{
-			ID:        "msg-1",
-			EventType: constants.Event.Operator.Heartbeat,
-			Payload:   payload,
-		}
-
-		svc.handleHeartbeatEvent(context.Background(), msg)
-		assert.True(t, mockPublisher.publishHeartbeatCalled)
-	})
-
-	t.Run("logs error when payload unmarshal fails", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		msg := &PubSubCommandMessage{
-			ID:        "msg-1",
-			EventType: constants.Event.Operator.Heartbeat,
-			Payload:   []byte("invalid protobuf"),
-		}
-
-		// Should not panic, should log error
-		svc.handleHeartbeatEvent(context.Background(), msg)
-	})
-}
-
 func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 	t.Run("records field read event in audit store", func(t *testing.T) {
 		t.Parallel()
@@ -1970,62 +1912,6 @@ func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 		testVal := "test-value"
 		err := auditLogger.LogFieldRead("session-1", "collection", "doc-1", "field.path", mcp.FieldValue{Str: &testVal})
 		assert.Error(t, err)
-	})
-}
-
-func TestOperatorPubSubService_ValidateSession(t *testing.T) {
-	t.Run("always returns true for operator mode", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		valid, err := svc.ValidateSession("session-1")
-		assert.True(t, valid)
-		assert.NoError(t, err)
-	})
-
-	t.Run("always returns true for any session ID", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
-			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
-			Ledger:       storagetest.NewTestLedger(t),
-			RuntimeVault: governancetest.UnlockedVault{},
-			Config:       cfg,
-			Logger:       testutil.NewTestLogger(),
-			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
-		}), OutboundModeDeps{
-			GovernanceCoreDeps: GovernanceCoreDeps{
-				ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1", "op-1"}, SessionID: "session-1"},
-				ReplayStore:       &testutil.MockReplayStore{},
-				StateRootProvider: testutil.NewMockStateRootProvider("test-state-root"),
-				TransactionAudit:  &testutil.MockTransactionAudit{},
-				L3Notary:          &testutil.MockL3Notary{},
-				Doctrine:          governance.NewL1Doctrine(),
-			},
-		})
-		require.NoError(t, err)
-
-		valid, err := svc.ValidateSession("")
-		assert.True(t, valid)
-		assert.NoError(t, err)
 	})
 }
 
@@ -2093,7 +1979,7 @@ func TestNewOperatorPubSubService_NilDoctrine_NotDefaultedAtCallSite(t *testing.
 func newGatewayPubsubServiceForBindingTest(t *testing.T) *OperatorPubSubService {
 	t.Helper()
 	cfg := testutil.NewTestConfig(t)
-	govDeps := validTestGatewayModeDeps(config.PostureDoctrine)
+	govDeps := validTestGatewayModeDeps(constants.PostureDoctrine)
 	svc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
 		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
 			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),

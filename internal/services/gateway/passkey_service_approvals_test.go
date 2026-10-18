@@ -187,13 +187,6 @@ func TestPasskeyService_HandleApprovalVerify(t *testing.T) {
 	})
 }
 
-func mustCanonicalEnvelope(t *testing.T, envelope *commonv1.GovernanceEnvelope) []byte {
-	t.Helper()
-	encoded, err := protojson.Marshal(envelope)
-	require.NoError(t, err)
-	return encoded
-}
-
 func TestPasskeyService_HandleCLIApprovalStatus(t *testing.T) {
 	t.Run("Failure - method not allowed", func(t *testing.T) {
 		s, _, _ := setupTestPasskeyService(t)

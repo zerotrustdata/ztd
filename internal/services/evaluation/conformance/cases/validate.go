@@ -97,7 +97,8 @@ func Validate(cases []Case, gaps []Gap, corpus *doctrinecorpus.Corpus) error {
 
 // validateCase checks one case's own fields and each of its expectations.
 func validateCase(c Case) error {
-	if _, ok := governancePostures[c.Posture]; !ok {
+	posture, err := GovernancePosture(c.Posture)
+	if err != nil {
 		return invalid("case %s: posture %s is not one of the four postures", c.ID, c.Posture)
 	}
 	if !knownIngress(c.Ingress) {
@@ -114,15 +115,16 @@ func validateCase(c Case) error {
 		return invalid("case %s: has %d expectations, want %d", c.ID, len(c.Expect), want)
 	}
 	for _, e := range c.Expect {
-		if err := validateExpect(c, e); err != nil {
+		if err := validateExpect(c, posture, e); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// validateExpect checks one expectation against the case it belongs to.
-func validateExpect(c Case, e Expect) error {
+// validateExpect checks one expectation against the case it belongs to, which
+// runs under posture.
+func validateExpect(c Case, posture constants.Posture, e Expect) error {
 	switch e.Kind {
 	case ExpectExecuted:
 		if e.RejectionCode != operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED ||
@@ -132,7 +134,7 @@ func validateExpect(c Case, e Expect) error {
 		if e.L2Status == operatorv1.L2Status_L2_STATUS_UNSPECIFIED || e.L3Status == operatorv1.L3Status_L3_STATUS_UNSPECIFIED {
 			return invalid("case %s: executed expectation has no L2 or L3 status", c.ID)
 		}
-		want := executedExpect(c.Posture, c.Action, effectFor(c.Ingress, c.Action))
+		want := executedExpect(posture, c.Action, effectFor(c.Ingress, c.Action))
 		if e != want {
 			return invalid("case %s: executed expectation %+v does not match %+v", c.ID, e, want)
 		}
@@ -198,17 +200,17 @@ func validateDoctrineCoverage(cases []Case, attacks map[string]doctrinecorpus.En
 	}
 
 	for _, entry := range attacks {
-		for _, posture := range postureAll {
-			if _, ok := have[doctrineKey{IngressDirect, posture, entry.ID}]; !ok {
-				return invalid("attack entry %s has no DIRECT doctrine case in posture %s", entry.ID, governancePostures[posture].Name())
+		for _, posture := range Postures {
+			if _, ok := have[doctrineKey{IngressDirect, posture.Wire, entry.ID}]; !ok {
+				return invalid("attack entry %s has no DIRECT doctrine case in posture %s", entry.ID, posture.Posture)
 			}
 		}
 	}
 	for _, category := range doctrinecorpus.Categories() {
 		for _, ingress := range doctrineIngresses {
-			for _, posture := range postureAll {
-				if _, ok := categories[categoryKey{ingress, posture, category}]; !ok {
-					return invalid("category %s has no %s doctrine case in posture %s", category, ingress, governancePostures[posture].Name())
+			for _, posture := range Postures {
+				if _, ok := categories[categoryKey{ingress, posture.Wire, category}]; !ok {
+					return invalid("category %s has no %s doctrine case in posture %s", category, ingress, posture.Posture)
 				}
 			}
 		}

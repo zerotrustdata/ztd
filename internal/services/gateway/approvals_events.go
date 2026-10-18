@@ -39,7 +39,11 @@ type ApprovalsChangePublisher struct {
 // NewApprovalsChangePublisher creates a publisher that resolves the affected
 // user's web sessions from docStore and the platform owner from userSvc.
 func NewApprovalsChangePublisher(docStore *DocumentStoreService, userSvc *UserService, publisher *SSEEventPublisher, logger *slog.Logger) *ApprovalsChangePublisher {
-	return &ApprovalsChangePublisher{docStore: docStore, userSvc: userSvc, publisher: publisher, logger: logger}
+	p := &ApprovalsChangePublisher{docStore: docStore, userSvc: userSvc, publisher: publisher, logger: logger}
+	if docStore != nil {
+		docStore.BindApprovalsNotifier(p)
+	}
+	return p
 }
 
 // TransactionsChanged announces that userID's pending suspended transactions

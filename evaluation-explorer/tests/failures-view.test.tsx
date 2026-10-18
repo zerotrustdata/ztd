@@ -32,7 +32,7 @@ const passedAssignment: AssignmentResult = {
   ...failedAssignment,
   assignment_id: 'assign-pass-1',
   terminal_status: 'completed',
-  quality_state: 'verified_public',
+  quality_state: 'exploratory_verified',
 };
 
 const otherRunFailure: AssignmentResult = {
@@ -45,7 +45,7 @@ const evaluation: EvaluationSummary = {
   schema_version: '1.3.0',
   kind: 'evaluation_summary',
   dataset_id: 'ds-live-run-1',
-  quality_state: 'verified_public',
+  quality_state: 'exploratory_verified',
   observed_at: '2026-09-16T17:01:32.171974517Z',
   run_id: 'run-1',
   suite_id: 'suite-1',

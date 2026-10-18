@@ -7,7 +7,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isPublicFeedBatch, isPublicFeedBootstrap } from '../contract-pack/public/models';
+import { isPublicFeedBatch, isPublicFeedBootstrap, isPublicProofSegmentsResponse } from '../contract-pack/public/models';
 
 const adapterRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const publicPack = join(adapterRoot, 'contract-pack', 'public');
@@ -35,6 +35,7 @@ describe('public spectator contract pack', () => {
       '/history',
       '/proof-catalog',
       '/proof-manifest',
+      '/proof-segments',
       '/proofs/{artifact_id}',
       '/snapshot',
       '/stream',
@@ -58,6 +59,23 @@ describe('public spectator contract pack', () => {
       'source-offline.json',
       'stale.json',
     ]);
+  });
+
+  it('describes typed signed logs including withdrawal-only segments', () => {
+    const segment = {
+      schema_version: '1.0.0', source_id: 'source', segment_index: 2,
+      previous_root: 'a'.repeat(64), verification_ok: true,
+      withdrawn_artifact_ids: ['b'.repeat(64)],
+      generated_at: '2026-10-17T00:00:00Z', signing_key_id: 'key',
+      proof_root_sha256: 'c'.repeat(64), signature: 'd'.repeat(128),
+    };
+    const response = { schema_version: '1.0.0', source_id: 'source', segments: [segment] };
+    expect(isPublicProofSegmentsResponse(response)).toBe(true);
+    expect(isPublicProofSegmentsResponse({ ...response, segments: [{ ...segment, segment_index: '2' }] })).toBe(false);
+    const instructions = readFileSync(join(publicPack, 'offline-verifier.md'), 'utf8');
+    expect(instructions).toContain('verify-proof --segments');
+    expect(instructions).toContain('--key-registry');
+    expect(instructions).toContain('nonzero `segment_index`');
   });
 
   it('ships structurally valid fixtures with verifiable batch hashes and signatures', () => {

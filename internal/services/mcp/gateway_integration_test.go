@@ -60,7 +60,7 @@ func TestMCPGatewayEndToEndIntegration(t *testing.T) {
 	_ = pubKey
 
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            slog.Default(),
 		maxPayloadBytes:   10 * 1024 * 1024, // 10MB
 		envProc:           wrappedProcessor,
@@ -131,7 +131,7 @@ func TestReceiptIntegration(t *testing.T) {
 	_ = pubKey
 
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            slog.Default(),
 		maxPayloadBytes:   10 * 1024 * 1024, // 10MB
 		envProc:           processor,
@@ -203,7 +203,7 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 	_ = pubKey
 
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            slog.New(slog.NewTextHandler(os.Stdout, nil)),
 		maxPayloadBytes:   10 * 1024 * 1024,
 		maxFailures:       3, // Lower threshold for faster test
@@ -295,7 +295,7 @@ func TestGatewayErrorCodesIntegration(t *testing.T) {
 			_ = pubKey
 
 			g := &GatewayService{
-				posture:           &governance.DoctrinePosture{},
+				posture:           constants.PostureDoctrine,
 				logger:            slog.Default(),
 				maxPayloadBytes:   10 * 1024 * 1024,
 				envProc:           processor,
@@ -338,7 +338,7 @@ func TestNativeToolExecutionIntegration(t *testing.T) {
 	}
 
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            logger,
 		responder:         response.NewWriter(logger),
 		maxPayloadBytes:   10 * 1024 * 1024,
@@ -422,7 +422,7 @@ func TestReadFieldIntegration(t *testing.T) {
 	}
 
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            logger,
 		responder:         response.NewWriter(logger),
 		maxPayloadBytes:   10 * 1024 * 1024,
@@ -491,7 +491,7 @@ func TestHandleReadField(t *testing.T) {
 	auditLogger := &integrationTestAuditLogger{logs: []auditLogEntry{}}
 
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            logger,
 		fieldPathRegistry: fieldPathRegistry,
 		threatScanner:     governance.NewL1Doctrine(),
@@ -574,7 +574,7 @@ type integrationTestSessionValidator struct {
 	validSessions map[string]bool
 }
 
-func (f *integrationTestSessionValidator) ValidateSession(sessionID string) (bool, error) {
+func (f *integrationTestSessionValidator) ValidateSession(ctx context.Context, sessionID string) (bool, error) {
 	valid, ok := f.validSessions[sessionID]
 	if !ok {
 		return false, nil
@@ -623,7 +623,7 @@ func TestNativeToolSingleAudit(t *testing.T) {
 	nativeHandler, _ := NewNativeToolHandler(slog.Default())
 
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
@@ -670,7 +670,7 @@ func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
@@ -704,7 +704,7 @@ func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
@@ -734,7 +734,7 @@ func TestAuditReceiptListTool_DispatchNotConfigured(t *testing.T) {
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
-		posture:           &governance.DoctrinePosture{},
+		posture:           constants.PostureDoctrine,
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,

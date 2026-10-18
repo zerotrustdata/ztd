@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.1.3
+last_updated: 2026-10-18
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -163,7 +163,7 @@ The executable starts in `cmd/ztd/main.go`. Command registration and process-lev
 
 | Path | Owns |
 | :--- | :--- |
-| `internal/cli/serve/gateway.go` | Foreground Gateway startup: paths, `RuntimeFileService`, runtime tree, logging, configuration, `GatewayModeService`, shutdown. Opens `CanonicalDBService` itself only when consensus bootstrap runs, then calls `NewGatewayModeServiceWithDB`. |
+| `internal/cli/serve/gateway.go` | Foreground Gateway startup: paths, `RuntimeFileService`, runtime tree, logging, configuration, `GatewayModeService`, shutdown. |
 | `internal/cli/serve/launch_profile.go` | Versioned `GatewayLaunchProfile` persisted after a successful managed `gw start`. `gw restart` reads it. |
 | `internal/cli/serve/operator.go` | Foreground outbound Operator: configuration, credentials, platform enrollment, mTLS transport, `ZtdoService`, shutdown. `StartOperator` in `operator_runtime.go` refuses a working directory holding a Gateway runtime (`constants.GatewayRuntimeMarker`, `constants.ErrOperatorGatewayRuntime`), then starts service and certificate renewer. |
 | `internal/cli/serve/platform_enrollment_client.go` | Resumable owner-approved Operator enrollment client. |
@@ -233,7 +233,7 @@ Mode dependency types reside in `internal/services/pubsub/mode_deps.go`. Wiring 
 | Deps type | Adds beyond `GovernanceCoreDeps` |
 | :--- | :--- |
 | `pubsub.GovernanceCoreDeps` | Shared execution target, replay store, state-root provider, transaction audit, L3 notary, signer store, and L1 doctrine. |
-| `pubsub.GatewayModeDeps` | Governed document store, consensus policy store, field reader, consensus service, platform enrollment, and posture. |
+| `pubsub.GatewayModeDeps` | Governed document store, consensus store, field reader, consensus deliberator, platform enrollment, and posture. |
 | `pubsub.OutboundModeDeps` | Consensus policy store only. `ZtdoService` passes one in-memory `governance.L2TrustStore`, built from enrollment bundle and replaced at each certificate renewal, as both signer store and consensus policy store. |
 
 Outbound groups owned by `ZtdoService`: enrollment-bundle L2 trust (`governance.L2TrustStore`, required at construction) and mTLS pub/sub; `ExecutionService` and `FileEditService`; `CanonicalDBService` plus vault, suspended transactions, replay, SQL audit, and required Git ledger; local L1 doctrine, outbound L3 notary, L4, and L5; enabled inference, provider-boundary observer, and model-provenance capability handlers from `pubsub.NewCapabilityHandlers`.
@@ -245,7 +245,7 @@ Mutations that traverse a ztd ingress use a typed `GovernanceEnvelope` (`INV-BOU
 | Step | Owner |
 | :--- | :--- |
 | L1 doctrine | `internal/services/governance/l1_doctrine.go` (`NewL1DoctrineFromDir`). Loader rules: `INV-DOCTRINE-*`. |
-| L2 consensus | `internal/services/consensus/`. Required only for postures that enforce it (`INV-DEP-05`). Architecture: [Consensus](../architecture/consensus.md). |
+| L2 consensus | `internal/services/governance/l2_consensus.go`, `internal/services/gateway/consensus_store_service.go`. Bound application HTTPS deliberation. Required only for postures that enforce it (`INV-DEP-05`). Architecture: [Consensus](../architecture/consensus.md). |
 | L3 notary | `internal/services/governance/`. Gateway mode and outbound mode use distinct notaries. See mode table. |
 | L4 verification and L5 actuation | `internal/services/governance/` with command and file dispatch in `internal/services/pubsub/`. |
 | MCP and A2A translation, native tools, suspension | `internal/services/mcp/`. Native registration rules: `INV-MCP-*`. |
@@ -278,6 +278,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/docs/` | Generated OpenAPI (`swagger.json` embedded by `docs.go`, plus `swagger.yaml`). Generator: `make swagger-generate`. |
 | `internal/services/gateway/explorer/` | Embedded evaluation-explorer assets. |
 | `internal/services/gateway/db/schema.sql` | Canonical SQLite schema embedded by `CanonicalDBService`. |
+| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. |
 
 ### Persistence
 
@@ -288,6 +289,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `RuntimeFileService` | `internal/services/fs/file_service.go` | Canonical `.ztd/` file service. Startup calls `CreateRuntimeTree` from `internal/cli/serve/gateway.go` and `internal/cli/serve/operator.go`. |
 | Path constants | `internal/constants/paths.go` | Reusable system, repository, and runtime path strings. |
 | `CanonicalDBService` | `internal/services/gateway/gateway_db.go` | Primary SQLite connection, schema lifecycle, encrypted vault, secret manager, maintenance, and store lifetimes. Constructor: `OpenCanonicalDBService`. Gateway builder and `ZtdoService` both call it. |
+| `PublicMirrorStore` | `internal/services/gateway/public_mirror_store.go` | Public spectator mirror store: `public-mirror/mirror.db` plus content-addressed `public-mirror/proofs/`. Constructor: `OpenPublicMirrorStore`, which verifies the chain and proofs on every open. `public_mirror_import.go` is the one-time `state.json` import, removed after v1.1.3. |
 
 `CanonicalDBService` accessors:
 
@@ -314,7 +316,6 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/auth/` | Operator bootstrap transport and host fingerprinting. |
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
-| `internal/services/consensus/` | Consensus members, policy construction, deliberation, and Ed25519 voting. |
 | `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
 | `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.0.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
@@ -322,7 +323,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/ztdbinaries/` | Deployment-binary catalog, reader, and publisher. CLI wrapper: `internal/tools/ztdbinaries/`. |
 | `internal/services/gateway/` | Gateway HTTP and control plane, including child packages in HTTP boundary table. |
 | `internal/services/gateway/embedded/` | In-process Operator substrate (`INV-MODE-02`). |
-| `internal/services/governance/` | L1, L3, L4, L5, governance interfaces, state-root providers, signer stores, and public-key export. |
+| `internal/services/governance/` | L1, L2, L3, L4, L5, governance interfaces, state-root providers, signer stores, and public-key export. |
 | `internal/services/inference/` | Inference dispatch (`internal/services/inference/dispatch/`), provider backends, and attempt storage. |
 | `internal/services/inference/provider_observer/` | Provider-boundary GPU and RAM sampling. |
 | `internal/services/inference/model_provenance/` | Storage-side model weight attestation. |
@@ -331,6 +332,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/mcp/` | MCP and A2A gateway, native tools, field-path governance, suspension, and downstream clients. |
 | `internal/services/network/` | Network identity detection and endpoint construction. |
 | `internal/services/operatorcapability/` | Capability resolution and selection for provider-boundary observer, provenance operator, inference, and governed data operators, plus Ollama command construction. |
+| `internal/services/profiling/` | Opt-in loopback-only `net/http/pprof` listener behind `gw start --pprof-listen`. |
 | `internal/services/publicdisclosure/` | Validation of public-disclosure records. Gateway publisher and mirror orchestration stay in `internal/services/gateway/`. |
 | `internal/services/pubsub/` | Gateway and Operator pub/sub clients, command dispatch, results, heartbeats, mode dependency types, and capability handlers (`NewCapabilityHandlers`) shared by Gateway-local executor and outbound Operator. |
 | `internal/services/reporting/` | Deterministic CSV evidence reports and verification. Exposed by `ztd report`. |

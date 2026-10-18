@@ -3,8 +3,8 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.1.3
+last_updated: 2026-10-18
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -45,6 +45,7 @@ Diagnose and resolve common contributor setup, build, test, Gateway startup, aut
   - [Basic Health and Toolchain Triage](#basic-health-and-toolchain-triage)
   - [Build and Generation Triage](#build-and-generation-triage)
   - [Gateway Process Diagnosis](#gateway-process-diagnosis)
+  - [Gateway CPU and Memory Profiling](#gateway-cpu-and-memory-profiling)
   - [Vault Validation and Key Recovery](#vault-validation-and-key-recovery)
   - [CLI Authentication and Session Recovery](#cli-authentication-and-session-recovery)
   - [Operator Connectivity and Enrollment Triage](#operator-connectivity-and-enrollment-triage)
@@ -74,6 +75,8 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-GW-03 | `gw reset` and `gw clean` are destructive commands that move the local `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`; the gateway starts over without it. MUST NOT use either command to repair retained state. `make clean` removes only build artifacts and the Go build cache; it does not reset Gateway runtime state. |
 | INV-TROUBLE-GW-04 | `gw start` against a running Gateway succeeds only when every explicitly set startup flag (capabilities, posture, listen host, ports, model storage root, Ollama endpoint, public base URL, CORS and passkey origins) matches the running launch profile. Otherwise it prints the differences and fails with `ErrGatewayAlreadyRunning`; stop the Gateway (`./ztd gw stop` or `make down`), then rerun the start command. Runtime state in `.ztd/` is kept. |
 | INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` must be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and waits up to five minutes. Approve with the login password and **Always Allow**; a denied or unanswered prompt fails with `ErrKeyStoreLocked` or `OS key store access was not approved`. Over SSH, start once from the desktop session. |
+| INV-TROUBLE-GW-06 | `gw start --pprof-listen` accepts only `localhost` or a loopback IP (`ErrProfilingListenAddress`); profiles expose command lines, heap contents, and goroutine stacks. Profiling is off when the flag is unset, and it is a startup flag covered by `INV-TROUBLE-GW-04`. |
+| INV-TROUBLE-GW-07 | The public spectator mirror verifies `.ztd/public-mirror/mirror.db` and its proof files on every open; a tampered or truncated store fails startup with `ErrPublicFeedMirrorStoreCorrupt` and MUST NOT be hand-edited back into shape. Restore `.ztd/public-mirror/` from backup. On the first start after upgrading from the JSON store, `state.json` is imported once and removed; if both `state.json` and `mirror.db` exist, startup fails with `ErrPublicFeedMirrorLegacyStateConflict`; remove whichever one is stale. |
 
 ### Authentication and trust (`INV-TROUBLE-AUTH`)
 
@@ -138,6 +141,31 @@ make proto-generate
 # Run in the foreground with debug logging
 ./ztd gw stop
 ./ztd gw start --follow --log debug
+```
+
+### Gateway CPU and Memory Profiling
+
+```bash
+# Start the Gateway with the loopback pprof listener (mutex and block sampling are enabled with it)
+./ztd gw stop
+./ztd gw start --pprof-listen 127.0.0.1:6060   # plus your usual flags
+
+# CPU: 30 s sample, interactive flame graph
+go tool pprof -http=127.0.0.1:7070 'http://127.0.0.1:6060/debug/pprof/profile?seconds=30'
+
+# Memory: live heap (inuse_space) and allocation churn (alloc_space)
+go tool pprof -http=127.0.0.1:7071 http://127.0.0.1:6060/debug/pprof/heap
+go tool pprof -sample_index=alloc_space -top http://127.0.0.1:6060/debug/pprof/allocs
+
+# Goroutine leaks, lock contention, blocking
+curl -s 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=1' | head -60
+go tool pprof -top http://127.0.0.1:6060/debug/pprof/mutex
+go tool pprof -top http://127.0.0.1:6060/debug/pprof/block
+
+# Scheduler/GC execution trace
+mkdir -p .ztd/tmp/pprof
+curl -so .ztd/tmp/pprof/gw.trace 'http://127.0.0.1:6060/debug/pprof/trace?seconds=5'
+go tool trace .ztd/tmp/pprof/gw.trace
 ```
 
 ### Vault Validation and Key Recovery

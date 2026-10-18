@@ -84,7 +84,7 @@ func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "run-smoke-1", run.GetRunId())
 
-	count, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	assert.Equal(t, 3, count)
 
@@ -121,7 +121,7 @@ func TestCampaignControllerResumeNextAssignmentFailsOnUnresolvedRunningAssignmen
 	req := testCampaignInitRequest(t)
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	assignments, err := store.ListAssignments(context.Background(), req.RunID)
@@ -143,7 +143,7 @@ func TestCampaignControllerRunSummaryCountsAssignments(t *testing.T) {
 	req := testCampaignInitRequest(t)
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	count, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	require.Greater(t, count, 0)
 

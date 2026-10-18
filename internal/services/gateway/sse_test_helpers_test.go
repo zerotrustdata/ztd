@@ -11,24 +11,13 @@ package gateway
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/stretchr/testify/require"
 
@@ -36,70 +25,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 )
-
-// makeTestAppCert creates a self-signed x509 certificate with app SPIFFE URI SANs.
-// Used to simulate mTLS app workload identities for SSE push tests.
-func makeTestAppCert(t *testing.T, spiffeURIs []string) *x509.Certificate {
-	t.Helper()
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	var uris []*url.URL
-	for _, s := range spiffeURIs {
-		u, err := url.Parse(s)
-		require.NoError(t, err)
-		uris = append(uris, u)
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "test-app-cert"},
-		NotBefore:    time.Now().Add(-1 * time.Minute),
-		NotAfter:     time.Now().Add(24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		URIs:         uris,
-	}
-
-	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	require.NoError(t, err)
-
-	cert, err := x509.ParseCertificate(certDER)
-	require.NoError(t, err)
-	return cert
-}
-
-// makeTLSRequest creates an http.Request with r.TLS set to simulate mTLS auth.
-func makeTLSRequest(method, _ string, body string, cert *x509.Certificate) *http.Request {
-	var bodyReader strings.Reader
-	if body != "" {
-		bodyReader = *strings.NewReader(body)
-	}
-	req := httptest.NewRequest(method, "/api/v1/sse/push", &bodyReader)
-	if cert != nil {
-		req.TLS = &tls.ConnectionState{
-			PeerCertificates: []*x509.Certificate{cert},
-		}
-	}
-	return req
-}
-
-// seedOperatorDoc inserts an operator document into the DocStore for test setup.
-// The document is stored with operatorSessionID as the key, matching the SSE push
-// code's DocGet(operators, operatorSessionID) lookup pattern.
-func seedOperatorDoc(t *testing.T, h *HTTPHandler, opID, userID, operatorSessionID string) {
-	t.Helper()
-	op := &operatorv1.OperatorDocument{
-		Id:                opID,
-		UserId:            userID,
-		Status:            string(constants.OperatorStatusActive),
-		OperatorSessionId: operatorSessionID,
-	}
-	opBytes, err := models.MarshalOperatorDocument(op)
-	require.NoError(t, err)
-	err = h.dataController.docStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), operatorSessionID, opBytes)
-	require.NoError(t, err)
-}
 
 // seedCLISessionDoc inserts a CLI session document into the DocStore for test setup.
 func seedCLISessionDoc(t *testing.T, h *HTTPHandler, cliSessionID, userID, operatorSessionID string) {
@@ -112,15 +37,6 @@ func seedCLISessionDoc(t *testing.T, h *HTTPHandler, cliSessionID, userID, opera
 	cliBytes, err := json.Marshal(cliSess)
 	require.NoError(t, err)
 	err = h.dataController.docStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, cliBytes)
-	require.NoError(t, err)
-}
-
-// bindWebSessionToOperators sets the KV binding from web session to operator session IDs.
-func bindWebSessionToOperators(t *testing.T, h *HTTPHandler, webSessionID string, operatorSessionIDs []string) {
-	t.Helper()
-	raw, err := json.Marshal(operatorSessionIDs)
-	require.NoError(t, err)
-	err = h.sseController.kvStore.KVSet(t.Context(), sessionWebBindKey(webSessionID), string(raw), 0)
 	require.NoError(t, err)
 }
 

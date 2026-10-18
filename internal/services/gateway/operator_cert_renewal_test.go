@@ -62,7 +62,7 @@ type stubL2TrustSource struct {
 	err   error
 }
 
-func (s *stubL2TrustSource) OperatorL2Trust(context.Context, string) (*models.OperatorL2Trust, error) {
+func (s *stubL2TrustSource) OperatorL2Trust(context.Context, ...string) (*models.OperatorL2Trust, error) {
 	return s.trust, s.err
 }
 
@@ -104,7 +104,7 @@ func newRenewalRig() *renewalRig {
 		sessions: &stubOperatorSessionValidator{op: &operatorv1.OperatorDocument{Id: renewalOpID, OrganizationId: renewalOrgID}},
 		trust:    &stubL2TrustSource{trust: &models.OperatorL2Trust{ConsensusSetID: "set-1"}},
 	}
-	r.svc = NewOperatorCertRenewalService(r.pki, r.sessions, r.trust, "set-1", testutil.NewTestLogger())
+	r.svc = NewOperatorCertRenewalService(r.pki, r.sessions, r.trust, testutil.NewTestLogger())
 	return r
 }
 

@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -342,7 +341,6 @@ func TestBuildOperatorLoadOptions_ZeroValues(t *testing.T) {
 	assert.Equal(t, time.Duration(0), loadOpts.HeartbeatInterval)
 	assert.Equal(t, "", loadOpts.PKIDir)
 	assert.Equal(t, "", loadOpts.SecretsDir)
-	assert.Equal(t, config.GatewayPosture(""), loadOpts.Posture)
 }
 
 func TestBuildOperatorLoadOptions_EnvVarsPropagated(t *testing.T) {
@@ -368,12 +366,6 @@ func TestBuildOperatorLoadOptions_GatewayPortsDefaultToZeroAndPassThroughWhenSet
 	loadOpts = buildOperatorLoadOptions(ServeOperatorOptions{HTTPPort: 9080, HTTPSPort: 9443}, "10.0.0.1", "/work")
 	assert.Equal(t, 9080, loadOpts.HTTPPort)
 	assert.Equal(t, 9443, loadOpts.HTTPSPort)
-}
-
-func TestBuildOperatorLoadOptions_PostureAlwaysEmpty(t *testing.T) {
-	opts := ServeOperatorOptions{}
-	loadOpts := buildOperatorLoadOptions(opts, constants.DefaultEndpoint, constants.DefaultDataDir)
-	assert.Equal(t, config.GatewayPosture(""), loadOpts.Posture, "Posture should always be empty for operator mode")
 }
 
 func TestBuildOperatorLoadOptions_PKIAndSecretsAlwaysEmpty(t *testing.T) {
@@ -408,7 +400,6 @@ func TestBuildOperatorLoadOptions_AllFieldsPopulated(t *testing.T) {
 	assert.Equal(t, 90*time.Second, loadOpts.HeartbeatInterval)
 	assert.Equal(t, "", loadOpts.PKIDir)
 	assert.Equal(t, "", loadOpts.SecretsDir)
-	assert.Equal(t, config.GatewayPosture(""), loadOpts.Posture)
 	assert.Equal(t, "/bin/bash", loadOpts.Shell)
 	assert.Equal(t, "C.UTF-8", loadOpts.Lang)
 	assert.Equal(t, "screen", loadOpts.Term)

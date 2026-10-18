@@ -196,7 +196,7 @@ func signedEnvelope(
 		// Posture is gateway policy metadata, not part of the transaction
 		// hash. The chaos tester uses NoopConsensusPolicyStore, so doctrine
 		// posture (L1 enforced, L2/L3 audited) is the appropriate value.
-		Posture: constants.PostureDoctrine,
+		Posture: string(constants.PostureDoctrine),
 	}
 
 	hash, err := govpkg.GenerateMessageID(env)

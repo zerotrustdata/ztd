@@ -119,6 +119,7 @@ func TestAllActionTypes_ContainsAllConstants(t *testing.T) {
 		ActionTypePlatformEnrollmentPersistPolicy,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentRevoke,
+		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePortCheck,
 		ActionTypeOllamaModelInventory,
 		ActionTypeOllamaModelResidency,
@@ -182,6 +183,26 @@ func TestActionTypeIsBootstrapAction_NonPlatformEnrollmentReturnsFalse(t *testin
 			assert.False(t, at.IsBootstrapAction(), "%s should not be a bootstrap action", at)
 		})
 	}
+}
+
+func TestActionTypeAuthorizedByDecision(t *testing.T) {
+	t.Parallel()
+
+	// Issuance and its follow-on writes carry out a committed owner decision.
+	// The decision and revocation are owner acts and are not exempt.
+	authorized := map[ActionType]bool{
+		ActionTypePlatformEnrollmentIssue:         true,
+		ActionTypePlatformEnrollmentPersistPolicy: true,
+		ActionTypePlatformEnrollmentCreateSession: true,
+	}
+	for _, at := range AllActionTypes {
+		assert.Equal(t, authorized[at], at.AuthorizedByDecision(), "%s", at)
+		if at.AuthorizedByDecision() {
+			assert.True(t, at.IsBootstrapAction(), "%s must be a bootstrap action", at)
+		}
+	}
+	assert.False(t, ActionTypePlatformEnrollmentDecide.AuthorizedByDecision())
+	assert.False(t, ActionTypePlatformEnrollmentRevoke.AuthorizedByDecision())
 }
 
 func TestActionTypeIsBootstrapAction_UnknownTypeReturnsFalse(t *testing.T) {

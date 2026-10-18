@@ -23,7 +23,7 @@ func TestCampaignMirrorReconcileRunTimeout_ScalesWithAssignmentCount(t *testing.
 	assert.Equal(t, CampaignMirrorRunTimeoutMax, CampaignMirrorReconcileRunTimeout(base, 10_000))
 }
 
-func TestCampaignMirrorReconciler_ReconcileVerifiedQueuePresenceOnlyReportsMissing(t *testing.T) {
+func TestCampaignMirrorReconciler_ReconcileAllVerifiedRunsFromStorePresenceOnlyReportsMissing(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -32,8 +32,7 @@ func TestCampaignMirrorReconciler_ReconcileVerifiedQueuePresenceOnlyReportsMissi
 	run := completedVerifiedMirrorTestCampaign(t, store)
 
 	reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
-	queue := &CampaignQueue{Models: []CampaignQueueModel{{Status: "verified", VerifiedRunID: run.GetRunId()}}}
-	result, err := reconciler.ReconcileVerifiedQueue(context.Background(), queue, time.Minute, false, false, nil)
+	result, err := reconciler.ReconcileAllVerifiedRunsFromStore(context.Background(), time.Minute, false, false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{run.GetRunId()}, result.MissingRunIDs)
 	assert.Empty(t, result.RestoredRunIDs)

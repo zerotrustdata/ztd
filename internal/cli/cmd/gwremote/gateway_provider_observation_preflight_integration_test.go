@@ -11,19 +11,24 @@ package gwremote
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 	preflightPath := constants.APIPaths.InferenceProviderObservations + "_preflight"
 
 	t.Run("accepts a ready gateway and hits the preflight endpoint", func(t *testing.T) {
-		gateway, fileSvc, cfg := startProvenanceGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		gateway, fileSvc, cfg := startObservationPreflightGateway(t, func(w http.ResponseWriter, r *http.Request) {
 			writeJSONBody(t, w, `{"status":"ready"}`)
 		})
 
@@ -65,7 +70,7 @@ func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, fileSvc, cfg := startProvenanceGateway(t, tt.handler)
+			_, fileSvc, cfg := startObservationPreflightGateway(t, tt.handler)
 
 			err := PreflightProviderObservationDelivery(fileSvc, cfg)
 			require.Error(t, err)
@@ -77,4 +82,46 @@ func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 			}
 		})
 	}
+}
+
+// observationPreflightGateway records requests to the Observer health endpoint.
+type observationPreflightGateway struct {
+	mu       sync.Mutex
+	requests []*http.Request
+}
+
+func (g *observationPreflightGateway) record(r *http.Request) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.requests = append(g.requests, r)
+}
+
+func (g *observationPreflightGateway) requestCount() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(g.requests)
+}
+
+func writeJSONBody(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	_, err := w.Write([]byte(body))
+	require.NoError(t, err)
+}
+
+// startObservationPreflightGateway starts a fake Gateway whose responses come from handler,
+// points the CLI endpoint override at it, and forces the health check healthy.
+func startObservationPreflightGateway(t *testing.T, handler http.HandlerFunc) (*observationPreflightGateway, fs.RuntimeFileService, *config.Config) {
+	t.Helper()
+	WithGatewayHealthCheck(t, true)
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+
+	gateway := &observationPreflightGateway{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gateway.record(r.Clone(r.Context()))
+		w.Header().Set("Content-Type", "application/json")
+		handler(w, r)
+	}))
+	t.Cleanup(server.Close)
+	cmdtest.WithEndpointOverride(t, server.URL)
+	return gateway, fileSvc, cfg
 }

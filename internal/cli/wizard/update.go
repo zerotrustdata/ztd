@@ -9,6 +9,8 @@ package wizard
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // Update handles all messages for the wizard state machine.
@@ -149,7 +151,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 		}
 	case StepPosture:
 		if m.focusIndex == 0 {
-			if m.postureChoice < 3 {
+			if m.postureChoice < len(constants.AllPostures)-1 {
 				m.postureChoice++
 			}
 		}
@@ -193,7 +195,7 @@ func (m Model) stepFocusMax() int {
 		}
 		return 2
 	case StepPosture:
-		return 6
+		return 3
 	case StepRouting:
 		if m.routeToA2A {
 			return 3
@@ -231,22 +233,10 @@ func (m Model) handleTextInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 0:
 			// posture is a choice, not text input
 		case 1:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
-				m.consensusIDInput, cmd = m.consensusIDInput.Update(msg)
-			}
-		case 2:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
-				m.consensusBootstrapInput, cmd = m.consensusBootstrapInput.Update(msg)
-			}
-		case 3:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
-				m.consensusURLInput, cmd = m.consensusURLInput.Update(msg)
-			}
-		case 4:
 			m.passkeyRpIDInput, cmd = m.passkeyRpIDInput.Update(msg)
-		case 5:
+		case 2:
 			m.passkeyRpNameInput, cmd = m.passkeyRpNameInput.Update(msg)
-		case 6:
+		case 3:
 			m.passkeyRpOriginInput, cmd = m.passkeyRpOriginInput.Update(msg)
 		}
 	case StepRouting:
@@ -272,9 +262,6 @@ func (m Model) handleTextInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func blurAllInputs(m *Model) {
 	m.publicBaseURLInput.Blur()
 	m.corsOriginInput.Blur()
-	m.consensusIDInput.Blur()
-	m.consensusURLInput.Blur()
-	m.consensusBootstrapInput.Blur()
 	m.passkeyRpIDInput.Blur()
 	m.passkeyRpNameInput.Blur()
 	m.passkeyRpOriginInput.Blur()
@@ -297,22 +284,10 @@ func focusFirstInput(m *Model) {
 	case StepPosture:
 		switch m.focusIndex {
 		case 1:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
-				m.consensusIDInput.Focus()
-			}
-		case 2:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
-				m.consensusBootstrapInput.Focus()
-			}
-		case 3:
-			if m.postureChoice == 1 || m.postureChoice == 3 {
-				m.consensusURLInput.Focus()
-			}
-		case 4:
 			m.passkeyRpIDInput.Focus()
-		case 5:
+		case 2:
 			m.passkeyRpNameInput.Focus()
-		case 6:
+		case 3:
 			m.passkeyRpOriginInput.Focus()
 		}
 	case StepRouting:
@@ -349,22 +324,6 @@ func (m Model) validateNetwork() string {
 }
 
 func (m Model) validatePosture() string {
-	if m.postureChoice == 1 || m.postureChoice == 3 {
-		consensusID := m.consensusIDInput.Value()
-		if err := validateConsensusID(consensusID); err != nil {
-			return err.Error()
-		}
-		bootstrapPath := m.consensusBootstrapInput.Value()
-		if bootstrapPath != "" {
-			if err := validateConsensusBootstrap(bootstrapPath, consensusID); err != nil {
-				return err.Error()
-			}
-		}
-		consensusURL := m.consensusURLInput.Value()
-		if err := validateConsensusURL(consensusURL); err != nil {
-			return err.Error()
-		}
-	}
 	rpID := m.passkeyRpIDInput.Value()
 	rpName := m.passkeyRpNameInput.Value()
 	if rpName == "" {

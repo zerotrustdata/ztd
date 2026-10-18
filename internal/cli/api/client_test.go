@@ -305,3 +305,14 @@ func TestStatusError(t *testing.T) {
 	assert.False(t, IsUnauthorized(forbidden))
 	assert.False(t, IsUnauthorized(constants.ErrHTTPStatusError))
 }
+
+func TestDecodeGatewayError_PlatformEnrollmentRequiresBootstrap(t *testing.T) {
+	body := []byte(fmt.Sprintf(`{"error":%q}`, constants.ErrPlatformEnrollmentRequiresBootstrap.Error()))
+	err := DecodeGatewayError(http.StatusForbidden, body)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequiresBootstrap)
+
+	statusErr := &StatusError{StatusCode: http.StatusForbidden, Body: string(body)}
+	assert.ErrorIs(t, statusErr, constants.ErrPlatformEnrollmentRequiresBootstrap)
+}

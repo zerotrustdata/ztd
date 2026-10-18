@@ -8,7 +8,7 @@
 package serve
 
 import (
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // validTestGatewayConfig returns a GatewayConfig with every field populated
@@ -17,7 +17,7 @@ import (
 // files, so it must not use file I/O or carry a build tag.
 func validTestGatewayConfig() GatewayConfig {
 	return GatewayConfig{
-		Posture:             ztdconfig.PostureConsensus,
+		Posture:             constants.PostureConsensus,
 		HTTPPort:            8080,
 		HTTPSPort:           8443,
 		DataDir:             "/data",
@@ -32,9 +32,6 @@ func validTestGatewayConfig() GatewayConfig {
 		LogLevel:            "info",
 		CertIdentityMode:    "full",
 		NetworkIdentityFile: "/tmp/ephemeral-identity.json",
-		ConsensusID:         "trib-001",
-		ConsensusURL:        "https://localhost:8443/consensus/v1/deliberate",
-		ConsensusBootstrap:  "/etc/ztd/consensus-bootstrap.json",
 		MCPDownstreamURL:    "http://downstream:3000/mcp",
 		A2ADownstreamURL:    "http://downstream:3001/a2a",
 		PublicBaseURL:       "https://your-app.lovable.app",

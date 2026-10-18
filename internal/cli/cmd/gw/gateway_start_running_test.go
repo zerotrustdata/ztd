@@ -21,7 +21,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
@@ -51,7 +50,7 @@ func writeRunningProfile(t *testing.T, fileSvc fs.RuntimeFileService, capabiliti
 	t.Helper()
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{
 		OperatorCapabilities: capabilities,
-		Posture:              ztdconfig.PostureDoctrine,
+		Posture:              constants.PostureDoctrine,
 		HTTPPort:             constants.Ports.OperatorHttp,
 		HTTPSPort:            constants.Ports.OperatorHttps,
 		ListenHost:           constants.LocalhostIP,

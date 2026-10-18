@@ -43,7 +43,7 @@ import (
 // serveConformanceGateway serves the Gateway routes the conformance commands read:
 // health for the posture, the Operator list, and the MCP tools/list the MCP driver checks.
 // The server closes with the test; the returned value is its base URL.
-func serveConformanceGateway(t *testing.T, posture string, operators []*operatorv1.OperatorDocument) string {
+func serveConformanceGateway(t *testing.T, posture constants.Posture, operators []*operatorv1.OperatorDocument) string {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc(constants.APIPaths.Health, func(w http.ResponseWriter, _ *http.Request) {

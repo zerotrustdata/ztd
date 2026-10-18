@@ -585,6 +585,3 @@ func TestSetReceiptRelayDeps(t *testing.T) {
 	assert.NotNil(t, broker.receiptAuditRecorder)
 	broker.receiptRelayMu.RUnlock()
 }
-
-// Ensure the context import is used (some stubs may reference it in future).
-var _ = context.Background

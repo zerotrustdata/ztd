@@ -31,12 +31,6 @@ func inferenceOperatorFixture(id, session string) *operatorv1.OperatorDocument {
 	return remoteOperator(id, session, &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityInference)}, InferenceOllamaEndpoint: "http://provider.example:11434"})
 }
 
-// dataOperatorFixture is a dedicated data Operator (no explicit capability flags, so
-// it defaults to the data role).
-func dataOperatorFixture(id, session string) *operatorv1.OperatorDocument {
-	return remoteOperator(id, session, &operatorv1.OperatorRuntimeConfig{})
-}
-
 func TestEvalGroupHasNoSessionFlags(t *testing.T) {
 	group := evalCmdWithConfig(nativeEvalDeps{})
 	assert.Nil(t, group.PersistentFlags().Lookup("data-session"))

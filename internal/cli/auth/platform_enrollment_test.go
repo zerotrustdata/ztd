@@ -18,8 +18,8 @@ import (
 
 func TestPlatformEnrollmentFingerprints(t *testing.T) {
 	t.Run("keeps only present keys in a fixed order", func(t *testing.T) {
-		got := PlatformEnrollmentFingerprints(models.PlatformEnrollmentCSRFingerprints{CLI: "cli-fp", App: "app-fp"})
-		assert.Equal(t, []EnrollmentFingerprint{{Label: "App key", Value: "app-fp"}, {Label: "CLI key", Value: "cli-fp"}}, got)
+		got := PlatformEnrollmentFingerprints(models.PlatformEnrollmentCSRFingerprints{CLI: "cli-fp", App: "app-fp", SigningKey: "signing-fp"})
+		assert.Equal(t, []EnrollmentFingerprint{{Label: "App key", Value: "app-fp"}, {Label: "L2 signing key", Value: "signing-fp"}, {Label: "CLI key", Value: "cli-fp"}}, got)
 	})
 	t.Run("none present", func(t *testing.T) {
 		assert.Empty(t, PlatformEnrollmentFingerprints(models.PlatformEnrollmentCSRFingerprints{}))

@@ -74,7 +74,7 @@ type BuildEnvelopeParams struct {
 	TaskID            string
 	WebSessionID      string
 	CliSessionID      string
-	Posture           string
+	Posture           constants.Posture
 	Doctrine          *governance.L1Doctrine
 }
 
@@ -95,8 +95,8 @@ type BuildEnvelopeParams struct {
 // (ErrTxL1ValidationFailed). Governed request events without a typed proto
 // decode case fail closed with ErrTxPayloadDecoderMissing.
 //
-// Check order: posture-missing, doctrine-missing, action-type validation,
-// and posture parsing run first. L1 screening then runs in every posture,
+// Check order: posture-missing, posture validation, doctrine-missing, and
+// action-type validation run first. L1 screening then runs in every posture,
 // before the L3 gate, so a forbidden payload is refused as
 // ErrTxL1ValidationFailed even under ratify and notary.
 //
@@ -109,17 +109,15 @@ func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEn
 	if params.Posture == "" {
 		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrEnvelopePostureMissing)
 	}
+	if !params.Posture.Valid() {
+		return nil, fmt.Errorf("gateway: build envelope: %w: %q", constants.ErrInvalidPosture, params.Posture)
+	}
 	if params.Doctrine == nil {
 		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrTxDoctrineMissing)
 	}
 
 	eventType := constants.EventType(params.EventType)
 	actionType, err := constants.ValidateGovernedRequest(eventType)
-	if err != nil {
-		return nil, fmt.Errorf("gateway: build envelope: %w", err)
-	}
-
-	posture, err := governance.ParseGovernancePosture(params.Posture)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: build envelope: %w", err)
 	}
@@ -141,7 +139,7 @@ func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEn
 	// L3 gate: the gateway dispatch path cannot mint L3 human proofs. Reject
 	// a clean mutation-classified action under postures that require L3
 	// before constructing an envelope that cannot satisfy L3 at the operator.
-	if governance.L3Required(actionType, posture) {
+	if governance.L3Required(actionType, params.Posture) {
 		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrTxL3ProofUnmintable)
 	}
 
@@ -170,7 +168,7 @@ func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEn
 		TaskId:            params.TaskID,
 		WebSessionId:      params.WebSessionID,
 		CliSessionId:      params.CliSessionID,
-		Posture:           params.Posture,
+		Posture:           string(params.Posture),
 		Governance: &commonv1.GovernanceMetadata{
 			L1: &commonv1.L1Metadata{Validated: l1Validated},
 		},
@@ -260,7 +258,7 @@ type DispatchService struct {
 	pubsub            *GatewayWebSocketHandler
 	stateRootProvider governance.StateRootProvider
 	auth              operatorSessionValidator
-	posture           string
+	posture           constants.Posture
 	doctrine          *governance.L1Doctrine
 	l2Deliberator     L2ConsensusDeliberator
 	signerStore       ReceiptSignerResolver
@@ -278,7 +276,7 @@ type DispatchService struct {
 // signerStore resolves the operator's actuator public key for inference
 // completion receipt verification; a nil store fails inference dispatch
 // closed.
-func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHandler, stateRootProvider governance.StateRootProvider, auth operatorSessionValidator, posture string, doctrine *governance.L1Doctrine, l2Deliberator L2ConsensusDeliberator, signerStore ReceiptSignerResolver, embeddedProcessor governance.EnvelopeProcessor) *DispatchService {
+func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHandler, stateRootProvider governance.StateRootProvider, auth operatorSessionValidator, posture constants.Posture, doctrine *governance.L1Doctrine, l2Deliberator L2ConsensusDeliberator, signerStore ReceiptSignerResolver, embeddedProcessor governance.EnvelopeProcessor) *DispatchService {
 	return &DispatchService{
 		embeddedProcessor: embeddedProcessor,
 		logger:            logger,
@@ -359,11 +357,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    envelope with L2 metadata populated. A nil deliberator skips
 	//    deliberation; the envelope fails closed at L4 verification where
 	//    L2 is enforced. A deliberation error fails closed before publish.
-	posture, perr := governance.ParseGovernancePosture(d.posture)
-	if perr != nil {
-		return nil, fmt.Errorf("dispatch: %w", perr)
-	}
-	if governance.L2Enforced(actionType, posture) && d.l2Deliberator != nil {
+	if governance.L2Enforced(actionType, d.posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)

@@ -30,7 +30,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/protocol"
 )
 
@@ -444,7 +443,3 @@ func TestHandleCLIAuth_ServerInvalidSessionStatesOnNonRefreshEndpoint_FailClosed
 		})
 	}
 }
-
-// Suppress unused import warning for testutil when only a subset of helpers
-// is used in a given build configuration.
-var _ = testutil.NewTestLogger

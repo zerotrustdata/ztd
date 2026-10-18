@@ -59,10 +59,12 @@ func (c *InProcessPubSubClient) Subscribe(ctx context.Context, channel string) (
 	// Register in-process handler with the broker
 	unregister := c.broker.RegisterHandler(channel, func(chName string, data []byte) {
 		c.mu.Lock()
+		defer c.mu.Unlock()
 		targetCh, ok := c.subs[chName]
 		closed := c.closed
-		c.mu.Unlock()
 
+		// Cancellation removes and closes the subscription under the same
+		// mutex, including when the broker already selected this callback.
 		if ok && !closed {
 			select {
 			case targetCh <- data:

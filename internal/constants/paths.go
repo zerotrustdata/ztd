@@ -146,9 +146,10 @@ const (
 	PkiSubdirPendingEnroll = "pending-enrollment"
 
 	// File extensions
-	FileExtCert = ".crt"
-	FileExtKey  = ".key"
-	FileExtJSON = ".json"
+	FileExtCert         = ".crt"
+	FileExtKey          = ".key"
+	AppSigningKeySuffix = ".signing.key"
+	FileExtJSON         = ".json"
 
 	// CA and bundle filenames
 	PkiFileRootCA          = "root_ca.crt"
@@ -252,20 +253,17 @@ const (
 
 // Secrets filenames for bootstrap and runtime secret material.
 const (
-	SecretsFileSessionEncryptionKey     = "session_encryption_key"
-	SecretsFileBootstrapDigest          = "bootstrap_digest.json"
-	SecretsFileActuatorSigningKey       = "actuator_signing_key"
-	SecretsFileActuatorKeyID            = "actuator_key_id"
-	SecretsFileAuditorSigningKey        = "auditor_signing_key"
-	SecretsFileAuditorKeyID             = "auditor_key_id"
-	SecretsFileAuditorHMACKey           = "auditor_hmac_key"
-	SecretsFileNotarySigningKey         = "notary_signing_key"
-	SecretsFileOperatorPrivateKey       = "operator_private_key"
-	SecretsFileCLIPrivateKey            = "cli_private_key"
-	SecretsFileSessionToken             = "session_token"
-	SecretsFileConsensusMemberKeyPrefix = "consensus_member_"
-	SecretsFileVaultKey                 = "vault_key"
-	SecretsFileVaultKeyStaged           = "vault_key.rekey"
+	SecretsFileBootstrapDigest    = "bootstrap_digest.json"
+	SecretsFileActuatorSigningKey = "actuator_signing_key"
+	SecretsFileActuatorKeyID      = "actuator_key_id"
+	SecretsFileAuditorSigningKey  = "auditor_signing_key"
+	SecretsFileAuditorKeyID       = "auditor_key_id"
+	SecretsFileAuditorHMACKey     = "auditor_hmac_key"
+	SecretsFileNotarySigningKey   = "notary_signing_key"
+	SecretsFileOperatorPrivateKey = "operator_private_key"
+	SecretsFileCLIPrivateKey      = "cli_private_key"
+	SecretsFileVaultKey           = "vault_key"
+	SecretsFileVaultKeyStaged     = "vault_key.rekey"
 )
 
 // Evaluation target observation constants.
@@ -500,7 +498,6 @@ const (
 	TestPathShortVault                    = "/vault"
 	TestPathIdentityFile                  = "/path/to/identity.json"
 	TestPathIdentityFileShort             = "/path/identity.json"
-	TestPathNonexistentConsensus          = "/nonexistent/path/consensus.json"
 	TestPathNonexistentCatalog            = "/nonexistent/path/ksi-catalog.json"
 	TestPathNonexistentOverlayDir         = "/nonexistent/path/overlays"
 	TestCustomComplianceOutDir            = "custom-compliance-out"
@@ -521,11 +518,6 @@ const (
 	ProtocolEventsJSONFilename                       = "events.json"
 	ProtocolEventDashboardClassificationJSONFilename = "event_dashboard_classification.json"
 	ProtocolObserveAPIJSONFilename                   = "observe_api.json"
-)
-
-// Consensus bootstrap config filename for declarative consensus seeding.
-const (
-	ConsensusBootstrapConfigFilename = "consensus-bootstrap.json"
 )
 
 // Operational limits for filesystem, grep, and execution operations.
@@ -881,11 +873,20 @@ const (
 	PublicFeedArchiveDirname            = "public-feed-archive"
 	PublicFeedArchiveGenerationsDirname = "public-feed-archive/generations"
 	PublicMirrorDirname                 = "public-mirror"
-	PublicMirrorStatePath               = "public-mirror/state.json"
-	PublicProofsDirname                 = "public-proofs"
-	PublicProofCatalogFilename          = "proof-catalog.json"
-	PublicProofManifestFilename         = "proof-manifest.json"
-	PublicProofMirrorSyncFilename       = "proof-mirror-sync.json"
+	PublicMirrorDBPath                  = "public-mirror/mirror.db"
+	PublicMirrorImportDBPath            = "public-mirror/mirror-import.db"
+	PublicMirrorProofsDir               = "public-mirror/proofs"
+	// PublicMirrorStatePath is the legacy JSON mirror store, read only by the
+	// one-time import into PublicMirrorDBPath. Remove after v1.1.3.
+	PublicMirrorStatePath       = "public-mirror/state.json"
+	PublicProofsDirname         = "public-proofs"
+	PublicProofSegmentsFilename = "public-proofs/proof-segments.jsonl"
+	// PublicProofSegmentsLockFilename serializes appends to
+	// PublicProofSegmentsFilename across processes.
+	PublicProofSegmentsLockFilename = "public-proofs/proof-segments.lock"
+	PublicProofCatalogFilename      = "proof-catalog.json"
+	PublicProofManifestFilename     = "proof-manifest.json"
+	PublicProofMirrorSyncFilename   = "proof-mirror-sync.json"
 )
 
 // Public feed schema and protocol version constants.
@@ -893,8 +894,9 @@ const (
 	PublicFeedProtocolVersion          = "1.0.0"
 	PublicFeedSchemaVersion            = "1.0.0"
 	PublicProofManifestSchemaVersion   = "1.0.0"
+	PublicProofSegmentSchemaVersion    = "1.0.0"
 	PublicProofCatalogSchemaVersion    = "1.0.0"
-	PublicProofMirrorSyncSchemaVersion = "1.0.0"
+	PublicProofMirrorSyncSchemaVersion = "2.0.0"
 	PublicFeedBatchMaxRecords          = 100
 	PublicFeedBatchMaxBytes            = 4 << 20
 	PublicFeedRetryMaxAttempts         = 5
@@ -920,7 +922,8 @@ const (
 	// Retain enough batches for a full homogeneous smoke matrix (~2.6k cells
 	// plus lifecycle, result, and aggregate projections) without pruning the
 	// prefix the evaluation explorer replays on cold load.
-	PublicFeedMirrorRetainedBatches = 25000
-	PublicFeedIngestTokenBytes      = 32
-	PublicFeedZeroHashHex           = "0000000000000000000000000000000000000000000000000000000000000000"
+	PublicFeedMirrorRetainedBatches     = 25000
+	PublicFeedMirrorRetainedRecordBytes = 128 << 20
+	PublicFeedIngestTokenBytes          = 32
+	PublicFeedZeroHashHex               = "0000000000000000000000000000000000000000000000000000000000000000"
 )

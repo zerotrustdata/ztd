@@ -57,20 +57,18 @@ const ApprovalRequestTTL = 2 * time.Minute
 // It is phrased as an instruction to the AI: what happened, what a human must do,
 // the short deadline, and—critically—what to do once that deadline passes (retry
 // the call to open a fresh approval request).
-func approvalPausedMessage(posture, approvalURL string) string {
-	return fmt.Sprintf("Execution paused: this is a state-changing action and the gateway is running in "+
-		"%s posture, which REQUIRES live human passkey (WebAuthn) authorization before it can run. "+
+func approvalPausedMessage(posture constants.Posture, approvalURL string) string {
+	return fmt.Sprintf("Execution paused: this is a state-changing action. %s "+
 		"A human must approve this exact change at %s within %d minutes. "+
 		"Wait for the human to approve, then retry this identical tool call to proceed. "+
 		"This window is intentionally short so the approval proves a human was present for this specific action. "+
 		"If it lapses before approval the request is voided for security — call this tool again to open a fresh approval request.",
-		posture, approvalURL, int(ApprovalRequestTTL.Minutes()))
+		posture.HumanApprovalReason(), approvalURL, int(ApprovalRequestTTL.Minutes()))
 }
 
-// L2ConsensusDeliberator sends an envelope to an L2 consensus service for deliberation.
-// The consensus service collects signed votes from its members and returns the envelope
-// with L2 metadata populated. This interface is implemented by an HTTP client that calls
-// the consensus service's /consensus/v1/deliberate endpoint, or by an in-process adapter.
+// L2ConsensusDeliberator sends an envelope to the bound consensus application
+// over HTTPS protobuf and returns the envelope with L2 metadata populated.
+// Integration fixtures may inject a test deliberator.
 type L2ConsensusDeliberator interface {
 	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
 }
@@ -79,7 +77,7 @@ type L2ConsensusDeliberator interface {
 // It is read-only: an unclaimed embedded Operator yields
 // constants.ErrEmbeddedOperatorUnclaimed. *embedded.Service satisfies it.
 type EmbeddedSessionResolver interface {
-	SessionID(ctx context.Context) (string, error)
+	OperatorSessionID(ctx context.Context) (string, error)
 }
 
 // GatewayService handles MCP/A2A protocol translation and downstream dispatch.
@@ -97,9 +95,9 @@ type GatewayService struct {
 	nativeToolHandler *NativeToolHandler
 	scrubbingService  *scrubbing.ScrubbingService
 	threatScanner     ThreatScanner
-	posture           governance.GovernancePosture // parsed once in NewGatewayService
-	a2aDownstreamURL  string                       // construction-phase (immutable after NewGatewayService)
-	publicBaseURL     string                       // construction-phase (immutable after NewGatewayService)
+	posture           constants.Posture // validated once in NewGatewayService
+	a2aDownstreamURL  string            // construction-phase (immutable after NewGatewayService)
+	publicBaseURL     string            // construction-phase (immutable after NewGatewayService)
 	maxPayloadBytes   int64
 
 	envProc                governance.EnvelopeProcessor
@@ -134,7 +132,7 @@ type FieldReader interface {
 
 // SessionValidator validates Operator sessions for L3 authorization
 type SessionValidator interface {
-	ValidateSession(operatorSessionID string) (bool, error)
+	ValidateSession(ctx context.Context, operatorSessionID string) (bool, error)
 }
 
 // AuditLogger logs field read operations to the audit vault
@@ -170,7 +168,7 @@ type Dependencies struct {
 	ScrubbingService *scrubbing.ScrubbingService
 	ThreatScanner    ThreatScanner
 	MaxPayloadBytes  int64
-	Posture          string // Gateway posture: doctrine, consensus, ratify, or notary
+	Posture          constants.Posture
 	A2ADownstreamURL string // A2A downstream server URL
 	PublicBaseURL    string // Public base URL for approval links
 
@@ -213,11 +211,10 @@ type Dependencies struct {
 }
 
 func NewGatewayService(deps Dependencies) (*GatewayService, error) {
-	// Parse the configured posture once. An empty or unknown name fails construction:
-	// every envelope is stamped with this posture and L2/L3 gating reads it.
-	posture, err := governance.ParseGovernancePosture(deps.Posture)
-	if err != nil {
-		return nil, fmt.Errorf("gateway: parse posture: %w", err)
+	// An empty or unknown posture fails construction: every envelope is stamped
+	// with this posture and L2/L3 gating reads it.
+	if !deps.Posture.Valid() {
+		return nil, fmt.Errorf("gateway: posture: %w: %q", constants.ErrInvalidPosture, deps.Posture)
 	}
 
 	if deps.DownstreamURL != "" && deps.DownstreamCmd != "" {
@@ -267,7 +264,7 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		nativeToolHandler:      nativeToolHandler,
 		scrubbingService:       deps.ScrubbingService,
 		threatScanner:          deps.ThreatScanner,
-		posture:                posture,
+		posture:                deps.Posture,
 		a2aDownstreamURL:       deps.A2ADownstreamURL,
 		publicBaseURL:          deps.PublicBaseURL,
 		maxFailures:            5,
@@ -646,14 +643,15 @@ func (g *GatewayService) handleReadField(ctx context.Context, arguments json.Raw
 	}
 
 	// L3: Validate Operator session
-	if g.sessionValidator != nil {
-		valid, err := g.sessionValidator.ValidateSession(req.OperatorSessionID)
-		if err != nil {
-			return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
-		}
-		if !valid {
-			return nil, constants.ErrGatewayOperatorSessionInvalid
-		}
+	if g.sessionValidator == nil {
+		return nil, constants.ErrGatewayOperatorSessionInvalid
+	}
+	valid, err := g.sessionValidator.ValidateSession(ctx, req.OperatorSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
+	}
+	if !valid {
+		return nil, constants.ErrGatewayOperatorSessionInvalid
 	}
 
 	// Extract field value from database
@@ -929,7 +927,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
 		Nonce:           nonce,
 		StateMerkleRoot: stateRoot,
-		Posture:         g.posture.Name(),
+		Posture:         string(g.posture),
 		Governance:      &commonv1.GovernanceMetadata{},
 	}
 	if opts.investigationID != "" {
@@ -952,7 +950,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		// its approval, expiry, and execution evidence is recorded on that
 		// Operator's session chain. An unclaimed embedded Operator has no session
 		// and the call fails closed.
-		embeddedSessionID, err := g.embeddedSession.SessionID(ctx)
+		embeddedSessionID, err := g.embeddedSession.OperatorSessionID(ctx)
 		if err != nil {
 			return "", nil, "", fmt.Errorf("gateway: resolve embedded operator session for app %s: %w", appID, err)
 		}
@@ -1113,13 +1111,13 @@ func (g *GatewayService) suspendGovernedCall(ctx context.Context, r *http.Reques
 		return nil, err
 	}
 
-	approvalURL := fmt.Sprintf("%s/approve/%s", g.publicBaseURL, hash)
+	approvalURL := g.publicBaseURL + constants.APIPaths.ApprovePagePrefix + hash
 	return &GovernedSuspension{
 		ID:          hash,
 		Status:      string(constants.GatewayResponseStatusSuspended),
 		TxHash:      hash,
 		ApprovalURL: approvalURL,
-		Message:     approvalPausedMessage(g.posture.Name(), approvalURL),
+		Message:     approvalPausedMessage(g.posture, approvalURL),
 	}, nil
 }
 
@@ -1199,6 +1197,32 @@ func extractCertFingerprint(r *http.Request) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func (g *GatewayService) storeSuspendedTransaction(ctx context.Context, tx *models.SuspendedTransaction) error {
+	if g.suspendedStore == nil {
+		return fmt.Errorf("gateway: store suspended transaction %s: %w", tx.TransactionHash, constants.ErrSuspendedStoreRequired)
+	}
+	if err := g.suspendedStore.StoreSuspendedTransaction(ctx, tx); err != nil {
+		return fmt.Errorf("gateway: store suspended transaction %s: %w", tx.TransactionHash, err)
+	}
+
+	// Emit approval.requested to the targeted Operator session's audit chain.
+	// This is the opening bookend for the approval lifecycle.
+	event := &storage.Event{
+		OperatorSessionID: tx.OperatorSessionID,
+		Timestamp:         time.Now().UTC(),
+		Type:              constants.Event.Operator.Notary.ApprovalRequested,
+		ContentText:       fmt.Sprintf("Transaction %s approval requested (tool: %s, expires at: %s)", tx.TransactionHash, tx.ToolName, tx.ExpiresAt.Format(time.RFC3339)),
+	}
+	if _, err := g.auditStore.RecordEvent(event); err != nil {
+		auditErr := fmt.Errorf("gateway: record approval requested for transaction %s on session %s: %w", tx.TransactionHash, tx.OperatorSessionID, err)
+		if delErr := g.suspendedStore.DeleteSuspendedTransaction(ctx, tx.TransactionHash); delErr != nil {
+			return errors.Join(auditErr, fmt.Errorf("gateway: roll back suspended transaction %s: %w", tx.TransactionHash, delErr))
+		}
+		return auditErr
+	}
+	return nil
+}
+
 // StoreSuspendedTransaction stores a transaction awaiting L3 approval and records
 // the approval.requested event on the audit chain of the Operator session the
 // envelope targets. The suspension fails closed: an envelope without an Operator
@@ -1214,11 +1238,12 @@ func (g *GatewayService) StoreSuspendedTransaction(ctx context.Context, txHash s
 		return fmt.Errorf("gateway: store suspended transaction %s: decode envelope: %w", txHash, err)
 	}
 	cliSessionID, _ := ctx.Value(constants.ContextKeyCLISessionID).(string)
+	now := time.Now().UTC()
 	tx := &models.SuspendedTransaction{
 		TransactionHash:         txHash,
 		Envelope:                json.RawMessage(envelope),
-		CreatedAt:               time.Now().UTC(),
-		ExpiresAt:               time.Now().UTC().Add(ApprovalRequestTTL),
+		CreatedAt:               now,
+		ExpiresAt:               now.Add(ApprovalRequestTTL),
 		ToolName:                toolName,
 		ToolArguments:           toolArgs,
 		UserID:                  userID,
@@ -1227,26 +1252,58 @@ func (g *GatewayService) StoreSuspendedTransaction(ctx context.Context, txHash s
 		SubmitterCLISessionID:   cliSessionID,
 		ExpectedCertFingerprint: certFingerprint,
 	}
-	if err := g.suspendedStore.StoreSuspendedTransaction(ctx, tx); err != nil {
-		return fmt.Errorf("gateway: store suspended transaction %s: %w", txHash, err)
-	}
+	return g.storeSuspendedTransaction(ctx, tx)
+}
 
-	// Emit approval.requested to the targeted Operator session's audit chain.
-	// This is the opening bookend for the approval lifecycle.
-	event := &storage.Event{
-		OperatorSessionID: tx.OperatorSessionID,
-		Timestamp:         time.Now().UTC(),
-		Type:              constants.Event.Operator.Notary.ApprovalRequested,
-		ContentText:       fmt.Sprintf("Transaction %s approval requested (tool: %s, expires at: %s)", txHash, toolName, tx.ExpiresAt.Format(time.RFC3339)),
+// SuspendGovernanceEnvelope suspends a GovernanceEnvelope awaiting L3 human approval
+// and returns the typed suspension metadata including the console approval URL.
+func (g *GatewayService) SuspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.GovernanceEnvelope) (models.PlatformEnrollmentL3SuspensionResponse, error) {
+	if envelope == nil || strings.TrimSpace(envelope.GetTransactionHash()) == "" || strings.TrimSpace(envelope.GetOperatorSessionId()) == "" {
+		return models.PlatformEnrollmentL3SuspensionResponse{}, fmt.Errorf("gateway: suspend governance envelope: %w", constants.ErrMissingRequiredField)
 	}
-	if _, err := g.auditStore.RecordEvent(event); err != nil {
-		auditErr := fmt.Errorf("gateway: record approval requested for transaction %s on session %s: %w", txHash, tx.OperatorSessionID, err)
-		if delErr := g.suspendedStore.DeleteSuspendedTransaction(ctx, txHash); delErr != nil {
-			return errors.Join(auditErr, fmt.Errorf("gateway: roll back suspended transaction %s: %w", txHash, delErr))
-		}
-		return auditErr
+	rawEnvelope, err := (protojson.MarshalOptions{Multiline: false}).Marshal(envelope)
+	if err != nil {
+		return models.PlatformEnrollmentL3SuspensionResponse{}, fmt.Errorf("gateway: marshal suspended governance envelope %s: %w", envelope.GetTransactionHash(), err)
 	}
-	return nil
+	userID := strings.TrimSpace(envelope.GetRequestorUserId())
+	if userID == "" {
+		userID, _ = ctx.Value(constants.ContextKeyUserID).(string)
+	}
+	cliSessionID := strings.TrimSpace(envelope.GetCliSessionId())
+	if cliSessionID == "" {
+		cliSessionID, _ = ctx.Value(constants.ContextKeyCLISessionID).(string)
+	}
+	toolName := strings.TrimSpace(envelope.GetTargetResource())
+	if toolName == "" {
+		toolName = strings.TrimSpace(envelope.GetActionType())
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(ApprovalRequestTTL)
+	txHash := envelope.GetTransactionHash()
+	tx := &models.SuspendedTransaction{
+		TransactionHash:       txHash,
+		Envelope:              json.RawMessage(rawEnvelope),
+		CreatedAt:             now,
+		ExpiresAt:             expiresAt,
+		ToolName:              toolName,
+		ToolArguments:         json.RawMessage(envelope.GetPayload()),
+		UserID:                userID,
+		OperatorID:            strings.TrimSpace(envelope.GetOperatorId()),
+		OperatorSessionID:     strings.TrimSpace(envelope.GetOperatorSessionId()),
+		SubmitterCLISessionID: cliSessionID,
+	}
+	if err := g.storeSuspendedTransaction(ctx, tx); err != nil {
+		return models.PlatformEnrollmentL3SuspensionResponse{}, err
+	}
+	approvalURL := g.publicBaseURL + constants.APIPaths.ApprovePagePrefix + txHash
+	return models.PlatformEnrollmentL3SuspensionResponse{
+		Status:      models.PlatformEnrollmentStatusL3Required,
+		Posture:     g.posture,
+		TxHash:      txHash,
+		ApprovalURL: approvalURL,
+		ExpiresAt:   expiresAt,
+		Message:     g.posture.HumanApprovalReason(),
+	}, nil
 }
 
 // GetSuspendedTransaction retrieves a suspended transaction by hash.

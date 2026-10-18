@@ -23,34 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 )
 
-// GatewayPosture defines the governance enforcement posture for the Gateway.
-type GatewayPosture string
-
-const (
-	// PostureDoctrine: L1 enforced, L2/L3 signature not required (default)
-	PostureDoctrine GatewayPosture = constants.PostureDoctrine
-	// PostureConsensus: L1/L2 enforced, L3 signature not required
-	PostureConsensus GatewayPosture = constants.PostureConsensus
-	// PostureRatify: L1/L3 enforced, L2 signature not required
-	PostureRatify GatewayPosture = constants.PostureRatify
-	// PostureNotary: L1/L2/L3 strictly enforced
-	PostureNotary GatewayPosture = constants.PostureNotary
-)
-
-func (p GatewayPosture) Requirements() (constants.GovernancePostureRequirements, bool) {
-	return constants.GetGovernancePostureRequirements(string(p))
-}
-
-func (p GatewayPosture) RequiresL2() bool {
-	requirements, valid := p.Requirements()
-	return valid && requirements.RequiresL2
-}
-
-func (p GatewayPosture) RequiresL3() bool {
-	requirements, valid := p.Requirements()
-	return valid && requirements.RequiresL3
-}
-
 // LoadOptions contains all configuration values passed explicitly from main
 type LoadOptions struct {
 	OperatorCapabilities constants.OperatorCapabilities
@@ -63,11 +35,6 @@ type LoadOptions struct {
 	// Cloud Operator mode
 	CloudMode     bool
 	CloudProvider string
-
-	// Governance posture for outbound mode (doctrine, consensus, ratify, or notary)
-	// Defaults to "notary" for outbound mode - L1/L2/L3 strictly enforced
-	// Outbound mode requires L3 (human) authorization before sending mutations
-	Posture GatewayPosture
 
 	Keyring keyring.Keyring // Master key store; nil selects the OS key store, tests inject a memory keyring
 
@@ -109,8 +76,9 @@ type LoadOptions struct {
 // backbone for the entire ztd platform, replacing external databases.
 // No outbound authentication is required - the Operator simply starts and listens.
 type GatewayConfig struct {
-	Enabled           bool
-	Posture           GatewayPosture  // Governance enforcement posture (doctrine, consensus, ratify, notary)
+	Enabled bool
+	// Governance enforcement posture, immutable for the Gateway's lifetime
+	Posture           constants.Posture
 	HTTPPort          int             // Plain HTTP port for bootstrap, PKI discovery and enrollment (default: constants.Ports.OperatorHttp)
 	HTTPSPort         int             // HTTPS port for mTLS API (default: constants.Ports.OperatorHttps)
 	ListenHost        string          // Bind host for HTTP and HTTPS (default: constants.LocalhostIP; 0.0.0.0 must be requested explicitly)
@@ -152,10 +120,6 @@ type GatewayConfig struct {
 	// certificate the Gateway issues, at enrollment and at each pub/sub
 	// renewal (default: 7 days).
 	OperatorLeafCertTTL time.Duration
-
-	// Consensus configuration for consensus posture
-	ConsensusID  string // ID of the ConsensusPolicy to use for L2 deliberation (required for --consensus)
-	ConsensusURL string // URL of the Consensus service for L2 deliberation (e.g. https://localhost:8443/consensus/v1/deliberate)
 
 	// CORS allowed origins for cross-origin browser access (e.g. https://lovable.dev)
 	AllowedOrigins []string
@@ -285,9 +249,9 @@ type Config struct {
 	Term  string // TERM env var value
 	TZ    string // TZ env var value (IANA timezone name)
 
-	// Governance posture for outbound mode (doctrine, consensus, ratify, or notary)
-	// Defaults to "notary" since L3Notary is nil and mutations must fail-closed
-	Posture GatewayPosture
+	// Posture of the Gateway this Operator enrolled with. Informational only:
+	// the Operator enforces the posture each GovernanceEnvelope carries.
+	Posture constants.Posture
 
 	// Gateway mode configuration
 	Gateway GatewayConfig
@@ -326,7 +290,7 @@ type GatewayOptions struct {
 
 	OperatorCapabilities constants.OperatorCapabilities
 
-	Posture           GatewayPosture
+	Posture           constants.Posture
 	HTTPPort          int
 	HTTPSPort         int
 	ListenHost        string
@@ -353,9 +317,6 @@ type GatewayOptions struct {
 
 	CertMode            string
 	NetworkIdentityFile string
-
-	ConsensusID  string
-	ConsensusURL string
 
 	AllowedOrigins []string
 
@@ -497,7 +458,10 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 
 	posture := opts.Posture
 	if posture == "" {
-		posture = PostureDoctrine
+		posture = constants.DefaultPosture
+	}
+	if !posture.Valid() {
+		return nil, fmt.Errorf("load gateway config: %w: %q", constants.ErrInvalidPosture, posture)
 	}
 
 	jwksURL := opts.JWKSURL
@@ -563,10 +527,6 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 			CertMode:            opts.CertMode,
 			NetworkIdentityFile: opts.NetworkIdentityFile,
 			OperatorLeafCertTTL: 7 * 24 * time.Hour,
-
-			// Consensus configuration
-			ConsensusID:  opts.ConsensusID,
-			ConsensusURL: opts.ConsensusURL,
 
 			AllowedOrigins: opts.AllowedOrigins,
 			DoctrineDir:    opts.DoctrineDir,
@@ -647,15 +607,6 @@ func Load(opts LoadOptions) (*Config, error) {
 		Lang:  opts.Lang,
 		Term:  opts.Term,
 		TZ:    opts.TZ,
-
-		// Governance posture - the operator has no posture of its own; it
-		// reads posture per-envelope from GovernanceEnvelope.Posture at L4
-		// verification time. The gateway sets that field at envelope
-		// construction from cfg.Gateway.Posture. This config value is
-		// informational only (used for logging and non-envelope code paths);
-		// an empty posture is acceptable because the operator no longer
-		// needs config posture to start.
-		Posture: opts.Posture,
 
 		// Inference backend (ztdllama). Disabled by default; enabled when
 		// the operator runs as an Inference Node calling the configured

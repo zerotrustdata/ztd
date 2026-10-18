@@ -35,6 +35,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -65,6 +66,7 @@ type enrollTestDocStore struct {
 
 	getErr        map[string]error // keyed by collection
 	setErr        error
+	setErrFor     map[string]error
 	queryErr      error
 	transitionErr error
 	updErr        error
@@ -114,11 +116,34 @@ func (s *enrollTestDocStore) field(t *testing.T, collection, id, name string) st
 	return out
 }
 
+func (s *enrollTestDocStore) DocCreate(_ context.Context, collection, id string, data json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.setErr != nil {
+		return s.setErr
+	}
+	if err := s.setErrFor[collection]; err != nil {
+		return err
+	}
+	if s.docs[collection][id] != nil {
+		return constants.ErrAlreadyExists
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	s.put(collection, id, fields)
+	return nil
+}
+
 func (s *enrollTestDocStore) DocSet(_ context.Context, collection, id string, data json.RawMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.setErr != nil {
 		return s.setErr
+	}
+	if err := s.setErrFor[collection]; err != nil {
+		return err
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
@@ -418,7 +443,7 @@ func newEnrollTestEnv(t *testing.T) *enrollTestEnv {
 		CLISessions:      env.cli,
 		OperatorSessions: env.opSession,
 		Connections:      env.conns,
-		Posture:          "consensus",
+		Posture:          constants.PostureConsensus,
 	}, slog.New(slog.DiscardHandler))
 	return env
 }
@@ -524,6 +549,50 @@ func TestProtoComponentKind_MapsEveryKnownKindAndRejectsOthers(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func TestHandleBindConsensus_RejectsUnsafeEndpointsBeforePersistence(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://consensus.example/deliberate",
+		"https://user:password@consensus.example/deliberate",
+		"https:///deliberate",
+		"https://consensus.example/deliberate#fragment",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			env := newEnrollTestEnv(t)
+			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
+				constants.EventPlatformEnrollmentBindConsensusRequested,
+				&commonv1.PlatformEnrollmentGovernancePayload{
+					InstanceId: "consensus-app", ConsensusEndpointUrl: endpoint, ActorUserId: enrollTestOwnerID,
+				}))
+			require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
+			doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+			require.NoError(t, err)
+			require.Nil(t, doc)
+		})
+	}
+}
+
+func TestHandleBindConsensus_RequiresAnEnabledEd25519Signer(t *testing.T) {
+	for _, signer := range []models.TrustedSigner{
+		{PublicKey: strings.Repeat("ab", 32), Enabled: false},
+		{PublicKey: "invalid", Enabled: true},
+		{PublicKey: "ab", Enabled: true},
+	} {
+		env := newEnrollTestEnv(t)
+		appID := "ordinary-consensus"
+		env.store.seed(t, marshaler.CollectionName(constants.CollectionAppPolicies), protocol.NewWorkloadIdentity().AppSPIFFEID(appID), models.AppPolicy{AppID: appID})
+		env.store.seed(t, marshaler.CollectionName(constants.CollectionTrustedSigners), appID, signer)
+		_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
+			constants.EventPlatformEnrollmentBindConsensusRequested,
+			&commonv1.PlatformEnrollmentGovernancePayload{
+				InstanceId: appID, ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID,
+			}))
+		require.ErrorIs(t, err, constants.ErrConsensusAppMissingSignerKey)
+		doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+		require.NoError(t, err)
+		require.Nil(t, doc)
 	}
 }
 
@@ -1122,7 +1191,7 @@ func TestHandleIssue_OperatorSignsBothCSRsAndPersistsOwnedOperator(t *testing.T)
 	assert.Equal(t, "operator-chain", creds.OperatorCertChain)
 	assert.Equal(t, "cli-chain", creds.CLICertChain)
 	assert.Equal(t, "trust-bundle-pem", creds.HubTrustBundle)
-	assert.Equal(t, "consensus", creds.Posture)
+	assert.Equal(t, constants.PostureConsensus, creds.Posture)
 	assert.Equal(t, operatorID, creds.OperatorID)
 	assert.Equal(t, opSign.SessionID, creds.OperatorSessionID)
 	assert.Equal(t, cliSign.SessionID, creds.CLISessionID)
@@ -1383,35 +1452,57 @@ func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
 // HandlePersistPolicy
 // ---------------------------------------------------------------------------
 
+// enrollTestAppPolicyDocument is the app policy document the enrollment
+// service derives from the request's component name.
+var enrollTestAppPolicyDocument = protocol.NewWorkloadIdentity().AppSPIFFEID("dashboard-app")
+
 func persistPolicyPayload() *commonv1.PlatformEnrollmentGovernancePayload {
 	return &commonv1.PlatformEnrollmentGovernancePayload{
 		RequestId:              enrollTestRequest,
 		ActorUserId:            enrollTestOwnerID,
 		OwnerUserId:            enrollTestOwnerID,
 		TargetCollection:       marshaler.CollectionName(constants.CollectionAppPolicies),
-		TargetDocumentId:       "dashboard-app",
+		TargetDocumentId:       enrollTestAppPolicyDocument,
 		PolicyId:               "policy-1",
 		CertificateSerial:      "4242",
 		CertificateFingerprint: "fp-cert",
 	}
 }
 
-func TestHandlePersistPolicy_WritesLeastPrivilegePolicyDocument(t *testing.T) {
+// committedAppIssuance is the completed app request whose issuance a
+// PERSIST_POLICY envelope carries out.
+func committedAppIssuance(state models.PlatformEnrollmentState) models.PlatformEnrollmentRequest {
+	req := enrollTestAppRequest(state)
+	req.ApprovedByUserID = enrollTestOwnerID
+	req.CertificateSerial = "4242"
+	req.CertificateFingerprint = "fp-cert"
+	return req
+}
+
+// newPersistPolicyEnv seeds the committed issuance PERSIST_POLICY requires.
+func newPersistPolicyEnv(t *testing.T) *enrollTestEnv {
+	t.Helper()
 	env := newEnrollTestEnv(t)
+	env.seedRequest(t, committedAppIssuance(models.PlatformEnrollmentStateCompleted))
+	return env
+}
+
+func TestHandlePersistPolicy_WritesLeastPrivilegePolicyDocument(t *testing.T) {
+	env := newPersistPolicyEnv(t)
 
 	summary, err := env.handler.HandlePersistPolicy(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, persistPolicyPayload()))
 
 	require.NoError(t, err)
-	assert.Equal(t, "platform enrollment persist_policy request_id=req-1 policy_id=policy-1 document=dashboard-app", summary)
+	assert.Equal(t, "platform enrollment persist_policy request_id=req-1 policy_id=policy-1 document="+enrollTestAppPolicyDocument, summary)
 
 	policyColl := marshaler.CollectionName(constants.CollectionAppPolicies)
-	doc := env.store.docs[policyColl]["dashboard-app"]
+	doc := env.store.docs[policyColl][enrollTestAppPolicyDocument]
 	require.NotNil(t, doc)
 	raw, err := json.Marshal(doc.Data)
 	require.NoError(t, err)
 	var policy models.AppPolicy
 	require.NoError(t, json.Unmarshal(raw, &policy))
-	assert.Equal(t, "dashboard-app", policy.AppID)
+	assert.Equal(t, enrollTestAppPolicyDocument, policy.AppID)
 	assert.Equal(t, enrollTestOwnerID, policy.OwnerUserID)
 	assert.Equal(t, enrollTestOwnerID, policy.ApprovedByUserID)
 	assert.Equal(t, enrollTestRequest, policy.EnrollmentRequestID)
@@ -1425,17 +1516,114 @@ func TestHandlePersistPolicy_WritesLeastPrivilegePolicyDocument(t *testing.T) {
 }
 
 func TestHandlePersistPolicy_RetainsExistingPolicyInsteadOfOverwriting(t *testing.T) {
-	env := newEnrollTestEnv(t)
+	env := newPersistPolicyEnv(t)
 	policyColl := marshaler.CollectionName(constants.CollectionAppPolicies)
-	env.store.seed(t, policyColl, "dashboard-app", models.AppPolicy{AppID: "dashboard-app", RateLimitRPS: 50, AllowedCollections: []string{"events"}})
+	env.store.seed(t, policyColl, enrollTestAppPolicyDocument, models.AppPolicy{AppID: enrollTestAppPolicyDocument, RateLimitRPS: 50, AllowedCollections: []string{"events"}})
 
 	summary, err := env.handler.HandlePersistPolicy(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, persistPolicyPayload()))
 
 	require.NoError(t, err)
-	assert.Equal(t, "platform enrollment persist_policy retained request_id=req-1 policy_id=policy-1 document=dashboard-app", summary)
+	assert.Equal(t, "platform enrollment persist_policy retained request_id=req-1 policy_id=policy-1 document="+enrollTestAppPolicyDocument, summary)
 	var rps int
-	require.NoError(t, json.Unmarshal(env.store.docs[policyColl]["dashboard-app"].Data["rate_limit_rps"], &rps))
+	require.NoError(t, json.Unmarshal(env.store.docs[policyColl][enrollTestAppPolicyDocument].Data["rate_limit_rps"], &rps))
 	assert.Equal(t, 50, rps, "operator-tuned policy must survive re-enrollment")
+}
+
+func TestHandlePersistPolicy_SigningKeyFailurePropagatesAndRetryCompletesRegistration(t *testing.T) {
+	env := newPersistPolicyEnv(t)
+	req := committedAppIssuance(models.PlatformEnrollmentStateCompleted)
+	req.ComponentKind = models.PlatformComponentApplication
+	req.App.SigningPublicKey = strings.Repeat("ab", 32)
+	key, err := req.App.SigningKey()
+	require.NoError(t, err)
+	digest := sha256.Sum256(key)
+	req.Fingerprints.SigningKey = hex.EncodeToString(digest[:])
+	env.seedRequest(t, req)
+	signers := marshaler.CollectionName(constants.CollectionTrustedSigners)
+	env.store.setErrFor = map[string]error{signers: errEnrollTestBoom}
+	msg := enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, persistPolicyPayload())
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.ErrorIs(t, err, errEnrollTestBoom)
+	require.NotNil(t, env.store.docs[marshaler.CollectionName(constants.CollectionAppPolicies)][enrollTestAppPolicyDocument])
+	require.Empty(t, env.store.docs[signers])
+	delete(env.store.setErrFor, signers)
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.NoError(t, err)
+	require.NotNil(t, env.store.docs[signers][req.ComponentName])
+	require.Equal(t, req.App.SigningPublicKey, env.store.field(t, signers, req.ComponentName, "public_key_hex"))
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.NoError(t, err)
+
+	// Replaying another completed issuance must not replace an active key.
+	req.App.SigningPublicKey = strings.Repeat("cd", 32)
+	key, err = req.App.SigningKey()
+	require.NoError(t, err)
+	digest = sha256.Sum256(key)
+	req.Fingerprints.SigningKey = hex.EncodeToString(digest[:])
+	env.seedRequest(t, req)
+	_, err = env.handler.HandlePersistPolicy(t.Context(), msg)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentIssuanceMismatch)
+	require.Equal(t, strings.Repeat("ab", 32), env.store.field(t, signers, req.ComponentName, "public_key_hex"))
+}
+
+// PERSIST_POLICY carries no L3 proof of its own (AuthorizedByDecision). Its
+// only authority is the issuance the owner's decision committed, so anything
+// short of that exact committed issuance must write nothing.
+func TestHandlePersistPolicy_RequiresTheCommittedIssuance(t *testing.T) {
+	policyColl := marshaler.CollectionName(constants.CollectionAppPolicies)
+	usersColl := marshaler.CollectionName(constants.CollectionUsers)
+	tests := []struct {
+		name    string
+		seed    func(t *testing.T, env *enrollTestEnv)
+		mutate  func(p *commonv1.PlatformEnrollmentGovernancePayload)
+		wantErr error
+	}{
+		{"no enrollment request", func(*testing.T, *enrollTestEnv) {}, nil, constants.ErrPlatformEnrollmentRequestNotFound},
+		{"pending request", seedAppIssuance(models.PlatformEnrollmentStatePending), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"approved request", seedAppIssuance(models.PlatformEnrollmentStateApproved), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"issuing request", seedAppIssuance(models.PlatformEnrollmentStateIssuing), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"revoked request", seedAppIssuance(models.PlatformEnrollmentStateRevoked), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"operator request", func(t *testing.T, env *enrollTestEnv) {
+			env.seedRequest(t, committedOperatorIssuance(models.PlatformEnrollmentStateCompleted))
+		}, nil, constants.ErrPlatformEnrollmentInvalidComponent},
+		{"different actor", seedAppIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.ActorUserId = "user-other" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different owner", seedAppIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.OwnerUserId = "user-other" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different certificate serial", seedAppIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.CertificateSerial = "9999" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different certificate fingerprint", seedAppIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.CertificateFingerprint = "fp-forged" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different target document", seedAppIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) {
+				p.TargetDocumentId = protocol.NewWorkloadIdentity().AppSPIFFEID("other-app")
+			}, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different target collection", seedAppIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.TargetCollection = usersColl }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newEnrollTestEnv(t)
+			tt.seed(t, env)
+			p := persistPolicyPayload()
+			if tt.mutate != nil {
+				tt.mutate(p)
+			}
+
+			summary, err := env.handler.HandlePersistPolicy(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, p))
+
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Empty(t, summary)
+			assert.Empty(t, env.store.docs[policyColl])
+			assert.NotContains(t, env.store.docs[usersColl], p.GetTargetDocumentId())
+		})
+	}
+}
+
+func seedAppIssuance(state models.PlatformEnrollmentState) func(t *testing.T, env *enrollTestEnv) {
+	return func(t *testing.T, env *enrollTestEnv) {
+		env.seedRequest(t, committedAppIssuance(state))
+	}
 }
 
 func TestHandlePersistPolicy_RejectsIncompletePayloads(t *testing.T) {
@@ -1451,7 +1639,7 @@ func TestHandlePersistPolicy_RejectsIncompletePayloads(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newEnrollTestEnv(t)
+			env := newPersistPolicyEnv(t)
 			p := persistPolicyPayload()
 			tt.mutate(p)
 
@@ -1470,7 +1658,7 @@ func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
 	}
 
 	t.Run("existence check fails", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newPersistPolicyEnv(t)
 		env.store.getErr[marshaler.CollectionName(constants.CollectionAppPolicies)] = errEnrollTestBoom
 
 		_, err := env.handler.HandlePersistPolicy(t.Context(), msgFor(t))
@@ -1479,8 +1667,18 @@ func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
 		assert.Contains(t, err.Error(), "check existing policy")
 	})
 
+	t.Run("committed issuance lookup fails", func(t *testing.T) {
+		env := newPersistPolicyEnv(t)
+		env.store.getErr[platformEnrollmentCollection()] = errEnrollTestBoom
+
+		_, err := env.handler.HandlePersistPolicy(t.Context(), msgFor(t))
+
+		require.ErrorIs(t, err, errEnrollTestBoom)
+		assert.Empty(t, env.store.docs[marshaler.CollectionName(constants.CollectionAppPolicies)])
+	})
+
 	t.Run("write fails", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newPersistPolicyEnv(t)
 		env.store.setErr = errEnrollTestBoom
 
 		_, err := env.handler.HandlePersistPolicy(t.Context(), msgFor(t))
@@ -1524,8 +1722,82 @@ func createSessionPayload() *commonv1.PlatformEnrollmentGovernancePayload {
 	}
 }
 
-func TestHandleCreateSession_PersistsBothSessionsBoundToTheApprovingOwner(t *testing.T) {
+// committedOperatorIssuance is the completed Operator request whose issuance
+// a CREATE_SESSION envelope carries out.
+func committedOperatorIssuance(state models.PlatformEnrollmentState) models.PlatformEnrollmentRequest {
+	req := enrollTestOperatorRequest(state)
+	req.ApprovedByUserID = enrollTestOwnerID
+	req.OperatorID = "op-1"
+	req.OperatorSessionID = "op-session-1"
+	req.CLISessionID = "cli-session-1"
+	req.CertificateFingerprint = "fp-cli"
+	req.CertificateSerial = "1002"
+	return req
+}
+
+// newCreateSessionEnv seeds the committed issuance CREATE_SESSION requires.
+func newCreateSessionEnv(t *testing.T) *enrollTestEnv {
+	t.Helper()
 	env := newEnrollTestEnv(t)
+	env.seedRequest(t, committedOperatorIssuance(models.PlatformEnrollmentStateCompleted))
+	return env
+}
+
+// CREATE_SESSION carries no L3 proof of its own (AuthorizedByDecision). Its
+// only authority is the issuance the owner's decision committed, so anything
+// short of that exact committed issuance must create no session.
+func TestHandleCreateSession_RequiresTheCommittedIssuance(t *testing.T) {
+	seedOperatorIssuance := func(state models.PlatformEnrollmentState) func(t *testing.T, env *enrollTestEnv) {
+		return func(t *testing.T, env *enrollTestEnv) {
+			env.seedRequest(t, committedOperatorIssuance(state))
+		}
+	}
+	tests := []struct {
+		name    string
+		seed    func(t *testing.T, env *enrollTestEnv)
+		mutate  func(p *commonv1.PlatformEnrollmentGovernancePayload)
+		wantErr error
+	}{
+		{"no enrollment request", func(*testing.T, *enrollTestEnv) {}, nil, constants.ErrPlatformEnrollmentRequestNotFound},
+		{"pending request", seedOperatorIssuance(models.PlatformEnrollmentStatePending), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"approved request", seedOperatorIssuance(models.PlatformEnrollmentStateApproved), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"issuing request", seedOperatorIssuance(models.PlatformEnrollmentStateIssuing), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"revoked request", seedOperatorIssuance(models.PlatformEnrollmentStateRevoked), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
+		{"app request", seedAppIssuance(models.PlatformEnrollmentStateCompleted), nil, constants.ErrPlatformEnrollmentInvalidComponent},
+		{"different actor", seedOperatorIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.ActorUserId = "user-other" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different operator", seedOperatorIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.OperatorId = "op-forged" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different operator session", seedOperatorIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.OperatorSessionId = "op-session-forged" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different cli session", seedOperatorIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.CliSessionId = "cli-session-forged" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different certificate serial", seedOperatorIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.CertificateSerial = "9999" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+		{"different certificate fingerprint", seedOperatorIssuance(models.PlatformEnrollmentStateCompleted),
+			func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.CertificateFingerprint = "fp-forged" }, constants.ErrPlatformEnrollmentIssuanceMismatch},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newEnrollTestEnv(t)
+			tt.seed(t, env)
+			p := createSessionPayload()
+			if tt.mutate != nil {
+				tt.mutate(p)
+			}
+
+			summary, err := env.handler.HandleCreateSession(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentCreateSessionRequested, p))
+
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Empty(t, summary)
+			assert.Empty(t, env.cli.persisted)
+			assert.Empty(t, env.opSession.persisted)
+		})
+	}
+}
+
+func TestHandleCreateSession_PersistsBothSessionsBoundToTheApprovingOwner(t *testing.T) {
+	env := newCreateSessionEnv(t)
 
 	summary, err := env.handler.HandleCreateSession(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentCreateSessionRequested, createSessionPayload()))
 
@@ -1549,7 +1821,7 @@ func TestHandleCreateSession_RetainsExistingSessionsInsteadOfOverwriting(t *test
 	opColl := marshaler.CollectionName(constants.CollectionOperatorSessions)
 
 	t.Run("both sessions exist", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newCreateSessionEnv(t)
 		env.store.seed(t, cliColl, "cli-session-1", map[string]bool{"is_active": false})
 		env.store.seed(t, opColl, "op-session-1", map[string]bool{"is_active": false})
 
@@ -1562,7 +1834,7 @@ func TestHandleCreateSession_RetainsExistingSessionsInsteadOfOverwriting(t *test
 	})
 
 	t.Run("only the cli session exists", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newCreateSessionEnv(t)
 		env.store.seed(t, cliColl, "cli-session-1", map[string]bool{"is_active": false})
 
 		_, err := env.handler.HandleCreateSession(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentCreateSessionRequested, createSessionPayload()))
@@ -1573,7 +1845,7 @@ func TestHandleCreateSession_RetainsExistingSessionsInsteadOfOverwriting(t *test
 	})
 
 	t.Run("existence check fails", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newCreateSessionEnv(t)
 		env.store.getErr[opColl] = errEnrollTestBoom
 
 		_, err := env.handler.HandleCreateSession(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentCreateSessionRequested, createSessionPayload()))
@@ -1596,7 +1868,7 @@ func TestHandleCreateSession_RejectsIncompletePayloadsBeforePersisting(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newEnrollTestEnv(t)
+			env := newCreateSessionEnv(t)
 			p := createSessionPayload()
 			tt.mutate(p)
 
@@ -1615,7 +1887,7 @@ func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	}
 
 	t.Run("unknown owner", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newCreateSessionEnv(t)
 		delete(env.store.docs[marshaler.CollectionName(constants.CollectionUsers)], enrollTestOwnerID)
 
 		_, err := env.handler.HandleCreateSession(t.Context(), msgFor(t))
@@ -1625,7 +1897,7 @@ func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("cli session persistence fails before the operator session is written", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newCreateSessionEnv(t)
 		env.cli.persistErr = errEnrollTestBoom
 
 		_, err := env.handler.HandleCreateSession(t.Context(), msgFor(t))
@@ -1636,7 +1908,7 @@ func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("operator session persistence fails", func(t *testing.T) {
-		env := newEnrollTestEnv(t)
+		env := newCreateSessionEnv(t)
 		env.opSession.persistErr = errEnrollTestBoom
 
 		_, err := env.handler.HandleCreateSession(t.Context(), msgFor(t))
@@ -1713,7 +1985,8 @@ func TestHandleRevoke_AppComponentRevokesCertificateDeletesPolicyAndDisconnects(
 	assert.Equal(t, "platform enrollment revoke request_id=req-1 component=dashboard", summary)
 	assert.Equal(t, []enrollTestRevocation{{Serial: "4242", Reason: "key compromise"}}, env.pki.revocations,
 		"the reason must be trimmed before it reaches the CA")
-	assert.Equal(t, []string{policyColl + "/dashboard-app"}, env.store.deletes)
+	signersColl := marshaler.CollectionName(constants.CollectionTrustedSigners)
+	assert.Equal(t, []string{policyColl + "/dashboard-app", signersColl + "/dashboard-app"}, env.store.deletes)
 	assert.Equal(t, []string{"dashboard-app"}, env.conns.disconnected, "live connections for the revoked app must be dropped")
 
 	coll := platformEnrollmentCollection()

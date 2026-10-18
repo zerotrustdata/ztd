@@ -12,13 +12,7 @@ package gateway
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -106,7 +100,7 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 		ScrubbingService: newTestScrubber(t),
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  infra.Cfg.Gateway.MaxPayloadBytes,
-		Posture:          string(infra.Cfg.Gateway.Posture),
+		Posture:          infra.Cfg.Gateway.Posture,
 		AuditStore:       noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 	})
@@ -167,20 +161,24 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 			UserSvc:   infra.UserSvc,
 			Responder: infra.Responder,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		CLISessionControllerDeps: CLISessionControllerDeps{
+			Logger:    infra.Logger,
+			UserSvc:   infra.UserSvc,
+			Responder: infra.Responder,
+		},
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      infra.Logger,
 			DocStore:    infra.DocStore,
 			Responder:   infra.Responder,
 			CrossOrigin: len(infra.Cfg.Gateway.AllowedOrigins) > 0,
 		},
 		AdminControllerDeps: AdminControllerDeps{
-			Cfg:            infra.Cfg,
-			Logger:         infra.Logger,
-			DocStore:       infra.DocStore,
-			SignerStore:    infra.SignerStore,
-			ConsensusStore: infra.ConsensusStore,
-			UserSvc:        infra.UserSvc,
-			Responder:      infra.Responder,
+			Cfg:         infra.Cfg,
+			Logger:      infra.Logger,
+			DocStore:    infra.DocStore,
+			SignerStore: infra.SignerStore,
+			UserSvc:     infra.UserSvc,
+			Responder:   infra.Responder,
 		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       infra.Cfg,
@@ -190,7 +188,7 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 			Responder: infra.Responder,
 		},
 		DispatchControllerDeps: DispatchControllerDeps{
-			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(infra.Cfg.Gateway.Posture), governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
+			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, infra.Cfg.Gateway.Posture, governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
 			Responder:   infra.Responder,
 			Logger:      infra.Logger,
 		},
@@ -345,7 +343,7 @@ func TestNewHTTPHandler(t *testing.T) {
 	assert.NotNil(t, h.bootstrapController)
 	assert.NotNil(t, h.enrollmentTokenController)
 	assert.NotNil(t, h.userController)
-	assert.NotNil(t, h.sessionController)
+	assert.NotNil(t, h.webSessionController)
 	assert.NotNil(t, h.adminController)
 	assert.NotNil(t, h.operatorController)
 	assert.Equal(t, cfg, h.cfg)
@@ -629,27 +627,6 @@ func TestHTTPHandler_GetGatewayWebSocketHandler(t *testing.T) {
 
 	pubsub := h.GetGatewayWebSocketHandler()
 	assert.NotNil(t, pubsub, "GetGatewayWebSocketHandler should return non-nil service")
-}
-
-// makeTestAppWorkloadCert returns a self-signed cert with a SPIFFE URI SAN for an app workload identity.
-func makeTestAppWorkloadCert(t *testing.T, appID string) *x509.Certificate {
-	t.Helper()
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	spiffeURI, err := url.Parse("spiffe://ztd.local/app/" + appID)
-	require.NoError(t, err)
-	tmpl := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "test-app-cert"},
-		NotBefore:    time.Now().Add(-time.Minute),
-		NotAfter:     time.Now().Add(time.Hour),
-		URIs:         []*url.URL{spiffeURI},
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
-	require.NoError(t, err)
-	cert, err := x509.ParseCertificate(certDER)
-	require.NoError(t, err)
-	return cert
 }
 
 func TestHTTPHandler_handleInternalSSEEvents(t *testing.T) {

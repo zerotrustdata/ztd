@@ -48,13 +48,6 @@ func projectionRecordFromObject(t *testing.T, seq int64, proj models.PublicFeedO
 	}
 }
 
-func mustPublicFeedObjectFromJSON(t *testing.T, body string) models.PublicFeedObject {
-	t.Helper()
-	var obj models.PublicFeedObject
-	require.NoError(t, json.Unmarshal([]byte(body), &obj))
-	return obj
-}
-
 func projectionWithInt64Field(name string, value int64) models.PublicFeedObject {
 	obj := models.PublicFeedObject{}
 	obj.SetInt64Field(name, value)

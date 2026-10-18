@@ -16,10 +16,11 @@ import (
 )
 
 type actionTypeMeta struct {
-	GoConst   string
-	Value     string
-	Mutation  bool
-	Bootstrap bool
+	GoConst              string
+	Value                string
+	Mutation             bool
+	Bootstrap            bool
+	AuthorizedByDecision bool
 }
 
 func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
@@ -30,10 +31,11 @@ func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
 	var raw struct {
 		Status struct {
 			ActionType map[string]struct {
-				GoConst   string `json:"_go_const"`
-				Value     string `json:"value"`
-				Mutation  bool   `json:"_mutation"`
-				Bootstrap bool   `json:"_bootstrap"`
+				GoConst              string `json:"_go_const"`
+				Value                string `json:"value"`
+				Mutation             bool   `json:"_mutation"`
+				Bootstrap            bool   `json:"_bootstrap"`
+				AuthorizedByDecision bool   `json:"_authorized_by_decision"`
 			} `json:"action_type"`
 		} `json:"status"`
 	}
@@ -42,11 +44,15 @@ func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
 	}
 	out := make(map[string]actionTypeMeta, len(raw.Status.ActionType))
 	for key, meta := range raw.Status.ActionType {
+		if meta.AuthorizedByDecision && !meta.Bootstrap {
+			return nil, fmt.Errorf("decode %s: action %s: _authorized_by_decision requires _bootstrap", path, key)
+		}
 		out[key] = actionTypeMeta{
-			GoConst:   meta.GoConst,
-			Value:     meta.Value,
-			Mutation:  meta.Mutation,
-			Bootstrap: meta.Bootstrap,
+			GoConst:              meta.GoConst,
+			Value:                meta.Value,
+			Mutation:             meta.Mutation,
+			Bootstrap:            meta.Bootstrap,
+			AuthorizedByDecision: meta.AuthorizedByDecision,
 		}
 	}
 	return out, nil
@@ -61,6 +67,7 @@ func generateActionTypesGo(actionTypes map[string]actionTypeMeta) string {
 
 	var mutations []string
 	var bootstraps []string
+	var decisionAuthorized []string
 	for _, key := range keys {
 		meta := actionTypes[key]
 		if meta.Mutation {
@@ -68,6 +75,9 @@ func generateActionTypesGo(actionTypes map[string]actionTypeMeta) string {
 		}
 		if meta.Bootstrap {
 			bootstraps = append(bootstraps, meta.GoConst)
+		}
+		if meta.AuthorizedByDecision {
+			decisionAuthorized = append(decisionAuthorized, meta.GoConst)
 		}
 	}
 
@@ -92,45 +102,40 @@ var AllActionTypes = []ActionType{
 	for _, key := range keys {
 		fmt.Fprintf(&b, "\t%s,\n", actionTypes[key].GoConst)
 	}
-	b.WriteString(`}
-
-// IsMutation returns true if the action type modifies system state.
-func (a ActionType) IsMutation() bool {
-	switch a {
-	case `)
-	if len(mutations) > 0 {
-		for i, goConst := range mutations {
-			if i > 0 {
-				b.WriteString(",\n\t\t")
-			}
-			b.WriteString(goConst)
+	b.WriteString("}\n")
+	for _, predicate := range []struct {
+		name    string
+		comment string
+		actions []string
+	}{
+		{
+			name:    "IsMutation",
+			comment: "// IsMutation returns true if the action type modifies system state.",
+			actions: mutations,
+		},
+		{
+			name:    "IsBootstrapAction",
+			comment: "// IsBootstrapAction returns true for platform enrollment bootstrap actions.",
+			actions: bootstraps,
+		},
+		{
+			name: "AuthorizedByDecision",
+			comment: `// AuthorizedByDecision returns true for enrollment actions that carry out an
+// owner decision already committed under the posture's L3 gate. They need no
+// L3 proof of their own; their handler requires the committed decision.`,
+			actions: decisionAuthorized,
+		},
+	} {
+		fmt.Fprintf(&b, "\n%s\nfunc (a ActionType) %s() bool {\n\tswitch a {\n", predicate.comment, predicate.name)
+		// Empty classifications have only the default branch: no action qualifies.
+		if len(predicate.actions) > 0 {
+			fmt.Fprintf(&b, "\tcase %s:\n\t\treturn true\n", strings.Join(predicate.actions, ",\n\t\t"))
 		}
-	}
-	b.WriteString(`:
-		return true
-	default:
-		return false
-	}
-}
-
-// IsBootstrapAction returns true for platform enrollment bootstrap actions.
-func (a ActionType) IsBootstrapAction() bool {
-	switch a {
-	case `)
-	if len(bootstraps) > 0 {
-		for i, goConst := range bootstraps {
-			if i > 0 {
-				b.WriteString(",\n\t\t")
-			}
-			b.WriteString(goConst)
-		}
-	}
-	b.WriteString(`:
-		return true
-	default:
+		b.WriteString(`	default:
 		return false
 	}
 }
 `)
+	}
 	return b.String()
 }

@@ -131,11 +131,11 @@ func (m Model) renderHeader(width int) string {
 
 // postureLabel names the Gateway posture and which of L2/L3 it enforces.
 func (m Model) postureLabel() string {
-	if m.posture == nil {
+	if m.posture == "" {
 		return "UNKNOWN"
 	}
-	return fmt.Sprintf("%s (L2 %s, L3 %s)", strings.ToUpper(m.posture.Name()),
-		enforcement(m.posture.RequiresL2Signature()), enforcement(m.posture.RequiresL3Proof()))
+	return fmt.Sprintf("%s (L2 %s, L3 %s)", strings.ToUpper(string(m.posture)),
+		enforcement(m.posture.RequiresL2()), enforcement(m.posture.RequiresL3()))
 }
 
 func enforcement(enforced bool) string {
@@ -238,12 +238,12 @@ func (m Model) renderPipeline(width, height int) string {
 // stageAnnotation marks L2 and L3 as audited when the posture does not
 // enforce them, so a passing stage is not mistaken for an enforced gate.
 func (m Model) stageAnnotation(stage PipelineStage) string {
-	if m.posture == nil {
+	if m.posture == "" {
 		return ""
 	}
 	switch {
-	case stage == StageL2 && !m.posture.RequiresL2Signature(),
-		stage == StageL3 && !m.posture.RequiresL3Proof():
+	case stage == StageL2 && !m.posture.RequiresL2(),
+		stage == StageL3 && !m.posture.RequiresL3():
 		return " (audited)"
 	default:
 		return ""

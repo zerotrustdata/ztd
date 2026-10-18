@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -280,6 +281,13 @@ type PublicPublisherService struct {
 	signingPubKey  ed25519.PublicKey
 	signingKeyID   string
 
+	// proofPushMu serializes proof delivery. It is taken before proofMu.
+	proofPushMu sync.Mutex
+	// proofMu guards proofIndex and serializes proof log appends. It is taken
+	// before mu.
+	proofMu    sync.Mutex
+	proofIndex *publicProofIndex
+
 	mu              sync.Mutex
 	mirrorOrigin    string
 	ingestAuthToken string
@@ -305,6 +313,7 @@ func NewPublicPublisherService(docStore *DocumentStoreService, fileSvc fs.Runtim
 		signingPrivKey:  priv,
 		signingPubKey:   pub,
 		signingKeyID:    keyID,
+		proofIndex:      newPublicProofIndex(),
 		mirrorOrigin:    cfg.MirrorOrigin,
 		batchMaxRecords: cfg.BatchMaxRecords,
 		feedChainHash:   constants.PublicFeedZeroHashHex,
@@ -1097,114 +1106,135 @@ func (s *PublicPublisherService) RotateKeyTo(ctx context.Context, newPriv ed2551
 	return nil
 }
 
+// PushProofPackage sends the signed segment suffix after the mirror's current
+// chain position. The mirror is authoritative for delivery progress, including
+// after an outage or replacement; local sync state is only a checkpoint.
 func (s *PublicPublisherService) PushProofPackage(ctx context.Context) error {
-	manifest, err := s.loadProofManifest(ctx)
+	s.proofPushMu.Lock()
+	defer s.proofPushMu.Unlock()
+
+	logExists, err := s.cutOverLegacyProofPackage(ctx)
+	if err != nil || !logExists {
+		return err
+	}
+	mirrorRoot, err := s.fetchMirrorProofRoot(ctx)
 	if err != nil {
 		return err
 	}
-	if manifest == nil {
-		return nil
+	s.proofMu.Lock()
+	err = s.syncProofIndexLocked(ctx)
+	var pending publicProofLogRange
+	if err == nil {
+		pending, err = s.proofIndex.pendingAfter(mirrorRoot)
 	}
-	catalog := proofCatalogFromManifest(*manifest)
-	syncState, err := s.loadProofMirrorSyncState(ctx)
+	s.proofMu.Unlock()
 	if err != nil {
 		return err
 	}
-	if syncState != nil && syncState.ProofRootSHA256 == manifest.ProofRootSHA256 {
-		return nil
+	activeCount := mirrorRoot.ArtifactCount
+	if mirrorRoot.SegmentIndex == 0 {
+		activeCount = 0 // Genesis replaces any legacy full-manifest projection.
 	}
-	mirrorArtifactIDs, mirrorRoot, mirrorErr := s.fetchMirrorProofManifestArtifactSet(ctx)
-	if mirrorErr == nil && mirrorRoot == manifest.ProofRootSHA256 {
-		return s.saveProofMirrorSyncState(ctx, models.PublicProofMirrorSyncState{
-			SchemaVersion:     constants.PublicProofMirrorSyncSchemaVersion,
-			SourceID:          s.cfg.SourceID,
-			ProofRootSHA256:   manifest.ProofRootSHA256,
-			SyncedArtifactIDs: catalogArtifactIDs(catalog),
-			SyncedAt:          time.Now().UTC(),
-		})
-	}
-	pendingIDs := proofMirrorPendingArtifactIDs(manifest, mirrorArtifactIDs)
-	if len(pendingIDs) == 0 {
-		if len(manifest.Artifacts) == 0 {
-			return s.saveProofMirrorSyncState(ctx, models.PublicProofMirrorSyncState{
-				SchemaVersion:     constants.PublicProofMirrorSyncSchemaVersion,
-				SourceID:          s.cfg.SourceID,
-				ProofRootSHA256:   manifest.ProofRootSHA256,
-				SyncedArtifactIDs: catalogArtifactIDs(catalog),
-				SyncedAt:          time.Now().UTC(),
-			})
+	return s.readProofLogRange(ctx, pending, func(segment models.PublicProofManifestSegment) error {
+		artifactIDs := make([]string, len(segment.Entries))
+		for i, entry := range segment.Entries {
+			artifactIDs[i] = entry.ArtifactID
 		}
-		return s.pushProofPackageFull(ctx, manifest)
-	}
-	if err := s.pushProofArtifactIDs(ctx, manifest, pendingIDs); err != nil {
-		return err
-	}
-	return s.saveProofMirrorSyncState(ctx, models.PublicProofMirrorSyncState{
-		SchemaVersion:     constants.PublicProofMirrorSyncSchemaVersion,
-		SourceID:          s.cfg.SourceID,
-		ProofRootSHA256:   manifest.ProofRootSHA256,
-		SyncedArtifactIDs: catalogArtifactIDs(catalog),
-		SyncedAt:          time.Now().UTC(),
+		if err := s.postProofIngest(ctx, segment, artifactIDs); err != nil {
+			return err
+		}
+		activeCount += len(segment.Entries) - len(segment.WithdrawnArtifactIDs)
+		return s.saveProofMirrorSyncState(ctx, models.PublicProofMirrorSyncState{
+			SchemaVersion:   constants.PublicProofMirrorSyncSchemaVersion,
+			SourceID:        s.cfg.SourceID,
+			ProofRootSHA256: segment.ProofRootSHA256,
+			SegmentIndex:    segment.SegmentIndex,
+			ArtifactCount:   activeCount,
+			SyncedAt:        time.Now().UTC(),
+		})
 	})
 }
 
-func proofMirrorPendingArtifactIDs(manifest *models.PublicProofManifest, mirrorArtifactIDs map[string]struct{}) []string {
-	if manifest == nil || len(manifest.Artifacts) == 0 {
-		return nil
+// cutOverLegacyProofPackage reports whether the proof log exists. A legacy
+// package with no log is first cut over to a source-signed genesis segment;
+// the mirror never synthesizes a signature.
+func (s *PublicPublisherService) cutOverLegacyProofPackage(ctx context.Context) (bool, error) {
+	s.proofMu.Lock()
+	defer s.proofMu.Unlock()
+	if err := s.syncProofIndexLocked(ctx); err != nil {
+		return false, err
 	}
-	pendingIDs := make([]string, 0, len(manifest.Artifacts))
-	for _, entry := range manifest.Artifacts {
-		if _, ok := mirrorArtifactIDs[entry.ArtifactID]; !ok {
-			pendingIDs = append(pendingIDs, entry.ArtifactID)
-		}
+	if len(s.proofIndex.segments) > 0 {
+		return true, nil
 	}
-	return pendingIDs
+	manifest, err := s.loadLegacyProofManifest(ctx)
+	if err != nil || manifest == nil {
+		return false, err
+	}
+	if _, err := s.publishLegacyGenesisLocked(ctx, *manifest); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-func (s *PublicPublisherService) pushProofArtifactIDs(ctx context.Context, manifest *models.PublicProofManifest, artifactIDs []string) error {
-	if len(artifactIDs) == 0 {
-		return nil
+// publishLegacyGenesisLocked takes the proof log lock and, when the log is
+// still empty, appends the genesis segment for a legacy package: the legacy
+// catalog under the legacy manifest's metadata. Callers hold proofMu.
+func (s *PublicPublisherService) publishLegacyGenesisLocked(ctx context.Context, manifest models.PublicProofManifest) (models.PublicProofManifest, error) {
+	if !manifest.VerificationOK {
+		return models.PublicProofManifest{}, constants.ErrPublicFeedProofNotVerified
 	}
-	// Mirror proof ingest validates the full signed manifest on every request.
-	// Only artifact IDs missing from mirror state may be omitted from the body;
-	// chunking pending IDs would leave later catalog entries unresolved.
-	return s.postProofIngest(ctx, manifest, artifactIDs, 0)
+	held, err := s.lockProofLog(ctx)
+	if err != nil {
+		return models.PublicProofManifest{}, err
+	}
+	defer func() { _ = held.Close() }()
+	if err := s.syncProofIndexLocked(ctx); err != nil {
+		return models.PublicProofManifest{}, err
+	}
+	if len(s.proofIndex.segments) > 0 {
+		return s.proofIndex.headProjection(), nil
+	}
+	return s.appendPublicationLocked(ctx, manifest.CampaignID, manifest.CampaignRevision, manifest.VerifiedIndexGenerationHash, manifest.Artifacts)
 }
 
-func (s *PublicPublisherService) fetchMirrorProofManifestArtifactSet(ctx context.Context) (map[string]struct{}, string, error) {
+// fetchMirrorProofRoot reads the mirror's stored proof root for this source.
+// A mirror holding no manifest for the source returns an empty root.
+func (s *PublicPublisherService) fetchMirrorProofRoot(ctx context.Context) (models.PublicProofRootResponse, error) {
 	s.mu.Lock()
 	origin := s.mirrorOrigin
+	token := s.ingestAuthToken
 	s.mu.Unlock()
 	if origin == "" {
-		return nil, "", constants.ErrPublicFeedMirrorOriginRequired
+		return models.PublicProofRootResponse{}, constants.ErrPublicFeedMirrorOriginRequired
 	}
-	requestURL := strings.TrimRight(origin, "/") + "/proof-manifest?source=" + url.QueryEscape(s.cfg.SourceID)
+	requestURL := strings.TrimRight(origin, "/") + "/proof-root?source=" + url.QueryEscape(s.cfg.SourceID)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
-	response, err := (&http.Client{Timeout: 2 * time.Minute}).Do(httpRequest)
+	if token != "" {
+		httpRequest.Header.Set("Authorization", "Bearer "+token)
+	}
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpRequest)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusNotFound {
-		return map[string]struct{}{}, "", nil
+		return models.PublicProofRootResponse{SourceID: s.cfg.SourceID}, nil
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("%w: status %d", constants.ErrPublicFeedMirrorUnreachable, response.StatusCode)
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: proof root status %d", constants.ErrPublicFeedMirrorUnreachable, response.StatusCode)
 	}
-	var manifest models.PublicProofManifest
-	if err := json.NewDecoder(response.Body).Decode(&manifest); err != nil {
-		return nil, "", fmt.Errorf("%w: decode mirror manifest: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+	var root models.PublicProofRootResponse
+	if err := json.NewDecoder(response.Body).Decode(&root); err != nil {
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: decode proof root: %v", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
-	artifactIDs := make(map[string]struct{}, len(manifest.Artifacts))
-	for _, entry := range manifest.Artifacts {
-		if entry.ArtifactID != "" {
-			artifactIDs[entry.ArtifactID] = struct{}{}
-		}
+	if root.SourceID != s.cfg.SourceID {
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: proof root for source %q", constants.ErrPublicFeedMirrorUnreachable, root.SourceID)
 	}
-	return artifactIDs, manifest.ProofRootSHA256, nil
+	return root, nil
 }
 
 func proofCatalogFromManifest(manifest models.PublicProofManifest) models.PublicProofCatalog {
@@ -1215,7 +1245,28 @@ func proofCatalogFromManifest(manifest models.PublicProofManifest) models.Public
 	}
 }
 
+// loadProofManifest returns the head projection of the proof log, or the
+// legacy manifest when there is no log. A head projection carries the active
+// artifact count without listing the artifacts. It returns nil when there is
+// neither.
 func (s *PublicPublisherService) loadProofManifest(ctx context.Context) (*models.PublicProofManifest, error) {
+	s.proofMu.Lock()
+	err := s.syncProofIndexLocked(ctx)
+	if err == nil && len(s.proofIndex.segments) > 0 {
+		manifest := s.proofIndex.headProjection()
+		s.proofMu.Unlock()
+		return &manifest, nil
+	}
+	s.proofMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return s.loadLegacyProofManifest(ctx)
+}
+
+// loadLegacyProofManifest reads the full manifest a pre-segment package
+// wrote. It returns nil when there is none.
+func (s *PublicPublisherService) loadLegacyProofManifest(ctx context.Context) (*models.PublicProofManifest, error) {
 	manifestExists, err := s.fileSvc.FileExists(ctx, constants.PublicProofManifestFilename)
 	if err != nil {
 		return nil, fmt.Errorf("public-feed: inspect proof manifest: %w", err)
@@ -1240,27 +1291,13 @@ func (s *PublicPublisherService) loadProofManifest(ctx context.Context) (*models
 	return &manifest, nil
 }
 
-func (s *PublicPublisherService) pushProofPackageFull(ctx context.Context, manifest *models.PublicProofManifest) error {
-	allIDs := catalogArtifactIDs(proofCatalogFromManifest(*manifest))
-	if err := s.pushProofArtifactIDs(ctx, manifest, allIDs); err != nil {
-		return err
-	}
-	return s.saveProofMirrorSyncState(ctx, models.PublicProofMirrorSyncState{
-		SchemaVersion:     constants.PublicProofMirrorSyncSchemaVersion,
-		SourceID:          s.cfg.SourceID,
-		ProofRootSHA256:   manifest.ProofRootSHA256,
-		SyncedArtifactIDs: allIDs,
-		SyncedAt:          time.Now().UTC(),
-	})
-}
-
-func (s *PublicPublisherService) postProofIngest(ctx context.Context, manifest *models.PublicProofManifest, artifactIDs []string, chunkIndex int) error {
+// postProofIngest sends one signed segment and verifies its acknowledgement.
+func (s *PublicPublisherService) postProofIngest(ctx context.Context, segment models.PublicProofManifestSegment, artifactIDs []string) error {
 	artifacts, err := s.readProofArtifacts(ctx, artifactIDs)
 	if err != nil {
 		return err
 	}
-	catalog := proofCatalogFromManifest(*manifest)
-	request := models.PublicProofIngestRequest{SourceID: s.cfg.SourceID, Manifest: *manifest, Catalog: catalog, Artifacts: artifacts}
+	request := models.PublicProofIngestRequest{SourceID: s.cfg.SourceID, Segment: &segment, Artifacts: artifacts}
 	body, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("public-feed: encode proof ingest: %w", err)
@@ -1274,8 +1311,8 @@ func (s *PublicPublisherService) postProofIngest(ctx context.Context, manifest *
 	}
 	s.logger.Info("public-feed: pushing proof package to mirror",
 		"artifact_count", len(artifacts),
-		"catalog_count", len(catalog.Entries),
-		"chunk_index", chunkIndex,
+		"segment_index", segment.SegmentIndex,
+		"entry_count", len(segment.Entries),
 		"request_bytes", len(body),
 	)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(origin, "/")+"/proof-ingest", bytes.NewReader(body))
@@ -1298,10 +1335,13 @@ func (s *PublicPublisherService) postProofIngest(ctx context.Context, manifest *
 	if err := json.NewDecoder(response.Body).Decode(&ingestResponse); err != nil {
 		return fmt.Errorf("%w: decode response: %v", constants.ErrPublicFeedProofIngestRejected, err)
 	}
-	if !ingestResponse.Accepted {
-		return constants.ErrPublicFeedProofIngestRejected
+	if response.StatusCode == http.StatusOK && ingestResponse.Accepted && ingestResponse.ProofRoot == segment.ProofRootSHA256 {
+		return nil
 	}
-	return nil
+	if len(ingestResponse.MissingArtifactIDs) > 0 {
+		return fmt.Errorf("%w: %w", constants.ErrPublicFeedProofIngestRejected, constants.ErrPublicFeedProofArtifactsMissing)
+	}
+	return constants.ErrPublicFeedProofIngestRejected
 }
 
 func (s *PublicPublisherService) readProofArtifacts(ctx context.Context, artifactIDs []string) ([]models.PublicProofIngestArtifact, error) {
@@ -1343,7 +1383,7 @@ func (s *PublicPublisherService) loadProofMirrorSyncState(ctx context.Context) (
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("public-feed: decode proof mirror sync state: %w", err)
 	}
-	if state.SourceID != "" && state.SourceID != s.cfg.SourceID {
+	if state.SchemaVersion != constants.PublicProofMirrorSyncSchemaVersion || state.SourceID != s.cfg.SourceID {
 		return nil, nil
 	}
 	return &state, nil
@@ -1357,20 +1397,16 @@ func (s *PublicPublisherService) saveProofMirrorSyncState(ctx context.Context, s
 	return s.fileSvc.WriteFile(ctx, constants.PublicProofMirrorSyncFilename, data, constants.PermFilePrivate)
 }
 
-func catalogArtifactIDs(catalog models.PublicProofCatalog) []string {
-	ids := make([]string, 0, len(catalog.Entries))
-	for _, entry := range catalog.Entries {
-		ids = append(ids, entry.ArtifactID)
-	}
-	return ids
-}
-
 func (s *PublicPublisherService) writeProofArtifacts(ctx context.Context, campaignID string, artifacts []ProofArtifactInput) ([]models.PublicProofCatalogEntry, error) {
 	if len(artifacts) == 0 {
 		return nil, constants.ErrPublicFeedBatchEmpty
 	}
-	if err := checkNoSymlinks(ctx, s.fileSvc, constants.PublicProofsDirname); err != nil {
-		return nil, err
+	dirInfo, err := s.fileSvc.Lstat(ctx, constants.PublicProofsDirname)
+	if err == nil && (dirInfo.Mode()&os.ModeSymlink != 0 || !dirInfo.IsDir()) {
+		return nil, constants.ErrPublicFeedProofSymlinkRejected
+	}
+	if err != nil && !errors.Is(err, constants.ErrNotFound) {
+		return nil, fmt.Errorf("public-feed: inspect proof directory: %w", err)
 	}
 	if err := s.fileSvc.MkdirAll(ctx, constants.PublicProofsDirname, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("public-feed: build proof: mkdir: %w", err)
@@ -1402,12 +1438,21 @@ func (s *PublicPublisherService) writeProofArtifacts(ctx context.Context, campai
 			entry.VerificationCommand = fmt.Sprintf("sha256sum %s", art.Filename)
 		}
 		relPath := filepath.Join(constants.PublicProofsDirname, artifactID)
-		existing, readErr := s.fileSvc.ReadFile(ctx, relPath)
-		if readErr == nil {
-			existingHash := sha256.Sum256(existing)
-			if hex.EncodeToString(existingHash[:]) == artifactID && len(existing) == len(art.Content) {
-				entries = append(entries, entry)
-				continue
+		info, err := s.fileSvc.Lstat(ctx, relPath)
+		if err != nil && !errors.Is(err, constants.ErrNotFound) {
+			return nil, fmt.Errorf("public-feed: build proof: inspect artifact: %w", err)
+		}
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+				return nil, constants.ErrPublicFeedProofSymlinkRejected
+			}
+			existing, readErr := s.fileSvc.ReadFile(ctx, relPath)
+			if readErr == nil {
+				existingHash := sha256.Sum256(existing)
+				if hex.EncodeToString(existingHash[:]) == artifactID && len(existing) == len(art.Content) {
+					entries = append(entries, entry)
+					continue
+				}
 			}
 		}
 		if err := s.fileSvc.WriteFile(ctx, relPath, art.Content, constants.PermFilePrivate); err != nil {
@@ -1418,65 +1463,115 @@ func (s *PublicPublisherService) writeProofArtifacts(ctx context.Context, campai
 	return entries, nil
 }
 
+// finalizeProofManifest appends the signed segment for one publication. The
+// returned projection lists this publication's artifacts and counts every
+// active artifact.
 func (s *PublicPublisherService) finalizeProofManifest(ctx context.Context, campaignID, campaignRevision, verifiedIndexGenHash string, verificationOK bool, newEntries []models.PublicProofCatalogEntry) (models.PublicProofManifest, error) {
 	if !verificationOK {
 		return models.PublicProofManifest{}, constants.ErrPublicFeedProofNotVerified
 	}
-	catalog, err := s.GetProofCatalog(ctx)
+	s.proofMu.Lock()
+	defer s.proofMu.Unlock()
+	held, err := s.lockProofLog(ctx)
 	if err != nil {
 		return models.PublicProofManifest{}, err
 	}
-	manifestEntries := append([]models.PublicProofCatalogEntry(nil), catalog.Entries...)
-	existingArtifactIDs := make(map[string]struct{}, len(manifestEntries))
-	for _, entry := range manifestEntries {
-		existingArtifactIDs[entry.ArtifactID] = struct{}{}
+	defer func() { _ = held.Close() }()
+	if err := s.syncProofIndexLocked(ctx); err != nil {
+		return models.PublicProofManifest{}, err
 	}
+	return s.appendPublicationLocked(ctx, campaignID, campaignRevision, verifiedIndexGenHash, newEntries)
+}
+
+// appendPublicationLocked appends a segment listing the publication's
+// artifacts that are not yet active. The genesis segment of a legacy package
+// also lists its legacy catalog. Re-publishing a withdrawn artifact is
+// equivocation. Callers hold proofMu and the proof log lock, and have synced
+// the index.
+func (s *PublicPublisherService) appendPublicationLocked(ctx context.Context, campaignID, campaignRevision, verifiedIndexGenHash string, newEntries []models.PublicProofCatalogEntry) (models.PublicProofManifest, error) {
+	index := s.proofIndex
+	segmentEntries := make([]models.PublicProofCatalogEntry, 0, len(newEntries))
+	pending := make(map[string]models.PublicProofCatalogEntry)
+	if len(index.segments) == 0 {
+		legacy, err := s.loadLegacyProofCatalog(ctx)
+		if err != nil {
+			return models.PublicProofManifest{}, err
+		}
+		for _, entry := range legacy.Entries {
+			if _, dup := pending[entry.ArtifactID]; !dup {
+				pending[entry.ArtifactID] = entry
+				segmentEntries = append(segmentEntries, entry)
+			}
+		}
+	}
+	admitted := make([]models.PublicProofCatalogEntry, 0, len(newEntries))
+	seen := make(map[string]struct{}, len(newEntries))
 	for _, entry := range newEntries {
-		if _, exists := existingArtifactIDs[entry.ArtifactID]; exists {
+		if _, dup := seen[entry.ArtifactID]; dup {
 			continue
 		}
-		manifestEntries = append(manifestEntries, entry)
-		existingArtifactIDs[entry.ArtifactID] = struct{}{}
+		seen[entry.ArtifactID] = struct{}{}
+		if stored, active := index.active[entry.ArtifactID]; active {
+			admitted = append(admitted, stored)
+			continue
+		}
+		if _, listed := index.listed[entry.ArtifactID]; listed {
+			return models.PublicProofManifest{}, constants.ErrPublicFeedProofSegmentEquivocation
+		}
+		if stored, legacy := pending[entry.ArtifactID]; legacy {
+			admitted = append(admitted, stored)
+			continue
+		}
+		segmentEntries = append(segmentEntries, entry)
+		admitted = append(admitted, entry)
 	}
-	if len(manifestEntries) > constants.PublicFeedProofMaxArtifacts {
-		return models.PublicProofManifest{}, constants.ErrPublicFeedProofCatalogMismatch
+
+	previousRoot := constants.PublicFeedZeroHashHex
+	if len(index.segments) > 0 {
+		previousRoot = index.head.ProofRootSHA256
 	}
-	manifest := models.PublicProofManifest{
-		SchemaVersion:               constants.PublicProofManifestSchemaVersion,
+	segment, err := s.signProofSegment(models.PublicProofManifestSegment{
+		SchemaVersion:               constants.PublicProofSegmentSchemaVersion,
+		SourceID:                    s.cfg.SourceID,
+		SegmentIndex:                int64(len(index.segments)) + 1,
+		PreviousRoot:                previousRoot,
 		CampaignID:                  campaignID,
 		CampaignRevision:            campaignRevision,
 		VerifiedIndexGenerationHash: verifiedIndexGenHash,
-		VerificationOK:              verificationOK,
-		ArtifactCount:               len(manifestEntries),
-		Artifacts:                   manifestEntries,
-		VerifierInstructions:        "Verify each artifact SHA-256 matches the catalog entry. Recompute the proof root hash from artifact hashes and manifest metadata. Verify the Ed25519 signature over the proof root hash.",
+		VerificationOK:              true,
+		Entries:                     segmentEntries,
+		VerifierInstructions:        "Run ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key <trusted-ed25519-key-hex>. Verify every signed link from the zero root, apply withdrawals, then hash active artifacts by their content-addressed IDs.",
 		GeneratedAt:                 time.Now().UTC(),
-		SigningKeyID:                s.signingKeyID,
-	}
-	rootHash := s.computeProofRootHash(manifest)
-	manifest.ProofRootSHA256 = rootHash
-	rootHashBytes, err := hex.DecodeString(rootHash)
+	})
 	if err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: build proof: decode root hash: %w", err)
+		return models.PublicProofManifest{}, err
 	}
-	sig := ed25519.Sign(s.signingPrivKey, rootHashBytes)
-	manifest.Signature = hex.EncodeToString(sig)
-	manifestBytes, err := json.Marshal(manifest)
-	if err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: build proof: marshal manifest: %w", err)
+	if err := s.appendProofSegmentLocked(ctx, segment); err != nil {
+		return models.PublicProofManifest{}, err
 	}
-	if err := s.fileSvc.WriteFile(ctx, constants.PublicProofManifestFilename, manifestBytes, constants.PermFilePrivate); err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: build proof: write manifest: %w", err)
-	}
-	catalogOut := proofCatalogFromManifest(manifest)
-	catalogBytes, err := json.Marshal(catalogOut)
-	if err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: build proof: marshal catalog: %w", err)
-	}
-	if err := s.fileSvc.WriteFile(ctx, constants.PublicProofCatalogFilename, catalogBytes, constants.PermFilePrivate); err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: build proof: write catalog: %w", err)
-	}
+	manifest := publicProofManifestProjection(segment, admitted)
+	manifest.ArtifactCount = len(index.active)
 	return manifest, nil
+}
+
+// publicProofManifestProjection carries the segment's signature and root. Verification
+// requires the signed log; the active list alone is not a signed full manifest.
+func publicProofManifestProjection(segment models.PublicProofManifestSegment, entries []models.PublicProofCatalogEntry) models.PublicProofManifest {
+	return models.PublicProofManifest{
+		SchemaVersion:               constants.PublicProofManifestSchemaVersion,
+		SegmentIndex:                segment.SegmentIndex,
+		ProofRootSHA256:             segment.ProofRootSHA256,
+		CampaignID:                  segment.CampaignID,
+		CampaignRevision:            segment.CampaignRevision,
+		VerifiedIndexGenerationHash: segment.VerifiedIndexGenerationHash,
+		VerificationOK:              segment.VerificationOK,
+		ArtifactCount:               len(entries),
+		Artifacts:                   entries,
+		VerifierInstructions:        segment.VerifierInstructions,
+		GeneratedAt:                 segment.GeneratedAt,
+		SigningKeyID:                segment.SigningKeyID,
+		Signature:                   segment.Signature,
+	}
 }
 
 // BuildProofPackage creates a complete public proof package from a passing
@@ -1608,118 +1703,112 @@ func (s *PublicPublisherService) PublishAssignmentAuditProofBatch(ctx context.Co
 	return manifest, nil
 }
 
-// PruneProofCatalogForRun removes prior proof artifacts for one run so force
-// restore can republish without growing the catalog or mirror payload.
+// PruneProofCatalogForRun appends a signed withdrawal for one run. Immutable
+// artifact bytes remain available for delivery recovery.
 func (s *PublicPublisherService) PruneProofCatalogForRun(ctx context.Context, runID string) (int, error) {
 	if runID == "" {
 		return 0, constants.ErrMissingRequiredField
 	}
-	catalog, err := s.GetProofCatalog(ctx)
+	s.proofMu.Lock()
+	defer s.proofMu.Unlock()
+	held, err := s.lockProofLog(ctx)
 	if err != nil {
 		return 0, err
 	}
-	if len(catalog.Entries) == 0 {
-		return 0, nil
+	defer func() { _ = held.Close() }()
+	if err := s.syncProofIndexLocked(ctx); err != nil {
+		return 0, err
 	}
-	kept := make([]models.PublicProofCatalogEntry, 0, len(catalog.Entries))
-	removedIDs := make([]string, 0)
-	for _, entry := range catalog.Entries {
-		if entry.SourceRunID == runID {
-			removedIDs = append(removedIDs, entry.ArtifactID)
-			continue
+	if len(s.proofIndex.segments) == 0 {
+		// A legacy package is cut over to its genesis segment before the
+		// withdrawal is appended.
+		legacy, err := s.loadLegacyProofCatalog(ctx)
+		if err != nil {
+			return 0, err
 		}
-		kept = append(kept, entry)
-	}
-	if len(removedIDs) == 0 {
-		return 0, nil
-	}
-	for _, artifactID := range removedIDs {
-		if err := s.fileSvc.Remove(ctx, filepath.Join(constants.PublicProofsDirname, artifactID)); err != nil {
-			return 0, fmt.Errorf("public-feed: prune proof artifact: %w", err)
+		if !slices.ContainsFunc(legacy.Entries, func(entry models.PublicProofCatalogEntry) bool { return entry.SourceRunID == runID }) {
+			return 0, nil
 		}
-	}
-	catalog.Entries = kept
-	catalog.GeneratedAt = time.Now().UTC()
-	catalogBytes, err := json.Marshal(catalog)
-	if err != nil {
-		return 0, fmt.Errorf("public-feed: prune proof catalog: %w", err)
-	}
-	if err := s.fileSvc.WriteFile(ctx, constants.PublicProofCatalogFilename, catalogBytes, constants.PermFilePrivate); err != nil {
-		return 0, fmt.Errorf("public-feed: prune proof catalog: %w", err)
-	}
-	if len(kept) == 0 {
-		_ = s.fileSvc.Remove(ctx, constants.PublicProofManifestFilename)
-	} else {
-		campaignID := kept[0].CampaignID
-		revision := campaignID
-		indexDigest := kept[0].SourceRunID
-		if manifest, err := s.loadProofManifest(ctx); err == nil && manifest != nil {
-			if manifest.CampaignID != "" {
-				campaignID = manifest.CampaignID
-			}
-			if manifest.CampaignRevision != "" {
-				revision = manifest.CampaignRevision
-			}
-			if manifest.VerifiedIndexGenerationHash != "" {
-				indexDigest = manifest.VerifiedIndexGenerationHash
-			}
+		manifest, err := s.loadLegacyProofManifest(ctx)
+		if err != nil {
+			return 0, err
 		}
-		if _, err := s.finalizeProofManifest(ctx, campaignID, revision, indexDigest, true, nil); err != nil {
+		if manifest == nil {
+			return 0, constants.ErrPublicFeedProofManifestInvalid
+		}
+		if !manifest.VerificationOK {
+			return 0, constants.ErrPublicFeedProofNotVerified
+		}
+		if _, err := s.appendPublicationLocked(ctx, manifest.CampaignID, manifest.CampaignRevision, manifest.VerifiedIndexGenerationHash, nil); err != nil {
 			return 0, err
 		}
 	}
-	if err := s.removeProofMirrorSyncArtifacts(ctx, removedIDs); err != nil {
+	index := s.proofIndex
+	removedIDs := index.activeRunArtifactIDs(runID)
+	if len(removedIDs) == 0 {
+		return 0, nil
+	}
+	withdrawal, err := s.signProofSegment(models.PublicProofManifestSegment{
+		SchemaVersion:               constants.PublicProofSegmentSchemaVersion,
+		SourceID:                    s.cfg.SourceID,
+		SegmentIndex:                index.head.SegmentIndex + 1,
+		PreviousRoot:                index.head.ProofRootSHA256,
+		CampaignID:                  index.head.CampaignID,
+		CampaignRevision:            index.head.CampaignRevision,
+		VerifiedIndexGenerationHash: index.head.VerifiedIndexGenerationHash,
+		VerificationOK:              true,
+		WithdrawnArtifactIDs:        removedIDs,
+		VerifierInstructions:        index.head.VerifierInstructions,
+		GeneratedAt:                 time.Now().UTC(),
+	})
+	if err != nil {
 		return 0, err
 	}
-	s.logger.Info("public-feed: pruned proof catalog for run", "run_id", runID, "removed_count", len(removedIDs), "remaining_count", len(kept))
+	if err := s.appendProofSegmentLocked(ctx, withdrawal); err != nil {
+		return 0, err
+	}
+	// Keep immutable bytes so an unsent prefix can be replayed to a fresh
+	// mirror. Signed withdrawals control visibility, not physical deletion.
+	_ = s.fileSvc.Remove(ctx, constants.PublicProofCatalogFilename)
+	_ = s.fileSvc.Remove(ctx, constants.PublicProofManifestFilename)
+	if err := s.resetProofMirrorSyncState(ctx); err != nil {
+		return 0, err
+	}
+	s.logger.Info("public-feed: pruned proof catalog for run", "run_id", runID, "removed_count", len(removedIDs), "remaining_count", len(index.active))
 	return len(removedIDs), nil
 }
 
-func (s *PublicPublisherService) removeProofMirrorSyncArtifacts(ctx context.Context, artifactIDs []string) error {
-	if len(artifactIDs) == 0 {
+// resetProofMirrorSyncState removes the delivery checkpoint after a withdrawal.
+// Delivery always resumes from the mirror's actual segment head.
+func (s *PublicPublisherService) resetProofMirrorSyncState(ctx context.Context) error {
+	exists, err := s.fileSvc.FileExists(ctx, constants.PublicProofMirrorSyncFilename)
+	if err != nil {
+		return fmt.Errorf("public-feed: inspect proof mirror sync state: %w", err)
+	}
+	if !exists {
 		return nil
 	}
-	syncState, err := s.loadProofMirrorSyncState(ctx)
-	if err != nil || syncState == nil {
-		return err
+	if err := s.fileSvc.Remove(ctx, constants.PublicProofMirrorSyncFilename); err != nil {
+		return fmt.Errorf("public-feed: reset proof mirror sync state: %w", err)
 	}
-	remove := make(map[string]struct{}, len(artifactIDs))
-	for _, artifactID := range artifactIDs {
-		remove[artifactID] = struct{}{}
-	}
-	remaining := make([]string, 0, len(syncState.SyncedArtifactIDs))
-	for _, artifactID := range syncState.SyncedArtifactIDs {
-		if _, drop := remove[artifactID]; !drop {
-			remaining = append(remaining, artifactID)
-		}
-	}
-	syncState.SyncedArtifactIDs = remaining
-	syncState.SyncedAt = time.Now().UTC()
-	syncState.ProofRootSHA256 = ""
-	return s.saveProofMirrorSyncState(ctx, *syncState)
+	return nil
 }
 
-// FlushProofPackage pushes the current proof catalog and manifest to the mirror.
+// FlushProofPackage pushes the proof log to the mirror and returns the head
+// projection: its root and the active artifact count. It returns an empty
+// manifest when nothing has been published.
 func (s *PublicPublisherService) FlushProofPackage(ctx context.Context) (models.PublicProofManifest, error) {
-	manifestExists, err := s.fileSvc.FileExists(ctx, constants.PublicProofManifestFilename)
-	if err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: inspect proof manifest: %w", err)
-	}
-	if !manifestExists {
-		return models.PublicProofManifest{}, nil
-	}
 	if err := s.PushProofPackage(ctx); err != nil {
 		return models.PublicProofManifest{}, err
 	}
-	manifestBytes, err := s.fileSvc.ReadFile(ctx, constants.PublicProofManifestFilename)
+	manifest, err := s.loadProofManifest(ctx)
 	if err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: read proof manifest: %w", err)
+		return models.PublicProofManifest{}, fmt.Errorf("public-feed: inspect proof manifest: %w", err)
 	}
-	var manifest models.PublicProofManifest
-	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-		return models.PublicProofManifest{}, fmt.Errorf("public-feed: read proof manifest: %w", err)
+	if manifest == nil {
+		return models.PublicProofManifest{}, nil
 	}
-	return manifest, nil
+	return *manifest, nil
 }
 
 // computeProofRootHash computes the SHA-256 proof root hash over the
@@ -1748,14 +1837,62 @@ func computePublicProofRootHash(manifest models.PublicProofManifest) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// ComputeProofRootHash is the public API for recomputing the proof root hash
-// from a manifest. This allows offline verification.
+// ComputeProofRootHash recomputes a legacy full-manifest root. A segment-backed
+// projection requires verification through its signed log.
 func (s *PublicPublisherService) ComputeProofRootHash(manifest models.PublicProofManifest) (string, error) {
+	if manifest.SegmentIndex != 0 {
+		return "", constants.ErrPublicFeedProofManifestInvalid
+	}
 	return s.computeProofRootHash(manifest), nil
 }
 
-// GetProofCatalog returns the full public proof catalog.
+// GetProofCatalog returns the active public proof catalog.
 func (s *PublicPublisherService) GetProofCatalog(ctx context.Context) (models.PublicProofCatalog, error) {
+	s.proofMu.Lock()
+	err := s.syncProofIndexLocked(ctx)
+	if err == nil && len(s.proofIndex.segments) > 0 {
+		catalog := s.proofIndex.catalog()
+		s.proofMu.Unlock()
+		return catalog, nil
+	}
+	s.proofMu.Unlock()
+	if err != nil {
+		return models.PublicProofCatalog{}, err
+	}
+	return s.loadLegacyProofCatalog(ctx)
+}
+
+// activeProofEntry returns the active catalog entry of one artifact.
+func (s *PublicPublisherService) activeProofEntry(ctx context.Context, artifactID string) (models.PublicProofCatalogEntry, error) {
+	s.proofMu.Lock()
+	err := s.syncProofIndexLocked(ctx)
+	if err == nil && len(s.proofIndex.segments) > 0 {
+		entry, active := s.proofIndex.active[artifactID]
+		s.proofMu.Unlock()
+		if !active {
+			return models.PublicProofCatalogEntry{}, constants.ErrPublicFeedProofNotFound
+		}
+		return entry, nil
+	}
+	s.proofMu.Unlock()
+	if err != nil {
+		return models.PublicProofCatalogEntry{}, err
+	}
+	legacy, err := s.loadLegacyProofCatalog(ctx)
+	if err != nil {
+		return models.PublicProofCatalogEntry{}, err
+	}
+	for _, entry := range legacy.Entries {
+		if entry.ArtifactID == artifactID {
+			return entry, nil
+		}
+	}
+	return models.PublicProofCatalogEntry{}, constants.ErrPublicFeedProofNotFound
+}
+
+// loadLegacyProofCatalog reads the catalog a pre-segment package wrote. It
+// returns an empty catalog when there is none.
+func (s *PublicPublisherService) loadLegacyProofCatalog(ctx context.Context) (models.PublicProofCatalog, error) {
 	exists, err := s.fileSvc.FileExists(ctx, constants.PublicProofCatalogFilename)
 	if err != nil {
 		return models.PublicProofCatalog{}, fmt.Errorf("public-feed: get catalog: stat: %w", err)
@@ -1792,21 +1929,12 @@ func (s *PublicPublisherService) StreamProof(ctx context.Context, artifactID str
 		return constants.ErrPublicFeedProofIDRequired
 	}
 
-	// Find the artifact in the catalog.
-	catalog, err := s.GetProofCatalog(ctx)
+	entry, err := s.activeProofEntry(ctx, artifactID)
+	if errors.Is(err, constants.ErrPublicFeedProofNotFound) {
+		return err
+	}
 	if err != nil {
 		return fmt.Errorf("public-feed: stream proof: get catalog: %w", err)
-	}
-
-	var entry *models.PublicProofCatalogEntry
-	for i := range catalog.Entries {
-		if catalog.Entries[i].ArtifactID == artifactID {
-			entry = &catalog.Entries[i]
-			break
-		}
-	}
-	if entry == nil {
-		return constants.ErrPublicFeedProofNotFound
 	}
 
 	// Resolve the file path and check for symlinks.
@@ -1850,34 +1978,5 @@ func (s *PublicPublisherService) StreamProof(ctx context.Context, artifactID str
 		return fmt.Errorf("public-feed: stream proof: write: %w", err)
 	}
 
-	return nil
-}
-
-// checkNoSymlinks walks the given directory and returns an error if any
-// symlink is found.
-func checkNoSymlinks(ctx context.Context, fileSvc fs.RuntimeFileService, relDir string) error {
-	info, err := fileSvc.Lstat(ctx, relDir)
-	if err != nil {
-		if errors.Is(err, constants.ErrNotFound) {
-			return nil
-		}
-		return fmt.Errorf("public-feed: inspect proof path: %w", err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return constants.ErrPublicFeedProofSymlinkRejected
-	}
-	if !info.IsDir() {
-		return nil
-	}
-	entries, err := fileSvc.ReadDir(ctx, relDir)
-	if err != nil {
-		return fmt.Errorf("public-feed: read proof directory: %w", err)
-	}
-	for _, entry := range entries {
-		childPath := filepath.Join(relDir, entry.Name())
-		if err := checkNoSymlinks(ctx, fileSvc, childPath); err != nil {
-			return err
-		}
-	}
 	return nil
 }

@@ -9,6 +9,8 @@ package pubsub
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -26,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/uuid"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -512,6 +515,43 @@ func (h *PlatformEnrollmentHandler) supersedeOperatorLeases(ctx context.Context,
 	return nil
 }
 
+// committedIssuance loads the enrollment request a follow-on mutation carries
+// out. PERSIST_POLICY and CREATE_SESSION hold no L3 proof of their own
+// (AuthorizedByDecision): their authority is the completed issuance the owner's
+// decision committed. Anything short of that completed request fails closed.
+func committedIssuance(ctx context.Context, deps PlatformEnrollmentDeps, requestID string) (*models.PlatformEnrollmentRequest, error) {
+	req, err := loadPlatformEnrollmentRequest(ctx, deps, requestID)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, constants.ErrPlatformEnrollmentRequestNotFound
+	}
+	if req.State != models.PlatformEnrollmentStateCompleted {
+		return nil, fmt.Errorf("%w: request %s is %s", constants.ErrPlatformEnrollmentIssuanceNotCommitted, requestID, req.State)
+	}
+	return req, nil
+}
+
+// issuanceField pairs one payload value with the committed issuance it must
+// equal.
+type issuanceField struct {
+	name      string
+	payload   string
+	committed string
+}
+
+// matchIssuance returns ErrPlatformEnrollmentIssuanceMismatch naming the first
+// field whose payload value differs from the committed issuance.
+func matchIssuance(fields ...issuanceField) error {
+	for _, f := range fields {
+		if f.payload != f.committed {
+			return fmt.Errorf("%w: %s", constants.ErrPlatformEnrollmentIssuanceMismatch, f.name)
+		}
+	}
+	return nil
+}
+
 // HandlePersistPolicy writes the app policy document via DocSet at the
 // target_collection/target_document_id carried in the payload. The
 // ownership and cert metadata come from the payload (populated by the
@@ -539,11 +579,32 @@ func (h *PlatformEnrollmentHandler) HandlePersistPolicy(ctx context.Context, msg
 		return "", constants.ErrPlatformEnrollmentInvalidPayload
 	}
 
+	req, err := committedIssuance(ctx, h.deps, requestID)
+	if err != nil {
+		return "", err
+	}
+	if req.ComponentKind != models.PlatformComponentDashboard && req.ComponentKind != models.PlatformComponentApplication {
+		return "", constants.ErrPlatformEnrollmentInvalidComponent
+	}
+	if err := matchIssuance(
+		issuanceField{"target_collection", targetCollection, marshaler.CollectionName(constants.CollectionAppPolicies)},
+		issuanceField{"target_document_id", targetDocumentID, protocol.NewWorkloadIdentity().AppSPIFFEID(req.ComponentName)},
+		issuanceField{"owner_user_id", ownerUserID, req.ApprovedByUserID},
+		issuanceField{"actor_user_id", payload.GetActorUserId(), req.ApprovedByUserID},
+		issuanceField{"certificate_serial", payload.GetCertificateSerial(), req.CertificateSerial},
+		issuanceField{"certificate_fingerprint", payload.GetCertificateFingerprint(), req.CertificateFingerprint},
+	); err != nil {
+		return "", err
+	}
+
 	existingDoc, err := h.deps.DocStore.DocGet(ctx, targetCollection, targetDocumentID)
 	if err != nil {
 		return "", fmt.Errorf("platform enrollment: check existing policy: %w", err)
 	}
 	if existingDoc != nil {
+		if err := h.persistAppSigningKey(ctx, req); err != nil {
+			return "", err
+		}
 		policyID := payload.GetPolicyId()
 		h.logger.Info("platform enrollment policy already exists, retaining",
 			"request_id", requestID,
@@ -576,6 +637,10 @@ func (h *PlatformEnrollmentHandler) HandlePersistPolicy(ctx context.Context, msg
 		return "", fmt.Errorf("platform enrollment: persist policy: %w", err)
 	}
 
+	if err := h.persistAppSigningKey(ctx, req); err != nil {
+		return "", err
+	}
+
 	policyID := payload.GetPolicyId()
 	h.logger.Info("platform enrollment policy persisted",
 		"request_id", requestID,
@@ -583,6 +648,61 @@ func (h *PlatformEnrollmentHandler) HandlePersistPolicy(ctx context.Context, msg
 		"target_document_id", targetDocumentID)
 	return fmt.Sprintf("platform enrollment persist_policy request_id=%s policy_id=%s document=%s",
 		requestID, policyID, targetDocumentID), nil
+}
+
+// persistAppSigningKey registers only the separate key committed by this
+// completed issuance. Retried PERSIST_POLICY must finish this write even when
+// its policy document was already committed by an earlier attempt.
+func (h *PlatformEnrollmentHandler) persistAppSigningKey(ctx context.Context, req *models.PlatformEnrollmentRequest) error {
+	if req.App == nil {
+		return nil
+	}
+	key, err := req.App.SigningKey()
+	if err != nil {
+		return fmt.Errorf("platform enrollment: decode signing key: %w", err)
+	}
+	if key == nil {
+		return nil
+	}
+	digest := sha256.Sum256(key)
+	if req.ComponentKind != models.PlatformComponentApplication || hex.EncodeToString(digest[:]) != req.Fingerprints.SigningKey {
+		return constants.ErrPlatformEnrollmentIssuanceMismatch
+	}
+	signer := models.TrustedSigner{
+		ID: req.ComponentName, PublicKey: hex.EncodeToString(key), Enabled: true, AddedAt: time.Now().UTC(),
+	}
+	data, err := json.Marshal(signer)
+	if err != nil {
+		return fmt.Errorf("platform enrollment: marshal signing key: %w", err)
+	}
+	// Create-only persistence prevents concurrent enrollments and old retries
+	// from replacing an active key between a lookup and an upsert.
+	err = h.deps.DocStore.DocCreate(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), req.ComponentName, data)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, constants.ErrAlreadyExists) {
+		return fmt.Errorf("platform enrollment: persist signing key: %w", err)
+	}
+	existing, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), req.ComponentName)
+	if err != nil {
+		return fmt.Errorf("platform enrollment: read signing key: %w", err)
+	}
+	if existing != nil {
+		data, err := json.Marshal(existing.Data)
+		if err != nil {
+			return fmt.Errorf("platform enrollment: marshal existing signing key: %w", err)
+		}
+		var signer models.TrustedSigner
+		if err := json.Unmarshal(data, &signer); err != nil {
+			return fmt.Errorf("platform enrollment: decode existing signing key: %w", err)
+		}
+		if signer.PublicKey != hex.EncodeToString(key) || !signer.Enabled {
+			return fmt.Errorf("%w: revoke the existing application enrollment before replacing its signing key", constants.ErrPlatformEnrollmentIssuanceMismatch)
+		}
+		return nil
+	}
+	return constants.ErrPlatformEnrollmentIssuanceMismatch
 }
 
 func (h *PlatformEnrollmentHandler) HandleRevoke(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
@@ -626,6 +746,28 @@ func (h *PlatformEnrollmentHandler) HandleRevoke(ctx context.Context, msg *PubSu
 		}
 		if err := h.deps.DocStore.DocDelete(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), payload.GetTargetDocumentId()); err != nil {
 			return "", fmt.Errorf("platform enrollment: revoke app policy: %w", err)
+		}
+		if err := h.deps.DocStore.DocDelete(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), req.ComponentName); err != nil {
+			return "", fmt.Errorf("platform enrollment: revoke signing key: %w", err)
+		}
+		boundDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+		if err != nil {
+			return "", fmt.Errorf("platform enrollment: read consensus binding for revocation: %w", err)
+		}
+		if boundDoc != nil {
+			var boundPolicy models.ConsensusPolicy
+			bData, err := json.Marshal(boundDoc.Data)
+			if err != nil {
+				return "", fmt.Errorf("platform enrollment: marshal consensus binding for revocation: %w", err)
+			}
+			if err := json.Unmarshal(bData, &boundPolicy); err != nil {
+				return "", fmt.Errorf("platform enrollment: decode consensus binding for revocation: %w", err)
+			}
+			if len(boundPolicy.MemberAppIDs) > 0 && boundPolicy.MemberAppIDs[0] == req.ComponentName {
+				if err := h.deps.DocStore.DocDelete(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding)); err != nil {
+					return "", fmt.Errorf("platform enrollment: revoke consensus binding: %w", err)
+				}
+			}
 		}
 		h.deps.Connections.DisconnectIdentity(payload.GetTargetDocumentId())
 	case models.PlatformComponentOperator:
@@ -727,6 +869,23 @@ func (h *PlatformEnrollmentHandler) HandleCreateSession(ctx context.Context, msg
 	if actorUserID == "" {
 		return "", constants.ErrPlatformEnrollmentInvalidDecision
 	}
+	req, err := committedIssuance(ctx, h.deps, requestID)
+	if err != nil {
+		return "", err
+	}
+	if req.ComponentKind != models.PlatformComponentOperator {
+		return "", constants.ErrPlatformEnrollmentInvalidComponent
+	}
+	if err := matchIssuance(
+		issuanceField{"actor_user_id", actorUserID, req.ApprovedByUserID},
+		issuanceField{"operator_id", operatorID, req.OperatorID},
+		issuanceField{"operator_session_id", operatorSessionID, req.OperatorSessionID},
+		issuanceField{"cli_session_id", cliSessionID, req.CLISessionID},
+		issuanceField{"certificate_serial", payload.GetCertificateSerial(), req.CertificateSerial},
+		issuanceField{"certificate_fingerprint", payload.GetCertificateFingerprint(), req.CertificateFingerprint},
+	); err != nil {
+		return "", err
+	}
 	user, organization, err := loadPlatformEnrollmentOrganization(ctx, h.deps, actorUserID)
 	if err != nil {
 		return "", err
@@ -772,6 +931,88 @@ func (h *PlatformEnrollmentHandler) HandleCreateSession(ctx context.Context, msg
 		requestID, operatorID, operatorSessionID, cliSessionID, actorUserID), nil
 }
 
+// HandleBindConsensus binds an enrolled application as the Gateway consensus application.
+func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("platform enrollment: bind consensus context: %w", err)
+	}
+	payload, err := h.decodePayload(msg)
+	if err != nil {
+		return "", err
+	}
+	appID := strings.TrimSpace(payload.GetInstanceId())
+	if appID == "" {
+		return "", fmt.Errorf("%w: instance_id (app_id)", constants.ErrMissingRequiredField)
+	}
+	endpointURL := strings.TrimSpace(payload.GetConsensusEndpointUrl())
+	if endpointURL == "" {
+		return "", fmt.Errorf("%w: consensus_endpoint_url", constants.ErrMissingRequiredField)
+	}
+	if err := models.ValidateConsensusEndpoint(endpointURL); err != nil {
+		return "", fmt.Errorf("platform enrollment: consensus endpoint: %w", err)
+	}
+	actorUserID := strings.TrimSpace(payload.GetActorUserId())
+	if actorUserID == "" {
+		return "", constants.ErrPlatformEnrollmentInvalidDecision
+	}
+
+	// Verify app is enrolled and completed
+	spiffeID := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
+	appDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID)
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: check app policy: %w", err)
+	}
+	if appDoc == nil {
+		return "", constants.ErrConsensusAppNotEnrolled
+	}
+
+	// Verify app has a trusted signer registered
+	signerDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), appID)
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: check trusted signer: %w", err)
+	}
+	if signerDoc == nil {
+		return "", constants.ErrConsensusAppMissingSignerKey
+	}
+	signerData, err := json.Marshal(signerDoc.Data)
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: marshal trusted signer: %w", err)
+	}
+	var signer models.TrustedSigner
+	if err := json.Unmarshal(signerData, &signer); err != nil {
+		return "", fmt.Errorf("platform enrollment: decode trusted signer: %w", err)
+	}
+	key, err := hex.DecodeString(signer.PublicKey)
+	if err != nil || !signer.Enabled || len(key) != ed25519.PublicKeySize {
+		return "", constants.ErrConsensusAppMissingSignerKey
+	}
+
+	now := time.Now().UTC()
+	consensusDoc := models.ConsensusPolicy{
+		ID:              string(constants.DocIDConsensusBinding),
+		MemberAppIDs:    []string{appID},
+		Quorum:          1,
+		RequireDistinct: true,
+		EndpointURL:     endpointURL,
+		Enabled:         true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	data, err := json.Marshal(consensusDoc)
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: marshal consensus binding: %w", err)
+	}
+	if err := h.deps.DocStore.DocSet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding), data); err != nil {
+		return "", fmt.Errorf("platform enrollment: persist consensus binding: %w", err)
+	}
+
+	h.logger.Info("platform enrollment consensus bound",
+		"app_id", appID,
+		"endpoint_url", endpointURL,
+		"actor_user_id", actorUserID)
+	return fmt.Sprintf("platform enrollment bind_consensus app_id=%s endpoint=%s actor=%s", appID, endpointURL, actorUserID), nil
+}
+
 // sessionExists reports whether a session document is already persisted.
 func (h *PlatformEnrollmentHandler) sessionExists(ctx context.Context, collection constants.CollectionName, sessionID string) (bool, error) {
 	doc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(collection), sessionID)
@@ -788,9 +1029,10 @@ func fingerprintsFromPayload(fp *commonv1.PlatformEnrollmentFingerprints) models
 		return models.PlatformEnrollmentCSRFingerprints{}
 	}
 	return models.PlatformEnrollmentCSRFingerprints{
-		App:      fp.GetApp(),
-		Operator: fp.GetOperator(),
-		CLI:      fp.GetCli(),
+		App:        fp.GetApp(),
+		Operator:   fp.GetOperator(),
+		CLI:        fp.GetCli(),
+		SigningKey: fp.GetSigningKey(),
 	}
 }
 
@@ -798,6 +1040,9 @@ func fingerprintsSummary(f models.PlatformEnrollmentCSRFingerprints) string {
 	parts := []string{}
 	if f.App != "" {
 		parts = append(parts, "app="+f.App)
+	}
+	if f.SigningKey != "" {
+		parts = append(parts, "signing_key="+f.SigningKey)
 	}
 	if f.Operator != "" {
 		parts = append(parts, "operator="+f.Operator)

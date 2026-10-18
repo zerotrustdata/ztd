@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { CatalogSnapshot, EvaluationSummary, LiveEvent, ModelSummary, SnapshotRecord, SuiteSummary } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
@@ -37,7 +37,7 @@ const archivedCatalog: CatalogSnapshot = {
   ...catalog,
   dataset_id: 'ds-verified-archive',
   dataset_kind: 'verified_public_snapshot',
-  quality_state: 'verified_public',
+  quality_state: 'legacy_unverified',
   title: 'Archived campaign',
 };
 
@@ -69,6 +69,7 @@ const evaluation: EvaluationSummary = {
   suite_id: 'default-suite',
   arm: 'homogeneous-model-role',
   lifecycle_state: 'running',
+  run_status: 'running',
   assignment_total: 75,
   assignment_completed: 5,
   assignment_failed: 1,
@@ -122,7 +123,54 @@ describe('OverviewView', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders the live event stream full width without the system overview panel', () => {
+  it.each(['running', 'completed', 'cancelled', 'interrupted', 'verified', 'verify_failed', 'scheduled', 'in_progress', 'initialized', 'unknown'])(
+    'shows the published CLI run status %s instead of assignment lifecycle', (status) => {
+      evalStore.loadFixtures([catalog, Object.assign({}, evaluation, { run_status: status })], []);
+      render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+      const row = within(screen.getByRole('list', { name: 'Recent runs' }));
+      expect(row.getByText(status)).toHaveClass(`status-${status}`);
+      if (status !== 'running') expect(row.queryByText(/Running for/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('does not claim running from a historical partial summary without process evidence', () => {
+    evalStore.loadFixtures([catalog, { ...evaluation, run_status: undefined }], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    const row = within(screen.getByRole('list', { name: 'Recent runs' }));
+    expect(row.getByText('unknown')).toBeInTheDocument();
+    expect(row.queryByText(/Running for/)).not.toBeInTheDocument();
+  });
+
+  it('receives cancellation through a pushed summary and counts stopped assignments as terminal', () => {
+    evalStore.loadFixtures([catalog, Object.assign({}, evaluation, { run_status: 'running' })], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    act(() => evalStore.acceptProjection({
+      sequence: 1,
+      record_type: 'projection',
+      record_bytes: JSON.stringify({
+        ...evaluation, run_status: 'cancelled', lifecycle_state: 'stopped',
+        terminal_outcomes: { ...evaluation.terminal_outcomes, stopped: 69 },
+      }),
+    }));
+    const row = within(screen.getByRole('list', { name: 'Recent runs' }));
+    expect(row.getByText('cancelled')).toBeInTheDocument();
+    expect(row.getByText('75 / 75 terminal')).toBeInTheDocument();
+    expect(row.getByRole('progressbar')).toHaveAttribute('aria-valuetext', '5 completed, 1 failed, 69 stopped, 0 remaining');
+  });
+
+  it.each(['assignment_started', 'assignment_completed', 'assignment_failed', 'stage_updated'] as const)(
+    'does not let %s overwrite the run lifecycle', (kind) => {
+      evalStore.loadFixtures([catalog, { ...evaluation, lifecycle_state: 'stopped' }], []);
+      evalStore.acceptProjection({
+        sequence: 1, record_type: 'event', record_bytes: JSON.stringify({
+          ...events[0], kind, lifecycle_status: kind === 'assignment_completed' ? 'completed' : 'running',
+        }),
+      });
+      expect(evalStore.getEvaluation(datasetId, evaluation.run_id)?.lifecycle_state).toBe('stopped');
+    },
+  );
+
+  it('renders the live event stream without the system overview panel', () => {
     render(
       <MemoryRouter initialEntries={['/?dataset=ds-verified-archive&release=all']}>
         <OverviewView />
@@ -176,7 +224,7 @@ describe('OverviewView', () => {
   it('removes the landing page explainer while retaining recent runs', () => {
     render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
     expect(screen.queryByRole('region', { name: 'What am I looking at?' })).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Recent runs' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Runs' })).toBeInTheDocument();
   });
 
   it('presents recent runs with coverage for engineers without duplicate public data section', () => {
@@ -186,8 +234,8 @@ describe('OverviewView', () => {
       </MemoryRouter>,
     );
 
-    const evidence = within(screen.getByRole('region', { name: 'Recent runs' }));
-    expect(evidence.getByRole('heading', { name: 'Recent Runs' })).toBeInTheDocument();
+    const evidence = within(screen.getByRole('region', { name: 'Runs' }));
+    expect(evidence.getByRole('heading', { name: 'Runs' })).toBeInTheDocument();
     expect(evidence.getByText('Completed')).toBeInTheDocument();
     expect(evidence.getByText('Failed')).toBeInTheDocument();
     expect(evidence.getByText('Remaining')).toBeInTheDocument();
@@ -225,7 +273,7 @@ describe('OverviewView', () => {
       </MemoryRouter>,
     );
 
-    const recent = within(screen.getByRole('region', { name: 'Recent runs' }));
+    const recent = within(screen.getByRole('region', { name: 'Runs' }));
     expect(recent.getByRole('link', { name: model.display_name })).toHaveAttribute(
       'href', `/models/${datasetId}/${model.variant_id}?role=${role}`,
     );

@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -37,17 +36,17 @@ func writeProfile(t *testing.T, fileSvc fs.RuntimeFileService, cfg serve.Gateway
 }
 
 func TestValidateRequestedPosture(t *testing.T) {
-	for _, ok := range []string{"", constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
+	for _, ok := range []constants.Posture{"", constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		require.NoError(t, validateRequestedPosture(ok), "%q", ok)
 	}
-	for _, bad := range []string{"strict", "DOCTRINE", "notary "} {
+	for _, bad := range []constants.Posture{constants.Posture("strict"), "DOCTRINE", "notary "} {
 		require.ErrorIs(t, validateRequestedPosture(bad), constants.ErrInvalidPosture, "%q", bad)
 	}
 }
 
 func TestResolveGatewayLaunchConfig(t *testing.T) {
 	existing := serve.GatewayConfig{
-		Posture:          ztdconfig.PostureConsensus,
+		Posture:          constants.PostureConsensus,
 		HTTPPort:         8080,
 		HTTPSPort:        8443,
 		LogLevel:         "debug",
@@ -58,14 +57,14 @@ func TestResolveGatewayLaunchConfig(t *testing.T) {
 	tests := []struct {
 		name        string
 		profile     *serve.GatewayConfig
-		requested   string
-		wantPosture ztdconfig.GatewayPosture
+		requested   constants.Posture
+		wantPosture constants.Posture
 		wantBase    bool // whether the profile's other settings must carry over
 	}{
-		{name: "no profile, no request defaults to doctrine", wantPosture: ztdconfig.PostureDoctrine},
-		{name: "no profile, explicit request", requested: constants.PostureNotary, wantPosture: ztdconfig.PostureNotary},
-		{name: "profile posture is kept when unset", profile: &existing, wantPosture: ztdconfig.PostureConsensus, wantBase: true},
-		{name: "explicit request overrides profile posture", profile: &existing, requested: constants.PostureRatify, wantPosture: ztdconfig.PostureRatify, wantBase: true},
+		{name: "no profile, no request defaults to doctrine", wantPosture: constants.PostureDoctrine},
+		{name: "no profile, explicit request", requested: constants.PostureNotary, wantPosture: constants.PostureNotary},
+		{name: "profile posture is kept when unset", profile: &existing, wantPosture: constants.PostureConsensus, wantBase: true},
+		{name: "explicit request overrides profile posture", profile: &existing, requested: constants.PostureRatify, wantPosture: constants.PostureRatify, wantBase: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,27 +94,39 @@ func TestResolveGatewayLaunchConfig_CorruptProfileFailsClosed(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLaunchProfileCorrupted)
 }
 
-func TestConfirmRunningGatewayPosture(t *testing.T) {
-	t.Run("no explicit request never checks", func(t *testing.T) {
-		require.NoError(t, confirmRunningGatewayPosture(newPostureTestFileSvc(t), ""))
+func TestRunningGatewayPosture(t *testing.T) {
+	t.Run("no explicit request returns the profile posture", func(t *testing.T) {
+		fileSvc := newPostureTestFileSvc(t)
+		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: constants.PostureRatify, LogLevel: "info"})
+		posture, err := runningGatewayPosture(fileSvc, "")
+		require.NoError(t, err)
+		require.Equal(t, constants.PostureRatify, posture)
 	})
 
 	t.Run("matching profile passes", func(t *testing.T) {
 		fileSvc := newPostureTestFileSvc(t)
-		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: ztdconfig.PostureNotary, LogLevel: "info"})
-		require.NoError(t, confirmRunningGatewayPosture(fileSvc, constants.PostureNotary))
+		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: constants.PostureNotary, LogLevel: "info"})
+		posture, err := runningGatewayPosture(fileSvc, constants.PostureNotary)
+		require.NoError(t, err)
+		require.Equal(t, constants.PostureNotary, posture)
 	})
 
 	t.Run("different posture fails closed", func(t *testing.T) {
 		fileSvc := newPostureTestFileSvc(t)
-		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: ztdconfig.PostureDoctrine, LogLevel: "info"})
-		err := confirmRunningGatewayPosture(fileSvc, constants.PostureNotary)
+		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: constants.PostureDoctrine, LogLevel: "info"})
+		_, err := runningGatewayPosture(fileSvc, constants.PostureNotary)
 		require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
 	})
 
-	t.Run("unverifiable posture fails closed", func(t *testing.T) {
-		err := confirmRunningGatewayPosture(newPostureTestFileSvc(t), constants.PostureNotary)
+	t.Run("unverifiable requested posture fails closed", func(t *testing.T) {
+		_, err := runningGatewayPosture(newPostureTestFileSvc(t), constants.PostureNotary)
 		require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+		require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
+	})
+
+	t.Run("unknown posture without a request fails closed", func(t *testing.T) {
+		_, err := runningGatewayPosture(newPostureTestFileSvc(t), "")
+		require.ErrorIs(t, err, constants.ErrGatewayPostureUnknown)
 		require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
 	})
 }

@@ -88,14 +88,14 @@ func (fakeConformancePoster) Post(string, any) ([]byte, error) {
 
 // rigOptions tunes one conformance command under test.
 type rigOptions struct {
-	posture   string
+	posture   constants.Posture
 	operators []*operatorv1.OperatorDocument
 	run       func(context.Context, run.Config) (*evalv1.ConformanceRunRecord, error)
 	// wrapGateway wraps the Gateway's runtime file service, e.g. to corrupt reads.
 	wrapGateway func(fs.RuntimeFileService) fs.RuntimeFileService
 	// serveGateway starts the Gateway the rig's client dials and returns its base URL.
 	// Nil leaves the rig without a Gateway, so a test that never dials opens no socket.
-	serveGateway func(t *testing.T, posture string, operators []*operatorv1.OperatorDocument) string
+	serveGateway func(t *testing.T, posture constants.Posture, operators []*operatorv1.OperatorDocument) string
 }
 
 // conformanceRig is one conformance command: a Gateway served by httptest, two
@@ -182,35 +182,6 @@ func (r conformanceRig) executeInput(t *testing.T, input string, args ...string)
 func (r conformanceRig) runArgs(extra ...string) []string {
 	args := []string{"conformance", "run", "--a2a-stub-listen", "127.0.0.1:0", "--operator-id", conformanceTestOperatorID, "--operator-root", r.opRoot}
 	return append(args, extra...)
-}
-
-func TestConformancePosture_MapsEachGatewayPostureAndRejectsAnyOtherName(t *testing.T) {
-	tests := []struct {
-		name    string
-		posture string
-		want    evalv1.EvaluationGovernancePosture
-		wantErr bool
-	}{
-		{name: "doctrine", posture: constants.PostureDoctrine, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE},
-		{name: "consensus", posture: constants.PostureConsensus, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS},
-		{name: "ratify", posture: constants.PostureRatify, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY},
-		{name: "notary", posture: constants.PostureNotary, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY},
-		{name: "empty", posture: "", wantErr: true},
-		{name: "unknown", posture: "bogus", wantErr: true},
-		{name: "upper case", posture: "DOCTRINE", wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := conformancePosture(tt.posture)
-			if tt.wantErr {
-				require.ErrorIs(t, err, constants.ErrConformancePostureUnknown)
-				assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, got)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
-		})
-	}
 }
 
 func TestConformanceRoots_OutboundRootCarriesTheEnrollmentBoundKeyOnly(t *testing.T) {

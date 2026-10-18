@@ -38,7 +38,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -317,7 +316,7 @@ func TestDispatchService_ShutdownPublishesReceiptThenAcknowledgementBeforeCancel
 	}, time.Second, 10*time.Millisecond)
 	payload, err := proto.Marshal(&operatorv1.ShutdownRequested{Reason: "planned maintenance"})
 	require.NoError(t, err)
-	dispatch := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	dispatch := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 	result, err := dispatch.Dispatch(context.Background(), DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.ShutdownRequested),
@@ -386,7 +385,7 @@ func TestDispatch_UnknownSession_ReturnsIngressRefusal(t *testing.T) {
 func TestDispatch_DoctrineViolation_ReturnsIngressRefusal(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 	h.dispatchController = newDispatchController(DispatchControllerDeps{
-		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil),
+		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil),
 		Responder:   infra.Responder,
 		Logger:      infra.Logger,
 	})
@@ -702,8 +701,8 @@ func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, 
 	return pubKey
 }
 
-func newInferenceBoundaryDispatchService(infra *TestInfrastructure, posture config.GatewayPosture) *inferdispatch.DispatchService {
-	commandSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(posture), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+func newInferenceBoundaryDispatchService(infra *TestInfrastructure, posture constants.Posture) *inferdispatch.DispatchService {
+	commandSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, posture, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 	return inferdispatch.NewDispatchService(
 		&gatewayDispatcherAdapter{svc: commandSvc},
 		&gatewayOperatorListerAdapter{svc: infra.Reg},
@@ -765,7 +764,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 		NewContent:  seed + "\n" + marker,
 	})
 	require.NoError(t, err)
-	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 	result, err := dispatchSvc.Dispatch(context.Background(), DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
@@ -891,7 +890,7 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 		CreateIfMissing: true,
 	})
 	require.NoError(t, err)
-	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 	result, dispatchErr := dispatchSvc.Dispatch(context.Background(), DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
@@ -941,7 +940,7 @@ func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 	cfg.Gateway.PKIDir = testutil.OperatorDir(t)
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 	cfg.OperatorCapabilities = constants.OperatorCapabilities{constants.OperatorCapabilityData}
 	cfg.WorkDir = workDir
 	// LoadGateway sets no runtime Operator session; the embedded Operator serves
@@ -965,7 +964,7 @@ func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 		CreateIfMissing: true,
 	})
 	require.NoError(t, err)
-	dispatchSvc := NewDispatchService(logger, svc.pubsub, svc.stateRootSvc, svc.auth, string(config.PostureDoctrine), svc.doctrine, nil, svc.signerStore, svc.envProc)
+	dispatchSvc := NewDispatchService(logger, svc.pubsub, svc.stateRootSvc, svc.auth, constants.PostureDoctrine, svc.doctrine, nil, svc.signerStore, svc.envProc)
 	result, err := dispatchSvc.Dispatch(ctx, DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
@@ -1020,7 +1019,7 @@ func TestDispatch_FailedActionsProduceSignedFailures(t *testing.T) {
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
 	workDir := testutil.OperatorDir(t)
 	pubKey := startFileEditOperator(t, infra, operatorID, sessionID, workDir)
-	svc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	svc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
 	missing := filepath.Join(workDir, "missing.txt")
 	for _, test := range []struct {
 		name      string
@@ -1062,7 +1061,7 @@ func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBefo
 
 	h, _, infra := setupTestHTTPHandler(t)
 	h.dispatchController = newDispatchController(DispatchControllerDeps{
-		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, string(config.PostureDoctrine), govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil),
+		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil),
 		Responder:   infra.Responder,
 		Logger:      infra.Logger,
 	})
@@ -1119,7 +1118,7 @@ func TestInferenceDispatch_RealBrokerAndOutboundOperator_VerifiesReceiptAuditAnd
 	seedInferenceOperator(t, infra, userID, "operator-inference-boundary", "session-inference-boundary", true)
 	backend, _ := startInferenceOperator(t, infra, infra.StateRootSvc, "operator-inference-boundary", "session-inference-boundary")
 
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 	result, err := dispatchSvc.DispatchInference(context.Background(), inferdispatch.DispatchInferenceRequest{
 		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
 		ProviderAttemptID:       "provider-attempt-integration",
@@ -1178,7 +1177,7 @@ func TestInferenceDispatch_HTTPRouterAppMTLSIdentityTraversesRealBrokerAndOutbou
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, true)
 	backend, _ := startInferenceOperator(t, infra, infra.StateRootSvc, operatorID, sessionID)
 	h.inferenceDispatchController = newInferenceDispatchController(InferenceDispatchControllerDeps{
-		DispatchSvc: newInferenceBoundaryDispatchService(infra, config.PostureDoctrine),
+		DispatchSvc: newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine),
 		Responder:   infra.Responder,
 		Logger:      infra.Logger,
 		MaxPayload:  cfg.Gateway.MaxPayloadBytes,
@@ -1219,7 +1218,7 @@ func TestInferenceDispatch_RealBrokerAndOutboundOperator_RoutesAllModelRoles(t *
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, true)
 	backend, _ := startInferenceOperator(t, infra, infra.StateRootSvc, operatorID, sessionID)
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 
 	tests := []struct {
 		name      string
@@ -1261,7 +1260,7 @@ func TestInferenceDispatch_TwoActiveSessions_ExplicitTargetReceivesOnlySelectedR
 	seedInferenceOperator(t, infra, userID, "operator-inference-b", "session-inference-b", true)
 	backendA, _ := startInferenceOperator(t, infra, infra.StateRootSvc, "operator-inference-a", "session-inference-a")
 	backendB, _ := startInferenceOperator(t, infra, infra.StateRootSvc, "operator-inference-b", "session-inference-b")
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 
 	result, err := dispatchSvc.DispatchInference(context.Background(), inferdispatch.DispatchInferenceRequest{
 		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
@@ -1332,7 +1331,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 			userID := "user-inference-routing"
 			seedActiveUser(t, infra, userID)
 			test.seed(t, infra, userID)
-			dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+			dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 			_, err := dispatchSvc.DispatchInference(context.Background(), inferdispatch.DispatchInferenceRequest{
 				RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
 				ProviderAttemptID:       "provider-attempt-integration",
@@ -1363,7 +1362,7 @@ func TestInferenceDispatch_CallerCancellationRemovesHandlerWhileRemoteExecutionC
 	started := backend.started
 	release := backend.release
 	backend.mu.Unlock()
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 
 	transactionIDs := make(chan string, 1)
 	unregisterCommandCapture := infra.Pubsub.RegisterHandler(pubsub.CmdChannel(operatorID, sessionID), func(_ string, data []byte) {
@@ -1433,7 +1432,7 @@ func TestInferenceDispatch_StreamingProgressReconcilesToTerminalOutputHash(t *te
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, true)
 	startInferenceOperator(t, infra, infra.StateRootSvc, operatorID, sessionID)
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 
 	var progressEvents []*operatorv1.InferenceProgressEvent
 	result, err := dispatchSvc.DispatchInference(context.Background(), inferdispatch.DispatchInferenceRequest{
@@ -1470,7 +1469,7 @@ func TestInferenceDispatch_StreamingProgressHashMismatchFailsClosed(t *testing.T
 	backend.mu.Lock()
 	backend.progressText = "progress that does not match terminal output"
 	backend.mu.Unlock()
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 
 	_, err := dispatchSvc.DispatchInference(context.Background(), inferdispatch.DispatchInferenceRequest{
 		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
@@ -1496,7 +1495,7 @@ func TestInferenceDispatch_ResultMutatedAfterDigestComputationFailsClosed(t *tes
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, true)
 	backend, _ := startInferenceOperatorWithResultTampering(t, infra, infra.StateRootSvc, operatorID, sessionID, true)
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 
 	_, err := dispatchSvc.DispatchInference(context.Background(), inferdispatch.DispatchInferenceRequest{
 		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
@@ -1523,7 +1522,7 @@ func TestInferenceDispatch_ReplayedEnvelopeIsRejectedWithoutSecondBackendInvocat
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, true)
 	backend, _ := startInferenceOperator(t, infra, infra.StateRootSvc, operatorID, sessionID)
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureDoctrine)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureDoctrine)
 
 	commandWire := make(chan []byte, 1)
 	unregisterCommandCapture := infra.Pubsub.RegisterHandler(pubsub.CmdChannel(operatorID, sessionID), func(_ string, data []byte) {
@@ -1596,7 +1595,7 @@ func TestInferenceDispatch_NotaryPostureRejectsMutationBeforeBackendInvocation(t
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, true)
 	backend, _ := startInferenceOperator(t, infra, infra.StateRootSvc, operatorID, sessionID)
-	dispatchSvc := newInferenceBoundaryDispatchService(infra, config.PostureNotary)
+	dispatchSvc := newInferenceBoundaryDispatchService(infra, constants.PostureNotary)
 
 	_, err := dispatchSvc.DispatchInference(context.Background(), inferdispatch.DispatchInferenceRequest{
 		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,

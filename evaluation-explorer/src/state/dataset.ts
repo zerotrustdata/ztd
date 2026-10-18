@@ -3,7 +3,7 @@
 
 // Dataset selection and URL state. The site never averages across datasets.
 // The active dataset is encoded in the hash route so it survives reload and
-// is shareable. User preferences (filters, sort, comparison list) persist in
+// is shareable. User preferences (filters, sort) persist in
 // localStorage; eval state never does.
 //
 // Selector options derive from the catalog snapshots present in the store —
@@ -19,7 +19,6 @@ import { evalStore, useStoreState } from './store';
 const PREF_KEYS = {
   filters: 'opendevops.filters.v3',
   sort: 'opendevops.sort',
-  comparison: 'opendevops.comparison',
 } as const;
 
 export interface DatasetOption extends ReleaseProvenance {
@@ -101,15 +100,10 @@ function defaultDatasetId(
   evaluations: Iterable<EvaluationSummary>,
 ): string {
   const verifiedLive = Array.from(evaluations)
-    .filter((summary) => summary.dataset_id.startsWith('ds-live-') && summary.quality_state === 'verified_public')
+    .filter((summary) => summary.dataset_id.startsWith('ds-live-') && summary.quality_state === 'exploratory_verified')
     .sort((a, b) => (b.observed_at ?? '').localeCompare(a.observed_at ?? ''));
   const newestVerifiedLive = verifiedLive[0];
   if (newestVerifiedLive) return newestVerifiedLive.dataset_id;
-
-  const verifiedSnapshot = options.find(
-    (option) => option.available && option.kind === 'verified_public_snapshot' && option.quality === 'verified_public',
-  );
-  if (verifiedSnapshot) return verifiedSnapshot.id;
 
   const liveRun = options.find((o) => o.available && o.kind === 'live_run');
   if (liveRun) return liveRun.id;

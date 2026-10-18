@@ -8,7 +8,6 @@
 package jsonschema
 
 import (
-	"encoding/json"
 	"testing"
 )
 
@@ -111,6 +110,3 @@ func FuzzReferenceResolution(f *testing.F) {
 		_, _ = resolveJSONPointer(root, ptr)
 	})
 }
-
-// Ensure json import is used
-var _ = json.Unmarshal

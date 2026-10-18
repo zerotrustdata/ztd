@@ -33,7 +33,7 @@ type CLIRefreshControllerDeps struct {
 	Reg                *RegistrationService
 	Auth               *AuthService
 	UserSvc            *UserService
-	LogoutSvc          *SessionLogoutService
+	LogoutSvc          *UserLogoutService
 	Responder          *response.Writer
 }
 
@@ -60,7 +60,7 @@ type CLIRefreshController struct {
 	reg                *RegistrationService
 	auth               *AuthService
 	userSvc            *UserService
-	logoutSvc          *SessionLogoutService
+	logoutSvc          *UserLogoutService
 	responder          *response.Writer
 }
 

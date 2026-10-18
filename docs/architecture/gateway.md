@@ -3,8 +3,8 @@ doc_id: gateway
 title: Gateway Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.1.3
+last_updated: 2026-10-18
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/gw/
@@ -62,7 +62,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-GW-POST-01 | The Gateway MUST run in one of four immutable governance postures: `doctrine` (L1 enforced, L2/L3 audited), `consensus` (L1/L2 enforced, L3 audited), `ratify` (L1/L3 enforced, L2 audited), or `notary` (L1/L2/L3 enforced). The posture is set once at startup via `--posture` and MUST NOT change at runtime. |
+| INV-GW-POST-01 | The Gateway MUST run in one of four immutable governance postures defined by `constants.Posture` (`internal/constants/posture.go`): `doctrine` (default; L1 enforced, L2/L3 audited), `consensus` (L1/L2 enforced, L3 audited), `ratify` (L1/L3 enforced, L2 audited), or `notary` (L1/L2/L3 enforced). The posture is set once at startup via `--posture`, validated via `Posture.Valid()` (rejecting unknown or empty postures with `ErrInvalidPosture`), and MUST NOT change at runtime. |
 | INV-GW-POST-02 | Launch profiles written by `ztd gw start` to `.ztd/pids/operator-launch-profile.json` are versioned and mandatory for `ztd gw restart`. Restart MUST fail closed if the profile is missing, malformed, or of an unknown version. |
 
 ### Network Surfaces and Route Classification (`INV-GW-NET`)
@@ -102,6 +102,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Surface | Path | Verify |
 | :--- | :--- | :--- |
 | Gateway daemon and startup | `internal/cli/cmd/gw/gateway.go`, `internal/services/gateway/` | `ztd gw start --help`, `./ztd gw status` |
+| Single posture owner | `internal/constants/posture.go` (`constants.Posture`) | `Posture.Valid()`, `RequiresL2()`, `RequiresL3()`, `Description()`, `HumanApprovalReason()` |
 | HTTP/HTTPS port constants | `internal/constants/ports.go`, `internal/constants/network.go` | `GatewayHTTPPort = "8080"`, `GatewayHTTPSPort = "8443"` |
 | Governance coordination (L1–L3) | `internal/services/governance/` | `l1_doctrine.go`, `l2_consensus.go`, `l3_notary.go` |
 | Native MCP tool registry | `internal/services/mcp/native_tool_registry.go` | `native_tool_registry_test.go` |
@@ -116,7 +117,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 The Gateway binary operates in two distinct execution modes:
 
-1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP and HTTPS routers (default ports 8080 and 8443; startup may resolve an available pair at higher offsets), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation to configured Consensus services, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
+1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP and HTTPS routers (default ports 8080 and 8443; startup may resolve an available pair at higher offsets), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation (`application/x-protobuf`) over HTTPS to the bound consensus application, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
 2. **Standard Operator Mode (`ztd operator start`)**: When started as an Operator, the same static binary operates as a remote Policy Execution Point (PEP). It opens an outbound-only mTLS WebSocket connection to the Gateway, receives transactions on its assigned command channel, executes independent L4 Warden verification, and enforces L5 Actuator execution. The Gateway does not make inbound connections to remote Operators.
 
 ### Configuration, Startup, and Launch Profiles
@@ -135,16 +136,16 @@ The Gateway is configured via CLI flags or an interactive setup wizard:
 
 ### Governance Postures
 
-The Gateway enforces one of four postures selected at startup via `--posture`:
+The Gateway enforces one of four postures (`constants.Posture`) selected at startup via `--posture` (default `doctrine`):
 
-| Posture | L1 Doctrine | L2 Consensus | L3 Notary (Mutations) | L3 Notary (Read-Only) |
+| Posture | L1 Doctrine | L2 Consensus (`RequiresL2()`) | L3 Notary (`governance.L3Required`) | L3 Notary (Read-Only or `AuthorizedByDecision`) |
 | :--- | :--- | :--- | :--- | :--- |
 | **`doctrine`** | Enforced | Audited | Audited | Not Required |
-| **`consensus`** | Enforced | Enforced ($K$-of-$N$) | Audited | Not Required |
+| **`consensus`** | Enforced | Enforced (Bound App) | Audited | Not Required |
 | **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required |
-| **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) | Not Required |
+| **`notary`** | Enforced | Enforced (Bound App) | Enforced (Human) | Not Required |
 
-Selecting a posture does not create its supporting identities or services. For example, the `consensus` and `notary` postures require a configured Consensus policy/service and eligible voters; human approval under `ratify` and `notary` requires the applicable authenticated approval ceremony. Check startup validation and enrollment state for the deployment.
+Selecting a posture does not automatically enroll its supporting identities. The `consensus` and `notary` postures require an enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` bound as the Gateway's consensus application via `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`). Human approval under `ratify` and `notary` requires a WebAuthn passkey assertion (or signed CLI approval for outbound Operators).
 
 ### HTTP and HTTPS Route Classifications
 
@@ -162,18 +163,18 @@ The HTTPS router (`buildPublicRouter`) manages authenticated platform APIs. The 
 
 | Auth Policy | Routes Covered | Identity Requirement |
 | :--- | :--- | :--- |
-| **`RouteAuthNone`** | `/health`, `/console/*`, WebAuthn login/assertion ceremonies, bootstrap token validation | No identity required |
+| **`RouteAuthNone`** | `/health`, `/console/*`, WebAuthn login/assertion ceremonies, bootstrap and platform enrollment token request/status/complete | No identity required |
 | **`RouteAuthMTLS`** | `/api/v1/operators/commands`, `/api/v1/governance/envelopes`, `/api/v1/pki/*`, pub/sub WebSockets, observe producer routes | Valid mTLS client certificate |
 | **`RouteAuthWebSession`** | `/api/v1/approvals/*`, `/api/v1/users/*`, passkey management, console data APIs | Valid WebAuthn session cookie |
-| **`RouteAuthDual`** | `/api/v1/sse/stream`, `/api/v1/sse/events`, `/api/v1/operators` (listing), `/api/v1/approvals/respond` | Either valid mTLS client certificate OR web session cookie |
+| **`RouteAuthDual`** | `/api/v1/sse/stream`, `/api/v1/sse/events`, `/api/v1/operators` (listing), `/api/v1/approvals/respond`, `/api/v1/auth/platform-enrollments/{pending,enrolled,decision,decisions,revoke,consensus}` | Either valid mTLS client certificate OR web session cookie |
 
 ### Five-Layer Governance Verification Sequence
 
 Every transaction entering `POST /api/v1/governance/envelopes` or arriving via MCP/A2A traverses all five governance layers:
 
 1. **L1 Doctrine (Gateway PDP)**: Static regex screening on protobuf string fields and MITRE ATT&CK heuristics on commands, arguments, and file edits. Violations reject fail closed with `ErrTxL1ValidationFailed`.
-2. **L2 Consensus (Gateway Coordination)**: Delegates deliberation to enrolled Consensus services. Members sign `<transaction_hash>|<decision>` with Ed25519 keys. The Gateway attaches votes to the envelope.
-3. **L3 Notary (Gateway Suspension)**: For mutation actions under `ratify` or `notary`, transactions lacking human proof are suspended in SQLite (`SuspendedTransactionStore`). The Gateway issues an approval challenge. A WebAuthn passkey assertion produces the proof and resumes execution.
+2. **L2 Consensus (Gateway Coordination)**: Under `consensus` and `notary` (`posture.RequiresL2()`), the Gateway sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound consensus application's HTTPS deliberation endpoint (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`) and receives the envelope with its `ConsensusProof` signed by the application's Ed25519 key over `<transaction_hash>|<decision>`.
+3. **L3 Notary (Gateway Suspension)**: For actions where `governance.L3Required(actionType, posture)` is true (`actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()`), transactions lacking human proof are suspended in SQLite (`SuspendedTransactionStore` via `mcp.GatewayService.SuspendGovernanceEnvelope`). The Gateway issues an approval challenge (`GovernedSuspension` on MCP/A2A, or HTTP `202 Accepted` with `status: "l3_required"` on `PLATFORM_ENROLLMENT_DECIDE` and `PLATFORM_ENROLLMENT_REVOKE`). A WebAuthn passkey assertion produces the proof and resumes execution via `ResumeWithL3Proof`.
 4. **L4 Warden (Operator PEP)**: Executes pre-dispatch verification in the target Operator runtime: validates nonce replay against SQLite, verifies TTL expiry, recomputes the canonical transaction hash, checks the state Merkle root, and enforces posture-required L2/L3 proofs.
 5. **L5 Actuator (Operator PEP)**: The singular execution boundary. Persists an initial `EXECUTING` receipt, appends to the SQLite commitment ledger, rehydrates scrubbed secrets, mints a short-lived capability, dispatches to the handler, dissolves the capability, and signs the final `COMPLETED` or `FAILED` receipt.
 
@@ -184,6 +185,8 @@ The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 method
 The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains.
 
 All tools enforce fail-closed input validation: SQL tools reject multi-statement injection; URLs reject private IP ranges (SSRF prevention); filesystem tools reject directory traversal; command tools restrict metacharacters.
+
+The `read_field` operation validates the supplied Operator session through `AuthService.ValidateSession` before reading the document store. A missing validator or invalid session rejects the read; a session lookup failure returns an internal error. The lookup uses the request context and the same identity checks as `ValidateOperatorSession`.
 
 ### Agent Integration and MCP Stdio Bridge
 

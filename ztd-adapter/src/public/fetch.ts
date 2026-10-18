@@ -10,6 +10,7 @@ const PUBLIC_ENDPOINTS = {
   stream: '/stream',
   proofCatalog: '/proof-catalog',
   proofManifest: '/proof-manifest',
+  proofSegments: '/proof-segments',
 } as const;
 
 export type PublicEndpoint = keyof typeof PUBLIC_ENDPOINTS;

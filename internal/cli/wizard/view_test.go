@@ -82,44 +82,6 @@ func TestView_CertModeNoFocusIndicatorAtFocusIndexZero(t *testing.T) {
 	assert.NotContains(t, s, "▶▶", "cert mode choice should not show double indicator at focusIndex 0")
 }
 
-// --- View: conditional rendering — posture consensus fields ---
-
-func TestView_PostureDoctrine_ConsensusFieldsHidden(t *testing.T) {
-	m := NewModel(Options{})
-	m.step = StepPosture
-	m.postureChoice = 0
-	s := m.View()
-	assert.NotContains(t, s, "Consensus Policy ID")
-	assert.NotContains(t, s, "Consensus Service URL")
-}
-
-func TestView_PostureConsensus_ConsensusFieldsShown(t *testing.T) {
-	m := NewModel(Options{})
-	m.step = StepPosture
-	m.postureChoice = 1
-	s := m.View()
-	assert.Contains(t, s, "Consensus Policy ID")
-	assert.Contains(t, s, "Consensus Service URL")
-}
-
-func TestView_PostureRatify_ConsensusFieldsHidden(t *testing.T) {
-	m := NewModel(Options{})
-	m.step = StepPosture
-	m.postureChoice = 2
-	s := m.View()
-	assert.NotContains(t, s, "Consensus Policy ID")
-	assert.NotContains(t, s, "Consensus Service URL")
-}
-
-func TestView_PostureNotary_ConsensusFieldsShown(t *testing.T) {
-	m := NewModel(Options{})
-	m.step = StepPosture
-	m.postureChoice = 3
-	s := m.View()
-	assert.Contains(t, s, "Consensus Policy ID")
-	assert.Contains(t, s, "Consensus Service URL")
-}
-
 // --- View: conditional rendering — web frontend / CORS ---
 
 func TestView_WebFrontendNo_CorsFieldHidden(t *testing.T) {

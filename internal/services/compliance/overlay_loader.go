@@ -44,26 +44,6 @@ type OverlayCatalog struct {
 	Overlays []Overlay `json:"overlays"`
 }
 
-// LoadOverlayCatalog reads and parses a single COSAiS overlay catalog JSON
-// file at the given path. The catalog is validated before returning.
-func LoadOverlayCatalog(path string) (*OverlayCatalog, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", constants.ErrOverlayReadFailed, path, err)
-	}
-
-	var catalog OverlayCatalog
-	if err := json.Unmarshal(data, &catalog); err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", constants.ErrOverlayParseFailed, path, err)
-	}
-
-	if err := catalog.Validate(); err != nil {
-		return nil, fmt.Errorf("compliance: validate overlay catalog: %w", err)
-	}
-
-	return &catalog, nil
-}
-
 // Validate checks that the catalog has required fields and no duplicate overlay IDs.
 func (c *OverlayCatalog) Validate() error {
 	if c.Version == "" {

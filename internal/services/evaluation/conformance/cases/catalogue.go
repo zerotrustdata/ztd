@@ -12,20 +12,48 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance/doctrinecorpus"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// governancePostures maps each catalogue posture to its governance posture.
-// The L2 and L3 requirements of an executed case come from these, never from
-// a second copy of the posture table.
-var governancePostures = map[evalv1.EvaluationGovernancePosture]governance.GovernancePosture{
-	evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE:  &governance.DoctrinePosture{},
-	evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS: &governance.ConsensusPosture{},
-	evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY:    &governance.RatifyPosture{},
-	evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY:    &governance.NotaryPosture{},
+// PostureBinding pairs a governance posture with its evaluation wire enum.
+type PostureBinding struct {
+	Posture constants.Posture
+	Wire    evalv1.EvaluationGovernancePosture
+}
+
+// Postures binds every governance posture to its wire enum, in
+// constants.AllPostures order (weakest to strictest). It is the only mapping
+// between the two: the name and the L2 and L3 requirements of a case's posture
+// come from constants.Posture, never from a second copy of the posture table.
+var Postures = []PostureBinding{
+	{Posture: constants.PostureDoctrine, Wire: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE},
+	{Posture: constants.PostureConsensus, Wire: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS},
+	{Posture: constants.PostureRatify, Wire: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY},
+	{Posture: constants.PostureNotary, Wire: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY},
+}
+
+// GovernancePosture returns the governance posture a wire posture runs under.
+// UNSPECIFIED or an unknown value is ErrConformancePostureUnknown.
+func GovernancePosture(wire evalv1.EvaluationGovernancePosture) (constants.Posture, error) {
+	for _, binding := range Postures {
+		if binding.Wire == wire {
+			return binding.Posture, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %s", constants.ErrConformancePostureUnknown, wire)
+}
+
+// WirePosture returns the wire enum of a governance posture. An unknown
+// governance posture is ErrConformancePostureUnknown with UNSPECIFIED.
+func WirePosture(posture constants.Posture) (evalv1.EvaluationGovernancePosture, error) {
+	for _, binding := range Postures {
+		if binding.Posture == posture {
+			return binding.Wire, nil
+		}
+	}
+	return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("%w: %q", constants.ErrConformancePostureUnknown, string(posture))
 }
 
 // Ingress and posture sets used by the row table.
@@ -308,9 +336,13 @@ func Catalogue() ([]Case, []Gap, error) {
 		entries := selectEntries(spec.corpus, corpus)
 		for _, fault := range spec.faults {
 			for _, ingress := range spec.ingresses {
-				for _, posture := range spec.postures {
+				for _, wire := range spec.postures {
+					posture, err := GovernancePosture(wire)
+					if err != nil {
+						return nil, nil, fmt.Errorf("catalogue: row %d: %w", spec.row, err)
+					}
 					for _, entry := range entries {
-						cases = append(cases, newCase(spec, fault, ingress, posture, entry))
+						cases = append(cases, newCase(spec, fault, ingress, PostureBinding{Posture: posture, Wire: wire}, entry))
 					}
 				}
 			}
@@ -328,8 +360,8 @@ func Catalogue() ([]Case, []Gap, error) {
 
 // Applicable returns the cases for one posture, in catalogue order.
 func Applicable(posture evalv1.EvaluationGovernancePosture) ([]Case, error) {
-	if _, ok := governancePostures[posture]; !ok {
-		return nil, fmt.Errorf("catalogue: applicable: %w: %s", constants.ErrConformancePostureUnknown, posture)
+	if _, err := GovernancePosture(posture); err != nil {
+		return nil, fmt.Errorf("catalogue: applicable: %w", err)
 	}
 	all, _, err := Catalogue()
 	if err != nil {
@@ -369,13 +401,13 @@ func selectEntries(set corpusSet, corpus *doctrinecorpus.Corpus) []*doctrinecorp
 	return entries
 }
 
-func newCase(spec rowSpec, fault Fault, ingress Ingress, posture evalv1.EvaluationGovernancePosture, entry *doctrinecorpus.Entry) Case {
+func newCase(spec rowSpec, fault Fault, ingress Ingress, posture PostureBinding, entry *doctrinecorpus.Entry) Case {
 	c := Case{
 		Row:      spec.row,
 		Ingress:  ingress,
 		Fault:    fault,
 		Action:   spec.action,
-		Posture:  posture,
+		Posture:  posture.Wire,
 		Attended: spec.attended,
 	}
 	entryID := ""
@@ -384,17 +416,17 @@ func newCase(spec rowSpec, fault Fault, ingress Ingress, posture evalv1.Evaluati
 		c.CorpusEntryID = entry.ID
 		c.Command = entry.Command
 	}
-	c.ID = caseID(spec.row, fault, ingress, posture, entryID)
+	c.ID = caseID(spec.row, fault, ingress, posture.Posture, entryID)
 
 	effect := effectFor(ingress, spec.action)
 	for _, o := range spec.outcomes {
-		c.Expect = append(c.Expect, o.expect(posture, spec.action, effect))
+		c.Expect = append(c.Expect, o.expect(posture.Posture, spec.action, effect))
 	}
 	return c
 }
 
 // expect completes an outcome for one posture, action and effect.
-func (o outcome) expect(posture evalv1.EvaluationGovernancePosture, action Action, effect Effect) Expect {
+func (o outcome) expect(posture constants.Posture, action Action, effect Effect) Expect {
 	switch o.kind {
 	case ExpectExecuted:
 		return executedExpect(posture, action, effect)
@@ -410,27 +442,16 @@ func (o outcome) expect(posture evalv1.EvaluationGovernancePosture, action Actio
 // executedExpect is the one expected outcome of an EXECUTED submission. L2 is
 // REQUIRED_VALID under consensus and notary (every action), else NOT_REQUIRED.
 // L3 is REQUIRED_VALID for a mutation under ratify and notary, else NOT_REQUIRED.
-func executedExpect(posture evalv1.EvaluationGovernancePosture, action Action, effect Effect) Expect {
-	requiresL2, requiresL3 := requirements(posture)
+func executedExpect(posture constants.Posture, action Action, effect Effect) Expect {
 	l2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
-	if requiresL2 {
+	if posture.RequiresL2() {
 		l2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 	}
 	l3 := operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
-	if action == ActionMutation && requiresL3 {
+	if action == ActionMutation && posture.RequiresL3() {
 		l3 = operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
 	}
 	return Expect{Kind: ExpectExecuted, L2Status: l2, L3Status: l3, Effect: effect}
-}
-
-// requirements returns the L2 and L3 gating of a posture. An unknown posture
-// requires neither; Validate rejects unknown postures before it relies on this.
-func requirements(posture evalv1.EvaluationGovernancePosture) (requiresL2, requiresL3 bool) {
-	gp, ok := governancePostures[posture]
-	if !ok {
-		return false, false
-	}
-	return gp.RequiresL2Signature(), gp.RequiresL3Proof()
 }
 
 // effectFor is the effect an executed case must show: a read leaves the canary
@@ -447,8 +468,8 @@ func effectFor(ingress Ingress, action Action) Effect {
 }
 
 // caseID builds the lower-case case id, with the corpus entry id appended for doctrine rows.
-func caseID(row int, fault Fault, ingress Ingress, posture evalv1.EvaluationGovernancePosture, entryID string) string {
-	id := fmt.Sprintf("r%02d-%s-%s-%s", row, fault, ingress, governancePostures[posture].Name())
+func caseID(row int, fault Fault, ingress Ingress, posture constants.Posture, entryID string) string {
+	id := fmt.Sprintf("r%02d-%s-%s-%s", row, fault, ingress, posture)
 	if entryID != "" {
 		id += "-" + entryID
 	}

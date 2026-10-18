@@ -146,6 +146,7 @@
     - [ModelManifestVerificationStatus](#ztd-eval-v1-ModelManifestVerificationStatus)
     - [ModelProvenanceObservationAttemptStatus](#ztd-eval-v1-ModelProvenanceObservationAttemptStatus)
     - [ModelProvenanceObservationPhase](#ztd-eval-v1-ModelProvenanceObservationPhase)
+    - [ModelWeightVerificationMode](#ztd-eval-v1-ModelWeightVerificationMode)
     - [ProviderBoundaryObservationAttemptStatus](#ztd-eval-v1-ProviderBoundaryObservationAttemptStatus)
     - [ProviderBoundaryObservationPhase](#ztd-eval-v1-ProviderBoundaryObservationPhase)
     - [ProviderHardwareMetricAvailability](#ztd-eval-v1-ProviderHardwareMetricAvailability)
@@ -1426,6 +1427,8 @@ by the storage-side Provenance Operator at the model file site.
 | blob_digest | [string](#string) |  |  |
 | size_bytes | [uint64](#uint64) |  |  |
 | media_type | [string](#string) |  |  |
+| verification_mode | [ModelWeightVerificationMode](#ztd-eval-v1-ModelWeightVerificationMode) |  |  |
+| full_hash_completed_at_unix_ms | [int64](#int64) |  | Completion time of the full SHA-256 hash this attestation rests on. |
 
 
 
@@ -2988,6 +2991,20 @@ governed provider attempt on the remote Provenance Operator.
 | MODEL_PROVENANCE_OBSERVATION_PHASE_UNSPECIFIED | 0 |  |
 | MODEL_PROVENANCE_OBSERVATION_PHASE_BEGIN | 1 |  |
 | MODEL_PROVENANCE_OBSERVATION_PHASE_FINALIZE | 2 |  |
+
+
+
+<a name="ztd-eval-v1-ModelWeightVerificationMode"></a>
+
+### ModelWeightVerificationMode
+ModelWeightVerificationMode reports how the Provenance Operator verified one
+weight blob for one attestation window.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| MODEL_WEIGHT_VERIFICATION_MODE_UNSPECIFIED | 0 |  |
+| MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH | 1 | The blob was streamed through SHA-256 for this window. |
+| MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED | 2 | The blob&#39;s file identity (file ID, size, modification time, change time) is unchanged since the full hash that completed at full_hash_completed_at_unix_ms. |
 
 
 

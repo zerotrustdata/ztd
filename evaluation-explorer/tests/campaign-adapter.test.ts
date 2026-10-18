@@ -1034,6 +1034,7 @@ describe('adaptCampaignProjectionEnvelope', () => {
               vram_peak_bytes: { value: 8192 },
               utilization_percent: { value: 77.5 },
             },
+            security_privacy_events: { model_attempted_unauthorized_access: 2 },
             unavailable_reasons: ['provider_boundary_observation_missing:attempt-2'],
           },
         },
@@ -1043,6 +1044,7 @@ describe('adaptCampaignProjectionEnvelope', () => {
 
     const assignment = records.find((record) => record.kind === 'assignment_result');
     expect(assignment?.benchmark_observations).toMatchObject({
+      security_privacy_events: { model_attempted_unauthorized_access: 2 },
       timing: { generation_ms: { value: 1200 } },
       gpu: {
         vram_peak_bytes: { value: 8192 },
@@ -1128,14 +1130,20 @@ describe('adaptCampaignProjectionEnvelope', () => {
 
   it('rejects benchmark observation fields the wire does not publish', () => {
     const resultRecord = JSON.parse(publicResultVector.canonical_json) as Record<string, unknown>;
-    for (const field of ['escalation_disposition', 'security_privacy_events', 'correlated_failure']) {
+    const rejected: Record<string, unknown>[] = [
+      { escalation_disposition: {} },
+      { correlated_failure: {} },
+      { security_privacy_events: { private_event: 1 } },
+      { security_privacy_events: { model_attempted_unauthorized_access: -1 } },
+    ];
+    for (const benchmark_observations of rejected) {
       expect(() =>
         adaptCampaignProjectionEnvelope(
           {
             schema_version: '1.1.0',
             message_type: 'PublicAssignmentResultProjection',
             idempotency_key: 'run-1:assign-1:result',
-            record: { ...resultRecord, benchmark_observations: { [field]: {} } },
+            record: { ...resultRecord, benchmark_observations },
           },
           createCampaignAdaptContext(),
         ),

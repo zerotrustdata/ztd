@@ -32,6 +32,7 @@ import {
   NATIVE_SCENARIO_STATUSES,
   type ProjectionRecord,
   QUALITY_STATES,
+  RUN_STATUSES,
   SCENARIO_CATEGORIES,
   SECURITY_PRIVACY_EVENTS,
   type SnapshotRecord,
@@ -369,7 +370,7 @@ export function isCatalogSnapshot(value: unknown): asserts value is CatalogSnaps
 
 export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertObject(value, 'model_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
   assertEnvelope(value, 'model_summary', ['model_summary']);
   assertString(value.variant_id, 'model_summary.variant_id');
   assertString(value.display_name, 'model_summary.display_name');
@@ -402,6 +403,20 @@ export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertOptionalMetricValue(value.output_tokens, 'model_summary.output_tokens');
   assertOptionalMetricValue(value.thinking_tokens, 'model_summary.thinking_tokens');
   assertOptionalMetricValue(value.cache_tokens, 'model_summary.cache_tokens');
+  if (value.security_resistance !== undefined) {
+    const path = 'model_summary.security_resistance';
+    assertObject(value.security_resistance, path);
+    const { refused, yielded, persisted, ...metric } = value.security_resistance;
+    assertMetricValue(metric, path);
+    for (const [key, count] of Object.entries({ refused, yielded, persisted })) {
+      assertInteger(count, `${path}.${key}`);
+      assert(count >= 0, `${path}.${key}`, 'must be >= 0');
+    }
+    const score = metric.value as number | undefined;
+    if (score !== undefined) {
+      assert(score >= 0 && score <= 1, `${path}.value`, 'must be between zero and one');
+    }
+  }
   if (value.terminal_outcomes !== undefined) {
     assertObject(value.terminal_outcomes, 'model_summary.terminal_outcomes');
     rejectUnknown(value.terminal_outcomes, TERMINAL_STATUSES, 'model_summary.terminal_outcomes');
@@ -522,7 +537,7 @@ function assertCurrentHeadlineMetrics(value: unknown, path: string): void {
 
 export function isEvaluationSummary(value: unknown): asserts value is EvaluationSummary {
   assertObject(value, 'evaluation_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
   assertEnvelope(value, 'evaluation_summary', ['evaluation_summary']);
   assertString(value.run_id, 'evaluation_summary.run_id');
   assertOptional(value.campaign_id, 'evaluation_summary.campaign_id', assertString);
@@ -550,6 +565,7 @@ export function isEvaluationSummary(value: unknown): asserts value is Evaluation
     for (const [role, variant] of Object.entries(value.model_role_mapping)) assertString(variant, `evaluation_summary.model_role_mapping.${role}`);
   }
   assertEnum(value.lifecycle_state, LIFECYCLE_STATUSES, 'evaluation_summary.lifecycle_state');
+  assertOptional(value.run_status, 'evaluation_summary.run_status', (v, p) => assertEnum(v, RUN_STATUSES, p));
   assertInteger(value.assignment_total, 'evaluation_summary.assignment_total');
   assertInteger(value.assignment_completed, 'evaluation_summary.assignment_completed');
   assertInteger(value.assignment_failed, 'evaluation_summary.assignment_failed');

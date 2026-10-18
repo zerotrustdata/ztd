@@ -184,13 +184,7 @@ func enrollmentRequestID(event OwnerEvent) (string, bool) {
 	return payload.RequestID, true
 }
 
-// Events returns every event delivered to the owner so far.
-func (c *OwnerConsole) Events() []OwnerEvent {
-	return c.events.snapshot()
-}
-
-// Mark returns a position in the event record for EventsAfter and
-// AwaitEventAfter.
+// Mark returns a position in the event record for EventsAfter.
 func (c *OwnerConsole) Mark() int {
 	return c.events.len()
 }
@@ -202,16 +196,6 @@ func (c *OwnerConsole) EventsAfter(mark int) []OwnerEvent {
 		return nil
 	}
 	return events[mark:]
-}
-
-// AwaitEventAfter blocks until an event recorded at or after mark satisfies
-// match.
-func (c *OwnerConsole) AwaitEventAfter(ctx context.Context, mark int, match func(OwnerEvent) bool) (OwnerEvent, error) {
-	event, _, err := c.events.await(ctx, mark, match)
-	if err != nil {
-		return OwnerEvent{}, fmt.Errorf("owner console: await event: %w", err)
-	}
-	return event, nil
 }
 
 // EnrollmentRequests returns the distinct enrollment request IDs announced to

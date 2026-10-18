@@ -27,7 +27,7 @@ func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
 	req := testCampaignInitRequest(t)
 	run, err := controller.InitializeCampaign(ctx, req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(ctx, controller, run.GetRunId())
+	_, err = controller.ScheduleRun(ctx, run.GetRunId())
 	require.NoError(t, err)
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
 	require.NoError(t, err)

@@ -8,7 +8,6 @@
 package eval
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,24 +15,15 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
 
-// markVerifiedOn queues qwen3:4b as verified by a prepared run of a formation
+// markVerifiedOn queues qwen3:4b as verified by a prepared run of a model
 // campaign over the given suite.
 func markVerifiedOn(t *testing.T, env *runEnv, suiteID string) {
 	t.Helper()
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	campaignID := "verified-on-" + suiteID
-	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
-		Platform:     testPlatform,
-		CampaignID:   campaignID,
-		Variants:     testFormationCatalogCLIVariants(),
-		Repetitions:  1,
-		Formations:   true,
-		FormationIDs: []string{testFormationID},
-		SuiteID:      suiteID,
-	})
-	require.NoError(t, err)
+	env.createSuiteCampaign(t, campaignID, suiteID)
 	runID := env.startPrepared(t, campaignID, "run-verified")
-	_, err = evaluation.MarkCampaignQueueEntry(evaluation.MarkCampaignQueueEntryRequest{
+	_, err := evaluation.MarkCampaignQueueEntry(evaluation.MarkCampaignQueueEntryRequest{
 		FileService:   env.fileSvc(t),
 		VariantID:     "qwen3-4b",
 		Status:        evaluation.QueueStatusVerified,

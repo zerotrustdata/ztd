@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
@@ -71,9 +70,6 @@ func TestWriteLaunchProfile_RoundTripPreservesAllFields(t *testing.T) {
 	assert.Equal(t, cfg.RateLimitBurst, profile.Config.RateLimitBurst)
 	assert.Equal(t, cfg.LogLevel, profile.Config.LogLevel)
 	assert.Equal(t, cfg.CertIdentityMode, profile.Config.CertIdentityMode)
-	assert.Equal(t, cfg.ConsensusID, profile.Config.ConsensusID)
-	assert.Equal(t, cfg.ConsensusURL, profile.Config.ConsensusURL)
-	assert.Equal(t, cfg.ConsensusBootstrap, profile.Config.ConsensusBootstrap)
 	assert.Equal(t, cfg.MCPDownstreamURL, profile.Config.MCPDownstreamURL)
 	assert.Equal(t, cfg.A2ADownstreamURL, profile.Config.A2ADownstreamURL)
 	assert.Equal(t, cfg.PublicBaseURL, profile.Config.PublicBaseURL)
@@ -150,7 +146,7 @@ func TestReadLaunchProfile_InvalidPostureReturnsErrLaunchProfileInvalid(t *testi
 	fileSvc := newTestFileSvc(t)
 
 	cfg := validTestGatewayConfig()
-	cfg.Posture = ztdconfig.GatewayPosture("bogus")
+	cfg.Posture = constants.Posture("bogus")
 	writeTestLaunchProfile(t, fileSvc, cfg)
 
 	_, err := ReadLaunchProfile(fileSvc)

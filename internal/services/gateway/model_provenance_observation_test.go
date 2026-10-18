@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -81,67 +80,13 @@ func TestModelProvenanceObservationCoordinator_EnsureOperator_SubscribesToProven
 		}},
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 
 	assert.NoError(t, coordinator.synchronizeOperatorSubscription(context.Background()))
 	assert.NotNil(t, coordinator.operator)
 	assert.Equal(t, "sess-prov-1", coordinator.operator.OperatorSessionID)
-}
-
-func TestModelProvenanceObservationCoordinator_PreflightCommandDelivery_FailsWithoutCmdSubscriber(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	windowStore, err := model_provenance.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	pubsubHandler := NewGatewayWebSocketHandler(logger)
-
-	coordinator := NewModelProvenanceObservationCoordinator(
-		&DispatchService{pubsub: pubsubHandler},
-		&stubModelProvenanceOperatorLister{operators: []*operatorv1.OperatorDocument{
-			{
-				Id:                "prov-1",
-				OperatorSessionId: "sess-prov-1",
-				Status:            string(constants.OperatorStatusActive),
-				OperatorType:      string(constants.OperatorTypeRemote),
-				RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}},
-			},
-		}},
-		pubsubHandler,
-		windowStore,
-		logger,
-	)
-
-	err = coordinator.PreflightCommandDelivery(context.Background())
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-}
-
-func TestModelProvenanceObservationCoordinator_PreflightCommandDelivery_EmbeddedOperatorUsesProcessor(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	windowStore, err := model_provenance.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	pubsubHandler := NewGatewayWebSocketHandler(logger)
-	lister := &stubModelProvenanceOperatorLister{operators: []*operatorv1.OperatorDocument{
-		{
-			Id:                string(constants.DocIDEmbeddedOperator),
-			OperatorSessionId: "sess-embedded",
-			Status:            string(constants.OperatorStatusActive),
-			OperatorType:      string(constants.OperatorTypeEmbedded),
-			RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}},
-		},
-	}}
-	processor := embeddedEnvelopeProcessorFunc(func(context.Context, []byte) (*operatorv1.ActionReceipt, error) {
-		return &operatorv1.ActionReceipt{}, nil
-	})
-
-	withProcessor := NewModelProvenanceObservationCoordinator(&DispatchService{pubsub: pubsubHandler, embeddedProcessor: processor}, lister, pubsubHandler, windowStore, logger)
-	require.NoError(t, withProcessor.PreflightCommandDelivery(context.Background()))
-
-	withoutProcessor := NewModelProvenanceObservationCoordinator(&DispatchService{pubsub: pubsubHandler}, lister, pubsubHandler, windowStore, logger)
-	err = withoutProcessor.PreflightCommandDelivery(context.Background())
-	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
 }
 
 func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t *testing.T) {
@@ -151,12 +96,14 @@ func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
 
+	announcer := &recordingEvidenceAnnouncer{}
 	coordinator := NewModelProvenanceObservationCoordinator(
 		&DispatchService{},
 		&stubModelProvenanceOperatorLister{operators: []*operatorv1.OperatorDocument{
 			{
 				Id:                "prov-1",
 				OperatorSessionId: "sess-prov-1",
+				UserId:            "owner-1",
 				Status:            string(constants.OperatorStatusActive),
 				OperatorType:      string(constants.OperatorTypeRemote),
 				RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}},
@@ -164,6 +111,7 @@ func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t
 		}},
 		pubsubHandler,
 		windowStore,
+		announcer,
 		logger,
 	)
 
@@ -184,6 +132,13 @@ func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t
 	loaded, err := windowStore.Load(context.Background(), "attempt-async-1")
 	require.NoError(t, err)
 	assert.Equal(t, "attempt-async-1", loaded.GetProviderAttemptId())
+	assert.Equal(t, []string{string(constants.EventModelProvenanceAttestationRecorded) + "/owner-1/attempt-async-1"}, announcer.recorded)
+}
+
+type recordingEvidenceAnnouncer struct{ recorded []string }
+
+func (r *recordingEvidenceAnnouncer) WindowRecorded(_ context.Context, eventType constants.EventType, userID, providerAttemptID string) {
+	r.recorded = append(r.recorded, string(eventType)+"/"+userID+"/"+providerAttemptID)
 }
 
 func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCmdSubscriber(t *testing.T) {
@@ -210,6 +165,7 @@ func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCm
 		}},
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 
@@ -226,113 +182,4 @@ func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCm
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
-}
-
-// A preflight must be driven by completion delivery, never by store reads.
-type eventOnlyProvenanceStore struct{ model_provenance.WindowStore }
-
-func (eventOnlyProvenanceStore) Load(context.Context, string) (*evalv1.ModelProvenanceAttestationWindow, error) {
-	panic("preflight attempted to poll provenance storage")
-}
-
-func TestModelProvenanceObservationCoordinator_PreflightStorageAttestation(t *testing.T) {
-	for _, scenario := range []string{"begin failure", "finalize failure", "delayed finalize failure", "success with unrelated failure", "cancellation", "silent operator"} {
-		t.Run(scenario, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-				store, err := model_provenance.NewWindowStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
-				require.NoError(t, err)
-				op := &operatorv1.OperatorDocument{Id: "prov-1", OperatorSessionId: "sess-prov-1", Status: string(constants.OperatorStatusActive),
-					OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}}}
-				dispatch, broker := newTestDispatchService(t, "root-abc", op)
-				coordinator := NewModelProvenanceObservationCoordinator(dispatch, &stubModelProvenanceOperatorLister{operators: []*operatorv1.OperatorDocument{op}}, broker, eventOnlyProvenanceStore{store}, logger)
-				defer coordinator.Stop()
-				cmdChannel := pubsub.CmdChannel(op.Id, op.OperatorSessionId)
-				subscriber := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
-				broker.subscribe(cmdChannel, subscriber)
-				defer broker.unsubscribe(cmdChannel, subscriber)
-				requestTimeout := 2 * time.Second
-				if scenario == "silent operator" {
-					requestTimeout = 12 * time.Second
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-				defer cancel()
-				commands := 0
-				unregister := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, data []byte) {
-					commands++
-					env := &commonv1.GovernanceEnvelope{}
-					require.NoError(t, protojson.Unmarshal(data, env))
-					command := &evalv1.ModelProvenanceObservationCommand{}
-					require.NoError(t, proto.Unmarshal(env.Payload, command))
-					finalize := command.Phase == evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_FINALIZE
-					if scenario == "begin failure" || ((scenario == "finalize failure" || scenario == "delayed finalize failure") && finalize) || scenario == "success with unrelated failure" {
-						txID := env.Id
-						if scenario == "success with unrelated failure" {
-							txID = "unrelated-transaction"
-						}
-						payload, err := proto.Marshal(&operatorv1.ActionReceipt{TransactionId: txID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ResultSummary: "manifest missing"})
-						require.NoError(t, err)
-						wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{EventType: string(constants.Event.Operator.Receipt.Recorded), OperatorId: op.Id, OperatorSessionId: op.OperatorSessionId, Payload: payload})
-						require.NoError(t, err)
-						// Simulate broker fan-out after receipt signature verification.
-						if scenario == "delayed finalize failure" {
-							go func() {
-								select {
-								case <-ctx.Done():
-								case <-time.After(10 * time.Millisecond):
-									broker.Publish(pubsub.ReceiptsChannel(op.Id, op.OperatorSessionId), wire)
-								}
-							}()
-						} else {
-							broker.Publish(pubsub.ReceiptsChannel(op.Id, op.OperatorSessionId), wire)
-						}
-					}
-					if !finalize && scenario != "begin failure" && scenario != "silent operator" {
-						payload, err := proto.Marshal(&operatorv1.ActionReceipt{TransactionId: env.Id, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED})
-						require.NoError(t, err)
-						wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{EventType: string(constants.Event.Operator.Receipt.Recorded), OperatorId: op.Id, OperatorSessionId: op.OperatorSessionId, Payload: payload})
-						require.NoError(t, err)
-						broker.Publish(pubsub.ReceiptsChannel(op.Id, op.OperatorSessionId), wire)
-					}
-					if finalize && scenario == "success with unrelated failure" {
-						payload, err := proto.Marshal(&evalv1.ModelProvenanceObservationCompleted{Window: testModelProvenanceWindow(t, command.ProviderAttemptId)})
-						require.NoError(t, err)
-						wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{EventType: string(constants.Event.Operator.ModelProvenanceObservation.Completed), Payload: payload})
-						require.NoError(t, err)
-						broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), wire)
-					}
-					if finalize && scenario == "cancellation" {
-						cancel()
-					}
-				})
-				defer unregister()
-				window, err := coordinator.PreflightStorageAttestation(ctx, "probe-model:7b", strings.Repeat("a", 64))
-				switch scenario {
-				case "success with unrelated failure":
-					require.NoError(t, err)
-					require.NotNil(t, window)
-				case "cancellation":
-					require.ErrorIs(t, err, context.Canceled)
-				case "silent operator":
-					require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-					require.ErrorContains(t, err, "did not acknowledge BEGIN")
-					require.NoError(t, ctx.Err(), "acknowledgement deadline must precede the full probe deadline")
-				default:
-					require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-					require.ErrorContains(t, err, "manifest missing")
-					require.NoError(t, ctx.Err(), "failure must arrive before request timeout")
-				}
-				if scenario == "begin failure" || scenario == "silent operator" {
-					require.Equal(t, 1, commands)
-				}
-				if scenario != "begin failure" && scenario != "silent operator" {
-					require.Equal(t, 2, commands)
-				}
-				broker.handlersMu.RLock()
-				remaining := len(broker.handlers[pubsub.ReceiptsChannel(op.Id, op.OperatorSessionId)])
-				broker.handlersMu.RUnlock()
-				require.Zero(t, remaining, "preflight receipt subscription must be cleaned up")
-			})
-		})
-	}
 }

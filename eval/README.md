@@ -72,7 +72,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval models remove` | Remove one variant by selector from the registry (or `--catalog`) |
 | `ztd eval models import` | Copy variants from the catalog into the runtime registry |
 | `ztd eval models pull` | Dispatch governed pull/copy maintenance to the exact Inference Operator session |
-| `ztd eval campaigns create` | Create a frozen campaign definition from model selector or formations |
+| `ztd eval campaigns create` | Create a frozen campaign definition over one registry model |
 | `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags |
 | `ztd eval runs export` | Export one run's disclosure-safe bundle under the runtime root (`--output-dir`, runtime-relative) |
 | `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json`. Skips and lists a model whose tool-calling probe the provider rejected (freeze with `--probe-capabilities` to record it) and a model that shares a digest with a queued model or one earlier in rollout order (an alias) |

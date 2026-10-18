@@ -302,15 +302,6 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	if opts.CertIdentityMode != "" {
 		args = append(args, "--cert-mode", opts.CertIdentityMode)
 	}
-	if opts.ConsensusID != "" {
-		args = append(args, "--consensus-id", opts.ConsensusID)
-	}
-	if opts.ConsensusURL != "" {
-		args = append(args, "--consensus-url", opts.ConsensusURL)
-	}
-	if opts.ConsensusBootstrap != "" {
-		args = append(args, "--consensus-bootstrap", opts.ConsensusBootstrap)
-	}
 	if opts.MCPDownstreamURL != "" {
 		args = append(args, "--mcp-downstream-url", opts.MCPDownstreamURL)
 	}
@@ -372,6 +363,9 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	}
 	for _, cidr := range opts.PublicSpectatorTrustedProxyCIDRs {
 		args = append(args, "--public-spectator-trusted-proxy-cidr", cidr)
+	}
+	if opts.PprofListenAddr != "" {
+		args = append(args, "--pprof-listen", opts.PprofListenAddr)
 	}
 
 	return args, nil

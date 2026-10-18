@@ -111,10 +111,6 @@ func (l evalLayout) assignmentResultPath(runID, assignmentID string) string {
 	return filepath.Join(l.assignmentsDir(runID), assignmentID+"-result"+constants.FileExtJSON)
 }
 
-func (l evalLayout) assignmentFormationRunPath(runID, assignmentID string) string {
-	return filepath.Join(l.assignmentsDir(runID), assignmentID+"-formation-run"+constants.FileExtJSON)
-}
-
 func (l evalLayout) assignmentAgentTracePath(runID, assignmentID string) string {
 	return filepath.Join(l.assignmentsDir(runID), assignmentID+"-agent-trace"+constants.FileExtJSON)
 }

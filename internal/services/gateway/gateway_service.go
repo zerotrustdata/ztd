@@ -16,7 +16,6 @@ package gateway
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -38,7 +37,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
-	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway/embedded"
@@ -98,7 +96,6 @@ type GatewayModeService struct {
 	cmdSvc                   *pubsub.OperatorPubSubService
 	envProc                  governance.EnvelopeProcessor
 	platformEnrollmentSvc    *PlatformEnrollmentService
-	consensusSvc             *consensus.ConsensusService
 	dispatchSvc              *DispatchService
 	inferenceDispatchSvc     *dispatch.DispatchService
 	providerObservationCoord *ProviderBoundaryObservationCoordinator
@@ -123,13 +120,12 @@ type GatewayModeService struct {
 
 // gatewayServiceBuilder constructs a GatewayModeService from configuration.
 type gatewayServiceBuilder struct {
-	cfg          *config.Config
-	logger       *slog.Logger
-	fileSvc      fs.RuntimeFileService
-	db           *CanonicalDBService
-	consensusSvc *consensus.ConsensusService
-	deliberator  *consensus.LocalDeliberator
-	cmdSvc       *pubsub.OperatorPubSubService
+	cfg         *config.Config
+	logger      *slog.Logger
+	fileSvc     fs.RuntimeFileService
+	db          *CanonicalDBService
+	deliberator mcp.L2ConsensusDeliberator
+	cmdSvc      *pubsub.OperatorPubSubService
 }
 
 // newGatewayServiceBuilder creates a builder for production use.
@@ -143,9 +139,8 @@ func (b *gatewayServiceBuilder) withDB(db *CanonicalDBService) *gatewayServiceBu
 	return b
 }
 
-// withConsensus configures pre-bootstrapped consensus service and deliberator.
-func (b *gatewayServiceBuilder) withConsensus(cs *consensus.ConsensusService, delib *consensus.LocalDeliberator) *gatewayServiceBuilder {
-	b.consensusSvc = cs
+// withDeliberator configures an explicit L2 consensus deliberator.
+func (b *gatewayServiceBuilder) withDeliberator(delib mcp.L2ConsensusDeliberator) *gatewayServiceBuilder {
 	b.deliberator = delib
 	return b
 }
@@ -250,7 +245,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 
 	// Outbound Operators renew their leaf, and refresh their L2 trust, over
 	// their own renewal: channel.
-	wsHandler.SetCertRenewalService(NewOperatorCertRenewalService(pki, auth, consensusStore, cfg.Gateway.ConsensusID, logger))
+	wsHandler.SetCertRenewalService(NewOperatorCertRenewalService(pki, auth, consensusStore, logger))
 
 	cliSessionSvc := NewCLISessionService(docStore, logger)
 	operatorSessionSvc, err := NewOperatorSessionService(docStore, auditStore, logger)
@@ -347,30 +342,9 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	}
 
 	// --- Consensus bootstrap (C2 inverted order: before pubsub and mcpGateway) ---
-	consensusSvc := b.consensusSvc
 	l2Deliberator := b.deliberator
-	if consensusSvc == nil && cfg.Gateway.Posture.RequiresL2() && cfg.Gateway.ConsensusID != "" {
-		policy, err := consensusStore.GetConsensus(ctx, cfg.Gateway.ConsensusID)
-		if err == nil && policy != nil {
-			memberKeys, err := consensus.NewKeystoreKeyProvider(db.GetSecretManager().GetKeystore(), cfg.Gateway.ConsensusID)
-			if err != nil {
-				return nil, fmt.Errorf("gateway: create consensus key provider: %w", err)
-			}
-			keyProvider := consensus.KeyProviderFunc(func(appID string) (ed25519.PrivateKey, error) {
-				if key, err := memberKeys.GetMemberKey(appID); err == nil {
-					return key, nil
-				}
-				if appID == actuatorKeyID {
-					return actuatorPriv, nil
-				}
-				return nil, fmt.Errorf("bootstrap consensus: %w: %s", constants.ErrConsensusMemberKeyNotFound, appID)
-			})
-			cs, err := consensus.NewConsensusFromPolicy(policy, keyProvider, doctrine, logger, res)
-			if err == nil {
-				consensusSvc = cs
-				l2Deliberator = consensus.NewLocalDeliberator(consensusSvc)
-			}
-		}
+	if l2Deliberator == nil {
+		l2Deliberator = consensusStore.NewConsensusAppDeliberator(nil)
 	}
 
 	// --- Command Service (OperatorPubSubService) ---
@@ -384,7 +358,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 			CLISessions:      cliSessionSvc,
 			OperatorSessions: operatorSessionSvc,
 			Connections:      wsHandler,
-			Posture:          string(cfg.Gateway.Posture),
+			Posture:          cfg.Gateway.Posture,
 		}
 		govCore := pubsub.GovernanceCoreDeps{
 			ExecutionTarget:   embeddedOperator,
@@ -428,7 +402,6 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 			GovernedDocStore:       docStore,
 			ConsensusPolicyStore:   consensusStore,
 			FieldReader:            docStore,
-			Consensus:              consensusSvc,
 			PlatformEnrollmentDeps: platformDeps,
 			Posture:                cfg.Gateway.Posture,
 		}
@@ -462,9 +435,6 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		}
 	}
 
-	// --- Platform enrollment service (C2: concrete cmdSvc injected) ---
-	platformEnrollmentSvc := NewPlatformEnrollmentService(docStore, userSvc, cmdSvc, stateRootSvc, string(cfg.Gateway.Posture), approvalsPublisher, logger)
-
 	// --- MCP gateway (C2: concrete cmdSvc, auditLogger, l2Deliberator injected) ---
 	var auditLogger mcp.AuditLogger
 	if auditStore != nil {
@@ -478,7 +448,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		ScrubbingService:       scrubbingService,
 		ThreatScanner:          doctrine,
 		MaxPayloadBytes:        cfg.Gateway.MaxPayloadBytes,
-		Posture:                string(cfg.Gateway.Posture),
+		Posture:                cfg.Gateway.Posture,
 		A2ADownstreamURL:       cfg.Gateway.A2ADownstreamURL,
 		PublicBaseURL:          publicBaseURL,
 		AuditStore:             auditStore,
@@ -491,7 +461,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		DownstreamCmd:          cfg.Gateway.MCPDownstreamCmd,
 		DownstreamArgs:         cfg.Gateway.MCPDownstreamArgs,
 		DBService:              docStore,
-		SessionValidator:       cmdSvc,
+		SessionValidator:       auth,
 		AuditLogger:            auditLogger,
 		L2ConsensusDeliberator: l2Deliberator,
 		EmbeddedSession:        embeddedOperator,
@@ -504,6 +474,9 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if err := cmdSvc.BindMCPGateway(mcpGateway); err != nil {
 		return nil, fmt.Errorf("gateway: bind MCP gateway to command service: %w", err)
 	}
+
+	// --- Platform enrollment service (C2: concrete cmdSvc, mcpGateway, embeddedOperator injected) ---
+	platformEnrollmentSvc := NewPlatformEnrollmentService(docStore, userSvc, cmdSvc, stateRootSvc, cfg.Gateway.Posture, approvalsPublisher, mcpGateway, embeddedOperator, logger)
 
 	// --- Passkey orchestrator and handler ---
 	passkeyOrchestrator, err := NewPasskeyOrchestrator(mcpGateway, newNotifyingSuspendedStore(suspendedTxService, approvalsPublisher), sseStore, wsHandler, logger)
@@ -520,7 +493,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		Responder:          res,
 		MaxPayload:         cfg.Gateway.MaxPayloadBytes,
 		Orchestrator:       passkeyOrchestrator,
-		Posture:            string(cfg.Gateway.Posture),
+		Posture:            cfg.Gateway.Posture,
 	})
 
 	// Construct the command dispatch service and the inference dispatch
@@ -532,23 +505,24 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	// L2 signatures). Under postures that require L3 proof (ratify, notary),
 	// mutation dispatches are rejected at envelope construction because the
 	// gateway dispatch path cannot mint human proofs.
-	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, string(cfg.Gateway.Posture), doctrine, l2Deliberator, signerStore, cmdSvc)
+	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, cfg.Gateway.Posture, doctrine, l2Deliberator, signerStore, cmdSvc)
 	inferenceDispatchSvc := dispatch.NewDispatchService(
 		&gatewayDispatcherAdapter{svc: dispatchSvc},
 		&gatewayOperatorListerAdapter{svc: reg},
 		logger,
 	)
 	ownerOperatorLister := &registrationOwnerOperatorLister{reg: reg, userSvc: userSvc}
-	providerObservationCoord := NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, nil, logger)
+	evidenceWindows := NewEvidenceWindowPublisher(docStore, NewSSEEventPublisher(sseStore, wsHandler), logger)
+	providerObservationCoord := NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, nil, nil, logger)
 	if windowStore, err := provider_observer.NewWindowStore(b.fileSvc); err == nil {
-		providerObservationCoord = NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, windowStore, logger)
+		providerObservationCoord = NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, windowStore, evidenceWindows, logger)
 		inferenceDispatchSvc.SetProviderObservationNotifier(providerObservationCoord)
 	} else {
 		logger.Warn("Provider-boundary observation window store unavailable", "error", err)
 	}
 	var modelProvenanceCoord *ModelProvenanceObservationCoordinator
 	if provenanceWindowStore, err := model_provenance.NewWindowStore(b.fileSvc); err == nil {
-		modelProvenanceCoord = NewModelProvenanceObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, provenanceWindowStore, logger)
+		modelProvenanceCoord = NewModelProvenanceObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, provenanceWindowStore, evidenceWindows, logger)
 		inferenceDispatchSvc.SetProvenanceObservationNotifier(modelProvenanceCoord)
 	} else {
 		logger.Warn("Model provenance attestation window store unavailable", "error", err)
@@ -588,7 +562,6 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		cmdSvc:                   cmdSvc,
 		envProc:                  cmdSvc,
 		platformEnrollmentSvc:    platformEnrollmentSvc,
-		consensusSvc:             consensusSvc,
 		dispatchSvc:              dispatchSvc,
 		inferenceDispatchSvc:     inferenceDispatchSvc,
 		providerObservationCoord: providerObservationCoord,
@@ -638,9 +611,18 @@ func NewGatewayModeService(cfg *config.Config, fileSvc fs.RuntimeFileService, lo
 	return newGatewayServiceBuilder(cfg, fileSvc, logger).build()
 }
 
-// NewGatewayModeServiceWithDB creates a new gateway mode service with existing DB and pre-configured consensus.
-func NewGatewayModeServiceWithDB(cfg *config.Config, fileSvc fs.RuntimeFileService, logger *slog.Logger, db *CanonicalDBService, cs *consensus.ConsensusService, delib *consensus.LocalDeliberator) (*GatewayModeService, error) {
-	return newGatewayServiceBuilder(cfg, fileSvc, logger).withDB(db).withConsensus(cs, delib).build()
+// NewGatewayModeServiceWithDB creates a new gateway mode service with existing DB and optional deliberator.
+func NewGatewayModeServiceWithDB(cfg *config.Config, fileSvc fs.RuntimeFileService, logger *slog.Logger, db *CanonicalDBService, deliberators ...any) (*GatewayModeService, error) {
+	b := newGatewayServiceBuilder(cfg, fileSvc, logger).withDB(db)
+	for _, d := range deliberators {
+		if d == nil {
+			continue
+		}
+		if delib, ok := d.(mcp.L2ConsensusDeliberator); ok {
+			b = b.withDeliberator(delib)
+		}
+	}
+	return b.build()
 }
 
 type networkIdentityDetector interface {
@@ -754,8 +736,10 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 	providerObservationDeps := providerObservationControllerDeps(logger, ls.responder, ls.fileSvc)
 	providerObservationDeps.ObservationCoordinator = ls.providerObservationCoord
 	modelProvenanceDeps := modelProvenanceControllerDeps(logger, ls.responder, ls.fileSvc)
-	modelProvenanceDeps.ProvenanceCoordinator = ls.modelProvenanceCoord
-	modelProvenanceDeps.ProgressPublisher = NewSSEEventPublisher(ls.sseStore, ls.pubsub)
+	evalCampaignPublicationSvc, err := NewEvalCampaignPublicationService(ls.docStore, func() *PublicSpectatorRuntime { return ls.publicSpectator })
+	if err != nil {
+		return fmt.Errorf("gateway: %w", err)
+	}
 
 	ztdReader, err := ztdbinaries.OpenReader(constants.ZtdBinariesDir)
 	if err != nil {
@@ -844,7 +828,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Reg:                ls.reg,
 			Auth:               ls.auth,
 			UserSvc:            userSvc,
-			LogoutSvc: NewSessionLogoutService(SessionLogoutServiceDeps{
+			LogoutSvc: NewUserLogoutService(UserLogoutServiceDeps{
 				Logger:      logger,
 				CLISessions: cliSessionSvc,
 				WebSessions: ls.webSessionSvc,
@@ -855,6 +839,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		},
 		CLISessionControllerDeps: CLISessionControllerDeps{
 			Logger:    logger,
+			UserSvc:   userSvc,
 			Responder: ls.responder,
 		},
 		EnrollmentTokenControllerDeps: EnrollmentTokenControllerDeps{
@@ -869,20 +854,19 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			UserSvc:   userSvc,
 			Responder: ls.responder,
 		},
-		SessionControllerDeps: SessionControllerDeps{
+		WebSessionControllerDeps: WebSessionControllerDeps{
 			Logger:      logger,
 			DocStore:    ls.docStore,
 			Responder:   ls.responder,
 			CrossOrigin: len(cfg.Gateway.AllowedOrigins) > 0,
 		},
 		AdminControllerDeps: AdminControllerDeps{
-			Cfg:            cfg,
-			Logger:         logger,
-			DocStore:       ls.docStore,
-			SignerStore:    ls.signerStore,
-			ConsensusStore: ls.consensusStore,
-			UserSvc:        userSvc,
-			Responder:      ls.responder,
+			Cfg:         cfg,
+			Logger:      logger,
+			DocStore:    ls.docStore,
+			SignerStore: ls.signerStore,
+			UserSvc:     userSvc,
+			Responder:   ls.responder,
 		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       cfg,
@@ -926,7 +910,6 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Cfg:       cfg,
 			Logger:    logger,
 			Responder: ls.responder,
-			Consensus: ls.consensusSvc,
 			EnvProc:   envProc,
 		},
 		MCPControllerDeps: MCPControllerDeps{
@@ -969,8 +952,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		EvalCampaignPublicationControllerDeps: EvalCampaignPublicationControllerDeps{
 			Logger:    logger,
 			Responder: ls.responder,
-			Service:   NewEvalCampaignPublicationService(ls.docStore),
-			Spectator: func() *PublicSpectatorRuntime { return ls.publicSpectator },
+			Service:   evalCampaignPublicationSvc,
 		},
 		ProviderObservationControllerDeps: providerObservationDeps,
 		ModelProvenanceControllerDeps:     modelProvenanceDeps,
@@ -1226,7 +1208,7 @@ func (ls *GatewayModeService) GetGovernanceDeps() *pubsub.GatewayModeDeps {
 		CLISessions:      ls.cliSessionSvc,
 		OperatorSessions: ls.operatorSessionSvc,
 		Connections:      ls.pubsub,
-		Posture:          string(ls.cfg.Gateway.Posture),
+		Posture:          ls.cfg.Gateway.Posture,
 	}
 
 	return &pubsub.GatewayModeDeps{
@@ -1242,7 +1224,6 @@ func (ls *GatewayModeService) GetGovernanceDeps() *pubsub.GatewayModeDeps {
 		GovernedDocStore:       ls.docStore,
 		ConsensusPolicyStore:   ls.consensusStore,
 		FieldReader:            ls.docStore,
-		Consensus:              ls.consensusSvc,
 		PlatformEnrollmentDeps: platformDeps,
 		Posture:                ls.cfg.Gateway.Posture,
 	}

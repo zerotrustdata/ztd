@@ -5,7 +5,11 @@ import { useEffect, useState } from 'react';
 import { Empty, StatusPill, dateTime, relativeTime, shortId } from '../../components/ui';
 import { api } from '../../lib/api';
 import { Paths } from '../../lib/paths';
-import type { PlatformEnrollmentRequest } from '../../lib/types';
+import {
+  isPlatformEnrollmentL3Suspension,
+  type PlatformEnrollmentDecisionResponse,
+  type PlatformEnrollmentRequest,
+} from '../../lib/types';
 import { approveTransaction } from '../../lib/webauthn';
 import { useApprovals } from '../../state/approvals';
 import { errorText, useToast } from '../../state/toast';
@@ -67,7 +71,17 @@ export function ApprovalsView({ autoApproveTxHash, focusEnrollmentId, recoveryTo
   const decide = async (req: PlatformEnrollmentRequest, decision: 'approve' | 'deny') => {
     setPending(req.request_id);
     try {
-      await api.post(Paths.platformEnrollmentDecision, { request_id: req.request_id, decision });
+      const result = await api.post<PlatformEnrollmentDecisionResponse>(Paths.platformEnrollmentDecision, {
+        request_id: req.request_id,
+        decision,
+      });
+      if (isPlatformEnrollmentL3Suspension(result)) {
+        const out = await approveTransaction(result.tx_hash);
+        if (!out.ok) {
+          toast('error', out.message);
+          return;
+        }
+      }
       toast('success', decision === 'approve' ? 'Enrollment approved. The workload can now complete enrollment.' : 'Enrollment denied.');
     } catch (err) {
       toast('error', errorText(err));
@@ -216,6 +230,12 @@ function EnrollmentRequest({
           <>
             <dt>App key</dt>
             <dd className="mono">{fps.app}</dd>
+          </>
+        )}
+        {fps.signing_key && (
+          <>
+            <dt>L2 signing key</dt>
+            <dd className="mono">{fps.signing_key}</dd>
           </>
         )}
         {fps.operator && (

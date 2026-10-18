@@ -168,7 +168,7 @@ func WaitForCampaignRunModelProvenanceEvidence(ctx context.Context, store *Store
 			attemptIDs = append(attemptIDs, record.GetProviderAttemptId())
 		}
 	}
-	return reader.WaitForEvidence(ctx, attemptIDs, constants.ModelProvenanceCompletionPollInterval)
+	return reader.WaitForEvidence(ctx, attemptIDs)
 }
 
 // VerifyRun recomputes assignment verification for every terminal assignment
@@ -207,17 +207,10 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 			failures = append(failures, fmt.Sprintf("assignment %s result load failed: %v", assignment.GetAssignmentId(), err))
 			continue
 		}
-		formationRunEvidence, err := store.LoadAssignmentFormationRun(ctx, runID, assignment.GetAssignmentId())
+		agentTrace, err := store.LoadAssignmentAgentTrace(ctx, runID, assignment.GetAssignmentId())
 		if err != nil {
-			formationRunEvidence = nil
-		}
-		var agentTrace *AgentTrace
-		if !IsHeterogeneousAssignment(assignment) {
-			agentTrace, err = store.LoadAssignmentAgentTrace(ctx, runID, assignment.GetAssignmentId())
-			if err != nil {
-				failures = append(failures, fmt.Sprintf("assignment %s agent trace load failed: %v", assignment.GetAssignmentId(), err))
-				continue
-			}
+			failures = append(failures, fmt.Sprintf("assignment %s agent trace load failed: %v", assignment.GetAssignmentId(), err))
+			continue
 		}
 		artifact, ok := artifacts[assignment.GetScenarioId()]
 		if !ok {
@@ -251,7 +244,6 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 			ScenarioGold:              scenarioGold,
 			ScenarioTools:             scenarioTools,
 			GradingMethod:             gradingMethod,
-			FormationRunEvidence:      formationRunEvidence,
 			AgentTrace:                agentTrace,
 			CatalogRef:                catalog.GetCatalogRef(),
 			ProviderObservationReader: v.providerObservationReader,

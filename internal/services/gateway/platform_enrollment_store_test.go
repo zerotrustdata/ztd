@@ -21,7 +21,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -388,7 +387,7 @@ func TestTransitionPlatformEnrollment_FencesIssuanceOnTheLeaseHolder(t *testing.
 }
 
 func TestEnrollmentBatchDecisionPreservesPosturePolicy(t *testing.T) {
-	for _, posture := range []config.GatewayPosture{config.PostureConsensus, config.PostureRatify, config.PostureNotary} {
+	for _, posture := range constants.AllPostures {
 		t.Run(string(posture), func(t *testing.T) {
 			gateway := newTestGatewayService(t, testGatewayOpts{posture: posture})
 			owner, err := gateway.GetUserService().CreateUser(t.Context())
@@ -401,12 +400,17 @@ func TestEnrollmentBatchDecisionPreservesPosturePolicy(t *testing.T) {
 				Decision: models.PlatformEnrollmentDecisionApprove, Requests: []models.PlatformEnrollmentDecisionTarget{{RequestID: "request", Fingerprints: record.Fingerprints}},
 			})
 			want := models.PlatformEnrollmentStatePending
-			if posture == config.PostureConsensus {
+			if !posture.RequiresL3() {
 				// Existing enrollment bootstrap policy exempts DECIDE from L2.
 				require.NoError(t, err)
 				want = models.PlatformEnrollmentStateApproved
 			} else {
-				require.ErrorIs(t, err, constants.ErrPlatformEnrollmentGovernanceRejected)
+				require.ErrorIs(t, err, constants.ErrPlatformEnrollmentL3Required)
+				var suspension *models.PlatformEnrollmentL3RequiredError
+				require.ErrorAs(t, err, &suspension)
+				require.Equal(t, posture, suspension.Suspension.Posture)
+				require.NotEmpty(t, suspension.Suspension.TxHash)
+				require.True(t, suspension.Suspension.ExpiresAt.After(time.Now()))
 			}
 			doc, err := gateway.GetDocStore().DocGet(t.Context(), platformEnrollmentCollectionName(), "request")
 			require.NoError(t, err)

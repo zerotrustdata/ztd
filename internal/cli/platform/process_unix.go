@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -160,21 +162,29 @@ func (pm *ProcessManager) findOperatorProcess() int {
 	return pm.findOperatorProcessWithExecutor(realCommandExecutor{})
 }
 
-// findOperatorProcessWithExecutor finds the PID using a provided CommandExecutor (for testing)
+// findOperatorProcessWithExecutor finds the PID using a provided CommandExecutor (for testing).
+// The pattern is anchored to the executable so a shell or wrapper whose
+// command line merely mentions `ztd gw start` never matches, and the calling
+// process is skipped so a `gw start --data-dir <dir>` never finds itself.
 func (pm *ProcessManager) findOperatorProcessWithExecutor(executor CommandExecutor) int {
-	pattern := fmt.Sprintf("ztd gw start.*--data-dir %s([[:space:]]|$)", pm.fileSvc.Resolve(constants.DataDirname))
+	pattern := fmt.Sprintf("^[^[:space:]]*ztd gw start.*--data-dir %s([[:space:]]|$)", pm.fileSvc.Resolve(constants.DataDirname))
 	cmd := executor.Command("pgrep", "-f", pattern)
 	output, err := executor.Output(cmd)
 	if err != nil {
 		return 0
 	}
 
-	var pid int
-	if _, err := fmt.Sscanf(string(output), "%d", &pid); err != nil {
-		return 0
+	self := os.Getpid()
+	for _, line := range strings.Fields(string(output)) {
+		pid, err := strconv.Atoi(line)
+		if err != nil {
+			return 0
+		}
+		if pid != self {
+			return pid
+		}
 	}
-
-	return pid
+	return 0
 }
 
 // stopProcess stops a process with the given PID on Unix systems.

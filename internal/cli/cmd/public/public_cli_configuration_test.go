@@ -74,7 +74,7 @@ func useTestKeystore(t *testing.T, fileSvc fs.RuntimeFileService) *keystore.Keys
 
 func TestPublicCmd_ExposesProductionSurface(t *testing.T) {
 	cmd := Cmd()
-	expected := []string{"config", "init", "publish", "push", "repair-outbox", "restore", "rotate-key", "source", "status", "verify-agent-trace", "verify-assignment"}
+	expected := []string{"config", "init", "publish", "push", "repair-outbox", "restore", "rotate-key", "source", "status", "verify-agent-trace", "verify-assignment", "verify-proof"}
 	require.Len(t, cmd.Commands(), len(expected))
 	for _, name := range expected {
 		child, _, err := cmd.Find([]string{name})
@@ -267,7 +267,8 @@ func TestPublicRotateKeyCmd_PreRegistersNewKeyAndDurablyRevokesOldKey(t *testing
 	tokenBytes, err := gateway.ReadPublicSecret(context.Background(), fileSvc, ks, constants.PublicFeedIngestTokenPath, constants.PublicFeedIngestTokenBytes, constants.ErrPublicFeedIngestTokenRequired)
 	require.NoError(t, err)
 
-	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), gateway.NewRuntimePublicMirrorStore(fileSvc), gateway.PublicMirrorConfig{})
+	store := openTestPublicMirrorStore(t, fileSvc)
+	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), oldConfig.SourceID, oldConfig.SigningKeyID, ed25519.PrivateKey(oldPrivateKeyBytes).Public().(ed25519.PublicKey)))
@@ -288,14 +289,16 @@ func TestPublicRotateKeyCmd_PreRegistersNewKeyAndDurablyRevokesOldKey(t *testing
 	rotateCmd := publicRotateKeyCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	require.NoError(t, rotateCmd.Execute())
 	server.Close()
+	require.NoError(t, store.Close())
 
-	state, err := gateway.NewRuntimePublicMirrorStore(fileSvc).Load(context.Background())
+	store = openTestPublicMirrorStore(t, fileSvc)
+	keys, err := store.Keys(context.Background())
 	require.NoError(t, err)
-	require.Len(t, state.KeyRegistry, 2)
-	_, revoked := state.RevokedKeys[oldConfig.SourceID+":"+oldConfig.SigningKeyID]
+	require.Len(t, keys.Registry, 2)
+	_, revoked := keys.Revoked[oldConfig.SourceID+":"+oldConfig.SigningKeyID]
 	assert.True(t, revoked)
 
-	restartedMirror, err := gateway.NewPublicMirrorServer(slog.Default(), gateway.NewRuntimePublicMirrorStore(fileSvc), gateway.PublicMirrorConfig{})
+	restartedMirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
 	restartedMirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	restartedServer := httptest.NewServer(restartedMirror.Handler())
@@ -357,7 +360,8 @@ func TestPublicRotateKeyCmd_RecoversAfterLocalConfigurationPersistenceFailure(t 
 	require.NoError(t, err)
 	tokenBytes, err := gateway.ReadPublicSecret(context.Background(), fileSvc, ks, constants.PublicFeedIngestTokenPath, constants.PublicFeedIngestTokenBytes, constants.ErrPublicFeedIngestTokenRequired)
 	require.NoError(t, err)
-	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), gateway.NewRuntimePublicMirrorStore(fileSvc), gateway.PublicMirrorConfig{})
+	store := openTestPublicMirrorStore(t, fileSvc)
+	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), oldConfig.SourceID, oldConfig.SigningKeyID, ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey)))
@@ -386,10 +390,13 @@ func TestPublicRotateKeyCmd_RecoversAfterLocalConfigurationPersistenceFailure(t 
 	assert.NotEmpty(t, unsealedHex)
 	assert.NotContains(t, string(rotationBytes), unsealedHex)
 
-	state, err := gateway.NewRuntimePublicMirrorStore(fileSvc).Load(context.Background())
+	summary, found, err := store.SourceSummary(context.Background(), oldConfig.SourceID)
 	require.NoError(t, err)
-	require.Len(t, state.Sources[oldConfig.SourceID].Batches, 1)
-	_, revoked := state.RevokedKeys[oldConfig.SourceID+":"+oldConfig.SigningKeyID]
+	require.True(t, found)
+	require.Equal(t, 1, summary.BatchCount)
+	keys, err := store.Keys(context.Background())
+	require.NoError(t, err)
+	_, revoked := keys.Revoked[oldConfig.SourceID+":"+oldConfig.SigningKeyID]
 	assert.True(t, revoked)
 
 	rotateCmd = publicRotateKeyCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
@@ -397,9 +404,10 @@ func TestPublicRotateKeyCmd_RecoversAfterLocalConfigurationPersistenceFailure(t 
 	exists, err = fileSvc.FileExists(context.Background(), constants.PublicFeedKeyRotationPath)
 	require.NoError(t, err)
 	assert.False(t, exists)
-	state, err = gateway.NewRuntimePublicMirrorStore(fileSvc).Load(context.Background())
+	summary, found, err = store.SourceSummary(context.Background(), oldConfig.SourceID)
 	require.NoError(t, err)
-	assert.Len(t, state.Sources[oldConfig.SourceID].Batches, 1)
+	require.True(t, found)
+	assert.Equal(t, 1, summary.BatchCount)
 }
 
 func TestPublicCommands_RejectMalformedTrailingUnknownAndInvalidConfiguration(t *testing.T) {
@@ -466,7 +474,8 @@ func TestPublicPushCmd_RetriesDurableOutboxAfterCommandRestart(t *testing.T) {
 	require.NoError(t, err)
 	tokenBytes, err := gateway.ReadPublicSecret(context.Background(), fileSvc, ks, constants.PublicFeedIngestTokenPath, constants.PublicFeedIngestTokenBytes, constants.ErrPublicFeedIngestTokenRequired)
 	require.NoError(t, err)
-	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), gateway.NewRuntimePublicMirrorStore(fileSvc), gateway.PublicMirrorConfig{})
+	store := openTestPublicMirrorStore(t, fileSvc)
+	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), exportConfig.SourceID, exportConfig.SigningKeyID, ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey)))
@@ -477,10 +486,11 @@ func TestPublicPushCmd_RetriesDurableOutboxAfterCommandRestart(t *testing.T) {
 	require.NoError(t, setCmd.Execute())
 	pushCmd := publicPushCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	require.NoError(t, pushCmd.Execute())
-	state, err := gateway.NewRuntimePublicMirrorStore(fileSvc).Load(context.Background())
+	summary, found, err := store.SourceSummary(context.Background(), exportConfig.SourceID)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), state.Sources[exportConfig.SourceID].HighWaterSequence)
-	assert.Len(t, state.Sources[exportConfig.SourceID].Batches, 1)
+	require.True(t, found)
+	assert.Equal(t, int64(1), summary.HighWaterSequence)
+	assert.Equal(t, 1, summary.BatchCount)
 }
 
 func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
@@ -495,7 +505,8 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	require.NoError(t, err)
 	tokenBytes, err := gateway.ReadPublicSecret(context.Background(), fileSvc, ks, constants.PublicFeedIngestTokenPath, constants.PublicFeedIngestTokenBytes, constants.ErrPublicFeedIngestTokenRequired)
 	require.NoError(t, err)
-	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), gateway.NewRuntimePublicMirrorStore(fileSvc), gateway.PublicMirrorConfig{})
+	store := openTestPublicMirrorStore(t, fileSvc)
+	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), exportConfig.SourceID, exportConfig.SigningKeyID, ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey)))
@@ -521,10 +532,46 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	}})
 	require.NoError(t, err)
 	require.NoError(t, pushCmd.Execute())
-	state, err := gateway.NewRuntimePublicMirrorStore(fileSvc).Load(context.Background())
+	stored, found, err := store.ProofManifest(context.Background(), exportConfig.SourceID)
 	require.NoError(t, err)
-	assert.Equal(t, manifest.ProofRootSHA256, state.ProofManifests[exportConfig.SourceID].ProofRootSHA256)
-	assert.Len(t, state.ProofArtifacts, 2)
+	require.True(t, found)
+	assert.Equal(t, manifest.ProofRootSHA256, stored.ProofRootSHA256)
+	artifactCount, err := store.ProofArtifactCount(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 2, artifactCount)
+
+	// Export the mirror's signed log, disconnect, and run the documented
+	// offline verifier against the content-addressed publisher artifacts.
+	response, err := http.Get(server.URL + "/proof-segments?source=" + exportConfig.SourceID)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	var exported models.PublicProofSegmentsResponse
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&exported))
+	require.Len(t, exported.Segments, 2)
+	var log bytes.Buffer
+	for _, segment := range exported.Segments {
+		require.NoError(t, json.NewEncoder(&log).Encode(segment))
+	}
+	const exportedLog = "downloaded-proof-segments.jsonl"
+	require.NoError(t, fileSvc.WriteFile(context.Background(), exportedLog, log.Bytes(), constants.PermFilePrivate))
+	server.Close()
+	verify := publicVerifyProofCmd()
+	var output bytes.Buffer
+	verify.SetOut(&output)
+	verify.SetArgs([]string{"--segments", fileSvc.Resolve(exportedLog), "--artifacts", fileSvc.Resolve(constants.PublicProofsDirname), "--public-key", hex.EncodeToString(ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey))})
+	require.NoError(t, verify.Execute())
+	assert.Contains(t, output.String(), "2 segments, 2 active artifacts")
+}
+
+// openTestPublicMirrorStore opens the durable mirror store under fileSvc and
+// closes it when the test ends.
+func openTestPublicMirrorStore(t *testing.T, fileSvc fs.RuntimeFileService) *gateway.PublicMirrorStore {
+	t.Helper()
+	store, err := gateway.OpenPublicMirrorStore(context.Background(), fileSvc, slog.Default())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	return store
 }
 
 func TestPublicConfigSetCmd_UpdatesOnlyExplicitFields(t *testing.T) {

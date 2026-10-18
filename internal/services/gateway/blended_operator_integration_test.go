@@ -28,7 +28,7 @@ func TestGatewayConstructsAndRegistersAllEmbeddedOperatorCapabilities(t *testing
 	cfg.Gateway.PKIDir = testutil.TempDir(t)
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 	cfg.OperatorCapabilities = constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver}
 	cfg.Inference = config.InferenceConfig{Enabled: true, OllamaEndpoint: "http://127.0.0.1:11434", KeepAlive: "-1"}
 	cfg.ProviderBoundaryObserver = config.ProviderBoundaryObserverConfig{Enabled: true, ObserverID: "embedded-observer"}

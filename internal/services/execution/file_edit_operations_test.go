@@ -442,30 +442,6 @@ func TestFileEditService_ErrorHandling(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("patch operation not implemented", func(t *testing.T) {
-		t.Parallel()
-		tmpDir := testutil.OperatorDir(t)
-		testFile := filepath.Join(tmpDir, "patch.txt")
-
-		os.WriteFile(testFile, []byte("content"), 0644)
-
-		patchContent := "some patch"
-		req := &models.FileEditRequest{
-			ExecutionID:  "patch-1",
-			CaseID:       "test-case-error",
-			Operation:    constants.FileOperationPatch,
-			FilePath:     testFile,
-			PatchContent: patchContent,
-			RequestedBy:  "test-user",
-		}
-
-		result, err := svc.ExecuteFileEdit(context.Background(), req)
-
-		require.NoError(t, err)
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-		assert.Contains(t, result.ErrorMessage, "not yet implemented")
-	})
-
 	t.Run("unsupported operation", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)

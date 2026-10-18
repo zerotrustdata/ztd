@@ -92,9 +92,9 @@ export const fixtureCatalogVerified: CatalogSnapshot = {
   description:
     'Two historical five-task IFEval runs that passed the verifier available when they were produced. They have not been re-verified against the current evidence and verification contract.',
   limitations: [
-    'Legacy evidence does not satisfy current-standard verification requirements.',
+    'Legacy evidence does not satisfy the current verification requirements.',
     'Small scope: two five-task runs only.',
-    'Not merged with current-standard verified rankings.',
+    'Not merged with verified rankings.',
   ],
   model_count: 31,
   evaluated_count: 2,

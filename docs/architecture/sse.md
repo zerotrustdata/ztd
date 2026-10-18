@@ -33,7 +33,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines the Gateway's Server-Sent Events (SSE) delivery channel for session-targeted events. The Gateway is the sole SSE publisher for browsers and CLIs. It publishes from its internal services (approvals, Operator status, heartbeats, model provenance progress) and from the observe producer endpoints that application workloads call over mTLS.
+Defines the Gateway's Server-Sent Events (SSE) delivery channel for session-targeted events. The Gateway is the sole SSE publisher for browsers and CLIs. It publishes from its internal services (approvals, Operator status, heartbeats, model provenance evidence) and from the observe producer endpoints that application workloads call over mTLS.
 
 SSE is a session-scoped delivery channel for asynchronous notifications and telemetry. Publishing an event neither mutates governed state nor alters the five-layer governance interlock; authoritative outcomes reside in signed receipts and platform records.
 
@@ -87,6 +87,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-SSE-DEL-02 | `GET /api/v1/sse/stream` replays at most 1,000 rows per connection. With no cursor parameters, a fresh connection replays from ID 0; a `Last-Event-ID` header or positive `since_id` query parameter replays from that cursor. Explicit `since_id=0` without `Last-Event-ID` requests a live-only stream. When replay returns 1,000 rows, an unnumbered `truncated` sentinel carries the last emitted ID and limit; the client may reconnect with a higher cursor. |
 | INV-SSE-DEL-03 | Each live stream maintains a 100-event in-memory queue. If a consumer falls behind, the Gateway drops the oldest queued event; persisted events can be recovered through cursor-based replay on reconnect, while ephemeral events cannot. |
 | INV-SSE-DEL-04 | The stream installs its live listener and clears the server write deadline before flushing response headers. Heartbeats are sent every 30 seconds as SSE comments. The maintenance loop (every 30 seconds) removes events older than one hour from `sse_events`. |
+
+| INV-SSE-DEL-05 | The pub/sub broker MUST invoke in-process callbacks outside its handler registry lock so callbacks can publish notifications while other handlers unregister. Unregistration prevents selection by later publishes; callbacks already selected MAY finish. SSE teardown MUST leave its queue safe for these callbacks; the request context owns stream termination. |
 
 ## Owned surfaces
 
@@ -147,7 +149,8 @@ Persisted Event             Ephemeral Event
 | `ztd.v1.platform.approvals.changed` | ephemeral | `approvals_events.go` | Signals pending L3 transactions or platform enrollment changes |
 | `ztd.v1.operator.status.updated.<state>` | persisted | `operator_status_events.go` | Operator status announcements: `offline` on enrollment, `active` when the Operator's command-channel subscription is established (ready for commands), and later `stopped` or `terminated`; `stale` is derived on read and may be reported to a deploy client, not stored as a transition |
 | `ztd.v1.operator.heartbeat.received` | ephemeral | `operator_status_events.go` | Real-time telemetry carrying `last_heartbeat_at` and `stale_at` |
-| `ztd.v1.inference.model.provenance.preflight.updated` | ephemeral | `model_provenance_controller.go` | Progress updates during storage-side model attestation |
+| `ztd.v1.inference.model.provenance.attestation.recorded` | ephemeral | `evidence_window_publisher.go` | The Gateway stored a Provenance Operator attestation window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
+| `ztd.v1.inference.provider.boundary.observation.recorded` | ephemeral | `evidence_window_publisher.go` | The Gateway stored an Observer Operator provider-boundary window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
 | `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
 | `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
 | `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |

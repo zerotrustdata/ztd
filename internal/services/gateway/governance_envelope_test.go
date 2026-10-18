@@ -326,7 +326,7 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 	var forwarded commonv1.GovernanceEnvelope
 	require.NoError(t, protojson.Unmarshal(proc.gotPayload, &forwarded))
 	require.Equal(t, "tx-abc", forwarded.GetId())
-	require.Equal(t, constants.PostureNotary, forwarded.GetPosture(), "handler must stamp gateway posture onto the envelope")
+	require.Equal(t, string(constants.PostureNotary), forwarded.GetPosture(), "handler must stamp gateway posture onto the envelope")
 
 	// Receipt is returned as canonical protojson (proto field names).
 	got := &operatorv1.ActionReceipt{}
@@ -341,13 +341,13 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 func TestGovernanceEnvelope_CallerSuppliedPosture_ReturnsIngressRefusal(t *testing.T) {
 	// Only the gateway sets posture. A caller-supplied one (here a doctrine
 	// downgrade sent to a notary gateway) is refused before processing.
-	for _, posture := range []string{constants.PostureDoctrine, constants.PostureNotary} {
+	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureNotary} {
 		proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-posture"}}
 		h := newGovernanceEnvelopeHandler(t, proc)
 
 		body := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
 			Id:                "tx-posture",
-			Posture:           posture,
+			Posture:           string(posture),
 			OperatorId:        "op-1",
 			OperatorSessionId: "sess-1",
 		})

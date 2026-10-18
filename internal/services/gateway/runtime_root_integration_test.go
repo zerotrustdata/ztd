@@ -12,7 +12,6 @@ package gateway_test
 import (
 	"testing"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -27,7 +26,7 @@ import (
 func TestGatewayRuntimeRoot_OneDatabaseAndLedger(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "runtime-root-one-db",
-		Posture:  config.PostureConsensus,
+		Posture:  constants.PostureConsensus,
 	})
 	f.WaitForReady(t)
 	client := seedUnprovenAppWorkload(t, f)

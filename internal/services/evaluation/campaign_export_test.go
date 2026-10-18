@@ -54,7 +54,7 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 
 	_, err = controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	first, ok, err := controller.ResumeNextAssignment(context.Background(), req.RunID)
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, executed, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, CampaignExecutionBinding{
@@ -403,4 +403,17 @@ func TestNormalizeRuntimeExportDir_RejectsAbsoluteAndEscapingPaths(t *testing.T)
 	got, err := normalizeRuntimeExportDir("run-1", "nested/export")
 	require.NoError(t, err)
 	assert.Equal(t, "nested/export", got)
+}
+
+func TestNormalizeRuntimeExportDir_RejectsSealedRootsAndDefaultsOutsideThem(t *testing.T) {
+	t.Parallel()
+	for _, dir := range []string{"data/eval", "data/eval/runs/run-1/export", constants.ComplianceBundlesDirname + "/x"} {
+		_, err := normalizeRuntimeExportDir("run-1", dir)
+		assert.ErrorIs(t, err, constants.ErrEvaluationExportDirSealed, dir)
+	}
+	got, err := normalizeRuntimeExportDir("run-1", "")
+	require.NoError(t, err)
+	assert.Equal(t, constants.EvaluationCampaignExportDirname+"/run-1", got)
+	_, sealed := sealedPathAAD(got)
+	assert.False(t, sealed, "the default export directory is outside every sealed root")
 }

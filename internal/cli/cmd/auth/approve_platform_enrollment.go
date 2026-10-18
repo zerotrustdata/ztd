@@ -10,6 +10,7 @@ package authcmd
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -145,6 +146,10 @@ func revokePlatformEnrollmentCmdWithConfig(
 			body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentRevoke, request)
 			if err != nil {
 				return fmt.Errorf("enroll revoke: post revocation: %w", err)
+			}
+			var suspension models.PlatformEnrollmentL3SuspensionResponse
+			if err := json.Unmarshal(body, &suspension); err == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
+				return auth.WritePlatformEnrollmentSuspension(cmd.OutOrStdout(), suspension)
 			}
 			response, err := auth.DecodePlatformEnrollmentRevoke(body)
 			if err != nil {
@@ -283,6 +288,10 @@ func platformEnrollmentDecisionCmdWithConfig(
 
 			resp, err := PostPlatformEnrollmentBatchDecision(client, decision)
 			if err != nil {
+				var l3Err *models.PlatformEnrollmentL3RequiredError
+				if errors.As(err, &l3Err) {
+					return auth.WritePlatformEnrollmentSuspension(cmd.OutOrStdout(), l3Err.Suspension)
+				}
 				return fmt.Errorf("enroll %s: %w", spec.verb, err)
 			}
 			for _, result := range resp.Requests {
@@ -324,6 +333,10 @@ func PostPlatformEnrollmentBatchDecision(client APIClient, req models.PlatformEn
 	body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentBatchDecision, req)
 	if err != nil {
 		return nil, fmt.Errorf("post batch decision: %w", err)
+	}
+	var suspension models.PlatformEnrollmentL3SuspensionResponse
+	if err := json.Unmarshal(body, &suspension); err == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
+		return nil, &models.PlatformEnrollmentL3RequiredError{Suspension: suspension}
 	}
 	var resp models.PlatformEnrollmentBatchDecisionResponse
 	if err := json.Unmarshal(body, &resp); err != nil {

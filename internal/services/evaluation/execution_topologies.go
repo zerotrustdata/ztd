@@ -8,18 +8,12 @@
 package evaluation
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
-	"time"
-
-	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -45,18 +39,9 @@ const (
 	FormationTrustDelegated FormationTrust = "delegated"
 )
 
-// FormationAttestationStatus identifies the provenance state recorded for a role.
-type FormationAttestationStatus string
-
-const (
-	FormationAttestationVerified  FormationAttestationStatus = "verified"
-	FormationAttestationNotNeeded FormationAttestationStatus = "not_needed"
-)
-
 // FormationModel is the typed model contract used by an execution topology.
-// Estimated memory is intentionally explicit: the runner rejects a formation
-// before any local model allocation when its model and KV estimates exceed the
-// 16 GB host safety budget.
+// Estimated memory is intentionally explicit: validation rejects a formation
+// whose model and KV estimates exceed the host safety budget.
 type FormationModel struct {
 	VariantID             string
 	DisplayName           string
@@ -72,7 +57,7 @@ type FormationModel struct {
 	ModelDigest           string
 }
 
-// Formation binds the three roles that make host-up one benchmark topology.
+// Formation binds models to the three roles of the investigation loop.
 type Formation struct {
 	ID          string
 	DisplayName string
@@ -86,8 +71,7 @@ type Formation struct {
 	RelaxedValidation bool
 }
 
-// Roles returns the execution order. Lite runs first as the L1 gatekeeper,
-// then Assistant handles fast work, and Primary receives the accumulated state.
+// Roles returns the three formation roles.
 func (f Formation) Roles() []FormationRole {
 	return []FormationRole{FormationRoleLite, FormationRoleAssistant, FormationRolePrimary}
 }
@@ -123,7 +107,7 @@ func (f Formation) EstimatedVRAMMiB() uint64 {
 }
 
 // Validate enforces the formation's role, trust, heterogeneity, and hardware
-// constraints before the runner can allocate a model.
+// constraints.
 func (f Formation) Validate() error {
 	if f.ID == "" || f.DisplayName == "" || f.Description == "" || f.MaxVRAMMiB == 0 {
 		return fmt.Errorf("formation %q: %w", f.ID, constants.ErrFormationInvalid)
@@ -470,398 +454,4 @@ func formationModel(variantID, displayName, provider, family, tag string, parame
 		Quantization: quantization, ParameterCount: parameters, EstimatedModelVRAMMiB: modelVRAMMiB,
 		EstimatedKVCacheMiB: cacheMiB,
 	}
-}
-
-// FormationAttestation is the provenance result required before local allocation.
-type FormationAttestation struct {
-	Verified bool
-	Digest   string
-	Window   *evalv1.ModelProvenanceAttestationWindow
-}
-
-// FormationObserverEvidence carries the typed provider-boundary witness.
-type FormationObserverEvidence struct {
-	Window *evalv1.ProviderBoundaryObservationWindow
-}
-
-// FormationProvenanceOperator attests sovereign model weights at their storage boundary.
-type FormationProvenanceOperator interface {
-	Attest(ctx context.Context, model FormationModel) (*FormationAttestation, error)
-}
-
-// FormationProviderObserver brackets one role execution at the provider boundary.
-type FormationProviderObserver interface {
-	Begin(ctx context.Context, attemptID string, model FormationModel) error
-	Finalize(ctx context.Context, attemptID string, model FormationModel, failed bool) (*FormationObserverEvidence, error)
-}
-
-// FormationAllocator owns local model residency and VRAM allocation.
-type FormationAllocator interface {
-	Allocate(ctx context.Context, model FormationModel) error
-	Release(ctx context.Context, model FormationModel) error
-}
-
-// FormationRoleRequest is the state handoff passed to one role.
-type FormationRoleRequest struct {
-	FormationID       string
-	AttemptID         string
-	Role              FormationRole
-	Model             FormationModel
-	InputState        []byte
-	MutationCandidate []byte
-}
-
-// FormationRoleResult is the governed execution result for one role.
-type FormationRoleResult struct {
-	OutputState             []byte
-	MutationCandidate       []byte
-	StateMutation           bool
-	ProviderAttemptID       string
-	UsageAvailability       evalv1.EvaluationUsageAvailability
-	PromptTokens            uint32
-	TTFTNanos               uint64
-	GenerationTokens        uint32
-	GenerationDurationNanos uint64
-	PeakVRAMMiB             uint64
-	FinishReason            string
-	LoadState               evalv1.EvaluationLoadState
-	RetryCount              uint32
-}
-
-// FormationRoleExecutor invokes the role through the governed model path.
-type FormationRoleExecutor interface {
-	ExecuteRole(ctx context.Context, req FormationRoleRequest) (FormationRoleResult, error)
-}
-
-// FormationPolicyValidation records the five-layer mutation decision.
-type FormationPolicyValidation struct {
-	L1Validated bool
-	L2Validated bool
-	L3Validated bool
-	L4Validated bool
-	L5Validated bool
-	Intercepted bool
-	ReceiptRef  string
-}
-
-func (p FormationPolicyValidation) valid() bool {
-	return p.L1Validated && p.L2Validated && p.L3Validated && p.L4Validated && p.L5Validated && p.Intercepted
-}
-
-// FormationPolicyGate is the Gateway-facing mutation verification boundary.
-type FormationPolicyGate interface {
-	ValidateMutation(ctx context.Context, formationID string, role FormationRole, payload []byte) (FormationPolicyValidation, error)
-}
-
-// FormationRoleTelemetry is the audit-safe telemetry emitted for one role.
-type FormationRoleTelemetry struct {
-	Role                    FormationRole
-	Model                   FormationModel
-	AttemptID               string
-	AttestationStatus       FormationAttestationStatus
-	AttestationVerified     bool
-	AttestationDigest       string
-	ProviderAttemptID       string
-	UsageAvailability       evalv1.EvaluationUsageAvailability
-	PromptTokens            uint32
-	PeakVRAMMiB             uint64
-	TTFTNanos               uint64
-	GenerationTokens        uint32
-	GenerationDurationNanos uint64
-	GenerationTokensPerSec  float64
-	FinishReason            string
-	LoadState               evalv1.EvaluationLoadState
-	RetryCount              uint32
-	StateMutation           bool
-	PolicyValidation        FormationPolicyValidation
-	ObserverEvidence        *FormationObserverEvidence
-	ProvenanceEvidence      *FormationAttestation
-}
-
-// FormationRunResult is the benchmark output for one formation.
-type FormationRunResult struct {
-	SchemaVersion        string
-	FormationID          string
-	Passed               bool
-	PeakVRAMMiB          uint64
-	Roles                []FormationRoleTelemetry
-	MutationIntercepted  bool
-	AllPolicyLayersValid bool
-}
-
-// FormationRunner runs Lite → Assistant → Primary with explicit witness and
-// governance dependencies. It never allocates a sovereign model before its
-// storage-side attestation passes.
-type FormationRunner struct {
-	provenance     FormationProvenanceOperator
-	observer       FormationProviderObserver
-	allocator      FormationAllocator
-	executor       FormationRoleExecutor
-	policy         FormationPolicyGate
-	onRoleStarting func(context.Context, FormationRole) error
-	onRoleProgress func(context.Context, *FormationRunResult) error
-	now            func() time.Time
-	newID          func(string) string
-}
-
-// NewFormationRunner constructs a runner for one governed execution topology.
-func NewFormationRunner(provenance FormationProvenanceOperator, observer FormationProviderObserver, allocator FormationAllocator, executor FormationRoleExecutor, policy FormationPolicyGate, now func() time.Time, newID func(string) string) (*FormationRunner, error) {
-	if executor == nil || policy == nil || observer == nil {
-		return nil, fmt.Errorf("formation: construct runner: %w", constants.ErrFormationRunnerDependency)
-	}
-	if now == nil {
-		now = time.Now
-	}
-	if newID == nil {
-		newID = func(prefix string) string { return fmt.Sprintf("%s-%d", prefix, now().UTC().UnixNano()) }
-	}
-	return &FormationRunner{provenance: provenance, observer: observer, allocator: allocator, executor: executor, policy: policy, now: now, newID: newID}, nil
-}
-
-// WithRoleStarting publishes one planned invocation row before a role executes.
-func (r *FormationRunner) WithRoleStarting(callback func(context.Context, FormationRole) error) *FormationRunner {
-	if r != nil {
-		r.onRoleStarting = callback
-	}
-	return r
-}
-
-// WithRoleProgress publishes a completed role snapshot before the next role
-// begins. The callback is observational and must not mutate the supplied
-// result; the runner continues to own the terminal result.
-func (r *FormationRunner) WithRoleProgress(callback func(context.Context, *FormationRunResult) error) *FormationRunner {
-	if r != nil {
-		r.onRoleProgress = callback
-	}
-	return r
-}
-
-// Run executes one formation and returns canonical role telemetry. State is
-// passed as opaque bytes so the governed model path remains the owner of its
-// typed payload and content-addressing rules.
-func (r *FormationRunner) Run(ctx context.Context, formation Formation, initialState []byte) (result *FormationRunResult, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := formation.Validate(); err != nil {
-		return &FormationRunResult{SchemaVersion: FormationSchemaVersion, FormationID: formation.ID}, err
-	}
-	if r == nil || r.executor == nil || r.policy == nil || r.observer == nil {
-		return nil, fmt.Errorf("formation: run: %w", constants.ErrFormationRunnerDependency)
-	}
-	result = &FormationRunResult{SchemaVersion: FormationSchemaVersion, FormationID: formation.ID, Roles: make([]FormationRoleTelemetry, 0, 3)}
-	allocated := make([]FormationModel, 0, 3)
-	defer func() {
-		for index := len(allocated) - 1; index >= 0; index-- {
-			if releaseErr := r.allocator.Release(ctx, allocated[index]); releaseErr != nil && err == nil {
-				err = fmt.Errorf("formation: release %s: %w", allocated[index].ServedModelTag, releaseErr)
-				result.Passed = false
-			}
-		}
-	}()
-
-	attestations := make([]FormationAttestation, 3)
-	for index, role := range []FormationRole{FormationRolePrimary, FormationRoleAssistant, FormationRoleLite} {
-		model, modelErr := formation.Model(role)
-		if modelErr != nil {
-			return result, modelErr
-		}
-		if model.Trust == FormationTrustDelegated {
-			attestations[index] = FormationAttestation{Verified: true}
-			continue
-		}
-		if r.provenance == nil || model.ModelDigest == "" {
-			return result, fmt.Errorf("formation: attest %s: %w", model.ServedModelTag, constants.ErrFormationAttestationRequired)
-		}
-		attestation, attestErr := r.provenance.Attest(ctx, model)
-		if attestErr != nil {
-			return result, fmt.Errorf("formation: attest %s: %w: %w", model.ServedModelTag, constants.ErrFormationAttestationFailed, attestErr)
-		}
-		if attestation == nil || !attestation.Verified {
-			return result, fmt.Errorf("formation: attest %s: %w", model.ServedModelTag, constants.ErrFormationAttestationFailed)
-		}
-		attestations[index] = *attestation
-	}
-	if r.allocator == nil && formation.EstimatedVRAMMiB() > 0 {
-		return result, fmt.Errorf("formation: allocate local models: %w", constants.ErrFormationRunnerDependency)
-	}
-	for _, role := range []FormationRole{FormationRolePrimary, FormationRoleAssistant, FormationRoleLite} {
-		model, _ := formation.Model(role)
-		if model.Trust != FormationTrustSovereign {
-			continue
-		}
-		if allocErr := r.allocator.Allocate(ctx, model); allocErr != nil {
-			if isFormationOOM(allocErr) {
-				return result, fmt.Errorf("formation: allocate %s: %w", model.ServedModelTag, constants.ErrFormationOutOfMemory)
-			}
-			return result, fmt.Errorf("formation: allocate %s: %w", model.ServedModelTag, allocErr)
-		}
-		allocated = append(allocated, model)
-	}
-
-	state := append([]byte(nil), initialState...)
-	for _, role := range formation.Roles() {
-		model, _ := formation.Model(role)
-		if r.onRoleStarting != nil {
-			if startErr := r.onRoleStarting(ctx, role); startErr != nil {
-				return result, fmt.Errorf("formation: role starting: %w", startErr)
-			}
-		}
-		attemptID := r.newID(fmt.Sprintf("%s-%s", formation.ID, role))
-		if err := r.observer.Begin(ctx, attemptID, model); err != nil {
-			return result, fmt.Errorf("formation: observer begin %s: %w", role, err)
-		}
-		roleResult, executeErr := r.executor.ExecuteRole(ctx, FormationRoleRequest{
-			FormationID: formation.ID, AttemptID: attemptID, Role: role, Model: model, InputState: append([]byte(nil), state...), MutationCandidate: append([]byte(nil), state...),
-		})
-		failed := executeErr != nil
-		// The observer window is keyed by the provider attempt that actually ran,
-		// which the role executor reports back.
-		observationID := attemptID
-		if !failed && roleResult.ProviderAttemptID != "" {
-			observationID = roleResult.ProviderAttemptID
-		}
-		observation, observeErr := r.observer.Finalize(ctx, observationID, model, failed)
-		if observeErr != nil {
-			if executeErr != nil {
-				return result, fmt.Errorf("formation: role %s: %w", role, errors.Join(executeErr, observeErr))
-			}
-			return result, fmt.Errorf("formation: observer finalize %s: %w", role, observeErr)
-		}
-		if executeErr != nil {
-			if isFormationOOM(executeErr) {
-				return result, fmt.Errorf("formation: execute %s: %w", role, constants.ErrFormationOutOfMemory)
-			}
-			return result, fmt.Errorf("formation: execute %s: %w", role, executeErr)
-		}
-		if observation == nil || observation.Window == nil {
-			return result, fmt.Errorf("formation: observer evidence %s: %w", role, constants.ErrFormationWitnessUnavailable)
-		}
-		observedPeak := observedPeakVRAMMiB(observation.Window)
-		telemetry := FormationRoleTelemetry{
-			Role: role, Model: model, AttemptID: attemptID,
-			AttestationStatus:       formationAttestationStatus(model.Trust),
-			AttestationVerified:     model.Trust == FormationTrustDelegated || attestations[formationAttestationIndex(role)].Verified,
-			AttestationDigest:       attestations[formationAttestationIndex(role)].Digest,
-			ProviderAttemptID:       roleResult.ProviderAttemptID,
-			UsageAvailability:       roleResult.UsageAvailability,
-			PromptTokens:            roleResult.PromptTokens,
-			PeakVRAMMiB:             roleResult.PeakVRAMMiB,
-			TTFTNanos:               roleResult.TTFTNanos,
-			GenerationTokens:        roleResult.GenerationTokens,
-			GenerationDurationNanos: roleResult.GenerationDurationNanos, StateMutation: roleResult.StateMutation,
-			FinishReason:       roleResult.FinishReason,
-			LoadState:          roleResult.LoadState,
-			RetryCount:         roleResult.RetryCount,
-			ObserverEvidence:   observation,
-			ProvenanceEvidence: bindFormationProvenanceEvidence(attestationForRole(attestations, role), roleResult.ProviderAttemptID),
-		}
-		if telemetry.GenerationDurationNanos > 0 {
-			telemetry.GenerationTokensPerSec = float64(telemetry.GenerationTokens) / (float64(telemetry.GenerationDurationNanos) / float64(time.Second))
-		}
-		if telemetry.PeakVRAMMiB == 0 {
-			telemetry.PeakVRAMMiB = observedPeak
-		}
-		if telemetry.PeakVRAMMiB > result.PeakVRAMMiB {
-			result.PeakVRAMMiB = telemetry.PeakVRAMMiB
-		}
-		if roleResult.StateMutation {
-			validation, policyErr := r.policy.ValidateMutation(ctx, formation.ID, role, roleResult.MutationCandidate)
-			if policyErr != nil {
-				return result, fmt.Errorf("formation: policy validation %s: %w", role, policyErr)
-			}
-			telemetry.PolicyValidation = validation
-			if !validation.valid() {
-				return result, fmt.Errorf("formation: policy validation %s: %w", role, constants.ErrFormationPolicyValidation)
-			}
-			result.MutationIntercepted = true
-			result.AllPolicyLayersValid = true
-		}
-		result.Roles = append(result.Roles, telemetry)
-		if r.onRoleProgress != nil {
-			progress := *result
-			progress.Roles = append([]FormationRoleTelemetry(nil), result.Roles...)
-			if progressErr := r.onRoleProgress(ctx, &progress); progressErr != nil {
-				return result, fmt.Errorf("formation: role progress: %w", progressErr)
-			}
-		}
-		state = append([]byte(nil), roleResult.OutputState...)
-	}
-	result.Passed = true
-	return result, nil
-}
-
-func formationAttestationStatus(trust FormationTrust) FormationAttestationStatus {
-	if trust == FormationTrustDelegated {
-		return FormationAttestationNotNeeded
-	}
-	return FormationAttestationVerified
-}
-
-func formationAttestationIndex(role FormationRole) int {
-	switch role {
-	case FormationRolePrimary:
-		return 0
-	case FormationRoleAssistant:
-		return 1
-	default:
-		return 2
-	}
-}
-
-func attestationForRole(attestations []FormationAttestation, role FormationRole) *FormationAttestation {
-	attestation := attestations[formationAttestationIndex(role)]
-	return &attestation
-}
-
-func bindFormationProvenanceEvidence(attestation *FormationAttestation, providerAttemptID string) *FormationAttestation {
-	if attestation == nil || attestation.Window == nil || providerAttemptID == "" {
-		return attestation
-	}
-	if attestation.Window.GetProviderAttemptId() == providerAttemptID {
-		return attestation
-	}
-	cloned, ok := proto.Clone(attestation.Window).(*evalv1.ModelProvenanceAttestationWindow)
-	if !ok {
-		return attestation
-	}
-	cloned.ProviderAttemptId = providerAttemptID
-	digest, err := model_provenance.ComputeAttestationDigest(cloned)
-	if err != nil {
-		return attestation
-	}
-	cloned.AttestationDigest = digest
-	return &FormationAttestation{
-		Verified: attestation.Verified,
-		Digest:   attestation.Digest,
-		Window:   cloned,
-	}
-}
-
-func observedPeakVRAMMiB(window *evalv1.ProviderBoundaryObservationWindow) uint64 {
-	var peak uint64
-	if window == nil {
-		return 0
-	}
-	for _, sample := range window.GetSamples() {
-		if sample.GetVramBytesAvailability() != evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED {
-			continue
-		}
-		value := sample.GetVramUsedBytes() / (1024 * 1024)
-		if value > peak {
-			peak = value
-		}
-	}
-	return peak
-}
-
-func isFormationOOM(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, constants.ErrFormationOutOfMemory) {
-		return true
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "out of memory") || strings.Contains(message, "oom") || strings.Contains(message, "cuda error 2")
 }

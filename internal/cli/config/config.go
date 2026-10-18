@@ -184,6 +184,10 @@ func (c *Config) AppKeyFile(name string) string {
 	return filepath.Join(c.RuntimeDir, constants.PkiSubdirApps, name+constants.FileExtKey)
 }
 
+func (c *Config) AppSigningKeyFile(name string) string {
+	return filepath.Join(c.RuntimeDir, constants.PkiSubdirApps, name+constants.AppSigningKeySuffix)
+}
+
 // OperatorHTTPSPort returns the HTTPS/mTLS port of the Gateway on this host:
 // the port it actually bound when SetLocalGatewayPorts recorded one, otherwise
 // the protocol default.
@@ -267,7 +271,7 @@ func LocalGatewayPorts() (httpPort, httpsPort int) {
 }
 
 // SetEndpointOverride sets both HTTP and HTTPS endpoint overrides to the same value.
-// Backward-compatible — used by tests that pass full URLs.
+// Tests with one URL use this to keep both discovery paths in agreement.
 func SetEndpointOverride(endpoint string) {
 	endpointMu.Lock()
 	defer endpointMu.Unlock()

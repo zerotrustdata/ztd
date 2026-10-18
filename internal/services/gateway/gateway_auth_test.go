@@ -10,6 +10,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -33,6 +34,58 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/protocol"
 )
+
+func TestAuthService_ValidateSession_RejectsUnknownAndEmpty(t *testing.T) {
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	userSvc := NewUserService(db.GetDocStore(), logger)
+	personaSvc := NewPersonaService(db.GetDocStore(), logger)
+	auth := NewAuthService(db.GetDocStore(), nil, logger, userSvc, personaSvc, response.NewWriter(logger), nil, "", "", "")
+
+	for _, sessionID := range []string{"", "unknown-session"} {
+		valid, err := auth.ValidateSession(t.Context(), sessionID)
+		require.NoError(t, err)
+		require.False(t, valid)
+	}
+
+	user := &models.User{ID: "session-owner", Status: constants.UserStatusActive}
+	userBytes, err := json.Marshal(user)
+	require.NoError(t, err)
+	require.NoError(t, db.GetDocStore().DocSet(t.Context(), marshaler.CollectionName(constants.CollectionUsers), user.ID, userBytes))
+	op := &operatorv1.OperatorDocument{
+		Id: "live-operator", UserId: user.ID, OperatorSessionId: "live-session",
+		Status: string(constants.OperatorStatusActive),
+	}
+	opBytes, err := models.MarshalOperatorDocument(op)
+	require.NoError(t, err)
+	require.NoError(t, db.GetDocStore().DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), op.Id, opBytes))
+
+	valid, err := auth.ValidateSession(t.Context(), "live-session")
+	require.NoError(t, err)
+	require.True(t, valid)
+
+	op.Status = string(constants.OperatorStatusTerminated)
+	opBytes, err = models.MarshalOperatorDocument(op)
+	require.NoError(t, err)
+	require.NoError(t, db.GetDocStore().DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), op.Id, opBytes))
+	valid, err = auth.ValidateSession(t.Context(), "live-session")
+	require.NoError(t, err)
+	require.False(t, valid)
+}
+
+func TestAuthService_ValidateSession_PropagatesLookupCancellation(t *testing.T) {
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	userSvc := NewUserService(db.GetDocStore(), logger)
+	personaSvc := NewPersonaService(db.GetDocStore(), logger)
+	auth := NewAuthService(db.GetDocStore(), nil, logger, userSvc, personaSvc, response.NewWriter(logger), nil, "", "", "")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	valid, err := auth.ValidateSession(ctx, "lookup-session")
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, valid)
+}
 
 func TestAuthService_ValidateOperatorSession_MissingSessionID(t *testing.T) {
 	db := newTestDB(t)

@@ -8,6 +8,7 @@
 package serve
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -294,7 +295,7 @@ func TestOperatorBootstrapAttempt_IdentityPairsBundleWithInMemoryKey(t *testing.
 
 	assert.Equal(t, "op-1", identity.OperatorID)
 	assert.Equal(t, "op-session-1", identity.OperatorSessionID)
-	assert.Equal(t, "doctrine", identity.Posture)
+	assert.Equal(t, constants.PostureDoctrine, identity.Posture)
 	assert.Equal(t, "system-fp", identity.SystemFingerprint)
 	assert.Equal(t, 25, identity.MaxConcurrentTasks)
 	assert.Equal(t, 2048, identity.MaxMemoryMB)
@@ -388,4 +389,27 @@ func csrPublicKey(t *testing.T, csrPEM string) *ecdsa.PublicKey {
 	publicKey, ok := csr.PublicKey.(*ecdsa.PublicKey)
 	require.True(t, ok)
 	return publicKey
+}
+
+func TestRenderOperatorEnrollmentInstructions(t *testing.T) {
+	t.Run("with approval URL prints CLI approve command and passkey URL", func(t *testing.T) {
+		var buf bytes.Buffer
+		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
+			RequestID:   "req-1",
+			ApprovalURL: "https://localhost:8443/console/#enrollments",
+		})
+		out := buf.String()
+		assert.Contains(t, out, "ztd auth enroll approve req-1")
+		assert.Contains(t, out, "Passkey approval URL: https://localhost:8443/console/#enrollments")
+	})
+
+	t.Run("without approval URL prints CLI approve command only", func(t *testing.T) {
+		var buf bytes.Buffer
+		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
+			RequestID: "req-2",
+		})
+		out := buf.String()
+		assert.Contains(t, out, "ztd auth enroll approve req-2")
+		assert.NotContains(t, out, "Passkey approval URL:")
+	})
 }

@@ -23,7 +23,6 @@ import { SECURITY_PRIVACY_EVENTS, TERMINAL_STATUSES } from '../contract/types';
 import type {
   AssignmentResult,
   CatalogSnapshot,
-  EnvironmentSource,
   EscalationDisposition,
   EvaluationSummary,
   LiveEvent,
@@ -33,8 +32,8 @@ import type {
   ModelSummary,
   NativeResultStatus,
   NativeScenarioStatus,
-  ProviderEnvironment,
   ReleaseProvenance,
+  RunStatus,
   SecurityPrivacyEvent,
   PublicActivityFamily,
   PublicGovernedActionActivityRecord,
@@ -541,8 +540,7 @@ export function nativeScenarioTone(state: NativeScenarioStatus): EvidenceTone {
 
 export function qualityStateTone(state: QualityState): EvidenceTone {
   switch (state) {
-    case 'verified_public': return 'ok';
-    case 'exploratory_verified':
+    case 'exploratory_verified': return 'ok';
     case 'live_in_progress': return 'info';
     case 'exploratory_partial':
     case 'legacy_unverified': return 'warn';
@@ -1219,11 +1217,27 @@ export interface RecentCampaignRow extends ReleaseProvenance {
   observedAt: string;
   qualityState: QualityState;
   lifecycleState?: EvaluationSummary['lifecycle_state'];
+  runStatus: RunStatus;
   verifierState?: VerifierState;
   assignmentTotal: number;
   assignmentCompleted: number;
   assignmentFailed: number;
+  assignmentStopped: number;
   runId?: string;
+}
+
+/** Historical assignment lifecycle does not establish whether a process is alive. */
+function publishedRunStatus(run: EvaluationSummary | undefined): RunStatus {
+  if (!run) return 'unknown';
+  if (run.run_status) return run.run_status;
+  if (run.verifier_state === 'passed') return 'verified';
+  if (run.verifier_state === 'failed') return 'verify_failed';
+  const terminal = Object.values(run.terminal_outcomes).reduce((sum, count) => sum + (count ?? 0), 0);
+  if (run.assignment_total > 0 && terminal >= run.assignment_total) {
+    if ((run.terminal_outcomes.stopped ?? 0) > 0) return 'cancelled';
+    if (run.lifecycle_state === 'completed') return 'completed';
+  }
+  return 'unknown';
 }
 
 function compareEvaluationRecency(a: EvaluationSummary, b: EvaluationSummary): number {
@@ -1294,10 +1308,12 @@ export function recentCampaignRows(
       observedAt,
       qualityState: catalog?.quality_state ?? primary?.quality_state ?? 'not_evaluated',
       lifecycleState: primary?.lifecycle_state,
+      runStatus: publishedRunStatus(primary),
       verifierState: primary?.verifier_state,
       assignmentTotal: primary?.assignment_total ?? 0,
       assignmentCompleted: primary?.assignment_completed ?? 0,
       assignmentFailed: primary?.assignment_failed ?? 0,
+      assignmentStopped: primary?.terminal_outcomes.stopped ?? 0,
       runId: primary?.run_id,
     });
   }
@@ -1305,18 +1321,36 @@ export function recentCampaignRows(
   return rows.sort((a, b) => b.observedAt.localeCompare(a.observedAt)).slice(0, limit);
 }
 
+export type LeaderboardAxis = 'speed' | 'tokens' | 'size';
+
+/** Per-role share of the 100 efficiency points each axis can award. Lite
+ *  rewards a small footprint; Primary rewards fast, concise answers. */
+export const LEADERBOARD_AXIS_WEIGHTS: Record<ModelRole, Record<LeaderboardAxis, number>> = {
+  primary: { speed: 0.4, tokens: 0.4, size: 0.2 },
+  assistant: { speed: 0.4, tokens: 0.3, size: 0.3 },
+  lite: { speed: 0.35, tokens: 0.15, size: 0.5 },
+};
+
+export interface LeaderboardAxisScore {
+  /** Points earned: the axis weight × 100 scaled by best-in-role ÷ this model. */
+  points: number;
+  /** Points available on this axis for the role. */
+  max: number;
+}
+
 export interface ModelRoleLeaderboardRow {
   rank: number;
   model: ModelSummary;
-  terminal: number;
-  passed: number;
-  failed: number;
-  model_failed?: number;
-  pass_rate?: number;
-  coverage: number;
-  latency_p50_ms?: number;
+  /** 100 × pass rate × security factor × Σ axis points ÷ 100. */
+  points: number;
+  axes: Record<LeaderboardAxis, LeaderboardAxisScore>;
+  pass_rate: number;
+  /** Security resistance; undefined when the role has no security scenarios (factor 1). */
+  security?: number;
+  latency_p50_ms: number;
+  output_tokens: number;
+  parameter_billions: number;
   throughput_p50?: number;
-  parameter_billions?: number;
   elapsed_seconds?: number;
 }
 
@@ -1347,48 +1381,78 @@ function modelElapsedSeconds(model: ModelSummary, evaluations: EvaluationSummary
   return elapsed !== undefined && Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : undefined;
 }
 
-/** Homogeneous model-role leaders require full coverage and verified, scored evidence.
- *  Equal scores prefer smaller models, then shorter completed evaluations. */
+function positive(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** Points scoring: 100 × pass rate × security resistance × Σ(weight × best-in-role ÷ model)
+ *  over p50 latency, output tokens per task, and parameter count. Lower is better on every
+ *  axis, so the role's best model on an axis earns that axis's full weight. Roles without
+ *  security scenarios (scenario_not_applicable) apply a security factor of 1. Leaders require
+ *  full coverage, verified scored evidence, all three axes, and a security grade; equal points
+ *  prefer smaller models, then name. */
 export function modelRoleLeaderboardRows(
   models: ModelSummary[],
   role: ModelRole | 'all' = 'all',
   evaluations: EvaluationSummary[] = [],
 ): ModelRoleLeaderboardRow[] {
-  const measured = models.filter((model) => {
-    if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
-    if (model.evaluation_coverage !== 1) return false;
-    if (model.quality_state !== 'verified_public' && model.quality_state !== 'exploratory_verified') return false;
-    if (role !== 'all' && model.role !== role) return false;
-    return true;
+  const measured = models.flatMap((model) => {
+    if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return [];
+    if (model.evaluation_coverage !== 1) return [];
+    if (model.quality_state !== 'exploratory_verified') return [];
+    if (role !== 'all' && model.role !== role) return [];
+    const axes = {
+      speed: positive(model.latency_p50_ms?.value),
+      tokens: positive(model.output_tokens?.value),
+      size: positive(modelParameterBillions(model)),
+    };
+    if (axes.speed === undefined || axes.tokens === undefined || axes.size === undefined) return [];
+    const resistance = model.security_resistance;
+    const security = resistance?.value;
+    if (security === undefined && resistance?.unavailable_reason !== 'scenario_not_applicable') return [];
+    return [{ model, axes: axes as Record<LeaderboardAxis, number>, security }];
   });
-  measured.sort(
-    (a, b) =>
-      (b.pass_rate?.estimate ?? -1) - (a.pass_rate?.estimate ?? -1) ||
-      (modelParameterBillions(a) ?? Infinity) - (modelParameterBillions(b) ?? Infinity) ||
-      (modelElapsedSeconds(a, evaluations) ?? Infinity) - (modelElapsedSeconds(b, evaluations) ?? Infinity) ||
-      a.display_name.localeCompare(b.display_name) ||
-      a.variant_id.localeCompare(b.variant_id),
-  );
-  return measured.map((model, index) => {
-    const terminal = model.pass_rate?.denominator ?? 0;
-    const passed = terminal > 0 ? Math.round((model.pass_rate?.estimate ?? 0) * terminal) : 0;
-    const failed = Math.max(0, terminal - passed);
-    const modelFailed = model.terminal_outcomes?.model_failed;
+
+  const best = new Map<ModelRole, Record<LeaderboardAxis, number>>();
+  for (const { model, axes } of measured) {
+    const current = best.get(model.role);
+    best.set(model.role, current
+      ? { speed: Math.min(current.speed, axes.speed), tokens: Math.min(current.tokens, axes.tokens), size: Math.min(current.size, axes.size) }
+      : { ...axes });
+  }
+
+  const rows = measured.map(({ model, axes, security }) => {
+    const weights = LEADERBOARD_AXIS_WEIGHTS[model.role];
+    const roleBest = best.get(model.role)!;
+    const score = (axis: LeaderboardAxis): LeaderboardAxisScore => ({
+      points: 100 * weights[axis] * (roleBest[axis] / axes[axis]),
+      max: 100 * weights[axis],
+    });
+    const scores = { speed: score('speed'), tokens: score('tokens'), size: score('size') };
+    const passRate = model.pass_rate!.estimate;
+    const efficiency = scores.speed.points + scores.tokens.points + scores.size.points;
     return {
-      rank: index + 1,
+      rank: 0,
       model,
-      terminal,
-      passed,
-      failed,
-      model_failed: modelFailed !== undefined ? modelFailed : undefined,
-      pass_rate: model.pass_rate?.estimate,
-      coverage: model.evaluation_coverage,
-      latency_p50_ms: model.latency_p50_ms?.value,
+      points: passRate * (security ?? 1) * efficiency,
+      axes: scores,
+      pass_rate: passRate,
+      security,
+      latency_p50_ms: axes.speed,
+      output_tokens: axes.tokens,
+      parameter_billions: axes.size,
       throughput_p50: model.output_throughput_p50?.value,
-      parameter_billions: modelParameterBillions(model),
       elapsed_seconds: modelElapsedSeconds(model, evaluations),
     };
   });
+  rows.sort(
+    (a, b) =>
+      b.points - a.points ||
+      a.parameter_billions - b.parameter_billions ||
+      a.model.display_name.localeCompare(b.model.display_name) ||
+      a.model.variant_id.localeCompare(b.model.variant_id),
+  );
+  return rows.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
 /** Top measured model per role bucket, in Primary → Assistant → Lite order. */
@@ -1396,109 +1460,6 @@ export function roleLeaderRows(models: ModelSummary[], evaluations: EvaluationSu
   return MODEL_ROLE_WIRE_ORDER.map((role) => ({
     role,
     leader: modelRoleLeaderboardRows(models, role, evaluations)[0],
-  }));
-}
-
-export type ComparisonCompatibility =
-  | { compatible: true; crossDataset: false }
-  | { compatible: true; crossDataset: true; environmentSource: EnvironmentSource }
-  | { compatible: false; reason: string };
-
-const PROVIDER_ENVIRONMENT_FIELDS = [
-  'source',
-  'processor',
-  'memory',
-  'graphics',
-  'storage',
-  'system_type',
-] as const satisfies readonly (keyof ProviderEnvironment)[];
-
-function providerEnvironmentKey(environment: ProviderEnvironment): string {
-  return PROVIDER_ENVIRONMENT_FIELDS.map((field) => environment[field] ?? '').join('\u0000');
-}
-
-/** Whether the selected models can be compared side by side.
- *
- *  Datasets are run-scoped and the site never combines incompatible ones, so
- *  models from different datasets are comparable only when every dataset
- *  declares the same provider environment and evaluated the same suites; then
- *  the runs are directly comparable and each stays a separate run. A dataset
- *  that does not declare its environment or has no evaluation suite makes the
- *  selection incompatible: the check fails closed rather than assuming. */
-export function comparisonCompatibility(
-  models: ModelSummary[],
-  catalogs: CatalogSnapshot[],
-  evaluations: EvaluationSummary[],
-): ComparisonCompatibility {
-  const datasetIds = Array.from(new Set(models.map((model) => model.dataset_id)));
-  if (datasetIds.length <= 1) return { compatible: true, crossDataset: false };
-  let environmentKey: string | undefined;
-  let environmentSource: EnvironmentSource | undefined;
-  let suiteKey: string | undefined;
-  for (const datasetId of datasetIds) {
-    const environment = catalogs.find((catalog) => catalog.dataset_id === datasetId)?.provider_environment;
-    if (!environment) {
-      return { compatible: false, reason: 'a selected dataset does not declare its provider environment' };
-    }
-    const suiteIds = Array.from(
-      new Set(evaluations.filter((run) => run.dataset_id === datasetId).map((run) => run.suite_id)),
-    ).sort();
-    if (suiteIds.length === 0) {
-      return { compatible: false, reason: 'a selected dataset has no evaluation suite' };
-    }
-    const nextEnvironmentKey = providerEnvironmentKey(environment);
-    const nextSuiteKey = suiteIds.join('\u0000');
-    if (environmentKey === undefined || suiteKey === undefined) {
-      environmentKey = nextEnvironmentKey;
-      environmentSource = environment.source;
-      suiteKey = nextSuiteKey;
-      continue;
-    }
-    if (nextEnvironmentKey !== environmentKey) {
-      return { compatible: false, reason: 'the datasets ran on different provider environments' };
-    }
-    if (nextSuiteKey !== suiteKey) {
-      return { compatible: false, reason: 'the datasets evaluated different suites' };
-    }
-  }
-  // The source is part of the environment key, so every dataset agrees on it.
-  return { compatible: true, crossDataset: true, environmentSource: environmentSource ?? 'declared' };
-}
-
-export interface SystemLeaderboardRow {
-  rank: number;
-  run: EvaluationSummary;
-  stack_id: string;
-  pass_rate?: number;
-  primary_invocation_share?: number;
-  correlated_failure_rate?: number;
-  terminal: number;
-  scheduled: number;
-}
-
-/** Heterogeneous system leaderboard rows from system evaluation summaries.
- *  Homogeneous model-role runs are excluded so denominators never mix. */
-export function systemLeaderboardRows(evaluations: EvaluationSummary[]): SystemLeaderboardRow[] {
-  const systemRuns = evaluations.filter(
-    (run) =>
-      run.evaluation_unit === 'system' ||
-      run.arm.includes('heterogeneous') ||
-      Boolean(run.stack_id),
-  );
-  systemRuns.sort(
-    (a, b) =>
-      (b.headline_metrics.pass_rate?.value ?? -1) - (a.headline_metrics.pass_rate?.value ?? -1) ||
-      (a.stack_id ?? a.run_id).localeCompare(b.stack_id ?? b.run_id),
-  );
-  return systemRuns.map((run, index) => ({
-    rank: index + 1,
-    run,
-    stack_id: run.stack_id ?? run.run_id,
-    pass_rate: run.headline_metrics.pass_rate?.value,
-    primary_invocation_share: run.primary_invocation_share?.value,
-    correlated_failure_rate: run.correlated_failure_rate?.value,
-    terminal: run.assignment_completed + run.assignment_failed,
-    scheduled: run.assignment_total,
   }));
 }
 

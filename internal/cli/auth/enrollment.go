@@ -80,6 +80,11 @@ type EnrollmentGateway interface {
 	//     (gateway unreachable, TLS handshake failure, etc.). The
 	//     coordinator treats this as best-effort — warn and proceed.
 	ProbeCLISession(ctx context.Context, fileSvc fs.RuntimeFileService) error
+
+	// SessionInfo returns the authenticated CLI session's server-side
+	// identity binding over mTLS. The coordinator reads PasskeyRegistered
+	// from it when EnrollmentOptions.PasskeyIfMissing is set.
+	SessionInfo(ctx context.Context, fileSvc fs.RuntimeFileService) (CLISessionInfo, error)
 }
 
 // KeyProvider is the key-generation abstraction used by the
@@ -318,7 +323,7 @@ type EnrollmentResult struct {
 // the local CLI identity, decides the correct action (bootstrap, recovery,
 // rotation, or reuse), stages and commits any new credentials, installs OS
 // trust (unless --no-system-trust), and runs the passkey ceremony (unless
-// SkipPasskey).
+// SkipPasskey, or PasskeyIfMissing and the user already holds a passkey).
 //
 // ctx is propagated end-to-end through HTTP, polling, and the passkey
 // ceremony. The command layer should pass cmd.Context() so user
@@ -518,6 +523,24 @@ func (c *EnrollmentCoordinator) Enroll(ctx context.Context, opts EnrollmentOptio
 		result.UserID = artifacts.UserID
 		result.CLISessionID = artifacts.CLISessionID
 		c.out("%s complete (user %s, session %s).", artifacts.Source, result.UserID, result.CLISessionID)
+	}
+
+	// 2b. Passkey-if-missing: with the CLI credentials in place, ask the
+	// gateway whether the session's user already holds a passkey. If so the
+	// session is complete without trust installation or a ceremony; if not,
+	// fall through to the full trust + passkey path. The lookup fails closed:
+	// L3 approval is impossible without a passkey, so an unverifiable state
+	// must not be treated as either answer.
+	if opts.PasskeyIfMissing {
+		info, siErr := c.gateway.SessionInfo(ctx, c.fileSvc)
+		if siErr != nil {
+			return nil, fmt.Errorf("%w: check passkey registration: %w", constants.ErrEnrollmentFailed, siErr)
+		}
+		if info.PasskeyRegistered {
+			c.out("Passkey already registered for user %s.", result.UserID)
+			return result, nil
+		}
+		c.out("The gateway posture requires passkey approval and user %s has no passkey; registering one.", result.UserID)
 	}
 
 	// 3. Install system trust (local CLI paths only, unless --no-system-trust).

@@ -322,7 +322,7 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 
 	_, err = controller.InitializeCampaign(ctx, req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(ctx, controller, req.RunID)
+	_, err = controller.ScheduleRun(ctx, req.RunID)
 	require.NoError(t, err)
 
 	binding := CampaignExecutionBinding{

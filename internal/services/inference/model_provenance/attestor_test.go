@@ -10,7 +10,6 @@ package model_provenance
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +59,8 @@ func TestOllamaStorageAttestor_AttestMatchesManifestDigest(t *testing.T) {
 	assert.Equal(t, expectedDigest, window.GetObservedModelDigest())
 	assert.Len(t, window.GetWeightAttestations(), 1)
 	assert.Equal(t, layerDigest, window.GetWeightAttestations()[0].GetBlobDigest())
+	assert.Equal(t, fullHash, window.GetWeightAttestations()[0].GetVerificationMode())
+	assert.Positive(t, window.GetWeightAttestations()[0].GetFullHashCompletedAtUnixMs())
 }
 
 func TestOllamaStorageAttestor_AttestNamespacedModelTag(t *testing.T) {
@@ -181,28 +182,6 @@ func TestOllamaStorageAttestor_AttestUntaggedModelTag(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, window.GetDigestMatch())
 	assert.Equal(t, modelTag, window.GetServedModelTag())
-}
-
-func TestOllamaStorageAttestor_BlobHashingHonorsCancellationBetweenReads(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	reader := &cancelAfterRead{reader: strings.NewReader("first chunk"), cancel: cancel}
-	_, err := io.Copy(io.Discard, &provenanceContextReader{ctx: ctx, reader: reader})
-	require.ErrorIs(t, err, context.Canceled)
-	assert.Equal(t, 1, reader.reads)
-}
-
-type cancelAfterRead struct {
-	reader io.Reader
-	cancel context.CancelFunc
-	reads  int
-}
-
-func (r *cancelAfterRead) Read(p []byte) (int, error) {
-	r.reads++
-	n, err := r.reader.Read(p)
-	r.cancel()
-	return n, err
 }
 
 // A multi-runner tag (Ollama 0.40+) stores a wrapper manifest whose layers

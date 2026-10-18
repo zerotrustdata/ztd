@@ -69,23 +69,19 @@ describe('availableQualityFilterOptions', () => {
       MODEL_QUALITY_FILTER_STATES,
     );
     expect(options.map((option) => option.value)).toEqual(['exploratory_verified', 'exploratory_partial']);
-    expect(options[0]?.label).toBe('Run-scoped verification passed');
+    expect(options[0]?.label).toBe('Verified');
   });
 
   it('normalizes stale quality selections back to all', () => {
     const options = availableQualityFilterOptions([{ quality_state: 'exploratory_verified' }], MODEL_QUALITY_FILTER_STATES);
-    expect(normalizeQualityFilter('verified_public', options)).toBe('all');
+    expect(normalizeQualityFilter('legacy_unverified', options)).toBe('all');
     expect(normalizeQualityFilter('exploratory_verified', options)).toBe('exploratory_verified');
   });
 });
 
 describe('qualityStateLabel', () => {
-  it('labels verified_public as current-standard verification', () => {
-    expect(qualityStateLabel('verified_public')).toBe('Current-standard verified');
-  });
-
-  it('labels exploratory_verified as run-scoped verification', () => {
-    expect(qualityStateLabel('exploratory_verified')).toBe('Run-scoped verification passed');
+  it('labels exploratory_verified as verified', () => {
+    expect(qualityStateLabel('exploratory_verified')).toBe('Verified');
   });
 
   it('labels not_evaluated', () => {
@@ -96,8 +92,8 @@ describe('qualityStateLabel', () => {
     expect(qualityStateLabel('exploratory_partial')).toBe('Not fully verified');
   });
 
-  it('labels legacy_unverified as not verified to current standards', () => {
-    expect(qualityStateLabel('legacy_unverified')).toBe('Legacy · not current-standard verified');
+  it('labels legacy_unverified as unverified', () => {
+    expect(qualityStateLabel('legacy_unverified')).toBe('Legacy · unverified');
   });
 
   it('labels live_in_progress as unverified', () => {
@@ -129,8 +125,8 @@ describe('isRunLevelQualityEvent', () => {
 });
 
 describe('qualityStateTone', () => {
-  it('tones verified_public as ok', () => {
-    expect(qualityStateTone('verified_public')).toBe('ok');
+  it('tones exploratory_verified as ok', () => {
+    expect(qualityStateTone('exploratory_verified')).toBe('ok');
   });
 
   it('tones terminal_failed as critical', () => {

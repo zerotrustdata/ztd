@@ -19,6 +19,7 @@ import (
 // CLISessionControllerDeps groups all dependencies for CLISessionController.
 type CLISessionControllerDeps struct {
 	Logger    *slog.Logger
+	UserSvc   *UserService
 	Responder *response.Writer
 }
 
@@ -35,12 +36,14 @@ type CLISessionControllerDeps struct {
 //     refresh or re-enroll)
 type CLISessionController struct {
 	logger    *slog.Logger
+	userSvc   *UserService
 	responder *response.Writer
 }
 
 func newCLISessionController(deps CLISessionControllerDeps) *CLISessionController {
 	return &CLISessionController{
 		logger:    deps.Logger,
+		userSvc:   deps.UserSvc,
 		responder: deps.Responder,
 	}
 }
@@ -52,6 +55,7 @@ func newCLISessionController(deps CLISessionControllerDeps) *CLISessionControlle
 // operator binding resolved against the operators collection — never from
 // request headers. A session with no operator binding reports empty
 // operator fields; the caller decides whether that is actionable.
+// passkey_registered is read from the session user's persisted record.
 //
 // GET /api/v1/auth/cli/session  (RouteAuthMTLS)
 func (c *CLISessionController) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
@@ -72,10 +76,23 @@ func (c *CLISessionController) handleSessionInfo(w http.ResponseWriter, r *http.
 	operatorID, _ := r.Context().Value(constants.ContextKeyOperatorID).(string)
 	boundSessionIDs, _ := r.Context().Value(constants.ContextKeyBoundOperatorSessionIDs).([]string)
 
+	user, err := c.userSvc.GetByID(r.Context(), userID)
+	if err != nil {
+		c.logger.Error("CLI session info: load user", "user_id", userID, "error", err)
+		c.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	if user == nil {
+		c.logger.Warn("CLI session info: session user not found", "user_id", userID)
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrNotAuthenticated.Error())
+		return
+	}
+
 	c.responder.JSON(w, http.StatusOK, models.CLISessionInfoResponse{
 		Success:           true,
 		CLISessionID:      cliSessionID,
 		UserID:            userID,
+		PasskeyRegistered: user.HasPasskey(),
 		OperatorSessionID: operatorSessionID,
 		OperatorID:        operatorID,
 

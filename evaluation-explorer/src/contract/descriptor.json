@@ -1,9 +1,8 @@
 {
-  "schema_version": "1.8.0",
+  "schema_version": "1.9.0",
   "enums": {
     "ReleaseBasis": ["recorded", "asserted", "unknown"],
     "QualityState": [
-      "verified_public",
       "exploratory_verified",
       "exploratory_partial",
       "legacy_unverified",
@@ -84,6 +83,7 @@
       "execution_failed",
       "escalated"
     ],
+    "RunStatus": ["unknown", "initialized", "scheduled", "running", "in_progress", "interrupted", "cancelled", "completed", "verified", "verify_failed", "unspecified", "unavailable", "unsupported", "invalid_evidence"],
     "LifecycleStatus": [
       "queued",
       "running",

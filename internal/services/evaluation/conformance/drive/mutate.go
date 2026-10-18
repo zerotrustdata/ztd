@@ -16,7 +16,6 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/uuid"
@@ -102,7 +101,7 @@ func BaseMutators() MutatorSet {
 			return Rehash(env)
 		}},
 		cases.FaultCallerPosture: {Apply: func(_ context.Context, env *commonv1.GovernanceEnvelope, _ cases.Attempt) error {
-			env.Posture = string(config.PostureDoctrine)
+			env.Posture = string(constants.PostureDoctrine)
 			return nil
 		}},
 		cases.FaultRequestorMismatch: {Apply: func(_ context.Context, env *commonv1.GovernanceEnvelope, _ cases.Attempt) error {

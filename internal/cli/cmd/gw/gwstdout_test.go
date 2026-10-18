@@ -16,7 +16,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
 
@@ -31,7 +30,7 @@ func newOutputCmd() (*cobra.Command, *bytes.Buffer) {
 
 func TestPrintNextSteps_LoopbackOffersOnlyLocalEndpoints(t *testing.T) {
 	cmd, buf := newOutputCmd()
-	printNextSteps(cmd, &governance.DoctrinePosture{}, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "192.168.1.100")
+	printNextSteps(cmd, constants.PostureDoctrine, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "192.168.1.100")
 
 	out := buf.String()
 	bin := getBinaryName()
@@ -51,7 +50,7 @@ func TestPrintNextSteps_PublicOffersRemoteEnrollment(t *testing.T) {
 	for _, host := range []string{"0.0.0.0", "::", "192.168.1.10"} {
 		t.Run(host, func(t *testing.T) {
 			cmd, buf := newOutputCmd()
-			printNextSteps(cmd, &governance.DoctrinePosture{}, serve.GatewayConfig{ListenHost: host}, "192.168.1.100")
+			printNextSteps(cmd, constants.PostureDoctrine, serve.GatewayConfig{ListenHost: host}, "192.168.1.100")
 			out := buf.String()
 			assert.Contains(t, out, getBinaryName()+" operator start -e 192.168.1.100 --working-dir ~/.ztd-operator")
 			assert.NotContains(t, out, "--endpoint localhost")
@@ -61,21 +60,21 @@ func TestPrintNextSteps_PublicOffersRemoteEnrollment(t *testing.T) {
 
 func TestPrintNextSteps_PasskeyGuidanceFollowsPosture(t *testing.T) {
 	postures := []struct {
-		posture  governance.GovernancePosture
+		posture  constants.Posture
 		required bool
 	}{
-		{&governance.DoctrinePosture{}, false},
-		{&governance.ConsensusPosture{}, false},
-		{&governance.RatifyPosture{}, true},
-		{&governance.NotaryPosture{}, true},
+		{constants.PostureDoctrine, false},
+		{constants.PostureConsensus, false},
+		{constants.PostureRatify, true},
+		{constants.PostureNotary, true},
 	}
 	for _, p := range postures {
-		t.Run(p.posture.Name(), func(t *testing.T) {
+		t.Run(string(p.posture), func(t *testing.T) {
 			cmd, buf := newOutputCmd()
 			printNextSteps(cmd, p.posture, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "")
 			out := buf.String()
 			if p.required {
-				assert.Contains(t, out, "Register a passkey (required: "+p.posture.Name()+" posture enforces L3)")
+				assert.Contains(t, out, "Register a passkey (required: "+string(p.posture)+" posture enforces L3)")
 			} else {
 				assert.Contains(t, out, "Sign in headless (CLI and TUI)")
 				assert.NotContains(t, out, "required")
@@ -92,7 +91,7 @@ func TestPrintNextSteps_ShiftedPortsAreSpelledOut(t *testing.T) {
 	cmd, buf := newOutputCmd()
 	loopback := shifted
 	loopback.ListenHost = constants.LocalhostIP
-	printNextSteps(cmd, &governance.DoctrinePosture{}, loopback, "192.168.1.100")
+	printNextSteps(cmd, constants.PostureDoctrine, loopback, "192.168.1.100")
 	out := buf.String()
 	assert.Contains(t, out, "Console  https://localhost:8450/console/")
 	assert.Contains(t, out, getBinaryName()+" operator start --endpoint localhost:8087 --port 8450 --working-dir ~/.ztd-operator")
@@ -100,7 +99,7 @@ func TestPrintNextSteps_ShiftedPortsAreSpelledOut(t *testing.T) {
 	cmd, buf = newOutputCmd()
 	public := shifted
 	public.ListenHost = "0.0.0.0"
-	printNextSteps(cmd, &governance.DoctrinePosture{}, public, "192.168.1.100")
+	printNextSteps(cmd, constants.PostureDoctrine, public, "192.168.1.100")
 	assert.Contains(t, buf.String(), getBinaryName()+" operator start -e 192.168.1.100:8087 --port 8450 --working-dir ~/.ztd-operator")
 }
 

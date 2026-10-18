@@ -19,19 +19,20 @@ const EvaluationAppName = "ztd-eval"
 // no models: each governed request carries the model the user chose.
 const InferenceDefaultKeepAlive = "-1"
 
-// ModelProvenanceAttestationPreflightTimeout bounds the synchronous storage
-// attestation probe: the Gateway waits this long for the Provenance Operator
-// to hash the model's blobs, and the CLI client allows this plus
-// ModelProvenanceAttestationPreflightClientMargin. Hashing a multi-gigabyte
-// model over a mounted filesystem takes well over 30 seconds.
 const (
-	// BEGIN does no hashing; a silent operator must fail quickly.
-	ModelProvenanceCommandAcknowledgementTimeout    = 10 * time.Second
-	ModelProvenanceAttestationPreflightTimeout      = 5 * time.Minute
-	ModelProvenanceAttestationPreflightClientMargin = 15 * time.Second
-	// Bound storage I/O independently of the command-channel goroutine count.
+	// Bound full blob hashes independently of the command-channel goroutine count.
 	ModelProvenanceHashConcurrency = 2
-	// Strict verification waits on durable completion coverage, never a fixed sleep.
-	ModelProvenanceCompletionTimeout      = 5 * time.Minute
-	ModelProvenanceCompletionPollInterval = 2 * time.Second
+	ModelProvenanceHashBufferBytes = 1 << 20
+	// A blob whose identity changed within this window of its hash start is
+	// re-hashed on next use: coarse filesystem timestamps cannot order the
+	// change against the hash.
+	ModelProvenanceBlobIdentitySettleWindow = time.Second
+	// Strict verification waits on attestation-recorded events for durable
+	// completion coverage, never a fixed sleep or a re-read timer.
+	ModelProvenanceCompletionTimeout = 5 * time.Minute
 )
+
+// ProviderObservationCompletionTimeout bounds the wait for the Observer's
+// observation-recorded event after governed inference returns. FINALIZE only
+// stops sampling and signs the window, so a window this late is missing.
+const ProviderObservationCompletionTimeout = 30 * time.Second

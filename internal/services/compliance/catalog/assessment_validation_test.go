@@ -40,7 +40,7 @@ func validScope() *compliancev1.AssessmentScope {
 		DoctrineBundleHashes:  []*compliancev1.NamedDigest{{Name: "fedramp", Sha256: validSHA256}},
 		ConsensusPolicyHashes: []*compliancev1.NamedDigest{{Name: "default", Sha256: validSHA256}},
 		TrustAnchorIds:        []string{"root-1"},
-		ActivePosture:         constants.PostureDoctrine,
+		ActivePosture:         string(constants.PostureDoctrine),
 		SourceAdmissions: []*compliancev1.AssessmentSourceAdmission{{
 			AdmissionId:              "source-1",
 			SourceKind:               "native-evaluation",

@@ -160,34 +160,6 @@ func TestL2TrustStore_ReplaceRejectsMalformedAndKeepsHeldTrust(t *testing.T) {
 	assert.Equal(t, pub, got)
 }
 
-func TestPostureDescription_AllPostures(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name     string
-		posture  GovernancePosture
-		expected string
-	}{
-		{"doctrine", &DoctrinePosture{}, "doctrine (L1 enforced, L2/L3 audited)"},
-		{"consensus", &ConsensusPosture{}, "consensus (L1/L2 enforced, L3 audited)"},
-		{"notary", &NotaryPosture{}, "notary (L1/L2/L3 strictly enforced)"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.name, tt.posture.Name())
-			assert.Equal(t, tt.expected, tt.posture.Description())
-		})
-	}
-}
-
-func TestParseGovernancePosture_Invalid(t *testing.T) {
-	t.Parallel()
-	_, err := ParseGovernancePosture("invalid")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidPosture)
-	assert.Contains(t, err.Error(), "invalid posture")
-}
-
 func TestL4Warden_Doctrine(t *testing.T) {
 	t.Parallel()
 	logger := testutil.NewTestLogger()

@@ -124,7 +124,7 @@ func ValidateLaunchProfile(profile GatewayLaunchProfile) error {
 	if cfg.Posture == "" {
 		return fmt.Errorf("%w: posture is empty", constants.ErrLaunchProfileInvalid)
 	}
-	if _, valid := constants.GetGovernancePostureRequirements(string(cfg.Posture)); !valid {
+	if !cfg.Posture.Valid() {
 		return fmt.Errorf("%w: posture %q is not recognized", constants.ErrLaunchProfileInvalid, cfg.Posture)
 	}
 
@@ -181,9 +181,6 @@ func ValidateLaunchProfile(profile GatewayLaunchProfile) error {
 	}
 	if err := validateLaunchProfileURL(cfg.PublicBaseURL, false); err != nil {
 		return fmt.Errorf("%w: public_base_url: %w", constants.ErrLaunchProfileInvalid, err)
-	}
-	if err := validateLaunchProfileURL(cfg.ConsensusURL, true); err != nil {
-		return fmt.Errorf("%w: consensus_url: %w", constants.ErrLaunchProfileInvalid, err)
 	}
 	if err := validateLaunchProfileURL(cfg.MCPDownstreamURL, false); err != nil {
 		return fmt.Errorf("%w: mcp_downstream_url: %w", constants.ErrLaunchProfileInvalid, err)

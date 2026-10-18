@@ -16,8 +16,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
 
 // Identity is the enrolled CLI identity the TUI runs as: the same fields
@@ -155,9 +155,9 @@ type Model struct {
 	rebuildSession     func(context.Context, Identity) (Session, error)
 	sessionManager     *sessionManager
 
-	// Gateway health: posture is nil until health is fetched.
+	// Gateway health: posture is empty until health is fetched.
 	health         models.HealthResponse
-	posture        governance.GovernancePosture
+	posture        constants.Posture
 	gatewayVersion string
 
 	// Animation

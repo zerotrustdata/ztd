@@ -27,6 +27,9 @@ import (
 // remote gateway when local runtime files are unavailable.
 type ProviderObservationRemote interface {
 	Load(ctx context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, error)
+	// WatchRecorded delivers the provider attempt ID of every observation window
+	// the Gateway records; see evidenceWindowWatch.
+	WatchRecorded(ctx context.Context, connected func(), recorded func(providerAttemptID string)) error
 }
 
 const (
@@ -83,11 +86,13 @@ type PublicGPUObservation struct {
 // PublicBenchmarkObservations is the explorer-safe benchmark projection for
 // one terminal assignment.
 type PublicBenchmarkObservations struct {
-	GradeSummaries     []PublicGradeSummary          `json:"grade_summaries,omitempty"`
-	ToolScorecard      map[string]*PublicMetricValue `json:"tool_scorecard,omitempty"`
-	Timing             *PublicBenchmarkTiming        `json:"timing,omitempty"`
-	GPU                *PublicGPUObservation         `json:"gpu,omitempty"`
-	UnavailableReasons []string                      `json:"unavailable_reasons"`
+	GradeSummaries []PublicGradeSummary          `json:"grade_summaries,omitempty"`
+	ToolScorecard  map[string]*PublicMetricValue `json:"tool_scorecard,omitempty"`
+	// SecurityPrivacyEvents is set only for security-policy scenarios.
+	SecurityPrivacyEvents map[string]uint32      `json:"security_privacy_events,omitempty"`
+	Timing                *PublicBenchmarkTiming `json:"timing,omitempty"`
+	GPU                   *PublicGPUObservation  `json:"gpu,omitempty"`
+	UnavailableReasons    []string               `json:"unavailable_reasons"`
 }
 
 var toolScorecardDimensions = []string{
@@ -266,6 +271,47 @@ func (r *CampaignProviderObservationReader) LoadObservationWindow(ctx context.Co
 	return window, nil
 }
 
+// WaitForObservationWindow captures one provider-boundary window the Observer
+// completes after governed inference returns, driven by the Gateway's
+// observation-recorded events (see awaitEvidenceWindows). The caller owns the
+// deadline.
+func (r *CampaignProviderObservationReader) WaitForObservationWindow(ctx context.Context, providerAttemptID string) error {
+	if r == nil || providerAttemptID == "" {
+		return fmt.Errorf("evaluation: wait for provider observation: %w", constants.ErrMissingRequiredField)
+	}
+	_, err := r.localWindows.Load(ctx, providerAttemptID)
+	if err == nil {
+		return nil
+	}
+	if !isProviderEvidenceNotFound(err) {
+		return fmt.Errorf("evaluation: wait for provider observation %s: %w", providerAttemptID, err)
+	}
+	pending := map[string]struct{}{providerAttemptID: {}}
+	missing := func(cause error) error {
+		return missingEvidenceWindowsError("provider-boundary observation", "check Observer Operator logs", cause, pending)
+	}
+	if r.remote == nil {
+		return missing(constants.ErrGatewayNotReachable)
+	}
+	return awaitEvidenceWindows(ctx, pending, r.remote.WatchRecorded, r.captureRemoteWindow, missing)
+}
+
+// captureRemoteWindow persists the Gateway observation window for one attempt.
+// A window the Gateway has not recorded yet stays pending for its event.
+func (r *CampaignProviderObservationReader) captureRemoteWindow(ctx context.Context, id string) (bool, error) {
+	window, _, err := r.remote.Load(ctx, id)
+	if err != nil {
+		if isProviderEvidenceNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("evaluation: wait for provider observation %s: %w", id, err)
+	}
+	if err := r.localWindows.Save(ctx, window); err != nil {
+		return false, fmt.Errorf("evaluation: capture provider observation %s: %w", id, err)
+	}
+	return true, nil
+}
+
 // BindProviderBoundaryObservationRefs attaches observation evidence references
 // to scored model inferences when durable windows exist.
 func (r *CampaignProviderObservationReader) BindProviderBoundaryObservationRefs(ctx context.Context, result *evalv1.EvaluationAssignmentResult) error {
@@ -382,6 +428,11 @@ func (r *CampaignProviderObservationReader) buildPublicBenchmarkObservations(ctx
 	}
 	if len(scorecard) > 0 {
 		observations.ToolScorecard = scorecard
+	}
+	if scenario != nil && scenario.Category == evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY {
+		observations.SecurityPrivacyEvents = map[string]uint32{
+			securityEventModelAttemptedUnauthorizedAccess: unauthorizedAttemptCount(result, scenario.ForbiddenTools),
+		}
 	}
 	if r == nil {
 		observations.UnavailableReasons = appendUniqueStrings(observations.UnavailableReasons, "source_not_captured")

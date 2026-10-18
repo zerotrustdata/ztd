@@ -14,7 +14,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/browserorigin"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig verifies that
@@ -25,13 +25,11 @@ func TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig(t *testing.T) {
 	assert.NoError(t, err)
 
 	base := serve.GatewayConfig{
-		Posture:          ztdconfig.PostureConsensus,
+		Posture:          constants.PostureConsensus,
 		HTTPPort:         8080,
 		HTTPSPort:        8443,
 		LogLevel:         "info",
 		CertIdentityMode: "full",
-		ConsensusID:      "trib-001",
-		ConsensusURL:     "https://localhost:8443/consensus/v1/deliberate",
 		RateLimitRPS:     5.0,
 		RateLimitBurst:   10,
 		DoctrineDir:      "/etc/ztd/doctrine",
@@ -46,13 +44,11 @@ func TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig(t *testing.T) {
 	assert.Equal(t, "ztd", result.PasskeyRpName)
 
 	// Non-browser fields are preserved from the base.
-	assert.Equal(t, ztdconfig.PostureConsensus, result.Posture)
+	assert.Equal(t, constants.PostureConsensus, result.Posture)
 	assert.Equal(t, 8080, result.HTTPPort)
 	assert.Equal(t, 8443, result.HTTPSPort)
 	assert.Equal(t, "info", result.LogLevel)
 	assert.Equal(t, "full", result.CertIdentityMode)
-	assert.Equal(t, "trib-001", result.ConsensusID)
-	assert.Equal(t, "https://localhost:8443/consensus/v1/deliberate", result.ConsensusURL)
 	assert.Equal(t, 5.0, result.RateLimitRPS)
 	assert.Equal(t, 10, result.RateLimitBurst)
 	assert.Equal(t, "/etc/ztd/doctrine", result.DoctrineDir)

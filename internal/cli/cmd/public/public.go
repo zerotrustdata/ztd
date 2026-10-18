@@ -20,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
@@ -298,7 +299,183 @@ func Cmd() *cobra.Command {
 		publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicVerifyAssignmentCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicVerifyAgentTraceCmd(),
+		publicVerifyProofCmd(),
 	)
+	return cmd
+}
+
+// publicVerifyProofCmd verifies a chained proof manifest segment log and its
+// referenced proof artifacts offline: chain root continuity from zero hash,
+// recomputed segment roots, Ed25519 signatures, withdrawal exclusions, and
+// active artifact file hashes and sizes.
+func publicVerifyProofCmd() *cobra.Command {
+	var segmentsPath string
+	var artifactsPath string
+	var publicKeyHex string
+	var keyRegistryPath string
+
+	cmd := &cobra.Command{
+		Use:   "verify-proof",
+		Short: "Verify a published proof package offline",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if strings.TrimSpace(segmentsPath) == "" || strings.TrimSpace(artifactsPath) == "" {
+				return constants.ErrMissingRequiredField
+			}
+			if strings.TrimSpace(publicKeyHex) == "" && strings.TrimSpace(keyRegistryPath) == "" {
+				return constants.ErrMissingRequiredField
+			}
+
+			keyRegistry := make(map[string]ed25519.PublicKey)
+			if strings.TrimSpace(publicKeyHex) != "" {
+				pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(publicKeyHex))
+				if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+					return fmt.Errorf("%w: invalid ed25519 public key hex", constants.ErrPublicFeedProofSegmentInvalid)
+				}
+				keyRegistry["*"] = ed25519.PublicKey(pubKeyBytes)
+			}
+			if strings.TrimSpace(keyRegistryPath) != "" {
+				regData, err := os.ReadFile(keyRegistryPath)
+				if err != nil {
+					return fmt.Errorf("public-feed: read key registry: %w", err)
+				}
+				var rawMap map[string]string
+				if err := json.Unmarshal(regData, &rawMap); err != nil {
+					return fmt.Errorf("%w: decode key registry: %v", constants.ErrPublicFeedProofSegmentInvalid, err)
+				}
+				for k, hexStr := range rawMap {
+					pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(hexStr))
+					if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+						return fmt.Errorf("%w: invalid ed25519 public key for %s", constants.ErrPublicFeedProofSegmentInvalid, k)
+					}
+					keyRegistry[k] = ed25519.PublicKey(pubKeyBytes)
+				}
+			}
+
+			segmentsData, err := os.ReadFile(segmentsPath)
+			if err != nil {
+				return fmt.Errorf("public-feed: read proof segments: %w", err)
+			}
+			lines := strings.Split(string(segmentsData), "\n")
+			segments := make([]models.PublicProofManifestSegment, 0, len(lines))
+			for idx, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				var seg models.PublicProofManifestSegment
+				decoder := json.NewDecoder(strings.NewReader(line))
+				decoder.DisallowUnknownFields()
+				if err := decoder.Decode(&seg); err != nil {
+					return fmt.Errorf("%w: segment line %d: %v", constants.ErrPublicFeedProofSegmentInvalid, idx+1, err)
+				}
+				var trailing json.RawMessage
+				if err := decoder.Decode(&trailing); err != io.EOF {
+					return fmt.Errorf("%w: trailing JSON on line %d", constants.ErrPublicFeedProofSegmentInvalid, idx+1)
+				}
+				segments = append(segments, seg)
+			}
+			if len(segments) == 0 {
+				return fmt.Errorf("%w: segments log is empty", constants.ErrPublicFeedProofSegmentInvalid)
+			}
+
+			withdrawn := make(map[string]bool)
+			type orderedEntry struct {
+				id    string
+				entry models.PublicProofCatalogEntry
+			}
+			var allEntries []orderedEntry
+			listed := make(map[string]bool)
+
+			for i, seg := range segments {
+				expectedIndex := int64(i + 1)
+				if seg.SegmentIndex != expectedIndex {
+					return fmt.Errorf("%w: segment index %d expected %d", constants.ErrPublicFeedProofSegmentOutOfOrder, seg.SegmentIndex, expectedIndex)
+				}
+				expectedPrevRoot := constants.PublicFeedZeroHashHex
+				if i > 0 {
+					expectedPrevRoot = segments[i-1].ProofRootSHA256
+				}
+				if seg.PreviousRoot != expectedPrevRoot {
+					return fmt.Errorf("%w: segment %d previous root %s != expected %s", constants.ErrPublicFeedProofSegmentLinkMismatch, seg.SegmentIndex, seg.PreviousRoot, expectedPrevRoot)
+				}
+
+				var segKey ed25519.PublicKey
+				if k, ok := keyRegistry[seg.SigningKeyID]; ok {
+					segKey = k
+				} else if k, ok := keyRegistry[seg.SourceID+":"+seg.SigningKeyID]; ok {
+					segKey = k
+				} else if k, ok := keyRegistry["*"]; ok {
+					segKey = k
+				} else {
+					return fmt.Errorf("%w: unknown signing key %s for segment %d", constants.ErrPublicFeedProofSegmentInvalid, seg.SigningKeyID, seg.SegmentIndex)
+				}
+
+				if err := models.VerifyPublicProofSegment(segments[0].SourceID, seg, segKey); err != nil {
+					return fmt.Errorf("public-feed: verify segment %d: %w", seg.SegmentIndex, err)
+				}
+
+				for _, w := range seg.WithdrawnArtifactIDs {
+					if !listed[w] || withdrawn[w] {
+						return fmt.Errorf("%w: withdrawal of inactive artifact %s", constants.ErrPublicFeedProofSegmentInvalid, w)
+					}
+					withdrawn[w] = true
+				}
+				for _, entry := range seg.Entries {
+					if listed[entry.ArtifactID] {
+						return fmt.Errorf("%w: artifact %s repeated", constants.ErrPublicFeedProofSegmentEquivocation, entry.ArtifactID)
+					}
+					listed[entry.ArtifactID] = true
+					allEntries = append(allEntries, orderedEntry{id: entry.ArtifactID, entry: entry})
+				}
+			}
+
+			seen := make(map[string]bool)
+			var activeEntries []models.PublicProofCatalogEntry
+			for _, item := range allEntries {
+				if withdrawn[item.id] || seen[item.id] {
+					continue
+				}
+				seen[item.id] = true
+				activeEntries = append(activeEntries, item.entry)
+			}
+
+			for _, entry := range activeEntries {
+				if entry.ArtifactID == "" || entry.ByteSize < 0 {
+					return fmt.Errorf("%w: invalid entry %s", constants.ErrPublicFeedProofCatalogMismatch, entry.ArtifactID)
+				}
+				artifactPath := filepath.Join(artifactsPath, entry.ArtifactID)
+				fi, err := os.Lstat(artifactPath)
+				if err != nil {
+					return fmt.Errorf("%w: artifact file %s: %w", constants.ErrPublicFeedProofNotFound, entry.ArtifactID, err)
+				}
+				if fi.Mode()&os.ModeSymlink != 0 || !fi.Mode().IsRegular() {
+					return fmt.Errorf("%w: artifact %s is not regular file", constants.ErrPublicFeedProofSymlinkRejected, entry.ArtifactID)
+				}
+				if fi.Size() != entry.ByteSize {
+					return fmt.Errorf("%w: artifact %s size %d != expected %d", constants.ErrPublicFeedProofSizeMismatch, entry.ArtifactID, fi.Size(), entry.ByteSize)
+				}
+				content, err := os.ReadFile(artifactPath)
+				if err != nil {
+					return fmt.Errorf("public-feed: read artifact %s: %w", entry.ArtifactID, err)
+				}
+				h := sha256.Sum256(content)
+				computedID := hex.EncodeToString(h[:])
+				if computedID != entry.ArtifactID {
+					return fmt.Errorf("%w: artifact %s content hash mismatch", constants.ErrPublicFeedProofHashMismatch, entry.ArtifactID)
+				}
+			}
+
+			last := segments[len(segments)-1]
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Proof package verified (%d segments, %d active artifacts, root %s)\n", len(segments), len(activeEntries), last.ProofRootSHA256)
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
+	cmd.Flags().StringVar(&artifactsPath, "artifacts", "", "Path to directory containing proof artifact files")
+	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Hex-encoded Ed25519 public key")
+	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Path to JSON file containing pinned key registry {key_id: public_key_hex}")
+	_ = cmd.MarkFlagRequired("segments")
+	_ = cmd.MarkFlagRequired("artifacts")
 	return cmd
 }
 

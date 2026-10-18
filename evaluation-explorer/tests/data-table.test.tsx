@@ -21,14 +21,14 @@ const data: Row[] = [
 
 describe('DataTable', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it('sorts and paginates mobile cards with the same row selection', async () => {
+  it('sorts and paginates mobile cards', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     const user = userEvent.setup();
     render(<DataTable data={data} columns={columns} pageSize={2} caption="Mobile models"
-      renderCard={(record) => <strong>{record.name}</strong>} isRowSelected={(record) => record.id === 'a'} />);
+      renderCard={(record) => <strong>{record.name}</strong>} />);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     await user.selectOptions(screen.getByRole('combobox', { name: 'Sort cards' }), 'name:asc');
-    expect(screen.getByText('Alice').closest('li')).toHaveClass('data-row-selected');
+    expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
     expect(screen.queryByText('Charlie')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Next page' }));
@@ -50,6 +50,27 @@ describe('DataTable', () => {
     await user.click(screen.getByRole('button', { name: 'Sort by ID' }));
 
     expect(bodyCells()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('gives each table its own column visibility panel', () => {
+    render(<><DataTable data={data} columns={columns} caption="First table" />
+      <DataTable data={data} columns={columns} caption="Second table" /></>);
+    const toggles = screen.getAllByRole('button', { name: /Columns/ });
+    const panelIds = toggles.map((button) => button.getAttribute('aria-controls'));
+    expect(new Set(panelIds).size).toBe(2);
+  });
+
+  it('renders toolbar controls in one row with the column toggle and keeps them when empty', () => {
+    const toolbar = <input aria-label="Search rows" />;
+    const { rerender } = render(<DataTable data={data} columns={columns} caption="Toolbar rows" toolbar={toolbar} />);
+    const row = screen.getByRole('textbox', { name: 'Search rows' }).parentElement;
+    expect(row).toHaveClass('table-toolbar');
+    expect(row).toContainElement(screen.getByRole('button', { name: /Columns/ }));
+
+    rerender(<DataTable data={[]} columns={columns} caption="Toolbar rows" toolbar={toolbar} empty={<p>Nothing</p>} />);
+    expect(screen.getByRole('textbox', { name: 'Search rows' })).toBeInTheDocument();
+    expect(screen.getByText('Nothing')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Columns/ })).not.toBeInTheDocument();
   });
 
   it('hides a column and its cells when its visibility toggle is cleared', async () => {

@@ -28,7 +28,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -58,7 +57,7 @@ type directFixture struct {
 
 // newDirectFixture boots a Gateway under posture and builds a DIRECT driver
 // that submits as the bootstrapped CLI identity to the embedded Operator.
-func newDirectFixture(t *testing.T, posture config.GatewayPosture) *directFixture {
+func newDirectFixture(t *testing.T, posture constants.Posture) *directFixture {
 	t.Helper()
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-direct-" + string(posture),
@@ -139,7 +138,7 @@ func TestDirectDriveMatchesCatalogueOnDoctrineRows(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
 
-	fx := newDirectFixture(t, config.PostureDoctrine)
+	fx := newDirectFixture(t, constants.PostureDoctrine)
 	drove13 := false
 	for _, c := range all {
 		if c.Ingress != cases.IngressDirect || c.Posture != evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE {
@@ -185,7 +184,7 @@ func assertObservation(t *testing.T, want cases.Expect, got *evalv1.ConformanceO
 // fault (wrong operator session) under each posture. It pins nothing: the
 // tracker pins row 9 from this output.
 func TestDirectProbeWrongTargetByPosture(t *testing.T) {
-	for _, posture := range []config.GatewayPosture{config.PostureDoctrine, config.PostureConsensus, config.PostureRatify, config.PostureNotary} {
+	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
 			fx := newDirectFixture(t, posture)
 			c := cases.Case{ID: "row-9-probe-" + string(posture), Row: 9, Ingress: cases.IngressDirect, Fault: cases.FaultWrongTarget, Action: cases.ActionMutation}

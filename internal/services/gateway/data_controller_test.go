@@ -478,7 +478,7 @@ func TestDataControllerHandleRevokeApp(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	cfg := testutil.NewTestConfig(t)
 	resp := response.NewWriter(logger)
-	adminController := newAdminController(AdminControllerDeps{Cfg: cfg, Logger: logger, DocStore: infra.DocStore, SignerStore: infra.SignerStore, ConsensusStore: infra.ConsensusStore, UserSvc: userSvc, Responder: resp})
+	adminController := newAdminController(AdminControllerDeps{Cfg: cfg, Logger: logger, DocStore: infra.DocStore, SignerStore: infra.SignerStore, UserSvc: userSvc, Responder: resp})
 
 	// The first user created is the gateway admin (IsFirstUser). The second
 	// user is a non-admin regular user.

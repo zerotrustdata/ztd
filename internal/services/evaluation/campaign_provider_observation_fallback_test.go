@@ -38,6 +38,12 @@ func (s *recordingProviderObservationRemote) Load(_ context.Context, providerAtt
 	return s.window, s.attempt, nil
 }
 
+func (s *recordingProviderObservationRemote) WatchRecorded(ctx context.Context, connected func(), _ func(string)) error {
+	connected()
+	<-ctx.Done()
+	return nil
+}
+
 func TestFallbackProviderObservationStores_DelegateLocalWrites(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

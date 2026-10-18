@@ -729,12 +729,14 @@ function mapBenchmarkObservations(value: WireBenchmarkObservations | undefined):
   const toolScorecard = mapMetricRecord(value.tool_scorecard);
   const timing = mapMetricRecord(value.timing);
   const gpu = mapMetricRecord(value.gpu);
-  if (!gradeSummaries && !toolScorecard && !timing && !gpu && unavailableReasons.length === 0) {
+  const securityPrivacyEvents = value.security_privacy_events;
+  if (!gradeSummaries && !toolScorecard && !securityPrivacyEvents && !timing && !gpu && unavailableReasons.length === 0) {
     return undefined;
   }
   return {
     grade_summaries: gradeSummaries,
     tool_scorecard: toolScorecard,
+    security_privacy_events: securityPrivacyEvents,
     timing,
     gpu,
     unavailable_reasons: unavailableReasons,

@@ -2328,9 +2328,21 @@
       ],
       "persistence": "ephemeral"
     },
-    "ModelProvenancePreflightProgress": {
-      "_go_const": "EventModelProvenancePreflightProgress",
-      "value": "ztd.v1.inference.model.provenance.preflight.updated",
+    "ModelProvenanceAttestationRecorded": {
+      "_go_const": "EventModelProvenanceAttestationRecorded",
+      "value": "ztd.v1.inference.model.provenance.attestation.recorded",
+      "kind": "fact",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
+    "ProviderBoundaryObservationRecorded": {
+      "_go_const": "EventProviderBoundaryObservationRecorded",
+      "value": "ztd.v1.inference.provider.boundary.observation.recorded",
       "kind": "fact",
       "transport": [
         "sse"
@@ -2451,6 +2463,24 @@
       ],
       "governance": {
         "action_type": "PLATFORM_ENROLLMENT_REVOKE",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway",
+        "operator"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "PlatformEnrollmentBindConsensusRequested": {
+      "_go_const": "EventPlatformEnrollmentBindConsensusRequested",
+      "value": "ztd.v1.platform.enrollment.bind_consensus.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
         "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
       },
       "producers": [

@@ -38,7 +38,6 @@ describe('campaign release selection', () => {
     expect(screen.getByRole('link', { name: 'run-current' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'run-older' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'run-unknown' })).not.toBeInTheDocument();
-    expect(screen.getByText(`${currentRelease} (recorded)`)).toBeInTheDocument();
   });
 
   it('defaults to the newest feed release when the build release has no records', () => {
@@ -49,14 +48,12 @@ describe('campaign release selection', () => {
     expect(screen.queryByRole('link', { name: 'run-unknown' })).not.toBeInTheDocument();
   });
 
-  it('persists all releases in the URL and labels assertions and unknown data', () => {
+  it('persists all releases in the URL and includes asserted and unknown releases', () => {
     render(<MemoryRouter><EvaluationsView /><Location /></MemoryRouter>);
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by release' }), { target: { value: 'all' } });
     expect(screen.getByTestId('location')).toHaveTextContent('release=all');
     expect(screen.getByRole('link', { name: 'run-older' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'run-unknown' })).toBeInTheDocument();
-    expect(screen.getByText('v0.9.0 (asserted)')).toBeInTheDocument();
-    expect(screen.getByText('Unknown release')).toBeInTheDocument();
   });
 
   it('honors a release link without changing it to the current release', () => {

@@ -30,6 +30,9 @@ const (
 	PublicSpectatorPublicPort = 8082
 	// EvalExplorerDefaultPort serves the embedded evaluation explorer SPA.
 	EvalExplorerDefaultPort = 5173
+	// ProfilingSuggestedPort is the conventional pprof port shown in
+	// --pprof-listen help. Profiling is off unless that flag is set.
+	ProfilingSuggestedPort = 6060
 
 	// InferenceOllamaDefaultPort is Ollama's default loopback API port. The
 	// Go inference backend connects to this port over loopback HTTP.

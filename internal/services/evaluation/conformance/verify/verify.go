@@ -153,15 +153,8 @@ func invalidSet(record *evalv1.ConformanceRunRecord) *evalv1.ConformanceVerdictS
 
 // isRealPosture reports whether posture is one of the four governance postures.
 func isRealPosture(posture evalv1.EvaluationGovernancePosture) bool {
-	switch posture {
-	case evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
-		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
-		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY,
-		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY:
-		return true
-	default:
-		return false
-	}
+	_, err := cases.GovernancePosture(posture)
+	return err == nil
 }
 
 // recordCheck holds the record-level facts every case verdict needs: the anchor

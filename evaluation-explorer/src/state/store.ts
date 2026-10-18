@@ -13,7 +13,6 @@
 // so bare-identity keys would let one dataset overwrite another.
 
 import { useRef, useSyncExternalStore } from 'react';
-import { VIEW_SCHEMA_VERSION } from '../contract/types';
 import type {
   AssignmentResult,
   CatalogSnapshot,
@@ -84,13 +83,7 @@ function isCampaignProjectionPayload(payload: Record<string, unknown>): boolean 
 
 function normalizeQualityRecord<T extends SnapshotRecord | LiveEvent>(record: T): T {
   let qualityState = record.quality_state;
-  if (qualityState === 'verified_public' && record.schema_version !== VIEW_SCHEMA_VERSION) {
-    qualityState = 'legacy_unverified';
-  } else if (
-    record.kind === 'model_summary' &&
-    record.evaluation_coverage < 1 &&
-    (qualityState === 'verified_public' || qualityState === 'exploratory_verified')
-  ) {
+  if (record.kind === 'model_summary' && record.evaluation_coverage < 1 && qualityState === 'exploratory_verified') {
     qualityState = 'exploratory_partial';
   }
   return qualityState === record.quality_state ? record : { ...record, quality_state: qualityState };
@@ -104,40 +97,21 @@ function mergeEvaluationSummary(existing: EvaluationSummary, incoming: Evaluatio
   return {
     ...incoming,
     quality_state: existing.quality_state,
+    run_status: existing.verifier_state === 'passed' ? 'verified' : 'verify_failed',
     verifier_state: existing.verifier_state,
     verifier_failure_summary: existing.verifier_failure_summary,
     verification_metadata: existing.verification_metadata,
   };
 }
 
-export function modelComparisonId(model: ModelSummary): string {
-  return modelRecordKey(model.dataset_id, model.variant_id, model.role);
-}
-
-const MODEL_COMPARISON_ID = /^(.+):(primary|assistant|lite)$/;
-
-/** Resolve a model from a comparison id stored in user prefs or URL params. */
-export function resolveModelFromComparisonId(
-  models: Map<string, ModelSummary>,
-  comparisonId: string,
-): ModelSummary | undefined {
-  const direct = models.get(comparisonId);
-  if (direct) return direct;
-  const legacy = MODEL_COMPARISON_ID.exec(comparisonId);
-  if (legacy?.[1] && legacy[2]) {
-    for (const model of models.values()) {
-      if (model.variant_id === legacy[1] && model.role === legacy[2]) return model;
-    }
-  }
-  return undefined;
-}
+const MODEL_ROLE_ID = /^(.+):(primary|assistant|lite)$/;
 
 export function resolveModelSummary(
   models: Map<string, ModelSummary>,
   datasetId: string,
   modelId: string,
 ): ModelSummary | undefined {
-  const roleMatch = MODEL_COMPARISON_ID.exec(modelId);
+  const roleMatch = MODEL_ROLE_ID.exec(modelId);
   if (roleMatch?.[1] && roleMatch[2]) {
     return models.get(modelRecordKey(datasetId, roleMatch[1], roleMatch[2] as ModelRole));
   }
@@ -531,7 +505,7 @@ export class EvalStore {
     if (!existing) return;
     state.evaluations.set(key, {
       ...existing,
-      lifecycle_state: event.lifecycle_status,
+      lifecycle_state: isRunLevelQualityEvent(event.kind) ? event.lifecycle_status : existing.lifecycle_state,
       assignment_total: event.total > 0 ? event.total : existing.assignment_total,
       quality_state: isRunLevelQualityEvent(event.kind)
         ? mergeQualityState(existing.quality_state, event.quality_state)

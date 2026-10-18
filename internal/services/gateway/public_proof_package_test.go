@@ -193,8 +193,8 @@ func TestBuildProofPackage_ArtifactsContentAddressed(t *testing.T) {
 	assert.Equal(t, expectedID, manifest.Artifacts[0].SHA256)
 }
 
-// TestBuildProofPackage_ProofRootHashVerifiable verifies that the proof root
-// SHA-256 can be recomputed from the artifact hashes and manifest metadata.
+// TestBuildProofPackage_ProofRootHashVerifiable verifies that the signed log
+// determines the root returned in a derived manifest.
 func TestBuildProofPackage_ProofRootHashVerifiable(t *testing.T) {
 	publisher := newProofBuilderTestEnv(t)
 
@@ -216,10 +216,12 @@ func TestBuildProofPackage_ProofRootHashVerifiable(t *testing.T) {
 	manifest, err := publisher.BuildProofPackage(context.Background(), "c1", "rev-1", "hash", true, artifacts)
 	require.NoError(t, err)
 
-	// Recompute the proof root hash.
-	recomputed, err := publisher.ComputeProofRootHash(manifest)
-	require.NoError(t, err)
-	assert.Equal(t, manifest.ProofRootSHA256, recomputed)
+	segments := readTestProofSegments(t, publisher)
+	require.Len(t, segments, 1)
+	assert.Equal(t, models.ComputePublicProofSegmentRoot(segments[0]), manifest.ProofRootSHA256)
+	assert.Equal(t, segments[0].SegmentIndex, manifest.SegmentIndex)
+	_, err = publisher.ComputeProofRootHash(manifest)
+	require.ErrorIs(t, err, constants.ErrPublicFeedProofManifestInvalid, "derived views require verification through the signed log")
 }
 
 // TestBuildProofPackage_SignatureValid verifies that the proof manifest
@@ -274,30 +276,47 @@ func TestBuildProofPackage_WritesArtifactsToDisk(t *testing.T) {
 	assert.Equal(t, content, diskContent)
 }
 
-// TestBuildProofPackage_RejectsSymlinkArtifact verifies that a symlink in
-// the proof directory is rejected.
+// TestBuildProofPackage_RejectsSymlinkArtifact verifies that a symlink at an
+// artifact's content-addressed path is rejected rather than followed.
 func TestBuildProofPackage_RejectsSymlinkArtifact(t *testing.T) {
 	publisher := newProofBuilderTestEnv(t)
+	content := []byte(`{"test":true}`)
+	digest := sha256.Sum256(content)
 
-	// Create a symlink in the public-proofs directory before building.
 	proofsDir := publisher.fileSvc.Resolve(constants.PublicProofsDirname)
 	require.NoError(t, os.MkdirAll(proofsDir, constants.PermDirPrivate))
 	target := filepath.Join(proofsDir, "target.json")
-	require.NoError(t, os.WriteFile(target, []byte("target"), constants.PermFilePrivate))
-	linkPath := filepath.Join(proofsDir, "link.json")
-	testutil.Symlink(t, target, linkPath)
+	require.NoError(t, os.WriteFile(target, content, constants.PermFilePrivate))
+	testutil.Symlink(t, target, filepath.Join(proofsDir, hex.EncodeToString(digest[:])))
 
 	artifacts := []ProofArtifactInput{
 		{
 			Filename:   "test.json",
 			MediaType:  "application/json",
-			Content:    []byte(`{"test":true}`),
+			Content:    content,
 			CampaignID: "c1",
 		},
 	}
 
 	_, err := publisher.BuildProofPackage(context.Background(), "c1", "rev-1", "hash", true, artifacts)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrPublicFeedProofSymlinkRejected)
+}
+
+// TestBuildProofPackage_RejectsSymlinkProofDirectory verifies that a symlinked
+// proof directory is rejected.
+func TestBuildProofPackage_RejectsSymlinkProofDirectory(t *testing.T) {
+	publisher := newProofBuilderTestEnv(t)
+	elsewhere := publisher.fileSvc.Resolve("elsewhere")
+	require.NoError(t, os.MkdirAll(elsewhere, constants.PermDirPrivate))
+	testutil.Symlink(t, elsewhere, publisher.fileSvc.Resolve(constants.PublicProofsDirname))
+
+	_, err := publisher.BuildProofPackage(context.Background(), "c1", "rev-1", "hash", true, []ProofArtifactInput{{
+		Filename:   "test.json",
+		MediaType:  "application/json",
+		Content:    []byte(`{"test":true}`),
+		CampaignID: "c1",
+	}})
 	assert.ErrorIs(t, err, constants.ErrPublicFeedProofSymlinkRejected)
 }
 

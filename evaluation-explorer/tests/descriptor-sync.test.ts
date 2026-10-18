@@ -42,6 +42,8 @@ import {
   RELEASE_BASES,
   REPEATABILITY_CLASSES,
   RUN_METRIC_UNITS,
+  RUN_STATUSES,
+  VIEW_SCHEMA_VERSION,
   SCENARIO_CATEGORIES,
   SECURITY_PRIVACY_EVENTS,
   SNAPSHOT_KINDS,
@@ -68,6 +70,7 @@ type EnumName =
   | 'RepeatabilityClass'
   | 'VerifierState'
   | 'RunMetricUnit'
+  | 'RunStatus'
   | 'NativePosture'
   | 'NativeLane'
   | 'NativeResultStatus'
@@ -110,6 +113,7 @@ const tsEnums: Record<EnumName, readonly string[]> = {
   RepeatabilityClass: REPEATABILITY_CLASSES,
   VerifierState: VERIFIER_STATES,
   RunMetricUnit: RUN_METRIC_UNITS,
+  RunStatus: RUN_STATUSES,
   NativePosture: NATIVE_POSTURES,
   NativeLane: NATIVE_LANES,
   NativeResultStatus: NATIVE_RESULT_STATUSES,
@@ -138,7 +142,7 @@ const tsEnums: Record<EnumName, readonly string[]> = {
 
 describe('descriptor.json stays in sync with types.ts', () => {
   it('exposes the frozen schema version', () => {
-    expect(descriptor.schema_version).toBe('1.8.0');
+    expect(descriptor.schema_version).toBe(VIEW_SCHEMA_VERSION);
   });
 
   it('includes the not-run verifier lifecycle state', () => {

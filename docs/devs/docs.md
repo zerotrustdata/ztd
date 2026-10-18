@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.2
-last_updated: 2026-10-16
+version: v1.1.3
+last_updated: 2026-10-18
 owners:
   - docs/
   - protocol/docs/
@@ -187,7 +187,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Operator Architecture](../architecture/operator.md): Outbound and embedded Operator architecture, task execution, and host lifecycle.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework (L1 doctrine to L5 audit), posture policies, and enforcement.
 - [AI Agents and Governance Boundary](../architecture/agents.md): AI agent integration patterns, tool boundaries, and trust limits.
-- [Consensus Architecture](../architecture/consensus.md): Quorum, multi-party consensus, and state agreement mechanisms.
+- [Consensus Architecture](../architecture/consensus.md): L2 bound application deliberation, verification, and receipt evidence.
 - [Storage Architecture](../architecture/storage.md): SQLite persistence, schema migrations, and storage service layout.
 - [Events Architecture](../architecture/events.md): Event taxonomy, delivery guarantees, and event bus lifecycle.
 - [Evaluation Architecture](../architecture/evals.md): Native evaluation framework, campaign specifications, scoring, and evidence capture.
@@ -317,7 +317,7 @@ Execute these steps in order when updating maintained documentation:
 | HTTP routes, methods, and route authentication | Canonical paths in `protocol/constants/api_paths.json` and router/controller registration in `internal/services/gateway/` | Route authentication inventory, middleware, controller behavior, and `internal/services/gateway/docs/swagger.json` |
 | Authentication and identity | Gateway auth middleware, `internal/services/auth/`, CLI enrollment code, PKI services, and protocol identity helpers | Route classification, certificate/session validation, enrollment tests, and deployed topology |
 | Configuration and environment | Types, defaults, and validation in `internal/config/`, CLI flags, environment constants in `protocol/constants/env_vars.json`, and component settings | Startup construction, host lifecycle Make targets, and configuration tests |
-| Governance and execution | `internal/services/governance/`, `internal/services/consensus/`, `internal/services/pubsub/`, `internal/services/mcp/`, and construction in Gateway and Operator startup | Active posture branches, complete ingress-to-dispatch path, persistence, rejection behavior, and integration tests |
+| Governance and execution | `internal/services/governance/`, `internal/services/gateway/`, `internal/services/pubsub/`, `internal/services/mcp/`, and construction in Gateway and Operator startup | Active posture branches, complete ingress-to-dispatch path, persistence, rejection behavior, and integration tests |
 | Persistence and runtime files | Owning store or service and `internal/services/fs/` for `.ztd/` state | Path constants, schema lifecycle, permissions, cleanup behavior, and tests using isolated runtime roots |
 | Wire messages and gRPC services | Protobuf schemas in `protocol/proto/ztd/`, model schemas in `protocol/models/`, and canonicalization implementations | Generated bindings, vectors, contract tests, and cross-language conformance tests |
 | Protocol identifiers and registries | Registry-specific source declaration in `protocol/constants/` or `internal/constants/` | Mirrors, consumers, package loaders, and contract tests; verify owning generator and check target |

@@ -295,7 +295,7 @@ func TestOperatorBootstrap_HeldSocketDeliversInMemoryIdentity(t *testing.T) {
 
 	assert.Equal(t, "op-1", identity.OperatorID)
 	assert.Equal(t, "op-session-1", identity.OperatorSessionID)
-	assert.Equal(t, "doctrine", identity.Posture)
+	assert.Equal(t, constants.PostureDoctrine, identity.Posture)
 	assert.Equal(t, mg.received()[0].Enrollment.SystemFingerprint, identity.SystemFingerprint)
 	assert.Equal(t, []byte(mg.caPEM), identity.TrustBundlePEM)
 	leaf, err := x509.ParseCertificate(identity.Certificate.Certificate[0])

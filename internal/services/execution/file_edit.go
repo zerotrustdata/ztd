@@ -95,8 +95,6 @@ func (fes *FileEditService) ExecuteFileEdit(ctx context.Context, request *models
 		err = fes.executeInsert(target, request, result)
 	case constants.FileOperationDelete:
 		err = fes.executeDelete(target, request, result)
-	case constants.FileOperationPatch:
-		err = fes.executePatch(target, request, result)
 	default:
 		err = constants.ErrFileEditUnsupportedOperation
 	}
@@ -106,7 +104,7 @@ func (fes *FileEditService) ExecuteFileEdit(ctx context.Context, request *models
 			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 			result.ErrorMessage = err.Error()
 			result.ErrorType = "execution_error"
-			if errors.Is(err, constants.ErrFileEditContentRequired) || errors.Is(err, constants.ErrFileEditOldContentRequired) || errors.Is(err, constants.ErrFileEditInsertContentRequired) || errors.Is(err, constants.ErrFileEditLineRangeRequired) || errors.Is(err, constants.ErrFileEditPatchContentRequired) {
+			if errors.Is(err, constants.ErrFileEditContentRequired) || errors.Is(err, constants.ErrFileEditOldContentRequired) || errors.Is(err, constants.ErrFileEditInsertContentRequired) || errors.Is(err, constants.ErrFileEditLineRangeRequired) {
 				result.ErrorType = "validation_error"
 			}
 		}
@@ -506,28 +504,6 @@ func (fes *FileEditService) executeDelete(target *fs.FileEditTarget, request *mo
 		"lines_deleted", linesDeleted)
 
 	return nil
-}
-
-// executePatch applies a unified diff patch to a file
-func (fes *FileEditService) executePatch(target *fs.FileEditTarget, request *models.FileEditRequest, result *models.FileEditResult) error {
-	if request.PatchContent == "" {
-		return constants.ErrFileEditPatchContentRequired
-	}
-
-	fes.logger.Info("Applying patch to file", "execution_id", request.ExecutionID)
-
-	// Create backup if requested
-	if request.CreateBackup {
-		backupPath, err := fes.createBackup(target)
-		if err != nil {
-			return fmt.Errorf("file edit: create backup: %w", err)
-		}
-		result.BackupPath = backupPath
-	}
-
-	// For now, return an error indicating patch is not yet implemented
-	// Full unified diff parsing and application would require additional libraries
-	return constants.ErrFileEditPatchNotImplemented
 }
 
 // createBackup creates a backup of a file using streaming to prevent OOM

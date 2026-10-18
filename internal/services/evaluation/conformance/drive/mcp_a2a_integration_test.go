@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -51,7 +51,7 @@ func TestMCPA2A(t *testing.T) {
 
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName:         "conformance-mcp-a2a",
-		Posture:          config.PostureDoctrine,
+		Posture:          constants.PostureDoctrine,
 		A2ADownstreamURL: stub.URL(),
 	})
 	f.WaitForReady(t)

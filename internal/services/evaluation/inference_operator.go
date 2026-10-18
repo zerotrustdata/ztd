@@ -8,12 +8,15 @@
 package evaluation
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 )
 
@@ -132,4 +135,48 @@ func GovernedInferenceOllamaEndpoint(operators []*operatorv1.OperatorDocument, i
 		return "", fmt.Errorf("evaluation: governed inference endpoint: %w", constants.ErrInferenceEndpointInvalid)
 	}
 	return endpoint, nil
+}
+
+// GovernedInferenceDispatcher submits governed inference through the exact
+// Inference Operator session.
+type GovernedInferenceDispatcher interface {
+	DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error)
+}
+
+func campaignRoleToInferenceRole(role evalv1.ModelCampaignRole) (models.InferenceModelRole, error) {
+	switch role {
+	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:
+		return models.InferenceModelRolePrimary, nil
+	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT:
+		return models.InferenceModelRoleAssistant, nil
+	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE:
+		return models.InferenceModelRoleLite, nil
+	default:
+		return models.InferenceModelRoleUnspecified, fmt.Errorf("evaluation: inference role %s: %w", role, constants.ErrInferenceRoleInvalid)
+	}
+}
+
+// operatorLoadStateToEvaluation maps the operator-layer model load
+// classification onto the evaluation domain's equivalent enum.
+func operatorLoadStateToEvaluation(state operatorv1.InferenceLoadState) evalv1.EvaluationLoadState {
+	switch state {
+	case operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_COLD:
+		return evalv1.EvaluationLoadState_EVALUATION_LOAD_STATE_COLD
+	case operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_WARM:
+		return evalv1.EvaluationLoadState_EVALUATION_LOAD_STATE_WARM
+	case operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNAVAILABLE:
+		return evalv1.EvaluationLoadState_EVALUATION_LOAD_STATE_UNAVAILABLE
+	default:
+		return evalv1.EvaluationLoadState_EVALUATION_LOAD_STATE_UNSPECIFIED
+	}
+}
+
+func inferenceResultText(result *operatorv1.InferenceResult) string {
+	var builder strings.Builder
+	for _, part := range result.GetParts() {
+		if part.GetText() != "" {
+			builder.WriteString(part.GetText())
+		}
+	}
+	return builder.String()
 }

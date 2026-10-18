@@ -67,6 +67,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_SubscribesToOwner
 		}},
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 
@@ -99,6 +100,7 @@ func TestProviderBoundaryObservationCoordinator_NotifyAttemptBegin_FailsWithoutC
 		}},
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 
@@ -127,6 +129,7 @@ func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_FailsWi
 		}},
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 
@@ -156,6 +159,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReSubscribesOnSes
 		lister,
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 
@@ -233,6 +237,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_LogsNotFound(t *t
 		}},
 		NewGatewayWebSocketHandler(logger),
 		windowStore,
+		nil,
 		logger,
 	)
 
@@ -281,6 +286,7 @@ func newDuplicateObserverCoordinator(t *testing.T) (*ProviderBoundaryObservation
 		&stubProviderBoundaryOperatorLister{operators: duplicateObserverOperators()},
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 	return coordinator, pubsubHandler
@@ -310,6 +316,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_FingerprintBreaks
 		&stubProviderBoundaryOperatorLister{operators: operators},
 		pubsubHandler,
 		windowStore,
+		nil,
 		logger,
 	)
 
@@ -326,12 +333,14 @@ func TestProviderBoundaryObservationCoordinator_IngestAfterDispatchContextCancel
 	require.NoError(t, err)
 	pubsubHandler := NewGatewayWebSocketHandler(logger)
 
+	announcer := &recordingEvidenceAnnouncer{}
 	coordinator := NewProviderBoundaryObservationCoordinator(
 		&DispatchService{},
 		&stubProviderBoundaryOperatorLister{operators: []*operatorv1.OperatorDocument{
 			{
 				Id:                "observer-1",
 				OperatorSessionId: "sess-observer-1",
+				UserId:            "owner-1",
 				Status:            string(constants.OperatorStatusActive),
 				OperatorType:      string(constants.OperatorTypeRemote),
 				RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityObserver)}},
@@ -339,6 +348,7 @@ func TestProviderBoundaryObservationCoordinator_IngestAfterDispatchContextCancel
 		}},
 		pubsubHandler,
 		windowStore,
+		announcer,
 		logger,
 	)
 
@@ -382,6 +392,7 @@ func TestProviderBoundaryObservationCoordinator_IngestAfterDispatchContextCancel
 	loaded, err := windowStore.Load(context.Background(), "attempt-async-1")
 	require.NoError(t, err)
 	assert.Equal(t, "attempt-async-1", loaded.GetProviderAttemptId())
+	assert.Equal(t, []string{string(constants.EventProviderBoundaryObservationRecorded) + "/owner-1/attempt-async-1"}, announcer.recorded)
 }
 
 func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_EmbeddedObserverUsesProcessor(t *testing.T) {
@@ -403,10 +414,10 @@ func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_Embedde
 		return &operatorv1.ActionReceipt{}, nil
 	})
 
-	withProcessor := NewProviderBoundaryObservationCoordinator(&DispatchService{pubsub: pubsubHandler, embeddedProcessor: processor}, lister, pubsubHandler, windowStore, logger)
+	withProcessor := NewProviderBoundaryObservationCoordinator(&DispatchService{pubsub: pubsubHandler, embeddedProcessor: processor}, lister, pubsubHandler, windowStore, nil, logger)
 	require.NoError(t, withProcessor.PreflightCommandDelivery(context.Background()))
 
-	withoutProcessor := NewProviderBoundaryObservationCoordinator(&DispatchService{pubsub: pubsubHandler}, lister, pubsubHandler, windowStore, logger)
+	withoutProcessor := NewProviderBoundaryObservationCoordinator(&DispatchService{pubsub: pubsubHandler}, lister, pubsubHandler, windowStore, nil, logger)
 	err = withoutProcessor.PreflightCommandDelivery(context.Background())
 	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
 }

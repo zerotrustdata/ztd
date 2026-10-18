@@ -136,8 +136,29 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 		return fmt.Errorf("generate ingest token: %w", err)
 	}
 	ingestToken := hex.EncodeToString(tokenBytes)
-	store := gateway.NewRuntimePublicMirrorStore(fileSvc)
-	mirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
+	// Each simulated mirror restart closes the store and reopens it from disk,
+	// so recovery is proven against the durable mirror database.
+	var store *gateway.PublicMirrorStore
+	defer func() {
+		if store != nil {
+			_ = store.Close()
+		}
+	}()
+	openMirror := func() (*gateway.PublicMirrorServer, error) {
+		if store != nil {
+			if err := store.Close(); err != nil {
+				return nil, fmt.Errorf("close mirror store: %w", err)
+			}
+			store = nil
+		}
+		opened, err := gateway.OpenPublicMirrorStore(ctx, fileSvc, slog.Default())
+		if err != nil {
+			return nil, err
+		}
+		store = opened
+		return gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
+	}
+	mirror, err := openMirror()
 	if err != nil {
 		return err
 	}
@@ -190,7 +211,7 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 	if err := publisher.ExportBatch(ctx, []models.PublicFeedRecord{secondRecord}); err == nil {
 		return fmt.Errorf("mirror outage did not retain a retryable batch")
 	}
-	restartedMirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
+	restartedMirror, err := openMirror()
 	if err != nil {
 		return err
 	}
@@ -213,7 +234,7 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 	}
 	restartedPrivateServer.Close()
 	restartedPublicServer.Close()
-	finalMirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
+	finalMirror, err := openMirror()
 	if err != nil {
 		return err
 	}
@@ -236,16 +257,19 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 	if err := verifyPublicLoopMutationRoutesAbsent(ctx, finalPublicServer); err != nil {
 		return err
 	}
-	state, err := store.Load(ctx)
+	source, found, err := store.SourceSummary(ctx, sourceID)
 	if err != nil {
 		return err
 	}
-	source := state.Sources[sourceID]
-	if source == nil {
+	if !found {
 		return fmt.Errorf("durable mirror source state missing")
 	}
-	_, oldRevoked := state.RevokedKeys[sourceID+":"+oldKeyID]
-	_, newRegistered := state.KeyRegistry[sourceID+":"+newKeyID]
+	keys, err := store.Keys(ctx)
+	if err != nil {
+		return err
+	}
+	_, oldRevoked := keys.Revoked[sourceID+":"+oldKeyID]
+	_, newRegistered := keys.Registry[sourceID+":"+newKeyID]
 	evidence := publicLoopEvidence{
 		SchemaVersion:                      "1.0.0",
 		CandidateContentHash:               candidate.ContentHash,

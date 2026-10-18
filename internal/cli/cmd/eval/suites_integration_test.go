@@ -58,7 +58,6 @@ func TestSuitesExport_WritesTheCreateFormat(t *testing.T) {
 
 func TestSuitesCreate_ThenCampaignFreezesIt(t *testing.T) {
 	env := setupRunEnv(t)
-	writeTestFrozenInventory(t, env.root, testFormationCatalogCLIVariants()...)
 	path := writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format", "tool-select-file-read")
 
 	out := env.mustRun(t, "suites", "create", path)
@@ -73,7 +72,7 @@ func TestSuitesCreate_ThenCampaignFreezesIt(t *testing.T) {
 	require.Len(t, show.Scenarios, 2)
 
 	var created campaignCreateJSON
-	require.NoError(t, env.runJSON(t, &created, "campaigns", "create", "eval-custom", "--formations", testFormationID, "--suite", "my-suite"))
+	require.NoError(t, env.runJSON(t, &created, "campaigns", "create", "eval-custom", "qwen3:4b", "--suite", "my-suite"))
 	assert.Equal(t, "my-suite@1.0.0", created.Suite)
 	assert.Equal(t, uint32(2), created.ScenarioCount)
 	assert.Equal(t, show.CatalogDigest, created.CatalogDigest)

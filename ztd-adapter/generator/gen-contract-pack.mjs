@@ -996,6 +996,8 @@ const PUBLIC_MODELS = [
   'public_feed_bootstrap',
   'public_feed_cursor_page',
   'public_proof_manifest',
+  'public_proof_manifest_segment',
+  'public_proof_segments_response',
   'public_proof_catalog_entry',
   'public_proof_catalog',
   'public_proof_catalog_summary',
@@ -1121,7 +1123,8 @@ function generatePublicOpenApi() {
       '/history': { get: { operationId: 'public_history', parameters: [sourceParameter(), { name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100 } }], responses: { '200': { description: 'Bounded history page', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicFeedCursorPage' } } } } } } },
       '/stream': { get: { operationId: 'public_stream', parameters: [sourceParameter(), { name: 'since_id', in: 'query', required: false, schema: { type: 'integer', minimum: 0 } }], responses: { '200': { description: 'Replayable public event stream', content: { 'text/event-stream': { schema: { type: 'string' } } } } } } },
       '/proof-catalog': { get: { operationId: 'public_proof_catalog', parameters: [sourceParameter()], responses: { '200': { description: 'Public-safe proof catalog', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofCatalog' } } } } } } },
-      '/proof-manifest': { get: { operationId: 'public_proof_manifest', parameters: [sourceParameter()], responses: { '200': { description: 'Signed public proof manifest', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofManifest' } } } } } } },
+      '/proof-manifest': { get: { operationId: 'public_proof_manifest', parameters: [sourceParameter()], responses: { '200': { description: 'Proof manifest; nonzero segment_index requires signed log verification', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofManifest' } } } } } } },
+      '/proof-segments': { get: { operationId: 'public_proof_segments', parameters: [sourceParameter()], responses: { '200': { description: 'Source-signed proof log including withdrawals', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofSegmentsResponse' } } } } } } },
       '/proofs/{artifact_id}': { get: { operationId: 'public_proof_download', parameters: [{ name: 'artifact_id', in: 'path', required: true, schema: { type: 'string', pattern: '^[0-9a-f]{64}$' } }], responses: { '200': { description: 'Content-addressed public-safe proof bytes', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } } } } },
     },
     components: {
@@ -1157,7 +1160,7 @@ function generatePublicEventSchemas() {
 function generatePublicProofSchemas() {
   return stableSerialize({
     schema_version: '1.0.0',
-    schemas: Object.fromEntries(['public_proof_manifest', 'public_proof_catalog_entry', 'public_proof_catalog', 'public_proof_catalog_summary'].map((model) => [model, publicFeedModels[model]])),
+    schemas: Object.fromEntries(['public_proof_manifest', 'public_proof_manifest_segment', 'public_proof_segments_response', 'public_proof_catalog_entry', 'public_proof_catalog', 'public_proof_catalog_summary'].map((model) => [model, publicFeedModels[model]])),
   });
 }
 
@@ -1207,7 +1210,7 @@ function generatePublicFixtures() {
 }
 
 function generateOfflineVerifierInstructions() {
-  return `# Public Proof Offline Verification\n\nDownload the manifest, catalog, artifacts, and trusted source public key before disconnecting the network. Verify every artifact byte count and SHA-256 against the catalog, require every classification to equal \`public_safe\`, and require every immutable URL to contain the artifact SHA-256. Recompute the proof root from the exact ordered manifest fields and catalog entries, decode the root hash from hexadecimal, and verify the manifest's Ed25519 signature with the trusted source key. Verify signed feed fixtures by recomputing each record hash, recomputing the batch content hash from the ordered protocol fields, and verifying the Ed25519 signature over the decoded content hash. Any missing artifact, unknown field, hash mismatch, signature failure, traversal path, or symlink invalidates the package.\n`;
+  return "# Public Proof Offline Verification\n\nFollow the [canonical offline proof verification procedure](../../../docs/architecture/public_spectator.md#offline-proof-verification). Before disconnecting, export the mirror's signed `/proof-segments` response as JSONL and download its active content-addressed artifact files. Pin the source's public key through a trusted channel, or pin a key registry for a log spanning key rotations.\n\nOffline, run `ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key <trusted-ed25519-key-hex>` (or use `--key-registry trusted-keys.json`). The verifier checks the signed segment chain from the zero root, applies withdrawals, and verifies active artifact sizes and hashes. A manifest with a nonzero `segment_index` is a derived view whose signature belongs to that segment; verification requires the signed log. Freshness requires an independently trusted latest root.\n\nLegacy full manifests with segment index zero use the legacy ordered manifest-root and Ed25519 verification procedure. Verify signed feed fixtures by recomputing each record hash, recomputing the batch content hash from the ordered protocol fields, and verifying the Ed25519 signature over the decoded content hash. Missing active artifacts, unknown fields, hash or signature mismatches, traversal paths, and symlinks invalidate the package.\n";
 }
 
 function generatePublicReadme() {

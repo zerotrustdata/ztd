@@ -76,6 +76,7 @@ type ProviderBoundaryObservationCoordinator struct {
 	operatorLister providerBoundaryOperatorLister
 	pubsub         *GatewayWebSocketHandler
 	windows        provider_observer.WindowStore
+	observations   evidenceWindowAnnouncer
 	logger         *slog.Logger
 
 	mu         sync.Mutex
@@ -86,15 +87,18 @@ type ProviderBoundaryObservationCoordinator struct {
 type providerBoundaryObserverTarget struct {
 	OperatorID        string
 	OperatorSessionID string
+	UserID            string
 }
 
 // NewProviderBoundaryObservationCoordinator constructs the gateway-side
-// provider-boundary observation coordinator.
+// provider-boundary observation coordinator. A nil observations announcer
+// persists windows without notifying consumers.
 func NewProviderBoundaryObservationCoordinator(
 	dispatch *DispatchService,
 	operatorLister providerBoundaryOperatorLister,
 	pubsubHandler *GatewayWebSocketHandler,
 	windows provider_observer.WindowStore,
+	observations evidenceWindowAnnouncer,
 	logger *slog.Logger,
 ) *ProviderBoundaryObservationCoordinator {
 	return &ProviderBoundaryObservationCoordinator{
@@ -102,6 +106,7 @@ func NewProviderBoundaryObservationCoordinator(
 		operatorLister: operatorLister,
 		pubsub:         pubsubHandler,
 		windows:        windows,
+		observations:   observations,
 		logger:         logger,
 	}
 }
@@ -153,13 +158,14 @@ func (c *ProviderBoundaryObservationCoordinator) synchronizeObserverSubscription
 	observer := &providerBoundaryObserverTarget{
 		OperatorID:        selected.OperatorID,
 		OperatorSessionID: selected.OperatorSessionID,
+		UserID:            selected.UserID,
 	}
 
 	resultsChannel := pubsub.ResultsChannel(observer.OperatorID, observer.OperatorSessionID)
 	handler := func(_ string, data []byte) {
 		// Observer completions arrive asynchronously after inference dispatch
 		// returns; never tie durable ingest to the ephemeral dispatch context.
-		c.ingestResult(context.Background(), data)
+		c.ingestResult(context.Background(), observer, data)
 	}
 	unregister := c.pubsub.RegisterHandler(resultsChannel, handler)
 
@@ -353,7 +359,7 @@ func (c *ProviderBoundaryObservationCoordinator) tryPublishCommand(ctx context.C
 	return nil
 }
 
-func (c *ProviderBoundaryObservationCoordinator) ingestResult(ctx context.Context, data []byte) {
+func (c *ProviderBoundaryObservationCoordinator) ingestResult(ctx context.Context, observer *providerBoundaryObserverTarget, data []byte) {
 	env := &commonv1.GovernanceEnvelope{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, env); err != nil {
 		c.logger.Warn("Provider-boundary observation ingest: unmarshal envelope failed", "error", err)
@@ -381,6 +387,9 @@ func (c *ProviderBoundaryObservationCoordinator) ingestResult(ctx context.Contex
 		"provider_attempt_id", window.GetProviderAttemptId(),
 		"sample_count", len(window.GetSamples()),
 		"observation_digest", window.GetObservationDigest())
+	if c.observations != nil {
+		c.observations.WindowRecorded(ctx, constants.EventProviderBoundaryObservationRecorded, observer.UserID, window.GetProviderAttemptId())
+	}
 }
 
 // PublishCommandRequest is a fire-and-forget governed command publish.
@@ -421,12 +430,8 @@ func (d *DispatchService) PublishCommand(ctx context.Context, req PublishCommand
 	if err != nil {
 		return "", fmt.Errorf("dispatch: publish command: marshal envelope: %w", err)
 	}
-	posture, perr := governance.ParseGovernancePosture(d.posture)
-	if perr != nil {
-		return "", fmt.Errorf("dispatch: publish command: %w", perr)
-	}
 	actionType := constants.ActionType(env.GetActionType())
-	if governance.L2Enforced(actionType, posture) && d.l2Deliberator != nil {
+	if governance.L2Enforced(actionType, d.posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return "", fmt.Errorf("dispatch: publish command: l2 deliberation: %w", derr)

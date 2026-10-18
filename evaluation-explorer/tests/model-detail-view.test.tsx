@@ -32,6 +32,10 @@ describe('ModelDetailView', () => {
     const runs = within(screen.getByRole('region', { name: 'Evaluation runs involving this model' }));
     expect(runs.getByRole('link', { name: run.run_id })).toBeInTheDocument();
     expect(runs.getByText(run.lifecycle_state)).toHaveAttribute('data-tone');
+    const capabilities = within(screen.getByRole('region', { name: 'Capabilities & pre-flight probes' }));
+    expect(capabilities.getByText('Completion')).toBeInTheDocument();
+    expect(capabilities.getByText('Tool Calling')).toBeInTheDocument();
+    expect(capabilities.getByText('Structured JSON')).toBeInTheDocument();
   });
 
   it('renders an unmeasured model as Not evaluated without inventing a zero pass rate', () => {

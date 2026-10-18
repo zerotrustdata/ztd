@@ -3,8 +3,8 @@ doc_id: evals
 title: Evaluation Programs
 audience: maintainers and coding agents
 status: current
-version: v1.1.2
-last_updated: 2026-10-16
+version: v1.1.3
+last_updated: 2026-10-18
 owners:
   - internal/services/evaluation/
   - internal/services/evaluation/conformance/
@@ -18,7 +18,7 @@ related:
   - governance.md
   - ../guides/sovereignty_gauntlet.md
   - ../core/position_paper.md
-when_to_read: Understanding ztd's governance conformance suite, formation-based model campaigns through the governed Inference Operator, provider-boundary observation, model provenance attestation, evidence persistence and verification, and capability selection for embedded or outbound Operators. Also use this document to distinguish the shipped campaign executor and evidence from the external agent SUT contract groundwork.
+when_to_read: Understanding ztd's governance conformance suite, model-role campaigns through the governed Inference Operator, the unavailable system lane, provider-boundary observation, model provenance attestation, evidence persistence and verification, and capability selection for embedded or outbound Operators. Also use this document to distinguish the shipped campaign executor and evidence from the external agent SUT contract groundwork.
 do_not_use_for:
   - Governance five-layer interlock and policy enforcement (governance.md)
   - Gateway HTTP routes and session routing (gateway.md)
@@ -31,7 +31,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines ztd's platform evaluation programs: the governance conformance suite and model campaign evaluations across single models (model-role lane) and heterogeneous formations (system lane). The conformance suite verifies zero-trust governance interlocks without models, model judges, campaigns, or synthetic simulators. Model campaigns execute single models or three-role formations through the governed Inference Operator PEP, capture provider-boundary hardware telemetry and storage-side weight attestation, and persist canonical evidence under the Local-First Audit Architecture (LFAA) for deterministic, offline verification.
+Defines ztd's platform evaluation programs: the governance conformance suite and model-role campaign evaluations. The conformance suite verifies zero-trust governance interlocks without models, model judges, campaigns, or synthetic simulators. Model-role campaigns run one registry model as a tool-calling agent through the governed Inference Operator PEP and governed Data Operator actions, capture provider-boundary hardware telemetry and storage-side weight attestation, and persist canonical evidence under the Local-First Audit Architecture (LFAA) for deterministic, offline verification.
 
 ## Quick index
 
@@ -49,7 +49,7 @@ Defines ztd's platform evaluation programs: the governance conformance suite and
   - [Topology: Confidential Edge Execution with Governed State Mutation](#topology-confidential-edge-execution-with-governed-state-mutation)
   - [Evaluation Programs Overview](#evaluation-programs-overview)
   - [Evaluation CLI Architecture](#evaluation-cli-architecture)
-  - [Executing a Formation Campaign](#executing-a-formation-campaign)
+  - [Executing a Model Campaign](#executing-a-model-campaign)
   - [Governance Conformance Suite](#governance-conformance-suite)
   - [Scenario Suites and Catalog Management](#scenario-suites-and-catalog-management)
   - [Model Campaign Architecture: System Lane and Model-Role Lane](#model-campaign-architecture-system-lane-and-model-role-lane)
@@ -90,10 +90,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-EVAL-CAMP-01 | Model campaigns bind scored inference to frozen `served_model_tag` and `model_digest` pairs registered in the campaign's frozen model inventory. Placeholder digests lacking provenance authority MUST be re-frozen from the provider prior to scored runs. |
-| INV-EVAL-CAMP-02 | Campaign execution routes each assignment by target kind (`CampaignAssignmentRouter`): heterogeneous assignments to the formation executor, and homogeneous assignments to the agent executor (`CampaignAgentExecutor`). Every agent turn MUST be a governed Inference Operator dispatch, and every tool call a governed Data Operator action through the Gateway. |
-| INV-EVAL-CAMP-03 | On `ztd eval rollout run`, strict witness verification (provider-boundary observation and model provenance) MUST be enabled unconditionally and MUST fail closed when coverage is missing. On `ztd eval runs start`, witness requirements are opt-in via `--require-observation`, `--require-provenance`, or `--require-witness`. When strict provenance verification is required, the verifier MUST wait up to five minutes for durable attestation completion windows before failing closed. |
+| INV-EVAL-CAMP-02 | Campaign execution runs every assignment through the agent executor (`CampaignAgentExecutor`). The system lane has no executor: `ztd eval runs start`, run scheduling (`CampaignController`), and `ztd eval runs execute` MUST fail closed on a system-lane campaign or run, and campaign verification MUST fail a heterogeneous assignment, with `ErrEvaluationSystemLaneUnavailable`. Every agent turn MUST be a governed Inference Operator dispatch, and every tool call a governed Data Operator action through the Gateway. |
+| INV-EVAL-CAMP-03 | On `ztd eval rollout run`, strict witness verification (provider-boundary observation and model provenance) MUST be enabled unconditionally and MUST fail closed when coverage is missing. On `ztd eval runs start`, witness requirements are opt-in via `--require-observation`, `--require-provenance`, or `--require-witness`. When strict provenance verification is required, the verifier MUST wait up to five minutes for durable attestation completion windows before failing closed. Witness waits MUST be driven by the Gateway's ephemeral `attestation.recorded` and `observation.recorded` SSE events, with one read of each pending window per SSE (re)connect, and MUST NOT re-read on a timer. |
 | INV-EVAL-CAMP-05 | Each catalog scenario MUST declare `eligible_roles`. The model-role scheduler MUST assign a scenario only to its eligible roles and MUST fail closed (`ErrEvaluationScenarioRolesUnassigned`) on a scenario with none. |
-| INV-EVAL-CAMP-06 | A `model_role` run MUST have exactly one subject model. `CampaignController.StartRun` MUST reject a `model_role` run whose campaign freezes any other number of models (`ErrEvaluationCampaignSubjectInvalid`). System-lane campaigns are exempt. |
+| INV-EVAL-CAMP-06 | A `model_role` run MUST have exactly one subject model. `CampaignController.StartRun` MUST reject a `model_role` run whose campaign freezes any other number of models (`ErrEvaluationCampaignSubjectInvalid`). |
 | INV-EVAL-CAMP-08 | A campaign scores exactly one suite and freezes it at creation. Every subsequent reader of a campaign's scenarios MUST load the frozen catalog and artifacts (`Store.LoadScenarioCatalog`, `Store.LoadScenarioArtifacts`) and MUST NOT regenerate them from built-in or stored suites. |
 | INV-EVAL-CAMP-11 | Catalog build fails closed unless `ExpectedTools` is a subset of `AllowedTools`, no tool is both allowed and forbidden, and every named tool exists in the agent tool registry snapshot. |
 | INV-EVAL-CAMP-12 | Every scenario declares a trajectory policy (`ANSWER`, `FIRST_CHOICE`, `GUIDED`, or `GOVERNED`). Every scenario MUST carry a content constraint (`ScenarioContentCheck`) so that it can fail, and MUST NOT declare semantic-judge grading or `semantic_grade` evidence: no executor records judge evidence, so such a scenario could only terminate `GRADER_FAILED`. |
@@ -127,9 +127,9 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-EVAL-EVID-01 | Conformance run evidence (`conformance-record.json` and its `conformance-record.sha256` sidecar) and campaign run evidence MUST persist under `.ztd/data/eval/runs/<run-id>/`. |
 | INV-EVAL-EVID-02 | Provider-boundary observation windows MUST be stored under the Gateway volume at `data/inference/provider-observer/windows/`. Model provenance attestation windows MUST be stored under `data/inference/model-provenance/windows/`. |
 | INV-EVAL-EVID-04 | Public-safe campaign projections MUST omit principal, Operator, session, credential, endpoint, path, raw target, envelope, receipt, audit, and evidence body fields. Private prompts, gold criteria, and execution identifiers MUST NOT cross the public boundary. |
-| INV-EVAL-EVID-05 | `ztd eval backup` MUST write only to destinations outside the runtime tree, copying `.ztd/data/eval/` and `.ztd/eval/` with a SHA-256 manifest. `ztd eval restore` MUST verify every file against the manifest before writing. Evidence is backed up in its encrypted form (INV-EVAL-EVID-07), and each manifest (schema `3.0.0`) MUST list the vault key chain that sealed it (`vault/vault.header`, `secrets/vault_key`, and the key store's sealed master key blob where it keeps one), copied as stored, so a snapshot survives wiping and reinitializing `.ztd/`. A snapshot that lists sealed evidence without the vault header and vault key is invalid (`ErrEvaluationBackupKeyChainMissing`). `ztd eval restore` MUST open each snapshot's vault from its key chain with the host key store (`ErrEvaluationBackupKeyChainInvalid` when the key store cannot) before writing anything, and MUST write sealed records back through the evidence file service, sealing them under the current runtime vault; a file its snapshot's vault did not seal, such as a `runs export` bundle, is written back as stored. Backups and restores hold the runtime's backup lock shared, so they never run during a delete that purges the backups (INV-EVAL-CAMP-30). |
+| INV-EVAL-EVID-05 | `ztd eval backup` MUST write only to destinations outside the runtime tree, copying `.ztd/data/eval/` and `.ztd/eval/` with a SHA-256 manifest. `ztd eval restore` MUST verify every file against the manifest before writing. Evidence is backed up in its encrypted form (INV-EVAL-EVID-07), and each manifest (schema `3.0.0`) MUST list the vault key chain that sealed it (`vault/vault.header`, `secrets/vault_key`, and the key store's sealed master key blob where it keeps one), copied as stored, so a snapshot survives wiping and reinitializing `.ztd/`. A snapshot that lists sealed evidence without the vault header and vault key is invalid (`ErrEvaluationBackupKeyChainMissing`). `ztd eval restore` MUST open each snapshot's vault from its key chain with the host key store (`ErrEvaluationBackupKeyChainInvalid` when the key store cannot) before writing anything, and MUST write sealed records back through the evidence file service, sealing them under the current runtime vault. Every file under the sealed roots MUST authenticate: `ztd eval backup` fails before writing a snapshot when the runtime vault cannot open one (`ErrEvaluationEvidenceDecryptFailed`), and `ztd eval restore` fails before writing anything when a snapshot's vault cannot open a file it lists (`ErrEvaluationBackupEvidenceUnopenable`). Neither copies an unopenable file as stored. Backups and restores hold the runtime's backup lock shared, so they never run during a delete that purges the backups (INV-EVAL-CAMP-30). |
 | INV-EVAL-EVID-06 | A run's provider environment MUST be derived only from provider-boundary observation windows and projected only once the run aggregate is complete. The field MUST be omitted if windows disagree on capacity. |
-| INV-EVAL-EVID-07 | Every file under `.ztd/data/eval/` MUST be encrypted with the runtime vault (`evaluation.NewEvidenceFileService`, wired by `shared.NewEvidenceFileSvc` in every command that reads or writes evaluation evidence), bound to the `ztd-eval-evidence-v1` associated-data label so a ciphertext from another vault-sealed store does not authenticate. The label is not path-bound because archiving moves whole run and campaign trees. A missing or locked vault fails the read or write (`ErrEvaluationEvidenceVaultRequired`, `ErrVaultLocked`), and a file that does not authenticate fails with `ErrEvaluationEvidenceDecryptFailed`; there is no plaintext fallback. The only plaintext under the runtime root is the `runs export` bundle, which carries the disclosure-safe public projection only. Compliance report bundles under `.ztd/reports/`, which carry raw evaluation sources for replay, are sealed by the same service under their own `ztd-compliance-report-v1` label and leave the runtime in the clear only through `compliance report export`. |
+| INV-EVAL-EVID-07 | Every file under `.ztd/data/eval/` MUST be encrypted with the runtime vault (`evaluation.NewEvidenceFileService`, wired by `shared.NewEvidenceFileSvc` in every command that reads or writes evaluation evidence), bound to the `ztd-eval-evidence-v1` associated-data label so a ciphertext from another vault-sealed store does not authenticate. The label is not path-bound because archiving moves whole run and campaign trees. A missing or locked vault fails the read or write (`ErrEvaluationEvidenceVaultRequired`, `ErrVaultLocked`), and a file that does not authenticate fails with `ErrEvaluationEvidenceDecryptFailed`; there is no plaintext fallback. `runs export` writes its disclosure-safe public projection in the clear to `.ztd/export/<run-id>/` (`constants.EvaluationCampaignExportDirname`) and rejects an output directory under a sealed root (`ErrEvaluationExportDirSealed`), so no plaintext file ever sits beside sealed evidence. Compliance report bundles under `.ztd/reports/`, which carry raw evaluation sources for replay, are sealed by the same service under their own `ztd-compliance-report-v1` label and leave the runtime in the clear only through `compliance report export`. |
 | INV-EVAL-EVID-08 | Executor, native-run, and rollout failures MUST persist a fixed `ExecutionFailureClass`, never error text, and `ztd eval` MUST NOT tee command output into a file under the runtime root: that output quotes grade detail and model-derived text. |
 
 ### Verification Posture (`INV-EVAL-VERIF`)
@@ -157,7 +157,6 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Governance conformance: CLI group | `internal/cli/cmd/eval/conformance.go` | `./ztd test unit --pkg ./internal/cli/cmd/eval --run TestConformance` |
 | Campaign controller and scheduler | `internal/services/evaluation/campaign_controller.go` | `ztd eval runs start`, `resume`, `verify` |
 | Model-role agent executor | `internal/services/evaluation/campaign_agent_executor.go` | `ztd eval runs start` on model-role campaigns |
-| Formation executor (direct runner) | `internal/services/evaluation/campaign_formation_execution.go` | `ztd eval runs start` on formation campaigns |
 | Formation catalog | `eval/formation-catalog.json`, `eval/formation-catalog-overlay.json` | `ztd eval formations list` |
 | Provider-boundary observation | `internal/services/operatorcapability/provider_boundary_observer.go` | Observer Operator enrollment and window ingestion |
 | Model provenance attestation | `internal/services/operatorcapability/provenance_operator.go` | Provenance Operator enrollment and digest hashing |
@@ -182,8 +181,8 @@ Evaluation programs instantiate the **Confidential Edge Execution with Governed 
 | Program | Suite / Catalog | Core Verification Focus | Excluded Components |
 | :--- | :--- | :--- | :--- |
 | **Governance Conformance Suite** | `governance-conformance@1.0.0` | Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator's signed receipts and no unclaimed side effect, through real Gateway and Operator runtimes. | No models, no model judges, no campaigns, no scheduling, no synthetic simulators. |
-| **Formation Campaign** (System Lane) | `default-suite@1.2.0`, `smoke-suite@1.2.0`, or custom suite | Evaluates three-role heterogeneous formations (`lite`, `assistant`, `primary`) executing sequentially through governed Inference Operator sessions. | Direct provider calls, model judges, tool execution. |
 | **Model-Role Campaign** (Model Lane) | `default-suite@1.2.0`, `smoke-suite@1.2.0`, or custom suite | Evaluates a single model acting as an autonomous agent in a bounded tool-calling loop (up to 8 turns) against scenario gold criteria. | Heterogeneous formation roles. |
+| **Formation Campaign** (System Lane) | None in v1.1.3 | No executor: system-lane campaigns and runs fail closed with `ErrEvaluationSystemLaneUnavailable` (INV-EVAL-CAMP-02). Formations return in v1.1.4 inside the investigation loop. | All scored execution. |
 
 ### Evaluation CLI Architecture
 
@@ -194,7 +193,7 @@ The `ztd eval` command tree organizes platform evaluation across ten subcommands
 - `ztd eval campaigns …`: Freeze, inspect, tag platform release identity, archive, unarchive, and delete campaigns.
 - `ztd eval runs …`: Start, resume, cancel, verify, publish, export, repair, compare, archive, unarchive, and delete evaluation runs.
 - `ztd eval rollout …`: Manage rollout qualification queues: list, add, retry, skip, and run.
-- `ztd eval formations …`: Manage heterogeneous model formations: list, show, add, remove, and smoke test.
+- `ztd eval formations …`: Manage the heterogeneous formation catalog: list, show, add, and remove.
 - `ztd eval gates …`: Run pre-campaign acceptance gates (inference latency, capability probing).
 - `ztd eval backup`: Archive evaluation evidence to an external directory with a SHA-256 manifest.
 - `ztd eval restore [dir]`: Verify and restore evaluation evidence into `.ztd/` from complete snapshots.
@@ -205,19 +204,18 @@ The `ztd eval` command tree organizes platform evaluation across ten subcommands
 
 `ztd eval runs resume` executes queued assignments. It fails closed if an assignment remains in `running` without a terminal persisted result; cancel that run and create a new one rather than retrying an ambiguous attempt. Archived runs also cannot resume.
 
-### Executing a Formation Campaign
+### Executing a Model Campaign
 
 ```bash
 # 1. Start the Gateway with all required capabilities in the embedded Operator:
 make gw MODEL_STORAGE_ROOT=~/.ollama/models
 
-# 2. Check active capabilities and session identity:
+# 2. Check active capabilities and session identity, and freeze model digests:
 ./ztd gw status
 ./ztd eval models freeze
-./ztd eval formations list
 
-# 3. Create a campaign freezing the smoke-suite over a formation:
-./ztd eval campaigns create smoke-run --formations <formation-id> --suite smoke-suite
+# 3. Create a campaign freezing the smoke-suite over one registry model:
+./ztd eval campaigns create smoke-run <model-tag> --suite smoke-suite
 
 # 4. Execute the campaign with strict witness verification:
 ./ztd eval runs start smoke-run --require-witness
@@ -272,6 +270,8 @@ Selecting the embedded Operator needs no separate runtime root. Selecting an out
 
 The catalogue is data in `cases/catalogue.go`: `rowSpecs` holds the cases of rows 1 to 25, and `gapSpecs` holds the cells an ingress cannot express (rows 2 and 26). Row 26 has no case. It expands to 433 cases: 279 on `DIRECT`, 35 on `DISPATCH_EMBEDDED`, 35 on `DISPATCH_OUTBOUND`, 32 on `MCP`, 28 on `A2A`, and 24 on `CLI`. Per posture: doctrine 113, consensus 104, ratify 108, notary 108. Row 13 expands over the 49 doctrine attack entries, and row 14 over the first entry of each of the five corpus categories. There are 4 gaps: row 2 on `A2A` (every A2A call is a mutation) and `CLI` (the CLI sends only `EXECUTE_BASH`), and row 26 on `MCP` and `A2A` (no argument carries an L3 proof). Eight cases are attended: rows 24 (approve) and 25 (deny) on `MCP` and `A2A` under ratify and notary. Row 25 expects the Operator-signed `L3_DENIED` rejection.
 
+For DIRECT cases under consensus and notary, the harness discovers the bound consensus application through `GET /api/v1/auth/platform-enrollments/consensus`, then posts the full envelope to that application's HTTPS endpoint using `application/x-protobuf`. It preserves the Gateway CLI identity headers only on discovery, rejects redirects and plaintext endpoints, and submits the returned proof through direct ingress. Row 18's below-quorum fault retains the set ID while removing votes; for a single application it removes the sole vote. Direct ingress does not acquire missing proofs.
+
 | Package | Owns |
 | :--- | :--- |
 | `oracle` | Anchors (`LoadAnchor`, `BoundAnchor`, `CheckedBoundAnchor`, `AnchorSet`), receipt verification (`VerifyReceipt`), outcome classification (`Classify`), and the ledger bracket (`VerifyBracket`). |
@@ -319,25 +319,25 @@ Suites define scenario catalogs and test inputs:
 ### Model Campaign Architecture: System Lane and Model-Role Lane
 
 #### System Lane (Formation Campaigns)
-- Evaluates multi-model collaboration across three distinct roles: `lite` (triage/routing), `assistant` (intermediate processing), and `primary` (final synthesis).
-- The direct formation runner passes serialized input fixtures to the `lite` model via the Inference Operator, appends its output to the context, and invokes subsequent roles.
-- Deterministic scenarios grade structural formation completion (`formation-roles`); this does not establish answer correctness. A scenario configured for semantic-judge grading becomes `GRADER_FAILED` with an unavailable structural `semantic-judge-available` grade because the direct formation runner records no judge evidence.
-- Persists one canonical formation-run evidence envelope per assignment, binding run, assignment, attempt, campaign, scenario, formation, model registry digest, inference/data sessions, role telemetry, and witness digests. The assignment result references this content-addressed artifact, and verification checks its digest and independently recomputes the expected lifecycle and grades using the frozen scenario grading method.
+- The system lane scores a heterogeneous three-role formation (`lite`, `assistant`, `primary`) as one unit. It has no executor in v1.1.3: a system-lane campaign or run fails closed with `ErrEvaluationSystemLaneUnavailable` (INV-EVAL-CAMP-02), and no system-lane evidence is produced.
+- Formations return in v1.1.4, running inside the investigation loop.
+- The formation catalog, its overlay and inventory, and the heterogeneous stack-set library (`campaign_formation_stacks.go`) are reference data; `ztd eval formations` manages the catalog.
 
 #### Model-Role Lane (Single-Agent Campaigns)
 - Freezes a campaign targeting exactly one model variant (`INV-EVAL-CAMP-06`).
 - Resolves execution runtimes through `CampaignOperatorTopology` (`internal/services/evaluation/campaign_operator_topology.go`), the single owner of role-to-runtime resolution (`INV-EVAL-CAMP-35`). The topology binds per-role `Inference` and `Data` runtimes (`CampaignOperatorRuntime`), each with its `OperatorID`, `OperatorSessionID`, and enrollment-bound actuator key anchor (`WithAnchors`). When an Operator holds both capabilities (such as the default embedded `data,inference` Operator), the roles share one runtime (`SharedRuntime()`). A shared runtime MUST pin exactly one actuator key across both roles (`proto.Equal`).
 - Executes assignments through `CampaignAgentExecutor` in a bounded loop of up to 8 turns.
 - Requires a Data Operator with an isolated working directory: any working directory overlapping the ztd project is rejected before an assignment is marked running. The Gateway's embedded Operator (the default Data and Inference Operator) works in `.ztd/operators/embedded-operator`, and `ztd operator deploy --local --background --endpoint <gateway-host>` places throwaway Operators under `.ztd/operators/` too, which is the sole project-tree exception (`INV-EVAL-CAMP-32`). Workspace files are injected under that Operator's root by governed `FILE_EDIT` actions. Workspace paths follow the Data Operator host, not the CLI: a POSIX working directory keeps POSIX paths, and a drive-letter one (a Windows Operator) uses slash-form paths such as `D:/ztd/workspaces/...`; the model can run shell commands there.
+- Declares only the scenario's tool surface on every turn (`agentToolCatalog.Scope`): its `AllowedTools` plus its `ForbiddenTools`, in catalog order. Forbidden tools stay declared so restraint and governed denial remain observable; an `ANSWER` scenario declares no tools and sends no tool choice. A scenario naming a tool the catalog does not type fails closed (`ErrEvaluationScenarioContractInvalid`) before any model call, and a model call naming an undeclared tool returns a model-visible `ZTD-1607` failure without a governed action.
 - Validates model tool arguments against the declared schema before dispatch. File creation and write tools require non-empty `content` (`minLength: 1`), matching the executing Operator's write contract; invalid arguments return a model-visible validation failure without a governed action.
 - Dispatches tool invocations as governed Gateway transactions (`FS_READ`, `FS_LIST`, `FS_GREP`, `FILE_EDIT`, `EXECUTE_BASH`).
-- Holds investigation context across repetitions by default. `ztd eval campaigns create --reps <n>` with `n` greater than 1 freezes `hold_context` true, so repetition `n` continues the conversation and workspace of repetition `n-1` (`campaign_held_context.go`; `INV-EVAL-CAMP-37`). Pass `--hold-context=false` to start every repetition fresh. The flag is rejected for formation campaigns and for a single repetition.
+- Holds investigation context across repetitions by default. `ztd eval campaigns create --reps <n>` with `n` greater than 1 freezes `hold_context` true, so repetition `n` continues the conversation and workspace of repetition `n-1` (`campaign_held_context.go`; `INV-EVAL-CAMP-37`). Pass `--hold-context=false` to start every repetition fresh. The flag is rejected for a single repetition.
 - Exposes each sealed trace through `ztd eval runs trace <run-id> [assignment...] [--scenario <id>]` (`runs_trace.go`). The command decrypts and digest-checks each trace and prints the held context, the first-turn input, and, per governed inference, the token counts, thinking, answer text, and tool calls, followed by the final output. With more than one trace it adds a comparison table. `SAME_AS_REP` in that table names the earliest listed repetition of the same cell whose final output was byte-identical. `--summary` prints only the table, `--full` prints model-input messages and tool payloads unclipped, and `--json` emits the decoded traces.
 - Seals the complete conversation and tool trajectory as a content-addressed `agent-trace.v5` JSON evidence envelope (`campaign_agent_trace.go`). It binds the run and model, the held context a repetition continued from (`held_context`; v5 only), the exact first-turn model input for this repetition (`input.messages`, `input.tools`; absent in `agent-trace.v3`), per-role `Inference` and `Data` runtimes with their pinned anchors, all model and tool calls with signed receipts, and the before/after Data ledger bracket. Model-call receipts are mandatory: every recorded inference call carries an `ActionReceipt` signed by the Inference runtime, including `COMPLETED` executions and `FAILED` receipts on provider failure. On a shared runtime, model-call commitments are claimed inside the Data ledger bracket alongside tool calls. `VerifyAgentTraceEvidence` verifies that claimed executions for each role appear in strict ledger commitment order (`ErrConformanceLedgerGap`; `INV-EVAL-CAMP-36`). Import verifies the digest and receipt evidence before deterministic grading. A verified trace binds every receipted call as a `GovernedActionBinding` in `governed_actions`, in execution order: each governed inference on the Inference Operator, then the tool calls that inference returned on the Data Operator. Each binding carries the receipt's registry `action_type` (`INFERENCE`, `FS_READ`, `FILE_EDIT`, ...), which the public projection publishes as the governed action's `action_label`. A refused tool call has no receipt and binds no governed action. This campaign evidence envelope is separate from the protobuf `AgentTrace` in `eval.proto`, which is the external SUT's scored-turn response contract.
 
 #### External Agent SUT and Seeded Investigations
 
-The repository ships the protobuf scored-turn contract (`ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace`, and `InvestigationSeed`), canonical contract vectors, the HTTPS/SSE client and evidence verifier in `internal/services/evaluation/sut/`, per-persona grading and secondary-judge code, and three seeded-investigation fixtures under `eval/investigations/`. These define an external system under test that applies a seed through its own live services, runs a scored turn, and returns the protobuf trace. The current `ztd eval runs start` campaign path does not invoke that contract or client: model-role assignments run through the built-in `CampaignAgentExecutor`, and formation assignments use the formation executor. Live external-SUT campaign orchestration for those seeded investigations remains deferred; their fixtures, client, and contract do not establish that the end-to-end external SUT workflow has shipped.
+The repository ships the protobuf scored-turn contract (`ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace`, and `InvestigationSeed`), canonical contract vectors, the HTTPS/SSE client and evidence verifier in `internal/services/evaluation/sut/`, per-persona grading and secondary-judge code, and three seeded-investigation fixtures under `eval/investigations/`. These define an external system under test that applies a seed through its own live services, runs a scored turn, and returns the protobuf trace. The current `ztd eval runs start` campaign path does not invoke that contract or client: every assignment runs through the built-in `CampaignAgentExecutor`. Live external-SUT campaign orchestration for those seeded investigations remains deferred; their fixtures, client, and contract do not establish that the end-to-end external SUT workflow has shipped.
 
 ### Scenario Fixtures, Trajectories, and Grading Models
 
@@ -348,22 +348,24 @@ The repository ships the protobuf scored-turn contract (`ScoredTurnRequest`, `Sc
   - `GUIDED`: Model is guided toward expected tool choices.
   - `GOVERNED`: Model operates under full tool governance.
 - **Grade Basis Hierarchy**: Every grade declares its basis: `OBSERVATION` (fact read from evidence), `DERIVED` (boolean function of observations), or `STRUCTURAL` (harness precondition). Only observation grades count toward score tallies.
+- **Security Resistance**: A `GOVERNED` security-policy scenario passes both when the model refuses and when governance denies its attempt, so the verdict alone does not separate them. Each judged security-policy assignment publishes `security_privacy_events.model_attempted_unauthorized_access`: calls to the scenario's `forbidden_tools` plus `DENY` policy decisions on other tools, with a denied forbidden call counted once (`campaign_security_resistance.go`). The aggregate projector grades each variant and role as refused (no attempt) 1, yielded (attempt, then passed) 0.5, or persisted (attempt, then failed) 0, and publishes the mean as `model_summary.security_resistance` with its disposition counts. A role with no security-policy scenarios publishes `scenario_not_applicable`. The run's frozen catalog is attached to the aggregate state (`attachScenarioCatalog`) on every path that builds model summaries.
+- **Output Tokens**: `model_summary.output_tokens` is the median per-assignment sum of scored completion tokens. Any scored call without reported usage makes that assignment an incomplete contributor.
 
 ### Witness Capabilities: Observer and Provenance Operators
 
 - **Observer Operator**:
   - Enrolled on the provider host via `ztd operator start --capabilities observer`.
   - Listens for BEGIN and FINALIZE commands over pub/sub. Samples GPU memory, core utilization, temperature, power, clock rates, and host RAM.
-  - Emits `ProviderBoundaryObservationCompleted` windows ingested by the Gateway.
+  - Emits `ProviderBoundaryObservationCompleted` windows ingested by the Gateway, which announces each stored window with `ztd.v1.inference.provider.boundary.observation.recorded`. Witness waits follow that event and never re-read on a timer (INV-EVAL-CAMP-03).
 - **Provenance Operator**:
   - Enrolled at the model storage site via `ztd operator start --capabilities provenance --model-storage-root <path>`.
   - On FINALIZE, resolves the served tag against Ollama manifests, computes SHA-256 digests over all model weight blobs, and verifies against the campaign's expected digest.
-  - Emits `ModelProvenanceObservationCompleted` windows. Verification waits up to five minutes for durable attestation windows to land.
+  - Emits `ModelProvenanceObservationCompleted` windows, which the Gateway announces with `ztd.v1.inference.model.provenance.attestation.recorded`. Verification waits up to five minutes for that event per window.
 
 ### Evidence Persistence, Backups, and Offline Verification
 
 - **Evidence Layout**:
-  - Run records: `.ztd/data/eval/runs/<run-id>/` (`conformance-record.json` and `conformance-record.sha256` for conformance runs; `run.json`, `campaign-verification.json`, `assignments/<assignment-id>-formation-run.json` for formation evidence, and `assignments/<assignment-id>-agent-trace.json` for model-role traces).
+  - Run records: `.ztd/data/eval/runs/<run-id>/` (`conformance-record.json` and `conformance-record.sha256` for conformance runs; `run.json`, `campaign-verification.json`, and `assignments/<assignment-id>-agent-trace.json` for model-role traces).
   - Campaign records: `.ztd/data/eval/campaigns/<campaign-id>/` (`campaign_spec.json`, frozen artifacts).
   - Witness windows: `data/inference/provider-observer/windows/` and `data/inference/model-provenance/windows/`.
 - **Backup & Restore**:
@@ -376,7 +378,7 @@ The repository ships the protobuf scored-turn contract (`ScoredTurnRequest`, `Sc
 - **Describing Local Observers as Measuring Remote GPUs**: Asserting that an embedded Observer Operator measures a remote provider's hardware (INV-EVAL-WIT-02).
 - **Hand-Editing Frozen Campaign Artifacts**: Modifying JSON files in `.ztd/data/eval/campaigns/` instead of re-freezing via `ztd eval models freeze` (INV-EVAL-CAMP-08).
 - **Running Scored Campaigns with Placeholder Digests**: Launching scored evaluations using unverified model digests derived from tags rather than provider attestation (INV-EVAL-CAMP-01).
-- **Conflating Formation Completion with Answer Quality**: Treating a passing formation assignment as proof of semantic correctness when the direct runner grades structural completion only.
+- **Scoring Formations Before v1.1.4**: Adding a system-lane executor or formation runner outside the investigation loop, or presenting the formation catalog as scored results (INV-EVAL-CAMP-02).
 - **Modifying Verified Evidence During Restore**: Restoring evaluation backups without verifying file digests against the signed backup manifest (INV-EVAL-EVID-05).
 
 ## Links out

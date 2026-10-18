@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -71,7 +70,7 @@ func submitForeignOperatorEnvelope(t *testing.T, svc *GatewayModeService, env *c
 // unknown session is persisted under the embedded Operator's own session, keeps
 // the claimed ids in the signed receipt, and leaks no audit error text.
 func TestGovernanceEnvelope_ForeignOperatorRejectionIsRecordedUnderEmbeddedSession(t *testing.T) {
-	svc := newTestGatewayService(t, testGatewayOpts{posture: config.PostureDoctrine})
+	svc := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureDoctrine})
 	_, embeddedSessionID, err := svc.embeddedOperator.ClaimEmbeddedOperator(t.Context(), "owner")
 	require.NoError(t, err)
 	env := foreignOperatorEnvelope(t, svc, "foreign-session-nonce")
@@ -107,7 +106,7 @@ func TestGovernanceEnvelope_ForeignOperatorRejectionIsRecordedUnderEmbeddedSessi
 // Gateway whose embedded Operator is not yet claimed still records the rejection,
 // under the bootstrap audit session it started at startup.
 func TestGovernanceEnvelope_ForeignOperatorRejectionBeforeEmbeddedClaim(t *testing.T) {
-	svc := newTestGatewayService(t, testGatewayOpts{posture: config.PostureDoctrine})
+	svc := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureDoctrine})
 	env := foreignOperatorEnvelope(t, svc, "unclaimed-nonce")
 
 	w := submitForeignOperatorEnvelope(t, svc, env)
@@ -123,7 +122,7 @@ func TestGovernanceEnvelope_ForeignOperatorRejectionBeforeEmbeddedClaim(t *testi
 }
 
 func TestGovernanceEnvelope_ForeignOperatorTarget_Returns403(t *testing.T) {
-	svc := newTestGatewayService(t, testGatewayOpts{posture: config.PostureDoctrine})
+	svc := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureDoctrine})
 	payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: constants.TestPathShortData, ExecutionId: "target-rejection"})
 	require.NoError(t, err)
 	env := &commonv1.GovernanceEnvelope{

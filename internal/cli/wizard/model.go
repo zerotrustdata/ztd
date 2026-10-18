@@ -10,6 +10,8 @@ package wizard
 import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // Model is the bubbletea state container for the onboarding wizard.
@@ -29,13 +31,10 @@ type Model struct {
 	corsOriginInput    textinput.Model
 
 	// Step 2: Posture
-	postureChoice           int // 0=doctrine, 1=consensus, 2=ratify, 3=notary
-	consensusURLInput       textinput.Model
-	consensusIDInput        textinput.Model
-	consensusBootstrapInput textinput.Model
-	passkeyRpIDInput        textinput.Model
-	passkeyRpNameInput      textinput.Model
-	passkeyRpOriginInput    textinput.Model
+	postureChoice        int // 0=doctrine, 1=consensus, 2=ratify, 3=notary
+	passkeyRpIDInput     textinput.Model
+	passkeyRpNameInput   textinput.Model
+	passkeyRpOriginInput textinput.Model
 
 	// Step 3: Routing
 	routeToMCP         bool
@@ -69,15 +68,6 @@ func NewModel(opts Options) Model {
 		m.corsOriginInput.SetValue(opts.InitialConfig.AllowedOrigins[0])
 	}
 
-	m.consensusIDInput = newTextInput("trib-prod-01", "Consensus Policy ID", 30)
-	m.consensusIDInput.SetValue(opts.InitialConfig.ConsensusID)
-
-	m.consensusURLInput = newTextInput("https://consensus.zerotrustdata.io", "Consensus Service URL (optional)", 40)
-	m.consensusURLInput.SetValue(opts.InitialConfig.ConsensusURL)
-
-	m.consensusBootstrapInput = newTextInput("", "Path to bootstrap JSON file (optional)", 50)
-	m.consensusBootstrapInput.SetValue(opts.InitialConfig.ConsensusBootstrap)
-
 	m.passkeyRpIDInput = newTextInput("localhost", "Passkey RP ID", 30)
 	rpID := opts.InitialConfig.PasskeyRpID
 	if rpID == "" {
@@ -108,16 +98,11 @@ func NewModel(opts Options) Model {
 		m.certModeChoice = 1
 	}
 
-	// Set initial posture choice from config
-	switch opts.InitialConfig.Posture {
-	case "consensus":
-		m.postureChoice = 1
-	case "ratify":
-		m.postureChoice = 2
-	case "notary":
-		m.postureChoice = 3
-	default:
-		m.postureChoice = 0
+	// Set initial posture choice from config; an unrecognized name keeps the default
+	for i, p := range constants.AllPostures {
+		if string(p) == opts.InitialConfig.Posture {
+			m.postureChoice = i
+		}
 	}
 
 	// Initialize toggles from initial config so pre-filled inputs are visible
@@ -138,6 +123,12 @@ func (m Model) Init() tea.Cmd {
 }
 
 // result produces the final Result from the model state.
+// selectedPosture is the posture the posture step has chosen. The choice is an
+// index into constants.AllPostures, so the wizard never names a posture itself.
+func (m Model) selectedPosture() constants.Posture {
+	return constants.AllPostures[m.postureChoice]
+}
+
 func (m Model) result() Result {
 	if m.quitting {
 		return Result{Cancel: true}
@@ -159,19 +150,7 @@ func (m Model) result() Result {
 	}
 
 	// Step 2: Posture
-	switch m.postureChoice {
-	case 1:
-		cfg.Posture = "consensus"
-	case 2:
-		cfg.Posture = "ratify"
-	case 3:
-		cfg.Posture = "notary"
-	default:
-		cfg.Posture = "doctrine"
-	}
-	cfg.ConsensusID = m.consensusIDInput.Value()
-	cfg.ConsensusURL = m.consensusURLInput.Value()
-	cfg.ConsensusBootstrap = m.consensusBootstrapInput.Value()
+	cfg.Posture = string(m.selectedPosture())
 	cfg.PasskeyRpID = m.passkeyRpIDInput.Value()
 	cfg.PasskeyRpName = m.passkeyRpNameInput.Value()
 	if m.passkeyRpOriginInput.Value() != "" {

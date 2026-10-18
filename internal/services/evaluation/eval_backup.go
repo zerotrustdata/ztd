@@ -107,7 +107,9 @@ type evalBackupKeyChain struct {
 // A snapshot carries it in that form together with the vault key chain that
 // sealed it (the vault header, the vault key sealed under the master key, and
 // the key store's sealed master key blob where it keeps one), all ciphertext,
-// so no plaintext leaves the runtime and taking a snapshot needs no vault. A
+// so no plaintext leaves the runtime. A snapshot authenticates every sealed
+// record under the runtime vault before listing it, so its key chain opens
+// everything it lists, and fails rather than carry one it cannot open. A
 // restore opens each snapshot's vault from its key chain with the OS key store
 // (or the user's SSH key), which outlives the runtime tree, and writes the
 // evidence back through the evidence file service, sealing it under the
@@ -229,6 +231,7 @@ func (b *EvalBackup) capture(ctx context.Context, destRoot string) (*EvalBackupR
 		return nil, fmt.Errorf("evaluation: backup: create destination: %w", err)
 	}
 	report := &EvalBackupReport{CreatedAt: b.now().UTC()}
+	var unopenable []string
 	for _, relPath := range relPaths {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -237,12 +240,22 @@ func (b *EvalBackup) capture(ctx context.Context, destRoot string) (*EvalBackupR
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: backup: read %s: %w", relPath, err)
 		}
+		if err := b.authenticateSealed(relPath, data); errors.Is(err, constants.ErrEvaluationEvidenceDecryptFailed) {
+			unopenable = append(unopenable, relPath)
+			continue
+		} else if err != nil {
+			return nil, fmt.Errorf("evaluation: backup: %w", err)
+		}
 		file := EvalBackupFile{Path: relPath, Size: int64(len(data)), SHA256: evalBackupDigest(data)}
 		if err := storeEvalBackupObject(destRoot, file, data); err != nil {
 			return nil, err
 		}
 		report.Files = append(report.Files, file)
 		report.TotalBytes += file.Size
+	}
+	if len(unopenable) > 0 {
+		return nil, fmt.Errorf("evaluation: backup: %d file(s) do not authenticate under the runtime vault (%s); delete the runs or campaigns that hold them: %w",
+			len(unopenable), evalBackupPathSample(unopenable), constants.ErrEvaluationEvidenceDecryptFailed)
 	}
 	report.KeyChain, err = b.captureKeyChain(ctx, destRoot)
 	if err != nil {
@@ -252,6 +265,27 @@ func (b *EvalBackup) capture(ctx context.Context, destRoot string) (*EvalBackupR
 		return nil, fmt.Errorf("evaluation: backup: %w", err)
 	}
 	return report, nil
+}
+
+// authenticateSealed checks that a file under a sealed root opens under the
+// runtime vault, whose key chain the snapshot records, so every snapshot can
+// open everything it lists. Files outside the sealed roots pass as stored.
+func (b *EvalBackup) authenticateSealed(relPath string, data []byte) error {
+	aad, sealed := sealedPathAAD(relPath)
+	if !sealed {
+		return nil
+	}
+	if b.evidence == nil {
+		return constants.ErrEvaluationEvidenceVaultRequired
+	}
+	v, err := b.evidence.vaultFor()
+	if err != nil {
+		return err
+	}
+	if _, err := v.DecryptWithAAD(data, aad); err != nil {
+		return fmt.Errorf("%w: %s: %w", constants.ErrEvaluationEvidenceDecryptFailed, relPath, err)
+	}
+	return nil
 }
 
 // captureKeyChain stores the runtime vault key chain beside the evidence. The
@@ -713,14 +747,14 @@ func (b *EvalBackup) RestoreAll(ctx context.Context, backupDir string, overwrite
 }
 
 // restoreSources writes the sources into the runtime tree as the runtime held
-// them: a record its snapshot's vault sealed is opened with that vault and
-// written through the evidence file service, sealing it under the runtime
-// vault whatever vault the snapshot was taken under; anything else, such as
-// the disclosure-safe export ExportRun writes in the clear (INV-EVAL-EVID-04),
-// is written back byte for byte. Content is read, verified against its digest,
-// and opened one file at a time, so memory stays near one file. Every source
-// is read and opened before the first write, so a corrupt backup or a key
-// chain the key store cannot open changes nothing.
+// them: every record under a sealed root is opened with its snapshot's vault
+// and written through the evidence file service, sealing it under the runtime
+// vault whatever vault the snapshot was taken under; files outside the sealed
+// roots are written back byte for byte. Content is read, verified against its
+// digest, and opened one file at a time, so memory stays near one file. Every
+// source is read and opened before the first write, so a corrupt backup, a key
+// chain the key store cannot open, or a record its key chain does not
+// authenticate changes nothing.
 func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSource, overwrite bool) (*EvalRestoreReport, error) {
 	if b.evidence == nil {
 		return nil, fmt.Errorf("evaluation: restore: %w", constants.ErrEvaluationEvidenceVaultRequired)
@@ -729,11 +763,16 @@ func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSou
 	report := &EvalRestoreReport{}
 	var pending []evalBackupSource
 	var conflicts []EvalBackupFile
+	var unopenable []string
 	for _, source := range sources {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		content, err := b.restoreContent(ctx, source, vaults)
+		if errors.Is(err, constants.ErrEvaluationBackupEvidenceUnopenable) {
+			unopenable = append(unopenable, source.file.Path)
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -749,6 +788,10 @@ func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSou
 		default:
 			pending = append(pending, source)
 		}
+	}
+	if len(unopenable) > 0 {
+		return nil, fmt.Errorf("evaluation: restore: %d file(s) do not authenticate under the key chain of the snapshot that holds them (%s); delete the runs or campaigns that hold them: %w",
+			len(unopenable), evalBackupPathSample(unopenable), constants.ErrEvaluationBackupEvidenceUnopenable)
 	}
 	if len(conflicts) > 0 {
 		return nil, evalBackupConflictError(conflicts)
@@ -786,8 +829,8 @@ func (c evalRestoreContent) files(b *EvalBackup) fs.RuntimeFileService {
 }
 
 // restoreContent returns a source's verified content. A file under a sealed
-// root is opened with its snapshot's vault; one that vault did not seal was
-// stored in the clear and is returned as stored.
+// root is opened with its snapshot's vault; one that vault cannot authenticate
+// is ErrEvaluationBackupEvidenceUnopenable, never restored as stored.
 func (b *EvalBackup) restoreContent(ctx context.Context, source evalBackupSource, vaults map[string]EvidenceVault) (evalRestoreContent, error) {
 	data, err := readVerifiedEvalBackupPayload(source.file, source.payload)
 	if err != nil {
@@ -803,8 +846,7 @@ func (b *EvalBackup) restoreContent(ctx context.Context, source evalBackupSource
 	}
 	plaintext, err := v.DecryptWithAAD(data, aad)
 	if err != nil {
-		//nolint:nilerr // intentional: the payload digest is already verified; a clear ExportRun bundle under a sealed root is restored as stored
-		return evalRestoreContent{data: data}, nil
+		return evalRestoreContent{}, fmt.Errorf("%w: %s: %w", constants.ErrEvaluationBackupEvidenceUnopenable, source.file.Path, err)
 	}
 	return evalRestoreContent{data: plaintext, sealed: true}, nil
 }
@@ -865,19 +907,22 @@ func (b *EvalBackup) matchesExisting(ctx context.Context, relPath string, want e
 }
 
 func evalBackupConflictError(conflicts []EvalBackupFile) error {
-	names := make([]string, 0, evalBackupConflictSample)
-	for i, file := range conflicts {
-		if i == evalBackupConflictSample {
-			break
-		}
-		names = append(names, file.Path)
+	paths := make([]string, 0, len(conflicts))
+	for _, file := range conflicts {
+		paths = append(paths, file.Path)
 	}
-	more := ""
-	if extra := len(conflicts) - len(names); extra > 0 {
-		more = fmt.Sprintf(" and %d more", extra)
+	return fmt.Errorf("evaluation: restore: %d file(s) differ from the backup (%s); pass --overwrite to replace them: %w",
+		len(conflicts), evalBackupPathSample(paths), constants.ErrEvaluationBackupConflict)
+}
+
+// evalBackupPathSample names the first evalBackupConflictSample paths and
+// counts the rest.
+func evalBackupPathSample(paths []string) string {
+	names := paths[:min(len(paths), evalBackupConflictSample)]
+	if extra := len(paths) - len(names); extra > 0 {
+		return fmt.Sprintf("%s and %d more", strings.Join(names, ", "), extra)
 	}
-	return fmt.Errorf("evaluation: restore: %d file(s) differ from the backup (%s%s); pass --overwrite to replace them: %w",
-		len(conflicts), strings.Join(names, ", "), more, constants.ErrEvaluationBackupConflict)
+	return strings.Join(names, ", ")
 }
 
 // collect lists every runtime-relative file under the backup roots, sorted.

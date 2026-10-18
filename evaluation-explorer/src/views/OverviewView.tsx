@@ -14,10 +14,6 @@ import { formatDuration, formatRelativeTime, formatTimestamp } from '../utils/fo
 import { recentCampaignRows, roleLabel, type RecentCampaignRow } from './derived';
 import type { CatalogSnapshot, EvaluationSummary, ModelSummary } from '../contract/types';
 
-function capitalize(value: string): string {
-  return value.length > 0 ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
-}
-
 function formatClock(iso: string | undefined): string {
   if (!iso) return 'Unavailable';
   const date = new Date(iso);
@@ -30,12 +26,12 @@ function runDurationSeconds(row: RecentCampaignRow, now: number): number | undef
   if (row.elapsedSeconds !== undefined) return row.elapsedSeconds;
   if (!row.startedAt) return undefined;
   const start = new Date(row.startedAt).getTime();
-  const end = row.endedAt ? new Date(row.endedAt).getTime() : row.lifecycleState === 'running' ? now : NaN;
+  const end = row.endedAt ? new Date(row.endedAt).getTime() : row.runStatus === 'running' ? now : NaN;
   return Number.isFinite(start) && Number.isFinite(end) && end >= start ? (end - start) / 1000 : undefined;
 }
 
 /** Most recent run for each dataset in the feed. */
-function RecentRuns({
+function Runs({
   catalogs,
   evaluations,
   models,
@@ -50,10 +46,10 @@ function RecentRuns({
   );
   const now = Date.now();
   return (
-    <section className="panel campaign-evidence-panel" aria-label="Recent runs">
+    <section className="panel campaign-evidence-panel" aria-label="Runs">
       <div className="panel-head campaign-evidence-head">
         <div>
-          <h2>Recent Runs</h2>
+          <h2>Runs</h2>
         </div>
         <Link to="/evaluations" className="panel-link">
           Explore all →
@@ -62,26 +58,28 @@ function RecentRuns({
       <ul className="campaign-legend" aria-label="Assignment outcome legend">
         <li><span className="campaign-legend-swatch campaign-legend-completed" />Completed</li>
         <li><span className="campaign-legend-swatch campaign-legend-failed" />Failed</li>
+        <li><span className="campaign-legend-swatch campaign-legend-stopped" />Stopped</li>
         <li><span className="campaign-legend-swatch campaign-legend-remaining" />Remaining</li>
       </ul>
       {recent.length === 0 ? (
         <p className="panel-empty">No runs recorded yet.</p>
       ) : (
-        <ul className="campaign-evidence-list">
+        <ul className="campaign-evidence-list" aria-label="Recent runs" tabIndex={0}>
           {recent.map((campaign) => {
-            const status = campaign.lifecycleState ?? campaign.qualityState;
+            const status = campaign.runStatus;
             const href = campaign.runId
               ? `/evaluations/${campaign.datasetId}/${campaign.runId}`
               : `/?dataset=${campaign.datasetId}`;
-            const terminal = campaign.assignmentCompleted + campaign.assignmentFailed;
+            const terminal = campaign.assignmentCompleted + campaign.assignmentFailed + campaign.assignmentStopped;
             const total = Math.max(campaign.assignmentTotal, terminal);
             const completedWidth = total > 0 ? (campaign.assignmentCompleted / total) * 100 : 0;
             const failedWidth = total > 0 ? (campaign.assignmentFailed / total) * 100 : 0;
+            const stoppedWidth = total > 0 ? (campaign.assignmentStopped / total) * 100 : 0;
             const verification = campaign.verifierState === 'passed'
               ? 'Verification passed'
               : campaign.verifierState === 'failed'
                 ? 'Verification failed'
-                : campaign.lifecycleState === 'running' || campaign.lifecycleState === 'queued'
+                : status === 'running' || status === 'scheduled'
                   ? 'Verification pending'
                   : campaign.verifierState === 'not_applicable'
                     ? 'Verification not applicable'
@@ -90,7 +88,7 @@ function RecentRuns({
             const titleModel = campaign.models.find((model) => model.role === 'primary') ?? campaign.models[0];
             const otherModels = campaign.models.filter((model) => model.name !== campaign.modelName);
             const duration = runDurationSeconds(campaign, now);
-            const running = campaign.lifecycleState === 'running';
+            const running = status === 'running';
             const startedAt = campaign.startedAt ?? campaign.observedAt;
             return (
               <li key={campaign.datasetId} className="campaign-evidence-row">
@@ -106,9 +104,9 @@ function RecentRuns({
                   ) : (
                     <span className="campaign-evidence-title" title={title}>{title}</span>
                   )}
-                  <span className={`campaign-evidence-state status-${status}`}>
+                  <span className={`campaign-evidence-state status-${status}`} title={status === 'unknown' ? 'Run status unavailable: no process-aware host status has been published.' : `Last published run status: ${status}`}>
                     <span className="status-dot" aria-hidden="true" />
-                    {campaign.lifecycleState ? capitalize(campaign.lifecycleState) : capitalize(campaign.qualityState.replaceAll('_', ' '))}
+                    {status}
                   </span>
                 </div>
                 <div className="campaign-evidence-meta">
@@ -139,10 +137,11 @@ function RecentRuns({
                       aria-valuemin={0}
                       aria-valuemax={total}
                       aria-valuenow={terminal}
-                      aria-valuetext={`${campaign.assignmentCompleted} completed, ${campaign.assignmentFailed} failed, ${total - terminal} remaining`}
+                      aria-valuetext={`${campaign.assignmentCompleted} completed, ${campaign.assignmentFailed} failed, ${campaign.assignmentStopped} stopped, ${total - terminal} remaining`}
                     >
                       <span className="campaign-outcome-completed" style={{ width: `${completedWidth}%` }} />
                       <span className="campaign-outcome-failed" style={{ width: `${failedWidth}%` }} />
+                      <span className="campaign-outcome-stopped" style={{ width: `${stoppedWidth}%` }} />
                     </div>
                     <div className="campaign-evidence-foot">
                       <span>{formatNumber(terminal)} / {formatNumber(total)} terminal</span>
@@ -161,7 +160,7 @@ function RecentRuns({
                   </span>
                   {duration !== undefined ? (
                     <span title={campaign.endedAt ? `Ended ${formatTimestamp(campaign.endedAt)}` : undefined}>
-                      {running ? 'Running for' : 'Ran for'} {formatDuration(duration)}
+                      {running ? 'Running for' : status === 'unknown' || status === 'in_progress' || status === 'interrupted' ? 'Recorded' : 'Ran for'} {formatDuration(duration)}
                     </span>
                   ) : null}
                 </div>
@@ -188,6 +187,7 @@ export function OverviewView() {
 
   return (
     <div className="overview">
+      <Runs catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
       <LiveEventStream
         key={release}
         events={events}
@@ -195,8 +195,6 @@ export function OverviewView() {
         streamConnection={streamConnection}
         isReconciling={isReconciling}
       />
-
-      <RecentRuns catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
     </div>
   );
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
@@ -117,14 +116,6 @@ func TestValidateLaunchProfile_InvalidPublicBaseURLReturnsErrLaunchProfileInvali
 	assert.Contains(t, err.Error(), "public_base_url")
 }
 
-func TestValidateLaunchProfile_ConsensusURLMustBeHTTPSReturnsErrLaunchProfileInvalid(t *testing.T) {
-	p := validProfile()
-	p.Config.ConsensusURL = "http://insecure.example/deliberate"
-	err := ValidateLaunchProfile(p)
-	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
-	assert.Contains(t, err.Error(), "consensus_url")
-}
-
 func TestValidateLaunchProfile_InvalidMCPDownstreamURLReturnsErrLaunchProfileInvalid(t *testing.T) {
 	p := validProfile()
 	p.Config.MCPDownstreamURL = "ftp://bad.example/mcp"
@@ -156,11 +147,11 @@ func TestValidateLaunchProfile_PublicBaseURLWithUserInfoReturnsErrLaunchProfileI
 }
 
 func TestValidateLaunchProfile_AcceptsAllValidPostures(t *testing.T) {
-	validPostures := []ztdconfig.GatewayPosture{
-		ztdconfig.PostureDoctrine,
-		ztdconfig.PostureConsensus,
-		ztdconfig.PostureRatify,
-		ztdconfig.PostureNotary,
+	validPostures := []constants.Posture{
+		constants.PostureDoctrine,
+		constants.PostureConsensus,
+		constants.PostureRatify,
+		constants.PostureNotary,
 	}
 	for _, p := range validPostures {
 		profile := validProfile()
@@ -178,7 +169,6 @@ func TestValidateLaunchProfile_AcceptsEmptyCertIdentityMode(t *testing.T) {
 func TestValidateLaunchProfile_AcceptsEmptyServiceURLs(t *testing.T) {
 	p := validProfile()
 	p.Config.PublicBaseURL = ""
-	p.Config.ConsensusURL = ""
 	p.Config.MCPDownstreamURL = ""
 	p.Config.A2ADownstreamURL = ""
 	assert.NoError(t, ValidateLaunchProfile(p))

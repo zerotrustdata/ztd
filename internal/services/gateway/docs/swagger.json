@@ -2384,6 +2384,7 @@
                 "MODEL_PROVENANCE_OBSERVATION",
                 "OLLAMA_MODEL_INVENTORY",
                 "OLLAMA_MODEL_RESIDENCY",
+                "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
                 "PLATFORM_ENROLLMENT_CREATE",
                 "PLATFORM_ENROLLMENT_CREATE_SESSION",
                 "PLATFORM_ENROLLMENT_DECIDE",
@@ -2420,6 +2421,7 @@
                 "ActionTypeModelProvenanceObservation",
                 "ActionTypeOllamaModelInventory",
                 "ActionTypeOllamaModelResidency",
+                "ActionTypePlatformEnrollmentBindConsensus",
                 "ActionTypePlatformEnrollmentCreate",
                 "ActionTypePlatformEnrollmentCreateSession",
                 "ActionTypePlatformEnrollmentDecide",
@@ -2457,7 +2459,7 @@
                 "ztd.v1.app.investigation.updated",
                 "ztd.v1.app.run.status.updated",
                 "ztd.v1.app.task.completed",
-                "ztd.v1.inference.model.provenance.preflight.updated",
+                "ztd.v1.inference.model.provenance.attestation.recorded",
                 "ztd.v1.operator.a2a.call.requested",
                 "ztd.v1.operator.audit.ai.record.requested",
                 "ztd.v1.operator.audit.ai.recorded",
@@ -2633,6 +2635,7 @@
                 "ztd.v1.platform.auth.user.unauthenticated",
                 "ztd.v1.platform.console.log.connected.confirmed",
                 "ztd.v1.platform.console.log.entry.received",
+                "ztd.v1.platform.enrollment.bind_consensus.requested",
                 "ztd.v1.platform.enrollment.create.requested",
                 "ztd.v1.platform.enrollment.create_session.requested",
                 "ztd.v1.platform.enrollment.decide.requested",
@@ -2652,6 +2655,7 @@
                 "ztd.v1.platform.telemetry.health.reported",
                 "ztd.v1.platform.telemetry.performance.recorded",
                 "ztd.v1.platform.usage.updated",
+                "ztd.v1.inference.provider.boundary.observation.recorded",
                 "ztd.v1.public.feed.batch.acknowledged",
                 "ztd.v1.public.feed.batch.exported",
                 "ztd.v1.public.feed.key.rotated",
@@ -2680,7 +2684,7 @@
                 "EventAppInvestigationUpdated",
                 "EventAppRunStatusUpdated",
                 "EventAppTaskCompleted",
-                "EventModelProvenancePreflightProgress",
+                "EventModelProvenanceAttestationRecorded",
                 "EventOperatorA2aCallRequested",
                 "EventOperatorAuditAiRecordRequested",
                 "EventOperatorAuditAiRecorded",
@@ -2856,6 +2860,7 @@
                 "EventPlatformAuthUserUnauthenticated",
                 "EventPlatformConsoleLogConnectedConfirmed",
                 "EventPlatformConsoleLogEntryReceived",
+                "EventPlatformEnrollmentBindConsensusRequested",
                 "EventPlatformEnrollmentCreateRequested",
                 "EventPlatformEnrollmentCreateSessionRequested",
                 "EventPlatformEnrollmentDecideRequested",
@@ -2875,6 +2880,7 @@
                 "EventPlatformTelemetryHealthReported",
                 "EventPlatformTelemetryPerformanceRecorded",
                 "EventPlatformUsageUpdated",
+                "EventProviderBoundaryObservationRecorded",
                 "EventPublicFeedBatchAcknowledged",
                 "EventPublicFeedBatchExported",
                 "EventPublicFeedKeyRotated",
@@ -2890,6 +2896,21 @@
             "x-enum-varnames": [
                 "GatewayModeGateway",
                 "GatewayModeStatusOK"
+            ]
+        },
+        "constants.Posture": {
+            "type": "string",
+            "enum": [
+                "doctrine",
+                "consensus",
+                "ratify",
+                "notary"
+            ],
+            "x-enum-varnames": [
+                "PostureDoctrine",
+                "PostureConsensus",
+                "PostureRatify",
+                "PostureNotary"
             ]
         },
         "constants.UserStatus": {
@@ -3416,7 +3437,7 @@
                     "type": "integer"
                 },
                 "posture": {
-                    "type": "string"
+                    "$ref": "#/definitions/constants.Posture"
                 },
                 "state_merkle_root": {
                     "type": "string"
@@ -3902,6 +3923,10 @@
             "properties": {
                 "csr_pem": {
                     "type": "string"
+                },
+                "signing_public_key": {
+                    "description": "SigningPublicKey is an optional hex Ed25519 L2 key, independent of the\nP-256 transport CSR. Completion proves possession of both keys.",
+                    "type": "string"
                 }
             }
         },
@@ -3928,6 +3953,9 @@
                     "type": "string"
                 },
                 "operator": {
+                    "type": "string"
+                },
+                "signing_key": {
                     "type": "string"
                 }
             }

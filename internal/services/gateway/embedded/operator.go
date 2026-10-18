@@ -43,9 +43,9 @@ type Store interface {
 	DocUpdate(ctx context.Context, collection, id string, fields json.RawMessage) (*models.Document, error)
 }
 
-// SessionPersister records the operator session a claim mints.
+// OperatorSessionPersister records the operator session a claim mints.
 // *gateway.OperatorSessionService satisfies it.
-type SessionPersister interface {
+type OperatorSessionPersister interface {
 	PersistOperatorSession(ctx context.Context, operatorSessionID, userID, orgID, operatorID, loginMethod string) error
 }
 
@@ -67,15 +67,15 @@ type SessionPersister interface {
 //  3. Web-session creation binds the user's claimed embedded operator to
 //     the web session via RegistrationService.BindOperators.
 type Service struct {
-	docs     Store
-	sessions SessionPersister
+	docs             Store
+	operatorSessions OperatorSessionPersister
 }
 
 // New constructs the substrate over the gateway document store and the
 // operator-session persister. Both are required for ClaimEmbeddedOperator;
 // Claim itself only writes the operator document.
-func New(docs Store, sessions SessionPersister) *Service {
-	return &Service{docs: docs, sessions: sessions}
+func New(docs Store, operatorSessions OperatorSessionPersister) *Service {
+	return &Service{docs: docs, operatorSessions: operatorSessions}
 }
 
 // ExecutesFor admits only the Operator record owned by this substrate.
@@ -84,11 +84,11 @@ func (s *Service) ExecutesFor(operatorID string) bool {
 	return s != nil && operatorID == string(constants.DocIDEmbeddedOperator)
 }
 
-// SessionID returns the claimed embedded Operator's session ID. It is a
+// OperatorSessionID returns the claimed embedded Operator's session ID. It is a
 // read-only lookup: it never creates the pending document. A missing or
 // unclaimed document returns ErrEmbeddedOperatorUnclaimed, because an
 // unclaimed Operator has no session to execute under.
-func (s *Service) SessionID(ctx context.Context) (string, error) {
+func (s *Service) OperatorSessionID(ctx context.Context) (string, error) {
 	doc, err := s.docs.DocGet(ctx, marshaler.CollectionName(constants.CollectionOperators), string(constants.DocIDEmbeddedOperator))
 	if err != nil {
 		return "", fmt.Errorf("gateway: embedded operator: load document: %w", err)
@@ -110,9 +110,9 @@ func (s *Service) SessionID(ctx context.Context) (string, error) {
 // session minted when the first user claimed it, or, until then, the bootstrap
 // audit session the Gateway started at startup. Execution before the claim, such
 // as platform enrollment requested the moment the first user exists, is recorded
-// under it. SessionID, by contrast, still fails for an unclaimed Operator.
+// under it. OperatorSessionID, by contrast, still fails for an unclaimed Operator.
 func (s *Service) RuntimeIdentity(ctx context.Context) (govtypes.RuntimeIdentity, error) {
-	sessionID, err := s.SessionID(ctx)
+	sessionID, err := s.OperatorSessionID(ctx)
 	if errors.Is(err, constants.ErrEmbeddedOperatorUnclaimed) {
 		sessionID, err = constants.EmbeddedOperatorBootstrapSessionID, nil
 	}
@@ -172,7 +172,7 @@ func (s *Service) ClaimEmbeddedOperator(ctx context.Context, userID string) (ope
 	if err != nil {
 		return "", "", err
 	}
-	if err := s.sessions.PersistOperatorSession(
+	if err := s.operatorSessions.PersistOperatorSession(
 		ctx, operatorSessionID, userID, userID, operatorID, string(constants.HeartbeatTypeBootstrap)); err != nil {
 		return "", "", fmt.Errorf("gateway: embedded operator: persist operator session: %w", err)
 	}

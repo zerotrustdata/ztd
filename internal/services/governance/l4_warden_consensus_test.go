@@ -503,9 +503,16 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 			wantL2:  operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},
 		{
-			name:     "empty votes under consensus posture",
+			name:     "empty votes for a known set cannot meet quorum",
 			verifier: makeVerifier(allSigners, map[string]*models.ConsensusPolicy{"consensus-1": enabledConsensus2of2}),
 			env:      buildEnv("emptyvotes", "consensus-1", []*commonv1.L2Vote{}),
+			wantErr:  ErrL2QuorumNotMet,
+			wantL2:   operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
+		},
+		{
+			name:     "empty L2 metadata is a missing proof",
+			verifier: makeVerifier(allSigners, map[string]*models.ConsensusPolicy{"consensus-1": enabledConsensus2of2}),
+			env:      buildEnv("emptymetadata", "", nil),
 			wantErr:  ErrL2SignatureMissing,
 			wantL2:   operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		},

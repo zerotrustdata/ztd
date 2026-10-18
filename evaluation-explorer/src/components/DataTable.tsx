@@ -7,7 +7,7 @@
 // Includes column-visibility controls so users can hide columns on wide
 // tables (e.g. the 1,125-row assignment table) and keep the view scannable.
 
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from 'react';
 import {
   type ColumnDef,
   type ColumnVisibilityState,
@@ -46,7 +46,8 @@ export interface DataTableProps<T extends RowData> {
   enableColumnVisibility?: boolean;
   /** Cards share the table's sorted, paginated row model below 900px. */
   renderCard?: (record: T) => ReactNode;
-  isRowSelected?: (record: T) => boolean;
+  /** Filter controls rendered in one row with the column-visibility toggle; stays visible when data is empty. */
+  toolbar?: ReactNode;
 }
 
 const cardMedia = '(max-width: 899px)';
@@ -65,13 +66,14 @@ export function DataTable<T extends RowData>({
   caption,
   enableColumnVisibility = true,
   renderCard,
-  isRowSelected,
+  toolbar,
 }: DataTableProps<T>) {
   const mobile = useSyncExternalStore(subscribeToCardViewport, cardViewport, () => false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
   const [showColumns, setShowColumns] = useState(false);
+  const columnPanelId = useId();
 
   const table = useTable({
     features: dataTableFeatures,
@@ -92,46 +94,48 @@ export function DataTable<T extends RowData>({
   const rows = table.getRowModel().rows;
   const pageRows = rows.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
+  const toggleableColumns = table.getAllLeafColumns().filter((c) => c.getCanHide());
+  const columnControl = data.length > 0 && !(mobile && renderCard) && enableColumnVisibility && toggleableColumns.length > 1 ? (
+    <div className="column-visibility">
+      <button
+        type="button"
+        className="column-visibility-toggle"
+        aria-expanded={showColumns}
+        aria-controls={columnPanelId}
+        onClick={() => setShowColumns((v) => !v)}
+      >
+        Columns {showColumns ? '▲' : '▼'}
+      </button>
+      {showColumns ? (
+        <ul id={columnPanelId} className="column-visibility-panel" role="group" aria-label="Toggle columns">
+          {toggleableColumns.map((column) => {
+            const label = String(column.columnDef.header ?? column.id);
+            return (
+              <li key={column.id}>
+                <label className="column-visibility-item">
+                  <input
+                    type="checkbox"
+                    checked={column.getIsVisible()}
+                    onChange={column.getToggleVisibilityHandler()}
+                  />
+                  <span>{label}</span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  ) : null;
+  const toolbarRow = toolbar ? <div className="table-toolbar">{toolbar}{columnControl}</div> : columnControl;
+
   if (data.length === 0) {
-    return <>{empty ?? <p className="table-empty">No rows.</p>}</>;
+    return <>{toolbarRow}{empty ?? <p className="table-empty">No rows.</p>}</>;
   }
 
-  const toggleableColumns = table.getAllLeafColumns().filter((c) => c.getCanHide());
-
   return (
-    <div className="data-table-wrap" data-testid="data-table">
-      {!(mobile && renderCard) && enableColumnVisibility && toggleableColumns.length > 1 ? (
-        <div className="column-visibility">
-          <button
-            type="button"
-            className="column-visibility-toggle"
-            aria-expanded={showColumns}
-            aria-controls="column-visibility-panel"
-            onClick={() => setShowColumns((v) => !v)}
-          >
-            Columns {showColumns ? '▲' : '▼'}
-          </button>
-          {showColumns ? (
-            <ul id="column-visibility-panel" className="column-visibility-panel" role="group" aria-label="Toggle columns">
-              {toggleableColumns.map((column) => {
-                const label = String(column.columnDef.header ?? column.id);
-                return (
-                  <li key={column.id}>
-                    <label className="column-visibility-item">
-                      <input
-                        type="checkbox"
-                        checked={column.getIsVisible()}
-                        onChange={column.getToggleVisibilityHandler()}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
+    <div className="data-table-wrap" data-testid="data-table" tabIndex={0} aria-label={caption ? `${caption} table controls` : undefined}>
+      {toolbarRow}
       {mobile && renderCard ? <>
         <label className="card-sort">Sort runs or models
           <select aria-label="Sort cards" value={sorting[0] ? `${sorting[0].id}:${sorting[0].desc ? 'desc' : 'asc'}` : ''}
@@ -145,7 +149,7 @@ export function DataTable<T extends RowData>({
           </select>
         </label>
         <ul className="data-card-list" aria-label={caption}>
-          {pageRows.map((row) => <li key={row.id} className={isRowSelected?.(row.original) ? 'data-row-selected' : undefined}>{renderCard(row.original)}</li>)}
+          {pageRows.map((row) => <li key={row.id}>{renderCard(row.original)}</li>)}
         </ul>
       </> : <table className="data-table">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
@@ -184,7 +188,7 @@ export function DataTable<T extends RowData>({
         </thead>
         <tbody>
           {pageRows.map((row) => (
-            <tr key={row.id} className={isRowSelected?.(row.original) ? 'data-row-selected' : undefined}>
+            <tr key={row.id}>
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id}>
                   <table.FlexRender cell={cell} />

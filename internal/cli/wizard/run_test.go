@@ -39,8 +39,6 @@ func TestRun_HeadlessConfirm_ModelState(t *testing.T) {
 		InitialConfig: Config{
 			PublicBaseURL:    "https://demo.zerotrustdata.io",
 			Posture:          "consensus",
-			ConsensusID:      "trib-prod-01",
-			ConsensusURL:     "https://consensus.zerotrustdata.io",
 			PasskeyRpID:      "demo.zerotrustdata.io",
 			PasskeyRpName:    "ztd",
 			PasskeyRpOrigins: []string{"https://demo.zerotrustdata.io"},
@@ -53,7 +51,6 @@ func TestRun_HeadlessConfirm_ModelState(t *testing.T) {
 	assert.False(t, result.Cancel)
 	assert.Equal(t, "https://demo.zerotrustdata.io", result.Config.PublicBaseURL)
 	assert.Equal(t, "consensus", result.Config.Posture)
-	assert.Equal(t, "trib-prod-01", result.Config.ConsensusID)
 }
 
 // --- Run: error wrapping ---

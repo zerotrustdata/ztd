@@ -36,7 +36,7 @@ const EventAppInvestigationCreated EventType = "ztd.v1.app.investigation.created
 const EventAppInvestigationUpdated EventType = "ztd.v1.app.investigation.updated"
 const EventAppRunStatusUpdated EventType = "ztd.v1.app.run.status.updated"
 const EventAppTaskCompleted EventType = "ztd.v1.app.task.completed"
-const EventModelProvenancePreflightProgress EventType = "ztd.v1.inference.model.provenance.preflight.updated"
+const EventModelProvenanceAttestationRecorded EventType = "ztd.v1.inference.model.provenance.attestation.recorded"
 const EventOperatorA2aCallRequested EventType = "ztd.v1.operator.a2a.call.requested"
 const EventOperatorAuditAiRecordRequested EventType = "ztd.v1.operator.audit.ai.record.requested"
 const EventOperatorAuditAiRecorded EventType = "ztd.v1.operator.audit.ai.recorded"
@@ -212,6 +212,7 @@ const EventPlatformAuthUserAuthenticated EventType = "ztd.v1.platform.auth.user.
 const EventPlatformAuthUserUnauthenticated EventType = "ztd.v1.platform.auth.user.unauthenticated"
 const EventPlatformConsoleLogConnectedConfirmed EventType = "ztd.v1.platform.console.log.connected.confirmed"
 const EventPlatformConsoleLogEntryReceived EventType = "ztd.v1.platform.console.log.entry.received"
+const EventPlatformEnrollmentBindConsensusRequested EventType = "ztd.v1.platform.enrollment.bind_consensus.requested"
 const EventPlatformEnrollmentCreateRequested EventType = "ztd.v1.platform.enrollment.create.requested"
 const EventPlatformEnrollmentCreateSessionRequested EventType = "ztd.v1.platform.enrollment.create_session.requested"
 const EventPlatformEnrollmentDecideRequested EventType = "ztd.v1.platform.enrollment.decide.requested"
@@ -231,6 +232,7 @@ const EventPlatformTelemetryErrorLogged EventType = "ztd.v1.platform.telemetry.e
 const EventPlatformTelemetryHealthReported EventType = "ztd.v1.platform.telemetry.health.reported"
 const EventPlatformTelemetryPerformanceRecorded EventType = "ztd.v1.platform.telemetry.performance.recorded"
 const EventPlatformUsageUpdated EventType = "ztd.v1.platform.usage.updated"
+const EventProviderBoundaryObservationRecorded EventType = "ztd.v1.inference.provider.boundary.observation.recorded"
 const EventPublicFeedBatchAcknowledged EventType = "ztd.v1.public.feed.batch.acknowledged"
 const EventPublicFeedBatchExported EventType = "ztd.v1.public.feed.batch.exported"
 const EventPublicFeedKeyRotated EventType = "ztd.v1.public.feed.key.rotated"
@@ -442,8 +444,8 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:   []string{"cli"},
 		Persistence: "ephemeral",
 	},
-	EventModelProvenancePreflightProgress: {
-		Key:         "ModelProvenancePreflightProgress",
+	EventModelProvenanceAttestationRecorded: {
+		Key:         "ModelProvenanceAttestationRecorded",
 		Kind:        EventKindFact,
 		Transport:   []string{"sse"},
 		Producers:   []string{"gateway"},
@@ -1827,6 +1829,15 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:   []string{"gateway"},
 		Persistence: "ephemeral",
 	},
+	EventPlatformEnrollmentBindConsensusRequested: {
+		Key:               "PlatformEnrollmentBindConsensusRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "gateway", "operator"},
+		Persistence:       "gateway.docstore",
+		GovernanceAction:  ActionTypePlatformEnrollmentBindConsensus,
+		GovernancePayload: "ztd.common.v1.PlatformEnrollmentGovernancePayload",
+	},
 	EventPlatformEnrollmentCreateRequested: {
 		Key:               "PlatformEnrollmentCreateRequested",
 		Kind:              EventKindRequest,
@@ -1977,6 +1988,13 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:   []string{"gateway"},
 		Persistence: "ephemeral",
 		Reserved:    true,
+	},
+	EventProviderBoundaryObservationRecorded: {
+		Key:         "ProviderBoundaryObservationRecorded",
+		Kind:        EventKindFact,
+		Transport:   []string{"sse"},
+		Producers:   []string{"gateway"},
+		Persistence: "ephemeral",
 	},
 	EventPublicFeedBatchAcknowledged: {
 		Key:         "PublicFeedBatchAcknowledged",

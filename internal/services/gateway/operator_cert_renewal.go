@@ -32,7 +32,7 @@ type operatorLeafAuthority interface {
 // operatorL2TrustSource resolves the L2 trust an Operator holds.
 // *ConsensusStoreService implements it.
 type operatorL2TrustSource interface {
-	OperatorL2Trust(ctx context.Context, id string) (*models.OperatorL2Trust, error)
+	OperatorL2Trust(ctx context.Context, id ...string) (*models.OperatorL2Trust, error)
 }
 
 // OperatorCertRenewalService renews an outbound Operator's leaf over its mTLS
@@ -46,17 +46,15 @@ type operatorL2TrustSource interface {
 // identity; any other error is a Gateway-side failure a later attempt may
 // clear.
 type OperatorCertRenewalService struct {
-	pki         operatorLeafAuthority
-	sessions    operatorSessionValidator
-	trust       operatorL2TrustSource
-	consensusID string
-	logger      *slog.Logger
+	pki      operatorLeafAuthority
+	sessions operatorSessionValidator
+	trust    operatorL2TrustSource
+	logger   *slog.Logger
 }
 
-// NewOperatorCertRenewalService builds the renewal service. consensusID is the
-// Gateway's configured consensus set; empty means no L2 trust is served.
-func NewOperatorCertRenewalService(pki operatorLeafAuthority, sessions operatorSessionValidator, trust operatorL2TrustSource, consensusID string, logger *slog.Logger) *OperatorCertRenewalService {
-	return &OperatorCertRenewalService{pki: pki, sessions: sessions, trust: trust, consensusID: consensusID, logger: logger}
+// NewOperatorCertRenewalService builds the renewal service.
+func NewOperatorCertRenewalService(pki operatorLeafAuthority, sessions operatorSessionValidator, trust operatorL2TrustSource, logger *slog.Logger) *OperatorCertRenewalService {
+	return &OperatorCertRenewalService{pki: pki, sessions: sessions, trust: trust, logger: logger}
 }
 
 // Renew signs req.CSR for the Operator workload peer names. channel is the
@@ -97,7 +95,7 @@ func (s *OperatorCertRenewalService) Renew(ctx context.Context, peer *x509.Certi
 	if err != nil {
 		return nil, fmt.Errorf("operator renewal: sign: %w", err)
 	}
-	l2Trust, err := s.trust.OperatorL2Trust(ctx, s.consensusID)
+	l2Trust, err := s.trust.OperatorL2Trust(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("operator renewal: l2 trust: %w", err)
 	}

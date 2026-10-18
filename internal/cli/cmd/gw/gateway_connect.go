@@ -550,7 +550,7 @@ func connectTrustAndVerify(
 // is stopped.
 func defaultServeConfig() serve.GatewayConfig {
 	return gatewayFlagsToServeConfig(resolveGatewayFlags(GatewayFlags{
-		Posture:  "doctrine",
+		Posture:  string(constants.PostureDoctrine),
 		LogLevel: "info",
 	}))
 }

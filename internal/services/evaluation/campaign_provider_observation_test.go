@@ -245,6 +245,14 @@ func (s *stubProviderObservationRemote) Load(_ context.Context, providerAttemptI
 	return s.window, s.attempt, nil
 }
 
+// WatchRecorded connects once and delivers no recordings: the connect
+// reconcile alone must capture an already-recorded window.
+func (s *stubProviderObservationRemote) WatchRecorded(ctx context.Context, connected func(), _ func(string)) error {
+	connected()
+	<-ctx.Done()
+	return nil
+}
+
 func TestCampaignProviderObservationReaderWithRemote_LoadsGatewayEvidenceOnLocalMiss(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

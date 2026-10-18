@@ -80,7 +80,7 @@ func TestVerifyCampaignRunReadOnly_BindsIncompletePopulationWithoutPersistingVer
 	req := testCampaignInitRequest(t)
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	count, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	result, err := verifyCampaignRunReadOnly(context.Background(), store, req.RunID, CampaignVerificationPolicy{
@@ -100,8 +100,8 @@ func TestVerifyCampaignRunReadOnly_BindsIncompletePopulationWithoutPersistingVer
 	require.Error(t, err)
 }
 
-// completedRunFixture is a persisted one-assignment formation run whose result
-// verifies, under the catalog ref it was frozen with.
+// completedRunFixture is a persisted model-role run with one completed
+// assignment whose result verifies, under the catalog ref it was frozen with.
 type completedRunFixture struct {
 	store    *Store
 	req      CampaignInitRequest
@@ -117,19 +117,13 @@ func (f completedRunFixture) verify(t *testing.T) *evalv1.EvaluationVerification
 }
 
 // newCompletedRunFixture freezes a three-scenario catalog under catalogRef (the
-// helper's own ref when nil), runs one heterogeneous formation assignment
-// through the formation harness, and persists its result and formation run
-// evidence.
+// helper's own ref when nil), schedules the model-role matrix, runs one
+// deterministic assignment through the agent executor, and persists its sealed
+// agent trace and result.
 func newCompletedRunFixture(t *testing.T, catalogRef *compliancev1.VersionedReference) completedRunFixture {
 	t.Helper()
-	files := newCampaignMemoryFileService()
-	store := NewStore(files)
-	variants := testHeterogeneousVariants()
-	harness, err := NewFormationHarness(
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-attempt" },
-	)
-	require.NoError(t, err)
+	ctx := context.Background()
+	store := NewStore(newCampaignMemoryFileService())
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
@@ -145,56 +139,47 @@ func newCompletedRunFixture(t *testing.T, catalogRef *compliancev1.VersionedRefe
 	require.NoError(t, err)
 	truncated.CatalogDigest = truncatedDigest
 	req.Catalog = truncated
-	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, variants)
+	_, err = controller.InitializeCampaign(ctx, req)
 	require.NoError(t, err)
-	run, err := controller.InitializeCampaign(context.Background(), req)
+	_, err = controller.ScheduleRun(ctx, req.RunID)
 	require.NoError(t, err)
-	// The direct formation runner carries no semantic-judge evidence, so a
-	// semantic-judge scenario grades as GRADER_FAILED. These tests need a
-	// completed assignment, so the scenario is a deterministic one.
-	scenarioID := ""
-	for _, scenario := range truncated.GetScenarios() {
-		if scenario.GetGradingMethod() == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC {
-			scenarioID = scenario.GetScenarioId()
+	assignments, err := store.ListAssignments(ctx, req.RunID)
+	require.NoError(t, err)
+	// A semantic-judge scenario grades as GRADER_FAILED because the agent
+	// executor records no judge evidence. These tests need a completed
+	// assignment, so the scenario is a deterministic one.
+	var assignment *evalv1.EvaluationAssignment
+	for _, candidate := range assignments {
+		method, methodErr := scenarioGradingMethodForAssignment(truncated, candidate)
+		require.NoError(t, methodErr)
+		if method == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC {
+			assignment = candidate
 			break
 		}
 	}
-	require.NotEmpty(t, scenarioID, "truncated catalog needs a deterministic scenario")
-	stack := mustHeterogeneousStack(t)
-	execReq := heterogeneousAssignmentExecutionRequest(t, stack, variants)
-	execReq.Assignment.ScenarioId = scenarioID
-	// Grade under the scenario's own method, as the campaign controller does.
-	execReq.GradingMethod, err = scenarioGradingMethodForAssignment(truncated, execReq.Assignment)
+	require.NotNil(t, assignment, "truncated catalog needs a deterministic scenario")
+
+	agent := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
+	agent.req.Assignment = assignment
+	agent.req.GradingMethod = evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC
+	agent.req.Binding.ModelRegistryDigest = req.Inventory.RegistryDigest
+	agent.req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(req.Inventory.Variants)
+	artifact := req.ScenarioArtifacts[assignment.GetScenarioId()]
+	agent.req.ScenarioInput = ScenarioInputFixture{}
+	require.NoError(t, json.Unmarshal(artifact.Input.Body, &agent.req.ScenarioInput))
+	agent.req.ScenarioGold = ScenarioGoldCriteria{}
+	require.NoError(t, json.Unmarshal(artifact.Gold.Body, &agent.req.ScenarioGold))
+	agent.req.ScenarioTools, err = scenarioToolsForAssignment(truncated, assignment)
 	require.NoError(t, err)
-	execReq.ScenarioInput = ScenarioInputFixture{}
-	require.NoError(t, json.Unmarshal(req.ScenarioArtifacts[scenarioID].Input.Body, &execReq.ScenarioInput))
-	execReq.Assignment.SchemaVersion = CampaignSchemaVersion
-	execReq.Assignment.RunId = run.GetRunId()
-	execReq.Assignment.CampaignId = req.CampaignID
-	execReq.Assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
-	require.NoError(t, store.SaveAssignment(context.Background(), execReq.Assignment))
-	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
+	imported, err := agent.execute()
 	require.NoError(t, err)
-	initialState, err := BuildFormationInitialState(execReq.ScenarioInput)
-	require.NoError(t, err)
-	formationResult, err := harness.RunBoundFormation(context.Background(), formation, initialState)
-	require.NoError(t, err)
-	imported, err := ImportAssignmentResultFromFormationRun(execReq, formationResult, time.Unix(1_700_000_000, 0).UTC(), func(prefix string) string { return prefix + "-1" })
-	require.NoError(t, err)
-	body, _, err := BuildFormationRunEvidence(execReq, FormationRunContext{
-		CampaignID:          execReq.Assignment.GetCampaignId(),
-		RunID:               execReq.Assignment.GetRunId(),
-		AssignmentID:        execReq.Assignment.GetAssignmentId(),
-		EvaluationAttemptID: execReq.AttemptID,
-		ScenarioID:          execReq.Assignment.GetScenarioId(),
-		ModelRegistryDigest: execReq.Binding.ModelRegistryDigest,
-		InferenceSessionID:  execReq.Binding.Topology.Inference.OperatorSessionID,
-		DataSessionID:       execReq.Binding.Topology.Data.OperatorSessionID,
-	}, formationResult)
-	require.NoError(t, err)
-	require.NoError(t, store.SaveAssignmentFormationRun(context.Background(), req.RunID, execReq.Assignment.GetAssignmentId(), body))
-	require.NoError(t, store.SaveAssignmentResult(context.Background(), imported))
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, imported.GetLifecycleStatus())
+	require.NotEmpty(t, imported.GetDeterministicGrades())
+
+	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, req.RunID, assignment.GetAssignmentId(), agent.traces.body))
+	assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
+	require.NoError(t, store.SaveAssignment(ctx, assignment))
+	require.NoError(t, store.SaveAssignmentResult(ctx, imported))
 	return completedRunFixture{store: store, req: req, catalog: truncated, imported: imported}
 }
 
@@ -319,7 +304,7 @@ func TestCaptureCampaignRunEvidence_DecoupledObservationAndProvenance(t *testing
 	req := testCampaignInitRequest(t)
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	ctx := context.Background()

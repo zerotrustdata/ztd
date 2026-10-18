@@ -25,7 +25,7 @@ function nativeEvaluation(runId: string) {
     kind: 'evaluation_summary',
     ...FIXTURE_RELEASE,
     dataset_id: datasetId,
-    quality_state: 'verified_public',
+    quality_state: 'exploratory_verified',
     observed_at: '2026-09-15T23:38:22Z',
     run_id: runId,
     suite_id: 'core-execution-boundary@1.0.0',
@@ -168,7 +168,7 @@ test('reconstructs native evaluations from public mirror history', async ({ page
   });
 
   await page.goto('/evaluations');
-  await expect(page.getByRole('heading', { name: 'Evaluation runs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evaluations', exact: true })).toBeVisible();
   for (const runId of runIds) await expect(page.getByRole('link', { name: runId })).toBeVisible();
   await expect.poll(() => mirrorResponses.some((url) => url.endsWith('/bootstrap'))).toBe(true);
   await expect.poll(() => mirrorResponses.some((url) => url.includes('/history?'))).toBe(true);
@@ -209,6 +209,78 @@ test('follows the evidence from a campaign through its assignment, model and tas
   await expect(page.getByRole('region', { name: 'Recent assignments of this task' }).getByRole('link', { name: assignment.assignment_id })).toBeVisible();
 });
 
+test('Live panels fit above the footer and scroll independently through resizing', async ({ page }) => {
+  const runs = Array.from({ length: 5 }, (_, index) => ({
+    ...fixtureEvaluationSummaries[0]!,
+    dataset_id: `ds-live-scroll-${index}`, run_id: `scroll-run-${index}`,
+  }));
+  const events = Array.from({ length: 60 }, (_, index) => ({
+    schema_version: '1.4.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED',
+    kind: 'assignment_completed', dataset_id: runs[0]!.dataset_id, run_id: runs[0]!.run_id,
+    event_id: `scroll-event-${index}`, assignment_id: `scroll-assignment-${index}`,
+    task_id: 'tool-arg-run-commands', variant_id: 'qwen3:8b', role: 'primary',
+    quality_state: 'live_in_progress', lifecycle_status: 'completed', completed: index + 1, total: 60,
+    observed_at: new Date(Date.UTC(2026, 9, 16, 14, index)).toISOString(),
+  }));
+  await installMirror(page, [...runs, ...events]);
+  await page.goto('/?release=all');
+  const runPanel = page.getByRole('region', { name: 'Runs', exact: true });
+  const livePanel = page.getByRole('region', { name: 'Live activity', exact: true });
+  const runList = runPanel.locator('.campaign-evidence-list');
+  const eventList = page.getByRole('region', { name: 'Live activity results', exact: true });
+  const footer = page.getByRole('contentinfo');
+  await expect(runList.locator(':scope > li')).toHaveCount(5);
+  await expect(eventList.locator('tbody tr')).toHaveCount(25);
+
+  // Smaller CSS viewports also cover the space available when the browser is zoomed in.
+  for (const viewport of [
+    { width: 1920, height: 1080 }, { width: 1440, height: 720 },
+    { width: 1100, height: 600 }, { width: 900, height: 900 }, { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+    const footerBox = (await footer.boundingBox())!;
+    expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(viewport.height);
+    const liveBox = (await livePanel.boundingBox())!;
+    expect(liveBox.y + liveBox.height).toBeLessThanOrEqual(footerBox.y);
+    expect(footerBox.y - liveBox.y - liveBox.height).toBeLessThanOrEqual(24);
+    for (const list of [runList, eventList]) {
+      expect(await list.evaluate((element) => element.clientHeight)).toBeGreaterThan(0);
+      await list.evaluate((element) => { element.scrollTop = 0; });
+    }
+    const runBox = (await runPanel.boundingBox())!;
+    expect(runBox.y + runBox.height).toBeLessThanOrEqual(footerBox.y);
+    await expect(livePanel.getByRole('button', { name: 'Next page' })).toBeInViewport();
+
+    const runsOverflow = await runList.evaluate((element) => element.scrollHeight > element.clientHeight);
+    await runList.hover();
+    await page.mouse.wheel(0, 300);
+    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await eventList.evaluate((element) => element.scrollTop)).toBe(0);
+    const runScroll = await runList.evaluate((element) => element.scrollTop);
+    await eventList.hover();
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => eventList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await runList.evaluate((element) => element.scrollTop)).toBe(runScroll);
+    // Reaching the end of either list must not transfer wheel scrolling to the page.
+    for (const list of [runList, eventList]) {
+      await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      await list.hover();
+      await page.mouse.wheel(0, 600);
+    }
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await livePanel.locator('summary').click();
+    expect(await eventList.evaluate((element) => element.clientHeight)).toBeGreaterThan(0);
+    await expect(livePanel.getByRole('button', { name: 'Next page' })).toBeInViewport();
+    await livePanel.locator('summary').click();
+
+    await runList.evaluate((element) => { element.scrollTop = 0; });
+    await runList.focus();
+    await page.keyboard.press('PageDown');
+    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  }
+});
+
 for (const viewport of [
   { width: 1440, height: 1000, theme: 'dark' },
   { width: 1440, height: 1000, theme: 'light' },
@@ -243,6 +315,16 @@ for (const viewport of [
     await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), viewport.theme);
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(6);
+    const runs = page.getByRole('region', { name: 'Runs', exact: true });
+    await expect(runs.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
+    const runsBox = (await runs.boundingBox())!;
+    const liveBox = (await live.boundingBox())!;
+    if (viewport.width > 1000) {
+      expect(runsBox.x + runsBox.width).toBeLessThan(liveBox.x);
+      expect(Math.abs(runsBox.y - liveBox.y)).toBeLessThan(1);
+    } else {
+      expect(runsBox.y + runsBox.height).toBeLessThan(liveBox.y);
+    }
     await expect(live.getByText(failureReason)).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'What am I looking at?' })).toHaveCount(0);
     await expect(live.getByRole('combobox', { name: 'Filter by category' })).not.toBeVisible();
@@ -254,13 +336,58 @@ for (const viewport of [
       expect(Math.max(...heights)).toBeLessThan(80);
     }
     await page.screenshot({ path: testInfo.outputPath('live-view.png'), fullPage: true });
-    await live.getByRole('button', { name: 'Pause live updates' }).click();
-    await expect(live.getByText('Paused', { exact: true })).toBeVisible();
-    await live.getByRole('button', { name: 'Resume live updates' }).click();
-    await live.getByRole('button', { name: 'Needs attention' }).click();
-    await expect(live.locator('tbody tr')).toHaveCount(2);
+    await expect(live.getByRole('button', { name: /Needs attention|Pause|Resume/i })).toHaveCount(0);
     await live.getByRole('link', { name: 'tool-arg-run-commands — View details' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'tool-arg-run-commands' })).toBeVisible();
     await expect(page.getByText(failureReason, { exact: true }).first()).toBeVisible();
   });
 }
+
+
+test('Evals tables keep sortable detail columns at desktop and mobile widths', async ({ page }) => {
+  const records = [
+    { ...fixtureEvaluationSummaries[0]!, run_id: 'alpha-run', campaign_id: 'Alpha campaign' },
+    { ...fixtureEvaluationSummaries[0]!, run_id: 'beta-run', campaign_id: 'Beta campaign' },
+  ];
+  await installMirror(page, records);
+  await page.goto('/evaluations?release=all');
+  await page.getByRole('tab', { name: /Campaigns/ }).click();
+  const campaigns = page.getByRole('table', { name: 'Campaigns', exact: true });
+  await expect(campaigns.locator('tbody tr')).toHaveCount(2);
+  await campaigns.getByRole('button', { name: 'Sort by Campaign', exact: true }).click();
+  await expect(campaigns.locator('tbody tr').first()).toContainText('Alpha campaign');
+  await campaigns.getByRole('button', { name: 'Sort by Campaign', exact: true }).click();
+  await expect(campaigns.locator('tbody tr').first()).toContainText('Beta campaign');
+  await expect(campaigns.getByRole('columnheader', { name: /Campaign/ })).toHaveAttribute('aria-sort', 'descending');
+
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.getByRole('tab', { name: /Runs/ }).click();
+    await expect(page.getByRole('table', { name: 'Model campaigns', exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: /Campaigns/ }).click();
+    await expect(campaigns).toBeVisible();
+    await expect(page.locator('.campaign-cards-grid, .formations-grid, .data-card-list')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (viewport.width < 960) {
+      const scrollArea = campaigns.locator('..');
+      await scrollArea.evaluate((element) => { element.scrollLeft = 0; });
+      await scrollArea.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => scrollArea.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    }
+    await page.getByRole('tab', { name: /Formations/ }).click();
+    const formations = page.getByRole('table', { name: 'Formation catalog', exact: true });
+    await expect(formations).toBeVisible();
+    await page.getByRole('searchbox', { name: 'Search formations' }).fill('Qwen Powerhouse');
+    await expect(formations.locator('tbody tr')).toHaveCount(1);
+    await expect(formations.locator('tbody a')).toHaveCount(3);
+    await page.getByRole('searchbox', { name: 'Search formations' }).fill('');
+    await formations.getByRole('button', { name: 'Sort by Total VRAM', exact: true }).click();
+    await expect(formations.getByRole('columnheader', { name: /Total VRAM/ })).toHaveAttribute('aria-sort', /ascending|descending/);
+  }
+  await page.getByRole('tab', { name: /Runs/ }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.locator('.evaluations-view .data-table-wrap').evaluateAll((elements) => elements.forEach((element) => { element.scrollLeft = 0; }));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: 'test-results/evals-tables-desktop.png', fullPage: true });
+});

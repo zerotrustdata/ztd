@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
@@ -34,7 +33,7 @@ import (
 // An unset posture selects doctrine, the Gateway's startup default; the Gateway
 // itself rejects an empty posture.
 type testGatewayOpts struct {
-	posture  config.GatewayPosture
+	posture  constants.Posture
 	httpPort int
 	logger   *slog.Logger
 }
@@ -56,7 +55,7 @@ func newTestGatewayService(t *testing.T, opts testGatewayOpts) *GatewayModeServi
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
 	cfg.Gateway.HTTPPort = opts.httpPort
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 	if opts.posture != "" {
 		cfg.Gateway.Posture = opts.posture
 	}
@@ -109,7 +108,7 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 	cfg.Gateway.SecretsDir = fileSvc.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
 	cfg.Gateway.HTTPPort = 0
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 
 	ks, err := keystore.NewWithKeyringAndFS(logger, keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -135,10 +134,10 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 	require.NoError(t, err)
 	auditorSeed := auditorPriv.Seed()
 
-	sessionKeyHex, err := sm.GetSessionEncryptionKey()
+	auditorHMACKeyHex, err := sm.GetAuditorHMACKey()
 	require.NoError(t, err)
-	require.NotEmpty(t, sessionKeyHex)
-	sessionKeyBytes, err := hex.DecodeString(sessionKeyHex)
+	require.NotEmpty(t, auditorHMACKeyHex)
+	auditorHMACKeyBytes, err := hex.DecodeString(auditorHMACKeyHex)
 	require.NoError(t, err)
 
 	vaultKey, err := ks.LoadVaultKey()
@@ -153,7 +152,7 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 		{"vault key", vaultKey},
 		{"actuator seed", actuatorSeed},
 		{"auditor seed", auditorSeed},
-		{"session encryption key", sessionKeyBytes},
+		{"auditor HMAC key", auditorHMACKeyBytes},
 	}
 
 	var forbiddenRaw [][]byte
@@ -170,7 +169,7 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 			base64.RawURLEncoding.EncodeToString(k.raw),
 		)
 	}
-	forbiddenStrings = append(forbiddenStrings, sessionKeyHex)
+	forbiddenStrings = append(forbiddenStrings, auditorHMACKeyHex)
 
 	dirsToScan := []string{constants.SecretsDirname, constants.VaultDirname}
 	scannedFiles := 0

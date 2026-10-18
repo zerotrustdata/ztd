@@ -54,41 +54,6 @@ func testOverlayCatalog() *OverlayCatalog {
 	}
 }
 
-// TestLoadOverlayCatalog_Success loads a valid overlay catalog from disk.
-func TestLoadOverlayCatalog_Success(t *testing.T) {
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "overlays.json")
-	writeOverlayFile(t, dir, "overlays.json", testOverlayCatalog())
-
-	cat, err := LoadOverlayCatalog(path)
-	require.NoError(t, err)
-	require.NotNil(t, cat)
-	assert.Equal(t, "test-v1", cat.Version)
-	assert.Equal(t, "test source", cat.Source)
-	require.Len(t, cat.Overlays, 2)
-	assert.Equal(t, "COSAiS-TEST-01", cat.Overlays[0].ID)
-	assert.Equal(t, "COSAiS-TEST-02", cat.Overlays[1].ID)
-	assert.Equal(t, OverlayStatusDraft, cat.Overlays[0].Status)
-}
-
-// TestLoadOverlayCatalog_FileNotFound returns an error for a missing file.
-func TestLoadOverlayCatalog_FileNotFound(t *testing.T) {
-	_, err := LoadOverlayCatalog("/nonexistent/path/overlays.json")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayReadFailed)
-}
-
-// TestLoadOverlayCatalog_InvalidJSON returns an error for malformed JSON.
-func TestLoadOverlayCatalog_InvalidJSON(t *testing.T) {
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "bad.json")
-	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o644))
-
-	_, err := LoadOverlayCatalog(path)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayParseFailed)
-}
-
 // TestOverlayCatalog_Validate_EmptyVersion returns an error for empty version.
 func TestOverlayCatalog_Validate_EmptyVersion(t *testing.T) {
 	cat := testOverlayCatalog()

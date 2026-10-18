@@ -38,7 +38,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -72,7 +71,7 @@ func newBoundaryRigWithLeafTTL(t *testing.T, policy fixtures.OwnerPolicy, leafTT
 	t.Helper()
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName:            t.Name(),
-		Posture:             config.PostureDoctrine,
+		Posture:             constants.PostureDoctrine,
 		OperatorLeafCertTTL: leafTTL,
 	})
 	f.WaitForReady(t)

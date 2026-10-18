@@ -179,7 +179,7 @@ func (e operatorBootstrapExchange) run(ctx context.Context) error {
 	if err := e.c.reg.UpdateOperatorRuntimeConfig(ctx, creds.OperatorID, runtimeConfig); err != nil {
 		return fmt.Errorf("operator bootstrap: persist runtime config: %w", err)
 	}
-	l2Trust, err := e.c.consensus.OperatorL2Trust(ctx, e.c.cfg.Gateway.ConsensusID)
+	l2Trust, err := e.c.consensus.OperatorL2Trust(ctx)
 	if err != nil {
 		return fmt.Errorf("operator bootstrap: l2 trust: %w", err)
 	}

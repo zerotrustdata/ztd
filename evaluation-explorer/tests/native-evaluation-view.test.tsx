@@ -11,14 +11,14 @@ import { evalStore } from '../src/state/store';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 
 const catalog = {
-  schema_version: '1.3.0', kind: 'catalog_snapshot', dataset_id: 'native-core-execution-boundary', dataset_kind: 'live_run', quality_state: 'verified_public', observed_at: '2026-09-15T23:38:22Z',
+  schema_version: '1.3.0', kind: 'catalog_snapshot', dataset_id: 'native-core-execution-boundary', dataset_kind: 'live_run', quality_state: 'exploratory_verified', observed_at: '2026-09-15T23:38:22Z',
   title: 'Native evaluation native-run-1', description: 'Go-native core execution-boundary evaluation.', limitations: [], model_count: 0, evaluated_count: 0,
   suite_count: 1, run_count: 1, assignment_count: 2, provider_request_count: 0, provider_token_count: 0, retry_count: 0, verifier_passed_count: 1,
   verifier_failed_count: 0, generated_at: '2026-09-15T23:38:22Z',
 };
 
 const nativeEvaluation = {
-  schema_version: '1.3.0', kind: 'evaluation_summary', dataset_id: 'native-core-execution-boundary', quality_state: 'verified_public', observed_at: '2026-09-15T23:38:22Z',
+  schema_version: '1.3.0', kind: 'evaluation_summary', dataset_id: 'native-core-execution-boundary', quality_state: 'exploratory_verified', observed_at: '2026-09-15T23:38:22Z',
   run_id: 'native-run-1', suite_id: 'core-execution-boundary@1.0.0', arm: 'platform', evaluation_unit: 'system', model_role_mapping: {}, lifecycle_state: 'completed',
   assignment_total: 2, assignment_completed: 2, assignment_failed: 0, terminal_outcomes: { completed: 1, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0 },
   started_at: '2026-09-15T23:38:21Z', ended_at: '2026-09-15T23:38:22Z', elapsed_seconds: 1, verifier_state: 'passed', headline_metrics: { pass_rate: { value: 1 } },

@@ -24,7 +24,7 @@ type CampaignMirrorProbe interface {
 	DatasetPresent(ctx context.Context, datasetID string) (bool, error)
 }
 
-// CampaignMirrorReconcileResult summarizes one queue or run reconcile pass.
+// CampaignMirrorReconcileResult summarizes one store or run reconcile pass.
 type CampaignMirrorReconcileResult struct {
 	RestoredRunIDs    []string          `json:"restored_run_ids"`
 	RepublishedRunIDs []string          `json:"republished_run_ids,omitempty"`
@@ -60,7 +60,7 @@ type CampaignMirrorReconcileProgress struct {
 
 type CampaignMirrorReconcileProgressFunc func(CampaignMirrorReconcileProgress)
 
-// CampaignMirrorReconciler compares queue-verified runs against the public
+// CampaignMirrorReconciler compares verified runs against the public
 // mirror and republishes canonical host artifacts when datasets are missing.
 type CampaignMirrorReconciler struct {
 	publication *CampaignPublicationCoordinator
@@ -81,8 +81,7 @@ func NewCampaignMirrorReconciler(publication *CampaignPublicationCoordinator, st
 // ReconcileAllVerifiedRunsFromStore walks the run store and reconciles all runs
 // that have valid verification reports. When restoreMissing is true, it
 // republishes canonical host artifacts for datasets that are absent from the
-// mirror. This is used as an alternative to ReconcileVerifiedQueue when the
-// campaign queue is not available (e.g., on restored backups).
+// mirror. Run discovery uses the persisted store, including on restored backups.
 func (r *CampaignMirrorReconciler) ReconcileAllVerifiedRunsFromStore(ctx context.Context, runTimeout time.Duration, restoreMissing bool, force bool, progress CampaignMirrorReconcileProgressFunc) (*CampaignMirrorReconcileResult, error) {
 	if r == nil || r.publication == nil || r.store == nil || runTimeout <= 0 {
 		return nil, fmt.Errorf("evaluation: reconcile verified runs from store: dependencies: %w", constants.ErrMissingRequiredField)
@@ -90,27 +89,6 @@ func (r *CampaignMirrorReconciler) ReconcileAllVerifiedRunsFromStore(ctx context
 	runIDs, err := r.store.ListRunIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: reconcile verified runs from store: list runs: %w", err)
-	}
-	return r.reconcileRuns(ctx, runIDs, runTimeout, restoreMissing, force, progress)
-}
-
-// ReconcileVerifiedQueue compares verified queue entries against the public
-// mirror. When restoreMissing is true, it republishes canonical host artifacts
-// for datasets that are absent from the mirror. Present datasets are always
-// skipped so queue restores can resume after partial failures. When force is
-// true, host publication idempotency is cleared before restoring each missing
-// dataset. Use ReconcileRun with force to republish one already-present run.
-func (r *CampaignMirrorReconciler) ReconcileVerifiedQueue(ctx context.Context, queue *CampaignQueue, runTimeout time.Duration, restoreMissing bool, force bool, progress CampaignMirrorReconcileProgressFunc) (*CampaignMirrorReconcileResult, error) {
-	if r == nil || r.publication == nil || r.store == nil || queue == nil || runTimeout <= 0 {
-		return nil, fmt.Errorf("evaluation: reconcile verified queue: dependencies: %w", constants.ErrMissingRequiredField)
-	}
-	entries := queue.FilterByStatus("verified")
-	runIDs := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.VerifiedRunID == "" {
-			continue
-		}
-		runIDs = append(runIDs, entry.VerifiedRunID)
 	}
 	return r.reconcileRuns(ctx, runIDs, runTimeout, restoreMissing, force, progress)
 }

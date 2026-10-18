@@ -55,7 +55,8 @@ type capacityMirrorEnv struct {
 func newCapacityMirrorEnv(t *testing.T, recordCount int) *capacityMirrorEnv {
 	t.Helper()
 	fileSvc := newProducerFileSvc(t)
-	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(fileSvc), PublicMirrorConfig{
+	store := openTestPublicMirrorStore(t, fileSvc)
+	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), store, PublicMirrorConfig{
 		TrustedProxyCIDRs: []string{capacityTrustedProxyCIDR},
 	})
 	require.NoError(t, err)
@@ -74,6 +75,7 @@ func newCapacityMirrorEnv(t *testing.T, recordCount int) *capacityMirrorEnv {
 		keyID:    keyID,
 		sourceID: sourceID,
 		fileSvc:  fileSvc,
+		store:    store,
 	}
 	records := make([]models.PublicFeedRecord, recordCount)
 	for index := range records {

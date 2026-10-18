@@ -11,11 +11,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -48,9 +50,9 @@ import (
 
 const (
 	appEnrollHTTPTimeout     = 10 * time.Second
-	appEnrollPollInitial     = 2 * time.Second
-	appEnrollPollMax         = 30 * time.Second
-	appEnrollPollJitter      = 500 * time.Millisecond
+	appEnrollRedialInitial   = 2 * time.Second
+	appEnrollRedialMax       = 30 * time.Second
+	appEnrollRedialJitter    = 500 * time.Millisecond
 	appEnrollDefaultDeadline = 30 * time.Minute
 
 	appEnrollSubmitInitial  = 3 * time.Second
@@ -68,10 +70,12 @@ type AppEnrollmentApprover func(ctx context.Context, target models.PlatformEnrol
 
 // AppEnrollmentOptions provides optional overrides for app platform enrollment.
 type AppEnrollmentOptions struct {
-	GatewayHTTPURL string
-	InstanceID     string
-	Hostname       string
-	Approver       AppEnrollmentApprover
+	GenerateSigningKey bool
+	GatewayHTTPURL     string
+	InstanceID         string
+	Hostname           string
+	Approver           AppEnrollmentApprover
+	HTTPClient         *http.Client
 }
 
 // appPendingState is the resumable pending enrollment attempt,
@@ -79,6 +83,7 @@ type AppEnrollmentOptions struct {
 // (the key and bearer token never touch disk in the clear) and removed on
 // completion, denial, or expiry.
 type appPendingState struct {
+	SigningSeed    []byte    `json:"signing_seed,omitempty"`
 	RequestID      string    `json:"request_id"`
 	Token          string    `json:"token"`
 	AppFingerprint string    `json:"app_fingerprint"`
@@ -93,14 +98,16 @@ type appPendingState struct {
 // AppPlatformEnrollmentClient drives the owner-approved platform
 // enrollment protocol for application components.
 type AppPlatformEnrollmentClient struct {
-	appName        string
-	gatewayHTTPURL string
-	instanceID     string
-	hostname       string
-	approver       AppEnrollmentApprover
-	fileSvc        fs.RuntimeFileService
-	cfg            *config.Config
-	logger         *slog.Logger
+	generateSigningKey bool
+	appName            string
+	gatewayHTTPURL     string
+	instanceID         string
+	hostname           string
+	approver           AppEnrollmentApprover
+	fileSvc            fs.RuntimeFileService
+	cfg                *config.Config
+	logger             *slog.Logger
+	httpClient         *http.Client
 }
 
 // NewAppPlatformEnrollmentClient constructs an app platform enrollment client.
@@ -144,15 +151,22 @@ func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileServic
 	}
 	gatewayHTTPURL = strings.TrimRight(gatewayHTTPURL, "/")
 
+	httpClient := opt.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+
 	return &AppPlatformEnrollmentClient{
-		appName:        appName,
-		gatewayHTTPURL: gatewayHTTPURL,
-		instanceID:     instanceID,
-		hostname:       hostname,
-		approver:       opt.Approver,
-		fileSvc:        fileSvc,
-		cfg:            cfg,
-		logger:         logger,
+		generateSigningKey: opt.GenerateSigningKey,
+		appName:            appName,
+		gatewayHTTPURL:     gatewayHTTPURL,
+		instanceID:         instanceID,
+		hostname:           hostname,
+		approver:           opt.Approver,
+		fileSvc:            fileSvc,
+		cfg:                cfg,
+		logger:             logger,
+		httpClient:         httpClient,
 	}, nil
 }
 
@@ -176,6 +190,12 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 	)
 
 	if pending != nil && pending.Token != "" && (pending.ExpiresAt.IsZero() || time.Now().Before(pending.ExpiresAt)) {
+		if (len(pending.SigningSeed) != 0 && len(pending.SigningSeed) != ed25519.SeedSize) || (c.generateSigningKey && len(pending.SigningSeed) == 0) {
+			return nil, fmt.Errorf("app enrollment: pending signing identity: %w", constants.ErrAppSigningKeyInvalid)
+		}
+		c.instanceID = pending.InstanceID
+		c.hostname = pending.Hostname
+		defer vault.SecureZero(pending.SigningSeed)
 		token = pending.Token
 		requestID = pending.RequestID
 		appFP = pending.AppFingerprint
@@ -187,7 +207,7 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 		if requestID != "" {
 			c.logger.Info("app enrollment: resuming pending attempt", "app_name", c.appName, "request_id", requestID)
 		} else {
-			createResp, submitErr := c.submitRequest(ctx, pending.CSRPEM, token)
+			createResp, submitErr := c.submitRequest(ctx, pending, token)
 			if submitErr != nil {
 				return nil, submitErr
 			}
@@ -232,10 +252,17 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 			Hostname:       c.hostname,
 			CSRPEM:         csrPEM,
 		}
+		if c.generateSigningKey {
+			pending.SigningSeed = make([]byte, ed25519.SeedSize)
+			if _, err := rand.Read(pending.SigningSeed); err != nil {
+				return nil, fmt.Errorf("app enrollment: generate signing seed: %w", err)
+			}
+			defer vault.SecureZero(pending.SigningSeed)
+		}
 		if err := c.persistPendingState(pendingPath, pending); err != nil {
 			return nil, err
 		}
-		createResp, err := c.submitRequest(ctx, csrPEM, token)
+		createResp, err := c.submitRequest(ctx, pending, token)
 		if err != nil {
 			return nil, err
 		}
@@ -251,26 +278,52 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 			fmt.Fprintf(out, "Enrollment request submitted for application %q.\n", c.appName)
 			if c.approver == nil {
 				fmt.Fprintf(out, "Approve on the Gateway host with:\n%s auth enroll approve %s\n", constants.LocalBinaryName, requestID)
+				if url := strings.TrimSpace(createResp.ApprovalURL); url != "" {
+					fmt.Fprintf(out, "Passkey approval URL: %s\n", url)
+				}
 			}
 		}
 	}
 
+	var signingKey ed25519.PrivateKey
+	fingerprints := models.PlatformEnrollmentCSRFingerprints{App: appFP}
+	if len(pending.SigningSeed) != 0 {
+		signingKey = ed25519.NewKeyFromSeed(pending.SigningSeed)
+		defer vault.SecureZero(signingKey)
+		digest := sha256.Sum256(signingKey.Public().(ed25519.PublicKey))
+		fingerprints.SigningKey = hex.EncodeToString(digest[:])
+	}
+	if out != nil {
+		for _, fingerprint := range PlatformEnrollmentFingerprints(fingerprints) {
+			fmt.Fprintf(out, "%s: %s\n", fingerprint.Label, fingerprint.Value)
+		}
+	}
 	if c.approver != nil {
 		target := models.PlatformEnrollmentDecisionTarget{
 			RequestID:    requestID,
-			Fingerprints: models.PlatformEnrollmentCSRFingerprints{App: appFP},
+			Fingerprints: fingerprints,
 		}
 		if err := c.approver(ctx, target); err != nil {
-			return nil, fmt.Errorf("app enrollment: owner approval of %s: %w", requestID, err)
+			var l3Err *models.PlatformEnrollmentL3RequiredError
+			if errors.As(err, &l3Err) {
+				if out != nil {
+					if err := WritePlatformEnrollmentSuspension(out, l3Err.Suspension); err != nil {
+						return nil, fmt.Errorf("app enrollment: write approval instructions: %w", err)
+					}
+					fmt.Fprintf(out, "Awaiting passkey approval...\n")
+				}
+			} else {
+				return nil, fmt.Errorf("app enrollment: owner approval of %s: %w", requestID, err)
+			}
 		}
 	}
 
-	// Step 3: Poll status until approved.
+	// Step 3: Hold on the status endpoint until the owner decides.
 	deadline := appEnrollDefaultDeadline
 	if pending != nil && !pending.ExpiresAt.IsZero() {
 		deadline = time.Until(pending.ExpiresAt)
 	}
-	if err := c.pollUntilApproved(ctx, token, deadline); err != nil {
+	if err := c.awaitDecision(ctx, token, deadline); err != nil {
 		if errors.Is(err, constants.ErrPlatformEnrollmentRequestDenied) || errors.Is(err, constants.ErrPlatformEnrollmentRequestExpired) {
 			// Terminal: the request can never complete, so the pending key and
 			// token are dead material. Remove them with the attempt.
@@ -283,7 +336,7 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 
 	// Step 4: Sign the completion transcript.
 	tokenHashStr := models.PlatformEnrollmentTokenHash(token)
-	transcript, err := buildAppCompletionTranscript(requestID, tokenHashStr, c.instanceID, appFP)
+	transcript, err := buildAppCompletionTranscript(requestID, tokenHashStr, c.instanceID, fingerprints)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +346,12 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 	}
 
 	// Step 5: Submit completion.
-	completionResp, err := c.submitCompletion(ctx, token, appProof)
+	proofs := models.PlatformEnrollmentProofs{App: appProof}
+	if signingKey != nil {
+		digest := sha256.Sum256(transcript)
+		proofs.SigningKey = base64.RawURLEncoding.EncodeToString(ed25519.Sign(signingKey, digest[:]))
+	}
+	completionResp, err := c.submitCompletion(ctx, token, proofs)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +360,15 @@ func (c *AppPlatformEnrollmentClient) Enroll(ctx context.Context, out io.Writer)
 	}
 
 	// Step 6: Write credentials to disk and clear pending state.
+	if signingKey != nil {
+		signingRel, err := c.fileSvc.RelFromAbs(c.cfg.AppSigningKeyFile(c.appName))
+		if err != nil {
+			return nil, fmt.Errorf("app enrollment: signing key path: %w", err)
+		}
+		if err := sealIdentityFile(ctx, c.fileSvc, c.cfg, filepath.ToSlash(signingRel), pending.SigningSeed); err != nil {
+			return nil, fmt.Errorf("app enrollment: seal signing key: %w", err)
+		}
+	}
 	if err := c.writeCredentials(completionResp.App, appKeyPEM); err != nil {
 		return nil, err
 	}
@@ -454,7 +521,7 @@ func (c *AppPlatformEnrollmentClient) removePendingState(relPath string) error {
 	return c.fileSvc.Remove(context.Background(), relPath)
 }
 
-func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM, token string) (*models.PlatformEnrollmentCreateResponse, error) {
+func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, pending *appPendingState, token string) (*models.PlatformEnrollmentCreateResponse, error) {
 	endpoint := c.gatewayHTTPURL + constants.APIPaths.AuthPlatformEnrollmentRequest
 	payload := models.PlatformEnrollmentCreateRequest{
 		ComponentKind: models.PlatformComponentApplication,
@@ -463,8 +530,13 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM,
 		Hostname:      c.hostname,
 		TokenHash:     models.PlatformEnrollmentTokenHash(token),
 		App: &models.PlatformAppCSRPayload{
-			CSRPEM: csrPEM,
+			CSRPEM: pending.CSRPEM,
 		},
+	}
+	if len(pending.SigningSeed) != 0 {
+		key := ed25519.NewKeyFromSeed(pending.SigningSeed)
+		defer vault.SecureZero(key)
+		payload.App.SigningPublicKey = hex.EncodeToString(key.Public().(ed25519.PublicKey))
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -484,7 +556,7 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM,
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := doHTTPRequest(ctx, req)
+		resp, err := c.doHTTPRequest(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("app enrollment: submit request: %w", err)
 		}
@@ -495,7 +567,7 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM,
 			return nil, fmt.Errorf("app enrollment: read request response: %w", err)
 		}
 
-		if resp.StatusCode == http.StatusForbidden && strings.Contains(string(respBody), "bootstrapped") {
+		if resp.StatusCode == http.StatusForbidden && isGatewayRequiresBootstrap(respBody) {
 			if time.Now().After(deadline) {
 				return nil, fmt.Errorf("app enrollment: timed out waiting for gateway bootstrap: %s", string(respBody))
 			}
@@ -522,28 +594,33 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, csrPEM,
 	}
 }
 
-func (c *AppPlatformEnrollmentClient) pollUntilApproved(ctx context.Context, token string, deadline time.Duration) error {
-	endpoint := fmt.Sprintf("%s%s?token=%s", c.gatewayHTTPURL, constants.APIPaths.AuthPlatformEnrollmentStatus, url.QueryEscape(token))
-	pollCtx, cancelPoll := context.WithTimeout(ctx, deadline)
-	defer cancelPoll()
+// awaitDecision holds the status request until the owner decides. The Gateway
+// holds wait=true while the request is pending and answers on a committed
+// decision, expiry, or cancellation, so the requester wakes on the decision
+// instead of polling for it. A dropped connection or a rate-limited response
+// redials after a bounded delay.
+func (c *AppPlatformEnrollmentClient) awaitDecision(ctx context.Context, token string, deadline time.Duration) error {
+	endpoint := fmt.Sprintf("%s%s?token=%s&wait=true", c.gatewayHTTPURL, constants.APIPaths.AuthPlatformEnrollmentStatus, url.QueryEscape(token))
+	holdCtx, cancelHold := context.WithTimeout(ctx, deadline)
+	defer cancelHold()
 
-	delay := appEnrollPollInitial
+	delay := appEnrollRedialInitial
 	for {
-		if pollCtx.Err() != nil {
-			return fmt.Errorf("app enrollment: timed out waiting for owner approval: %w", pollCtx.Err())
+		if holdCtx.Err() != nil {
+			return fmt.Errorf("app enrollment: timed out waiting for owner approval: %w", holdCtx.Err())
 		}
 
-		req, err := http.NewRequestWithContext(pollCtx, http.MethodGet, endpoint, nil)
+		req, err := http.NewRequestWithContext(holdCtx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return fmt.Errorf("app enrollment: create status request: %w", err)
 		}
 
-		resp, err := doHTTPRequest(pollCtx, req)
+		resp, err := c.doHTTPRequest(holdCtx, req)
 		if err != nil {
-			if waitErr := c.sleep(pollCtx, delay, appEnrollPollJitter); waitErr != nil {
+			if waitErr := c.sleep(holdCtx, delay, appEnrollRedialJitter); waitErr != nil {
 				return waitErr
 			}
-			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollPollMax)))
+			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollRedialMax)))
 			continue
 		}
 
@@ -554,10 +631,10 @@ func (c *AppPlatformEnrollmentClient) pollUntilApproved(ctx context.Context, tok
 			if wait == 0 {
 				wait = delay
 			}
-			if waitErr := c.sleep(pollCtx, wait, appEnrollPollJitter); waitErr != nil {
+			if waitErr := c.sleep(holdCtx, wait, appEnrollRedialJitter); waitErr != nil {
 				return waitErr
 			}
-			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollPollMax)))
+			delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollRedialMax)))
 			continue
 		}
 
@@ -585,25 +662,20 @@ func (c *AppPlatformEnrollmentClient) pollUntilApproved(ctx context.Context, tok
 			return fmt.Errorf("app enrollment: %w", constants.ErrPlatformEnrollmentRequestExpired)
 		}
 
-		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
-		wait := retryAfter
-		if wait == 0 {
-			wait = delay
-		}
-		if waitErr := c.sleep(pollCtx, wait, appEnrollPollJitter); waitErr != nil {
+		// The Gateway answered while still pending, so hold again after a
+		// bounded pause rather than spin on an early answer.
+		if waitErr := c.sleep(holdCtx, appEnrollRedialInitial, appEnrollRedialJitter); waitErr != nil {
 			return waitErr
 		}
-		delay = time.Duration(math.Min(float64(delay*2), float64(appEnrollPollMax)))
+		delay = appEnrollRedialInitial
 	}
 }
 
-func (c *AppPlatformEnrollmentClient) submitCompletion(ctx context.Context, token, proof string) (*models.PlatformEnrollmentCompleteResponse, error) {
+func (c *AppPlatformEnrollmentClient) submitCompletion(ctx context.Context, token string, proofs models.PlatformEnrollmentProofs) (*models.PlatformEnrollmentCompleteResponse, error) {
 	endpoint := c.gatewayHTTPURL + constants.APIPaths.AuthPlatformEnrollmentComplete
 	payload := models.PlatformEnrollmentCompleteRequest{
-		Token: token,
-		Proofs: models.PlatformEnrollmentProofs{
-			App: proof,
-		},
+		Token:  token,
+		Proofs: proofs,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -619,7 +691,7 @@ func (c *AppPlatformEnrollmentClient) submitCompletion(ctx context.Context, toke
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cache-Control", "no-store")
 
-	resp, err := doHTTPRequest(compCtx, req)
+	resp, err := c.doHTTPRequest(compCtx, req)
 	if err != nil {
 		return nil, fmt.Errorf("app enrollment: submit completion: %w", err)
 	}
@@ -688,7 +760,7 @@ func (c *AppPlatformEnrollmentClient) sleep(ctx context.Context, base, maxJitter
 
 // --- Completion Transcript & Proof ---
 
-func buildAppCompletionTranscript(requestID, tokenHash, instanceID, appFP string) ([]byte, error) {
+func buildAppCompletionTranscript(requestID, tokenHash, instanceID string, fingerprints models.PlatformEnrollmentCSRFingerprints) ([]byte, error) {
 	message := &commonv1.PlatformEnrollmentCompletionTranscript{
 		ProtocolVersion: constants.PlatformEnrollmentProtocolVersion,
 		RequestId:       requestID,
@@ -696,7 +768,8 @@ func buildAppCompletionTranscript(requestID, tokenHash, instanceID, appFP string
 		ComponentKind:   commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
 		InstanceId:      instanceID,
 		Fingerprints: &commonv1.PlatformEnrollmentFingerprints{
-			App: appFP,
+			App:        fingerprints.App,
+			SigningKey: fingerprints.SigningKey,
 		},
 	}
 	encoded, err := (proto.MarshalOptions{Deterministic: true}).Marshal(message)
@@ -756,8 +829,11 @@ func encodeECPrivateKeyPEM(key *ecdsa.PrivateKey) (string, error) {
 	return string(pemBytes), nil
 }
 
-func doHTTPRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
-	client := &http.Client{}
+func (c *AppPlatformEnrollmentClient) doHTTPRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
+	client := c.httpClient
+	if client == nil {
+		client = &http.Client{}
+	}
 	return client.Do(req.WithContext(ctx))
 }
 
@@ -817,4 +893,14 @@ func isReservedPlatformName(name string) bool {
 	default:
 		return false
 	}
+}
+
+func isGatewayRequiresBootstrap(body []byte) bool {
+	var gwErr struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &gwErr); err == nil {
+		return gwErr.Error == constants.ErrPlatformEnrollmentRequiresBootstrap.Error()
+	}
+	return false
 }

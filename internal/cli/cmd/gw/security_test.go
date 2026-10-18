@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/constants"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,7 +68,7 @@ func TestSecurityValidateWithTestEnvironment(t *testing.T) {
 
 		// Create secrets
 		require.NoError(t, os.MkdirAll(secretsDir, 0700))
-		require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "session_encryption_key"), []byte("dummy key"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
 		require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "bootstrap_digest.json"), []byte("{}"), 0644))
 
 		cmd := securityValidateCmdWithConfig(shared.NewFileSvc)

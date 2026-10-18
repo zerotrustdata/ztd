@@ -210,6 +210,21 @@ func PlatformEnrollmentTokenHash(token string) string {
 
 type PlatformAppCSRPayload struct {
 	CSRPEM string `json:"csr_pem"`
+	// SigningPublicKey is an optional hex Ed25519 L2 key, independent of the
+	// P-256 transport CSR. Completion proves possession of both keys.
+	SigningPublicKey string `json:"signing_public_key,omitempty"`
+}
+
+// SigningKey decodes the optional L2 public key without changing transport PKI.
+func (p *PlatformAppCSRPayload) SigningKey() (ed25519.PublicKey, error) {
+	if p.SigningPublicKey == "" {
+		return nil, nil
+	}
+	key, err := hex.DecodeString(p.SigningPublicKey)
+	if err != nil || len(key) != ed25519.PublicKeySize {
+		return nil, constants.ErrPlatformEnrollmentSigningKeyInvalid
+	}
+	return ed25519.PublicKey(key), nil
 }
 
 type PlatformOperatorCSRPayload struct {
@@ -241,9 +256,10 @@ func DecodeActuatorPublicKey(keyHex string) (ed25519.PublicKey, error) {
 }
 
 type PlatformEnrollmentCSRFingerprints struct {
-	App      string `json:"app,omitempty"`
-	Operator string `json:"operator,omitempty"`
-	CLI      string `json:"cli,omitempty"`
+	App        string `json:"app,omitempty"`
+	Operator   string `json:"operator,omitempty"`
+	CLI        string `json:"cli,omitempty"`
+	SigningKey string `json:"signing_key,omitempty"`
 }
 
 type PlatformEnrollmentCreateResponse struct {
@@ -380,10 +396,40 @@ type PlatformEnrollmentRevokeResponse struct {
 	State         PlatformEnrollmentState `json:"state"`
 }
 
+const PlatformEnrollmentStatusL3Required = "l3_required"
+
+type PlatformEnrollmentL3SuspensionResponse struct {
+	Status      string            `json:"status"`
+	Posture     constants.Posture `json:"posture"`
+	TxHash      string            `json:"tx_hash"`
+	ApprovalURL string            `json:"approval_url"`
+	ExpiresAt   time.Time         `json:"expires_at"`
+	Message     string            `json:"message"`
+}
+
+type PlatformEnrollmentL3RequiredError struct {
+	Suspension PlatformEnrollmentL3SuspensionResponse
+}
+
+func (e *PlatformEnrollmentL3RequiredError) Error() string {
+	if e == nil {
+		return constants.ErrPlatformEnrollmentL3Required.Error()
+	}
+	if e.Suspension.Message != "" {
+		return fmt.Sprintf("%s: %s", constants.ErrPlatformEnrollmentL3Required.Error(), e.Suspension.Message)
+	}
+	return constants.ErrPlatformEnrollmentL3Required.Error()
+}
+
+func (e *PlatformEnrollmentL3RequiredError) Unwrap() error {
+	return constants.ErrPlatformEnrollmentL3Required
+}
+
 type PlatformEnrollmentProofs struct {
-	App      string `json:"app,omitempty"`
-	Operator string `json:"operator,omitempty"`
-	CLI      string `json:"cli,omitempty"`
+	App        string `json:"app,omitempty"`
+	Operator   string `json:"operator,omitempty"`
+	CLI        string `json:"cli,omitempty"`
+	SigningKey string `json:"signing_key,omitempty"`
 }
 
 type PlatformEnrollmentCompleteRequest struct {
@@ -401,15 +447,15 @@ type PlatformEnrollmentAppCredentials struct {
 }
 
 type PlatformEnrollmentOperatorCredentials struct {
-	OperatorCert      string `json:"operator_cert"`
-	OperatorCertChain string `json:"operator_cert_chain"`
-	HubTrustBundle    string `json:"hub_trust_bundle"`
-	OperatorSessionID string `json:"operator_session_id"`
-	OperatorID        string `json:"operator_id"`
-	CLISessionID      string `json:"cli_session_id"`
-	CLICert           string `json:"cli_cert"`
-	CLICertChain      string `json:"cli_cert_chain"`
-	Posture           string `json:"posture,omitempty"`
+	OperatorCert      string            `json:"operator_cert"`
+	OperatorCertChain string            `json:"operator_cert_chain"`
+	HubTrustBundle    string            `json:"hub_trust_bundle"`
+	OperatorSessionID string            `json:"operator_session_id"`
+	OperatorID        string            `json:"operator_id"`
+	CLISessionID      string            `json:"cli_session_id"`
+	CLICert           string            `json:"cli_cert"`
+	CLICertChain      string            `json:"cli_cert_chain"`
+	Posture           constants.Posture `json:"posture,omitempty"`
 }
 
 type PlatformEnrollmentCompleteResponse struct {

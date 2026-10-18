@@ -88,7 +88,7 @@ func maliciousCommandPayload(t *testing.T) []byte {
 // baseEnvelopeParams returns a BuildEnvelopeParams populated with valid
 // identifiers and the given action/payload/posture, ready for posture-table
 // subtests to override individual fields.
-func baseEnvelopeParams(event constants.EventType, payload []byte, posture string, doctrine *governance.L1Doctrine) BuildEnvelopeParams {
+func baseEnvelopeParams(event constants.EventType, payload []byte, posture constants.Posture, doctrine *governance.L1Doctrine) BuildEnvelopeParams {
 	return BuildEnvelopeParams{
 		OperatorID:        "op-001",
 		OperatorSessionID: "sess-001",
@@ -187,14 +187,14 @@ func TestBuildGovernanceEnvelope_NotaryRejectsMutation(t *testing.T) {
 // command is refused as ErrTxL1ValidationFailed under ratify and notary too,
 // where a clean mutation is refused as ErrTxL3ProofUnmintable.
 func TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate(t *testing.T) {
-	postures := []string{
+	postures := []constants.Posture{
 		constants.PostureDoctrine,
 		constants.PostureConsensus,
 		constants.PostureRatify,
 		constants.PostureNotary,
 	}
 	for _, posture := range postures {
-		t.Run(posture, func(t *testing.T) {
+		t.Run(string(posture), func(t *testing.T) {
 			params := baseEnvelopeParams(constants.Event.Operator.Command.Requested, maliciousCommandPayload(t), posture, testDoctrine())
 			_, err := BuildGovernanceEnvelope(params)
 			require.Error(t, err)
@@ -226,7 +226,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 
 	cases := []struct {
 		name            string
-		posture         string
+		posture         constants.Posture
 		event           constants.EventType
 		payload         func(t *testing.T) []byte
 		wantDeliberated bool
@@ -361,7 +361,7 @@ func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
 
 	cases := []struct {
 		name            string
-		posture         string
+		posture         constants.Posture
 		event           constants.EventType
 		payload         []byte
 		wantDeliberated bool

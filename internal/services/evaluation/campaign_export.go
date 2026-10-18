@@ -396,7 +396,9 @@ func (e *CampaignExporter) ExportRun(
 	if err != nil {
 		return nil, err
 	}
-	aggregateState.Suite = methodologySuiteFromCatalog(catalog)
+	if err := aggregateState.attachScenarioCatalog(catalog, assignments, results); err != nil {
+		return nil, err
+	}
 	aggregateState.Release = release
 	if RunAggregateComplete(assignments, results, aggregateState) {
 		if aggregateState.ProviderEnvironment, err = observationReader.ObservedProviderEnvironment(ctx, results); err != nil {
@@ -428,7 +430,7 @@ func (e *CampaignExporter) ExportRun(
 	}
 
 	// The bundle carries only the disclosure-safe public projection, so it is
-	// written as is, beside the encrypted evidence it was projected from.
+	// written as is, outside the sealed roots (normalizeRuntimeExportDir).
 	exportFiles := SealedFiles(fileSvc)
 	if err := exportFiles.MkdirAll(ctx, outputDir, constants.PermDirStandard); err != nil {
 		return nil, fmt.Errorf("evaluation: export campaign run: create output directory: %w", err)
@@ -660,11 +662,16 @@ func replaceModelSummaryRecords(base, verified []CampaignViewRecord) []CampaignV
 
 func normalizeRuntimeExportDir(runID, outputDir string) (string, error) {
 	if outputDir == "" {
-		outputDir = filepath.Join(evaluationRunDir(runID), "export")
+		outputDir = filepath.Join(constants.EvaluationCampaignExportDirname, runID)
 	}
 	outputDir = filepath.ToSlash(outputDir)
 	if filepath.IsAbs(outputDir) || strings.HasPrefix(outputDir, "/") || strings.ContainsAny(outputDir, "\\:") || outputDir == ".." || strings.HasPrefix(outputDir, "../") {
 		return "", fmt.Errorf("evaluation: export campaign run: %w", constants.ErrEvaluationExportDirNotRelative)
+	}
+	// Every file under a sealed root is ciphertext; a clear bundle there would
+	// be indistinguishable from evidence sealed under a lost vault.
+	if _, sealed := sealedPathAAD(outputDir); sealed {
+		return "", fmt.Errorf("evaluation: export campaign run: %s: %w", outputDir, constants.ErrEvaluationExportDirSealed)
 	}
 	return outputDir, nil
 }

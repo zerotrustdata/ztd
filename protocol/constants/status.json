@@ -113,18 +113,21 @@
         "value": "PLATFORM_ENROLLMENT_DECIDE"
       },
       "PLATFORM_ENROLLMENT_ISSUE": {
+        "_authorized_by_decision": true,
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentIssue",
         "_mutation": true,
         "value": "PLATFORM_ENROLLMENT_ISSUE"
       },
       "PLATFORM_ENROLLMENT_PERSIST_POLICY": {
+        "_authorized_by_decision": true,
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentPersistPolicy",
         "_mutation": true,
         "value": "PLATFORM_ENROLLMENT_PERSIST_POLICY"
       },
       "PLATFORM_ENROLLMENT_CREATE_SESSION": {
+        "_authorized_by_decision": true,
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentCreateSession",
         "_mutation": true,
@@ -135,6 +138,12 @@
         "_go_const": "ActionTypePlatformEnrollmentRevoke",
         "_mutation": true,
         "value": "PLATFORM_ENROLLMENT_REVOKE"
+      },
+      "PLATFORM_ENROLLMENT_BIND_CONSENSUS": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentBindConsensus",
+        "_mutation": true,
+        "value": "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
       },
       "PORT_CHECK": {
         "_go_const": "ActionTypePortCheck",
@@ -929,10 +938,6 @@
       "insert": {
         "_go_const": "FileOperationInsert",
         "value": "insert"
-      },
-      "patch": {
-        "_go_const": "FileOperationPatch",
-        "value": "patch"
       },
       "read": {
         "_go_const": "FileOperationRead",

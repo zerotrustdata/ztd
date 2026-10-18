@@ -24,9 +24,9 @@ import (
 
 // The gateway stores satisfy the embedded substrate interfaces.
 var (
-	_ embedded.Store            = (*DocumentStoreService)(nil)
-	_ embedded.SessionPersister = (*OperatorSessionService)(nil)
-	_ embeddedOperatorClaimer   = (*embedded.Service)(nil)
+	_ embedded.Store                    = (*DocumentStoreService)(nil)
+	_ embedded.OperatorSessionPersister = (*OperatorSessionService)(nil)
+	_ embeddedOperatorClaimer           = (*embedded.Service)(nil)
 )
 
 // BootstrapControllerDeps groups all dependencies for BootstrapController.

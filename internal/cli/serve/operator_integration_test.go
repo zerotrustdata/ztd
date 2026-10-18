@@ -34,28 +34,9 @@ func TestClassifyConfigLoadError_RealConfigLoadNoPosture_Succeeds(t *testing.T) 
 		WorkingDir: testutil.TempDir(t),
 	}
 	loadOpts := buildOperatorLoadOptions(opts, opts.Endpoint, opts.WorkingDir)
-	assert.Empty(t, loadOpts.Posture, "precondition: no posture supplied (operator reads posture per-envelope)")
 
 	cfg, err := config.Load(loadOpts)
 	require.NoError(t, err, "config.Load with empty posture should succeed (operator reads posture per-envelope)")
 	require.NotNil(t, cfg)
 	assert.Empty(t, cfg.Posture, "cfg.Posture should be empty when no posture was supplied")
-}
-
-// TestClassifyConfigLoadError_RealConfigLoadWithPosture_Succeeds verifies
-// the positive half: when a posture IS supplied (informational), config.Load
-// succeeds and the posture is preserved on the config.
-func TestClassifyConfigLoadError_RealConfigLoadWithPosture_Succeeds(t *testing.T) {
-	opts := ServeOperatorOptions{
-		Endpoint:   "127.0.0.1",
-		WorkingDir: testutil.TempDir(t),
-		Posture:    "doctrine",
-	}
-	loadOpts := buildOperatorLoadOptions(opts, opts.Endpoint, opts.WorkingDir)
-	assert.NotEmpty(t, loadOpts.Posture, "precondition: posture supplied (informational)")
-
-	cfg, err := config.Load(loadOpts)
-	require.NoError(t, err, "config.Load with a posture should succeed")
-	require.NotNil(t, cfg)
-	assert.Equal(t, config.GatewayPosture("doctrine"), cfg.Posture)
 }

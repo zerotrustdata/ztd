@@ -8,11 +8,15 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"strings"
 	"time"
 	"unicode"
 
@@ -20,7 +24,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // ConsensusStoreService provides ConsensusPolicy CRUD operations.
@@ -66,13 +73,37 @@ func (s *ConsensusStoreService) GetConsensus(ctx context.Context, id string) (*m
 	return &policy, nil
 }
 
+// GetBoundConsensusApp retrieves the single bound consensus application policy.
+func (s *ConsensusStoreService) GetBoundConsensusApp(ctx context.Context) (*models.ConsensusPolicy, error) {
+	return s.GetConsensus(ctx, string(constants.DocIDConsensusBinding))
+}
+
+// ClearConsensusBinding removes the bound consensus app if it matches appID (or if appID is empty).
+func (s *ConsensusStoreService) ClearConsensusBinding(ctx context.Context, appID string) error {
+	bound, err := s.GetBoundConsensusApp(ctx)
+	if err != nil || bound == nil {
+		return err
+	}
+	if appID == "" || len(bound.MemberAppIDs) == 0 || bound.MemberAppIDs[0] == appID {
+		_, err := s.DeleteConsensus(ctx, string(constants.DocIDConsensusBinding))
+		return err
+	}
+	return nil
+}
+
 // GetConsensusPolicy implements governance.L2ConsensusPolicyStore by loading
-// the ConsensusPolicy via GetConsensus and adapting it to the generic
+// the ConsensusPolicy via GetConsensus (or GetBoundConsensusApp) and adapting it to the generic
 // L2ConsensusPolicy struct.
 func (s *ConsensusStoreService) GetConsensusPolicy(ctx context.Context, id string) (*governance.L2ConsensusPolicy, error) {
 	policy, err := s.GetConsensus(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if policy == nil && (id == "" || id == string(constants.DocIDConsensusBinding)) {
+		policy, err = s.GetBoundConsensusApp(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if policy == nil {
 		return nil, nil
@@ -87,13 +118,16 @@ func (s *ConsensusStoreService) GetConsensusPolicy(ctx context.Context, id strin
 
 // OperatorL2Trust snapshots consensus set id and the enabled member keys for
 // an Operator enrollment bundle; the Operator verifies L2 votes against it
-// in memory. Nil when id is empty or names no policy.
-func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id string) (*models.OperatorL2Trust, error) {
-	if id == "" {
-		return nil, nil
+// in memory. If id is omitted or empty, it resolves the bound consensus app.
+func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...string) (*models.OperatorL2Trust, error) {
+	var policy *models.ConsensusPolicy
+	var err error
+	if len(id) > 0 && id[0] != "" {
+		policy, err = s.GetConsensus(ctx, id[0])
+	} else {
+		policy, err = s.GetBoundConsensusApp(ctx)
 	}
-	policy, err := s.GetConsensus(ctx, id)
-	if err != nil || policy == nil {
+	if err != nil || policy == nil || !policy.Enabled {
 		return nil, err
 	}
 	trust := &models.OperatorL2Trust{
@@ -116,6 +150,73 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id string) 
 	return trust, nil
 }
 
+// ConsensusAppDeliberator dispatches the GovernanceEnvelope to the bound consensus application's HTTPS endpoint.
+type ConsensusAppDeliberator struct {
+	store      *ConsensusStoreService
+	httpClient *http.Client
+}
+
+// NewConsensusAppDeliberator creates a new deliberator backed by the bound consensus app.
+func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Client) mcp.L2ConsensusDeliberator {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+	appClient := *httpClient
+	appClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return constants.ErrConsensusEndpointInvalid
+	}
+	return &ConsensusAppDeliberator{
+		store:      s,
+		httpClient: &appClient,
+	}
+}
+
+// Deliberate sends the envelope to the bound consensus app and verifies the returned envelope carries a ConsensusProof.
+func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
+	bound, err := d.store.GetBoundConsensusApp(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if bound == nil || !bound.Enabled || strings.TrimSpace(bound.EndpointURL) == "" {
+		return nil, constants.ErrTxL2ConsensusNotConfigured
+	}
+	if err := models.ValidateConsensusEndpoint(bound.EndpointURL); err != nil {
+		return nil, fmt.Errorf("consensus deliberation endpoint: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(envelopeBytes))
+	if err != nil {
+		return nil, fmt.Errorf("create consensus deliberation request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-protobuf")
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("consensus deliberation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("consensus deliberation failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read consensus response: %w", err)
+	}
+
+	var updated commonv1.GovernanceEnvelope
+	if err := proto.Unmarshal(respBytes, &updated); err != nil {
+		return nil, fmt.Errorf("unmarshal consensus envelope response: %w", err)
+	}
+	if updated.GetGovernance() == nil || updated.GetGovernance().GetL2() == nil || len(updated.GetGovernance().GetL2().GetVotes()) == 0 {
+		return nil, constants.ErrTxL2SignatureMissing
+	}
+
+	return respBytes, nil
+}
+
 // AddConsensus adds or updates a ConsensusPolicy in the database.
 // Validation at write time, fail-closed:
 // - Consensus ID is non-empty and contains only alphanumeric, hyphens, underscores
@@ -125,6 +226,11 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id string) 
 // - No duplicate member IDs
 // - New consensus must be created with Enabled=true (updates may disable)
 func (s *ConsensusStoreService) AddConsensus(ctx context.Context, policy models.ConsensusPolicy) error {
+	if policy.EndpointURL != "" || policy.ID == string(constants.DocIDConsensusBinding) {
+		if err := models.ValidateConsensusEndpoint(policy.EndpointURL); err != nil {
+			return err
+		}
+	}
 	if policy.ID == "" {
 		return fmt.Errorf("%w: consensus ID", constants.ErrMissingRequiredField)
 	}

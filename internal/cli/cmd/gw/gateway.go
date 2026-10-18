@@ -33,12 +33,11 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/cli/wizard"
-	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/network"
+	"github.com/zerotrustdata/ztd/internal/services/profiling"
 )
 
 func getBinaryName() string {
@@ -59,30 +58,27 @@ type GatewayFlags struct {
 	ProvenanceOperatorID               string
 	ProvenanceOperatorModelStorageRoot string
 
-	Posture            string
-	HTTPPort           int
-	HTTPSPort          int
-	DataDir            string
-	PKIDir             string
-	SecretsDir         string
-	VaultDir           string
-	PasskeyRpID        string
-	PasskeyRpName      string
-	PasskeyRpOrigins   []string
-	RateLimitRPS       float64
-	RateLimitBurst     int
-	LogLevel           string
-	CertIdentityMode   string
-	ConsensusID        string
-	ConsensusURL       string
-	ConsensusBootstrap string
-	MCPDownstreamURL   string
-	MCPDownstreamCmd   string
-	MCPDownstreamArgs  string
-	A2ADownstreamURL   string
-	PublicBaseURL      string
-	AllowedOrigins     []string
-	DoctrineDir        string
+	Posture           string
+	HTTPPort          int
+	HTTPSPort         int
+	DataDir           string
+	PKIDir            string
+	SecretsDir        string
+	VaultDir          string
+	PasskeyRpID       string
+	PasskeyRpName     string
+	PasskeyRpOrigins  []string
+	RateLimitRPS      float64
+	RateLimitBurst    int
+	LogLevel          string
+	CertIdentityMode  string
+	MCPDownstreamURL  string
+	MCPDownstreamCmd  string
+	MCPDownstreamArgs string
+	A2ADownstreamURL  string
+	PublicBaseURL     string
+	AllowedOrigins    []string
+	DoctrineDir       string
 
 	ListenHost                        string
 	PublicSpectatorEnabled            bool
@@ -92,6 +88,7 @@ type GatewayFlags struct {
 	EvalExplorerAddr                  string
 	EvalExplorerRoot                  string
 	PublicSpectatorTrustedProxyCIDRs  []string
+	PprofListenAddr                   string
 }
 
 // addGatewayFlags registers all shared gateway flags on the given cobra command,
@@ -104,7 +101,7 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringVar(&f.ProvenanceOperatorID, "provenance-operator-id", "", "Stable provenance identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory containing model weight blobs")
 
-	cmd.Flags().StringVar(&f.Posture, "posture", "doctrine", "Gateway posture: doctrine (L1 enforced, L2/L3 audited), consensus (L1/L2 enforced, L3 audited), ratify (L1/L3 enforced, L2 audited), notary (L1/L2/L3 strictly enforced)")
+	cmd.Flags().StringVar(&f.Posture, "posture", string(constants.DefaultPosture), postureFlagHelp())
 	cmd.Flags().IntVar(&f.HTTPPort, "http-port", 0, "Plain HTTP port for bootstrap, PKI discovery and enrollment (default: from constants.Ports.OperatorHttp)")
 	cmd.Flags().IntVar(&f.HTTPSPort, "https-port", 0, "HTTPS port for mTLS API (default: from constants.Ports.OperatorHttps)")
 	cmd.Flags().StringVar(&f.ListenHost, "listen-host", constants.LocalhostIP, "Bind host for the HTTP and HTTPS listeners (use 0.0.0.0 to listen on all interfaces, e.g. for container or LAN access)")
@@ -119,9 +116,6 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().IntVar(&f.RateLimitBurst, "rate-limit-burst", 0, "Gateway rate limit burst size")
 	cmd.Flags().StringVar(&f.LogLevel, "log", "info", "Log level: info, error, debug")
 	cmd.Flags().StringVar(&f.CertIdentityMode, "cert-mode", "", "Certificate mode: full (all hostnames/IPs), localhost (only localhost)")
-	cmd.Flags().StringVar(&f.ConsensusID, "consensus-id", "", "ID of the ConsensusPolicy for L2 consensus (required for --consensus)")
-	cmd.Flags().StringVar(&f.ConsensusURL, "consensus-url", "", "URL of the Consensus service for L2 deliberation (e.g. https://localhost:8443/consensus/v1/deliberate)")
-	cmd.Flags().StringVar(&f.ConsensusBootstrap, "consensus-bootstrap", "", "Path to a JSON file that seeds a ConsensusPolicy and trusted signers at startup (for deterministic demo deployments)")
 	cmd.Flags().StringVar(&f.MCPDownstreamURL, "mcp-downstream-url", "", "URL of a downstream MCP server to proxy discovery and execution to (default: none)")
 	cmd.Flags().StringVar(&f.MCPDownstreamCmd, "mcp-downstream-cmd", "", "Command of a downstream MCP subprocess to proxy discovery and execution to (default: none)")
 	cmd.Flags().StringVar(&f.MCPDownstreamArgs, "mcp-downstream-args", "", "Comma-separated arguments for the downstream MCP subprocess (default: none)")
@@ -136,6 +130,17 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringVar(&f.EvalExplorerAddr, "eval-explorer-listen", "", fmt.Sprintf("Loopback address for the evaluation explorer SPA (default: 127.0.0.1:%d)", constants.EvalExplorerDefaultPort))
 	cmd.Flags().StringVar(&f.EvalExplorerRoot, "eval-explorer-root", "", "Directory containing the built evaluation explorer dist assets")
 	cmd.Flags().StringArrayVar(&f.PublicSpectatorTrustedProxyCIDRs, "public-spectator-trusted-proxy-cidr", nil, "Trusted proxy CIDR allowed to provide exactly one CF-Connecting-IP address (repeatable)")
+	cmd.Flags().StringVar(&f.PprofListenAddr, "pprof-listen", "", fmt.Sprintf("Loopback address serving Go pprof profiles at /debug/pprof/, e.g. 127.0.0.1:%d (default: disabled)", constants.ProfilingSuggestedPort))
+}
+
+// postureFlagHelp describes every posture for the --posture flag, generated
+// from the constants.Posture owner so the help cannot drift from enforcement.
+func postureFlagHelp() string {
+	descriptions := make([]string, 0, len(constants.AllPostures))
+	for _, p := range constants.AllPostures {
+		descriptions = append(descriptions, p.Description())
+	}
+	return "Gateway posture: " + strings.Join(descriptions, ", ")
 }
 
 // resolveGatewayFlags finalizes gateway flag values. Gateway configuration is
@@ -157,7 +162,7 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		ProviderBoundaryObserverID:         f.ProviderBoundaryObserverID,
 		ProvenanceOperatorID:               f.ProvenanceOperatorID,
 		ProvenanceOperatorModelStorageRoot: f.ProvenanceOperatorModelStorageRoot,
-		Posture:                            ztdconfig.GatewayPosture(f.Posture),
+		Posture:                            constants.Posture(f.Posture),
 		HTTPPort:                           f.HTTPPort,
 		HTTPSPort:                          f.HTTPSPort,
 		ListenHost:                         f.ListenHost,
@@ -172,9 +177,6 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		RateLimitBurst:                     f.RateLimitBurst,
 		LogLevel:                           f.LogLevel,
 		CertIdentityMode:                   f.CertIdentityMode,
-		ConsensusID:                        f.ConsensusID,
-		ConsensusURL:                       f.ConsensusURL,
-		ConsensusBootstrap:                 f.ConsensusBootstrap,
 		MCPDownstreamURL:                   f.MCPDownstreamURL,
 		MCPDownstreamCmd:                   f.MCPDownstreamCmd,
 		MCPDownstreamArgs:                  parseDownstreamArgs(f.MCPDownstreamArgs),
@@ -189,6 +191,7 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		EvalExplorerAddr:                   f.EvalExplorerAddr,
 		EvalExplorerRoot:                   f.EvalExplorerRoot,
 		PublicSpectatorTrustedProxyCIDRs:   f.PublicSpectatorTrustedProxyCIDRs,
+		PprofListenAddr:                    f.PprofListenAddr,
 	}
 }
 
@@ -219,18 +222,15 @@ func defaultWizardRunner(opts wizard.Options) (wizard.Result, error) {
 // Only wizard-owned fields are included — the wizard never sees flags it cannot edit.
 func wizardConfigFromFlags(f GatewayFlags) wizard.Config {
 	return wizard.Config{
-		PublicBaseURL:      f.PublicBaseURL,
-		CertIdentityMode:   f.CertIdentityMode,
-		AllowedOrigins:     f.AllowedOrigins,
-		Posture:            f.Posture,
-		ConsensusID:        f.ConsensusID,
-		ConsensusURL:       f.ConsensusURL,
-		ConsensusBootstrap: f.ConsensusBootstrap,
-		PasskeyRpID:        f.PasskeyRpID,
-		PasskeyRpName:      f.PasskeyRpName,
-		PasskeyRpOrigins:   f.PasskeyRpOrigins,
-		MCPDownstreamURL:   f.MCPDownstreamURL,
-		A2ADownstreamURL:   f.A2ADownstreamURL,
+		PublicBaseURL:    f.PublicBaseURL,
+		CertIdentityMode: f.CertIdentityMode,
+		AllowedOrigins:   f.AllowedOrigins,
+		Posture:          f.Posture,
+		PasskeyRpID:      f.PasskeyRpID,
+		PasskeyRpName:    f.PasskeyRpName,
+		PasskeyRpOrigins: f.PasskeyRpOrigins,
+		MCPDownstreamURL: f.MCPDownstreamURL,
+		A2ADownstreamURL: f.A2ADownstreamURL,
 	}
 }
 
@@ -242,9 +242,6 @@ func applyWizardConfig(f GatewayFlags, wc wizard.Config) GatewayFlags {
 	f.CertIdentityMode = wc.CertIdentityMode
 	f.AllowedOrigins = wc.AllowedOrigins
 	f.Posture = wc.Posture
-	f.ConsensusID = wc.ConsensusID
-	f.ConsensusURL = wc.ConsensusURL
-	f.ConsensusBootstrap = wc.ConsensusBootstrap
 	f.PasskeyRpID = wc.PasskeyRpID
 	f.PasskeyRpName = wc.PasskeyRpName
 	f.PasskeyRpOrigins = wc.PasskeyRpOrigins
@@ -362,8 +359,6 @@ Any flags provided on the command line are used as initial values in the wizard.
 			cmd.Printf("  Posture:            %s\n", resolved.Posture)
 			cmd.Printf("  Public Base URL:    %s\n", resolved.PublicBaseURL)
 			cmd.Printf("  Cert Identity Mode: %s\n", resolved.CertIdentityMode)
-			cmd.Printf("  Consensus ID:       %s\n", resolved.ConsensusID)
-			cmd.Printf("  Consensus URL:      %s\n", resolved.ConsensusURL)
 			cmd.Printf("  MCP Downstream URL: %s\n", resolved.MCPDownstreamURL)
 			cmd.Printf("  A2A Downstream URL: %s\n", resolved.A2ADownstreamURL)
 			cmd.Printf("  Passkey RP ID:      %s\n", resolved.PasskeyRpID)
@@ -455,9 +450,14 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 
 			// Validate posture at CLI edge for clean error messages (before
 			// network detection to fail fast on invalid input)
-			postureObj, err := governance.ParseGovernancePosture(resolved.Posture)
+			posture, err := constants.ParsePosture(resolved.Posture)
 			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrInvalidPosture, err)
+				return err
+			}
+			if resolved.PprofListenAddr != "" {
+				if err := profiling.ValidateListenAddress(resolved.PprofListenAddr); err != nil {
+					return err
+				}
 			}
 
 			// A running Gateway is checked before identity detection so a
@@ -494,7 +494,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			// Foreground mode: run gateway directly in the current process
 			if follow {
 				cmd.Println("[ztd] Starting ztd Gateway in foreground...")
-				cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
+				cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
 
 				// Write network identity to file if needed
 				var networkIdentityFile string
@@ -536,7 +536,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			}
 
 			cmd.Println("[ztd] Starting ztd Gateway service...")
-			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
+			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
 
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
@@ -565,7 +565,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			cmd.Printf("[ztd] Gateway started (PID: %d)\n", pid)
 			cmd.Println()
 			printListenHostNotice(cmd, gatewayCfg.ListenHost)
-			printNextSteps(cmd, postureObj, gatewayCfg, network.GetExternalInterfaceIP())
+			printNextSteps(cmd, posture, gatewayCfg, network.GetExternalInterfaceIP())
 
 			return nil
 		},
@@ -801,11 +801,10 @@ restart.`,
 			}
 
 			cmd.Println("ztd Gateway restarted successfully")
-			postureObj, _ := governance.ParseGovernancePosture(string(profile.Config.Posture))
-			cmd.Printf("[ztd] Gateway posture: %s\n", postureObj.Description())
+			cmd.Printf("[ztd] Gateway posture: %s\n", profile.Config.Posture.Description())
 			cmd.Println()
 			printListenHostNotice(cmd, profile.Config.ListenHost)
-			printNextSteps(cmd, postureObj, profile.Config, network.GetExternalInterfaceIP())
+			printNextSteps(cmd, profile.Config.Posture, profile.Config, network.GetExternalInterfaceIP())
 			return nil
 		},
 	}

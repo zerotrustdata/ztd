@@ -60,17 +60,17 @@ func mirrorProjectionMatchesCampaignRun(item models.PublicFeedObject, runID stri
 	return false
 }
 
-func mirrorProjectionWithdrawn(state *PublicMirrorSourceState, item models.PublicFeedObject) bool {
-	if state == nil || len(state.WithdrawnDatasetIDs) == 0 {
+func mirrorProjectionWithdrawn(withdrawn map[string]bool, item models.PublicFeedObject) bool {
+	if len(withdrawn) == 0 {
 		return false
 	}
-	if datasetID, ok := item.StringField("dataset_id"); ok && state.WithdrawnDatasetIDs[datasetID] {
+	if datasetID, ok := item.StringField("dataset_id"); ok && withdrawn[datasetID] {
 		return true
 	}
-	if runID, ok := item.StringField("run_id"); ok && state.WithdrawnDatasetIDs[campaignMirrorDatasetID(runID)] {
+	if runID, ok := item.StringField("run_id"); ok && withdrawn[campaignMirrorDatasetID(runID)] {
 		return true
 	}
-	for withdrawnDatasetID := range state.WithdrawnDatasetIDs {
+	for withdrawnDatasetID := range withdrawn {
 		if !strings.HasPrefix(withdrawnDatasetID, campaignMirrorDatasetPrefix) {
 			continue
 		}
@@ -84,13 +84,13 @@ func mirrorProjectionWithdrawn(state *PublicMirrorSourceState, item models.Publi
 
 // mirrorWithdrawalDigest is the SHA-256 over the source's sorted withdrawn
 // dataset IDs, or the zero hash when nothing is withdrawn.
-func mirrorWithdrawalDigest(state *PublicMirrorSourceState) string {
-	if state == nil || len(state.WithdrawnDatasetIDs) == 0 {
+func mirrorWithdrawalDigest(withdrawn map[string]bool) string {
+	if len(withdrawn) == 0 {
 		return constants.PublicFeedZeroHashHex
 	}
-	ids := make([]string, 0, len(state.WithdrawnDatasetIDs))
-	for id, withdrawn := range state.WithdrawnDatasetIDs {
-		if withdrawn {
+	ids := make([]string, 0, len(withdrawn))
+	for id, isWithdrawn := range withdrawn {
+		if isWithdrawn {
 			ids = append(ids, id)
 		}
 	}
@@ -102,15 +102,15 @@ func mirrorWithdrawalDigest(state *PublicMirrorSourceState) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func mirrorRecordWithdrawn(state *PublicMirrorSourceState, record models.PublicFeedRecord) bool {
-	if state == nil || len(state.WithdrawnDatasetIDs) == 0 {
+func mirrorRecordWithdrawn(withdrawn map[string]bool, record models.PublicFeedRecord) bool {
+	if len(withdrawn) == 0 {
 		return false
 	}
 	var item models.PublicFeedObject
 	if err := json.Unmarshal([]byte(record.RecordBytes), &item); err != nil {
 		return false
 	}
-	return mirrorProjectionWithdrawn(state, item)
+	return mirrorProjectionWithdrawn(withdrawn, item)
 }
 
 // WithdrawCampaignDataset hides one live campaign dataset from anonymous mirror
@@ -121,28 +121,31 @@ func (m *PublicMirrorServer) WithdrawCampaignDataset(ctx context.Context, runID 
 		return fmt.Errorf("public mirror: withdraw campaign dataset: %w", constants.ErrMissingRequiredField)
 	}
 	datasetID := campaignMirrorDatasetID(runID)
-	var sourceID string
-	if err := m.mutateState(ctx, func(storeState *PublicMirrorStoreState) error {
-		sourceID = activePublicMirrorSourceID(*storeState)
-		if sourceID == "" {
-			return nil
-		}
-		state, ok := storeState.Sources[sourceID]
-		if !ok || state == nil {
-			state = newPublicMirrorSourceState()
-			storeState.Sources[sourceID] = state
-		}
-		if state.WithdrawnDatasetIDs == nil {
-			state.WithdrawnDatasetIDs = make(map[string]bool)
-		}
-		state.WithdrawnDatasetIDs[datasetID] = true
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	m.mu.RLock()
+	sourceID := m.activeSourceIDLocked()
+	m.mu.RUnlock()
+	if sourceID == "" {
 		return nil
-	}); err != nil {
+	}
+	next := m.currentSourceSummary(sourceID)
+	if next.WithdrawnDatasetIDs[datasetID] {
+		return nil
+	}
+	withdrawn := make(map[string]bool, len(next.WithdrawnDatasetIDs)+1)
+	for id, isWithdrawn := range next.WithdrawnDatasetIDs {
+		withdrawn[id] = isWithdrawn
+	}
+	withdrawn[datasetID] = true
+	next.WithdrawnDatasetIDs = withdrawn
+	if err := m.store.withdrawDataset(ctx, next, datasetID); err != nil {
 		return fmt.Errorf("public mirror: withdraw campaign dataset %s: %w", runID, err)
 	}
-	if sourceID != "" {
-		m.requestSnapshotResync(sourceID)
-	}
+	m.mu.Lock()
+	m.sources[sourceID] = &next
+	m.mu.Unlock()
+	m.requestSnapshotResync(sourceID)
 	return nil
 }
 
@@ -154,10 +157,9 @@ func (m *PublicMirrorServer) CampaignDatasetWithdrawn(runID string) bool {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	sourceID := activePublicMirrorSourceID(m.state)
-	state := m.state.Sources[sourceID]
-	if state == nil {
+	summary := m.sources[m.activeSourceIDLocked()]
+	if summary == nil {
 		return false
 	}
-	return state.WithdrawnDatasetIDs[campaignMirrorDatasetID(runID)]
+	return summary.WithdrawnDatasetIDs[campaignMirrorDatasetID(runID)]
 }

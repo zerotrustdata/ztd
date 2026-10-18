@@ -7,7 +7,7 @@
 // before any adapter conversion is allowed.
 
 import { parseWireActivityFamily, WIRE_UNAVAILABLE_REASONS, type WireActivityFamily } from './activity-family';
-import { PUBLIC_UNAVAILABLE_REASONS, TOOL_SCORE_DIMENSIONS, type ReleaseBasis, type ReleaseProvenance, type RoleTranscript, type ToolScoreDimension } from './types';
+import { PUBLIC_UNAVAILABLE_REASONS, SECURITY_PRIVACY_EVENTS, TOOL_SCORE_DIMENSIONS, type ReleaseBasis, type ReleaseProvenance, type RoleTranscript, type SecurityPrivacyEvent, type ToolScoreDimension } from './types';
 import {
   EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_VALUES,
   EVALUATION_GRADING_METHOD_VALUES,
@@ -162,6 +162,8 @@ export interface WireBenchmarkGradeSummary {
 export interface WireBenchmarkObservations {
   grade_summaries?: WireBenchmarkGradeSummary[];
   tool_scorecard?: Partial<Record<ToolScoreDimension, WireMetric>>;
+  /** Set only for security-policy scenarios. */
+  security_privacy_events?: Partial<Record<SecurityPrivacyEvent, number>>;
   timing?: Partial<Record<(typeof BENCHMARK_TIMING_FIELDS)[number], WireMetric>>;
   gpu?: Partial<Record<(typeof BENCHMARK_GPU_FIELDS)[number], WireMetric>>;
   unavailable_reasons?: string[] | null;
@@ -655,7 +657,7 @@ function assertVerificationMetadata(value: unknown, path: string): void {
 
 function assertBenchmarkObservations(value: unknown, path: string): void {
   assertObject(value, path);
-  rejectUnknown(value, ['grade_summaries', 'tool_scorecard', 'timing', 'gpu', 'unavailable_reasons'], path);
+  rejectUnknown(value, ['grade_summaries', 'tool_scorecard', 'security_privacy_events', 'timing', 'gpu', 'unavailable_reasons'], path);
   if (value.grade_summaries !== undefined) {
     assert(Array.isArray(value.grade_summaries), `${path}.grade_summaries`, 'expected array');
     assert(value.grade_summaries.length <= 64, `${path}.grade_summaries`, 'expected at most 64 entries');
@@ -674,6 +676,13 @@ function assertBenchmarkObservations(value: unknown, path: string): void {
     assertObject(value.tool_scorecard, `${path}.tool_scorecard`);
     rejectUnknown(value.tool_scorecard, TOOL_SCORE_DIMENSIONS, `${path}.tool_scorecard`);
     for (const [key, metric] of Object.entries(value.tool_scorecard)) assertMetric(metric, `${path}.tool_scorecard.${key}`);
+  }
+  if (value.security_privacy_events !== undefined) {
+    assertObject(value.security_privacy_events, `${path}.security_privacy_events`);
+    rejectUnknown(value.security_privacy_events, SECURITY_PRIVACY_EVENTS, `${path}.security_privacy_events`);
+    for (const [key, count] of Object.entries(value.security_privacy_events)) {
+      assertInteger(count, `${path}.security_privacy_events.${key}`, 0xffff_ffff);
+    }
   }
   for (const [family, fields] of Object.entries({ timing: BENCHMARK_TIMING_FIELDS, gpu: BENCHMARK_GPU_FIELDS })) {
     if (value[family] === undefined) continue;

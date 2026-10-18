@@ -15,7 +15,7 @@ describe('ModelsView', () => {
     evalStore.loadFixtures(allFixtureSnapshotRecords, fixtureLiveEvents);
   });
 
-  it('shows denominators, neutral inventory pills, unevaluated results and selected comparison rows', () => {
+  it('shows denominators, neutral inventory pills, and unevaluated results', () => {
     const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
     evalStore.loadFixtures([
       { ...source, display_name: 'Measured', variant_id: 'measured' },
@@ -29,8 +29,6 @@ describe('ModelsView', () => {
     expect(inventory.queryByText('0.0%')).not.toBeInTheDocument();
     const measured = screen.getByRole('link', { name: 'Measured' }).closest('tr')!;
     expect(measured).toHaveTextContent(`n=${source.pass_rate!.denominator}`);
-    fireEvent.click(within(measured).getByRole('checkbox', { name: 'Select Measured for comparison' }));
-    expect(measured).toHaveClass('data-row-selected');
     expect(screen.getByTestId('stat-inventory-only-models')).toHaveTextContent('1');
   });
 
@@ -45,33 +43,15 @@ describe('ModelsView', () => {
     );
 
     expect(screen.getAllByTestId('quality-exploratory_verified').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Run-scoped verification passed').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Verified').length).toBeGreaterThan(0);
   });
 
-  it('downgrades a stale verified-public record to legacy before rendering', () => {
+  it('prevents incomplete coverage from rendering as verified', () => {
     const source = allFixtureSnapshotRecords.find(
       (record): record is ModelSummary => record.kind === 'model_summary' && record.variant_id === 'gemma4-12b',
     );
     expect(source).toBeDefined();
-    evalStore.loadFixtures([{ ...source!, schema_version: '1.2.0', quality_state: 'verified_public' }], []);
-    render(
-      <MemoryRouter initialEntries={['/?release=all']}>
-        <ModelsView />
-      </MemoryRouter>,
-    );
-
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by evaluation status' }), { target: { value: 'all' } });
-    expect(screen.getByRole('link', { name: 'Gemma 4 12B' }).closest('tr')).toHaveTextContent(
-      'Legacy · not current-standard verified',
-    );
-  });
-
-  it('prevents incomplete current-schema coverage from rendering as verified', () => {
-    const source = allFixtureSnapshotRecords.find(
-      (record): record is ModelSummary => record.kind === 'model_summary' && record.variant_id === 'gemma4-12b',
-    );
-    expect(source).toBeDefined();
-    evalStore.loadFixtures([{ ...source!, schema_version: VIEW_SCHEMA_VERSION, quality_state: 'verified_public' }], []);
+    evalStore.loadFixtures([{ ...source!, schema_version: VIEW_SCHEMA_VERSION, quality_state: 'exploratory_verified' }], []);
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
         <ModelsView />
@@ -82,7 +62,7 @@ describe('ModelsView', () => {
     expect(screen.getByRole('link', { name: 'Gemma 4 12B' }).closest('tr')).toHaveTextContent('Not fully verified');
   });
 
-  it('labels the historical Gemma 4 12B result as not verified to current standards', () => {
+  it('labels the historical Gemma 4 12B result as legacy unverified', () => {
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
         <ModelsView />
@@ -91,7 +71,7 @@ describe('ModelsView', () => {
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by evaluation status' }), { target: { value: 'all' } });
     const gemma12b = screen.getByRole('link', { name: 'Gemma 4 12B' });
-    expect(gemma12b.closest('tr')).toHaveTextContent('Legacy · not current-standard verified');
+    expect(gemma12b.closest('tr')).toHaveTextContent('Legacy · unverified');
   });
 
   it('lists models from every dataset without a dataset selector', () => {
@@ -151,7 +131,7 @@ describe('ModelsView', () => {
     const labels = Array.from(qualityFilter.querySelectorAll('option')).map((option) => option.textContent);
     expect(labels).toEqual([
       'All quality states',
-      'Run-scoped verification passed',
+      'Verified',
       'Not fully verified',
     ]);
     expect(labels).not.toContain('Current-standard verified');
@@ -174,9 +154,96 @@ describe('ModelsView', () => {
     );
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by quality state' }), { target: { value: 'exploratory_verified' } });
-    expect(screen.getByRole('link', { name: 'Verified model' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Other dataset model' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('quality-exploratory_verified')).toHaveTextContent('Run-scoped verification passed');
+    const catalogTable = within(screen.getByRole('table', { name: 'Model catalog' }));
+    expect(catalogTable.getByRole('link', { name: 'Verified model' })).toBeInTheDocument();
+    expect(catalogTable.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
+    expect(catalogTable.queryByRole('link', { name: 'Other dataset model' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('quality-exploratory_verified')).toHaveTextContent('Verified');
+  });
+
+  it('shows only fully evaluated, verified role leaders and their ranking evidence on the Models view', () => {
+    const model: ModelSummary = {
+      schema_version: '1.7.0',
+      kind: 'model_summary',
+      dataset_id: 'ds-leader',
+      observed_at: '2026-10-06T00:00:00Z',
+      quality_state: 'exploratory_verified',
+      variant_id: 'leader',
+      served_model_tag: 'qwen:4b',
+      display_name: 'Qualified model',
+      role: 'assistant',
+      inventory_only: false,
+      evaluation_coverage: 1,
+      pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
+      latency_p50_ms: { value: 1200 },
+      output_tokens: { value: 150 },
+      security_resistance: { value: 0.5, refused: 1, yielded: 0, persisted: 1 },
+    };
+    evalStore.loadFixtures(
+      [
+        model,
+        { ...model, variant_id: 'unverified', display_name: 'Unverified model', role: 'primary', quality_state: 'exploratory_partial' },
+        { ...model, variant_id: 'partial', display_name: 'Partial model', role: 'lite', evaluation_coverage: 0.5 },
+        {
+          schema_version: '1.3.0',
+          kind: 'evaluation_summary',
+          dataset_id: 'ds-leader',
+          quality_state: 'live_in_progress',
+          observed_at: '2026-10-06T00:00:00Z',
+          run_id: 'run-leader',
+          suite_id: 'eval-init-suite',
+          arm: 'platform',
+          evaluation_unit: 'model',
+          model_role_mapping: {},
+          lifecycle_state: 'completed',
+          assignment_total: 75,
+          assignment_completed: 10,
+          assignment_failed: 0,
+          terminal_outcomes: { completed: 10, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+          started_at: '2026-10-06T00:00:00Z',
+          elapsed_seconds: 60,
+          verifier_state: 'not_applicable',
+          headline_metrics: {},
+        },
+      ],
+      [],
+    );
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <ModelsView />
+      </MemoryRouter>,
+    );
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('link', { name: 'Qualified model' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Unverified model' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
+    expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
+    // Sole model in its role: every axis at full weight, so 100 × 0.8 × 0.5 = 40 points.
+    expect(panel.getByText('40.0')).toBeInTheDocument();
+    expect(panel.getByText('50%')).toBeInTheDocument();
+    expect(panel.getByText('4B')).toBeInTheDocument();
+    expect(panel.getByText('1.20 s')).toBeInTheDocument();
+    for (const header of ['Points', 'Security', 'Speed', 'Tokens', 'Size', 'Eval time']) {
+      expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
+    }
+    expect(panel.queryByRole('columnheader', { name: 'Pass rate' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('columnheader', { name: 'Coverage' })).not.toBeInTheDocument();
+  });
+
+  it('displays model capabilities, architecture specs, and supports capability filtering', () => {
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <ModelsView />
+      </MemoryRouter>,
+    );
+
+    const catalogTable = within(screen.getByRole('table', { name: 'Model catalog' }));
+    expect(catalogTable.getByRole('columnheader', { name: /Architecture & specs/i })).toBeInTheDocument();
+    expect(catalogTable.getByRole('columnheader', { name: /Capabilities/i })).toBeInTheDocument();
+    expect(catalogTable.getByRole('columnheader', { name: /Evaluations/i })).toBeInTheDocument();
+
+    const capabilityBar = within(screen.getByRole('group', { name: 'Filter by probed capability' }));
+    expect(capabilityBar.getByRole('button', { name: /Tool Calling/i })).toBeInTheDocument();
+    expect(capabilityBar.getByRole('button', { name: /Structured JSON/i })).toBeInTheDocument();
   });
 });

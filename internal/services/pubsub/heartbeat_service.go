@@ -299,14 +299,6 @@ func (hs *HeartbeatService) buildProtoHeartbeat(h *models.Heartbeat) *operatorv1
 	return p
 }
 
-// Publish publishes a heartbeat to the results publisher.
-func (hs *HeartbeatService) Publish(ctx context.Context, heartbeat *operatorv1.HeartbeatResult) error {
-	if hs.results == nil {
-		return constants.ErrPubSubResultsPublisher
-	}
-	return hs.results.PublishHeartbeat(ctx, heartbeat)
-}
-
 // HandleRequest processes an inbound heartbeat request message.
 func (hs *HeartbeatService) HandleRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var protoReq operatorv1.HeartbeatRequested

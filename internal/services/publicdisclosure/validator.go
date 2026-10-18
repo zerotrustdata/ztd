@@ -186,11 +186,12 @@ type metric struct {
 }
 
 type benchmark struct {
-	GradeSummaries     []json.RawMessage          `json:"grade_summaries,omitempty"`
-	ToolScorecard      map[string]json.RawMessage `json:"tool_scorecard,omitempty"`
-	Timing             map[string]json.RawMessage `json:"timing,omitempty"`
-	GPU                map[string]json.RawMessage `json:"gpu,omitempty"`
-	UnavailableReasons []string                   `json:"unavailable_reasons"`
+	GradeSummaries        []json.RawMessage          `json:"grade_summaries,omitempty"`
+	ToolScorecard         map[string]json.RawMessage `json:"tool_scorecard,omitempty"`
+	SecurityPrivacyEvents map[string]uint32          `json:"security_privacy_events,omitempty"`
+	Timing                map[string]json.RawMessage `json:"timing,omitempty"`
+	GPU                   map[string]json.RawMessage `json:"gpu,omitempty"`
+	UnavailableReasons    []string                   `json:"unavailable_reasons"`
 }
 
 func validateBenchmark(raw json.RawMessage) error {
@@ -216,6 +217,11 @@ func validateBenchmark(raw json.RawMessage) error {
 		}
 		if err := validateMetric(value); err != nil {
 			return err
+		}
+	}
+	for key := range value.SecurityPrivacyEvents {
+		if key != "model_attempted_unauthorized_access" {
+			return schemaError("unknown security privacy event")
 		}
 	}
 	for _, value := range value.Timing {
@@ -711,7 +717,7 @@ func validatePublicFeedKeyRevocation(recordBytes []byte) error {
 
 func publicFeedViewSchemaVersion(value string) bool {
 	switch value {
-	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0":
+	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0":
 		return true
 	default:
 		return false
@@ -738,7 +744,7 @@ func publicFeedEventKind(value string) bool {
 
 func publicFeedQualityState(value string) bool {
 	switch value {
-	case "verified_public", "exploratory_verified", "exploratory_partial", "legacy_unverified", "live_in_progress", "terminal_failed", "dead_evidence", "not_evaluated", "unavailable":
+	case "exploratory_verified", "exploratory_partial", "legacy_unverified", "live_in_progress", "terminal_failed", "dead_evidence", "not_evaluated", "unavailable":
 		return true
 	default:
 		return false

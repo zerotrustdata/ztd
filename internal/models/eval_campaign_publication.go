@@ -26,3 +26,10 @@ type EvalCampaignPublicationState struct {
 	PublishedProofArtifacts map[string]EvalCampaignPublishedProofArtifacts `json:"published_proof_artifacts"`
 	LastPublishedSequence   int64                                          `json:"last_published_sequence"`
 }
+
+// EvalCampaignPublicationDiscardResponse confirms that the gateway discarded
+// one run's publication.
+type EvalCampaignPublicationDiscardResponse struct {
+	RunID     string `json:"run_id"`
+	Discarded bool   `json:"discarded"`
+}

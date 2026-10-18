@@ -10,9 +10,7 @@ package pubsub
 import (
 	"fmt"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/consensus"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 )
@@ -40,9 +38,8 @@ type GatewayModeDeps struct {
 	GovernedDocStore       governance.GovernedDocumentStore
 	ConsensusPolicyStore   governance.L2ConsensusPolicyStore
 	FieldReader            mcp.FieldReader
-	Consensus              *consensus.ConsensusService
 	PlatformEnrollmentDeps *PlatformEnrollmentDeps
-	Posture                config.GatewayPosture
+	Posture                constants.Posture
 }
 
 // OutboundModeDeps embeds GovernanceCoreDeps and adds the consensus policy
@@ -109,8 +106,8 @@ func NewGatewayModeDeps(deps GatewayModeDeps) (*GatewayModeDeps, error) {
 	if deps.PlatformEnrollmentDeps == nil {
 		return nil, fmt.Errorf("mode_deps: platform enrollment deps: %w", constants.ErrPlatformEnrollmentDepsRequired)
 	}
-	if deps.Posture.RequiresL2() && deps.Consensus == nil {
-		return nil, fmt.Errorf("mode_deps: consensus: %w", constants.ErrConsensusServiceRequired)
+	if !deps.Posture.Valid() {
+		return nil, fmt.Errorf("mode_deps: posture: %w: %q", constants.ErrInvalidPosture, deps.Posture)
 	}
 	return &deps, nil
 }

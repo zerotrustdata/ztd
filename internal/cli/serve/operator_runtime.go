@@ -223,9 +223,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	cfg.OperatorID = identity.OperatorID
 	cfg.OperatorSessionId = identity.OperatorSessionID
 	cfg.SystemFingerprint = identity.SystemFingerprint
-	if identity.Posture != "" {
-		cfg.Posture = config.GatewayPosture(identity.Posture)
-	}
+	cfg.Posture = identity.Posture
 	if identity.MaxConcurrentTasks > 0 {
 		cfg.MaxConcurrentTasks = identity.MaxConcurrentTasks
 	}

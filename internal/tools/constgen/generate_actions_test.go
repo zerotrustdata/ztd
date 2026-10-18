@@ -8,6 +8,10 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,6 +145,96 @@ func TestGenerateActionTypesGo_IsDeterministicAcrossMapIterationOrder(t *testing
 	for range 20 {
 		again := generateActionTypesGo(sampleActionTypes())
 		require.Equal(t, first, again)
+	}
+}
+
+func TestGenerateActionTypesGo_ClassificationPredicatesHandleEmptyAndPopulatedSets(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		actionTypes map[string]actionTypeMeta
+		wantCases   map[string][]string
+	}{
+		{name: "nil registry"},
+		{name: "empty registry", actionTypes: map[string]actionTypeMeta{}},
+		{
+			name: "unclassified action",
+			actionTypes: map[string]actionTypeMeta{
+				"READ": {GoConst: "ActionRead", Value: "READ"},
+			},
+		},
+		{
+			name: "mutation without bootstrap or decision authorization",
+			actionTypes: map[string]actionTypeMeta{
+				"WRITE": {GoConst: "ActionWrite", Value: "WRITE", Mutation: true},
+			},
+			wantCases: map[string][]string{"IsMutation": {"ActionWrite"}},
+		},
+		{
+			name: "bootstrap without mutation or decision authorization",
+			actionTypes: map[string]actionTypeMeta{
+				"ENROLL": {GoConst: "ActionEnroll", Value: "ENROLL", Bootstrap: true},
+			},
+			wantCases: map[string][]string{"IsBootstrapAction": {"ActionEnroll"}},
+		},
+		{
+			name: "decision authorization selects only flagged actions in key order",
+			actionTypes: map[string]actionTypeMeta{
+				"C_ISSUE":  {GoConst: "ActionIssue", Value: "ISSUE", Mutation: true, Bootstrap: true, AuthorizedByDecision: true},
+				"B_DECIDE": {GoConst: "ActionDecide", Value: "DECIDE", Mutation: true, Bootstrap: true},
+				"A_APPLY":  {GoConst: "ActionApply", Value: "APPLY", Mutation: true, Bootstrap: true, AuthorizedByDecision: true},
+				"D_READ":   {GoConst: "ActionRead", Value: "READ"},
+			},
+			wantCases: map[string][]string{
+				"IsMutation":           {"ActionApply", "ActionDecide", "ActionIssue"},
+				"IsBootstrapAction":    {"ActionApply", "ActionDecide", "ActionIssue"},
+				"AuthorizedByDecision": {"ActionApply", "ActionIssue"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := generateActionTypesGo(tc.actionTypes)
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "generated.go", source, parser.AllErrors)
+			require.NoError(t, err, "generated source must be valid Go:\n%s", source)
+			var config types.Config
+			_, err = config.Check("constants", fset, []*ast.File{file}, nil)
+			require.NoError(t, err, "generated source must type-check")
+
+			var methods []string
+			for _, decl := range file.Decls {
+				method, ok := decl.(*ast.FuncDecl)
+				if !ok {
+					continue
+				}
+				methods = append(methods, method.Name.Name)
+				var cases []string
+				var defaultReturns []string
+				ast.Inspect(method.Body, func(node ast.Node) bool {
+					clause, ok := node.(*ast.CaseClause)
+					if !ok {
+						return true
+					}
+					for _, expr := range clause.List {
+						cases = append(cases, expr.(*ast.Ident).Name)
+					}
+					for _, stmt := range clause.Body {
+						ret, ok := stmt.(*ast.ReturnStmt)
+						require.True(t, ok)
+						require.Len(t, ret.Results, 1)
+						value := ret.Results[0].(*ast.Ident).Name
+						if clause.List == nil {
+							defaultReturns = append(defaultReturns, value)
+						} else {
+							assert.Equal(t, "true", value)
+						}
+					}
+					return false
+				})
+				assert.Equal(t, tc.wantCases[method.Name.Name], cases, method.Name.Name)
+				assert.Equal(t, []string{"false"}, defaultReturns, "%s must return false for unclassified and unknown actions", method.Name.Name)
+			}
+			assert.ElementsMatch(t, []string{"IsMutation", "IsBootstrapAction", "AuthorizedByDecision"}, methods)
+		})
 	}
 }
 

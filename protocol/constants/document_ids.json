@@ -8,6 +8,10 @@
     "platform_settings": {
       "_go_const": "DocIDPlatformSettings",
       "value": "platform_settings"
+    },
+    "consensus_binding": {
+      "_go_const": "DocIDConsensusBinding",
+      "value": "consensus_binding"
     }
   }
 }

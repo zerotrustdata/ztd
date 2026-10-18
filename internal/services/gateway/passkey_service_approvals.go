@@ -240,17 +240,16 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	posture := strings.ToLower(strings.TrimSpace(h.posture))
-	if posture == constants.PostureRatify || posture == constants.PostureNotary {
+	if h.posture.RequiresL3() {
 		if cliSessionID != "" {
 			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-				h.responder.Error(w, http.StatusForbidden, fmt.Sprintf("denial requires an mTLS grounded session under %s posture", posture))
+				h.responder.Error(w, http.StatusForbidden, fmt.Sprintf("denial requires an mTLS grounded session under %s posture", h.posture))
 				return
 			}
 		} else {
 			user, err := h.userStore.GetUser(r.Context(), userID)
-			if err != nil || user == nil || len(user.PasskeyCredentials) == 0 {
-				h.responder.Error(w, http.StatusForbidden, fmt.Sprintf("denial requires a WebAuthn grounded session under %s posture", posture))
+			if err != nil || !user.HasPasskey() {
+				h.responder.Error(w, http.StatusForbidden, fmt.Sprintf("denial requires a WebAuthn grounded session under %s posture", h.posture))
 				return
 			}
 		}

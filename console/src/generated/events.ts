@@ -26,7 +26,7 @@ export const EventType = Object.freeze({
     APP_INVESTIGATION_UPDATED: 'ztd.v1.app.investigation.updated',
     APP_RUN_STATUS_UPDATED: 'ztd.v1.app.run.status.updated',
     APP_TASK_COMPLETED: 'ztd.v1.app.task.completed',
-    MODEL_PROVENANCE_PREFLIGHT_PROGRESS: 'ztd.v1.inference.model.provenance.preflight.updated',
+    MODEL_PROVENANCE_ATTESTATION_RECORDED: 'ztd.v1.inference.model.provenance.attestation.recorded',
     OPERATOR_A2A_CALL_REQUESTED: 'ztd.v1.operator.a2a.call.requested',
     OPERATOR_AUDIT_AI_RECORD_REQUESTED: 'ztd.v1.operator.audit.ai.record.requested',
     OPERATOR_AUDIT_AI_RECORDED: 'ztd.v1.operator.audit.ai.recorded',
@@ -202,6 +202,7 @@ export const EventType = Object.freeze({
     PLATFORM_AUTH_USER_UNAUTHENTICATED: 'ztd.v1.platform.auth.user.unauthenticated',
     PLATFORM_CONSOLE_LOG_CONNECTED_CONFIRMED: 'ztd.v1.platform.console.log.connected.confirmed',
     PLATFORM_CONSOLE_LOG_ENTRY_RECEIVED: 'ztd.v1.platform.console.log.entry.received',
+    PLATFORM_ENROLLMENT_BIND_CONSENSUS_REQUESTED: 'ztd.v1.platform.enrollment.bind_consensus.requested',
     PLATFORM_ENROLLMENT_CREATE_REQUESTED: 'ztd.v1.platform.enrollment.create.requested',
     PLATFORM_ENROLLMENT_CREATE_SESSION_REQUESTED: 'ztd.v1.platform.enrollment.create_session.requested',
     PLATFORM_ENROLLMENT_DECIDE_REQUESTED: 'ztd.v1.platform.enrollment.decide.requested',
@@ -221,6 +222,7 @@ export const EventType = Object.freeze({
     PLATFORM_TELEMETRY_HEALTH_REPORTED: 'ztd.v1.platform.telemetry.health.reported',
     PLATFORM_TELEMETRY_PERFORMANCE_RECORDED: 'ztd.v1.platform.telemetry.performance.recorded',
     PLATFORM_USAGE_UPDATED: 'ztd.v1.platform.usage.updated',
+    PROVIDER_BOUNDARY_OBSERVATION_RECORDED: 'ztd.v1.inference.provider.boundary.observation.recorded',
     PUBLIC_FEED_BATCH_ACKNOWLEDGED: 'ztd.v1.public.feed.batch.acknowledged',
     PUBLIC_FEED_BATCH_EXPORTED: 'ztd.v1.public.feed.batch.exported',
     PUBLIC_FEED_KEY_ROTATED: 'ztd.v1.public.feed.key.rotated',
@@ -348,7 +350,7 @@ export const EventRegistry = Object.freeze({
         producers: ['cli'],
         persistence: 'ephemeral',
     }),
-    MODEL_PROVENANCE_PREFLIGHT_PROGRESS: Object.freeze({
+    MODEL_PROVENANCE_ATTESTATION_RECORDED: Object.freeze({
         kind: 'fact',
         transport: ['sse'],
         producers: ['gateway'],
@@ -1431,6 +1433,14 @@ export const EventRegistry = Object.freeze({
         producers: ['gateway'],
         persistence: 'ephemeral',
     }),
+    PLATFORM_ENROLLMENT_BIND_CONSENSUS_REQUESTED: Object.freeze({
+        kind: 'request',
+        transport: ['governed'],
+        producers: ['cli', 'gateway', 'operator'],
+        persistence: 'gateway.docstore',
+        actionType: 'PLATFORM_ENROLLMENT_BIND_CONSENSUS',
+        payload: 'ztd.common.v1.PlatformEnrollmentGovernancePayload',
+    }),
     PLATFORM_ENROLLMENT_CREATE_REQUESTED: Object.freeze({
         kind: 'request',
         transport: ['governed'],
@@ -1555,6 +1565,12 @@ export const EventRegistry = Object.freeze({
         producers: ['gateway'],
         persistence: 'ephemeral',
         reserved: true,
+    }),
+    PROVIDER_BOUNDARY_OBSERVATION_RECORDED: Object.freeze({
+        kind: 'fact',
+        transport: ['sse'],
+        producers: ['gateway'],
+        persistence: 'ephemeral',
     }),
     PUBLIC_FEED_BATCH_ACKNOWLEDGED: Object.freeze({
         kind: 'outcome',

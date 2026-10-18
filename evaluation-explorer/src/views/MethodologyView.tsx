@@ -30,7 +30,7 @@ const CLI_GROUPS = [
   ['campaigns', 'Freeze, inspect, assert release identity, and archive campaigns'],
   ['runs', 'Start, resume, inspect, verify, publish, export, repair, compare, and archive runs'],
   ['rollout', 'Manage and execute the model qualification queue'],
-  ['formations', 'Manage heterogeneous three-role model stacks'],
+  ['formations', 'List, show, add, and remove catalog formations (three-role model stacks)'],
   ['gates', 'Run inference acceptance and single-probe gates'],
   ['backup', 'Snapshot evaluation evidence outside .ztd/'],
   ['restore', 'Verify and restore a snapshot into .ztd/'],
@@ -254,7 +254,7 @@ export function MethodologyView() {
             <article className="evidence-panel docs-program-card">
               <div className="docs-program-head"><span>02</span><code>{SCENARIO_CATALOG_ID} or a custom suite</code></div>
               <h3>Model campaigns</h3>
-              <p>Score real models by running heterogeneous formations (Lite, Assistant, and Primary) through governed inference on the bound Inference Operator, against a frozen scenario catalog.</p>
+              <p>Score one registry model per campaign as a tool-calling agent in each scenario&apos;s designated Lite, Assistant, or Primary role, against a frozen scenario catalog. Every model turn is governed inference on the bound Inference Operator, and every tool call is a governed Data Operator action.</p>
               <dl>
                 <div><dt>Uses</dt><dd>Data and Inference Operators, plus separate Observer and Provenance sessions when their witness evidence is required.</dd></div>
                 <div><dt>Excludes</dt><dd>Direct Ollama calls from the campaign CLI or any adapter; inference always goes through the Inference Operator.</dd></div>
@@ -319,15 +319,15 @@ export function MethodologyView() {
 
         <DocsSection id="campaigns" title="Model campaign execution">
           <DocsCard title="Bind the real provider and the exact Operators">
-            <p>Each campaign assignment is one heterogeneous formation: the frozen stack&apos;s Lite, Assistant, and Primary bindings run in that order, and each role&apos;s output is carried into the next role&apos;s state. The direct formation runner dispatches every role straight to the bound Inference Operator through governed inference. The Inference Operator&apos;s enrolled runtime configuration determines Ollama access. Campaigns freeze <code>served_model_tag</code> and <code>model_digest</code> pairs; live provider runs should run <code>ztd eval models freeze</code> before scoring so placeholder digests do not stand in for provenance.</p>
-            <p>Before a sovereign model is allocated, the Provenance Operator attests its weights at the storage boundary. Each role is bracketed by provider-boundary observation, and that evidence is bound to the provider attempt. Neither the campaign CLI nor the formation adapters contact Ollama directly.</p>
+            <p>Each campaign assignment runs the campaign&apos;s single model as an agent in a bounded loop of up to eight turns. Each turn is a governed inference dispatch to the bound Inference Operator, and each tool call the model returns is a governed transaction on the Data Operator, inside an isolated workspace. The Inference Operator&apos;s enrolled runtime configuration determines Ollama access. Campaigns freeze <code>served_model_tag</code> and <code>model_digest</code> pairs; live provider runs should run <code>ztd eval models freeze</code> before scoring so placeholder digests do not stand in for provenance.</p>
+            <p>The Provenance Operator attests model weights at the storage boundary, and each inference is bracketed by provider-boundary observation bound to its provider attempt. Neither the campaign CLI nor the Gateway contacts Ollama directly.</p>
           </DocsCard>
           <div className="docs-split">
             <DocsCard title="Lane and runner">
-              <p>Campaign execution runs system-lane campaigns, meaning campaigns with a frozen heterogeneous stack set, through the direct formation runner. <code>ztd eval runs start</code> and <code>runs execute</code> reject any other lane. Model-role campaigns recorded by the retired earlier runner remain readable as historical evidence; they cannot be started or re-executed.</p>
+              <p>Every campaign is a model-role campaign over exactly one registry model, executed by the agent executor. The system lane, which would score a heterogeneous three-role formation as one unit, has no executor in v1.1.3: campaign scheduling, <code>ztd eval runs start</code>, and <code>runs execute</code> fail closed on it. Formations return in v1.1.4, running inside the investigation loop. The formation catalog stays browsable on the Evaluations page.</p>
             </DocsCard>
             <DocsCard title="Qualification rollout">
-              <p>The rollout queue creates a campaign from each registry model and runs it with strict witness verification (provider observation and model provenance). Use <code>--dry-run</code> to print the plan and <code>--until</code> to cap how many models run. Non-dry-run execution is currently unavailable and fails closed before any campaign or queue state changes.</p>
+              <p>The rollout queue freezes a single-model campaign for each queued registry model and runs it with strict witness verification (provider observation and model provenance). A verified run marks the entry verified. Use <code>--dry-run</code> to print the plan, <code>--until</code> to cap how many models run, and <code>--gate-smoke</code> to screen each model with the smoke suite first.</p>
               <div className="docs-command-row"><Command>./ztd eval rollout run --dry-run</Command></div>
             </DocsCard>
           </div>
@@ -335,13 +335,13 @@ export function MethodologyView() {
         </DocsSection>
 
         <DocsSection id="scenarios" title="Scenario inputs and grading">
-          <DocsCard title="One formation run per assignment">
-            <p>Each assignment starts from its frozen scenario input, which becomes the formation&apos;s initial state. The Lite, Assistant, and Primary roles run in order against the bound Inference Operator. The run&apos;s per-role telemetry, including load state, timing, and output, is recorded in the assignment&apos;s formation run evidence.</p>
-            <p>The direct runner does not run tool loops, so scenario tool policies do not change its verdict. Trajectory evidence recorded by earlier runs remains readable as historical data and is not re-scored by the direct runner.</p>
+          <DocsCard title="One agent trace per assignment">
+            <p>Each assignment starts from its frozen scenario input: the prompt, inline context, and workspace files, which governed file edits place in the Data Operator&apos;s workspace. The model sees only the scenario&apos;s declared tools. The complete conversation, every model and tool call with its signed receipt, and the Data ledger bracket are sealed in the assignment&apos;s agent trace.</p>
+            <p>The scenario&apos;s trajectory policy (answer, first choice, guided, or governed) decides which tool use the grade expects. A security-policy scenario records whether the model attempted a forbidden action, so refusal and governed denial stay distinguishable.</p>
           </DocsCard>
           <DocsCard title="What a score means">
-            <p>An assignment passes only when the formation completes all three roles in order. Its single deterministic grade, <code>formation-roles</code>, is the verdict; it is a structural result, not a judgment of answer content. A formation under a catalog that requires semantic judging is a grader failure, because the direct runner records no semantic judge evidence.</p>
-            <p>Each deterministic grade declares whether it is an observation, a derived result, or a structural precondition. Public criteria and score dimensions come from the frozen scenario shape, so an unscored dimension is never shown as a zero.</p>
+            <p>Deterministic grades are recomputed from the sealed trace against the frozen scenario&apos;s gold criteria and content check. No semantic judge runs, so a scenario cannot depend on one. A provider failure is reported as a dispatch outcome, not as model behavior.</p>
+            <p>Each deterministic grade declares whether it is an observation, a derived result, or a structural precondition. Only observation grades count toward a score. Public criteria and score dimensions come from the frozen scenario shape, so an unscored dimension is never shown as a zero.</p>
           </DocsCard>
         </DocsSection>
 
@@ -368,7 +368,7 @@ export function MethodologyView() {
         <DocsSection id="evidence" title="Evidence, backup, and verification">
           <div className="docs-split">
             <DocsCard title="Persisted evidence">
-              <p>Conformance runs store <code>conformance-record.json</code> and its <code>conformance-record.sha256</code> sidecar in <code>.ztd/data/eval/runs/&lt;run-id&gt;/</code>. Campaign definitions and frozen artifacts live under <code>.ztd/data/eval/campaigns/&lt;campaign-id&gt;/</code>; campaign lifecycle, assignments, formation run evidence, and aggregates are run-scoped. Gateway volumes hold provider observation and provenance windows.</p>
+              <p>Conformance runs store <code>conformance-record.json</code> and its <code>conformance-record.sha256</code> sidecar in <code>.ztd/data/eval/runs/&lt;run-id&gt;/</code>. Campaign definitions and frozen artifacts live under <code>.ztd/data/eval/campaigns/&lt;campaign-id&gt;/</code>; campaign lifecycle, assignments, sealed agent traces, and aggregates are run-scoped. Gateway volumes hold provider observation and provenance windows.</p>
             </DocsCard>
             <DocsCard title="Offline and run-scoped checks">
               <p><code>ztd eval conformance verify</code> and <code>ztd eval runs verify</code> recompute digests, signatures, bindings, verdicts, and metrics without new scored actions. A passing campaign report applies only when its run, campaign, catalog, registry, completed population, and verified population match persisted evidence.</p>
@@ -386,7 +386,7 @@ export function MethodologyView() {
         <DocsSection id="invariants" title="Architecture invariants and source">
           <ul className="docs-evidence-grid">
             <li><strong>Program definitions · INV-EVAL-PROG</strong><span>Keep the native suite model-free; score campaigns through governed inference; persist content-addressed runs; verify without execution.</span></li>
-            <li><strong>Campaign structure · INV-EVAL-CAMP</strong><span>Freeze one suite and provider-attested model bindings; run heterogeneous formations through governed inference dispatch; grade from the recorded formation evidence.</span></li>
+            <li><strong>Campaign structure · INV-EVAL-CAMP</strong><span>Freeze one suite and one provider-attested model; run each assignment as a governed tool-calling agent; grade from the sealed agent trace.</span></li>
             <li><strong>Witness separation · INV-EVAL-WIT</strong><span>Enroll distinct Observer and Provenance sessions at the provider and storage boundaries; bind their windows to provider attempts.</span></li>
             <li><strong>Evidence storage · INV-EVAL-EVID</strong><span>Keep campaign and run evidence separate, preserve backup integrity, and allowlist public projections.</span></li>
             <li><strong>Verification posture · INV-EVAL-VERIF</strong><span>Recompute evidence and scope verified quality to the exact matching run population. Preserve unavailable observations as unavailable.</span></li>

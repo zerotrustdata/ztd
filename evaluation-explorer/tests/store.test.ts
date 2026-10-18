@@ -615,7 +615,7 @@ describe('EvalStore', () => {
 
   it('indexes native scenario and verdict detail without fake assignments', () => {
     const native = {
-      schema_version: '1.3.0', kind: 'evaluation_summary', dataset_id: 'native-core-execution-boundary', quality_state: 'verified_public', observed_at: '2026-09-15T23:38:22Z',
+      schema_version: '1.3.0', kind: 'evaluation_summary', dataset_id: 'native-core-execution-boundary', quality_state: 'exploratory_verified', observed_at: '2026-09-15T23:38:22Z',
       run_id: 'native-run-1', suite_id: 'core-execution-boundary@1.0.0', arm: 'platform', evaluation_unit: 'system', model_role_mapping: {}, lifecycle_state: 'completed',
       assignment_total: 2, assignment_completed: 2, assignment_failed: 0, terminal_outcomes: { completed: 1, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0 },
       verifier_state: 'passed', headline_metrics: { pass_rate: { value: 1 } },

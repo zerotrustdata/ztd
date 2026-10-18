@@ -26,7 +26,7 @@ func TestCampaignPopulationAccountant_PartialRunReportsCoverageGap(t *testing.T)
 	req := testCampaignInitRequest(t)
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	count, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	require.Greater(t, count, 1)
 
@@ -63,7 +63,7 @@ func TestCampaignPopulationAccountant_CompleteRunPasses(t *testing.T) {
 	req.Catalog = truncated
 	_, err = controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	assignments, err := store.ListAssignments(context.Background(), req.RunID)

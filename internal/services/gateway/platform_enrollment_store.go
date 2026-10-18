@@ -77,9 +77,10 @@ func (s *PlatformEnrollmentService) createRequestRecord(ctx context.Context, req
    AND COALESCE(json_extract(data, '$.fingerprints.app'), '') = ?
    AND COALESCE(json_extract(data, '$.fingerprints.operator'), '') = ?
    AND COALESCE(json_extract(data, '$.fingerprints.cli'), '') = ?
+   AND COALESCE(json_extract(data, '$.fingerprints.signing_key'), '') = ?
    AND `+enrollmentLivePredicate+` ORDER BY created_at, id LIMIT 1`,
 			platformEnrollmentCollectionName(), req.ComponentKind, req.InstanceID,
-			req.Fingerprints.App, req.Fingerprints.Operator, req.Fingerprints.CLI, now).Scan(&stored)
+			req.Fingerprints.App, req.Fingerprints.Operator, req.Fingerprints.CLI, req.Fingerprints.SigningKey, now).Scan(&stored)
 		if err == nil {
 			existing = new(models.PlatformEnrollmentRequest)
 			if err := json.Unmarshal([]byte(stored), existing); err != nil {
@@ -218,7 +219,7 @@ func (s *DocumentStoreService) DecidePlatformEnrollments(ctx context.Context, ac
 	if req.Decision == models.PlatformEnrollmentDecisionDeny {
 		state = models.PlatformEnrollmentStateDenied
 	}
-	return s.db.ExecInImmediateTxWithRetry(ctx, func(conn *sql.Conn) error {
+	if err := s.db.ExecInImmediateTxWithRetry(ctx, func(conn *sql.Conn) error {
 		var ownerID string
 		var ownerData []byte
 		err := conn.QueryRowContext(ctx, `SELECT id, data FROM documents WHERE collection = ? ORDER BY created_at, rowid LIMIT 1`,
@@ -281,5 +282,11 @@ func (s *DocumentStoreService) DecidePlatformEnrollments(ctx context.Context, ac
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if notifier := s.approvalsNotifier.Load(); notifier != nil {
+		notifier.EnrollmentsDecided(ctx)
+	}
+	return nil
 }

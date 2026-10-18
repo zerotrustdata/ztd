@@ -354,6 +354,12 @@ func (u *User) WebAuthnIcon() string {
 	return ""
 }
 
+// HasPasskey reports whether the user has at least one registered passkey,
+// which ratify and notary posture require for L3 approval.
+func (u *User) HasPasskey() bool {
+	return u != nil && len(u.PasskeyCredentials) > 0
+}
+
 func (u *User) WebAuthnCredentials() []webauthn.Credential {
 	res := make([]webauthn.Credential, len(u.PasskeyCredentials))
 	for i, c := range u.PasskeyCredentials {
@@ -580,13 +586,20 @@ type Persona struct {
 // A Consensus consists of N member identities (enrolled agentic apps) and
 // requires K affirmative distinct signatures to reach quorum.
 type ConsensusPolicy struct {
-	ID              string    `json:"id"`               // consensus name/id
-	MemberAppIDs    []string  `json:"member_app_ids"`   // == TrustedSigner.ID per member
-	Quorum          int       `json:"quorum"`           // K affirmative distinct signers required
-	RequireDistinct bool      `json:"require_distinct"` // reject duplicate signer keys
+	ID              string    `json:"id"`                     // consensus name/id
+	MemberAppIDs    []string  `json:"member_app_ids"`         // == TrustedSigner.ID per member
+	Quorum          int       `json:"quorum"`                 // K affirmative distinct signers required
+	RequireDistinct bool      `json:"require_distinct"`       // reject duplicate signer keys
+	EndpointURL     string    `json:"endpoint_url,omitempty"` // HTTPS deliberation endpoint for bound consensus app
 	Enabled         bool      `json:"enabled"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// PlatformEnrollmentBindConsensusRequest binds an enrolled application as the Gateway consensus application.
+type PlatformEnrollmentBindConsensusRequest struct {
+	AppID       string `json:"app_id"`
+	EndpointURL string `json:"endpoint_url"`
 }
 
 // EnrollmentToken represents a one-time use token for secure passkey enrollment.
@@ -802,10 +815,13 @@ type CLILogoutResponse struct {
 // operator document it resolves to. OperatorSessionID and OperatorID are
 // empty when the session has no operator binding; the caller (the CLI's
 // `auth context`) decides whether an unbound session is actionable.
+// PasskeyRegistered reports whether the session's user has a registered
+// passkey, which L3 approval requires under ratify and notary posture.
 type CLISessionInfoResponse struct {
 	Success           bool   `json:"success"`
 	CLISessionID      string `json:"cli_session_id"`
 	UserID            string `json:"user_id"`
+	PasskeyRegistered bool   `json:"passkey_registered"`
 	OperatorSessionID string `json:"operator_session_id,omitempty"`
 	OperatorID        string `json:"operator_id,omitempty"`
 	// BoundOperatorSessionIDs lists every operator session bound by `operator bind`, primary first.

@@ -43,7 +43,6 @@ import (
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	clicfg "github.com/zerotrustdata/ztd/internal/cli/config"
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
@@ -68,7 +67,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, gatewayFiles.CreateRuntimeTree(ctx))
 	cfg := testutil.NewTestConfig(t)
-	cfg.Gateway.Posture = config.PostureDoctrine
+	cfg.Gateway.Posture = constants.PostureDoctrine
 	cfg.Gateway.SecretsDir = gatewayFiles.Resolve(constants.SecretsDirname)
 	cfg.Gateway.VaultDir = gatewayFiles.Resolve(constants.VaultDirname)
 	cfg.Gateway.Keyring = keystoretest.NewMemoryKeyring()

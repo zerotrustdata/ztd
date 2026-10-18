@@ -60,35 +60,11 @@ func TestCampaignControllerRunSummaryExpectsTheFrozenCatalogMatrix(t *testing.T)
 
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	scheduled, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	scheduled, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	summary, err := controller.RunSummary(context.Background(), req.RunID)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(scheduled), summary.ExpectedAssignment, "expected must equal what the frozen catalog schedules")
 	assert.NotEqual(t, ComputeHomogeneousMatrixSize(1), summary.ExpectedAssignment, "a three-scenario suite must not expect the default suite's matrix")
-}
-
-func TestCampaignControllerSchedulesASystemRunOverAnyFrozenCatalog(t *testing.T) {
-	store := NewStore(newCampaignMemoryFileService())
-	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
-	req := testCampaignInitRequest(t)
-	req.Catalog = truncatedCatalog(t, req.Catalog, 3)
-	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	var err error
-	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, testHeterogeneousVariants())
-	require.NoError(t, err)
-
-	run, err := controller.InitializeCampaign(context.Background(), req)
-	require.NoError(t, err)
-	stackSet, err := controller.GenerateHeterogeneousStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId(), 17)
-	require.NoError(t, err)
-
-	scheduled, err := controller.ScheduleRun(context.Background(), req.RunID)
-	require.NoError(t, err, "a system run over a three-scenario suite must schedule")
-	assert.Equal(t, len(stackSet.Stacks)*3, scheduled)
-
-	summary, err := controller.RunSummary(context.Background(), req.RunID)
-	require.NoError(t, err)
-	assert.Equal(t, uint64(scheduled), summary.ExpectedAssignment)
 }

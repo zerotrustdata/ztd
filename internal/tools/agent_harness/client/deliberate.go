@@ -9,33 +9,53 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
-// Deliberate posts a final envelope to the Gateway deliberation endpoint and
-// returns the L2 proof it attached. Any non-200 answer is an error wrapping
+// Deliberate discovers the Gateway's bound consensus application, posts the final
+// envelope to its HTTPS protobuf endpoint, and returns its proof. Failures wrap
 // constants.ErrIngressL2DeliberationFailed.
 func (c *Client) Deliberate(ctx context.Context, p Persona, env *commonv1.GovernanceEnvelope) (*commonv1.L2Metadata, error) {
-	wire, err := protojson.Marshal(env)
+	status, raw, err := c.do(ctx, p, http.MethodGet, c.cfg.MTLSBaseURL+constants.APIPaths.AuthPlatformEnrollmentConsensus, nil)
 	if err != nil {
-		return nil, fmt.Errorf("deliberate: marshal envelope: %w", err)
+		return nil, fmt.Errorf("deliberate: discover binding: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
 	}
-	status, raw, err := c.do(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.ConsensusDeliberate, wire)
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("deliberate: binding status %d: %w", status, constants.ErrIngressL2DeliberationFailed)
+	}
+	var binding models.ConsensusPolicy
+	if err := json.Unmarshal(raw, &binding); err != nil {
+		return nil, fmt.Errorf("deliberate: decode binding: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
+	}
+	if !binding.Enabled || models.ValidateConsensusEndpoint(binding.EndpointURL) != nil {
+		return nil, fmt.Errorf("deliberate: binding endpoint: %w: %w", constants.ErrIngressL2DeliberationFailed, constants.ErrConsensusEndpointInvalid)
+	}
+	wire, err := proto.Marshal(env)
 	if err != nil {
-		return nil, fmt.Errorf("deliberate: post envelope: %w", err)
+		return nil, fmt.Errorf("deliberate: marshal envelope: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
+	}
+	// The application receives the envelope, not the Gateway's session headers.
+	// A redirect must not send it to a different endpoint or downgrade TLS.
+	appClient := *c.http
+	appClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	status, raw, err = c.doWithClient(ctx, Persona{ID: p.ID, UserAgent: p.UserAgent}, http.MethodPost, binding.EndpointURL, wire, &appClient, "application/x-protobuf")
+	if err != nil {
+		return nil, fmt.Errorf("deliberate: post envelope: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
 	}
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("deliberate: status %d: %w", status, constants.ErrIngressL2DeliberationFailed)
 	}
 
 	var signed commonv1.GovernanceEnvelope
-	if err := protojson.Unmarshal(raw, &signed); err != nil {
+	if err := proto.Unmarshal(raw, &signed); err != nil {
 		return nil, fmt.Errorf("deliberate: decode envelope: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
 	}
 	if signed.GetTransactionHash() != env.GetTransactionHash() {

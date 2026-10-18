@@ -39,7 +39,7 @@ func TestMirrorWithdrawCampaignDatasetHidesHistoryAndBootstrap(t *testing.T) {
 	_, response := env.sendIngest(batch)
 	require.True(t, response.Accepted)
 	sourceID := batch.SourceID
-	assert.Equal(t, constants.PublicFeedZeroHashHex, env.mirror.getSnapshotForSSE(sourceID).WithdrawalDigest)
+	assert.Equal(t, constants.PublicFeedZeroHashHex, env.mirror.snapshotOf(sourceID, env.sourceSummary()).WithdrawalDigest)
 	subscriber, accepted := env.mirror.addSSESubscriber(sourceID)
 	require.True(t, accepted)
 	t.Cleanup(func() { env.mirror.removeSSESubscriber(subscriber) })
@@ -102,7 +102,7 @@ func TestEvalCampaignPublicationControllerDeleteWithdrawsRunFromMirror(t *testin
 	require.True(t, response.Accepted)
 
 	controller := newEvalCampaignPublicationControllerTest(t)
-	controller.spectator = func() *PublicSpectatorRuntime { return &PublicSpectatorRuntime{mirror: env.mirror} }
+	controller.service.spectator = func() *PublicSpectatorRuntime { return &PublicSpectatorRuntime{mirror: env.mirror} }
 	path := constants.APIPaths.EvalCampaignPublicationStateByRun + runID + "/publication-state"
 	putRec := httptest.NewRecorder()
 	controller.handlePublicationState(putRec, httptest.NewRequest(http.MethodPut, path, bytes.NewReader(mustJSON(t, models.EvalCampaignPublicationState{

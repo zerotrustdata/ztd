@@ -30,7 +30,6 @@ import (
 )
 
 var requiredBootstrapSecrets = []string{
-	constants.SecretsFileSessionEncryptionKey,
 	constants.SecretsFileActuatorSigningKey,
 	constants.SecretsFileActuatorKeyID,
 	constants.SecretsFileAuditorSigningKey,
@@ -100,22 +99,17 @@ func (m *SecretManager) createAppSettings(now time.Time) error {
 	auditorPriv := ed25519.NewKeyFromSeed(auditorSeedBytes)
 	auditorKeyID := hex.EncodeToString(auditorPriv.Public().(ed25519.PublicKey))
 
-	sessionEncryptionKey, err := m.generateSecureToken(32)
-	if err != nil {
-		return fmt.Errorf("secret_manager: create app settings: %w", err)
-	}
 	auditorHMACKey, err := m.generateSecureToken(32)
 	if err != nil {
 		return fmt.Errorf("secret_manager: create app settings: %w", err)
 	}
 
 	secrets := map[string]string{
-		constants.SecretsFileSessionEncryptionKey: sessionEncryptionKey,
-		constants.SecretsFileActuatorSigningKey:   ActuatorSeed, // Seed for ED25519
-		constants.SecretsFileActuatorKeyID:        ActuatorKeyID,
-		constants.SecretsFileAuditorSigningKey:    auditorSeed,
-		constants.SecretsFileAuditorKeyID:         auditorKeyID,
-		constants.SecretsFileAuditorHMACKey:       auditorHMACKey,
+		constants.SecretsFileActuatorSigningKey: ActuatorSeed, // Seed for ED25519
+		constants.SecretsFileActuatorKeyID:      ActuatorKeyID,
+		constants.SecretsFileAuditorSigningKey:  auditorSeed,
+		constants.SecretsFileAuditorKeyID:       auditorKeyID,
+		constants.SecretsFileAuditorHMACKey:     auditorHMACKey,
 	}
 
 	platformSettings := models.SettingsDocument{
@@ -389,11 +383,6 @@ func (m *SecretManager) GetAuditorKey() (ed25519.PrivateKey, string, error) {
 	return priv, keyID, nil
 }
 
-// GetSessionEncryptionKey retrieves the session encryption key from the keystore.
-func (m *SecretManager) GetSessionEncryptionKey() (string, error) {
-	return m.keystore.DecryptSecret(constants.SecretsFileSessionEncryptionKey)
-}
-
 // GetAuditorHMACKey retrieves the auditor HMAC key from the keystore.
 func (m *SecretManager) GetAuditorHMACKey() (string, error) {
 	return m.keystore.DecryptSecret(constants.SecretsFileAuditorHMACKey)
@@ -517,39 +506,4 @@ func (m *SecretManager) GetCLIPrivateKey() (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("secret_manager: get CLI private key: %w", constants.ErrValidationFailed)
 	}
 	return ed25519.NewKeyFromSeed(seed), nil
-}
-
-// StoreSessionToken stores a session token with TTL in the keystore.
-// The token is stored with a timestamp for TTL validation.
-func (m *SecretManager) StoreSessionToken(token string, ttl time.Duration) error {
-	expiresAt := timesvc.FormatTimestamp(time.Now().UTC().Add(ttl))
-	tokenData := fmt.Sprintf("%s|%s", token, expiresAt)
-	return m.keystore.EncryptSecret(constants.SecretsFileSessionToken, tokenData)
-}
-
-// GetSessionToken retrieves a session token from the keystore.
-// Returns error if the token has expired.
-func (m *SecretManager) GetSessionToken() (string, error) {
-	tokenData, err := m.keystore.DecryptSecret(constants.SecretsFileSessionToken)
-	if err != nil {
-		return "", fmt.Errorf("secret_manager: get session token: decrypt: %w", err)
-	}
-
-	parts := strings.Split(tokenData, "|")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("secret_manager: get session token: %w", constants.ErrValidationFailed)
-	}
-
-	token := parts[0]
-	expiresAtStr := parts[1]
-	expiresAt, err := timesvc.ParseTimestamp(expiresAtStr)
-	if err != nil {
-		return "", fmt.Errorf("secret_manager: get session token: parse expiry: %w", err)
-	}
-
-	if time.Now().UTC().After(expiresAt) {
-		return "", fmt.Errorf("secret_manager: get session token: %w", constants.ErrExpired)
-	}
-
-	return token, nil
 }

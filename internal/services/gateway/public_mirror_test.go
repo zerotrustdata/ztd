@@ -49,12 +49,64 @@ type mirrorTestEnv struct {
 	sourceID string
 	client   *http.Client
 	fileSvc  fs.RuntimeFileService
+	store    *PublicMirrorStore
+}
+
+// openTestPublicMirrorStore opens the durable mirror store under fileSvc and
+// closes it when the test ends.
+func openTestPublicMirrorStore(t *testing.T, fileSvc fs.RuntimeFileService) *PublicMirrorStore {
+	t.Helper()
+	store, err := OpenPublicMirrorStore(context.Background(), fileSvc, testutil.NewTestLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+// reopenMirror closes the env store and serves a new mirror from a freshly
+// reopened store, proving that state survives a restart.
+func (e *mirrorTestEnv) reopenMirror() *PublicMirrorServer {
+	e.t.Helper()
+	require.NoError(e.t, e.store.Close())
+	e.store = openTestPublicMirrorStore(e.t, e.fileSvc)
+	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), e.store, PublicMirrorConfig{})
+	require.NoError(e.t, err)
+	return mirror
+}
+
+// sourceSummary returns the in-memory summary for the env source.
+func (e *mirrorTestEnv) sourceSummary() *PublicMirrorSourceSummary {
+	e.t.Helper()
+	e.mirror.mu.RLock()
+	defer e.mirror.mu.RUnlock()
+	summary, ok := e.mirror.sources[e.sourceID]
+	require.True(e.t, ok)
+	return summary
+}
+
+// assertNoProofState asserts that no proof artifact or manifest was persisted.
+func (e *mirrorTestEnv) assertNoProofState() {
+	e.t.Helper()
+	count, err := e.store.ProofArtifactCount(context.Background())
+	require.NoError(e.t, err)
+	assert.Zero(e.t, count)
+	_, found, err := e.store.ProofManifest(context.Background(), e.sourceID)
+	require.NoError(e.t, err)
+	assert.False(e.t, found)
+}
+
+// retainedBatchCount counts batch rows retained for the env source.
+func (e *mirrorTestEnv) retainedBatchCount() int {
+	e.t.Helper()
+	var count int
+	require.NoError(e.t, e.store.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM batches WHERE source_id = ?`, e.sourceID).Scan(&count))
+	return count
 }
 
 func newMirrorTestEnv(t *testing.T) *mirrorTestEnv {
 	t.Helper()
 	fileSvc := newProducerFileSvc(t)
-	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(fileSvc), PublicMirrorConfig{})
+	store := openTestPublicMirrorStore(t, fileSvc)
+	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), store, PublicMirrorConfig{})
 	require.NoError(t, err)
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -75,6 +127,7 @@ func newMirrorTestEnv(t *testing.T) *mirrorTestEnv {
 		sourceID: sourceID,
 		client:   server.Client(),
 		fileSvc:  fileSvc,
+		store:    store,
 	}
 }
 
@@ -147,7 +200,6 @@ func (e *mirrorTestEnv) makeProofIngestRequest(filename string, content []byte) 
 	return models.PublicProofIngestRequest{
 		SourceID:  e.sourceID,
 		Manifest:  manifest,
-		Catalog:   models.PublicProofCatalog{SchemaVersion: constants.PublicProofCatalogSchemaVersion, Entries: []models.PublicProofCatalogEntry{entry}, GeneratedAt: generatedAt},
 		Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: artifactID, Content: content}},
 	}
 }
@@ -190,7 +242,7 @@ func TestPublicMirror_PublicHandlerExposesOnlyAnonymousReadRoutes(t *testing.T) 
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, "*", response.Header.Get("Access-Control-Allow-Origin"))
 
-	for _, path := range []string{"/ingest", "/keys/register", "/proof-ingest"} {
+	for _, path := range []string{"/ingest", "/keys/register", "/proof-ingest", "/proof-root"} {
 		t.Run(path, func(t *testing.T) {
 			request, requestErr := http.NewRequest(http.MethodPost, server.URL+path, strings.NewReader("{}"))
 			require.NoError(t, requestErr)
@@ -253,7 +305,7 @@ func TestMirror_IngestAuth_AcceptsWithValidToken(t *testing.T) {
 
 func TestPublicMirrorClientIDUsesCloudflareAddressFromConfiguredProxy(t *testing.T) {
 	fileSvc := newProducerFileSvc(t)
-	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(fileSvc), PublicMirrorConfig{
+	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), openTestPublicMirrorStore(t, fileSvc), PublicMirrorConfig{
 		TrustedProxyCIDRs: []string{"172.28.0.1/32"},
 	})
 	require.NoError(t, err)
@@ -297,7 +349,7 @@ func TestPublicMirrorClientIDUsesCloudflareAddressFromConfiguredProxy(t *testing
 
 func TestNewPublicMirrorServerRejectsInvalidTrustedProxyCIDR(t *testing.T) {
 	fileSvc := newProducerFileSvc(t)
-	_, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(fileSvc), PublicMirrorConfig{
+	_, err := NewPublicMirrorServer(testutil.NewTestLogger(), openTestPublicMirrorStore(t, fileSvc), PublicMirrorConfig{
 		TrustedProxyCIDRs: []string{"not-a-cidr"},
 	})
 	assert.ErrorIs(t, err, constants.ErrPublicFeedTrustedProxyConfig)
@@ -305,7 +357,7 @@ func TestNewPublicMirrorServerRejectsInvalidTrustedProxyCIDR(t *testing.T) {
 
 func TestPublicMirrorClientIDRejectsNonUnicastForwardedAddresses(t *testing.T) {
 	fileSvc := newProducerFileSvc(t)
-	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(fileSvc), PublicMirrorConfig{
+	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), openTestPublicMirrorStore(t, fileSvc), PublicMirrorConfig{
 		TrustedProxyCIDRs: []string{"172.28.0.1/32"},
 	})
 	require.NoError(t, err)
@@ -466,8 +518,7 @@ func TestMirror_RestartRecoversAcceptedStateAndContinuesHashChain(t *testing.T) 
 	_, resp1 := env.sendIngest(batch1)
 	require.True(t, resp1.Accepted)
 
-	mirror2, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(env.fileSvc), PublicMirrorConfig{})
-	require.NoError(t, err)
+	mirror2 := env.reopenMirror()
 	server2 := httptest.NewServer(mirror2.Handler())
 	t.Cleanup(server2.Close)
 
@@ -515,60 +566,171 @@ func TestMirror_RetentionPrunesOldestHistoryAndRecoversChain(t *testing.T) {
 		previousHash = batch.ContentHash
 	}
 
-	env.mirror.mu.RLock()
-	state := env.mirror.state.Sources[env.sourceID]
-	assert.Equal(t, int64(2), state.RetainedFromSequence)
-	assert.Equal(t, int64(3), state.HighWaterSequence)
-	assert.Equal(t, 3, state.BatchCount)
-	require.Len(t, state.Batches, 2)
-	require.Len(t, state.Records, 2)
-	assert.Equal(t, int64(2), state.Records[0].Sequence)
-	env.mirror.mu.RUnlock()
-
-	mirror2, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(env.fileSvc), PublicMirrorConfig{})
+	summary := env.sourceSummary()
+	assert.Equal(t, int64(2), summary.RetainedFromSequence)
+	assert.Equal(t, int64(3), summary.HighWaterSequence)
+	assert.Equal(t, 3, summary.BatchCount)
+	assert.Equal(t, 2, env.retainedBatchCount())
+	retained, err := env.store.recordsInRange(context.Background(), env.sourceID, 1, 3)
 	require.NoError(t, err)
+	require.Len(t, retained, 2)
+	assert.Equal(t, int64(2), retained[0].Sequence)
+
+	mirror2 := env.reopenMirror()
 	require.NoError(t, mirror2.SetMaxRetainedBatches(2))
 	batch4 := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(4, projectionWithInt64Field("sequence", 4))}, previousHash)
-	_, err = mirror2.validateBatch(batch4)
+	_, err = mirror2.validateBatch(context.Background(), batch4)
 	require.NoError(t, err)
 	require.NoError(t, mirror2.acceptBatch(context.Background(), batch4))
 
-	mirror2.mu.RLock()
-	defer mirror2.mu.RUnlock()
-	state = mirror2.state.Sources[env.sourceID]
-	assert.Equal(t, int64(3), state.RetainedFromSequence)
-	assert.Equal(t, 4, state.BatchCount)
-	require.Len(t, state.Records, 2)
-	assert.Equal(t, int64(3), state.Records[0].Sequence)
-	assert.Equal(t, int64(4), state.Records[1].Sequence)
+	env.mirror = mirror2
+	summary = env.sourceSummary()
+	assert.Equal(t, int64(3), summary.RetainedFromSequence)
+	assert.Equal(t, 4, summary.BatchCount)
+	assert.Equal(t, 2, env.retainedBatchCount())
+	retained, err = env.store.recordsInRange(context.Background(), env.sourceID, 1, 4)
+	require.NoError(t, err)
+	require.Len(t, retained, 2)
+	assert.Equal(t, int64(3), retained[0].Sequence)
+	assert.Equal(t, int64(4), retained[1].Sequence)
 }
 
-func TestMirror_RestartRejectsNullDurableSourceState(t *testing.T) {
+func TestMirror_SetMaxRetainedRecordBytesValidates(t *testing.T) {
 	env := newMirrorTestEnv(t)
-	ctx := context.Background()
-	state, err := NewRuntimePublicMirrorStore(env.fileSvc).Load(ctx)
-	require.NoError(t, err)
-	state.Sources[env.sourceID] = nil
-	stateBytes, err := json.Marshal(state)
-	require.NoError(t, err)
-	require.NoError(t, env.fileSvc.WriteFile(ctx, constants.PublicMirrorStatePath, stateBytes, constants.PermFilePrivate))
-
-	_, err = NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(env.fileSvc), PublicMirrorConfig{})
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
+	assert.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(0), constants.ErrPublicFeedRetentionConfig)
+	assert.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(-10), constants.ErrPublicFeedRetentionConfig)
+	assert.NoError(t, env.mirror.SetMaxRetainedRecordBytes(1024))
 }
 
+func TestMirror_RetentionPrunesByByteLimitAndRecoversChain(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	r1 := env.makeRecord(1, projectionWithInt64Field("sequence", 1))
+	recordBytesSize := int64(len(r1.RecordBytes))
+	require.Greater(t, recordBytesSize, int64(0))
+
+	// Allow 2 records of bytes (so 3rd batch exceeds byte budget).
+	maxBytes := recordBytesSize*2 + 10
+	require.NoError(t, env.mirror.SetMaxRetainedBatches(10))
+	require.NoError(t, env.mirror.SetMaxRetainedRecordBytes(maxBytes))
+
+	previousHash := constants.PublicFeedZeroHashHex
+	for sequence := int64(1); sequence <= 3; sequence++ {
+		batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(sequence, projectionWithInt64Field("sequence", sequence))}, previousHash)
+		_, response := env.sendIngest(batch)
+		require.True(t, response.Accepted)
+		previousHash = batch.ContentHash
+	}
+
+	summary := env.sourceSummary()
+	assert.Equal(t, int64(2), summary.RetainedFromSequence)
+	assert.Equal(t, int64(3), summary.HighWaterSequence)
+	assert.Equal(t, 3, summary.BatchCount)
+	assert.Equal(t, 2, env.retainedBatchCount())
+	assert.Equal(t, 2, summary.RetainedRecordCount)
+	assert.Equal(t, recordBytesSize*2, summary.RetainedRecordBytes)
+
+	retained, err := env.store.recordsInRange(context.Background(), env.sourceID, 1, 3)
+	require.NoError(t, err)
+	require.Len(t, retained, 2)
+	assert.Equal(t, int64(2), retained[0].Sequence)
+	assert.Equal(t, int64(3), retained[1].Sequence)
+
+	// Reopen mirror and verify startup verification passes with RetainedRecordBytes.
+	mirror2 := env.reopenMirror()
+	require.NoError(t, mirror2.SetMaxRetainedBatches(10))
+	require.NoError(t, mirror2.SetMaxRetainedRecordBytes(maxBytes))
+	batch4 := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(4, projectionWithInt64Field("sequence", 4))}, previousHash)
+	_, err = mirror2.validateBatch(context.Background(), batch4)
+	require.NoError(t, err)
+	require.NoError(t, mirror2.acceptBatch(context.Background(), batch4))
+
+	env.mirror = mirror2
+	summary = env.sourceSummary()
+	assert.Equal(t, int64(3), summary.RetainedFromSequence)
+	assert.Equal(t, 4, summary.BatchCount)
+	assert.Equal(t, 2, env.retainedBatchCount())
+	assert.Equal(t, 2, summary.RetainedRecordCount)
+	assert.Equal(t, recordBytesSize*2, summary.RetainedRecordBytes)
+}
+
+func TestMirror_RetentionPrunesWhicheverLimitHitFirst(t *testing.T) {
+	t.Run("batch cap hit first", func(t *testing.T) {
+		env := newMirrorTestEnv(t)
+		require.NoError(t, env.mirror.SetMaxRetainedBatches(2))
+		require.NoError(t, env.mirror.SetMaxRetainedRecordBytes(1000000))
+		prevHash := constants.PublicFeedZeroHashHex
+		for seq := int64(1); seq <= 3; seq++ {
+			batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(seq, projectionWithInt64Field("s", seq))}, prevHash)
+			_, resp := env.sendIngest(batch)
+			require.True(t, resp.Accepted)
+			prevHash = batch.ContentHash
+		}
+		summary := env.sourceSummary()
+		assert.Equal(t, int64(2), summary.RetainedFromSequence)
+		assert.Equal(t, 2, env.retainedBatchCount())
+	})
+
+	t.Run("byte budget hit first", func(t *testing.T) {
+		env := newMirrorTestEnv(t)
+		r1 := env.makeRecord(1, projectionWithInt64Field("s", 1))
+		rSize := int64(len(r1.RecordBytes))
+		require.NoError(t, env.mirror.SetMaxRetainedBatches(100))
+		require.NoError(t, env.mirror.SetMaxRetainedRecordBytes(rSize*2+5))
+		prevHash := constants.PublicFeedZeroHashHex
+		for seq := int64(1); seq <= 3; seq++ {
+			batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(seq, projectionWithInt64Field("s", seq))}, prevHash)
+			_, resp := env.sendIngest(batch)
+			require.True(t, resp.Accepted)
+			prevHash = batch.ContentHash
+		}
+		summary := env.sourceSummary()
+		assert.Equal(t, int64(2), summary.RetainedFromSequence)
+		assert.Equal(t, 2, env.retainedBatchCount())
+	})
+}
+
+// TestMirror_RestartRejectsCorruptDurableState verifies every durable
+// corruption the store can detect fails closed on reopen.
 func TestMirror_RestartRejectsCorruptDurableState(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"campaign_id": "c1"}))}, constants.PublicFeedZeroHashHex)
-	_, response := env.sendIngest(batch)
-	require.True(t, response.Accepted)
-	require.NoError(t, env.fileSvc.WriteFile(context.Background(), constants.PublicMirrorStatePath, []byte("{invalid\n"), constants.PermFilePrivate))
+	tests := []struct {
+		name    string
+		corrupt func(t *testing.T, env *mirrorTestEnv)
+	}{
+		{name: "invalid retained window", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			_, err := env.store.db.Exec(`UPDATE sources SET retained_from_sequence = 0 WHERE source_id = ?`, env.sourceID)
+			require.NoError(t, err)
+		}},
+		{name: "summary chain hash mismatch", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			_, err := env.store.db.Exec(`UPDATE sources SET feed_chain_hash = ? WHERE source_id = ?`, strings.Repeat("ab", 32), env.sourceID)
+			require.NoError(t, err)
+		}},
+		{name: "tampered record bytes", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			_, err := env.store.db.Exec(`UPDATE records SET record_bytes = '{}' WHERE source_id = ?`, env.sourceID)
+			require.NoError(t, err)
+		}},
+		{name: "tampered batch signature", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			_, err := env.store.db.Exec(`UPDATE batches SET signature = ? WHERE source_id = ?`, strings.Repeat("00", ed25519.SignatureSize), env.sourceID)
+			require.NoError(t, err)
+		}},
+		{name: "missing retained batch", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			_, err := env.store.db.Exec(`DELETE FROM batches WHERE source_id = ?`, env.sourceID)
+			require.NoError(t, err)
+		}},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			env := newMirrorTestEnv(t)
+			batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"campaign_id": "c1"}))}, constants.PublicFeedZeroHashHex)
+			_, response := env.sendIngest(batch)
+			require.True(t, response.Accepted)
+			testCase.corrupt(t, env)
+			require.NoError(t, env.store.Close())
 
-	_, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(env.fileSvc), PublicMirrorConfig{})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
+			_, err := OpenPublicMirrorStore(context.Background(), env.fileSvc, testutil.NewTestLogger())
+			require.Error(t, err)
+			assert.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
+		})
+	}
 }
 
 func TestMirror_RegisterSourceKeyMakesNewSourceActiveWithoutRemovingArchivedSource(t *testing.T) {
@@ -1136,7 +1298,7 @@ func TestMirror_StaleSource_ReportsStaleFreshness(t *testing.T) {
 	require.True(t, resp.Accepted)
 
 	require.NoError(t, env.mirror.SetFreshnessWindows(time.Second, 2*time.Second, 3*time.Second))
-	acceptedAt := env.mirror.state.Sources[env.sourceID].LastAcceptedAt
+	acceptedAt := env.sourceSummary().LastAcceptedAt
 	env.mirror.now = func() time.Time { return acceptedAt.Add(2 * time.Second) }
 
 	var snap models.PublicFeedSnapshot
@@ -1152,7 +1314,7 @@ func TestMirror_FreshnessDerivesFromLastAcceptedBatchTime(t *testing.T) {
 	_, response := env.sendIngest(batch)
 	require.True(t, response.Accepted)
 	require.NoError(t, env.mirror.SetFreshnessWindows(time.Second, 2*time.Second, 3*time.Second))
-	acceptedAt := env.mirror.state.Sources[env.sourceID].LastAcceptedAt
+	acceptedAt := env.sourceSummary().LastAcceptedAt
 
 	testCases := []struct {
 		name     string
@@ -1246,9 +1408,9 @@ func TestMirror_KeyRegistration_RequiresAuthenticationStrictPayloadAndCurrentKey
 			require.NoError(t, err)
 			require.NoError(t, response.Body.Close())
 			assert.Equal(t, testCase.expectedStatus, response.StatusCode)
-			state, err := env.mirror.store.Load(context.Background())
+			keys, err := env.store.Keys(context.Background())
 			require.NoError(t, err)
-			assert.Len(t, state.KeyRegistry, testCase.expectedKeys)
+			assert.Len(t, keys.Registry, testCase.expectedKeys)
 		})
 	}
 }
@@ -1451,7 +1613,7 @@ func TestMirror_ProofIngest_AcceptsIncrementalArtifactDelta(t *testing.T) {
 	}
 	manifest := first.Manifest
 	manifest.ArtifactCount = 2
-	manifest.Artifacts = append([]models.PublicProofCatalogEntry(nil), first.Catalog.Entries[0], secondEntry)
+	manifest.Artifacts = append([]models.PublicProofCatalogEntry(nil), first.Manifest.Artifacts[0], secondEntry)
 	manifest.ProofRootSHA256 = (&PublicPublisherService{}).computeProofRootHash(manifest)
 	rootBytes, err := hex.DecodeString(manifest.ProofRootSHA256)
 	require.NoError(t, err)
@@ -1459,7 +1621,6 @@ func TestMirror_ProofIngest_AcceptsIncrementalArtifactDelta(t *testing.T) {
 	delta := models.PublicProofIngestRequest{
 		SourceID:  env.sourceID,
 		Manifest:  manifest,
-		Catalog:   models.PublicProofCatalog{SchemaVersion: constants.PublicProofCatalogSchemaVersion, Entries: manifest.Artifacts, GeneratedAt: time.Now().UTC()},
 		Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: secondID, Content: secondContent}},
 	}
 	deltaBody, err := json.Marshal(delta)
@@ -1498,7 +1659,7 @@ func TestMirror_ProofIngest_AcceptsManyArtifactDeltaInOneRequest(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.StatusCode)
 
 	newEntries := make([]models.PublicProofIngestArtifact, 0, 3)
-	newCatalogEntries := append([]models.PublicProofCatalogEntry(nil), first.Catalog.Entries[0])
+	newCatalogEntries := append([]models.PublicProofCatalogEntry(nil), first.Manifest.Artifacts[0])
 	for i := 0; i < 3; i++ {
 		content := []byte(`{"campaign_id":"c1","artifact":"delta-` + string(rune('b'+i)) + `"}`)
 		hash := sha256.Sum256(content)
@@ -1527,7 +1688,6 @@ func TestMirror_ProofIngest_AcceptsManyArtifactDeltaInOneRequest(t *testing.T) {
 	delta := models.PublicProofIngestRequest{
 		SourceID:  env.sourceID,
 		Manifest:  manifest,
-		Catalog:   models.PublicProofCatalog{SchemaVersion: constants.PublicProofCatalogSchemaVersion, Entries: manifest.Artifacts, GeneratedAt: time.Now().UTC()},
 		Artifacts: newEntries,
 	}
 	deltaBody, err := json.Marshal(delta)
@@ -1547,11 +1707,11 @@ func TestMirror_ProofIngest_RejectsCatalogExceedingMaxArtifacts(t *testing.T) {
 	env.mirror.SetIngestAuthToken("proof-token")
 	request := env.makeProofIngestRequest("proof.json", []byte(`{"campaign_id":"c1"}`))
 	request.Manifest.ArtifactCount = constants.PublicFeedProofMaxArtifacts + 1
-	request.Catalog.Entries = make([]models.PublicProofCatalogEntry, constants.PublicFeedProofMaxArtifacts+1)
-	for i := range request.Catalog.Entries {
-		request.Catalog.Entries[i] = request.Manifest.Artifacts[0]
+	entries := make([]models.PublicProofCatalogEntry, constants.PublicFeedProofMaxArtifacts+1)
+	for i := range entries {
+		entries[i] = request.Manifest.Artifacts[0]
 	}
-	request.Manifest.Artifacts = request.Catalog.Entries
+	request.Manifest.Artifacts = entries
 	request.Artifacts = make([]models.PublicProofIngestArtifact, constants.PublicFeedProofMaxArtifacts+1)
 	for i := range request.Artifacts {
 		request.Artifacts[i] = models.PublicProofIngestArtifact{
@@ -1569,7 +1729,7 @@ func TestMirror_ProofIngest_RejectsCatalogExceedingMaxArtifacts(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, response.Body.Close())
 	assert.Equal(t, http.StatusBadRequest, response.StatusCode)
-	assert.Empty(t, env.mirror.state.ProofArtifacts)
+	env.assertNoProofState()
 }
 
 func TestMirror_ProofIngest_RejectsInvalidPackageWithoutPartialPersistence(t *testing.T) {
@@ -1588,8 +1748,8 @@ func TestMirror_ProofIngest_RejectsInvalidPackageWithoutPartialPersistence(t *te
 		{name: "artifact hash substitution", filename: "proof.json", content: []byte(`{"campaign_id":"c1"}`), auth: true, mutate: func(request *models.PublicProofIngestRequest) {
 			request.Artifacts[0].Content = []byte(`{"campaign_id":"substituted"}`)
 		}},
-		{name: "catalog manifest mismatch", filename: "proof.json", content: []byte(`{"campaign_id":"c1"}`), auth: true, mutate: func(request *models.PublicProofIngestRequest) {
-			request.Catalog.Entries[0].Filename = "different.json"
+		{name: "new manifest entry without artifact content", filename: "proof.json", content: []byte(`{"campaign_id":"c1"}`), auth: true, mutate: func(request *models.PublicProofIngestRequest) {
+			request.Artifacts = nil
 		}},
 	}
 	for _, testCase := range testCases {
@@ -1615,11 +1775,92 @@ func TestMirror_ProofIngest_RejectsInvalidPackageWithoutPartialPersistence(t *te
 			} else {
 				assert.Equal(t, http.StatusUnauthorized, response.StatusCode)
 			}
-			assert.Empty(t, env.mirror.state.ProofArtifacts)
-			assert.Empty(t, env.mirror.state.ProofCatalogs)
-			assert.Empty(t, env.mirror.state.ProofManifests)
+			env.assertNoProofState()
 		})
 	}
+}
+
+// sendProofIngest posts a proof ingest request with the given bearer token
+// and decodes the mirror's response.
+func (e *mirrorTestEnv) sendProofIngest(request models.PublicProofIngestRequest, token string) (int, models.PublicProofIngestResponse) {
+	e.t.Helper()
+	requestBody, err := json.Marshal(request)
+	require.NoError(e.t, err)
+	req, err := http.NewRequest(http.MethodPost, e.server.URL+"/proof-ingest", bytes.NewReader(requestBody))
+	require.NoError(e.t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	response, err := e.client.Do(req)
+	require.NoError(e.t, err)
+	defer response.Body.Close()
+	var ingestResponse models.PublicProofIngestResponse
+	require.NoError(e.t, json.NewDecoder(response.Body).Decode(&ingestResponse))
+	return response.StatusCode, ingestResponse
+}
+
+func TestMirror_ProofIngest_ReportsMissingArtifactIDs(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	env.mirror.SetIngestAuthToken("proof-token")
+	request := env.makeProofIngestRequest("proof.json", []byte(`{"campaign_id":"c1"}`))
+	artifacts := request.Artifacts
+	request.Artifacts = nil
+
+	status, response := env.sendProofIngest(request, "proof-token")
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.False(t, response.Accepted)
+	assert.Equal(t, []string{artifacts[0].ArtifactID}, response.MissingArtifactIDs)
+	env.assertNoProofState()
+
+	request.Artifacts = artifacts
+	status, response = env.sendProofIngest(request, "proof-token")
+	assert.Equal(t, http.StatusOK, status)
+	assert.True(t, response.Accepted)
+	assert.Empty(t, response.MissingArtifactIDs)
+
+	request.Artifacts = nil
+	status, response = env.sendProofIngest(request, "proof-token")
+	assert.Equal(t, http.StatusOK, status, "a manifest whose artifacts are all stored needs no inline content")
+	assert.True(t, response.Accepted)
+}
+
+func TestMirror_ProofRoot_AuthenticatesAndReportsStoredRoot(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	env.mirror.SetIngestAuthToken("proof-token")
+	getRoot := func(method, query, token string) (int, models.PublicProofRootResponse) {
+		req, err := http.NewRequest(method, env.server.URL+"/proof-root"+query, nil)
+		require.NoError(t, err)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		response, err := env.client.Do(req)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		var root models.PublicProofRootResponse
+		if response.StatusCode == http.StatusOK {
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&root))
+		}
+		return response.StatusCode, root
+	}
+	sourceQuery := "?source=" + env.sourceID
+
+	status, _ := getRoot(http.MethodGet, sourceQuery, "")
+	assert.Equal(t, http.StatusUnauthorized, status)
+	status, _ = getRoot(http.MethodPost, sourceQuery, "proof-token")
+	assert.Equal(t, http.StatusMethodNotAllowed, status)
+	status, _ = getRoot(http.MethodGet, "", "proof-token")
+	assert.Equal(t, http.StatusBadRequest, status)
+	status, _ = getRoot(http.MethodGet, sourceQuery, "proof-token")
+	assert.Equal(t, http.StatusNotFound, status)
+
+	request := env.makeProofIngestRequest("proof.json", []byte(`{"campaign_id":"c1"}`))
+	require.NoError(t, env.mirror.storeProofPackage(context.Background(), request))
+	status, root := getRoot(http.MethodGet, sourceQuery, "proof-token")
+	assert.Equal(t, http.StatusOK, status)
+	assert.Equal(t, models.PublicProofRootResponse{
+		SourceID:        env.sourceID,
+		ProofRootSHA256: request.Manifest.ProofRootSHA256,
+		ArtifactCount:   1,
+	}, root)
 }
 
 // TestMirror_ProofDownload_ServesContentAddressedArtifact verifies that the
@@ -1646,8 +1887,6 @@ func TestMirror_ProofDownload_ServesContentAddressedArtifact(t *testing.T) {
 	assert.Equal(t, content, body)
 }
 
-// TestMirror_ProofDownload_Returns404ForUnknown verifies that the mirror
-// returns 404 for an unknown proof artifact.
 func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	content := []byte(`{"proof":"durable"}`)
@@ -1656,8 +1895,7 @@ func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T
 	artifactID := proofRequest.Artifacts[0].ArtifactID
 	require.NoError(t, env.mirror.RevokeSourceKey(context.Background(), env.sourceID, env.keyID))
 
-	mirror2, err := NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(env.fileSvc), PublicMirrorConfig{})
-	require.NoError(t, err)
+	mirror2 := env.reopenMirror()
 	server2 := httptest.NewServer(mirror2.Handler())
 	t.Cleanup(server2.Close)
 	response, err := server2.Client().Get(server2.URL + "/proofs/" + artifactID)
@@ -1682,25 +1920,28 @@ func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T
 
 func TestMirror_RestartRejectsCorruptDurableProofMetadata(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(string, *PublicMirrorStoreState)
+		name    string
+		corrupt func(t *testing.T, env *mirrorTestEnv, artifactID string)
 	}{
-		{
-			name: "catalog path traversal",
-			mutate: func(sourceID string, state *PublicMirrorStoreState) {
-				catalog := state.ProofCatalogs[sourceID]
-				catalog.Entries[0].Filename = "../private.json"
-				state.ProofCatalogs[sourceID] = catalog
-			},
-		},
-		{
-			name: "manifest root mismatch",
-			mutate: func(sourceID string, state *PublicMirrorStoreState) {
-				manifest := state.ProofManifests[sourceID]
-				manifest.ProofRootSHA256 = constants.PublicFeedZeroHashHex
-				state.ProofManifests[sourceID] = manifest
-			},
-		},
+		{name: "entry path traversal", corrupt: func(t *testing.T, env *mirrorTestEnv, _ string) {
+			_, err := env.store.db.Exec(`UPDATE proof_manifest_entries SET entry_json = json_set(entry_json, '$.filename', '../private.json') WHERE source_id = ?`, env.sourceID)
+			require.NoError(t, err)
+		}},
+		{name: "manifest root mismatch", corrupt: func(t *testing.T, env *mirrorTestEnv, _ string) {
+			_, err := env.store.db.Exec(`UPDATE proof_manifests SET manifest_json = json_set(manifest_json, '$.proof_root_sha256', ?), proof_root_sha256 = ? WHERE source_id = ?`,
+				constants.PublicFeedZeroHashHex, constants.PublicFeedZeroHashHex, env.sourceID)
+			require.NoError(t, err)
+		}},
+		{name: "missing manifest entry", corrupt: func(t *testing.T, env *mirrorTestEnv, _ string) {
+			_, err := env.store.db.Exec(`DELETE FROM proof_manifest_entries WHERE source_id = ?`, env.sourceID)
+			require.NoError(t, err)
+		}},
+		{name: "substituted artifact file", corrupt: func(t *testing.T, env *mirrorTestEnv, artifactID string) {
+			require.NoError(t, env.fileSvc.WriteFile(context.Background(), publicMirrorProofArtifactPath(artifactID), []byte(`{"campaign_id":"c2","verification_ok":true}`), constants.PermFilePrivate))
+		}},
+		{name: "missing artifact file", corrupt: func(t *testing.T, env *mirrorTestEnv, artifactID string) {
+			require.NoError(t, env.fileSvc.Remove(context.Background(), publicMirrorProofArtifactPath(artifactID)))
+		}},
 	}
 
 	for _, tt := range tests {
@@ -1709,14 +1950,10 @@ func TestMirror_RestartRejectsCorruptDurableProofMetadata(t *testing.T) {
 			ctx := context.Background()
 			request := env.makeProofIngestRequest("proof.json", []byte(`{"campaign_id":"c1","verification_ok":true}`))
 			require.NoError(t, env.mirror.storeProofPackage(ctx, request))
-			state, err := NewRuntimePublicMirrorStore(env.fileSvc).Load(ctx)
-			require.NoError(t, err)
-			tt.mutate(env.sourceID, &state)
-			stateBytes, err := json.Marshal(state)
-			require.NoError(t, err)
-			require.NoError(t, env.fileSvc.WriteFile(ctx, constants.PublicMirrorStatePath, stateBytes, constants.PermFilePrivate))
+			tt.corrupt(t, env, request.Artifacts[0].ArtifactID)
+			require.NoError(t, env.store.Close())
 
-			_, err = NewPublicMirrorServer(testutil.NewTestLogger(), NewRuntimePublicMirrorStore(env.fileSvc), PublicMirrorConfig{})
+			_, err := OpenPublicMirrorStore(ctx, env.fileSvc, testutil.NewTestLogger())
 
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
@@ -1724,6 +1961,8 @@ func TestMirror_RestartRejectsCorruptDurableProofMetadata(t *testing.T) {
 	}
 }
 
+// TestMirror_ProofDownload_Returns404ForUnknown verifies that the mirror
+// returns 404 for an unknown proof artifact.
 func TestMirror_ProofDownload_Returns404ForUnknown(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	resp, err := env.client.Get(env.server.URL + "/proofs/unknown-artifact-id")
@@ -1930,9 +2169,9 @@ func TestMirror_RecordType_AcceptsKeyRevocationRecords(t *testing.T) {
 	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
 	_, resp := env.sendIngest(batch)
 	assert.True(t, resp.Accepted)
-	state, err := env.mirror.store.Load(context.Background())
+	keys, err := env.store.Keys(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, revocation.RevokedAt, state.RevokedKeys[env.sourceID+":"+env.keyID])
+	assert.True(t, revocation.RevokedAt.Equal(keys.Revoked[env.sourceID+":"+env.keyID]))
 }
 
 // ---------------------------------------------------------------------------

@@ -115,9 +115,6 @@ var (
 	ErrLedgerSessionNotFound    = errors.New("ledger: no ledger exists for this operator session")
 	ErrLedgerDiffHashesRequired = errors.New("ledger: both commit hashes are required to compute a diff")
 
-	// Ledger status messages
-	LedgerStatusFileDeleted = "file deleted"
-
 	// CLI approval errors
 	ErrKeyReadFailed             = errors.New("failed to read CLI private key")
 	ErrKeyParseFailed            = errors.New("failed to parse private key")
@@ -398,7 +395,6 @@ var (
 	ErrGovernedDocStoreRequired       = errors.New("governed document store is required")
 	ErrConsensusPolicyStoreRequired   = errors.New("consensus policy store is required")
 	ErrFieldReaderRequired            = errors.New("field reader is required")
-	ErrConsensusServiceRequired       = errors.New("consensus service is required for an L2-enforcing posture")
 	ErrPlatformEnrollmentDepsRequired = errors.New("platform enrollment deps are required")
 
 	// Storage errors
@@ -459,6 +455,7 @@ var (
 	ErrGatewayL3ProofRequired                  = errors.New("L3 proof required")
 	ErrGatewayUserIDRequired                   = errors.New("user_id required")
 	ErrGatewayPostureMismatch                  = errors.New("running gateway posture differs from the requested posture")
+	ErrGatewayPostureUnknown                   = errors.New("running gateway posture cannot be determined")
 	ErrGatewayForbiddenPattern                 = errors.New("forbidden pattern detected")
 	ErrGatewayDownstreamHTTPError              = errors.New("downstream server returned HTTP error")
 	ErrGatewayDownstreamAuditFailed            = errors.New("downstream MCP call ran but its audit event could not be recorded")
@@ -533,6 +530,7 @@ var (
 	ErrPlatformEnrollmentInvalidPayload       = errors.New("platform enrollment payload does not match component kind")
 	ErrPlatformEnrollmentInvalidCSR           = errors.New("invalid platform enrollment CSR")
 	ErrPlatformEnrollmentUnsupportedKey       = errors.New("platform enrollment CSR must use a P-256 key")
+	ErrPlatformEnrollmentSigningKeyInvalid    = errors.New("platform enrollment signing key must be a hex Ed25519 public key")
 	ErrPlatformEnrollmentDuplicateKey         = errors.New("platform enrollment CSRs must use distinct keys")
 	ErrPlatformEnrollmentRequestIDRequired    = errors.New("platform enrollment request_id is required")
 	ErrPlatformEnrollmentTokenRequired        = errors.New("platform enrollment token is required")
@@ -555,8 +553,11 @@ var (
 	ErrPlatformEnrollmentGovernanceRejected   = errors.New("platform enrollment governance verification rejected")
 	ErrPlatformEnrollmentPersistenceFailed    = errors.New("platform enrollment persistence failed")
 	ErrPlatformEnrollmentIssuanceFailed       = errors.New("platform enrollment issuance failed")
+	ErrPlatformEnrollmentIssuanceNotCommitted = errors.New("platform enrollment issuance has not been committed")
+	ErrPlatformEnrollmentIssuanceMismatch     = errors.New("platform enrollment payload does not match the committed issuance")
 	ErrPlatformEnrollmentReservedIdentity     = errors.New("platform identity requires owner-approved enrollment")
 	ErrPlatformEnrollmentRevoked              = errors.New("platform enrollment has been revoked")
+	ErrPlatformEnrollmentL3Required           = errors.New("platform enrollment action requires L3 human approval")
 
 	ErrCLIRotationFailed            = errors.New("CLI rotation failed")
 	ErrCLIRotationCSRRequired       = errors.New("cli_csr_pem is required for rotation")
@@ -728,8 +729,6 @@ var (
 	ErrFileEditOldContentRequired    = errors.New("old_content is required for replace operation")
 	ErrFileEditInsertContentRequired = errors.New("insert_content is required for insert operation")
 	ErrFileEditLineRangeRequired     = errors.New("start_line and end_line are required for delete operation")
-	ErrFileEditPatchContentRequired  = errors.New("patch_content is required for patch operation")
-	ErrFileEditPatchNotImplemented   = errors.New("patch operation not yet implemented")
 
 	// Response writer errors
 	ErrResponseEncodeJSON               = errors.New("failed to encode JSON response")
@@ -791,6 +790,7 @@ var (
 	ErrAppIdentityNotFound  = errors.New("app identity not found")
 	ErrAppIdentityExpired   = errors.New("app identity certificate expired")
 	ErrAppIdentityUntrusted = errors.New("app identity certificate untrusted")
+	ErrAppSigningKeyInvalid = errors.New("app signing identity must contain an Ed25519 seed")
 
 	// Sealed client identity files (CLI/app private keys, pending enrollment state)
 	ErrIdentityFilePlaintext = errors.New("identity file is stored in the clear; plaintext private keys are refused, delete it and re-enroll")
@@ -961,12 +961,13 @@ var (
 	ErrTxL2ConsensusNotConfigured      = errors.New("TX_QUORUM_L2_CONSENSUS_MISSING: consensus policy store not configured")
 	ErrTxL2ConsensusSetUnknown         = errors.New("TX_QUORUM_L2_CONSENSUS_SET_UNKNOWN: L2 proof names a consensus set that is unknown or disabled")
 	ErrTxL2DuplicateSigner             = errors.New("TX_QUORUM_L2_DUP_SIGNER: duplicate signer key in vote set with require_distinct")
-	ErrConsensusHashMismatch           = errors.New("CONSENSUS_HASH_MISMATCH: envelope id does not match recomputed transaction hash")
 	ErrConsensusInvalidID              = errors.New("CONSENSUS_INVALID_ID: consensus ID must contain only alphanumeric characters, hyphens, and underscores")
 	ErrConsensusMustBeEnabled          = errors.New("CONSENSUS_MUST_BE_ENABLED: new consensus must be created with enabled=true")
-	ErrConsensusFactoryNilPolicy       = errors.New("CONSENSUS_FACTORY_NIL_POLICY: consensus policy is nil")
-	ErrConsensusFactoryNilKeyProvider  = errors.New("CONSENSUS_FACTORY_NIL_KEY_PROVIDER: key provider is nil")
-	ErrConsensusNoSigningMembers       = errors.New("CONSENSUS_NO_SIGNING_MEMBERS: no members with private keys available to sign votes")
+	ErrConsensusAppNotEnrolled         = errors.New("consensus application must be an enrolled, completed application")
+	ErrConsensusAppMissingSignerKey    = errors.New("consensus application has no enabled Ed25519 trusted signer key")
+	ErrConsensusEndpointInvalid        = errors.New("consensus deliberation endpoint must be an absolute HTTPS URL without credentials or fragments; redirects are forbidden")
+	ErrConsensusBindingNotFound        = errors.New("no consensus application is currently bound")
+	ErrConsensusNoSigningMembers       = errors.New("CONSENSUS_NO_SIGNING_MEMBERS: no members with private keys available to sign")
 	ErrTxL3ProofMissing                = errors.New("TX_NOTARY_L3_PROOF_MISSING: Notary (L3Notary) WebAuthn proof required but missing")
 	ErrTxL3ProofInvalid                = errors.New("TX_NOTARY_L3_PROOF_INVALID: Notary (L3Notary) WebAuthn proof failed verification")
 	ErrTxL3Denied                      = errors.New("TX_NOTARY_L3_DENIED: the human denied the suspended transaction")
@@ -1083,15 +1084,6 @@ var (
 
 	// Stream errors
 	ErrStreamMarshalEvent = errors.New("failed to marshal stream event")
-
-	// Consensus bootstrap errors
-	ErrConsensusBootstrapMissingFields = errors.New("consensus bootstrap: consensus_id, member_app_ids, and quorum are required")
-	ErrInvalidSeedLength               = errors.New("invalid seed length")
-	ErrConsensusMemberKeyNotFound      = errors.New("no private key for member")
-	ErrConsensusBootstrapParseConfig   = errors.New("consensus bootstrap: parse config")
-	ErrConsensusBootstrapReadConfig    = errors.New("consensus bootstrap: read config")
-	ErrConsensusBootstrapDecodeSeed    = errors.New("consensus bootstrap: decode seed hex")
-	ErrGatewayStoresNil                = errors.New("gateway stores is nil")
 
 	// SSE stream errors
 	ErrSSEStreamClosed = errors.New("SSE stream closed by server")
@@ -1266,6 +1258,7 @@ var (
 	ErrPublicFeedMirrorUnreachable            = errors.New("public-feed: mirror is unreachable")
 	ErrPublicFeedMirrorStoreCorrupt           = errors.New("public-feed: mirror store is corrupt")
 	ErrPublicFeedMirrorStoreWrite             = errors.New("public-feed: mirror store write failed")
+	ErrPublicFeedMirrorLegacyStateConflict    = errors.New("public-feed: legacy mirror state.json exists alongside mirror.db; remove one of them")
 	ErrPublicFeedRateLimited                  = errors.New("public-feed: anonymous read rate limit exceeded")
 	ErrPublicFeedRateLimitConfig              = errors.New("public-feed: anonymous read rate limit configuration is invalid")
 	ErrPublicFeedTrustedProxyConfig           = errors.New("public-feed: trusted proxy configuration is invalid")
@@ -1283,8 +1276,13 @@ var (
 	ErrPublicFeedProofSizeMismatch            = errors.New("public-feed: proof artifact size mismatch")
 	ErrPublicFeedProofPathTraversal           = errors.New("public-feed: proof path traversal rejected")
 	ErrPublicFeedProofManifestInvalid         = errors.New("public-feed: proof manifest is invalid")
+	ErrPublicFeedProofSegmentInvalid          = errors.New("public-feed: proof manifest segment is invalid")
+	ErrPublicFeedProofSegmentLinkMismatch     = errors.New("public-feed: proof segment previous root mismatch")
+	ErrPublicFeedProofSegmentEquivocation     = errors.New("public-feed: proof segment equivocation detected")
+	ErrPublicFeedProofSegmentOutOfOrder       = errors.New("public-feed: proof segment sequence out of order")
 	ErrPublicFeedProofCatalogMismatch         = errors.New("public-feed: proof catalog does not match manifest")
 	ErrPublicFeedProofIngestRejected          = errors.New("public-feed: mirror rejected proof package")
+	ErrPublicFeedProofArtifactsMissing        = errors.New("public-feed: proof manifest lists artifacts the mirror does not hold")
 	ErrPublicFeedProofIDRequired              = errors.New("public-feed: proof_id is required")
 	ErrPublicFeedRecordTypeInvalid            = errors.New("public-feed: invalid record type")
 	ErrPublicFeedRecordSchemaInvalid          = errors.New("public-feed: invalid record schema")
@@ -1321,6 +1319,8 @@ var (
 	ErrProvenanceOperatorAmbiguous        = errors.New("provenance operator: multiple provenance operator sessions; explicit target required")
 	ErrProvenanceOperatorNotCapable       = errors.New("provenance operator: target operator session is not a provenance operator")
 	ErrModelProvenanceDigestMismatch      = errors.New("model provenance: observed model digest does not match expected digest")
+	ErrModelProvenanceBlobChanged         = errors.New("model provenance: weight blob changed while it was hashed")
+	ErrModelProvenanceBlobIdentity        = errors.New("model provenance: weight blob file identity unavailable")
 	ErrInferenceModelOverrideDenied       = errors.New("inference: model not permitted by the frozen campaign registry")
 	ErrInferenceModelTagInvalid           = errors.New("inference: served model tag is invalid")
 	ErrInferenceOutcomeUnknown            = errors.New("inference: dispatch deadline exceeded; remote provider outcome unknown")
@@ -1348,11 +1348,6 @@ var (
 	ErrFormationFamilyOverlap              = errors.New("formation: model-family overlap is not permitted")
 	ErrFormationVRAMBudgetExceeded         = errors.New("formation: estimated VRAM exceeds budget")
 	ErrFormationAttestationRequired        = errors.New("formation: sovereign model attestation is required")
-	ErrFormationAttestationFailed          = errors.New("formation: sovereign model attestation failed")
-	ErrFormationOutOfMemory                = errors.New("formation: model execution ran out of memory")
-	ErrFormationPolicyValidation           = errors.New("formation: state mutation failed L1-L5 validation")
-	ErrFormationWitnessUnavailable         = errors.New("formation: observer or provenance witness unavailable")
-	ErrFormationRunnerDependency           = errors.New("formation: runner dependency is missing")
 	ErrFormationRegistryBinding            = errors.New("formation: frozen registry binding failed")
 	ErrFormationStackMismatch              = errors.New("formation: stack binding does not match catalog")
 	ErrInferenceModelRegistryInvalid       = errors.New("inference: model registry invalid")
@@ -1384,6 +1379,9 @@ var (
 	ErrJSONRPCMethodRequired       = errors.New("json-rpc method required")
 	ErrJSONRPCMethodNotFound       = errors.New("json-rpc method not found")
 	ErrJSONRPCErrorResponse        = errors.New("json-rpc error response")
+
+	// Runtime profiling errors.
+	ErrProfilingListenAddress = errors.New("profiling: listen address must be host:port on localhost or a loopback IP")
 )
 
 // Native evaluation errors.
@@ -1409,6 +1407,7 @@ var (
 	ErrEvaluationRunLeaseHeld              = errors.New("evaluation: run lease is held by a live process")
 	ErrEvaluationSelectionEmpty            = errors.New("evaluation: model selection is empty")
 	ErrEvaluationExportDirNotRelative      = errors.New("evaluation: export output directory must be runtime-relative")
+	ErrEvaluationExportDirSealed           = errors.New("evaluation: export output directory must be outside the encrypted evaluation and report trees")
 	ErrDataOperatorNotFound                = errors.New("evaluation: no active data-operator session")
 	ErrDataOperatorAmbiguous               = errors.New("evaluation: multiple active data-operator sessions")
 	ErrDataOperatorNotBound                = errors.New("evaluation: data-operator session is not bound to the CLI session; run './ztd operator bind'")
@@ -1431,6 +1430,7 @@ var (
 	ErrEvaluationBackupPurgePathInvalid    = errors.New("evaluation: backup purge path is not beneath an evaluation evidence tree")
 	ErrEvaluationBackupKeyChainMissing     = errors.New("evaluation: backup snapshot does not carry the vault key chain that sealed its evidence")
 	ErrEvaluationBackupKeyChainInvalid     = errors.New("evaluation: backup key chain cannot open the vault that sealed its evidence")
+	ErrEvaluationBackupEvidenceUnopenable  = errors.New("evaluation: backup evidence does not authenticate under its snapshot's key chain")
 	ErrEvaluationEvidenceVaultRequired     = errors.New("evaluation: runtime vault is required to read or write evaluation evidence")
 	ErrEvaluationEvidenceDecryptFailed     = errors.New("evaluation: evaluation evidence cannot be decrypted with the runtime vault")
 	ErrEvaluationEvidenceStreamUnsupported = errors.New("evaluation: evaluation evidence is encrypted and cannot be streamed")
@@ -1444,7 +1444,7 @@ var (
 	ErrEvaluationTargetKindMismatch        = errors.New("evaluation: assignment target kind does not match the executor")
 	ErrEvaluationEvidenceTraceMismatch     = errors.New("evaluation: imported evidence does not match its trace")
 	ErrEvaluationLastEntryRemoval          = errors.New("evaluation: cannot remove the last entry from a catalog or inventory")
-	ErrEvaluationFormationSmokeFailed      = errors.New("evaluation: formation smoke failed")
+	ErrEvaluationSystemLaneUnavailable     = errors.New("evaluation: the system lane has no executor until formations run the investigation loop")
 	ErrEvaluationWorkspaceUnavailable      = errors.New("evaluation: scenario workspace is unavailable on the bound Data Operator")
 	ErrEvaluationHeldContextUnavailable    = errors.New("evaluation: the previous repetition's investigation cannot be held into this repetition")
 

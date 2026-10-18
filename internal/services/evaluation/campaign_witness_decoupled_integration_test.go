@@ -75,7 +75,7 @@ func TestCampaignWitnessEvidence_DecoupledObservationAndProvenance(t *testing.T)
 	// Initialize and schedule run
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	count, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	require.Greater(t, count, 0)
 

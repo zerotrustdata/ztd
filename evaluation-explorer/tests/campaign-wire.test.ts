@@ -283,7 +283,7 @@ describe('campaign projection wire contract', () => {
       record: { ...record, role_transcripts: roleTranscripts },
     });
 
-    it('accepts a valid formation transcript list', () => {
+    it('accepts a valid role transcript list', () => {
       const decoded = decodeCampaignProjectionEnvelope(withTranscripts([transcript, { ...transcript, role: 'assistant' }, { role: 'primary' }]));
       expect((decoded.record as CampaignResultRecord).role_transcripts).toHaveLength(3);
     });

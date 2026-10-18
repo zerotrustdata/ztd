@@ -8,9 +8,7 @@
 package evaluation
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -179,36 +177,4 @@ func TestFormationBindingFromCatalog_RejectsUnknownFormationID(t *testing.T) {
 	_, err := FormationBindingFromCatalog("missing-formation", ultraEfficientSpeedsterRegistryVariants())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrFormationInvalid)
-}
-
-func TestFormationHarness_RunsBoundUltraEfficientSpeedsterFormation(t *testing.T) {
-	formation, err := BindFormation(ultraEfficientSpeedsterBindingRequest(t))
-	require.NoError(t, err)
-
-	harness, err := NewFormationHarness(
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-attempt" },
-	)
-	require.NoError(t, err)
-
-	result, err := harness.RunBoundFormation(context.Background(), formation, []byte("initial"))
-	require.NoError(t, err)
-	require.True(t, result.Passed)
-	assert.Equal(t, FormationSchemaVersion, result.SchemaVersion)
-	assert.Equal(t, "ultra-efficient-speedster", result.FormationID)
-	assert.Len(t, result.Roles, 3)
-	assert.Equal(t, 1, harness.Policy.Calls)
-	assert.Equal(t, []string{
-		"lite:initial",
-		"assistant:initial/lite",
-		"primary:initial/lite/assistant",
-	}, harness.Executor.States)
-	assert.Equal(t, []string{
-		"allocate:qwen35-4b",
-		"allocate:gemma4-e2b",
-		"allocate:llama32-1b-speed",
-		"release:llama32-1b-speed",
-		"release:gemma4-e2b",
-		"release:qwen35-4b",
-	}, harness.Allocator.Events)
 }

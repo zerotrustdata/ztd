@@ -34,7 +34,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -49,7 +48,7 @@ import (
 func TestUniversalGateway_MultiProtocolAutoDetection(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "universal-autodetect",
-		Posture:  config.PostureNotary,
+		Posture:  constants.PostureNotary,
 	})
 
 	identity := fixtures.BootstrapCLIIdentity(t, f, "test-fingerprint")
@@ -121,7 +120,7 @@ func TestUniversalGateway_MultiProtocolAutoDetection(t *testing.T) {
 func TestUniversalGateway_OOBSuspensionAndApproval(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "universal-suspension",
-		Posture:  config.PostureNotary,
+		Posture:  constants.PostureNotary,
 	})
 
 	identity := fixtures.BootstrapCLIIdentity(t, f, "test-fingerprint")

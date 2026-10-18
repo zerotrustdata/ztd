@@ -8,8 +8,14 @@
 package models
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -204,15 +210,34 @@ type PublicProofIngestArtifact struct {
 
 type PublicProofIngestRequest struct {
 	SourceID  string                      `json:"source_id"`
-	Manifest  PublicProofManifest         `json:"manifest"`
-	Catalog   PublicProofCatalog          `json:"catalog"`
-	Artifacts []PublicProofIngestArtifact `json:"artifacts"`
+	Manifest  PublicProofManifest         `json:"manifest,omitzero"`
+	Segment   *PublicProofManifestSegment `json:"segment,omitempty"`
+	Artifacts []PublicProofIngestArtifact `json:"artifacts,omitempty"`
 }
 
 type PublicProofIngestResponse struct {
 	Accepted      bool   `json:"accepted"`
 	ArtifactCount int    `json:"artifact_count,omitempty"`
 	ProofRoot     string `json:"proof_root,omitempty"`
+	// MissingArtifactIDs lists, on rejection, the manifest artifacts the
+	// mirror neither holds nor received inline.
+	MissingArtifactIDs []string `json:"missing_artifact_ids,omitempty"`
+}
+
+// PublicProofRootResponse is the mirror's current proof root for one source,
+// served on the private ingest listener at GET /proof-root.
+type PublicProofRootResponse struct {
+	SegmentIndex    int64  `json:"segment_index,omitempty"`
+	SourceID        string `json:"source_id"`
+	ProofRootSHA256 string `json:"proof_root_sha256"`
+	ArtifactCount   int    `json:"artifact_count"`
+}
+
+// PublicProofSegmentsResponse is the response for GET /proof-segments.
+type PublicProofSegmentsResponse struct {
+	SchemaVersion string                       `json:"schema_version"`
+	SourceID      string                       `json:"source_id"`
+	Segments      []PublicProofManifestSegment `json:"segments"`
 }
 
 // PublicAssignmentAuditProofPublishRequest ingests one assignment audit export
@@ -261,14 +286,15 @@ type PublicProofCatalogPruneResponse struct {
 	RemainingCount int  `json:"remaining_count"`
 }
 
-// PublicProofMirrorSyncState tracks the last proof package successfully pushed
-// to the public mirror so incremental pushes can omit already-synced artifacts.
+// PublicProofMirrorSyncState checkpoints the last accepted segment. The mirror
+// head remains authoritative when resuming delivery.
 type PublicProofMirrorSyncState struct {
-	SchemaVersion     string    `json:"schema_version"`
-	SourceID          string    `json:"source_id"`
-	ProofRootSHA256   string    `json:"proof_root_sha256"`
-	SyncedArtifactIDs []string  `json:"synced_artifact_ids"`
-	SyncedAt          time.Time `json:"synced_at"`
+	SegmentIndex    int64     `json:"segment_index,omitempty"`
+	SchemaVersion   string    `json:"schema_version"`
+	SourceID        string    `json:"source_id"`
+	ProofRootSHA256 string    `json:"proof_root_sha256"`
+	ArtifactCount   int       `json:"artifact_count"`
+	SyncedAt        time.Time `json:"synced_at"`
 }
 
 type PublicAssignmentAuditProofPublishResponse struct {
@@ -316,6 +342,7 @@ type PublicProofCatalogEntry struct {
 // PublicProofManifest is the root manifest for a public proof package.
 type PublicProofManifest struct {
 	SchemaVersion               string                    `json:"schema_version"`
+	SegmentIndex                int64                     `json:"segment_index,omitempty"`
 	ProofRootSHA256             string                    `json:"proof_root_sha256"`
 	CampaignID                  string                    `json:"campaign_id"`
 	CampaignRevision            string                    `json:"campaign_revision"`
@@ -327,6 +354,115 @@ type PublicProofManifest struct {
 	GeneratedAt                 time.Time                 `json:"generated_at"`
 	SigningKeyID                string                    `json:"signing_key_id"`
 	Signature                   string                    `json:"signature"`
+}
+
+// PublicProofManifestSegment is one signed link in a chained proof log.
+// Each publish appends a new segment rather than rewriting the full catalog.
+type PublicProofManifestSegment struct {
+	SchemaVersion               string                    `json:"schema_version"`
+	SourceID                    string                    `json:"source_id"`
+	SegmentIndex                int64                     `json:"segment_index"`
+	PreviousRoot                string                    `json:"previous_root"`
+	CampaignID                  string                    `json:"campaign_id,omitempty"`
+	CampaignRevision            string                    `json:"campaign_revision,omitempty"`
+	VerifiedIndexGenerationHash string                    `json:"verified_index_generation_hash,omitempty"`
+	VerificationOK              bool                      `json:"verification_ok"`
+	Entries                     []PublicProofCatalogEntry `json:"entries,omitempty"`
+	WithdrawnArtifactIDs        []string                  `json:"withdrawn_artifact_ids,omitempty"`
+	GeneratedAt                 time.Time                 `json:"generated_at"`
+	SigningKeyID                string                    `json:"signing_key_id"`
+	ProofRootSHA256             string                    `json:"proof_root_sha256"`
+	Signature                   string                    `json:"signature"`
+	VerifierInstructions        string                    `json:"verifier_instructions,omitempty"`
+}
+
+// ComputePublicProofSegmentRoot hashes a domain-separated, length-prefixed
+// encoding of every signed field. Length prefixes prevent adjacent variable
+// fields from having ambiguous encodings. Root and signature are excluded.
+func ComputePublicProofSegmentRoot(seg PublicProofManifestSegment) string {
+	h := sha256.New()
+	field := func(value string) {
+		_, _ = fmt.Fprintf(h, "%d:", len(value))
+		_, _ = h.Write([]byte(value))
+	}
+	field("ztd-public-proof-segment-v1")
+	field(seg.SchemaVersion)
+	field(seg.SourceID)
+	field(strconv.FormatInt(seg.SegmentIndex, 10))
+	field(seg.PreviousRoot)
+	field(seg.CampaignID)
+	field(seg.CampaignRevision)
+	field(seg.VerifiedIndexGenerationHash)
+	field(strconv.FormatBool(seg.VerificationOK))
+	field(strconv.Itoa(len(seg.Entries)))
+	for _, entry := range seg.Entries {
+		field(entry.ArtifactID)
+		field(entry.SHA256)
+		field(entry.Filename)
+		field(entry.MediaType)
+		field(strconv.FormatInt(entry.ByteSize, 10))
+		field(string(entry.Classification))
+		field(entry.CampaignID)
+		field(entry.SourceRunID)
+		field(entry.GeneratedAt.UTC().Format(time.RFC3339Nano))
+		field(entry.VerificationCommand)
+		field(entry.ImmutableURL)
+	}
+	field(strconv.Itoa(len(seg.WithdrawnArtifactIDs)))
+	for _, id := range seg.WithdrawnArtifactIDs {
+		field(id)
+	}
+	field(seg.GeneratedAt.UTC().Format(time.RFC3339Nano))
+	field(seg.SigningKeyID)
+	field(seg.VerifierInstructions)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// VerifyPublicProofSegment validates a segment's signed shape, root, and
+// signature against a source and a trusted key. Callers additionally enforce
+// chain position and key revocation at their own trust boundary.
+func VerifyPublicProofSegment(sourceID string, seg PublicProofManifestSegment, key ed25519.PublicKey) error {
+	if sourceID == "" || seg.SourceID != sourceID || !seg.VerificationOK ||
+		seg.SchemaVersion != constants.PublicProofSegmentSchemaVersion || seg.SegmentIndex <= 0 ||
+		!validProofHash(seg.PreviousRoot) || seg.SigningKeyID == "" || seg.GeneratedAt.IsZero() ||
+		len(seg.Entries)+len(seg.WithdrawnArtifactIDs) > constants.PublicFeedProofMaxArtifacts {
+		return constants.ErrPublicFeedProofSegmentInvalid
+	}
+	seen := make(map[string]bool, len(seg.Entries)+len(seg.WithdrawnArtifactIDs))
+	for _, entry := range seg.Entries {
+		if !validProofHash(entry.ArtifactID) || entry.SHA256 != entry.ArtifactID || seen[entry.ArtifactID] ||
+			entry.Classification != PublicFeedProofClassificationPublicSafe || entry.ByteSize < 0 || entry.ByteSize > constants.PublicFeedMaxArtifactBytes {
+			return constants.ErrPublicFeedProofCatalogMismatch
+		}
+		if entry.Filename == "" || entry.Filename == "." || entry.Filename == ".." || path.Base(entry.Filename) != entry.Filename ||
+			strings.Contains(entry.Filename, "\\") || entry.ImmutableURL != "/proofs/"+entry.ArtifactID {
+			return constants.ErrPublicFeedProofPathTraversal
+		}
+		seen[entry.ArtifactID] = true
+	}
+	for _, id := range seg.WithdrawnArtifactIDs {
+		if !validProofHash(id) || seen[id] {
+			return constants.ErrPublicFeedProofSegmentInvalid
+		}
+		seen[id] = true
+	}
+	if ComputePublicProofSegmentRoot(seg) != seg.ProofRootSHA256 {
+		return constants.ErrPublicFeedProofSegmentInvalid
+	}
+	root, err := hex.DecodeString(seg.ProofRootSHA256)
+	if err != nil || len(root) != sha256.Size {
+		return constants.ErrPublicFeedProofSegmentInvalid
+	}
+	signature, err := hex.DecodeString(seg.Signature)
+	if err != nil || len(key) != ed25519.PublicKeySize || !ed25519.Verify(key, root, signature) {
+		return constants.ErrPublicFeedSignatureInvalid
+	}
+	return nil
+}
+
+func validProofHash(value string) bool {
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size && value == strings.ToLower(value)
 }
 
 // PublicProofCatalog is the full public proof catalog.

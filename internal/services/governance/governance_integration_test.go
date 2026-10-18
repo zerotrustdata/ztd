@@ -94,7 +94,7 @@ func TestGovernanceFlow(t *testing.T) {
 // a specific fail-closed path by calling VerifyEnvelope with a valid
 // envelope and asserting the correct typed error is returned.
 func TestGovernanceFailClosed(t *testing.T) {
-	buildValidEnvelope := func(t *testing.T, posture string) *govtypes.GovernanceEnvelope {
+	buildValidEnvelope := func(t *testing.T, posture constants.Posture) *govtypes.GovernanceEnvelope {
 		t.Helper()
 		_, privKey, err := ed25519.GenerateKey(nil)
 		if err != nil {

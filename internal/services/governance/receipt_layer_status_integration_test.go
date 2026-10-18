@@ -65,8 +65,8 @@ func receiptStageOutcome(t *testing.T, receipt *operatorv1.ActionReceipt, kind o
 // action, which L3 never gates, records L3_STATUS_NOT_REQUIRED and a NOT_REQUIRED L3 stage
 // under the postures that gate mutations on L3, and that the chain validates.
 func TestReceiptPostureReadRecordsNotRequiredL3UnderRatifyAndNotary(t *testing.T) {
-	for _, posture := range []string{"ratify", "notary"} {
-		t.Run(posture, func(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
+		t.Run(string(posture), func(t *testing.T) {
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			actuator, _ := newReceiptPostureActuator(t)
 			env := signedEnvelope(t, constants.ActionTypeFsRead, typedPayload(t, constants.ActionTypeFsRead), privKey, posture)

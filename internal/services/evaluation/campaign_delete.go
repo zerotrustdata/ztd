@@ -33,8 +33,9 @@ type Deleter struct {
 
 // DeleteReport describes a completed delete.
 type DeleteReport struct {
-	// CampaignID is the deleted run's campaign, or the deleted campaign. It is
-	// empty for a run that was only in the backups.
+	// CampaignID is the deleted campaign. It is empty for a run delete, which
+	// never reads the run's evidence, so a run whose records no longer
+	// authenticate can still be deleted.
 	CampaignID string
 	// RunIDs are the deleted runs.
 	RunIDs []string
@@ -81,17 +82,13 @@ func (d *Deleter) DeleteRun(ctx context.Context, runID string) (*DeleteReport, e
 	if err := rejectRunningRun(ctx, store, d.live, runID); err != nil {
 		return nil, err
 	}
-	run, err := store.LoadRun(ctx, runID)
-	if err != nil {
-		return nil, err
-	}
 	if err := d.discardAndPurge(ctx, []string{runID}, purge); err != nil {
 		return nil, fmt.Errorf("evaluation: delete run %s: %w", runID, err)
 	}
 	if err := d.removeRun(ctx, runID, archived); err != nil {
 		return nil, err
 	}
-	return &DeleteReport{CampaignID: run.GetCampaignBinding().GetCampaignId(), RunIDs: []string{runID}, Backups: purge.report}, nil
+	return &DeleteReport{RunIDs: []string{runID}, Backups: purge.report}, nil
 }
 
 // DeleteCampaign deletes every run of a campaign, active or archived, then the

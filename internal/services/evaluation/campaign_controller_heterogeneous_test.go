@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -51,109 +52,29 @@ func TestCampaignController_GenerateHeterogeneousStackSet_PersistsStacks(t *test
 	assert.Equal(t, stackSet.SetDigest, loaded.SetDigest)
 }
 
-func TestCampaignController_ScheduleAndExecuteHeterogeneousAssignment(t *testing.T) {
+// A system-lane run has no executor, so scheduling it fails closed before any
+// assignment is persisted.
+func TestCampaignController_ScheduleRun_SystemLaneFailsClosed(t *testing.T) {
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
-	harness, err := NewFormationHarness(
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-attempt" },
-	)
-	require.NoError(t, err)
-	variants := testHeterogeneousVariants()
-	formationExecutor := NewCampaignFormationExecutor(
-		variants,
-		&harnessCampaignFormationRunner{harness: harness},
-		store,
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-1" },
-	)
-	controller := NewCampaignController(store, formationExecutor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 
 	req := testCampaignInitRequest(t)
 	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, variants)
+	var err error
+	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, testHeterogeneousVariants())
 	require.NoError(t, err)
 
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
 	_, err = controller.GenerateHeterogeneousStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId(), 17)
 	require.NoError(t, err)
-	count, err := controller.ScheduleRun(context.Background(), req.RunID)
-	require.NoError(t, err)
-	assert.Greater(t, count, 0)
-
-	binding := CampaignExecutionBinding{
-		Topology:            testOperatorTopology(req.InferenceOperatorSessionID, req.DataOperatorSessionID),
-		ModelRegistryDigest: req.Inventory.RegistryDigest,
-		ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
-	}
-	result, ok, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, binding, req.ScenarioArtifacts)
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.NotNil(t, result)
-	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
-	assert.Len(t, result.GetModelInferences(), 3)
-
-	nextAssignment, ok, err := controller.ResumeNextAssignment(context.Background(), req.RunID)
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.NotNil(t, nextAssignment)
-	assert.NotEqual(t, result.GetAssignmentId(), nextAssignment.GetAssignmentId())
-
-	evidence, err := store.LoadAssignmentFormationRun(context.Background(), req.RunID, result.GetAssignmentId())
-	require.NoError(t, err)
-	require.NotNil(t, evidence)
-
-	report, err := NewCampaignRunVerifier(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }).VerifyRun(context.Background(), store, req.RunID, req.Catalog, req.ScenarioArtifacts)
-	require.NoError(t, err)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
-}
-
-func TestCampaignController_ScheduleAndExecuteFormationCatalogAssignment(t *testing.T) {
-	files := newCampaignMemoryFileService()
-	store := NewStore(files)
-	harness, err := NewFormationHarness(
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-attempt" },
-	)
-	require.NoError(t, err)
-	variants := formationCatalogTestVariants()
-	formationExecutor := NewCampaignFormationExecutor(
-		variants,
-		&harnessCampaignFormationRunner{harness: harness},
-		store,
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-1" },
-	)
-	controller := NewCampaignController(store, formationExecutor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
-
-	req := testCampaignInitRequest(t)
-	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, variants)
-	require.NoError(t, err)
-
-	run, err := controller.InitializeCampaign(context.Background(), req)
-	require.NoError(t, err)
-	stackSet, err := controller.GenerateFormationCatalogStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId(), 17, nil)
-	require.NoError(t, err)
-	assert.Equal(t, FormationCatalogStackGenerationRule, stackSet.GenerationRule)
-	assert.Len(t, stackSet.Stacks, 5)
 
 	count, err := controller.ScheduleRun(context.Background(), req.RunID)
-	require.NoError(t, err)
-	assert.Equal(t, 5*StandardScenarioCount, count)
+	require.ErrorIs(t, err, constants.ErrEvaluationSystemLaneUnavailable)
+	assert.Zero(t, count)
 
-	binding := CampaignExecutionBinding{
-		Topology:            testOperatorTopology(req.InferenceOperatorSessionID, req.DataOperatorSessionID),
-		ModelRegistryDigest: req.Inventory.RegistryDigest,
-		ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
-	}
-	result, ok, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, binding, req.ScenarioArtifacts)
+	assignments, err := store.ListAssignments(context.Background(), req.RunID)
 	require.NoError(t, err)
-	require.True(t, ok)
-	require.NotNil(t, result)
-	// Every catalog scenario is deterministically graded, so a completed
-	// formation completes.
-	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
-	assert.Len(t, result.GetModelInferences(), 3)
+	assert.Empty(t, assignments)
 }

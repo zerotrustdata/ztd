@@ -12,12 +12,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/zerotrustdata/ztd/internal/cli/api"
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/cli/sse"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -28,8 +29,18 @@ import (
 
 type remoteProviderObservationClient struct {
 	client authcmd.APIClient
+	stream func() *sse.Client
 	mu     sync.Mutex
 	cache  map[string]*remoteProviderObservationBundle
+}
+
+// WatchRecorded reports every observation-recorded event on the CLI session's
+// Gateway SSE stream.
+func (c *remoteProviderObservationClient) WatchRecorded(ctx context.Context, connected func(), recorded func(string)) error {
+	if c == nil {
+		return fmt.Errorf("provider observation: watch observations: %w", constants.ErrMissingRequiredField)
+	}
+	return watchEvidenceWindows(ctx, c.stream, constants.EventProviderBoundaryObservationRecorded, connected, recorded)
 }
 
 type remoteProviderObservationBundle struct {
@@ -80,11 +91,11 @@ func NewProviderObservationRemote(fileSvc fs.RuntimeFileService, cfg *config.Con
 	if !IsGatewayHealthy() {
 		return nil, nil
 	}
-	client, err := authcmd.DefaultAPIClientFactory(fileSvc, cfg)
+	client, err := api.NewClient(fileSvc, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("provider observation: create gateway client: %w", err)
 	}
-	return &remoteProviderObservationClient{client: client}, nil
+	return &remoteProviderObservationClient{client: client, stream: client.NewSSEClient}, nil
 }
 
 func NewCampaignProviderObservationReader(fileSvc fs.RuntimeFileService, cfg *config.Config) (*evaluation.CampaignProviderObservationReader, error) {
@@ -93,14 +104,6 @@ func NewCampaignProviderObservationReader(fileSvc fs.RuntimeFileService, cfg *co
 		return nil, err
 	}
 	return evaluation.NewCampaignProviderObservationReaderWithRemote(fileSvc, remote)
-}
-
-func NewCampaignFormationObservationLoader(fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.FormationObservationLoader, error) {
-	reader, err := NewCampaignProviderObservationReader(fileSvc, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return evaluation.NewRetryingFormationObservationLoader(reader.LoadObservationWindow, 12, 250*time.Millisecond), nil
 }
 
 func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {

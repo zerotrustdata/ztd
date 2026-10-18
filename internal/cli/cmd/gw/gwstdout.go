@@ -17,7 +17,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
 
@@ -77,12 +76,12 @@ type nextStep struct {
 // proof, so they lead with the passkey sign-in; doctrine and consensus lead
 // with the headless sign-in. A same-host Operator gets its own working
 // directory, because Operator start refuses the Gateway's runtime tree.
-func printNextSteps(cmd *cobra.Command, posture governance.GovernancePosture, cfg serve.GatewayConfig, externalIP string) {
+func printNextSteps(cmd *cobra.Command, posture constants.Posture, cfg serve.GatewayConfig, externalIP string) {
 	bin := getBinaryName()
 	var steps []nextStep
-	if posture != nil && posture.RequiresL3Proof() {
+	if posture.RequiresL3() {
 		steps = append(steps,
-			nextStep{bin + " login web", "Register a passkey (required: " + posture.Name() + " posture enforces L3)"},
+			nextStep{bin + " login web", "Register a passkey (required: " + string(posture) + " posture enforces L3)"},
 			nextStep{bin + " login", "Headless CLI sign-in (Console and L3 approvals need a passkey)"})
 	} else {
 		steps = append(steps,

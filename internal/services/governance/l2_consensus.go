@@ -50,15 +50,15 @@ func (NoopConsensusPolicyStore) GetConsensusPolicy(context.Context, string) (*L2
 //
 // This is the single owner of the L2 gate. L4 verification and every Gateway
 // deliberation site call it, so the bootstrap exemption cannot drift per caller.
-func L2Enforced(actionType constants.ActionType, posture GovernancePosture) bool {
-	return posture.RequiresL2Signature() && !actionType.IsBootstrapAction()
+func L2Enforced(actionType constants.ActionType, posture constants.Posture) bool {
+	return posture.RequiresL2() && !actionType.IsBootstrapAction()
 }
 
 // l2StatusFor maps the L2 result of one envelope to the status its receipt
 // records. A valid proof is REQUIRED_VALID even where L2 is not enforced, because
 // its verified stage is recorded as audit evidence. A failed enforced proof is
 // REQUIRED_FAILED. Everything else is NOT_REQUIRED.
-func l2StatusFor(actionType constants.ActionType, posture GovernancePosture, valid bool) operatorv1.L2Status {
+func l2StatusFor(actionType constants.ActionType, posture constants.Posture, valid bool) operatorv1.L2Status {
 	switch {
 	case valid:
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
@@ -78,23 +78,26 @@ func l2StatusFor(actionType constants.ActionType, posture GovernancePosture, val
 // Where L2Enforced is false, L2 votes are still verified when present and
 // recorded as audit evidence, but their absence or failure does not reject the
 // envelope.
-func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture GovernancePosture) (bool, error) {
+func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture constants.Posture) (bool, error) {
 	actionType := constants.ActionType(envelope.ActionType)
 	enforced := L2Enforced(actionType, posture)
 
-	if envelope.Governance == nil || envelope.Governance.L2 == nil || len(envelope.Governance.L2.Votes) == 0 {
+	if envelope.Governance == nil || envelope.Governance.L2 == nil ||
+		(len(envelope.Governance.L2.Votes) == 0 && envelope.Governance.L2.ConsensusSetId == "") {
 		if enforced {
-			tv.logger.Error("L2 votes missing but required by posture", "posture", posture.Name())
+			tv.logger.Error("L2 votes missing but required by posture", "posture", posture)
 			return false, constants.ErrTxL2SignatureMissing
 		}
 		return false, nil
 	}
 
 	l2 := envelope.Governance.L2
+	// A named set with zero votes is a quorum failure, including the K=1
+	// application binding. Keep it distinct from an absent L2 proof above.
 
 	if tv.signerStore == nil {
 		if enforced {
-			tv.logger.Error("Signer store not configured but required by posture", "posture", posture.Name())
+			tv.logger.Error("Signer store not configured but required by posture", "posture", posture)
 			return false, constants.ErrTxL2SignerStoreNotConfigured
 		}
 		return false, nil
@@ -102,7 +105,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 
 	if tv.consensusPolicyStore == nil {
 		if enforced {
-			tv.logger.Error("Consensus policy store not configured but required by posture", "posture", posture.Name())
+			tv.logger.Error("Consensus policy store not configured but required by posture", "posture", posture)
 			return false, constants.ErrTxL2ConsensusNotConfigured
 		}
 		return false, nil
@@ -176,7 +179,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 
 	if affirmative < policy.Quorum {
 		if enforced {
-			tv.logger.Error("L2 quorum not met", "affirmative", affirmative, "quorum", policy.Quorum, "posture", posture.Name())
+			tv.logger.Error("L2 quorum not met", "affirmative", affirmative, "quorum", policy.Quorum, "posture", posture)
 			return false, constants.ErrTxL2QuorumNotMet
 		}
 		return false, nil

@@ -157,19 +157,19 @@ func (c *Client) Record(sink *[]Exchange) { c.rec = sink }
 // stamps the host user's identity onto the suspended transaction.
 func (c *Client) doWithCLI(ctx context.Context, p Persona, method, url string, body []byte) (int, []byte, error) {
 	if c.cliHTTP != nil {
-		return c.doWithClient(ctx, p, method, url, body, c.cliHTTP)
+		return c.doWithClient(ctx, p, method, url, body, c.cliHTTP, "application/json")
 	}
 	return c.do(ctx, p, method, url, body)
 }
 
 // do executes a JSON request against the mTLS surface and records it.
 func (c *Client) do(ctx context.Context, p Persona, method, url string, body []byte) (int, []byte, error) {
-	return c.doWithClient(ctx, p, method, url, body, c.http)
+	return c.doWithClient(ctx, p, method, url, body, c.http, "application/json")
 }
 
 // doWithClient is the core request executor. It is shared by do (operator cert)
 // and doWithCLI (CLI cert) so both paths get identical header/recording logic.
-func (c *Client) doWithClient(ctx context.Context, p Persona, method, url string, body []byte, hc *http.Client) (int, []byte, error) {
+func (c *Client) doWithClient(ctx context.Context, p Persona, method, url string, body []byte, hc *http.Client, contentType string) (int, []byte, error) {
 	start := time.Now()
 	var rdr io.Reader
 	if body != nil {
@@ -180,7 +180,7 @@ func (c *Client) doWithClient(ctx context.Context, p Persona, method, url string
 		return 0, nil, err
 	}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	if p.UserAgent != "" {
 		req.Header.Set("User-Agent", p.UserAgent)

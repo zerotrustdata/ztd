@@ -45,7 +45,7 @@ In ztd, sovereignty is established through cryptographic verification at the loc
   - [Step 2: Evaluate Key Security Indicators (KSIs)](#step-2-evaluate-key-security-indicators-ksis)
   - [Step 3: Validate Cross-Source Evidence Graph](#step-3-validate-cross-source-evidence-graph)
   - [Step 4: Generate and Verify Compliance Reports](#step-4-generate-and-verify-compliance-reports)
-  - [Step 5: Run Evaluation Formation Smoke and Verification](#step-5-run-evaluation-formation-smoke-and-verification)
+  - [Step 5: Run a Strict-Witness Model Campaign and Verification](#step-5-run-a-strict-witness-model-campaign-and-verification)
 - [Acceptance Criteria](#acceptance-criteria)
 - [Links out](#links-out)
 
@@ -70,13 +70,13 @@ The `ztd compliance` command suite audits the live platform state against FedRAM
 
 ### 2. Evaluation Pipeline (`ztd eval`)
 
-The `ztd eval` command suite executes governance conformance verification, manages model registries, qualifies model formations, and enforces witness attestation during evaluation campaigns.
+The `ztd eval` command suite executes governance conformance verification, manages model registries, qualifies models, and enforces witness attestation during evaluation campaigns.
 
 | Subcommand | Function |
 | :--- | :--- |
 | `ztd eval conformance` | Runs the governance conformance suite against a live native stack, and verifies and reports its persisted runs (no external models) |
 | `ztd eval models` | Manages model catalogs, pulls model weights, and generates cryptographic registry digests |
-| `ztd eval formations` | Inspects, registers, and smokes heterogeneous model execution sets (Lite, Assistant, Primary) |
+| `ztd eval formations` | Inspects and registers catalog formations (Lite, Assistant, Primary model stacks); no formation executes in v1.1.3 |
 | `ztd eval campaigns` | Defines, inspects, and freezes evaluation campaigns and test suites |
 | `ztd eval runs` | Schedules, runs, verifies, and publishes scored campaign runs |
 | `ztd eval rollout` | Automates sequential model qualification across the rollout queue |
@@ -142,13 +142,14 @@ For release preparation, execute the release-prepare workflow:
 ./ztd compliance release-prepare
 ```
 
-### Step 5: Run Evaluation Formation Smoke and Verification
+### Step 5: Run a Strict-Witness Model Campaign and Verification
 
-When validating sovereignty across model inference, verify formation execution across Lite, Assistant, and Primary roles with witness Operators enrolled:
+When validating sovereignty across model inference, run a model campaign with witness Operators enrolled. A campaign scores one registry model as a governed tool-calling agent in its Lite, Assistant, or Primary role. The system lane has no executor in v1.1.3, so formations are not scored; they return in v1.1.4 inside the investigation loop.
 
 ```bash
 ./ztd eval models freeze
-./ztd eval formations smoke ultra-efficient-speedster
+./ztd eval campaigns create smoke-run <model-tag> --suite smoke-suite
+./ztd eval runs start smoke-run --require-witness
 ```
 
 Run a strict-witness verification on the resulting campaign run:

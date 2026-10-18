@@ -70,8 +70,8 @@ func TestKeychainKeyring_KeystoreRoundTrip(t *testing.T) {
 	ks, err := NewWithKeyringAndFS(testutil.NewTestLogger(), testKeychainKeyring(t), fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
-	require.NoError(t, ks.EncryptSecret("session_token", "sealed"))
-	got, err := ks.DecryptSecret("session_token")
+	require.NoError(t, ks.EncryptSecret("sealed_test_secret", "sealed"))
+	got, err := ks.DecryptSecret("sealed_test_secret")
 	require.NoError(t, err)
 	assert.Equal(t, "sealed", got)
 }

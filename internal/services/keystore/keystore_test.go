@@ -525,18 +525,18 @@ func TestKeystore_Initialize_RejectsOrphanedSecrets(t *testing.T) {
 	original, err := keystore.NewWithKeyringAndFS(logger, keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, original.Initialize())
-	require.NoError(t, original.EncryptSecret("session_token", "sealed"))
+	require.NoError(t, original.EncryptSecret("sealed_test_secret", "sealed"))
 
 	keyring := keystoretest.NewMemoryKeyring()
 	replacement, err := keystore.NewWithKeyringAndFS(logger, keyring, fileSvc)
 	require.NoError(t, err)
 	err = replacement.Initialize()
 	require.ErrorIs(t, err, constants.ErrKeyStoreOrphanedSecrets)
-	assert.Contains(t, err.Error(), "session_token")
+	assert.Contains(t, err.Error(), "sealed_test_secret")
 	_, err = keyring.RetrieveMasterKey()
 	require.ErrorIs(t, err, constants.ErrKeyStoreKeyNotFound, "no replacement key may be stored")
 
-	require.NoError(t, os.Remove(filepath.Join(secretsDir, "session_token")))
+	require.NoError(t, os.Remove(filepath.Join(secretsDir, "sealed_test_secret")))
 	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileBootstrapDigest), []byte(`{"version":1,"secrets":{}}`), constants.PermFilePrivate))
 	require.NoError(t, replacement.Initialize(), "files EncryptSecret did not write are not sealed secrets")
 }
@@ -598,9 +598,9 @@ func TestKeystore_RejectsVersion1Secrets(t *testing.T) {
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
-	require.NoError(t, ks.EncryptSecret("session_token", "v"))
+	require.NoError(t, ks.EncryptSecret("sealed_test_secret", "v"))
 
-	path := filepath.Join(secretsDir, "session_token")
+	path := filepath.Join(secretsDir, "sealed_test_secret")
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	var enc keystore.EncryptedSecret
@@ -610,7 +610,7 @@ func TestKeystore_RejectsVersion1Secrets(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, data, constants.PermFilePrivate))
 
-	_, err = ks.DecryptSecret("session_token")
+	_, err = ks.DecryptSecret("sealed_test_secret")
 	require.ErrorIs(t, err, constants.ErrKeyStoreUnsupportedVersion)
 
 	replacement, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)

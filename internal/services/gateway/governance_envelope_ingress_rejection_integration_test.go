@@ -15,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -28,7 +27,7 @@ import (
 func TestGovernanceEnvelopeIntegration_NotaryPostureRejectsUnprovenMutationAtWarden(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "governance-envelope-notary-unproven",
-		Posture:  config.PostureNotary,
+		Posture:  constants.PostureNotary,
 	})
 	f.WaitForReady(t)
 	client := seedUnprovenAppWorkload(t, f)
@@ -43,7 +42,7 @@ func TestGovernanceEnvelopeIntegration_NotaryPostureRejectsUnprovenMutationAtWar
 func TestGovernanceEnvelopeIntegration_StateRootMismatchRejectedAtIngress(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "governance-envelope-state-root-mismatch",
-		Posture:  config.PostureDoctrine,
+		Posture:  constants.PostureDoctrine,
 	})
 	f.WaitForReady(t)
 	client := seedUnprovenAppWorkload(t, f)
