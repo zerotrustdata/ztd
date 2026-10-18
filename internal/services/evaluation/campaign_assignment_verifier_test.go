@@ -16,48 +16,35 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func TestCampaignAssignmentVerifier_PassesHeterogeneousFormationResult(t *testing.T) {
+// The system lane has no executor, so a heterogeneous assignment can never
+// verify: an otherwise well-bound result fails closed on the lane alone.
+func TestCampaignAssignmentVerifier_FailsClosedOnHeterogeneousAssignment(t *testing.T) {
 	t.Parallel()
-	variants := testHeterogeneousVariants()
-	stack := mustHeterogeneousStack(t)
-	req := heterogeneousAssignmentExecutionRequest(t, stack, variants)
-	harness, err := NewFormationHarness(
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-attempt" },
-	)
+	req := heterogeneousAssignmentExecutionRequest(t, mustHeterogeneousStack(t), testHeterogeneousVariants())
+	result := &evalv1.EvaluationAssignmentResult{
+		SchemaVersion:   CampaignSchemaVersion,
+		AssignmentId:    req.Assignment.GetAssignmentId(),
+		RunId:           req.Assignment.GetRunId(),
+		CampaignId:      req.Assignment.GetCampaignId(),
+		Lane:            req.Assignment.GetLane(),
+		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+	}
+	digest, err := ComputeAssignmentResultDigest(result)
 	require.NoError(t, err)
-	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
-	require.NoError(t, err)
-	initialState, err := BuildFormationInitialState(req.ScenarioInput)
-	require.NoError(t, err)
-	formationResult, err := harness.RunBoundFormation(context.Background(), formation, initialState)
-	require.NoError(t, err)
-	result, err := ImportAssignmentResultFromFormationRun(req, formationResult, time.Unix(1_700_000_000, 0).UTC(), func(prefix string) string { return prefix + "-1" })
-	require.NoError(t, err)
-	body, evidence, err := BuildFormationRunEvidence(req, FormationRunContext{
-		CampaignID:          req.Assignment.GetCampaignId(),
-		RunID:               req.Assignment.GetRunId(),
-		AssignmentID:        req.Assignment.GetAssignmentId(),
-		EvaluationAttemptID: req.AttemptID,
-		ScenarioID:          req.Assignment.GetScenarioId(),
-		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
-		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
-		DataSessionID:       req.Binding.Topology.Data.OperatorSessionID,
-	}, formationResult)
-	require.NoError(t, err)
-	require.NotEmpty(t, body)
+	result.ResultDigest = digest
+
 	verifier := NewCampaignAssignmentVerifier(func() time.Time { return time.Unix(1_700_000_100, 0).UTC() })
 	report, err := verifier.Verify(context.Background(), CampaignAssignmentVerificationRequest{
-		Assignment:           req.Assignment,
-		Result:               result,
-		FormationRunEvidence: evidence,
+		Assignment: req.Assignment,
+		Result:     result,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
-	assert.Zero(t, report.GetFailureCount())
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus())
+	assert.Equal(t, []string{"heterogeneous assignment: " + constants.ErrEvaluationSystemLaneUnavailable.Error()}, report.GetFailureReasons())
 }
 
 func TestCampaignAssignmentVerifier_FailsClosedOnModelRoleAssignment(t *testing.T) {

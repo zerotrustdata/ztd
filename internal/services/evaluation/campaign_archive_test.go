@@ -59,7 +59,7 @@ func newArchiveFixture(t *testing.T) *archiveFixture {
 		req.RunID = runID
 		_, err := controller.InitializeCampaign(context.Background(), req)
 		require.NoError(t, err)
-		count, err := scheduleModelRoleAssignments(context.Background(), controller, runID)
+		count, err := controller.ScheduleRun(context.Background(), runID)
 		require.NoError(t, err)
 		require.Equal(t, 3, count)
 		fixture.runIDs = append(fixture.runIDs, runID)

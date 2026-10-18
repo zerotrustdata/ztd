@@ -12,15 +12,18 @@ package eval
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
@@ -29,6 +32,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
@@ -92,17 +97,11 @@ func setupRunEnv(t *testing.T) *runEnv {
 		authLoader: func(fs.RuntimeFileService, *config.Config) (*auth.ClientAuthContext, error) {
 			return &auth.ClientAuthContext{UserID: "user-1", CLISessionID: "cli-1", OperatorID: "operator-1"}, nil
 		},
-		bindClientFactory: func(*config.Config) evalBindClient { return &fakeBindClient{bound: []string{testDataSession}} },
-		formationRunnerFactory: func(context.Context, campaignFormationRunnerInputs) (evaluation.CampaignFormationRunner, error) {
-			harness, err := evaluation.NewFormationHarness(func() time.Time { return fixedNow }, func(prefix string) string { return prefix + "-attempt" })
-			if err != nil {
-				return nil, err
-			}
-			return &harnessFormationRunner{harness: harness}, nil
-		},
-		runControl: testRunControl(control),
-		now:        func() time.Time { return fixedNow },
-		newID:      func() (string, error) { return "test-id", nil },
+		bindClientFactory:    func(*config.Config) evalBindClient { return &fakeBindClient{bound: []string{testDataSession}} },
+		agentExecutorFactory: (&scriptedOperatorRuntimes{t: t, ledgers: map[string]*scriptedOperatorLedger{}}).newExecutor,
+		runControl:           testRunControl(control),
+		now:                  func() time.Time { return fixedNow },
+		newID:                func() (string, error) { return "test-id", nil },
 	}
 
 	cmd := cmdtest.SilentCobraCommand()
@@ -111,28 +110,142 @@ func setupRunEnv(t *testing.T) *runEnv {
 	return &runEnv{root: root, deps: deps, cmd: cmd, control: control}
 }
 
-// harnessFormationRunner runs each bound formation on the deterministic
-// in-process harness instead of live governed inference. The harness has no
-// provider boundary to witness, so its roles carry no observer or provenance
-// windows; witness coverage is what the Gateway fake persists.
-type harnessFormationRunner struct {
-	harness *evaluation.FormationHarness
+// scriptedAgentAnswer is the final answer the scripted model gives on its first
+// turn, without calling a tool.
+const scriptedAgentAnswer = "The investigation is complete; no change is required."
+
+// scriptedOperatorRuntimes stands in for the Inference and Data Operator
+// runtimes behind the real campaign agent executor and command lane. Each
+// runtime keeps a commitment ledger and signs receipts with the actuator key
+// its operator document enrolls (testActuatorSigner), so the executor imports
+// and the verifier re-checks the trace exactly as it would a live run. The
+// scripted model answers every assignment in one turn without a tool call.
+type scriptedOperatorRuntimes struct {
+	t       *testing.T
+	mu      sync.Mutex
+	ledgers map[string]*scriptedOperatorLedger
 }
 
-func (r *harnessFormationRunner) RunHeterogeneousFormation(ctx context.Context, binding evaluation.FormationBindingRequest, _ evaluation.FormationRunContext, initialState []byte) (*evaluation.FormationRunResult, error) {
-	formation, err := evaluation.BindFormation(binding)
+// newExecutor is the env's agentExecutorFactory: the production executor and
+// command lane over the scripted runtimes of the resolved topology.
+func (r *scriptedOperatorRuntimes) newExecutor(in campaignAgentExecutorInputs) (evaluation.CampaignAssignmentExecutor, error) {
+	inference, err := r.ledger(in.Topology.Inference)
 	if err != nil {
 		return nil, err
 	}
-	result, err := r.harness.RunBoundFormation(ctx, formation, initialState)
+	data, err := r.ledger(in.Topology.Data)
 	if err != nil {
 		return nil, err
 	}
-	for i := range result.Roles {
-		result.Roles[i].ObserverEvidence = nil
-		result.Roles[i].ProvenanceEvidence = nil
+	persona := harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: in.AuthContext.CLISessionID, UserID: in.AuthContext.UserID}
+	return evaluation.NewCampaignAgentExecutor(&scriptedInference{ledger: inference}, evaluation.NewCommandLane(&scriptedLaneClient{ledger: data}, persona), &scriptedSentinel{ledger: data}, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
+}
+
+// ledger returns the runtime's ledger, signed by the actuator key its anchor
+// pins. One runtime keeps one ledger across executors, as a real Operator does.
+func (r *scriptedOperatorRuntimes) ledger(runtime evaluation.CampaignOperatorRuntime) (*scriptedOperatorLedger, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ledger, ok := r.ledgers[runtime.OperatorID]; ok {
+		return ledger, nil
 	}
-	return result, nil
+	var signer oracletest.Signer
+	switch runtime.Anchor.GetKeyId() {
+	case testDataOperatorActuatorKey:
+		signer = testActuatorSigner(7)
+	case testInferenceOperatorActuatorKey:
+		signer = testActuatorSigner(8)
+	default:
+		return nil, fmt.Errorf("scripted runtime %s: no actuator key for anchor %q: %w", runtime.OperatorID, runtime.Anchor.GetKeyId(), constants.ErrConformanceAnchorMissing)
+	}
+	ledger := &scriptedOperatorLedger{t: r.t, signer: signer, operatorID: runtime.OperatorID, sessionID: runtime.OperatorSessionID, head: "h-0"}
+	r.ledgers[runtime.OperatorID] = ledger
+	return ledger, nil
+}
+
+// scriptedOperatorLedger is one Operator runtime's commitment ledger: each
+// executed receipt links to the head before it.
+type scriptedOperatorLedger struct {
+	t          *testing.T
+	mu         sync.Mutex
+	signer     oracletest.Signer
+	operatorID string
+	sessionID  string
+	head       string
+	seq        int
+}
+
+// executed appends one commitment and returns its transaction ID and signed
+// receipt.
+func (l *scriptedOperatorLedger) executed(actionType string) (string, *operatorv1.ActionReceipt) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.seq++
+	txID := fmt.Sprintf("tx-%s-%d", l.operatorID, l.seq)
+	prior, hash := l.head, fmt.Sprintf("h-%d", l.seq)
+	l.head = hash
+	receipt := l.signer.Executed(l.t, oracletest.ReceiptOpts{
+		TransactionID: txID, OperatorID: l.operatorID, SessionID: l.sessionID, ActionType: actionType,
+		L2: operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, L3: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
+	}, prior, hash)
+	return txID, receipt
+}
+
+// scriptedInference is the Inference runtime: every turn is one governed
+// inference that answers with scriptedAgentAnswer.
+type scriptedInference struct {
+	ledger *scriptedOperatorLedger
+}
+
+func (f *scriptedInference) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	txID, receipt := f.ledger.executed(string(constants.ActionTypeInference))
+	resultDigest := "digest-" + txID
+	receipt.ResultSummary = resultDigest
+	f.ledger.signer.Resign(f.ledger.t, receipt)
+	return &operatorv1.InferenceDispatchResponse{
+		TransactionId: txID,
+		Result: &operatorv1.InferenceResult{
+			ProviderAttemptId:   req.GetProviderAttemptId(),
+			RequestedModel:      req.GetModel(),
+			CampaignId:          req.GetCampaignId(),
+			ModelRegistryDigest: req.GetModelRegistryDigest(),
+			ResultDigest:        resultDigest,
+			Parts:               []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: scriptedAgentAnswer}}},
+		},
+		Receipt: receipt,
+	}, nil
+}
+
+// scriptedLaneClient is the Gateway under the command lane: each governed
+// workspace write executes on the Data runtime and answers with its receipt.
+type scriptedLaneClient struct {
+	ledger *scriptedOperatorLedger
+}
+
+func (c *scriptedLaneClient) DispatchCommand(_ context.Context, _ harnessclient.Persona, request harnessclient.DispatchCommandRequest) (*harnessclient.GovernedOutcome, error) {
+	if request.ActionType != string(constants.ActionTypeFileEdit) {
+		return nil, fmt.Errorf("scripted lane client: unscripted action %s", request.ActionType)
+	}
+	txID, receipt := c.ledger.executed(request.ActionType)
+	payload, err := proto.Marshal(&operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite)})
+	if err != nil {
+		return nil, err
+	}
+	return &harnessclient.GovernedOutcome{
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: receipt},
+		Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: txID, Receipt: receipt, ResultPayload: payload},
+	}, nil
+}
+
+// scriptedSentinel reads the Data runtime's ledger head, as the harness ledger
+// sentinel does around each attempt.
+type scriptedSentinel struct {
+	ledger *scriptedOperatorLedger
+}
+
+func (s *scriptedSentinel) Read(context.Context, cases.Executor, string) (*operatorv1.ActionReceipt, error) {
+	_, receipt := s.ledger.executed(string(constants.ActionTypeFsRead))
+	return receipt, nil
 }
 
 // enableWitnessGateway marks the Gateway healthy and enrolls CLI credentials so

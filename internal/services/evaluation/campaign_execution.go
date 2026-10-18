@@ -17,7 +17,7 @@ import (
 )
 
 // CampaignExecutionBinding pins the exact governed execution authorities for one
-// scored assignment executed by the direct formation runner.
+// scored assignment.
 type CampaignExecutionBinding struct {
 	// Topology names the Inference and Data runtimes and, for model-driven
 	// lanes, pins each one's enrollment-bound actuator key. Evidence verifies
@@ -70,14 +70,6 @@ type AssignmentExecutionRequest struct {
 	// holds context; the homogeneous executor continues its conversation in
 	// its workspace. Nil for a cell's first repetition or a fresh campaign.
 	HeldContext *AgentTrace
-	// OnFormationRoleStarting is optional. When set, the heterogeneous formation
-	// executor invokes it before each role executes so one planned invocation row
-	// reaches the live feed instead of batching all roles at assignment start.
-	OnFormationRoleStarting func(ctx context.Context, role FormationRole) error
-	// OnFormationRoleProgress is optional. When set, the heterogeneous formation
-	// executor invokes it after each completed role so role telemetry reaches the
-	// live feed before the terminal assignment result exists.
-	OnFormationRoleProgress func(ctx context.Context, result *FormationRunResult) error
 }
 
 // CampaignAssignmentExecutor executes one scored assignment and returns its

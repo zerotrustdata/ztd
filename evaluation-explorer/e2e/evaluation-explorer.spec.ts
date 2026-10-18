@@ -376,7 +376,7 @@ test('Evals tables keep sortable detail columns at desktop and mobile widths', a
       await expect.poll(() => scrollArea.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
     }
     await page.getByRole('tab', { name: /Formations/ }).click();
-    const formations = page.getByRole('table', { name: 'Execution formations', exact: true });
+    const formations = page.getByRole('table', { name: 'Formation catalog', exact: true });
     await expect(formations).toBeVisible();
     await page.getByRole('searchbox', { name: 'Search formations' }).fill('Qwen Powerhouse');
     await expect(formations.locator('tbody tr')).toHaveCount(1);

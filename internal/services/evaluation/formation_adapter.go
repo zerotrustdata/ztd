@@ -8,7 +8,6 @@
 package evaluation
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -17,29 +16,11 @@ import (
 )
 
 // FormationBindingRequest binds one frozen campaign stack to frozen registry
-// variants before FormationRunner.Run. Slot variant IDs, served tags, and
-// sovereign digests all come from the frozen inventory; the live catalog is
-// never consulted at execution time.
+// variants. Slot variant IDs, served tags, and sovereign digests all come from
+// the frozen inventory; the live catalog is never consulted at bind time.
 type FormationBindingRequest struct {
 	Stack    *evalv1.HeterogeneousStackDefinition
 	Variants []*evalv1.ModelVariant
-}
-
-// FormationRunContext carries opaque campaign identifiers into governed role
-// execution. Checkpoint persistence remains an adapter responsibility.
-type FormationRunContext struct {
-	CampaignID                   string
-	RunID                        string
-	AssignmentID                 string
-	EvaluationAttemptID          string
-	ScenarioID                   string
-	ModelRegistryDigest          string
-	InitialState                 []byte
-	InferenceSessionID           string
-	DataSessionID                string
-	DataOperatorWorkingDirectory string
-	OnRoleStarting               func(context.Context, FormationRole) error
-	OnRoleProgress               func(context.Context, *FormationRunResult) error
 }
 
 // FormationBindingFromCatalog materializes the stack for one catalog formation

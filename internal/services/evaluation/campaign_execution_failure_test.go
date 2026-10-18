@@ -54,20 +54,13 @@ func TestIsRecoverableAssignmentExecutionError_UsesTypedSentinel(t *testing.T) {
 	assert.ErrorIs(t, assignmentExecutionError("evaluation: execute assignment: submit chat", fmt.Errorf("connection refused")), constants.ErrEvaluationAssignmentExecutionFailed)
 }
 
-func TestExecuteNextAssignment_PersistsResultOnRecoverableHeterogeneousExecutorFailure(t *testing.T) {
-	variants := testHeterogeneousVariants()
+func TestExecuteNextAssignment_PersistsResultOnRecoverableExecutorFailure(t *testing.T) {
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
-	executor := &failingCampaignExecutor{message: "evaluation: execute heterogeneous assignment"}
+	executor := &failingCampaignExecutor{message: "evaluation: execute assignment"}
 	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)
-	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	var err error
-	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, variants)
-	require.NoError(t, err)
 	run, err := controller.InitializeCampaign(context.Background(), req)
-	require.NoError(t, err)
-	_, err = controller.GenerateHeterogeneousStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId(), 11)
 	require.NoError(t, err)
 
 	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
@@ -76,7 +69,7 @@ func TestExecuteNextAssignment_PersistsResultOnRecoverableHeterogeneousExecutorF
 	result, executed, err := controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
 		Topology:            testOperatorTopology("inf-session", "data-session"),
 		ModelRegistryDigest: req.Inventory.RegistryDigest,
-		ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}, req.ScenarioArtifacts)
 	require.NoError(t, err)
 	require.True(t, executed)
@@ -105,7 +98,7 @@ func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T
 	req.Catalog = truncated
 	_, err = controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	assignments, err := store.ListAssignments(context.Background(), req.RunID)
@@ -134,6 +127,7 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "deadline", err: fmt.Errorf("wait: %w", context.DeadlineExceeded), want: ExecutionFailureTimeout},
 		{name: "canceled", err: fmt.Errorf("wait: %w", context.Canceled), want: ExecutionFailureCanceled},
 		{name: "missing field", err: fmt.Errorf("build: %w", constants.ErrMissingRequiredField), want: ExecutionFailureInvalidInput},
+		{name: "system lane", err: fmt.Errorf("schedule: %w", constants.ErrEvaluationSystemLaneUnavailable), want: ExecutionFailureInvalidInput},
 		{name: "dispatch", err: fmt.Errorf("send: %w", constants.ErrEvaluationDispatchFailed), want: ExecutionFailureDispatch},
 		{name: "target", err: fmt.Errorf("resolve: %w", constants.ErrEvaluationTargetUnavailable), want: ExecutionFailureTarget},
 		{name: "posture", err: fmt.Errorf("posture: %w", constants.ErrEvaluationPostureUnsupported), want: ExecutionFailurePosture},

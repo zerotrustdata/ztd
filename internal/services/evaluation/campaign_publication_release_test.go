@@ -43,7 +43,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 				run, err := f.controller.StartRun(ctx, RunStartRequest{CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
 				require.NoError(t, err)
 				runID = run.GetRunId()
-				_, err = scheduleModelRoleAssignments(ctx, f.controller, runID)
+				_, err = f.controller.ScheduleRun(ctx, runID)
 				require.NoError(t, err)
 				if tc.release != "" {
 					require.NoError(t, f.store.TagCampaignRelease(ctx, "legacy-public", tc.release, archiveTestNow))
@@ -111,7 +111,7 @@ func TestCampaignPublication_RejectsMalformedReleaseTags(t *testing.T) {
 	saveLegacyCampaign(t, f, "legacy-public")
 	run, err := f.controller.StartRun(ctx, RunStartRequest{CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(ctx, f.controller, run.GetRunId())
+	_, err = f.controller.ScheduleRun(ctx, run.GetRunId())
 	require.NoError(t, err)
 	require.NoError(t, f.files.WriteFile(ctx, f.store.layout.campaignReleaseTagPath("legacy-public"), []byte(`{"campaign_id":"another","release":"v2.2.7"}`), constants.PermFilePrivate))
 	exporter := &recordingCampaignFeedExporter{}

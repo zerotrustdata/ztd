@@ -30,7 +30,6 @@ type CampaignAssignmentVerificationRequest struct {
 	ScenarioGold              ScenarioGoldCriteria
 	ScenarioTools             ScenarioToolExpectations
 	GradingMethod             evalv1.EvaluationGradingMethod
-	FormationRunEvidence      *FormationRunEvidence
 	AgentTrace                *AgentTrace
 	CatalogRef                *compliancev1.VersionedReference
 	ProviderObservationReader *CampaignProviderObservationReader
@@ -81,7 +80,7 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 		failures = append(failures, "result digest validation failed: "+err.Error())
 	}
 	if IsHeterogeneousAssignment(req.Assignment) {
-		failures = append(failures, v.verifyHeterogeneousAssignment(ctx, req)...)
+		failures = append(failures, "heterogeneous assignment: "+constants.ErrEvaluationSystemLaneUnavailable.Error())
 	} else {
 		failures = append(failures, v.verifyHomogeneousAssignment(req)...)
 	}
@@ -94,44 +93,6 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 		failures = append(failures, provenanceFailures...)
 	}
 	return finalizeCampaignVerificationReport(report, failures), nil
-}
-
-func (v *CampaignAssignmentVerifier) verifyHeterogeneousAssignment(ctx context.Context, req CampaignAssignmentVerificationRequest) []string {
-	failures := make([]string, 0)
-	if err := VerifyFormationAssignmentEvidence(req.Assignment, req.Result); err != nil {
-		failures = append(failures, "formation assignment evidence validation failed: "+err.Error())
-	}
-	if req.FormationRunEvidence == nil {
-		failures = append(failures, "formation run evidence is required for heterogeneous verification")
-	} else {
-		if err := VerifyFormationRunEvidenceMatchesResult(req.Assignment, req.GradingMethod, req.FormationRunEvidence, req.Result); err != nil {
-			failures = append(failures, "formation run evidence mismatch: "+err.Error())
-		}
-		failures = append(failures, VerifyFormationWitnessEvidence(
-			ctx,
-			req.FormationRunEvidence,
-			req.ProviderObservationReader,
-			req.ModelProvenanceReader,
-			req.ProviderObservationPolicy,
-			req.ModelProvenancePolicy,
-		)...)
-	}
-	skipGradeRecomputation := !CatalogRecomputesGrades(req.CatalogRef)
-	if !skipGradeRecomputation {
-		recomputedGrades, err := RecomputeFormationAssignmentGrades(AssignmentExecutionRequest{
-			Assignment:    req.Assignment,
-			GradingMethod: req.GradingMethod,
-			ScenarioInput: req.ScenarioInput,
-			ScenarioGold:  req.ScenarioGold,
-			ScenarioTools: req.ScenarioTools,
-		}, req.Result)
-		if err != nil {
-			failures = append(failures, "formation grade recomputation failed: "+err.Error())
-		} else if !gradesEquivalent(req.Result.GetDeterministicGrades(), recomputedGrades) {
-			failures = append(failures, "stored deterministic grades do not match formation recomputation")
-		}
-	}
-	return failures
 }
 
 // verifyHomogeneousAssignment binds a model-role result to its persisted agent

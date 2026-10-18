@@ -5,7 +5,7 @@
 // Clicking a model from the Model Catalog opens its architecture & hardware
 // specs, 5 governed pre-flight capability probes, role switcher, all
 // Evaluation Runs & Campaigns involving this model, overall performance
-// metrics, terminal outcomes, suite results, formations, and assignments.
+// metrics, terminal outcomes, suite results, catalog formations, and assignments.
 
 import { useMemo } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -255,13 +255,13 @@ export function ModelDetailView() {
             {modelFormations.length > 0 ? (
               <PanelSection title={`Formations (${modelFormations.length})`}>
                 <p className="panel-note">
-                  Sovereign 3-role execution topologies that bind this model variant:
+                  Catalog formations that bind this model variant. No formation is scored in v1.1.3.
                 </p>
                 <ul className="run-card-list">
                   {modelFormations.slice(0, 6).map(({ formation, role }) => (
                     <li key={`${formation.id}:${role}`} className="run-card formation-mini-card">
                       <div className="formation-mini-head">
-                        <Link to={`/evaluations?section=formations&formation=${formation.id}`}>
+                        <Link to="/evaluations?view=formations">
                           {formation.display_name}
                         </Link>
                         <span className={`role-badge role-badge-${role}`}>{roleLabel(role)}</span>

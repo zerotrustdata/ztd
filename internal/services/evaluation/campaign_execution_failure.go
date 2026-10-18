@@ -63,14 +63,9 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
-	case errors.Is(err, constants.ErrFormationRegistryBinding), errors.Is(err, constants.ErrFormationStackMismatch), errors.Is(err, constants.ErrFormationInvalid):
+	case errors.Is(err, constants.ErrFormationRegistryBinding), errors.Is(err, constants.ErrFormationStackMismatch), errors.Is(err, constants.ErrFormationInvalid),
+		errors.Is(err, constants.ErrFormationAttestationRequired), errors.Is(err, constants.ErrEvaluationSystemLaneUnavailable):
 		return ExecutionFailureInvalidInput
-	case errors.Is(err, constants.ErrFormationAttestationFailed), errors.Is(err, constants.ErrFormationAttestationRequired):
-		return ExecutionFailureVerification
-	case errors.Is(err, constants.ErrFormationWitnessUnavailable):
-		return ExecutionFailureEvidence
-	case errors.Is(err, constants.ErrFormationOutOfMemory):
-		return ExecutionFailureProvider
 	default:
 		return ExecutionFailureInternal
 	}
@@ -185,16 +180,10 @@ func (c *CampaignController) buildFailureAssignmentResult(ctx context.Context, r
 	if c == nil || c.store == nil || req.Assignment == nil {
 		return nil, fmt.Errorf("evaluation: build failure assignment result: %w", constants.ErrMissingRequiredField)
 	}
-	if IsHeterogeneousAssignment(req.Assignment) {
-		evidence, err := c.store.LoadAssignmentFormationRun(ctx, req.Assignment.GetRunId(), req.Assignment.GetAssignmentId())
-		if err == nil && evidence != nil {
-			result, importErr := importAssignmentResultFromFormationRunEvidence(req, evidence, c.now().UTC(), c.newID)
-			if importErr == nil {
-				return result, nil
-			}
+	if !IsHeterogeneousAssignment(req.Assignment) {
+		if result, ok := c.importPersistedAgentTrace(ctx, req); ok {
+			return result, nil
 		}
-	} else if result, ok := c.importPersistedAgentTrace(ctx, req); ok {
-		return result, nil
 	}
 	return BuildExecutorFailureAssignmentResult(req, execErr, c.now().UTC())
 }
@@ -247,7 +236,7 @@ func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context
 		if exists {
 			continue
 		}
-		result, err := c.recoverTerminalAssignmentResult(ctx, assignment)
+		result, err := c.recoverTerminalAssignmentResult(assignment)
 		if err != nil {
 			return repaired, err
 		}
@@ -259,17 +248,7 @@ func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context
 	return repaired, nil
 }
 
-func (c *CampaignController) recoverTerminalAssignmentResult(ctx context.Context, assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
-	if IsHeterogeneousAssignment(assignment) {
-		evidence, err := c.store.LoadAssignmentFormationRun(ctx, assignment.GetRunId(), assignment.GetAssignmentId())
-		if err == nil && evidence != nil {
-			req := AssignmentExecutionRequest{Assignment: assignment, AttemptID: evidence.EvaluationAttemptID}
-			result, importErr := importAssignmentResultFromFormationRunEvidence(req, evidence, c.now().UTC(), c.newID)
-			if importErr == nil {
-				return result, nil
-			}
-		}
-	}
+func (c *CampaignController) recoverTerminalAssignmentResult(assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
 	recoveredErr := constants.ErrEvaluationRecoveredResultMissing
 	req := AssignmentExecutionRequest{Assignment: assignment, AttemptID: "recovered"}
 	result, err := BuildExecutorFailureAssignmentResult(req, recoveredErr, c.now().UTC())

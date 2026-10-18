@@ -161,3 +161,26 @@ func roleShortName(role evalv1.ModelCampaignRole) string {
 		return role.String()
 	}
 }
+
+// IsHeterogeneousAssignment reports whether one assignment targets a frozen
+// heterogeneous stack instead of a single homogeneous model-role cell.
+func IsHeterogeneousAssignment(assignment *evalv1.EvaluationAssignment) bool {
+	if assignment == nil {
+		return false
+	}
+	heterogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Heterogeneous)
+	return ok && heterogeneous.Heterogeneous != nil && heterogeneous.Heterogeneous.GetStack() != nil
+}
+
+// HeterogeneousStackFromAssignment returns the frozen stack binding for one
+// system-lane assignment.
+func HeterogeneousStackFromAssignment(assignment *evalv1.EvaluationAssignment) (*evalv1.HeterogeneousStackDefinition, error) {
+	if !IsHeterogeneousAssignment(assignment) {
+		return nil, fmt.Errorf("evaluation: heterogeneous stack: %w", constants.ErrMissingRequiredField)
+	}
+	stack := assignment.GetHeterogeneous().GetStack()
+	if err := ValidateHeterogeneousStackDigest(stack); err != nil {
+		return nil, err
+	}
+	return stack, nil
+}

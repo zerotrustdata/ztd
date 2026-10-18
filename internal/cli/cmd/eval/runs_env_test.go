@@ -16,7 +16,6 @@ import (
 	"encoding/pem"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -166,7 +165,7 @@ func writeWitnessPreflightResponse(w http.ResponseWriter, r *http.Request) bool 
 }
 
 // runEnv is one project root wired to a fake Gateway and a fake process
-// boundary, with the formation catalog variants in its model registry.
+// boundary, with testQwenVariant in its model registry.
 type runEnv struct {
 	root    string
 	deps    nativeEvalDeps
@@ -225,23 +224,35 @@ func (e *runEnv) mustRun(t *testing.T, args ...string) string {
 	return out
 }
 
-// testFormationID is the single formation the default test campaign runs: one
-// stack, so a run schedules one assignment per scenario.
-const testFormationID = "ultra-efficient-speedster"
-
-// createCampaign freezes a one-formation system-lane campaign, the only lane
-// runs execute.
+// createCampaign freezes a model-role campaign over testQwenVariant, the one
+// lane runs execute.
 func (e *runEnv) createCampaign(t *testing.T, campaignID string) {
 	t.Helper()
+	e.createSuiteCampaign(t, campaignID, "")
+}
+
+// createSuiteCampaign is createCampaign over the named suite; empty is the
+// default suite.
+func (e *runEnv) createSuiteCampaign(t *testing.T, campaignID, suiteID string) {
+	t.Helper()
 	_, err := createCampaign(context.Background(), e.deps, e.fileSvc(t), campaignCreateSpec{
-		Platform:     testPlatform,
-		CampaignID:   campaignID,
-		Variants:     testFormationCatalogCLIVariants(),
-		Repetitions:  1,
-		Formations:   true,
-		FormationIDs: []string{testFormationID},
+		Platform:    testPlatform,
+		CampaignID:  campaignID,
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: 1,
+		SuiteID:     suiteID,
 	})
 	require.NoError(t, err)
+}
+
+// testModelRoleCells is the assignment count of one run of a default-suite
+// campaign over one model at one repetition: one cell per (scenario, eligible
+// role).
+func testModelRoleCells(t *testing.T) int {
+	t.Helper()
+	catalog, _, err := evaluation.LoadScenarioCatalog()
+	require.NoError(t, err)
+	return int(evaluation.CatalogModelRoleCells(catalog))
 }
 
 // prepareRun creates a campaign and starts a prepared-only run of it: the run
@@ -317,7 +328,7 @@ func assertPopulationBoundCampaignReport(t *testing.T, report *evalv1.Evaluation
 	assert.Equal(t, constants.CampaignVerifierVersion, report.GetSchemaVersion())
 	assert.Equal(t, constants.CampaignVerifierVersion, report.GetVerifierContractVersion())
 	assert.Equal(t, constants.EvaluationSourceVersion, report.GetVerifierReleaseVersion())
-	assert.Equal(t, uint32(evaluation.DefaultSuiteScenarioCount), report.GetExpectedAssignmentCount())
+	assert.Equal(t, uint32(testModelRoleCells(t)), report.GetExpectedAssignmentCount())
 	assert.Equal(t, uint32(1), report.GetVerifiedAssignmentCount())
 	assert.NotEmpty(t, report.GetVerifiedPopulationDigest())
 	assert.NotEmpty(t, report.GetCampaignDigest())
@@ -333,41 +344,6 @@ func repeatTestHex(ch byte) string {
 		out[i] = ch
 	}
 	return string(out)
-}
-
-func testFormationCatalogCLIVariants() []*evalv1.ModelVariant {
-	digestByTag := map[string]byte{
-		"qwen3.5:9b":     '1',
-		"ministral-3:3b": '2',
-		"gemma3:1b":      '3',
-		"deepseek-r1:7b": '4',
-		"llama3.2:1b":    '5',
-		"gemma4:e4b":     '6',
-		"qwen2.5:7b":     '7',
-		"llama3.1:8b":    '8',
-		"phi4-mini:3.8b": '9',
-		"qwen3.5:4b":     'b',
-		"gemma4:e2b":     'c',
-	}
-	return evaluation.FormationCatalogFixtureVariants(func(tag string) string {
-		ch := digestByTag[tag]
-		if ch == 0 {
-			ch = 'a'
-		}
-		return repeatTestHex(ch)
-	})
-}
-
-// testFormationCatalogCLITags returns the served model tags of
-// testFormationCatalogCLIVariants in the sorted order campaigns report them.
-func testFormationCatalogCLITags() []string {
-	variants := testFormationCatalogCLIVariants()
-	tags := make([]string, 0, len(variants))
-	for _, variant := range variants {
-		tags = append(tags, variant.GetServedModelTag())
-	}
-	sort.Strings(tags)
-	return tags
 }
 
 // testReleaseVersion is the build release the test harness runs commands as.

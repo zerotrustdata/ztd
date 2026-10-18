@@ -8,9 +8,7 @@
 package evaluation
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -199,28 +197,4 @@ func TestBindFormation_BindsAllCatalogFormationsFromRegistry(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCampaignController_GenerateFormationCatalogStackSet_PersistsStacks(t *testing.T) {
-	files := newCampaignMemoryFileService()
-	store := NewStore(files)
-	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
-
-	req := testCampaignInitRequest(t)
-	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	var err error
-	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, testFormationCatalogVariants())
-	require.NoError(t, err)
-
-	run, err := controller.InitializeCampaign(context.Background(), req)
-	require.NoError(t, err)
-
-	stackSet, err := controller.GenerateFormationCatalogStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId(), 17, nil)
-	require.NoError(t, err)
-	require.NotNil(t, stackSet)
-	assert.Equal(t, FormationCatalogStackGenerationRule, stackSet.GenerationRule)
-
-	loaded, err := store.LoadHeterogeneousStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId())
-	require.NoError(t, err)
-	assert.Equal(t, stackSet.SetDigest, loaded.SetDigest)
 }

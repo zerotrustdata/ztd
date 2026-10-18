@@ -143,7 +143,7 @@ Event wire values follow the pattern `ztd.v1.<domain>.<entity>[.<qualifier>...].
 | Domain | Scope and Responsibilities |
 | :--- | :--- |
 | **`operator`** | Operator lifecycle, session binding, heartbeats, command dispatch, and local execution state. |
-| **`ai`** | AI evaluation telemetry (`ztd.v1.ai.eval.*`), formation benchmarks, and model execution metrics. |
+| **`ai`** | AI evaluation telemetry (`ztd.v1.ai.eval.*`) and model execution metrics. |
 | **`app`** | Application lifecycle, workload status, and observe producer telemetry. |
 | **`platform`** | Core infrastructure: authentication, PKI issuance, notifications, and governance interlock events. |
 | **`public`** | Public spectator feed events, sanitized evaluation results, and public verifiable proofs. |

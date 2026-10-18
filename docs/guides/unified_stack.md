@@ -231,37 +231,16 @@ From the campaign host owner CLI:
 
 After approval, confirm the provenance operator appears in `./ztd operator list` with `provenance` in its runtime config `capabilities` and the correct `provenance_operator_model_storage_root`.
 
-### Formation smoke (`ultra-efficient-speedster`)
+### Formation catalog
 
-Use this after the Inference Operator and both witness Operators (Observer + Provenance) are enrolled. It validates the three-model execution-topology path (Lite → Assistant → Primary) without scheduling a full campaign matrix.
-
-#### Build formation inventory
-
-Pull and freeze the catalog models:
+The formation catalog (`./ztd eval formations list`) holds three-role Lite, Assistant, and Primary model stacks. Pull and freeze the catalog models:
 
 ```bash
 ./ztd eval models pull --formations
 ./ztd eval models freeze
 ```
 
-#### Run formation smoke
-
-```bash
-./ztd eval formations smoke ultra-efficient-speedster
-```
-
-Expect `"passed": true` with three role entries (lite, assistant, primary), per-role attestation, generation throughput, and peak VRAM.
-
-#### Run a formation campaign
-
-```bash
-./ztd eval campaigns create eval-formations-smoke --formations ultra-efficient-speedster
-
-./ztd eval runs start eval-formations-smoke \
-  --publish --daemon \
-  --verify \
-  --require-witness
-```
+The system lane has no executor in v1.1.3, so no formation is scored; formations return in v1.1.4 inside the investigation loop. Every campaign scores one registry model: validate the witness path with the [mini smoke campaign workflow](#mini-smoke-campaign-workflow) after the Inference Operator and both witness Operators (Observer + Provenance) are enrolled.
 
 ### Campaign and run naming
 
@@ -332,7 +311,7 @@ RUN_ID=eval-smoke-mini-<unix>
 - Leaving `--inference-ollama-endpoint` at default `http://127.0.0.1:11434` when the approved provider is remote.
 - Rebinding campaign ID and digest per model instead of using dispatch-carried campaign authority.
 - Running `./ztd gw clean` or `./ztd gw reset` expecting credentials and public mirror state to persist. Use `make down` to stop the stack without losing state.
-- Starting Formation smoke without enrolling Observer and Provenance Operators first.
+- Starting a strict-witness campaign run without enrolling Observer and Provenance Operators first.
 - Running `ztd eval runs publish` concurrently with `runs start --publish` or `runs resume --publish`.
 - Granting command execution authority to Observer or Provenance Operators. These are read-only witness boundaries.
 

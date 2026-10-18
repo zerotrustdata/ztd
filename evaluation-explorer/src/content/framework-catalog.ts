@@ -3,7 +3,7 @@
 
 // Enriched catalog metadata for the Models and Evaluations views:
 // - Model hardware specs, clean served tags, family/provider taxonomy, and the 5 governed capability probes
-// - Execution Topologies (Formations v1) with 3-role Lite -> Assistant -> Primary pipelines and VRAM budgets
+// - The formation catalog: 3-role Lite / Assistant / Primary model stacks and VRAM budgets (catalog only; no formation executes in v1.1.3)
 // - Campaign aggregation and Evaluation Framework reference values
 
 import type { EvaluationSummary, ModelRole, ModelSummary } from "../contract/types";
@@ -2079,7 +2079,7 @@ export const EVALUATION_FRAMEWORK_VALUES = {
 export interface CampaignSummaryGroup {
   campaign_id: string;
   title: string;
-  program: "Governance conformance" | "Homogeneous model campaign" | "System formation campaign";
+  program: "Governance conformance" | "Homogeneous model campaign";
   arm: string;
   suites: string[];
   runs: EvaluationSummary[];
@@ -2107,14 +2107,6 @@ function inferCampaignGroupKey(run: EvaluationSummary): {
       id,
       title: run.campaign_id ? formatCampaignTitle(run.campaign_id) : `Governance Conformance · ${run.suite_id}`,
       program: "Governance conformance",
-    };
-  }
-  if (run.evaluation_unit === "system" || run.arm.includes("heterogeneous") || run.arm.includes("system")) {
-    const id = run.campaign_id || `system-${run.suite_id}`;
-    return {
-      id,
-      title: run.campaign_id ? formatCampaignTitle(run.campaign_id) : `System Formation Campaign · ${run.suite_id}`,
-      program: "System formation campaign",
     };
   }
   if (run.campaign_id) {

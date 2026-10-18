@@ -54,7 +54,7 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 
 	_, err = controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	first, ok, err := controller.ResumeNextAssignment(context.Background(), req.RunID)
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, executed, err := controller.ExecuteNextAssignment(context.Background(), req.RunID, CampaignExecutionBinding{

@@ -41,7 +41,7 @@ func TestCampaignExporter_ReleaseProvenanceMatchesTheCampaign(t *testing.T) {
 				run, err := f.controller.StartRun(ctx, RunStartRequest{CampaignID: "legacy-export", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
 				require.NoError(t, err)
 				runID = run.GetRunId()
-				_, err = scheduleModelRoleAssignments(ctx, f.controller, runID)
+				_, err = f.controller.ScheduleRun(ctx, runID)
 				require.NoError(t, err)
 				if tc.tag != "" {
 					require.NoError(t, f.store.TagCampaignRelease(ctx, "legacy-export", tc.tag, archiveTestNow))

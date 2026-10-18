@@ -129,10 +129,10 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
-	runLane := evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE
 	if laneName == campaignLaneSystem {
-		runLane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
+		return nil, fmt.Errorf("evaluation: runs start: campaign %q: %w", opts.CampaignID, constants.ErrEvaluationSystemLaneUnavailable)
 	}
+	runLane := evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE
 	catalog, err := store.LoadScenarioCatalog(cmd.Context(), opts.CampaignID)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
@@ -256,7 +256,7 @@ func runsStartCmd(deps nativeEvalDeps) *cobra.Command {
 persists its full assignment matrix, and then executes it. Progress is
 resumable (ztd eval runs resume) and cancellable (ztd eval runs cancel).
 
-Operator sessions are resolved from the active Inference Operator and the stack's
+Operator sessions are resolved from the active Inference Operator and the
 data-operator. The data-operator is bound to the CLI session unless --no-auto-bind
 is set.
 
@@ -357,8 +357,7 @@ func runsResumeCmd(deps nativeEvalDeps) *cobra.Command {
 		Short: "Execute the remaining queued assignments of a run",
 		Long: `Execute queued assignments of an existing run. A model-role assignment runs
 as a tool-calling agent (each turn an Inference Operator dispatch, each tool
-call a governed Data Operator action); a formation assignment runs each role
-through the Inference Operator. By default one assignment runs; --limit raises
+call a governed Data Operator action). By default one assignment runs; --limit raises
 that and --daemon runs until the matrix is exhausted. A run left with an
 unresolved running assignment cannot resume; cancel it and start a new run.
 An archived run cannot be resumed.`,

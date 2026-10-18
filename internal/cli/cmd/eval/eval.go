@@ -43,7 +43,7 @@ type nativeEvalDeps struct {
 	authLoader                 nativeEvalAuthLoader
 	bindClientFactory          func(*config.Config) evalBindClient
 	campaignPublicationFactory campaignVerificationPublicationFactory
-	formationRunnerFactory     campaignFormationRunnerFactory
+	agentExecutorFactory       campaignAgentExecutorFactory
 	appEnroller                evalAppEnroller
 	runControl                 runControlDeps
 	conformance                conformanceDeps
@@ -95,12 +95,12 @@ func Cmd() *cobra.Command {
 		campaignPublicationFactory: func(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (campaignVerificationPublication, error) {
 			return NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
 		},
-		formationRunnerFactory: newProductionCampaignFormationRunner,
-		appEnroller:            enrollEvalAppIdentity,
-		runControl:             defaultRunControlDeps(),
-		conformance:            defaultConformanceDeps(),
-		now:                    time.Now,
-		newID:                  uuid.NewString,
+		agentExecutorFactory: newProductionCampaignAgentExecutor,
+		appEnroller:          enrollEvalAppIdentity,
+		runControl:           defaultRunControlDeps(),
+		conformance:          defaultConformanceDeps(),
+		now:                  time.Now,
+		newID:                uuid.NewString,
 	})
 }
 
@@ -136,7 +136,6 @@ func formationsEvalCmd(deps nativeEvalDeps) *cobra.Command {
 		formationsShowEvalCmd(),
 		formationsAddEvalCmd(),
 		formationsRemoveEvalCmd(),
-		formationsSmokeEvalCmd(deps),
 	)
 	return cmd
 }

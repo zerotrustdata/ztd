@@ -55,7 +55,7 @@ func TestRunsList_AfterPrepare(t *testing.T) {
 	assert.Equal(t, "run-a-1", payload.Runs[0].RunID)
 	assert.Equal(t, "eval-a", payload.Runs[0].CampaignID)
 	assert.Equal(t, "scheduled", payload.Runs[0].Status)
-	assert.Equal(t, uint64(evaluation.DefaultSuiteScenarioCount), payload.Runs[0].ExpectedAssignments)
+	assert.Equal(t, uint64(testModelRoleCells(t)), payload.Runs[0].ExpectedAssignments)
 	assert.False(t, payload.Runs[0].Archived)
 }
 
@@ -84,7 +84,7 @@ func TestRunsShow_AfterPrepare(t *testing.T) {
 	assert.Contains(t, out, "Run: run-a-1")
 	assert.Contains(t, out, "Campaign: eval-a")
 	assert.Contains(t, out, "Status: scheduled")
-	assert.Contains(t, out, fmt.Sprintf("Expected assignments: %d", evaluation.DefaultSuiteScenarioCount))
+	assert.Contains(t, out, fmt.Sprintf("Expected assignments: %d", testModelRoleCells(t)))
 
 	var payload runShowJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "show", "run-a-1"))
@@ -92,7 +92,7 @@ func TestRunsShow_AfterPrepare(t *testing.T) {
 	assert.Equal(t, "eval-a", payload.CampaignID)
 	assert.Equal(t, testInferenceSession, payload.InferenceSession)
 	assert.Equal(t, testDataSession, payload.DataSession)
-	assert.Equal(t, uint32(evaluation.DefaultSuiteScenarioCount), payload.Queued)
+	assert.Equal(t, uint32(testModelRoleCells(t)), payload.Queued)
 	assert.Nil(t, payload.Holder)
 }
 
@@ -151,9 +151,7 @@ func TestRunsVerify_CoverageReportsIncompleteScheduledRun(t *testing.T) {
 	err = env.runJSON(t, &payload, "runs", "verify", "run-a-1", "--coverage")
 	require.Error(t, err)
 	assert.False(t, payload.Complete)
-	catalog, _, err := evaluation.LoadScenarioCatalog()
-	require.NoError(t, err)
-	assert.Equal(t, evaluation.CatalogModelRoleCells(catalog)*uint64(len(testFormationCatalogCLITags())), payload.ExpectedCells)
+	assert.Equal(t, uint64(testModelRoleCells(t)), payload.ExpectedCells)
 }
 
 func TestRunsVerify_CoverageCannotCombineWithWitnessRequirements(t *testing.T) {
@@ -248,11 +246,11 @@ func TestRunsStart_DryRunJSON(t *testing.T) {
 	var payload runStartPlanJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "start", "eval-a", "--dry-run"))
 	assert.Equal(t, "eval-a", payload.CampaignID)
-	assert.Equal(t, uint64(evaluation.DefaultSuiteScenarioCount), payload.CellCount)
+	assert.Equal(t, uint64(testModelRoleCells(t)), payload.CellCount)
 	assert.False(t, payload.SessionsResolved)
 	assert.Empty(t, payload.InferenceSession)
 	assert.Empty(t, payload.DataSession)
-	assert.Equal(t, testFormationCatalogCLITags(), payload.ModelTags)
+	assert.Equal(t, []string{"qwen3:4b"}, payload.ModelTags)
 }
 
 func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
@@ -261,7 +259,7 @@ func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
 
 	out := env.mustRun(t, "runs", "start", "eval-a", "--prepare-only", "--publish=false", "--daemon=false")
 	assert.Contains(t, out, "Started run")
-	assert.Contains(t, out, fmt.Sprintf("Scheduled %d assignments", evaluation.DefaultSuiteScenarioCount))
+	assert.Contains(t, out, fmt.Sprintf("Scheduled %d assignments", testModelRoleCells(t)))
 	assert.Contains(t, out, "ztd eval runs resume")
 
 	runIDs, err := env.store(t).ListRunIDs(context.Background())
@@ -271,7 +269,7 @@ func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
 
 	assignments, err := env.store(t).ListAssignments(context.Background(), runIDs[0])
 	require.NoError(t, err)
-	assert.Len(t, assignments, evaluation.DefaultSuiteScenarioCount)
+	assert.Len(t, assignments, testModelRoleCells(t))
 }
 
 func TestRunsStart_PrepareOnlyBindsTheOperatorSessions(t *testing.T) {
@@ -465,7 +463,7 @@ func TestRunsResume_JSONOutput(t *testing.T) {
 	assert.Equal(t, runID, payload.RunID)
 	assert.Equal(t, 1, payload.Executed)
 	assert.NotEmpty(t, payload.Results)
-	assert.Equal(t, int64(evaluation.DefaultSuiteScenarioCount-1), payload.Remaining)
+	assert.Equal(t, int64(testModelRoleCells(t)-1), payload.Remaining)
 }
 
 func TestRunsResume_WithPublishFlag(t *testing.T) {
@@ -648,36 +646,40 @@ func TestRunsCompare_ReportsSharedCellsAndDifferences(t *testing.T) {
 	require.NoError(t, env.runJSON(t, &payload, "runs", "compare", "run-a-1", "run-a-2"))
 	assert.Equal(t, "run-a-1", payload.Left.RunID)
 	assert.Equal(t, "run-a-2", payload.Right.RunID)
-	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Left.Cells)
-	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Right.Cells)
+	assert.Equal(t, testModelRoleCells(t), payload.Left.Cells)
+	assert.Equal(t, testModelRoleCells(t), payload.Right.Cells)
 	assert.Empty(t, payload.OnlyInLeft)
 	assert.Empty(t, payload.OnlyInRight)
 	assert.Zero(t, payload.Regressions)
 	assert.Zero(t, payload.Improvements)
 
 	out := env.mustRun(t, "runs", "compare", "run-a-1", "run-a-2")
-	assert.Contains(t, out, fmt.Sprintf("run-a-1 (eval-a): %d cells", evaluation.DefaultSuiteScenarioCount))
+	assert.Contains(t, out, fmt.Sprintf("run-a-1 (eval-a): %d cells", testModelRoleCells(t)))
 	assert.Contains(t, out, "Regressions: 0  Improvements: 0")
 }
 
 func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
+	other := &evalv1.ModelVariant{
+		VariantId:      "gemma3-1b",
+		ServedModelTag: "gemma3:1b",
+		ModelDigest:    repeatTestHex('3'),
+		ProviderClass:  "ollama",
+	}
 	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
-		Platform:     testPlatform,
-		CampaignID:   "eval-b",
-		Variants:     testFormationCatalogCLIVariants(),
-		Repetitions:  1,
-		Formations:   true,
-		FormationIDs: []string{"gemma-cascade"},
+		Platform:    testPlatform,
+		CampaignID:  "eval-b",
+		Variants:    []*evalv1.ModelVariant{other},
+		Repetitions: 1,
 	})
 	require.NoError(t, err)
 	env.startPrepared(t, "eval-b", "run-b-1")
 
 	var payload runCompareJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "compare", "run-a-1", "run-b-1"))
-	assert.Len(t, payload.OnlyInLeft, evaluation.DefaultSuiteScenarioCount, "no cell of a different model is shared")
-	assert.Len(t, payload.OnlyInRight, evaluation.DefaultSuiteScenarioCount)
+	assert.Len(t, payload.OnlyInLeft, testModelRoleCells(t), "no cell of a different model is shared")
+	assert.Len(t, payload.OnlyInRight, testModelRoleCells(t))
 }
 
 func TestRunsCompare_RequiresTwoRuns(t *testing.T) {

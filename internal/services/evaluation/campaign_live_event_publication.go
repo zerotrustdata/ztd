@@ -85,61 +85,6 @@ func (c *CampaignPublicationCoordinator) buildAssignmentLiveEventPublishRequests
 	return requests, nil
 }
 
-// PublishFormationRoleInvocationLiveEvent emits one planned invocation row for a
-// single heterogeneous formation role before that role executes.
-func (c *CampaignPublicationCoordinator) PublishFormationRoleInvocationLiveEvent(ctx context.Context, assignment *evalv1.EvaluationAssignment, role FormationRole) error {
-	if c == nil || c.store == nil || c.files == nil || c.exporter == nil || assignment == nil {
-		return fmt.Errorf("evaluation: publish formation role invocation live event: %w", constants.ErrMissingRequiredField)
-	}
-	campaignRole := formationRoleToCampaignRole(role)
-	roleLabel, err := modelCampaignRoleLabel(campaignRole)
-	if err != nil {
-		return err
-	}
-	variantID, err := variantIDForAssignmentModelRole(assignment, campaignRole)
-	if err != nil {
-		return err
-	}
-	completed, total, err := c.assignmentLiveEventProgress(ctx, assignment.GetRunId())
-	if err != nil {
-		return err
-	}
-	observedAt := assignmentLiveEventObservedAt(assignment, nil)
-	release, err := c.loadRunRelease(ctx, assignment.GetRunId())
-	if err != nil {
-		return err
-	}
-	signal := PublicModelRoleInvocationSignal{
-		Release:      release,
-		RunID:        assignment.GetRunId(),
-		AssignmentID: assignment.GetAssignmentId(),
-		VariantID:    variantID,
-		Role:         models.ModelRole(roleLabel),
-		TaskID:       assignment.GetScenarioId(),
-		ObservedAt:   observedAt,
-		EventID:      ModelRoleInvocationIdempotencyKey(assignment.GetRunId(), assignment.GetAssignmentId(), roleLabel) + ":event",
-		Completed:    completed,
-		Total:        total,
-	}
-	event, err := ProjectModelRoleInvocationEvent(signal)
-	if err != nil {
-		return err
-	}
-	body, err := MarshalPublicLiveEvent(event)
-	if err != nil {
-		return err
-	}
-	if err := publicdisclosure.ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, body); err != nil {
-		return fmt.Errorf("evaluation: publish formation role invocation live event: validate invocation event: %w", err)
-	}
-	err = c.exportFeedRecordsOneAtATime(ctx, assignment.GetRunId(), []campaignFeedPublishRequest{{
-		IdempotencyKey: ModelRoleInvocationIdempotencyKey(signal.RunID, signal.AssignmentID, roleLabel),
-		RecordType:     models.PublicFeedRecordTypeEvent,
-		Body:           body,
-	}})
-	return err
-}
-
 // PublishAssignmentInvocationLiveEvents emits the planned model-role invocation
 // stage_updated event when an assignment transitions to running.
 func (c *CampaignPublicationCoordinator) PublishAssignmentInvocationLiveEvents(ctx context.Context, assignment *evalv1.EvaluationAssignment) error {
@@ -156,32 +101,6 @@ func (c *CampaignPublicationCoordinator) PublishAssignmentInvocationLiveEvents(c
 		return err
 	}
 	requests, err := c.buildPlannedModelRoleInvocationPublishRequests(assignment, observedAt, completed, total, release)
-	if err != nil {
-		return err
-	}
-	if len(requests) == 0 {
-		return nil
-	}
-	err = c.exportFeedRecordsOneAtATime(ctx, assignment.GetRunId(), requests)
-	return err
-}
-
-// PublishAssignmentScoredInferenceLiveEvents emits stage_updated rows when one
-// or more scored model inferences are first observed for an in-flight assignment.
-func (c *CampaignPublicationCoordinator) PublishAssignmentScoredInferenceLiveEvents(ctx context.Context, assignment *evalv1.EvaluationAssignment, result *evalv1.EvaluationAssignmentResult) error {
-	if c == nil || c.store == nil || c.files == nil || c.exporter == nil || assignment == nil || result == nil {
-		return fmt.Errorf("evaluation: publish assignment scored inference live events: %w", constants.ErrMissingRequiredField)
-	}
-	completed, total, err := c.assignmentLiveEventProgress(ctx, assignment.GetRunId())
-	if err != nil {
-		return err
-	}
-	observedAt := assignmentLiveEventObservedAt(assignment, result)
-	release, err := c.loadRunRelease(ctx, assignment.GetRunId())
-	if err != nil {
-		return err
-	}
-	requests, err := c.buildScoredModelRoleInvocationPublishRequests(assignment, result, observedAt, completed, total, release)
 	if err != nil {
 		return err
 	}

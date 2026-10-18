@@ -124,7 +124,7 @@ func TestCampaignPublicationCoordinatorPublishRunCatchUp(t *testing.T) {
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
 		Topology:            testOperatorTopology("inf-session", "data-session"),
@@ -154,7 +154,7 @@ func TestCampaignPublicationCoordinatorPublishRunCompletion(t *testing.T) {
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
@@ -194,7 +194,7 @@ func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
@@ -329,7 +329,7 @@ func TestCampaignPublicationCoordinatorForceRepublish(t *testing.T) {
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
 		Topology:            testOperatorTopology("inf-session", "data-session"),
@@ -369,7 +369,7 @@ func TestCampaignControllerWithPublicationPublishesQueuedAssignments(t *testing.
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	count, err := scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	count, err := controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	assert.Equal(t, 3, count)
 	assert.GreaterOrEqual(t, len(exporter.records), 8)
@@ -558,7 +558,7 @@ func completedTestCampaign(t *testing.T, store *Store) *evalv1.EvaluationRun {
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	for {
 		summary, err := controller.RunSummary(context.Background(), run.GetRunId())
@@ -649,7 +649,7 @@ func TestPublishRunAggregatesUsesLeaseStatusWithoutProgressChanges(t *testing.T)
 	controller := NewCampaignController(store, nil, nil, nil)
 	run, err := controller.InitializeCampaign(ctx, testCampaignInitRequest(t))
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(ctx, controller, run.GetRunId())
+	_, err = controller.ScheduleRun(ctx, run.GetRunId())
 	require.NoError(t, err)
 	exporter := &recordingCampaignFeedExporter{}
 	alive := true
@@ -745,7 +745,7 @@ func TestPublishRunAggregatesIgnoresStalePartialVerificationOnInProgressRun(t *t
 
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	scheduled, err := scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	scheduled, err := controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	require.Greater(t, scheduled, 1)
 
@@ -971,86 +971,4 @@ func recordedProofArtifacts(t *testing.T, store *Store, run *evalv1.EvaluationRu
 		}
 	}
 	return proofKeys, proofArtifacts
-}
-
-func completedHeterogeneousFormationCampaign(t *testing.T, store *Store) *evalv1.EvaluationRun {
-	t.Helper()
-	harness, err := NewFormationHarness(
-		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
-		func(prefix string) string { return prefix + "-attempt" },
-	)
-	require.NoError(t, err)
-	variants := testHeterogeneousVariants()
-	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
-
-	req := testCampaignInitRequest(t)
-	catalog := req.Catalog
-	truncated := &evalv1.EvaluationScenarioCatalog{
-		SchemaVersion: catalog.GetSchemaVersion(),
-		CatalogRef:    catalog.GetCatalogRef(),
-		Scenarios:     catalog.GetScenarios()[:3],
-	}
-	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
-	require.NoError(t, err)
-	truncated.CatalogDigest = truncatedDigest
-	req.Catalog = truncated
-	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, variants)
-	require.NoError(t, err)
-
-	run, err := controller.InitializeCampaign(context.Background(), req)
-	require.NoError(t, err)
-	scenarioID := truncated.GetScenarios()[0].GetScenarioId()
-	stack := mustHeterogeneousStack(t)
-	execReq := heterogeneousAssignmentExecutionRequest(t, stack, variants)
-	execReq.Assignment.ScenarioId = scenarioID
-	execReq.ScenarioInput = ScenarioInputFixture{}
-	require.NoError(t, json.Unmarshal(req.ScenarioArtifacts[scenarioID].Input.Body, &execReq.ScenarioInput))
-	execReq.Assignment.SchemaVersion = CampaignSchemaVersion
-	execReq.Assignment.RunId = run.GetRunId()
-	execReq.Assignment.CampaignId = req.CampaignID
-	execReq.Assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
-	require.NoError(t, store.SaveAssignment(context.Background(), execReq.Assignment))
-
-	formation, err := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})
-	require.NoError(t, err)
-	initialState, err := BuildFormationInitialState(execReq.ScenarioInput)
-	require.NoError(t, err)
-	formationResult, err := harness.RunBoundFormation(context.Background(), formation, initialState)
-	require.NoError(t, err)
-	result, err := ImportAssignmentResultFromFormationRun(execReq, formationResult, time.Unix(1_700_000_000, 0).UTC(), func(prefix string) string { return prefix + "-1" })
-	require.NoError(t, err)
-	body, _, err := BuildFormationRunEvidence(execReq, FormationRunContext{
-		CampaignID:          execReq.Assignment.GetCampaignId(),
-		RunID:               execReq.Assignment.GetRunId(),
-		AssignmentID:        execReq.Assignment.GetAssignmentId(),
-		EvaluationAttemptID: execReq.AttemptID,
-		ScenarioID:          execReq.Assignment.GetScenarioId(),
-		ModelRegistryDigest: execReq.Binding.ModelRegistryDigest,
-		InferenceSessionID:  execReq.Binding.Topology.Inference.OperatorSessionID,
-		DataSessionID:       execReq.Binding.Topology.Data.OperatorSessionID,
-	}, formationResult)
-	require.NoError(t, err)
-	require.NoError(t, store.SaveAssignmentFormationRun(context.Background(), req.RunID, execReq.Assignment.GetAssignmentId(), body))
-	require.NoError(t, store.SaveAssignmentResult(context.Background(), result))
-	return run
-}
-
-func TestCampaignPublicationCoordinatorPublishRunCompletion_HeterogeneousFormationAssignments(t *testing.T) {
-	files := newCampaignRuntimeFileService(t)
-	store := NewStore(files)
-	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
-	run := completedHeterogeneousFormationCampaign(t, store)
-	bindPersistedVerificationReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
-
-	count, err := coordinator.PublishRunCompletion(context.Background(), run.GetRunId(), time.Unix(1_700_000_100, 0).UTC())
-	require.NoError(t, err)
-	assert.Greater(t, count, 0)
-
-	summaries := evaluationSummaries(t, exporter.records)
-	require.NotEmpty(t, summaries)
-	latest := summaries[len(summaries)-1]
-	assert.Equal(t, "completed", latest.LifecycleState)
-	assert.NotEmpty(t, latest.ModelRoleMapping)
 }

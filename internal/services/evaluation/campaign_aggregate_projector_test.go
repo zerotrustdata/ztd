@@ -541,7 +541,7 @@ func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
 		Topology:            testOperatorTopology("inf-session", "data-session"),

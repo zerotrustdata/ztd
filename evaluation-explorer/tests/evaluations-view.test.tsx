@@ -118,7 +118,7 @@ describe('EvaluationsView', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Campaigns/ }));
     expect(screen.getByRole('table', { name: 'Campaigns' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: /Formations/ }));
-    const table = screen.getByRole('table', { name: 'Execution formations' });
+    const table = screen.getByRole('table', { name: 'Formation catalog' });
     fireEvent.click(within(table).getByRole('button', { name: 'Sort by Total VRAM' }));
     const direction = within(table).getByRole('columnheader', { name: /Total VRAM/ }).getAttribute('aria-sort');
     const expected = [...FORMATION_CATALOG].sort((a, b) => direction === 'ascending' ? a.total_vram_mib - b.total_vram_mib : b.total_vram_mib - a.total_vram_mib);
@@ -134,16 +134,13 @@ describe('EvaluationsView', () => {
     expect(screen.queryByRole('combobox', { name: 'Sort cards' })).not.toBeInTheDocument();
   });
 
-  it('counts filtered evidence and separates conformance from campaigns with verifier tones', () => {
+  it('filters runs and separates conformance from campaigns with verifier tones', () => {
     const campaign = { ...evaluation('ds-campaign', 'campaign', '2026-10-06T00:00:00Z'), verifier_state: 'failed', verifier_failure_summary: 'Digest mismatch' } as EvaluationSummary;
     const native: EvaluationSummary = { ...evaluation('ds-native', 'conformance', '2026-10-06T00:00:00Z'), verifier_state: 'passed', assignment_total: 2,
       native_result: { active_posture: 'doctrine', lane: 'platform', summary_status: 'invalid_evidence', summary: 'Invalid evidence', required_verdict_count: 2, passed_verdict_count: 1, verification_valid: false, verification_failure_count: 1, scenarios: [], metrics: [] } };
     evalStore.loadFixtures([campaign, native], []);
     render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
     expect(screen.getByRole('tab', { name: 'Runs (2)' })).toBeInTheDocument();
-    expect(screen.getByTestId('stat-assignments')).toHaveTextContent('77');
-    expect(screen.getByTestId('stat-verifier-passed')).toHaveTextContent('1');
-    expect(screen.getByTestId('stat-verifier-failed')).toHaveTextContent('1');
     const conformance = within(screen.getByRole('region', { name: 'Governance conformance' }));
     expect(conformance.getByText('invalid_evidence')).toHaveAttribute('data-tone', 'warn');
     expect(conformance.getByText('1/2 verdicts passed')).toBeInTheDocument();
@@ -152,7 +149,7 @@ describe('EvaluationsView', () => {
     expect(campaigns.getByTitle('Digest mismatch')).toHaveAttribute('data-tone', 'critical');
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), { target: { value: 'stopped' } });
     expect(screen.getByRole('tab', { name: 'Runs (0)' })).toBeInTheDocument();
-    expect(screen.queryByTestId('stat-assignments')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Model campaigns' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('link', { name: 'Reset filters' }));
     expect(screen.getByRole('tab', { name: 'Runs (2)' })).toBeInTheDocument();
   });
@@ -245,7 +242,6 @@ describe('EvaluationsView', () => {
     expect(screen.getByTestId('metric-output-throughput-p50')).toHaveTextContent('0 observed / 4 eligible');
     expect(screen.queryByTestId('metric-primary-invocation-share')).not.toBeInTheDocument();
     expect(screen.queryByTestId('metric-correlated-failure-rate')).not.toBeInTheDocument();
-    expect(screen.getByText(/heterogeneous routing and correlation metrics appear only for system evaluations/i)).toBeInTheDocument();
     expect(screen.getAllByText('Not yet verified')).toHaveLength(2);
     expect(screen.queryByText('not_run')).not.toBeInTheDocument();
   });

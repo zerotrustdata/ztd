@@ -65,8 +65,7 @@ func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (g
 			if err != nil {
 				return nil, err
 			}
-			inferenceDispatcher := &harnessFormationInferenceDispatcher{client: appClient}
-			return evaluation.NewGovernedCapabilityProbeRunner(inferenceDispatcher, inferenceSessionID, prefixedNewID), nil
+			return evaluation.NewGovernedCapabilityProbeRunner(&governedInferenceDispatcher{client: appClient}, inferenceSessionID, prefixedNewID), nil
 		},
 	}, nil
 }

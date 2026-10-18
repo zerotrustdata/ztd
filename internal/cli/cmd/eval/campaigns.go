@@ -343,9 +343,7 @@ type campaignCreateSpec struct {
 	Variants    []*evalv1.ModelVariant
 	Repetitions uint32
 	// HoldContext carries each cell's investigation into its next repetition.
-	HoldContext  bool
-	Formations   bool
-	FormationIDs []string
+	HoldContext bool
 	// SuiteID names the suite the campaign freezes; empty means the default suite.
 	SuiteID string
 	// VersionOnCatalogChange freezes a new campaign, under CampaignID plus the
@@ -358,15 +356,13 @@ type campaignCreateSpec struct {
 }
 
 type campaignCreateResult struct {
-	Spec     *evalv1.EvaluationCampaignSpec
-	Catalog  *evalv1.EvaluationScenarioCatalog
-	StackSet *evaluation.HeterogeneousStackSet
-	Lane     string
+	Spec    *evalv1.EvaluationCampaignSpec
+	Catalog *evalv1.EvaluationScenarioCatalog
 }
 
-// createCampaign freezes a campaign: its model registry, scenario catalog and
-// artifacts, and for the system lane its stack set. The per-campaign model
-// inventory is written as an internal artifact. Creating a campaign whose ID
+// createCampaign freezes a model-role campaign: its model registry, scenario
+// catalog and artifacts. The per-campaign model inventory is written as an
+// internal artifact. Creating a campaign whose ID
 // already holds the same frozen spec is a no-op.
 func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, spec campaignCreateSpec) (*campaignCreateResult, error) {
 	if !complianceevidence.ValidPathElement(spec.CampaignID) {
@@ -399,18 +395,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 	if err := evaluation.ValidateModelRegistry(freeze); err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
 	}
-	var stackSet *evaluation.HeterogeneousStackSet
-	if spec.Formations {
-		stackSet, err = evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
-			CampaignID:   spec.CampaignID,
-			Variants:     freeze.Variants,
-			FormationIDs: spec.FormationIDs,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
-		}
-	}
-	if stackSet == nil && len(freeze.Variants) != 1 {
+	if len(freeze.Variants) != 1 {
 		return nil, fmt.Errorf("evaluation: campaigns create: %d models selected: %w", len(freeze.Variants), constants.ErrEvaluationCampaignSubjectInvalid)
 	}
 	controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
@@ -426,11 +411,6 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
 	}
-	if stackSet != nil {
-		if err := store.SaveHeterogeneousStackSet(ctx, spec.CampaignID, stackSet); err != nil {
-			return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
-		}
-	}
 	if _, _, err := evaluation.MaterializeCampaignInventory(evaluation.MaterializeCampaignInventoryRequest{
 		Context:     ctx,
 		FileService: fileSvc,
@@ -439,11 +419,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 	}); err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
 	}
-	lane := campaignLaneModelRole
-	if stackSet != nil {
-		lane = campaignLaneSystem
-	}
-	return &campaignCreateResult{Spec: campaignSpec, Catalog: catalog, StackSet: stackSet, Lane: lane}, nil
+	return &campaignCreateResult{Spec: campaignSpec, Catalog: catalog}, nil
 }
 
 type campaignCreateJSON struct {
@@ -457,20 +433,16 @@ type campaignCreateJSON struct {
 	CellsPerRun         uint64 `json:"cells_per_run"`
 	ModelRegistryDigest string `json:"model_registry_digest"`
 	CatalogDigest       string `json:"catalog_digest"`
-	StackCount          int    `json:"stack_count,omitempty"`
-	StackSetDigest      string `json:"stack_set_digest,omitempty"`
 }
 
 func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var reps uint32
 	var holdContext bool
 	var suite string
-	var formations []string
-	var allFormations bool
 	var selector ModelSelector
 	cmd := &cobra.Command{
 		Use:   "create <campaign> <selector>",
-		Short: "Freeze a campaign over registry models or formations",
+		Short: "Freeze a campaign over one registry model",
 		Long: `Freeze a campaign: the selected registry models, the suite's scenario catalog,
 and the repetition count. Nothing executes until a run starts (ztd eval runs
 start).
@@ -491,36 +463,20 @@ A model campaign takes a model selector (positional models, --family,
 freezes exactly one model; the selector must resolve to a single model. Qualify
 several models with ztd eval rollout, which runs one campaign per model.
 
-A formation campaign takes --formations <id>... or --all-formations and scores
-each formation as a set.
-
 Examples:
   ztd eval campaigns create eval-qwen qwen3:4b --reps 3
   ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
   ztd eval campaigns create eval-gemma gemma4:e4b
-  ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
-  ztd eval campaigns create eval-formations --all-formations
-  ztd eval campaigns create eval-two --formations qwen-powerhouse,ultra-efficient-speedster`,
+  ztd eval campaigns create eval-custom qwen3:4b --suite my-suite`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			campaignID := args[0]
 			selector = *selector.withArgs(args[1:])
-			formationCampaign := allFormations || len(formations) > 0
-			if allFormations && len(formations) > 0 {
-				return fmt.Errorf("evaluation: campaigns create: --formations and --all-formations are mutually exclusive: %w", constants.ErrEvaluationFlagsInvalid)
+			if cmd.Flags().Changed("hold-context") && reps <= 1 {
+				return fmt.Errorf("evaluation: campaigns create: --hold-context applies only with --reps greater than 1: %w", constants.ErrEvaluationFlagsInvalid)
 			}
-			if formationCampaign && selector.IsSet() {
-				msg := fmt.Sprintf("evaluation: campaigns create: formations take no model selector, but got %s", selector.describe())
-				if len(selector.IDs) > 0 {
-					msg += "; if you meant to pass multiple --formations, separate them with a comma (--formations a,b) or repeat the flag (--formations a --formations b) — space-separated values after a flag are parsed as extra positional arguments"
-				}
-				return fmt.Errorf("%s: %w", msg, constants.ErrEvaluationFlagsInvalid)
-			}
-			if cmd.Flags().Changed("hold-context") && (formationCampaign || reps <= 1) {
-				return fmt.Errorf("evaluation: campaigns create: --hold-context applies only to a model campaign with --reps greater than 1: %w", constants.ErrEvaluationFlagsInvalid)
-			}
-			if !formationCampaign && !selector.IsSet() {
-				return fmt.Errorf("evaluation: campaigns create: name models, pass --family, --max-params, or --all, or use --formations or --all-formations: %w", constants.ErrEvaluationSelectionEmpty)
+			if !selector.IsSet() {
+				return fmt.Errorf("evaluation: campaigns create: name a model, or pass --family, --max-params, or --all: %w", constants.ErrEvaluationSelectionEmpty)
 			}
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
@@ -533,38 +489,25 @@ Examples:
 			if len(registry) == 0 {
 				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
-			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext && !formationCampaign, SuiteID: suite, Platform: platformIdentity(cmd)}
-			if formationCampaign {
-				create.Formations = true
-				create.FormationIDs = formations
-				if create.Variants, err = evaluation.MaterializeFormationVariants(registry, formations); err != nil {
-					return fmt.Errorf("evaluation: campaigns create: %w", err)
-				}
-			} else if create.Variants, err = selector.Resolve(registry); err != nil {
+			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd)}
+			if create.Variants, err = selector.Resolve(registry); err != nil {
 				return fmt.Errorf("evaluation: campaigns create: %w", err)
 			}
 			result, err := createCampaign(cmd.Context(), deps, fileSvc, create)
 			if err != nil {
 				return err
 			}
-			stacks := 0
-			stackDigest := ""
-			if result.StackSet != nil {
-				stacks, stackDigest = len(result.StackSet.Stacks), result.StackSet.SetDigest
-			}
 			payload := campaignCreateJSON{
 				CampaignID:          campaignID,
-				Lane:                result.Lane,
+				Lane:                campaignLaneModelRole,
 				Suite:               result.Spec.GetCatalogRef().GetId() + "@" + result.Spec.GetCatalogRef().GetVersion(),
 				ModelCount:          len(result.Spec.GetModelRegistry()),
 				ScenarioCount:       result.Spec.GetScenarioCount(),
 				RepetitionCount:     result.Spec.GetRepetitionCount(),
 				HoldContext:         result.Spec.GetHoldContext(),
-				CellsPerRun:         campaignCells(result.Catalog, result.Spec, result.Lane, stacks),
+				CellsPerRun:         campaignCells(result.Catalog, result.Spec, campaignLaneModelRole, 0),
 				ModelRegistryDigest: result.Spec.GetModelRegistryDigest(),
 				CatalogDigest:       result.Spec.GetCatalogDigest(),
-				StackCount:          stacks,
-				StackSetDigest:      stackDigest,
 			}
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
@@ -572,9 +515,6 @@ Examples:
 			out := cmd.OutOrStdout()
 			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
 				payload.CampaignID, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
-			if stacks > 0 {
-				_, _ = fmt.Fprintf(out, "Stacks: %d (set digest %s)\n", stacks, stackDigest)
-			}
 			_, err = fmt.Fprintf(out, "\nNext, start the run with:\nztd eval runs start %s\n", campaignID)
 			return err
 		},
@@ -582,8 +522,6 @@ Examples:
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
 	cmd.Flags().BoolVar(&holdContext, "hold-context", true, "With --reps > 1, continue each repetition from the previous repetition's investigation")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
-	cmd.Flags().StringSliceVar(&formations, "formations", nil, "Formation catalog IDs to evaluate")
-	cmd.Flags().BoolVar(&allFormations, "all-formations", false, "Evaluate every formation in the catalog")
 	selector.bindFlags(cmd)
 	return cmd
 }

@@ -377,8 +377,7 @@ func runsRepairCmd(deps nativeEvalDeps) *cobra.Command {
 		Use:   "repair <run>",
 		Short: "Backfill terminal results for assignments missing result records",
 		Long: `Repair one run's persisted records: every assignment that reached a terminal
-lifecycle without a persisted result gets one, recovered from its formation run
-evidence when present and otherwise recorded as a recovered failure.`,
+lifecycle without a persisted result gets one, recorded as a recovered failure.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]

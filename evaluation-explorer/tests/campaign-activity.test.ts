@@ -9,7 +9,7 @@ import {
   resolveRoleSlots,
 } from '../src/views/campaign-activity';
 
-const datasetId = 'ds-live-formation';
+const datasetId = 'ds-live-model-role';
 
 function evaluation(overrides: Partial<EvaluationSummary> = {}): EvaluationSummary {
   return {
@@ -18,15 +18,15 @@ function evaluation(overrides: Partial<EvaluationSummary> = {}): EvaluationSumma
     dataset_id: datasetId,
     quality_state: 'live_in_progress',
     observed_at: '2026-09-22T12:05:00Z',
-    run_id: 'eval-heterogeneous-run',
-    campaign_id: 'formation-run',
+    run_id: 'eval-model-role-run',
+    campaign_id: 'eval-qwen',
     suite_id: 'default-suite',
-    arm: 'ultra-light-speedster',
-    evaluation_unit: 'system',
+    arm: 'homogeneous-model-role',
+    evaluation_unit: 'model',
     model_role_mapping: {
       primary: 'qwen3-8b',
-      assistant: 'ministral-3-8b',
-      lite: 'qwen3-4b',
+      assistant: 'qwen3-8b',
+      lite: 'qwen3-8b',
     },
     lifecycle_state: 'running',
     assignment_total: 75,
@@ -48,7 +48,7 @@ function liveEvent(overrides: Partial<LiveEvent> = {}): LiveEvent {
     quality_state: 'live_in_progress',
     observed_at: '2026-09-22T12:05:00Z',
     event_id: 'event-default',
-    run_id: 'eval-heterogeneous-run',
+    run_id: 'eval-model-role-run',
     lifecycle_status: 'running',
     completed: 6,
     total: 75,
@@ -57,35 +57,26 @@ function liveEvent(overrides: Partial<LiveEvent> = {}): LiveEvent {
 }
 
 describe('campaign activity role slots', () => {
-  it('maps heterogeneous formation models into Primary, Assistant, and Lite slots', () => {
+  it('binds the run model to every role slot and activates the current assignment role', () => {
     const run = evaluation();
     const events = [
       liveEvent({
+        event_id: 'event-primary-done',
+        kind: 'assignment_completed',
+        assignment_id: 'assignment-6',
+        task_id: 'tool-selection-03',
+        variant_id: 'qwen3-8b',
+        role: 'primary',
+        observed_at: '2026-09-22T12:04:40Z',
+      }),
+      liveEvent({
         event_id: 'event-lite',
-        assignment_id: 'assignment-7',
-        task_id: 'tool-selection-04',
-        variant_id: 'qwen3-4b',
-        role: 'lite',
-        stage_label: 'model role invoked · lite · qwen3-4b · tool-selection-04',
-        observed_at: '2026-09-22T12:04:50Z',
-      }),
-      liveEvent({
-        event_id: 'event-assistant',
-        assignment_id: 'assignment-7',
-        task_id: 'tool-selection-04',
-        variant_id: 'ministral-3-8b',
-        role: 'assistant',
-        stage_label: 'model role invoked · assistant · ministral-3-8b · tool-selection-04',
-        observed_at: '2026-09-22T12:04:55Z',
-      }),
-      liveEvent({
-        event_id: 'event-primary',
+        kind: 'assignment_started',
         assignment_id: 'assignment-7',
         task_id: 'tool-selection-04',
         variant_id: 'qwen3-8b',
-        role: 'primary',
-        kind: 'assignment_started',
-        stage_label: 'semantic grading',
+        role: 'lite',
+        stage_label: 'model role invoked · lite · qwen3-8b · tool-selection-04',
         observed_at: '2026-09-22T12:05:00Z',
       }),
     ];
@@ -100,18 +91,18 @@ describe('campaign activity role slots', () => {
     );
 
     expect(slots.map((slot) => slot.role)).toEqual(['primary', 'assistant', 'lite']);
-    expect(slots.find((slot) => slot.role === 'primary')).toMatchObject({
+    expect(slots.find((slot) => slot.role === 'lite')).toMatchObject({
       variantId: 'qwen3-8b',
       status: 'active',
       progressPercent: 8,
       taskId: 'tool-selection-04',
     });
-    expect(slots.find((slot) => slot.role === 'assistant')).toMatchObject({
-      variantId: 'ministral-3-8b',
+    expect(slots.find((slot) => slot.role === 'primary')).toMatchObject({
+      variantId: 'qwen3-8b',
       status: 'idle',
     });
-    expect(slots.find((slot) => slot.role === 'lite')).toMatchObject({
-      variantId: 'qwen3-4b',
+    expect(slots.find((slot) => slot.role === 'assistant')).toMatchObject({
+      variantId: 'qwen3-8b',
       status: 'idle',
     });
   });

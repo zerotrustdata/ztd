@@ -111,7 +111,7 @@ export function ActiveCampaignBar() {
           : `Latest: ${ariaModel} on ${ariaTask}. View campaign details.`
       }
     >
-      <div className="header-campaign-roles" aria-label="Formation role activity">
+      <div className="header-campaign-roles" aria-label="Model role activity">
         {roleSlots.map((slot) => (
           <RoleSlot key={slot.role} slot={slot} />
         ))}

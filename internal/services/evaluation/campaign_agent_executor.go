@@ -55,7 +55,7 @@ type AgentToolDispatcher interface {
 // bound Data Operator, and the canonical agent trace is graded with the
 // catalog's content checks and trajectory policies.
 type CampaignAgentExecutor struct {
-	inference  FormationInferenceDispatcher
+	inference  GovernedInferenceDispatcher
 	tools      AgentToolDispatcher
 	sentinel   cases.Sentinel
 	traceStore AgentTraceStore
@@ -66,7 +66,7 @@ type CampaignAgentExecutor struct {
 
 // NewCampaignAgentExecutor constructs the homogeneous agent executor. The
 // sentinel reads the ledger on the Data Operator before and after each attempt.
-func NewCampaignAgentExecutor(inference FormationInferenceDispatcher, tools AgentToolDispatcher, sentinel cases.Sentinel, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
+func NewCampaignAgentExecutor(inference GovernedInferenceDispatcher, tools AgentToolDispatcher, sentinel cases.Sentinel, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
 	if inference == nil || tools == nil || sentinel == nil || traceStore == nil || newID == nil {
 		return nil, fmt.Errorf("evaluation: agent executor: %w", constants.ErrMissingRequiredField)
 	}
@@ -164,7 +164,7 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	if err != nil {
 		return nil, err
 	}
-	role, err := formationRoleToInferenceRole(FormationRole(roleLabel))
+	role, err := campaignRoleToInferenceRole(homogeneous.Homogeneous.GetDesignatedRole())
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 		}
 		thinking.WriteString(part.GetThinking())
 	}
-	return strings.TrimSpace(formationCollectInferenceText(result)), thinking.String(), calls
+	return strings.TrimSpace(inferenceResultText(result)), thinking.String(), calls
 }
 
 // infer dispatches one governed inference for the designated model and records

@@ -654,7 +654,7 @@ describe('AssignmentDetailView', () => {
       expect(screen.queryByRole('heading', { name: 'Primary' })).not.toBeInTheDocument();
     });
 
-    it('renders formation roles in execution order with headings', () => {
+    it('labels each transcript with its role when a record publishes several', () => {
       renderAssignment([
         assignmentResult({
           role_transcripts: [

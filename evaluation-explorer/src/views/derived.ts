@@ -1463,43 +1463,6 @@ export function roleLeaderRows(models: ModelSummary[], evaluations: EvaluationSu
   }));
 }
 
-export interface SystemLeaderboardRow {
-  rank: number;
-  run: EvaluationSummary;
-  stack_id: string;
-  pass_rate?: number;
-  primary_invocation_share?: number;
-  correlated_failure_rate?: number;
-  terminal: number;
-  scheduled: number;
-}
-
-/** Heterogeneous system leaderboard rows from system evaluation summaries.
- *  Homogeneous model-role runs are excluded so denominators never mix. */
-export function systemLeaderboardRows(evaluations: EvaluationSummary[]): SystemLeaderboardRow[] {
-  const systemRuns = evaluations.filter(
-    (run) =>
-      run.evaluation_unit === 'system' ||
-      run.arm.includes('heterogeneous') ||
-      Boolean(run.stack_id),
-  );
-  systemRuns.sort(
-    (a, b) =>
-      (b.headline_metrics.pass_rate?.value ?? -1) - (a.headline_metrics.pass_rate?.value ?? -1) ||
-      (a.stack_id ?? a.run_id).localeCompare(b.stack_id ?? b.run_id),
-  );
-  return systemRuns.map((run, index) => ({
-    rank: index + 1,
-    run,
-    stack_id: run.stack_id ?? run.run_id,
-    pass_rate: run.headline_metrics.pass_rate?.value,
-    primary_invocation_share: run.primary_invocation_share?.value,
-    correlated_failure_rate: run.correlated_failure_rate?.value,
-    terminal: run.assignment_completed + run.assignment_failed,
-    scheduled: run.assignment_total,
-  }));
-}
-
 /** The distinct start dates (YYYY-MM-DD) across runs, for the date filter. */
 export function runStartDays(evaluations: EvaluationSummary[]): string[] {
   const days = new Set<string>();

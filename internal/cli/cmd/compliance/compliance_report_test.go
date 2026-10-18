@@ -28,6 +28,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
@@ -37,12 +38,14 @@ import (
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
+	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -544,7 +547,7 @@ func TestBuildCampaignReportSource_ProtectsRecordedReleaseAndExcludesAssertions(
 			ctx := context.Background()
 			fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 			store := evaluation.NewStore(fileSvc)
-			req := complianceFormationCampaignInitRequest(t)
+			req := cmdtest.EvaluationTestCampaignInitRequest(t)
 			controller := evaluation.NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 			run, err := controller.InitializeCampaign(ctx, req)
 			require.NoError(t, err)
@@ -560,7 +563,8 @@ func TestBuildCampaignReportSource_ProtectsRecordedReleaseAndExcludesAssertions(
 				require.NoError(t, store.SaveRun(ctx, run))
 				require.NoError(t, store.TagCampaignRelease(ctx, req.CampaignID, "v2.2.7", time.Now().UTC()))
 			}
-			scheduleComplianceFormationRun(t, ctx, controller, req)
+			_, err = controller.ScheduleRun(ctx, req.RunID)
+			require.NoError(t, err)
 			admission := &compliancev1.AssessmentSourceAdmission{
 				AdmissionId: "campaign-release", RunId: req.RunID, SourceKind: constants.EvaluationSourceKindCampaign,
 				VerifierRef:               &compliancev1.VersionedReference{Id: constants.CampaignVerifierID, Version: constants.CampaignVerifierVersion},
@@ -595,11 +599,9 @@ func TestBuildCampaignReportSource_ProtectsRecordedReleaseAndExcludesAssertions(
 
 func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *testing.T) {
 	fileSvc, _ := cmdtest.NewEvidenceCmdTestEnv(t)
-	req := complianceFormationCampaignInitRequest(t)
+	req := cmdtest.EvaluationTestCampaignInitRequest(t)
 	controller := evaluation.NewCampaignController(evaluation.NewStore(fileSvc), nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
-	_, err := controller.InitializeCampaign(context.Background(), req)
-	require.NoError(t, err)
-	scheduleComplianceFormationRun(t, context.Background(), controller, req)
+	scheduleComplianceCampaignRun(t, context.Background(), controller, req)
 	assessmentAsOf := time.Now().UTC()
 	require.NoError(t, evaluation.NewStore(fileSvc).SaveConformanceRecord(context.Background(), &evalv1.ConformanceRunRecord{
 		RunId:        "unsupported-candidate",
@@ -681,47 +683,113 @@ func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *
 	require.NoError(t, verifyCmd.RunE(verifyCmd, []string{exportComplianceReportForTest(t, fileSvc)}), verificationOutput.String())
 }
 
-// complianceFormationVariants is the formation catalog fixture registry, each
-// served model tag bound to a distinct digest.
-func complianceFormationVariants() []*evalv1.ModelVariant {
-	return evaluation.FormationCatalogFixtureVariants(func(tag string) string {
-		digest := sha256.Sum256([]byte(tag))
-		return hex.EncodeToString(digest[:])
-	})
-}
-
-// complianceFormationCampaignInitRequest is the default-suite campaign request
-// on the system lane, the only executable campaign lane.
-func complianceFormationCampaignInitRequest(t *testing.T) evaluation.CampaignInitRequest {
+// scheduleComplianceCampaignRun initializes the default-suite model-role
+// campaign and materializes its assignment matrix.
+func scheduleComplianceCampaignRun(t *testing.T, ctx context.Context, controller *evaluation.CampaignController, req evaluation.CampaignInitRequest) *evalv1.EvaluationRun {
 	t.Helper()
-	req := cmdtest.EvaluationTestCampaignInitRequest(t)
-	req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	inventory, err := evaluation.MaterializeModelRegistry(req.CampaignID, complianceFormationVariants())
-	require.NoError(t, err)
-	req.Inventory = inventory
-	return req
-}
-
-func scheduleComplianceFormationRun(t *testing.T, ctx context.Context, controller *evaluation.CampaignController, req evaluation.CampaignInitRequest) {
-	t.Helper()
-	_, err := controller.GenerateFormationCatalogStackSet(ctx, req.CampaignID, 17, []string{"ultra-efficient-speedster"})
+	run, err := controller.InitializeCampaign(ctx, req)
 	require.NoError(t, err)
 	_, err = controller.ScheduleRun(ctx, req.RunID)
 	require.NoError(t, err)
+	return run
 }
 
-// harnessFormationRunner runs a bound formation on the deterministic in-process
-// harness instead of live inference.
-type harnessFormationRunner struct {
-	harness *evaluation.FormationHarness
+// complianceScriptedAnswer is the final answer the scripted model gives on its
+// first turn, without calling a tool.
+const complianceScriptedAnswer = "The investigation is complete; no change is required."
+
+// complianceOperatorLedger is one scripted Operator runtime's commitment
+// ledger. Each executed receipt links to the head before it and is signed by
+// the actuator key the runtime's anchor pins, so the real agent executor
+// imports the trace exactly as it would from a live run.
+type complianceOperatorLedger struct {
+	t          *testing.T
+	signer     oracletest.Signer
+	operatorID string
+	sessionID  string
+	head       string
+	seq        int
 }
 
-func (r *harnessFormationRunner) RunHeterogeneousFormation(ctx context.Context, binding evaluation.FormationBindingRequest, _ evaluation.FormationRunContext, initialState []byte) (*evaluation.FormationRunResult, error) {
-	formation, err := evaluation.BindFormation(binding)
+func newComplianceOperatorLedger(t *testing.T, operatorID, sessionID string) *complianceOperatorLedger {
+	return &complianceOperatorLedger{t: t, signer: oracletest.NewSigner(t), operatorID: operatorID, sessionID: sessionID, head: "h-0"}
+}
+
+// runtime is the topology record of this ledger's runtime, anchored to its key.
+func (l *complianceOperatorLedger) runtime() evaluation.CampaignOperatorRuntime {
+	return evaluation.CampaignOperatorRuntime{OperatorID: l.operatorID, OperatorSessionID: l.sessionID, Anchor: l.signer.Anchor(l.operatorID)}
+}
+
+// executed appends one commitment and returns its transaction ID and signed
+// receipt.
+func (l *complianceOperatorLedger) executed(actionType string) (string, *operatorv1.ActionReceipt) {
+	l.seq++
+	txID := fmt.Sprintf("tx-%s-%d", l.operatorID, l.seq)
+	prior, hash := l.head, fmt.Sprintf("h-%d", l.seq)
+	l.head = hash
+	receipt := l.signer.Executed(l.t, oracletest.ReceiptOpts{
+		TransactionID: txID, OperatorID: l.operatorID, SessionID: l.sessionID, ActionType: actionType,
+		L2: operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, L3: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
+	}, prior, hash)
+	return txID, receipt
+}
+
+// complianceScriptedInference is the Inference runtime: every turn is one
+// governed inference that answers with complianceScriptedAnswer.
+type complianceScriptedInference struct {
+	ledger *complianceOperatorLedger
+}
+
+func (f *complianceScriptedInference) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	txID, receipt := f.ledger.executed(string(constants.ActionTypeInference))
+	resultDigest := "digest-" + txID
+	receipt.ResultSummary = resultDigest
+	f.ledger.signer.Resign(f.ledger.t, receipt)
+	return &operatorv1.InferenceDispatchResponse{
+		TransactionId: txID,
+		Result: &operatorv1.InferenceResult{
+			ProviderAttemptId:   req.GetProviderAttemptId(),
+			RequestedModel:      req.GetModel(),
+			CampaignId:          req.GetCampaignId(),
+			ModelRegistryDigest: req.GetModelRegistryDigest(),
+			ResultDigest:        resultDigest,
+			Parts:               []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: complianceScriptedAnswer}}},
+		},
+		Receipt: receipt,
+	}, nil
+}
+
+// complianceScriptedLaneClient is the Gateway under the command lane: each
+// governed workspace write executes on the Data runtime and answers with its
+// receipt.
+type complianceScriptedLaneClient struct {
+	ledger *complianceOperatorLedger
+}
+
+func (c *complianceScriptedLaneClient) DispatchCommand(_ context.Context, _ harnessclient.Persona, request harnessclient.DispatchCommandRequest) (*harnessclient.GovernedOutcome, error) {
+	if request.ActionType != string(constants.ActionTypeFileEdit) {
+		return nil, fmt.Errorf("compliance scripted lane client: unscripted action %s", request.ActionType)
+	}
+	txID, receipt := c.ledger.executed(request.ActionType)
+	payload, err := proto.Marshal(&operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite)})
 	if err != nil {
 		return nil, err
 	}
-	return r.harness.RunBoundFormation(ctx, formation, initialState)
+	return &harnessclient.GovernedOutcome{
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: receipt},
+		Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: txID, Receipt: receipt, ResultPayload: payload},
+	}, nil
+}
+
+// complianceScriptedSentinel reads the Data runtime's ledger head, as the
+// harness ledger sentinel does around each attempt.
+type complianceScriptedSentinel struct {
+	ledger *complianceOperatorLedger
+}
+
+func (s *complianceScriptedSentinel) Read(context.Context, cases.Executor, string) (*operatorv1.ActionReceipt, error) {
+	_, receipt := s.ledger.executed(string(constants.ActionTypeFsRead))
+	return receipt, nil
 }
 
 type campaignComplianceBundleFixture struct {
@@ -742,24 +810,29 @@ func generateCampaignComplianceBundleFixture(t *testing.T, includeWitnesses bool
 	store := evaluation.NewStore(fileSvc)
 	executedAt := time.Unix(1_700_000_000, 0).UTC()
 	newID := func(prefix string) string { return prefix + "-1" }
-	harness, err := evaluation.NewFormationHarness(func() time.Time { return executedAt }, func(prefix string) string { return prefix + "-attempt" })
+	req := cmdtest.EvaluationTestCampaignInitRequest(t)
+	inferenceLedger := newComplianceOperatorLedger(t, "inference-operator", req.InferenceOperatorSessionID)
+	dataLedger := newComplianceOperatorLedger(t, "data-operator", req.DataOperatorSessionID)
+	persona := harnessclient.Persona{ID: "compliance-campaign-agent", CLISessionID: "cli-session-1", UserID: "user-1"}
+	executor, err := evaluation.NewCampaignAgentExecutor(
+		&complianceScriptedInference{ledger: inferenceLedger},
+		evaluation.NewCommandLane(&complianceScriptedLaneClient{ledger: dataLedger}, persona),
+		&complianceScriptedSentinel{ledger: dataLedger},
+		store, func() time.Time { return executedAt }, newID)
 	require.NoError(t, err)
-	executor := evaluation.NewCampaignFormationExecutor(complianceFormationVariants(), &harnessFormationRunner{harness: harness}, store, func() time.Time { return executedAt }, newID)
 	controller := evaluation.NewCampaignController(store, executor, func() time.Time { return executedAt }, newID)
-	req := complianceFormationCampaignInitRequest(t)
 	catalog := req.Catalog
 	truncated := &evalv1.EvaluationScenarioCatalog{SchemaVersion: catalog.GetSchemaVersion(), CatalogRef: catalog.GetCatalogRef(), Scenarios: catalog.GetScenarios()[:3]}
 	catalogDigest, err := evaluation.ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)
 	truncated.CatalogDigest = catalogDigest
 	req.Catalog = truncated
-	_, err = controller.InitializeCampaign(ctx, req)
-	require.NoError(t, err)
-	scheduleComplianceFormationRun(t, ctx, controller, req)
+	scheduleComplianceCampaignRun(t, ctx, controller, req)
 	result, executed, err := controller.ExecuteNextAssignment(ctx, req.RunID, evaluation.CampaignExecutionBinding{
 		Topology: evaluation.CampaignOperatorTopology{
-			Inference: evaluation.CampaignOperatorRuntime{OperatorID: "inference-operator", OperatorSessionID: req.InferenceOperatorSessionID},
-			Data:      evaluation.CampaignOperatorRuntime{OperatorID: "data-operator", OperatorSessionID: req.DataOperatorSessionID},
+			Inference:            inferenceLedger.runtime(),
+			Data:                 dataLedger.runtime(),
+			DataWorkingDirectory: "/srv/ztd-operator",
 		},
 		ModelRegistryDigest: req.Inventory.RegistryDigest,
 		ModelRegistry:       evaluation.InferenceVariantsFromEvalRegistry(req.Inventory.Variants),

@@ -26,18 +26,27 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
+// testActuatorSigner is the actuator key derived from seed, signing receipts
+// the way that Operator's L5 actuator does.
+func testActuatorSigner(seed byte) oracletest.Signer {
+	priv := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{seed}, ed25519.SeedSize))
+	pub := priv.Public().(ed25519.PublicKey)
+	return oracletest.Signer{Priv: priv, Pub: pub, KeyID: hex.EncodeToString(pub)}
+}
+
 // testDataOperatorActuatorKey is the enrollment-bound actuator key the data-op
 // fixture documents carry, so oracle.BoundAnchor admits them.
-var testDataOperatorActuatorKey = hex.EncodeToString(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize)).Public().(ed25519.PublicKey))
+var testDataOperatorActuatorKey = testActuatorSigner(7).KeyID
 
 // testInferenceOperatorActuatorKey is the enrollment-bound actuator key the
 // infer-op run fixture carries, so a split topology anchors both runtimes
 // (INV-EVAL-CAMP-35).
-var testInferenceOperatorActuatorKey = hex.EncodeToString(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{8}, ed25519.SeedSize)).Public().(ed25519.PublicKey))
+var testInferenceOperatorActuatorKey = testActuatorSigner(8).KeyID
 
 func writeTestFrozenInventory(t *testing.T, root string, variants ...*evalv1.ModelVariant) {
 	t.Helper()

@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -67,7 +68,11 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
-	if run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM && run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE {
+	switch run.GetLane() {
+	case evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE:
+	case evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM:
+		return 0, fmt.Errorf("evaluation: run execute: %w", constants.ErrEvaluationSystemLaneUnavailable)
+	default:
 		return 0, fmt.Errorf("evaluation: run execute: lane %s: %w", run.GetLane(), constants.ErrEvaluationTargetKindMismatch)
 	}
 	control, err := deps.runControl.process(fileSvc)
@@ -191,65 +196,19 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
-	newID := adaptNewID(deps.newID)
-	buildFormation := func() (evaluation.CampaignAssignmentExecutor, error) {
-		runner, err := deps.formationRunnerFactory(cmd.Context(), campaignFormationRunnerInputs{
-			Out:         cmd.ErrOrStderr(),
-			Deps:        deps,
-			Config:      cfg,
-			FileSvc:     fileSvc,
-			AuthContext: authContext,
-			Operators:   operators,
-			Spec:        spec,
-			Options: campaignFormationProductionOptions{
-				InferenceSessionID: topology.Inference.OperatorSessionID,
-				DataSessionID:      topology.Data.OperatorSessionID,
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-		observationReader, err := gwremote.NewCampaignProviderObservationReader(fileSvc, cfg)
-		if err != nil {
-			return nil, err
-		}
-		provenanceReader, err := gwremote.NewCampaignModelProvenanceReader(fileSvc, cfg)
-		if err != nil {
-			return nil, err
-		}
-		return evaluation.NewCampaignFormationExecutorWithWitness(
-			spec.GetModelRegistry(),
-			runner,
-			store,
-			evaluation.NewCampaignFormationWitnessReader(observationReader, provenanceReader),
-			deps.now,
-			newID,
-		), nil
+	executor, err := deps.agentExecutorFactory(campaignAgentExecutorInputs{
+		Cmd:         cmd,
+		Deps:        deps,
+		Config:      cfg,
+		FileSvc:     fileSvc,
+		AuthContext: authContext,
+		Topology:    topology,
+		Store:       store,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
-	// A model-role assignment runs as a tool-calling agent: each turn is
-	// dispatched to the Inference Operator under the ztd-eval application
-	// identity, and each tool call is a governed Data Operator action under
-	// the bound CLI session.
-	buildAgent := func() (evaluation.CampaignAssignmentExecutor, error) {
-		appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
-		if err != nil {
-			return nil, err
-		}
-		gatewayClient, err := deps.clientFactory(nativeEvalClientConfig(cfg, authContext))
-		if err != nil {
-			return nil, fmt.Errorf("evaluation: initialize gateway client: %w", err)
-		}
-		persona := harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
-		lane := evaluation.NewCommandLane(gatewayClient, persona)
-		sentinel, err := drive.NewSentinel(gatewayClient, persona, map[cases.Executor]cliop.Target{
-			cases.ExecutorOutbound: {OperatorID: topology.Data.OperatorID, OperatorSessionID: topology.Data.OperatorSessionID},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
-		}
-		return evaluation.NewCampaignAgentExecutor(&harnessFormationInferenceDispatcher{client: appClient}, lane, sentinel, store, deps.now, newID)
-	}
-	controller := controllerFactory(evaluation.NewCampaignAssignmentRouter(buildFormation, buildAgent))
+	controller := controllerFactory(executor)
 	if publication != nil {
 		controller = controller.WithPublication(publication)
 	}
@@ -426,6 +385,45 @@ func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExec
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Released %d %s model(s) through inference session %s\n", len(residentTags), label, inferenceSessionID)
 	}
 	return nil
+}
+
+// campaignAgentExecutorInputs is everything a run resolves before it builds the
+// executor that runs each model-role assignment.
+type campaignAgentExecutorInputs struct {
+	Cmd         *cobra.Command
+	Deps        nativeEvalDeps
+	Config      *config.Config
+	FileSvc     fs.RuntimeFileService
+	AuthContext *auth.ClientAuthContext
+	Topology    evaluation.CampaignOperatorTopology
+	Store       *evaluation.Store
+}
+
+// campaignAgentExecutorFactory builds the executor campaign execution runs
+// every model-role assignment through.
+type campaignAgentExecutorFactory func(campaignAgentExecutorInputs) (evaluation.CampaignAssignmentExecutor, error)
+
+// newProductionCampaignAgentExecutor runs a model-role assignment as a
+// tool-calling agent: each turn is dispatched to the Inference Operator under
+// the ztd-eval application identity, and each tool call is a governed Data
+// Operator action under the bound CLI session.
+func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluation.CampaignAssignmentExecutor, error) {
+	appClient, err := inferenceEvalAppClient(in.Cmd.Context(), in.Cmd.ErrOrStderr(), in.Deps, in.FileSvc, in.Config, in.AuthContext)
+	if err != nil {
+		return nil, err
+	}
+	gatewayClient, err := in.Deps.clientFactory(nativeEvalClientConfig(in.Config, in.AuthContext))
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: initialize gateway client: %w", err)
+	}
+	persona := harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: in.AuthContext.CLISessionID, UserID: in.AuthContext.UserID}
+	sentinel, err := drive.NewSentinel(gatewayClient, persona, map[cases.Executor]cliop.Target{
+		cases.ExecutorOutbound: {OperatorID: in.Topology.Data.OperatorID, OperatorSessionID: in.Topology.Data.OperatorSessionID},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
+	}
+	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient}, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
 }
 
 func resolveCampaignOllamaEndpoint(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (string, error) {

@@ -11,7 +11,6 @@ package gwremote
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -182,85 +181,6 @@ func TestPreflightModelProvenanceAttestation(t *testing.T) {
 
 			err := PreflightModelProvenanceAttestation(fileSvc, cfg, tag, digest)
 			require.Error(t, err)
-			if tt.wantErrIs != nil {
-				assert.ErrorIs(t, err, tt.wantErrIs)
-			}
-			if tt.wantMessage != "" {
-				assert.Contains(t, err.Error(), tt.wantMessage)
-			}
-		})
-	}
-}
-
-func TestLoadModelProvenanceAttestation_RejectsUnusableGatewayResponses(t *testing.T) {
-	const tag = "probe-model:7b"
-	digest := strings.Repeat("d", 64)
-
-	t.Run("unhealthy gateway", func(t *testing.T) {
-		WithGatewayHealthCheck(t, false)
-		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
-
-		_, err := LoadModelProvenanceAttestation(fileSvc, cfg, tag, digest)
-		require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-	})
-
-	undecodableWindow, err := json.Marshal(models.ModelProvenanceAttestResponse{
-		Status: "ready",
-		Window: json.RawMessage(`"not a canonical attestation window"`),
-	})
-	require.NoError(t, err)
-
-	tests := []struct {
-		name        string
-		handler     http.HandlerFunc
-		wantErrIs   error
-		wantMessage string
-	}{
-		{
-			name: "wrong JSON shape",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSONBody(t, w, `[]`)
-			},
-			wantErrIs: constants.ErrInvalidJSONResponse,
-		},
-		{
-			name: "non-ready status",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSONBody(t, w, `{"status":"pending"}`)
-			},
-			wantMessage: `unexpected status "pending"`,
-		},
-		{
-			name: "ready status without an attestation window",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSONBody(t, w, `{"status":"ready"}`)
-			},
-			wantMessage: "missing attestation window",
-		},
-		{
-			name: "window bytes that are not a canonical attestation",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSONBody(t, w, string(undecodableWindow))
-			},
-			wantMessage: "decode window",
-		},
-		{
-			name: "gateway HTTP error",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-				writeJSONBody(t, w, `{"error":"boom"}`)
-			},
-			wantErrIs:   constants.ErrHTTPStatusError,
-			wantMessage: `attestation preflight for "probe-model:7b"`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, fileSvc, cfg := startProvenanceGateway(t, tt.handler)
-
-			window, err := LoadModelProvenanceAttestation(fileSvc, cfg, tag, digest)
-			require.Error(t, err)
-			assert.Nil(t, window)
 			if tt.wantErrIs != nil {
 				assert.ErrorIs(t, err, tt.wantErrIs)
 			}

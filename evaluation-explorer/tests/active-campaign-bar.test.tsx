@@ -142,47 +142,21 @@ describe('ActiveCampaignBar', () => {
     expect(liteSlot).toHaveClass('header-campaign-role-role-lite');
   });
 
-  it('shows heterogeneous formation models in each role slot with role tooltips and border classes', () => {
-    const heterogeneousEvaluation: EvaluationSummary = {
+  it('shows the run model in every mapped role slot and marks the assignment role active', () => {
+    const mappedEvaluation: EvaluationSummary = {
       ...evaluation,
-      evaluation_unit: 'system',
+      evaluation_unit: 'model',
       model_role_mapping: {
-        primary: 'qwen3-8b',
+        primary: 'ministral-3-8b',
         assistant: 'ministral-3-8b',
-        lite: 'qwen3-4b',
+        lite: 'ministral-3-8b',
       },
     };
     const [startedEvent, stageEvent] = events;
     if (!startedEvent || !stageEvent) throw new Error('missing fixture events');
-    const heterogeneousEvents: LiveEvent[] = [
-      {
-        ...startedEvent,
-        variant_id: 'qwen3-4b',
-        role: 'lite',
-        observed_at: '2026-09-22T12:04:50Z',
-        event_id: 'event-lite',
-      },
-      {
-        ...startedEvent,
-        variant_id: 'ministral-3-8b',
-        role: 'assistant',
-        observed_at: '2026-09-22T12:04:57Z',
-        event_id: 'event-assistant',
-      },
-      {
-        ...startedEvent,
-        variant_id: 'qwen3-8b',
-        role: 'primary',
-        observed_at: '2026-09-22T12:05:00Z',
-        event_id: 'event-primary',
-      },
-      stageEvent,
-    ];
+    const liteEvents: LiveEvent[] = [{ ...startedEvent, role: 'lite' }, stageEvent];
 
-    evalStore.loadFixtures(
-      [catalog, suite, heterogeneousEvaluation] as SnapshotRecord[],
-      heterogeneousEvents,
-    );
+    evalStore.loadFixtures([catalog, suite, mappedEvaluation] as SnapshotRecord[], liteEvents);
 
     render(
       <MemoryRouter initialEntries={['/?dataset=ds-verified-archive&release=all']}>
@@ -190,15 +164,13 @@ describe('ActiveCampaignBar', () => {
       </MemoryRouter>,
     );
 
-    const link = screen.getByRole('link', { name: /Now evaluating qwen3-8b on tool-selection-04/i });
-    expect(link).toHaveTextContent('qwen3-8b');
-    expect(link).toHaveTextContent('ministral-3-8b');
-    expect(link).toHaveTextContent('qwen3-4b');
+    const link = screen.getByRole('link', { name: /Now evaluating ministral-3-8b on tool-selection-04/i });
     expect(link).toHaveTextContent('Active');
     expect(link).toHaveTextContent('8%');
+    expect(screen.getByLabelText('Model role activity')).toBeInTheDocument();
 
-    expect(screen.getByTitle('Primary: qwen3-8b (8% complete)')).toBeInTheDocument();
+    expect(screen.getByTitle('Lite: ministral-3-8b (8% complete)')).toBeInTheDocument();
+    expect(screen.getByTitle('Primary: ministral-3-8b')).toBeInTheDocument();
     expect(screen.getByTitle('Assistant: ministral-3-8b')).toBeInTheDocument();
-    expect(screen.getByTitle('Lite: qwen3-4b')).toBeInTheDocument();
   });
 });

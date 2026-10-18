@@ -57,7 +57,7 @@ func TestPublishRunCatchUpExportsAssignmentsInOneBatch(t *testing.T) {
 	req.Catalog = truncated
 	run, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, run.GetRunId())
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{

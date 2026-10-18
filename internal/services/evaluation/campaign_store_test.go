@@ -232,7 +232,7 @@ func TestCampaignImporterPreservesBoundIncompletePopulation(t *testing.T) {
 	req := testCampaignInitRequest(t)
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	count, err := scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	importer := NewCampaignImporter(files, req.RunID, CampaignVerificationPolicy{VerifierReleaseVersion: constants.EvaluationSourceVersion, ProviderObservation: ProviderObservationPolicyInterim, ModelProvenance: ModelProvenancePolicyInterim, AssessmentTime: func() time.Time { return time.Unix(1_700_000_100, 0).UTC() }})
@@ -325,7 +325,7 @@ func TestCampaignImporterRejectsTamperedPersistedScenarioBody(t *testing.T) {
 	req := testCampaignInitRequest(t)
 	_, err := controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
-	_, err = scheduleModelRoleAssignments(context.Background(), controller, req.RunID)
+	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
 
 	reference := req.Catalog.GetScenarios()[0].GetInputFixtureRef()

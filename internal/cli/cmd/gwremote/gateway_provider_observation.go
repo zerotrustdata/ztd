@@ -106,14 +106,6 @@ func NewCampaignProviderObservationReader(fileSvc fs.RuntimeFileService, cfg *co
 	return evaluation.NewCampaignProviderObservationReaderWithRemote(fileSvc, remote)
 }
 
-func NewCampaignFormationObservationLoader(fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.FormationObservationLoader, error) {
-	reader, err := NewCampaignProviderObservationReader(fileSvc, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return evaluation.NewAwaitingFormationObservationLoader(reader), nil
-}
-
 func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {
 	if !IsGatewayHealthy() {
 		return constants.ErrEvaluationObservationUnavailable

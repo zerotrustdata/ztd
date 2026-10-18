@@ -164,8 +164,6 @@ export function EvaluationDetailView() {
           <DetailRow label="Run ID">{run.run_id}</DetailRow>
           <DetailRow label="Execution arm">{run.arm}</DetailRow>
           <DetailRow label="Evaluation unit">{run.evaluation_unit ? `${run.evaluation_unit.charAt(0).toUpperCase()}${run.evaluation_unit.slice(1)} evaluation` : <UnavailableValue reason="not observed in this dataset" />}</DetailRow>
-          {/* T41: remove */}
-          <DetailRow label="Stack identity">{run.stack_id ?? (run.evaluation_unit === 'model' ? 'Not applicable' : <UnavailableValue reason="not observed in this dataset" />)}</DetailRow>
           <DetailRow label="Campaign">{run.campaign_id ?? <UnavailableValue reason="no campaign recorded" />}</DetailRow>
           <DetailRow label="Platform release">{releaseLabel(run)}</DetailRow>
           {run.source_revision ? <DetailRow label="Source revision">{run.source_revision}</DetailRow> : null}
@@ -227,15 +225,7 @@ export function EvaluationDetailView() {
           <MetricCard variant="tile" label="Pass rate" metric={run.headline_metrics.pass_rate} formatter={formatPercent} />
           <MetricCard variant="tile" label="Latency p50" metric={run.headline_metrics.latency_p50_ms} formatter={formatLatency} />
           <MetricCard variant="tile" label="Output throughput p50" metric={run.headline_metrics.output_throughput_p50_tokens_per_second ?? run.headline_metrics.throughput} formatter={formatThroughput} />
-          {/* T41: remove */}
-          {!run.native_result && run.evaluation_unit === 'system' ? <MetricCard label="Primary invocation share" metric={run.primary_invocation_share} formatter={formatPercent} /> : null}
-          {/* T41: remove */}
-          {!run.native_result && run.evaluation_unit === 'system' ? <MetricCard label="Correlated failure rate" metric={run.correlated_failure_rate} formatter={formatPercent} /> : null}
         </div>
-        {/* T41: remove */}
-        {!run.native_result && run.evaluation_unit === 'model' ? (
-          <p>Heterogeneous routing and correlation metrics appear only for system evaluations.</p>
-        ) : null}
       </PanelSection> : null}
 
       {run.native_result ? (
