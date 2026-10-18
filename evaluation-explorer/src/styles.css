@@ -1393,12 +1393,142 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .role-leader-cell { display: flex; flex-direction: column; gap: 2px; }
 .role-leader-name { font-weight: 600; color: var(--fg); }
 .role-leader-scope { font-size: var(--text-md); color: var(--fg-muted); line-height: 1.35; }
-.role-leader-empty td { color: var(--fg-muted); font-size: var(--text-lg); }
+.role-leader-empty td { color: var(--fg-muted); font-size: var(--text-lg); padding: 18px 12px; }
 .role-leader-points, .role-leader-score { font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
-.role-leader-accuracy { color: var(--fg); font-variant-numeric: tabular-nums; }
-.role-leader-axis { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
-.role-leader-axis-points { color: var(--fg); font-variant-numeric: tabular-nums; }
-.role-leader-axis-raw { font-size: var(--text-md); color: var(--fg-muted); }
+.role-leader-accuracy, .role-leader-speed, .role-leader-tokens, .role-leader-size { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* Leaderboard toolbar & category tabs */
+.leaderboard-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+.leaderboard-categories {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+}
+.leaderboard-category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.leaderboard-category-chip:hover {
+  color: var(--fg);
+}
+.leaderboard-category-chip.active {
+  background: var(--accent-surface);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.leaderboard-count-badge {
+  font-size: 11px;
+  font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-elev2);
+  color: var(--fg-muted);
+}
+.leaderboard-category-chip.active .leaderboard-count-badge {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+}
+.leaderboard-meta {
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+}
+
+/* Leaderboard rank medals & styling */
+.leaderboard-rank-cell {
+  white-space: nowrap;
+  width: 58px;
+}
+.leaderboard-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+.leaderboard-rank.rank-1 {
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.12);
+  border: 1px solid rgba(250, 204, 21, 0.4);
+}
+.leaderboard-rank.rank-2 {
+  color: #e2e8f0;
+  background: rgba(226, 232, 240, 0.12);
+  border: 1px solid rgba(226, 232, 240, 0.35);
+}
+.leaderboard-rank.rank-3 {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(251, 146, 60, 0.35);
+}
+.leaderboard-rank.rank-default {
+  color: var(--fg-muted);
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+/* Compact role badge */
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: capitalize;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: default;
+}
+.role-badge-primary {
+  color: var(--accent);
+  background: var(--accent-surface);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.role-badge-assistant {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+.role-badge-lite {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.lab-table th .th-sort {
+  cursor: pointer;
+}
+.lab-table tbody tr:hover {
+  background: var(--bg-elev2);
+}
 
 @media (max-width: 1000px) and (min-width: 701px) {
   .stream-table th, .stream-table td { padding: 10px 7px; }

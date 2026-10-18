@@ -227,10 +227,136 @@ describe('ModelsView', () => {
     for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Size', 'Eval time']) {
       expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
+    expect(panel.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();
+    expect(panel.getByRole('columnheader', { name: 'Rank' })).toBeInTheDocument();
+    expect(panel.getByText('1st')).toBeInTheDocument();
+    expect(panel.queryByText(/Task owner · plans · delegates · synthesizes/i)).not.toBeInTheDocument();
+    expect(panel.queryByText(/Bounded technical work for Primary/i)).not.toBeInTheDocument();
     expect(panel.queryByRole('columnheader', { name: 'Points' })).not.toBeInTheDocument();
     expect(panel.queryByRole('columnheader', { name: 'Pass rate' })).not.toBeInTheDocument();
     expect(panel.queryByRole('columnheader', { name: 'Coverage' })).not.toBeInTheDocument();
     expect(panel.queryByRole('link', { name: /View all models/i })).not.toBeInTheDocument();
+  });
+
+  it('supports browsing leaderboard categories and sorting statistical columns', () => {
+    const base: ModelSummary = {
+      schema_version: '1.7.0',
+      kind: 'model_summary',
+      dataset_id: 'ds-leader',
+      observed_at: '2026-10-06T00:00:00Z',
+      quality_state: 'exploratory_verified',
+      variant_id: 'model-a',
+      served_model_tag: 'qwen:4b',
+      display_name: 'Model Alpha',
+      role: 'primary',
+      inventory_only: false,
+      evaluation_coverage: 1,
+      pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+      latency_p50_ms: { value: 500 },
+      output_tokens: { value: 100 },
+      security_resistance: { value: 0.8, refused: 4, yielded: 0, persisted: 1 },
+    };
+    const modelB: ModelSummary = {
+      ...base,
+      variant_id: 'model-b',
+      display_name: 'Model Beta',
+      role: 'primary',
+      served_model_tag: 'qwen:2b',
+      pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
+      latency_p50_ms: { value: 1000 },
+      output_tokens: { value: 50 },
+      security_resistance: { value: 0.9, refused: 9, yielded: 0, persisted: 1 },
+    };
+    const modelC: ModelSummary = {
+      ...base,
+      variant_id: 'model-c',
+      display_name: 'Model Gamma',
+      role: 'assistant',
+      served_model_tag: 'qwen:1b',
+      pass_rate: { estimate: 0.95, lower: 0.95, upper: 0.95, denominator: 10 },
+      latency_p50_ms: { value: 200 },
+      output_tokens: { value: 80 },
+      security_resistance: { value: 0.7, refused: 7, yielded: 0, persisted: 3 },
+    };
+    evalStore.loadFixtures([base, modelB, modelC], []);
+
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <ModelsView />
+      </MemoryRouter>,
+    );
+
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+
+    // 1. All 3 models visible under Overall category
+    expect(panel.getByRole('link', { name: 'Model Alpha' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model Beta' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
+    expect(panel.getByText('1st')).toBeInTheDocument();
+    expect(panel.getByText('2nd')).toBeInTheDocument();
+    expect(panel.getByText('3rd')).toBeInTheDocument();
+
+    // 2. Switch to Primary category
+    fireEvent.click(panel.getByRole('button', { name: /^Primary/ }));
+    expect(panel.getByRole('link', { name: 'Model Alpha' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model Beta' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Model Gamma' })).not.toBeInTheDocument();
+
+    // 3. Switch to Assistant category
+    fireEvent.click(panel.getByRole('button', { name: /^Assistant/ }));
+    expect(panel.getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Model Alpha' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Model Beta' })).not.toBeInTheDocument();
+
+    // 4. Return to Overall and sort by Accuracy
+    fireEvent.click(panel.getByRole('button', { name: /^Overall/ }));
+    const accuracyBtn = panel.getByRole('button', { name: 'Sort by Accuracy' });
+    fireEvent.click(accuracyBtn);
+    const tableRows = panel.getAllByRole('row');
+    // First data row (index 1) should be Model Gamma with highest accuracy (95.0%)
+    expect(within(tableRows[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
+
+    // Toggle Accuracy sort direction to ascending
+    fireEvent.click(accuracyBtn);
+    const rowsAsc = panel.getAllByRole('row');
+    // Lowest accuracy is Model Beta (80.0%)
+    expect(within(rowsAsc[1]!).getByRole('link', { name: 'Model Beta' })).toBeInTheDocument();
+
+    // 5. Sort by Speed (faster is better -> lowest latency first, ranked 1st)
+    const speedBtn = panel.getByRole('button', { name: 'Sort by Speed' });
+    fireEvent.click(speedBtn);
+    const rowsSpeed = panel.getAllByRole('row');
+    // Fastest is Model Gamma (200 ms) and gets 1st rank
+    expect(within(rowsSpeed[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
+    expect(within(rowsSpeed[1]!).getByText('1st')).toBeInTheDocument();
+
+    // 6. Sort by Size (smaller is better -> smallest model first, ranked 1st)
+    const sizeBtn = panel.getByRole('button', { name: 'Sort by Size' });
+    fireEvent.click(sizeBtn);
+    const rowsSize = panel.getAllByRole('row');
+    // Smallest is Model Gamma (1B) and gets 1st rank, then Beta (2B), then Alpha (4B)
+    expect(within(rowsSize[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
+    expect(within(rowsSize[1]!).getByText('1st')).toBeInTheDocument();
+    expect(within(rowsSize[2]!).getByRole('link', { name: 'Model Beta' })).toBeInTheDocument();
+    expect(within(rowsSize[2]!).getByText('2nd')).toBeInTheDocument();
+    expect(within(rowsSize[3]!).getByRole('link', { name: 'Model Alpha' })).toBeInTheDocument();
+    expect(within(rowsSize[3]!).getByText('3rd')).toBeInTheDocument();
+
+    // 7. Sort by Tokens (smaller is better -> fewest output tokens first, ranked 1st)
+    const tokensBtn = panel.getByRole('button', { name: 'Sort by Tokens' });
+    fireEvent.click(tokensBtn);
+    const rowsTokens = panel.getAllByRole('row');
+    // Fewest tokens is Model Beta (50 tok) and gets 1st rank, then Gamma (80 tok), then Alpha (100 tok)
+    expect(within(rowsTokens[1]!).getByRole('link', { name: 'Model Beta' })).toBeInTheDocument();
+    expect(within(rowsTokens[1]!).getByText('1st')).toBeInTheDocument();
+    expect(within(rowsTokens[2]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
+    expect(within(rowsTokens[2]!).getByText('2nd')).toBeInTheDocument();
+    expect(within(rowsTokens[3]!).getByRole('link', { name: 'Model Alpha' })).toBeInTheDocument();
+    expect(within(rowsTokens[3]!).getByText('3rd')).toBeInTheDocument();
+
+    // 8. Verify Status column is absent and role descriptions are not rendered
+    expect(panel.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();
+    expect(panel.queryByText(/Task owner · plans · delegates · synthesizes/i)).not.toBeInTheDocument();
   });
 
   it('displays model capabilities, architecture specs, and supports capability filtering', () => {
