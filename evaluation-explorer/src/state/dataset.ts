@@ -3,7 +3,7 @@
 
 // Dataset selection and URL state. The site never averages across datasets.
 // The active dataset is encoded in the hash route so it survives reload and
-// is shareable. User preferences (filters, sort, comparison list) persist in
+// is shareable. User preferences (filters, sort) persist in
 // localStorage; eval state never does.
 //
 // Selector options derive from the catalog snapshots present in the store —
@@ -19,7 +19,6 @@ import { evalStore, useStoreState } from './store';
 const PREF_KEYS = {
   filters: 'opendevops.filters.v3',
   sort: 'opendevops.sort',
-  comparison: 'opendevops.comparison',
 } as const;
 
 export interface DatasetOption extends ReleaseProvenance {

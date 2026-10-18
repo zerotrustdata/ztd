@@ -46,7 +46,6 @@ export interface DataTableProps<T extends RowData> {
   enableColumnVisibility?: boolean;
   /** Cards share the table's sorted, paginated row model below 900px. */
   renderCard?: (record: T) => ReactNode;
-  isRowSelected?: (record: T) => boolean;
 }
 
 const cardMedia = '(max-width: 899px)';
@@ -65,7 +64,6 @@ export function DataTable<T extends RowData>({
   caption,
   enableColumnVisibility = true,
   renderCard,
-  isRowSelected,
 }: DataTableProps<T>) {
   const mobile = useSyncExternalStore(subscribeToCardViewport, cardViewport, () => false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -146,7 +144,7 @@ export function DataTable<T extends RowData>({
           </select>
         </label>
         <ul className="data-card-list" aria-label={caption}>
-          {pageRows.map((row) => <li key={row.id} className={isRowSelected?.(row.original) ? 'data-row-selected' : undefined}>{renderCard(row.original)}</li>)}
+          {pageRows.map((row) => <li key={row.id}>{renderCard(row.original)}</li>)}
         </ul>
       </> : <table className="data-table">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
@@ -185,7 +183,7 @@ export function DataTable<T extends RowData>({
         </thead>
         <tbody>
           {pageRows.map((row) => (
-            <tr key={row.id} className={isRowSelected?.(row.original) ? 'data-row-selected' : undefined}>
+            <tr key={row.id}>
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id}>
                   <table.FlexRender cell={cell} />

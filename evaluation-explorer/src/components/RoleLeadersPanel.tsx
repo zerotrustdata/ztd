@@ -46,10 +46,13 @@ export function RoleLeadersPanel({
   models,
   catalogs,
   evaluations,
+  stats = [],
 }: {
   models: ModelSummary[];
   catalogs: CatalogSnapshot[];
   evaluations: EvaluationSummary[];
+  /** Inline summary counts rendered in the panel header row. */
+  stats?: { label: string; value: number }[];
 }) {
   const catalogByDataset = useMemo(
     () => new Map(catalogs.map((catalog) => [catalog.dataset_id, catalog])),
@@ -68,6 +71,16 @@ export function RoleLeadersPanel({
             · {evaluatedRoles.length} of {roleRows.length} roles qualified
           </span>
         </h2>
+        {stats.length > 0 ? (
+          <dl className="panel-head-stats" aria-label="Model summary">
+            {stats.map((stat) => (
+              <div key={stat.label} data-testid={`stat-${stat.label.replace(/\s+/g, '-').toLowerCase()}`}>
+                <dt>{stat.label}</dt>
+                <dd>{formatNumber(stat.value)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
         <Link to="/models" className="panel-link">
           View all models →
         </Link>

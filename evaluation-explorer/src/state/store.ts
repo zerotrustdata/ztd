@@ -111,34 +111,14 @@ function mergeEvaluationSummary(existing: EvaluationSummary, incoming: Evaluatio
   };
 }
 
-export function modelComparisonId(model: ModelSummary): string {
-  return modelRecordKey(model.dataset_id, model.variant_id, model.role);
-}
-
-const MODEL_COMPARISON_ID = /^(.+):(primary|assistant|lite)$/;
-
-/** Resolve a model from a comparison id stored in user prefs or URL params. */
-export function resolveModelFromComparisonId(
-  models: Map<string, ModelSummary>,
-  comparisonId: string,
-): ModelSummary | undefined {
-  const direct = models.get(comparisonId);
-  if (direct) return direct;
-  const legacy = MODEL_COMPARISON_ID.exec(comparisonId);
-  if (legacy?.[1] && legacy[2]) {
-    for (const model of models.values()) {
-      if (model.variant_id === legacy[1] && model.role === legacy[2]) return model;
-    }
-  }
-  return undefined;
-}
+const MODEL_ROLE_ID = /^(.+):(primary|assistant|lite)$/;
 
 export function resolveModelSummary(
   models: Map<string, ModelSummary>,
   datasetId: string,
   modelId: string,
 ): ModelSummary | undefined {
-  const roleMatch = MODEL_COMPARISON_ID.exec(modelId);
+  const roleMatch = MODEL_ROLE_ID.exec(modelId);
   if (roleMatch?.[1] && roleMatch[2]) {
     return models.get(modelRecordKey(datasetId, roleMatch[1], roleMatch[2] as ModelRole));
   }

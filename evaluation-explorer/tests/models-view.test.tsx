@@ -15,7 +15,7 @@ describe('ModelsView', () => {
     evalStore.loadFixtures(allFixtureSnapshotRecords, fixtureLiveEvents);
   });
 
-  it('shows denominators, neutral inventory pills, unevaluated results and selected comparison rows', () => {
+  it('shows denominators, neutral inventory pills, and unevaluated results', () => {
     const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
     evalStore.loadFixtures([
       { ...source, display_name: 'Measured', variant_id: 'measured' },
@@ -29,8 +29,6 @@ describe('ModelsView', () => {
     expect(inventory.queryByText('0.0%')).not.toBeInTheDocument();
     const measured = screen.getByRole('link', { name: 'Measured' }).closest('tr')!;
     expect(measured).toHaveTextContent(`n=${source.pass_rate!.denominator}`);
-    fireEvent.click(within(measured).getByRole('checkbox', { name: 'Select Measured for comparison' }));
-    expect(measured).toHaveClass('data-row-selected');
     expect(screen.getByTestId('stat-inventory-only-models')).toHaveTextContent('1');
   });
 

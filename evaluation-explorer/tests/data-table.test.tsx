@@ -21,14 +21,14 @@ const data: Row[] = [
 
 describe('DataTable', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it('sorts and paginates mobile cards with the same row selection', async () => {
+  it('sorts and paginates mobile cards', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     const user = userEvent.setup();
     render(<DataTable data={data} columns={columns} pageSize={2} caption="Mobile models"
-      renderCard={(record) => <strong>{record.name}</strong>} isRowSelected={(record) => record.id === 'a'} />);
+      renderCard={(record) => <strong>{record.name}</strong>} />);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     await user.selectOptions(screen.getByRole('combobox', { name: 'Sort cards' }), 'name:asc');
-    expect(screen.getByText('Alice').closest('li')).toHaveClass('data-row-selected');
+    expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
     expect(screen.queryByText('Charlie')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Next page' }));
