@@ -11,10 +11,7 @@ package drive
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/pem"
 	"errors"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,13 +20,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
-	"github.com/zerotrustdata/ztd/internal/services/network"
-	"github.com/zerotrustdata/ztd/internal/testutil"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
-	agentconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -40,61 +32,39 @@ import (
 // contributes its first corpus entry only.
 var integrationRows = map[int]bool{1: true, 3: true, 4: true, 5: true, 6: true, 8: true, 10: true, 11: true, 12: true, 13: true, 15: true, 17: true}
 
-// directFixture is one live Gateway with its CLI identity and a DIRECT driver.
+// directFixture is one live Gateway and, for DIRECT tests, a driver that submits to
+// its embedded Operator.
 type directFixture struct {
-	f       *fixtures.GatewayFixture
-	direct  *Direct
-	ident   *fixtures.ClientIdentity
-	workDir string
+	f      *fixtures.GatewayFixture
+	direct *Direct
 }
 
 // newDirectFixture boots a Gateway under posture and builds a DIRECT driver
 // that submits as the bootstrapped CLI identity to the embedded Operator.
 func newDirectFixture(t *testing.T, posture constants.Posture) *directFixture {
 	t.Helper()
-	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-direct-" + string(posture),
 		Posture:  posture,
 	})
-	f.WaitForReady(t)
-	ident := fixtures.BootstrapCLIIdentity(t, f, "conformance-direct-host")
-
-	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
+	direct, err := NewDirect(gw.client, gw.persona, gw.target, nil, BaseMutators())
 	require.NoError(t, err)
-	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
-	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
-
-	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
-	c, err := client.New(agentconfig.Config{
-		MTLSBaseURL:   url,
-		PublicBaseURL: url,
-		Auth:          agentconfig.Auth{Certificate: &cliCert, CABundle: caPath},
-	})
-	require.NoError(t, err)
-
-	persona := client.Persona{ID: "conformance-direct", UserID: ident.UserID, CLISessionID: ident.CLISessionID}
-	target := operator.Target{OperatorID: ident.OperatorID, OperatorSessionID: ident.OperatorSessionID}
-	direct, err := NewDirect(c, persona, target, nil, BaseMutators())
-	require.NoError(t, err)
-
-	// The embedded Operator confines file edits to its working directory, so the
-	// case targets live under the fixture's test-results directory beneath it.
-	return &directFixture{f: f, direct: direct, ident: ident, workDir: f.Config.WorkDir}
+	return &directFixture{f: gw.f, direct: direct}
 }
 
 // attemptFor builds a fresh attempt for one case, with targets under the
-// fixture work directory and removed when the test ends.
+// fixture work directory and removed when the test ends. The embedded Operator
+// confines file edits to its working directory, so the targets live beneath it.
 func (fx *directFixture) attemptFor(t *testing.T, c cases.Case) cases.Attempt {
 	t.Helper()
 	attemptID, err := uuid.NewString()
 	require.NoError(t, err)
 	runID, err := uuid.NewString()
 	require.NoError(t, err)
-	results := filepath.Join(fx.workDir, "test-results")
+	results := filepath.Join(fx.f.Config.WorkDir, "test-results")
 	parent := filepath.Join(results, "conformance-direct")
 	dir := filepath.Join(parent, runID)
-	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.MkdirAll(dir, constants.PermDirStandard))
 	t.Cleanup(func() {
 		_ = os.RemoveAll(dir)
 		// The work directory is the package directory: drop the parents once
@@ -106,7 +76,7 @@ func (fx *directFixture) attemptFor(t *testing.T, c cases.Case) cases.Attempt {
 	// Read cases need the file to exist; the content is the marker so a read
 	// receipt can be checked against it.
 	readAbs := filepath.Join(dir, "read.txt")
-	require.NoError(t, os.WriteFile(readAbs, []byte(marker), 0o600))
+	require.NoError(t, os.WriteFile(readAbs, []byte(marker), constants.PermFilePrivate))
 	return cases.Attempt{
 		RunID:     runID,
 		AttemptID: attemptID,
@@ -121,19 +91,6 @@ func (fx *directFixture) attemptFor(t *testing.T, c cases.Case) cases.Attempt {
 // take their case from the catalogue.
 func directCase(fault cases.Fault) cases.Case {
 	return cases.Case{ID: "direct-" + string(fault), Ingress: cases.IngressDirect, Fault: fault, Action: cases.ActionMutation}
-}
-
-// closedLoopbackClient returns a client whose base URL has nothing listening: the
-// port was free when it was taken and is closed again before the client dials it.
-func closedLoopbackClient(t *testing.T) *client.Client {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	url := "http://" + l.Addr().String()
-	require.NoError(t, l.Close())
-	c, err := client.New(agentconfig.Config{MTLSBaseURL: url, PublicBaseURL: url})
-	require.NoError(t, err)
-	return c
 }
 
 // answerText renders the human text of an answer for assertion messages.
@@ -258,7 +215,7 @@ func TestDirectDriveMissingMutatorIsUnsupported(t *testing.T) {
 // loopback port with nothing listening. The state root fetch fails before any
 // envelope is built, so the driver returns an error and no observation.
 func TestDirectDriveUnreachableGatewayIsErrorNotObservation(t *testing.T) {
-	d, err := NewDirect(closedLoopbackClient(t), testIdentity().Persona, testIdentity().Target, nil, BaseMutators())
+	d, err := NewDirect(unreachableClient(t), testIdentity().Persona, testIdentity().Target, nil, BaseMutators())
 	require.NoError(t, err)
 
 	driven, err := d.Drive(context.Background(), testAttempt(cases.FaultNone, cases.ActionMutation))
@@ -271,7 +228,7 @@ func TestDirectDriveUnreachableGatewayIsErrorNotObservation(t *testing.T) {
 // fault has already broken, so a body fault that reaches the Gateway shows the
 // proof was requested over the valid baseline, before the fault.
 func TestDirectDriveL2Consensus(t *testing.T) {
-	gw := bootL2Gateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:                 "conformance-direct-l2",
 		Posture:                  constants.PostureConsensus,
 		ConsensusID:              "conformance-direct-l2",
@@ -284,7 +241,7 @@ func TestDirectDriveL2Consensus(t *testing.T) {
 	t.Run("proof is requested over the valid baseline", func(t *testing.T) {
 		direct, err := NewDirect(gw.client, gw.persona, gw.target, deliberator, BaseMutators())
 		require.NoError(t, err)
-		fx := &directFixture{f: gw.f, direct: direct, workDir: gw.f.Config.WorkDir}
+		fx := &directFixture{f: gw.f, direct: direct}
 		for _, fault := range []cases.Fault{cases.FaultPayloadTampered, cases.FaultMissingField} {
 			t.Run(string(fault), func(t *testing.T) {
 				driven, err := fx.direct.Drive(context.Background(), fx.attemptFor(t, directCase(fault)))
@@ -299,7 +256,7 @@ func TestDirectDriveL2Consensus(t *testing.T) {
 		selfSigned := MutatorSet{cases.FaultNone: {SetsL2: true, Apply: noop.Apply}}
 		direct, err := NewDirect(gw.client, gw.persona, gw.target, deliberator, selfSigned)
 		require.NoError(t, err)
-		fx := &directFixture{f: gw.f, direct: direct, workDir: gw.f.Config.WorkDir}
+		fx := &directFixture{f: gw.f, direct: direct}
 
 		driven, err := fx.direct.Drive(context.Background(), fx.attemptFor(t, directCase(cases.FaultNone)))
 		require.NoError(t, err)

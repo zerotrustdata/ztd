@@ -81,13 +81,13 @@ func TestA2AAllowedCallReachesStubAndClosesAttempt(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
 	stub := startStub(t)
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:         "conformance-a2a-allowed",
 		Posture:          constants.PostureDoctrine,
 		A2ADownstreamURL: stub.URL(),
 	})
 	d := NewA2A(gw.client, gw.persona, stub)
-	fx := &directFixture{f: gw.f, workDir: gw.f.Config.WorkDir}
+	fx := &directFixture{f: gw.f}
 
 	c := findCase(t, all, 1, cases.IngressA2A, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
 	a := fx.attemptFor(t, c)
@@ -112,13 +112,13 @@ func TestA2ARejectedCallReachesNoStub(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
 	stub := startStub(t)
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:         "conformance-a2a-rejected",
 		Posture:          constants.PostureDoctrine,
 		A2ADownstreamURL: stub.URL(),
 	})
 	d := NewA2A(gw.client, gw.persona, stub)
-	fx := &directFixture{f: gw.f, workDir: gw.f.Config.WorkDir}
+	fx := &directFixture{f: gw.f}
 
 	c := findCase(t, all, 14, cases.IngressA2A, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
 	driven, err := d.Drive(context.Background(), fx.attemptFor(t, c))
@@ -137,13 +137,13 @@ func TestA2AUnattendedMutationSuspendsUnderRatify(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
 	stub := startStub(t)
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:         "conformance-a2a-ratify",
 		Posture:          constants.PostureRatify,
 		A2ADownstreamURL: stub.URL(),
 	})
 	d := NewA2A(gw.client, gw.persona, stub)
-	fx := &directFixture{f: gw.f, workDir: gw.f.Config.WorkDir}
+	fx := &directFixture{f: gw.f}
 
 	c := findCase(t, all, 22, cases.IngressA2A, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY)
 	driven, err := d.Drive(context.Background(), fx.attemptFor(t, c))
@@ -158,7 +158,7 @@ func TestA2AUnattendedMutationSuspendsUnderRatify(t *testing.T) {
 // TestA2ARefusesCallWithoutSkillName checks that an a2a/call with no skill is refused at
 // ingress with a typed refusal.
 func TestA2ARefusesCallWithoutSkillName(t *testing.T) {
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-a2a-refusal",
 		Posture:  constants.PostureDoctrine,
 	})

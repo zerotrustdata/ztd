@@ -10,69 +10,17 @@ package drive
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/pem"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
-	"github.com/zerotrustdata/ztd/internal/services/network"
-	"github.com/zerotrustdata/ztd/internal/testutil"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
-	agentconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
-
-// l2Gateway is one live Gateway with its bootstrapped CLI identity and a client
-// that submits as that identity to the embedded Operator.
-type l2Gateway struct {
-	f       *fixtures.GatewayFixture
-	client  *client.Client
-	persona client.Persona
-	target  operator.Target
-}
-
-// bootL2Gateway boots a Gateway under opts and returns a client for it. Unlike
-// newDirectFixture it takes the full fixture options, so the consensus set size
-// and quorum can be pinned.
-func bootL2Gateway(t *testing.T, opts fixtures.GatewayFixtureOptions) *l2Gateway {
-	t.Helper()
-	f := fixtures.NewGatewayFixture(t, opts)
-	f.WaitForReady(t)
-	ident := fixtures.BootstrapCLIIdentity(t, f, "conformance-l2-host")
-
-	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
-	require.NoError(t, err)
-	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
-	if f.ConsensusServer != nil {
-		caBundle = append(caBundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.ConsensusServer.Certificate().Raw})...)
-	}
-	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
-
-	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
-	c, err := client.New(agentconfig.Config{
-		MTLSBaseURL:   url,
-		PublicBaseURL: url,
-		Auth:          agentconfig.Auth{Certificate: &cliCert, CABundle: caPath},
-	})
-	require.NoError(t, err)
-
-	return &l2Gateway{
-		f:       f,
-		client:  c,
-		persona: client.Persona{ID: "conformance-l2", UserID: ident.UserID, CLISessionID: ident.CLISessionID},
-		target:  operator.Target{OperatorID: ident.OperatorID, OperatorSessionID: ident.OperatorSessionID},
-	}
-}
 
 // l2Cases returns the DIRECT catalogue cases for one posture and rows that the
 // row-driven tests below need, in catalogue order.
@@ -107,7 +55,7 @@ func TestL2SingleApplicationProofAcceptsRow1AndRejectsEachRow18Fault(t *testing.
 
 func testDeliberatedL2(t *testing.T, members int) {
 	t.Helper()
-	gw := bootL2Gateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:                 "conformance-l2-consensus",
 		Posture:                  constants.PostureConsensus,
 		ConsensusID:              "conformance-consensus",
@@ -118,7 +66,7 @@ func testDeliberatedL2(t *testing.T, members int) {
 	deliberator := NewDeliberator(gw.client, gw.persona)
 	direct, err := NewDirect(gw.client, gw.persona, gw.target, deliberator, BaseMutators(), L2Mutators(deliberator))
 	require.NoError(t, err)
-	fx := &directFixture{f: gw.f, direct: direct, workDir: gw.f.Config.WorkDir}
+	fx := &directFixture{f: gw.f, direct: direct}
 
 	selected := l2Cases(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, 1, 18)
 	require.NotEmpty(t, selected, "catalogue has no row 1 or row 18 DIRECT consensus case")
@@ -146,7 +94,7 @@ func testDeliberatedL2(t *testing.T, members int) {
 // stands in for the deliberated one. Each fault must execute with L2 not
 // required.
 func TestL2SyntheticProofExecutesRow19UnderDoctrine(t *testing.T) {
-	gw := bootL2Gateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-l2-doctrine",
 		Posture:  constants.PostureDoctrine,
 	})
@@ -154,7 +102,7 @@ func TestL2SyntheticProofExecutesRow19UnderDoctrine(t *testing.T) {
 	require.NoError(t, err)
 	direct, err := NewDirect(gw.client, gw.persona, gw.target, nil, BaseMutators(), L2Mutators(synthetic))
 	require.NoError(t, err)
-	fx := &directFixture{f: gw.f, direct: direct, workDir: gw.f.Config.WorkDir}
+	fx := &directFixture{f: gw.f, direct: direct}
 
 	selected := l2Cases(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, 19)
 	require.Len(t, selected, len(l2Faults6), "catalogue must hold one row 19 DIRECT doctrine case per L2 fault")

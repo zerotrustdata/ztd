@@ -41,7 +41,7 @@ func mcpAttempt(c cases.Case) cases.Attempt {
 // TestMCPNewDiscoversNativeToolsOnTheGateway checks that discovery accepts the
 // tools/list of a real Gateway, which serves both native tools.
 func TestMCPNewDiscoversNativeToolsOnTheGateway(t *testing.T) {
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-mcp-discovery",
 		Posture:  constants.PostureDoctrine,
 	})
@@ -131,13 +131,13 @@ func TestMCPDriveTransportErrorIsAnError(t *testing.T) {
 func TestMCPReadBaselineExecutesUnderDoctrine(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-mcp-read",
 		Posture:  constants.PostureDoctrine,
 	})
 	m, err := NewMCP(context.Background(), gw.client, gw.persona)
 	require.NoError(t, err)
-	fx := &directFixture{f: gw.f, workDir: gw.f.Config.WorkDir}
+	fx := &directFixture{f: gw.f}
 
 	c := findCase(t, all, 2, cases.IngressMCP, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
 	a := fx.attemptFor(t, c)
@@ -156,13 +156,13 @@ func TestMCPReadBaselineExecutesUnderDoctrine(t *testing.T) {
 func TestMCPUnattendedMutationSuspendsUnderRatify(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-mcp-ratify",
 		Posture:  constants.PostureRatify,
 	})
 	m, err := NewMCP(context.Background(), gw.client, gw.persona)
 	require.NoError(t, err)
-	fx := &directFixture{f: gw.f, workDir: gw.f.Config.WorkDir}
+	fx := &directFixture{f: gw.f}
 
 	c := findCase(t, all, 22, cases.IngressMCP, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY)
 	a := fx.attemptFor(t, c)
@@ -180,7 +180,7 @@ func TestMCPUnattendedMutationSuspendsUnderRatify(t *testing.T) {
 // TestMCPRefusesCallWithoutToolName checks that a tools/call with no tool name is refused
 // at ingress with a typed refusal, not answered as an untyped error.
 func TestMCPRefusesCallWithoutToolName(t *testing.T) {
-	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-mcp-refusal",
 		Posture:  constants.PostureDoctrine,
 	})

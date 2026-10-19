@@ -33,78 +33,6 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// fakeDispatch answers every POST to the governed dispatch route with one canned
-// status and body, and records each request body it receives. Only
-// sentinel_integration_test.go still uses it; delete it with that migration.
-type fakeDispatch struct {
-	mu     sync.Mutex
-	status int
-	body   []byte
-	bodies [][]byte
-}
-
-func (f *fakeDispatch) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.URL.Path != constants.APIPaths.OperatorsCommands {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	body, _ := io.ReadAll(r.Body)
-	f.bodies = append(f.bodies, body)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(f.status)
-	_, _ = w.Write(f.body)
-}
-
-// newFakeDispatch starts a fake dispatch Gateway and a client pointed at it.
-func newFakeDispatch(t *testing.T, status int, body []byte) (*fakeDispatch, *client.Client) {
-	t.Helper()
-	fake := &fakeDispatch{status: status, body: body}
-	server := httptest.NewServer(fake)
-	t.Cleanup(server.Close)
-	c, err := client.New(config.Config{MTLSBaseURL: server.URL, PublicBaseURL: server.URL})
-	require.NoError(t, err)
-	return fake, c
-}
-
-// recorded returns the i-th request body the fake received.
-func (f *fakeDispatch) recorded(t *testing.T, i int) []byte {
-	t.Helper()
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	require.Less(t, i, len(f.bodies))
-	return f.bodies[i]
-}
-
-func (f *fakeDispatch) count() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.bodies)
-}
-
-// dispatchResultBody is a canonical 2xx GovernedDispatchResult carrying a receipt.
-func dispatchResultBody(t *testing.T) []byte {
-	t.Helper()
-	body, err := response.MarshalProtoJSONCanonical(&operatorv1.GovernedDispatchResult{
-		TransactionId: "tx-1",
-		Receipt: &operatorv1.ActionReceipt{
-			TransactionId: "tx-1",
-			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-		},
-	})
-	require.NoError(t, err)
-	return body
-}
-
-// decodeDispatchRequest decodes a well-formed dispatch request body.
-func decodeDispatchRequest(t *testing.T, body []byte) models.OperatorCommandRequest {
-	t.Helper()
-	var req models.OperatorCommandRequest
-	require.NoError(t, json.Unmarshal(body, &req))
-	return req
-}
-
 func newTestDispatch(t *testing.T, c *client.Client) *Dispatch {
 	t.Helper()
 	d, err := NewDispatch(c, testIdentity().Persona, testDispatchTargets())
@@ -175,7 +103,7 @@ func TestDispatchDriveRejectsUnsupportedCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			a := dispatchAttempt(tt.ingress, tt.fault, cases.ActionMutation)
 
-			_, err := newTestDispatch(t, closedLoopbackClient(t)).Drive(context.Background(), a)
+			_, err := newTestDispatch(t, unreachableClient(t)).Drive(context.Background(), a)
 			require.Error(t, err)
 			assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "got %v", err)
 		})
@@ -183,7 +111,7 @@ func TestDispatchDriveRejectsUnsupportedCases(t *testing.T) {
 }
 
 func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
-	c := closedLoopbackClient(t)
+	c := unreachableClient(t)
 	persona := testIdentity().Persona
 
 	missingOutbound := map[cases.Executor]operator.Target{
@@ -211,7 +139,7 @@ func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
 func TestDispatchDriveTransportFailureIsError(t *testing.T) {
 	a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultNone, cases.ActionMutation)
 
-	driven, err := newTestDispatch(t, closedLoopbackClient(t)).Drive(context.Background(), a)
+	driven, err := newTestDispatch(t, unreachableClient(t)).Drive(context.Background(), a)
 	require.Error(t, err)
 	assert.Empty(t, driven.Observations)
 }

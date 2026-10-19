@@ -12,13 +12,10 @@ package drive
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
-	"encoding/pem"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -30,57 +27,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/network"
-	"github.com/zerotrustdata/ztd/internal/testutil"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
-	agentconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
-
-// l3Gateway is one live Gateway with the CLI identity that the L3 tests submit as.
-type l3Gateway struct {
-	f       *fixtures.GatewayFixture
-	ident   *fixtures.ClientIdentity
-	client  *client.Client
-	persona client.Persona
-	target  operator.Target
-}
-
-// bootL3Gateway boots a Gateway under opts and returns a harness client that submits as
-// the bootstrapped CLI identity to the embedded Operator.
-func bootL3Gateway(t *testing.T, opts fixtures.GatewayFixtureOptions) *l3Gateway {
-	t.Helper()
-	f := fixtures.NewGatewayFixture(t, opts)
-	f.WaitForReady(t)
-	ident := fixtures.BootstrapCLIIdentity(t, f, "conformance-l3-host")
-
-	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
-	require.NoError(t, err)
-	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
-	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
-
-	// The CLI identity is the same certificate as the operator identity. Naming it in
-	// CLIAuth too makes the harness send the CLI session header that handleCLIAuth needs.
-	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
-	cliAuth := agentconfig.Auth{Certificate: &cliCert, CABundle: caPath}
-	c, err := client.New(agentconfig.Config{
-		MTLSBaseURL:   url,
-		PublicBaseURL: url,
-		Auth:          cliAuth,
-		CLIAuth:       cliAuth,
-	})
-	require.NoError(t, err)
-
-	return &l3Gateway{
-		f:       f,
-		ident:   ident,
-		client:  c,
-		persona: client.Persona{ID: "conformance-l3", UserID: ident.UserID, CLISessionID: ident.CLISessionID},
-		target:  operator.Target{OperatorID: ident.OperatorID, OperatorSessionID: ident.OperatorSessionID},
-	}
-}
 
 // findCase returns the one catalogue case that matches row, ingress and posture.
 func findCase(t *testing.T, all []cases.Case, row int, ingress cases.Ingress, posture evalv1.EvaluationGovernancePosture) cases.Case {
@@ -124,7 +74,7 @@ func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 	row23 := findCase(t, all, 23, cases.IngressMCP, ratify)
 
-	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-mcp", Posture: constants.PostureRatify})
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-mcp", Posture: constants.PostureRatify})
 	mcpDriver, err := NewMCP(context.Background(), g.client, g.persona)
 	require.NoError(t, err)
 
@@ -165,7 +115,7 @@ func TestAttendedRatifyDenialResumesMCPAsSignedRejection(t *testing.T) {
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 	row24 := findCase(t, all, 24, cases.IngressMCP, ratify)
 
-	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-mcp-deny", Posture: constants.PostureRatify})
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-mcp-deny", Posture: constants.PostureRatify})
 	mcpDriver, err := NewMCP(context.Background(), g.client, g.persona)
 	require.NoError(t, err)
 
@@ -196,7 +146,7 @@ func TestAttendedRatifyDenialResumesMCPAsSignedRejection(t *testing.T) {
 // awaitPendingApproval waits for the one transaction the blocked call suspended and
 // returns its hash. The approver learns of it the way a human does, from the Gateway's
 // pending approval list.
-func (g *l3Gateway) awaitPendingApproval(t *testing.T, approver *http.Client) string {
+func (g *liveGateway) awaitPendingApproval(t *testing.T, approver *http.Client) string {
 	t.Helper()
 	listURL := network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort()) + constants.APIPaths.ApprovalsCLIList
 	var txHash string
@@ -221,7 +171,7 @@ func (g *l3Gateway) awaitPendingApproval(t *testing.T, approver *http.Client) st
 }
 
 // denyWithCLI denies txHash the way `ztd auth approve --deny` does.
-func (g *l3Gateway) denyWithCLI(t *testing.T, approver *http.Client, txHash string) {
+func (g *liveGateway) denyWithCLI(t *testing.T, approver *http.Client, txHash string) {
 	t.Helper()
 	body, err := json.Marshal(models.ApprovalRespondRequest{ApprovalID: txHash, Approved: false, Reason: "conformance deny"})
 	require.NoError(t, err)
@@ -247,7 +197,7 @@ func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 		for _, row := range []int{23, 24} {
 			c := findCase(t, all, row, ingress, ratify)
 			t.Run(c.ID, func(t *testing.T) {
-				g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-blocking", Posture: constants.PostureRatify})
+				g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-blocking", Posture: constants.PostureRatify})
 				approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
 
 				var inner cases.Driver
@@ -334,7 +284,7 @@ func TestAttendedRatifyA2AApprovalAttributesDownstreamCallToAttempt(t *testing.T
 		assert.NoError(t, stub.Close(ctx))
 	})
 
-	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:         "conformance-attended-a2a",
 		Posture:          constants.PostureRatify,
 		A2ADownstreamURL: stub.URL(),
@@ -385,7 +335,7 @@ func TestL3DirectRowsUnderRatify(t *testing.T) {
 	require.NoError(t, err)
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 
-	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-l3-ratify", Posture: constants.PostureRatify})
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-l3-ratify", Posture: constants.PostureRatify})
 	direct, err := NewDirect(g.client, g.persona, g.target, nil, BaseMutators(), L3Mutators())
 	require.NoError(t, err)
 
@@ -416,7 +366,7 @@ func TestL3GarbageProofExecutesUnderDoctrine(t *testing.T) {
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	c := findCase(t, all, 21, cases.IngressDirect, doctrine)
 
-	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-l3-doctrine", Posture: constants.PostureDoctrine})
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-l3-doctrine", Posture: constants.PostureDoctrine})
 	direct, err := NewDirect(g.client, g.persona, g.target, nil, BaseMutators(), L3Mutators())
 	require.NoError(t, err)
 	a := gatewayAttempt(t, g.f, c)
