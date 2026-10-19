@@ -9,18 +9,17 @@ package models
 
 import (
 	"encoding/json"
-
-	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // AuditScope selects evidence by ingress identity and investigation. Empty
 // fields leave that dimension unrestricted; app records need not have an
-// Operator session.
+// Operator session. ExcludeAuditReads drops the audit-read tools' own MCP_CALL
+// receipts before pagination; every other receipt stays in scope.
 type AuditScope struct {
 	OperatorID        string
 	OperatorSessionID string
 	InvestigationID   string
-	ExcludeActionType constants.ActionType
+	ExcludeAuditReads bool
 	ActingAppID       string
 }
 

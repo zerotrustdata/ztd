@@ -89,12 +89,12 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 		},
 		{
 			name:      "explicit investigation query selects embedded Operator ledger",
-			args:      `{"investigation_id":"investigation-1","exclude_action_type":"MCP_CALL"}`,
+			args:      `{"investigation_id":"investigation-1","exclude_audit_reads":true}`,
 			wantLocal: true,
 		},
 		{
-			name:      "wrong local exclusion remains on public Gateway policy",
-			args:      `{"investigation_id":"investigation-1","exclude_action_type":"EXECUTE_BASH"}`,
+			name:      "missing local exclusion remains on public Gateway policy",
+			args:      `{"investigation_id":"investigation-1","exclude_audit_reads":false}`,
 			wantLocal: false,
 		},
 		{

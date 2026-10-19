@@ -53,7 +53,12 @@ func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
 	ok, detail := validateToolCall(call, validators, ws)
 	assert.True(t, ok, detail)
 
+	// Without the health file the required term fails first.
 	call.ArgumentsJSON = `{"command":"cat","args":["x",">","y"]}`
+	ok, _ = validateToolCall(call, validators, ws)
+	assert.False(t, ok)
+
+	call.ArgumentsJSON = `{"command":"cat","args":["health.txt",">","y"]}`
 	ok, detail = validateToolCall(call, validators, ws)
 	assert.False(t, ok)
 	assert.Contains(t, detail, `forbidden term ">"`)

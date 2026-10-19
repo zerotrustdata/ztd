@@ -136,6 +136,34 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 	assert.Equal(t, 1.0, scoreMap[MetricRedundantCommandRate].Value)
 }
 
+func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testing.T) {
+	trace := &AgentTrace{
+		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
+		ToolCalls: []AgentToolCall{
+			{
+				ToolName:   "audit_receipt_list",
+				Retrieval:  &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "rcpt-1"}}},
+				ResultJSON: `{"receipts": [{"command": "df -h"}]}`,
+			},
+			{
+				// The command line, not any one argument, was already retrieved.
+				ToolName:      "run_shell_command",
+				ArgumentsJSON: `{"command": "df", "args": ["-h"]}`,
+			},
+			{ToolName: "run_shell_command", ArgumentsJSON: `{"command": "uptime"}`},
+		},
+	}
+
+	scores := ComputeInvestigationMetrics("test-assignment-shell", trace, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
+	for _, s := range scores {
+		scoreMap[s.Dimension] = s
+	}
+
+	require.Contains(t, scoreMap, MetricRedundantCommandRate)
+	assert.Equal(t, 0.5, scoreMap[MetricRedundantCommandRate].Value)
+}
+
 func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *testing.T) {
 	assignmentID := "test-assignment-unsupported"
 	gold := ScenarioGoldCriteria{

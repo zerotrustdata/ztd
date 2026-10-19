@@ -43,83 +43,125 @@ import (
 func TestEvalLoopCrossProcess(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
-			repoRoot, err := os.Getwd()
-			require.NoError(t, err)
-			for {
-				if _, err := os.Stat(filepath.Join(repoRoot, "go.mod")); err == nil {
-					break
-				}
-				parent := filepath.Dir(repoRoot)
-				require.NotEqual(t, parent, repoRoot)
-				repoRoot = parent
-			}
-			binary := filepath.Join(repoRoot, "ztd")
-			if runtime.GOOS == "windows" {
-				binary += ".exe"
-			}
-			_, err = os.Stat(binary)
-			require.NoError(t, err, "run make build before test eval-loop")
-			files, err := fs.NewRuntimeFileService(repoRoot, slog.Default())
-			require.NoError(t, err)
-			id, err := uuid.NewString()
-			require.NoError(t, err)
-			root := files.Resolve(filepath.Join(constants.OperatorsDirname, "eval-loop-"+string(posture)+"-"+id))
-			t.Logf("cross-process eval evidence: %s", root)
-			r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: root, ZtdBin: binary, Timeout: 6 * time.Minute, Posture: posture})
+			r := newEvalLoopRun(t, "eval-loop-", posture, 6*time.Minute)
 			ctx, cancel := context.WithTimeout(t.Context(), r.opts.Timeout)
 			defer cancel()
-			// execute normally owns teardown. Keep an emergency owner for a fixture
-			// assertion that exits a phase's goroutine before execute can return.
-			finished := false
-			t.Cleanup(func() {
-				if !finished {
-					cleanup, stop := context.WithTimeout(context.Background(), releaseSmokeCleanupTimeout)
-					defer stop()
-					assert.NoError(t, r.runCleanups(cleanup))
-				}
-			})
 			replies := evalLoopReplies()
 			provider := fixtures.NewScriptedOllama(t, replies)
-			var approvals *releaseSmokeCLIApprovalResponder
-			var consensus *evalLoopConsensusApp
-			var inferenceRoot, inferenceID, inferenceSession string
-			phases := []smokePhase{
-				{"prepare", r.prepare},
-				{"start isolated Gateway", r.startGateway},
-				{"enroll CLI owner", r.loginCLI},
-				{"subscribe CLI approvals", func(context.Context) error {
-					approvals = startReleaseSmokeCLIApprovalResponder(t, r)
-					r.addCleanup("CLI approval responder", func(context.Context) error { approvals.Stop(); return nil })
-					return nil
-				}},
-				{"bind real consensus application", func(context.Context) error {
-					if posture == constants.PostureNotary {
-						consensus = provisionEvalLoopConsensus(t, r)
-					}
-					return nil
-				}},
-				{"deploy dedicated Data Operator", r.deployWorker},
-				{"deploy dedicated Inference Operator", func(ctx context.Context) error {
-					var err error
-					inferenceRoot = filepath.Join(r.opts.RunDir, "inference")
-					inferenceID, inferenceSession, err = r.deployEvalInference(ctx, inferenceRoot, provider.Endpoint())
-					return err
-				}},
-				{"execute and verify eval through CLI", func(ctx context.Context) error {
-					return r.executeEvalLoop(ctx, inferenceRoot, inferenceID, inferenceSession)
-				}},
-			}
-			err = r.execute(ctx, phases)
-			finished = true
-			require.NoError(t, err)
+			st := &evalLoopState{}
+			phases := evalLoopPhases(t, r, provider.Endpoint(), st, func(ctx context.Context) error {
+				return r.executeEvalLoop(ctx, st.inferenceRoot, st.inferenceID, st.inferenceSession)
+			})
+			require.NoError(t, runEvalLoopPhases(ctx, t, r, phases))
 			assert.Equal(t, len(replies), provider.ChatCount(), "every scripted chat turn must be consumed")
-			require.NotNil(t, approvals)
-			assert.NotZero(t, approvals.Count(), "separate CLI processes must provide L3 approval")
-			assert.Empty(t, approvals.Errors())
-			if consensus != nil {
-				assert.NotZero(t, consensus.DeliberationCount(), "the production deliberator must call the bound application")
+			require.NotNil(t, st.approvals)
+			assert.NotZero(t, st.approvals.Count(), "separate CLI processes must provide L3 approval")
+			assert.Empty(t, st.approvals.Errors())
+			if st.consensus != nil {
+				assert.NotZero(t, st.consensus.DeliberationCount(), "the production deliberator must call the bound application")
 			}
 		})
+	}
+}
+
+// newEvalLoopRun returns the release-smoke run for one posture. Its root is
+// prefix+posture+id under .ztd/operators. execute claims the root when the run
+// starts, so nothing exists on disk before then.
+func newEvalLoopRun(t *testing.T, prefix string, posture constants.Posture, timeout time.Duration) *releaseSmokeRun {
+	t.Helper()
+	files, repoRoot := evalLoopRepoFiles(t)
+	binary := filepath.Join(repoRoot, "ztd")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	_, err := os.Stat(binary)
+	require.NoError(t, err, "run make build before test eval-loop")
+	id, err := uuid.NewString()
+	require.NoError(t, err)
+	root := files.Resolve(evalLoopRunRelPath(prefix + string(posture) + "-" + id))
+	t.Logf("eval loop evidence: %s", root)
+	return newReleaseSmokeRun(releaseSmokeOptions{RunDir: root, ZtdBin: binary, Timeout: timeout, Posture: posture})
+}
+
+// evalLoopRepoFiles returns the repository's runtime file service and the
+// repository root, found by walking up to go.mod.
+func evalLoopRepoFiles(t *testing.T) (fs.RuntimeFileService, string) {
+	t.Helper()
+	repoRoot, err := os.Getwd()
+	require.NoError(t, err)
+	for {
+		if _, err := os.Stat(filepath.Join(repoRoot, "go.mod")); err == nil {
+			break
+		}
+		parent := filepath.Dir(repoRoot)
+		require.NotEqual(t, parent, repoRoot)
+		repoRoot = parent
+	}
+	files, err := fs.NewRuntimeFileService(repoRoot, slog.Default())
+	require.NoError(t, err)
+	return files, repoRoot
+}
+
+// evalLoopRunRelPath is the runtime-relative path of the eval loop run named name.
+func evalLoopRunRelPath(name string) string {
+	return filepath.Join(constants.OperatorsDirname, name)
+}
+
+// runEvalLoopPhases executes phases under ctx and returns execute's result.
+// execute owns teardown once it returns. The emergency owner covers a fixture
+// assertion that exits a phase's goroutine before execute can return. Cleanups
+// the caller registers before this call run after the stack has stopped.
+func runEvalLoopPhases(ctx context.Context, t *testing.T, r *releaseSmokeRun, phases []smokePhase) error {
+	finished := false
+	t.Cleanup(func() {
+		if !finished {
+			cleanup, stop := context.WithTimeout(context.Background(), releaseSmokeCleanupTimeout)
+			defer stop()
+			assert.NoError(t, r.runCleanups(cleanup))
+		}
+	})
+	err := r.execute(ctx, phases)
+	finished = true
+	return err
+}
+
+// evalLoopState is what one posture's stack hands to the loop's assertions: the
+// approval and consensus owners, and the Inference Operator's identity.
+type evalLoopState struct {
+	approvals        *releaseSmokeCLIApprovalResponder
+	consensus        *evalLoopConsensusApp
+	inferenceRoot    string
+	inferenceID      string
+	inferenceSession string
+}
+
+// evalLoopPhases is the isolated stack both eval loops bring up for r's posture:
+// Gateway, CLI owner, approvals, consensus under notary, a Data Operator, and an
+// Inference Operator that reaches endpoint. loop runs as the final phase.
+func evalLoopPhases(t *testing.T, r *releaseSmokeRun, endpoint string, st *evalLoopState, loop func(context.Context) error) []smokePhase {
+	return []smokePhase{
+		{"prepare", r.prepare},
+		{"start isolated Gateway", r.startGateway},
+		{"enroll CLI owner", r.loginCLI},
+		{"subscribe CLI approvals", func(context.Context) error {
+			st.approvals = startReleaseSmokeCLIApprovalResponder(t, r)
+			r.addCleanup("CLI approval responder", func(context.Context) error { st.approvals.Stop(); return nil })
+			return nil
+		}},
+		{"bind real consensus application", func(context.Context) error {
+			if r.opts.Posture == constants.PostureNotary {
+				st.consensus = provisionEvalLoopConsensus(t, r)
+			}
+			return nil
+		}},
+		{"deploy dedicated Data Operator", r.deployWorker},
+		{"deploy dedicated Inference Operator", func(ctx context.Context) error {
+			var err error
+			st.inferenceRoot = filepath.Join(r.opts.RunDir, "inference")
+			st.inferenceID, st.inferenceSession, err = r.deployEvalInference(ctx, st.inferenceRoot, endpoint)
+			return err
+		}},
+		{"execute and verify eval through CLI", loop},
 	}
 }
 
@@ -154,16 +196,11 @@ func (r *releaseSmokeRun) deployEvalInference(ctx context.Context, root, endpoin
 }
 
 func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, inferenceID, inferenceSession string) error {
-	files, err := fs.NewRuntimeFileService(r.gwRoot, slog.Default())
+	files, store, err := r.newEvalLoopStore()
 	if err != nil {
 		return err
 	}
-	evidence, err := shared.EvidenceFileSvcFactory(keystore.Options{Keyring: r.agent.Keyring(files)})(r.gwRoot, slog.Default())
-	if err != nil {
-		return err
-	}
-	store := evaluation.NewStore(evidence)
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ServedModelTag: "qwen3:4b", ModelDigest: strings.Repeat("0123456789abcdef", 4), ProviderClass: "ollama"}
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ServedModelTag: evalLoopScriptedModel, ModelDigest: strings.Repeat("0123456789abcdef", 4), ProviderClass: "ollama"}
 	wire, err := evalv1.MarshalCanonical(variant)
 	if err != nil {
 		return err
@@ -181,17 +218,8 @@ func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, in
 	if err != nil {
 		return err
 	}
-	// Each campaign runs to completion through its own CLI processes first.
-	// Anchors are bound afterwards, and every trace is verified against them.
-	runs := make([]evalLoopRun, 0, len(campaigns))
-	for _, campaign := range campaigns {
-		run, err := r.runEvalCampaign(ctx, store, campaign)
-		if err != nil {
-			return err
-		}
-		runs = append(runs, run)
-	}
-	if err := r.bindEvalAnchors(ctx, files, inferenceRoot, inferenceID); err != nil {
+	runs, err := r.runEvalCampaigns(ctx, files, store, campaigns, inferenceRoot, inferenceID)
+	if err != nil {
 		return err
 	}
 	for _, run := range runs {
@@ -202,8 +230,41 @@ func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, in
 	return nil
 }
 
+// newEvalLoopStore returns the Gateway runtime files and the evaluation store
+// over the Gateway's evidence.
+func (r *releaseSmokeRun) newEvalLoopStore() (fs.RuntimeFileService, *evaluation.Store, error) {
+	files, err := fs.NewRuntimeFileService(r.gwRoot, slog.Default())
+	if err != nil {
+		return nil, nil, err
+	}
+	evidence, err := shared.EvidenceFileSvcFactory(keystore.Options{Keyring: r.agent.Keyring(files)})(r.gwRoot, slog.Default())
+	if err != nil {
+		return nil, nil, err
+	}
+	return files, evaluation.NewStore(evidence), nil
+}
+
+// runEvalCampaigns runs each campaign to completion through its own CLI
+// processes first. Anchors are bound afterwards, and every trace is verified
+// against them by the caller.
+func (r *releaseSmokeRun) runEvalCampaigns(ctx context.Context, files fs.RuntimeFileService, store *evaluation.Store, campaigns []evalLoopCampaign, inferenceRoot, inferenceID string) ([]evalLoopRun, error) {
+	runs := make([]evalLoopRun, 0, len(campaigns))
+	for _, campaign := range campaigns {
+		run, err := r.runEvalCampaign(ctx, store, campaign)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, run)
+	}
+	if err := r.bindEvalAnchors(ctx, files, inferenceRoot, inferenceID); err != nil {
+		return nil, err
+	}
+	return runs, nil
+}
+
 // Model-call purposes, the intent tool, and the scripted answers of the loop.
 const (
+	evalLoopScriptedModel   = "qwen3:4b"
 	evalLoopDirectAnswer    = "READY"
 	evalLoopIntentTool      = "run_commands_with_operator"
 	evalLoopPurposeTurn     = "agent_turn"
@@ -238,6 +299,7 @@ func evalLoopReplies() []fixtures.OllamaReply {
 type evalLoopCampaign struct {
 	campaignID    string
 	record        string // scenario name recorded in the run summary
+	model         string // served model tag the campaign selects from the registry
 	suite         evaluation.ScenarioSuite
 	investigation string
 	// tribunal marks the Tribunal intent scenario, whose trace must carry the
@@ -258,18 +320,28 @@ func evalLoopCampaigns() ([]evalLoopCampaign, error) {
 	if err != nil {
 		return nil, err
 	}
-	investigations, err := evaluation.InvestigationsScenarioSuite()
-	if err != nil {
-		return nil, err
-	}
-	tribunalSuite, err := singleScenarioSuite(investigations, "cross-process-tribunal-suite", "wrong-port-config")
+	tribunal, err := evalLoopTribunalCampaign(evalLoopScriptedModel)
 	if err != nil {
 		return nil, err
 	}
 	return []evalLoopCampaign{
-		{campaignID: "cross-process", record: "eval-loop", suite: direct, investigation: "persistent:cross-process-incident"},
-		{campaignID: "cross-process-tribunal", record: "eval-loop-tribunal", suite: tribunalSuite, investigation: "persistent:cross-process-tribunal-incident", tribunal: true},
+		{campaignID: "cross-process", record: "eval-loop", model: evalLoopScriptedModel, suite: direct, investigation: "persistent:cross-process-incident"},
+		tribunal,
 	}, nil
+}
+
+// evalLoopTribunalCampaign returns the Tribunal intent campaign for model: the
+// wrong-port configuration scenario on one persistent investigation.
+func evalLoopTribunalCampaign(model string) (evalLoopCampaign, error) {
+	investigations, err := evaluation.InvestigationsScenarioSuite()
+	if err != nil {
+		return evalLoopCampaign{}, err
+	}
+	suite, err := singleScenarioSuite(investigations, "cross-process-tribunal-suite", "wrong-port-config")
+	if err != nil {
+		return evalLoopCampaign{}, err
+	}
+	return evalLoopCampaign{campaignID: "cross-process-tribunal", record: "eval-loop-tribunal", model: model, suite: suite, investigation: "persistent:cross-process-tribunal-incident", tribunal: true}, nil
 }
 
 // singleScenarioSuite returns source narrowed to the one scenario, under suiteID.
@@ -291,7 +363,7 @@ func (r *releaseSmokeRun) runEvalCampaign(ctx context.Context, store *evaluation
 	if err := store.CreateSuite(ctx, campaign.suite); err != nil {
 		return evalLoopRun{}, err
 	}
-	if _, err := r.ztdGateway(ctx, "create-eval-campaign", "eval", "campaigns", "create", campaign.campaignID, "qwen3:4b", "--suite", campaign.suite.ID, "--posture", string(r.opts.Posture), "--investigation", campaign.investigation, "--data-operator", r.workerOperatorID); err != nil {
+	if _, err := r.ztdGateway(ctx, "create-eval-campaign", "eval", "campaigns", "create", campaign.campaignID, campaign.model, "--suite", campaign.suite.ID, "--posture", string(r.opts.Posture), "--investigation", campaign.investigation, "--data-operator", r.workerOperatorID); err != nil {
 		return evalLoopRun{}, err
 	}
 	if _, err := r.ztdGateway(ctx, "prepare-eval-run", "eval", "runs", "start", campaign.campaignID, "--prepare-only", "--daemon=false", "--publish=false", "--no-backup"); err != nil {
@@ -383,8 +455,8 @@ func (r *releaseSmokeRun) bindEvalAnchors(ctx context.Context, files fs.RuntimeF
 // and each model call on the Inference runtime.
 func (r *releaseSmokeRun) verifyEvalRun(ctx context.Context, run evalLoopRun, inferenceRoot, inferenceID, inferenceSession string) error {
 	trace := run.trace
-	if trace.Data.OperatorID != r.workerOperatorID || trace.Inference.OperatorID != inferenceID || trace.Inference.SessionID != inferenceSession || trace.Bracket == nil {
-		return fmt.Errorf("eval trace runtime binding: %w", constants.ErrIdentityBindingFailed)
+	if err := r.verifyEvalTraceRuntimes(trace, inferenceID, inferenceSession); err != nil {
+		return err
 	}
 	if run.campaign.tribunal {
 		if err := verifyTribunalTrace(trace); err != nil {
@@ -393,26 +465,48 @@ func (r *releaseSmokeRun) verifyEvalRun(ctx context.Context, run evalLoopRun, in
 	} else if trace.FinalOutput != evalLoopDirectAnswer || len(trace.ModelCalls) != 1 {
 		return fmt.Errorf("eval trace answer: %w", constants.ErrValidationFailed)
 	}
+	txs, err := r.verifyEvalReceipts(ctx, trace, inferenceRoot, inferenceID, inferenceSession)
+	if err != nil {
+		return err
+	}
+	r.recordScenario(run.campaign.record, txs)
+	return nil
+}
+
+// verifyEvalTraceRuntimes binds a trace to the runtimes that produced it: the
+// Data Operator this run deployed, and the Inference Operator and session.
+func (r *releaseSmokeRun) verifyEvalTraceRuntimes(trace *evaluation.AgentTrace, inferenceID, inferenceSession string) error {
+	if trace.Data.OperatorID != r.workerOperatorID || trace.Inference.OperatorID != inferenceID || trace.Inference.SessionID != inferenceSession || trace.Bracket == nil {
+		return fmt.Errorf("eval trace runtime binding: %w", constants.ErrIdentityBindingFailed)
+	}
+	return nil
+}
+
+// verifyEvalReceipts verifies every receipt a trace carries against the Operator
+// that signed it: the harness sentinels and each EXECUTE_BASH command on the
+// Data runtime, and each model call on the Inference runtime. It returns the
+// transaction IDs it verified.
+func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluation.AgentTrace, inferenceRoot, inferenceID, inferenceSession string) ([]string, error) {
 	var txs []string
 	for _, receipt := range []*operatorv1.ActionReceipt{trace.Bracket.Before.ActionReceipt, trace.Bracket.After.ActionReceipt} {
 		if receipt == nil {
-			return constants.ErrEvidenceArtifactMalformed
+			return nil, constants.ErrEvidenceArtifactMalformed
 		}
 		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, receipt.GetTransactionId()); err != nil {
-			return err
+			return nil, err
 		}
 		txs = append(txs, receipt.GetTransactionId())
 	}
 	for _, call := range trace.ModelCalls {
 		receipt := call.Receipt
 		if receipt == nil || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
-			return fmt.Errorf("eval inference %s requires L3: %w", call.Purpose, constants.ErrValidationFailed)
+			return nil, fmt.Errorf("eval inference %s requires L3: %w", call.Purpose, constants.ErrValidationFailed)
 		}
 		if r.opts.Posture == constants.PostureNotary && receipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
-			return fmt.Errorf("eval inference %s requires L2: %w", call.Purpose, constants.ErrValidationFailed)
+			return nil, fmt.Errorf("eval inference %s requires L2: %w", call.Purpose, constants.ErrValidationFailed)
 		}
 		if err := r.verifyReceipt(ctx, inferenceRoot, inferenceID, inferenceSession, receipt.GetTransactionId()); err != nil {
-			return err
+			return nil, err
 		}
 		txs = append(txs, receipt.GetTransactionId())
 	}
@@ -421,15 +515,14 @@ func (r *releaseSmokeRun) verifyEvalRun(ctx context.Context, run evalLoopRun, in
 			continue
 		}
 		if call.Receipt == nil {
-			return fmt.Errorf("eval command %s has no receipt: %w", call.ToolName, constants.ErrValidationFailed)
+			return nil, fmt.Errorf("eval command %s has no receipt: %w", call.ToolName, constants.ErrValidationFailed)
 		}
 		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, call.Receipt.GetTransactionId()); err != nil {
-			return err
+			return nil, err
 		}
 		txs = append(txs, call.Receipt.GetTransactionId())
 	}
-	r.recordScenario(run.campaign.record, txs)
-	return nil
+	return txs, nil
 }
 
 // verifyTribunalTrace checks the Tribunal campaign's trace: two agent turns, and

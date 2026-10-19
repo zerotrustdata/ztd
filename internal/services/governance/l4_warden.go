@@ -473,6 +473,10 @@ func (tv *L4Warden) verifyPreDoctrine(ctx context.Context, envelope *govtypes.Go
 		tv.logger.Error("Document action rejected: collection not governed", "action_type", envelope.ActionType, string(constants.ConnectionStateError), err)
 		return nil, err
 	}
+	if err := verifyMcpCallTarget(envelope.TargetResource, decodedPayload); err != nil {
+		tv.logger.Error("MCP call rejected: target_resource is not the tool name", "action_type", envelope.ActionType, string(constants.ConnectionStateError), err)
+		return nil, err
+	}
 
 	// Unbound app document writes are the sole identity exception (INV-AUTH-ID-05).
 	unboundDocument := envelope.OperatorId == "" &&
@@ -737,6 +741,19 @@ func verifyDocumentCollection(payload proto.Message) error {
 		return fmt.Errorf("%w: %q", constants.ErrTxDocumentCollectionNotGoverned, collection)
 	}
 	return nil
+}
+
+// verifyMcpCallTarget admits an MCP_CALL only when its target_resource is the
+// payload's tool name. The signed receipt records target_resource, and audit
+// reads are told apart from other tool calls by it, so a caller-chosen target
+// could hide a call from, or slip it into, investigation context. Other payload
+// types pass.
+func verifyMcpCallTarget(targetResource string, payload proto.Message) error {
+	call, ok := payload.(*operatorv1.McpCallRequested)
+	if !ok || targetResource == call.GetToolName() {
+		return nil
+	}
+	return fmt.Errorf("%w: target %q, tool %q", constants.ErrTxMcpTargetMismatch, targetResource, call.GetToolName())
 }
 
 func (tv *L4Warden) decodePayloadForAction(actionType constants.ActionType, payload []byte) (proto.Message, error) {

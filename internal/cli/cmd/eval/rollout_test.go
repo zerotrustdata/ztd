@@ -13,8 +13,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -25,7 +23,17 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	"github.com/zerotrustdata/ztd/test/fixtures"
 )
+
+// newRolloutGateEnv is the rollout test environment over the real eval stack. The
+// run preflight checks the public mirror bootstrap, which the Gateway serves, so
+// the returned URL is the real Gateway's.
+func newRolloutGateEnv(t *testing.T) (*runEnv, string) {
+	t.Helper()
+	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine, EnablePublicSpectator: true})
+	return env, run.stack.Gateway.PublicMirrorBootstrapURL
+}
 
 func TestRolloutAdd_QueuesModelsByTag(t *testing.T) {
 	env := newStoreRunEnv(t)
@@ -147,10 +155,8 @@ func TestRolloutRun_DryRunDoesNotExecute(t *testing.T) {
 }
 
 func TestRunRollout_FailedGateMarksEntryFailedAndContinues(t *testing.T) {
-	env := newStoreRunEnv(t)
+	env, mirrorURL := newRolloutGateEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	t.Cleanup(mirror.Close)
 	env.cmd.SetOut(&bytes.Buffer{})
 	env.cmd.SetErr(&bytes.Buffer{})
 
@@ -159,7 +165,7 @@ func TestRunRollout_FailedGateMarksEntryFailedAndContinues(t *testing.T) {
 			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-failed", Gate: gate}, constants.ErrEvalRunVerificationFailed
 		}
 	}
-	err := runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates)
+	err := runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirrorURL}, gates)
 	require.Error(t, err)
 
 	queue, err := evaluation.LoadRolloutQueue(context.Background(), env.fileSvc(t))
@@ -170,15 +176,13 @@ func TestRunRollout_FailedGateMarksEntryFailedAndContinues(t *testing.T) {
 }
 
 func TestRunRollout_StoppedRunLeavesEntryPendingAndEndsBatch(t *testing.T) {
-	env := newStoreRunEnv(t)
+	env, mirrorURL := newRolloutGateEnv(t)
 	second := testQwenVariant()
 	second.VariantId, second.ServedModelTag = "qwen3-8b", "qwen3:8b"
 	second.ModelDigest = repeatTestHex('8')
 	writeTestFrozenInventory(t, env.root, testQwenVariant(), second)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "add", "qwen3:8b")
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	t.Cleanup(mirror.Close)
 	env.cmd.SetOut(&bytes.Buffer{})
 	env.cmd.SetErr(&bytes.Buffer{})
 
@@ -189,7 +193,7 @@ func TestRunRollout_StoppedRunLeavesEntryPendingAndEndsBatch(t *testing.T) {
 			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-stopped", Gate: gate}, constants.ErrEvaluationRunStopped
 		}
 	}
-	err := runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates)
+	err := runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirrorURL}, gates)
 	require.ErrorIs(t, err, constants.ErrEvaluationRunStopped)
 	assert.Equal(t, 1, started, "a stop ends the batch before the next entry starts")
 
@@ -203,10 +207,8 @@ func TestRunRollout_StoppedRunLeavesEntryPendingAndEndsBatch(t *testing.T) {
 }
 
 func TestRunRollout_HoldsQueueLockForTheBatch(t *testing.T) {
-	env := newStoreRunEnv(t)
+	env, mirrorURL := newRolloutGateEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	t.Cleanup(mirror.Close)
 	env.cmd.SetOut(&bytes.Buffer{})
 	env.cmd.SetErr(&bytes.Buffer{})
 
@@ -217,7 +219,7 @@ func TestRunRollout_HoldsQueueLockForTheBatch(t *testing.T) {
 			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-failed", Gate: gate}, constants.ErrEvalRunVerificationFailed
 		}
 	}
-	require.Error(t, runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates))
+	require.Error(t, runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirrorURL}, gates))
 	require.ErrorIs(t, lockErr, constants.ErrRuntimeFileLocked)
 
 	held, err := evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))

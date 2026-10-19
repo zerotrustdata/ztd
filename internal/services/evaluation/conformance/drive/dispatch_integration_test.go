@@ -21,7 +21,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -35,7 +34,8 @@ import (
 )
 
 // fakeDispatch answers every POST to the governed dispatch route with one canned
-// status and body, and records each request body it receives.
+// status and body, and records each request body it receives. Only
+// sentinel_integration_test.go still uses it; delete it with that migration.
 type fakeDispatch struct {
 	mu     sync.Mutex
 	status int
@@ -112,184 +112,55 @@ func newTestDispatch(t *testing.T, c *client.Client) *Dispatch {
 	return d
 }
 
-// TestDispatchDriveSendsRequestPerFault decodes the request each fault sends and
-// asserts the session id, event type and payload.
-func TestDispatchDriveSendsRequestPerFault(t *testing.T) {
-	t.Run("file edit baseline to embedded session", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultNone, cases.ActionMutation)
+// TestDispatchDriveMatchesCatalogueOnEmbeddedRows drives the embedded DISPATCH
+// rows against a real Gateway and asserts the observation the catalogue expects.
+// Doctrine covers file edit, doctrine refusal, unknown session and the row 17
+// body faults. Ratify covers the FS_READ baseline (row 2), which is ratify and
+// notary only.
+func TestDispatchDriveMatchesCatalogueOnEmbeddedRows(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	rows := map[int]bool{1: true, 2: true, 14: true, 16: true, 17: true}
 
-		driven, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-		require.Len(t, driven.Observations, 1)
-		require.Equal(t, 1, fake.count())
-
-		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.Equal(t, "embedded-session", req.TargetOperatorSessionID)
-		assert.Equal(t, string(constants.EventOperatorFileEditRequested), req.EventType)
-		assert.Equal(t, "cli-session-1", req.CLISessionID)
-		edit := &operatorv1.FileEditRequested{}
-		require.NoError(t, proto.Unmarshal(req.Payload, edit))
-		assert.Equal(t, a.TargetAbs, edit.GetFilePath())
-		assert.Equal(t, a.Marker, edit.GetContent())
-	})
-
-	for _, fault := range []cases.Fault{cases.FaultAttendedApprove, cases.FaultAttendedDeny} {
-		t.Run(string(fault)+" sends the baseline file edit", func(t *testing.T) {
-			fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-			a := dispatchAttempt(cases.IngressDispatchOutbound, fault, cases.ActionMutation)
-
-			_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-			require.NoError(t, err)
-
-			req := decodeDispatchRequest(t, fake.recorded(t, 0))
-			assert.Equal(t, "outbound-session", req.TargetOperatorSessionID)
-			assert.Equal(t, string(constants.EventOperatorFileEditRequested), req.EventType)
-			edit := &operatorv1.FileEditRequested{}
-			require.NoError(t, proto.Unmarshal(req.Payload, edit))
-			assert.Equal(t, a.TargetAbs, edit.GetFilePath())
-			assert.Equal(t, a.Marker, edit.GetContent())
-		})
-	}
-
-	t.Run("file edit baseline to outbound session", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchOutbound, cases.FaultNone, cases.ActionMutation)
-
-		_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-
-		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.Equal(t, "outbound-session", req.TargetOperatorSessionID)
-	})
-
-	t.Run("read baseline sends fs read payload", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultReadBaseline, cases.ActionRead)
-
-		_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-
-		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.Equal(t, string(constants.EventOperatorFilesystemReadRequested), req.EventType)
-		read := &operatorv1.FsReadRequested{}
-		require.NoError(t, proto.Unmarshal(req.Payload, read))
-		assert.Equal(t, a.ReadAbs, read.GetPath())
-	})
-
-	t.Run("doctrine sends the corpus command", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultDoctrine, cases.ActionMutation)
-
-		_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-
-		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.Equal(t, string(constants.EventOperatorCommandRequested), req.EventType)
-		command := &operatorv1.CommandRequested{}
-		require.NoError(t, proto.Unmarshal(req.Payload, command))
-		assert.Equal(t, a.Case.Command, command.GetCommand())
-	})
-
-	t.Run("unknown session replaces the target with a fresh id", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultUnknownSession, cases.ActionMutation)
-
-		_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-
-		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.NotEmpty(t, req.TargetOperatorSessionID)
-		assert.NotEqual(t, "embedded-session", req.TargetOperatorSessionID)
-		assert.Equal(t, string(constants.EventOperatorFileEditRequested), req.EventType)
-	})
-
-	t.Run("unknown event type keeps the payload and replaces the event", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultUnknownEventType, cases.ActionMutation)
-
-		_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-
-		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.Equal(t, unknownEventType, req.EventType)
-		assert.NotEmpty(t, req.Payload)
-	})
-
-	t.Run("missing field sends an empty payload", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultMissingField, cases.ActionMutation)
-
-		_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-
-		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.Empty(t, req.Payload)
-		assert.Equal(t, "embedded-session", req.TargetOperatorSessionID)
-		assert.Equal(t, string(constants.EventOperatorFileEditRequested), req.EventType)
-	})
-
-	t.Run("malformed json sends the truncated body", func(t *testing.T) {
-		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
-		a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultMalformedJSON, cases.ActionMutation)
-
-		_, err := newTestDispatch(t, c).Drive(context.Background(), a)
-		require.NoError(t, err)
-
-		assert.Equal(t, []byte(malformedDispatchBody), fake.recorded(t, 0))
-	})
-}
-
-// TestDispatchDriveMapsOutcomeKinds checks that each typed answer becomes the
-// matching observation kind, and that a non-typed body becomes UNTYPED.
-func TestDispatchDriveMapsOutcomeKinds(t *testing.T) {
-	tests := []struct {
-		name   string
-		status int
-		body   func(t *testing.T) []byte
-		want   evalv1.ConformanceObservationKind
+	postures := []struct {
+		posture constants.Posture
+		eval    evalv1.EvaluationGovernancePosture
 	}{
-		{
-			name:   "receipt",
-			status: http.StatusOK,
-			body:   dispatchResultBody,
-			want:   evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
-		},
-		{
-			name:   "rejection",
-			status: http.StatusForbidden,
-			body:   rejectionBody,
-			want:   evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
-		},
-		{
-			name:   "refusal",
-			status: http.StatusBadRequest,
-			body:   refusalBody,
-			want:   evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL,
-		},
-		{
-			name:   "plain text is untyped",
-			status: http.StatusInternalServerError,
-			body:   func(*testing.T) []byte { return []byte("internal failure") },
-			want:   evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
-		},
+		{constants.PostureDoctrine, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE},
+		{constants.PostureRatify, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fake, c := newFakeDispatch(t, tt.status, tt.body(t))
-			a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultNone, cases.ActionMutation)
-
-			driven, err := newTestDispatch(t, c).Drive(context.Background(), a)
+	for _, p := range postures {
+		t.Run(string(p.posture), func(t *testing.T) {
+			fx := newDirectFixture(t, p.posture)
+			dispatch, err := NewDispatch(fx.direct.client, fx.direct.id.Persona, map[cases.Executor]operator.Target{
+				cases.ExecutorEmbedded: fx.direct.id.Target,
+			})
 			require.NoError(t, err)
-			require.Len(t, driven.Observations, 1)
-			assert.Equal(t, tt.want, driven.Observations[0].GetKind())
-			assert.Equal(t, 1, fake.count(), "one submission, one observation")
+
+			ran := 0
+			for _, c := range all {
+				if c.Ingress != cases.IngressDispatchEmbedded || c.Posture != p.eval || !rows[c.Row] {
+					continue
+				}
+				ran++
+				t.Run(c.ID, func(t *testing.T) {
+					driven, err := dispatch.Drive(context.Background(), fx.attemptFor(t, c))
+					require.NoError(t, err)
+					require.Len(t, driven.Observations, len(c.Expect))
+					for i, want := range c.Expect {
+						assertObservation(t, want, driven.Observations[i])
+					}
+				})
+			}
+			require.NotZero(t, ran, "catalogue has no embedded DISPATCH case under %s", p.posture)
 		})
 	}
 }
 
 // TestDispatchDriveRejectsUnsupportedCases checks that a fault or ingress the
-// dispatch driver cannot express is refused before any request is sent.
+// dispatch driver cannot express is refused before any request is sent. The
+// client points at a closed port, so a request would fail with a transport
+// error rather than this refusal.
 func TestDispatchDriveRejectsUnsupportedCases(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -302,19 +173,17 @@ func TestDispatchDriveRejectsUnsupportedCases(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
 			a := dispatchAttempt(tt.ingress, tt.fault, cases.ActionMutation)
 
-			_, err := newTestDispatch(t, c).Drive(context.Background(), a)
+			_, err := newTestDispatch(t, closedLoopbackClient(t)).Drive(context.Background(), a)
 			require.Error(t, err)
 			assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "got %v", err)
-			assert.Equal(t, 0, fake.count(), "no request is sent for an unsupported case")
 		})
 	}
 }
 
 func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
-	_, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
+	c := closedLoopbackClient(t)
 	persona := testIdentity().Persona
 
 	missingOutbound := map[cases.Executor]operator.Target{
@@ -337,16 +206,12 @@ func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
 	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "nil client: %v", err)
 }
 
-// TestDispatchDriveTransportFailureIsError checks that a closed Gateway returns an
-// error rather than an observation.
+// TestDispatchDriveTransportFailureIsError checks that an unreachable Gateway
+// returns an error rather than an observation.
 func TestDispatchDriveTransportFailureIsError(t *testing.T) {
-	server := httptest.NewServer(&fakeDispatch{status: http.StatusOK, body: dispatchResultBody(t)})
-	c, err := client.New(config.Config{MTLSBaseURL: server.URL, PublicBaseURL: server.URL})
-	require.NoError(t, err)
-	server.Close()
-
 	a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultNone, cases.ActionMutation)
-	driven, err := newTestDispatch(t, c).Drive(context.Background(), a)
+
+	driven, err := newTestDispatch(t, closedLoopbackClient(t)).Drive(context.Background(), a)
 	require.Error(t, err)
 	assert.Empty(t, driven.Observations)
 }

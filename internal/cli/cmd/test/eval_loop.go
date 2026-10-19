@@ -31,6 +31,9 @@ const (
 	evalLoopLiveModelFlag    = "eval-loop-live-model"
 )
 
+// evalLoopLivePostureTimeout is the default live deadline per selected posture.
+const evalLoopLivePostureTimeout = 40 * time.Minute
+
 // The cross-process qualification owns its isolated Gateway and Operators;
 // unlike the live e2e suite, it needs no pre-existing platform. With
 // --live-ollama-endpoint it is the Tier 4 live-provider target instead.
@@ -40,7 +43,7 @@ func testEvalLoopCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "eval-loop",
 		Short: "Qualify eval execution across real Gateway and Operator processes",
-		Long:  "Start isolated Gateway, Data and Inference processes under ratify and notary, exercise eval through CLI commands, approve through separate CLI processes, and verify each Operator's authoritative local receipts. By default only the Ollama provider replies are scripted. With --live-ollama-endpoint and --live-model, the Inference Operator reaches that live provider instead (Tier 4; default timeout 40m). Run make build first. Evidence and private command logs remain under .ztd/operators/.",
+		Long:  "Start isolated Gateway, Data and Inference processes under ratify and notary, exercise eval through CLI commands, approve through separate CLI processes, and verify each Operator's authoritative local receipts. By default only the Ollama provider replies are scripted. With --live-ollama-endpoint and --live-model, the Inference Operator reaches that live provider instead (Tier 4; default timeout 40m per selected posture). Run make build first. Evidence and private command logs remain under .ztd/operators/.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			live := liveEndpoint != "" || liveModel != ""
@@ -51,7 +54,11 @@ func testEvalLoopCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 				}
 				selector, tags = "^TestEvalLoopLive$", "-tags=e2e,live"
 				if !cmd.Flags().Changed("timeout") {
-					timeout = 40 * time.Minute
+					// Each selected posture gets its own live share of the deadline.
+					timeout = evalLoopLivePostureTimeout
+					if posture == "" {
+						timeout *= 2
+					}
 				}
 			}
 			if posture != "" {

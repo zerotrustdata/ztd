@@ -6,8 +6,14 @@
 // released under the Apache License, Version 2.0.
 
 // Package oracletest builds signed action receipts that pass oracle.VerifyReceipt,
-// and the complete inference results they bind, for tests in the oracle and its
-// callers. It is imported only from _test.go files.
+// and the complete inference results they bind, as inputs to verifier tests in
+// the oracle and its callers. It is imported only from _test.go files.
+//
+// Each Signer is a fresh test key. A receipt built here shows only that a
+// verifier accepts well-formed, correctly signed bytes and rejects tampered
+// ones; it is never Operator output. An end-to-end test that needs an
+// Operator's receipts must run a real Operator and read them from its audit
+// store. It must not sign receipts with a Signer to stand in for that Operator.
 package oracletest
 
 import (

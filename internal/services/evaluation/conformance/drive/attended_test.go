@@ -375,64 +375,6 @@ func TestAttendedSuspendingIngressIsNotAnnouncedBeforeTheCall(t *testing.T) {
 	}
 }
 
-// TestAttendedApproveReturnsOneReceipt checks row 23: a suspended attended case
-// waits on the suspended transaction for the approver, and the resumed receipt
-// replaces the suspension as the single observation.
-func TestAttendedApproveReturnsOneReceipt(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
-		TransactionHash: "tx-hash-1",
-		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-	}
-	innerCalls := []*evalv1.ConformanceA2ACall{{SkillName: "ztd-conformance"}}
-	inner := &fakeDriver{driven: cases.Driven{
-		Observations: suspendedDriven().Observations,
-		A2ACalls:     innerCalls,
-	}}
-	fa := &fakeApprovals{receipt: receipt}
-	a := attendedCase(cases.FaultAttendedApprove)
-
-	driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), a)
-	require.NoError(t, err)
-
-	require.Len(t, driven.Observations, 1)
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, driven.Observations[0].GetKind())
-	assert.True(t, proto.Equal(receipt, driven.Observations[0].GetReceipt()), "the resumed receipt must be the observation")
-	assert.Equal(t, innerCalls, driven.A2ACalls, "the inner driver's A2A calls are kept")
-
-	require.Len(t, fa.subscribes, 1)
-	assert.Equal(t, testIdentity().Persona, fa.subscribes[0], "the subscription must use the attended persona")
-	require.Len(t, fa.waits, 1)
-	assert.Equal(t, "tx-hash-1", fa.waits[0].txHash, "the wait must watch the suspended transaction")
-	assert.Equal(t, "user-approver", fa.waits[0].userID)
-	assert.Equal(t, client.ApprovalDecisionApprove, fa.waits[0].decision, "row 23 asks the human to approve")
-}
-
-// TestAttendedDenyReturnsSignedRejection checks row 24: the banner asks the human to
-// deny, and the Operator-signed L3_DENIED receipt replaces the suspension as a
-// REJECTION observation.
-func TestAttendedDenyReturnsSignedRejection(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
-		TransactionHash: "tx-hash-1",
-		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
-		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
-		Signature:       "sig-deny",
-	}
-	inner := &fakeDriver{driven: suspendedDriven()}
-	fa := &fakeApprovals{receipt: receipt}
-
-	driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), attendedCase(cases.FaultAttendedDeny))
-	require.NoError(t, err)
-
-	require.Len(t, driven.Observations, 1)
-	obs := driven.Observations[0]
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind())
-	assert.Nil(t, obs.GetReceipt(), "a deny is never reported as an executed receipt")
-	assert.True(t, proto.Equal(receipt, obs.GetRejection().GetReceipt()), "the signed deny must be the rejection evidence")
-	require.Len(t, fa.waits, 1)
-	assert.Equal(t, client.ApprovalDecisionDeny, fa.waits[0].decision, "row 24 asks the human to deny")
-}
-
 // TestAttendedWaitErrorIsReturned checks that a failed approval wait is an error,
 // with the cause kept, and no observation is reported for it.
 func TestAttendedWaitErrorIsReturned(t *testing.T) {

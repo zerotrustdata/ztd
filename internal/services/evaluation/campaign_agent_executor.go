@@ -966,7 +966,7 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 		query := mcp.AuditReceiptListRequest{
 			InvestigationID:   args.String("investigation_id"),
 			Limit:             limit,
-			ExcludeActionType: args.String("exclude_action_type"),
+			ExcludeAuditReads: args.Bool("exclude_audit_reads"),
 		}
 		result, refs, err := decodeInvestigationReceipts(r.trace, query, record.Receipt)
 		if err != nil {
@@ -995,9 +995,9 @@ func (r *agentRun) injectAuditReceiptListDefaults(args agentToolArguments) {
 	if args.String("investigation_id") == "" {
 		args.Set("investigation_id", r.trace.InvestigationID)
 	}
-	if args.String("exclude_action_type") == "" {
-		args.Set("exclude_action_type", string(constants.ActionTypeMcpCall))
-	}
+	// The model cannot turn the audit-read exclusion off: a context query must
+	// never return the earlier audit reads of its own investigation.
+	args.Set("exclude_audit_reads", true)
 	if args.Int("limit", 0) <= 0 {
 		args.Set("limit", json.Number(strconv.Itoa(agentToolDefaultHistoryLimit)))
 	}

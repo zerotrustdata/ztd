@@ -36,7 +36,7 @@ type stubAuditReceiptQuery struct {
 	lastListSession       string
 	lastListInvestigation string
 	lastListOperator      string
-	lastExcludeActionType string
+	lastExcludeAuditReads bool
 	listCalls             int
 	lastListLimit         int
 	lastListOffset        int
@@ -50,7 +50,7 @@ func (s *stubAuditReceiptQuery) ListActionReceipts(scope models.AuditScope, limi
 	s.lastListSession = scope.OperatorSessionID
 	s.lastListInvestigation = scope.InvestigationID
 	s.lastListOperator = scope.OperatorID
-	s.lastExcludeActionType = string(scope.ExcludeActionType)
+	s.lastExcludeAuditReads = scope.ExcludeAuditReads
 	s.lastListLimit = limit
 	s.lastListOffset = offset
 	if s.listErr != nil {
@@ -177,7 +177,7 @@ func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing
 	require.NoError(t, err)
 	args, err := json.Marshal(AuditReceiptListRequest{
 		InvestigationID:   "investigation-1",
-		ExcludeActionType: string(constants.ActionTypeMcpCall),
+		ExcludeAuditReads: true,
 	})
 	require.NoError(t, err)
 
@@ -191,7 +191,7 @@ func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing
 	assert.Equal(t, "operator_local_ledger", list.Authority)
 	assert.Equal(t, "investigation-1", stub.lastListInvestigation)
 	assert.Equal(t, "op-1", stub.lastListOperator)
-	assert.Equal(t, string(constants.ActionTypeMcpCall), stub.lastExcludeActionType)
+	assert.True(t, stub.lastExcludeAuditReads)
 	assert.Empty(t, stub.lastListSession, "local queries span Operator sessions")
 	assert.Equal(t, "tx-command", list.Receipts[0].GetTransactionId())
 }
@@ -209,7 +209,7 @@ func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *test
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Zero(t, stub.listCalls)
 
-	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"investigation_id":"investigation-1","exclude_action_type":"EXECUTE_BASH"}`))
+	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"investigation_id":"investigation-1","exclude_audit_reads":false}`))
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Zero(t, stub.listCalls)
 

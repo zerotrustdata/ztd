@@ -8,8 +8,11 @@
 package evaluation
 
 import (
+	"encoding/json"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -161,19 +164,11 @@ func computeRedundantCommandRate(trace *AgentTrace) float64 {
 			retrievedHistory = append(retrievedHistory, strings.ToLower(call.ResultJSON))
 		}
 
-		// Check if this tool call runs a command or inspects a resource
-		isCommandOrRead := call.ToolName == "run_commands_with_operator" ||
-			call.ToolName == "file_read_on_operator" ||
-			call.ToolName == "recursive_grep_search" ||
-			call.ToolName == "read_file" ||
-			call.ToolName == "log_stream_filter" ||
-			call.ToolName == "run_shell_command" ||
-			call.Command != ""
-
+		command, isCommandOrRead := investigationCommand(call)
 		if isCommandOrRead {
 			totalCommands++
 			argsLower := strings.ToLower(call.ArgumentsJSON)
-			cmdLower := strings.ToLower(call.Command)
+			cmdLower := strings.ToLower(command)
 
 			redundant := false
 			for _, hist := range retrievedHistory {
@@ -210,6 +205,27 @@ func computeRedundantCommandRate(trace *AgentTrace) float64 {
 		return 0.0
 	}
 	return float64(redundantCount) / float64(totalCommands)
+}
+
+// investigationCommand reports whether call ran a command or read a resource,
+// and returns the command line it ran: the Tribunal's approved command, or the
+// full line of a native run_shell_command call.
+func investigationCommand(call AgentToolCall) (string, bool) {
+	if call.Command != "" {
+		return call.Command, true
+	}
+	switch call.ToolName {
+	case constants.MCPToolRunShellCommand:
+		var request models.RunShellCommandRequest
+		if err := json.Unmarshal([]byte(call.ArgumentsJSON), &request); err != nil {
+			return "", true
+		}
+		return request.CommandLine(), true
+	case "read_file", "log_stream_filter":
+		return "", true
+	default:
+		return "", false
+	}
 }
 
 func computeStepsToDiagnosis(trace *AgentTrace) float64 {

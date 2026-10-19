@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.5.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.5.0";
+export const SCENARIO_CATALOG_VERSION = "1.6.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.6.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -519,7 +519,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     }
   },
   {
-    "id": "tool-arg-run-commands",
+    "id": "tool-arg-shell-command",
     "category": "tool_arguments",
     "publicDescription": "Issue a bounded read-only governed command with valid arguments.",
     "gradingMethod": "deterministic",
@@ -538,18 +538,18 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "governed-command"
     ],
     "allowedTools": [
-      "run_commands_with_operator"
+      "run_shell_command"
     ],
     "expectedTools": [
-      "run_commands_with_operator"
+      "run_shell_command"
     ],
     "promptHint": {
       "hintedTools": [
-        "run_commands_with_operator"
+        "run_shell_command"
       ],
       "arguments": [
         {
-          "toolName": "run_commands_with_operator",
+          "toolName": "run_shell_command",
           "argumentName": "command",
           "source": "workspace"
         }

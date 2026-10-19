@@ -12,32 +12,25 @@ package drive
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/governance"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	agentconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	"github.com/zerotrustdata/ztd/internal/uuid"
-	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -45,7 +38,7 @@ import (
 
 // integrationRows are the DIRECT doctrine rows the Tier 2 test drives. Row 13
 // contributes its first corpus entry only.
-var integrationRows = map[int]bool{1: true, 3: true, 4: true, 6: true, 8: true, 10: true, 11: true, 12: true, 13: true, 15: true}
+var integrationRows = map[int]bool{1: true, 3: true, 4: true, 5: true, 6: true, 8: true, 10: true, 11: true, 12: true, 13: true, 15: true, 17: true}
 
 // directFixture is one live Gateway with its CLI identity and a DIRECT driver.
 type directFixture struct {
@@ -109,14 +102,38 @@ func (fx *directFixture) attemptFor(t *testing.T, c cases.Case) cases.Attempt {
 		_ = os.Remove(parent)
 		_ = os.Remove(results)
 	})
+	marker := cases.Marker(runID, attemptID)
+	// Read cases need the file to exist; the content is the marker so a read
+	// receipt can be checked against it.
+	readAbs := filepath.Join(dir, "read.txt")
+	require.NoError(t, os.WriteFile(readAbs, []byte(marker), 0o600))
 	return cases.Attempt{
 		RunID:     runID,
 		AttemptID: attemptID,
 		Case:      c,
 		TargetAbs: filepath.Join(dir, "target.txt"),
-		ReadAbs:   filepath.Join(dir, "read.txt"),
-		Marker:    cases.Marker(runID, attemptID),
+		ReadAbs:   readAbs,
+		Marker:    marker,
 	}
+}
+
+// directCase is a DIRECT mutation case for one fault, for tests that do not
+// take their case from the catalogue.
+func directCase(fault cases.Fault) cases.Case {
+	return cases.Case{ID: "direct-" + string(fault), Ingress: cases.IngressDirect, Fault: fault, Action: cases.ActionMutation}
+}
+
+// closedLoopbackClient returns a client whose base URL has nothing listening: the
+// port was free when it was taken and is closed again before the client dials it.
+func closedLoopbackClient(t *testing.T) *client.Client {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	url := "http://" + l.Addr().String()
+	require.NoError(t, l.Close())
+	c, err := client.New(agentconfig.Config{MTLSBaseURL: url, PublicBaseURL: url})
+	require.NoError(t, err)
+	return c
 }
 
 // answerText renders the human text of an answer for assertion messages.
@@ -199,254 +216,96 @@ func TestDirectProbeWrongTargetByPosture(t *testing.T) {
 	}
 }
 
-// fakeAnswer is one canned answer to a direct envelope POST. A hijacked answer
-// closes the connection without writing a response.
-type fakeAnswer struct {
-	status   int
-	body     []byte
-	hijacked bool
-}
-
-// fakeGateway serves the state root and answers envelope POSTs in order, repeating
-// the last answer. It records every envelope body it receives.
-type fakeGateway struct {
-	mu      sync.Mutex
-	answers []fakeAnswer
-	state   int
-	bodies  [][]byte
-}
-
-func (g *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.State:
-		if g.state != http.StatusOK {
-			w.WriteHeader(g.state)
-			_, _ = w.Write([]byte("state unavailable"))
-			return
-		}
-		_ = json.NewEncoder(w).Encode(models.StateResponse{StateMerkleRoot: "root-1"})
-	case r.Method == http.MethodPost && r.URL.Path == constants.APIPaths.GovernanceEnvelopes:
-		body, _ := io.ReadAll(r.Body)
-		idx := len(g.bodies)
-		g.bodies = append(g.bodies, body)
-		answer := g.answers[len(g.answers)-1]
-		if idx < len(g.answers) {
-			answer = g.answers[idx]
-		}
-		if answer.hijacked {
-			conn, _, err := w.(http.Hijacker).Hijack()
-			if err == nil {
-				_ = conn.Close()
-			}
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(answer.status)
-		_, _ = w.Write(answer.body)
-	default:
-		w.WriteHeader(http.StatusNotFound)
-	}
-}
-
-// newFakeDirect starts a fake Gateway and a Direct driver pointed at it.
-func newFakeDirect(t *testing.T, g *fakeGateway, l2 L2Source, sets ...MutatorSet) *Direct {
-	t.Helper()
-	server := httptest.NewServer(g)
-	t.Cleanup(server.Close)
-	c, err := client.New(agentconfig.Config{MTLSBaseURL: server.URL, PublicBaseURL: server.URL})
-	require.NoError(t, err)
-	d, err := NewDirect(c, testIdentity().Persona, testIdentity().Target, l2, sets...)
-	require.NoError(t, err)
-	return d
-}
-
-// decodeRecorded decodes the i-th envelope body the fake Gateway received.
-func decodeRecorded(t *testing.T, g *fakeGateway, i int) *commonv1.GovernanceEnvelope {
-	t.Helper()
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	require.Less(t, i, len(g.bodies))
-	env := &commonv1.GovernanceEnvelope{}
-	require.NoError(t, protojson.Unmarshal(g.bodies[i], env))
-	return env
-}
-
+// TestDirectDriveReturnsObservationKindPerAnswer checks the kind and HTTP status
+// the real Gateway answers with for an accepted envelope, a tampered envelope
+// and a malformed body. A 500 answer is classified in the client package.
 func TestDirectDriveReturnsObservationKindPerAnswer(t *testing.T) {
+	fx := newDirectFixture(t, constants.PostureDoctrine)
 	tests := []struct {
 		name   string
-		answer fakeAnswer
+		fault  cases.Fault
 		want   evalv1.ConformanceObservationKind
+		status int32
 	}{
-		{"accepted receipt", fakeAnswer{status: http.StatusOK, body: receiptBody(t)}, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT},
-		{"governance rejection", fakeAnswer{status: http.StatusForbidden, body: rejectionBody(t)}, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION},
-		{"ingress refusal", fakeAnswer{status: http.StatusBadRequest, body: refusalBody(t)}, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL},
-		{"server error is untyped", fakeAnswer{status: http.StatusInternalServerError, body: []byte(`{"error":"internal"}`)}, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED},
+		{"accepted receipt", cases.FaultNone, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, http.StatusOK},
+		{"governance rejection", cases.FaultPayloadTampered, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, http.StatusForbidden},
+		{"ingress refusal", cases.FaultMalformedJSON, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, http.StatusBadRequest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{tt.answer}}
-			d := newFakeDirect(t, g, nil, BaseMutators())
-
-			driven, err := d.Drive(context.Background(), testAttempt(cases.FaultNone, cases.ActionMutation))
+			driven, err := fx.direct.Drive(context.Background(), fx.attemptFor(t, directCase(tt.fault)))
 			require.NoError(t, err)
 			require.Len(t, driven.Observations, 1)
-			assert.Equal(t, tt.want, driven.Observations[0].GetKind())
-			assert.Equal(t, int32(tt.answer.status), driven.Observations[0].GetHttpStatus())
-			assert.Len(t, g.bodies, 1)
+			obs := driven.Observations[0]
+			assert.Equal(t, tt.want, obs.GetKind(), "answer: %s", answerText(obs))
+			assert.Equal(t, tt.status, obs.GetHttpStatus())
 		})
 	}
-}
-
-func TestDirectDriveReplaySubmitsSameEnvelopeTwice(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{
-		{status: http.StatusOK, body: receiptBody(t)},
-		{status: http.StatusForbidden, body: rejectionBody(t)},
-	}}
-	d := newFakeDirect(t, g, nil, BaseMutators())
-
-	driven, err := d.Drive(context.Background(), testAttempt(cases.FaultReplay, cases.ActionMutation))
-	require.NoError(t, err)
-	require.Len(t, driven.Observations, 2)
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, driven.Observations[0].GetKind())
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, driven.Observations[1].GetKind())
-
-	require.Len(t, g.bodies, 2)
-	first := decodeRecorded(t, g, 0)
-	second := decodeRecorded(t, g, 1)
-	assert.Equal(t, first.GetId(), second.GetId())
-	assert.Equal(t, first.GetNonce(), second.GetNonce())
 }
 
 func TestDirectDriveMissingMutatorIsUnsupported(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusOK, body: receiptBody(t)}}}
-	d := newFakeDirect(t, g, nil)
+	fx := newDirectFixture(t, constants.PostureDoctrine)
+	d, err := NewDirect(fx.direct.client, fx.direct.id.Persona, fx.direct.id.Target, nil)
+	require.NoError(t, err)
 
-	_, err := d.Drive(context.Background(), testAttempt(cases.FaultExpired, cases.ActionMutation))
+	driven, err := d.Drive(context.Background(), fx.attemptFor(t, directCase(cases.FaultExpired)))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported))
-	assert.Empty(t, g.bodies, "an unsupported fault must not reach the Gateway")
+	assert.Empty(t, driven.Observations, "an unsupported fault must not submit an envelope")
 }
 
-func TestDirectDriveClosedServerIsErrorNotObservation(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusOK, body: receiptBody(t)}}}
-	server := httptest.NewServer(g)
-	c, err := client.New(agentconfig.Config{MTLSBaseURL: server.URL, PublicBaseURL: server.URL})
+// TestDirectDriveUnreachableGatewayIsErrorNotObservation points the driver at a
+// loopback port with nothing listening. The state root fetch fails before any
+// envelope is built, so the driver returns an error and no observation.
+func TestDirectDriveUnreachableGatewayIsErrorNotObservation(t *testing.T) {
+	d, err := NewDirect(closedLoopbackClient(t), testIdentity().Persona, testIdentity().Target, nil, BaseMutators())
 	require.NoError(t, err)
-	d, err := NewDirect(c, testIdentity().Persona, testIdentity().Target, nil, BaseMutators())
-	require.NoError(t, err)
-	server.Close()
 
 	driven, err := d.Drive(context.Background(), testAttempt(cases.FaultNone, cases.ActionMutation))
 	require.Error(t, err)
 	assert.Empty(t, driven.Observations)
 }
 
-func TestDirectDriveSubmitTransportFailureIsError(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{hijacked: true}}}
-	d := newFakeDirect(t, g, nil, BaseMutators())
+// TestDirectDriveL2Consensus covers the L2 source under consensus, where the
+// deliberation endpoint is real. The endpoint refuses an envelope that a body
+// fault has already broken, so a body fault that reaches the Gateway shows the
+// proof was requested over the valid baseline, before the fault.
+func TestDirectDriveL2Consensus(t *testing.T) {
+	gw := bootL2Gateway(t, fixtures.GatewayFixtureOptions{
+		TestName:                 "conformance-direct-l2",
+		Posture:                  constants.PostureConsensus,
+		ConsensusID:              "conformance-direct-l2",
+		ConsensusNMembers:        1,
+		ConsensusNServiceMembers: 1,
+		ConsensusQuorum:          1,
+	})
+	deliberator := NewDeliberator(gw.client, gw.persona)
 
-	driven, err := d.Drive(context.Background(), testAttempt(cases.FaultNone, cases.ActionMutation))
-	require.Error(t, err)
-	assert.Empty(t, driven.Observations)
-}
+	t.Run("proof is requested over the valid baseline", func(t *testing.T) {
+		direct, err := NewDirect(gw.client, gw.persona, gw.target, deliberator, BaseMutators())
+		require.NoError(t, err)
+		fx := &directFixture{f: gw.f, direct: direct, workDir: gw.f.Config.WorkDir}
+		for _, fault := range []cases.Fault{cases.FaultPayloadTampered, cases.FaultMissingField} {
+			t.Run(string(fault), func(t *testing.T) {
+				driven, err := fx.direct.Drive(context.Background(), fx.attemptFor(t, directCase(fault)))
+				require.NoError(t, err, "a proof requested after the fault would be refused by the deliberation endpoint")
+				require.Len(t, driven.Observations, 1)
+				assert.NotEqual(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED, driven.Observations[0].GetKind(), "answer: %s", answerText(driven.Observations[0]))
+			})
+		}
+	})
 
-func TestDirectDriveStateRootFailureIsError(t *testing.T) {
-	g := &fakeGateway{state: http.StatusInternalServerError, answers: []fakeAnswer{{status: http.StatusOK, body: receiptBody(t)}}}
-	d := newFakeDirect(t, g, nil, BaseMutators())
+	t.Run("mutator that sets L2 is not given the deliberated proof", func(t *testing.T) {
+		selfSigned := MutatorSet{cases.FaultNone: {SetsL2: true, Apply: noop.Apply}}
+		direct, err := NewDirect(gw.client, gw.persona, gw.target, deliberator, selfSigned)
+		require.NoError(t, err)
+		fx := &directFixture{f: gw.f, direct: direct, workDir: gw.f.Config.WorkDir}
 
-	_, err := d.Drive(context.Background(), testAttempt(cases.FaultNone, cases.ActionMutation))
-	require.Error(t, err)
-	assert.Empty(t, g.bodies, "no envelope is sent without a state root")
-}
-
-func TestDirectDriveMalformedJSONSendsTruncatedBody(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusBadRequest, body: refusalBody(t)}}}
-	d := newFakeDirect(t, g, nil)
-
-	driven, err := d.Drive(context.Background(), testAttempt(cases.FaultMalformedJSON, cases.ActionMutation))
-	require.NoError(t, err)
-	require.Len(t, driven.Observations, 1)
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, driven.Observations[0].GetKind())
-	require.Len(t, g.bodies, 1)
-	assert.Equal(t, malformedBody, string(g.bodies[0]))
-}
-
-func TestDirectDriveUnknownEventTypeIsRehashed(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusBadRequest, body: refusalBody(t)}}}
-	d := newFakeDirect(t, g, nil)
-
-	_, err := d.Drive(context.Background(), testAttempt(cases.FaultUnknownEventType, cases.ActionMutation))
-	require.NoError(t, err)
-	env := decodeRecorded(t, g, 0)
-	assert.Equal(t, unknownEventType, env.GetEventType())
-	require.NoError(t, governance.VerifyTransactionHash(env, env.GetTransactionHash()))
-}
-
-func TestDirectDriveMissingFieldDropsPayloadAndRehashes(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusBadRequest, body: refusalBody(t)}}}
-	d := newFakeDirect(t, g, nil)
-
-	_, err := d.Drive(context.Background(), testAttempt(cases.FaultMissingField, cases.ActionMutation))
-	require.NoError(t, err)
-	env := decodeRecorded(t, g, 0)
-	assert.Empty(t, env.GetPayload())
-	require.NoError(t, governance.VerifyTransactionHash(env, env.GetTransactionHash()))
-}
-
-// fakeL2 counts its calls, keeps the hash-check result of each envelope it was
-// asked to prove, and returns one fixed set of votes.
-type fakeL2 struct {
-	calls    int
-	hashErrs []error
-}
-
-func (f *fakeL2) Proof(_ context.Context, env *commonv1.GovernanceEnvelope) (*commonv1.L2Metadata, error) {
-	f.calls++
-	f.hashErrs = append(f.hashErrs, governance.VerifyTransactionHash(env, env.GetTransactionHash()))
-	return &commonv1.L2Metadata{ConsensusSetId: "set-1"}, nil
-}
-
-func TestDirectDriveAttachesL2WithoutChangingHash(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusOK, body: receiptBody(t)}}}
-	l2 := &fakeL2{}
-	d := newFakeDirect(t, g, l2, BaseMutators())
-
-	_, err := d.Drive(context.Background(), testAttempt(cases.FaultNone, cases.ActionMutation))
-	require.NoError(t, err)
-	assert.Equal(t, 1, l2.calls)
-	env := decodeRecorded(t, g, 0)
-	assert.Equal(t, "set-1", env.GetGovernance().GetL2().GetConsensusSetId())
-	require.NoError(t, governance.VerifyTransactionHash(env, env.GetTransactionHash()))
-}
-
-// TestDirectDriveTakesL2OverBaseline checks that the L2 proof is requested for
-// the valid baseline, before a hash-breaking fault is applied.
-func TestDirectDriveTakesL2OverBaseline(t *testing.T) {
-	for _, fault := range []cases.Fault{cases.FaultPayloadTampered, cases.FaultMissingField} {
-		t.Run(string(fault), func(t *testing.T) {
-			g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusOK, body: receiptBody(t)}}}
-			l2 := &fakeL2{}
-			d := newFakeDirect(t, g, l2, BaseMutators())
-
-			_, err := d.Drive(context.Background(), testAttempt(fault, cases.ActionMutation))
-			require.NoError(t, err)
-			require.Len(t, l2.hashErrs, 1)
-			require.NoError(t, l2.hashErrs[0], "L2 source saw a broken envelope")
-		})
-	}
-}
-
-func TestDirectDriveSkipsL2ForMutatorThatSetsIt(t *testing.T) {
-	g := &fakeGateway{state: http.StatusOK, answers: []fakeAnswer{{status: http.StatusOK, body: receiptBody(t)}}}
-	l2 := &fakeL2{}
-	selfSigned := MutatorSet{cases.FaultNone: {SetsL2: true, Apply: noop.Apply}}
-	d := newFakeDirect(t, g, l2, selfSigned)
-
-	_, err := d.Drive(context.Background(), testAttempt(cases.FaultNone, cases.ActionMutation))
-	require.NoError(t, err)
-	assert.Equal(t, 0, l2.calls)
-	env := decodeRecorded(t, g, 0)
-	assert.Nil(t, env.GetGovernance().GetL2())
+		driven, err := fx.direct.Drive(context.Background(), fx.attemptFor(t, directCase(cases.FaultNone)))
+		require.NoError(t, err)
+		require.Len(t, driven.Observations, 1)
+		obs := driven.Observations[0]
+		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind(), "answer: %s", answerText(obs))
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING, obs.GetRejection().GetReceipt().GetRejectionCode(), "answer: %s", answerText(obs))
+	})
 }

@@ -74,7 +74,7 @@ func (t *AuditReceiptListTool) Name() string {
 
 // Description returns a human-readable description.
 func (t *AuditReceiptListTool) Description() string {
-	return "Lists signed ActionReceipt records. Gateway-native queries require an operator session and optionally intersect an investigation; remote receipts there are best-effort projections. Explicit Operator-local queries require investigation_id and exclude_action_type=MCP_CALL, return the executing Operator's authoritative signed receipts, and may omit the session filter to span reconnects. Supports optional action_type and not_before (RFC3339) filtering with limit/offset pagination. This read-only query runs as a governed MCP_CALL."
+	return "Lists signed ActionReceipt records. Gateway-native queries require an operator session and optionally intersect an investigation; remote receipts there are best-effort projections. Explicit Operator-local queries require investigation_id and exclude_audit_reads=true, return the executing Operator's authoritative signed receipts, and may omit the session filter to span reconnects. Supports optional action_type and not_before (RFC3339) filtering with limit/offset pagination. This read-only query runs as a governed MCP_CALL."
 }
 
 // InputSchema returns the JSON Schema for tool validation.
@@ -94,9 +94,9 @@ func (t *AuditReceiptListTool) InputSchema() *InputSchema {
 				Type:        "string",
 				Description: "Optional action type filter (e.g. FILE_EDIT, DOCUMENT_UPDATE).",
 			},
-			"exclude_action_type": {
-				Type:        "string",
-				Description: "Optional action type to exclude before pagination.",
+			"exclude_audit_reads": {
+				Type:        "boolean",
+				Description: "Exclude the audit_receipt_list and audit_receipt_get receipts themselves before pagination.",
 			},
 			"not_before": {
 				Type:        "string",
@@ -120,7 +120,7 @@ type AuditReceiptListRequest struct {
 	OperatorSessionID string `json:"operator_session_id"`
 	InvestigationID   string `json:"investigation_id,omitempty"`
 	ActionType        string `json:"action_type,omitempty"`
-	ExcludeActionType string `json:"exclude_action_type,omitempty"`
+	ExcludeAuditReads bool   `json:"exclude_audit_reads,omitempty"`
 	NotBefore         string `json:"not_before,omitempty"`
 	Limit             int    `json:"limit,omitempty"`
 	Offset            int    `json:"offset,omitempty"`
@@ -155,8 +155,8 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 		if req.InvestigationID == "" {
 			return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w", constants.ErrMCPAuditReceiptListInvestigationReq)
 		}
-		if req.ExcludeActionType != string(constants.ActionTypeMcpCall) {
-			return CallToolResult{}, fmt.Errorf("audit_receipt_list: exclude_action_type: %w", constants.ErrMissingRequiredField)
+		if !req.ExcludeAuditReads {
+			return CallToolResult{}, fmt.Errorf("audit_receipt_list: exclude_audit_reads: %w", constants.ErrMissingRequiredField)
 		}
 	} else if req.OperatorSessionID == "" {
 		return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w", constants.ErrMCPAuditReceiptListOperatorSessionReq)
@@ -175,7 +175,7 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 	scope := models.AuditScope{
 		OperatorSessionID: req.OperatorSessionID,
 		InvestigationID:   req.InvestigationID,
-		ExcludeActionType: constants.ActionType(req.ExcludeActionType),
+		ExcludeAuditReads: req.ExcludeAuditReads,
 	}
 	if operatorLocal {
 		scope.OperatorID = authority.operatorID

@@ -113,7 +113,7 @@ export interface AgentTraceRetrievalQuery {
   operator_session_id?: string;
   investigation_id?: string;
   action_type?: string;
-  exclude_action_type?: string;
+  exclude_audit_reads?: boolean;
   not_before?: string;
   limit?: number;
   offset?: number;
@@ -307,7 +307,7 @@ const TOOL_CALL_FIELDS = [
 ] as const;
 
 const RETRIEVAL_QUERY_FIELDS = [
-  'operator_session_id', 'investigation_id', 'action_type', 'exclude_action_type', 'not_before', 'limit', 'offset',
+  'operator_session_id', 'investigation_id', 'action_type', 'exclude_audit_reads', 'not_before', 'limit', 'offset',
 ] as const;
 
 function parseRetrieval(value: unknown, path: string, investigationId: string | undefined): AgentTraceRetrieval {
@@ -315,7 +315,7 @@ function parseRetrieval(value: unknown, path: string, investigationId: string | 
   rejectUnknown(value, ['query', 'receipts'], path);
   assertObject(value.query, `${path}.query`);
   rejectUnknown(value.query, RETRIEVAL_QUERY_FIELDS, `${path}.query`);
-  for (const key of ['operator_session_id', 'investigation_id', 'action_type', 'exclude_action_type', 'not_before']) {
+  for (const key of ['operator_session_id', 'investigation_id', 'action_type', 'not_before']) {
     optionalString(value.query, key, `${path}.query`);
   }
   for (const key of ['limit', 'offset']) optionalInteger(value.query, key, `${path}.query`);
@@ -330,7 +330,7 @@ function parseRetrieval(value: unknown, path: string, investigationId: string | 
   });
   assertString(value.query.investigation_id, `${path}.query.investigation_id`);
   assert(value.query.investigation_id === investigationId, `${path}.query.investigation_id`, 'must match trace investigation_id');
-  assert(value.query.exclude_action_type === 'MCP_CALL', `${path}.query.exclude_action_type`, 'expected MCP_CALL');
+  assert(value.query.exclude_audit_reads === true, `${path}.query.exclude_audit_reads`, 'expected true');
   assertInteger(value.query.limit, `${path}.query.limit`);
   assert(value.query.limit >= 1 && value.query.limit <= 50, `${path}.query.limit`, 'expected a limit from 1 through 50');
   assert(value.query.operator_session_id === undefined || value.query.operator_session_id === '', `${path}.query.operator_session_id`, 'operator-local query must not be session-scoped');

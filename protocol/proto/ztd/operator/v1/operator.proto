@@ -684,6 +684,8 @@ enum GovernanceRejectionCode {
   GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN = 23;
   // The human denied the suspended transaction at the L3 approval.
   GOVERNANCE_REJECTION_CODE_L3_DENIED = 24;
+  // An MCP_CALL's target_resource is not its payload's tool name.
+  GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH = 25;
 }
 
 // ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.

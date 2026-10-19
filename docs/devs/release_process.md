@@ -122,6 +122,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Console embed | `internal/services/gateway/console/static/` | `make console-embed-check` |
 | Core-platform smoke runbook | `docs/guides/ux_smoke_test.md` | `./ztd test release-smoke --root .ztd/operators/release-smoke-<unique-name>` |
 | Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop` |
+| Live Tier 4 evaluation loop (explicit provider run) | `internal/cli/cmd/test/eval_loop_live_e2e_test.go` | `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` |
 | Smoke evidence artifacts | `<root>/` | `evidence/smoke-summary.json`, `reports/{gateway,worker}/`, and logs under `logs/` |
 | Compliance projection | `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md`, `.csv` | `ztd compliance release-evidence` |
 | Tag and push target | `Makefile` (`make release`) | Release owner only on merged `main` |

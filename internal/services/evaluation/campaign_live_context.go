@@ -73,7 +73,9 @@ func (e *CampaignAgentExecutor) investigationID(req AssignmentExecutionRequest) 
 }
 
 // decodeInvestigationReceipts trusts only the selected runtime's signed answer,
-// then checks each returned receipt against the same enrollment-bound key.
+// then checks each returned receipt against the same enrollment-bound key. The
+// signed receipt has no target resource, so the audit-read exclusion is the
+// Operator's answer under the query's scope and is not re-derived here.
 func decodeInvestigationReceipts(trace *AgentTrace, query mcp.AuditReceiptListRequest, receipt *AgentTraceReceipt) (mcp.OperatorAuditReceiptListResult, []AgentContextReceiptRef, error) {
 	fail := func(err error) (mcp.OperatorAuditReceiptListResult, []AgentContextReceiptRef, error) {
 		return mcp.OperatorAuditReceiptListResult{}, nil, fmt.Errorf("evaluation: authoritative investigation context: %w", err)
@@ -108,7 +110,7 @@ func decodeInvestigationReceipts(trace *AgentTrace, query mcp.AuditReceiptListRe
 			return fail(constants.ErrActionReceiptMissing)
 		}
 		r := row
-		if r.GetTransactionId() == "" || seen[r.GetTransactionId()] || r.GetActionType() == string(constants.ActionTypeMcpCall) {
+		if r.GetTransactionId() == "" || seen[r.GetTransactionId()] {
 			return fail(constants.ErrEvidenceScopeMismatch)
 		}
 		if _, err := oracle.VerifyReceipt(anchors, trace.Data.OperatorID, r); err != nil {
@@ -187,9 +189,8 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 		if req.InvestigationID == "" {
 			req.InvestigationID = trace.InvestigationID
 		}
-		if req.ExcludeActionType == "" {
-			req.ExcludeActionType = string(constants.ActionTypeMcpCall)
-		}
+		// Mirrors injectAuditReceiptListDefaults: the context query always excludes audit reads.
+		req.ExcludeAuditReads = true
 		if call.Retrieval.Query != req {
 			return constants.ErrEvaluationEvidenceTraceMismatch
 		}
@@ -219,7 +220,7 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	if limit > investigationContextMaxReceipts {
 		limit = investigationContextMaxReceipts
 	}
-	if call.Retrieval.Query != (mcp.AuditReceiptListRequest{InvestigationID: trace.InvestigationID, Limit: limit, ExcludeActionType: string(constants.ActionTypeMcpCall)}) {
+	if call.Retrieval.Query != (mcp.AuditReceiptListRequest{InvestigationID: trace.InvestigationID, Limit: limit, ExcludeAuditReads: true}) {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	want, err := canonicalToolJSON(investigationReceiptContext(args.DataType, trace.InvestigationID, result, refs))

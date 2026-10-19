@@ -991,6 +991,7 @@ var (
 	ErrTxPayloadActionMismatch         = errors.New("TX_PAYLOAD_ACTION_MISMATCH: action type does not match typed payload")
 	ErrTxDocumentCollectionNotGoverned = errors.New("TX_DOCUMENT_COLLECTION_NOT_GOVERNED: document action targets a collection outside the governed document set")
 	ErrTxTargetOperatorMismatch        = errors.New("TX_TARGET_OPERATOR_MISMATCH: runtime does not execute for the envelope operator")
+	ErrTxMcpTargetMismatch             = errors.New("TX_MCP_TARGET_MISMATCH: MCP call target_resource is not the payload's tool name")
 	ErrTxTargetSessionMismatch         = errors.New("TX_TARGET_SESSION_MISMATCH: envelope operator_session_id is not the session this runtime owns")
 	ErrTxL1ValidationFailed            = errors.New("TX_DOCTRINE_L1_FAILED: typed payload violates Doctrine (L1Doctrine) forbidden patterns")
 	ErrTxDoctrineMissing               = errors.New("TX_DOCTRINE_MISSING: L1Doctrine required but not configured")

@@ -58,7 +58,7 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 			c.queries = append(c.queries, req)
 			var query struct {
 				InvestigationID   string `json:"investigation_id"`
-				ExcludeActionType string `json:"exclude_action_type"`
+				ExcludeAuditReads bool   `json:"exclude_audit_reads"`
 			}
 			if err := json.Unmarshal([]byte(call.GetArgumentsJson()), &query); err != nil {
 				return nil, err
@@ -66,7 +66,7 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 			var rows []*operatorv1.ActionReceipt
 			for _, row := range c.records {
 				if row.InvestigationID == query.InvestigationID {
-					if query.ExcludeActionType != "" && string(row.ActionType) == query.ExcludeActionType {
+					if query.ExcludeAuditReads && isAuditReadRecord(row) {
 						continue
 					}
 					rows = append(rows, row.ActionReceipt)
@@ -87,6 +87,18 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 			r := c.base.fixture.ledger.executed(txID, string(constants.ActionTypeMcpCall))
 			r.ResultSummary = string(body)
 			c.base.fixture.ledger.signer.Resign(c.base.fixture.t, r)
+			// The query's own receipt joins the ledger after its result is built, as on the Operator.
+			c.records = append(c.records, &models.ActionReceiptRecord{
+				TransactionID:     r.GetTransactionId(),
+				OperatorID:        c.base.fixture.ledger.operatorID,
+				OperatorSessionID: c.base.fixture.ledger.sessionID,
+				InvestigationID:   req.InvestigationID,
+				ActionType:        constants.ActionTypeMcpCall,
+				TargetResource:    call.GetToolName(),
+				ResultSummary:     r.GetResultSummary(),
+				Status:            r.GetStatus(),
+				ActionReceipt:     r,
+			})
 			return &client.GovernedOutcome{
 				Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: r},
 				Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: txID, Receipt: r},
@@ -202,6 +214,7 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 		OperatorSessionID: c.base.fixture.ledger.sessionID,
 		InvestigationID:   req.InvestigationID,
 		ActionType:        action,
+		TargetResource:    req.TargetResource,
 		ResultSummary:     receipt.GetResultSummary(),
 		Status:            receipt.GetStatus(),
 		ActionReceipt:     receipt,

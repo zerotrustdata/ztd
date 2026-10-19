@@ -34,6 +34,7 @@ var ingressRefusalCases = []struct {
 	{"request body read", constants.ErrRequestBodyRead, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 	{"invalid JSON body", constants.ErrInvalidJSONBody, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 	{"pubsub empty payload", constants.ErrPubSubEmptyPayload, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
+	{"tribunal template invalid", constants.ErrTribunalTemplateInvalid, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 	{"tx invalid envelope", constants.ErrTxInvalidEnvelope, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 	{"gateway invalid tool arguments", constants.ErrGatewayInvalidToolArguments, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 	{"json-rpc batch unsupported", constants.ErrJSONRPCBatchUnsupported, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},

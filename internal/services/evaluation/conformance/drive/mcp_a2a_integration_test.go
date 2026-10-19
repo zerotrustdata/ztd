@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"encoding/pem"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -31,6 +33,62 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
+
+// ingressGateway is one live Gateway with a harness client that submits as the
+// bootstrapped CLI identity.
+type ingressGateway struct {
+	f       *fixtures.GatewayFixture
+	client  *client.Client
+	persona client.Persona
+	target  operator.Target
+}
+
+// bootIngressGateway boots a Gateway under opts and returns a client for it. The CLI
+// certificate is both the Operator and the CLI identity, so every request carries the CLI
+// session header. The MCP, A2A and dispatch routes answer 401 without that header.
+func bootIngressGateway(t *testing.T, opts fixtures.GatewayFixtureOptions) *ingressGateway {
+	t.Helper()
+	f := fixtures.NewGatewayFixture(t, opts)
+	f.WaitForReady(t)
+	ident := fixtures.BootstrapCLIIdentity(t, f, "conformance-ingress-host")
+
+	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
+	require.NoError(t, err)
+	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
+	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
+	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
+
+	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
+	identity := agentconfig.Auth{Certificate: &cliCert, CABundle: caPath}
+	c, err := client.New(agentconfig.Config{
+		MTLSBaseURL:   url,
+		PublicBaseURL: url,
+		Auth:          identity,
+		CLIAuth:       identity,
+	})
+	require.NoError(t, err)
+
+	return &ingressGateway{
+		f:       f,
+		client:  c,
+		persona: client.Persona{ID: "conformance-ingress", UserID: ident.UserID, CLISessionID: ident.CLISessionID},
+		target:  operator.Target{OperatorID: ident.OperatorID, OperatorSessionID: ident.OperatorSessionID},
+	}
+}
+
+// unreachableClient returns a client for a loopback address with nothing listening.
+// The port is taken and released before the client is built, so every call through it
+// fails at the transport and never receives an HTTP answer. No server is started.
+func unreachableClient(t *testing.T) *client.Client {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	base := "http://" + listener.Addr().String()
+	require.NoError(t, listener.Close())
+	c, err := client.New(agentconfig.Config{MTLSBaseURL: base, PublicBaseURL: base})
+	require.NoError(t, err)
+	return c
+}
 
 // TestMCPA2A drives row 1 (a mutation) and row 14 (the first doctrine corpus entry)
 // on MCP and on A2A against a doctrine Gateway. The mutation must execute with the
@@ -49,38 +107,20 @@ func TestMCPA2A(t *testing.T) {
 		assert.NoError(t, stub.Close(ctx))
 	})
 
-	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
+	gw := bootIngressGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:         "conformance-mcp-a2a",
 		Posture:          constants.PostureDoctrine,
 		A2ADownstreamURL: stub.URL(),
 	})
-	f.WaitForReady(t)
-	ident := fixtures.BootstrapCLIIdentity(t, f, "conformance-mcp-a2a-host")
-
-	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
-	require.NoError(t, err)
-	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
-	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
-
-	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
-	c, err := client.New(agentconfig.Config{
-		MTLSBaseURL:   url,
-		PublicBaseURL: url,
-		Auth:          agentconfig.Auth{Certificate: &cliCert, CABundle: caPath},
-	})
-	require.NoError(t, err)
-
-	persona := client.Persona{ID: "conformance-mcp-a2a", UserID: ident.UserID, CLISessionID: ident.CLISessionID}
-	mcpDriver, err := NewMCP(context.Background(), c, persona)
+	mcpDriver, err := NewMCP(context.Background(), gw.client, gw.persona)
 	require.NoError(t, err)
 	drivers := map[cases.Ingress]cases.Driver{
 		cases.IngressMCP: mcpDriver,
-		cases.IngressA2A: NewA2A(c, persona, stub),
+		cases.IngressA2A: NewA2A(gw.client, gw.persona, stub),
 	}
 
 	// attemptFor only reads the fixture's work directory, so a bare fixture is enough.
-	fx := &directFixture{f: f, workDir: f.Config.WorkDir}
+	fx := &directFixture{f: gw.f, workDir: gw.f.Config.WorkDir}
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 
 	// First row-1 and first row-14 case for each ingress under doctrine.

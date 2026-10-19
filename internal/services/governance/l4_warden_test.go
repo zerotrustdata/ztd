@@ -96,7 +96,7 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 	case constants.ActionTypeEvalAnswer:
 		msg = &operatorv1.EvalAnswerRequested{PromptId: "test", Benchmark: "test", Model: "test", Answer: "test"}
 	case constants.ActionTypeMcpCall:
-		msg = &operatorv1.McpCallRequested{ToolName: "test", ArgumentsJson: "{}", ExecutionId: "exec-1"}
+		msg = &operatorv1.McpCallRequested{ToolName: testMCPToolName, ArgumentsJson: "{}", ExecutionId: "exec-1"}
 	case constants.ActionTypeA2aCall:
 		msg = &operatorv1.A2ACallRequested{SkillName: "test", PayloadJson: "{}", ExecutionId: "exec-1"}
 	case constants.ActionTypeMcpResourceList:
@@ -180,6 +180,18 @@ func signL2Vote(privKey ed25519.PrivateKey, keyID, hash string, decision bool) *
 	}
 }
 
+// testMCPToolName is the tool of typedPayload's MCP_CALL.
+const testMCPToolName = "test"
+
+// testEnvelopeTarget is signedEnvelope's target_resource: an MCP_CALL targets
+// its tool, as the Warden requires; every other action targets localhost.
+func testEnvelopeTarget(actionType constants.ActionType) string {
+	if actionType == constants.ActionTypeMcpCall {
+		return testMCPToolName
+	}
+	return "localhost"
+}
+
 func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, posture constants.Posture) *govtypes.GovernanceEnvelope {
 	t.Helper()
 	// Generate a safe nonce from action type and payload (handle empty payloads)
@@ -205,7 +217,7 @@ func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byt
 		OperatorSessionId: "operator-session-1",
 		EventType:         string(eventType),
 		ActionType:        string(actionType),
-		TargetResource:    "localhost",
+		TargetResource:    testEnvelopeTarget(actionType),
 		Payload:           payload,
 		StateMerkleRoot:   "root-1",
 		Nonce:             "nonce-" + string(actionType) + "-" + nonceSuffix,

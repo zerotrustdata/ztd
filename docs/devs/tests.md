@@ -36,7 +36,7 @@ The platform enforces a four-tier test architecture:
 - **Tier 1 (Unit)**: Fast, in-memory, hermetic unit tests that execute without a running platform, external databases, or network listeners. Parallel across packages.
 - **Tier 2 (In-Process Integration)**: In-process integration tests exercising real local SQLite databases, local PKI generation, pub/sub, and the in-process Gateway with race detection on non-Windows hosts. Banned from calling `t.Parallel()`.
 - **Tier 3 (Live Platform E2E)**: End-to-end tests exercising deployed service boundaries, including steady-state platform verification, multi-worker scale, and stateful enrollment topologies.
-- **Tier 4 (External-Service Integration)**: Tests calling live external LLM providers or remote cloud services. These require dedicated opt-in targets and credentials and do not run in default CI. The repository has no general `ztd test` Tier 4 command; use the owning package's documented target.
+- **Tier 4 (External-Service Integration)**: Tests calling live external LLM providers or remote cloud services. These require dedicated opt-in targets and credentials and do not run in default CI. The repository has no general `ztd test` Tier 4 command. The dedicated live-provider gate is `ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>`; other Tier 4 tests use the owning package's documented target.
 
 ## Quick index
 
@@ -114,6 +114,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
 | Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
 | Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop --help` |
+| Live Tier 4 evaluation loop | `internal/cli/cmd/test/eval_loop_live_e2e_test.go` | `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` |
 | Live E2E suite | `test/e2e/` | `./ztd test e2e` |
 | Completion transcript wire contract | `internal/services/gateway/platform_enrollment_validation_test.go` | `TestPlatformEnrollmentCompletionTranscriptGoldenVector` |
 
@@ -185,6 +186,9 @@ Unfiltered unit and integration commands delegate to `make test-unit` and `make 
 ./ztd test eval-loop --posture ratify
 ./ztd test eval-loop --posture notary
 
+# Tier 4 live-provider gate (explicit only; the provider is reached through the governed Inference Operator)
+./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name> [--posture ratify|notary]
+
 # Verify air-gapped vendored compilation without network access
 make test-airgap
 
@@ -194,6 +198,8 @@ make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64
 ```
 
 `./ztd test eval-loop` qualifies the full cross-process evaluation pipeline against live OS processes under both `ratify` and `notary` governance postures. The runner starts isolated Gateway, Data Operator, and Inference Operator processes under distinct `.ztd/` roots via `RuntimeFileService`, deploys them via `ztd operator deploy --approve`, handles L3 human authorizations through an event-driven `ztd auth approve --cli` responder driven entirely by the Gateway's SSE stream (`ztd.v1.platform.approvals.changed`), exercises real Ed25519 K-of-N consensus deliberation under `notary`, and verifies authoritative local execution receipts directly from each Operator's own SQLite store (LFAA).
+
+`./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` is the dedicated Tier 4 gate under `INV-TEST-RUN-05`. It builds with the `e2e,live` tags, runs `TestEvalLoopLive` under a default timeout of 40m per selected posture (each posture's run takes what remains of that deadline, less the cleanup margin), and replaces only the provider: the Inference Operator reaches that endpoint through the governed Inference Operator, and no provider is scripted. Each posture freezes the provider's real model digest with `ztd eval models freeze` and runs one Tribunal campaign. The gate proves the loop and its evidence, not model quality, so a FAIL verdict passes. A subtest that fails has its run root under `.ztd/operators/` deleted; a passing run root is kept.
 
 `./ztd test chaos` generates synthetic governance events (70% valid intent, 20% L1 forbidden command injection, 10% corrupted transaction hash MitM) directly in-process through `TransactionVerifier` and `Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` aggregates outcomes across runs in the test vault directory.
 

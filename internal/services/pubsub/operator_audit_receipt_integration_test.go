@@ -75,7 +75,7 @@ func TestOperatorAuditReceiptRoute_GovernedLocalLedgerScope(t *testing.T) {
 		t.Helper()
 		args, err := json.Marshal(mcp.AuditReceiptListRequest{
 			InvestigationID:   investigationID,
-			ExcludeActionType: string(constants.ActionTypeMcpCall),
+			ExcludeAuditReads: true,
 			Limit:             100,
 		})
 		require.NoError(t, err)
@@ -193,6 +193,11 @@ func operatorAuditRouteEnvelopeWire(t *testing.T, svc *OperatorPubSubService, ev
 	payloadBytes, err := proto.Marshal(payload)
 	require.NoError(t, err)
 	now := time.Now().UTC()
+	target := "localhost"
+	if call, ok := payload.(*operatorv1.McpCallRequested); ok {
+		// MCP_CALL targets its tool name, as the Gateway MCP ingress and the evaluation lane dispatch it.
+		target = call.GetToolName()
+	}
 	env := &govpkg.GovernanceEnvelope{
 		ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
 		Timestamp:         timestamppb.New(now),
@@ -202,7 +207,7 @@ func operatorAuditRouteEnvelopeWire(t *testing.T, svc *OperatorPubSubService, ev
 		EventType:         string(event),
 		ActionType:        string(action),
 		InvestigationId:   investigationID,
-		TargetResource:    "localhost",
+		TargetResource:    target,
 		Payload:           payloadBytes,
 		StateMerkleRoot:   "test-state-root",
 		Nonce:             fmt.Sprintf("nonce-%s-%d", action, time.Now().UnixNano()),

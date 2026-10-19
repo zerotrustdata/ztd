@@ -1065,7 +1065,8 @@ func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg
 // Gateway mode also owns an embedded Operator ledger, but session-only public
 // Gateway queries and every other tool keep using the Gateway's MCP handler;
 // the explicit local query shape is audit_receipt_list with investigation_id
-// plus exclude_action_type=MCP_CALL.
+// plus exclude_audit_reads=true, which excludes only the audit-read tools' own
+// receipts and keeps every other native-tool MCP_CALL as investigation context.
 func (rs *OperatorPubSubService) useLocalNativeToolRoute(toolName string, args json.RawMessage) bool {
 	if rs == nil || !rs.gatewayMode {
 		return true
@@ -1077,7 +1078,7 @@ func (rs *OperatorPubSubService) useLocalNativeToolRoute(toolName string, args j
 	if err := json.Unmarshal(args, &request); err != nil {
 		return false
 	}
-	return request.InvestigationID != "" && request.ExcludeActionType == string(constants.ActionTypeMcpCall)
+	return request.InvestigationID != "" && request.ExcludeAuditReads
 }
 
 func mcpGatewayOrErr(rs *OperatorPubSubService) (*mcp.GatewayService, error) {

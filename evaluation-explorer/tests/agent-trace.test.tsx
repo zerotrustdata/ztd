@@ -94,7 +94,7 @@ function investigationRetrievalToolCall(overrides: Record<string, unknown> = {})
     arguments_json: '{"data_type":"history_trail","limit":10}', success: true, is_operator_tool: true,
     loop_turn: 2, action_type: 'MCP_CALL', receipt: receipt('tx-context', 'MCP_CALL'),
     retrieval: {
-      query: { operator_session_id: '', investigation_id: 'investigation-1', exclude_action_type: 'MCP_CALL', limit: 10 },
+      query: { operator_session_id: '', investigation_id: 'investigation-1', exclude_audit_reads: true, limit: 10 },
       receipts: [{ receipt_id: 'receipt-1', sha256: 'e'.repeat(64) }],
     },
     ...overrides,
@@ -197,13 +197,13 @@ describe('verifyAgentTraceArtifact', () => {
   it('rejects malformed v6 retrieval and completed context calls without retrieval', async () => {
     const malformedDigest = sealedBody('agent-trace.v6', {
       tool_calls: [investigationRetrievalToolCall({ retrieval: {
-        query: { investigation_id: 'investigation-1', exclude_action_type: 'MCP_CALL', limit: 10 },
+        query: { investigation_id: 'investigation-1', exclude_audit_reads: true, limit: 10 },
         receipts: [{ receipt_id: 'receipt-1', sha256: 'BAD' }],
       } })],
     });
     const wrongInvestigation = sealedBody('agent-trace.v6', {
       tool_calls: [investigationRetrievalToolCall({ retrieval: {
-        query: { investigation_id: 'another-investigation', exclude_action_type: 'MCP_CALL', limit: 10 },
+        query: { investigation_id: 'another-investigation', exclude_audit_reads: true, limit: 10 },
         receipts: [],
       } })],
     });

@@ -29,6 +29,17 @@ func TestL4Warden_RejectsForeignExecutionTarget(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrTxTargetOperatorMismatch)
 }
 
+func TestL4Warden_RejectsMcpCallTargetOtherThanItsTool(t *testing.T) {
+	warden, key := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
+	for _, target := range []string{constants.MCPToolAuditReceiptList, ""} {
+		env := signedEnvelope(t, constants.ActionTypeMcpCall, typedPayload(t, constants.ActionTypeMcpCall), key, constants.PostureDoctrine)
+		env.TargetResource = target
+		rehash(t, env)
+		_, err := warden.VerifyEnvelope(context.Background(), env)
+		require.ErrorIs(t, err, constants.ErrTxMcpTargetMismatch, target)
+	}
+}
+
 func TestL4Warden_ExecutionTarget(t *testing.T) {
 	outbound := &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"}
 	gateway := embedded.New(nil, nil)

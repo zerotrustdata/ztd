@@ -43,8 +43,20 @@ func TestEvalLoopCommandSelectsLiveTargetWithTestBinaryFlags(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, args, "-tags=e2e,live")
 	assert.Contains(t, args, "^TestEvalLoopLive$/^notary$")
-	assert.Contains(t, args, "40m0s")
+	assert.Contains(t, args, "40m0s", "one selected posture gets one live share")
 	require.Equal(t, []string{"./internal/cli/cmd/test", "-args", "-eval-loop-live-endpoint=http://192.0.2.10:11434", "-eval-loop-live-model=qwen3:4b"}, args[len(args)-4:])
+}
+
+func TestEvalLoopCommandGivesEachLivePostureItsOwnDeadline(t *testing.T) {
+	var args []string
+	cmd := testEvalLoopCmdWithRunner(func(_ context.Context, _ string, argv ...string) (int, error) {
+		args = argv
+		return 0, nil
+	})
+	cmd.SetArgs([]string{"--live-ollama-endpoint", "http://192.0.2.10:11434", "--live-model", "qwen3:4b"})
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, args, "^TestEvalLoopLive$")
+	assert.Contains(t, args, "1h20m0s")
 }
 
 func TestEvalLoopCommandRejectsIncompleteLiveTargetBeforeStarting(t *testing.T) {

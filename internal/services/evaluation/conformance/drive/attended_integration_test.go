@@ -25,12 +25,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
-	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
@@ -49,11 +47,11 @@ type l3Gateway struct {
 	target  operator.Target
 }
 
-// bootL3Gateway boots a Gateway under posture and returns a harness client that
-// submits as the bootstrapped CLI identity to the embedded Operator.
-func bootL3Gateway(t *testing.T, testName string, posture constants.Posture) *l3Gateway {
+// bootL3Gateway boots a Gateway under opts and returns a harness client that submits as
+// the bootstrapped CLI identity to the embedded Operator.
+func bootL3Gateway(t *testing.T, opts fixtures.GatewayFixtureOptions) *l3Gateway {
 	t.Helper()
-	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{TestName: testName, Posture: posture})
+	f := fixtures.NewGatewayFixture(t, opts)
 	f.WaitForReady(t)
 	ident := fixtures.BootstrapCLIIdentity(t, f, "conformance-l3-host")
 
@@ -63,11 +61,15 @@ func bootL3Gateway(t *testing.T, testName string, posture constants.Posture) *l3
 	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
 	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
 
+	// The CLI identity is the same certificate as the operator identity. Naming it in
+	// CLIAuth too makes the harness send the CLI session header that handleCLIAuth needs.
 	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
+	cliAuth := agentconfig.Auth{Certificate: &cliCert, CABundle: caPath}
 	c, err := client.New(agentconfig.Config{
 		MTLSBaseURL:   url,
 		PublicBaseURL: url,
-		Auth:          agentconfig.Auth{Certificate: &cliCert, CABundle: caPath},
+		Auth:          cliAuth,
+		CLIAuth:       cliAuth,
 	})
 	require.NoError(t, err)
 
@@ -78,11 +80,6 @@ func bootL3Gateway(t *testing.T, testName string, posture constants.Posture) *l3
 		persona: client.Persona{ID: "conformance-l3", UserID: ident.UserID, CLISessionID: ident.CLISessionID},
 		target:  operator.Target{OperatorID: ident.OperatorID, OperatorSessionID: ident.OperatorSessionID},
 	}
-}
-
-// attempts builds attempts for this Gateway's work directory.
-func (g *l3Gateway) attempts() *directFixture {
-	return &directFixture{f: g.f, workDir: g.f.Config.WorkDir}
 }
 
 // findCase returns the one catalogue case that matches row, ingress and posture.
@@ -98,13 +95,13 @@ func findCase(t *testing.T, all []cases.Case, row int, ingress cases.Ingress, po
 }
 
 // approvingDriver drives the inner call and, when the Gateway suspends it, runs the
-// approval before returning. The attended driver has already opened its approval
-// subscription before this inner drive starts, so the approval is synchronous and the
-// Gateway's approval.completed event is delivered live to that subscription. The test
-// goroutine stays the owner of every require call.
+// human decision the case asks for before returning. The attended driver has already
+// opened its approval subscription before this inner drive starts, so the decision is
+// synchronous and the Gateway's approval.completed event is delivered live to that
+// subscription. The test goroutine stays the owner of every require call.
 type approvingDriver struct {
-	inner   cases.Driver
-	approve func(txHash string)
+	inner  cases.Driver
+	decide func(txHash string)
 }
 
 func (d approvingDriver) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) {
@@ -113,21 +110,21 @@ func (d approvingDriver) Drive(ctx context.Context, a cases.Attempt) (cases.Driv
 		return cases.Driven{}, err
 	}
 	if len(driven.Observations) == 1 && driven.Observations[0].GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED {
-		d.approve(driven.Observations[0].GetSuspendedTxHash())
+		d.decide(driven.Observations[0].GetSuspendedTxHash())
 	}
 	return driven, nil
 }
 
-// TestAttendedRatifyApprovalResumesMCPCall drives row 23 on MCP under ratify. The
-// call suspends, the test approves it with its passkey, and the attended driver
-// returns the resumed signed receipt with the marker written.
+// TestAttendedRatifyApprovalResumesMCPCall drives row 23 on MCP under ratify. The call
+// suspends, the test approves it with its passkey, and the attended driver returns the
+// resumed signed receipt with the marker written.
 func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
-	row24 := findCase(t, all, 23, cases.IngressMCP, ratify)
+	row23 := findCase(t, all, 23, cases.IngressMCP, ratify)
 
-	g := bootL3Gateway(t, "conformance-attended-mcp", constants.PostureRatify)
+	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-mcp", Posture: constants.PostureRatify})
 	mcpDriver, err := NewMCP(context.Background(), g.client, g.persona)
 	require.NoError(t, err)
 
@@ -135,58 +132,65 @@ func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
 	session := fixtures.ConsoleSignIn(t, g.f, approver, g.ident)
 	var approvedTxHash string
-	approving := approvingDriver{inner: mcpDriver, approve: func(txHash string) {
+	approving := approvingDriver{inner: mcpDriver, decide: func(txHash string) {
 		approvedTxHash = txHash
 		status, body := fixtures.ApproveWithPasskey(t, g.f, approver, session, g.ident, txHash)
 		require.Equal(t, http.StatusOK, status, "passkey approval must resume the call: %s", body)
 	}}
 
-	fx := g.attempts()
-	a := fx.attemptFor(t, row24)
-
+	a := gatewayAttempt(t, g.f, row23)
 	driven, err := NewAttended(approving, g.client, g.persona, g.ident.UserID).Drive(context.Background(), a)
 	require.NoError(t, err)
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
-	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind(), "answer: %s", answerText(obs))
+	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind(), "answer kind: %s", obs.GetKind())
 
 	receipt := obs.GetReceipt()
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
 	assert.Equal(t, approvedTxHash, receipt.GetTransactionHash(), "the resumed receipt must be for the suspended transaction")
 	assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status(), "the approved call must carry a valid L3 proof")
-	assert.Equal(t, row24.Expect[0].L2Status, receipt.GetL2Status())
+	assert.Equal(t, row23.Expect[0].L2Status, receipt.GetL2Status())
 
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
 	assert.Equal(t, a.Marker, string(written), "the approved mutation must write exactly the marker")
 }
 
-// cliPoster posts the CLI driver's requests the way the Gateway API client does: a
-// non-2xx answer is an api.StatusError carrying its body, so RunOnce decodes the
-// typed refusal or signed rejection.
-type cliPoster struct {
-	client  *http.Client
-	baseURL string
-}
+// TestAttendedRatifyDenialResumesMCPAsSignedRejection drives row 24 on MCP under ratify.
+// The call suspends, the test denies it the way `ztd auth approve --deny` does, and the
+// attended driver returns the Operator-signed L3_DENIED rejection with nothing written.
+func TestAttendedRatifyDenialResumesMCPAsSignedRejection(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+	row24 := findCase(t, all, 24, cases.IngressMCP, ratify)
 
-func (p cliPoster) Post(path string, body any) ([]byte, error) {
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := p.client.Post(p.baseURL+path, constants.HeaderValueApplicationJSON, bytes.NewReader(raw))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	answer, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, &api.StatusError{StatusCode: resp.StatusCode, Body: string(answer)}
-	}
-	return answer, nil
+	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-mcp-deny", Posture: constants.PostureRatify})
+	mcpDriver, err := NewMCP(context.Background(), g.client, g.persona)
+	require.NoError(t, err)
+
+	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
+	var deniedTxHash string
+	denying := approvingDriver{inner: mcpDriver, decide: func(txHash string) {
+		deniedTxHash = txHash
+		g.denyWithCLI(t, approver, txHash)
+	}}
+
+	a := gatewayAttempt(t, g.f, row24)
+	driven, err := NewAttended(denying, g.client, g.persona, g.ident.UserID).Drive(context.Background(), a)
+	require.NoError(t, err)
+	require.Len(t, driven.Observations, 1)
+	obs := driven.Observations[0]
+	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind(), "answer kind: %s", obs.GetKind())
+	assert.Nil(t, obs.GetReceipt(), "a deny is never reported as an executed receipt")
+
+	rejection := obs.GetRejection().GetReceipt()
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, rejection.GetRejectionCode())
+	assert.Equal(t, deniedTxHash, rejection.GetTransactionHash(), "the signed deny must be for the suspended transaction")
+	assert.NotEmpty(t, rejection.GetSignature(), "the deny must carry the Operator's signature")
+
+	_, statErr := os.Stat(a.TargetAbs)
+	assert.True(t, os.IsNotExist(statErr), "a denied mutation must leave no file")
 }
 
 // awaitPendingApproval waits for the one transaction the blocked call suspended and
@@ -230,10 +234,10 @@ func (g *l3Gateway) denyWithCLI(t *testing.T, approver *http.Client, txHash stri
 }
 
 // TestAttendedRatifyBlockingIngressesFollowTheHumanDecision drives rows 23 and 24 on
-// governed dispatch and the CLI under ratify against a live Gateway. The request
-// blocks while the transaction is pending, the human decides over the Gateway's
-// approval routes, and the attended driver returns the signed answer the blocked
-// request got: the executed receipt on approve, the L3_DENIED rejection on deny.
+// governed dispatch and the CLI under ratify against a live Gateway. The request blocks
+// while the transaction is pending, the human decides over the Gateway's approval routes,
+// and the attended driver returns the signed answer the blocked request got: the executed
+// receipt on approve, the L3_DENIED rejection on deny.
 func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
@@ -243,18 +247,19 @@ func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 		for _, row := range []int{23, 24} {
 			c := findCase(t, all, row, ingress, ratify)
 			t.Run(c.ID, func(t *testing.T) {
-				g := bootL3Gateway(t, "conformance-attended-blocking", constants.PostureRatify)
+				g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-blocking", Posture: constants.PostureRatify})
 				approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
 
 				var inner cases.Driver
 				var err error
 				if ingress == cases.IngressCLI {
-					inner, err = NewCLI(cliPoster{client: approver, baseURL: network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort())}, g.target, g.ident.CLISessionID)
+					// The production CLI client reads the identity from an installed CLI runtime.
+					inner, err = NewCLI(cliPosterFor(t, g.f, g.ident), g.target, g.ident.CLISessionID)
 				} else {
 					inner, err = NewDispatch(g.client, g.persona, map[cases.Executor]operator.Target{cases.ExecutorEmbedded: g.target})
 				}
 				require.NoError(t, err)
-				a := g.attempts().attemptFor(t, c)
+				a := gatewayAttempt(t, g.f, c)
 
 				type answer struct {
 					driven cases.Driven
@@ -292,7 +297,7 @@ func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 				require.NoError(t, got.err)
 				require.Len(t, got.driven.Observations, len(c.Expect))
 				obs := got.driven.Observations[0]
-				assertObservation(t, c.Expect[0], obs)
+				assertExpect(t, c.Expect[0], obs)
 
 				if row == 23 {
 					receipt := obs.GetReceipt()
@@ -311,17 +316,78 @@ func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 	}
 }
 
-// TestL3DirectRowsUnderRatify drives row 20 on DIRECT under ratify: a missing L3
-// proof and an invalid L3 proof are each rejected by L4 before anything executes.
+// TestAttendedRatifyA2AApprovalAttributesDownstreamCallToAttempt drives row 23 on A2A under
+// ratify against a live Gateway whose A2A downstream is the conformance stub. The call
+// suspends, the human approves, and the downstream call the Gateway makes to resume it is
+// attributed to the attempt.
+func TestAttendedRatifyA2AApprovalAttributesDownstreamCallToAttempt(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+	row23 := findCase(t, all, 23, cases.IngressA2A, ratify)
+
+	stub, err := StartA2AStub("127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		assert.NoError(t, stub.Close(ctx))
+	})
+
+	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{
+		TestName:         "conformance-attended-a2a",
+		Posture:          constants.PostureRatify,
+		A2ADownstreamURL: stub.URL(),
+	})
+	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
+	session := fixtures.ConsoleSignIn(t, g.f, approver, g.ident)
+	a2a := NewA2A(g.client, g.persona, stub)
+	a := gatewayAttempt(t, g.f, row23)
+
+	type answer struct {
+		driven cases.Driven
+		err    error
+	}
+	answered := make(chan answer, 1)
+	go func() {
+		driven, err := NewAttended(a2a, g.client, g.persona, g.ident.UserID).Drive(t.Context(), a)
+		answered <- answer{driven, err}
+	}()
+
+	txHash := g.awaitPendingApproval(t, approver)
+	status, body := fixtures.ApproveWithPasskey(t, g.f, approver, session, g.ident, txHash)
+	require.Equal(t, http.StatusOK, status, "passkey approval must resume the call: %s", body)
+
+	var got answer
+	select {
+	case got = <-answered:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the call never answered after the human approved")
+	}
+	require.NoError(t, got.err)
+	require.Len(t, got.driven.Observations, 1)
+	obs := got.driven.Observations[0]
+	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind(), "answer kind: %s", obs.GetKind())
+	assert.Equal(t, txHash, obs.GetReceipt().GetTransactionHash(), "the receipt must be for the suspended transaction")
+
+	require.Len(t, got.driven.A2ACalls, 1, "the downstream call made to resume the approval must be attributed to the attempt")
+	call := got.driven.A2ACalls[0]
+	assert.Equal(t, ConformanceA2ASkill, call.GetSkillName())
+	var payload cases.MarkerSkillPayload
+	require.NoError(t, json.Unmarshal([]byte(call.GetPayloadJson()), &payload))
+	assert.Equal(t, a.Marker, payload.Marker)
+}
+
+// TestL3DirectRowsUnderRatify drives row 20 on DIRECT under ratify: a missing L3 proof and
+// an invalid L3 proof are each rejected by L4 before anything executes.
 func TestL3DirectRowsUnderRatify(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 
-	g := bootL3Gateway(t, "conformance-l3-ratify", constants.PostureRatify)
+	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-l3-ratify", Posture: constants.PostureRatify})
 	direct, err := NewDirect(g.client, g.persona, g.target, nil, BaseMutators(), L3Mutators())
 	require.NoError(t, err)
-	fx := g.attempts()
 
 	found := 0
 	for _, c := range all {
@@ -330,11 +396,11 @@ func TestL3DirectRowsUnderRatify(t *testing.T) {
 		}
 		found++
 		t.Run(c.ID, func(t *testing.T) {
-			driven, err := direct.Drive(context.Background(), fx.attemptFor(t, c))
+			driven, err := direct.Drive(context.Background(), gatewayAttempt(t, g.f, c))
 			require.NoError(t, err)
 			require.Len(t, driven.Observations, len(c.Expect))
 			for i, want := range c.Expect {
-				assertObservation(t, want, driven.Observations[i])
+				assertExpect(t, want, driven.Observations[i])
 			}
 		})
 	}
@@ -350,48 +416,18 @@ func TestL3GarbageProofExecutesUnderDoctrine(t *testing.T) {
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	c := findCase(t, all, 21, cases.IngressDirect, doctrine)
 
-	g := bootL3Gateway(t, "conformance-l3-doctrine", constants.PostureDoctrine)
+	g := bootL3Gateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-l3-doctrine", Posture: constants.PostureDoctrine})
 	direct, err := NewDirect(g.client, g.persona, g.target, nil, BaseMutators(), L3Mutators())
 	require.NoError(t, err)
-	fx := g.attempts()
-	a := fx.attemptFor(t, c)
+	a := gatewayAttempt(t, g.f, c)
 
 	driven, err := direct.Drive(context.Background(), a)
 	require.NoError(t, err)
 	require.Len(t, driven.Observations, len(c.Expect))
-	assertObservation(t, c.Expect[0], driven.Observations[0])
+	assertExpect(t, c.Expect[0], driven.Observations[0])
 	assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, driven.Observations[0].GetReceipt().GetL3Status())
 
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
 	assert.Equal(t, a.Marker, string(written))
-}
-
-// TestAttendedA2AStubCallsDuringWaitAreAttributed checks that the A2A downstream
-// calls made after the approval belong to the attempt. The fake approval wait
-// posts to the live stub the way the Gateway does, after the inner drive returned.
-func TestAttendedA2AStubCallsDuringWaitAreAttributed(t *testing.T) {
-	g := &fakeA2AGateway{callBody: a2aResultBody(t, mcp.GovernedSuspension{ID: "s-1", Status: "PENDING", TxHash: "tx-hash-1"})}
-	a2a, stub := newFakeA2A(t, g)
-	// A suspended call never reaches the downstream, so the fake Gateway does not forward it.
-	g.downstream = nil
-	a := a2aAttempt(cases.Case{ID: "row-24-a2a", Fault: cases.FaultAttendedApprove, Action: cases.ActionMutation, Attended: true, Ingress: cases.IngressA2A})
-
-	fa := &fakeApprovals{
-		receipt: &operatorv1.ActionReceipt{TransactionHash: "tx-hash-1"},
-		onWait: func() {
-			assert.Equal(t, http.StatusOK, postDownstream(t, stub, `{"skill_name":"ztd-conformance","payload":{"marker":"marker-1"}}`))
-		},
-	}
-	d := NewAttended(a2a, nil, testIdentity().Persona, "user-approver")
-	d.approvals = fa
-
-	driven, err := d.Drive(context.Background(), a)
-	require.NoError(t, err)
-	require.Len(t, driven.Observations, 1)
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, driven.Observations[0].GetKind())
-	require.Len(t, driven.A2ACalls, 1, "the call made during the wait must be attributed to the attempt")
-	assert.Equal(t, "ztd-conformance", driven.A2ACalls[0].GetSkillName())
-	assert.JSONEq(t, `{"marker":"marker-1"}`, driven.A2ACalls[0].GetPayloadJson())
-	assert.Len(t, g.recorded(), 1, "the inner drive sent exactly one a2a/call")
 }
