@@ -166,14 +166,14 @@ func TestAuditReceiptListTool_Execute_BothScopes(t *testing.T) {
 	assert.Equal(t, "investigation-1", stub.lastListInvestigation)
 }
 
-func TestOperatorAuditReceiptHandler_UsesSharedToolWithLocalAuthority(t *testing.T) {
+func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	receipt := sampleReceiptRecord("tx-command", "session-old", "EXECUTE_BASH", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	receipt.ActionReceipt = &operatorv1.ActionReceipt{TransactionId: "tx-command", Signature: "sig-tx-command"}
 	stub := &stubAuditReceiptQuery{
 		listBySession: []*models.ActionReceiptRecord{receipt},
 	}
-	handler, err := NewOperatorAuditReceiptHandler("op-1", stub)
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
 	require.NoError(t, err)
 	args, err := json.Marshal(AuditReceiptListRequest{
 		InvestigationID:   "investigation-1",
@@ -181,10 +181,7 @@ func TestOperatorAuditReceiptHandler_UsesSharedToolWithLocalAuthority(t *testing
 	})
 	require.NoError(t, err)
 
-	result, err := handler.Handle(context.Background(), CallToolRequest{
-		Name:      "audit_receipt_list",
-		Arguments: args,
-	})
+	result, err := handler.HandleTool(context.Background(), "audit_receipt_list", args)
 	require.NoError(t, err)
 	require.Len(t, result.Content, 1)
 
@@ -199,35 +196,32 @@ func TestOperatorAuditReceiptHandler_UsesSharedToolWithLocalAuthority(t *testing
 	assert.Equal(t, "tx-command", list.Receipts[0].GetTransactionId())
 }
 
-func TestOperatorAuditReceiptHandler_RequiresInvestigationAndOnlyServesList(t *testing.T) {
+func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *testing.T) {
 	stub := &stubAuditReceiptQuery{}
-	handler, err := NewOperatorAuditReceiptHandler("op-1", stub)
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
 	require.NoError(t, err)
 
-	_, err = handler.Handle(context.Background(), CallToolRequest{
-		Name:      "audit_receipt_list",
-		Arguments: json.RawMessage(`{"operator_session_id":"session-1"}`),
-	})
+	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"operator_session_id":"session-1"}`))
 	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptListInvestigationReq)
 	assert.Zero(t, stub.listCalls)
 
-	_, err = handler.Handle(context.Background(), CallToolRequest{
-		Name:      "audit_receipt_list",
-		Arguments: json.RawMessage(`{"investigation_id":"investigation-1"}`),
-	})
+	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"investigation_id":"investigation-1"}`))
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Zero(t, stub.listCalls)
 
-	_, err = handler.Handle(context.Background(), CallToolRequest{
-		Name:      "audit_receipt_list",
-		Arguments: json.RawMessage(`{"investigation_id":"investigation-1","exclude_action_type":"EXECUTE_BASH"}`),
-	})
+	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"investigation_id":"investigation-1","exclude_action_type":"EXECUTE_BASH"}`))
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Zero(t, stub.listCalls)
 
-	_, err = handler.Handle(context.Background(), CallToolRequest{Name: "audit_receipt_get"})
-	require.Error(t, err)
-	assert.Zero(t, stub.listCalls)
+	_, err = handler.HandleTool(context.Background(), "read_field", nil)
+	require.ErrorIs(t, err, constants.ErrMCPNativeToolUnknown, "Gateway-local tools are not native Operator tools")
+}
+
+func TestNewOperatorNativeToolHandler_RequiresIdentityAndLocalStore(t *testing.T) {
+	_, err := NewOperatorNativeToolHandler(nil, "", &stubAuditReceiptQuery{})
+	require.ErrorIs(t, err, constants.ErrOperatorIDMissing)
+	_, err = NewOperatorNativeToolHandler(nil, "op-1", nil)
+	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
 }
 
 func TestAuditReceiptListTool_Execute_ActionTypeFilter(t *testing.T) {

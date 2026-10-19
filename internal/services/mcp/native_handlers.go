@@ -45,6 +45,9 @@ type NativeToolHandler struct {
 	registry          *ToolRegistry
 	logger            *slog.Logger
 	auditReceiptQuery AuditReceiptQuery
+	// operatorAuthority is set only on an executing Operator's handler. It
+	// scopes audit_receipt_list to the Operator's own authoritative ledger.
+	operatorAuthority *auditReceiptListAuthority
 }
 
 // NewNativeToolHandler creates a new native tool handler with all native tools
@@ -59,6 +62,29 @@ func NewNativeToolHandler(logger *slog.Logger) (*NativeToolHandler, error) {
 		registry: registry,
 		logger:   logger,
 	}, nil
+}
+
+// NewOperatorNativeToolHandler constructs the native tool host for an
+// executing Operator's Actuator. It serves the same registry as the Gateway
+// against the Operator's own local audit store, and audit_receipt_list runs
+// under the Operator-local ledger authority: investigation_id is mandatory and
+// the query is scoped to operatorID across that Operator's sessions. Both
+// dependencies are required because a missing identity or local store cannot
+// establish authoritative evidence.
+func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query AuditReceiptQuery) (*NativeToolHandler, error) {
+	if operatorID == "" {
+		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrOperatorIDMissing)
+	}
+	if query == nil {
+		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrMCPAuditReceiptQueryNotConfigured)
+	}
+	h, err := NewNativeToolHandler(logger)
+	if err != nil {
+		return nil, fmt.Errorf("operator native tool handler: %w", err)
+	}
+	h.auditReceiptQuery = query
+	h.operatorAuthority = &auditReceiptListAuthority{operatorID: operatorID, name: "operator_local_ledger"}
+	return h, nil
 }
 
 // SetAuditReceiptQuery wires the configured local audit-store read interface into the
@@ -89,6 +115,12 @@ func (h *NativeToolHandler) HandleTool(ctx context.Context, toolName string, arg
 	if h.auditReceiptQuery != nil {
 		ctx = withAuditReceiptQuery(ctx, h.auditReceiptQuery)
 	}
+	if h.operatorAuthority != nil {
+		ctx = withAuditReceiptListAuthority(ctx, *h.operatorAuthority)
+	}
+	if len(arguments) == 0 {
+		arguments = json.RawMessage("{}")
+	}
 	result, err := tool.Execute(ctx, arguments)
 	if h.logger != nil {
 		if err != nil {
@@ -104,6 +136,24 @@ func (h *NativeToolHandler) HandleTool(ctx context.Context, toolName string, arg
 // ListTools returns all registered native tools.
 func (h *NativeToolHandler) ListTools() []NativeTool {
 	return h.registry.List()
+}
+
+// ToolResultSummary joins a tool result's text content into the receipt
+// summary stamped by the Actuator, defaulting to "completed" for tools that
+// return no text.
+func ToolResultSummary(result CallToolResult) string {
+	var sb strings.Builder
+	for _, c := range result.Content {
+		if c.Type == "text" {
+			sb.WriteString(c.Text)
+			sb.WriteString("\n")
+		}
+	}
+	summary := strings.TrimRight(sb.String(), "\n")
+	if summary == "" {
+		return "completed"
+	}
+	return summary
 }
 
 // scrubLine redacts sensitive patterns from log lines.

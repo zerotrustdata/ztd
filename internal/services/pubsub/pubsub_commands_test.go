@@ -59,14 +59,27 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 	}
 }
 
-func TestOperatorLocalAuditRouteSelectionPreservesGatewaySessionQueries(t *testing.T) {
+func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.T) {
 	gateway := &OperatorPubSubService{gatewayMode: true}
 	local := &OperatorPubSubService{}
 	tests := []struct {
 		name      string
+		tool      string
 		args      string
 		wantLocal bool
 	}{
+		{
+			name:      "Gateway native tool stays on the MCP gateway",
+			tool:      "run_shell_command",
+			args:      `{"command":"true"}`,
+			wantLocal: false,
+		},
+		{
+			name:      "Gateway-local read_field stays on the MCP gateway",
+			tool:      "read_field",
+			args:      `{}`,
+			wantLocal: false,
+		},
 		{
 			name:      "Gateway public session query",
 			args:      `{"operator_session_id":"session-1"}`,
@@ -90,9 +103,13 @@ func TestOperatorLocalAuditRouteSelectionPreservesGatewaySessionQueries(t *testi
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			useLocal := gateway.useOperatorLocalAuditReceiptRoute(json.RawMessage(tt.args))
+			tool := tt.tool
+			if tool == "" {
+				tool = "audit_receipt_list"
+			}
+			useLocal := gateway.useLocalNativeToolRoute(tool, json.RawMessage(tt.args))
 			assert.Equal(t, tt.wantLocal, useLocal)
-			assert.True(t, local.useOperatorLocalAuditReceiptRoute(json.RawMessage(tt.args)), "outbound Operators never fall back to a Gateway mirror")
+			assert.True(t, local.useLocalNativeToolRoute(tool, json.RawMessage(tt.args)), "outbound Operators never fall back to a Gateway mirror")
 		})
 	}
 }
@@ -960,16 +977,21 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) {
 func TestOperatorPubSubService_handleMcpCallRequestSync(t *testing.T) {
 	f := newPubsubFixture(t)
 
-	t.Run("rejects when MCP gateway not configured", func(t *testing.T) {
-		t.Parallel()
-		msg := &PubSubCommandMessage{
-			EventType: constants.Event.Operator.Mcp.CallRequested,
-			ID:        "msg-1",
-			Payload:   mustMarshalProto(t, &operatorv1.McpCallRequested{ToolName: "test"}),
-		}
+	msg := &PubSubCommandMessage{
+		EventType: constants.Event.Operator.Mcp.CallRequested,
+		ID:        "msg-1",
+		Payload:   mustMarshalProto(t, &operatorv1.McpCallRequested{ToolName: "test"}),
+	}
+
+	t.Run("outbound Operator rejects tools outside the native registry", func(t *testing.T) {
 		_, err := f.Svc.handleMcpCallRequestSync(context.Background(), msg)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "MCP gateway not configured")
+		require.ErrorIs(t, err, constants.ErrMCPNativeToolUnknown)
+	})
+
+	t.Run("outbound Operator without a local native tool host fails closed", func(t *testing.T) {
+		svc := &OperatorPubSubService{logger: testutil.NewTestLogger()}
+		_, err := svc.handleMcpCallRequestSync(context.Background(), msg)
+		require.ErrorIs(t, err, constants.ErrMCPNativeToolHostMissing)
 	})
 }
 

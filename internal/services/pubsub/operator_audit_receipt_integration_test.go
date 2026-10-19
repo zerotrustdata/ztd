@@ -129,7 +129,66 @@ func TestOperatorAuditReceiptRoute_GovernedLocalLedgerScope(t *testing.T) {
 	require.GreaterOrEqual(t, len(allRows), 5)
 }
 
+// TestOperatorNativeToolRoute_OutboundExecutesRegistryLocally proves an
+// outbound Operator, which never binds mcp.GatewayService, executes native MCP
+// tools from the shared registry against its own audit store under a signed
+// MCP_CALL receipt, and fails closed with a signed FAILED receipt for
+// Gateway-local tools it does not host.
+func TestOperatorNativeToolRoute_OutboundExecutesRegistryLocally(t *testing.T) {
+	svc, _, _, _ := newInferenceIntegrationFixture(t)
+	ctx := context.Background()
+	require.Nil(t, svc.GetMCPGateway(), "outbound Operators never bind the MCP gateway")
+	publicKey := svc.actuator.SigningKey.Public().(ed25519.PublicKey)
+
+	commandReceipt := processOperatorAuditRouteEnvelope(t, svc, ctx,
+		constants.Event.Operator.Command.Requested,
+		constants.ActionTypeExecuteBash,
+		&operatorv1.CommandRequested{Command: "echo native-route", ExecutionId: "exec-native-route"},
+		"investigation-native",
+		inferenceIntegrationSessionID,
+	)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, commandReceipt.GetStatus())
+
+	getArgs, err := json.Marshal(mcp.AuditReceiptGetRequest{TransactionID: commandReceipt.GetTransactionId()})
+	require.NoError(t, err)
+	getReceipt := processOperatorAuditRouteEnvelope(t, svc, ctx,
+		constants.Event.Operator.Mcp.CallRequested,
+		constants.ActionTypeMcpCall,
+		&operatorv1.McpCallRequested{ToolName: "audit_receipt_get", ArgumentsJson: string(getArgs)},
+		"investigation-native",
+		inferenceIntegrationSessionID,
+	)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, getReceipt.GetStatus())
+	require.NoError(t, governanceService.VerifyActionReceiptSignature(getReceipt, publicKey))
+	var got mcp.AuditReceiptGetResult
+	require.NoError(t, json.Unmarshal([]byte(getReceipt.GetResultSummary()), &got))
+	require.NotNil(t, got.Receipt)
+	require.Equal(t, commandReceipt.GetTransactionId(), got.Receipt.TransactionID)
+	require.Equal(t, svc.config.OperatorID, got.Receipt.OperatorID)
+
+	wire := operatorAuditRouteEnvelopeWire(t, svc,
+		constants.Event.Operator.Mcp.CallRequested,
+		constants.ActionTypeMcpCall,
+		&operatorv1.McpCallRequested{ToolName: "read_field", ArgumentsJson: `{}`},
+		"investigation-native",
+		inferenceIntegrationSessionID,
+	)
+	failed, err := svc.ProcessEnvelope(ctx, wire)
+	require.ErrorIs(t, err, constants.ErrMCPNativeToolUnknown)
+	require.NotNil(t, failed, "actuator must return a signed failed receipt")
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.GetStatus())
+	require.NoError(t, governanceService.VerifyActionReceiptSignature(failed, publicKey))
+}
+
 func processOperatorAuditRouteEnvelope(t *testing.T, svc *OperatorPubSubService, ctx context.Context, event constants.EventType, action constants.ActionType, payload proto.Message, investigationID, sessionID string) *operatorv1.ActionReceipt {
+	t.Helper()
+	receipt, err := svc.ProcessEnvelope(ctx, operatorAuditRouteEnvelopeWire(t, svc, event, action, payload, investigationID, sessionID))
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	return receipt
+}
+
+func operatorAuditRouteEnvelopeWire(t *testing.T, svc *OperatorPubSubService, event constants.EventType, action constants.ActionType, payload proto.Message, investigationID, sessionID string) []byte {
 	t.Helper()
 	payloadBytes, err := proto.Marshal(payload)
 	require.NoError(t, err)
@@ -154,8 +213,5 @@ func processOperatorAuditRouteEnvelope(t *testing.T, svc *OperatorPubSubService,
 	env.Id = env.TransactionHash
 	wire, err := protojson.Marshal(env)
 	require.NoError(t, err)
-	receipt, err := svc.ProcessEnvelope(ctx, wire)
-	require.NoError(t, err)
-	require.NotNil(t, receipt)
-	return receipt
+	return wire
 }

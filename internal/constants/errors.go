@@ -479,6 +479,7 @@ var (
 	// MCP native handler errors
 	ErrMCPNativeToolRegistration = errors.New("native tool registration failed")
 	ErrMCPNativeToolUnknown      = errors.New("unknown native tool")
+	ErrMCPNativeToolHostMissing  = errors.New("native tool host not configured on this runtime")
 	ErrMCPParseSocketPort        = errors.New("parse socket port")
 	ErrMCPParseSocketIPOctet     = errors.New("parse socket IP octet")
 

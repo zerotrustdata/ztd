@@ -1489,18 +1489,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 		if !ok {
 			return "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 		}
-		var sb strings.Builder
-		for _, c := range callResult.Content {
-			if c.Type == "text" {
-				sb.WriteString(c.Text)
-				sb.WriteString("\n")
-			}
-		}
-		summary := strings.TrimRight(sb.String(), "\n")
-		if summary == "" {
-			summary = "completed"
-		}
-		return g.scrubToolResult(ctx, summary)
+		return g.scrubToolResult(ctx, ToolResultSummary(callResult))
 	}
 
 	if g.isNativeTool(toolName) && g.nativeToolHandler != nil {
@@ -1508,19 +1497,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 		if err != nil {
 			return "", err
 		}
-		var sb strings.Builder
-		for _, c := range result.Content {
-			if c.Type == "text" {
-				sb.WriteString(c.Text)
-				sb.WriteString("\n")
-			}
-		}
-		summary := strings.TrimRight(sb.String(), "\n")
-		if summary == "" {
-			summary = "completed"
-		}
-
-		return g.scrubToolResult(ctx, summary)
+		return g.scrubToolResult(ctx, ToolResultSummary(result))
 	}
 
 	if !g.hasDownstream() {

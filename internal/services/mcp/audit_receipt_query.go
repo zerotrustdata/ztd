@@ -246,51 +246,6 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 	}, nil
 }
 
-// OperatorAuditReceiptHandler exposes only the audit_receipt_list native tool
-// against the executing Operator's local receipt store. Its authority context
-// makes investigation_id mandatory and scopes the indexed query to the
-// Operator identity, independent of the session that produced each receipt.
-type OperatorAuditReceiptHandler struct {
-	operatorID string
-	query      AuditReceiptQuery
-	tool       *AuditReceiptListTool
-}
-
-// NewOperatorAuditReceiptHandler constructs the local-only governed receipt
-// query route. Both dependencies are required because a missing local query or
-// identity cannot establish authoritative evidence.
-func NewOperatorAuditReceiptHandler(operatorID string, query AuditReceiptQuery) (*OperatorAuditReceiptHandler, error) {
-	if operatorID == "" {
-		return nil, fmt.Errorf("operator audit receipt handler: %w", constants.ErrOperatorIDMissing)
-	}
-	if query == nil {
-		return nil, fmt.Errorf("operator audit receipt handler: %w", constants.ErrMCPAuditReceiptQueryNotConfigured)
-	}
-	return &OperatorAuditReceiptHandler{operatorID: operatorID, query: query, tool: &AuditReceiptListTool{}}, nil
-}
-
-// Handle dispatches a typed MCP tools/call request to the shared native
-// audit_receipt_list tool. Other tools are rejected because this route is
-// intentionally limited to authoritative Operator-local receipt reads.
-func (h *OperatorAuditReceiptHandler) Handle(ctx context.Context, req CallToolRequest) (CallToolResult, error) {
-	if h == nil || h.tool == nil || h.query == nil || h.operatorID == "" {
-		return CallToolResult{}, fmt.Errorf("operator audit receipt handler: %w", constants.ErrMCPAuditReceiptQueryNotConfigured)
-	}
-	if req.Name != h.tool.Name() {
-		return CallToolResult{}, fmt.Errorf("operator audit receipt handler: unsupported tool %q", req.Name)
-	}
-	args := req.Arguments
-	if len(args) == 0 {
-		args = json.RawMessage("{}")
-	}
-	ctx = withAuditReceiptQuery(ctx, h.query)
-	ctx = withAuditReceiptListAuthority(ctx, auditReceiptListAuthority{
-		operatorID: h.operatorID,
-		name:       "operator_local_ledger",
-	})
-	return h.tool.Execute(ctx, args)
-}
-
 // AuditReceiptGetTool retrieves a single signed ActionReceipt by transaction
 // ID from the configured local audit store under governed MCP tool dispatch.
 type AuditReceiptGetTool struct{}
