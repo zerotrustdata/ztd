@@ -30,6 +30,9 @@ type EvalStackOptions struct {
 	Posture               constants.Posture
 	Replies               []OllamaReply
 	EnablePublicSpectator bool
+	// SharedRuntime serves the Data and Inference roles from one Operator
+	// process, so both roles append to one commitment ledger.
+	SharedRuntime bool
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
@@ -76,23 +79,39 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	witness := NewOperatorWireWitness(t, gateway)
 	provider := NewScriptedOllama(t, opts.Replies)
 
-	dataHost := NewOperatorHost(t)
-	inferenceHost := NewOperatorHost(t)
-	data := witness.LaunchOperator(t, dataHost, OperatorProcessOptions{
-		Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
-	})
-	inference := witness.LaunchOperator(t, inferenceHost, OperatorProcessOptions{
-		Capabilities:            constants.OperatorCapabilities{constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver},
-		InferenceOllamaEndpoint: provider.Endpoint(),
-	})
+	var dataHost, inferenceHost *OperatorHost
+	var data, inference *OperatorProcess
+	if opts.SharedRuntime {
+		dataHost = NewOperatorHost(t)
+		inferenceHost = dataHost
+		data = witness.LaunchOperator(t, dataHost, OperatorProcessOptions{
+			Capabilities: constants.OperatorCapabilities{
+				constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver,
+			},
+			InferenceOllamaEndpoint: provider.Endpoint(),
+		})
+		inference = data
+	} else {
+		dataHost = NewOperatorHost(t)
+		inferenceHost = NewOperatorHost(t)
+		data = witness.LaunchOperator(t, dataHost, OperatorProcessOptions{
+			Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
+		})
+		inference = witness.LaunchOperator(t, inferenceHost, OperatorProcessOptions{
+			Capabilities:            constants.OperatorCapabilities{constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver},
+			InferenceOllamaEndpoint: provider.Endpoint(),
+		})
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
 	require.NoError(t, data.AwaitStarted(ctx))
 	_, err := data.AwaitHeartbeat(ctx)
 	require.NoError(t, err)
-	require.NoError(t, inference.AwaitStarted(ctx))
-	_, err = inference.AwaitHeartbeat(ctx)
-	require.NoError(t, err)
+	if inference != data {
+		require.NoError(t, inference.AwaitStarted(ctx))
+		_, err = inference.AwaitHeartbeat(ctx)
+		require.NoError(t, err)
+	}
 
 	return &EvalStack{
 		Gateway: gateway, Identity: identity, Owner: owner, Witness: witness,

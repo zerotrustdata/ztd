@@ -36,6 +36,12 @@ type OllamaReply struct {
 	Content   string           `json:"content,omitempty"`
 	Thinking  string           `json:"thinking,omitempty"`
 	ToolCalls []OllamaToolCall `json:"tool_calls,omitempty"`
+	// Failure makes the turn fail the way an unavailable provider does: HTTP
+	// 500 with an Ollama error body.
+	Failure string `json:"-"`
+	// BeforeReply runs in the request handler before the reply is served, so a
+	// test can drive governed work while the model turn is in flight.
+	BeforeReply func() `json:"-"`
 }
 
 type scriptedOllamaMessage struct {
@@ -199,6 +205,16 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				case <-r.Context().Done():
 					return
 				}
+			}
+			if reply.BeforeReply != nil {
+				reply.BeforeReply()
+			}
+			if reply.Failure != "" {
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(struct {
+					Error string `json:"error"`
+				}{Error: reply.Failure})
+				return
 			}
 			calls := make([]scriptedToolCall, 0, len(reply.ToolCalls))
 			for _, call := range reply.ToolCalls {

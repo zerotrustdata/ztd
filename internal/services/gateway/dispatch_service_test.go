@@ -802,6 +802,61 @@ func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
 	}
 }
 
+// TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt pins the MCP_CALL
+// exception: the Operator publishes no result envelope for an MCP_CALL, so the
+// verified final receipt alone completes the dispatch. Every other action still
+// needs its result envelope and times out on a receipt alone.
+func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
+	mcpPayload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: `{"command":"pwd"}`, ExecutionId: "exec-mcp"})
+	require.NoError(t, err)
+	tests := []struct {
+		name      string
+		eventType constants.EventType
+		payload   []byte
+		wantErr   error
+	}{
+		{name: "MCP_CALL completes on its verified final receipt", eventType: constants.Event.Operator.Mcp.CallRequested, payload: mcpPayload},
+		{name: "FS_READ still waits for its result envelope", eventType: constants.Event.Operator.FsRead.Requested, payload: fsReadPayloadBytes(t), wantErr: constants.ErrDispatchResultTimeout},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
+			svc, broker := newTestDispatchService(t, "root-abc", op)
+			boundPub, signPriv, signKeyID := dispatchTestActuator()
+
+			unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, data []byte) {
+				cmdEnv := &commonv1.GovernanceEnvelope{}
+				if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, cmdEnv); err != nil {
+					t.Errorf("operator: unmarshal command: %v", err)
+					return
+				}
+				publishDispatchTestReceipt(t, broker, op, cmdEnv, signPriv, signKeyID)
+			})
+			defer unreg()
+
+			timeout := 5 * time.Second
+			if tt.wantErr != nil {
+				timeout = 200 * time.Millisecond
+			}
+			result, err := svc.Dispatch(context.Background(), DispatchRequest{
+				TargetOperatorSessionID: "sess-001",
+				EventType:               string(tt.eventType),
+				Payload:                 tt.payload,
+				Timeout:                 timeout,
+			})
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, result, "an unproven outcome must never be returned as a success")
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, result.Receipt)
+			assert.Nil(t, result.ResultEnvelope, "MCP_CALL publishes no result envelope")
+			assert.NoError(t, governance.VerifyActionReceiptSignature(result.Receipt, boundPub))
+		})
+	}
+}
+
 // --- DispatchController.HandleDispatch tests ---
 
 func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(t *testing.T) {

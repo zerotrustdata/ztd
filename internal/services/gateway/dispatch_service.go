@@ -508,6 +508,7 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 	// receipt for this transaction. Every other non-inference dispatch also
 	// waits for the verified final receipt (COMPLETED, or FAILED at L5), which
 	// the executing Operator publishes on the same channel after its result.
+	// MCP_CALL completes on that receipt alone (see completed below).
 	// Inference maps rejections and its final receipt from its own signed
 	// completion instead.
 	rejectedCh := make(chan *operatorv1.ActionReceipt, 1)
@@ -619,10 +620,14 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 	//    zero applies DispatchTimeout.
 	var progressEvents []*operatorv1.InferenceProgressEvent
 	// A non-inference dispatch succeeds only once it holds both the terminal
-	// result envelope and the verified final receipt, in either order.
+	// result envelope and the verified final receipt, in either order. An
+	// MCP_CALL is the exception: its tool result is stamped into the signed
+	// final receipt (ResultSummary) and no result envelope is published, so the
+	// verified final receipt alone is its terminal outcome.
 	var terminalResult *commonv1.GovernanceEnvelope
+	receiptIsOutcome := actionType == constants.ActionTypeMcpCall
 	completed := func() *DispatchResult {
-		if terminalResult == nil || finalReceipt == nil {
+		if finalReceipt == nil || (terminalResult == nil && !receiptIsOutcome) {
 			return nil
 		}
 		return &DispatchResult{
