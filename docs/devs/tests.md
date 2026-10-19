@@ -109,6 +109,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Onboarding script tests | `scripts/test-onboarding.sh`, `scripts/onboarding/` | `make test-onboarding`, `make test-onboarding-docker` |
 | Integration Gateway fixture | `test/fixtures/gateway_fixture.go` | `NewGatewayFixture` |
 | Gateway-local client identity | `test/fixtures/cli_identity.go` | `BootstrapCLIIdentity` and `CreateCLIMTLSClient` |
+| Production eval stack | `test/fixtures/eval_stack.go`, `test/fixtures/scripted_ollama.go` | `NewEvalStack`, `TestEvalStackUsesDistinctOutboundOperatorRoots`, `TestRunsExecute_RealStack` |
 | File service test isolation | `internal/testutil/paths.go`, `internal/services/fs/file_service.go` | `testutil.TempDir` |
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
 | Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
@@ -116,6 +117,10 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Completion transcript wire contract | `internal/services/gateway/platform_enrollment_validation_test.go` | `TestPlatformEnrollmentCompletionTranscriptGoldenVector` |
 
 Gateway-local MCP/A2A tests use `BootstrapCLIIdentity` to enroll the owner through the real bootstrap endpoint and bind the CLI session to the certless embedded Operator that executes those calls. `EnrollClientIdentity` enrolls a remote Operator and its CLI identity; that remote Operator remains offline until it subscribes to its command channel. Enrollment persists its session synchronously and must not be tested by waiting for active command readiness.
+
+Evaluation tests that execute assignments SHOULD use `fixtures.NewEvalStack`. It starts the production Gateway and separate outbound Data and Inference Operators with independent runtime roots and keyrings; only the Ollama provider is scripted. `OperatorWireWitness` records the enrolled certificates presented over mTLS. `ClientIdentity.InstallCLIRuntime` installs the bootstrap owner's certificate, sealed key, trust bundle and credentials into the test's CLI runtime. Tests MUST keep the production harness client, authentication loader, application enroller, binding client and campaign executor factories. Store-only tests need no running Gateway.
+
+For ratify and notary, the stack's owner answers the existing transaction-approval notifications through the mTLS pending-list and signed CLI approval HTTP routes. The app enroller still submits its own enrollment decision and waits for L3; the fixture does not replace the proof or resume handler. Notary uses the fixture's real Ed25519 consensus application. `ApprovalReceipts` exposes the returned receipts for assertions. These are in-process Tier 2 runtimes using the real network transport, not separate OS processes or live model evidence. Component fixtures own teardown through `t.Cleanup`; callers MUST NOT stop them again.
 
 ## Procedures
 

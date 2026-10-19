@@ -389,3 +389,14 @@ func TestAppPlatformEnrollmentClient_SubmitRequest_RejectsUnrelated403Containing
 	require.Error(t, err)
 	assert.Equal(t, 1, hits, "unrelated 403 containing 'bootstrapped' substring must not trigger bootstrap retry loop")
 }
+
+func TestNewAppPlatformEnrollmentClient_UsesConfiguredGatewayDiscoveryEndpoint(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	cfg.Paths.Host = "localhost"
+	config.SetHTTPEndpointOverride("http://gateway-fixture.example:19080")
+	t.Cleanup(func() { config.SetEndpointOverride("") })
+
+	client, err := NewAppPlatformEnrollmentClient("ztd-eval", fileSvc, cfg, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "http://gateway-fixture.example:19080", client.gatewayHTTPURL)
+}

@@ -26,20 +26,17 @@ import (
 	"log/slog"
 	"math"
 	mathrand "math/rand/v2"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/netutil"
 	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
@@ -147,7 +144,7 @@ func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileServic
 
 	gatewayHTTPURL := opt.GatewayHTTPURL
 	if gatewayHTTPURL == "" {
-		gatewayHTTPURL = resolveGatewayHTTPURL(cfg)
+		gatewayHTTPURL = cfg.OperatorDiscoveryURL()
 	}
 	gatewayHTTPURL = strings.TrimRight(gatewayHTTPURL, "/")
 
@@ -846,24 +843,6 @@ func parseRetryAfter(value string) time.Duration {
 		return 0
 	}
 	return time.Duration(seconds) * time.Second
-}
-
-func resolveGatewayHTTPURL(cfg *config.Config) string {
-	if cfg != nil && cfg.Paths != nil && cfg.Paths.Host != "" {
-		host := cfg.Paths.Host
-		if strings.Contains(host, "://") {
-			return strings.TrimRight(host, "/")
-		}
-		if bare, port, err := netutil.SplitEndpoint(host); err == nil && port == 0 {
-			return "http://" + net.JoinHostPort(bare, strconv.Itoa(constants.Ports.OperatorHttp))
-		}
-		return "http://" + host
-	}
-	host := "127.0.0.1"
-	if cfg != nil && cfg.Paths != nil && cfg.Paths.Host != "" {
-		host = cfg.Paths.Host
-	}
-	return fmt.Sprintf("http://%s:%d", host, constants.Ports.OperatorHttp)
 }
 
 func validateAppName(appName string) error {

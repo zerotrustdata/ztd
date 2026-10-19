@@ -46,7 +46,7 @@ type OperatorHost struct {
 // NewOperatorHost provisions an isolated host.
 func NewOperatorHost(t *testing.T) *OperatorHost {
 	t.Helper()
-	return &OperatorHost{WorkingDir: testutil.TempDir(t), Keyring: keystoretest.NewMemoryKeyring()}
+	return &OperatorHost{WorkingDir: testutil.OperatorDir(t), Keyring: keystoretest.NewMemoryKeyring()}
 }
 
 // OperatorProcessOptions tunes one Operator process.

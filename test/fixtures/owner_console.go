@@ -14,6 +14,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -27,13 +28,15 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/uuid"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // OwnerPolicy is how the owner answers enrollment requests.
 type OwnerPolicy int
 
 const (
-	// OwnerApprovesEach approves every enrollment request as it is announced.
+	// OwnerApprovesEach automatically approves each Operator enrollment request.
+	// Application enrollment is handled by its production owner approval flow.
 	OwnerApprovesEach OwnerPolicy = iota
 	// OwnerHoldsRequests records requests and leaves the decision to the test.
 	OwnerHoldsRequests
@@ -59,10 +62,12 @@ type OwnerConsole struct {
 	events  *eventLog[OwnerEvent]
 	faults  *eventLog[error]
 
-	mu        sync.Mutex
-	requested map[string]struct{}
-	decisions sync.WaitGroup
-	closed    bool
+	mu               sync.Mutex
+	requested        map[string]struct{}
+	approvalReceipts *eventLog[*operatorv1.ActionReceipt]
+	decisions        sync.WaitGroup
+	l3Responder      bool
+	closed           bool
 }
 
 // NewOwnerConsole creates the owner and opens their session stream. It must
@@ -103,13 +108,14 @@ func AttachOwnerConsole(t *testing.T, f *GatewayFixture, ownerID, cliSessionID s
 	require.Equal(t, firstUserID, ownerID, "owner console must be the first user")
 
 	c := &OwnerConsole{
-		UserID:       ownerID,
-		CLISessionID: cliSessionID,
-		gateway:      f,
-		policy:       policy,
-		events:       newEventLog[OwnerEvent](),
-		faults:       newEventLog[error](),
-		requested:    make(map[string]struct{}),
+		UserID:           ownerID,
+		CLISessionID:     cliSessionID,
+		gateway:          f,
+		policy:           policy,
+		events:           newEventLog[OwnerEvent](),
+		faults:           newEventLog[error](),
+		requested:        make(map[string]struct{}),
+		approvalReceipts: newEventLog[*operatorv1.ActionReceipt](),
 	}
 	unregister := f.Service.GetGatewayWebSocketHandler().RegisterHandler(pubsub.SSECLIChannel(cliSessionID), c.receive)
 
@@ -165,11 +171,26 @@ func (c *OwnerConsole) receive(_ string, data []byte) {
 	if decide {
 		go func() {
 			defer c.decisions.Done()
-			_, err := c.gateway.Service.GetPlatformEnrollmentService().Decide(context.Background(), c.UserID, models.PlatformEnrollmentDecisionRequest{
+			request, err := c.StoredRequest(context.Background(), requestID)
+			if err != nil {
+				c.faults.append(fmt.Errorf("load enrollment %s: %w", requestID, err))
+				return
+			}
+			if request.ComponentKind != models.PlatformComponentOperator {
+				return
+			}
+			_, err = c.gateway.Service.GetPlatformEnrollmentService().Decide(context.Background(), c.UserID, models.PlatformEnrollmentDecisionRequest{
 				RequestID: requestID,
 				Decision:  models.PlatformEnrollmentDecisionApprove,
 			})
 			if err != nil {
+				var l3Required *models.PlatformEnrollmentL3RequiredError
+				c.mu.Lock()
+				l3Responder := c.l3Responder
+				c.mu.Unlock()
+				if errors.As(err, &l3Required) && l3Responder {
+					return
+				}
 				c.faults.append(fmt.Errorf("approve %s: %w", requestID, err))
 			}
 		}()

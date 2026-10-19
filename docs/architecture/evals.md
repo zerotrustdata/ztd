@@ -47,6 +47,7 @@ Defines ztd's platform evaluation programs: the governance conformance suite and
 - [Owned surfaces](#owned-surfaces)
 - [Procedures](#procedures)
   - [Topology: Confidential Edge Execution with Governed State Mutation](#topology-confidential-edge-execution-with-governed-state-mutation)
+  - [Integration evidence boundary](#integration-evidence-boundary)
   - [Evaluation Programs Overview](#evaluation-programs-overview)
   - [Evaluation CLI Architecture](#evaluation-cli-architecture)
   - [Executing a Model Campaign](#executing-a-model-campaign)
@@ -178,6 +179,12 @@ Evaluation programs instantiate the **Confidential Edge Execution with Governed 
 - **Data Operator (PEP)**: Executes governed workspace mutations and shell commands requested by tool-calling agents.
 - **Observer Operator (Witness)**: Collects read-only hardware telemetry (GPU VRAM, temperature, power, system RAM) at the provider boundary.
 - **Provenance Operator (Witness)**: Attests storage-side model weight files, manifests, and content-addressed blobs via SHA-256 digests.
+
+### Integration evidence boundary
+
+`fixtures.NewEvalStack` exercises the campaign client against a production Gateway and separately rooted outbound Data and Inference Operators over mTLS. Its frozen Ollama replies are the only model substitute. The CLI test uses the production application enrollment, authentication, Operator binding, harness client and campaign executor factories, then verifies the imported trace against receipts read from the executing Operator's local store. Ratify and notary approvals are signed by the enrolled owner CLI identity and submitted through the production approval HTTP route; notary also requires the fixture's real signature quorum. See [the testing guide](../devs/tests.md#owned-surfaces) for fixture ownership and lifecycle.
+
+This Tier 2 rig establishes in-process production-path coverage. It does not establish separate-process behavior, live model quality or completion of the remaining eval-test migrations.
 
 ### Evaluation Programs Overview
 

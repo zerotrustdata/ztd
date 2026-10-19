@@ -1355,9 +1355,9 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .stream-table th, .lab-table th { color: var(--fg-muted); font-size: 12px; font-weight: 500; }
 .stream-table thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-elev); }
 .stream-table th:first-child { width: 76px; }
-.stream-table th:nth-child(2) { width: 31%; }
-.stream-table th:nth-child(3) { width: 24%; }
-.stream-table th:nth-child(n+4) { width: 11%; }
+.stream-table th:nth-child(2) { width: 27%; }
+.stream-table th:nth-child(3) { width: 21%; }
+.stream-table th:nth-child(n+4) { width: 10%; }
 .stream-table th:last-child { width: 100px; }
 .stream-table th:nth-child(n+4), .stream-table td:nth-child(n+4) { text-align: right; }
 .stream-table th:nth-child(n+4) .th-sort { justify-content: flex-end; }
@@ -1539,8 +1539,8 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 @media (max-width: 1000px) and (min-width: 701px) {
   .stream-table th, .stream-table td { padding: 10px 7px; }
   .stream-table th:first-child { width: 65px; }
-  .stream-table th:nth-child(2) { width: 29%; }
-  .stream-table th:nth-child(3) { width: 21%; }
+  .stream-table th:nth-child(2) { width: 25%; }
+  .stream-table th:nth-child(3) { width: 19%; }
   .stream-table th:last-child { width: 78px; }
   .stream-detail-cue { font-size: 0; }
   .stream-detail-cue::after { content: '→'; font-size: 14px; }
@@ -1572,9 +1572,10 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
     display: flex; align-items: baseline; gap: 5px; grid-row: 3; text-align: left; font-size: 11px; margin-top: 3px;
   }
   .stream-table .stream-metric-cell:nth-child(4) { grid-column: 2; }
-  .stream-table .stream-metric-cell:nth-child(6) { grid-column: 3; justify-content: flex-end; }
+  .stream-table .stream-metric-cell:nth-child(7) { grid-column: 3; justify-content: flex-end; }
   .stream-metric-cell::before { content: attr(data-label); color: var(--fg-muted); }
-  .stream-table .stream-metric-cell:nth-child(5) { display: none; }
+  .stream-table .stream-metric-cell:nth-child(5),
+  .stream-table .stream-metric-cell:nth-child(6) { display: none; }
 }
 
 /* System overview */

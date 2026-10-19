@@ -54,6 +54,7 @@ import (
 // It encapsulates the common pattern of creating a gateway, downstream server,
 // and all required dependencies.
 type GatewayFixture struct {
+	FileService      fs.RuntimeFileService
 	Config           *config.Config
 	Service          *gateway.GatewayModeService
 	DownstreamServer *httptest.Server
@@ -88,6 +89,10 @@ type GatewayFixtureOptions struct {
 	ConsensusNMembers        int
 	ConsensusQuorum          int
 	ConsensusNServiceMembers int
+
+	// ProductionConsensus uses HTTPS deliberation and gives enrolled Operators
+	// the same complete bound consensus policy that signs their commands.
+	ProductionConsensus bool
 
 	// OperatorLeafCertTTL, when nonzero, shortens the lifetime of issued
 	// Operator leaves so a test observes renewal.
@@ -281,6 +286,17 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		}
 		cs := consensustest.SetupConsensus(t, db.GetConsensusStore(), db.GetSignerStore(), consensusID, nMembers, quorum, nServiceMembers)
 		l2Deliberator = cs.Deliberator
+		if opts.ProductionConsensus {
+			policy, err := db.GetConsensusStore().GetConsensus(t.Context(), consensusID)
+			require.NoError(t, err)
+			require.NotNil(t, policy)
+			policy.ID = string(constants.DocIDConsensusBinding)
+			policy.EndpointURL = cs.Server.URL
+			require.NoError(t, db.GetConsensusStore().ClearConsensusBinding(t.Context(), ""))
+			require.NoError(t, db.GetConsensusStore().AddConsensus(t.Context(), *policy))
+			cs.Deliberator.ConsensusID = policy.ID
+			l2Deliberator = db.GetConsensusStore().NewConsensusAppDeliberator(cs.Server.Client())
+		}
 		consensusServer = cs.Server
 	}
 
@@ -346,6 +362,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	}
 
 	return &GatewayFixture{
+		FileService:      fileSvc,
 		Config:           cfg,
 		Service:          ls,
 		DownstreamServer: downstreamServer,
@@ -364,20 +381,26 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	}
 }
 
-// WaitForReady polls the HTTP health endpoint until the server accepts connections.
-// Uses HTTP port instead of HTTPS to avoid mTLS certificate requirements.
+// WaitForReady waits for the Gateway's listener signal, then verifies the
+// public health endpoint once. No timer-driven health polling is needed.
 func (f *GatewayFixture) WaitForReady(t *testing.T) {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	select {
+	case <-f.Service.Ready():
+	case <-ctx.Done():
+		t.Fatal("Gateway listeners did not become ready: ", ctx.Err())
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
-	require.Eventually(t, func() bool {
-		httpURL := network.LocalhostHTTPURL(f.Service.GetHTTPPort())
-		resp, err := client.Get(httpURL + constants.APIPaths.Health)
-		if err != nil {
-			return false
-		}
-		defer resp.Body.Close()
-		return resp.StatusCode == http.StatusOK
-	}, 10*time.Second, 100*time.Millisecond, "HTTP server did not become ready")
+	defer client.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		network.LocalhostHTTPURL(f.Service.GetHTTPPort())+constants.APIPaths.Health, nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Gateway health after listener readiness")
 }
 
 func mustMarshal(t *testing.T, v interface{}) json.RawMessage {
@@ -637,4 +660,11 @@ func (rt *cliSessionRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	clone := req.Clone(req.Context())
 	clone.Header.Set(constants.HeaderCLISessionID, rt.sessionID)
 	return rt.base.RoundTrip(clone)
+}
+
+// CloseIdleConnections forwards the HTTP client's cleanup to its base transport.
+func (rt *cliSessionRoundTripper) CloseIdleConnections() {
+	if closer, ok := rt.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
 }

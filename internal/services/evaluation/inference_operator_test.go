@@ -132,14 +132,20 @@ func TestSelectInferenceOperator_BlendedDeploymentTypes(t *testing.T) {
 			assert.Equal(t, op.RuntimeConfig.InferenceOllamaEndpoint, endpoint)
 			_, err = SelectInferenceOperatorForHardware(operators, op.OperatorSessionId, "other-hardware")
 			require.ErrorIs(t, err, constants.ErrInferenceOperatorNotCapable)
+			// When only the embedded operator is present, it is selected as the default.
+			if kind == constants.OperatorTypeEmbedded {
+				lone, loneErr := SelectInferenceOperator(operators, "")
+				require.NoError(t, loneErr)
+				assert.Equal(t, op.OperatorSessionId, lone.OperatorSessionID)
+			}
 			selected, err = SelectInferenceOperator(append(operators, &operatorv1.OperatorDocument{
 				Id: "other", OperatorSessionId: "other-session", Status: string(constants.OperatorStatusActive),
 				OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityInference)}},
 			}), "")
 			if kind == constants.OperatorTypeEmbedded {
-				// The embedded Operator is the default inference Operator.
+				// Dedicated remote inference Operators take precedence over the embedded fallback.
 				require.NoError(t, err)
-				assert.Equal(t, op.OperatorSessionId, selected.OperatorSessionID)
+				assert.Equal(t, "other-session", selected.OperatorSessionID)
 				return
 			}
 			require.ErrorIs(t, err, constants.ErrInferenceOperatorAmbiguous)

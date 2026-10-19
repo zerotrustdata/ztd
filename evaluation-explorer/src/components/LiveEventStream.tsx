@@ -50,12 +50,12 @@ function applyAssignmentResourceSummary(
 ): Record<string, MetricValue> {
   const resources = assignment?.resource_summary;
   if (!resources) return values;
-  if (values.latency_ms === undefined && resources.latency_ms) values.latency_ms = resources.latency_ms;
-  if (values.input_tokens === undefined && resources.input_tokens) values.input_tokens = resources.input_tokens;
-  if (values.output_tokens === undefined && resources.output_tokens) values.output_tokens = resources.output_tokens;
-  if (values.thinking_tokens === undefined && resources.thinking_tokens) values.thinking_tokens = resources.thinking_tokens;
-  if (values.cache_tokens === undefined && resources.cache_tokens) values.cache_tokens = resources.cache_tokens;
-  if (values.retries === undefined && resources.retries) values.retries = resources.retries;
+  if (resources.latency_ms) values.latency_ms = resources.latency_ms;
+  if (resources.input_tokens) values.input_tokens = resources.input_tokens;
+  if (resources.output_tokens) values.output_tokens = resources.output_tokens;
+  if (resources.thinking_tokens) values.thinking_tokens = resources.thinking_tokens;
+  if (resources.cache_tokens) values.cache_tokens = resources.cache_tokens;
+  if (resources.retries) values.retries = resources.retries;
   return values;
 }
 
@@ -140,12 +140,13 @@ function eventParts(event: LiveEvent, assignment: AssignmentResult | undefined):
   };
 }
 
-type AssignmentMetricColumn = 'latency_ms' | 'output_tokens' | 'tokens_per_second';
+type AssignmentMetricColumn = 'latency_ms' | 'input_tokens' | 'output_tokens' | 'tokens_per_second';
 type StreamSortField = 'time' | 'result' | 'task' | 'model' | AssignmentMetricColumn;
 type StreamSortDirection = 'asc' | 'desc';
 
 const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: string }> = [
   { key: 'latency_ms', label: 'Latency' },
+  { key: 'input_tokens', label: 'Input' },
   { key: 'output_tokens', label: 'Output' },
   { key: 'tokens_per_second', label: 'Tokens/s' },
 ];

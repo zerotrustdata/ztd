@@ -173,6 +173,9 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 		return nil
 	}
 	if err := c.synchronizeOperatorSubscription(ctx); err != nil {
+		if errors.Is(err, constants.ErrProvenanceOperatorNotFound) {
+			return nil
+		}
 		return fmt.Errorf("model provenance observation begin: %w", err)
 	}
 	command := &evalv1.ModelProvenanceObservationCommand{
@@ -207,6 +210,9 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 		return nil
 	}
 	if err := c.synchronizeOperatorSubscription(ctx); err != nil {
+		if errors.Is(err, constants.ErrProvenanceOperatorNotFound) {
+			return nil
+		}
 		return fmt.Errorf("model provenance observation finalize: %w", err)
 	}
 	status := evalv1.ModelProvenanceObservationAttemptStatus_MODEL_PROVENANCE_OBSERVATION_ATTEMPT_STATUS_COMPLETED
