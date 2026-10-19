@@ -776,6 +776,9 @@ var (
 	ErrOperatorStatusEventUnsupported   = errors.New("operator status has no status.updated event")
 	ErrOperatorStatusObserverNil        = errors.New("operator status observer binding cannot be nil")
 	ErrOperatorStatusObserverBound      = errors.New("operator status observer already bound")
+	ErrOperatorStopped                  = errors.New("operator stopped")
+	ErrOperatorShutdownRequested        = errors.New("operator service requested shutdown")
+	ErrOperatorCertificateMissing       = errors.New("operator holds no mTLS certificate in memory")
 	ErrDocumentStoreUnmarshalData       = errors.New("failed to unmarshal document data")
 
 	// App policy store service errors

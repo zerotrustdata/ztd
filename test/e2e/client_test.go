@@ -26,37 +26,9 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
-
-// E2EClient owns bounded public and mTLS HTTP clients for communicating with
-// a running production platform. It has no deployment-specific fields, no test framework
-// dependency, no bootstrap mutation, and no filesystem writes. Each request
-// accepts a context, uses constants from constants.APIPaths, applies the CLI
-// session header when authenticated, limits response reads, checks status
-// codes, decodes a typed response, and returns contextual errors.
-type E2EClient struct {
-	publicClient      *http.Client // no client cert, for health/CA bundle endpoints
-	mtlsClient        *http.Client // owner CLI cert, for authenticated endpoints
-	cliSessionID      string
-	userID            string
-	operatorID        string
-	operatorSessionID string
-	gatewayHTTPS      string
-}
-
-// newAuthenticatedRequest builds an HTTP request with the CLI session header
-// set, targeting the gateway HTTPS URL. The body parameter may be nil for GET
-// requests.
-func (c *E2EClient) newAuthenticatedRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
-	reqURL := c.gatewayHTTPS + path
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
-	if err != nil {
-		return nil, fmt.Errorf("build request %s %s: %w", method, path, err)
-	}
-	req.Header.Set(constants.HeaderCLISessionID, c.cliSessionID)
-	return req, nil
-}
 
 // GetHealth fetches the gateway health endpoint over HTTP (no mTLS) and
 // returns the typed HealthResponse.
@@ -253,11 +225,11 @@ func (c *E2EClient) GetOperatorBySession(ctx context.Context, sessionID string) 
 }
 
 // DispatchCommand sends a command dispatch request to the gateway via the
-// owner-authenticated commands endpoint. The dispatchRequestJSON body carries
+// owner-authenticated commands endpoint. The OperatorCommandRequest body carries
 // the target operator session ID, action type, and protobuf payload. The 200
 // body is a GovernedDispatchResult carrying the signed final receipt. The timeout parameter overrides the default client timeout for
 // long-running dispatch operations.
-func (c *E2EClient) DispatchCommand(ctx context.Context, body dispatchRequestJSON, timeout time.Duration) (*operatorv1.GovernedDispatchResult, error) {
+func (c *E2EClient) DispatchCommand(ctx context.Context, body gateway.OperatorCommandRequest, timeout time.Duration) (*operatorv1.GovernedDispatchResult, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal dispatch body: %w", err)
@@ -413,7 +385,7 @@ func (c *E2EClient) IngestAuditRecord(ctx context.Context, req models.AuditRecor
 
 // DispatchCommandExpectStatus posts a dispatch request and returns the HTTP status
 // and raw body without requiring success.
-func (c *E2EClient) DispatchCommandExpectStatus(ctx context.Context, body dispatchRequestJSON, expectedStatus int) (int, []byte, error) {
+func (c *E2EClient) DispatchCommandExpectStatus(ctx context.Context, body gateway.OperatorCommandRequest, expectedStatus int) (int, []byte, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return 0, nil, fmt.Errorf("marshal dispatch body: %w", err)
@@ -478,7 +450,7 @@ func (c *E2EClient) dispatchFsReadToSession(t *testing.T, ctx context.Context, o
 
 	dispatchCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	resp, err := c.DispatchCommand(dispatchCtx, dispatchRequestJSON{
+	resp, err := c.DispatchCommand(dispatchCtx, gateway.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.EventOperatorFilesystemReadRequested),
 		Payload:                 payload,

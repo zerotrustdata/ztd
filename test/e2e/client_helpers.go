@@ -13,8 +13,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // maxResponseBytes limits response body reads to prevent unbounded memory
@@ -26,35 +27,18 @@ const maxResponseBytes = 1 << 20
 // operations. Long-running operations (command dispatch) override this.
 const defaultClientTimeout = 30 * time.Second
 
-// parseCAPool parses a PEM-encoded CA bundle into an x509.CertPool. Returns an
-// error if the bundle is empty or contains no valid certificates.
+// parseCAPool parses a PEM-encoded CA bundle into an x509.CertPool. An empty
+// bundle returns constants.ErrEmptyTrustBundle; a bundle with no valid PEM
+// certificate returns constants.ErrCAParseFailed.
 func parseCAPool(caBundle []byte) (*x509.CertPool, error) {
 	if len(caBundle) == 0 {
-		return nil, fmt.Errorf("CA bundle is empty")
+		return nil, constants.ErrEmptyTrustBundle
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caBundle) {
-		return nil, fmt.Errorf("CA bundle contains no valid PEM certificates")
+		return nil, constants.ErrCAParseFailed
 	}
 	return pool, nil
-}
-
-// extractServerName parses an HTTPS URL and returns the hostname to use as
-// TLS ServerName. This ensures normal Go TLS hostname verification is applied
-// against the gateway's certificate SANs.
-func extractServerName(rawURL string) (string, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return "", fmt.Errorf("parse URL %q: %w", rawURL, err)
-	}
-	if parsed.Scheme != "https" {
-		return "", fmt.Errorf("expected https scheme, got %q in URL %q", parsed.Scheme, rawURL)
-	}
-	host := parsed.Hostname()
-	if host == "" {
-		return "", fmt.Errorf("URL %q has empty hostname", rawURL)
-	}
-	return host, nil
 }
 
 // truncateBody returns a shortened representation of body bytes for error

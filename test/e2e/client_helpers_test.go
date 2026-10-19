@@ -8,120 +8,32 @@
 package e2e
 
 import (
-	"crypto/x509"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestParseCAPool(t *testing.T) {
+func TestParseCAPool_RejectsEmptyAndCertlessBundles(t *testing.T) {
 	tests := []struct {
-		name          string
-		caBundle      []byte
-		expectError   bool
-		errorContains string
+		name     string
+		caBundle []byte
+		wantErr  error
 	}{
-		{
-			name:          "empty bundle",
-			caBundle:      []byte(""),
-			expectError:   true,
-			errorContains: "CA bundle is empty",
-		},
-		{
-			name:          "invalid PEM (no valid certs)",
-			caBundle:      []byte("not a certificate"),
-			expectError:   true,
-			errorContains: "CA bundle contains no valid PEM certificates",
-		},
-		{
-			name:          "whitespace only",
-			caBundle:      []byte("   \n\t  "),
-			expectError:   true,
-			errorContains: "CA bundle contains no valid PEM certificates",
-		},
+		{name: "empty bundle", caBundle: []byte(""), wantErr: constants.ErrEmptyTrustBundle},
+		{name: "invalid PEM (no valid certs)", caBundle: []byte("not a certificate"), wantErr: constants.ErrCAParseFailed},
+		{name: "whitespace only", caBundle: []byte("   \n\t  "), wantErr: constants.ErrCAParseFailed},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pool, err := parseCAPool(tt.caBundle)
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorContains)
-				assert.Nil(t, pool)
-			} else {
-				require.NoError(t, err)
-				assert.NotNil(t, pool)
-				assert.IsType(t, &x509.CertPool{}, pool)
-			}
-		})
-	}
-}
-
-func TestExtractServerName(t *testing.T) {
-	tests := []struct {
-		name          string
-		inputURL      string
-		expectedHost  string
-		expectError   bool
-		errorContains string
-	}{
-		{
-			name:         "standard HTTPS URL",
-			inputURL:     "https://gateway.example.com:8443",
-			expectedHost: "gateway.example.com",
-			expectError:  false,
-		},
-		{
-			name:         "HTTPS URL with port",
-			inputURL:     "https://192.168.1.100:8443",
-			expectedHost: "192.168.1.100",
-			expectError:  false,
-		},
-		{
-			name:         "HTTPS URL without port",
-			inputURL:     "https://localhost",
-			expectedHost: "localhost",
-			expectError:  false,
-		},
-		{
-			name:          "HTTP scheme (not HTTPS)",
-			inputURL:      "http://localhost:8443",
-			expectError:   true,
-			errorContains: "expected https scheme",
-		},
-		{
-			name:          "FTP scheme",
-			inputURL:      "ftp://localhost:8443",
-			expectError:   true,
-			errorContains: "expected https scheme",
-		},
-		{
-			name:          "empty hostname",
-			inputURL:      "https://:8443",
-			expectError:   true,
-			errorContains: "empty hostname",
-		},
-		{
-			name:          "malformed URL",
-			inputURL:      "not-a-url",
-			expectError:   true,
-			errorContains: "expected https scheme",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			host, err := extractServerName(tt.inputURL)
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorContains)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedHost, host)
-			}
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Nil(t, pool)
 		})
 	}
 }

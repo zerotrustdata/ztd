@@ -13,7 +13,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -31,9 +30,6 @@ import (
 
 // operatorStopTimeout bounds how long cleanup waits for one Operator to stop.
 const operatorStopTimeout = 30 * time.Second
-
-// errOperatorStopped is the cause recorded when a test stops an Operator.
-var errOperatorStopped = errors.New("operator process stopped")
 
 // OperatorHost is one machine an Operator runs on: a runtime root and the key
 // store holding its master key. Successive Operator processes on the same host
@@ -82,6 +78,9 @@ type OperatorProcess struct {
 	runtime  *serve.OperatorRuntime
 	startErr error
 
+	// exited is closed when the start-and-watch goroutine returns.
+	exited chan struct{}
+
 	// alive ends, with a cause, when the service fails or the process stops,
 	// so waits on this Operator end with the reason instead of a timeout.
 	alive context.Context
@@ -114,6 +113,7 @@ func (w *OperatorWireWitness) LaunchOperator(t *testing.T, host *OperatorHost, o
 		gateway:    w.gateway,
 		cancel:     cancel,
 		started:    make(chan struct{}),
+		exited:     make(chan struct{}),
 		alive:      alive,
 		kill:       kill,
 		heartbeats: newEventLog[OperatorHeartbeat](),
@@ -133,21 +133,14 @@ func (w *OperatorWireWitness) LaunchOperator(t *testing.T, host *OperatorHost, o
 	deps := serve.OperatorRuntimeDeps{Logger: testutil.NewTestLogger(), ClientIdentity: identity}
 
 	go func() {
-		defer close(p.started)
+		defer close(p.exited)
 		p.runtime, p.startErr = serve.StartOperator(ctx, serveOpts, serve.VersionInfo{Version: "test", BuildID: "test"}, deps)
+		close(p.started)
 		if p.startErr != nil {
-			p.kill(fmt.Errorf("operator start failed: %w", p.startErr))
+			p.kill(fmt.Errorf("operator process: start: %w", p.startErr))
 			return
 		}
-		go func() {
-			select {
-			case err := <-p.runtime.Failed():
-				p.kill(fmt.Errorf("operator service failed: %w", err))
-			case <-p.runtime.Done():
-				p.kill(errors.New("operator service requested shutdown"))
-			case <-alive.Done():
-			}
-		}()
+		p.watch()
 	}()
 
 	t.Cleanup(func() {
@@ -158,6 +151,18 @@ func (w *OperatorWireWitness) LaunchOperator(t *testing.T, host *OperatorHost, o
 		}
 	})
 	return p
+}
+
+// watch ends alive with the cause when the running service fails or requests
+// shutdown, and returns once alive has ended.
+func (p *OperatorProcess) watch() {
+	select {
+	case err := <-p.runtime.Failed():
+		p.kill(fmt.Errorf("operator process: service failed: %w", err))
+	case <-p.runtime.Done():
+		p.kill(fmt.Errorf("operator process: %w", constants.ErrOperatorShutdownRequested))
+	case <-p.alive.Done():
+	}
 }
 
 // AwaitStarted blocks until the Operator has enrolled and its service is
@@ -173,7 +178,7 @@ func (p *OperatorProcess) AwaitStarted(ctx context.Context) error {
 	}
 	workload, err := p.Workload()
 	if err != nil {
-		return err
+		return fmt.Errorf("operator process: await start: %w", err)
 	}
 
 	p.mu.Lock()
@@ -191,7 +196,7 @@ func (p *OperatorProcess) AwaitStarted(ctx context.Context) error {
 func (p *OperatorProcess) Leaf() (*x509.Certificate, error) {
 	cert, ok := p.Identity.GetCertificate()
 	if !ok {
-		return nil, errors.New("operator process: no certificate in memory")
+		return nil, fmt.Errorf("operator process: leaf: %w", constants.ErrOperatorCertificateMissing)
 	}
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
@@ -204,11 +209,11 @@ func (p *OperatorProcess) Leaf() (*x509.Certificate, error) {
 func (p *OperatorProcess) Workload() (protocol.OperatorWorkload, error) {
 	leaf, err := p.Leaf()
 	if err != nil {
-		return protocol.OperatorWorkload{}, err
+		return protocol.OperatorWorkload{}, fmt.Errorf("operator process: workload: %w", err)
 	}
 	workload, ok := OperatorWorkloadOf(leaf)
 	if !ok {
-		return protocol.OperatorWorkload{}, fmt.Errorf("operator process: leaf %s carries no Operator identity", leaf.Subject)
+		return protocol.OperatorWorkload{}, fmt.Errorf("operator process: workload: leaf %s: %w", leaf.Subject, constants.ErrPubSubCertificateMissingOperatorID)
 	}
 	return workload, nil
 }
@@ -266,12 +271,12 @@ func (p *OperatorProcess) AwaitHeartbeatRecordedAfter(ctx context.Context, mark 
 // gone with it. Stop is idempotent.
 func (p *OperatorProcess) Stop(ctx context.Context) error {
 	p.stopOnce.Do(func() {
-		p.kill(errOperatorStopped)
+		p.kill(fmt.Errorf("operator process: %w", constants.ErrOperatorStopped))
 		p.cancel()
 		select {
-		case <-p.started:
+		case <-p.exited:
 		case <-ctx.Done():
-			p.stopErr = fmt.Errorf("start did not return: %w", ctx.Err())
+			p.stopErr = fmt.Errorf("operator process: stop: start did not return: %w", ctx.Err())
 			return
 		}
 		p.mu.Lock()
@@ -279,8 +284,11 @@ func (p *OperatorProcess) Stop(ctx context.Context) error {
 			p.unregister()
 		}
 		p.mu.Unlock()
-		if p.runtime != nil {
-			p.stopErr = p.runtime.Stop(ctx)
+		if p.runtime == nil {
+			return
+		}
+		if err := p.runtime.Stop(ctx); err != nil {
+			p.stopErr = fmt.Errorf("operator process: stop: %w", err)
 		}
 	})
 	return p.stopErr
