@@ -50,42 +50,81 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 		return nil, err
 	}
 	if action == constants.ActionTypeMcpCall {
-		c.queries = append(c.queries, req)
 		call := &operatorv1.McpCallRequested{}
 		if err := proto.Unmarshal(req.Payload, call); err != nil {
 			return nil, err
 		}
-		var query struct {
-			InvestigationID string `json:"investigation_id"`
-		}
-		if err := json.Unmarshal([]byte(call.GetArgumentsJson()), &query); err != nil {
-			return nil, err
-		}
-		var rows []*operatorv1.ActionReceipt
-		for _, row := range c.records {
-			if row.InvestigationID == query.InvestigationID {
-				rows = append(rows, row.ActionReceipt)
+		if call.GetToolName() == constants.MCPToolAuditReceiptList || call.GetToolName() == agentToolInvestigationCtx {
+			c.queries = append(c.queries, req)
+			var query struct {
+				InvestigationID   string `json:"investigation_id"`
+				ExcludeActionType string `json:"exclude_action_type"`
 			}
+			if err := json.Unmarshal([]byte(call.GetArgumentsJson()), &query); err != nil {
+				return nil, err
+			}
+			var rows []*operatorv1.ActionReceipt
+			for _, row := range c.records {
+				if row.InvestigationID == query.InvestigationID {
+					if query.ExcludeActionType != "" && string(row.ActionType) == query.ExcludeActionType {
+						continue
+					}
+					rows = append(rows, row.ActionReceipt)
+				}
+			}
+			result := models.OperatorAuditReceiptListResult{
+				OperatorID:      c.base.fixture.ledger.operatorID,
+				Authority:       "operator_local_ledger",
+				Receipts:        rows,
+				Count:           len(rows),
+				InvestigationID: query.InvestigationID,
+			}
+			body, err := json.Marshal(result)
+			if err != nil {
+				return nil, err
+			}
+			txID := fmt.Sprintf("tx-context-query-%d", len(c.queries))
+			r := c.base.fixture.ledger.executed(txID, string(constants.ActionTypeMcpCall))
+			r.ResultSummary = string(body)
+			c.base.fixture.ledger.signer.Resign(c.base.fixture.t, r)
+			return &client.GovernedOutcome{
+				Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: r},
+				Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: txID, Receipt: r},
+			}, nil
 		}
-		result := models.OperatorAuditReceiptListResult{
-			OperatorID:      c.base.fixture.ledger.operatorID,
-			Authority:       "operator_local_ledger",
-			Receipts:        rows,
-			Count:           len(rows),
-			InvestigationID: query.InvestigationID,
+		if call.GetToolName() == "read_file" {
+			var args struct {
+				Path string `json:"path"`
+			}
+			_ = json.Unmarshal([]byte(call.GetArgumentsJson()), &args)
+			content := ""
+			for pathSub, data := range c.fsReads {
+				if strings.Contains(args.Path, pathSub) {
+					content = data
+					break
+				}
+			}
+			c.dispatches++
+			txID := fmt.Sprintf("tx-dispatch-%d", c.dispatches)
+			receipt := c.base.fixture.ledger.executed(txID, string(constants.ActionTypeFsRead))
+			receipt.ResultSummary = content
+			c.base.fixture.ledger.signer.Resign(c.base.fixture.t, receipt)
+
+			c.records = append(c.records, &models.ActionReceiptRecord{
+				TransactionID:     receipt.GetTransactionId(),
+				OperatorID:        c.base.fixture.ledger.operatorID,
+				OperatorSessionID: c.base.fixture.ledger.sessionID,
+				InvestigationID:   req.InvestigationID,
+				ActionType:        constants.ActionTypeFsRead,
+				ResultSummary:     receipt.GetResultSummary(),
+				Status:            receipt.GetStatus(),
+				ActionReceipt:     receipt,
+			})
+			return &client.GovernedOutcome{
+				Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: receipt},
+				Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: txID, Receipt: receipt},
+			}, nil
 		}
-		body, err := json.Marshal(result)
-		if err != nil {
-			return nil, err
-		}
-		txID := fmt.Sprintf("tx-context-query-%d", len(c.queries))
-		r := c.base.fixture.ledger.executed(txID, string(constants.ActionTypeMcpCall))
-		r.ResultSummary = string(body)
-		c.base.fixture.ledger.signer.Resign(c.base.fixture.t, r)
-		return &client.GovernedOutcome{
-			Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: r},
-			Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: txID, Receipt: r},
-		}, nil
 	}
 
 	c.dispatches++
@@ -197,16 +236,16 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 	turn1Parts := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-read-conf",
-			Name:          agentToolFileRead,
-			ArgumentsJson: `{"file_path":"app/service.conf","justification":"inspect service config","target_operators":["ztdo"]}`,
+			Name:          "read_file",
+			ArgumentsJson: `{"path":"app/service.conf"}`,
 		}}},
 	}
 	// Turn 2: Model reads app/logs/service.log
 	turn2Parts := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-read-log",
-			Name:          agentToolFileRead,
-			ArgumentsJson: `{"file_path":"app/logs/service.log","justification":"inspect error logs","target_operators":["ztdo"]}`,
+			Name:          "read_file",
+			ArgumentsJson: `{"path":"app/logs/service.log"}`,
 		}}},
 	}
 	// Turn 3: Model runs health check script
@@ -214,7 +253,7 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-run-check",
 			Name:          agentToolRunCommands,
-			ArgumentsJson: `{"command":"sh ./check.sh","justification":"verify health check","target_operators":["ztdo"]}`,
+			ArgumentsJson: `{"command":"sh ./check.sh","request":"verify health check"}`,
 		}}},
 	}
 	// Turn 4: Model diagnoses the issue
@@ -261,12 +300,12 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 
 	// --- RUN 2 (Sequential Run on Persistent Investigation) ---
 	// Workspace is restored to planted fault.
-	// Turn 1: Model calls query_investigation_context, sees prior run's findings!
+	// Turn 1: Model calls audit_receipt_list, sees prior run's findings!
 	run2Turn1 := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-context-query",
-			Name:          agentToolInvestigationCtx,
-			ArgumentsJson: `{"data_type":"operator_actions"}`,
+			Name:          constants.MCPToolAuditReceiptList,
+			ArgumentsJson: `{"limit":20}`,
 		}}},
 	}
 	// Turn 2: Directly outputs diagnosis without needing extra file reads!
@@ -315,34 +354,34 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 	assert.Less(t, steps2, steps1, "sequential run on persistent investigation should achieve diagnosis in fewer steps than initial run")
 
 	// --- CONTROL CONDITION (Fresh Investigation Runs) ---
-	// In fresh investigation, query_investigation_context returns nothing.
+	// In fresh investigation, audit_receipt_list returns nothing.
 	controlTurn1 := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-context-query-fresh",
-			Name:          agentToolInvestigationCtx,
-			ArgumentsJson: `{"data_type":"operator_actions"}`,
+			Name:          constants.MCPToolAuditReceiptList,
+			ArgumentsJson: `{"limit":20}`,
 		}}},
 	}
 	// Since history was empty, agent must perform file reads next
 	controlTurn2 := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-read-conf-control",
-			Name:          agentToolFileRead,
-			ArgumentsJson: `{"file_path":"app/service.conf","justification":"read service conf","target_operators":["ztdo"]}`,
+			Name:          "read_file",
+			ArgumentsJson: `{"path":"app/service.conf"}`,
 		}}},
 	}
 	controlTurn3 := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-read-log-control",
-			Name:          agentToolFileRead,
-			ArgumentsJson: `{"file_path":"app/logs/service.log","justification":"read service logs","target_operators":["ztdo"]}`,
+			Name:          "read_file",
+			ArgumentsJson: `{"path":"app/logs/service.log"}`,
 		}}},
 	}
 	controlTurn4 := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-run-check-control",
 			Name:          agentToolRunCommands,
-			ArgumentsJson: `{"command":"sh ./check.sh","justification":"verify health check","target_operators":["ztdo"]}`,
+			ArgumentsJson: `{"command":"sh ./check.sh","request":"verify health check"}`,
 		}}},
 	}
 	// Turn 5: Finally outputs diagnosis
@@ -446,8 +485,8 @@ func TestPlantedFaultFixtures_EvaluationAcrossAllThreeScenarios(t *testing.T) {
 			turns := [][]*operatorv1.InferenceResponsePart{
 				{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 					CallId:        "call-1",
-					Name:          agentToolFileRead,
-					ArgumentsJson: fmt.Sprintf(`{"file_path":%q,"justification":"read target file","target_operators":["ztdo"]}`, readFile),
+					Name:          "read_file",
+					ArgumentsJson: fmt.Sprintf(`{"path":%q}`, readFile),
 				}}}},
 				{{Part: &operatorv1.InferenceResponsePart_Text{Text: tc.diagnosisText}}},
 			}

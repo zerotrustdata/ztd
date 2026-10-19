@@ -21,7 +21,7 @@ func TestToolSelectInvestigationChecksCurrentHistoryWithoutSeededReceipts(t *tes
 	assert.Empty(t, blueprint.Input.Seed.HistoryEvents)
 	assert.NotContains(t, strings.ToLower(blueprint.Input.UserPrompt), "payment timeout")
 	assert.NotContains(t, strings.ToLower(blueprint.Gold.ExpectedBehavior), "payment timeout")
-	assert.Equal(t, "1.3.0", blueprint.ScenarioVersion)
+	assert.Equal(t, toolSelectInvestigationScenarioVersion, blueprint.ScenarioVersion)
 
 	check := *blueprint.Gold.ContentCheck
 	for _, output := range []string{

@@ -43,14 +43,14 @@ func scenarioUnanswerableError(blueprint ScenarioBlueprint, format string, args 
 // validateScenarioContract fails closed on any breach of the scenario
 // contract. Both catalog builders call it, so a bad blueprint cannot
 // materialize. Checks run in the order the plan lists them.
-func validateScenarioContract(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	if blueprint.TrajectoryPolicy == evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_UNSPECIFIED {
 		return scenarioContractError(blueprint, "trajectory policy is unspecified")
 	}
 	if err := validateSeedCaseTitle(blueprint); err != nil {
 		return err
 	}
-	if err := validateScenarioToolNames(blueprint, registry); err != nil {
+	if err := validateScenarioToolNames(blueprint, catalog); err != nil {
 		return err
 	}
 	if err := validateScenarioToolSets(blueprint); err != nil {
@@ -70,10 +70,10 @@ func validateScenarioContract(blueprint ScenarioBlueprint, registry *AgentToolRe
 	if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
 		return err
 	}
-	if err := validateArgumentValidators(blueprint, registry); err != nil {
+	if err := validateArgumentValidators(blueprint, catalog); err != nil {
 		return err
 	}
-	if err := validatePromptHint(blueprint, registry); err != nil {
+	if err := validatePromptHint(blueprint, catalog); err != nil {
 		return err
 	}
 	if err := validateWorkspaceFiles(blueprint); err != nil {
@@ -157,7 +157,7 @@ func validateSeedCaseTitle(blueprint ScenarioBlueprint) error {
 	return nil
 }
 
-func validateScenarioToolNames(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validateScenarioToolNames(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	names := make([]string, 0, len(blueprint.AllowedTools)+len(blueprint.ExpectedTools)+len(blueprint.ForbiddenTools))
 	names = append(names, blueprint.AllowedTools...)
 	names = append(names, blueprint.ExpectedTools...)
@@ -169,8 +169,8 @@ func validateScenarioToolNames(blueprint ScenarioBlueprint, registry *AgentToolR
 		names = append(names, validator.ToolName)
 	}
 	for _, name := range names {
-		if _, ok := registry.Tool(name); !ok {
-			return scenarioContractError(blueprint, "tool %q is not in the agent tool registry", name)
+		if _, ok := catalog.Tool(name); !ok {
+			return scenarioContractError(blueprint, "tool %q is not in the agent tool catalog", name)
 		}
 	}
 	return nil
@@ -240,10 +240,13 @@ func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContent
 	return scenarioContractError(blueprint, "unknown diagnosis rubric %q", check.DiagnosisRubric)
 }
 
-func validateArgumentValidators(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	for _, validator := range blueprint.Gold.ArgumentValidators {
-		tool, _ := registry.Tool(validator.ToolName)
-		arguments, _ := agentToolArgumentContract(tool, blueprint.TribunalCommands)
+		tool, ok := catalog.Tool(validator.ToolName)
+		if !ok {
+			return scenarioContractError(blueprint, "validator for %q constrains unknown tool", validator.ToolName)
+		}
+		arguments := tool.Arguments(blueprint.TribunalCommands)
 		known := stringSet(arguments)
 		for _, constraint := range validator.Arguments {
 			if _, ok := known[constraint.Name]; !ok {
@@ -260,7 +263,7 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, registry *AgentTool
 
 // validatePromptHint enforces INV-EVAL-CAMP-11: every required argument of
 // every hinted tool is derivable from where the hint says it is.
-func validatePromptHint(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validatePromptHint(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	hint := blueprint.Gold.PromptHint
 	if hint == nil {
 		return nil
@@ -272,8 +275,11 @@ func validatePromptHint(blueprint ScenarioBlueprint, registry *AgentToolRegistry
 		}
 	}
 	for _, toolName := range hint.HintedTools {
-		tool, _ := registry.Tool(toolName)
-		_, requiredArguments := agentToolArgumentContract(tool, blueprint.TribunalCommands)
+		tool, ok := catalog.Tool(toolName)
+		if !ok {
+			return scenarioContractError(blueprint, "hint names unknown tool %q", toolName)
+		}
+		requiredArguments := tool.RequiredArguments(blueprint.TribunalCommands)
 		for _, required := range requiredArguments {
 			matches := hintArgumentsFor(hint, toolName, required)
 			if len(matches) != 1 {

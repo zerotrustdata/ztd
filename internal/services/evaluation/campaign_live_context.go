@@ -22,7 +22,10 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const investigationContextMaxReceipts = 50
+const (
+	investigationContextMaxReceipts = 50
+	agentToolInvestigationCtx       = "query_investigation_context"
+)
 
 // AgentContextRetrieval records the exact query and receipt references returned
 // by the Data Operator. The signed query receipt retains the full response.
@@ -34,6 +37,25 @@ type AgentContextRetrieval struct {
 type AgentContextReceiptRef struct {
 	ReceiptID string `json:"receipt_id"`
 	Digest    string `json:"sha256"`
+}
+
+type agentInvestigationContextResult struct {
+	Success         bool                      `json:"success"`
+	DataType        string                    `json:"data_type"`
+	InvestigationID string                    `json:"investigation_id"`
+	OperatorID      string                    `json:"operator_id"`
+	Authority       string                    `json:"authority"`
+	CaseTitle       string                    `json:"case_title,omitempty"`
+	CaseDescription string                    `json:"case_description,omitempty"`
+	Events          []agentInvestigationEvent `json:"events,omitempty"`
+}
+
+type agentInvestigationEvent struct {
+	ReceiptID     string `json:"receipt_id"`
+	ReceiptDigest string `json:"receipt_digest"`
+	EventType     string `json:"event_type"`
+	Actor         string `json:"actor"`
+	Summary       string `json:"summary"`
 }
 
 func (e *CampaignAgentExecutor) investigationID(req AssignmentExecutionRequest) (string, error) {
@@ -168,7 +190,7 @@ func investigationReceiptContext(dataType, investigationID string, result mcp.Op
 // signed query answer, so a resealed trace cannot invent retrieved evidence.
 func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	if call.Retrieval == nil {
-		if (trace.SchemaVersion == agentTraceSchemaVersion || trace.SchemaVersion == agentTraceSchemaVersionV6) && call.ToolName == agentToolInvestigationCtx {
+		if (trace.SchemaVersion == agentTraceSchemaVersion || trace.SchemaVersion == agentTraceSchemaVersionV6) && (call.ToolName == agentToolInvestigationCtx || call.ToolName == constants.MCPToolAuditReceiptList) {
 			// A completed query cannot suppress its evidence by changing the
 			// unsigned Success flag. Denied and failed calls have no retrieval.
 			if call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
@@ -189,7 +211,7 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 		}
 		return nil
 	}
-	if call.ToolName != agentToolInvestigationCtx || !call.Success || call.ActionType != string(constants.ActionTypeMcpCall) {
+	if (call.ToolName != agentToolInvestigationCtx && call.ToolName != constants.MCPToolAuditReceiptList) || !call.Success || call.ActionType != string(constants.ActionTypeMcpCall) {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	result, refs, err := decodeInvestigationReceipts(trace, call.Retrieval.Query, call.Receipt)
@@ -203,6 +225,32 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 		if refs[i] != call.Retrieval.Receipts[i] {
 			return constants.ErrEvaluationEvidenceTraceMismatch
 		}
+	}
+	if call.ToolName == constants.MCPToolAuditReceiptList {
+		var req mcp.AuditReceiptListRequest
+		if err := json.Unmarshal([]byte(call.ArgumentsJSON), &req); err != nil {
+			return err
+		}
+		if req.Limit <= 0 {
+			req.Limit = agentToolDefaultHistoryLimit
+		}
+		if req.InvestigationID == "" {
+			req.InvestigationID = trace.InvestigationID
+		}
+		if req.ExcludeActionType == "" {
+			req.ExcludeActionType = string(constants.ActionTypeMcpCall)
+		}
+		if call.Retrieval.Query != req {
+			return constants.ErrEvaluationEvidenceTraceMismatch
+		}
+		want, err := canonicalToolJSON(result)
+		if err != nil {
+			return err
+		}
+		if call.ResultJSON != want {
+			return constants.ErrEvaluationEvidenceTraceMismatch
+		}
+		return nil
 	}
 	var args struct {
 		DataType string `json:"data_type"`

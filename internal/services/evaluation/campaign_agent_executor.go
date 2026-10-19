@@ -11,10 +11,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -74,11 +77,7 @@ func NewCampaignAgentExecutor(inference GovernedInferenceDispatcher, tools Agent
 	if inference == nil || tools == nil || sentinel == nil || traceStore == nil || newID == nil {
 		return nil, fmt.Errorf("evaluation: agent executor: %w", constants.ErrMissingRequiredField)
 	}
-	registry, err := LoadAgentToolRegistry()
-	if err != nil {
-		return nil, err
-	}
-	catalog, err := newAgentToolCatalog(registry)
+	catalog, err := newAgentToolCatalog()
 	if err != nil {
 		return nil, err
 	}
@@ -871,19 +870,15 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("ZTD-1607: Unknown tool %q; %s", toolCall.GetName(), hint)})
 	}
 	record.IsOperatorTool = spec.Operator
-	args, failure := parseAgentToolArguments(spec, toolCall.GetArgumentsJson())
+	args, failure := parseAgentToolArguments(spec, toolCall.GetArgumentsJson(), r.req.ScenarioTools.TribunalCommands)
 	if failure != nil {
 		return r.fail(record, *failure)
 	}
 	switch spec.Name {
-	case agentToolCommandConstraints:
-		return r.succeed(record, commandConstraints(r.target.OperatorID, r.workspace.OperatorWorkingDirectory))
-	case agentToolInvestigationCtx:
-		return r.runInvestigationContext(ctx, record, args)
 	case agentToolRunCommands:
 		return r.runCommand(ctx, record, args)
 	default:
-		return r.runFileTool(ctx, record, spec.Name, args)
+		return r.runNativeMCPTool(ctx, record, spec.Name, args)
 	}
 }
 
@@ -909,65 +904,78 @@ func (r *agentRun) succeed(record AgentToolCall, value any) (AgentToolCall, erro
 	return record, nil
 }
 
-// runFileTool maps one filesystem tool onto its typed governed action.
-func (r *agentRun) runFileTool(ctx context.Context, record AgentToolCall, tool string, args agentToolArguments) (AgentToolCall, error) {
-	var (
-		action   constants.ActionType
-		resource string
-		message  proto.Message
-	)
-	switch tool {
-	case agentToolFileRead:
-		resource = r.workspace.Resolve(args.String("file_path"))
-		action, message = constants.ActionTypeFsRead, &operatorv1.FsReadRequested{Path: resource, ExecutionId: record.CallID}
-	case agentToolFileList:
-		path := args.String("path")
-		if path == "" {
-			path = r.workspace.OperatorWorkingDirectory
-		}
-		resource = r.workspace.Resolve(path)
-		action, message = constants.ActionTypeFsList, &operatorv1.FsListRequested{
-			Path: resource, ExecutionId: record.CallID, MaxDepth: int32(args.Int("max_depth", 1)), MaxEntries: int32(args.Int("max_entries", agentToolDefaultMaxEntries)),
-		}
-	case agentToolGrep:
-		resource = r.workspace.Resolve(args.String("path"))
-		action, message = constants.ActionTypeFsGrep, &operatorv1.FsGrepRequested{
-			Path: resource, ExecutionId: record.CallID, Pattern: args.String("pattern"), Includes: args.Strings("includes"), MaxMatches: int32(args.Int("max_matches", agentToolDefaultMaxMatches)),
-		}
-	case agentToolFileWrite:
-		resource = r.workspace.Resolve(args.String("file_path"))
-		action, message = constants.ActionTypeFileEdit, &operatorv1.FileEditRequested{
-			FilePath: resource, Operation: string(constants.FileOperationWrite), ExecutionId: record.CallID, Justification: args.String("justification"),
-			Content: args.String("content"), CreateBackup: args.Bool("create_backup"), CreateIfMissing: args.Bool("create_if_missing"),
-		}
-	case agentToolFileUpdate:
-		resource = r.workspace.Resolve(args.String("file_path"))
-		action, message = constants.ActionTypeFileEdit, &operatorv1.FileEditRequested{
-			FilePath: resource, Operation: string(constants.FileOperationReplace), ExecutionId: record.CallID, Justification: args.String("justification"),
-			OldContent: args.String("old_content"), NewContent: args.String("new_content"), CreateBackup: args.Bool("create_backup"),
-		}
-	case agentToolFileCreate:
-		resource = r.workspace.Resolve(args.String("file_path"))
-		action, message = constants.ActionTypeFileEdit, &operatorv1.FileEditRequested{
-			FilePath: resource, Operation: string(constants.FileOperationWrite), ExecutionId: record.CallID, Justification: args.String("justification"),
-			Content: args.String("content"), CreateIfMissing: true,
-		}
-	default:
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("ZTD-1607: Tool %s has no governed mapping", tool)})
+// runNativeMCPTool maps one native MCP tool onto its governed MCP_CALL action.
+func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, tool string, args agentToolArguments) (AgentToolCall, error) {
+	if tool == constants.MCPToolAuditReceiptList {
+		r.injectAuditReceiptListDefaults(args)
 	}
-	payload, err := proto.Marshal(message)
+	argsJSON, err := json.Marshal(args.Values())
 	if err != nil {
-		return AgentToolCall{}, fmt.Errorf("evaluation: marshal %s payload: %w", tool, err)
+		return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
 	}
-	record.ActionType = string(action)
-	dispatched, denied, err := r.dispatch(ctx, &record, action, resource, payload)
+	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
+		ToolName:      tool,
+		ArgumentsJson: string(argsJSON),
+		ExecutionId:   record.CallID,
+	})
+	if err != nil {
+		return AgentToolCall{}, fmt.Errorf("evaluation: encode %s MCP call: %w", tool, err)
+	}
+	record.ActionType = string(constants.ActionTypeMcpCall)
+	dispatched, denied, err := r.dispatch(ctx, &record, constants.ActionTypeMcpCall, tool, payload)
 	if err != nil || denied {
 		return record, err
 	}
 	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(tool, dispatched)})
 	}
-	return r.decodeFileResult(record, tool, args, dispatched.ResultPayload)
+	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.ActionReceipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+		message := record.Receipt.ActionReceipt.GetResultSummary()
+		if message == "" {
+			message = "tool execution failed"
+		}
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: message})
+	}
+	if tool == constants.MCPToolAuditReceiptList {
+		limit := args.Int("limit", agentToolDefaultHistoryLimit)
+		query := mcp.AuditReceiptListRequest{
+			InvestigationID:   args.String("investigation_id"),
+			Limit:             limit,
+			ExcludeActionType: args.String("exclude_action_type"),
+		}
+		result, refs, err := decodeInvestigationReceipts(r.trace, query, record.Receipt)
+		if err != nil {
+			return AgentToolCall{}, err
+		}
+		record.Retrieval = &AgentContextRetrieval{Query: query, Receipts: refs}
+		return r.succeed(record, result)
+	}
+	summary := ""
+	if record.Receipt != nil && record.Receipt.ActionReceipt != nil {
+		summary = record.Receipt.ActionReceipt.GetResultSummary()
+	}
+	if summary == "" {
+		summary = "{}"
+	}
+	canonical, err := canonicalizeToolJSON(summary)
+	if err == nil {
+		record.Success = true
+		record.ResultJSON = canonical
+		return record, nil
+	}
+	return r.succeed(record, map[string]any{"result": summary})
+}
+
+func (r *agentRun) injectAuditReceiptListDefaults(args agentToolArguments) {
+	if args.String("investigation_id") == "" {
+		args.Set("investigation_id", r.trace.InvestigationID)
+	}
+	if args.String("exclude_action_type") == "" {
+		args.Set("exclude_action_type", string(constants.ActionTypeMcpCall))
+	}
+	if args.Int("limit", 0) <= 0 {
+		args.Set("limit", json.Number(strconv.Itoa(agentToolDefaultHistoryLimit)))
+	}
 }
 
 // dispatch submits one governed action and records its policy decision. It
@@ -1034,76 +1042,12 @@ func agentDispatchErrorText(tool string, dispatched GovernedToolDispatch) string
 	return fmt.Sprintf("ZTD-1607: Tool execution failed for %s: %s", tool, reason)
 }
 
-func operatorFailure(status operatorv1.ExecutionStatus, errorType, message string) *agentToolFailure {
-	if status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return nil
-	}
-	if message == "" {
-		message = "operation ended " + status.String()
-	}
-	return &agentToolFailure{ErrorType: agentToolErrorExecution, Error: message + agentErrorTypeSuffix(errorType)}
-}
-
-func agentErrorTypeSuffix(errorType string) string {
-	if errorType == "" {
-		return ""
-	}
-	return " (" + errorType + ")"
-}
-
-func (r *agentRun) decodeFileResult(record AgentToolCall, tool string, args agentToolArguments, payload []byte) (AgentToolCall, error) {
-	if len(payload) == 0 {
-		return AgentToolCall{}, fmt.Errorf("%w: governed %s response carries no result", constants.ErrEvaluationDispatchFailed, tool)
-	}
-	switch tool {
-	case agentToolFileRead:
-		result := &operatorv1.FsReadResult{}
-		if err := proto.Unmarshal(payload, result); err != nil {
-			return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %v", constants.ErrEvaluationDispatchFailed, tool, err)
-		}
-		if failure := operatorFailure(result.GetStatus(), result.GetErrorType(), result.GetErrorMessage()); failure != nil {
-			return r.fail(record, *failure)
-		}
-		answer := sliceFileLines(result.GetContent(), args)
-		answer.FilePath = result.GetPath()
-		answer.Content = truncateToolText(answer.Content)
-		return r.succeed(record, answer)
-	case agentToolFileList:
-		result := &operatorv1.FsListResult{}
-		if err := proto.Unmarshal(payload, result); err != nil {
-			return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %v", constants.ErrEvaluationDispatchFailed, tool, err)
-		}
-		if failure := operatorFailure(result.GetStatus(), result.GetErrorType(), result.GetErrorMessage()); failure != nil {
-			return r.fail(record, *failure)
-		}
-		answer := agentFileListResult{Success: true, Path: result.GetPath(), Entries: []agentFileListEntry{}, TotalCount: result.GetTotalCount(), Truncated: result.GetTruncated()}
-		for _, entry := range result.GetEntries() {
-			answer.Entries = append(answer.Entries, agentFileListEntry{Path: entry.GetPath(), Name: entry.GetName(), IsDir: entry.GetIsDir(), Size: entry.GetSize()})
-		}
-		return r.succeed(record, answer)
-	case agentToolGrep:
-		result := &operatorv1.FsGrepResult{}
-		if err := proto.Unmarshal(payload, result); err != nil {
-			return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %v", constants.ErrEvaluationDispatchFailed, tool, err)
-		}
-		if failure := operatorFailure(result.GetStatus(), result.GetErrorType(), result.GetErrorMessage()); failure != nil {
-			return r.fail(record, *failure)
-		}
-		answer := agentGrepResult{Success: true, Path: result.GetPath(), Pattern: args.String("pattern"), Matches: []agentGrepMatch{}, TotalMatches: result.GetTotalMatches(), Truncated: result.GetTruncated()}
-		for _, match := range result.GetMatches() {
-			answer.Matches = append(answer.Matches, agentGrepMatch{Path: match.GetPath(), LineNumber: match.GetLineNumber(), Content: match.GetContent()})
-		}
-		return r.succeed(record, answer)
-	default:
-		result := &operatorv1.FileEditResult{}
-		if err := proto.Unmarshal(payload, result); err != nil {
-			return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %v", constants.ErrEvaluationDispatchFailed, tool, err)
-		}
-		if failure := operatorFailure(result.GetStatus(), result.GetErrorType(), result.GetErrorMessage()); failure != nil {
-			return r.fail(record, *failure)
-		}
-		return r.succeed(record, agentFileEditResult{Success: true, FilePath: result.GetFilePath(), Operation: result.GetOperation(), BytesWritten: result.GetBytesWritten(), LinesChanged: result.GetLinesChanged()})
-	}
+type agentCommandResult struct {
+	Success    bool   `json:"success"`
+	Command    string `json:"command"`
+	ReturnCode int32  `json:"return_code"`
+	Stdout     string `json:"stdout"`
+	Stderr     string `json:"stderr"`
 }
 
 // runCommand runs one governed command. Under a TribunalCommands scenario the

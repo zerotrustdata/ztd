@@ -22,12 +22,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.1.0"
+	GraderVersion = "1.2.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.4.0"
+	DefaultSuiteVersion = "1.5.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -82,31 +82,23 @@ type ScenarioWorkspaceFile struct {
 }
 
 // InvestigationSeedTurn is one prior conversation turn. Sender is "user",
-// "primary", or "assistant". When GuidanceVectorID is set, catalog build
-// appends the vector's real model-visible error to Content (so a prior AI turn
-// quotes the text the model actually saw) and clears the ID.
+// "primary", or "assistant".
 type InvestigationSeedTurn struct {
-	Sender           string `json:"sender"`
-	Content          string `json:"content"`
-	GuidanceVectorID string `json:"guidance_vector_id,omitempty"`
+	Sender  string `json:"sender"`
+	Content string `json:"content"`
 }
 
-// InvestigationSeedHistoryEvent is one prior history-trail event. When
-// GuidanceVectorID is set, the event is a prior tool call whose ErrorType,
-// Error, ExecutionID, and ArgumentsJSON are copied at catalog build from the
-// generated agent tool registry, i.e. the genuine text the tool handler returned when the
-// failing call ran, never hand-written prose.
+// InvestigationSeedHistoryEvent is one prior history-trail event.
 type InvestigationSeedHistoryEvent struct {
-	EventType        string `json:"event_type"`
-	Actor            string `json:"actor"`
-	Summary          string `json:"summary"`
-	ToolName         string `json:"tool_name,omitempty"`
-	GuidanceVectorID string `json:"guidance_vector_id,omitempty"`
-	ExecutionID      string `json:"execution_id,omitempty"`
-	ArgumentsJSON    string `json:"arguments_json,omitempty"`
-	Command          string `json:"command,omitempty"`
-	Error            string `json:"error,omitempty"`
-	ErrorType        string `json:"error_type,omitempty"`
+	EventType     string `json:"event_type"`
+	Actor         string `json:"actor"`
+	Summary       string `json:"summary"`
+	ToolName      string `json:"tool_name,omitempty"`
+	ExecutionID   string `json:"execution_id,omitempty"`
+	ArgumentsJSON string `json:"arguments_json,omitempty"`
+	Command       string `json:"command,omitempty"`
+	Error         string `json:"error,omitempty"`
+	ErrorType     string `json:"error_type,omitempty"`
 }
 
 // InvestigationSeedMemory is the case memory of the seeded investigation.

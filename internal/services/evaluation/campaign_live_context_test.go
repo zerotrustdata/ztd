@@ -65,7 +65,8 @@ func (c *liveContextClient) DispatchCommand(ctx context.Context, persona client.
 		return nil, err
 	}
 	var query struct {
-		InvestigationID string `json:"investigation_id"`
+		InvestigationID   string `json:"investigation_id"`
+		ExcludeActionType string `json:"exclude_action_type"`
 	}
 	if err := json.Unmarshal([]byte(call.GetArgumentsJson()), &query); err != nil {
 		return nil, err
@@ -73,6 +74,9 @@ func (c *liveContextClient) DispatchCommand(ctx context.Context, persona client.
 	var rows []*operatorv1.ActionReceipt
 	for _, row := range c.records {
 		if row.InvestigationID == query.InvestigationID {
+			if query.ExcludeActionType != "" && string(row.ActionType) == query.ExcludeActionType {
+				continue
+			}
 			rows = append(rows, row.ActionReceipt)
 		}
 	}
@@ -102,7 +106,7 @@ func (c *liveContextClient) DispatchCommand(ctx context.Context, persona client.
 
 func TestCampaignLiveContext_ReturnsJustExecutedCommandAndExcludesSetup(t *testing.T) {
 	turns := runCommandTurns(agentTestCommand)
-	turns = append(turns[:1], []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "context-1", Name: agentToolInvestigationCtx, ArgumentsJson: `{"data_type":"operator_actions"}`}}}}, turns[1])
+	turns = append(turns[:1], []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "context-1", Name: constants.MCPToolAuditReceiptList, ArgumentsJson: `{"limit":20}`}}}}, turns[1])
 	f := newAgentExecutorFixture(t, turns...)
 	transport := &liveContextClient{base: f.client}
 	f.executor.tools = NewCommandLane(transport, client.Persona{})
@@ -143,7 +147,7 @@ func TestCampaignLiveContext_ReturnsJustExecutedCommandAndExcludesSetup(t *testi
 
 func contextOnlyTurns() [][]*operatorv1.InferenceResponsePart {
 	return [][]*operatorv1.InferenceResponsePart{
-		{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "context-1", Name: agentToolInvestigationCtx, ArgumentsJson: `{"data_type":"history_trail"}`}}}},
+		{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "context-1", Name: constants.MCPToolAuditReceiptList, ArgumentsJson: `{"limit":20}`}}}},
 		{{Part: &operatorv1.InferenceResponsePart_Text{Text: "No prior receipts were returned."}}},
 	}
 }

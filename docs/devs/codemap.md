@@ -372,7 +372,6 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | `examples/` | Runnable Go examples, external-console app, and MCP client configuration templates. |
 | `protocol/docs/` | Protocol specifications and generated API references. |
 | `internal/tools/constgen/` | Regenerates event and action-type constants from `protocol/constants/events.json` and `protocol/constants/status.json`. `make constants-generate` writes. `make constants-check` verifies. `check_env.go` also validates `protocol/constants/env_vars.json` and requires every `secret` and `user_endpoint` key in repo-root `.env.example`. Outputs include `internal/constants/events_gen.go`, `internal/constants/action_types_gen.go`, and `console/src/generated/events.ts`. |
-| `protocol/constants/agenttools/` | Agent tool registry JSON (`agent-tool-registry.json`) and `registry.go`. The JSON is checked-in source data; no exporter or root Makefile target regenerates it. |
 
 ### Native tools
 

@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -142,11 +141,11 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 // agentTestCatalogToolNames scopes the fixture scenario to every catalog tool,
 // so each test can drive whichever tool it exercises.
 func agentTestCatalogToolNames() []string {
-	names := make([]string, 0, len(agentToolSpecs))
-	for _, spec := range agentToolSpecs {
-		names = append(names, spec.Name)
+	catalog, err := newAgentToolCatalog()
+	if err != nil {
+		panic(err)
 	}
-	return names
+	return catalog.ToolNames()
 }
 
 func (f *agentExecutorFixture) execute() (*evalv1.EvaluationAssignmentResult, error) {
@@ -327,7 +326,7 @@ func TestCampaignAgentExecutor_DispatchesToolsDespiteRecordedProbeRejection(t *t
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
 	require.Len(t, f.inference.requests, 2, "past probe results must not suppress current provider requests")
 	for _, request := range f.inference.requests {
-		assert.Len(t, request.GetTools(), len(agentToolSpecs), "the provider receives the scenario's full tool surface")
+		assert.Len(t, request.GetTools(), len(agentTestCatalogToolNames()), "the provider receives the scenario's full tool surface")
 		require.NotNil(t, request.GetToolChoice())
 		assert.Equal(t, operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO, request.GetToolChoice().GetMode())
 	}
@@ -337,14 +336,14 @@ func TestCampaignAgentExecutor_DispatchesToolsDespiteRecordedProbeRejection(t *t
 func TestCampaignAgentExecutor_DeclaresScenarioAllowedAndForbiddenToolsInCatalogOrder(t *testing.T) {
 	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
 	f.req.ScenarioTools = ScenarioToolExpectations{
-		AllowedTools:   []string{agentToolRunCommands, agentToolFileRead},
-		ForbiddenTools: []string{agentToolFileWrite},
+		AllowedTools:   []string{agentToolRunCommands, "read_file"},
+		ForbiddenTools: []string{"run_shell_command"},
 	}
 
 	_, err := f.execute()
 
 	require.NoError(t, err)
-	want := []string{agentToolFileRead, agentToolFileWrite, agentToolRunCommands}
+	want := []string{"read_file", agentToolRunCommands, "run_shell_command"}
 	for _, request := range f.inference.requests {
 		var names []string
 		for _, tool := range request.GetTools() {
@@ -376,7 +375,7 @@ func TestCampaignAgentExecutor_AnswerScenarioDeclaresNoTools(t *testing.T) {
 
 func TestCampaignAgentExecutor_UndeclaredToolCallFailsWithoutDispatch(t *testing.T) {
 	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
-	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{agentToolFileRead}}
+	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{"read_file"}}
 
 	_, err := f.execute()
 
@@ -389,7 +388,7 @@ func TestCampaignAgentExecutor_UndeclaredToolCallFailsWithoutDispatch(t *testing
 	call := trace.ToolCalls[0]
 	assert.False(t, call.Success)
 	assert.Equal(t, agentToolErrorExecution, call.ErrorType)
-	assert.Equal(t, `ZTD-1607: Unknown tool "run_commands_with_operator"; use one of: file_read_on_operator`, call.Error)
+	assert.Equal(t, `ZTD-1607: Unknown tool "run_commands_with_operator"; use one of: read_file`, call.Error)
 }
 
 func TestCampaignAgentExecutor_UncatalogedScenarioToolFailsClosed(t *testing.T) {
@@ -449,36 +448,24 @@ func TestCampaignAgentExecutor_EmptyCommandFailsCallWithoutDispatch(t *testing.T
 	assert.Equal(t, "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required", call.Error)
 }
 
-func TestCampaignAgentExecutor_EmptyFileContentFailsValidationWithoutDispatch(t *testing.T) {
-	for _, tool := range []string{agentToolFileWrite, agentToolFileCreate} {
-		t.Run(tool, func(t *testing.T) {
-			turns := [][]*operatorv1.InferenceResponsePart{
-				{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
-					CallId: "empty-write", Name: tool,
-					ArgumentsJson: `{"file_path":"notes.txt","content":"","justification":"update notes","target_operators":[]}`,
-				}}}},
-				{{Part: &operatorv1.InferenceResponsePart_Text{Text: "No file written."}}},
-			}
-			f := newAgentExecutorFixture(t, turns...)
-			_, err := f.execute()
-			require.NoError(t, err)
-			trace := f.storedTrace()
-			require.Len(t, trace.ToolCalls, 1)
-			assert.False(t, trace.ToolCalls[0].Success)
-			assert.Contains(t, trace.ToolCalls[0].Error, "content")
-			for _, request := range f.client.requests {
-				if request.EventType == string(constants.EventOperatorFileEditRequested) {
-					edit := &operatorv1.FileEditRequested{}
-					require.NoError(t, proto.Unmarshal(request.Payload, edit))
-					assert.NotEqual(t, "notes.txt", filepath.Base(edit.GetFilePath()), "invalid tool call must not reach governed dispatch")
-				}
-			}
-			for _, declaration := range f.inference.requests[0].GetTools() {
-				if declaration.GetName() == tool {
-					assert.Contains(t, declaration.GetJsonSchema(), `"minLength":1`)
-				}
-			}
-		})
+func TestCampaignAgentExecutor_MissingRequiredArgumentFailsValidationWithoutDispatch(t *testing.T) {
+	tool := "read_file"
+	turns := [][]*operatorv1.InferenceResponsePart{
+		{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+			CallId: "empty-read", Name: tool,
+			ArgumentsJson: `{"offset": 10}`,
+		}}}},
+		{{Part: &operatorv1.InferenceResponsePart_Text{Text: "No file read."}}},
+	}
+	f := newAgentExecutorFixture(t, turns...)
+	_, err := f.execute()
+	require.NoError(t, err)
+	trace := f.storedTrace()
+	require.Len(t, trace.ToolCalls, 1)
+	assert.False(t, trace.ToolCalls[0].Success)
+	assert.Contains(t, trace.ToolCalls[0].Error, "path")
+	for _, request := range f.client.requests {
+		assert.NotEqual(t, string(constants.EventOperatorCommandRequested), request.EventType, "invalid tool call must not reach governed dispatch")
 	}
 }
 

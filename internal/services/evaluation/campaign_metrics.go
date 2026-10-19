@@ -165,6 +165,9 @@ func computeRedundantCommandRate(trace *AgentTrace) float64 {
 		isCommandOrRead := call.ToolName == "run_commands_with_operator" ||
 			call.ToolName == "file_read_on_operator" ||
 			call.ToolName == "recursive_grep_search" ||
+			call.ToolName == "read_file" ||
+			call.ToolName == "log_stream_filter" ||
+			call.ToolName == "run_shell_command" ||
 			call.Command != ""
 
 		if isCommandOrRead {

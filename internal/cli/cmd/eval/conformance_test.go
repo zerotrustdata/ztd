@@ -143,6 +143,8 @@ func newConformanceRig(t *testing.T, opts rigOptions) conformanceRig {
 		clientFactory: func(cfg harnessconfig.Config) (*harnessclient.Client, error) {
 			cfg.MTLSBaseURL = gatewayURL
 			cfg.PublicBaseURL = gatewayURL
+			cfg.Auth.CABundle = ""
+			cfg.CLIAuth.CABundle = ""
 			return harnessclient.New(cfg)
 		},
 		authLoader: func(fs.RuntimeFileService, *config.Config) (*auth.ClientAuthContext, error) {

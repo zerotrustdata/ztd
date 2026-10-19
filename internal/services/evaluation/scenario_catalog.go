@@ -52,14 +52,14 @@ const DefaultSuiteScenarioCount = 27
 // cannot materialize. The catalog's identity is ref; the same blueprints under
 // another ref yield another catalog digest.
 func buildSuiteCatalog(ref *compliancev1.VersionedReference, blueprints []ScenarioBlueprint) (*evalv1.EvaluationScenarioCatalog, map[string]ScenarioArtifacts, error) {
-	registry, err := LoadAgentToolRegistry()
+	toolCatalog, err := newAgentToolCatalog()
 	if err != nil {
 		return nil, nil, fmt.Errorf("evaluation: build suite %s catalog: %w", ref.GetId(), err)
 	}
 	artifacts := make(map[string]ScenarioArtifacts, len(blueprints))
 	scenarios := make([]*evalv1.EvaluationScenarioDefinition, 0, len(blueprints))
 	for _, blueprint := range blueprints {
-		scenario, pair, err := materializeScenarioBlueprint(ref.GetId(), blueprint, registry)
+		scenario, pair, err := materializeScenarioBlueprint(ref.GetId(), blueprint, toolCatalog)
 		if err != nil {
 			return nil, nil, fmt.Errorf("evaluation: build suite %s catalog: scenario %s: %w", ref.GetId(), blueprint.ScenarioID, err)
 		}
@@ -243,16 +243,11 @@ func ValidateScenarioCatalog(catalog *evalv1.EvaluationScenarioCatalog, artifact
 	return nil
 }
 
-func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, registry *AgentToolRegistry) (*evalv1.EvaluationScenarioDefinition, ScenarioArtifacts, error) {
-	if err := validateScenarioContract(blueprint, registry); err != nil {
+func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, catalog *agentToolCatalog) (*evalv1.EvaluationScenarioDefinition, ScenarioArtifacts, error) {
+	if err := validateScenarioContract(blueprint, catalog); err != nil {
 		return nil, ScenarioArtifacts{}, err
 	}
 	input := blueprint.Input
-	seed, err := resolveSeedGuidance(input.Seed, registry)
-	if err != nil {
-		return nil, ScenarioArtifacts{}, err
-	}
-	input.Seed = seed
 	input.ScenarioID = blueprint.ScenarioID
 	input.SyntheticLabel = scenarioSyntheticLabel
 	inputArtifact, err := buildScenarioInputArtifact(suiteID, input)
@@ -305,46 +300,6 @@ func publicPromptHint(private *ScenarioPromptHint) *evalv1.PromptHint {
 		})
 	}
 	return public
-}
-
-// resolveSeedGuidance returns a copy of the seed with every guidance vector
-// reference replaced by the registry's real tool call and model-visible error.
-// The registry is the only source of that text: it is produced by running the
-// real tool handler, so a seeded failure is never hand-written prose.
-func resolveSeedGuidance(seed InvestigationSeed, registry *AgentToolRegistry) (InvestigationSeed, error) {
-	resolved := seed
-	resolved.Turns = append([]InvestigationSeedTurn(nil), seed.Turns...)
-	for i := range resolved.Turns {
-		vectorID := resolved.Turns[i].GuidanceVectorID
-		if vectorID == "" {
-			continue
-		}
-		vector, ok := registry.GuidanceVector(vectorID)
-		if !ok {
-			return InvestigationSeed{}, fmt.Errorf("%w: unknown guidance vector %q on seed turn %d", constants.ErrEvaluationScenarioContractInvalid, vectorID, i)
-		}
-		resolved.Turns[i].Content += "\n\nTool result:\n" + vector.Error
-		resolved.Turns[i].GuidanceVectorID = ""
-	}
-	resolved.HistoryEvents = append([]InvestigationSeedHistoryEvent(nil), seed.HistoryEvents...)
-	for i := range resolved.HistoryEvents {
-		vectorID := resolved.HistoryEvents[i].GuidanceVectorID
-		if vectorID == "" {
-			continue
-		}
-		vector, ok := registry.GuidanceVector(vectorID)
-		if !ok {
-			return InvestigationSeed{}, fmt.Errorf("%w: unknown guidance vector %q on seed history event %d", constants.ErrEvaluationScenarioContractInvalid, vectorID, i)
-		}
-		event := &resolved.HistoryEvents[i]
-		event.ToolName = vector.ToolName
-		event.ExecutionID = vector.ExecutionID
-		event.ArgumentsJSON = vector.ArgumentsJSON
-		event.ErrorType = vector.ErrorType
-		event.Error = vector.Error
-		event.GuidanceVectorID = ""
-	}
-	return resolved, nil
 }
 
 func validateScenarioArtifactBinding(reference *compliancev1.ComplianceEvidenceReference, artifact ScenarioArtifactPair) error {

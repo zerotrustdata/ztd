@@ -365,6 +365,7 @@ const TRACE_FIELDS = [
 ] as const;
 
 const INVESTIGATION_CONTEXT_TOOL = 'query_investigation_context';
+const AUDIT_RECEIPT_LIST_TOOL = 'audit_receipt_list';
 const INVESTIGATION_STATUS_TYPE = 'investigation_status';
 const COMPLETED_EXECUTION_STATUS = 'EXECUTION_STATUS_COMPLETED';
 
@@ -376,34 +377,40 @@ function parseContextCallArguments(call: AgentTraceToolCall, path: string): Reco
     throw new ValidationError('expected JSON object', `${path}.arguments_json`);
   }
   assertObject(args, `${path}.arguments_json`);
-  assertString(args.data_type, `${path}.arguments_json.data_type`);
+  if (call.tool_name === INVESTIGATION_CONTEXT_TOOL) {
+    assertString(args.data_type, `${path}.arguments_json.data_type`);
+  }
   return args;
 }
 
 function validateV6ContextRetrievals(calls: AgentTraceToolCall[], investigationId: string | undefined): void {
   calls.forEach((call, index) => {
     const path = `agent_trace.tool_calls[${index}]`;
-    if (call.tool_name !== INVESTIGATION_CONTEXT_TOOL) {
-      assert(call.retrieval === undefined, `${path}.retrieval`, 'retrieval is only valid for query_investigation_context');
+    if (call.tool_name !== INVESTIGATION_CONTEXT_TOOL && call.tool_name !== AUDIT_RECEIPT_LIST_TOOL) {
+      assert(call.retrieval === undefined, `${path}.retrieval`, 'retrieval is only valid for query_investigation_context or audit_receipt_list');
       return;
     }
     const completedReceipt = call.receipt?.status === COMPLETED_EXECUTION_STATUS;
     if (call.retrieval === undefined) {
       assert(!completedReceipt, `${path}.retrieval`, 'a completed context query must carry retrieval evidence');
       if (!call.success) return;
-      const args = parseContextCallArguments(call, path);
-      assert(args.data_type === INVESTIGATION_STATUS_TYPE, `${path}.retrieval`, 'a successful non-status context query must carry retrieval evidence');
+      if (call.tool_name === INVESTIGATION_CONTEXT_TOOL) {
+        const args = parseContextCallArguments(call, path);
+        assert(args.data_type === INVESTIGATION_STATUS_TYPE, `${path}.retrieval`, 'a successful non-status context query must carry retrieval evidence');
+      }
       return;
     }
     assert(call.success, `${path}.retrieval`, 'retrieval evidence requires a successful tool call');
     assert(call.action_type === 'MCP_CALL', `${path}.retrieval`, 'retrieval evidence requires a governed MCP_CALL');
     assert(investigationId !== undefined, `${path}.retrieval`, 'retrieval evidence requires trace investigation_id');
-    const args = parseContextCallArguments(call, path);
-    assert(
-      args.data_type === 'history_trail' || args.data_type === 'operator_actions',
-      `${path}.retrieval`,
-      'only history_trail and operator_actions return receipt retrievals',
-    );
+    if (call.tool_name === INVESTIGATION_CONTEXT_TOOL) {
+      const args = parseContextCallArguments(call, path);
+      assert(
+        args.data_type === 'history_trail' || args.data_type === 'operator_actions',
+        `${path}.retrieval`,
+        'only history_trail and operator_actions return receipt retrievals',
+      );
+    }
   });
 }
 

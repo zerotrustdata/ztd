@@ -43,7 +43,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2}, {Purpose: agentModelCallPurposeTribunalPrefix + "generate", LoopTurn: 2}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "query_investigation_context",
+				ToolName: "audit_receipt_list",
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -54,7 +54,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 				ResultJSON: `{"action_type": "MCP_CALL", "target": "history_trail", "summary": "upstream health check expects port 8080"}`,
 			},
 			{
-				ToolName:      "file_read_on_operator",
+				ToolName:      "read_file",
 				ArgumentsJSON: `{"path": "app/service.conf"}`,
 				ResultJSON:    "listen_port = 8081",
 			},
@@ -106,7 +106,7 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "query_investigation_context",
+				ToolName: "audit_receipt_list",
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -118,8 +118,8 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 			},
 			{
 				// Redundant read: app/service.conf was already in retrieved receipts!
-				ToolName:      "file_read_on_operator",
-				ArgumentsJSON: `{"file_path": "app/service.conf"}`,
+				ToolName:      "read_file",
+				ArgumentsJSON: `{"path": "app/service.conf"}`,
 				ResultJSON:    "listen_port = 8081",
 			},
 		},

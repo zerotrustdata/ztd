@@ -164,12 +164,11 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 	}
 
 	allowedTools := []string{
-		agentToolFileRead,
-		agentToolFileList,
-		agentToolGrep,
-		agentToolFileWrite,
+		"read_file",
+		"fs_disk_profile",
+		"log_stream_filter",
 		agentToolRunCommands,
-		agentToolInvestigationCtx,
+		"audit_receipt_list",
 	}
 
 	gold := baseGold(

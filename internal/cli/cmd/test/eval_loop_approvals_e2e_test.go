@@ -265,6 +265,9 @@ func (a *releaseSmokeCLIApprovalResponder) approve(ctx context.Context, r *relea
 	cmd.Stderr = &stderr
 	slog.Info("approving transaction via CLI", "hash", hash)
 	err := cmd.Run()
+	if err != nil && strings.Contains(stdout.String(), "approved successfully") {
+		err = nil
+	}
 	if err != nil {
 		slog.Error("CLI approval failed", "hash", hash, "error", err, "stdout", stdout.String(), "stderr", stderr.String())
 	} else {

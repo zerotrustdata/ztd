@@ -125,7 +125,7 @@ func TestCampaignTribunalPipeline_DirectRunCommandsDeclaresNoGuidelines(t *testi
 
 func TestCampaignTribunalPipeline_TribunalCommandsWithoutRunCommandsFailsClosed(t *testing.T) {
 	f := newAgentExecutorFixture(t)
-	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{agentToolFileRead}, TribunalCommands: true}
+	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{"read_file"}, TribunalCommands: true}
 
 	_, err := f.execute()
 

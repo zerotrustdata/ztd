@@ -288,6 +288,17 @@ type agentToolArguments struct {
 	values map[string]any
 }
 
+func (a agentToolArguments) Set(name string, value any) {
+	if a.values == nil {
+		a.values = make(map[string]any)
+	}
+	a.values[name] = value
+}
+
+func (a agentToolArguments) Values() map[string]any {
+	return a.values
+}
+
 func (a agentToolArguments) String(name string) string {
 	value, _ := a.values[name].(string)
 	return value

@@ -431,23 +431,8 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 	}
 }
 
-func buildGradingToolCalls(calls []AgentToolCall, seedEvents []InvestigationSeedHistoryEvent) []AgentToolCall {
-	var seeded []AgentToolCall
-	for _, event := range seedEvents {
-		if event.ToolName != "" && (event.Error != "" || event.ErrorType != "") {
-			seeded = append(seeded, AgentToolCall{
-				CallID:        event.ExecutionID,
-				ToolName:      event.ToolName,
-				ArgumentsJSON: event.ArgumentsJSON,
-				Command:       event.Command,
-				Error:         event.Error,
-				ErrorType:     event.ErrorType,
-				Success:       false,
-				Seeded:        true,
-			})
-		}
-	}
-	return append(seeded, calls...)
+func buildGradingToolCalls(calls []AgentToolCall, _ []InvestigationSeedHistoryEvent) []AgentToolCall {
+	return append([]AgentToolCall(nil), calls...)
 }
 
 func isToolInList(tool string, list []string) bool {
