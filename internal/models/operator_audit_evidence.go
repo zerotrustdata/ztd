@@ -26,10 +26,10 @@ var (
 // canonical signed receipts; unsigned text projections stay local.
 type OperatorAuditReceiptListResult struct {
 	Receipts        []*operatorv1.ActionReceipt `json:"receipts"`
-	Count           int                        `json:"count"`
-	OperatorID      string                     `json:"operator_id"`
-	Authority       string                     `json:"authority"`
-	InvestigationID string                     `json:"investigation_id"`
+	Count           int                         `json:"count"`
+	OperatorID      string                      `json:"operator_id"`
+	Authority       string                      `json:"authority"`
+	InvestigationID string                      `json:"investigation_id"`
 }
 
 // MarshalJSON encodes the result with canonical protojson for each nested

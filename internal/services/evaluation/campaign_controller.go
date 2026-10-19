@@ -194,6 +194,9 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	if recorded := spec.GetPlatformRelease(); recorded != "" && recorded != req.PlatformRelease {
 		return nil, fmt.Errorf("evaluation: start run %q: campaign %q recorded %q, executing build is %q: %w", req.RunID, req.CampaignID, recorded, req.PlatformRelease, constants.ErrEvaluationPlatformReleaseMismatch)
 	}
+	if err := ValidateCampaignSpecPosture(spec); err != nil {
+		return nil, fmt.Errorf("evaluation: start run %q: %w", req.RunID, err)
+	}
 	catalog, err := c.store.LoadScenarioCatalog(ctx, req.CampaignID)
 	if err != nil {
 		return nil, err
@@ -316,6 +319,9 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
 		return 0, err
+	}
+	if err := ValidateCampaignSpecPosture(spec); err != nil {
+		return 0, fmt.Errorf("evaluation: schedule run %s: %w", runID, err)
 	}
 	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
@@ -603,6 +609,7 @@ func scenarioToolsForAssignment(catalog *evalv1.EvaluationScenarioCatalog, assig
 				ExpectedTools:    append([]string(nil), scenario.GetExpectedTools()...),
 				ForbiddenTools:   append([]string(nil), scenario.GetForbiddenTools()...),
 				TrajectoryPolicy: scenario.GetTrajectoryPolicy(),
+				TribunalCommands: scenario.GetTribunalCommands(),
 			}, nil
 		}
 	}

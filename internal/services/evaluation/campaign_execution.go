@@ -45,7 +45,9 @@ type ScenarioToolExpectations struct {
 	ExpectedTools    []string
 	ForbiddenTools   []string
 	TrajectoryPolicy evalv1.EvaluationTrajectoryPolicy
-	IntentPipeline   bool
+	// TribunalCommands declares run_commands_with_operator intent-only; the
+	// Tribunal writes every command the model requests.
+	TribunalCommands bool
 }
 
 // CampaignChatGradingContext carries private grading inputs for one assignment.

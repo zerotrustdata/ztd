@@ -939,6 +939,32 @@ describe('adaptCampaignProjectionEnvelope', () => {
     ).toThrow(ValidationError);
   });
 
+  it('marks pass as unavailable when a non-verdict assignment carries decomposed scores without task_score', () => {
+    const context = createCampaignAdaptContext();
+    const resultRecord = JSON.parse(publicResultVector.canonical_json) as Record<string, unknown>;
+    const records = adaptCampaignProjectionEnvelope(
+      {
+        schema_version: '1.2.0',
+        message_type: 'PublicAssignmentResultProjection',
+        idempotency_key: 'run-1:assign-non-verdict:result',
+        record: {
+          ...resultRecord,
+          assignment_id: 'assign-non-verdict',
+          lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED',
+          summary_status: 'EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE',
+          decomposed_scores: [
+            { score_id: 'assign-non-verdict:retrieval_hit_rate', dimension: 'retrieval_hit_rate', value: 1 },
+          ],
+        },
+      },
+      context,
+    );
+    const assignment = records.find((record) => record.kind === 'assignment_result');
+    expect(assignment).toBeDefined();
+    expect(assignment?.metric_values.pass).toEqual({ unavailable_reason: 'task score not published' });
+    expect(assignment?.metric_values.retrieval_hit_rate).toEqual({ value: 1 });
+  });
+
   describe('terminal status mapping', () => {
     const L = 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_';
     const V = 'EVALUATION_VERDICT_STATUS_';

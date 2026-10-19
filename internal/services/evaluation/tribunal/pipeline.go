@@ -11,162 +11,133 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// RunPipeline orchestrates intent-only command generation:
-// 1. Sealed 5-member candidate generation (Axiom, Concord, Variance, Pragma, Nemesis).
-// 2. Weighted vote with clustering, minimum consensus of 2, and Round 2 peer review.
-// 3. Marshal risk analysis and circuit breaker enforcement.
-// 4. Auditor technical scrutiny and potential revision/swap.
-// All stages record discrete AgentSteps and inference receipts.
-func RunPipeline(ctx context.Context, cfg PipelineConfig, req PipelineRequest, startStepIndex uint32) (*PipelineResult, error) {
-	result := &PipelineResult{}
-	stepIndex := startStepIndex
+// Run deliberates one intent-only command request: a sealed generation round
+// and vote, one anonymized regeneration round and revote when the first has
+// no winner, Marshal's risk assessment of the winner, and the Auditor's
+// review. Steps are indexed from startIndex+1. A deliberation that ends
+// without an approved command is a Result with its Outcome, not an error;
+// only an inference failure returns an error.
+func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Result, error) {
+	if cfg.Inferer == nil {
+		return nil, fmt.Errorf("tribunal: inferer: %w", constants.ErrMissingRequiredField)
+	}
+	steps := stepRecorder{cfg: cfg, index: startIndex}
+	result := &Result{}
 
-	// Stage 1: Generate candidates
-	candidates, err := GenerateCandidates(ctx, cfg, req)
+	candidates, err := generate(ctx, cfg, req, 1, nil)
 	if err != nil {
-		return nil, fmt.Errorf("tribunal pipeline: %w", err)
+		return nil, err
 	}
 	result.Candidates = candidates
-
-	for _, c := range candidates {
-		stepIndex++
-		result.Steps = append(result.Steps, &evalv1.AgentStep{
-			Index:        stepIndex,
-			Role:         evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR,
-			PersonaLabel: string(c.Member),
-			ResolvedTier: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE,
-			ModelTag:     cfg.Variant.GetServedModelTag(),
-			ModelDigest:  cfg.Variant.GetModelDigest(),
-			CallClass:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
-			Output: &evalv1.AgentStep_Candidate{
-				Candidate: &evalv1.CandidateOutput{
-					Command: c.Command,
-				},
-			},
-		})
-		if c.Receipt != nil {
-			result.Receipts = append(result.Receipts, c.Receipt)
+	steps.candidates(candidates)
+	result.Vote = vote(1, candidates)
+	if result.Vote.Winner == "" {
+		candidates, err = generate(ctx, cfg, req, 2, result.Vote.Clusters)
+		if err != nil {
+			return nil, err
 		}
-		if c.TransactionID != "" {
-			result.TransactionIDs = append(result.TransactionIDs, c.TransactionID)
-		}
+		result.Candidates = append(result.Candidates, candidates...)
+		steps.candidates(candidates)
+		result.Vote = vote(2, candidates)
+	}
+	steps.vote(result.Vote, candidates)
+	if result.Vote.Winner == "" {
+		result.Outcome = OutcomeNoConsensus
+		result.Steps = steps.steps
+		return result, nil
 	}
 
-	// Stage 2: Voting & Consensus
-	vote, err := RunVoting(ctx, cfg, req, candidates)
+	result.Risk, err = assessRisk(ctx, cfg, req, result.Vote.Winner)
 	if err != nil {
-		return nil, fmt.Errorf("tribunal pipeline voting: %w", err)
+		return nil, err
 	}
-	result.Vote = vote
-
-	var protoVotes []*evalv1.CandidateVote
-	for _, v := range vote.Votes {
-		protoVotes = append(protoVotes, &evalv1.CandidateVote{
-			VoterLabel:     v.VoterMember,
-			CandidateLabel: v.CandidateLabel,
-		})
+	steps.risk(result.Vote.Winner, result.Risk)
+	if result.Risk.Blocked() {
+		result.Outcome = OutcomeBlocked
+		result.Steps = steps.steps
+		return result, nil
 	}
 
-	stepIndex++
-	result.Steps = append(result.Steps, &evalv1.AgentStep{
-		Index:        stepIndex,
-		Role:         evalv1.AgentRole_AGENT_ROLE_CANDIDATE_VOTER,
-		PersonaLabel: "tribunal-voter",
-		ResolvedTier: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT,
-		ModelTag:     cfg.Variant.GetServedModelTag(),
-		ModelDigest:  cfg.Variant.GetModelDigest(),
-		CallClass:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
-		Output: &evalv1.AgentStep_Vote{
-			Vote: &evalv1.VoteOutput{
-				Votes:            protoVotes,
-				Rounds:           vote.Rounds,
-				ConsensusReached: vote.ConsensusReached,
-				SelectedCommand:  vote.WinnerCommand,
-			},
-		},
-	})
-	result.Receipts = append(result.Receipts, vote.Receipts...)
-	result.TransactionIDs = append(result.TransactionIDs, vote.TransactionIDs...)
-
-	if !vote.ConsensusReached || vote.WinnerCommand == "" {
-		return result, fmt.Errorf("tribunal pipeline: consensus could not be reached after %d round(s)", vote.Rounds)
-	}
-
-	// Stage 3: Marshal Risk Analysis
-	risk, err := AnalyzeRisk(ctx, cfg, req, vote.WinnerCommand)
+	result.Audit, err = audit(ctx, cfg, req, result.Vote)
 	if err != nil {
-		return nil, fmt.Errorf("tribunal pipeline marshal: %w", err)
+		return nil, err
 	}
-	result.Risk = risk
-	if risk.Receipt != nil {
-		result.Receipts = append(result.Receipts, risk.Receipt)
+	steps.review(result.Audit)
+	result.Steps = steps.steps
+	if result.Audit.Failure != "" {
+		result.Outcome = OutcomeAuditFailed
+		return result, nil
 	}
-	if risk.TransactionID != "" {
-		result.TransactionIDs = append(result.TransactionIDs, risk.TransactionID)
-	}
-
-	stepIndex++
-	result.Steps = append(result.Steps, &evalv1.AgentStep{
-		Index:        stepIndex,
-		Role:         evalv1.AgentRole_AGENT_ROLE_RISK_ANALYST,
-		PersonaLabel: "marshal",
-		ResolvedTier: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE,
-		ModelTag:     cfg.Variant.GetServedModelTag(),
-		ModelDigest:  cfg.Variant.GetModelDigest(),
-		CallClass:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
-		Output: &evalv1.AgentStep_Risk{
-			Risk: &evalv1.RiskOutput{
-				SubjectKind: risk.SubjectKind,
-				Subject:     risk.Subject,
-				Risk:        risk.Risk.ToProtoRisk(),
-				Blocked:     risk.Blocked,
-			},
-		},
-	})
-
-	if risk.Blocked {
-		result.HighRiskBlocked = true
-		result.Feedback = risk.Feedback
-		if req.CircuitBreakerStrikeCount >= 1 {
-			result.CircuitBreakerTripped = true
-			return result, fmt.Errorf("tribunal pipeline: circuit breaker tripped (agent conflict: high risk blocked repeatedly)")
-		}
-		return result, fmt.Errorf("tribunal pipeline: marshal blocked high-risk command: %s (feedback: %s)", risk.Rationale, risk.Feedback)
-	}
-
-	// Stage 4: Auditor Technical Scrutiny
-	audit, err := AuditCommand(ctx, cfg, req, vote)
-	if err != nil {
-		return nil, fmt.Errorf("tribunal pipeline auditor: %w", err)
-	}
-	result.Audit = audit
-	if audit.Receipt != nil {
-		result.Receipts = append(result.Receipts, audit.Receipt)
-	}
-	if audit.TransactionID != "" {
-		result.TransactionIDs = append(result.TransactionIDs, audit.TransactionID)
-	}
-
-	stepIndex++
-	result.Steps = append(result.Steps, &evalv1.AgentStep{
-		Index:        stepIndex,
-		Role:         evalv1.AgentRole_AGENT_ROLE_REVIEWER,
-		PersonaLabel: "auditor",
-		ResolvedTier: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
-		ModelTag:     cfg.Variant.GetServedModelTag(),
-		ModelDigest:  cfg.Variant.GetModelDigest(),
-		CallClass:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
-		Output: &evalv1.AgentStep_Review{
-			Review: &evalv1.ReviewOutput{
-				Verdict: audit.Verdict,
-				Command: audit.FinalCommand,
-			},
-		},
-	})
-
-	result.FinalCommand = audit.FinalCommand
+	result.Outcome = OutcomeApproved
+	result.Command = result.Audit.Command
 	return result, nil
+}
+
+// stepRecorder appends the deliberation's persona steps in order, each on the
+// frozen variant and tier the deliberation runs under.
+type stepRecorder struct {
+	cfg   Config
+	index uint32
+	steps []*evalv1.AgentStep
+}
+
+func (s *stepRecorder) add(role evalv1.AgentRole, persona string, output func(*evalv1.AgentStep)) {
+	s.index++
+	step := &evalv1.AgentStep{
+		Index:        s.index,
+		Role:         role,
+		PersonaLabel: persona,
+		ResolvedTier: s.cfg.Tier,
+		ModelTag:     s.cfg.ModelTag,
+		ModelDigest:  s.cfg.ModelDigest,
+		CallClass:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
+	}
+	output(step)
+	s.steps = append(s.steps, step)
+}
+
+func (s *stepRecorder) candidates(candidates []Candidate) {
+	for _, candidate := range candidates {
+		s.add(evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, string(candidate.Member), func(step *evalv1.AgentStep) {
+			step.Output = &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Command: candidate.Command}}
+		})
+	}
+}
+
+// vote records the deciding round: every member's vote is its own proposal
+// in that round.
+func (s *stepRecorder) vote(v Vote, candidates []Candidate) {
+	votes := make([]*evalv1.CandidateVote, 0, len(candidates))
+	for _, candidate := range candidates {
+		votes = append(votes, &evalv1.CandidateVote{VoterLabel: string(candidate.Member), CandidateLabel: candidate.Command})
+	}
+	s.add(evalv1.AgentRole_AGENT_ROLE_CANDIDATE_VOTER, PersonaVoter, func(step *evalv1.AgentStep) {
+		step.Output = &evalv1.AgentStep_Vote{Vote: &evalv1.VoteOutput{
+			Votes:            votes,
+			Rounds:           v.Round,
+			ConsensusReached: v.Winner != "",
+			SelectedCommand:  v.Winner,
+		}}
+	})
+}
+
+func (s *stepRecorder) risk(command string, risk *Risk) {
+	s.add(evalv1.AgentRole_AGENT_ROLE_RISK_ANALYST, PersonaMarshal, func(step *evalv1.AgentStep) {
+		step.Output = &evalv1.AgentStep_Risk{Risk: &evalv1.RiskOutput{
+			SubjectKind: "command",
+			Subject:     command,
+			Risk:        risk.Level.Proto(),
+			Blocked:     risk.Blocked(),
+		}}
+	})
+}
+
+func (s *stepRecorder) review(audit *Audit) {
+	s.add(evalv1.AgentRole_AGENT_ROLE_REVIEWER, PersonaAuditor, func(step *evalv1.AgentStep) {
+		step.Output = &evalv1.AgentStep_Review{Review: &evalv1.ReviewOutput{Verdict: audit.Verdict, Command: audit.Command}}
+	})
 }

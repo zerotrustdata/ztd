@@ -4876,6 +4876,11 @@ type EvaluationScenarioDefinition struct {
 	EligibleRoles    []ModelCampaignRole        `protobuf:"varint,14,rep,packed,name=eligible_roles,json=eligibleRoles,proto3,enum=ztd.eval.v1.ModelCampaignRole" json:"eligible_roles,omitempty"`
 	TrajectoryPolicy EvaluationTrajectoryPolicy `protobuf:"varint,15,opt,name=trajectory_policy,json=trajectoryPolicy,proto3,enum=ztd.eval.v1.EvaluationTrajectoryPolicy" json:"trajectory_policy,omitempty"`
 	PromptHint       *PromptHint                `protobuf:"bytes,16,opt,name=prompt_hint,json=promptHint,proto3" json:"prompt_hint,omitempty"`
+	// tribunal_commands declares run_commands_with_operator intent-only: the
+	// model states the request and the Tribunal deliberation writes the
+	// command, which then runs through L1-L5 like any other. Unset, the model
+	// authors the command itself. The frozen catalog digest binds the choice.
+	TribunalCommands bool `protobuf:"varint,17,opt,name=tribunal_commands,json=tribunalCommands,proto3" json:"tribunal_commands,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -5020,6 +5025,13 @@ func (x *EvaluationScenarioDefinition) GetPromptHint() *PromptHint {
 		return x.PromptHint
 	}
 	return nil
+}
+
+func (x *EvaluationScenarioDefinition) GetTribunalCommands() bool {
+	if x != nil {
+		return x.TribunalCommands
+	}
+	return false
 }
 
 // ModelVariant is one frozen provider-backed model identity in a campaign.
@@ -13143,7 +13155,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\n" +
 	"PromptHint\x12!\n" +
 	"\fhinted_tools\x18\x01 \x03(\tR\vhintedTools\x12=\n" +
-	"\targuments\x18\x02 \x03(\v2\x1f.ztd.eval.v1.PromptHintArgumentR\targuments\"\x9e\b\n" +
+	"\targuments\x18\x02 \x03(\v2\x1f.ztd.eval.v1.PromptHintArgumentR\targuments\"\xcb\b\n" +
 	"\x1cEvaluationScenarioDefinition\x12\x1f\n" +
 	"\vscenario_id\x18\x01 \x01(\tR\n" +
 	"scenarioId\x12)\n" +
@@ -13163,7 +13175,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x0eeligible_roles\x18\x0e \x03(\x0e2\x1e.ztd.eval.v1.ModelCampaignRoleR\religibleRoles\x12T\n" +
 	"\x11trajectory_policy\x18\x0f \x01(\x0e2'.ztd.eval.v1.EvaluationTrajectoryPolicyR\x10trajectoryPolicy\x128\n" +
 	"\vprompt_hint\x18\x10 \x01(\v2\x17.ztd.eval.v1.PromptHintR\n" +
-	"promptHint\"\x98\x03\n" +
+	"promptHint\x12+\n" +
+	"\x11tribunal_commands\x18\x11 \x01(\bR\x10tribunalCommands\"\x98\x03\n" +
 	"\fModelVariant\x12\x1d\n" +
 	"\n" +
 	"variant_id\x18\x01 \x01(\tR\tvariantId\x12%\n" +

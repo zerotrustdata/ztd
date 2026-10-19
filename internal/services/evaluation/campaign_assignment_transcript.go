@@ -45,8 +45,10 @@ func BuildPublicAssignmentTranscripts(ctx context.Context, store CampaignStore, 
 		return nil, fmt.Errorf("evaluation: publish assignment transcript: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	transcript := publicdisclosure.RoleTranscript{Role: trace.DesignatedRole, Response: trace.FinalOutput, TraceDigest: trace.EvidenceDigest}
-	if len(trace.ModelCalls) > 0 {
-		transcript.FinishReason = trace.ModelCalls[len(trace.ModelCalls)-1].FinishReason
+	for _, call := range trace.ModelCalls {
+		if call.IsTurn() {
+			transcript.FinishReason = call.FinishReason
+		}
 	}
 	for _, call := range trace.ToolCalls {
 		transcript.ToolCalls = append(transcript.ToolCalls, publicdisclosure.RoleTranscriptToolCall{

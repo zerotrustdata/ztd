@@ -287,6 +287,7 @@
       "arguments": [
         "command",
         "expected_output_lines",
+        "guidelines",
         "request",
         "target_operators",
         "timeout_seconds"

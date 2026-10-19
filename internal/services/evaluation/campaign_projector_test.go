@@ -210,3 +210,52 @@ func TestBuildAssignmentResultProjection(t *testing.T) {
 	assert.Equal(t, result.GetResultDigest(), projection.GetResultDigest())
 	assert.Equal(t, "unverified", projection.GetVerificationStatus())
 }
+
+func TestBuildAssignmentResultProjection_DecomposedScoresTaskScore(t *testing.T) {
+	assignment := &evalv1.EvaluationAssignment{
+		AssignmentId: "assign-1",
+		RunId:        "run-1",
+		ScenarioId:   "instruction-exact-format",
+	}
+
+	// 1. Result with decomposed scores lacking task_score -> projected as nil
+	resultWithoutTaskScore := &evalv1.EvaluationAssignmentResult{
+		AssignmentId:    "assign-1",
+		RunId:           "run-1",
+		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED,
+		DecomposedScores: []*evalv1.DecomposedScoreRecord{
+			{ScoreId: "assign-1:retrieval_hit_rate", Dimension: "retrieval_hit_rate", Value: 1},
+		},
+	}
+	proj1, err := BuildAssignmentResultProjection(
+		assignment,
+		resultWithoutTaskScore,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
+		evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE,
+		"unverified",
+		CampaignRelease{},
+	)
+	require.NoError(t, err)
+	assert.Nil(t, proj1.GetDecomposedScores(), "scores without task_score must be omitted from projection")
+
+	// 2. Result with task_score -> projected successfully
+	resultWithTaskScore := &evalv1.EvaluationAssignmentResult{
+		AssignmentId:    "assign-1",
+		RunId:           "run-1",
+		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+		DecomposedScores: []*evalv1.DecomposedScoreRecord{
+			{ScoreId: "assign-1:task-score", Dimension: "task_score", Value: 1},
+			{ScoreId: "assign-1:retrieval_hit_rate", Dimension: "retrieval_hit_rate", Value: 1},
+		},
+	}
+	proj2, err := BuildAssignmentResultProjection(
+		assignment,
+		resultWithTaskScore,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
+		evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+		"unverified",
+		CampaignRelease{},
+	)
+	require.NoError(t, err)
+	require.Len(t, proj2.GetDecomposedScores(), 2)
+}

@@ -958,6 +958,7 @@ EvaluationScenarioDefinition describes one frozen typed scenario.
 | eligible_roles | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) | repeated | eligible_roles lists the model roles that perform this task in the external client. The homogeneous scheduler assigns the scenario only to these roles; the frozen catalog digest binds the set. |
 | trajectory_policy | [EvaluationTrajectoryPolicy](#ztd-eval-v1-EvaluationTrajectoryPolicy) |  |  |
 | prompt_hint | [PromptHint](#ztd-eval-v1-PromptHint) |  |  |
+| tribunal_commands | [bool](#bool) |  | tribunal_commands declares run_commands_with_operator intent-only: the model states the request and the Tribunal deliberation writes the command, which then runs through L1-L5 like any other. Unset, the model authors the command itself. The frozen catalog digest binds the choice. |
 
 
 

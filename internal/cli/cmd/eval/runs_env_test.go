@@ -145,6 +145,21 @@ func writePublicationProofResponse(w http.ResponseWriter, r *http.Request) bool 
 	}
 }
 
+// writeGatewayHealthResponse answers the posture preflight with the doctrine
+// posture every materialized campaign freezes.
+func writeGatewayHealthResponse(w http.ResponseWriter, r *http.Request) bool {
+	return writeGatewayPostureResponse(w, r, constants.PostureDoctrine)
+}
+
+func writeGatewayPostureResponse(w http.ResponseWriter, r *http.Request, posture constants.Posture) bool {
+	if r.Method != http.MethodGet || r.URL.Path != constants.APIPaths.Health {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"posture":"` + string(posture) + `"}`))
+	return true
+}
+
 func writeWitnessPreflightResponse(w http.ResponseWriter, r *http.Request) bool {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.SSEStream:

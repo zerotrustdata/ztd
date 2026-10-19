@@ -178,6 +178,9 @@ func validateScenarioToolNames(blueprint ScenarioBlueprint, registry *AgentToolR
 
 func validateScenarioToolSets(blueprint ScenarioBlueprint) error {
 	allowed := stringSet(blueprint.AllowedTools)
+	if _, ok := allowed[agentToolRunCommands]; blueprint.TribunalCommands && !ok {
+		return scenarioContractError(blueprint, "tribunal commands need %q in AllowedTools", agentToolRunCommands)
+	}
 	for _, name := range blueprint.ExpectedTools {
 		if _, ok := allowed[name]; !ok {
 			return scenarioContractError(blueprint, "expected tool %q is not in AllowedTools", name)
@@ -240,7 +243,8 @@ func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContent
 func validateArgumentValidators(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
 	for _, validator := range blueprint.Gold.ArgumentValidators {
 		tool, _ := registry.Tool(validator.ToolName)
-		known := stringSet(tool.Arguments)
+		arguments, _ := agentToolArgumentContract(tool, blueprint.TribunalCommands)
+		known := stringSet(arguments)
 		for _, constraint := range validator.Arguments {
 			if _, ok := known[constraint.Name]; !ok {
 				return scenarioContractError(blueprint, "validator for %q constrains unknown argument %q", validator.ToolName, constraint.Name)
@@ -269,7 +273,8 @@ func validatePromptHint(blueprint ScenarioBlueprint, registry *AgentToolRegistry
 	}
 	for _, toolName := range hint.HintedTools {
 		tool, _ := registry.Tool(toolName)
-		for _, required := range tool.RequiredArguments {
+		_, requiredArguments := agentToolArgumentContract(tool, blueprint.TribunalCommands)
+		for _, required := range requiredArguments {
 			matches := hintArgumentsFor(hint, toolName, required)
 			if len(matches) != 1 {
 				return scenarioUnanswerableError(blueprint, "required argument %q of %q has %d hint sources, want exactly 1", required, toolName, len(matches))
@@ -433,4 +438,3 @@ func validateGoldEvidenceReferences(blueprint ScenarioBlueprint) error {
 	}
 	return nil
 }
-

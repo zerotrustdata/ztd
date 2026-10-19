@@ -338,6 +338,25 @@ func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t
 	assert.Empty(t, runIDs, "preflight must fail before a run is persisted")
 }
 
+// A Gateway under ratify or notary requires L3 proofs that eval dispatch
+// cannot mint, and one under consensus would run a posture the campaign did
+// not freeze; each fails preflight before a run is persisted.
+func TestRunsStart_FailsPreflightUnderAnUnfrozenGatewayPosture(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
+		t.Run(string(posture), func(t *testing.T) {
+			env := setupRunEnvWithGateway(t, testRunOperators, posture)
+			env.createCampaign(t, "eval-posture")
+
+			_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-posture", RunID: "run-posture"})
+			require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
+			require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+			runIDs, err := env.store(t).ListRunIDs(context.Background())
+			require.NoError(t, err)
+			assert.Empty(t, runIDs, "posture preflight must fail before a run is persisted")
+		})
+	}
+}
+
 func TestRunsExecute_PersistentFollowsDataOperatorSessionRotation(t *testing.T) {
 	operators := testRunOperators()
 	env := setupRunEnvWithOperatorSource(t, func() []*operatorv1.OperatorDocument { return operators })

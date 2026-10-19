@@ -194,6 +194,7 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 		PublicDescription: s.Objective.Goal,
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyAnswer,
+		TribunalCommands:  true,
 		EligibleRoles:     rolesPrimaryAssistant,
 		AllowedTools:      allowedTools,
 		RequiredConcepts:  reqConcepts,

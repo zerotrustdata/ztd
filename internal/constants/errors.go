@@ -1449,6 +1449,8 @@ var (
 	ErrEvaluationSystemLaneUnavailable     = errors.New("evaluation: the system lane has no executor until formations run the investigation loop")
 	ErrEvaluationWorkspaceUnavailable      = errors.New("evaluation: scenario workspace is unavailable on the bound Data Operator")
 	ErrEvaluationHeldContextUnavailable    = errors.New("evaluation: the previous repetition's investigation cannot be held into this repetition")
+	ErrTribunalAnswerInvalid               = errors.New("evaluation: tribunal answer is not a valid structured answer")
+	ErrTribunalInferenceFailed             = errors.New("evaluation: tribunal inference failed")
 
 	// Governed transaction errors
 	ErrTxUnknownEventType      = errors.New("TX_UNKNOWN_EVENT: event type not registered")

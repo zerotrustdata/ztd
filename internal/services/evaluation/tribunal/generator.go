@@ -11,140 +11,82 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/zerotrustdata/ztd/internal/constants"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func textMessage(role operatorv1.InferenceMessageRole, text string) *operatorv1.InferenceMessage {
-	return &operatorv1.InferenceMessage{
-		Role:  role,
-		Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: text}}},
-	}
-}
+const (
+	defaultOS    = "linux"
+	defaultShell = "bash"
+)
 
-func buildDispatchRequest(cfg PipelineConfig, role operatorv1.ModelRole, attemptID, systemPrompt, userPrompt string) *operatorv1.InferenceDispatchRequest {
-	var model, digest string
-	if cfg.Variant != nil {
-		model = cfg.Variant.GetServedModelTag()
-		digest = cfg.Variant.GetModelDigest()
-	}
-	return &operatorv1.InferenceDispatchRequest{
-		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
-		Role:                    role,
-		Model:                   model,
-		ModelDigest:             digest,
-		ProviderAttemptId:       attemptID,
-		TargetOperatorSessionId: cfg.InferenceSessionID,
-		CampaignId:              cfg.CampaignID,
-		ModelRegistryDigest:     cfg.ModelRegistryDigest,
-		ModelRegistry:           cfg.ModelRegistry,
-		Messages: []*operatorv1.InferenceMessage{
-			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, systemPrompt),
-			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, userPrompt),
-		},
-	}
-}
-
-// memberSystemPrompt returns the system prompt for a specific Tribunal panel member.
+// memberSystemPrompt returns one panel member's sealed generation instructions.
 func memberSystemPrompt(member Member) string {
-	base := "You are a member of the Tribunal, an ensemble of models that synthesizes safe, effective shell commands from intent.\n" +
-		"Every Tribunal member emits EXACTLY a shell command string - nothing else. No explanation, no markdown fences, no prose.\n\n"
-
+	base := "You are a member of the Tribunal, a sealed panel that writes one shell command for a plain-language request.\n" +
+		"Answer with EXACTLY one shell command and nothing else: no explanation, no markdown fences, no prose.\n\n"
 	switch member {
 	case MemberAxiom:
-		return base + "Role: Axiom (The Composer).\n" +
-			"Style: Clean, multi-stage pipelines with coherent composition and canonical flag order.\n" +
-			"Prefer idiomatic pipe composition and concise, readable structure."
+		return base + "Role: Axiom (the Composer). Prefer clean, coherent pipelines with canonical flag order."
 	case MemberConcord:
-		return base + "Role: Concord (The Guardian).\n" +
-			"Style: Defensive discipline. Prefer read-only queries, safe quoting across pipes, -r on xargs, and && chaining."
+		return base + "Role: Concord (the Guardian). Prefer read-only queries, safe quoting across pipes, and && chaining."
 	case MemberVariance:
-		return base + "Role: Variance (The Exhaustive).\n" +
-			"Style: Edge-case resilience. Handle spaces and null delimiters (-print0, xargs -0), explicit sort locales, and robust matching."
+		return base + "Role: Variance (the Exhaustive). Handle spaces and null delimiters (-print0, xargs -0), explicit locales, and robust matching."
 	case MemberPragma:
-		return base + "Role: Pragma (The Conventional).\n" +
-			"Style: Practical conventions. Prefer modern, idiomatic OS utilities (ss over netstat, journalctl on systemd) and standard CLI flags."
+		return base + "Role: Pragma (the Conventional). Prefer modern, idiomatic utilities (ss over netstat, journalctl on systemd) and standard flags."
 	case MemberNemesis:
-		return base + "Role: Nemesis (The Calibrated Adversary).\n" +
-			"Style: Calibrated inspection. If there are subtle edge cases or ambiguities, reflect them, or honestly emit the standard command when safe."
+		return base + "Role: Nemesis (the Calibrated Adversary). Probe the request for edge cases and ambiguity; emit the standard command when it is the right one."
 	default:
 		return base
 	}
 }
 
-// formatUserPrompt formats the intent request into the generation prompt.
-func formatUserPrompt(req PipelineRequest) string {
-	var sb strings.Builder
-	sb.WriteString("<system_context>\n")
-	if req.OS != "" {
-		sb.WriteString("OS: " + req.OS + "\n")
-	} else {
-		sb.WriteString("OS: linux\n")
+// contextBlock renders the execution context and the caller's request.
+func contextBlock(req Request) string {
+	var b strings.Builder
+	osName, shell := req.OS, req.Shell
+	if osName == "" {
+		osName = defaultOS
 	}
-	if req.Shell != "" {
-		sb.WriteString("Shell: " + req.Shell + "\n")
-	} else {
-		sb.WriteString("Shell: bash\n")
+	if shell == "" {
+		shell = defaultShell
 	}
+	fmt.Fprintf(&b, "<system_context>\nOS: %s\nShell: %s\n", osName, shell)
 	if req.WorkingDirectory != "" {
-		sb.WriteString("Working directory: " + req.WorkingDirectory + "\n")
+		fmt.Fprintf(&b, "Working directory: %s\n", req.WorkingDirectory)
 	}
-	sb.WriteString("</system_context>\n\n")
-
+	b.WriteString("</system_context>\n\n")
 	if req.Guidelines != "" {
-		sb.WriteString("<guidelines>\n" + req.Guidelines + "\n</guidelines>\n\n")
+		fmt.Fprintf(&b, "<guidelines>\n%s\n</guidelines>\n\n", req.Guidelines)
 	}
-
-	sb.WriteString("<request>\n" + req.Request + "\n</request>\n\n")
-	sb.WriteString("Respond now with the exact shell command string and nothing else.")
-	return sb.String()
+	fmt.Fprintf(&b, "<request>\n%s\n</request>\n", req.Request)
+	return b.String()
 }
 
-// GenerateCandidates invokes the sealed 5-member panel to propose candidate commands.
-func GenerateCandidates(ctx context.Context, cfg PipelineConfig, req PipelineRequest) ([]Candidate, error) {
-	if cfg.Dispatcher == nil {
-		return nil, fmt.Errorf("tribunal: generate candidates: %w", constants.ErrMissingRequiredField)
+// generationPrompt is one round's user prompt. Round 2 shows the round 1
+// clusters anonymized with their support so members can converge.
+func generationPrompt(req Request, prior []Cluster) string {
+	var b strings.Builder
+	b.WriteString(contextBlock(req))
+	if len(prior) > 0 {
+		b.WriteString("\nThe panel did not agree in round 1. Its anonymized proposals were:\n")
+		for _, cluster := range prior {
+			fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), cluster.Command)
+		}
+		b.WriteString("\nWrite the single best command for the request; you may adopt a proposal or write a better one.\n")
 	}
+	b.WriteString("\nRespond now with the exact shell command and nothing else.")
+	return b.String()
+}
 
-	userPrompt := formatUserPrompt(req)
+// generate runs one sealed generation round: every member answers the same
+// prompt without seeing the others' answers.
+func generate(ctx context.Context, cfg Config, req Request, round uint32, prior []Cluster) ([]Candidate, error) {
+	prompt := generationPrompt(req, prior)
 	candidates := make([]Candidate, 0, len(AllMembers))
-
 	for _, member := range AllMembers {
-		sysPrompt := memberSystemPrompt(member)
-		attemptID := cfg.NewID(fmt.Sprintf("tribunal-gen-%s-%d", member, req.Turn))
-		dispatchReq := buildDispatchRequest(cfg, operatorv1.ModelRole_MODEL_ROLE_LITE, attemptID, sysPrompt, userPrompt)
-
-		resp, err := cfg.Dispatcher.DispatchInference(ctx, dispatchReq)
+		text, err := cfg.Inferer.Infer(ctx, Call{Stage: StageGenerate, Persona: string(member), Round: round, System: memberSystemPrompt(member), User: prompt})
 		if err != nil {
-			return nil, fmt.Errorf("tribunal: generate candidate for %s: %w", member, err)
+			return nil, fmt.Errorf("tribunal: generate round %d %s: %w", round, member, err)
 		}
-
-		rawText := collectTextParts(resp.GetResult())
-		normCmd := NormaliseCommand(rawText)
-
-		candidates = append(candidates, Candidate{
-			Member:         member,
-			Command:        normCmd,
-			RawText:        rawText,
-			TransactionID:  resp.GetTransactionId(),
-			Receipt:        resp.GetReceipt(),
-			ProviderCallID: attemptID,
-		})
+		candidates = append(candidates, Candidate{Member: member, Round: round, Command: NormaliseCommand(text)})
 	}
-
 	return candidates, nil
-}
-
-func collectTextParts(res *operatorv1.InferenceResult) string {
-	if res == nil {
-		return ""
-	}
-	var sb strings.Builder
-	for _, p := range res.GetParts() {
-		if text := p.GetText(); text != "" {
-			sb.WriteString(text)
-		}
-	}
-	return strings.TrimSpace(sb.String())
 }

@@ -123,4 +123,3 @@ func TestOperatorAuditReceiptListResult_NilAndEmptyReceipts(t *testing.T) {
 	assert.NotNil(t, decodedEmpty.Receipts)
 	assert.Empty(t, decodedEmpty.Receipts)
 }
-

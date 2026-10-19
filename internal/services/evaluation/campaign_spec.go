@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -67,6 +68,34 @@ func ValidateCampaignInvestigation(investigation *evalv1.EvaluationInvestigation
 		}
 	default:
 		return fmt.Errorf("evaluation: investigation mode is unspecified or unknown: %w", constants.ErrEvaluationInvestigationInvalid)
+	}
+	return nil
+}
+
+// ValidateCampaignSpecPosture fails closed for a frozen posture the eval lane
+// cannot execute. Under ratify and notary every mutation needs an L3 proof
+// that Gateway dispatch cannot mint (ErrTxL3ProofUnmintable), so such a
+// campaign is ErrEvaluationPostureUnsupported before any assignment runs.
+func ValidateCampaignSpecPosture(spec *evalv1.EvaluationCampaignSpec) error {
+	posture, err := cases.GovernancePosture(spec.GetGovernancePosture())
+	if err != nil {
+		return fmt.Errorf("evaluation: campaign %q posture: %w: %w", spec.GetCampaignId(), constants.ErrEvaluationPostureUnsupported, err)
+	}
+	if posture.RequiresL3() {
+		return fmt.Errorf("evaluation: campaign %q posture %s requires L3 proofs the eval lane cannot mint: %w", spec.GetCampaignId(), posture, constants.ErrEvaluationPostureUnsupported)
+	}
+	return nil
+}
+
+// ValidateGatewayPosture checks the live Gateway posture against the campaign's
+// frozen posture. The run records the frozen posture as its active posture, so
+// a Gateway running any other posture would mislabel every receipt's governance.
+func ValidateGatewayPosture(spec *evalv1.EvaluationCampaignSpec, gateway evalv1.EvaluationGovernancePosture) error {
+	if err := ValidateCampaignSpecPosture(spec); err != nil {
+		return err
+	}
+	if gateway != spec.GetGovernancePosture() {
+		return fmt.Errorf("evaluation: campaign %q freezes posture %s, Gateway runs %s: %w: %w", spec.GetCampaignId(), spec.GetGovernancePosture(), gateway, constants.ErrEvaluationPostureUnsupported, constants.ErrGatewayPostureMismatch)
 	}
 	return nil
 }

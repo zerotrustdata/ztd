@@ -14,6 +14,7 @@ import (
 	"slices"
 	"time"
 
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/spf13/cobra"
@@ -22,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
@@ -181,4 +183,25 @@ func evalListOperators(
 		return nil, fmt.Errorf("evaluation: list operators: %w", err)
 	}
 	return operators, nil
+}
+
+// evalPreflightGatewayPosture fails closed unless the live Gateway runs the
+// posture the campaign froze and the eval lane can execute it. The posture is
+// immutable at runtime, so one read before scheduling or execution suffices.
+func evalPreflightGatewayPosture(
+	cmd *cobra.Command,
+	deps gatewayEvalDeps,
+	cfg *config.Config,
+	authContext *auth.ClientAuthContext,
+	spec *evalv1.EvaluationCampaignSpec,
+) error {
+	gatewayClient, err := deps.clientFactory(nativeEvalClientConfig(cfg, authContext))
+	if err != nil {
+		return fmt.Errorf("evaluation: initialize gateway client: %w", err)
+	}
+	posture, err := gatewayPosture(cmd.Context(), gatewayClient)
+	if err != nil {
+		return err
+	}
+	return evaluation.ValidateGatewayPosture(spec, posture)
 }

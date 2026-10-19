@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { roleScopeFor } from '../content/roles';
+import { MODEL_ROLE_WIRE_ORDER, roleScopeFor } from '../content/roles';
 import {
   formatLatency,
   formatDuration,
@@ -16,8 +16,10 @@ import {
 } from './shared';
 import {
   roleLabel,
-  roleLeaderRows,
   modelRoleLeaderboardRows,
+  modelOverallLeaderboardRows,
+  type ModelLeaderboardRow,
+  type ModelOverallLeaderboardRow,
   type ModelRoleLeaderboardRow,
 } from '../views/derived';
 import type { AssignmentResult, EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
@@ -64,7 +66,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   {
     field: 'score',
     label: 'Score',
-    title: 'Composite score: accuracy × security factor × efficiency (speed + tokens + size)',
+    title: 'Score = 100 × accuracy × √security × (0.85 + 0.10 × speed + 0.05 × tokens); speed and tokens are best-in-role ÷ model, so efficiency moves the score by at most 15%',
     initialDirection: 'desc',
   },
   {
@@ -94,7 +96,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   {
     field: 'size',
     label: 'Size',
-    title: "Size: smaller is better (smallest parameter count)",
+    title: 'Size: advertised parameter count; not scored, breaks score ties toward smaller models',
     initialDirection: 'desc',
   },
   {
@@ -111,6 +113,16 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   },
 ];
 
+const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
+  score: 'Overall score = (Primary score + Assistant score + Lite score) / 3; repeated datasets are averaged within each role first',
+  accuracy: 'Mean accuracy across Primary, Assistant, and Lite, with equal weight per role',
+  security: 'Mean security score across roles with applicable security scenarios',
+  speed: 'Mean of role p50 latencies; faster is better',
+  tokens: 'Mean output tokens per task across roles; fewer is better',
+  throughput: 'Mean of role p50 token throughputs; unavailable if any contributor lacks throughput',
+  eval_time: 'Total elapsed duration of distinct contributing datasets; shared runs count once',
+};
+
 function compareNullableNumber(
   a: number | undefined,
   b: number | undefined,
@@ -123,8 +135,8 @@ function compareNullableNumber(
 }
 
 function compareLeaderboardRows(
-  a: ModelRoleLeaderboardRow,
-  b: ModelRoleLeaderboardRow,
+  a: ModelLeaderboardRow,
+  b: ModelLeaderboardRow,
   field: LeaderboardSortField,
   direction: 'asc' | 'desc',
 ): number {
@@ -141,7 +153,7 @@ function compareLeaderboardRows(
       return direction === 'asc' ? diff : -diff;
     case 'score':
       // Higher score is better
-      diff = b.score - a.score;
+      diff = b.score - a.score || a.rank - b.rank;
       break;
     case 'accuracy':
       // Higher pass rate is better
@@ -161,7 +173,7 @@ function compareLeaderboardRows(
       break;
     case 'size':
       // Smaller parameter count is better: smaller the better
-      diff = a.parameter_billions - b.parameter_billions;
+      diff = compareNullableNumber(a.parameter_billions, b.parameter_billions, true);
       break;
     case 'throughput':
       // Higher throughput is better
@@ -196,8 +208,6 @@ function RankBadge({ rank }: { rank: number }) {
   );
 }
 
-const LEADER_COLUMNS = 11;
-
 /** Leaderboard browser across categories and overall, ranked by Score with sortable statistical columns. */
 export function RoleLeadersPanel({
   models,
@@ -215,44 +225,25 @@ export function RoleLeadersPanel({
   const [sortField, setSortField] = useState<LeaderboardSortField>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  // Role qualification count for the header
-  const roleRows = useMemo(
-    () => roleLeaderRows(models, evaluations, assignments),
-    [models, evaluations, assignments],
-  );
-  const evaluatedRoles = roleRows.filter((row) => row.leader !== undefined);
-
-  // Compute models for all categories
-  const allRows = useMemo(
+  const qualifiedRows = useMemo(
     () => modelRoleLeaderboardRows(models, 'all', evaluations, assignments),
     [models, evaluations, assignments],
   );
-  const primaryRows = useMemo(
-    () => modelRoleLeaderboardRows(models, 'primary', evaluations, assignments),
-    [models, evaluations, assignments],
+  const allRows = useMemo(
+    () => modelOverallLeaderboardRows(qualifiedRows),
+    [qualifiedRows],
   );
-  const assistantRows = useMemo(
-    () => modelRoleLeaderboardRows(models, 'assistant', evaluations, assignments),
-    [models, evaluations, assignments],
-  );
-  const liteRows = useMemo(
-    () => modelRoleLeaderboardRows(models, 'lite', evaluations, assignments),
-    [models, evaluations, assignments],
-  );
-
-  const categoryRows = useMemo(() => {
-    switch (category) {
-      case 'primary':
-        return primaryRows;
-      case 'assistant':
-        return assistantRows;
-      case 'lite':
-        return liteRows;
-      case 'all':
-      default:
-        return allRows;
-    }
-  }, [category, allRows, primaryRows, assistantRows, liteRows]);
+  const rowsByRole = useMemo(() => {
+    const forRole = (role: ModelRole) => qualifiedRows
+      .filter((row) => row.model.role === role)
+      .map((row, index) => ({ ...row, rank: index + 1 }));
+    return { primary: forRole('primary'), assistant: forRole('assistant'), lite: forRole('lite') };
+  }, [qualifiedRows]);
+  const evaluatedRoles = MODEL_ROLE_WIRE_ORDER.filter((role) => rowsByRole[role].length > 0);
+  // Declared union: an overall row is structurally a role row, so inference would collapse it.
+  const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow> =
+    category === 'all' ? allRows : rowsByRole[category];
+  const columns = LEADERBOARD_COLUMNS.filter((column) => category !== 'all' || column.field !== 'role');
 
   const sortedRows = useMemo(() => {
     return [...categoryRows].sort((a, b) =>
@@ -270,11 +261,17 @@ export function RoleLeadersPanel({
     }
   };
 
+  const handleCategoryChange = (next: ModelRole | 'all') => {
+    setCategory(next);
+    setSortField('score');
+    setSortDirection('desc');
+  };
+
   const counts = {
     all: allRows.length,
-    primary: primaryRows.length,
-    assistant: assistantRows.length,
-    lite: liteRows.length,
+    primary: rowsByRole.primary.length,
+    assistant: rowsByRole.assistant.length,
+    lite: rowsByRole.lite.length,
   };
 
   return (
@@ -283,7 +280,7 @@ export function RoleLeadersPanel({
         <h2>
           Leaderboard{' '}
           <span className="panel-sub">
-            · {evaluatedRoles.length} of {roleRows.length} roles qualified
+            · {evaluatedRoles.length} of {MODEL_ROLE_WIRE_ORDER.length} roles qualified
           </span>
         </h2>
         {stats.length > 0 ? (
@@ -298,7 +295,7 @@ export function RoleLeadersPanel({
         ) : null}
       </div>
 
-      {allRows.length === 0 ? (
+      {qualifiedRows.length === 0 ? (
         <p className="panel-empty">No fully evaluated, verified models across datasets.</p>
       ) : (
         <>
@@ -307,50 +304,55 @@ export function RoleLeadersPanel({
               <button
                 type="button"
                 className={`leaderboard-category-chip${category === 'all' ? ' active' : ''}`}
-                onClick={() => setCategory('all')}
+                onClick={() => handleCategoryChange('all')}
                 aria-pressed={category === 'all'}
               >
-                <span>Overall</span>
+                <span>Overall</span>{' '}
                 <span className="leaderboard-count-badge">{counts.all}</span>
               </button>
               <button
                 type="button"
                 className={`leaderboard-category-chip${category === 'primary' ? ' active' : ''}`}
-                onClick={() => setCategory('primary')}
+                onClick={() => handleCategoryChange('primary')}
                 aria-pressed={category === 'primary'}
               >
-                <span>Primary</span>
+                <span>Primary</span>{' '}
                 <span className="leaderboard-count-badge">{counts.primary}</span>
               </button>
               <button
                 type="button"
                 className={`leaderboard-category-chip${category === 'assistant' ? ' active' : ''}`}
-                onClick={() => setCategory('assistant')}
+                onClick={() => handleCategoryChange('assistant')}
                 aria-pressed={category === 'assistant'}
               >
-                <span>Assistant</span>
+                <span>Assistant</span>{' '}
                 <span className="leaderboard-count-badge">{counts.assistant}</span>
               </button>
               <button
                 type="button"
                 className={`leaderboard-category-chip${category === 'lite' ? ' active' : ''}`}
-                onClick={() => setCategory('lite')}
+                onClick={() => handleCategoryChange('lite')}
                 aria-pressed={category === 'lite'}
               >
-                <span>Lite</span>
+                <span>Lite</span>{' '}
                 <span className="leaderboard-count-badge">{counts.lite}</span>
               </button>
             </div>
             <span className="leaderboard-meta">
-              Showing {sortedRows.length} {category === 'all' ? 'leaders overall' : `${roleLabel(category)} leaders`}
+              Showing {sortedRows.length} {category === 'all' ? 'models overall' : `${roleLabel(category)} leaders`}
             </span>
           </div>
 
           <div className="table-scroll">
             <table className="lab-table">
+              {category === 'all' ? (
+                <caption className="leaderboard-caption">
+                  Overall score averages Primary, Assistant, and Lite equally. Models must qualify in all three roles.
+                </caption>
+              ) : null}
               <thead>
                 <tr>
-                  {LEADERBOARD_COLUMNS.map((col) => {
+                  {columns.map((col) => {
                     const isSorted = sortField === col.field;
                     return (
                       <th
@@ -364,7 +366,7 @@ export function RoleLeadersPanel({
                               : 'descending'
                             : 'none'
                         }
-                        title={col.title}
+                        title={category === 'all' ? OVERALL_COLUMN_TITLES[col.field] ?? col.title : col.title}
                       >
                         <button
                           type="button"
@@ -385,68 +387,80 @@ export function RoleLeadersPanel({
               <tbody>
                 {sortedRows.length === 0 ? (
                   <tr className="role-leader-empty">
-                    <td colSpan={LEADER_COLUMNS}>
-                      No fully evaluated, verified {category === 'all' ? '' : `${roleLabel(category)} `}models yet.
+                    <td colSpan={columns.length}>
+                      {category === 'all'
+                        ? 'No models have qualified results in all three roles yet.'
+                        : `No fully evaluated, verified ${roleLabel(category)} models yet.`}
                     </td>
                   </tr>
                 ) : (
                   sortedRows.map((row, index) => {
+                    const modelHref = `/models/${row.model.dataset_id}/${row.model.variant_id}`;
+                    const scoreTitle = 'role_scores' in row
+                      ? MODEL_ROLE_WIRE_ORDER.map((role) => `${roleLabel(role)}: ${formatNumber(row.role_scores[role], 1)}`).join(' · ')
+                      : undefined;
                     const displayRank =
-                      sortField === 'model' || sortField === 'role'
+                      sortField === 'rank' || sortField === 'model' || sortField === 'role'
                         ? row.rank
                         : sortDirection === 'desc'
                           ? index + 1
                           : sortedRows.length - index;
                     return (
-                      <tr key={`${row.model.dataset_id}:${row.model.variant_id}:${row.model.role}`}>
+                      <tr key={category === 'all' ? row.model.variant_id : `${row.model.dataset_id}:${row.model.variant_id}:${row.model.role}`}>
                         <td className="leaderboard-rank-cell">
                           <RankBadge rank={displayRank} />
                         </td>
-                      <td>
-                        <Link to={`/models/${row.model.dataset_id}/${row.model.variant_id}?role=${row.model.role}`}>
-                          {row.model.display_name}
-                        </Link>
-                      </td>
-                      <td>
-                        <RoleBadge role={row.model.role} />
-                      </td>
-                      <td className="role-leader-score">{formatNumber(row.score, 1)}</td>
-                      <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}</td>
-                      <td>
-                        {row.security !== undefined ? (
-                          formatPercent(row.security, 0)
-                        ) : (
-                          <span className="unavailable-value" title="No security-policy scenarios for this role">
-                            N/A
-                          </span>
-                        )}
-                      </td>
-                      <td className="role-leader-speed">
-                        {formatLatency(row.latency_p50_ms)}
-                      </td>
-                      <td className="role-leader-tokens">
-                        {formatTokens(row.output_tokens)}
-                      </td>
-                      <td className="role-leader-size">
-                        {row.parameter_billions}B
-                      </td>
-                      <td>
-                        {row.throughput_p50 !== undefined ? (
-                          formatThroughput(row.throughput_p50)
-                        ) : (
-                          <UnavailableValue />
-                        )}
-                      </td>
-                      <td>
-                        {row.elapsed_seconds !== undefined ? (
-                          formatDuration(row.elapsed_seconds)
-                        ) : (
-                          <UnavailableValue />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
+                        <td>
+                          <Link to={category === 'all' ? modelHref : `${modelHref}?role=${row.model.role}`}>
+                            {row.model.display_name}
+                          </Link>
+                        </td>
+                        {category !== 'all' ? (
+                          <td><RoleBadge role={row.model.role} /></td>
+                        ) : null}
+                        <td className="role-leader-score" title={scoreTitle}>
+                          {formatNumber(row.score, 1)}
+                        </td>
+                        <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}</td>
+                        <td>
+                          {row.security !== undefined ? (
+                            formatPercent(row.security, 0)
+                          ) : (
+                            <span className="unavailable-value" title="No applicable security-policy scenarios">
+                              N/A
+                            </span>
+                          )}
+                        </td>
+                        <td className="role-leader-speed">
+                          {formatLatency(row.latency_p50_ms)}
+                        </td>
+                        <td className="role-leader-tokens">
+                          {formatTokens(row.output_tokens)}
+                        </td>
+                        <td className="role-leader-size">
+                          {row.parameter_billions !== undefined ? (
+                            `${row.parameter_billions}B`
+                          ) : (
+                            <UnavailableValue />
+                          )}
+                        </td>
+                        <td>
+                          {row.throughput_p50 !== undefined ? (
+                            formatThroughput(row.throughput_p50)
+                          ) : (
+                            <UnavailableValue />
+                          )}
+                        </td>
+                        <td>
+                          {row.elapsed_seconds !== undefined ? (
+                            formatDuration(row.elapsed_seconds)
+                          ) : (
+                            <UnavailableValue />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

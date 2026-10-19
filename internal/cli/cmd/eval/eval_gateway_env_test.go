@@ -38,6 +38,9 @@ func newGatewayTestDeps(t *testing.T, root string, operators []*operatorv1.Opera
 	body, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: operators})
 	require.NoError(t, err)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if writeGatewayHealthResponse(w, r) {
+			return
+		}
 		if r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.Operators {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(body)

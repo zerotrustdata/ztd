@@ -30,8 +30,10 @@ type ScenarioBlueprint struct {
 	RequiredConcepts  []string
 	EligibleRoles     []evalv1.ModelCampaignRole
 	TrajectoryPolicy  evalv1.EvaluationTrajectoryPolicy
-	Input             ScenarioInputFixture
-	Gold              ScenarioGoldCriteria
+	// TribunalCommands declares run_commands_with_operator intent-only.
+	TribunalCommands bool
+	Input            ScenarioInputFixture
+	Gold             ScenarioGoldCriteria
 }
 
 // ScenarioArtifacts holds the canonical fixture bodies for one scenario.
@@ -281,6 +283,7 @@ func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, r
 		InputFixtureRef:           inputArtifact.Reference,
 		GoldCriteriaRef:           goldArtifact.Reference,
 		TrajectoryPolicy:          blueprint.TrajectoryPolicy,
+		TribunalCommands:          blueprint.TribunalCommands,
 		PromptHint:                publicPromptHint(blueprint.Gold.PromptHint),
 		PublicCriteria:            publicCriteria,
 		PublicToolScoreDimensions: publicToolScoreDimensionsForBlueprint(blueprint),

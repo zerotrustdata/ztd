@@ -48,12 +48,18 @@ func setupRunEnv(t *testing.T) *runEnv {
 }
 
 func setupRunEnvWithOperatorSource(t *testing.T, operatorSource func() []*operatorv1.OperatorDocument) *runEnv {
+	return setupRunEnvWithGateway(t, operatorSource, constants.PostureDoctrine)
+}
+
+// setupRunEnvWithGateway wires a fake Gateway that lists operatorSource and
+// reports posture from its health endpoint.
+func setupRunEnvWithGateway(t *testing.T, operatorSource func() []*operatorv1.OperatorDocument, posture constants.Posture) *runEnv {
 	t.Helper()
 	root := testutil.TempDir(t)
 	writeTestFrozenInventory(t, root, testQwenVariant())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if writeWitnessPreflightResponse(w, r) {
+		if writeWitnessPreflightResponse(w, r) || writeGatewayPostureResponse(w, r, posture) {
 			return
 		}
 		if r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.Operators {
@@ -294,7 +300,7 @@ func (e *runEnv) startGatewayFake(t *testing.T, executing bool) {
 		if executing && writeWitnessPreflightResponse(w, r) {
 			return
 		}
-		if writePublicationProofResponse(w, r) {
+		if writePublicationProofResponse(w, r) || writeGatewayHealthResponse(w, r) {
 			return
 		}
 		switch {

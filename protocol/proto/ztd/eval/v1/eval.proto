@@ -563,6 +563,11 @@ message EvaluationScenarioDefinition {
   repeated ModelCampaignRole eligible_roles = 14;
   EvaluationTrajectoryPolicy trajectory_policy = 15;
   PromptHint prompt_hint = 16;
+  // tribunal_commands declares run_commands_with_operator intent-only: the
+  // model states the request and the Tribunal deliberation writes the
+  // command, which then runs through L1-L5 like any other. Unset, the model
+  // authors the command itself. The frozen catalog digest binds the choice.
+  bool tribunal_commands = 17;
 }
 
 // ModelVariant is one frozen provider-backed model identity in a campaign.

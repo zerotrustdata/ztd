@@ -166,6 +166,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign investigation: %w", err)
 	}
+	if err := evalPreflightGatewayPosture(cmd, gatewayDeps, cfg, authContext, spec); err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
 	operators, err := evalListOperators(cmd, gatewayDeps, cfg, authContext)
 	if err != nil {
 		return 0, err

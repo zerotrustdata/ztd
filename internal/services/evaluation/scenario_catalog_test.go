@@ -200,6 +200,16 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"gold evidence reference has no criteria", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: "ref-1"}}
 		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"tribunal commands without run_commands_with_operator allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.TribunalCommands = true
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"tribunal validator constrains the direct command argument", toolArgRunCommands, func(b *ScenarioBlueprint) {
+			b.TribunalCommands = true
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"tribunal hint omits the intent request argument", toolArgRunCommands, func(b *ScenarioBlueprint) {
+			b.TribunalCommands = true
+			b.Gold.ArgumentValidators = nil
+		}, constants.ErrEvaluationPromptUnanswerable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

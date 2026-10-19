@@ -24,7 +24,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/tribunal"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -43,6 +42,9 @@ const (
 	// or command output cannot exceed the per-message text bound.
 	agentToolResultMaxBytes = 64 * 1024
 	agentCallSiteTurn       = "agent:turn"
+	// agentCallSiteTribunalPrefix prefixes a Tribunal inference's call site:
+	// tribunal:generate, tribunal:marshal, or tribunal:audit.
+	agentCallSiteTribunalPrefix = "tribunal:"
 )
 
 // AgentToolDispatcher is the governed Data Operator surface the agent executor
@@ -157,7 +159,9 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	}
 	if semanticGrades, judgeScores := e.scoreWithJudge(ctx, req, run.trace); len(semanticGrades) > 0 {
 		result.SemanticGrades = semanticGrades
-		result.DecomposedScores = append(result.DecomposedScores, judgeScores...)
+		if len(result.DecomposedScores) > 0 {
+			result.DecomposedScores = append(result.DecomposedScores, judgeScores...)
+		}
 		for _, sg := range semanticGrades {
 			if sg.GraderCallRef != nil {
 				result.GraderCalls = append(result.GraderCalls, &evalv1.GraderModelCallRecord{
@@ -416,7 +420,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 	r.trace.Input = input
 	messages := append(append(make([]*operatorv1.InferenceMessage, 0, len(r.held)+len(opening)), r.held...), opening...)
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
-		result, call := r.infer(ctx, agentModelCallPurposeTurn, turn, messages, tools)
+		result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: turn}, messages, tools)
 		if call == nil {
 			r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
 			return nil
@@ -454,7 +458,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 					assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: text}})
 				}
 				userMsg := &operatorv1.InferenceMessage{
-					Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER,
+					Role:  operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER,
 					Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: matchedFollowUp.ResponseText}}},
 				}
 				messages = append(messages, assistant, userMsg)
@@ -491,6 +495,12 @@ func (r *agentRun) loop(ctx context.Context) error {
 				return err
 			}
 			r.trace.ToolCalls = append(r.trace.ToolCalls, executed)
+			if r.trace.ProviderFailure != "" {
+				// A Tribunal inference inside the tool call failed; like a
+				// failed turn, it ends the loop.
+				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
+				return nil
+			}
 			assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 				CallId: toolCall.GetCallId(), Name: toolCall.GetName(), ArgumentsJson: executed.ArgumentsJSON,
 			}}})
@@ -690,9 +700,10 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 // it on the trace whenever the Inference runtime executed it, so its ledger
 // commitment is always claimed. A provider failure is a scored outcome, not an
 // execution error: it is recorded on the trace and reported as a nil call so
-// the caller stops the turn.
-func (r *agentRun) infer(ctx context.Context, purpose string, turn int, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
-	result, call, err := r.dispatchInference(ctx, purpose, turn, messages, tools)
+// the caller stops the turn. call names the inference (purpose, loop turn, and
+// for a Tribunal call its tool call and persona); dispatch fills the rest.
+func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
+	result, call, err := r.dispatchInference(ctx, call, messages, tools)
 	if err != nil {
 		r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
@@ -708,17 +719,14 @@ func (r *agentRun) infer(ctx context.Context, purpose string, turn int, messages
 }
 
 // dispatchInference dispatches one governed inference for the designated model
-// and records its telemetry. Every agent call answers the scored turn. The
-// returned call carries the Inference runtime's signed receipt whenever the
-// runtime executed the dispatch, including when err reports its failure.
-func (r *agentRun) dispatchInference(ctx context.Context, purpose string, turn int, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
+// and records its telemetry. The returned call carries the Inference runtime's
+// signed receipt whenever the runtime executed the dispatch, including when err
+// reports its failure.
+func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
 	attemptID := r.executor.newID("agent-inference")
-	call := AgentModelCall{
-		ProviderAttemptID: attemptID,
-		Purpose:           purpose,
-		LoopTurn:          turn,
-		ToolsDeclared:     []string{},
-	}
+	purpose, turn := call.Purpose, call.LoopTurn
+	call.ProviderAttemptID = attemptID
+	call.ToolsDeclared = []string{}
 	for _, tool := range tools {
 		call.ToolsDeclared = append(call.ToolsDeclared, tool.GetName())
 	}
@@ -805,8 +813,7 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("ZTD-1607: Unknown tool %q; %s", toolCall.GetName(), hint)})
 	}
 	record.IsOperatorTool = spec.Operator
-	schema, _ := r.executor.catalog.registry.Tool(spec.Name)
-	args, failure := parseAgentToolArguments(spec, schema.RequiredArguments, toolCall.GetArgumentsJson())
+	args, failure := parseAgentToolArguments(spec, toolCall.GetArgumentsJson())
 	if failure != nil {
 		return r.fail(record, *failure)
 	}
@@ -1030,99 +1037,23 @@ func (r *agentRun) decodeFileResult(record AgentToolCall, tool string, args agen
 	}
 }
 
-// runCommand runs governed command execution. When intent is provided or the
-// scenario requests the intent pipeline, it routes through the sealed 5-member
-// Tribunal, weighted voting, Marshal risk analysis, and Auditor review (D9).
+// runCommand runs one governed command. Under a TribunalCommands scenario the
+// model only states the request: the Tribunal deliberation writes the command
+// first, and only an approved command is dispatched.
 func (r *agentRun) runCommand(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
-	command := strings.TrimSpace(args.String("command"))
-	request := strings.TrimSpace(args.String("request"))
-	guidelines := strings.TrimSpace(args.String("guidelines"))
-
-	useIntentPipeline := r.req.ScenarioTools.IntentPipeline || args.Bool("intent_pipeline")
-	if !useIntentPipeline && command == "" {
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required"})
-	}
-	if useIntentPipeline && command == "" && request == "" {
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required"})
-	}
-
-	if useIntentPipeline && r.executor.inference != nil && r.variant != nil {
-		intentReq := request
-		if intentReq == "" {
-			intentReq = command
-		}
-		pipelineReq := tribunal.PipelineRequest{
-			Request:                   intentReq,
-			Guidelines:                guidelines,
-			WorkingDirectory:          r.workspace.OperatorWorkingDirectory,
-			OS:                        "linux",
-			Shell:                     "bash",
-			Turn:                      len(r.trace.ModelCalls) + 1,
-			AttemptID:                 r.req.AttemptID,
-			CircuitBreakerStrikeCount: r.marshalStrikeCount,
-		}
-		pipelineCfg := tribunal.PipelineConfig{
-			Dispatcher:          r.executor.inference,
-			InferenceSessionID:  r.trace.Inference.SessionID,
-			Variant:             r.variant,
-			CampaignID:          r.trace.CampaignID,
-			ModelRegistryDigest: r.trace.ModelRegistryDigest,
-			ModelRegistry:       r.registry,
-			NewID:               r.executor.newID,
-			Now:                 r.executor.now,
-		}
-		pipelineRes, err := tribunal.RunPipeline(ctx, pipelineCfg, pipelineReq, uint32(len(r.trace.Steps)))
-		if pipelineRes != nil {
-			r.trace.Steps = append(r.trace.Steps, pipelineRes.Steps...)
-			for _, c := range pipelineRes.Candidates {
-				if c.Receipt != nil {
-					r.trace.ModelCalls = append(r.trace.ModelCalls, AgentModelCall{
-						ProviderAttemptID: c.ProviderCallID,
-						TransactionID:     c.TransactionID,
-						Purpose:           "tribunal_candidate_" + string(c.Member),
-						LoopTurn:          pipelineReq.Turn,
-						Receipt:           &AgentTraceReceipt{ActionReceipt: c.Receipt},
-					})
-				}
-			}
-			if pipelineRes.Risk != nil && pipelineRes.Risk.Receipt != nil {
-				r.trace.ModelCalls = append(r.trace.ModelCalls, AgentModelCall{
-					ProviderAttemptID: r.executor.newID("tribunal-marshal"),
-					TransactionID:     pipelineRes.Risk.TransactionID,
-					Purpose:           "tribunal_marshal",
-					LoopTurn:          pipelineReq.Turn,
-					Receipt:           &AgentTraceReceipt{ActionReceipt: pipelineRes.Risk.Receipt},
-				})
-			}
-			if pipelineRes.Audit != nil && pipelineRes.Audit.Receipt != nil {
-				r.trace.ModelCalls = append(r.trace.ModelCalls, AgentModelCall{
-					ProviderAttemptID: r.executor.newID("tribunal-audit"),
-					TransactionID:     pipelineRes.Audit.TransactionID,
-					Purpose:           "tribunal_audit",
-					LoopTurn:          pipelineReq.Turn,
-					Receipt:           &AgentTraceReceipt{ActionReceipt: pipelineRes.Audit.Receipt},
-				})
-			}
-			if pipelineRes.HighRiskBlocked {
-				if pipelineRes.CircuitBreakerTripped {
-					r.marshalStrikeCount = 0
-					return r.fail(record, agentToolFailure{
-						ErrorType: agentToolErrorSecurity,
-						Error:     "AGENT CONFLICT: Marshal blocked command twice. Human intervention required.",
-					})
-				}
-				r.marshalStrikeCount++
-				return r.fail(record, agentToolFailure{
-					ErrorType: agentToolErrorSecurity,
-					Error:     fmt.Sprintf("MARSHAL BLOCKED: %s (feedback: %s)", pipelineRes.Risk.Rationale, pipelineRes.Feedback),
-				})
-			}
-		}
+	command := strings.TrimSpace(args.String(agentToolArgCommand))
+	if r.req.ScenarioTools.TribunalCommands {
+		deliberated, failure, err := r.deliberateCommand(ctx, record, args)
 		if err != nil {
-			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: err.Error()})
+			return AgentToolCall{}, err
 		}
-		r.marshalStrikeCount = 0
-		command = pipelineRes.FinalCommand
+		if failure != nil {
+			return r.fail(record, *failure)
+		}
+		command = deliberated
+	}
+	if command == "" {
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required"})
 	}
 
 	record.Command = command
@@ -1263,33 +1194,31 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 		result.FailureReason = grading.Trajectory.FailureReason
 		result.PublicFailureReason = grading.Trajectory.PublicFailureReason
 	}
-	// Governed actions are recorded in execution order: each governed inference,
-	// then the tool calls it returned.
+	// Governed actions are recorded in execution order: each governed turn, then
+	// the tool calls it returned, each after the Tribunal inferences it
+	// dispatched.
 	for _, call := range trace.ModelCalls {
-		if evidenceErr != nil || call.Receipt == nil {
+		if evidenceErr != nil || !call.IsTurn() || call.Receipt == nil {
 			continue
 		}
-		ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
+		binding, err := agentModelCallGovernedAction(traceEvidence, trace, assignmentID, call)
 		if err != nil {
 			return nil, err
 		}
-		decision := agentPolicyDecisionAllow
-		if call.Receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
-			decision = agentPolicyDecisionDeny
-		}
-		result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
-			BindingId:         call.ProviderAttemptID,
-			AssignmentId:      assignmentID,
-			TransactionId:     call.TransactionID,
-			OperatorId:        trace.Inference.OperatorID,
-			OperatorSessionId: trace.Inference.SessionID,
-			ReceiptRef:        ref,
-			PolicyDecision:    decision,
-			ActionType:        call.Receipt.GetActionType(),
-		})
+		result.GovernedActions = append(result.GovernedActions, binding)
 		for _, tool := range trace.ToolCalls {
 			if tool.ModelCallID != call.ProviderAttemptID {
 				continue
+			}
+			for _, dispatched := range trace.ModelCalls {
+				if dispatched.ToolCallID != tool.CallID || dispatched.Receipt == nil {
+					continue
+				}
+				binding, err := agentModelCallGovernedAction(traceEvidence, trace, assignmentID, dispatched)
+				if err != nil {
+					return nil, err
+				}
+				result.GovernedActions = append(result.GovernedActions, binding)
 			}
 			binding, err := agentToolGovernedAction(traceEvidence, trace, assignmentID, tool)
 			if err != nil {
@@ -1356,6 +1285,29 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	return result, nil
 }
 
+// agentModelCallGovernedAction binds one governed inference to its Inference
+// runtime receipt.
+func agentModelCallGovernedAction(traceEvidence *compliancev1.ComplianceEvidenceReference, trace *AgentTrace, assignmentID string, call AgentModelCall) (*evalv1.GovernedActionBinding, error) {
+	ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
+	if err != nil {
+		return nil, err
+	}
+	decision := agentPolicyDecisionAllow
+	if call.Receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
+		decision = agentPolicyDecisionDeny
+	}
+	return &evalv1.GovernedActionBinding{
+		BindingId:         call.ProviderAttemptID,
+		AssignmentId:      assignmentID,
+		TransactionId:     call.TransactionID,
+		OperatorId:        trace.Inference.OperatorID,
+		OperatorSessionId: trace.Inference.SessionID,
+		ReceiptRef:        ref,
+		PolicyDecision:    decision,
+		ActionType:        call.Receipt.GetActionType(),
+	}, nil
+}
+
 func agentArgumentsHash(arguments string) string {
 	sum := sha256.Sum256([]byte(arguments))
 	return hex.EncodeToString(sum[:])
@@ -1369,8 +1321,9 @@ func agentToolCallOutcome(success bool) evalv1.EvaluationVerdictStatus {
 }
 
 // modelInferenceRecordsFromAgentTrace maps every governed agent inference to
-// a SCORED_CHAIN record: each one answers a scored turn of the tool loop. The
-// scored span is the summed generation time.
+// a SCORED_CHAIN record: a scored turn of the tool loop, or a Tribunal
+// inference under its persona and stage call site. The scored span is the
+// summed generation time.
 func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment, trace *AgentTrace, newID func(string) string) ([]*evalv1.ModelInferenceRecord, *uint64) {
 	homogeneous := assignment.GetHomogeneous()
 	records := make([]*evalv1.ModelInferenceRecord, 0, len(trace.ModelCalls))
@@ -1381,6 +1334,11 @@ func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment
 			usage = evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
 		}
 		retryCount := call.RetryCount
+		persona, callSite := trace.DesignatedRole, agentCallSiteTurn
+		if !call.IsTurn() {
+			persona = call.Persona
+			callSite = agentCallSiteTribunalPrefix + strings.TrimPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix)
+		}
 		record := &evalv1.ModelInferenceRecord{
 			InferenceRecordId:       newID("inference"),
 			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
@@ -1388,8 +1346,8 @@ func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment
 			AssignmentId:            assignment.GetAssignmentId(),
 			EvaluationAttemptId:     trace.EvaluationAttemptID,
 			ModelRole:               homogeneous.GetDesignatedRole(),
-			AgentPersona:            trace.DesignatedRole,
-			CallSite:                agentCallSiteTurn,
+			AgentPersona:            persona,
+			CallSite:                callSite,
 			ModelVariant:            homogeneous.GetCandidateVariant(),
 			UsageAvailability:       usage,
 			PromptTokens:            call.PromptTokens,

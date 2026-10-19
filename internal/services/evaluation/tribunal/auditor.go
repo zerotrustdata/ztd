@@ -9,115 +9,125 @@ package tribunal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-type auditorResponseJSON struct {
-	Verdict   string `json:"verdict"`
-	Command   string `json:"command"`
-	Rationale string `json:"rationale"`
+// auditorMaxAttempts bounds the Auditor's answers before the deliberation
+// fails closed.
+const auditorMaxAttempts = 2
+
+const auditorSystemPrompt = "You are the Auditor, the Tribunal's final technical gate. Check the selected shell command for correctness against the request, safe quoting, error handling, and portability.\n" +
+	"- APPROVE: the selected command (cluster_a) is correct as written.\n" +
+	"- REVISE: fix a flaw; put the complete corrected command in revised_command.\n" +
+	"- SWAP: another cluster is better; name it in swap_to_cluster. Not allowed when the panel was unanimous.\n\n" +
+	`Answer with exactly one JSON object and nothing else: {"verdict": "APPROVE"|"REVISE"|"SWAP", "swap_to_cluster": "<cluster id for SWAP>", "revised_command": "<command for REVISE>", "rationale": "<why>"}`
+
+type auditorAnswer struct {
+	Verdict        string `json:"verdict"`
+	SwapToCluster  string `json:"swap_to_cluster"`
+	RevisedCommand string `json:"revised_command"`
+	Rationale      string `json:"rationale"`
 }
 
-// AuditCommand performs technical scrutiny on the selected command before execution.
-func AuditCommand(ctx context.Context, cfg PipelineConfig, req PipelineRequest, vote *VoteResult) (*AuditResult, error) {
-	if cfg.Dispatcher == nil {
-		return nil, fmt.Errorf("tribunal: auditor: %w", constants.ErrMissingRequiredField)
+// auditClusters labels the winner cluster_a and every other cluster after it
+// in vote order, as the Auditor sees them.
+func auditClusters(v Vote) []Cluster {
+	clusters := make([]Cluster, 0, len(v.Clusters))
+	for _, cluster := range v.Clusters {
+		if cluster.Command == v.Winner {
+			clusters = append(clusters, cluster)
+		}
 	}
+	for _, cluster := range v.Clusters {
+		if cluster.Command != v.Winner {
+			clusters = append(clusters, cluster)
+		}
+	}
+	for i := range clusters {
+		clusters[i].ID = clusterID(i)
+	}
+	return clusters
+}
 
-	attemptID := cfg.NewID(fmt.Sprintf("tribunal-audit-%d", req.Turn))
-	systemPrompt := "You are the Auditor, the final technical verification gate.\n" +
-		"Inspect the proposed shell command for technical correctness, safe quoting, error handling (pipefail/&&), and alignment with intent.\n" +
-		"You may:\n" +
-		"- APPROVE: The command is correct and safe to run as-is.\n" +
-		"- REVISE: The command has minor quoting or flag flaws that you fix in the command field.\n" +
-		"- SWAP: Swap to an alternative candidate from the panel if it is superior.\n\n" +
-		`Respond ONLY with JSON: {"verdict": "APPROVE"|"REVISE"|"SWAP", "command": "<final command>", "rationale": "<short rationale>"}`
+func auditorPrompt(req Request, v Vote, clusters []Cluster) string {
+	var b strings.Builder
+	b.WriteString(contextBlock(req))
+	mode := "MAJORITY: the panel split; APPROVE, REVISE and SWAP are allowed."
+	if v.Unanimous() {
+		mode = "UNANIMOUS: every member proposed cluster_a; APPROVE and REVISE are allowed."
+	}
+	fmt.Fprintf(&b, "\nVoting mode: %s\n\n<clusters>\n", mode)
+	for _, cluster := range clusters {
+		fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), cluster.Command)
+	}
+	b.WriteString("</clusters>\n\nGive your verdict on cluster_a.")
+	return b.String()
+}
 
-	var userPrompt strings.Builder
-	userPrompt.WriteString(fmt.Sprintf("<request>\n%s\n</request>\n\n", req.Request))
-	userPrompt.WriteString(fmt.Sprintf("<selected_command>\n%s\n</selected_command>\n\n", vote.WinnerCommand))
+// audit asks the Auditor for a verdict on the vote winner. The verdict must
+// fit the voting mode: SWAP names a known cluster other than the winner and
+// is not allowed for a unanimous panel, and REVISE carries a non-empty
+// command. After auditorMaxAttempts invalid answers the audit fails closed
+// with Failure set; only an inference failure returns an error.
+func audit(ctx context.Context, cfg Config, req Request, v Vote) (*Audit, error) {
+	clusters := auditClusters(v)
+	prompt := auditorPrompt(req, v, clusters)
+	var failure string
+	for attempt := uint32(1); attempt <= auditorMaxAttempts; attempt++ {
+		text, err := cfg.Inferer.Infer(ctx, Call{Stage: StageAudit, Persona: PersonaAuditor, Round: attempt, System: auditorSystemPrompt, User: prompt})
+		if err != nil {
+			return nil, fmt.Errorf("tribunal: auditor attempt %d: %w", attempt, err)
+		}
+		result, reason := auditVerdict(text, v, clusters)
+		if result != nil {
+			return result, nil
+		}
+		failure = reason
+	}
+	return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_UNSPECIFIED, Failure: failure}, nil
+}
 
-	if len(vote.Clusters) > 1 {
-		userPrompt.WriteString("<alternative_candidates>\n")
-		for cmd, members := range vote.Clusters {
-			if cmd != vote.WinnerCommand {
-				userPrompt.WriteString(fmt.Sprintf("- %s (supported by %d members)\n", cmd, len(members)))
+// auditVerdict validates one Auditor answer, returning the reason it is
+// invalid when it does not fit the vote.
+func auditVerdict(text string, v Vote, clusters []Cluster) (*Audit, string) {
+	var answer auditorAnswer
+	if err := decodeAnswer(text, &answer); err != nil {
+		return nil, err.Error()
+	}
+	rationale := strings.TrimSpace(answer.Rationale)
+	swap := strings.ToLower(strings.TrimSpace(answer.SwapToCluster))
+	revised := NormaliseCommand(answer.RevisedCommand)
+	switch strings.ToUpper(strings.TrimSpace(answer.Verdict)) {
+	case "APPROVE":
+		if swap != "" || revised != "" {
+			return nil, "APPROVE carries a swap or revision"
+		}
+		return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, Command: v.Winner, Rationale: rationale}, ""
+	case "REVISE":
+		if revised == "" {
+			return nil, "REVISE carries no revised_command"
+		}
+		if swap != "" {
+			return nil, "REVISE carries a swap_to_cluster"
+		}
+		return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_REVISE, Command: revised, Rationale: rationale}, ""
+	case "SWAP":
+		if v.Unanimous() {
+			return nil, "SWAP is not allowed for a unanimous panel"
+		}
+		if revised != "" {
+			return nil, "SWAP carries a revised_command"
+		}
+		for _, cluster := range clusters[1:] {
+			if cluster.ID == swap {
+				return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_SWAP, Command: cluster.Command, Rationale: rationale}, ""
 			}
 		}
-		userPrompt.WriteString("</alternative_candidates>\n\n")
-	}
-
-	userPrompt.WriteString("Provide your verdict.")
-
-	dispatchReq := buildDispatchRequest(cfg, operatorv1.ModelRole_MODEL_ROLE_PRIMARY, attemptID, systemPrompt, userPrompt.String())
-
-	resp, err := cfg.Dispatcher.DispatchInference(ctx, dispatchReq)
-	if err != nil {
-		// Fallback to APPROVE with winner command if auditor inference fails
-		return &AuditResult{
-			Verdict:      evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE,
-			FinalCommand: vote.WinnerCommand,
-			Rationale:    fmt.Sprintf("Auditor inference fallback: %v", err),
-		}, nil
-	}
-
-	text := collectTextParts(resp.GetResult())
-	parsed := parseAuditorResponse(text)
-
-	verdict := evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE
-	finalCmd := vote.WinnerCommand
-
-	switch strings.ToUpper(strings.TrimSpace(parsed.Verdict)) {
-	case "REVISE":
-		verdict = evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_REVISE
-		if parsedCmd := NormaliseCommand(parsed.Command); parsedCmd != "" {
-			finalCmd = parsedCmd
-		}
-	case "SWAP":
-		verdict = evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_SWAP
-		if parsedCmd := NormaliseCommand(parsed.Command); parsedCmd != "" {
-			finalCmd = parsedCmd
-		}
+		return nil, fmt.Sprintf("SWAP names no alternative cluster %q", answer.SwapToCluster)
 	default:
-		verdict = evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE
+		return nil, fmt.Sprintf("unknown verdict %q", answer.Verdict)
 	}
-
-	return &AuditResult{
-		Verdict:       verdict,
-		FinalCommand:  finalCmd,
-		Rationale:     parsed.Rationale,
-		TransactionID: resp.GetTransactionId(),
-		Receipt:       resp.GetReceipt(),
-	}, nil
-}
-
-func parseAuditorResponse(text string) auditorResponseJSON {
-	cleaned := strings.TrimSpace(text)
-	if idx := strings.Index(cleaned, "{"); idx != -1 {
-		cleaned = cleaned[idx:]
-	}
-	if idx := strings.LastIndex(cleaned, "}"); idx != -1 {
-		cleaned = cleaned[:idx+1]
-	}
-
-	var res auditorResponseJSON
-	if err := json.Unmarshal([]byte(cleaned), &res); err == nil && res.Verdict != "" {
-		return res
-	}
-
-	// Heuristic fallback
-	lower := strings.ToLower(text)
-	if strings.Contains(lower, "revise") {
-		return auditorResponseJSON{Verdict: "REVISE"}
-	}
-	if strings.Contains(lower, "swap") {
-		return auditorResponseJSON{Verdict: "SWAP"}
-	}
-	return auditorResponseJSON{Verdict: "APPROVE"}
 }

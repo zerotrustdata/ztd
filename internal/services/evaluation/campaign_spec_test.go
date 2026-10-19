@@ -182,3 +182,51 @@ func TestCampaignCondition(t *testing.T) {
 	}
 	assert.Equal(t, CampaignConditionControl, CampaignCondition(fresh))
 }
+
+func TestValidateCampaignSpecPosture_FailsClosedWithoutMintableL3(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		posture evalv1.EvaluationGovernancePosture
+		ok      bool
+	}{
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, true},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, false},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY, false},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false},
+	}
+	for _, tt := range tests {
+		err := ValidateCampaignSpecPosture(&evalv1.EvaluationCampaignSpec{CampaignId: "c", GovernancePosture: tt.posture})
+		if tt.ok {
+			assert.NoError(t, err, tt.posture.String())
+			continue
+		}
+		require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported, tt.posture.String())
+		assert.Equal(t, ExecutionFailurePosture, ClassifyExecutionFailure(err))
+	}
+}
+
+func TestValidateGatewayPosture_RequiresTheFrozenPosture(t *testing.T) {
+	t.Parallel()
+	catalog, _, err := LoadScenarioCatalog()
+	require.NoError(t, err)
+	inventory, err := MaterializeModelRegistry("posture-campaign", []*evalv1.ModelVariant{testModelVariant()})
+	require.NoError(t, err)
+	spec, err := MaterializeCampaignSpec("posture-campaign", catalog, inventory, 1, false, testPlatform)
+	require.NoError(t, err)
+
+	require.NoError(t, ValidateGatewayPosture(spec, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
+
+	err = ValidateGatewayPosture(spec, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS)
+	require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+	require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
+
+	err = ValidateGatewayPosture(spec, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY)
+	require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+
+	notary := proto.Clone(spec).(*evalv1.EvaluationCampaignSpec)
+	notary.GovernancePosture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY
+	err = ValidateGatewayPosture(notary, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY)
+	require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
+	assert.NotErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+}

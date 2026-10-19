@@ -1321,39 +1321,34 @@ export function recentCampaignRows(
   return rows.sort((a, b) => b.observedAt.localeCompare(a.observedAt)).slice(0, limit);
 }
 
-export type LeaderboardAxis = 'speed' | 'tokens' | 'size';
+/** Largest share of a role score each efficiency axis can move. Accuracy and security
+ *  set the score; speed and token cost only separate models of similar quality. */
+export const LEADERBOARD_EFFICIENCY_WEIGHTS = { speed: 0.10, tokens: 0.05 } as const;
 
-/** Per-role share of the 100 efficiency points each axis can award. Lite
- *  rewards a small footprint; Primary rewards fast, concise answers. */
-export const LEADERBOARD_AXIS_WEIGHTS: Record<ModelRole, Record<LeaderboardAxis, number>> = {
-  primary: { speed: 0.4, tokens: 0.4, size: 0.2 },
-  assistant: { speed: 0.4, tokens: 0.3, size: 0.3 },
-  lite: { speed: 0.35, tokens: 0.15, size: 0.5 },
-};
-
-export interface LeaderboardAxisScore {
-  /** Points earned: the axis weight × 100 scaled by best-in-role ÷ this model. */
-  points: number;
-  /** Points available on this axis for the role. */
-  max: number;
-}
-
-export interface ModelRoleLeaderboardRow {
+export interface ModelLeaderboardRow {
   rank: number;
   model: ModelSummary;
-  /** Composite score: pass rate × security factor × Σ axis points. */
   score: number;
-  /** Alias for score, for backward compatibility. */
-  points: number;
-  axes: Record<LeaderboardAxis, LeaderboardAxisScore>;
   pass_rate: number;
   /** Security resistance or security category pass rate; undefined when the role has no security scenarios. */
   security?: number;
   latency_p50_ms: number;
   output_tokens: number;
-  parameter_billions: number;
+  /** Advertised parameter count; displayed and used as a tie-break, never scored. */
+  parameter_billions?: number;
   throughput_p50?: number;
   elapsed_seconds?: number;
+}
+
+export interface ModelRoleLeaderboardRow extends ModelLeaderboardRow {
+  /** 100 × accuracy × √security × efficiency (see modelRoleLeaderboardRows). */
+  score: number;
+}
+
+export interface ModelOverallLeaderboardRow extends ModelLeaderboardRow {
+  /** Equal-weight mean of the Primary, Assistant, and Lite scores. */
+  score: number;
+  role_scores: Record<ModelRole, number>;
 }
 
 export interface RoleLeaderRow {
@@ -1433,12 +1428,14 @@ export function resolveModelSecurity(
   return undefined;
 }
 
-/** Score calculation: accuracy (pass rate) × security pass rate × Σ(weight × best-in-role ÷ model)
- *  over p50 latency, output tokens per task, and parameter count. Lower is better on every
- *  efficiency axis, so the role's best model on an axis earns that axis's full weight. Roles
- *  without security scenarios apply a neutral security factor of 1. Leaders require full coverage,
- *  verified scored evidence, all three efficiency axes, and an applicable security grade; equal
- *  score breaks ties by higher accuracy, then smaller model size, then name. */
+/** Score calculation, in priority order accuracy → security → speed → token cost:
+ *  100 × pass rate × √security × (0.85 + 0.10 × speed + 0.05 × tokens), where speed and tokens
+ *  are the role's best (lowest) p50 latency and output tokens per task divided by the model's.
+ *  √security gives security half of accuracy's pull while a zero still zeroes the score; roles
+ *  without security scenarios apply a neutral factor of 1. Efficiency can cost at most 15%, so it
+ *  only separates models of similar quality. Leaders require full coverage, verified scored
+ *  evidence, latency and token observations, and an applicable security grade; equal score breaks
+ *  ties by higher accuracy, then smaller known model size, then name. */
 export function modelRoleLeaderboardRows(
   models: ModelSummary[],
   role: ModelRole | 'all' = 'all',
@@ -1450,61 +1447,110 @@ export function modelRoleLeaderboardRows(
     if (model.evaluation_coverage !== 1) return [];
     if (model.quality_state !== 'exploratory_verified') return [];
     if (role !== 'all' && model.role !== role) return [];
-    const axes = {
-      speed: positive(model.latency_p50_ms?.value),
-      tokens: positive(model.output_tokens?.value),
-      size: positive(modelParameterBillions(model)),
-    };
-    if (axes.speed === undefined || axes.tokens === undefined || axes.size === undefined) return [];
+    const latency = positive(model.latency_p50_ms?.value);
+    const tokens = positive(model.output_tokens?.value);
+    if (latency === undefined || tokens === undefined) return [];
     const resistance = model.security_resistance;
     const security = resolveModelSecurity(model, assignments);
     if (security === undefined && model.role !== 'lite' && resistance?.unavailable_reason !== 'scenario_not_applicable') return [];
-    return [{ model, axes: axes as Record<LeaderboardAxis, number>, security }];
+    return [{ model, latency, tokens, security }];
   });
 
-  const best = new Map<ModelRole, Record<LeaderboardAxis, number>>();
-  for (const { model, axes } of measured) {
+  const best = new Map<ModelRole, { latency: number; tokens: number }>();
+  for (const { model, latency, tokens } of measured) {
     const current = best.get(model.role);
     best.set(model.role, current
-      ? { speed: Math.min(current.speed, axes.speed), tokens: Math.min(current.tokens, axes.tokens), size: Math.min(current.size, axes.size) }
-      : { ...axes });
+      ? { latency: Math.min(current.latency, latency), tokens: Math.min(current.tokens, tokens) }
+      : { latency, tokens });
   }
 
-  const rows = measured.map(({ model, axes, security }) => {
-    const weights = LEADERBOARD_AXIS_WEIGHTS[model.role];
+  const { speed: speedWeight, tokens: tokensWeight } = LEADERBOARD_EFFICIENCY_WEIGHTS;
+  const rows = measured.map(({ model, latency, tokens, security }) => {
     const roleBest = best.get(model.role)!;
-    const score = (axis: LeaderboardAxis): LeaderboardAxisScore => ({
-      points: 100 * weights[axis] * (roleBest[axis] / axes[axis]),
-      max: 100 * weights[axis],
-    });
-    const scores = { speed: score('speed'), tokens: score('tokens'), size: score('size') };
+    const efficiency = 1 - speedWeight - tokensWeight +
+      speedWeight * (roleBest.latency / latency) +
+      tokensWeight * (roleBest.tokens / tokens);
     const passRate = model.pass_rate!.estimate;
-    const efficiency = scores.speed.points + scores.tokens.points + scores.size.points;
-    const finalScore = passRate * (security ?? 1) * efficiency;
     return {
       rank: 0,
       model,
-      score: finalScore,
-      points: finalScore,
-      axes: scores,
+      score: 100 * passRate * Math.sqrt(security ?? 1) * efficiency,
       pass_rate: passRate,
       security,
-      latency_p50_ms: axes.speed,
-      output_tokens: axes.tokens,
-      parameter_billions: axes.size,
+      latency_p50_ms: latency,
+      output_tokens: tokens,
+      parameter_billions: positive(modelParameterBillions(model)),
       throughput_p50: model.output_throughput_p50?.value,
       elapsed_seconds: modelElapsedSeconds(model, evaluations),
     };
   });
-  rows.sort(
-    (a, b) =>
-      b.score - a.score ||
-      b.pass_rate - a.pass_rate ||
-      a.parameter_billions - b.parameter_billions ||
-      a.model.display_name.localeCompare(b.model.display_name) ||
-      a.model.variant_id.localeCompare(b.model.variant_id),
-  );
+  rows.sort(compareModelLeaderboardScores);
   return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+function compareModelLeaderboardScores(a: ModelLeaderboardRow, b: ModelLeaderboardRow): number {
+  return b.score - a.score ||
+    b.pass_rate - a.pass_rate ||
+    (a.parameter_billions ?? Infinity) - (b.parameter_billions ?? Infinity) ||
+    a.model.display_name.localeCompare(b.model.display_name) ||
+    a.model.variant_id.localeCompare(b.model.variant_id);
+}
+
+/** One row per variant with qualified evidence in all three roles. Repeated datasets
+ *  are averaged within a role first, so extra runs never increase that role's weight.
+ *  Metrics are means of role means; elapsed time sums distinct contributing datasets. */
+export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[]): ModelOverallLeaderboardRow[] {
+  const byVariant = new Map<string, Map<ModelRole, ModelRoleLeaderboardRow[]>>();
+  for (const row of roleRows) {
+    const roles = byVariant.get(row.model.variant_id) ?? new Map<ModelRole, ModelRoleLeaderboardRow[]>();
+    const rows = roles.get(row.model.role) ?? [];
+    rows.push(row);
+    roles.set(row.model.role, rows);
+    byVariant.set(row.model.variant_id, roles);
+  }
+
+  const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / values.length;
+  const rows: ModelOverallLeaderboardRow[] = [];
+  for (const roles of byVariant.values()) {
+    const groups = MODEL_ROLE_WIRE_ORDER.map((role) => roles.get(role) ?? []);
+    if (groups.some((group) => group.length === 0)) continue;
+    // Stable ordering also makes the detail-link dataset and floating-point sums deterministic.
+    for (const group of groups) {
+      group.sort((a, b) => b.model.observed_at.localeCompare(a.model.observed_at) || a.model.dataset_id.localeCompare(b.model.dataset_id));
+    }
+    const meanByRole = (metric: (row: ModelRoleLeaderboardRow) => number): number =>
+      mean(groups.map((group) => mean(group.map(metric))));
+    const optionalMeanByRole = (metric: (row: ModelRoleLeaderboardRow) => number | undefined): number | undefined => {
+      const values = groups.map((group) => {
+        const observations = group.map(metric);
+        return observations.every((value) => value !== undefined) ? mean(observations) : undefined;
+      });
+      return values.every((value) => value !== undefined) ? mean(values) : undefined;
+    };
+    const security = groups.flatMap((group) => {
+      const observed = group.flatMap((row) => row.security !== undefined ? [row.security] : []);
+      return observed.length > 0 ? [mean(observed)] : [];
+    });
+    const durations = Array.from(new Map(groups.flat().map((row) => [row.model.dataset_id, row.elapsed_seconds])).values());
+    rows.push({
+      rank: 0,
+      model: groups[0]![0]!.model,
+      score: meanByRole((row) => row.score),
+      role_scores: Object.fromEntries(MODEL_ROLE_WIRE_ORDER.map((role) => [
+        role, mean(roles.get(role)!.map((row) => row.score)),
+      ])) as Record<ModelRole, number>,
+      pass_rate: meanByRole((row) => row.pass_rate),
+      security: security.length > 0 ? mean(security) : undefined,
+      latency_p50_ms: meanByRole((row) => row.latency_p50_ms),
+      output_tokens: meanByRole((row) => row.output_tokens),
+      parameter_billions: groups[0]![0]!.parameter_billions,
+      throughput_p50: optionalMeanByRole((row) => row.throughput_p50),
+      elapsed_seconds: durations.every((value) => value !== undefined)
+        ? durations.reduce((sum, value) => sum + value, 0)
+        : undefined,
+    });
+  }
+  return rows.sort(compareModelLeaderboardScores).map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
 /** Top measured model per role bucket, in Primary → Assistant → Lite order. */

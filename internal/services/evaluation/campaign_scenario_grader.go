@@ -129,8 +129,10 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	metricScores := ComputeInvestigationMetrics(g.assignmentID, trace, g.req.ScenarioGold, contentPassed, g.req.ScenarioInput)
-	scores = append(scores, metricScores...)
+	if len(scores) > 0 {
+		metricScores := ComputeInvestigationMetrics(g.assignmentID, trace, g.req.ScenarioGold, contentPassed, g.req.ScenarioInput)
+		scores = append(scores, metricScores...)
+	}
 	// A provider failure is not an observed model answer or a missing tool call.
 	// Keep canonical grades and trajectory evidence intact, but lead diagnostics
 	// with the classified dispatch outcome instead of its downstream grade misses.

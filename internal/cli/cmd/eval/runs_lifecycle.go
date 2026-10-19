@@ -143,6 +143,14 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: campaign investigation: %w", err)
 		}
+		gatewayDeps := deps.gatewayDeps()
+		gatewayCfg, _, gatewayAuth, err := gatewayEvalEnvironment(cmd, gatewayDeps)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		if err := evalPreflightGatewayPosture(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec); err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
 		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)

@@ -210,7 +210,13 @@ func computeRedundantCommandRate(trace *AgentTrace) float64 {
 }
 
 func computeStepsToDiagnosis(trace *AgentTrace) float64 {
-	steps := len(trace.ModelCalls) + len(trace.ToolCalls)
+	// Tribunal calls are part of their tool call, not steps of their own.
+	steps := len(trace.ToolCalls)
+	for _, call := range trace.ModelCalls {
+		if call.IsTurn() {
+			steps++
+		}
+	}
 	if steps == 0 {
 		return 1.0
 	}

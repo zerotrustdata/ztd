@@ -190,10 +190,10 @@ func (j *Judge) buildDispatchRequest(subject Subject, userText string) (*operato
 		return nil, "", fmt.Errorf("evaluation judge: build request: %w", constants.ErrInferenceModelRegistryInvalid)
 	}
 	req := &operatorv1.InferenceDispatchRequest{
-		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
-		Role:                    models.InferenceModelRolePrimary.ToProto(),
-		Model:                   j.cfg.Variant.GetServedModelTag(),
-		ModelDigest:             j.cfg.Variant.GetModelDigest(),
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 models.InferenceModelRolePrimary.ToProto(),
+		Model:                j.cfg.Variant.GetServedModelTag(),
+		ModelDigest:          j.cfg.Variant.GetModelDigest(),
 		Messages: []*operatorv1.InferenceMessage{
 			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, rubricFor(subject)),
 			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, userText),

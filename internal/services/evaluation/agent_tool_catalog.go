@@ -67,11 +67,13 @@ type agentToolArgument struct {
 
 // agentToolSpec is the Go-owned half of one tool declaration. Operator reports
 // whether the tool executes as a governed action on the bound Data Operator.
+// Arguments and Required are filled from the registry when the catalog is built.
 type agentToolSpec struct {
 	Name        string
 	Description string
 	Operator    bool
 	Arguments   map[string]agentToolArgument
+	Required    []string
 }
 
 var agentToolArgumentCatalog = map[string]agentToolArgument{
@@ -83,6 +85,7 @@ var agentToolArgumentCatalog = map[string]agentToolArgument{
 	"end_line":              {agentToolArgInteger, "Last 1-based line to return (inclusive)."},
 	"expected_output_lines": {agentToolArgInteger, "Approximate number of output lines you expect."},
 	"file_path":             {agentToolArgString, "Absolute file path on the operator host."},
+	"guidelines":            {agentToolArgString, "Constraints the command must satisfy, for example no writes outside /srv."},
 	"includes":              {agentToolArgStringList, "File name globs to search, for example *.log."},
 	"justification":         {agentToolArgString, "Why this action is needed for the investigation."},
 	"limit":                 {agentToolArgInteger, "Maximum number of entries to return."},
@@ -112,12 +115,33 @@ var agentToolSpecs = []agentToolSpec{
 	{Name: agentToolCommandConstraints, Description: "Describe the constraints governed commands must satisfy before you run one."},
 }
 
+// agentToolCommandIntent is the intent-only run_commands_with_operator a
+// TribunalCommands scenario declares in place of the direct one: the model
+// states the request and the Tribunal deliberation writes the command, so
+// command is withheld and request is required.
+var agentToolCommandIntent = agentToolSpec{
+	Name:        agentToolRunCommands,
+	Operator:    true,
+	Description: "Run one shell command on an operator host under governance. Describe in request the single command you need and in guidelines any constraints it must satisfy; the Tribunal writes the command and it runs like any other governed command.",
+}
+
+// Arguments that exist only on one run_commands_with_operator variant. The
+// direct variant withholds guidelines; the intent variant withholds command
+// and requires request in its place.
+const (
+	agentToolArgCommand    = "command"
+	agentToolArgRequest    = "request"
+	agentToolArgGuidelines = "guidelines"
+)
+
 // agentToolCatalog is the declared tool surface for one agent turn: the
 // generated registry's argument contract joined with Go-owned types.
 type agentToolCatalog struct {
-	registry     *AgentToolRegistry
 	specs        map[string]agentToolSpec
 	declarations []*operatorv1.InferenceToolDeclaration
+	// intent and intentDeclaration are the intent-only run_commands_with_operator.
+	intent            agentToolSpec
+	intentDeclaration *operatorv1.InferenceToolDeclaration
 }
 
 // newAgentToolCatalog joins the generated registry with the Go-owned specs and
@@ -127,38 +151,86 @@ func newAgentToolCatalog(registry *AgentToolRegistry) (*agentToolCatalog, error)
 	if registry == nil {
 		return nil, fmt.Errorf("evaluation: agent tool catalog: registry: %w", constants.ErrMissingRequiredField)
 	}
-	catalog := &agentToolCatalog{registry: registry, specs: make(map[string]agentToolSpec, len(agentToolSpecs))}
+	catalog := &agentToolCatalog{specs: make(map[string]agentToolSpec, len(agentToolSpecs))}
 	for _, spec := range agentToolSpecs {
 		schema, ok := registry.Tool(spec.Name)
 		if !ok {
 			return nil, fmt.Errorf("evaluation: agent tool catalog: %w: tool %s is not in the generated registry", constants.ErrMissingRequiredField, spec.Name)
 		}
-		spec.Arguments = make(map[string]agentToolArgument, len(schema.Arguments))
-		properties := make(map[string]any, len(schema.Arguments))
-		for _, name := range schema.Arguments {
-			argument, ok := agentToolArgumentCatalog[name]
-			if !ok {
-				return nil, fmt.Errorf("evaluation: agent tool catalog: %w: argument %s.%s has no declared type", constants.ErrMissingRequiredField, spec.Name, name)
+		if spec.Name == agentToolRunCommands {
+			arguments, required := agentToolArgumentContract(schema, true)
+			intent, declaration, err := declareAgentTool(agentToolCommandIntent, arguments, required)
+			if err != nil {
+				return nil, err
 			}
-			spec.Arguments[name] = argument
-			properties[name] = argument.jsonSchema()
+			catalog.intent, catalog.intentDeclaration = intent, declaration
 		}
-		required := make([]any, 0, len(schema.RequiredArguments))
-		for _, name := range schema.RequiredArguments {
-			required = append(required, name)
-		}
-		document := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
-		if len(required) > 0 {
-			document["required"] = required
-		}
-		encoded, err := MarshalCanonicalJSONObject(document)
+		arguments, required := agentToolArgumentContract(schema, false)
+		declared, declaration, err := declareAgentTool(spec, arguments, required)
 		if err != nil {
-			return nil, fmt.Errorf("evaluation: agent tool catalog: encode %s schema: %w", spec.Name, err)
+			return nil, err
 		}
-		catalog.specs[spec.Name] = spec
-		catalog.declarations = append(catalog.declarations, &operatorv1.InferenceToolDeclaration{Name: spec.Name, Description: spec.Description, JsonSchema: string(encoded)})
+		catalog.specs[spec.Name] = declared
+		catalog.declarations = append(catalog.declarations, declaration)
 	}
 	return catalog, nil
+}
+
+// declareAgentTool types one tool's arguments and encodes its declaration. A
+// required argument the tool does not declare fails closed.
+func declareAgentTool(spec agentToolSpec, arguments, required []string) (agentToolSpec, *operatorv1.InferenceToolDeclaration, error) {
+	spec.Arguments = make(map[string]agentToolArgument, len(arguments))
+	properties := make(map[string]any, len(arguments))
+	for _, name := range arguments {
+		argument, ok := agentToolArgumentCatalog[name]
+		if !ok {
+			return agentToolSpec{}, nil, fmt.Errorf("evaluation: agent tool catalog: %w: argument %s.%s has no declared type", constants.ErrMissingRequiredField, spec.Name, name)
+		}
+		spec.Arguments[name] = argument
+		properties[name] = argument.jsonSchema()
+	}
+	document := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
+	if len(required) > 0 {
+		names := make([]any, 0, len(required))
+		for _, name := range required {
+			if _, ok := spec.Arguments[name]; !ok {
+				return agentToolSpec{}, nil, fmt.Errorf("evaluation: agent tool catalog: %w: required argument %s.%s is not declared", constants.ErrMissingRequiredField, spec.Name, name)
+			}
+			names = append(names, name)
+		}
+		document["required"] = names
+	}
+	encoded, err := MarshalCanonicalJSONObject(document)
+	if err != nil {
+		return agentToolSpec{}, nil, fmt.Errorf("evaluation: agent tool catalog: encode %s schema: %w", spec.Name, err)
+	}
+	spec.Required = append([]string(nil), required...)
+	return spec, &operatorv1.InferenceToolDeclaration{Name: spec.Name, Description: spec.Description, JsonSchema: string(encoded)}, nil
+}
+
+// agentToolArgumentContract returns the arguments and required arguments one
+// tool declares to the model. Only run_commands_with_operator has two
+// variants: the direct one, and the intent-only one a TribunalCommands
+// scenario declares.
+func agentToolArgumentContract(schema AgentToolSchema, tribunalCommands bool) ([]string, []string) {
+	switch {
+	case schema.Name != agentToolRunCommands:
+		return schema.Arguments, schema.RequiredArguments
+	case tribunalCommands:
+		return withoutArgument(schema.Arguments, agentToolArgCommand), []string{agentToolArgRequest}
+	default:
+		return withoutArgument(schema.Arguments, agentToolArgGuidelines), schema.RequiredArguments
+	}
+}
+
+func withoutArgument(arguments []string, excluded string) []string {
+	out := make([]string, 0, len(arguments))
+	for _, name := range arguments {
+		if name != excluded {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func (a agentToolArgument) jsonSchema() map[string]any {
@@ -180,9 +252,13 @@ func (a agentToolArgument) jsonSchema() map[string]any {
 // catalog order: its allowed tools plus its forbidden tools, which stay
 // declared so restraint and governed denial remain observable. A scenario
 // naming neither (an ANSWER scenario) declares no tools. A name the catalog
-// does not type fails closed before any model call.
+// does not type fails closed before any model call. A TribunalCommands
+// scenario declares the intent-only run_commands_with_operator and must allow it.
 func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope, error) {
 	surface := stringSet(tools.AllowedTools)
+	if _, ok := surface[agentToolRunCommands]; tools.TribunalCommands && !ok {
+		return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tribunal commands without allowed tool %s: %w", agentToolRunCommands, constants.ErrEvaluationScenarioContractInvalid)
+	}
 	for _, name := range tools.ForbiddenTools {
 		surface[name] = struct{}{}
 	}
@@ -191,11 +267,18 @@ func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope
 			return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tool %q is not in the agent tool catalog: %w", name, constants.ErrEvaluationScenarioContractInvalid)
 		}
 	}
-	scope := agentToolScope{catalog: c, declarations: make([]*operatorv1.InferenceToolDeclaration, 0, len(surface))}
+	scope := agentToolScope{specs: make(map[string]agentToolSpec, len(surface)), declarations: make([]*operatorv1.InferenceToolDeclaration, 0, len(surface))}
 	for _, declaration := range c.declarations {
-		if _, ok := surface[declaration.GetName()]; ok {
-			scope.declarations = append(scope.declarations, declaration)
+		name := declaration.GetName()
+		if _, ok := surface[name]; !ok {
+			continue
 		}
+		spec := c.specs[name]
+		if tools.TribunalCommands && name == agentToolRunCommands {
+			spec, declaration = c.intent, c.intentDeclaration
+		}
+		scope.specs[name] = spec
+		scope.declarations = append(scope.declarations, declaration)
 	}
 	return scope, nil
 }
@@ -203,7 +286,7 @@ func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope
 // agentToolScope is the tool surface one scenario declares on every agent
 // turn. A model call naming a tool outside it never reaches dispatch.
 type agentToolScope struct {
-	catalog      *agentToolCatalog
+	specs        map[string]agentToolSpec
 	declarations []*operatorv1.InferenceToolDeclaration
 }
 
@@ -223,13 +306,8 @@ func (s agentToolScope) DeclaredNames() []string {
 
 // Spec returns the named tool when this scope declared it.
 func (s agentToolScope) Spec(name string) (agentToolSpec, bool) {
-	for _, declaration := range s.declarations {
-		if declaration.GetName() == name {
-			spec, ok := s.catalog.specs[name]
-			return spec, ok
-		}
-	}
-	return agentToolSpec{}, false
+	spec, ok := s.specs[name]
+	return spec, ok
 }
 
 // agentToolArguments is one decoded model tool call. Model output is untrusted
@@ -243,7 +321,7 @@ type agentToolArguments struct {
 // parseAgentToolArguments decodes and checks one tool call against its declared
 // spec. The returned *agentToolFailure is the model-visible answer when the
 // call is malformed; it is not a harness error.
-func parseAgentToolArguments(spec agentToolSpec, required []string, raw string) (agentToolArguments, *agentToolFailure) {
+func parseAgentToolArguments(spec agentToolSpec, raw string) (agentToolArguments, *agentToolFailure) {
 	values := map[string]any{}
 	if strings.TrimSpace(raw) != "" {
 		decoder := json.NewDecoder(strings.NewReader(raw))
@@ -253,7 +331,7 @@ func parseAgentToolArguments(spec agentToolSpec, required []string, raw string) 
 		}
 	}
 	var problems []string
-	for _, name := range required {
+	for _, name := range spec.Required {
 		if value, ok := values[name]; !ok || value == nil {
 			problems = append(problems, name+"\n  Field required")
 		}

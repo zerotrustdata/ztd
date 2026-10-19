@@ -61,6 +61,7 @@ type SuiteScenario struct {
 	PublicDescription string               `json:"public_description"`
 	GradingMethod     string               `json:"grading_method"`
 	TrajectoryPolicy  string               `json:"trajectory_policy"`
+	TribunalCommands  bool                 `json:"tribunal_commands,omitempty"`
 	EligibleRoles     []string             `json:"eligible_roles"`
 	AllowedTools      []string             `json:"allowed_tools,omitempty"`
 	ExpectedTools     []string             `json:"expected_tools,omitempty"`
@@ -294,6 +295,7 @@ func suiteScenarioFromBlueprint(blueprint ScenarioBlueprint) SuiteScenario {
 		PublicDescription: blueprint.PublicDescription,
 		GradingMethod:     enumName(blueprint.GradingMethod.String(), gradingMethodEnumPrefix),
 		TrajectoryPolicy:  enumName(blueprint.TrajectoryPolicy.String(), trajectoryPolicyEnumPrefix),
+		TribunalCommands:  blueprint.TribunalCommands,
 		EligibleRoles:     roles,
 		AllowedTools:      append([]string(nil), blueprint.AllowedTools...),
 		ExpectedTools:     append([]string(nil), blueprint.ExpectedTools...),
@@ -352,6 +354,7 @@ func (s SuiteScenario) blueprint() (ScenarioBlueprint, error) {
 		RequiredConcepts:  append([]string(nil), s.RequiredConcepts...),
 		EligibleRoles:     roles,
 		TrajectoryPolicy:  policy,
+		TribunalCommands:  s.TribunalCommands,
 		Input:             s.Input,
 		Gold:              gold,
 	}, nil

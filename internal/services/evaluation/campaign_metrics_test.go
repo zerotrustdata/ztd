@@ -40,7 +40,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		},
 	}
 	trace := &AgentTrace{
-		ModelCalls: []AgentModelCall{{LoopTurn: 1}, {LoopTurn: 2}},
+		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2}, {Purpose: agentModelCallPurposeTribunalPrefix + "generate", LoopTurn: 2}},
 		ToolCalls: []AgentToolCall{
 			{
 				ToolName: "query_investigation_context",
@@ -79,7 +79,8 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 	assert.Equal(t, 0.0, scoreMap[MetricRedundantCommandRate].Value)
 	assert.Equal(t, evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_LOWER_IS_BETTER, scoreMap[MetricRedundantCommandRate].Direction)
 
-	// 3. Steps to diagnosis: 2 model calls + 2 tool calls = 4 steps
+	// 3. Steps to diagnosis: 2 turn calls + 2 tool calls = 4 steps; the
+	// tribunal call belongs to its tool call.
 	require.Contains(t, scoreMap, MetricStepsToDiagnosis)
 	assert.Equal(t, 4.0, scoreMap[MetricStepsToDiagnosis].Value)
 	assert.Equal(t, evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_LOWER_IS_BETTER, scoreMap[MetricStepsToDiagnosis].Direction)
@@ -163,4 +164,3 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 	require.Contains(t, scoreMap, MetricEvidenceBackedConclusion)
 	assert.Equal(t, 0.0, scoreMap[MetricEvidenceBackedConclusion].Value)
 }
-

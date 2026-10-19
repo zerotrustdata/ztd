@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { allFixtureSnapshotRecords, fixtureLiveEvents, FIXTURE_DATASET_IDS } from '../src/fixtures/fixtures';
 import type { ModelSummary } from '../src/contract/types';
 import { VIEW_SCHEMA_VERSION } from '../src/contract/types';
+import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { evalStore } from '../src/state/store';
 import { ModelsView } from '../src/views/ModelsView';
 
@@ -214,12 +215,15 @@ describe('ModelsView', () => {
       </MemoryRouter>,
     );
     const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Overall 0' })).toBeInTheDocument();
+    expect(panel.getByText('No models have qualified results in all three roles yet.')).toBeInTheDocument();
+    fireEvent.click(panel.getByRole('button', { name: /^Assistant/ }));
     expect(panel.getByRole('link', { name: 'Qualified model' })).toBeInTheDocument();
     expect(panel.queryByRole('link', { name: 'Unverified model' })).not.toBeInTheDocument();
     expect(panel.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
     expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
-    // Sole model in its role: every axis at full weight, so 100 × 0.8 × 0.5 = 40 points/score.
-    expect(panel.getByText('40.0')).toBeInTheDocument();
+    // Sole model in its role: full efficiency, so 100 × 0.8 × √0.5 ≈ 56.6.
+    expect(panel.getByText('56.6')).toBeInTheDocument();
     expect(panel.getByText('80.0%')).toBeInTheDocument();
     expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
@@ -278,7 +282,10 @@ describe('ModelsView', () => {
       output_tokens: { value: 80 },
       security_resistance: { value: 0.7, refused: 7, yielded: 0, persisted: 3 },
     };
-    evalStore.loadFixtures([base, modelB, modelC], []);
+    evalStore.loadFixtures(
+      [base, modelB, modelC].flatMap((model) => MODEL_ROLE_WIRE_ORDER.map((role) => ({ ...model, role }))),
+      [],
+    );
 
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
@@ -300,13 +307,13 @@ describe('ModelsView', () => {
     fireEvent.click(panel.getByRole('button', { name: /^Primary/ }));
     expect(panel.getByRole('link', { name: 'Model Alpha' })).toBeInTheDocument();
     expect(panel.getByRole('link', { name: 'Model Beta' })).toBeInTheDocument();
-    expect(panel.queryByRole('link', { name: 'Model Gamma' })).not.toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model Gamma' })).toHaveAttribute('href', '/models/ds-leader/model-c?role=primary');
 
     // 3. Switch to Assistant category
     fireEvent.click(panel.getByRole('button', { name: /^Assistant/ }));
     expect(panel.getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
-    expect(panel.queryByRole('link', { name: 'Model Alpha' })).not.toBeInTheDocument();
-    expect(panel.queryByRole('link', { name: 'Model Beta' })).not.toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model Alpha' })).toHaveAttribute('href', '/models/ds-leader/model-a?role=assistant');
+    expect(panel.getByRole('link', { name: 'Model Beta' })).toHaveAttribute('href', '/models/ds-leader/model-b?role=assistant');
 
     // 4. Return to Overall and sort by Accuracy
     fireEvent.click(panel.getByRole('button', { name: /^Overall/ }));
@@ -357,6 +364,53 @@ describe('ModelsView', () => {
     // 8. Verify Status column is absent and role descriptions are not rendered
     expect(panel.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();
     expect(panel.queryByText(/Task owner · plans · delegates · synthesizes/i)).not.toBeInTheDocument();
+    fireEvent.click(panel.getByRole('button', { name: 'Sort by Rank' }));
+    expect(within(panel.getAllByRole('row')[1]!).getByText('1st')).toBeInTheDocument();
+  });
+
+  it('ranks one row per model by the mean of all three role scores instead of its Lite score', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    const records = MODEL_ROLE_WIRE_ORDER.flatMap((role) => [
+      {
+        ...source,
+        variant_id: 'balanced', display_name: 'Balanced model', served_model_tag: 'qwen:4b', role,
+        quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
+        pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: role === 'lite' ? 10 : 100 },
+        latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
+        security_resistance: { value: 1, refused: 10, yielded: 0, persisted: 0 },
+      },
+      {
+        ...source,
+        variant_id: 'lite-specialist', display_name: 'Lite specialist', served_model_tag: 'qwen:4b', role,
+        quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
+        pass_rate: { estimate: role === 'lite' ? 1 : 0.1, lower: 0, upper: 1, denominator: role === 'lite' ? 1000 : 10 },
+        latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
+        security_resistance: { value: 1, refused: 10, yielded: 0, persisted: 0 },
+      },
+    ]);
+    evalStore.loadFixtures(records, []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><ModelsView /></MemoryRouter>);
+
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Overall 2' })).toBeInTheDocument();
+    expect(panel.getAllByRole('row')).toHaveLength(3);
+    expect(panel.getAllByRole('link', { name: 'Balanced model' })).toHaveLength(1);
+    expect(panel.queryByRole('columnheader', { name: 'Role' })).not.toBeInTheDocument();
+    const [balanced, specialist] = panel.getAllByRole('row').slice(1).map((row) => within(row));
+    expect(balanced!.getByRole('link', { name: 'Balanced model' })).toHaveAttribute(
+      'href', `/models/${source.dataset_id}/balanced`,
+    );
+    expect(balanced!.getByText('80.0')).toBeInTheDocument();
+    expect(specialist!.getByRole('link', { name: 'Lite specialist' })).toBeInTheDocument();
+    expect(specialist!.getByText('40.0')).toBeInTheDocument();
+
+    fireEvent.click(panel.getByRole('button', { name: /^Lite/ }));
+    expect(panel.getByRole('columnheader', { name: 'Role' })).toBeInTheDocument();
+    expect(within(panel.getAllByRole('row')[1]!).getByRole('link', { name: 'Lite specialist' })).toBeInTheDocument();
+    fireEvent.click(panel.getByRole('button', { name: 'Sort by Role' }));
+    fireEvent.click(panel.getByRole('button', { name: /^Overall/ }));
+    expect(panel.getByRole('columnheader', { name: 'Score' })).toHaveAttribute('aria-sort', 'descending');
+    expect(within(panel.getAllByRole('row')[1]!).getByRole('link', { name: 'Balanced model' })).toBeInTheDocument();
   });
 
   it('displays model capabilities, architecture specs, and supports capability filtering', () => {
