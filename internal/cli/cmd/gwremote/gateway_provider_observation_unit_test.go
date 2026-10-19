@@ -11,8 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -20,11 +18,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -73,16 +73,9 @@ func testProviderObservationBundle(attemptID string) (*evalv1.ProviderBoundaryOb
 
 func useHealthyConfiguredGateway(t *testing.T, cfg *config.Config) {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != constants.APIPaths.Health {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"gateway","mode":"gateway","version":"test","posture":"doctrine"}`))
-	}))
-	t.Cleanup(server.Close)
-	cfg.Paths.Host = server.URL
+	original := ConfiguredGatewayHealthCheck
+	ConfiguredGatewayHealthCheck = func(_ fs.RuntimeFileService, _ *config.Config) bool { return true }
+	t.Cleanup(func() { ConfiguredGatewayHealthCheck = original })
 }
 
 func TestRemoteProviderObservationClient_Load_RejectsMissingInputs(t *testing.T) {
@@ -156,6 +149,11 @@ func TestPreflightProviderObservationDelivery_RejectsUnhealthyGateway(t *testing
 func TestPreflightProviderObservationDelivery_RequiresReadyStatus(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 	useHealthyConfiguredGateway(t, cfg)
+	originalFactory := PreflightAPIClientFactory
+	PreflightAPIClientFactory = func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) {
+		return &cmdtest.MockAPIClient{GetResp: []byte(`{"status":"stalled"}`)}, nil
+	}
+	t.Cleanup(func() { PreflightAPIClientFactory = originalFactory })
 
 	err := PreflightProviderObservationDelivery(fileSvc, cfg)
 	require.Error(t, err)

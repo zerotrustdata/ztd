@@ -52,6 +52,7 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	gatewayOpts := GatewayFixtureOptions{
 		TestName: "eval-stack", Posture: posture, ProductionConsensus: true,
 		EnablePublicSpectator: opts.EnablePublicSpectator,
+		NoDownstream:          true,
 	}
 	if posture == constants.PostureNotary {
 		gatewayOpts.ConsensusID = "eval-stack-consensus"

@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/tribunal"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )

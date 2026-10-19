@@ -116,9 +116,15 @@ func NewCampaignWitnessCapture(fileSvc fs.RuntimeFileService, store *evaluation.
 	return evaluation.NewCampaignWitnessCapture(store, providers, provenance)
 }
 
+// ConfiguredGatewayHealthCheck overrides isConfiguredGatewayHealthy in tests.
+var ConfiguredGatewayHealthCheck func(fileSvc fs.RuntimeFileService, cfg *config.Config) bool
+
 // isConfiguredGatewayHealthy checks the Gateway selected by the CLI config
 // through its authenticated API client.
 func isConfiguredGatewayHealthy(fileSvc fs.RuntimeFileService, cfg *config.Config) bool {
+	if ConfiguredGatewayHealthCheck != nil {
+		return ConfiguredGatewayHealthCheck(fileSvc, cfg)
+	}
 	client, err := api.NewClient(fileSvc, cfg)
 	if err != nil {
 		return false
@@ -134,11 +140,15 @@ func isConfiguredGatewayHealthy(fileSvc fs.RuntimeFileService, cfg *config.Confi
 	return health.Posture != ""
 }
 
+// PreflightAPIClientFactory creates the APIClient for provider observation preflight.
+// Tests can override this to test status handling without network listeners.
+var PreflightAPIClientFactory = authcmd.DefaultAPIClientFactory
+
 func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {
 	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return constants.ErrEvaluationObservationUnavailable
 	}
-	client, err := authcmd.DefaultAPIClientFactory(fileSvc, cfg)
+	client, err := PreflightAPIClientFactory(fileSvc, cfg)
 	if err != nil {
 		return fmt.Errorf("provider observation preflight: create gateway client: %w", err)
 	}

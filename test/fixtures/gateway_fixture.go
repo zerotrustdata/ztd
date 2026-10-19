@@ -83,6 +83,7 @@ type GatewayFixtureOptions struct {
 	DownstreamCmd    string   // MCP downstream stdio subprocess command
 	DownstreamArgs   []string // MCP downstream stdio subprocess arguments
 	A2ADownstreamURL string   // A2A downstream; if empty, reuses MCP downstream server
+	NoDownstream     bool     // If true, do not create a mock downstream server when DownstreamURL/Cmd are empty
 	PublicBaseURL    string   // Public base URL for approval links; defaults to localhost:HTTPS_port
 
 	// Consensus configuration for consensus/notary postures. When zero-valued,
@@ -156,7 +157,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	var downstreamServer *httptest.Server
 	var downstreamURL string
 
-	if opts.DownstreamCmd == "" {
+	if !opts.NoDownstream && opts.DownstreamCmd == "" {
 		if opts.DownstreamURL == "" {
 			// Create default mock downstream MCP server
 			downstreamServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

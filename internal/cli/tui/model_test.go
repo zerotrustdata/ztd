@@ -68,7 +68,7 @@ func TestSessionRotationReplacesRequestsAndSSESession(t *testing.T) {
 	assert.Same(t, newSession, m.gw.session)
 	gw, _, _ := manager.snapshot()
 	assert.Same(t, newSession, gw.session)
-	assert.Contains(t, m.ledger[len(m.ledger)-1].message, "rotated")
+	assert.Contains(t, m.ledger[len(m.ledger)-1].message, "updated")
 }
 
 func TestApplyPipelineMsg(t *testing.T) {

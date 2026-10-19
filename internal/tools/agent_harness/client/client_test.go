@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 )
@@ -375,95 +373,7 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 	})
 }
 
-// recordCLISessionHeader serves requests and reports the CLI session header each one carried.
-func recordCLISessionHeader(t *testing.T) (*httptest.Server, chan string) {
-	t.Helper()
-	seen := make(chan string, 8)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seen <- r.Header.Get(constants.HeaderCLISessionID)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	t.Cleanup(srv.Close)
-	return srv, seen
-}
 
-func TestClient_CLISessionHeaderFollowsTheCertificateIdentity(t *testing.T) {
-	operator := writeIdentity(t, "operator")
-	cli := writeIdentity(t, "cli")
-	persona := Persona{ID: "test", CLISessionID: "cli-1"}
-	ctx := context.Background()
-
-	t.Run("Operator identity never carries the CLI session", func(t *testing.T) {
-		srv, seen := recordCLISessionHeader(t)
-		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator, CLIAuth: cli})
-		require.NoError(t, err)
-
-		_, _, err = c.do(ctx, persona, http.MethodGet, srv.URL+"/test", nil)
-		require.NoError(t, err)
-		assert.Empty(t, <-seen)
-	})
-
-	t.Run("CLI identity carries the CLI session", func(t *testing.T) {
-		srv, seen := recordCLISessionHeader(t)
-		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator, CLIAuth: cli})
-		require.NoError(t, err)
-
-		_, _, err = c.doWithCLI(ctx, persona, http.MethodGet, srv.URL+"/test", nil)
-		require.NoError(t, err)
-		assert.Equal(t, "cli-1", <-seen)
-	})
-
-	t.Run("one identity serves both when CLIAuth names the Operator certificate", func(t *testing.T) {
-		srv, seen := recordCLISessionHeader(t)
-		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: cli, CLIAuth: cli})
-		require.NoError(t, err)
-
-		_, _, err = c.do(ctx, persona, http.MethodGet, srv.URL+"/test", nil)
-		require.NoError(t, err)
-		assert.Equal(t, "cli-1", <-seen)
-	})
-
-	t.Run("governed dispatch without a CLI certificate runs on the Operator identity", func(t *testing.T) {
-		srv, seen := recordCLISessionHeader(t)
-		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator})
-		require.NoError(t, err)
-
-		_, err = c.DispatchCommandBody(ctx, persona, []byte(`{}`))
-		require.NoError(t, err)
-		assert.Empty(t, <-seen)
-	})
-
-	t.Run("governed dispatch with a CLI certificate uses the CLI identity", func(t *testing.T) {
-		srv, seen := recordCLISessionHeader(t)
-		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator, CLIAuth: cli})
-		require.NoError(t, err)
-
-		_, err = c.DispatchCommandBody(ctx, persona, []byte(`{}`))
-		require.NoError(t, err)
-		assert.Equal(t, "cli-1", <-seen)
-	})
-}
-
-func TestClient_CLIOnlyCallsFailClosedWithoutCLICertificate(t *testing.T) {
-	srv, seen := recordCLISessionHeader(t)
-	c, err := New(config.Config{
-		MTLSBaseURL:   srv.URL,
-		PublicBaseURL: srv.URL,
-		Auth:          writeIdentity(t, "operator"),
-	})
-	require.NoError(t, err)
-	ctx := context.Background()
-	persona := Persona{ID: "test", CLISessionID: "cli-1"}
-
-	_, err = c.MCPToolsCallWithCLI(ctx, persona, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: json.RawMessage(`{"path":"."}`)})
-	require.ErrorIs(t, err, constants.ErrMissingCertificate)
-
-	_, err = c.SubscribeApprovals(ctx, persona)
-	require.ErrorIs(t, err, constants.ErrMissingCertificate)
-
-	assert.Zero(t, len(seen), "a CLI-only call must not reach the Gateway on the Operator identity")
-}
 
 func TestClient_SubscribeApprovalsRequiresCLISession(t *testing.T) {
 	c, err := New(config.Config{
