@@ -160,6 +160,7 @@ func TestEpisode_TerminalClassifications(t *testing.T) {
 	require.NoError(t, err)
 	traceDenial := fDenial.storedTrace()
 	assert.Equal(t, AgentTerminalClassificationPolicyDenial, traceDenial.TerminalClassification)
+	assert.NotEmpty(t, traceDenial.ToolCalls[0].PolicyDecision)
 
 	// Budget exhaustion classification
 	loopTurns := make([][]*operatorv1.InferenceResponsePart, 8)

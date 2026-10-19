@@ -20,7 +20,7 @@ import (
 )
 
 func TestRunsAssignments_FailedListsEveryAssignmentThatDidNotPassWithItsCause(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	out := env.mustRun(t, "runs", "assignments", "run-a-1", "--failed")
@@ -38,7 +38,7 @@ func TestRunsAssignments_FailedListsEveryAssignmentThatDidNotPassWithItsCause(t 
 }
 
 func TestRunsAssignments_UnfilteredListsEveryAssignment(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	out := env.mustRun(t, "runs", "assignments", "run-a-1")
@@ -50,7 +50,7 @@ func TestRunsAssignments_UnfilteredListsEveryAssignment(t *testing.T) {
 }
 
 func TestRunsAssignments_JSONStatesVerdictAndRateBesideCanonicalProtojson(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	var payload runAssignmentsJSON
@@ -88,8 +88,8 @@ func TestRunsAssignments_JSONStatesVerdictAndRateBesideCanonicalProtojson(t *tes
 }
 
 func TestRunsAssignments_LabelsDirectCommandFromFrozenCatalogInTableAndJSON(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
 	require.NoError(t, err)
@@ -121,8 +121,8 @@ func TestRunsAssignments_LabelsDirectCommandFromFrozenCatalogInTableAndJSON(t *t
 }
 
 func TestRunsAssignments_AStatedZeroPassRateIsNotNull(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
 	require.NoError(t, err)
 	env.saveGradedResult(t, assignments[0], cellPassRate(0), cellGrade("scenario-content", basisObservation, gradeFail))
@@ -136,7 +136,7 @@ func TestRunsAssignments_AStatedZeroPassRateIsNotNull(t *testing.T) {
 }
 
 func TestRunsAssignments_OneAssignmentShowsEveryGradeWithItsBasis(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	out := env.mustRun(t, "runs", "assignments", "run-a-1", "--assignment", run.missed)
@@ -149,7 +149,7 @@ func TestRunsAssignments_OneAssignmentShowsEveryGradeWithItsBasis(t *testing.T) 
 }
 
 func TestRunsAssignments_UnknownAssignmentIsNotFound(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	seedGradedRun(t, env)
 
 	_, err := env.run(t, "runs", "assignments", "run-a-1", "--assignment", "no-such-assignment")

@@ -10,14 +10,8 @@ package eval
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -26,25 +20,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 const (
-	testInferenceSession             = "infer-session"
-	testDataSession                  = "data-session"
-	testDataOperatorWorkingDirectory = "/home/operator"
-	testHost                         = "test-host"
-	testPID                          = 4242
+	testHost = "test-host"
+	testPID  = 4242
 )
 
 // fakeProcessControl is the run-control process boundary for tests. It makes
@@ -152,344 +140,16 @@ func testQwenVariant() *evalv1.ModelVariant {
 	}
 }
 
-func testRunOperators() []*operatorv1.OperatorDocument {
-	return []*operatorv1.OperatorDocument{
-		{
-			Id:                "infer-op",
-			OperatorSessionId: testInferenceSession,
-			Status:            string(constants.OperatorStatusActive),
-			OperatorType:      string(constants.OperatorTypeRemote),
-			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
-				Capabilities:            []string{string(constants.OperatorCapabilityInference)},
-				InferenceOllamaEndpoint: "http://provider.example:11434",
-			},
-			ActuatorPublicKey: testInferenceOperatorActuatorKey,
-			ActuatorKeyId:     testInferenceOperatorActuatorKey,
-		},
-		{
-			Id:                      "data-op",
-			OperatorSessionId:       testDataSession,
-			Status:                  string(constants.OperatorStatusActive),
-			OperatorType:            string(constants.OperatorTypeRemote),
-			RuntimeConfig:           &operatorv1.OperatorRuntimeConfig{},
-			LatestHeartbeatSnapshot: &operatorv1.HeartbeatResult{Environment: &operatorv1.EnvironmentDetails{Pwd: testDataOperatorWorkingDirectory}},
-			ActuatorPublicKey:       testDataOperatorActuatorKey,
-			ActuatorKeyId:           testDataOperatorActuatorKey,
-		},
-	}
-}
-
-// writePublicationProofResponse answers the assignment proof endpoints the way
-// the Gateway does: each answer names the assignment it published and carries
-// that assignment's database digest, in request order.
-func writePublicationProofResponse(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method != http.MethodPost {
-		return false
-	}
-	switch r.URL.Path {
-	case constants.APIPaths.PublicFeedProofs:
-		var request models.PublicAssignmentAuditProofPublishRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return true
-		}
-		writeFakeJSON(w, fakeAssignmentProofAnswer(request.AssignmentID))
-		return true
-	case constants.APIPaths.PublicFeedProofsBatch:
-		var request models.PublicAssignmentAuditProofBatchPublishRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return true
-		}
-		response := models.PublicAssignmentAuditProofBatchPublishResponse{Accepted: true, IngestedProofs: len(request.Proofs), Proofs: []models.PublicAssignmentAuditProofPublishResponse{}}
-		for _, proof := range request.Proofs {
-			response.Proofs = append(response.Proofs, fakeAssignmentProofAnswer(proof.AssignmentID))
-		}
-		writeFakeJSON(w, response)
-		return true
-	case constants.APIPaths.PublicFeedProofsPush:
-		writeFakeJSON(w, models.PublicProofCatalogPushResponse{Accepted: true})
-		return true
-	default:
-		return false
-	}
-}
-
-// fakeAssignmentProofAnswer is the Gateway's accepted answer for one assignment
-// audit proof. The database digest is derived from the assignment so a digest
-// bound to the wrong request is detectable.
-func fakeAssignmentProofAnswer(assignmentID string) models.PublicAssignmentAuditProofPublishResponse {
-	return models.PublicAssignmentAuditProofPublishResponse{
-		Accepted:       true,
-		AssignmentID:   assignmentID,
-		DatabaseSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("fake-assignment-database:"+assignmentID))),
-	}
-}
-
-func writeFakeJSON(w http.ResponseWriter, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-// writeGatewayHealthResponse answers the posture preflight with the doctrine
-// posture every materialized campaign freezes.
-func writeGatewayHealthResponse(w http.ResponseWriter, r *http.Request) bool {
-	return writeGatewayPostureResponse(w, r, constants.PostureDoctrine)
-}
-
-func writeGatewayPostureResponse(w http.ResponseWriter, r *http.Request, posture constants.Posture) bool {
-	if r.Method != http.MethodGet || r.URL.Path != constants.APIPaths.Health {
-		return false
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write([]byte(`{"posture":"` + string(posture) + `"}`))
-	return true
-}
-
-func writeWitnessPreflightResponse(w http.ResponseWriter, r *http.Request) bool {
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.SSEStream:
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.(http.Flusher).Flush()
-		<-r.Context().Done()
-		return true
-	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.InferenceProviderObservations+"_preflight":
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ready"}`))
-		return true
-	default:
-		return false
-	}
-}
-
-// fakeRunStreamUserID and fakeRunStreamCLISessionID are the owner identity the
-// fake Gateway's CLI session stream routes to. writeGatewayCredentials enrolls
-// the same identity.
-const (
-	fakeRunStreamUserID       = "user-1"
-	fakeRunStreamCLISessionID = "cli-1"
-)
-
-// fakeRunStream is the Gateway's CLI session event stream as the fake Gateway
-// serves it. Every connection stays open and receives the events published while
-// it is connected, and nothing is replayed, as with since_id=0. The producer
-// endpoints publish what the real Gateway emits for them: a stop request becomes
-// ai.eval.stop.requested and a run-state update becomes app.run.status.updated.
-// Tests can also publish a status directly, the way the executing process's
-// release does.
-type fakeRunStream struct {
-	mu    sync.Mutex
-	conns map[chan string]struct{}
-	// stops and states receive each producer request as it is accepted.
-	stops  chan models.ObserveProducerStopRequest
-	states chan models.ObserveProducerRunStateRequest
-	// rejectRunState, when non-zero, is the HTTP status every run-state update is
-	// answered with instead of being accepted.
-	rejectRunState int
-}
-
-// fakeSSEEvent is the {type, data} envelope the Gateway wraps a published event in.
-type fakeSSEEvent struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
-}
-
-func newFakeRunStream() *fakeRunStream {
-	return &fakeRunStream{
-		conns:  make(map[chan string]struct{}),
-		stops:  make(chan models.ObserveProducerStopRequest, 64),
-		states: make(chan models.ObserveProducerRunStateRequest, 64),
-	}
-}
-
-// serve holds one CLI session stream connection open and writes each event
-// published to it. It registers before the headers flush, so an event published
-// after the client connects is never lost.
-func (s *fakeRunStream) serve(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-	frames := make(chan string, 64)
-	s.mu.Lock()
-	s.conns[frames] = struct{}{}
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		delete(s.conns, frames)
-		s.mu.Unlock()
-	}()
-	w.Header().Set("Content-Type", "text/event-stream")
-	flusher.Flush()
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case frame := <-frames:
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", frame)
-			flusher.Flush()
-		}
-	}
-}
-
-// publish sends one event envelope to every open connection. Frames are sent
-// without blocking, so a connection that is not reading loses the event rather
-// than stalling the producer.
-func (s *fakeRunStream) publish(eventType string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("fake run stream: marshal %s: %w", eventType, err)
-	}
-	event, err := json.Marshal(fakeSSEEvent{Type: eventType, Data: data})
-	if err != nil {
-		return fmt.Errorf("fake run stream: envelope %s: %w", eventType, err)
-	}
-	frame, err := json.Marshal(models.SSEPushPayload{UserID: fakeRunStreamUserID, CliSessionID: fakeRunStreamCLISessionID, Event: event})
-	if err != nil {
-		return fmt.Errorf("fake run stream: frame %s: %w", eventType, err)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for conn := range s.conns {
-		select {
-		case conn <- string(frame):
-		default:
-		}
-	}
-	return nil
-}
-
-// publishRunStatus publishes an app.run.status.updated event for runID, as the
-// executing process does when it releases the run.
-func (s *fakeRunStream) publishRunStatus(t *testing.T, runID string, status models.RunLifecycleStatus) {
-	t.Helper()
-	require.NoError(t, s.publish(string(constants.EventAppRunStatusUpdated), models.RunStatusUpdatedPayload{
-		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
-		RunID:         runID,
-		RunKind:       models.RunKindEval,
-		DisplayName:   runID,
-		Status:        status,
-		ObservedAt:    time.Now().UTC(),
-	}))
-}
-
-// acceptStop records a stop request and publishes the ai.eval.stop.requested
-// event the Gateway emits for it.
-func (s *fakeRunStream) acceptStop(w http.ResponseWriter, r *http.Request) {
-	var req models.ObserveProducerStopRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	now := time.Now().UTC()
-	if err := s.publish(string(constants.EventAiEvalStopRequested), models.EvalStopRequestedPayload{
-		SchemaVersion: req.SchemaVersion,
-		CampaignID:    req.CampaignID,
-		RunID:         req.RunID,
-		StopReason:    req.StopReason,
-		StopScope:     req.StopScope,
-		RequestedAt:   now,
-		ObservedAt:    now,
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	select {
-	case s.stops <- req:
-	default:
-	}
-	writeProducerAccepted(w)
-}
-
-// acceptRunState records a run-state update and publishes the app.run.status.updated
-// event the Gateway emits for it.
-func (s *fakeRunStream) acceptRunState(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	reject := s.rejectRunState
-	s.mu.Unlock()
-	if reject != 0 {
-		http.Error(w, "run state rejected", reject)
-		return
-	}
-	var req models.ObserveProducerRunStateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := s.publish(string(constants.EventAppRunStatusUpdated), models.RunStatusUpdatedPayload{
-		SchemaVersion:  req.SchemaVersion,
-		RunID:          req.RunID,
-		RunKind:        req.RunKind,
-		DisplayName:    req.DisplayName,
-		Status:         req.Status,
-		ActiveTaskID:   req.ActiveTaskID,
-		CompletedTasks: req.CompletedTasks,
-		TotalTasks:     req.TotalTasks,
-		StartedAt:      req.StartedAt,
-		EndedAt:        req.EndedAt,
-		ObservedAt:     req.ObservedAt,
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	select {
-	case s.states <- req:
-	default:
-	}
-	writeProducerAccepted(w)
-}
-
-// awaitStop returns the next stop request the fake Gateway accepted.
-func (s *fakeRunStream) awaitStop(t *testing.T) models.ObserveProducerStopRequest {
-	t.Helper()
-	select {
-	case req := <-s.stops:
-		return req
-	case <-time.After(10 * time.Second):
-		require.FailNow(t, "no stop request reached the Gateway")
-		return models.ObserveProducerStopRequest{}
-	}
-}
-
-// rejectRunStates makes the fake Gateway answer every later run-state update with
-// status, so a run's report to the Gateway fails.
-func (s *fakeRunStream) rejectRunStates(status int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.rejectRunState = status
-}
-
-// awaitRunState returns the next run-state update the fake Gateway accepted.
-func (s *fakeRunStream) awaitRunState(t *testing.T) models.ObserveProducerRunStateRequest {
-	t.Helper()
-	select {
-	case req := <-s.states:
-		return req
-	case <-time.After(10 * time.Second):
-		require.FailNow(t, "no run-state update reached the Gateway")
-		return models.ObserveProducerRunStateRequest{}
-	}
-}
-
-func writeProducerAccepted(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write([]byte(`{"accepted":true}`))
-}
-
-// runEnv is one project root wired to a fake Gateway and a fake process
-// boundary, with testQwenVariant in its model registry.
+// runEnv is one project root with a frozen model registry and a deterministic
+// process-control boundary. Gateway tests install the real stack explicitly.
 type runEnv struct {
-	root    string
-	deps    nativeEvalDeps
-	cmd     *cobra.Command
-	control *fakeProcessControl
-	// stream is the Gateway's CLI session event stream, served once the fake
-	// Gateway executes.
-	stream *fakeRunStream
-	// operatorSource lists the operators the fake Gateway reports, read on each
-	// request.
-	operatorSource func() []*operatorv1.OperatorDocument
+	root             string
+	deps             nativeEvalDeps
+	cmd              *cobra.Command
+	control          *fakeProcessControl
+	dataOperatorID   string
+	dataSession      string
+	inferenceSession string
 }
 
 func (e *runEnv) fileSvc(t *testing.T) fs.RuntimeFileService {
@@ -554,12 +214,21 @@ func (e *runEnv) createCampaign(t *testing.T, campaignID string) {
 // default suite.
 func (e *runEnv) createSuiteCampaign(t *testing.T, campaignID, suiteID string) {
 	t.Helper()
+	var investigation *evalv1.EvaluationInvestigation
+	if e.dataOperatorID != "" {
+		investigation = &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "test-investigation-" + campaignID,
+			DataOperatorId:  e.dataOperatorID,
+		}
+	}
 	_, err := createCampaign(context.Background(), e.deps, e.fileSvc(t), campaignCreateSpec{
-		Platform:    testPlatform,
-		CampaignID:  campaignID,
-		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions: 1,
-		SuiteID:     suiteID,
+		Platform:      testPlatform,
+		CampaignID:    campaignID,
+		Variants:      []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions:   1,
+		SuiteID:       suiteID,
+		Investigation: investigation,
 	})
 	require.NoError(t, err)
 }
@@ -589,58 +258,6 @@ func (e *runEnv) startPrepared(t *testing.T, campaignID, runID string) string {
 	require.NoError(t, err)
 	require.True(t, result.Prepared)
 	return result.RunID
-}
-
-func writeGatewayCredentials(t *testing.T, e *runEnv) {
-	t.Helper()
-	fileSvc := e.fileSvc(t)
-	cfg, err := e.deps.configLoader(e.root)
-	require.NoError(t, err)
-
-	_, priv, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
-	keyDER, err := x509.MarshalPKCS8PrivateKey(priv)
-	require.NoError(t, err)
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-	cmdtest.WriteSealedKey(t, fileSvc, cfg, cfg.CLIKeyFile(), keyPEM)
-
-	certDER := cmdtest.GenerateApproveTestCertDER(t, priv)
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CLICertFile()), certPEM, constants.PermFilePrivate))
-	require.NoError(t, fileSvc.WriteFile(context.Background(), cfg.DefaultTrustBundleRelPath(), certPEM, constants.PermFilePrivate))
-
-	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, &auth.Credentials{
-		OperatorSessionID: testDataSession,
-		UserID:            fakeRunStreamUserID,
-		OperatorID:        "data-op",
-		CLISessionID:      fakeRunStreamCLISessionID,
-	}))
-	writeEvalAppCredentials(t, e)
-}
-
-// writeEvalAppCredentials installs the ztd-eval application identity, which the
-// run's lifecycle reports and stop requests present.
-func writeEvalAppCredentials(t *testing.T, e *runEnv) {
-	t.Helper()
-	fileSvc := e.fileSvc(t)
-	cfg, err := e.deps.configLoader(e.root)
-	require.NoError(t, err)
-
-	_, priv, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
-	keyDER, err := x509.MarshalPKCS8PrivateKey(priv)
-	require.NoError(t, err)
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-	cmdtest.WriteSealedKey(t, fileSvc, cfg, cfg.AppKeyFile(constants.EvaluationAppName), keyPEM)
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cmdtest.GenerateApproveTestCertDER(t, priv)})
-	require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.AppCertFile(constants.EvaluationAppName)), certPEM, constants.PermFilePrivate))
-
-	// The app certificate is self-anchored, so the trust bundle must carry it for
-	// the identity to load as trusted.
-	bundle, err := fileSvc.ReadFile(context.Background(), cfg.DefaultTrustBundleRelPath())
-	require.NoError(t, err)
-	require.NoError(t, fileSvc.WriteFile(context.Background(), cfg.DefaultTrustBundleRelPath(), append(bundle, certPEM...), constants.PermFilePrivate))
 }
 
 type recordingCampaignVerificationPublication struct {
@@ -701,3 +318,13 @@ func testVersionContext() context.Context {
 
 // testPlatform is the build identity campaign fixtures freeze under.
 var testPlatform = evaluation.PlatformIdentity{Release: testReleaseVersion}
+
+// firstQueuedAssignment is the assignment a run executes next.
+func (e *runEnv) firstQueuedAssignment(t *testing.T, runID string) *evalv1.EvaluationAssignment {
+	t.Helper()
+	controller := evaluation.NewCampaignController(e.store(t), nil, e.deps.now, adaptNewID(e.deps.newID))
+	assignment, ok, err := controller.ResumeNextAssignment(context.Background(), runID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	return assignment
+}

@@ -102,7 +102,7 @@ func NewProviderObservationRemote(fileSvc fs.RuntimeFileService, cfg *config.Con
 // witness remotes. It reports constants.ErrGatewayNotReachable while the Gateway
 // is down, when nothing can be fetched.
 func NewCampaignWitnessCapture(fileSvc fs.RuntimeFileService, store *evaluation.Store, cfg *config.Config) (*evaluation.CampaignWitnessCapture, error) {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return nil, fmt.Errorf("campaign witness capture: %w", constants.ErrGatewayNotReachable)
 	}
 	providers, err := NewProviderObservationRemote(fileSvc, cfg)
@@ -116,8 +116,26 @@ func NewCampaignWitnessCapture(fileSvc fs.RuntimeFileService, store *evaluation.
 	return evaluation.NewCampaignWitnessCapture(store, providers, provenance)
 }
 
+// isConfiguredGatewayHealthy checks the Gateway selected by the CLI config
+// through its authenticated API client.
+func isConfiguredGatewayHealthy(fileSvc fs.RuntimeFileService, cfg *config.Config) bool {
+	client, err := api.NewClient(fileSvc, cfg)
+	if err != nil {
+		return false
+	}
+	body, err := client.Get(constants.APIPaths.Health)
+	if err != nil {
+		return false
+	}
+	var health models.HealthResponse
+	if err := json.Unmarshal(body, &health); err != nil {
+		return false
+	}
+	return health.Posture != ""
+}
+
 func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return constants.ErrEvaluationObservationUnavailable
 	}
 	client, err := authcmd.DefaultAPIClientFactory(fileSvc, cfg)

@@ -21,8 +21,8 @@ import (
 )
 
 func TestRunsTrace_ShowsHeldContextThinkingAndFinalOutputOfSealedTraces(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	ctx := context.Background()
 	store := env.store(t)
 	assignments, err := store.ListAssignments(ctx, "run-a-1")

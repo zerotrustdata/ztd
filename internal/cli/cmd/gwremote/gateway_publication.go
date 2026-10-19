@@ -350,7 +350,7 @@ func waitForPublicMirrorRetry(ctx context.Context, retryAfter string) error {
 }
 
 func NewCampaignFeedExporter(cmd context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.CampaignFeedExporter, error) {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return nil, fmt.Errorf("campaign publication: start ztd-gateway with --public-spectator: %w", constants.ErrGatewayUnhealthy)
 	}
 	client, err := campaignPublicationAPIClientFactory(fileSvc, cfg)
@@ -485,7 +485,7 @@ func (p *remoteGatewayCampaignProofPublisher) FlushProofCatalog(ctx context.Cont
 }
 
 func NewCampaignProofPublisher(cmd context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.CampaignProofPublisher, error) {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return nil, fmt.Errorf("campaign publication: start ztd-gateway with --public-spectator: %w", constants.ErrGatewayUnhealthy)
 	}
 	client, err := campaignPublicationAPIClientFactory(fileSvc, cfg)

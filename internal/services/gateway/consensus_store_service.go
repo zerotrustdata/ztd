@@ -155,8 +155,9 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 // It accepts and returns the Gateway's canonical protojson envelope wire and exchanges
 // binary protobuf with the application.
 type ConsensusAppDeliberator struct {
-	store      *ConsensusStoreService
-	httpClient *http.Client
+	store             *ConsensusStoreService
+	httpClient        *http.Client
+	httpClientFactory func(appID string) (*http.Client, error)
 }
 
 // NewConsensusAppDeliberator creates a new deliberator backed by the bound consensus app.
@@ -172,6 +173,13 @@ func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Clie
 		store:      s,
 		httpClient: &appClient,
 	}
+}
+
+// NewConsensusAppDeliberatorWithClientFactory creates a deliberator whose
+// client is selected from the bound primary application identity. The factory
+// is called after the current binding is loaded for each request.
+func (s *ConsensusStoreService) NewConsensusAppDeliberatorWithClientFactory(factory func(appID string) (*http.Client, error)) mcp.L2ConsensusDeliberator {
+	return &ConsensusAppDeliberator{store: s, httpClientFactory: factory}
 }
 
 // Deliberate sends the envelope to the bound consensus app and verifies the returned envelope carries a ConsensusProof.
@@ -199,13 +207,26 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 		return nil, fmt.Errorf("consensus deliberation: encode envelope: %w", err)
 	}
 
+	httpClient := d.httpClient
+	if d.httpClientFactory != nil {
+		if len(bound.MemberAppIDs) == 0 {
+			return nil, constants.ErrConsensusAppNotEnrolled
+		}
+		httpClient, err = d.httpClientFactory(bound.MemberAppIDs[0])
+		if err != nil {
+			return nil, fmt.Errorf("create consensus application HTTPS client: %w", err)
+		}
+	}
+	if httpClient == nil {
+		return nil, constants.ErrInternal
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create consensus deliberation request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-protobuf")
 
-	resp, err := d.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("consensus deliberation request failed: %w", err)
 	}

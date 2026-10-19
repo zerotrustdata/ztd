@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -512,6 +513,54 @@ func (pki *PKIAuthority) GatewayTrustBundle() ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
+}
+
+// NewConsensusAppHTTPClient builds the Gateway's HTTPS client for its bound
+// enrolled consensus application. Application certificates are issued by the
+// Gateway Operator CA, so system roots alone cannot authenticate them.
+func (pki *PKIAuthority) NewConsensusAppHTTPClient(appID string) (*http.Client, error) {
+	if strings.TrimSpace(appID) == "" {
+		return nil, constants.ErrMissingRequiredField
+	}
+	bundle, err := pki.GatewayTrustBundle()
+	if err != nil {
+		return nil, fmt.Errorf("read consensus application trust bundle: %w", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(bundle) {
+		return nil, constants.ErrEmptyTrustBundle
+	}
+	expectedIdentity := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		// App certificates are authenticated by their Gateway-issued SPIFFE
+		// URI SAN, not a caller-controlled DNS name. Verify the chain and exact
+		// bound app identity below while skipping only hostname matching.
+		InsecureSkipVerify: true, // #nosec G402 -- VerifyConnection performs chain and identity validation.
+		MinVersion:         tls.VersionTLS13,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return constants.ErrConsensusAppNotEnrolled
+			}
+			intermediates := x509.NewCertPool()
+			for _, cert := range state.PeerCertificates[1:] {
+				intermediates.AddCert(cert)
+			}
+			if _, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{
+				Roots: roots, Intermediates: intermediates,
+				KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			}); err != nil {
+				return fmt.Errorf("verify consensus app certificate chain: %w", err)
+			}
+			for _, uri := range state.PeerCertificates[0].URIs {
+				if uri.String() == expectedIdentity {
+					return nil
+				}
+			}
+			return constants.ErrConsensusAppNotEnrolled
+		},
+	}
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
 }
 
 // RevokeCertificate adds a certificate serial to the revocation list.

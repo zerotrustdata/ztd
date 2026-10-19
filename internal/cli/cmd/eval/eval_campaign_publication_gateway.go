@@ -42,9 +42,8 @@ func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFil
 		fileSvc,
 		publicationState,
 		exporter,
-	).WithProofPublisher(proofPublisher).WithLeaseLiveness(leaseLiveness(control))
-	if gwremote.IsGatewayHealthy() {
-		coordinator.WithMirrorProbe(gwremote.NewHTTPCampaignMirrorProbe(shared.CommandContext(cmd)))
-	}
+	).WithProofPublisher(proofPublisher).
+		WithLeaseLiveness(leaseLiveness(control)).
+		WithMirrorProbe(gwremote.NewHTTPCampaignMirrorProbe(shared.CommandContext(cmd)))
 	return coordinator, nil
 }

@@ -31,7 +31,7 @@ type remoteGatewayCampaignPublicationStateStore struct {
 // NewCampaignPublicationStateStore returns the Gateway-backed publication
 // state store. It requires a healthy Gateway.
 func NewCampaignPublicationStateStore(fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.CampaignPublicationStateStore, error) {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return nil, fmt.Errorf("campaign publication: publication state: %w", constants.ErrGatewayUnhealthy)
 	}
 	client, err := campaignPublicationAPIClientFactory(fileSvc, cfg)

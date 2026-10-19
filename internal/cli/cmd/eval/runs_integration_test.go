@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,28 +24,26 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
 func TestRunsList_EmptyProject(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "list"), "No runs found")
 }
 
 func TestRunsList_AfterPrepare(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "list")
 	assert.Contains(t, out, "run-a-1")
@@ -62,9 +61,9 @@ func TestRunsList_AfterPrepare(t *testing.T) {
 }
 
 func TestRunsList_FiltersByCampaignAndStatus(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.prepareRun(t, "eval-b", "run-b-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.prepareStoredRun(t, "eval-b", "run-b-1")
 
 	var payload runListJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "list", "--campaign", "eval-b"))
@@ -79,8 +78,8 @@ func TestRunsList_FiltersByCampaignAndStatus(t *testing.T) {
 }
 
 func TestRunsShow_AfterPrepare(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "show", "run-a-1")
 	assert.Contains(t, out, "Run: run-a-1")
@@ -92,14 +91,14 @@ func TestRunsShow_AfterPrepare(t *testing.T) {
 	require.NoError(t, env.runJSON(t, &payload, "runs", "show", "run-a-1"))
 	assert.Equal(t, "run-a-1", payload.RunID)
 	assert.Equal(t, "eval-a", payload.CampaignID)
-	assert.Equal(t, testInferenceSession, payload.InferenceSession)
-	assert.Equal(t, testDataSession, payload.DataSession)
+	assert.Equal(t, "store-only-inference-session", payload.InferenceSession)
+	assert.Equal(t, "store-only-data-session", payload.DataSession)
 	assert.Equal(t, uint32(testModelRoleCells(t)), payload.Queued)
 	assert.Nil(t, payload.Holder)
 }
 
 func TestRunsShow_RejectsMissingRun(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "show", "missing-run-id")
 	require.Error(t, err)
@@ -107,8 +106,8 @@ func TestRunsShow_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsShow_ReportsInterruptedWhenNoProcessHoldsARunningAssignment(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	markFirstAssignmentRunning(t, env)
 
 	var payload runShowJSON
@@ -118,8 +117,8 @@ func TestRunsShow_ReportsInterruptedWhenNoProcessHoldsARunningAssignment(t *test
 }
 
 func TestRunsShow_ReportsRunningOnlyWhileALiveProcessHoldsTheLease(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	markFirstAssignmentRunning(t, env)
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: "run-a-1", PID: testPID, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
@@ -141,8 +140,8 @@ func TestRunsShow_ReportsRunningOnlyWhileALiveProcessHoldsTheLease(t *testing.T)
 }
 
 func TestRunsVerify_CoverageReportsIncompleteScheduledRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out, err := env.run(t, "runs", "verify", "run-a-1", "--coverage")
 	require.Error(t, err)
@@ -157,8 +156,8 @@ func TestRunsVerify_CoverageReportsIncompleteScheduledRun(t *testing.T) {
 }
 
 func TestRunsVerify_CoverageCannotCombineWithWitnessRequirements(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "verify", "run-a-1", "--coverage", "--require-observation")
 	require.Error(t, err)
@@ -166,7 +165,7 @@ func TestRunsVerify_CoverageCannotCombineWithWitnessRequirements(t *testing.T) {
 }
 
 func TestRunsVerify_RejectsMissingRun(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "verify", "missing-run-id")
 	require.Error(t, err)
@@ -174,8 +173,8 @@ func TestRunsVerify_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsExport_WritesArtifacts(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	outputRelDir := filepath.Join(constants.EvaluationCampaignExportDirname, "run-a-1")
 
 	out := env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", outputRelDir)
@@ -187,8 +186,8 @@ func TestRunsExport_WritesArtifacts(t *testing.T) {
 }
 
 func TestRunsExport_RejectsSealedOutputDir(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "export", "run-a-1", "--output-dir", filepath.Join("data", "eval", "runs", "run-a-1", "export"))
 	require.Error(t, err)
@@ -196,8 +195,8 @@ func TestRunsExport_RejectsSealedOutputDir(t *testing.T) {
 }
 
 func TestRunsExport_RejectsExternalOutputDir(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "export", "run-a-1", "--output-dir", filepath.Join(env.root, "exports", "run-a-1"))
 	require.Error(t, err)
@@ -205,8 +204,8 @@ func TestRunsExport_RejectsExternalOutputDir(t *testing.T) {
 }
 
 func TestRunsExport_RequiresOutputDir(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "export", "run-a-1")
 	require.Error(t, err)
@@ -214,8 +213,8 @@ func TestRunsExport_RequiresOutputDir(t *testing.T) {
 }
 
 func TestRunsRepair_BackfillsResults(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	assert.Contains(t, env.mustRun(t, "runs", "repair", "run-a-1"), "Repaired")
 
@@ -225,7 +224,7 @@ func TestRunsRepair_BackfillsResults(t *testing.T) {
 }
 
 func TestRunsStart_DryRunPrintsPlanWithoutWriting(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 	env.deps.authLoader = func(fs.RuntimeFileService, *config.Config) (*auth.ClientAuthContext, error) {
 		return nil, errors.New("CLI auth should not be loaded for a dry run")
@@ -242,7 +241,7 @@ func TestRunsStart_DryRunPrintsPlanWithoutWriting(t *testing.T) {
 }
 
 func TestRunsStart_DryRunJSON(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	var payload runStartPlanJSON
@@ -256,7 +255,7 @@ func TestRunsStart_DryRunJSON(t *testing.T) {
 }
 
 func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newGatewayRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	out := env.mustRun(t, "runs", "start", "eval-a", "--prepare-only", "--publish=false", "--daemon=false")
@@ -275,17 +274,17 @@ func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
 }
 
 func TestRunsStart_PrepareOnlyBindsTheOperatorSessions(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newGatewayRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	run, err := env.store(t).LoadRun(context.Background(), "run-a-1")
 	require.NoError(t, err)
-	assert.Equal(t, testInferenceSession, run.GetCampaignBinding().GetInferenceOperatorSessionId())
-	assert.Equal(t, testDataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+	assert.Equal(t, env.inferenceSession, run.GetCampaignBinding().GetInferenceOperatorSessionId())
+	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
 }
 
 func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newGatewayRunEnv(t)
 	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
 		Platform:    testPlatform,
 		CampaignID:  "eval-persistent",
@@ -294,7 +293,7 @@ func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
 		Investigation: &evalv1.EvaluationInvestigation{
 			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
 			InvestigationId: "checkout-incident",
-			DataOperatorId:  "data-op",
+			DataOperatorId:  env.dataOperatorID,
 		},
 	})
 	require.NoError(t, err)
@@ -305,16 +304,16 @@ func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
 		PrepareOnly: true,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "data-op", result.Topology.Data.OperatorID)
-	assert.Equal(t, testDataSession, result.Topology.Data.OperatorSessionID)
+	assert.Equal(t, env.dataOperatorID, result.Topology.Data.OperatorID)
+	assert.Equal(t, env.dataSession, result.Topology.Data.OperatorSessionID)
 
 	run, err := env.store(t).LoadRun(context.Background(), "run-persistent")
 	require.NoError(t, err)
-	assert.Equal(t, testDataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
 }
 
 func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newGatewayRunEnv(t)
 	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
 		Platform:    testPlatform,
 		CampaignID:  "eval-missing-operator",
@@ -338,13 +337,12 @@ func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t
 	assert.Empty(t, runIDs, "preflight must fail before a run is persisted")
 }
 
-// A Gateway under ratify or notary requires L3 proofs that eval dispatch
-// cannot mint, and one under consensus would run a posture the campaign did
-// not freeze; each fails preflight before a run is persisted.
+// A live Gateway running a posture the campaign did not freeze fails preflight
+// before a run is persisted.
 func TestRunsStart_FailsPreflightUnderAnUnfrozenGatewayPosture(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
-			env := setupRunEnvWithGateway(t, testRunOperators, posture)
+			env, _ := newGatewayRunEnvWithPosture(t, posture)
 			env.createCampaign(t, "eval-posture")
 
 			_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-posture", RunID: "run-posture"})
@@ -357,47 +355,34 @@ func TestRunsStart_FailsPreflightUnderAnUnfrozenGatewayPosture(t *testing.T) {
 	}
 }
 
-func TestRunsExecute_PersistentFollowsDataOperatorSessionRotation(t *testing.T) {
-	operators := testRunOperators()
-	env := setupRunEnvWithOperatorSource(t, func() []*operatorv1.OperatorDocument { return operators })
-	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
-		Platform:    testPlatform,
-		CampaignID:  "eval-session-rotation",
-		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions: 1,
-		Investigation: &evalv1.EvaluationInvestigation{
-			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
-			InvestigationId: "checkout-incident",
-			DataOperatorId:  "data-op",
-		},
+func TestRunsStart_PersistentRejectsReplacementOperatorAfterReenrollment(t *testing.T) {
+	env, stackRun := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	env.createCampaign(t, "eval-session-rotation")
+	_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+		CampaignID: "eval-session-rotation", RunID: "run-session-rotation", PrepareOnly: true,
 	})
 	require.NoError(t, err)
-	_, err = runStartFlow(env.cmd, env.deps, runStartFlowOptions{
-		CampaignID:  "eval-session-rotation",
-		RunID:       "run-session-rotation",
-		PrepareOnly: true,
+	oldSession := env.dataSession
+	require.NoError(t, stackRun.stack.Data.Stop(env.cmd.Context()))
+	rotated := stackRun.stack.Witness.LaunchOperator(t, stackRun.stack.DataHost, fixtures.OperatorProcessOptions{
+		Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
 	})
+	require.NoError(t, rotated.AwaitStarted(env.cmd.Context()))
+	_, err = rotated.AwaitHeartbeat(env.cmd.Context())
 	require.NoError(t, err)
-
-	rotated := proto.Clone(operators[1]).(*operatorv1.OperatorDocument)
-	rotated.OperatorSessionId = "data-session-rotated"
-	operators[1] = rotated
-	bindClient := &fakeBindClient{bound: []string{testDataSession}}
-	env.deps.bindClientFactory = func(*config.Config) evalBindClient { return bindClient }
-	env.withExecuteGateway(t)
-
-	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{
-		RunID:      "run-session-rotation",
-		Limit:      1,
-		JSONOutput: true,
-	})
+	workload, err := rotated.Workload()
 	require.NoError(t, err)
-	assert.Equal(t, 1, executed)
-	assert.Equal(t, [][]string{{"data-session-rotated"}}, bindClient.binds)
+	require.NotEqual(t, env.dataOperatorID, workload.OperatorID)
+	require.NotEqual(t, oldSession, workload.OperatorSessionID)
+	operators, err := stackRun.stack.Gateway.Service.GetRegistrationService().ListUserOperators(env.cmd.Context(), stackRun.stack.Identity.UserID)
+	require.NoError(t, err)
+	_, err = evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", env.dataOperatorID)
+	require.ErrorIs(t, err, constants.ErrDataOperatorNotFound)
+	assert.Zero(t, stackRun.stack.Provider.ChatCount(), "re-enrollment must not silently replace a persistent investigation's frozen Operator")
 }
 
 func TestRunsStart_RejectsUnknownCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "start", "missing", "--dry-run")
 	require.Error(t, err)
@@ -405,15 +390,14 @@ func TestRunsStart_RejectsUnknownCampaign(t *testing.T) {
 }
 
 func TestRunsStart_RequiresACampaignArgument(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "start")
 	require.Error(t, err)
 }
 
 func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	publication := env.recordPublication()
 	env.createCampaign(t, "eval-a")
 
@@ -446,8 +430,7 @@ func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
 }
 
 func TestRunsStart_ReleasesTheLeaseAndWritesNoLogFileAfterExecution(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	env.cmd.SetOut(&bytes.Buffer{})
@@ -466,7 +449,7 @@ func TestRunsStart_ReleasesTheLeaseAndWritesNoLogFileAfterExecution(t *testing.T
 }
 
 func TestRunsStart_RejectsAnArchivedCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 	env.mustRun(t, "campaigns", "archive", "eval-a")
 
@@ -476,8 +459,7 @@ func TestRunsStart_RejectsAnArchivedCampaign(t *testing.T) {
 }
 
 func TestRunsResume_ExecutesOneAssignment(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	assignment := env.firstQueuedAssignment(t, runID)
 
@@ -494,8 +476,7 @@ func TestRunsResume_ExecutesOneAssignment(t *testing.T) {
 }
 
 func TestRunsResume_DefaultsLimitToOne(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 
 	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, NoAutoBind: true})
@@ -504,8 +485,7 @@ func TestRunsResume_DefaultsLimitToOne(t *testing.T) {
 }
 
 func TestRunsResume_StopWithQueuedAssignmentsIsAnError(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	handled := make(chan struct{}, 1)
 	env.deps.runControl.onSignalHandled = func() {
@@ -534,7 +514,7 @@ func TestRunsResume_StopWithQueuedAssignmentsIsAnError(t *testing.T) {
 }
 
 func TestRunsResume_RejectsMissingRunWithoutLeavingALease(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "resume", "missing-run-id")
 	require.Error(t, err)
@@ -546,24 +526,25 @@ func TestRunsResume_RejectsMissingRunWithoutLeavingALease(t *testing.T) {
 	assert.Contains(t, env.mustRun(t, "runs", "list"), "No runs found")
 }
 
-func TestRunsResume_RejectsPreflightWhenGatewayUnhealthy(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, false)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
+func TestRunsResume_GatewayOutageReleasesLeaseWithoutExecuting(t *testing.T) {
+	env, run := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	env.prepareRun(t, "eval-a", "run-a-1")
+	gatewayEvalAppClient(t, env, run)
+	config.SetHTTPEndpointOverride("http://127.0.0.1:1")
+	config.SetHTTPSEndpointOverride("https://127.0.0.1:1")
 
 	_, err := env.run(t, "runs", "resume", "run-a-1", "--no-auto-bind")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	var transportError *url.Error
+	assert.ErrorAs(t, err, &transportError)
+	assert.Zero(t, run.stack.Provider.ChatCount())
 
 	_, leaseErr := env.store(t).LoadRunLease(context.Background(), "run-a-1")
 	assert.True(t, isMissingRecord(leaseErr), "a failed resume releases its lease")
 }
 
 func TestRunsResume_ExecutesOneAssignmentViaCLI(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
+	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	assignment := env.firstQueuedAssignment(t, runID)
 
@@ -573,9 +554,7 @@ func TestRunsResume_ExecutesOneAssignmentViaCLI(t *testing.T) {
 }
 
 func TestRunsResume_JSONOutput(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
+	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 
 	var payload runResumeJSON
@@ -587,9 +566,7 @@ func TestRunsResume_JSONOutput(t *testing.T) {
 }
 
 func TestRunsResume_WithPublishFlag(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
+	env := newPublicationRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	assignment := env.firstQueuedAssignment(t, runID)
 
@@ -598,8 +575,7 @@ func TestRunsResume_WithPublishFlag(t *testing.T) {
 }
 
 func TestRunsResume_RefusesARunHeldByALiveProcess(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: runID, PID: 9999, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
@@ -612,8 +588,7 @@ func TestRunsResume_RefusesARunHeldByALiveProcess(t *testing.T) {
 }
 
 func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: runID, PID: 9999, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
@@ -627,8 +602,7 @@ func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
 }
 
 func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	publication := env.recordPublication()
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1, NoAutoBind: true})
@@ -661,7 +635,7 @@ func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
 }
 
 func TestVerifyRun_RejectsMissingRun(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	report, err := verifyRun(env.cmd, env.deps, env.store(t), "missing-run-id", false, false, false, false)
 	require.Error(t, err)
@@ -670,8 +644,7 @@ func TestVerifyRun_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsVerify_ViaCLIPersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	publication := env.recordPublication()
 	env.createCampaign(t, "eval-a")
 	env.cmd.SetOut(&bytes.Buffer{})
@@ -695,27 +668,21 @@ func TestRunsVerify_ViaCLIPersistsAndPublishesPopulationBoundReport(t *testing.T
 }
 
 func TestRunsPublish_PublishesScheduledRun(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
+	env := newPublicationRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1"), "Published")
 }
 
 func TestRunsPublish_ForceRepublish(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
+	env := newPublicationRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1", "--force"), "forced republish")
 }
 
 func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
+	env := newPublicationRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	require.NoError(t, env.store(t).SaveCampaignVerification(context.Background(), "run-a-1", &evalv1.EvaluationVerificationReport{
 		SchemaVersion: evaluation.CampaignSchemaVersion,
@@ -729,9 +696,7 @@ func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
 }
 
 func TestRunsPublish_RejectsPersistedPassingReportThatDoesNotApply(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
+	env := newPublicationRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	require.NoError(t, env.store(t).SaveCampaignVerification(context.Background(), "run-a-1", &evalv1.EvaluationVerificationReport{
 		SchemaVersion:            constants.CampaignVerifierVersion,
@@ -748,9 +713,10 @@ func TestRunsPublish_RejectsPersistedPassingReportThatDoesNotApply(t *testing.T)
 }
 
 func TestRunsPublish_RejectsWhenGatewayUnhealthy(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, false)
-	env := setupRunEnv(t)
+	env := newPublicationRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
+	config.SetHTTPEndpointOverride("http://127.0.0.1:1")
+	config.SetHTTPSEndpointOverride("https://127.0.0.1:1")
 
 	_, err := env.run(t, "runs", "publish", "run-a-1")
 	require.Error(t, err)
@@ -758,9 +724,9 @@ func TestRunsPublish_RejectsWhenGatewayUnhealthy(t *testing.T) {
 }
 
 func TestRunsCompare_ReportsSharedCellsAndDifferences(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.startPrepared(t, "eval-a", "run-a-2")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.startStoredRun(t, "eval-a", "run-a-2")
 
 	var payload runCompareJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "compare", "run-a-1", "run-a-2"))
@@ -779,8 +745,8 @@ func TestRunsCompare_ReportsSharedCellsAndDifferences(t *testing.T) {
 }
 
 func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	other := &evalv1.ModelVariant{
 		VariantId:      "gemma3-1b",
 		ServedModelTag: "gemma3:1b",
@@ -794,7 +760,7 @@ func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
 		Repetitions: 1,
 	})
 	require.NoError(t, err)
-	env.startPrepared(t, "eval-b", "run-b-1")
+	env.startStoredRun(t, "eval-b", "run-b-1")
 
 	var payload runCompareJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "compare", "run-a-1", "run-b-1"))
@@ -803,14 +769,14 @@ func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
 }
 
 func TestRunsCompare_RequiresTwoRuns(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "compare", "only-one")
 	require.Error(t, err)
 }
 
 func TestPublicRestore_RequiresTarget(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	command := PublicRestoreCmdWithConfig(env.deps.configLoader, env.deps.fileSvcFactory)
 	command.SetArgs([]string{"--project-root", env.root})
@@ -820,11 +786,29 @@ func TestPublicRestore_RequiresTarget(t *testing.T) {
 }
 
 func TestPublicRestore_RejectsBothTargets(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	command := PublicRestoreCmdWithConfig(env.deps.configLoader, env.deps.fileSvcFactory)
 	command.SetArgs([]string{"--project-root", env.root, "--queue", "--run-id", "run-1"})
 	err := command.Execute()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+func TestResolveRunWitnessPoliciesPreservesStrictRunPolicy(t *testing.T) {
+	run := &evalv1.EvaluationRun{
+		ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT,
+		ModelProvenancePolicy:     evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT,
+	}
+	observation, provenance, err := resolveRunWitnessPolicies(run, false, false)
+	require.NoError(t, err)
+	assert.True(t, observation)
+	assert.True(t, provenance)
+}
+
+func TestResolveRunWitnessPoliciesRejectsUnspecifiedStoredPolicies(t *testing.T) {
+	_, _, err := resolveRunWitnessPolicies(&evalv1.EvaluationRun{
+		ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+	}, false, false)
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }

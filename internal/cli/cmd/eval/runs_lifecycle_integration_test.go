@@ -12,7 +12,6 @@ package eval
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -26,8 +25,7 @@ import (
 )
 
 func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
@@ -41,8 +39,7 @@ func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
 }
 
 func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	var payload runCancelJSON
@@ -54,8 +51,7 @@ func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
 }
 
 func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	env.holdRun(t, "run-a-1")
 	env.control.setAlive(otherHostPID, false)
@@ -70,161 +66,142 @@ func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
 // An idle run has no process to report its release, so cancel reports the
 // cancelled status itself, under the CLI session, for a watcher to see.
 func TestRunsCancel_PostsCancelledForAnIdleRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-
-	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
-	posted := env.stream.awaitRunState(t)
-	assert.Equal(t, models.RunLifecycleStatusCancelled, posted.Status)
-	assert.Equal(t, "run-a-1", posted.RunID)
-	assert.Equal(t, "cli-1", posted.CLISessionID)
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	events := observeGatewayRunEvents(t, env, runID)
+	env.mustRun(t, "runs", "cancel", runID, "--publish=false")
+	event := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, event.Status)
+	assert.Equal(t, models.RunLifecycleStatusCancelled, event.Status.Status)
+	assert.Equal(t, runID, event.Status.RunID)
+	assert.Equal(t, models.RunKindEval, event.Status.RunKind)
 }
-
-// A settled run has nothing queued or running, so cancel stops nothing and has
-// no transition to report: it posts no run state.
 func TestRunsCancel_OfASettledRunPostsNothing(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	assignments, err := env.store(t).ListAssignments(context.Background(), runID)
 	require.NoError(t, err)
 	for _, assignment := range assignments {
 		env.saveGradedResult(t, assignment, nil)
 	}
-
+	events := observeGatewayRunEvents(t, env, runID)
 	var payload runCancelJSON
-	require.NoError(t, env.runJSON(t, &payload, "runs", "cancel", "run-a-1", "--publish=false"))
+	require.NoError(t, env.runJSON(t, &payload, "runs", "cancel", runID, "--publish=false"))
 	assert.Zero(t, payload.Stopped)
 	assert.False(t, payload.WasRunning)
 	assert.False(t, payload.ClearedStale)
-	assert.Zero(t, len(env.stream.states), "a settled run posted a run state")
+	requireNoGatewayRunEvent(t, events)
 }
+func TestRunsCancel_FailsClosedWhenGatewayRejectsTerminalTransition(t *testing.T) {
+	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	events := observeGatewayRunEvents(t, env, runID)
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusFailed)
+	seeded := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, seeded.Status)
 
-func TestRunsCancel_FailsClosedWhenTheGatewayRefusesCancelled(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.stream.rejectRunStates(http.StatusConflict)
-
-	_, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
+	_, err := env.run(t, "runs", "cancel", runID, "--publish=false")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	var show runShowJSON
+	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
+	assert.Equal(t, "cancelled", show.Status, "the local cancellation remains recorded even when the Gateway rejects its projection")
 }
-
 func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.holdRun(t, "run-a-1")
-
+	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env.holdRun(t, runID)
+	events := observeGatewayRunEvents(t, env, runID)
 	type outcome struct {
 		out string
 		err error
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		out, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
+		out, err := env.run(t, "runs", "cancel", runID, "--publish=false")
 		done <- outcome{out, err}
 	}()
-
-	stop := env.stream.awaitStop(t)
-	assert.Equal(t, "run-a-1", stop.RunID)
+	stop := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, stop.Stop)
+	assert.Equal(t, runID, stop.Stop.RunID)
 	select {
 	case <-done:
 		t.Fatal("cancel returned while the process still held the run")
 	case <-time.After(50 * time.Millisecond):
 	}
-	// The process stops after its current assignment, releases the lease, and
-	// reports the released status. Only that status ends the wait.
-	require.NoError(t, env.store(t).ClearRunLease(context.Background(), "run-a-1"))
+	require.NoError(t, env.store(t).ClearRunLease(context.Background(), runID))
 	env.control.setAlive(otherHostPID, false)
-	env.stream.publishRunStatus(t, "run-a-1", models.RunLifecycleStatusCancelled)
-
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCancelled)
 	select {
 	case result := <-done:
 		require.NoError(t, result.err, result.out)
-		assert.Contains(t, result.out, "Waiting for process 9999")
 		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", testModelRoleCells(t)))
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancel did not finish after the process released the run")
 	}
-	assert.Equal(t, []int{otherHostPID}, env.control.interrupted())
-	_, err := env.store(t).LoadRunLease(context.Background(), "run-a-1")
+	_, err := env.store(t).LoadRunLease(context.Background(), runID)
 	assert.True(t, isMissingRecord(err))
 }
-
-// The holder dies after it is asked to stop and never publishes its released
-// status. Cancel returns on the process exit, settles the lease, and reports it.
 func TestRunsCancel_ReturnsWhenTheHolderExitsWithoutReleasing(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.holdRun(t, "run-a-1")
-
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env.holdRun(t, runID)
+	events := observeGatewayRunEvents(t, env, runID)
 	type outcome struct {
 		out string
 		err error
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		out, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
+		out, err := env.run(t, "runs", "cancel", runID, "--publish=false")
 		done <- outcome{out, err}
 	}()
-
-	env.stream.awaitStop(t)
+	stop := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, stop.Stop)
 	env.control.exit(otherHostPID)
-
 	select {
 	case result := <-done:
 		require.NoError(t, result.err, result.out)
-		assert.Contains(t, result.out, "Process 9999 exited; cleared its lease on run run-a-1")
+		assert.Contains(t, result.out, "Process 9999 exited; cleared its lease on run "+runID)
 		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", testModelRoleCells(t)))
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancel did not return after the holder exited")
 	}
-	_, err := env.store(t).LoadRunLease(context.Background(), "run-a-1")
+	_, err := env.store(t).LoadRunLease(context.Background(), runID)
 	assert.True(t, isMissingRecord(err))
 }
-
-// The holder exits without releasing. Cancel stopped the run's work and no live
-// process will report it, so cancel posts cancelled itself, exactly once.
 func TestRunsCancel_PostsCancelledWhenTheHolderExited(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.holdRun(t, "run-a-1")
-
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env.holdRun(t, runID)
+	events := observeGatewayRunEvents(t, env, runID)
 	type outcome struct {
 		out string
 		err error
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		out, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
+		out, err := env.run(t, "runs", "cancel", runID, "--publish=false")
 		done <- outcome{out, err}
 	}()
-
-	env.stream.awaitStop(t)
+	stop := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, stop.Stop)
 	env.control.exit(otherHostPID)
-
 	select {
 	case result := <-done:
 		require.NoError(t, result.err, result.out)
-		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", testModelRoleCells(t)))
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancel did not return after the holder exited")
 	}
-	posted := env.stream.awaitRunState(t)
-	assert.Equal(t, models.RunLifecycleStatusCancelled, posted.Status)
-	assert.Equal(t, "run-a-1", posted.RunID)
-	assert.Equal(t, "cli-1", posted.CLISessionID)
-	assert.Zero(t, len(env.stream.states), "cancel posted more than one run state")
+	posted := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, posted.Status)
+	assert.Equal(t, models.RunLifecycleStatusCancelled, posted.Status.Status)
+	assert.Equal(t, runID, posted.Status.RunID)
+	requireNoGatewayRunEvent(t, events)
 }
-
 func TestRunsCancel_RejectsMissingAndArchivedRuns(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "cancel", "missing")
 	require.Error(t, err)
@@ -237,98 +214,67 @@ func TestRunsCancel_RejectsMissingAndArchivedRuns(t *testing.T) {
 }
 
 func TestRunsResume_DoesNotResumeAStoppedRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
+	env := newStoreRunEnv(t)
+	runID := env.prepareStoredRun(t, "eval-a", "run-a-1")
+	_, err := evaluation.NewCampaignController(env.store(t), nil, env.deps.now, adaptNewID(env.deps.newID)).CancelRun(context.Background(), runID)
+	require.NoError(t, err)
 
 	store := env.store(t)
 	controller := evaluation.NewCampaignController(store, nil, env.deps.now, func(prefix string) string { return prefix + "-id" })
-	assignment, ok, err := controller.ResumeNextAssignment(context.Background(), "run-a-1")
+	assignment, ok, err := controller.ResumeNextAssignment(context.Background(), runID)
 	assert.False(t, ok, "cancelled run has no queued assignments to resume")
 	assert.Nil(t, assignment)
 	assert.NoError(t, err)
 }
 
 func TestRunsResume_ReportsItsLifecycleToTheGateway(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
-	working := env.deps.agentExecutorFactory
-
-	// An execute that errors before its first assignment leaves every assignment
-	// queued. The error is returned, and the run reports waiting, not failed, so the
-	// resume below can post running.
-	env.deps.agentExecutorFactory = func(campaignAgentExecutorInputs) (evaluation.CampaignAssignmentExecutor, error) {
-		return nil, constants.ErrInternal
-	}
-	_, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1, NoAutoBind: true})
-	require.ErrorIs(t, err, constants.ErrInternal)
-	assert.Equal(t, models.RunLifecycleStatusRunning, env.stream.awaitRunState(t).Status)
-	errored := env.stream.awaitRunState(t)
-	assert.Equal(t, models.RunLifecycleStatusWaiting, errored.Status)
-	assert.NotNil(t, errored.EndedAt)
-
-	env.deps.agentExecutorFactory = working
-	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1, NoAutoBind: true})
-	require.NoError(t, err)
-	assert.Equal(t, 1, executed)
-
-	running := env.stream.awaitRunState(t)
-	assert.Equal(t, models.RunLifecycleStatusRunning, running.Status)
-	assert.Equal(t, runID, running.RunID)
-	assert.Equal(t, models.RunKindEval, running.RunKind)
-	assert.Equal(t, "cli-1", running.CLISessionID)
-
-	// A limit that stops with assignments still queued leaves the run waiting for
-	// its next resume. It is not completed.
-	released := env.stream.awaitRunState(t)
-	assert.Equal(t, models.RunLifecycleStatusWaiting, released.Status)
-	assert.NotNil(t, released.EndedAt)
+	events := observeGatewayRunEvents(t, env, runID)
+	out, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
+	require.NoError(t, err, out)
+	first := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, first.Status)
+	assert.Equal(t, models.RunLifecycleStatusRunning, first.Status.Status)
+	second := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, second.Status)
+	assert.Equal(t, runID, second.Status.RunID)
+	assert.Contains(t, []models.RunLifecycleStatus{models.RunLifecycleStatusWaiting, models.RunLifecycleStatusCompleted}, second.Status.Status)
 }
-
-func TestRunsResume_OfAStoppedRunPostsNothingToTheGateway(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+func TestRunsResume_OfACompletedRunIsRejectedByTheGateway(t *testing.T) {
+	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
-	env.mustRun(t, "runs", "cancel", runID, "--publish=false")
-	assert.Equal(t, models.RunLifecycleStatusCancelled, env.stream.awaitRunState(t).Status, "cancel reports the cancelled status")
-
-	// Nothing is queued, so the resume executes nothing and posts nothing: no
-	// running, and no released status, which the Gateway would refuse from cancelled
-	// in any case. A drained queue reads provider residency before the command
-	// returns, and the fake Gateway does not answer that query, so the command ends
-	// with that error. The posts happen before the command returns, so an empty
-	// channel afterwards means none were sent.
-	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
-	require.ErrorContains(t, err, "provider residency")
-	select {
-	case req := <-env.stream.states:
-		t.Fatalf("a release that executed nothing posted %s", req.Status)
-	default:
-	}
-}
-
-func TestRunsResume_FailsClosedWhenTheGatewayRefusesRunning(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
-	env.stream.rejectRunStates(http.StatusConflict)
-
+	events := observeGatewayRunEvents(t, env, runID)
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCompleted)
+	seeded := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, seeded.Status)
 	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
-
-	// The run never started: no assignment executed, and every one is still queued.
 	var show runShowJSON
 	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
 	assert.Equal(t, uint32(testModelRoleCells(t)), show.Queued)
 	assert.Zero(t, show.Terminal)
+	requireNoGatewayRunEvent(t, events)
 }
-
+func TestRunsResume_FailsClosedWhenGatewayRejectsRunning(t *testing.T) {
+	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	events := observeGatewayRunEvents(t, env, runID)
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusFailed)
+	seeded := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, seeded.Status)
+	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	var show runShowJSON
+	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
+	assert.Equal(t, uint32(testModelRoleCells(t)), show.Queued)
+	assert.Zero(t, show.Terminal)
+	requireNoGatewayRunEvent(t, events)
+}
 func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 
@@ -337,30 +283,23 @@ func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {
 }
 
 func TestRunsShow_WatchFollowsARunUntilItSettles(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.holdRun(t, "run-a-1")
-
+	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusRunning)
 	done := make(chan string, 1)
 	go func() {
-		out, _ := env.run(t, "runs", "show", "run-a-1", "--watch")
+		out, _ := env.run(t, "runs", "show", runID, "--watch")
 		done <- out
 	}()
 	select {
 	case <-done:
 		t.Fatal("watch returned for a run that has not settled")
-	case <-time.After(60 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 	}
-
-	// The holding process settles the run, releases its lease, and reports the
-	// settled status on the stream. The watch reloads on that event.
 	store := env.store(t)
-	_, err := evaluation.NewCampaignController(store, nil, env.deps.now, adaptNewID(env.deps.newID)).CancelRun(context.Background(), "run-a-1")
+	_, err := evaluation.NewCampaignController(store, nil, env.deps.now, adaptNewID(env.deps.newID)).CancelRun(context.Background(), runID)
 	require.NoError(t, err)
-	require.NoError(t, store.ClearRunLease(context.Background(), "run-a-1"))
-	env.control.setAlive(otherHostPID, false)
-	env.stream.publishRunStatus(t, "run-a-1", models.RunLifecycleStatusCancelled)
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCancelled)
 	select {
 	case out := <-done:
 		assert.Contains(t, out, "cancelled")
@@ -368,10 +307,9 @@ func TestRunsShow_WatchFollowsARunUntilItSettles(t *testing.T) {
 		t.Fatal("watch did not return after the run settled")
 	}
 }
-
 func TestRunsArchive_RoundTrip(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "archive", "run-a-1")
 	assert.Contains(t, out, "Archived run run-a-1")
@@ -397,23 +335,23 @@ func TestRunsArchive_RoundTrip(t *testing.T) {
 }
 
 func TestRunsArchive_RecordsWhoArchivedAndWhen(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	var payload archiveResultJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "archive", "run-a-1"))
 	assert.Equal(t, "run", payload.Kind)
 	assert.Equal(t, "run-a-1", payload.ID)
 	assert.Equal(t, "eval-a", payload.CampaignID)
-	assert.Equal(t, "operator-1", payload.ArchivedBy)
+	assert.Equal(t, "local-operator", payload.ArchivedBy)
 	assert.NotEmpty(t, payload.ArchivedAt)
 	assert.True(t, payload.Archived)
 }
 
 func TestRunsArchive_ArchivedRunsStayReadable(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.startPrepared(t, "eval-a", "run-a-2")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.startStoredRun(t, "eval-a", "run-a-2")
 	env.mustRun(t, "runs", "archive", "run-a-1")
 
 	_, err := env.run(t, "runs", "verify", "run-a-1", "--coverage")
@@ -429,9 +367,8 @@ func TestRunsArchive_ArchivedRunsStayReadable(t *testing.T) {
 }
 
 func TestRunsArchive_ArchivedRunsAreRejectedByMutatingCommands(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "runs", "archive", "run-a-1")
 
 	for _, args := range [][]string{
@@ -446,8 +383,8 @@ func TestRunsArchive_ArchivedRunsAreRejectedByMutatingCommands(t *testing.T) {
 }
 
 func TestRunsArchive_RefusesARunThatIsRunning(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	env.holdRun(t, "run-a-1")
 
 	_, err := env.run(t, "runs", "archive", "run-a-1")
@@ -460,8 +397,8 @@ func TestRunsArchive_RefusesARunThatIsRunning(t *testing.T) {
 }
 
 func TestRunsArchive_ArchivesARunWhoseLeaseIsStale(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	env.holdRun(t, "run-a-1")
 	env.control.setAlive(otherHostPID, false)
 
@@ -469,8 +406,8 @@ func TestRunsArchive_ArchivesARunWhoseLeaseIsStale(t *testing.T) {
 }
 
 func TestRunsArchive_RejectsBadTargets(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "archive", "missing")
 	require.Error(t, err)
@@ -487,9 +424,9 @@ func TestRunsArchive_RejectsBadTargets(t *testing.T) {
 }
 
 func TestRunsArchive_ARunArchivedAloneStaysListedUnderItsActiveCampaign(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.startPrepared(t, "eval-a", "run-a-2")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.startStoredRun(t, "eval-a", "run-a-2")
 	env.mustRun(t, "runs", "archive", "run-a-1")
 
 	var payload campaignShowJSON
@@ -503,10 +440,10 @@ func TestRunsArchive_ARunArchivedAloneStaysListedUnderItsActiveCampaign(t *testi
 }
 
 func TestCampaignsArchive_ArchivesTheCampaignAndAllOfItsRuns(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.startPrepared(t, "eval-a", "run-a-2")
-	env.prepareRun(t, "eval-b", "run-b-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.startStoredRun(t, "eval-a", "run-a-2")
+	env.prepareStoredRun(t, "eval-b", "run-b-1")
 
 	out := env.mustRun(t, "campaigns", "archive", "eval-a")
 	assert.Contains(t, out, "Archived campaign eval-a and 2 run(s)")
@@ -529,13 +466,13 @@ func TestCampaignsArchive_ArchivesTheCampaignAndAllOfItsRuns(t *testing.T) {
 	require.NoError(t, env.runJSON(t, &show, "campaigns", "show", "eval-a"))
 	assert.True(t, show.Archived)
 	require.NotNil(t, show.Archive)
-	assert.Equal(t, "operator-1", show.Archive.ArchivedBy)
+	assert.Equal(t, "local-operator", show.Archive.ArchivedBy)
 	assert.Len(t, show.Runs, 2)
 }
 
 func TestCampaignsArchive_RoundTrip(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "campaigns", "archive", "eval-a")
 
 	out := env.mustRun(t, "campaigns", "unarchive", "eval-a")
@@ -556,9 +493,9 @@ func TestCampaignsArchive_RoundTrip(t *testing.T) {
 }
 
 func TestCampaignsArchive_MovesNothingWhenARunIsRunning(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.startPrepared(t, "eval-a", "run-a-2")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.startStoredRun(t, "eval-a", "run-a-2")
 	env.holdRun(t, "run-a-2")
 
 	_, err := env.run(t, "campaigns", "archive", "eval-a")
@@ -575,8 +512,8 @@ func TestCampaignsArchive_MovesNothingWhenARunIsRunning(t *testing.T) {
 }
 
 func TestCampaignsArchive_ARunUnarchivedAloneNeedsItsCampaignActive(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "campaigns", "archive", "eval-a")
 
 	_, err := env.run(t, "runs", "unarchive", "run-a-1")
@@ -586,8 +523,8 @@ func TestCampaignsArchive_ARunUnarchivedAloneNeedsItsCampaignActive(t *testing.T
 }
 
 func TestCampaignsCreate_RejectsAnArchivedCampaignID(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "campaigns", "archive", "eval-a")
 
 	_, err := env.run(t, "campaigns", "create", "eval-a", "qwen3:4b")

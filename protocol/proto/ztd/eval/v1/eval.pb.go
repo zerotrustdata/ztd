@@ -3296,6 +3296,8 @@ type EvaluationRun struct {
 	AttemptRefs                []string                        `protobuf:"bytes,11,rep,name=attempt_refs,json=attemptRefs,proto3" json:"attempt_refs,omitempty"`
 	FinalVerificationReportRef *v1.ComplianceEvidenceReference `protobuf:"bytes,12,opt,name=final_verification_report_ref,json=finalVerificationReportRef,proto3" json:"final_verification_report_ref,omitempty"`
 	CampaignBinding            *ModelCampaignBinding           `protobuf:"bytes,13,opt,name=campaign_binding,json=campaignBinding,proto3" json:"campaign_binding,omitempty"`
+	ProviderObservationPolicy  EvaluationWitnessPolicy         `protobuf:"varint,14,opt,name=provider_observation_policy,json=providerObservationPolicy,proto3,enum=ztd.eval.v1.EvaluationWitnessPolicy" json:"provider_observation_policy,omitempty"`
+	ModelProvenancePolicy      EvaluationWitnessPolicy         `protobuf:"varint,15,opt,name=model_provenance_policy,json=modelProvenancePolicy,proto3,enum=ztd.eval.v1.EvaluationWitnessPolicy" json:"model_provenance_policy,omitempty"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -3419,6 +3421,20 @@ func (x *EvaluationRun) GetCampaignBinding() *ModelCampaignBinding {
 		return x.CampaignBinding
 	}
 	return nil
+}
+
+func (x *EvaluationRun) GetProviderObservationPolicy() EvaluationWitnessPolicy {
+	if x != nil {
+		return x.ProviderObservationPolicy
+	}
+	return EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_UNSPECIFIED
+}
+
+func (x *EvaluationRun) GetModelProvenancePolicy() EvaluationWitnessPolicy {
+	if x != nil {
+		return x.ModelProvenancePolicy
+	}
+	return EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_UNSPECIFIED
 }
 
 type EvaluationAttempt struct {
@@ -12989,7 +13005,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\rinteger_value\x18\x02 \x01(\x03H\x00R\fintegerValue\x12#\n" +
 	"\fstring_value\x18\x03 \x01(\tH\x00R\vstringValue\x12_\n" +
 	"\x12artifact_reference\x18\x04 \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceH\x00R\x11artifactReferenceB\a\n" +
-	"\x05value\"\xa7\x06\n" +
+	"\x05value\"\xeb\a\n" +
 	"\rEvaluationRun\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12B\n" +
@@ -13007,7 +13023,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12!\n" +
 	"\fattempt_refs\x18\v \x03(\tR\vattemptRefs\x12q\n" +
 	"\x1dfinal_verification_report_ref\x18\f \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x1afinalVerificationReportRef\x12L\n" +
-	"\x10campaign_binding\x18\r \x01(\v2!.ztd.eval.v1.ModelCampaignBindingR\x0fcampaignBinding\"\xb1\x04\n" +
+	"\x10campaign_binding\x18\r \x01(\v2!.ztd.eval.v1.ModelCampaignBindingR\x0fcampaignBinding\x12d\n" +
+	"\x1bprovider_observation_policy\x18\x0e \x01(\x0e2$.ztd.eval.v1.EvaluationWitnessPolicyR\x19providerObservationPolicy\x12\\\n" +
+	"\x17model_provenance_policy\x18\x0f \x01(\x0e2$.ztd.eval.v1.EvaluationWitnessPolicyR\x15modelProvenancePolicy\"\xb1\x04\n" +
 	"\x11EvaluationAttempt\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x01 \x01(\tR\tattemptId\x12\x15\n" +
@@ -14534,283 +14552,285 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	159, // 9: ztd.eval.v1.EvaluationRun.completed_at:type_name -> google.protobuf.Timestamp
 	158, // 10: ztd.eval.v1.EvaluationRun.final_verification_report_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
 	63,  // 11: ztd.eval.v1.EvaluationRun.campaign_binding:type_name -> ztd.eval.v1.ModelCampaignBinding
-	157, // 12: ztd.eval.v1.EvaluationAttempt.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
-	25,  // 13: ztd.eval.v1.EvaluationAttempt.status:type_name -> ztd.eval.v1.EvaluationAttemptStatus
-	159, // 14: ztd.eval.v1.EvaluationAttempt.started_at:type_name -> google.protobuf.Timestamp
-	159, // 15: ztd.eval.v1.EvaluationAttempt.completed_at:type_name -> google.protobuf.Timestamp
-	157, // 16: ztd.eval.v1.EvaluationObservation.observation_type:type_name -> ztd.compliance.v1.VersionedReference
-	26,  // 17: ztd.eval.v1.EvaluationObservation.source:type_name -> ztd.eval.v1.EvaluationObservationSource
-	159, // 18: ztd.eval.v1.EvaluationObservation.observed_at:type_name -> google.protobuf.Timestamp
-	27,  // 19: ztd.eval.v1.EvaluationObservation.authority:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
-	54,  // 20: ztd.eval.v1.EvaluationObservation.value:type_name -> ztd.eval.v1.EvaluationValue
-	158, // 21: ztd.eval.v1.EvaluationObservation.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	159, // 22: ztd.eval.v1.EvaluationTargetState.observed_at:type_name -> google.protobuf.Timestamp
-	28,  // 23: ztd.eval.v1.EvaluationAssertion.comparator:type_name -> ztd.eval.v1.EvaluationComparator
-	54,  // 24: ztd.eval.v1.EvaluationAssertion.expected:type_name -> ztd.eval.v1.EvaluationValue
-	157, // 25: ztd.eval.v1.EvaluationAssertion.required_observation_types:type_name -> ztd.compliance.v1.VersionedReference
-	27,  // 26: ztd.eval.v1.EvaluationAssertion.required_authorities:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
-	157, // 27: ztd.eval.v1.EvaluationVerdict.assertion_ref:type_name -> ztd.compliance.v1.VersionedReference
-	29,  // 28: ztd.eval.v1.EvaluationVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	158, // 29: ztd.eval.v1.EvaluationVerdict.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	157, // 30: ztd.eval.v1.EvaluationVerdict.grader_ref:type_name -> ztd.compliance.v1.VersionedReference
-	159, // 31: ztd.eval.v1.EvaluationVerdict.evaluated_at:type_name -> google.protobuf.Timestamp
-	32,  // 32: ztd.eval.v1.EvaluationMetric.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
-	30,  // 33: ztd.eval.v1.EvaluationMetric.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
-	157, // 34: ztd.eval.v1.EvaluationMetric.eligible_population_ref:type_name -> ztd.compliance.v1.VersionedReference
-	31,  // 35: ztd.eval.v1.EvaluationMetric.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
-	158, // 36: ztd.eval.v1.EvaluationMetric.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	55,  // 37: ztd.eval.v1.EvaluationReport.run:type_name -> ztd.eval.v1.EvaluationRun
-	56,  // 38: ztd.eval.v1.EvaluationReport.attempts:type_name -> ztd.eval.v1.EvaluationAttempt
-	57,  // 39: ztd.eval.v1.EvaluationReport.observations:type_name -> ztd.eval.v1.EvaluationObservation
-	59,  // 40: ztd.eval.v1.EvaluationReport.assertions:type_name -> ztd.eval.v1.EvaluationAssertion
-	60,  // 41: ztd.eval.v1.EvaluationReport.verdicts:type_name -> ztd.eval.v1.EvaluationVerdict
-	61,  // 42: ztd.eval.v1.EvaluationReport.metrics:type_name -> ztd.eval.v1.EvaluationMetric
-	158, // 43: ztd.eval.v1.EvaluationReport.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	29,  // 44: ztd.eval.v1.EvaluationReport.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	99,  // 45: ztd.eval.v1.EvaluationReport.assignment_results:type_name -> ztd.eval.v1.EvaluationAssignmentResult
-	102, // 46: ztd.eval.v1.EvaluationReport.campaign_verification_report:type_name -> ztd.eval.v1.EvaluationVerificationReport
-	157, // 47: ztd.eval.v1.ModelCampaignBinding.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	157, // 48: ztd.eval.v1.EvaluationCampaignSpec.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	72,  // 49: ztd.eval.v1.EvaluationCampaignSpec.model_registry:type_name -> ztd.eval.v1.ModelVariant
-	23,  // 50: ztd.eval.v1.EvaluationCampaignSpec.governance_posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	65,  // 51: ztd.eval.v1.EvaluationCampaignSpec.investigation:type_name -> ztd.eval.v1.EvaluationInvestigation
-	2,   // 52: ztd.eval.v1.EvaluationInvestigation.mode:type_name -> ztd.eval.v1.EvaluationInvestigationMode
-	157, // 53: ztd.eval.v1.EvaluationScenarioCatalog.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	71,  // 54: ztd.eval.v1.EvaluationScenarioCatalog.scenarios:type_name -> ztd.eval.v1.EvaluationScenarioDefinition
-	5,   // 55: ztd.eval.v1.PublicScenarioCriterion.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	21,  // 56: ztd.eval.v1.PublicToolScoreDimensionRequirement.dimension:type_name -> ztd.eval.v1.PublicToolScoreDimension
-	14,  // 57: ztd.eval.v1.PromptHintArgument.source:type_name -> ztd.eval.v1.EvaluationHintArgumentSource
-	69,  // 58: ztd.eval.v1.PromptHint.arguments:type_name -> ztd.eval.v1.PromptHintArgument
-	3,   // 59: ztd.eval.v1.EvaluationScenarioDefinition.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	5,   // 60: ztd.eval.v1.EvaluationScenarioDefinition.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	158, // 61: ztd.eval.v1.EvaluationScenarioDefinition.input_fixture_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	158, // 62: ztd.eval.v1.EvaluationScenarioDefinition.gold_criteria_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	67,  // 63: ztd.eval.v1.EvaluationScenarioDefinition.public_criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
-	68,  // 64: ztd.eval.v1.EvaluationScenarioDefinition.public_tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
-	1,   // 65: ztd.eval.v1.EvaluationScenarioDefinition.eligible_roles:type_name -> ztd.eval.v1.ModelCampaignRole
-	12,  // 66: ztd.eval.v1.EvaluationScenarioDefinition.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
-	70,  // 67: ztd.eval.v1.EvaluationScenarioDefinition.prompt_hint:type_name -> ztd.eval.v1.PromptHint
-	73,  // 68: ztd.eval.v1.ModelVariant.capability_observations:type_name -> ztd.eval.v1.ModelCapabilityObservation
-	6,   // 69: ztd.eval.v1.ModelCapabilityObservation.capability:type_name -> ztd.eval.v1.ModelCapabilityKind
-	29,  // 70: ztd.eval.v1.ModelCapabilityObservation.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	1,   // 71: ztd.eval.v1.RoleAssignment.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	74,  // 72: ztd.eval.v1.HeterogeneousStackDefinition.primary_slot:type_name -> ztd.eval.v1.RoleAssignment
-	74,  // 73: ztd.eval.v1.HeterogeneousStackDefinition.assistant_slot:type_name -> ztd.eval.v1.RoleAssignment
-	74,  // 74: ztd.eval.v1.HeterogeneousStackDefinition.lite_slot:type_name -> ztd.eval.v1.RoleAssignment
-	157, // 75: ztd.eval.v1.EvaluationAssignment.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
-	0,   // 76: ztd.eval.v1.EvaluationAssignment.lane:type_name -> ztd.eval.v1.EvaluationLane
-	4,   // 77: ztd.eval.v1.EvaluationAssignment.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	159, // 78: ztd.eval.v1.EvaluationAssignment.queued_at:type_name -> google.protobuf.Timestamp
-	159, // 79: ztd.eval.v1.EvaluationAssignment.started_at:type_name -> google.protobuf.Timestamp
-	159, // 80: ztd.eval.v1.EvaluationAssignment.completed_at:type_name -> google.protobuf.Timestamp
-	77,  // 81: ztd.eval.v1.EvaluationAssignment.homogeneous:type_name -> ztd.eval.v1.HomogeneousAssignmentTarget
-	78,  // 82: ztd.eval.v1.EvaluationAssignment.heterogeneous:type_name -> ztd.eval.v1.HeterogeneousAssignmentTarget
-	72,  // 83: ztd.eval.v1.HomogeneousAssignmentTarget.candidate_variant:type_name -> ztd.eval.v1.ModelVariant
-	1,   // 84: ztd.eval.v1.HomogeneousAssignmentTarget.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	75,  // 85: ztd.eval.v1.HeterogeneousAssignmentTarget.stack:type_name -> ztd.eval.v1.HeterogeneousStackDefinition
-	22,  // 86: ztd.eval.v1.ProviderBoundaryHardwareSample.vram_bytes_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	22,  // 87: ztd.eval.v1.ProviderBoundaryHardwareSample.gpu_utilization_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	22,  // 88: ztd.eval.v1.ProviderBoundaryHardwareSample.temperature_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	22,  // 89: ztd.eval.v1.ProviderBoundaryHardwareSample.power_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	22,  // 90: ztd.eval.v1.ProviderBoundaryHardwareSample.clock_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	22,  // 91: ztd.eval.v1.ProviderBoundaryHardwareSample.host_ram_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	79,  // 92: ztd.eval.v1.ProviderBoundaryObservationWindow.samples:type_name -> ztd.eval.v1.ProviderBoundaryHardwareSample
-	33,  // 93: ztd.eval.v1.ProviderBoundaryObservationCommand.phase:type_name -> ztd.eval.v1.ProviderBoundaryObservationPhase
-	34,  // 94: ztd.eval.v1.ProviderBoundaryObservationCommand.attempt_status:type_name -> ztd.eval.v1.ProviderBoundaryObservationAttemptStatus
-	80,  // 95: ztd.eval.v1.ProviderBoundaryObservationCompleted.window:type_name -> ztd.eval.v1.ProviderBoundaryObservationWindow
-	35,  // 96: ztd.eval.v1.ModelWeightAttestation.verification_mode:type_name -> ztd.eval.v1.ModelWeightVerificationMode
-	36,  // 97: ztd.eval.v1.ModelProvenanceAttestationWindow.manifest_verification_status:type_name -> ztd.eval.v1.ModelManifestVerificationStatus
-	83,  // 98: ztd.eval.v1.ModelProvenanceAttestationWindow.weight_attestations:type_name -> ztd.eval.v1.ModelWeightAttestation
-	37,  // 99: ztd.eval.v1.ModelProvenanceObservationCommand.phase:type_name -> ztd.eval.v1.ModelProvenanceObservationPhase
-	38,  // 100: ztd.eval.v1.ModelProvenanceObservationCommand.attempt_status:type_name -> ztd.eval.v1.ModelProvenanceObservationAttemptStatus
-	84,  // 101: ztd.eval.v1.ModelProvenanceObservationCompleted.window:type_name -> ztd.eval.v1.ModelProvenanceAttestationWindow
-	1,   // 102: ztd.eval.v1.ModelInferenceRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	72,  // 103: ztd.eval.v1.ModelInferenceRecord.model_variant:type_name -> ztd.eval.v1.ModelVariant
-	8,   // 104: ztd.eval.v1.ModelInferenceRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
-	7,   // 105: ztd.eval.v1.ModelInferenceRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
-	158, // 106: ztd.eval.v1.ModelInferenceRecord.governed_receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	9,   // 107: ztd.eval.v1.ModelInferenceRecord.classification:type_name -> ztd.eval.v1.EvaluationCallClassification
-	29,  // 108: ztd.eval.v1.ToolDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	29,  // 109: ztd.eval.v1.ToolCallRecord.schema_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	29,  // 110: ztd.eval.v1.ToolCallRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	158, // 111: ztd.eval.v1.ToolCallRecord.governed_binding_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	1,   // 112: ztd.eval.v1.EscalationRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	1,   // 113: ztd.eval.v1.EscalationRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	1,   // 114: ztd.eval.v1.HandoffRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	1,   // 115: ztd.eval.v1.HandoffRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	29,  // 116: ztd.eval.v1.RecoveryRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	158, // 117: ztd.eval.v1.GovernedActionBinding.receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	158, // 118: ztd.eval.v1.GovernedActionBinding.persistence_attestation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	158, // 119: ztd.eval.v1.GovernedActionBinding.effect_observation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	29,  // 120: ztd.eval.v1.DeterministicGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	39,  // 121: ztd.eval.v1.DeterministicGrade.basis:type_name -> ztd.eval.v1.GradeBasis
-	29,  // 122: ztd.eval.v1.SemanticGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	158, // 123: ztd.eval.v1.SemanticGrade.grader_call_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	32,  // 124: ztd.eval.v1.DecomposedScoreRecord.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
-	30,  // 125: ztd.eval.v1.DecomposedScoreRecord.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
-	31,  // 126: ztd.eval.v1.DecomposedScoreRecord.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
-	158, // 127: ztd.eval.v1.GraderModelCallRecord.inference_record_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	10,  // 128: ztd.eval.v1.PolicyDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	0,   // 129: ztd.eval.v1.EvaluationAssignmentResult.lane:type_name -> ztd.eval.v1.EvaluationLane
-	4,   // 130: ztd.eval.v1.EvaluationAssignmentResult.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	87,  // 131: ztd.eval.v1.EvaluationAssignmentResult.model_inferences:type_name -> ztd.eval.v1.ModelInferenceRecord
-	88,  // 132: ztd.eval.v1.EvaluationAssignmentResult.tool_decisions:type_name -> ztd.eval.v1.ToolDecisionRecord
-	89,  // 133: ztd.eval.v1.EvaluationAssignmentResult.tool_calls:type_name -> ztd.eval.v1.ToolCallRecord
-	90,  // 134: ztd.eval.v1.EvaluationAssignmentResult.escalations:type_name -> ztd.eval.v1.EscalationRecord
-	91,  // 135: ztd.eval.v1.EvaluationAssignmentResult.handoffs:type_name -> ztd.eval.v1.HandoffRecord
-	92,  // 136: ztd.eval.v1.EvaluationAssignmentResult.recoveries:type_name -> ztd.eval.v1.RecoveryRecord
-	93,  // 137: ztd.eval.v1.EvaluationAssignmentResult.governed_actions:type_name -> ztd.eval.v1.GovernedActionBinding
-	94,  // 138: ztd.eval.v1.EvaluationAssignmentResult.deterministic_grades:type_name -> ztd.eval.v1.DeterministicGrade
-	95,  // 139: ztd.eval.v1.EvaluationAssignmentResult.semantic_grades:type_name -> ztd.eval.v1.SemanticGrade
-	96,  // 140: ztd.eval.v1.EvaluationAssignmentResult.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
-	97,  // 141: ztd.eval.v1.EvaluationAssignmentResult.grader_calls:type_name -> ztd.eval.v1.GraderModelCallRecord
-	158, // 142: ztd.eval.v1.EvaluationAssignmentResult.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	159, // 143: ztd.eval.v1.EvaluationAssignmentResult.completed_at:type_name -> google.protobuf.Timestamp
-	98,  // 144: ztd.eval.v1.EvaluationAssignmentResult.policy_decisions:type_name -> ztd.eval.v1.PolicyDecisionRecord
-	13,  // 145: ztd.eval.v1.EvaluationAssignmentResult.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
-	155, // 146: ztd.eval.v1.EvaluationAssignmentResult.containment:type_name -> ztd.eval.v1.ContainmentResult
-	40,  // 147: ztd.eval.v1.CampaignComplianceSourceInventory.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	40,  // 148: ztd.eval.v1.CampaignComplianceSourceInventory.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	100, // 149: ztd.eval.v1.CampaignComplianceSourceInventory.artifacts:type_name -> ztd.eval.v1.CampaignComplianceSourceArtifact
-	29,  // 150: ztd.eval.v1.EvaluationVerificationReport.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	158, // 151: ztd.eval.v1.EvaluationVerificationReport.report_digest_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	159, // 152: ztd.eval.v1.EvaluationVerificationReport.verified_at:type_name -> google.protobuf.Timestamp
-	40,  // 153: ztd.eval.v1.EvaluationVerificationReport.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	40,  // 154: ztd.eval.v1.EvaluationVerificationReport.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	4,   // 155: ztd.eval.v1.EvaluationVerifiedPopulationEntry.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	1,   // 156: ztd.eval.v1.EvaluationVerifiedPopulationEntry.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	157, // 157: ztd.eval.v1.EvaluationVerifiedPopulation.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	0,   // 158: ztd.eval.v1.EvaluationVerifiedPopulation.lane:type_name -> ztd.eval.v1.EvaluationLane
-	103, // 159: ztd.eval.v1.EvaluationVerifiedPopulation.entries:type_name -> ztd.eval.v1.EvaluationVerifiedPopulationEntry
-	0,   // 160: ztd.eval.v1.PublicCampaignIdentity.lane:type_name -> ztd.eval.v1.EvaluationLane
-	41,  // 161: ztd.eval.v1.PublicCampaignIdentity.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	3,   // 162: ztd.eval.v1.PublicAssignmentLifecycleRecord.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	0,   // 163: ztd.eval.v1.PublicAssignmentLifecycleRecord.lane:type_name -> ztd.eval.v1.EvaluationLane
-	1,   // 164: ztd.eval.v1.PublicAssignmentLifecycleRecord.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	4,   // 165: ztd.eval.v1.PublicAssignmentLifecycleRecord.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	159, // 166: ztd.eval.v1.PublicAssignmentLifecycleRecord.observed_at:type_name -> google.protobuf.Timestamp
-	41,  // 167: ztd.eval.v1.PublicAssignmentLifecycleRecord.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	1,   // 168: ztd.eval.v1.PublicModelCallSummary.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	8,   // 169: ztd.eval.v1.PublicModelCallSummary.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
-	7,   // 170: ztd.eval.v1.PublicModelCallSummary.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
-	3,   // 171: ztd.eval.v1.PublicScenarioSummary.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	5,   // 172: ztd.eval.v1.PublicScenarioSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	67,  // 173: ztd.eval.v1.PublicScenarioSummary.criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
-	68,  // 174: ztd.eval.v1.PublicScenarioSummary.tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
-	12,  // 175: ztd.eval.v1.PublicScenarioSummary.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
-	70,  // 176: ztd.eval.v1.PublicScenarioSummary.prompt_hint:type_name -> ztd.eval.v1.PromptHint
-	29,  // 177: ztd.eval.v1.PublicSemanticGradeSummary.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	5,   // 178: ztd.eval.v1.PublicSemanticGradeSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	11,  // 179: ztd.eval.v1.PublicSemanticGradeSummary.explanation_code:type_name -> ztd.eval.v1.PublicGradeExplanationCode
-	1,   // 180: ztd.eval.v1.PublicModelActivityRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	8,   // 181: ztd.eval.v1.PublicModelActivityRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
-	17,  // 182: ztd.eval.v1.PublicModelActivityRecord.finish_state:type_name -> ztd.eval.v1.PublicFinishState
-	7,   // 183: ztd.eval.v1.PublicModelActivityRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
-	29,  // 184: ztd.eval.v1.PublicToolDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	18,  // 185: ztd.eval.v1.PublicToolDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	29,  // 186: ztd.eval.v1.PublicToolCallActivityRecord.execution_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	29,  // 187: ztd.eval.v1.PublicToolCallActivityRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	18,  // 188: ztd.eval.v1.PublicToolCallActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	10,  // 189: ztd.eval.v1.PublicPolicyDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	18,  // 190: ztd.eval.v1.PublicPolicyDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	10,  // 191: ztd.eval.v1.PublicGovernedActionActivityRecord.reported_policy_outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	20,  // 192: ztd.eval.v1.PublicGovernedActionActivityRecord.receipt_status:type_name -> ztd.eval.v1.PublicReceiptStatus
-	18,  // 193: ztd.eval.v1.PublicGovernedActionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	15,  // 194: ztd.eval.v1.PublicModelActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	16,  // 195: ztd.eval.v1.PublicModelActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	111, // 196: ztd.eval.v1.PublicModelActivity.records:type_name -> ztd.eval.v1.PublicModelActivityRecord
-	15,  // 197: ztd.eval.v1.PublicToolDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	16,  // 198: ztd.eval.v1.PublicToolDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	112, // 199: ztd.eval.v1.PublicToolDecisionActivity.records:type_name -> ztd.eval.v1.PublicToolDecisionActivityRecord
-	15,  // 200: ztd.eval.v1.PublicToolCallActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	16,  // 201: ztd.eval.v1.PublicToolCallActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	113, // 202: ztd.eval.v1.PublicToolCallActivity.records:type_name -> ztd.eval.v1.PublicToolCallActivityRecord
-	15,  // 203: ztd.eval.v1.PublicPolicyDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	16,  // 204: ztd.eval.v1.PublicPolicyDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	114, // 205: ztd.eval.v1.PublicPolicyDecisionActivity.records:type_name -> ztd.eval.v1.PublicPolicyDecisionActivityRecord
-	15,  // 206: ztd.eval.v1.PublicGovernedActionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	16,  // 207: ztd.eval.v1.PublicGovernedActionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	115, // 208: ztd.eval.v1.PublicGovernedActionActivity.records:type_name -> ztd.eval.v1.PublicGovernedActionActivityRecord
-	116, // 209: ztd.eval.v1.PublicAssignmentActivitySummary.model_activity:type_name -> ztd.eval.v1.PublicModelActivity
-	117, // 210: ztd.eval.v1.PublicAssignmentActivitySummary.tool_decisions:type_name -> ztd.eval.v1.PublicToolDecisionActivity
-	118, // 211: ztd.eval.v1.PublicAssignmentActivitySummary.tool_calls:type_name -> ztd.eval.v1.PublicToolCallActivity
-	119, // 212: ztd.eval.v1.PublicAssignmentActivitySummary.policy_decisions:type_name -> ztd.eval.v1.PublicPolicyDecisionActivity
-	120, // 213: ztd.eval.v1.PublicAssignmentActivitySummary.governed_actions:type_name -> ztd.eval.v1.PublicGovernedActionActivity
-	19,  // 214: ztd.eval.v1.PublicVerificationMetadata.provenance:type_name -> ztd.eval.v1.PublicVerificationProvenance
-	29,  // 215: ztd.eval.v1.PublicVerificationMetadata.verifier_state:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	3,   // 216: ztd.eval.v1.PublicAssignmentResultProjection.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	0,   // 217: ztd.eval.v1.PublicAssignmentResultProjection.lane:type_name -> ztd.eval.v1.EvaluationLane
-	1,   // 218: ztd.eval.v1.PublicAssignmentResultProjection.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	4,   // 219: ztd.eval.v1.PublicAssignmentResultProjection.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	29,  // 220: ztd.eval.v1.PublicAssignmentResultProjection.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	96,  // 221: ztd.eval.v1.PublicAssignmentResultProjection.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
-	159, // 222: ztd.eval.v1.PublicAssignmentResultProjection.completed_at:type_name -> google.protobuf.Timestamp
-	109, // 223: ztd.eval.v1.PublicAssignmentResultProjection.scenario_summary:type_name -> ztd.eval.v1.PublicScenarioSummary
-	110, // 224: ztd.eval.v1.PublicAssignmentResultProjection.semantic_grade_summaries:type_name -> ztd.eval.v1.PublicSemanticGradeSummary
-	121, // 225: ztd.eval.v1.PublicAssignmentResultProjection.activity_summary:type_name -> ztd.eval.v1.PublicAssignmentActivitySummary
-	122, // 226: ztd.eval.v1.PublicAssignmentResultProjection.evidence_bindings:type_name -> ztd.eval.v1.PublicEvidenceBinding
-	123, // 227: ztd.eval.v1.PublicAssignmentResultProjection.verification_metadata:type_name -> ztd.eval.v1.PublicVerificationMetadata
-	13,  // 228: ztd.eval.v1.PublicAssignmentResultProjection.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
-	41,  // 229: ztd.eval.v1.PublicAssignmentResultProjection.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	41,  // 230: ztd.eval.v1.PublicLiveEvent.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	156, // 231: ztd.eval.v1.PublicLiveEvent.metric_delta:type_name -> ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
-	128, // 232: ztd.eval.v1.CanaryManifest.entries:type_name -> ztd.eval.v1.CanaryEntry
-	42,  // 233: ztd.eval.v1.ConformanceObservation.kind:type_name -> ztd.eval.v1.ConformanceObservationKind
-	160, // 234: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	161, // 235: ztd.eval.v1.ConformanceObservation.rejection:type_name -> ztd.operator.v1.GovernanceRejection
-	162, // 236: ztd.eval.v1.ConformanceObservation.refusal:type_name -> ztd.operator.v1.IngressRefusal
-	130, // 237: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
-	160, // 238: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.ActionReceipt
-	160, // 239: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.ActionReceipt
-	129, // 240: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
-	129, // 241: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
-	131, // 242: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
-	132, // 243: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
-	160, // 244: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.ActionReceipt
-	160, // 245: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.ActionReceipt
-	23,  // 246: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	127, // 247: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
-	134, // 248: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence
-	133, // 249: ztd.eval.v1.ConformanceRunRecord.cases:type_name -> ztd.eval.v1.ConformanceCaseEvidence
-	159, // 250: ztd.eval.v1.ConformanceRunRecord.started_at:type_name -> google.protobuf.Timestamp
-	159, // 251: ztd.eval.v1.ConformanceRunRecord.finished_at:type_name -> google.protobuf.Timestamp
-	29,  // 252: ztd.eval.v1.ConformanceVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	43,  // 253: ztd.eval.v1.ConformanceVerdict.failure_class:type_name -> ztd.eval.v1.ConformanceFailureClass
-	23,  // 254: ztd.eval.v1.ConformanceVerdictSet.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	44,  // 255: ztd.eval.v1.ConformanceVerdictSet.suite_verdict:type_name -> ztd.eval.v1.ConformanceSuiteVerdict
-	136, // 256: ztd.eval.v1.ConformanceVerdictSet.verdicts:type_name -> ztd.eval.v1.ConformanceVerdict
-	141, // 257: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
-	46,  // 258: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
-	47,  // 259: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
-	45,  // 260: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
-	1,   // 261: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
-	9,   // 262: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
-	138, // 263: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
-	139, // 264: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
-	140, // 265: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
-	142, // 266: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
-	143, // 267: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
-	144, // 268: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
-	145, // 269: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
-	146, // 270: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
-	148, // 271: ztd.eval.v1.InvestigationSeed.prior_turns:type_name -> ztd.eval.v1.SeedTurn
-	149, // 272: ztd.eval.v1.InvestigationSeed.history:type_name -> ztd.eval.v1.SeedHistoryEvent
-	72,  // 273: ztd.eval.v1.ScoredTurnRequest.model_registry:type_name -> ztd.eval.v1.ModelVariant
-	0,   // 274: ztd.eval.v1.ScoredTurnRequest.lane:type_name -> ztd.eval.v1.EvaluationLane
-	45,  // 275: ztd.eval.v1.ScoredTurnRequest.designated_role:type_name -> ztd.eval.v1.AgentRole
-	150, // 276: ztd.eval.v1.ScoredTurnRequest.seed:type_name -> ztd.eval.v1.InvestigationSeed
-	49,  // 277: ztd.eval.v1.ScoredTurnEvent.kind:type_name -> ztd.eval.v1.ScoredTurnEventKind
-	147, // 278: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
-	48,  // 279: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
-	51,  // 280: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
-	50,  // 281: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
-	154, // 282: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
-	125, // 283: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
-	284, // [284:284] is the sub-list for method output_type
-	284, // [284:284] is the sub-list for method input_type
-	284, // [284:284] is the sub-list for extension type_name
-	284, // [284:284] is the sub-list for extension extendee
-	0,   // [0:284] is the sub-list for field type_name
+	40,  // 12: ztd.eval.v1.EvaluationRun.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	40,  // 13: ztd.eval.v1.EvaluationRun.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	157, // 14: ztd.eval.v1.EvaluationAttempt.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
+	25,  // 15: ztd.eval.v1.EvaluationAttempt.status:type_name -> ztd.eval.v1.EvaluationAttemptStatus
+	159, // 16: ztd.eval.v1.EvaluationAttempt.started_at:type_name -> google.protobuf.Timestamp
+	159, // 17: ztd.eval.v1.EvaluationAttempt.completed_at:type_name -> google.protobuf.Timestamp
+	157, // 18: ztd.eval.v1.EvaluationObservation.observation_type:type_name -> ztd.compliance.v1.VersionedReference
+	26,  // 19: ztd.eval.v1.EvaluationObservation.source:type_name -> ztd.eval.v1.EvaluationObservationSource
+	159, // 20: ztd.eval.v1.EvaluationObservation.observed_at:type_name -> google.protobuf.Timestamp
+	27,  // 21: ztd.eval.v1.EvaluationObservation.authority:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
+	54,  // 22: ztd.eval.v1.EvaluationObservation.value:type_name -> ztd.eval.v1.EvaluationValue
+	158, // 23: ztd.eval.v1.EvaluationObservation.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	159, // 24: ztd.eval.v1.EvaluationTargetState.observed_at:type_name -> google.protobuf.Timestamp
+	28,  // 25: ztd.eval.v1.EvaluationAssertion.comparator:type_name -> ztd.eval.v1.EvaluationComparator
+	54,  // 26: ztd.eval.v1.EvaluationAssertion.expected:type_name -> ztd.eval.v1.EvaluationValue
+	157, // 27: ztd.eval.v1.EvaluationAssertion.required_observation_types:type_name -> ztd.compliance.v1.VersionedReference
+	27,  // 28: ztd.eval.v1.EvaluationAssertion.required_authorities:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
+	157, // 29: ztd.eval.v1.EvaluationVerdict.assertion_ref:type_name -> ztd.compliance.v1.VersionedReference
+	29,  // 30: ztd.eval.v1.EvaluationVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	158, // 31: ztd.eval.v1.EvaluationVerdict.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	157, // 32: ztd.eval.v1.EvaluationVerdict.grader_ref:type_name -> ztd.compliance.v1.VersionedReference
+	159, // 33: ztd.eval.v1.EvaluationVerdict.evaluated_at:type_name -> google.protobuf.Timestamp
+	32,  // 34: ztd.eval.v1.EvaluationMetric.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
+	30,  // 35: ztd.eval.v1.EvaluationMetric.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
+	157, // 36: ztd.eval.v1.EvaluationMetric.eligible_population_ref:type_name -> ztd.compliance.v1.VersionedReference
+	31,  // 37: ztd.eval.v1.EvaluationMetric.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
+	158, // 38: ztd.eval.v1.EvaluationMetric.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	55,  // 39: ztd.eval.v1.EvaluationReport.run:type_name -> ztd.eval.v1.EvaluationRun
+	56,  // 40: ztd.eval.v1.EvaluationReport.attempts:type_name -> ztd.eval.v1.EvaluationAttempt
+	57,  // 41: ztd.eval.v1.EvaluationReport.observations:type_name -> ztd.eval.v1.EvaluationObservation
+	59,  // 42: ztd.eval.v1.EvaluationReport.assertions:type_name -> ztd.eval.v1.EvaluationAssertion
+	60,  // 43: ztd.eval.v1.EvaluationReport.verdicts:type_name -> ztd.eval.v1.EvaluationVerdict
+	61,  // 44: ztd.eval.v1.EvaluationReport.metrics:type_name -> ztd.eval.v1.EvaluationMetric
+	158, // 45: ztd.eval.v1.EvaluationReport.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	29,  // 46: ztd.eval.v1.EvaluationReport.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	99,  // 47: ztd.eval.v1.EvaluationReport.assignment_results:type_name -> ztd.eval.v1.EvaluationAssignmentResult
+	102, // 48: ztd.eval.v1.EvaluationReport.campaign_verification_report:type_name -> ztd.eval.v1.EvaluationVerificationReport
+	157, // 49: ztd.eval.v1.ModelCampaignBinding.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	157, // 50: ztd.eval.v1.EvaluationCampaignSpec.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	72,  // 51: ztd.eval.v1.EvaluationCampaignSpec.model_registry:type_name -> ztd.eval.v1.ModelVariant
+	23,  // 52: ztd.eval.v1.EvaluationCampaignSpec.governance_posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	65,  // 53: ztd.eval.v1.EvaluationCampaignSpec.investigation:type_name -> ztd.eval.v1.EvaluationInvestigation
+	2,   // 54: ztd.eval.v1.EvaluationInvestigation.mode:type_name -> ztd.eval.v1.EvaluationInvestigationMode
+	157, // 55: ztd.eval.v1.EvaluationScenarioCatalog.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	71,  // 56: ztd.eval.v1.EvaluationScenarioCatalog.scenarios:type_name -> ztd.eval.v1.EvaluationScenarioDefinition
+	5,   // 57: ztd.eval.v1.PublicScenarioCriterion.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	21,  // 58: ztd.eval.v1.PublicToolScoreDimensionRequirement.dimension:type_name -> ztd.eval.v1.PublicToolScoreDimension
+	14,  // 59: ztd.eval.v1.PromptHintArgument.source:type_name -> ztd.eval.v1.EvaluationHintArgumentSource
+	69,  // 60: ztd.eval.v1.PromptHint.arguments:type_name -> ztd.eval.v1.PromptHintArgument
+	3,   // 61: ztd.eval.v1.EvaluationScenarioDefinition.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	5,   // 62: ztd.eval.v1.EvaluationScenarioDefinition.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	158, // 63: ztd.eval.v1.EvaluationScenarioDefinition.input_fixture_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	158, // 64: ztd.eval.v1.EvaluationScenarioDefinition.gold_criteria_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	67,  // 65: ztd.eval.v1.EvaluationScenarioDefinition.public_criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
+	68,  // 66: ztd.eval.v1.EvaluationScenarioDefinition.public_tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
+	1,   // 67: ztd.eval.v1.EvaluationScenarioDefinition.eligible_roles:type_name -> ztd.eval.v1.ModelCampaignRole
+	12,  // 68: ztd.eval.v1.EvaluationScenarioDefinition.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
+	70,  // 69: ztd.eval.v1.EvaluationScenarioDefinition.prompt_hint:type_name -> ztd.eval.v1.PromptHint
+	73,  // 70: ztd.eval.v1.ModelVariant.capability_observations:type_name -> ztd.eval.v1.ModelCapabilityObservation
+	6,   // 71: ztd.eval.v1.ModelCapabilityObservation.capability:type_name -> ztd.eval.v1.ModelCapabilityKind
+	29,  // 72: ztd.eval.v1.ModelCapabilityObservation.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	1,   // 73: ztd.eval.v1.RoleAssignment.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	74,  // 74: ztd.eval.v1.HeterogeneousStackDefinition.primary_slot:type_name -> ztd.eval.v1.RoleAssignment
+	74,  // 75: ztd.eval.v1.HeterogeneousStackDefinition.assistant_slot:type_name -> ztd.eval.v1.RoleAssignment
+	74,  // 76: ztd.eval.v1.HeterogeneousStackDefinition.lite_slot:type_name -> ztd.eval.v1.RoleAssignment
+	157, // 77: ztd.eval.v1.EvaluationAssignment.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
+	0,   // 78: ztd.eval.v1.EvaluationAssignment.lane:type_name -> ztd.eval.v1.EvaluationLane
+	4,   // 79: ztd.eval.v1.EvaluationAssignment.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	159, // 80: ztd.eval.v1.EvaluationAssignment.queued_at:type_name -> google.protobuf.Timestamp
+	159, // 81: ztd.eval.v1.EvaluationAssignment.started_at:type_name -> google.protobuf.Timestamp
+	159, // 82: ztd.eval.v1.EvaluationAssignment.completed_at:type_name -> google.protobuf.Timestamp
+	77,  // 83: ztd.eval.v1.EvaluationAssignment.homogeneous:type_name -> ztd.eval.v1.HomogeneousAssignmentTarget
+	78,  // 84: ztd.eval.v1.EvaluationAssignment.heterogeneous:type_name -> ztd.eval.v1.HeterogeneousAssignmentTarget
+	72,  // 85: ztd.eval.v1.HomogeneousAssignmentTarget.candidate_variant:type_name -> ztd.eval.v1.ModelVariant
+	1,   // 86: ztd.eval.v1.HomogeneousAssignmentTarget.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	75,  // 87: ztd.eval.v1.HeterogeneousAssignmentTarget.stack:type_name -> ztd.eval.v1.HeterogeneousStackDefinition
+	22,  // 88: ztd.eval.v1.ProviderBoundaryHardwareSample.vram_bytes_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 89: ztd.eval.v1.ProviderBoundaryHardwareSample.gpu_utilization_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 90: ztd.eval.v1.ProviderBoundaryHardwareSample.temperature_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 91: ztd.eval.v1.ProviderBoundaryHardwareSample.power_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 92: ztd.eval.v1.ProviderBoundaryHardwareSample.clock_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 93: ztd.eval.v1.ProviderBoundaryHardwareSample.host_ram_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	79,  // 94: ztd.eval.v1.ProviderBoundaryObservationWindow.samples:type_name -> ztd.eval.v1.ProviderBoundaryHardwareSample
+	33,  // 95: ztd.eval.v1.ProviderBoundaryObservationCommand.phase:type_name -> ztd.eval.v1.ProviderBoundaryObservationPhase
+	34,  // 96: ztd.eval.v1.ProviderBoundaryObservationCommand.attempt_status:type_name -> ztd.eval.v1.ProviderBoundaryObservationAttemptStatus
+	80,  // 97: ztd.eval.v1.ProviderBoundaryObservationCompleted.window:type_name -> ztd.eval.v1.ProviderBoundaryObservationWindow
+	35,  // 98: ztd.eval.v1.ModelWeightAttestation.verification_mode:type_name -> ztd.eval.v1.ModelWeightVerificationMode
+	36,  // 99: ztd.eval.v1.ModelProvenanceAttestationWindow.manifest_verification_status:type_name -> ztd.eval.v1.ModelManifestVerificationStatus
+	83,  // 100: ztd.eval.v1.ModelProvenanceAttestationWindow.weight_attestations:type_name -> ztd.eval.v1.ModelWeightAttestation
+	37,  // 101: ztd.eval.v1.ModelProvenanceObservationCommand.phase:type_name -> ztd.eval.v1.ModelProvenanceObservationPhase
+	38,  // 102: ztd.eval.v1.ModelProvenanceObservationCommand.attempt_status:type_name -> ztd.eval.v1.ModelProvenanceObservationAttemptStatus
+	84,  // 103: ztd.eval.v1.ModelProvenanceObservationCompleted.window:type_name -> ztd.eval.v1.ModelProvenanceAttestationWindow
+	1,   // 104: ztd.eval.v1.ModelInferenceRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	72,  // 105: ztd.eval.v1.ModelInferenceRecord.model_variant:type_name -> ztd.eval.v1.ModelVariant
+	8,   // 106: ztd.eval.v1.ModelInferenceRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
+	7,   // 107: ztd.eval.v1.ModelInferenceRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
+	158, // 108: ztd.eval.v1.ModelInferenceRecord.governed_receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	9,   // 109: ztd.eval.v1.ModelInferenceRecord.classification:type_name -> ztd.eval.v1.EvaluationCallClassification
+	29,  // 110: ztd.eval.v1.ToolDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	29,  // 111: ztd.eval.v1.ToolCallRecord.schema_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	29,  // 112: ztd.eval.v1.ToolCallRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	158, // 113: ztd.eval.v1.ToolCallRecord.governed_binding_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	1,   // 114: ztd.eval.v1.EscalationRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	1,   // 115: ztd.eval.v1.EscalationRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	1,   // 116: ztd.eval.v1.HandoffRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	1,   // 117: ztd.eval.v1.HandoffRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	29,  // 118: ztd.eval.v1.RecoveryRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	158, // 119: ztd.eval.v1.GovernedActionBinding.receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	158, // 120: ztd.eval.v1.GovernedActionBinding.persistence_attestation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	158, // 121: ztd.eval.v1.GovernedActionBinding.effect_observation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	29,  // 122: ztd.eval.v1.DeterministicGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	39,  // 123: ztd.eval.v1.DeterministicGrade.basis:type_name -> ztd.eval.v1.GradeBasis
+	29,  // 124: ztd.eval.v1.SemanticGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	158, // 125: ztd.eval.v1.SemanticGrade.grader_call_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	32,  // 126: ztd.eval.v1.DecomposedScoreRecord.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
+	30,  // 127: ztd.eval.v1.DecomposedScoreRecord.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
+	31,  // 128: ztd.eval.v1.DecomposedScoreRecord.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
+	158, // 129: ztd.eval.v1.GraderModelCallRecord.inference_record_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	10,  // 130: ztd.eval.v1.PolicyDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
+	0,   // 131: ztd.eval.v1.EvaluationAssignmentResult.lane:type_name -> ztd.eval.v1.EvaluationLane
+	4,   // 132: ztd.eval.v1.EvaluationAssignmentResult.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	87,  // 133: ztd.eval.v1.EvaluationAssignmentResult.model_inferences:type_name -> ztd.eval.v1.ModelInferenceRecord
+	88,  // 134: ztd.eval.v1.EvaluationAssignmentResult.tool_decisions:type_name -> ztd.eval.v1.ToolDecisionRecord
+	89,  // 135: ztd.eval.v1.EvaluationAssignmentResult.tool_calls:type_name -> ztd.eval.v1.ToolCallRecord
+	90,  // 136: ztd.eval.v1.EvaluationAssignmentResult.escalations:type_name -> ztd.eval.v1.EscalationRecord
+	91,  // 137: ztd.eval.v1.EvaluationAssignmentResult.handoffs:type_name -> ztd.eval.v1.HandoffRecord
+	92,  // 138: ztd.eval.v1.EvaluationAssignmentResult.recoveries:type_name -> ztd.eval.v1.RecoveryRecord
+	93,  // 139: ztd.eval.v1.EvaluationAssignmentResult.governed_actions:type_name -> ztd.eval.v1.GovernedActionBinding
+	94,  // 140: ztd.eval.v1.EvaluationAssignmentResult.deterministic_grades:type_name -> ztd.eval.v1.DeterministicGrade
+	95,  // 141: ztd.eval.v1.EvaluationAssignmentResult.semantic_grades:type_name -> ztd.eval.v1.SemanticGrade
+	96,  // 142: ztd.eval.v1.EvaluationAssignmentResult.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
+	97,  // 143: ztd.eval.v1.EvaluationAssignmentResult.grader_calls:type_name -> ztd.eval.v1.GraderModelCallRecord
+	158, // 144: ztd.eval.v1.EvaluationAssignmentResult.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	159, // 145: ztd.eval.v1.EvaluationAssignmentResult.completed_at:type_name -> google.protobuf.Timestamp
+	98,  // 146: ztd.eval.v1.EvaluationAssignmentResult.policy_decisions:type_name -> ztd.eval.v1.PolicyDecisionRecord
+	13,  // 147: ztd.eval.v1.EvaluationAssignmentResult.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
+	155, // 148: ztd.eval.v1.EvaluationAssignmentResult.containment:type_name -> ztd.eval.v1.ContainmentResult
+	40,  // 149: ztd.eval.v1.CampaignComplianceSourceInventory.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	40,  // 150: ztd.eval.v1.CampaignComplianceSourceInventory.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	100, // 151: ztd.eval.v1.CampaignComplianceSourceInventory.artifacts:type_name -> ztd.eval.v1.CampaignComplianceSourceArtifact
+	29,  // 152: ztd.eval.v1.EvaluationVerificationReport.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	158, // 153: ztd.eval.v1.EvaluationVerificationReport.report_digest_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	159, // 154: ztd.eval.v1.EvaluationVerificationReport.verified_at:type_name -> google.protobuf.Timestamp
+	40,  // 155: ztd.eval.v1.EvaluationVerificationReport.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	40,  // 156: ztd.eval.v1.EvaluationVerificationReport.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	4,   // 157: ztd.eval.v1.EvaluationVerifiedPopulationEntry.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	1,   // 158: ztd.eval.v1.EvaluationVerifiedPopulationEntry.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	157, // 159: ztd.eval.v1.EvaluationVerifiedPopulation.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	0,   // 160: ztd.eval.v1.EvaluationVerifiedPopulation.lane:type_name -> ztd.eval.v1.EvaluationLane
+	103, // 161: ztd.eval.v1.EvaluationVerifiedPopulation.entries:type_name -> ztd.eval.v1.EvaluationVerifiedPopulationEntry
+	0,   // 162: ztd.eval.v1.PublicCampaignIdentity.lane:type_name -> ztd.eval.v1.EvaluationLane
+	41,  // 163: ztd.eval.v1.PublicCampaignIdentity.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	3,   // 164: ztd.eval.v1.PublicAssignmentLifecycleRecord.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	0,   // 165: ztd.eval.v1.PublicAssignmentLifecycleRecord.lane:type_name -> ztd.eval.v1.EvaluationLane
+	1,   // 166: ztd.eval.v1.PublicAssignmentLifecycleRecord.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	4,   // 167: ztd.eval.v1.PublicAssignmentLifecycleRecord.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	159, // 168: ztd.eval.v1.PublicAssignmentLifecycleRecord.observed_at:type_name -> google.protobuf.Timestamp
+	41,  // 169: ztd.eval.v1.PublicAssignmentLifecycleRecord.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	1,   // 170: ztd.eval.v1.PublicModelCallSummary.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	8,   // 171: ztd.eval.v1.PublicModelCallSummary.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
+	7,   // 172: ztd.eval.v1.PublicModelCallSummary.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
+	3,   // 173: ztd.eval.v1.PublicScenarioSummary.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	5,   // 174: ztd.eval.v1.PublicScenarioSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	67,  // 175: ztd.eval.v1.PublicScenarioSummary.criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
+	68,  // 176: ztd.eval.v1.PublicScenarioSummary.tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
+	12,  // 177: ztd.eval.v1.PublicScenarioSummary.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
+	70,  // 178: ztd.eval.v1.PublicScenarioSummary.prompt_hint:type_name -> ztd.eval.v1.PromptHint
+	29,  // 179: ztd.eval.v1.PublicSemanticGradeSummary.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	5,   // 180: ztd.eval.v1.PublicSemanticGradeSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	11,  // 181: ztd.eval.v1.PublicSemanticGradeSummary.explanation_code:type_name -> ztd.eval.v1.PublicGradeExplanationCode
+	1,   // 182: ztd.eval.v1.PublicModelActivityRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	8,   // 183: ztd.eval.v1.PublicModelActivityRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
+	17,  // 184: ztd.eval.v1.PublicModelActivityRecord.finish_state:type_name -> ztd.eval.v1.PublicFinishState
+	7,   // 185: ztd.eval.v1.PublicModelActivityRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
+	29,  // 186: ztd.eval.v1.PublicToolDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	18,  // 187: ztd.eval.v1.PublicToolDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	29,  // 188: ztd.eval.v1.PublicToolCallActivityRecord.execution_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	29,  // 189: ztd.eval.v1.PublicToolCallActivityRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	18,  // 190: ztd.eval.v1.PublicToolCallActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	10,  // 191: ztd.eval.v1.PublicPolicyDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
+	18,  // 192: ztd.eval.v1.PublicPolicyDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	10,  // 193: ztd.eval.v1.PublicGovernedActionActivityRecord.reported_policy_outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
+	20,  // 194: ztd.eval.v1.PublicGovernedActionActivityRecord.receipt_status:type_name -> ztd.eval.v1.PublicReceiptStatus
+	18,  // 195: ztd.eval.v1.PublicGovernedActionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	15,  // 196: ztd.eval.v1.PublicModelActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 197: ztd.eval.v1.PublicModelActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	111, // 198: ztd.eval.v1.PublicModelActivity.records:type_name -> ztd.eval.v1.PublicModelActivityRecord
+	15,  // 199: ztd.eval.v1.PublicToolDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 200: ztd.eval.v1.PublicToolDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	112, // 201: ztd.eval.v1.PublicToolDecisionActivity.records:type_name -> ztd.eval.v1.PublicToolDecisionActivityRecord
+	15,  // 202: ztd.eval.v1.PublicToolCallActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 203: ztd.eval.v1.PublicToolCallActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	113, // 204: ztd.eval.v1.PublicToolCallActivity.records:type_name -> ztd.eval.v1.PublicToolCallActivityRecord
+	15,  // 205: ztd.eval.v1.PublicPolicyDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 206: ztd.eval.v1.PublicPolicyDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	114, // 207: ztd.eval.v1.PublicPolicyDecisionActivity.records:type_name -> ztd.eval.v1.PublicPolicyDecisionActivityRecord
+	15,  // 208: ztd.eval.v1.PublicGovernedActionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 209: ztd.eval.v1.PublicGovernedActionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	115, // 210: ztd.eval.v1.PublicGovernedActionActivity.records:type_name -> ztd.eval.v1.PublicGovernedActionActivityRecord
+	116, // 211: ztd.eval.v1.PublicAssignmentActivitySummary.model_activity:type_name -> ztd.eval.v1.PublicModelActivity
+	117, // 212: ztd.eval.v1.PublicAssignmentActivitySummary.tool_decisions:type_name -> ztd.eval.v1.PublicToolDecisionActivity
+	118, // 213: ztd.eval.v1.PublicAssignmentActivitySummary.tool_calls:type_name -> ztd.eval.v1.PublicToolCallActivity
+	119, // 214: ztd.eval.v1.PublicAssignmentActivitySummary.policy_decisions:type_name -> ztd.eval.v1.PublicPolicyDecisionActivity
+	120, // 215: ztd.eval.v1.PublicAssignmentActivitySummary.governed_actions:type_name -> ztd.eval.v1.PublicGovernedActionActivity
+	19,  // 216: ztd.eval.v1.PublicVerificationMetadata.provenance:type_name -> ztd.eval.v1.PublicVerificationProvenance
+	29,  // 217: ztd.eval.v1.PublicVerificationMetadata.verifier_state:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	3,   // 218: ztd.eval.v1.PublicAssignmentResultProjection.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	0,   // 219: ztd.eval.v1.PublicAssignmentResultProjection.lane:type_name -> ztd.eval.v1.EvaluationLane
+	1,   // 220: ztd.eval.v1.PublicAssignmentResultProjection.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	4,   // 221: ztd.eval.v1.PublicAssignmentResultProjection.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	29,  // 222: ztd.eval.v1.PublicAssignmentResultProjection.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	96,  // 223: ztd.eval.v1.PublicAssignmentResultProjection.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
+	159, // 224: ztd.eval.v1.PublicAssignmentResultProjection.completed_at:type_name -> google.protobuf.Timestamp
+	109, // 225: ztd.eval.v1.PublicAssignmentResultProjection.scenario_summary:type_name -> ztd.eval.v1.PublicScenarioSummary
+	110, // 226: ztd.eval.v1.PublicAssignmentResultProjection.semantic_grade_summaries:type_name -> ztd.eval.v1.PublicSemanticGradeSummary
+	121, // 227: ztd.eval.v1.PublicAssignmentResultProjection.activity_summary:type_name -> ztd.eval.v1.PublicAssignmentActivitySummary
+	122, // 228: ztd.eval.v1.PublicAssignmentResultProjection.evidence_bindings:type_name -> ztd.eval.v1.PublicEvidenceBinding
+	123, // 229: ztd.eval.v1.PublicAssignmentResultProjection.verification_metadata:type_name -> ztd.eval.v1.PublicVerificationMetadata
+	13,  // 230: ztd.eval.v1.PublicAssignmentResultProjection.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
+	41,  // 231: ztd.eval.v1.PublicAssignmentResultProjection.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	41,  // 232: ztd.eval.v1.PublicLiveEvent.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	156, // 233: ztd.eval.v1.PublicLiveEvent.metric_delta:type_name -> ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
+	128, // 234: ztd.eval.v1.CanaryManifest.entries:type_name -> ztd.eval.v1.CanaryEntry
+	42,  // 235: ztd.eval.v1.ConformanceObservation.kind:type_name -> ztd.eval.v1.ConformanceObservationKind
+	160, // 236: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	161, // 237: ztd.eval.v1.ConformanceObservation.rejection:type_name -> ztd.operator.v1.GovernanceRejection
+	162, // 238: ztd.eval.v1.ConformanceObservation.refusal:type_name -> ztd.operator.v1.IngressRefusal
+	130, // 239: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
+	160, // 240: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.ActionReceipt
+	160, // 241: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.ActionReceipt
+	129, // 242: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
+	129, // 243: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
+	131, // 244: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
+	132, // 245: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
+	160, // 246: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.ActionReceipt
+	160, // 247: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.ActionReceipt
+	23,  // 248: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	127, // 249: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
+	134, // 250: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence
+	133, // 251: ztd.eval.v1.ConformanceRunRecord.cases:type_name -> ztd.eval.v1.ConformanceCaseEvidence
+	159, // 252: ztd.eval.v1.ConformanceRunRecord.started_at:type_name -> google.protobuf.Timestamp
+	159, // 253: ztd.eval.v1.ConformanceRunRecord.finished_at:type_name -> google.protobuf.Timestamp
+	29,  // 254: ztd.eval.v1.ConformanceVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	43,  // 255: ztd.eval.v1.ConformanceVerdict.failure_class:type_name -> ztd.eval.v1.ConformanceFailureClass
+	23,  // 256: ztd.eval.v1.ConformanceVerdictSet.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	44,  // 257: ztd.eval.v1.ConformanceVerdictSet.suite_verdict:type_name -> ztd.eval.v1.ConformanceSuiteVerdict
+	136, // 258: ztd.eval.v1.ConformanceVerdictSet.verdicts:type_name -> ztd.eval.v1.ConformanceVerdict
+	141, // 259: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
+	46,  // 260: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
+	47,  // 261: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
+	45,  // 262: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
+	1,   // 263: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
+	9,   // 264: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
+	138, // 265: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
+	139, // 266: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
+	140, // 267: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
+	142, // 268: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
+	143, // 269: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
+	144, // 270: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
+	145, // 271: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
+	146, // 272: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
+	148, // 273: ztd.eval.v1.InvestigationSeed.prior_turns:type_name -> ztd.eval.v1.SeedTurn
+	149, // 274: ztd.eval.v1.InvestigationSeed.history:type_name -> ztd.eval.v1.SeedHistoryEvent
+	72,  // 275: ztd.eval.v1.ScoredTurnRequest.model_registry:type_name -> ztd.eval.v1.ModelVariant
+	0,   // 276: ztd.eval.v1.ScoredTurnRequest.lane:type_name -> ztd.eval.v1.EvaluationLane
+	45,  // 277: ztd.eval.v1.ScoredTurnRequest.designated_role:type_name -> ztd.eval.v1.AgentRole
+	150, // 278: ztd.eval.v1.ScoredTurnRequest.seed:type_name -> ztd.eval.v1.InvestigationSeed
+	49,  // 279: ztd.eval.v1.ScoredTurnEvent.kind:type_name -> ztd.eval.v1.ScoredTurnEventKind
+	147, // 280: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
+	48,  // 281: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
+	51,  // 282: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
+	50,  // 283: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
+	154, // 284: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
+	125, // 285: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
+	286, // [286:286] is the sub-list for method output_type
+	286, // [286:286] is the sub-list for method input_type
+	286, // [286:286] is the sub-list for extension type_name
+	286, // [286:286] is the sub-list for extension extendee
+	0,   // [0:286] is the sub-list for field type_name
 }
 
 func init() { file_ztd_eval_v1_eval_proto_init() }

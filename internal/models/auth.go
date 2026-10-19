@@ -598,8 +598,10 @@ type ConsensusPolicy struct {
 
 // PlatformEnrollmentBindConsensusRequest binds an enrolled application as the Gateway consensus application.
 type PlatformEnrollmentBindConsensusRequest struct {
-	AppID       string `json:"app_id"`
-	EndpointURL string `json:"endpoint_url"`
+	AppID        string   `json:"app_id"`
+	EndpointURL  string   `json:"endpoint_url"`
+	MemberAppIDs []string `json:"member_app_ids,omitempty"`
+	Quorum       int      `json:"quorum,omitempty"`
 }
 
 // EnrollmentToken represents a one-time use token for secure passkey enrollment.

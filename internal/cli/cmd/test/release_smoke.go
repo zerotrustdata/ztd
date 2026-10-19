@@ -64,6 +64,7 @@ type releaseSmokeOptions struct {
 	RunDir  string
 	ZtdBin  string
 	Timeout time.Duration
+	Posture constants.Posture
 }
 
 type releaseSmokeSummary struct {
@@ -153,7 +154,7 @@ type releaseSmokeRun struct {
 
 func releaseSmokeCmd() *cobra.Command { return releaseSmokeCmdWithRunner(runReleaseSmoke) }
 func releaseSmokeCmdWithRunner(runner func(context.Context, releaseSmokeOptions) error) *cobra.Command {
-	var opts releaseSmokeOptions
+	opts := releaseSmokeOptions{Posture: constants.PostureDoctrine}
 	cmd := &cobra.Command{
 		Use:   "release-smoke",
 		Short: "Run an isolated governed release smoke and verify local evidence",
@@ -162,6 +163,9 @@ func releaseSmokeCmdWithRunner(runner func(context.Context, releaseSmokeOptions)
 The command runs on Unix-like hosts (process groups) and Windows (Job Objects) and stops every process it started. It needs a built ztd binary and the checked-in Go modules; it does not use an LLM or provider key. All run artifacts are retained under --root.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateReleaseSmokePosture(opts.Posture); err != nil {
+				return err
+			}
 			if opts.RunDir == "" {
 				opts.RunDir = filepath.Join(constants.RuntimeDirname, constants.OperatorsDirname, "release-smoke-"+time.Now().UTC().Format("20060102T150405Z"))
 			}
@@ -209,13 +213,29 @@ The command runs on Unix-like hosts (process groups) and Windows (Job Objects) a
 }
 
 func runReleaseSmoke(ctx context.Context, opts releaseSmokeOptions) error {
+	if opts.Posture == "" {
+		opts.Posture = constants.PostureDoctrine
+	}
+	if err := validateReleaseSmokePosture(opts.Posture); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 	r := newReleaseSmokeRun(opts)
 	return r.execute(ctx, r.phases())
 }
 
+func validateReleaseSmokePosture(posture constants.Posture) error {
+	if !posture.Valid() {
+		return fmt.Errorf("release smoke posture: %w", constants.ErrInvalidPosture)
+	}
+	return nil
+}
+
 func newReleaseSmokeRun(opts releaseSmokeOptions) *releaseSmokeRun {
+	if opts.Posture == "" {
+		opts.Posture = constants.PostureDoctrine
+	}
 	return &releaseSmokeRun{opts: opts}
 }
 
@@ -343,14 +363,14 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 	r.summary.Source = releaseSmokeSource{rev, dirty, sum}
 	r.summary.Platform = runtime.GOOS + "/" + runtime.GOARCH
 	r.summary.BuildVersion = "sha256:" + sum
-	r.summary.Posture = string(constants.PostureDoctrine)
+	r.summary.Posture = string(r.opts.Posture)
 	r.summary.Ingress = []string{"governed HTTP dispatch: POST /api/v1/operators/commands", "embedded governed document update: POST /api/v1/governance/envelopes"}
 	r.summary.Gateway = releaseSmokeGateway{r.gwRoot, r.ports.http, r.ports.https}
 	return nil
 }
 func (r *releaseSmokeRun) startGateway(ctx context.Context) error {
 	r.addCleanup("Gateway", func(ctx context.Context) error { _, err := r.ztdGateway(ctx, "gateway-stop", "gw", "stop"); return err })
-	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", "doctrine", "--public-spectator=false")
+	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", string(r.opts.Posture), "--public-spectator=false")
 	if err != nil {
 		return err
 	}

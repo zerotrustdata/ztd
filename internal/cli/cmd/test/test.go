@@ -45,6 +45,7 @@ func Cmd() *cobra.Command {
 		scaleCmd(),
 		testSummaryCmd(),
 		releaseSmokeCmd(),
+		testEvalLoopCmd(),
 	)
 
 	return cmd

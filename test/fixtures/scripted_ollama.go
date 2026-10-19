@@ -11,6 +11,7 @@ package fixtures
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -72,12 +73,27 @@ type scriptedOllamaChatEvent struct {
 // inference path. Replies are consumed once, in order; an extra turn fails
 // the owning test rather than inventing a response.
 type ScriptedOllama struct {
-	server   *httptest.Server
-	mu       sync.Mutex
-	replies  []OllamaReply
-	next     int
-	resident bool
+	server        *httptest.Server
+	mu            sync.Mutex
+	replies       []OllamaReply
+	next          int
+	resident      bool
+	nextReplyGate *OllamaReplyGate
 }
+
+// OllamaReplyGate blocks one chat reply after the scripted request arrives.
+// The test owns Release; closing the HTTP request context also unblocks it.
+type OllamaReplyGate struct {
+	requested chan struct{}
+	release   chan struct{}
+	once      sync.Once
+}
+
+// Requested signals that the held /api/chat request arrived.
+func (g *OllamaReplyGate) Requested() <-chan struct{} { return g.requested }
+
+// Release allows the held request to receive its already-scripted response.
+func (g *OllamaReplyGate) Release() { g.once.Do(func() { close(g.release) }) }
 
 // NewScriptedOllama starts a frozen Ollama-compatible HTTP server.
 func NewScriptedOllama(t *testing.T, replies []OllamaReply) *ScriptedOllama {
@@ -104,6 +120,19 @@ func (p *ScriptedOllama) ChatCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.next
+}
+
+// HoldNextReply blocks the next /api/chat request until the returned gate is
+// released or that request's context is cancelled.
+func (p *ScriptedOllama) HoldNextReply() (*OllamaReplyGate, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.nextReplyGate != nil {
+		return nil, errors.New("scripted Ollama already has a held reply")
+	}
+	gate := &OllamaReplyGate{requested: make(chan struct{}), release: make(chan struct{})}
+	p.nextReplyGate = gate
+	return gate, nil
 }
 
 func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
@@ -160,7 +189,17 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			reply := p.replies[p.next]
 			p.next++
 			p.resident = true
+			gate := p.nextReplyGate
+			p.nextReplyGate = nil
 			p.mu.Unlock()
+			if gate != nil {
+				close(gate.requested)
+				select {
+				case <-gate.release:
+				case <-r.Context().Done():
+					return
+				}
+			}
 			calls := make([]scriptedToolCall, 0, len(reply.ToolCalls))
 			for _, call := range reply.ToolCalls {
 				calls = append(calls, scriptedToolCall{ID: call.ID, Type: call.Type, Function: scriptedToolFunction{Name: call.Name, Arguments: call.Arguments}})

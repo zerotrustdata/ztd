@@ -582,7 +582,7 @@ func TestHandleBindConsensus_RequiresAnEnabledEd25519Signer(t *testing.T) {
 	} {
 		env := newEnrollTestEnv(t)
 		appID := "ordinary-consensus"
-		env.store.seed(t, marshaler.CollectionName(constants.CollectionAppPolicies), protocol.NewWorkloadIdentity().AppSPIFFEID(appID), models.AppPolicy{AppID: appID})
+		env.store.seed(t, marshaler.CollectionName(constants.CollectionAppPolicies), protocol.NewWorkloadIdentity().AppSPIFFEID(appID), models.AppPolicy{AppID: appID, OwnerUserID: enrollTestOwnerID})
 		env.store.seed(t, marshaler.CollectionName(constants.CollectionTrustedSigners), appID, signer)
 		_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
 			constants.EventPlatformEnrollmentBindConsensusRequested,
@@ -593,6 +593,73 @@ func TestHandleBindConsensus_RequiresAnEnabledEd25519Signer(t *testing.T) {
 		doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
 		require.NoError(t, err)
 		require.Nil(t, doc)
+	}
+}
+
+func seedConsensusMember(t *testing.T, env *enrollTestEnv, appID, owner string, withSigner bool) {
+	t.Helper()
+	env.store.seed(t, marshaler.CollectionName(constants.CollectionAppPolicies), protocol.NewWorkloadIdentity().AppSPIFFEID(appID), models.AppPolicy{AppID: appID, OwnerUserID: owner})
+	if withSigner {
+		env.store.seed(t, marshaler.CollectionName(constants.CollectionTrustedSigners), appID, models.TrustedSigner{ID: appID, PublicKey: strings.Repeat("ab", 32), Enabled: true})
+	}
+}
+
+func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
+	env := newEnrollTestEnv(t)
+	for _, appID := range []string{"reviewer-a", "reviewer-b", "reviewer-c"} {
+		seedConsensusMember(t, env, appID, enrollTestOwnerID, true)
+	}
+	_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
+		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, ConsensusQuorum: 2}))
+	require.NoError(t, err)
+	doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	require.NoError(t, err)
+	require.NotNil(t, doc)
+	data, err := json.Marshal(doc.Data)
+	require.NoError(t, err)
+	var policy models.ConsensusPolicy
+	require.NoError(t, json.Unmarshal(data, &policy))
+	require.Equal(t, []string{"reviewer-a", "reviewer-b", "reviewer-c"}, policy.MemberAppIDs)
+	require.Equal(t, 2, policy.Quorum)
+}
+
+func TestHandleBindConsensus_RejectsInvalidMemberSetsBeforePersistence(t *testing.T) {
+	tests := []struct {
+		name          string
+		members       []string
+		quorum        uint32
+		foreign       bool
+		missingSigner string
+		missingPolicy string
+		want          error
+	}{
+		{name: "zero quorum", members: []string{"a", "b"}, quorum: 0, want: constants.ErrConsensusQuorumInvalid},
+		{name: "quorum exceeds members", members: []string{"a", "b"}, quorum: 3, want: constants.ErrConsensusQuorumInvalid},
+		{name: "duplicate members", members: []string{"a", "b", "a"}, quorum: 2, want: constants.ErrConsensusMemberDuplicate},
+		{name: "foreign owner", members: []string{"a", "b"}, quorum: 2, foreign: true, want: constants.ErrConsensusMemberNotOwned},
+		{name: "non-signing member", members: []string{"a", "b"}, quorum: 2, missingSigner: "b", want: constants.ErrConsensusAppMissingSignerKey},
+		{name: "revoked member", members: []string{"a", "b"}, quorum: 2, missingPolicy: "b", want: constants.ErrConsensusAppNotEnrolled},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newEnrollTestEnv(t)
+			for _, id := range []string{"a", "b"} {
+				if id == tc.missingPolicy {
+					continue
+				}
+				owner := enrollTestOwnerID
+				if tc.foreign && id == "b" {
+					owner = "other-owner"
+				}
+				seedConsensusMember(t, env, id, owner, id != tc.missingSigner)
+			}
+			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
+				&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: tc.members, ConsensusQuorum: tc.quorum}))
+			require.ErrorIs(t, err, tc.want)
+			doc, getErr := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+			require.NoError(t, getErr)
+			require.Nil(t, doc)
+		})
 	}
 }
 

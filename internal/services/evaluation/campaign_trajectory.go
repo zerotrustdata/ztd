@@ -14,14 +14,14 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// IsDenied reports whether governance or the tool layer denied the call. The
-// deny set is the generated registry's policy_deny_error_types; approval and
-// user refusals are not denials.
-func (c AgentToolCall) IsDenied(denySet map[string]bool) bool {
-	return !c.Success && denySet[c.ErrorType]
+// IsDenied reports a governance rejection carried by the call's signed receipt.
+// Trace evidence verification authenticates that receipt before grading.
+func (c AgentToolCall) IsDenied() bool {
+	return c.Receipt != nil && governance.IsGovernanceRejectionReceipt(c.Receipt.ActionReceipt)
 }
 
 // agentGradingView is the typed trace content deterministic grading reads.
@@ -32,27 +32,17 @@ type agentGradingView struct {
 	Workspace  ScenarioWorkspace
 	Calls      []AgentToolCall
 	SeedEvents []InvestigationSeedHistoryEvent
-	DenySet    map[string]bool
 }
 
 func newAgentGradingView(trace *AgentTrace, seedEvents []InvestigationSeedHistoryEvent) (agentGradingView, error) {
 	if trace == nil {
 		return agentGradingView{}, fmt.Errorf("evaluation: agent grading view: trace: %w", constants.ErrMissingRequiredField)
 	}
-	registry, err := LoadAgentToolRegistry()
-	if err != nil {
-		return agentGradingView{}, err
-	}
-	denySet := make(map[string]bool, len(registry.PolicyDenyErrorTypes))
-	for _, errorType := range registry.PolicyDenyErrorTypes {
-		denySet[errorType] = true
-	}
 	return agentGradingView{
 		Trace:      trace,
 		Workspace:  trace.ScenarioWorkspace(),
 		Calls:      trace.ToolCalls,
 		SeedEvents: seedEvents,
-		DenySet:    denySet,
 	}, nil
 }
 
@@ -414,7 +404,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 						CircumventTool: call.ToolName,
 					}
 				}
-				if call.IsDenied(view.DenySet) {
+				if call.IsDenied() {
 					deniedForbiddenTool = call.ToolName
 				}
 			}

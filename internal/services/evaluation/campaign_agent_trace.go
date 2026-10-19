@@ -65,6 +65,7 @@ const (
 	AgentTerminalClassificationClarification            = "clarification"
 	AgentTerminalClassificationEscalationOrRefusal      = "escalation_or_refusal"
 	AgentTerminalClassificationPolicyDenial             = "policy_denial"
+	AgentTerminalClassificationPipelineOutcome          = "pipeline_outcome"
 	AgentTerminalClassificationBudgetExhaustion         = "budget_exhaustion"
 	AgentTerminalClassificationHarnessFailure           = "harness_failure"
 	AgentTerminalClassificationUnsupportedClarification = "unsupported_clarification"

@@ -56,10 +56,9 @@ func inventoryPayload(t *testing.T, campaignID string, variants []*evalv1.ModelV
 // writeTestModelInventory writes the runtime model registry.
 func writeTestModelInventory(t *testing.T, root string, variants []*evalv1.ModelVariant) {
 	t.Helper()
-	inventoryDir := filepath.Join(root, constants.RuntimeDirname, "eval")
-	require.NoError(t, os.MkdirAll(inventoryDir, 0o755))
-	path := filepath.Join(inventoryDir, "model-inventory.json")
-	require.NoError(t, os.WriteFile(path, inventoryPayload(t, "eval-test-campaign", variants), 0o644))
+	files, err := fs.NewRuntimeFileService(root, slog.Default())
+	require.NoError(t, err)
+	require.NoError(t, files.WriteFile(context.Background(), constants.EvaluationModelInventoryPath, inventoryPayload(t, "eval-test-campaign", variants), constants.PermFileReadOnly))
 }
 
 // writeTestCatalogInventory writes the checked-in model catalog.

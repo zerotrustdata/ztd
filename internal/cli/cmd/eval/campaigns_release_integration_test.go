@@ -21,7 +21,7 @@ import (
 )
 
 func TestCampaignsCreate_RecordsTheBuildReleaseInTheFrozenSpec(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	spec, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-a")
@@ -37,7 +37,7 @@ func TestCampaignsCreate_RecordsTheBuildReleaseInTheFrozenSpec(t *testing.T) {
 }
 
 func TestCampaignsTag_AssertsTheReleaseOfALegacyCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createLegacyCampaign(t, "eval-old")
 
 	var before campaignListJSON
@@ -55,7 +55,7 @@ func TestCampaignsTag_AssertsTheReleaseOfALegacyCampaign(t *testing.T) {
 }
 
 func TestCampaignsTag_RefusesACampaignThatRecordedItsRelease(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	_, err := env.run(t, "campaigns", "tag", "--release", "v2.2.7", "eval-a")
@@ -63,7 +63,7 @@ func TestCampaignsTag_RefusesACampaignThatRecordedItsRelease(t *testing.T) {
 }
 
 func TestCampaignsTag_RequiresARelease(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createLegacyCampaign(t, "eval-old")
 
 	_, err := env.run(t, "campaigns", "tag", "eval-old")

@@ -348,6 +348,16 @@ func TestReleaseSmokeCmdAnchorsRelativeBinaryAndRoot(t *testing.T) {
 	if !filepath.IsAbs(got.RunDir) {
 		t.Fatalf("root = %q, want absolute path", got.RunDir)
 	}
+	if got.Posture != constants.PostureDoctrine {
+		t.Fatalf("posture = %q, want default %q", got.Posture, constants.PostureDoctrine)
+	}
+}
+
+func TestReleaseSmokeRejectsUnknownPosture(t *testing.T) {
+	err := validateReleaseSmokePosture(constants.Posture("unknown"))
+	if !errors.Is(err, constants.ErrInvalidPosture) {
+		t.Fatalf("validate posture = %v, want invalid-posture error", err)
+	}
 }
 
 func TestReleaseSmokeCmdRejectsProtectedRootBeforeStartingRuntimes(t *testing.T) {

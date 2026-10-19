@@ -71,9 +71,9 @@ func (r *agentRun) deliberateCommand(ctx context.Context, record AgentToolCall, 
 		r.marshalStrikeCount++
 		if r.marshalStrikeCount >= 2 {
 			r.marshalStrikeCount = 0
-			return "", &agentToolFailure{ErrorType: agentToolErrorSecurity, Error: tribunalMarshalConflict}, nil
+			return "", &agentToolFailure{ErrorType: agentToolErrorPipeline, Error: tribunalMarshalConflict}, nil
 		}
-		return "", &agentToolFailure{ErrorType: agentToolErrorSecurity, Error: fmt.Sprintf(tribunalMarshalBlocked, result.Risk.Rationale, result.Risk.Feedback)}, nil
+		return "", &agentToolFailure{ErrorType: agentToolErrorPipeline, Error: fmt.Sprintf(tribunalMarshalBlocked, result.Risk.Rationale, result.Risk.Feedback)}, nil
 	case tribunal.OutcomeAuditFailed:
 		return "", &agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf(tribunalAuditFailedError, result.Audit.Failure)}, nil
 	default:

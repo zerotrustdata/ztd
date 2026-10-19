@@ -52,8 +52,8 @@ func consensusEnrollmentCmdWithConfig(
 	cmd := &cobra.Command{
 		Use:   "consensus",
 		Short: "Bind or inspect the enrolled consensus application",
-		Long: `Manage the Gateway's single consensus application using the authenticated owner's CLI identity.
-Enroll the application with auth enroll app <name> --signing-key before binding it.
+		Long: `Manage the Gateway's K-of-N consensus application set using the authenticated owner's CLI identity.
+Enroll each member with auth enroll app <name> --signing-key before binding it; use --member-app for every member, including the primary app.
 Binding traverses governance and requires passkey approval under ratify and notary.
 A pending binding prints its approval URL and transaction; use show after approval to inspect the binding.`,
 	}
@@ -62,14 +62,21 @@ A pending binding prints its approval URL and transaction; use show after approv
 }
 
 func consensusBindCmd(newClient func() (APIClient, error)) *cobra.Command {
-	return &cobra.Command{
+	var memberAppIDs []string
+	var quorum uint32
+	cmd := &cobra.Command{
 		Use:   "bind <app-name> <https-endpoint>",
 		Short: "Bind an enrolled application through governance",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("quorum") && quorum == 0 {
+				return constants.ErrConsensusQuorumInvalid
+			}
 			request := models.PlatformEnrollmentBindConsensusRequest{
-				AppID:       strings.TrimSpace(args[0]),
-				EndpointURL: strings.TrimSpace(args[1]),
+				AppID:        strings.TrimSpace(args[0]),
+				EndpointURL:  strings.TrimSpace(args[1]),
+				MemberAppIDs: memberAppIDs,
+				Quorum:       int(quorum),
 			}
 			if request.AppID == "" {
 				return fmt.Errorf("consensus binding app name: %w", constants.ErrMissingRequiredField)
@@ -96,12 +103,33 @@ func consensusBindCmd(newClient func() (APIClient, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if policy.MemberAppIDs[0] != request.AppID || policy.EndpointURL != request.EndpointURL {
+			if len(request.MemberAppIDs) == 0 {
+				request.MemberAppIDs = []string{request.AppID}
+			}
+			if request.Quorum == 0 {
+				request.Quorum = 1
+			}
+			if !sameStringList(policy.MemberAppIDs, request.MemberAppIDs) || policy.Quorum != request.Quorum || policy.EndpointURL != request.EndpointURL {
 				return fmt.Errorf("consensus bind: binding does not match request: %w", constants.ErrInvalidJSONResponse)
 			}
 			return output.WriteJSON(cmd.OutOrStdout(), policy)
 		},
 	}
+	cmd.Flags().StringArrayVar(&memberAppIDs, "member-app", nil, "Consensus member application ID (repeat for each member; primary app must be included)")
+	cmd.Flags().Uint32Var(&quorum, "quorum", 0, "Required affirmative signature count (defaults to 1)")
+	return cmd
+}
+
+func sameStringList(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func consensusShowCmd(newClient func() (APIClient, error)) *cobra.Command {
@@ -127,15 +155,25 @@ func consensusShowCmd(newClient func() (APIClient, error)) *cobra.Command {
 	}
 }
 
-// decodeConsensusBinding accepts only the single-application binding shape the
-// Gateway's governed binding handler writes.
+// decodeConsensusBinding accepts only a valid binding shape written by the
+// Gateway's governed binding handler.
 func decodeConsensusBinding(body []byte) (*models.ConsensusPolicy, error) {
 	var policy models.ConsensusPolicy
 	if err := json.Unmarshal(body, &policy); err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 	}
-	if policy.ID != string(constants.DocIDConsensusBinding) || !policy.Enabled || len(policy.MemberAppIDs) != 1 || policy.Quorum != 1 {
+	if policy.ID != string(constants.DocIDConsensusBinding) || !policy.Enabled || len(policy.MemberAppIDs) == 0 || policy.Quorum < 1 || policy.Quorum > len(policy.MemberAppIDs) {
 		return nil, fmt.Errorf("consensus binding shape: %w", constants.ErrInvalidJSONResponse)
+	}
+	seen := make(map[string]struct{}, len(policy.MemberAppIDs))
+	for _, id := range policy.MemberAppIDs {
+		if strings.TrimSpace(id) == "" {
+			return nil, fmt.Errorf("consensus binding shape: %w", constants.ErrInvalidJSONResponse)
+		}
+		if _, ok := seen[id]; ok {
+			return nil, fmt.Errorf("consensus binding shape: %w", constants.ErrInvalidJSONResponse)
+		}
+		seen[id] = struct{}{}
 	}
 	if err := models.ValidateConsensusEndpoint(policy.EndpointURL); err != nil {
 		return nil, fmt.Errorf("consensus binding endpoint: %w: %w", constants.ErrInvalidJSONResponse, err)

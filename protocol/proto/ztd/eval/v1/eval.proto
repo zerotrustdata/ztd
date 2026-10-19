@@ -363,6 +363,8 @@ message EvaluationRun {
   repeated string attempt_refs = 11;
   ztd.compliance.v1.ComplianceEvidenceReference final_verification_report_ref = 12;
   ModelCampaignBinding campaign_binding = 13;
+  EvaluationWitnessPolicy provider_observation_policy = 14;
+  EvaluationWitnessPolicy model_provenance_policy = 15;
 }
 
 message EvaluationAttempt {

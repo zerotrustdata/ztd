@@ -635,10 +635,13 @@ func classifyTerminalState(trace *AgentTrace, lastCall *AgentModelCall) string {
 		return trace.TerminalClassification
 	}
 	hasDenial := false
+	hasPipelineOutcome := false
 	for _, tc := range trace.ToolCalls {
-		if tc.PolicyDecision == agentPolicyDecisionDeny || (!tc.Success && tc.ErrorType == "policy_denied") {
+		if tc.IsDenied() {
 			hasDenial = true
-			break
+		}
+		if tc.ErrorType == agentToolErrorPipeline {
+			hasPipelineOutcome = true
 		}
 	}
 	textLower := strings.ToLower(trace.FinalOutput)
@@ -657,6 +660,9 @@ func classifyTerminalState(trace *AgentTrace, lastCall *AgentModelCall) string {
 	}
 	if hasDenial {
 		return AgentTerminalClassificationPolicyDenial
+	}
+	if hasPipelineOutcome {
+		return AgentTerminalClassificationPipelineOutcome
 	}
 	return AgentTerminalClassificationFinalDiagnosis
 }
@@ -978,13 +984,24 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 	}
 	record.TransactionID = dispatched.TransactionID
 	switch answerKind(dispatched.Outcome) {
-	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
-		record.PolicyDecision = agentPolicyDecisionDeny
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION:
+		rejection := dispatched.Outcome.Observation.GetRejection()
+		if rejection != nil && governance.IsGovernanceRejectionReceipt(rejection.GetReceipt()) {
+			record.PolicyDecision = agentPolicyDecisionDeny
+		}
 		reason := answerMessage(dispatched.Outcome)
 		if reason == "" {
 			reason = "governance rejected the action"
 		}
 		completed, err := r.fail(*record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: "SECURITY VIOLATION: " + reason})
+		if err != nil {
+			return GovernedToolDispatch{}, true, err
+		}
+		*record = completed
+		return dispatched, true, nil
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
+		reason := answerMessage(dispatched.Outcome)
+		completed, err := r.fail(*record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: reason})
 		if err != nil {
 			return GovernedToolDispatch{}, true, err
 		}

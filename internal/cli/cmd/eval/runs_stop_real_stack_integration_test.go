@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,7 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 const (
@@ -57,43 +55,6 @@ func (r *realStackRun) command() *cobra.Command {
 	cmd.SetErr(io.Discard)
 	cmd.Flags().String("project-root", r.root, "")
 	return cmd
-}
-
-// heldAssignment makes a run's first assignment wait, before its model turn,
-// until the test releases it. A stop can then land while that assignment is in
-// flight.
-type heldAssignment struct {
-	inner   evaluation.CampaignAssignmentExecutor
-	entered atomic.Bool
-	started chan struct{}
-	release chan struct{}
-}
-
-func (h *heldAssignment) ExecuteAssignment(ctx context.Context, req evaluation.AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
-	if h.entered.CompareAndSwap(false, true) {
-		close(h.started)
-		select {
-		case <-h.release:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	return h.inner.ExecuteAssignment(ctx, req)
-}
-
-// holdFirstAssignment routes the run's executor through a heldAssignment. It must
-// be called before the run executes.
-func (r *realStackRun) holdFirstAssignment() *heldAssignment {
-	held := &heldAssignment{started: make(chan struct{}), release: make(chan struct{})}
-	r.deps.agentExecutorFactory = func(in campaignAgentExecutorInputs) (evaluation.CampaignAssignmentExecutor, error) {
-		inner, err := newProductionCampaignAgentExecutor(in)
-		if err != nil {
-			return nil, err
-		}
-		held.inner = inner
-		return held, nil
-	}
-	return held
 }
 
 type executeOutcome struct {
@@ -182,15 +143,16 @@ func awaitResult[T any](t *testing.T, ch <-chan T, what string) T {
 // and starts no other.
 func TestRunsCancel_RealStack_StopsTheRunAfterItsCurrentAssignment(t *testing.T) {
 	run := newStopRealStackRun(t)
-	held := run.holdFirstAssignment()
+	gate, err := run.stack.Provider.HoldNextReply()
+	require.NoError(t, err)
 	onStop, stopped := stopSignal()
 	run.deps.runControl.onStopRequested = onStop
 
 	execDone := run.executeAsync()
-	awaitSignal(t, held.started, "the first assignment never started")
+	awaitSignal(t, gate.Requested(), "the first provider request never arrived")
 	cancelDone := run.cancelAsync()
 	awaitSignal(t, stopped, "the stop request never reached the executing run")
-	close(held.release)
+	gate.Release()
 
 	exec := awaitResult(t, execDone, "the executing run did not finish")
 	require.ErrorIs(t, exec.err, constants.ErrEvaluationRunStopped)
@@ -208,12 +170,13 @@ func TestRunsCancel_RealStack_StopsTheRunAfterItsCurrentAssignment(t *testing.T)
 // released its lease.
 func TestRunsCancel_RealStack_ReturnsOnlyAfterTheRunIsReleased(t *testing.T) {
 	run := newStopRealStackRun(t)
-	held := run.holdFirstAssignment()
+	gate, err := run.stack.Provider.HoldNextReply()
+	require.NoError(t, err)
 	onStop, stopped := stopSignal()
 	run.deps.runControl.onStopRequested = onStop
 
 	execDone := run.executeAsync()
-	awaitSignal(t, held.started, "the first assignment never started")
+	awaitSignal(t, gate.Requested(), "the first provider request never arrived")
 	cancelDone := run.cancelAsync()
 	awaitSignal(t, stopped, "the stop request never reached the executing run")
 
@@ -222,13 +185,13 @@ func TestRunsCancel_RealStack_ReturnsOnlyAfterTheRunIsReleased(t *testing.T) {
 		t.Fatal("cancel returned while the executing run still held its assignment")
 	case <-time.After(200 * time.Millisecond):
 	}
-	close(held.release)
+	gate.Release()
 
 	exec := awaitResult(t, execDone, "the executing run did not finish")
 	require.ErrorIs(t, exec.err, constants.ErrEvaluationRunStopped)
 	cancel := awaitResult(t, cancelDone, "cancel did not return after the release")
 	require.NoError(t, cancel.err, cancel.out)
-	_, err := run.store().LoadRunLease(context.Background(), stopRealStackRunID)
+	_, err = run.store().LoadRunLease(context.Background(), stopRealStackRunID)
 	assert.True(t, isMissingRecord(err), "cancel returns only once the lease is released")
 }
 

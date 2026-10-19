@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -60,6 +61,53 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 	// platform release from it.
 	ctx, cancel := context.WithTimeout(testVersionContext(), 3*time.Minute)
 	t.Cleanup(cancel)
+	replies := make([]fixtures.OllamaReply, repetitions)
+	for i := range replies {
+		replies[i] = fixtures.OllamaReply{Content: "READY"}
+	}
+	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{Posture: posture, Replies: replies}, runControl)
+	deps, stack, evidenceFiles := run.deps, run.stack, run.fileSvc
+	governancePosture, err := cases.WirePosture(posture)
+	require.NoError(t, err)
+	dataWorkload, err := stack.Data.Workload()
+	require.NoError(t, err)
+
+	// Keep the live run to the answer-only Lite scenario: each assignment is one
+	// real model turn with no synthetic tools or receipts.
+	suite := evaluation.DefaultScenarioSuite()
+	suite.ID = "real-stack-suite"
+	suite.Version = evaluation.SuiteSchemaVersion
+	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
+		if scenario.ScenarioID == "instruction-exact-format" {
+			suite.Scenarios = []evaluation.SuiteScenario{scenario}
+			break
+		}
+	}
+	require.Len(t, suite.Scenarios, 1)
+	require.NoError(t, evaluation.NewStore(evidenceFiles).CreateSuite(ctx, suite))
+	_, err = createCampaign(ctx, deps, evidenceFiles, campaignCreateSpec{
+		GovernancePosture: governancePosture,
+		Platform:          testPlatform,
+		CampaignID:        campaignID,
+		Variants:          []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions:       repetitions,
+		SuiteID:           suite.ID,
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "real-stack-investigation",
+			DataOperatorId:  dataWorkload.OperatorID,
+		},
+	})
+	require.NoError(t, err)
+	return run
+}
+
+// newRealStackEnvironment retains every production factory; only Ollama replies
+// and the process control boundary are supplied by the test.
+func newRealStackEnvironment(t *testing.T, opts fixtures.EvalStackOptions, runControl runControlDeps) *realStackRun {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(testVersionContext(), 3*time.Minute)
+	t.Cleanup(cancel)
 	root := testutil.TempDir(t)
 	keyring := keystoretest.NewMemoryKeyring()
 	cfgLoader := func(projectRoot string) (*config.Config, error) {
@@ -70,8 +118,6 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 		cfg.Keyring = keyring
 		return cfg, nil
 	}
-	governancePosture, err := cases.WirePosture(posture)
-	require.NoError(t, err)
 	deps := nativeEvalDeps{
 		configLoader:      cfgLoader,
 		fileSvcFactory:    shared.EvidenceFileSvcFactory(keystore.Options{Keyring: keyring}),
@@ -90,12 +136,7 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 		newID:                uuid.NewString,
 	}
 
-	// Each assignment is one model turn, so the provider needs one reply per repetition.
-	replies := make([]fixtures.OllamaReply, repetitions)
-	for i := range replies {
-		replies[i] = fixtures.OllamaReply{Content: "READY"}
-	}
-	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{Posture: posture, Replies: replies})
+	stack := fixtures.NewEvalStack(t, opts)
 
 	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
 	require.NoError(t, err)
@@ -108,39 +149,54 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 	require.NoError(t, err)
 	stack.Identity.InstallCLIRuntime(t, stack.Gateway, fileSvc, cfg)
 	writeTestFrozenInventory(t, root, testQwenVariant())
-	dataWorkload, err := stack.Data.Workload()
-	require.NoError(t, err)
-
-	// Keep the live run to the answer-only Lite scenario: each assignment is one
-	// real model turn with no synthetic tools or receipts.
-	suite := evaluation.DefaultScenarioSuite()
-	suite.ID = "real-stack-suite"
-	suite.Version = evaluation.SuiteSchemaVersion
-	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
-		if scenario.ScenarioID == "instruction-exact-format" {
-			suite.Scenarios = []evaluation.SuiteScenario{scenario}
-			break
-		}
-	}
-	require.Len(t, suite.Scenarios, 1)
 	evidenceFiles, err := deps.fileSvcFactory(root, slog.Default())
 	require.NoError(t, err)
-	require.NoError(t, evaluation.NewStore(evidenceFiles).CreateSuite(ctx, suite))
-	_, err = createCampaign(ctx, deps, evidenceFiles, campaignCreateSpec{
-		GovernancePosture: governancePosture,
-		Platform:          testPlatform,
-		CampaignID:        campaignID,
-		Variants:          []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions:       repetitions,
-		SuiteID:           suite.ID,
-		Investigation: &evalv1.EvaluationInvestigation{
-			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
-			InvestigationId: "real-stack-investigation",
-			DataOperatorId:  dataWorkload.OperatorID,
-		},
-	})
-	require.NoError(t, err)
 	return &realStackRun{ctx: ctx, root: root, stack: stack, deps: deps, cfg: cfg, fileSvc: evidenceFiles}
+}
+
+// newGatewayRunEnv is the CLI test environment backed by the real eval stack.
+func newGatewayRunEnv(t *testing.T) *runEnv {
+	t.Helper()
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	return env
+}
+
+func newGatewayRunEnvWithPosture(t *testing.T, posture constants.Posture) (*runEnv, *realStackRun) {
+	t.Helper()
+	return newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: posture})
+}
+
+func newPublicationRunEnv(t *testing.T) *runEnv {
+	t.Helper()
+	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine, EnablePublicSpectator: true})
+	previous := gwremote.PublicMirrorBootstrapURL
+	gwremote.PublicMirrorBootstrapURL = run.stack.Gateway.PublicMirrorBootstrapURL
+	t.Cleanup(func() { gwremote.PublicMirrorBootstrapURL = previous })
+	return env
+}
+
+func newGatewayRunEnvWithOptions(t *testing.T, opts fixtures.EvalStackOptions) (*runEnv, *realStackRun) {
+	t.Helper()
+	control := newFakeProcessControl()
+	replies := make([]fixtures.OllamaReply, 16)
+	for i := range replies {
+		replies[i] = fixtures.OllamaReply{Content: "READY"}
+	}
+	opts.Replies = replies
+	run := newRealStackEnvironment(t, opts, testRunControl(control))
+	cmd := &cobra.Command{}
+	cmd.SetContext(run.ctx)
+	cmd.Flags().String("project-root", run.root, "")
+	data, err := run.stack.Data.Workload()
+	require.NoError(t, err)
+	inference, err := run.stack.Inference.Workload()
+	require.NoError(t, err)
+	authContext, err := run.deps.authLoader(run.fileSvc, run.cfg)
+	require.NoError(t, err)
+	_, err = evalBindSessions(cmd, run.cfg, run.fileSvc, defaultEvalBindClient(run.cfg), authContext, []string{data.OperatorSessionID})
+	require.NoError(t, err)
+	return &runEnv{root: run.root, deps: run.deps, cmd: cmd, control: control,
+		dataOperatorID: data.OperatorID, dataSession: data.OperatorSessionID, inferenceSession: inference.OperatorSessionID}, run
 }
 
 func TestRunsExecute_RealStack(t *testing.T) {

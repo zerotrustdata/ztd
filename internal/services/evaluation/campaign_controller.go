@@ -131,6 +131,8 @@ type RunStartRequest struct {
 	DataOperatorSessionID      string
 	Deployment                 *evalv1.EvaluationDeploymentIdentity
 	Lane                       evalv1.EvaluationLane
+	ProviderObservationPolicy  evalv1.EvaluationWitnessPolicy
+	ModelProvenancePolicy      evalv1.EvaluationWitnessPolicy
 	// PlatformRelease is the executing build's release. It must equal the
 	// release the campaign recorded when it froze.
 	PlatformRelease string
@@ -240,6 +242,9 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	if req.CampaignID == "" || req.RunID == "" || req.PlatformRelease == "" {
 		return nil, fmt.Errorf("evaluation: start run: %w", constants.ErrMissingRequiredField)
 	}
+	if !validWitnessPolicy(req.ProviderObservationPolicy) || !validWitnessPolicy(req.ModelProvenancePolicy) {
+		return nil, fmt.Errorf("evaluation: start run witness policies: %w", constants.ErrEvaluationFlagsInvalid)
+	}
 	spec, err := c.store.LoadCampaignSpec(ctx, req.CampaignID)
 	if err != nil {
 		return nil, err
@@ -293,13 +298,15 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 		return nil, fmt.Errorf("evaluation: start run: formation campaign requires system lane: %w", constants.ErrEvaluationTargetKindMismatch)
 	}
 	run := &evalv1.EvaluationRun{
-		SchemaVersion: CampaignSchemaVersion,
-		RunId:         req.RunID,
-		SuiteRef:      catalog.GetCatalogRef(),
-		Deployment:    req.Deployment,
-		ActivePosture: spec.GetGovernancePosture(),
-		Lane:          lane,
-		StartedAt:     timestamppb.New(c.now().UTC()),
+		SchemaVersion:             CampaignSchemaVersion,
+		RunId:                     req.RunID,
+		SuiteRef:                  catalog.GetCatalogRef(),
+		Deployment:                req.Deployment,
+		ActivePosture:             spec.GetGovernancePosture(),
+		Lane:                      lane,
+		ProviderObservationPolicy: req.ProviderObservationPolicy,
+		ModelProvenancePolicy:     req.ModelProvenancePolicy,
+		StartedAt:                 timestamppb.New(c.now().UTC()),
 		CampaignBinding: &evalv1.ModelCampaignBinding{
 			CampaignId:                 req.CampaignID,
 			CampaignDigest:             spec.GetCampaignDigest(),
@@ -314,6 +321,10 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 		return nil, err
 	}
 	return run, nil
+}
+
+func validWitnessPolicy(policy evalv1.EvaluationWitnessPolicy) bool {
+	return policy == evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM || policy == evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT
 }
 
 // InitializeCampaign creates a campaign and starts its first run.
@@ -341,6 +352,8 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		Deployment:                 req.Deployment,
 		Lane:                       req.Lane,
 		PlatformRelease:            req.Platform.Release,
+		ProviderObservationPolicy:  evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+		ModelProvenancePolicy:      evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 	})
 }
 

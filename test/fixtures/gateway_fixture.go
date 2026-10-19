@@ -24,6 +24,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance/consensustest"
@@ -54,22 +56,23 @@ import (
 // It encapsulates the common pattern of creating a gateway, downstream server,
 // and all required dependencies.
 type GatewayFixture struct {
-	FileService      fs.RuntimeFileService
-	Config           *config.Config
-	Service          *gateway.GatewayModeService
-	DownstreamServer *httptest.Server
-	DataDir          string
-	SecretsDir       string
-	PKIDir           string
-	MCPGateway       *mcp.GatewayService
-	ActuatorPriv     ed25519.PrivateKey
-	ActuatorKeyID    string
-	DownstreamURL    string // URL of the downstream MCP/A2A server
-	DownstreamCmd    string // Command of downstream subprocess MCP server
-	DownstreamArgs   []string
-	Keystore         *keystore.Keystore
-	A2ADownstreamURL string           // URL used for A2A (same as DownstreamURL if not overridden)
-	ConsensusServer  *httptest.Server // External HTTPS protobuf deliberation endpoint, when configured
+	FileService              fs.RuntimeFileService
+	Config                   *config.Config
+	Service                  *gateway.GatewayModeService
+	DownstreamServer         *httptest.Server
+	DataDir                  string
+	SecretsDir               string
+	PKIDir                   string
+	MCPGateway               *mcp.GatewayService
+	ActuatorPriv             ed25519.PrivateKey
+	ActuatorKeyID            string
+	DownstreamURL            string // URL of the downstream MCP/A2A server
+	DownstreamCmd            string // Command of downstream subprocess MCP server
+	DownstreamArgs           []string
+	Keystore                 *keystore.Keystore
+	A2ADownstreamURL         string           // URL used for A2A (same as DownstreamURL if not overridden)
+	ConsensusServer          *httptest.Server // External HTTPS protobuf deliberation endpoint, when configured
+	PublicMirrorBootstrapURL string           // Anonymous public mirror bootstrap endpoint, when enabled
 }
 
 // GatewayFixtureOptions configures the gateway fixture.
@@ -93,6 +96,9 @@ type GatewayFixtureOptions struct {
 	// ProductionConsensus uses HTTPS deliberation and gives enrolled Operators
 	// the same complete bound consensus policy that signs their commands.
 	ProductionConsensus bool
+	// EnablePublicSpectator starts the real Gateway-owned public mirror on
+	// isolated loopback listeners.
+	EnablePublicSpectator bool
 
 	// OperatorLeafCertTTL, when nonzero, shortens the lifetime of issued
 	// Operator leaves so a test observes renewal.
@@ -213,7 +219,6 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	if posture == "" {
 		posture = constants.PostureNotary
 	}
-
 	// WorkDir roots the Gateway (and its embedded Operator's working directory)
 	// in this test's runtime base, exactly as `gw start` roots it in the project.
 	cfg, err := config.LoadGateway(config.GatewayOptions{
@@ -237,6 +242,30 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	cfg.Gateway.MCPDownstreamURL = downstreamURL
 	cfg.Gateway.MCPDownstreamCmd = opts.DownstreamCmd
 	cfg.Gateway.MCPDownstreamArgs = opts.DownstreamArgs
+	var mirrorReservations []io.Closer
+	releaseMirrorReservations := func() {
+		for _, reservation := range mirrorReservations {
+			_ = reservation.Close()
+		}
+		mirrorReservations = nil
+	}
+	if opts.EnablePublicSpectator {
+		privatePort, reservation, reserveErr := netutil.ReserveTCPPort()
+		require.NoError(t, reserveErr)
+		mirrorReservations = append(mirrorReservations, reservation)
+		publicPort, reservation, reserveErr := netutil.ReserveTCPPort()
+		require.NoError(t, reserveErr)
+		mirrorReservations = append(mirrorReservations, reservation)
+		t.Cleanup(releaseMirrorReservations)
+		privateAddr := fmt.Sprintf("127.0.0.1:%d", privatePort)
+		publicAddr := fmt.Sprintf("127.0.0.1:%d", publicPort)
+		cfg.Gateway.PublicSpectatorEnabled = true
+		cfg.Gateway.PublicSpectatorPrivateAddr = privateAddr
+		cfg.Gateway.PublicSpectatorPublicAddr = publicAddr
+		// The public handler serves both the mirror API and explorer assets;
+		// pointing the explorer at that address suppresses a second listener.
+		cfg.Gateway.EvalExplorerAddr = publicAddr
+	}
 
 	if opts.PublicBaseURL != "" {
 		cfg.Gateway.PublicBaseURL = opts.PublicBaseURL
@@ -332,6 +361,9 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	// test has completed (which would panic the test runtime under -race).
 	ctx, cancel := context.WithCancel(context.Background())
 	serverErr := make(chan error, 1)
+	// Keep reservations held through all fixture construction and release them
+	// only when the Gateway is ready to bind every listener.
+	releaseMirrorReservations()
 	go func() {
 		serverErr <- ls.Start(ctx)
 	}()
@@ -362,23 +394,31 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	}
 
 	return &GatewayFixture{
-		FileService:      fileSvc,
-		Config:           cfg,
-		Service:          ls,
-		DownstreamServer: downstreamServer,
-		DataDir:          dataDir,
-		SecretsDir:       secretsDir,
-		PKIDir:           pkiDir,
-		MCPGateway:       mcpGateway,
-		ActuatorPriv:     ActuatorPriv,
-		ActuatorKeyID:    ActuatorKeyID,
-		DownstreamURL:    downstreamURL,
-		DownstreamCmd:    opts.DownstreamCmd,
-		DownstreamArgs:   opts.DownstreamArgs,
-		Keystore:         ks,
-		A2ADownstreamURL: a2aURL,
-		ConsensusServer:  consensusServer,
+		FileService:              fileSvc,
+		Config:                   cfg,
+		Service:                  ls,
+		DownstreamServer:         downstreamServer,
+		DataDir:                  dataDir,
+		SecretsDir:               secretsDir,
+		PKIDir:                   pkiDir,
+		MCPGateway:               mcpGateway,
+		ActuatorPriv:             ActuatorPriv,
+		ActuatorKeyID:            ActuatorKeyID,
+		DownstreamURL:            downstreamURL,
+		DownstreamCmd:            opts.DownstreamCmd,
+		DownstreamArgs:           opts.DownstreamArgs,
+		Keystore:                 ks,
+		A2ADownstreamURL:         a2aURL,
+		ConsensusServer:          consensusServer,
+		PublicMirrorBootstrapURL: publicMirrorBootstrapURL(cfg),
 	}
+}
+
+func publicMirrorBootstrapURL(cfg *config.Config) string {
+	if cfg == nil || !cfg.Gateway.PublicSpectatorEnabled || cfg.Gateway.PublicSpectatorPublicAddr == "" {
+		return ""
+	}
+	return "http://" + cfg.Gateway.PublicSpectatorPublicAddr + "/bootstrap"
 }
 
 // WaitForReady waits for the Gateway's listener signal, then verifies the

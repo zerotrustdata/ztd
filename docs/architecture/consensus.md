@@ -33,7 +33,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines ztd's Layer 2 (L2) machine consensus architecture: enrolling a third-party application or agent as an ordinary `PLATFORM_COMPONENT_KIND_APPLICATION`, binding it as the Gateway's consensus application via `PLATFORM_ENROLLMENT_BIND_CONSENSUS`, HTTPS protobuf deliberation mechanics, L4 Warden and outbound Operator (`OperatorL2Trust`) signature verification, and L5 Actuator receipt evidence. Consensus is not a Gateway-internal service or multi-member keystore construct; it is an external enrolled application whose Ed25519 signature over `<transaction_hash>|<decision>` gates execution under `consensus` and `notary` postures.
+Defines ztd's Layer 2 (L2) machine consensus architecture: enrolling third-party applications as ordinary `PLATFORM_COMPONENT_KIND_APPLICATION` identities, binding an actor-owned K-of-N member set through `PLATFORM_ENROLLMENT_BIND_CONSENSUS`, HTTPS protobuf deliberation mechanics, L4 Warden and outbound Operator (`OperatorL2Trust`) signature verification, and L5 Actuator receipt evidence. Every member is an enrolled application with an enabled Ed25519 signer; binding records the member IDs and quorum through the governed L5 handler.
 
 ## Quick index
 
@@ -63,32 +63,32 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-POL-01 | Consensus is an ordinary enrolled application (`PLATFORM_COMPONENT_KIND_APPLICATION`), not a Gateway-internal service or multi-member keystore construct. The application MUST enroll through the standard platform enrollment workflow, receiving its mTLS client certificate and registering its Ed25519 public key in `trusted_signers`. |
-| INV-CON-POL-02 | The Gateway MUST record at most one bound consensus application (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`). |
-| INV-CON-POL-03 | Binding a consensus application MUST traverse the governance pipeline as the bootstrap action `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`), referencing an enrolled, enabled `TrustedSigner` in the Gateway's signer store. |
+| INV-CON-POL-01 | Consensus members are ordinary enrolled applications (`PLATFORM_COMPONENT_KIND_APPLICATION`), not a Gateway-internal service. Every member MUST enroll through the standard platform workflow, receiving its mTLS client certificate and registering its Ed25519 public key in `trusted_signers`. |
+| INV-CON-POL-02 | The Gateway MUST record at most one bound consensus policy (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`), with unique actor-owned enrolled signing applications and a quorum from one through the member count. |
+| INV-CON-POL-03 | Binding a consensus member set MUST traverse the governance pipeline as the bootstrap action `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`), validating every member's ownership, active enrollment policy, and enabled `TrustedSigner` in the Gateway's signer store. |
 | INV-CON-POL-04 | `PLATFORM_ENROLLMENT_BIND_CONSENSUS` is a mutation that is NOT exempt from L3 via `_authorized_by_decision`: it MUST require L3 human authorization under `ratify` and `notary` postures (`posture.RequiresL3() == true`). |
-| INV-CON-POL-05 | Outbound Operators MUST receive the bound consensus application's identity and Ed25519 public key in their signed enrollment bundle and in-band certificate renewal bundle (`OperatorL2Trust`). |
+| INV-CON-POL-05 | Outbound Operators MUST receive each bound consensus member's identity and Ed25519 public key in their signed enrollment bundle and in-band certificate renewal bundle (`OperatorL2Trust`). |
 
 ### Deliberation and Proof Production (`INV-CON-VOTE`)
 
 | ID | Rule |
 | :--- | :--- |
 | INV-CON-VOTE-01 | The consensus application MUST recompute the canonical transaction hash from envelope fields (`governance.GenerateMessageID`) and verify `envelope.Id` and `envelope.TransactionHash` before signing a decision. |
-| INV-CON-VOTE-02 | Every consensus signature in `ConsensusProof` MUST be an Ed25519 signature by the bound consensus application's private key over the canonical UTF-8 payload `<transaction_hash>\|<decision>`, where `<decision>` is `true` or `false`, encoded as a lowercase hex string. |
-| INV-CON-VOTE-03 | During L2 deliberation, the Gateway MUST transmit the full `GovernanceEnvelope` serialized as `application/x-protobuf` to the bound consensus application's HTTPS deliberation endpoint and receive back the envelope populated with its `ConsensusProof`. |
+| INV-CON-VOTE-02 | Every consensus signature in `ConsensusProof` MUST be an Ed25519 signature by a bound member application's private key over the canonical UTF-8 payload `<transaction_hash>\|<decision>`, where `<decision>` is `true` or `false`, encoded as a lowercase hex string; L2 accepts only K distinct affirmative member signatures. |
+| INV-CON-VOTE-03 | During L2 deliberation, the Gateway MUST transmit the full `GovernanceEnvelope` serialized as `application/x-protobuf` to the primary member's HTTPS deliberation endpoint and receive back the envelope populated with member signatures in its `ConsensusProof`. |
 
 ### L4 Verification and Authorization (`INV-CON-WARD`)
 
 | ID | Rule |
 | :--- | :--- |
 | INV-CON-WARD-01 | The L4 Warden (`L4Warden.verifyL2Posture`) MUST verify the `ConsensusProof` signature against the recomputed transaction hash rather than trusting the envelope's declared identifier. |
-| INV-CON-WARD-02 | Both Gateway in-process L4 verification and outbound Operator L4 verification (`OperatorL2Trust`) MUST verify the `ConsensusProof` signature against the bound consensus application's Ed25519 public key from `trusted_signers` / the Operator enrollment bundle. |
-| INV-CON-WARD-03 | Evaluation MUST accept only an affirmative (`decision=true`) signature verified against the bound consensus application's enabled `TrustedSigner` public key. A negative decision (`decision=false`) authenticates dissent and does not authorize execution. |
+| INV-CON-WARD-02 | Both Gateway in-process L4 verification and outbound Operator L4 verification (`OperatorL2Trust`) MUST verify each `ConsensusProof` signature against a bound member's Ed25519 public key from `trusted_signers` / the Operator enrollment bundle. |
+| INV-CON-WARD-03 | Evaluation MUST accept only affirmative (`decision=true`) signatures verified against enabled member `TrustedSigner` public keys, meeting the stored quorum. A negative decision authenticates dissent and does not count toward quorum. |
 | INV-CON-WARD-04 | Bootstrap action types (`actionType.IsBootstrapAction()`) MUST be exempt from L2 gating across all postures, permitting initial enrollment and `PLATFORM_ENROLLMENT_BIND_CONSENSUS` transactions to succeed before a consensus application is bound. |
-| INV-CON-WARD-05 | Under `consensus` and `notary` postures (`posture.RequiresL2() == true`), a missing `ConsensusProof`, an unbound consensus application, or a negative decision MUST reject the transaction fail closed. Under `doctrine` and `ratify` postures, L2 proofs are evaluated for deterministic audit evidence without gating transaction admission. |
-| INV-CON-WARD-06 | Under `consensus` and `notary` postures, a `ConsensusProof` whose signature fails verification or whose signer cannot be resolved against the bound consensus application MUST reject the transaction with `ErrTxL2SignatureInvalid` (`L2_SIGNATURE_INVALID`). |
+| INV-CON-WARD-05 | Under `consensus` and `notary` postures (`posture.RequiresL2() == true`), a missing `ConsensusProof`, an unbound consensus policy, insufficient affirmative member signatures, or a negative decision MUST reject the transaction fail closed. Under `doctrine` and `ratify` postures, L2 proofs are evaluated for deterministic audit evidence without gating transaction admission. |
+| INV-CON-WARD-06 | Under `consensus` and `notary` postures, any `ConsensusProof` signature that fails verification or names a signer outside the bound member set MUST reject the transaction with `ErrTxL2SignatureInvalid` (`L2_SIGNATURE_INVALID`). |
 
-An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSING`. A proof naming an enabled, known set with zero votes yields `L2_QUORUM_NOT_MET`: zero affirmative votes cannot meet its quorum, including a single application's quorum of one. Both reject execution when L2 is enforced.
+An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSING`. A proof naming an enabled, known set with fewer than K affirmative member votes yields `L2_QUORUM_NOT_MET`. Both reject execution when L2 is enforced.
 
 ### Receipt and Audit Evidence (`INV-CON-RCPT`)
 
@@ -114,7 +114,7 @@ An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSIN
 
 L2 Consensus occupies the second layer of the platform governance interlock:
 1. **L1 Doctrine**: Decodes payload and executes static regex screening and MITRE threat detection.
-2. **L2 Consensus**: Verifies the bound consensus application's Ed25519 signature over `<transaction_hash>|<decision>`.
+2. **L2 Consensus**: Verifies K distinct bound-member Ed25519 signatures over `<transaction_hash>|<decision>`.
 3. **L3 Notary**: Verifies human authorization proofs (WebAuthn passkeys) for mutating actions.
 4. **L4 Warden**: Executes pre-dispatch verification (replay check, hash match, state root, L1-L3 proofs).
 5. **L5 Actuator**: Mints single-action JIT capabilities, executes actions, and writes local signed receipts.
@@ -190,9 +190,9 @@ flowchart TD
 
 1. **Bootstrap Exemption**: If `actionType.IsBootstrapAction()` is true, transactions bypass L2 gating across all postures.
 2. **Presence Checks**: Under `consensus` and `notary` (`posture.RequiresL2()`), a missing `ConsensusProof` (`ErrTxL2SignatureMissing`), an unconfigured store (`ErrTxL2SignerStoreNotConfigured` or `ErrTxL2ConsensusNotConfigured`), or an unbound/unknown consensus application (`ErrTxL2ConsensusSetUnknown`) fails closed immediately.
-3. **Signature Verification**: `L4Warden.verifyL2Posture` recomputes the transaction hash and verifies the Ed25519 signature over `<transaction_hash>|<decision>` against the bound consensus application's public key in `trusted_signers`. Under `consensus` and `notary`, an invalid signature or unresolvable signer fails closed with `ErrTxL2SignatureInvalid` (INV-CON-WARD-06).
-4. **Decision Check**: Requires an affirmative (`decision=true`) vote from the bound consensus application; otherwise rejects with `ErrTxL2QuorumNotMet`.
-5. **Outbound Operator Verification (`OperatorL2Trust`)**: Remote Operators receive the Gateway's bound consensus application identity and Ed25519 public key in their signed enrollment bundle (and upon in-band certificate renewal), served in memory via `governance.L2TrustStore` (`OperatorL2Trust`), and independently verify the `ConsensusProof` in their local L4 Warden.
+3. **Signature Verification**: `L4Warden.verifyL2Posture` recomputes the transaction hash and verifies each Ed25519 signature over `<transaction_hash>|<decision>` against a bound member public key in `trusted_signers`. Under `consensus` and `notary`, invalid signatures or unbound signers fail closed with `ErrTxL2SignatureInvalid` (INV-CON-WARD-06).
+4. **Decision Check**: Requires at least K distinct affirmative (`decision=true`) member votes; otherwise rejects with `ErrTxL2QuorumNotMet`.
+5. **Outbound Operator Verification (`OperatorL2Trust`)**: Remote Operators receive each bound consensus member's identity and Ed25519 public key in their signed enrollment bundle (and upon in-band certificate renewal), served in memory via `governance.L2TrustStore` (`OperatorL2Trust`), and independently verify the `ConsensusProof` in their local L4 Warden.
 
 ### Receipt Evidence and Deterministic Stages
 

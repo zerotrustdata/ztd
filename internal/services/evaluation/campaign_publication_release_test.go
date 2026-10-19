@@ -40,7 +40,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 			runID := f.runIDs[0]
 			if tc.legacy {
 				saveLegacyCampaign(t, f, "legacy-public")
-				run, err := f.controller.StartRun(ctx, RunStartRequest{CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
+				run, err := f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
 				require.NoError(t, err)
 				runID = run.GetRunId()
 				_, err = f.controller.ScheduleRun(ctx, runID)
@@ -109,7 +109,7 @@ func TestCampaignPublication_RejectsMalformedReleaseTags(t *testing.T) {
 	ctx := context.Background()
 	f := newArchiveFixture(t)
 	saveLegacyCampaign(t, f, "legacy-public")
-	run, err := f.controller.StartRun(ctx, RunStartRequest{CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
+	run, err := f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
 	require.NoError(t, err)
 	_, err = f.controller.ScheduleRun(ctx, run.GetRunId())
 	require.NoError(t, err)

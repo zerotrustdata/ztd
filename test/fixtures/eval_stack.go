@@ -21,8 +21,9 @@ import (
 
 // EvalStackOptions configures the production-shaped eval fixture.
 type EvalStackOptions struct {
-	Posture constants.Posture
-	Replies []OllamaReply
+	Posture               constants.Posture
+	Replies               []OllamaReply
+	EnablePublicSpectator bool
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
@@ -48,7 +49,10 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	if posture == "" {
 		posture = constants.PostureDoctrine
 	}
-	gatewayOpts := GatewayFixtureOptions{TestName: "eval-stack", Posture: posture, ProductionConsensus: true}
+	gatewayOpts := GatewayFixtureOptions{
+		TestName: "eval-stack", Posture: posture, ProductionConsensus: true,
+		EnablePublicSpectator: opts.EnablePublicSpectator,
+	}
 	if posture == constants.PostureNotary {
 		gatewayOpts.ConsensusID = "eval-stack-consensus"
 		gatewayOpts.ConsensusNMembers = 3

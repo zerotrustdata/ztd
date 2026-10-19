@@ -56,7 +56,7 @@ type gradedRun struct {
 // one failed harness precondition.
 func seedGradedRun(t *testing.T, env *runEnv) gradedRun {
 	t.Helper()
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(assignments), 4)

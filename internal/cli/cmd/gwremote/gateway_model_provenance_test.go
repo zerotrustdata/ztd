@@ -105,7 +105,6 @@ func TestRemoteModelProvenanceClient_Load_RejectsInvalidJSON(t *testing.T) {
 }
 
 func TestNewModelProvenanceRemote_ReturnsClientWhenGatewayHealthy(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	remote, err := newModelProvenanceRemote(fileSvc, cfg)

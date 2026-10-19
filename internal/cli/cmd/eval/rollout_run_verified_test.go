@@ -22,7 +22,7 @@ func markVerifiedOn(t *testing.T, env *runEnv, suiteID string) {
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	campaignID := "verified-on-" + suiteID
 	env.createSuiteCampaign(t, campaignID, suiteID)
-	runID := env.startPrepared(t, campaignID, "run-verified")
+	runID := env.startStoredRun(t, campaignID, "run-verified")
 	_, err := evaluation.MarkCampaignQueueEntry(evaluation.MarkCampaignQueueEntryRequest{
 		FileService:   env.fileSvc(t),
 		VariantID:     "qwen3-4b",

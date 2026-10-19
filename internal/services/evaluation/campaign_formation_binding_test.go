@@ -99,7 +99,7 @@ func TestCampaignFormationBinding_ResealedRoleSwapFailsAtScheduleAndExecute(t *t
 	t.Run("schedule", func(t *testing.T) {
 		fixture := newArchiveFixture(t)
 		_, stackSet := createBoundSystemCampaign(t, fixture, "formation-tamper-schedule")
-		_, err := fixture.controller.StartRun(context.Background(), RunStartRequest{
+		_, err := fixture.controller.StartRun(context.Background(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 			PlatformRelease: testPlatform.Release,
 			CampaignID:      "formation-tamper-schedule",
 			RunID:           "formation-tamper-schedule-run",
@@ -124,7 +124,7 @@ func TestCampaignFormationBinding_ResealedRoleSwapFailsAtScheduleAndExecute(t *t
 	t.Run("execute", func(t *testing.T) {
 		fixture := newArchiveFixture(t)
 		inventory, stackSet := createBoundSystemCampaign(t, fixture, "formation-tamper-execute")
-		_, err := fixture.controller.StartRun(context.Background(), RunStartRequest{
+		_, err := fixture.controller.StartRun(context.Background(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 			PlatformRelease: testPlatform.Release,
 			CampaignID:      "formation-tamper-execute",
 			RunID:           "formation-tamper-execute-run",

@@ -11,6 +11,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -69,6 +71,20 @@ func testProviderObservationBundle(attemptID string) (*evalv1.ProviderBoundaryOb
 	return window, attempt, respBody
 }
 
+func useHealthyConfiguredGateway(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != constants.APIPaths.Health {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"gateway","mode":"gateway","version":"test","posture":"doctrine"}`))
+	}))
+	t.Cleanup(server.Close)
+	cfg.Paths.Host = server.URL
+}
+
 func TestRemoteProviderObservationClient_Load_RejectsMissingInputs(t *testing.T) {
 	t.Parallel()
 	_, _, err := (&remoteProviderObservationClient{}).Load(context.Background(), "attempt-1")
@@ -121,7 +137,6 @@ func TestRemoteProviderObservationClient_Load_RejectsInvalidJSON(t *testing.T) {
 }
 
 func TestNewProviderObservationRemote_ReturnsClientWhenGatewayHealthy(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	remote, err := NewProviderObservationRemote(fileSvc, cfg)
@@ -130,8 +145,8 @@ func TestNewProviderObservationRemote_ReturnsClientWhenGatewayHealthy(t *testing
 }
 
 func TestPreflightProviderObservationDelivery_RejectsUnhealthyGateway(t *testing.T) {
-	WithGatewayHealthCheck(t, false)
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	cfg.Paths.Host = "http://127.0.0.1:1"
 
 	err := PreflightProviderObservationDelivery(fileSvc, cfg)
 	require.Error(t, err)
@@ -139,9 +154,8 @@ func TestPreflightProviderObservationDelivery_RejectsUnhealthyGateway(t *testing
 }
 
 func TestPreflightProviderObservationDelivery_RequiresReadyStatus(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-	cfg.Paths = &config.PathsConfig{Host: "http://127.0.0.1:1"}
+	useHealthyConfiguredGateway(t, cfg)
 
 	err := PreflightProviderObservationDelivery(fileSvc, cfg)
 	require.Error(t, err)
@@ -149,8 +163,8 @@ func TestPreflightProviderObservationDelivery_RequiresReadyStatus(t *testing.T) 
 }
 
 func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *testing.T) {
-	WithGatewayHealthCheck(t, false)
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	cfg.Paths.Host = "http://127.0.0.1:1"
 
 	capture, err := NewCampaignWitnessCapture(fileSvc, evaluation.NewStore(fileSvc), cfg)
 	require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
@@ -158,8 +172,8 @@ func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *te
 }
 
 func TestNewCampaignWitnessCapture_WiresRemotesWhenHealthy(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	useHealthyConfiguredGateway(t, cfg)
 
 	capture, err := NewCampaignWitnessCapture(fileSvc, evaluation.NewStore(fileSvc), cfg)
 	require.NoError(t, err)

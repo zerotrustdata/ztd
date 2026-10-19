@@ -1049,8 +1049,12 @@ type PlatformEnrollmentGovernancePayload struct {
 	IssuanceLeaseOwner string `protobuf:"bytes,20,opt,name=issuance_lease_owner,json=issuanceLeaseOwner,proto3" json:"issuance_lease_owner,omitempty"`
 	// HTTPS deliberation endpoint for a bound consensus application.
 	ConsensusEndpointUrl string `protobuf:"bytes,21,opt,name=consensus_endpoint_url,json=consensusEndpointUrl,proto3" json:"consensus_endpoint_url,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Ordered set of enrolled signing applications participating in L2.
+	ConsensusMemberAppIds []string `protobuf:"bytes,22,rep,name=consensus_member_app_ids,json=consensusMemberAppIds,proto3" json:"consensus_member_app_ids,omitempty"`
+	// Affirmative distinct signatures required from consensus_member_app_ids.
+	ConsensusQuorum uint32 `protobuf:"varint,23,opt,name=consensus_quorum,json=consensusQuorum,proto3" json:"consensus_quorum,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PlatformEnrollmentGovernancePayload) Reset() {
@@ -1228,6 +1232,20 @@ func (x *PlatformEnrollmentGovernancePayload) GetConsensusEndpointUrl() string {
 		return x.ConsensusEndpointUrl
 	}
 	return ""
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusMemberAppIds() []string {
+	if x != nil {
+		return x.ConsensusMemberAppIds
+	}
+	return nil
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusQuorum() uint32 {
+	if x != nil {
+		return x.ConsensusQuorum
+	}
+	return 0
 }
 
 type PlatformEnrollmentDecisionTarget struct {
@@ -1613,7 +1631,7 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x10\n" +
 	"\x03cli\x18\x03 \x01(\tR\x03cli\x12\x1f\n" +
 	"\vsigning_key\x18\x04 \x01(\tR\n" +
-	"signingKey\"\xf7\a\n" +
+	"signingKey\"\xdb\b\n" +
 	"#PlatformEnrollmentGovernancePayload\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x1d\n" +
@@ -1639,7 +1657,9 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x06reason\x18\x12 \x01(\tR\x06reason\x12Z\n" +
 	"\x10decision_targets\x18\x13 \x03(\v2/.ztd.common.v1.PlatformEnrollmentDecisionTargetR\x0fdecisionTargets\x120\n" +
 	"\x14issuance_lease_owner\x18\x14 \x01(\tR\x12issuanceLeaseOwner\x124\n" +
-	"\x16consensus_endpoint_url\x18\x15 \x01(\tR\x14consensusEndpointUrl\"\x94\x01\n" +
+	"\x16consensus_endpoint_url\x18\x15 \x01(\tR\x14consensusEndpointUrl\x127\n" +
+	"\x18consensus_member_app_ids\x18\x16 \x03(\tR\x15consensusMemberAppIds\x12)\n" +
+	"\x10consensus_quorum\x18\x17 \x01(\rR\x0fconsensusQuorum\"\x94\x01\n" +
 	" PlatformEnrollmentDecisionTarget\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12Q\n" +

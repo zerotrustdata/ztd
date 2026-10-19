@@ -39,15 +39,13 @@ const (
 )
 
 type runExecuteOptions struct {
-	RunID                    string
-	Publish                  bool
-	Daemon                   bool
-	Limit                    uint32
-	EnforceProviderResidency bool
-	RequireProvenance        bool
-	NoAutoBind               bool
-	JSONOutput               bool
-	ResultOutput             func(*evalv1.EvaluationAssignmentResult)
+	RunID        string
+	Publish      bool
+	Daemon       bool
+	Limit        uint32
+	NoAutoBind   bool
+	JSONOutput   bool
+	ResultOutput func(*evalv1.EvaluationAssignmentResult)
 }
 
 // executeRun executes queued assignments of one run while holding the run's
@@ -205,6 +203,10 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
+	strictObservation, strictProvenance, err := resolveRunWitnessPolicies(summary.Run, false, false)
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute witness policies: %w", err)
+	}
 	binding := summary.Run.GetCampaignBinding()
 	if binding == nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign binding: %w", constants.ErrMissingRequiredField)
@@ -294,7 +296,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: witness capture: %w", err)
 	}
-	if opts.EnforceProviderResidency {
+	if strictObservation {
 		defer func() {
 			if runErr == nil {
 				return
@@ -364,14 +366,14 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		if err := witness.CaptureRunModelProvenanceEvidence(cmd.Context(), opts.RunID); err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
-		if opts.RequireProvenance {
+		if strictProvenance {
 			if err := waitForRunEvidence(cmd, opts.RunID, "model provenance", constants.ModelProvenanceCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
 				return witness.WaitForRunModelProvenanceEvidence(ctx, opts.RunID)
 			}); err != nil {
 				return executed, fmt.Errorf("evaluation: run execute: %w", err)
 			}
 		}
-		if opts.EnforceProviderResidency {
+		if strictObservation {
 			if err := waitForRunEvidence(cmd, opts.RunID, "provider observation", constants.ProviderObservationCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
 				return witness.WaitForRunProviderObservationEvidence(ctx, opts.RunID)
 			}); err != nil {

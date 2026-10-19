@@ -206,6 +206,8 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		Deployment:                 nativeEvalDeployment(cfg, authContext, runID, ""),
 		Lane:                       runLane,
 		PlatformRelease:            platformIdentity(cmd).Release,
+		ProviderObservationPolicy:  witnessPolicy(opts.RequireObservation),
+		ModelProvenancePolicy:      witnessPolicy(opts.RequireProvenance),
 	}); err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
@@ -236,13 +238,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		defer autoBackupEval(cmd, deps, opts.JSONOutput)
 	}
 	executed, err := executeRun(cmd, deps, runExecuteOptions{
-		RunID:                    runID,
-		Publish:                  opts.Publish,
-		Daemon:                   opts.Daemon,
-		EnforceProviderResidency: opts.RequireObservation,
-		RequireProvenance:        opts.RequireProvenance,
-		NoAutoBind:               opts.NoAutoBind,
-		JSONOutput:               opts.JSONOutput,
+		RunID:      runID,
+		Publish:    opts.Publish,
+		Daemon:     opts.Daemon,
+		NoAutoBind: opts.NoAutoBind,
+		JSONOutput: opts.JSONOutput,
 	})
 	if err != nil {
 		return result, err
@@ -269,6 +269,13 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		return result, constants.ErrEvalRunVerificationFailed
 	}
 	return result, nil
+}
+
+func witnessPolicy(strict bool) evalv1.EvaluationWitnessPolicy {
+	if strict {
+		return evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT
+	}
+	return evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM
 }
 
 func runsStartCmd(deps nativeEvalDeps) *cobra.Command {

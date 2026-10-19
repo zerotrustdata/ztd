@@ -214,6 +214,10 @@ message PlatformEnrollmentGovernancePayload {
   string issuance_lease_owner = 20;
   // HTTPS deliberation endpoint for a bound consensus application.
   string consensus_endpoint_url = 21;
+  // Ordered set of enrolled signing applications participating in L2.
+  repeated string consensus_member_app_ids = 22;
+  // Affirmative distinct signatures required from consensus_member_app_ids.
+  uint32 consensus_quorum = 23;
 }
 
 message PlatformEnrollmentDecisionTarget {

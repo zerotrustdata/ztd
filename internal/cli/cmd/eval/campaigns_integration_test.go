@@ -23,15 +23,15 @@ import (
 )
 
 func TestCampaignsList_EmptyProject(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	out := env.mustRun(t, "campaigns", "list")
 	assert.Contains(t, out, "No campaigns found")
 }
 
 func TestCampaignsList_AfterCreate(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "campaigns", "list")
 	assert.Contains(t, out, "eval-a")
@@ -51,7 +51,7 @@ func TestCampaignsList_AfterCreate(t *testing.T) {
 }
 
 func TestCampaignsList_ShowsCampaignWithNoRuns(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-idle")
 
 	var payload campaignListJSON
@@ -62,9 +62,9 @@ func TestCampaignsList_ShowsCampaignWithNoRuns(t *testing.T) {
 }
 
 func TestCampaignsList_StatusFilter(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-idle")
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	var payload campaignListJSON
 	require.NoError(t, env.runJSON(t, &payload, "campaigns", "list", "--status", campaignStatusNoRuns))
@@ -73,8 +73,8 @@ func TestCampaignsList_StatusFilter(t *testing.T) {
 }
 
 func TestCampaignsShow_ReportsSpecAndRuns(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "campaigns", "show", "eval-a")
 	assert.Contains(t, out, "Campaign: eval-a")
@@ -91,7 +91,7 @@ func TestCampaignsShow_ReportsSpecAndRuns(t *testing.T) {
 }
 
 func TestCampaignsShow_RejectsUnknownCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "campaigns", "show", "missing")
 	require.Error(t, err)
@@ -99,7 +99,7 @@ func TestCampaignsShow_RejectsUnknownCampaign(t *testing.T) {
 }
 
 func TestCampaignsCreate_FromModelSelector(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	out := env.mustRun(t, "campaigns", "create", "eval-a", "qwen3:4b", "--reps", "2")
 	assert.Contains(t, out, "Campaign created")
@@ -113,7 +113,7 @@ func TestCampaignsCreate_FromModelSelector(t *testing.T) {
 }
 
 func TestCampaignsCreate_HoldContextFlag(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	var fresh campaignCreateJSON
 	require.NoError(t, env.runJSON(t, &fresh, "campaigns", "create", "eval-fresh", "qwen3:4b", "--reps", "3", "--hold-context=false"))
@@ -127,7 +127,7 @@ func TestCampaignsCreate_HoldContextFlag(t *testing.T) {
 }
 
 func TestCampaignsCreate_PostureFlagFreezesTheGovernancePosture(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	ctx := context.Background()
 
 	env.mustRun(t, "campaigns", "create", "eval-ratify", "qwen3:4b", "--posture", "ratify")
@@ -147,7 +147,7 @@ func TestCampaignsCreate_PostureFlagFreezesTheGovernancePosture(t *testing.T) {
 }
 
 func TestCampaignsCreate_RejectsAnUnknownPosture(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	out, err := env.run(t, "campaigns", "create", "eval-bogus", "qwen3:4b", "--posture", "bogus")
 	require.ErrorIs(t, err, constants.ErrInvalidPosture, out)
@@ -157,7 +157,7 @@ func TestCampaignsCreate_RejectsAnUnknownPosture(t *testing.T) {
 }
 
 func TestCampaignsCreate_FreezesPersistentInvestigationAndDataOperator(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "campaigns", "create", "eval-persistent", "qwen3:4b",
 		"--investigation", "persistent:checkout-incident",
@@ -188,7 +188,7 @@ func TestCampaignsCreate_RejectsInvalidInvestigationFlagCombinations(t *testing.
 		{name: "unknown investigation mode", args: []string{"--investigation", "shared:checkout-incident"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			env := setupRunEnv(t)
+			env := newStoreRunEnv(t)
 			args := append([]string{"campaigns", "create", "eval-invalid", "qwen3:4b"}, test.args...)
 			_, err := env.run(t, args...)
 			require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
@@ -197,7 +197,7 @@ func TestCampaignsCreate_RejectsInvalidInvestigationFlagCombinations(t *testing.
 }
 
 func TestCampaignsCreate_JSONReportsFrozenSpec(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	var payload campaignCreateJSON
 	require.NoError(t, env.runJSON(t, &payload, "campaigns", "create", "eval-a", "--all"))
@@ -210,7 +210,7 @@ func TestCampaignsCreate_JSONReportsFrozenSpec(t *testing.T) {
 }
 
 func TestCampaignsCreate_RequiresSelection(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "campaigns", "create", "eval-a")
 	require.Error(t, err)
@@ -221,7 +221,7 @@ func TestCampaignsCreate_RequiresSelection(t *testing.T) {
 }
 
 func TestCampaignsCreate_RejectsUnknownModel(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "campaigns", "create", "eval-a", "absent:1b")
 	require.Error(t, err)
@@ -229,7 +229,7 @@ func TestCampaignsCreate_RejectsUnknownModel(t *testing.T) {
 }
 
 func TestCampaignsCreate_RejectsEmptyRegistry(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	require.NoError(t, env.fileSvc(t).Remove(context.Background(), evaluation.DefaultModelInventoryRelPath))
 
 	_, err := env.run(t, "campaigns", "create", "eval-a", "--all")
@@ -239,7 +239,7 @@ func TestCampaignsCreate_RejectsEmptyRegistry(t *testing.T) {
 }
 
 func TestCampaignsCreate_RejectsConflictingModes(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	tests := []struct {
 		name string
@@ -263,7 +263,7 @@ func TestCampaignsCreate_RejectsConflictingModes(t *testing.T) {
 }
 
 func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('a') })
 	writeTestFrozenInventory(t, env.root, variants...)
 
@@ -295,7 +295,7 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t *testing.T) {
 	variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('b') })
 	t.Run("same formation set is idempotent and a different set conflicts", func(t *testing.T) {
-		env := setupRunEnv(t)
+		env := newStoreRunEnv(t)
 		writeTestFrozenInventory(t, env.root, variants...)
 		args := []string{"campaigns", "create", "eval-system", "--formations", "ultra-efficient-speedster,qwen-powerhouse"}
 		_, err := env.run(t, args...)
@@ -312,7 +312,7 @@ func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t
 	})
 
 	t.Run("model-role campaign cannot become system lane", func(t *testing.T) {
-		env := setupRunEnv(t)
+		env := newStoreRunEnv(t)
 		_, err := env.run(t, "campaigns", "create", "eval-collision", "qwen3:4b")
 		require.NoError(t, err)
 		writeTestFrozenInventory(t, env.root, variants...)
@@ -321,7 +321,7 @@ func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t
 	})
 
 	t.Run("system campaign cannot become model-role lane", func(t *testing.T) {
-		env := setupRunEnv(t)
+		env := newStoreRunEnv(t)
 		writeTestFrozenInventory(t, env.root, variants...)
 		_, err := env.run(t, "campaigns", "create", "eval-collision", "--formations", "ultra-efficient-speedster")
 		require.NoError(t, err)
@@ -331,7 +331,7 @@ func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t
 }
 
 func TestCampaignsCreate_InvalidCampaignID(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "campaigns", "create", "../escape", "--all")
 	require.Error(t, err)
@@ -339,7 +339,7 @@ func TestCampaignsCreate_InvalidCampaignID(t *testing.T) {
 }
 
 func TestCampaignsCreate_IsIdempotentForTheSameFrozenSpec(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	env.mustRun(t, "campaigns", "create", "eval-a", "qwen3:4b")
 	before, err := evaluation.NewStore(env.fileSvc(t)).LoadCampaignSpec(context.Background(), "eval-a")
@@ -352,7 +352,7 @@ func TestCampaignsCreate_IsIdempotentForTheSameFrozenSpec(t *testing.T) {
 }
 
 func TestCampaignsCreate_ConflictsWhenTheSpecDiffers(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "campaigns", "create", "eval-a", "qwen3:4b", "--reps", "1")
 
 	_, err := env.run(t, "campaigns", "create", "eval-a", "qwen3:4b", "--reps", "3")
@@ -363,7 +363,7 @@ func TestCampaignsCreate_ConflictsWhenTheSpecDiffers(t *testing.T) {
 // A catalog change leaves the frozen campaign untouched. With versioning on, the
 // next create freezes the new catalog under a digest-suffixed ID, once.
 func TestCreateCampaign_VersionsOnCatalogChange(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	ctx := context.Background()
 	store := evaluation.NewStore(env.fileSvc(t))
 	env.createCampaign(t, "eval-a")
@@ -398,7 +398,7 @@ func TestCreateCampaign_VersionsOnCatalogChange(t *testing.T) {
 }
 
 func TestCreateCampaign_VersioningKeepsTheCampaignIDWhileTheCatalogIsUnchanged(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	result, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
@@ -415,7 +415,7 @@ func TestCreateCampaign_VersioningKeepsTheCampaignIDWhileTheCatalogIsUnchanged(t
 // Versioning answers a catalog change only. Any other drift under the same
 // catalog is still a conflict, not a reason to mint another campaign.
 func TestCreateCampaign_VersioningStillConflictsOnNonCatalogDrift(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
@@ -429,7 +429,7 @@ func TestCreateCampaign_VersioningStillConflictsOnNonCatalogDrift(t *testing.T) 
 }
 
 func TestCampaignsCreate_RejectsMultiModelModelRoleCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	writeTestFrozenInventory(t, env.root, threeModelRegistry()...)
 
 	_, err := env.run(t, "campaigns", "create", "eval-many", "--all")
@@ -443,7 +443,7 @@ func TestCampaignsCreate_RejectsMultiModelModelRoleCampaign(t *testing.T) {
 // A campaign frozen with catalog formations schedules its system-lane
 // assignments from the persisted formation set.
 func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newGatewayRunEnv(t)
 	ctx := context.Background()
 	variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('a') })
 	catalog, artifacts, err := evaluation.LoadScenarioCatalog()
@@ -463,8 +463,6 @@ func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
 		Lane: evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM, FormationStackSet: stackSet,
 	})
 	require.NoError(t, err)
-	writeGatewayCredentials(t, env)
-
 	_, err = env.run(t, "runs", "start", "eval-system", "--prepare-only", "--publish=false")
 	require.NoError(t, err)
 

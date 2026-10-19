@@ -307,8 +307,8 @@ func TestRemoteGatewayCampaignProofPublisher_FlushProofCatalog(t *testing.T) {
 
 func TestNewCampaignProofPublisher(t *testing.T) {
 	t.Run("requires a healthy gateway", func(t *testing.T) {
-		WithGatewayHealthCheck(t, false)
-		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+		cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+		cfg.Paths.Host = "http://127.0.0.1:1"
 
 		publisher, err := NewCampaignProofPublisher(context.Background(), fileSvc, cfg)
 		assert.ErrorIs(t, err, constants.ErrGatewayUnhealthy)
@@ -316,8 +316,8 @@ func TestNewCampaignProofPublisher(t *testing.T) {
 	})
 
 	t.Run("returns a gateway-backed publisher when the gateway is healthy", func(t *testing.T) {
-		WithGatewayHealthCheck(t, true)
 		cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+		useHealthyConfiguredGateway(t, cfg)
 
 		publisher, err := NewCampaignProofPublisher(context.Background(), fileSvc, cfg)
 		require.NoError(t, err)

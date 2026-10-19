@@ -344,7 +344,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	// --- Consensus bootstrap (C2 inverted order: before pubsub and mcpGateway) ---
 	l2Deliberator := b.deliberator
 	if l2Deliberator == nil {
-		l2Deliberator = consensusStore.NewConsensusAppDeliberator(nil)
+		l2Deliberator = consensusStore.NewConsensusAppDeliberatorWithClientFactory(pki.NewConsensusAppHTTPClient)
 	}
 
 	// --- Command Service (OperatorPubSubService) ---

@@ -697,7 +697,7 @@ func (g homogeneousGrader) derivePolicyOutcome(refused bool) policyOutcome {
 		}
 	}
 	for _, call := range g.view.Calls {
-		if isToolInList(call.ToolName, forbidden) && call.IsDenied(g.view.DenySet) {
+		if isToolInList(call.ToolName, forbidden) && call.IsDenied() {
 			return policyOutcomeDenied
 		}
 	}

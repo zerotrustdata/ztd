@@ -33,9 +33,11 @@ func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 		})
 
 		require.NoError(t, PreflightProviderObservationDelivery(fileSvc, cfg))
-		require.Equal(t, 1, gateway.requestCount())
+		require.Equal(t, 2, gateway.requestCount())
 		assert.Equal(t, http.MethodGet, gateway.requests[0].Method)
-		assert.Equal(t, preflightPath, gateway.requests[0].URL.Path)
+		assert.Equal(t, constants.APIPaths.Health, gateway.requests[0].URL.Path)
+		assert.Equal(t, http.MethodGet, gateway.requests[1].Method)
+		assert.Equal(t, preflightPath, gateway.requests[1].URL.Path)
 	})
 
 	tests := []struct {
@@ -84,7 +86,7 @@ func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 	}
 }
 
-// observationPreflightGateway records requests to the Observer health endpoint.
+// observationPreflightGateway records requests to the Gateway.
 type observationPreflightGateway struct {
 	mu       sync.Mutex
 	requests []*http.Request
@@ -108,17 +110,20 @@ func writeJSONBody(t *testing.T, w http.ResponseWriter, body string) {
 	require.NoError(t, err)
 }
 
-// startObservationPreflightGateway starts a fake Gateway whose responses come from handler,
-// points the CLI endpoint override at it, and forces the health check healthy.
+// startObservationPreflightGateway starts a fake Gateway whose configured health response
+// is healthy and whose preflight response comes from handler.
 func startObservationPreflightGateway(t *testing.T, handler http.HandlerFunc) (*observationPreflightGateway, fs.RuntimeFileService, *config.Config) {
 	t.Helper()
-	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	gateway := &observationPreflightGateway{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gateway.record(r.Clone(r.Context()))
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == constants.APIPaths.Health {
+			writeJSONBody(t, w, `{"status":"gateway","mode":"gateway","version":"test","posture":"doctrine"}`)
+			return
+		}
 		handler(w, r)
 	}))
 	t.Cleanup(server.Close)

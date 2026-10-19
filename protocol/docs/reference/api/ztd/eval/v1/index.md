@@ -889,6 +889,8 @@ stable identity (not session ID) of the Data Operator that owns its ledger.
 | attempt_refs | [string](#string) | repeated |  |
 | final_verification_report_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | campaign_binding | [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding) |  |  |
+| provider_observation_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
+| model_provenance_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 
 
 

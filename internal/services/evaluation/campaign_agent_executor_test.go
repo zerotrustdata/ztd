@@ -569,7 +569,7 @@ func TestCampaignAgentExecutor_RejectionCompletesCallAsSecurityViolationDeny(t *
 	require.NotNil(t, call.Receipt, "a rejection keeps its signed receipt in the trace")
 }
 
-func TestCampaignAgentExecutor_RefusalCompletesCallAsSecurityViolationWithTypedMessage(t *testing.T) {
+func TestCampaignAgentExecutor_IngressRefusalIsNotPolicyDenial(t *testing.T) {
 	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
 	f.client.answer = &agentAnswer{outcome: &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{
@@ -583,11 +583,11 @@ func TestCampaignAgentExecutor_RefusalCompletesCallAsSecurityViolationWithTypedM
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
 	call := f.storedTrace().ToolCalls[0]
-	assert.Equal(t, agentToolErrorSecurity, call.ErrorType)
-	assert.Equal(t, "SECURITY VIOLATION: "+operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED.String()+": method not allowed on this route", call.Error)
-	assert.NotContains(t, call.Error, "HTTP")
-	assert.Equal(t, agentPolicyDecisionDeny, call.PolicyDecision)
+	assert.Equal(t, agentToolErrorExecution, call.ErrorType)
+	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED.String()+": method not allowed on this route", call.Error)
+	assert.Empty(t, call.PolicyDecision)
 	assert.Nil(t, call.Receipt, "a refusal has no receipt")
+	assert.NotEqual(t, AgentTerminalClassificationPolicyDenial, f.storedTrace().TerminalClassification)
 }
 
 func TestCampaignAgentExecutor_VerifiedToolCallCarriesReceiptReference(t *testing.T) {

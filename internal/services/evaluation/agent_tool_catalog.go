@@ -36,6 +36,7 @@ const (
 	agentToolCommandConstraints  = "get_command_constraints"
 	agentToolErrorExecution      = "execution.error"
 	agentToolErrorSecurity       = "security.violation"
+	agentToolErrorPipeline       = "pipeline.outcome"
 	agentToolDefaultReadMaxLines = 400
 	agentToolDefaultMaxEntries   = 200
 	agentToolDefaultMaxMatches   = 100

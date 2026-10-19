@@ -127,14 +127,19 @@ func isAllowedPublicMirrorListenHost(host string, allowContainerBind bool) bool 
 	return allowContainerBind && host == "0.0.0.0"
 }
 
-// ValidatePublicExplorerListenAddress enforces loopback-only explorer listeners
-// with an address distinct from the private and public mirror listeners.
+// ValidatePublicExplorerListenAddress enforces loopback-only explorer listeners.
+// The public mirror address is allowed because its handler combines the mirror
+// API and explorer assets on one listener; a dedicated listener must differ from
+// the authenticated private ingest address.
 func ValidatePublicExplorerListenAddress(explorerAddress, privateAddress, publicAddress string, allowContainerBind bool) error {
 	explorerAddress = strings.TrimSpace(explorerAddress)
 	if explorerAddress == "" {
 		return nil
 	}
-	if sameListenAddress(explorerAddress, privateAddress) || sameListenAddress(explorerAddress, publicAddress) {
+	if sameListenAddress(explorerAddress, publicAddress) {
+		return nil
+	}
+	if sameListenAddress(explorerAddress, privateAddress) {
 		return fmt.Errorf("%w: duplicate address %q", constants.ErrPublicFeedListenAddress, explorerAddress)
 	}
 	host, _, err := net.SplitHostPort(explorerAddress)

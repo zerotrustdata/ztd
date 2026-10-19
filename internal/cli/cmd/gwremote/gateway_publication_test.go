@@ -145,15 +145,23 @@ func TestIsPublicFeedSnapshotNotFound(t *testing.T) {
 }
 
 func TestNewCampaignFeedExporter_RequiresHealthyGateway(t *testing.T) {
-	WithGatewayHealthCheck(t, false)
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	cfg.Paths.Host = "http://127.0.0.1:1"
 
 	_, err := NewCampaignFeedExporter(context.Background(), fileSvc, cfg)
 	assert.ErrorIs(t, err, constants.ErrGatewayUnhealthy)
 }
 
+func TestNewCampaignFeedExporter_UsesConfiguredGateway(t *testing.T) {
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	useHealthyConfiguredGateway(t, cfg)
+
+	exporter, err := NewCampaignFeedExporter(context.Background(), fileSvc, cfg)
+	require.NoError(t, err)
+	assert.IsType(t, &remoteGatewayCampaignFeedExporter{}, exporter)
+}
+
 func TestNewCampaignFeedExporter_UsesGatewaySnapshot(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
 	client := &stubGatewayPublicationClient{highWater: 12}
 	exporter := &remoteGatewayCampaignFeedExporter{client: client}
 

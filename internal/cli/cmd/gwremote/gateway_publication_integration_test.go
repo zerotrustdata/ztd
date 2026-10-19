@@ -58,7 +58,6 @@ func TestHTTPCampaignMirrorProbe_DatasetPresentFromBootstrap(t *testing.T) {
 }
 
 func TestGatewayPublisherStatus_ReturnsBootstrapFields(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	bootstrapServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +79,9 @@ func TestGatewayPublisherStatus_ReturnsBootstrapFields(t *testing.T) {
 
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case constants.APIPaths.Health:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"gateway","mode":"gateway","version":"test","posture":"doctrine"}`))
 		case constants.APIPaths.PublicFeedSnapshot:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"high_water_sequence":9}`))
@@ -100,7 +102,6 @@ func TestGatewayPublisherStatus_ReturnsBootstrapFields(t *testing.T) {
 }
 
 func TestPublishJSONLViaGateway_ExportsRecords(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	recordsPath := filepath.Join(testutil.TempDir(t), "records.jsonl")
@@ -113,6 +114,9 @@ func TestPublishJSONLViaGateway_ExportsRecords(t *testing.T) {
 
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case constants.APIPaths.Health:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"gateway","mode":"gateway","version":"test","posture":"doctrine"}`))
 		case constants.APIPaths.PublicFeedSnapshot:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"high_water_sequence":0}`))
