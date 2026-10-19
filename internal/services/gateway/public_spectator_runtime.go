@@ -173,6 +173,9 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	publisher := NewPublicPublisherService(nil, runtime.fileSvc, runtime.logger, exportConfig, privateKey, exportConfig.SigningKeyID)
 	publisher.SetIngestAuthToken(hex.EncodeToString(token))
 	publisher.SetMirrorOrigin("http://" + runtime.cfg.PrivateListenAddress)
+	// The publisher's own signed batches land in this store, so assignment
+	// audit databases are built from the rows it holds.
+	publisher.SetAssignmentEventSource(store)
 
 	runtime.privateServer = newPublicMirrorHTTPServer(runtime.cfg.PrivateListenAddress, mirror.Handler(), runtime.logger.With("server", "mirror-private"))
 	mirrorOrigin := resolveEvalExplorerMirrorOrigin(runtime.cfg.PublicBaseURL, runtime.cfg.PublicListenAddress)

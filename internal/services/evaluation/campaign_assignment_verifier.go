@@ -152,12 +152,11 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 					failures = append(failures, fmt.Sprintf("result inference %d is missing", i))
 					continue
 				}
-				// Record IDs and external observation references are assigned after
+				// Record IDs and governed receipt references are assigned after
 				// import. The execution identity and telemetry must be reproducible.
 				actual := proto.Clone(record).(*evalv1.ModelInferenceRecord)
 				actual.InferenceRecordId = ""
 				actual.GovernedReceiptRef = nil
-				actual.ProviderBoundaryObservationRef = nil
 				if !proto.Equal(actual, expected[i]) {
 					failures = append(failures, fmt.Sprintf("result inference %d does not match agent trace", i))
 				}

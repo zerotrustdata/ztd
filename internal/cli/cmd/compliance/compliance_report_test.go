@@ -42,7 +42,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
-	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
@@ -789,11 +788,33 @@ type campaignComplianceBundleFixture struct {
 	policy       *compliancev1.ComplianceReportTrustPolicy
 	verifiedAt   time.Time
 	admissionID  string
+	runID        string
 	attemptID    string
 	verification *evalv1.EvaluationVerificationReport
 }
 
-func generateCampaignComplianceBundleFixture(t *testing.T, includeWitnesses bool) campaignComplianceBundleFixture {
+// campaignWitnessSeed selects which witness families the fixture seeds for every
+// scored inference of the run.
+type campaignWitnessSeed struct {
+	// providerEvidence seals the provider attempt record and observation window
+	// in the run's evaluation evidence, the copies the bundle is built from.
+	providerEvidence bool
+	// modelProvenance seals the model provenance attestation window in the run's
+	// evaluation evidence, the copy the bundle is built from.
+	modelProvenance bool
+}
+
+func generateCampaignComplianceBundleFixture(t *testing.T, seed campaignWitnessSeed) campaignComplianceBundleFixture {
+	t.Helper()
+	fixture, err := generateCampaignComplianceBundle(t, seed)
+	require.NoError(t, err)
+	return fixture
+}
+
+// generateCampaignComplianceBundle runs the compliance report generator over one
+// campaign run. It returns the generator's error so a test can assert that a
+// missing witness fails generation.
+func generateCampaignComplianceBundle(t *testing.T, seed campaignWitnessSeed) (campaignComplianceBundleFixture, error) {
 	t.Helper()
 	ctx := context.Background()
 	fileSvc, _ := cmdtest.NewEvidenceCmdTestEnv(t)
@@ -832,9 +853,12 @@ func generateCampaignComplianceBundleFixture(t *testing.T, includeWitnesses bool
 	require.NotEmpty(t, result.GetModelInferences())
 	attemptID := result.GetModelInferences()[0].GetProviderAttemptId()
 	require.NotEmpty(t, attemptID)
-	if includeWitnesses {
-		for _, inferenceRecord := range result.GetModelInferences() {
-			persistCampaignComplianceWitnesses(t, fileSvc, inferenceRecord, executedAt)
+	for _, inferenceRecord := range result.GetModelInferences() {
+		if seed.providerEvidence {
+			persistCampaignProviderEvidence(t, fileSvc, req.RunID, inferenceRecord, executedAt)
+		}
+		if seed.modelProvenance {
+			persistCampaignModelProvenance(t, fileSvc, req.RunID, inferenceRecord, executedAt)
 		}
 	}
 	assessmentAsOf := time.Now().UTC()
@@ -861,7 +885,9 @@ func generateCampaignComplianceBundleFixture(t *testing.T, includeWitnesses bool
 	require.NoError(t, cmd.Flags().Set("eval-run", req.RunID))
 	var output bytes.Buffer
 	cmd.SetOut(&output)
-	require.NoError(t, cmd.RunE(cmd, nil))
+	if err := cmd.RunE(cmd, nil); err != nil {
+		return campaignComplianceBundleFixture{}, err
+	}
 	descriptor := strings.TrimSpace(output.String())
 	descriptorPath, err := fileSvc.Rel(descriptor)
 	require.NoError(t, err)
@@ -876,18 +902,19 @@ func generateCampaignComplianceBundleFixture(t *testing.T, includeWitnesses bool
 	verification := &evalv1.EvaluationVerificationReport{}
 	require.NoError(t, evalv1.UnmarshalCanonical(verificationBody, verification))
 	exportedDir := filepath.Dir(exportComplianceReportForTest(t, fileSvc))
-	return campaignComplianceBundleFixture{fileSvc: fileSvc, bundle: bundle, bundleDir: exportedDir, policy: policy, verifiedAt: assessmentAsOf.Add(time.Minute), admissionID: admission.GetAdmissionId(), attemptID: attemptID, verification: verification}
+	return campaignComplianceBundleFixture{fileSvc: fileSvc, bundle: bundle, bundleDir: exportedDir, policy: policy, verifiedAt: assessmentAsOf.Add(time.Minute), admissionID: admission.GetAdmissionId(), runID: req.RunID, attemptID: attemptID, verification: verification}, nil
 }
 
-func persistCampaignComplianceWitnesses(t *testing.T, fileSvc fs.RuntimeFileService, inferenceRecord *evalv1.ModelInferenceRecord, observedAt time.Time) {
+// persistCampaignProviderEvidence seals the provider attempt record and the
+// observation window of one scored inference in the run's evaluation evidence.
+func persistCampaignProviderEvidence(t *testing.T, fileSvc fs.RuntimeFileService, runID string, inferenceRecord *evalv1.ModelInferenceRecord, observedAt time.Time) {
 	t.Helper()
 	ctx := context.Background()
 	attemptID := inferenceRecord.GetProviderAttemptId()
-	attemptStore, err := inference.NewAttemptStore(fileSvc)
-	require.NoError(t, err)
+	store := evaluation.NewStore(fileSvc)
 	startedAt := observedAt.UnixMilli()
 	completedAt := observedAt.Add(time.Second).UnixMilli()
-	require.NoError(t, attemptStore.Begin(ctx, &operatorv1.InferenceProviderAttemptRecord{
+	require.NoError(t, store.SaveProviderAttemptRecord(ctx, runID, &operatorv1.InferenceProviderAttemptRecord{
 		ProviderAttemptId: attemptID,
 		TransactionId:     "tx-1",
 		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
@@ -915,9 +942,17 @@ func persistCampaignComplianceWitnesses(t *testing.T, fileSvc fs.RuntimeFileServ
 	observationDigest, err := provider_observer.ComputeObservationDigest(observation)
 	require.NoError(t, err)
 	observation.ObservationDigest = observationDigest
-	observationStore, err := provider_observer.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	require.NoError(t, observationStore.Save(ctx, observation))
+	require.NoError(t, store.SaveProviderObservationWindow(ctx, runID, observation))
+}
+
+// persistCampaignModelProvenance seals the model provenance attestation window of
+// one scored inference in the run's evaluation evidence.
+func persistCampaignModelProvenance(t *testing.T, fileSvc fs.RuntimeFileService, runID string, inferenceRecord *evalv1.ModelInferenceRecord, observedAt time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	store := evaluation.NewStore(fileSvc)
+	attemptID := inferenceRecord.GetProviderAttemptId()
+	completedAt := observedAt.Add(time.Second).UnixMilli()
 	modelDigest := inferenceRecord.GetModelVariant().GetModelDigest()
 	provenance := &evalv1.ModelProvenanceAttestationWindow{
 		SchemaVersion:              model_provenance.SchemaVersion,
@@ -934,9 +969,7 @@ func persistCampaignComplianceWitnesses(t *testing.T, fileSvc fs.RuntimeFileServ
 	provenanceDigest, err := model_provenance.ComputeAttestationDigest(provenance)
 	require.NoError(t, err)
 	provenance.AttestationDigest = provenanceDigest
-	provenanceStore, err := model_provenance.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	require.NoError(t, provenanceStore.Save(ctx, provenance))
+	require.NoError(t, store.SaveModelProvenanceWindow(ctx, runID, provenance))
 }
 
 func verifyCampaignComplianceBundleFixture(t *testing.T, fixture campaignComplianceBundleFixture) *compliancev1.ComplianceVerificationReport {
@@ -951,45 +984,69 @@ func verifyCampaignComplianceBundleFixture(t *testing.T, fixture campaignComplia
 	return report
 }
 
-func TestComplianceReportGenerateCmdWithConfig_StrictCampaignMissingWitnessesRemainFailedOffline(t *testing.T) {
-	fixture := generateCampaignComplianceBundleFixture(t, false)
+func TestComplianceReportGenerateCmdWithConfig_CampaignMissingSealedModelProvenanceFailsGeneration(t *testing.T) {
+	_, err := generateCampaignComplianceBundle(t, campaignWitnessSeed{providerEvidence: true})
 
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, fixture.verification.GetStatus())
-	assert.Contains(t, strings.Join(fixture.verification.GetFailureReasons(), "\n"), "missing provider-boundary observation window")
-	assert.Contains(t, strings.Join(fixture.verification.GetFailureReasons(), "\n"), "missing model provenance attestation window")
-	assert.True(t, verifyCampaignComplianceBundleFixture(t, fixture).GetValid())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+}
+
+func TestComplianceReportGenerateCmdWithConfig_CampaignMissingSealedProviderEvidenceFailsGeneration(t *testing.T) {
+	_, err := generateCampaignComplianceBundle(t, campaignWitnessSeed{modelProvenance: true})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+}
+
+// bundleRuntimeFile maps one runtime path of the campaign to its file in the
+// exported bundle.
+func bundleRuntimeFile(fixture campaignComplianceBundleFixture, runtimePath string) string {
+	return filepath.Join(fixture.bundleDir, constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, fixture.admissionID, constants.ComplianceBundleSourceRuntimeDirname, filepath.FromSlash(runtimePath))
+}
+
+// sealedWitnessBundlePath names the bundle path of one attempt's sealed witness
+// body. The keyed reference under witnessDirname beside it names that body by
+// digest.
+func sealedWitnessBundlePath(t *testing.T, fixture campaignComplianceBundleFixture, witnessDirname, refFilename string) string {
+	t.Helper()
+	evidenceDir := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, fixture.runID, constants.EvaluationEvidenceDirname)
+	refBody, err := os.ReadFile(bundleRuntimeFile(fixture, path.Join(evidenceDir, witnessDirname, fixture.attemptID, refFilename)))
+	require.NoError(t, err)
+	reference := &compliancev1.ComplianceEvidenceReference{}
+	require.NoError(t, compliancev1.UnmarshalCanonical(refBody, reference))
+	return path.Join(evidenceDir, reference.GetSha256()+constants.FileExtJSON)
 }
 
 func TestComplianceReportGenerateCmdWithConfig_CampaignWitnessMutationsFailOfflineReplay(t *testing.T) {
 	tests := []struct {
 		name        string
-		runtimePath func(string) string
+		runtimePath func(t *testing.T, fixture campaignComplianceBundleFixture) string
 		remove      bool
 	}{
-		{name: "tampered provider attempt", runtimePath: func(attemptID string) string {
-			return path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceAttemptsDirname, attemptID+constants.FileExtJSON)
+		{name: "tampered provider attempt", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderAttemptRefFilename)
 		}},
-		{name: "missing provider attempt", runtimePath: func(attemptID string) string {
-			return path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceAttemptsDirname, attemptID+constants.FileExtJSON)
+		{name: "missing provider attempt", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderAttemptRefFilename)
 		}, remove: true},
-		{name: "tampered provider observation", runtimePath: func(attemptID string) string {
-			return path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceProviderObserverDirname, constants.InferenceProviderObserverWindowsDirname, attemptID+constants.FileExtJSON)
+		{name: "tampered provider observation", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderWindowRefFilename)
 		}},
-		{name: "missing provider observation", runtimePath: func(attemptID string) string {
-			return path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceProviderObserverDirname, constants.InferenceProviderObserverWindowsDirname, attemptID+constants.FileExtJSON)
+		{name: "missing provider observation", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderWindowRefFilename)
 		}, remove: true},
-		{name: "tampered model provenance", runtimePath: func(attemptID string) string {
-			return path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceModelProvenanceDirname, constants.InferenceModelProvenanceWindowsDirname, attemptID+constants.FileExtJSON)
+		{name: "tampered model provenance", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			return sealedWitnessBundlePath(t, fixture, constants.EvaluationModelProvenanceDirname, constants.EvaluationModelProvenanceWindowRefFilename)
 		}},
-		{name: "missing model provenance", runtimePath: func(attemptID string) string {
-			return path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceModelProvenanceDirname, constants.InferenceModelProvenanceWindowsDirname, attemptID+constants.FileExtJSON)
+		{name: "missing model provenance", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			return sealedWitnessBundlePath(t, fixture, constants.EvaluationModelProvenanceDirname, constants.EvaluationModelProvenanceWindowRefFilename)
 		}, remove: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fixture := generateCampaignComplianceBundleFixture(t, true)
+			fixture := generateCampaignComplianceBundleFixture(t, campaignWitnessSeed{providerEvidence: true, modelProvenance: true})
 			assert.True(t, verifyCampaignComplianceBundleFixture(t, fixture).GetValid())
-			sourcePath := filepath.Join(fixture.bundleDir, constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, fixture.admissionID, constants.ComplianceBundleSourceRuntimeDirname, filepath.FromSlash(test.runtimePath(fixture.attemptID)))
+			sourcePath := bundleRuntimeFile(fixture, test.runtimePath(t, fixture))
 			if test.remove {
 				require.NoError(t, os.Remove(sourcePath))
 			} else {

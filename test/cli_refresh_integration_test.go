@@ -94,7 +94,7 @@ func TestCLIRefresh_ExpiredSessionRecoverable(t *testing.T) {
 
 	// 3. Call the refresh endpoint with the still-valid cert. The auth
 	//    middleware admits the expired session to the refresh controller,
-	//    which issues a new session. Use a fresh HTTP client for the
+	//    which extends that same session in place. Use a fresh HTTP client for the
 	//    refresh call so the connection pool does not hand out a
 	//    connection the gateway may have closed after the 401 above.
 	refreshCliClient := fixtures.CreateCLIMTLSClient(t, fixture, identity)
@@ -112,37 +112,28 @@ func TestCLIRefresh_ExpiredSessionRecoverable(t *testing.T) {
 	require.NoError(t, json.Unmarshal(refreshRespBytes, &refreshResult))
 	require.True(t, refreshResult.Success)
 	require.NotEmpty(t, refreshResult.CLISessionID)
-	require.NotEqual(t, cliSessionID, refreshResult.CLISessionID,
-		"refresh must issue a new session ID distinct from the expired one")
+	require.Equal(t, cliSessionID, refreshResult.CLISessionID,
+		"refresh must extend the session the certificate names, keeping its ID")
 	assert.Equal(t, identity.UserID, refreshResult.UserID)
 
-	// 4. Verify the old session is deactivated.
-	oldDoc, err := fixture.Service.GetDocStore().DocGet(t.Context(),
+	// 4. Verify the same session is active again, bound to the same user and
+	//    certificate, with a future expiry.
+	refreshedDoc, err := fixture.Service.GetDocStore().DocGet(t.Context(),
 		marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
 	require.NoError(t, err)
-	require.NotNil(t, oldDoc)
-	var oldSession models.CLISession
-	oldDataBytes, err := json.Marshal(oldDoc.Data)
+	require.NotNil(t, refreshedDoc)
+	var refreshed models.CLISession
+	refreshedBytes, err := json.Marshal(refreshedDoc.Data)
 	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(oldDataBytes, &oldSession))
-	assert.False(t, oldSession.IsActive, "old session must be deactivated after refresh")
+	require.NoError(t, json.Unmarshal(refreshedBytes, &refreshed))
+	assert.True(t, refreshed.IsActive, "the refreshed session must be active")
+	assert.Equal(t, identity.UserID, refreshed.UserID)
+	assert.Equal(t, expiredSession.CertFingerprint, refreshed.CertFingerprint, "refresh keeps the certificate binding")
+	assert.True(t, refreshed.ExpiresAt.After(time.Now()),
+		"the refreshed session must have a future expiry (TTL refreshed)")
 
-	// 5. Verify the new session is active and persisted.
-	newDoc, err := fixture.Service.GetDocStore().DocGet(t.Context(),
-		marshaler.CollectionName(constants.CollectionCLISessions), refreshResult.CLISessionID)
-	require.NoError(t, err)
-	require.NotNil(t, newDoc)
-	var newSession models.CLISession
-	newDataBytes, err := json.Marshal(newDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(newDataBytes, &newSession))
-	assert.True(t, newSession.IsActive, "new session must be active")
-	assert.Equal(t, identity.UserID, newSession.UserID)
-	assert.True(t, newSession.ExpiresAt.After(time.Now()),
-		"new session must have a future expiry (TTL refreshed)")
-
-	// 6. Verify the new session works for a downstream mTLS call by
-	//    building a CLI client with the new session ID header.
+	// 5. Verify the refreshed session works for a downstream mTLS call with the
+	//    same certificate and session ID header.
 	identity.CLISessionID = refreshResult.CLISessionID
 	newCliClient := fixtures.CreateCLIMTLSClient(t, fixture, identity)
 	postRefreshReq, _ := http.NewRequest(http.MethodGet, mtlsURL+constants.APIPaths.AuditReceipts, nil)

@@ -155,17 +155,22 @@ func TestPublisherProofLog_ConcurrentPublicationsFormLinearChain(t *testing.T) {
 	store, _ := newProofPushTestMirror(t, publisher)
 	ctx := context.Background()
 	const publications = 16
+	seeds := make([]assignmentSeed, publications)
+	for i := range seeds {
+		seeds[i] = assignmentSeed{runID: fmt.Sprintf("run-%d", i), assignmentID: fmt.Sprintf("assignment-%d", i), events: 1}
+	}
+	seedAssignmentEvents(t, publisher, seeds...)
 
 	var wg sync.WaitGroup
 	errs := make(chan error, publications)
 	for i := range publications {
 		wg.Go(func() {
 			_, err := publisher.PublishAssignmentAuditProof(ctx, models.PublicAssignmentAuditProofPublishRequest{
-				CampaignID:   "c1",
-				RunID:        fmt.Sprintf("run-%d", i),
-				AssignmentID: fmt.Sprintf("assignment-%d", i),
-				Database:     []byte(fmt.Sprintf("database-%d", i)),
-				VaultKey:     []byte(fmt.Sprintf("vault-key-%d", i)),
+				CampaignID:       "c1",
+				CampaignRevision: "rev-1",
+				RunID:            fmt.Sprintf("run-%d", i),
+				AssignmentID:     fmt.Sprintf("assignment-%d", i),
+				IndexDigest:      "digest-1",
 			})
 			errs <- err
 		})
@@ -180,12 +185,12 @@ func TestPublisherProofLog_ConcurrentPublicationsFormLinearChain(t *testing.T) {
 	require.Len(t, segments, publications)
 	catalog, err := publisher.GetProofCatalog(ctx)
 	require.NoError(t, err)
-	assert.Len(t, catalog.Entries, 2*publications)
+	assert.Len(t, catalog.Entries, publications, "each assignment publishes its database alone")
 	stored, found, err := store.ProofManifest(ctx, publisher.cfg.SourceID)
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, segments[publications-1].ProofRootSHA256, stored.ProofRootSHA256)
-	assert.Equal(t, 2*publications, stored.ArtifactCount)
+	assert.Equal(t, publications, stored.ArtifactCount)
 }
 
 // seedPublisherProofLog writes a signed log of segments, each listing
@@ -275,6 +280,15 @@ func measurePublisherScaling(t *testing.T, historySegments, timed int) []publish
 	publisher := newSharedLogPublisher(seeded)
 	head, err := publisher.loadProofManifest(ctx) // the one replay of history
 	require.NoError(t, err)
+	// The timed assignments' events are seeded before timing starts, through a
+	// real mirror that is also their event source. The proof pushes below go to
+	// the head stub instead.
+	newProofPushTestMirror(t, publisher)
+	seeds := make([]assignmentSeed, timed)
+	for i := range seeds {
+		seeds[i] = assignmentSeed{runID: fmt.Sprintf("timed-run-%d", i), assignmentID: fmt.Sprintf("timed-%d", i), events: 1}
+	}
+	seedAssignmentEvents(t, publisher, seeds...)
 	mirror := &proofHeadMirror{head: models.PublicProofRootResponse{SourceID: publisher.cfg.SourceID, SegmentIndex: head.SegmentIndex, ProofRootSHA256: head.ProofRootSHA256}}
 	server := httptest.NewServer(mirror)
 	t.Cleanup(server.Close)
@@ -288,11 +302,11 @@ func measurePublisherScaling(t *testing.T, historySegments, timed int) []publish
 		runtime.ReadMemStats(&before)
 		start := time.Now()
 		_, err := publisher.PublishAssignmentAuditProof(ctx, models.PublicAssignmentAuditProofPublishRequest{
-			CampaignID:   "c1",
-			RunID:        fmt.Sprintf("timed-run-%d", i),
-			AssignmentID: fmt.Sprintf("timed-%d", i),
-			Database:     []byte(fmt.Sprintf("database-%d", i)),
-			VaultKey:     []byte(fmt.Sprintf("vault-key-%d", i)),
+			CampaignID:       "c1",
+			CampaignRevision: "rev-1",
+			RunID:            fmt.Sprintf("timed-run-%d", i),
+			AssignmentID:     fmt.Sprintf("timed-%d", i),
+			IndexDigest:      "digest-1",
 		})
 		require.NoError(t, err)
 		samples[i].elapsed = time.Since(start)

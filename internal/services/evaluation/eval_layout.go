@@ -90,6 +90,12 @@ func (l evalLayout) providerAttemptRefPath(runID, providerAttemptID string) stri
 	return filepath.Join(l.evidenceDir(runID), constants.EvaluationProviderObservationsDirname, providerAttemptID, constants.EvaluationProviderAttemptRefFilename)
 }
 
+// modelProvenanceWindowRefPath addresses the keyed record that names the sealed
+// model provenance attestation window of one provider attempt.
+func (l evalLayout) modelProvenanceWindowRefPath(runID, providerAttemptID string) string {
+	return filepath.Join(l.evidenceDir(runID), constants.EvaluationModelProvenanceDirname, providerAttemptID, constants.EvaluationModelProvenanceWindowRefFilename)
+}
+
 func (l evalLayout) campaignSpecPath(campaignID string) string {
 	return filepath.Join(l.campaignDir(campaignID), constants.EvaluationCampaignSpecFilename)
 }

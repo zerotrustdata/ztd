@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -79,19 +80,37 @@ func TestVerifyModelProvenanceWindow_ExpectedDigestMismatch(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrModelProvenanceDigestMismatch)
 }
 
-func TestLocalModelProvenanceReader_LoadRoundTrip(t *testing.T) {
+func TestStore_ModelProvenanceWindowRoundTrip(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	store, err := model_provenance.NewWindowStore(fileSvc)
-	require.NoError(t, err)
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	window := testModelProvenanceWindow(t, "attempt-1")
-	require.NoError(t, store.Save(ctx, window))
+	require.NoError(t, store.SaveModelProvenanceWindow(ctx, "run-1", window))
 
-	reader := &localModelProvenanceReader{store: store}
-	loaded, err := reader.Load(ctx, "attempt-1")
+	loaded, err := store.LoadModelProvenanceWindow(ctx, "run-1", "attempt-1")
 	require.NoError(t, err)
 	assert.Equal(t, window.GetAttestationDigest(), loaded.GetAttestationDigest())
+	_, err = store.LoadModelProvenanceWindow(ctx, "run-1", "attempt-absent")
+	assert.ErrorIs(t, err, constants.ErrNotFound)
+}
+
+func TestStore_SaveModelProvenanceWindowRejectsInvalidWindow(t *testing.T) {
+	t.Parallel()
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+	window := testModelProvenanceWindow(t, "attempt-1")
+	window.AttestationDigest = "invalid"
+
+	err := store.SaveModelProvenanceWindow(t.Context(), "run-1", window)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
+}
+
+func TestStore_LoadModelProvenanceWindowRejectsMissingProviderAttemptID(t *testing.T) {
+	t.Parallel()
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+	_, err := store.LoadModelProvenanceWindow(t.Context(), "run-1", "")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }
 
 type stubModelProvenanceRemote struct {
@@ -113,42 +132,71 @@ func (s *stubModelProvenanceRemote) WatchRecorded(ctx context.Context, connected
 	return nil
 }
 
-func TestLocalModelProvenanceReader_RejectsMissingProviderAttemptID(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	store, err := model_provenance.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	reader := &localModelProvenanceReader{store: store}
-	_, err = reader.Load(ctx, "")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
-}
-
 func TestCampaignModelProvenanceReader_CaptureAssignmentEvidencePersistsGatewayEvidence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	store := NewStore(fileSvc)
 	window := testModelProvenanceWindow(t, "attempt-captured")
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(fileSvc, &stubModelProvenanceRemote{window: window})
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(store, &stubModelProvenanceRemote{window: window})
 	require.NoError(t, err)
-	result := &evalv1.EvaluationAssignmentResult{ModelInferences: []*evalv1.ModelInferenceRecord{{ProviderAttemptId: window.GetProviderAttemptId(), ModelVariant: &evalv1.ModelVariant{ModelDigest: window.GetExpectedModelDigest()}}}}
+	result := &evalv1.EvaluationAssignmentResult{
+		RunId:           "run-1",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{ProviderAttemptId: window.GetProviderAttemptId(), ModelVariant: &evalv1.ModelVariant{ModelDigest: window.GetExpectedModelDigest()}}},
+	}
 
 	require.NoError(t, reader.CaptureAssignmentEvidence(ctx, result))
-	localReader, err := NewCampaignModelProvenanceReader(fileSvc)
+
+	// Capture seals the fetched evidence into the run's evaluation evidence and
+	// never writes the production inference stores.
+	inferenceExists, err := fileSvc.FileExists(ctx, filepath.Join(constants.DataDirname, constants.InferenceDirname))
+	require.NoError(t, err)
+	assert.False(t, inferenceExists, "capture must not write under data/inference")
+
+	localReader, err := NewCampaignModelProvenanceReader(store)
 	require.NoError(t, err)
 	failures, unavailable := localReader.VerifyAssignmentModelProvenance(ctx, result, ModelProvenancePolicyStrict)
 	assert.Empty(t, failures)
 	assert.Empty(t, unavailable)
 }
 
+// TestCampaignModelProvenanceReader_NeverReadsGatewayOnLocalMiss pins that reads
+// come only from the run's sealed copies: a local miss is unavailable, and the
+// gateway remote is never consulted.
+func TestCampaignModelProvenanceReader_NeverReadsGatewayOnLocalMiss(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-remote"))
+	remote.isRecorded = true
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(store, remote)
+	require.NoError(t, err)
+	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-remote",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			InferenceRecordId: "inference-1",
+			ProviderAttemptId: "attempt-remote",
+			ModelVariant:      &evalv1.ModelVariant{ModelDigest: strings.Repeat("a", 64)},
+		}},
+	}
+
+	failures, unavailable := reader.VerifyAssignmentModelProvenance(ctx, result, ModelProvenancePolicyStrict)
+	assert.NotEmpty(t, failures)
+	assert.Equal(t, []string{"model_provenance_missing:attempt-remote"}, unavailable)
+	assert.Zero(t, remote.loadCount(), "reads must never consult the gateway")
+
+	_, err = store.LoadModelProvenanceWindow(ctx, "run-remote", "attempt-remote")
+	assert.ErrorIs(t, err, constants.ErrNotFound)
+}
+
 func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictMissingWindow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	reader, err := NewCampaignModelProvenanceReader(fileSvc)
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+	reader, err := NewCampaignModelProvenanceReader(store)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-1",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId: "inf-1",
 			ProviderAttemptId: "attempt-missing",
@@ -163,14 +211,13 @@ func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictMis
 func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictDigestMatch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	store, err := model_provenance.NewWindowStore(fileSvc)
-	require.NoError(t, err)
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	window := testModelProvenanceWindow(t, "attempt-1")
-	require.NoError(t, store.Save(ctx, window))
-	reader, err := NewCampaignModelProvenanceReader(fileSvc)
+	require.NoError(t, store.SaveModelProvenanceWindow(ctx, "run-1", window))
+	reader, err := NewCampaignModelProvenanceReader(store)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-1",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId: "inf-1",
 			ProviderAttemptId: "attempt-1",
@@ -253,7 +300,8 @@ func (r *recordingProvenanceRemote) loadCount() int {
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceCapturesOnRecordingEvent(t *testing.T) {
 	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-delayed"))
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	store := NewStore(newCampaignMemoryFileService())
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(store, remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -263,28 +311,28 @@ func TestCampaignModelProvenanceReader_WaitForEvidenceCapturesOnRecordingEvent(t
 		remote.record(t, "attempt-delayed")
 	}()
 
-	require.NoError(t, reader.WaitForEvidence(ctx, []string{"attempt-delayed", "attempt-delayed"}))
+	require.NoError(t, reader.WaitForEvidence(ctx, "run-1", []string{"attempt-delayed", "attempt-delayed"}))
 	assert.Equal(t, 2, remote.loadCount())
-	// Captured evidence is persisted locally: a second wait opens no stream.
-	require.NoError(t, reader.WaitForEvidence(ctx, []string{"attempt-delayed"}))
+	// Captured evidence is sealed in the run: a second wait opens no stream.
+	require.NoError(t, reader.WaitForEvidence(ctx, "run-1", []string{"attempt-delayed"}))
 	assert.Equal(t, 2, remote.loadCount())
 }
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceReconcilesOnConnect(t *testing.T) {
 	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-early"))
 	remote.isRecorded = true
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(NewStore(newCampaignMemoryFileService()), remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, reader.WaitForEvidence(ctx, []string{"attempt-early"}))
+	require.NoError(t, reader.WaitForEvidence(ctx, "run-1", []string{"attempt-early"}))
 	assert.Equal(t, 1, remote.loadCount())
 }
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceIgnoresOtherAttempts(t *testing.T) {
 	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-pending"))
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(NewStore(newCampaignMemoryFileService()), remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -294,19 +342,19 @@ func TestCampaignModelProvenanceReader_WaitForEvidenceIgnoresOtherAttempts(t *te
 		remote.record(t, "attempt-pending")
 	}()
 
-	require.NoError(t, reader.WaitForEvidence(ctx, []string{"attempt-pending"}))
+	require.NoError(t, reader.WaitForEvidence(ctx, "run-1", []string{"attempt-pending"}))
 	// Reconcile plus the matching event; the unrelated recording costs no read.
 	assert.Equal(t, 2, remote.loadCount())
 }
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceReportsMissingOnDeadline(t *testing.T) {
 	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-never"))
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(NewStore(newCampaignMemoryFileService()), remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
 
-	err = reader.WaitForEvidence(ctx, []string{"attempt-never"})
+	err = reader.WaitForEvidence(ctx, "run-1", []string{"attempt-never"})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
 	assert.Contains(t, err.Error(), "1 missing")
@@ -318,33 +366,33 @@ func TestCampaignModelProvenanceReader_WaitForEvidenceReportsMissingOnDeadline(t
 func TestCampaignModelProvenanceReader_WaitForEvidencePropagatesReadFailure(t *testing.T) {
 	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-failed"))
 	remote.loadErr = constants.ErrServiceUnavailable
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(NewStore(newCampaignMemoryFileService()), remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	require.ErrorIs(t, reader.WaitForEvidence(ctx, []string{"attempt-failed"}), constants.ErrServiceUnavailable)
+	require.ErrorIs(t, reader.WaitForEvidence(ctx, "run-1", []string{"attempt-failed"}), constants.ErrServiceUnavailable)
 	assert.Equal(t, 1, remote.loadCount())
 }
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceFailsWhenStreamEnds(t *testing.T) {
 	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-orphaned"))
 	remote.watchErr = constants.ErrCLISessionRefreshRequired
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(NewStore(newCampaignMemoryFileService()), remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	err = reader.WaitForEvidence(ctx, []string{"attempt-orphaned"})
+	err = reader.WaitForEvidence(ctx, "run-1", []string{"attempt-orphaned"})
 	require.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
 	assert.Contains(t, err.Error(), "attempt-orphaned")
 }
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceWithoutGatewayFailsFast(t *testing.T) {
-	reader, err := NewCampaignModelProvenanceReader(newCampaignMemoryFileService())
+	reader, err := NewCampaignModelProvenanceReader(NewStore(newCampaignMemoryFileService()))
 	require.NoError(t, err)
 
-	err = reader.WaitForEvidence(t.Context(), []string{"attempt-missing"})
+	err = reader.WaitForEvidence(t.Context(), "run-1", []string{"attempt-missing"})
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
 	require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
 	assert.Contains(t, err.Error(), "attempt-missing")
@@ -352,7 +400,7 @@ func TestCampaignModelProvenanceReader_WaitForEvidenceWithoutGatewayFailsFast(t 
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceHonorsCancellation(t *testing.T) {
 	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-cancelled"))
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(NewStore(newCampaignMemoryFileService()), remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -360,15 +408,15 @@ func TestCampaignModelProvenanceReader_WaitForEvidenceHonorsCancellation(t *test
 		<-remote.missed
 		cancel()
 	}()
-	require.ErrorIs(t, reader.WaitForEvidence(ctx, []string{"attempt-cancelled"}), context.Canceled)
+	require.ErrorIs(t, reader.WaitForEvidence(ctx, "run-1", []string{"attempt-cancelled"}), context.Canceled)
 }
 
 func TestCampaignModelProvenanceReader_WaitForEvidenceRejectsInvalidWindow(t *testing.T) {
 	remote := &stubModelProvenanceRemote{window: testModelProvenanceWindow(t, "attempt-invalid")}
 	remote.window.AttestationDigest = "invalid"
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(newCampaignMemoryFileService(), remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(NewStore(newCampaignMemoryFileService()), remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	require.Error(t, reader.WaitForEvidence(ctx, []string{"attempt-invalid"}))
+	require.Error(t, reader.WaitForEvidence(ctx, "run-1", []string{"attempt-invalid"}))
 }

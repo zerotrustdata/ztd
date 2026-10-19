@@ -96,6 +96,22 @@ func marshalCLISessionDeactivationUpdate() (json.RawMessage, error) {
 	return data, nil
 }
 
+// cliSessionBindingUpdate rewrites the operator binding of an existing CLI
+// session. Neither field carries omitempty so a cleared binding (empty primary,
+// empty list) is persisted instead of being dropped from the update.
+type cliSessionBindingUpdate struct {
+	OperatorSessionID       string   `json:"operator_session_id"`
+	BoundOperatorSessionIDs []string `json:"bound_operator_session_ids"`
+}
+
+func marshalCLISessionBindingUpdate(primary string, bound []string) (json.RawMessage, error) {
+	data, err := json.Marshal(cliSessionBindingUpdate{OperatorSessionID: primary, BoundOperatorSessionIDs: bound})
+	if err != nil {
+		return nil, fmt.Errorf("marshal CLI session binding: %w", err)
+	}
+	return data, nil
+}
+
 // DeactivateCLISession atomically marks a CLI session inactive by setting
 // is_active=false via DocConditionalUpdate. Only an active session can be
 // deactivated; an already-deactivated session returns
@@ -361,180 +377,195 @@ func (s *CLISessionService) loadCLISession(ctx context.Context, sessionID string
 	return decodeCLISession(doc)
 }
 
-// RefreshCLISession issues a new active CLI session bound to the same user
-// as the caller's authenticated cert, deactivating the old session if it
-// still exists (it may be expired but not deactivated, or missing entirely
-// after a gateway volume reset). The caller's cert is NOT rotated — the
-// cert is the proof of identity, and the cert's URI SAN binds the new
-// session to the same user. The new session preserves the certificate fingerprint so auth can bind it to the original certificate after the session ID rotates.
+// CLISessionRefreshFields carries the operator binding a refresh writes onto an
+// existing CLI session. It is a typed subset so a refresh cannot rewrite the
+// certificate grounding (fingerprint and serial), system fingerprint, login
+// method, or creation time of the session it extends.
+type CLISessionRefreshFields struct {
+	UserID            string
+	OperatorSessionID string
+	// BoundOperatorSessionIDs is the full multi-bind list (primary first); nil
+	// clears it.
+	BoundOperatorSessionIDs []string
+}
+
+// cliSessionRefreshUpdate extends an active CLI session in place: all three
+// expiry fields move to the TTL window and the operator binding is rewritten.
+// The binding fields carry no omitempty so a cleared binding is persisted.
+type cliSessionRefreshUpdate struct {
+	ExpiresAt               time.Time `json:"expires_at"`
+	AbsoluteExpiresAt       time.Time `json:"absolute_expires_at"`
+	IdleExpiresAt           time.Time `json:"idle_expires_at"`
+	OperatorSessionID       string    `json:"operator_session_id"`
+	BoundOperatorSessionIDs []string  `json:"bound_operator_session_ids"`
+}
+
+func marshalCLISessionRefreshUpdate(expiry time.Time, primary string, bound []string) (json.RawMessage, error) {
+	data, err := json.Marshal(cliSessionRefreshUpdate{
+		ExpiresAt:               expiry,
+		AbsoluteExpiresAt:       expiry,
+		IdleExpiresAt:           expiry,
+		OperatorSessionID:       primary,
+		BoundOperatorSessionIDs: bound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal CLI session refresh: %w", err)
+	}
+	return data, nil
+}
+
+// RefreshCLISession extends the caller's CLI session in place. The session keeps
+// its ID, certificate fingerprint and serial, system fingerprint, login method,
+// and creation time, so the certificate's URI SAN still names it, signed CLI
+// approvals still match it, and its SSE streams stay subscribed. Its three
+// expiry fields move to constants.CLISessionTTL from now, and the operator
+// binding is rewritten to the binding the caller resolved. Nothing is created.
 //
-// This is the recovery path for an expired CLI session with a still-valid
-// cert. It does NOT issue a new cert (use Rotate for that) and does NOT
-// require human approval (use Recovery for that). The cert's validity is
-// the gate: an expired cert cannot authenticate via mTLS, so it can never
-// reach this method.
+// Refresh is the recovery path for an expired session, so an expired session is
+// extended. A deactivated session is never revived and returns
+// constants.ErrCLISessionAlreadyDeactivated. A missing session returns
+// constants.ErrCLISessionNotFound, and so does a session that belongs to another
+// user, so the caller learns nothing about sessions it does not own.
 //
-// oldSessionID may be empty when the cert's URI SAN session ID does not
-// match any persisted session (e.g., after a gateway volume reset). In
-// that case, only the new session is persisted; there is no old session to
-// deactivate.
-func (s *CLISessionService) RefreshCLISession(ctx context.Context, oldSessionID, newSessionID string, fields CLISessionFields) (*models.CLISession, error) {
-	if newSessionID == "" {
-		return nil, fmt.Errorf("refresh CLI session: missing new session ID")
+// The write is conditional on is_active=true, so a concurrent logout that
+// deactivates the session between the read and the write wins.
+func (s *CLISessionService) RefreshCLISession(ctx context.Context, cliSessionID string, fields CLISessionRefreshFields) (*models.CLISession, error) {
+	if cliSessionID == "" {
+		return nil, fmt.Errorf("refresh CLI session: %w", constants.ErrCLISessionInvalid)
 	}
 	if fields.UserID == "" || fields.OperatorSessionID == "" {
 		return nil, fmt.Errorf("refresh CLI session: missing user or operator session binding")
 	}
 
-	// 1. If an old session exists, deactivate it. Best-effort: a missing or
-	//    already-deactivated old session is not an error (the caller's cert
-	//    is the proof of identity, not the old session's state). A store
-	//    error on deactivation IS an error — we do not want two active
-	//    sessions for the same cert.
-	deactivationUpdate, err := marshalCLISessionDeactivationUpdate()
+	existing, err := s.loadCLISession(ctx, cliSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("refresh CLI session: load: %w", err)
+	}
+	if existing.UserID != fields.UserID {
+		return nil, fmt.Errorf("refresh CLI session: %w", constants.ErrCLISessionNotFound)
+	}
+	if !existing.IsActive {
+		return nil, constants.ErrCLISessionAlreadyDeactivated
+	}
+
+	bound := fields.BoundOperatorSessionIDs
+	if bound == nil {
+		bound = []string{}
+	}
+	expiry := time.Now().UTC().Add(constants.CLISessionTTL)
+	refreshUpdate, err := marshalCLISessionRefreshUpdate(expiry, fields.OperatorSessionID, bound)
 	if err != nil {
 		return nil, err
 	}
-	if oldSessionID != "" {
-		oldDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), oldSessionID)
-		if err != nil {
-			return nil, fmt.Errorf("refresh CLI session: load old: %w", err)
-		}
-		if oldDoc != nil {
-			oldSession, err := decodeCLISession(oldDoc)
-			if err != nil {
-				return nil, fmt.Errorf("refresh CLI session: decode old: %w", err)
-			}
-			if oldSession.IsActive {
-				applied, err := s.db.DocConditionalUpdate(
-					ctx, marshaler.CollectionName(constants.CollectionCLISessions),
-					oldSessionID,
-					deactivationUpdate,
-					"is_active", true,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("refresh CLI session: deactivate old: %w", err)
-				}
-				if !applied {
-					// A concurrent caller already deactivated it. Not an
-					// error — proceed to persist the new session.
-					s.logger.Info("RefreshCLISession: old session already deactivated by concurrent caller",
-						"old_session_id_prefix", safeTruncateID(oldSessionID),
-					)
-				}
-			}
-		}
-	}
-
-	// 2. Persist the new session.
-	cliExpiry := time.Now().UTC().Add(constants.CLISessionTTL)
-	created := models.CLISession{
-		ID:                      newSessionID,
-		UserID:                  fields.UserID,
-		OperatorSessionID:       fields.OperatorSessionID,
-		BoundOperatorSessionIDs: fields.BoundOperatorSessionIDs,
-		SystemFingerprint:       fields.SystemFingerprint,
-		CertFingerprint:         fields.CertFingerprint,
-		CertSerial:              fields.CertSerial,
-		CreatedAt:               time.Now().UTC(),
-		ExpiresAt:               cliExpiry,
-		AbsoluteExpiresAt:       cliExpiry,
-		IdleExpiresAt:           cliExpiry,
-		SessionType:             string(constants.SessionTypeCLI),
-		IsActive:                true,
-		LoginMethod:             fields.LoginMethod,
-	}
-	createdBytes, err := json.Marshal(created)
-	if err != nil {
-		return nil, fmt.Errorf("refresh CLI session: marshal new: %w", err)
-	}
-	if err := s.db.DocSet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), newSessionID, createdBytes); err != nil {
-		return nil, fmt.Errorf("refresh CLI session: persist new: %w", err)
-	}
-
-	s.logger.Info("CLI session refreshed",
-		"old_session_id_prefix", safeTruncateID(oldSessionID),
-		"new_session_id_prefix", safeTruncateID(newSessionID),
-		"user_id", fields.UserID,
+	applied, err := s.db.DocConditionalUpdate(
+		ctx, marshaler.CollectionName(constants.CollectionCLISessions),
+		cliSessionID,
+		refreshUpdate,
+		"is_active", true,
 	)
-	return &created, nil
+	if err != nil {
+		return nil, fmt.Errorf("refresh CLI session: conditional update: %w", err)
+	}
+	if !applied {
+		// A concurrent caller deactivated the session between our read and the
+		// conditional update. Re-read to give a precise error.
+		current, err := s.loadCLISession(ctx, cliSessionID)
+		if err != nil {
+			return nil, fmt.Errorf("refresh CLI session: reload: %w", err)
+		}
+		if !current.IsActive {
+			return nil, constants.ErrCLISessionAlreadyDeactivated
+		}
+		// Should not happen: the conditional update matched on is_active=true.
+		return nil, fmt.Errorf("refresh CLI session: %w", constants.ErrCLISessionInvalid)
+	}
+
+	existing.ExpiresAt = expiry
+	existing.AbsoluteExpiresAt = expiry
+	existing.IdleExpiresAt = expiry
+	existing.OperatorSessionID = fields.OperatorSessionID
+	existing.BoundOperatorSessionIDs = bound
+	s.logger.Info("CLI session refreshed in place",
+		"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		"user_id", fields.UserID,
+		"operator_count", len(bound),
+	)
+	return existing, nil
 }
 
-// UnbindCLISession issues a new active CLI session for the authenticated user
-// with no operator binding, deactivating the old session when it still exists.
-// The caller's cert is not rotated. oldSessionID may be empty when the cert's
-// URI SAN session ID does not match any persisted session.
-func (s *CLISessionService) UnbindCLISession(ctx context.Context, oldSessionID, newSessionID string, fields CLISessionFields) (*models.CLISession, error) {
-	if newSessionID == "" {
-		return nil, fmt.Errorf("unbind CLI session: missing new session ID")
+// BindOperatorSessions rebinds an active CLI session to the given operator
+// sessions in place. bound lists every target with primary first, so primary
+// must equal bound[0]. The session keeps its ID, certificate fingerprint and
+// serial, expiry, and login method: the certificate's URI SAN still names this
+// session, signed CLI approvals still match it, and SSE streams subscribed to
+// it stay routable. Nothing is created. A missing session returns
+// constants.ErrCLISessionNotFound and an inactive one returns
+// constants.ErrCLISessionAlreadyDeactivated.
+func (s *CLISessionService) BindOperatorSessions(ctx context.Context, cliSessionID, primary string, bound []string) (*models.CLISession, error) {
+	if cliSessionID == "" || primary == "" || len(bound) == 0 || bound[0] != primary {
+		return nil, fmt.Errorf("bind CLI session: %w", constants.ErrCLISessionInvalid)
 	}
-	if fields.UserID == "" {
-		return nil, fmt.Errorf("unbind CLI session: missing user")
+	return s.updateCLISessionBinding(ctx, cliSessionID, primary, bound)
+}
+
+// UnbindOperatorSessions clears the operator binding (OperatorSessionID and
+// BoundOperatorSessionIDs) of an active CLI session in place. The session keeps
+// its ID and certificate grounding; nothing is created. Missing and inactive
+// sessions are reported as in BindOperatorSessions.
+func (s *CLISessionService) UnbindOperatorSessions(ctx context.Context, cliSessionID string) (*models.CLISession, error) {
+	if cliSessionID == "" {
+		return nil, fmt.Errorf("unbind CLI session: %w", constants.ErrCLISessionInvalid)
 	}
-	deactivationUpdate, err := marshalCLISessionDeactivationUpdate()
+	return s.updateCLISessionBinding(ctx, cliSessionID, "", []string{})
+}
+
+// updateCLISessionBinding writes the binding fields of an active CLI session
+// through a conditional update guarded on is_active=true, so a session that a
+// concurrent caller deactivated is never rebound.
+func (s *CLISessionService) updateCLISessionBinding(ctx context.Context, cliSessionID, primary string, bound []string) (*models.CLISession, error) {
+	// Read first to distinguish not-found from inactive.
+	existing, err := s.loadCLISession(ctx, cliSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("update CLI session binding: load: %w", err)
+	}
+	if !existing.IsActive {
+		return nil, constants.ErrCLISessionAlreadyDeactivated
+	}
+	bindingUpdate, err := marshalCLISessionBindingUpdate(primary, bound)
 	if err != nil {
 		return nil, err
 	}
 
-	if oldSessionID != "" {
-		oldDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), oldSessionID)
-		if err != nil {
-			return nil, fmt.Errorf("unbind CLI session: load old: %w", err)
-		}
-		if oldDoc != nil {
-			oldSession, err := decodeCLISession(oldDoc)
-			if err != nil {
-				return nil, fmt.Errorf("unbind CLI session: decode old: %w", err)
-			}
-			if oldSession.IsActive {
-				applied, err := s.db.DocConditionalUpdate(
-					ctx, marshaler.CollectionName(constants.CollectionCLISessions),
-					oldSessionID,
-					deactivationUpdate,
-					"is_active", true,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("unbind CLI session: deactivate old: %w", err)
-				}
-				if !applied {
-					s.logger.Info("UnbindCLISession: old session already deactivated by concurrent caller",
-						"old_session_id_prefix", safeTruncateID(oldSessionID),
-					)
-				}
-			}
-		}
-	}
-
-	cliExpiry := time.Now().UTC().Add(constants.CLISessionTTL)
-	created := models.CLISession{
-		ID:                newSessionID,
-		UserID:            fields.UserID,
-		OperatorSessionID: "",
-		SystemFingerprint: fields.SystemFingerprint,
-		CertFingerprint:   fields.CertFingerprint,
-		CertSerial:        fields.CertSerial,
-		CreatedAt:         time.Now().UTC(),
-		ExpiresAt:         cliExpiry,
-		AbsoluteExpiresAt: cliExpiry,
-		IdleExpiresAt:     cliExpiry,
-		SessionType:       string(constants.SessionTypeCLI),
-		IsActive:          true,
-		LoginMethod:       fields.LoginMethod,
-	}
-	createdBytes, err := json.Marshal(created)
-	if err != nil {
-		return nil, fmt.Errorf("unbind CLI session: marshal new: %w", err)
-	}
-	if err := s.db.DocSet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), newSessionID, createdBytes); err != nil {
-		return nil, fmt.Errorf("unbind CLI session: persist new: %w", err)
-	}
-
-	s.logger.Info("CLI session unbound from operator",
-		"old_session_id_prefix", safeTruncateID(oldSessionID),
-		"new_session_id_prefix", safeTruncateID(newSessionID),
-		"user_id", fields.UserID,
+	applied, err := s.db.DocConditionalUpdate(
+		ctx, marshaler.CollectionName(constants.CollectionCLISessions),
+		cliSessionID,
+		bindingUpdate,
+		"is_active", true,
 	)
-	return &created, nil
+	if err != nil {
+		return nil, fmt.Errorf("update CLI session binding: conditional update: %w", err)
+	}
+	if !applied {
+		// A concurrent caller deactivated the session between our read and the
+		// conditional update. Re-read to give a precise error.
+		current, err := s.loadCLISession(ctx, cliSessionID)
+		if err != nil {
+			return nil, fmt.Errorf("update CLI session binding: reload: %w", err)
+		}
+		if !current.IsActive {
+			return nil, constants.ErrCLISessionAlreadyDeactivated
+		}
+		// Should not happen: the conditional update matched on is_active=true.
+		return nil, fmt.Errorf("update CLI session binding: %w", constants.ErrCLISessionInvalid)
+	}
+
+	existing.OperatorSessionID = primary
+	existing.BoundOperatorSessionIDs = bound
+	s.logger.Info("CLI session operator binding updated in place",
+		"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		"operator_count", len(bound),
+	)
+	return existing, nil
 }
 
 // decodeCLISession deserializes a Document into a CLISession.

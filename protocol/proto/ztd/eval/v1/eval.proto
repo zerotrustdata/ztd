@@ -835,7 +835,8 @@ message ModelInferenceRecord {
   bool privacy_attested = 29;
   ztd.compliance.v1.ComplianceEvidenceReference governed_receipt_ref = 30;
   string result_digest = 31;
-  ztd.compliance.v1.ComplianceEvidenceReference provider_boundary_observation_ref = 32;
+  reserved 32;
+  reserved "provider_boundary_observation_ref";
   // Tool names as sent to the provider for this call, captured at the
   // provider boundary. tools_declared_reported distinguishes "none declared"
   // from "not reported".

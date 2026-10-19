@@ -193,7 +193,6 @@ describe('assignmentEvidenceChain', () => {
       verification_disposition: 'passed',
       evidence_bindings: [
         { sha256: 'a'.repeat(64), schema_ref: 'ztd.assignment_audit_slice/v1', kind: 'assignment_audit_slice' },
-        { sha256: 'b'.repeat(64), schema_ref: 'ztd.assignment_audit_vault_key/v1', kind: 'assignment_audit_vault_key' },
       ],
     });
     expect(step(assignment, 'verified')).toMatchObject({ value: 'Verified', tone: 'ok' });

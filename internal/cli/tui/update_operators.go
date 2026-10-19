@@ -102,7 +102,7 @@ func (m Model) confirmOperatorBind() Model {
 	gw := m.gw
 	sessionID := op.OperatorSessionId
 	m.confirm = &confirmation{
-		prompt: fmt.Sprintf("Bind this CLI session to Operator %s (session %s)? The Gateway issues a replacement CLI session.", operatorHostname(op), shortHash(sessionID)),
+		prompt: fmt.Sprintf("Bind this CLI session to Operator %s (session %s)? The CLI session ID is unchanged.", operatorHostname(op), shortHash(sessionID)),
 		run: func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
@@ -119,7 +119,7 @@ func (m Model) confirmOperatorUnbind() Model {
 	}
 	gw := m.gw
 	m.confirm = &confirmation{
-		prompt: "Clear this CLI session's Operator binding? The Gateway issues a replacement CLI session.",
+		prompt: "Clear this CLI session's Operator binding? The CLI session ID is unchanged.",
 		run: func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
@@ -139,9 +139,9 @@ func (m Model) applyOperatorBindMsg(msg OperatorBindMsg) (tea.Model, tea.Cmd) {
 	identity.CLISessionID = msg.Response.CLISessionID
 	identity.OperatorID = msg.Response.OperatorID
 	identity.OperatorSessionID = msg.Response.OperatorSessionID
-	m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: fmt.Sprintf("CLI session bound to Operator session %s; rotating session", shortHash(msg.Response.OperatorSessionID))})
+	m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: fmt.Sprintf("CLI session bound to Operator session %s; updating live session", shortHash(msg.Response.OperatorSessionID))})
 	if m.rebuildSession == nil {
-		return m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Session rotation is unavailable; restart the TUI to use the new binding"}), nil
+		return m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Live session update is unavailable; restart the TUI to use the new binding"}), nil
 	}
 	return m, m.rebuildSessionCmd(identity)
 }
@@ -156,9 +156,9 @@ func (m Model) applyOperatorUnbindMsg(msg OperatorUnbindMsg) (tea.Model, tea.Cmd
 	identity.CLISessionID = msg.Response.CLISessionID
 	identity.OperatorID = ""
 	identity.OperatorSessionID = ""
-	m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "CLI session Operator binding cleared; rotating session"})
+	m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "CLI session Operator binding cleared; updating live session"})
 	if m.rebuildSession == nil {
-		return m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Session rotation is unavailable; restart the TUI to use the unbound session"}), nil
+		return m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Live session update is unavailable; restart the TUI to use the unbound session"}), nil
 	}
 	return m, m.rebuildSessionCmd(identity)
 }

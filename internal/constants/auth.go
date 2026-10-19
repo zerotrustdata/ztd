@@ -233,8 +233,8 @@ const (
 	// was valid but the session was expired, leaving no recovery path short
 	// of nuking the gateway volume. When the session does expire (gateway
 	// restart, manual deactivation, or cert expiry), the auth/cli/refresh
-	// endpoint reissues a session using the still-valid cert as proof of
-	// identity.
+	// endpoint extends that same session in place for the still-valid cert,
+	// which is the proof of identity.
 	CLISessionTTL = 7 * 24 * time.Hour
 
 	// CLIBindMaxOperators caps how many operator sessions one bind call may

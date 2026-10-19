@@ -40,6 +40,13 @@ func (c *CLIRefreshController) handleLogout(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	cliSessionID, _ := r.Context().Value(constants.ContextKeyCLISessionID).(string)
+	if cliSessionID == "" {
+		// Logout ends the caller's CLI identity, so it needs the CLI session the
+		// certificate names. An Operator certificate names none and is refused.
+		c.logger.Warn("CLI logout: no CLI session in the authenticated context", "user_id", userID)
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionInvalid.Error())
+		return
+	}
 
 	body, err := readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
 	if err != nil {

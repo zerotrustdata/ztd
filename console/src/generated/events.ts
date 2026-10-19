@@ -255,7 +255,7 @@ export const EventRegistry = Object.freeze({
     AI_EVAL_HEARTBEAT: Object.freeze({
         kind: 'fact',
         producers: ['gateway'],
-        persistence: 'gateway.operator_docs',
+        persistence: 'gateway.sse_store',
     }),
     AI_EVAL_METRIC_AVAILABLE: Object.freeze({
         kind: 'outcome',

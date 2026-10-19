@@ -105,7 +105,7 @@ func saveObservationWindow(t *testing.T, store *Store, runID, attemptID string, 
 	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
-	require.NoError(t, store.saveProviderObservationWindow(context.Background(), runID, window))
+	require.NoError(t, store.SaveProviderObservationWindow(context.Background(), runID, window))
 }
 
 func resultWithAttempts(attemptIDs ...string) *evalv1.EvaluationAssignmentResult {
@@ -250,7 +250,7 @@ func TestPublishedCatalogCarriesTheObservedEnvironmentOnlyOnceTheRunIsComplete(t
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, &attemptStubExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).WithPublication(coordinator)
 	req := testCampaignInitRequest(t)
 	truncated := &evalv1.EvaluationScenarioCatalog{

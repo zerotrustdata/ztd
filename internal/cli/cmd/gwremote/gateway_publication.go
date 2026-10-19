@@ -379,8 +379,6 @@ func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx co
 			RunID:            input.RunID,
 			AssignmentID:     input.AssignmentID,
 			IndexDigest:      input.IndexDigest,
-			Database:         input.Artifacts.Database,
-			VaultKey:         input.Artifacts.VaultKey,
 			AgentTrace:       input.Artifacts.AgentTrace,
 			ScenarioID:       input.Artifacts.ScenarioID,
 			ScenarioInput:    input.Artifacts.ScenarioInput,
@@ -414,7 +412,7 @@ func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx co
 		if !response.Accepted {
 			return constants.ErrPublicFeedProofIngestRejected
 		}
-		return nil
+		return verifyAssignmentAuditProofDigests(proofs, []models.PublicAssignmentAuditProofPublishResponse{response})
 	}
 	var response models.PublicAssignmentAuditProofBatchPublishResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
@@ -422,6 +420,21 @@ func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx co
 	}
 	if !response.Accepted {
 		return constants.ErrPublicFeedProofIngestRejected
+	}
+	return verifyAssignmentAuditProofDigests(proofs, response.Proofs)
+}
+
+// verifyAssignmentAuditProofDigests checks that the gateway answered every
+// request, in request order, with the assignment it published and a database
+// digest. The digests are validated here and not yet returned to the caller.
+func verifyAssignmentAuditProofDigests(proofs []models.PublicAssignmentAuditProofPublishRequest, responses []models.PublicAssignmentAuditProofPublishResponse) error {
+	if len(responses) != len(proofs) {
+		return fmt.Errorf("%w: gateway returned %d assignment audit proofs for %d requests", constants.ErrInvalidJSONResponse, len(responses), len(proofs))
+	}
+	for index, proof := range proofs {
+		if responses[index].AssignmentID != proof.AssignmentID || responses[index].DatabaseSHA256 == "" {
+			return fmt.Errorf("%w: gateway proof %d is for assignment %q without a database digest, want %q", constants.ErrInvalidJSONResponse, index, responses[index].AssignmentID, proof.AssignmentID)
+		}
 	}
 	return nil
 }

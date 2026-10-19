@@ -92,7 +92,7 @@ func TestDispatchCommand_RequiresEventType(t *testing.T) {
 		CLISessionID:            "cli-1",
 	}
 	_, err = client.DispatchCommand(context.Background(), Persona{ID: "evaluation", CLISessionID: "cli-1"}, request)
-	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	require.ErrorIs(t, err, constants.ErrTxUnknownEventType)
 	assert.Zero(t, requests, "a request without an event type must not reach the Gateway")
 }
 

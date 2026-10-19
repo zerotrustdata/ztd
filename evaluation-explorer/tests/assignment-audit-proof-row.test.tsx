@@ -12,7 +12,7 @@ vi.mock('../src/state/feed', () => ({
 }));
 
 const sliceHash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-const keyHash = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const verifyCommand = 'ztd public verify-assignment --db assignment-1.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>';
 
 function catalogEntry(sha256: string, filename: string, byteSize = 4096): ProofCatalogEntry {
   return {
@@ -24,41 +24,35 @@ function catalogEntry(sha256: string, filename: string, byteSize = 4096): ProofC
     classification: 'public_safe',
     campaign_id: 'campaign-1',
     generated_at: '2026-09-20T00:00:00Z',
-    verification_command: 'ztd public verify-assignment --db assignment.db --vault-key assignment.vault.key',
+    verification_command: verifyCommand,
     immutable_url: `/proofs/${sha256}`,
   };
 }
 
 const auditBindings = [
   { kind: 'assignment_audit_slice' as const, sha256: sliceHash, schema_ref: 'ztd.eval.v1.PublicAssignmentAuditSlice' },
-  { kind: 'assignment_audit_vault_key' as const, sha256: keyHash, schema_ref: 'ztd.eval.v1.PublicAssignmentAuditSlice' },
 ];
 
 describe('AssignmentAuditProofRow', () => {
   beforeEach(() => {
     evalStore.loadFixtures([], []);
-    evalStore.loadProofCatalog([
-      catalogEntry(sliceHash, 'assignment-1.db', 8192),
-      catalogEntry(keyHash, 'assignment-1.vault.key', 65),
-    ]);
+    evalStore.loadProofCatalog([catalogEntry(sliceHash, 'assignment-1.db', 8192)]);
   });
 
-  it('renders downloads when bindings and catalog entries are present', async () => {
+  it('renders the database download and the Gateway-published verify command', async () => {
     render(<AssignmentAuditProofRow bindings={auditBindings} />);
     expect(await screen.findByRole('link', { name: 'Download SQLite' })).toHaveAttribute(
       'href',
       `http://127.0.0.1:8082/proofs/${sliceHash}`,
     );
-    expect(screen.getByRole('link', { name: 'Download vault key' })).toHaveAttribute(
-      'href',
-      `http://127.0.0.1:8082/proofs/${keyHash}`,
-    );
+    expect(screen.queryByText(/vault/i)).not.toBeInTheDocument();
     expect(screen.getByText('8.0 KiB')).toBeInTheDocument();
+    expect(screen.getByText(verifyCommand)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy verify command' })).toBeInTheDocument();
   });
 
-  it('is absent when either audit binding is missing', () => {
-    const { container } = render(<AssignmentAuditProofRow bindings={[auditBindings[0]!]} />);
+  it('is absent when the audit slice binding is missing', () => {
+    const { container } = render(<AssignmentAuditProofRow bindings={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 

@@ -463,7 +463,7 @@ func (c *EnrollmentCoordinator) Enroll(ctx context.Context, opts EnrollmentOptio
 					}
 					if errors.Is(probeErr, constants.ErrCLISessionExpired) || errors.Is(probeErr, constants.ErrCLISessionInvalid) {
 						c.out("CLI session %s is %s.", local.Credentials.CLISessionID, probeErr)
-						c.out("Obtain a new session using the still-valid certificate:")
+						c.out("Extend the session using the still-valid certificate:")
 						c.out("./ztd auth refresh")
 						return nil, fmt.Errorf("%w: %w", constants.ErrCLISessionRefreshRequired, probeErr)
 					}

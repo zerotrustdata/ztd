@@ -42,15 +42,8 @@ func (c *Client) Health(ctx context.Context) (*models.HealthResponse, []byte, er
 // client and returns the typed outcome of the Gateway's answer. A transport
 // failure is returned as an error, never as an outcome.
 func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request models.OperatorCommandRequest) (*GovernedOutcome, error) {
-	if request.TargetOperatorSessionID == "" || request.EventType == "" || len(request.Payload) == 0 {
-		return nil, constants.ErrMissingRequiredField
-	}
-	actionType, err := constants.ValidateGovernedRequest(constants.EventType(request.EventType))
-	if err != nil {
-		return nil, fmt.Errorf("agent harness: resolve action type: %w", err)
-	}
-	if err := constants.ValidateGovernedEnvelopeFields(constants.EventType(request.EventType), actionType); err != nil {
-		return nil, fmt.Errorf("agent harness: validate request fields: %w", err)
+	if err := request.Validate(); err != nil {
+		return nil, fmt.Errorf("agent harness: validate dispatch command: %w", err)
 	}
 	body, err := json.Marshal(request)
 	if err != nil {

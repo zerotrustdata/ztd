@@ -168,7 +168,7 @@ func WaitForCampaignRunModelProvenanceEvidence(ctx context.Context, store *Store
 			attemptIDs = append(attemptIDs, record.GetProviderAttemptId())
 		}
 	}
-	return reader.WaitForEvidence(ctx, attemptIDs)
+	return reader.WaitForEvidence(ctx, runID, attemptIDs)
 }
 
 // VerifyRun recomputes assignment verification for every terminal assignment
@@ -461,7 +461,7 @@ func verifyCampaignRunReadOnly(ctx context.Context, store *Store, runID string, 
 	if err != nil {
 		return nil, err
 	}
-	provenanceReader, err := NewCampaignModelProvenanceReader(store.files)
+	provenanceReader, err := NewCampaignModelProvenanceReader(store)
 	if err != nil {
 		return nil, err
 	}

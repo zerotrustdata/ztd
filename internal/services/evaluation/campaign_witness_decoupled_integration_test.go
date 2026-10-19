@@ -102,7 +102,7 @@ func TestCampaignWitnessEvidence_DecoupledObservationAndProvenance(t *testing.T)
 	// Create real readers backed by runtime files
 	obsReader, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
-	provReader, err := NewCampaignModelProvenanceReader(fileSvc)
+	provReader, err := NewCampaignModelProvenanceReader(store)
 	require.NoError(t, err)
 
 	ctx := context.Background()

@@ -724,13 +724,15 @@ type CLIRotationResponse struct {
 // CLIRefreshRequest is the wire request for POST /api/v1/auth/cli/refresh.
 // This is an mTLS-protected endpoint; the current user and CLI session are
 // derived from the authenticated certificate context. The request body is
-// empty — the cert is the proof of identity. A new CLI session is issued
-// bound to the same user, with a fresh TTL. The cert itself is NOT rotated;
-// the caller continues to use the same cert. This is the recovery path for
-// an expired CLI session with a still-valid cert.
+// empty — the cert is the proof of identity. The caller's CLI session is
+// extended in place: the same session ID, bound to the same user, with a fresh
+// TTL. The cert itself is NOT rotated; the caller continues to use the same
+// cert. This is the recovery path for an expired CLI session with a still-valid
+// cert.
 type CLIRefreshRequest struct{}
 
 // CLIRefreshResponse is the wire response for POST /api/v1/auth/cli/refresh.
+// CLISessionID is the session the caller presented: a refresh never changes it.
 type CLIRefreshResponse struct {
 	Success           bool   `json:"success"`
 	CLISessionID      string `json:"cli_session_id"`
@@ -742,8 +744,8 @@ type CLIRefreshResponse struct {
 // CLIBindRequest is the wire request for POST /api/v1/auth/cli/bind.
 // This is an mTLS-protected endpoint; the current user and CLI session are
 // derived from the authenticated certificate context. The caller pins the
-// CLI session to the specified operator session, issuing a replacement CLI
-// session when the binding changes.
+// CLI session to the specified operator sessions. The binding is updated in
+// place: the CLI session keeps its ID and certificate.
 //
 // OperatorSessionIDs binds several operator sessions in one call; the first
 // becomes the primary binding. OperatorSessionID remains accepted for a
@@ -774,8 +776,8 @@ type CLIBoundOperator struct {
 // CLIUnbindRequest is the wire request for POST /api/v1/auth/cli/unbind.
 // This is an mTLS-protected endpoint; the current user and CLI session are
 // derived from the authenticated certificate context. The caller clears the
-// CLI session's operator binding, issuing a replacement CLI session when
-// a binding was present.
+// CLI session's operator binding in place: the CLI session keeps its ID and
+// certificate.
 type CLIUnbindRequest struct{}
 
 // CLIUnbindResponse is the wire response for POST /api/v1/auth/cli/unbind.

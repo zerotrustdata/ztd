@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
@@ -91,11 +93,22 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	if err != nil {
 		return 0, err
 	}
-	var publication *evaluation.CampaignPublicationCoordinator
+	var (
+		// lifecycle is set once the ztd-eval identity and the CLI session are
+		// resolved. A run that fails before then has nothing to report.
+		lifecycle   *runLifecycle
+		publication *evaluation.CampaignPublicationCoordinator
+		watcher     *runStopWatcher
+	)
 	defer func() {
 		if releaseErr := store.ReleaseRunLease(context.WithoutCancel(cmd.Context()), opts.RunID, control.PID()); releaseErr != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("evaluation: release run lease: %w", releaseErr))
 			return
+		}
+		if lifecycle != nil {
+			if err := lifecycle.reportTerminal(context.WithoutCancel(cmd.Context()), watcher.Requested()); err != nil {
+				runErr = errors.Join(runErr, err)
+			}
 		}
 		if publication != nil {
 			publishCtx, cancel := context.WithTimeout(context.WithoutCancel(cmd.Context()), constants.DefaultHTTPTimeout)
@@ -109,6 +122,27 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	if stale != nil && !opts.JSONOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Cleared stale lease held by process %d on %s\n", stale.PID, stale.Host)
 	}
+	if deps.runControl.onLeaseAcquired != nil {
+		deps.runControl.onLeaseAcquired()
+	}
+
+	authContext, err := deps.authLoader(fileSvc, cfg)
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: load CLI identity: %w", err)
+	}
+	appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
+	if err != nil {
+		return 0, err
+	}
+	lifecycle = &runLifecycle{
+		client:       appClient,
+		live:         leaseLiveness(control),
+		deps:         deps,
+		store:        store,
+		cliSessionID: authContext.CLISessionID,
+		runID:        opts.RunID,
+		startedAt:    startedAt,
+	}
 
 	signals, stopSignals := deps.runControl.interrupts()
 	defer stopSignals()
@@ -117,8 +151,25 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	defer hardCancel()
 	cmd.SetContext(hardCtx)
 	defer cmd.SetContext(parent)
-	watcher := startRunStopWatcher(hardCtx, store, opts.RunID, deps.runControl.interval(), signals, hardCancel, deps.runControl.onSignalHandled)
+	// The watcher exists before the stream subscribes, so the stream's connect
+	// reconcile can mark it requested.
+	events := make(chan runEvent)
+	watcher = startRunStopWatcher(hardCtx, events, signals, hardCancel, deps.runControl.onSignalHandled, deps.runControl.onStopRequested)
 	defer watcher.Stop()
+	httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: build stream client: %w", err)
+	}
+	stream, err := subscribeRunEvents(hardCtx, httpClient, cfg.OperatorPublicURL(), authContext.CLISessionID, opts.RunID, events, func() {
+		reconcileStopRequest(hardCtx, store, opts.RunID, watcher)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	defer stream.Close()
+	if err := lifecycle.reportRunning(cmd.Context()); err != nil {
+		return 0, err
+	}
 
 	if opts.Publish {
 		publication, err = NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
@@ -425,4 +476,125 @@ func resolveCampaignOllamaEndpoint(operators []*operatorv1.OperatorDocument, inf
 		return "", fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	return endpoint, nil
+}
+
+// reconcileStopRequest reads the run's lease and marks the watcher requested when
+// a cancel is recorded there. The stream runs it on every connection, so a stop
+// sent while the stream was down is still seen.
+func reconcileStopRequest(ctx context.Context, store *evaluation.Store, runID string, watcher *runStopWatcher) {
+	lease, err := store.LoadRunLease(ctx, runID)
+	if err != nil {
+		if !isMissingRecord(err) {
+			slog.Default().Warn("evaluation: run execute: read run lease on stream connect", "run_id", runID, "error", err)
+		}
+		return
+	}
+	if lease.CancelRequested() {
+		watcher.requestStop()
+	}
+}
+
+// runStateReporter is the Gateway run projection a run reports its lifecycle to.
+// The harness client is the production reporter.
+type runStateReporter interface {
+	UpdateRunState(ctx context.Context, req models.ObserveProducerRunStateRequest) error
+}
+
+// runLifecycle reports one execution's lifecycle to the Gateway run projection
+// under the ztd-eval identity, bound to the owner's CLI session. The local lease
+// and run store are authoritative: the projection mirrors the status runs show
+// reports for the run, and a rejected or unreachable update is returned to the
+// command, so the run never continues or ends behind a projection it failed to
+// write.
+type runLifecycle struct {
+	client       runStateReporter
+	live         evaluation.LeaseLiveness
+	deps         nativeEvalDeps
+	store        *evaluation.Store
+	cliSessionID string
+	runID        string
+	startedAt    time.Time
+}
+
+// reportRunning posts RUNNING once the lease is held and the event stream is
+// subscribed. A run with nothing queued or running executes nothing, so resuming
+// it makes no transition and posts no RUNNING; its released status still posts.
+func (l runLifecycle) reportRunning(ctx context.Context) error {
+	row, err := l.snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if row.Queued == 0 && row.Running == 0 {
+		return nil
+	}
+	return l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
+}
+
+// reportTerminal posts the status a released run ends in. It must run after the
+// lease is released, because a cancel waiting on the Gateway returns on this
+// status and then reads the released run.
+func (l runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) error {
+	row, err := l.snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	endedAt := l.deps.now().UTC()
+	return l.post(ctx, releasedRunStatus(stopRequested, row), row, &endedAt)
+}
+
+// releasedRunStatus is the projected status of a released run, read from the row
+// runs show renders for it. A run asked to stop is cancelled. A run that still
+// has queued or running assignments is waiting for its next resume, whatever the
+// release reported. Otherwise the run's own classification decides: verified or
+// completed runs complete, a run whose verification failed fails, and a run the
+// classification does not settle waits.
+func releasedRunStatus(stopRequested bool, row *runRow) models.RunLifecycleStatus {
+	switch {
+	case stopRequested, row.Status == "cancelled":
+		return models.RunLifecycleStatusCancelled
+	case row.Status == "running":
+		return models.RunLifecycleStatusRunning
+	case row.Queued > 0 || row.Running > 0:
+		return models.RunLifecycleStatusWaiting
+	}
+	switch row.Status {
+	case "verified", "completed":
+		return models.RunLifecycleStatusCompleted
+	case "verify_failed":
+		return models.RunLifecycleStatusFailed
+	default:
+		return models.RunLifecycleStatusWaiting
+	}
+}
+
+// snapshot reads the run the way runs show reads it, so the projection and the
+// command agree on what the run is. The lifecycle only runs for live, unarchived
+// runs, so the archived flag is false.
+func (l runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
+	row, _, err := summarizeRun(ctx, l.store, false, l.runID, l.live, l.deps.now, adaptNewID(l.deps.newID))
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: run lifecycle: %w", err)
+	}
+	return row, nil
+}
+
+func (l runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time) error {
+	startedAt := l.startedAt
+	err := l.client.UpdateRunState(ctx, models.ObserveProducerRunStateRequest{
+		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,
+		RunID:          l.runID,
+		RunKind:        models.RunKindEval,
+		DisplayName:    l.runID,
+		Status:         status,
+		CompletedTasks: int(row.Terminal),
+		TotalTasks:     int(row.ExpectedAssignments),
+		StartedAt:      &startedAt,
+		EndedAt:        endedAt,
+		ObservedAt:     l.deps.now().UTC(),
+		CLISessionID:   l.cliSessionID,
+	})
+	if err != nil {
+		return fmt.Errorf("evaluation: report run %s status %s: %w", l.runID, status, err)
+	}
+	return nil
 }

@@ -22,7 +22,7 @@ func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, nil, nil)
 	req := testCampaignInitRequest(t)
 	run, err := controller.InitializeCampaign(ctx, req)

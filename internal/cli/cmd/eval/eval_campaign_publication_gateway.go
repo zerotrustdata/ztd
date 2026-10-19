@@ -8,8 +8,6 @@
 package eval
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
@@ -31,10 +29,6 @@ func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFil
 	if err != nil {
 		return nil, err
 	}
-	remote, err := gwremote.NewProviderObservationRemote(fileSvc, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("campaign publication: provider observation remote: %w", err)
-	}
 	publicationState, err := gwremote.NewCampaignPublicationStateStore(fileSvc, cfg)
 	if err != nil {
 		return nil, err
@@ -48,7 +42,6 @@ func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFil
 		fileSvc,
 		publicationState,
 		exporter,
-		remote,
 	).WithProofPublisher(proofPublisher).WithLeaseLiveness(leaseLiveness(control))
 	if gwremote.IsGatewayHealthy() {
 		coordinator.WithMirrorProbe(gwremote.NewHTTPCampaignMirrorProbe(shared.CommandContext(cmd)))

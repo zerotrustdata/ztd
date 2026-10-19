@@ -319,7 +319,7 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Kind:        EventKindFact,
 		Transport:   nil,
 		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
+		Persistence: "gateway.sse_store",
 	},
 	EventAiEvalMetricAvailable: {
 		Key:         "AiEvalMetricAvailable",

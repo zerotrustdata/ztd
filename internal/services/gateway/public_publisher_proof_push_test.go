@@ -83,6 +83,7 @@ func newProofPushTestMirror(t *testing.T, publisher *PublicPublisherService) (*P
 	t.Cleanup(server.Close)
 	publisher.SetMirrorOrigin(server.URL)
 	publisher.SetIngestAuthToken("proof-token")
+	publisher.SetAssignmentEventSource(store)
 	return store, recorder
 }
 

@@ -58,7 +58,7 @@ func TestCampaignMirrorReconciler_ReconcileAllVerifiedRunsFromStoreReportsProgre
 		files := newCampaignRuntimeFileService(t)
 		store := NewStore(files)
 		exporter := &recordingCampaignFeedExporter{}
-		coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+		coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 		reconciler := NewCampaignMirrorReconciler(coordinator, store, blockingCampaignMirrorProbe{})
 		run := completedVerifiedMirrorTestCampaign(t, store)
 		var progress []CampaignMirrorReconcileProgress
@@ -81,7 +81,7 @@ func TestCampaignMirrorReconcilerRestoresMissingVerifiedRuns(t *testing.T) {
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 	run := completedVerifiedMirrorTestCampaign(t, store)
 	report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 	require.NoError(t, store.SaveCampaignVerification(context.Background(), run.GetRunId(), report))
@@ -118,7 +118,7 @@ func TestCampaignMirrorReconciler_ReconcileAllVerifiedRunsFromStoreForceSkipsPre
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 	run := completedVerifiedMirrorTestCampaign(t, store)
 	report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 	require.NoError(t, store.SaveCampaignVerification(context.Background(), run.GetRunId(), report))
@@ -142,7 +142,7 @@ func TestCampaignMirrorReconciler_ReconcileRunRestoresMissingDataset(t *testing.
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 	run := completedVerifiedMirrorTestCampaign(t, store)
 
 	exporter.records = nil
@@ -160,7 +160,7 @@ func TestCampaignMirrorReconciler_ReconcileRunSkipsPresentDataset(t *testing.T) 
 	run := completedVerifiedMirrorTestCampaign(t, store)
 	runID := run.GetRunId()
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{CampaignDatasetID(runID): true}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 	reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
 
 	published, err := reconciler.ReconcileRun(context.Background(), runID, false)
@@ -174,7 +174,7 @@ func TestCampaignMirrorReconciler_ReconcileRunForceRepublishesPresentDataset(t *
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 	run := completedVerifiedMirrorTestCampaign(t, store)
 
 	_, err := coordinator.PublishRunCatchUp(context.Background(), run.GetRunId())
@@ -194,7 +194,7 @@ func TestCampaignPublicationCoordinatorResetsIdempotencyWhenMirrorDatasetMissing
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 	run := completedVerifiedMirrorTestCampaign(t, store)
 
 	_, err := coordinator.PublishRunCatchUp(context.Background(), run.GetRunId())
@@ -239,7 +239,7 @@ func TestCampaignMirrorReconciler_EligibilityUsesCanonicalCampaignState(t *testi
 			}
 			exporter := &recordingCampaignFeedExporter{}
 			probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-			coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+			coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 			reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
 			var updates []CampaignMirrorReconcileProgress
 			progress := func(update CampaignMirrorReconcileProgress) { updates = append(updates, update) }
@@ -271,7 +271,7 @@ func TestCampaignMirrorReconciler_ReportsMissingHostEvidence(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	reconciler := NewCampaignMirrorReconciler(coordinator, store, blockingCampaignMirrorProbe{})
 	result, err := reconciler.reconcileRuns(context.Background(), []string{"run-absent"}, time.Minute, true, true, nil)
 	require.NoError(t, err)

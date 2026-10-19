@@ -89,8 +89,9 @@ func evalBoundSessionIDs(ctx context.Context, client evalBindClient, fileSvc fs.
 }
 
 // evalBindSessions binds the CLI session to operatorSessionIDs in one call
-// and stores the replacement CLI session in the local credentials. Binding
-// replaces the CLI session, so the returned auth context carries the new one.
+// and stores the CLI session ID in the local credentials. Binding updates the
+// CLI session in place, so the ID is unchanged and the returned auth context
+// carries the same CLI session the caller already holds.
 func evalBindSessions(
 	cmd *cobra.Command,
 	cfg *config.Config,

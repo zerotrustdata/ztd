@@ -8,14 +8,19 @@
 package eval
 
 import (
+	"context"
 	"fmt"
-	"time"
+	"sync"
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -480,7 +485,7 @@ public mirror, so the explorer stops reporting the run as running.`,
 			switch {
 			case err == nil && live(*lease):
 				result.WasRunning = true
-				if err := awaitRunStop(cmd, deps, store, control, live, lease, jsonOutput); err != nil {
+				if err := awaitRunStop(cmd, deps, cfg, fileSvc, store, control, live, lease, jsonOutput); err != nil {
 					return fmt.Errorf("evaluation: runs cancel: %w", err)
 				}
 			case err == nil:
@@ -522,35 +527,120 @@ public mirror, so the explorer stops reporting the run as running.`,
 }
 
 // awaitRunStop asks the process holding a run's lease to stop and waits until
-// it has released the lease, which happens once its current assignment reaches
-// a terminal record.
-func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, store *evaluation.Store, control processControl, live evaluation.LeaseLiveness, lease *evaluation.RunLease, jsonOutput bool) error {
-	if _, err := store.RequestRunCancel(cmd.Context(), lease.RunID, deps.now()); err != nil {
+// that process releases the run, which it does after its current assignment
+// reaches a terminal record and it has reported the released status.
+//
+// The stop reaches the process as an event on the owner's CLI session stream,
+// and the release arrives on the same stream. The stream is subscribed first,
+// and its connect reconciles the lease, so a release that happened before the
+// subscription, or while the stream was down, is not missed.
+func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, store *evaluation.Store, control processControl, live evaluation.LeaseLiveness, lease *evaluation.RunLease, jsonOutput bool) error {
+	ctx := cmd.Context()
+	runID := lease.RunID
+	authContext, err := deps.authLoader(fileSvc, cfg)
+	if err != nil {
+		return fmt.Errorf("load CLI identity: %w", err)
+	}
+	appClient, err := inferenceEvalAppClient(ctx, cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
+	if err != nil {
+		return err
+	}
+	run, err := store.LoadRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
+	if err != nil {
+		return fmt.Errorf("build stream client: %w", err)
+	}
+
+	events := make(chan runEvent)
+	// released receives the first settled outcome: nil once the run's process has
+	// released it, or the error that kept the answer from being known.
+	released := make(chan error, 1)
+	var releaseOnce sync.Once
+	release := func(err error) { releaseOnce.Do(func() { released <- err }) }
+	stream, err := subscribeRunEvents(ctx, httpClient, cfg.OperatorPublicURL(), authContext.CLISessionID, runID, events, func() {
+		done, err := settleRunLease(ctx, store, live, runID)
+		switch {
+		case err != nil:
+			release(err)
+		case done:
+			release(nil)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+	select {
+	case err := <-released:
+		// The lease was already gone or stale when the stream connected.
+		return err
+	default:
+	}
+
+	if _, err := store.RequestRunCancel(ctx, runID, deps.now()); err != nil {
 		return err
 	}
 	// Delivery is best effort: the cancel request in the lease reaches a process
 	// that cannot be signalled.
 	_ = control.Interrupt(lease.PID)
+	if err := appClient.RequestRunStop(ctx, models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    run.GetCampaignBinding().GetCampaignId(),
+		RunID:         runID,
+		StopReason:    models.StopReasonGraceful,
+		StopScope:     models.StopScopeCycle,
+		CLISessionID:  authContext.CLISessionID,
+	}); err != nil {
+		return fmt.Errorf("request stop: %w", err)
+	}
 	if !jsonOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for process %d to finish its current assignment\n", lease.PID)
 	}
-	ticker := time.NewTicker(deps.runControl.interval())
-	defer ticker.Stop()
 	for {
-		current, err := store.LoadRunLease(cmd.Context(), lease.RunID)
-		if err != nil {
-			if isMissingRecord(err) {
+		select {
+		case err := <-released:
+			return err
+		case ev := <-events:
+			if ev.Status != nil && runStatusSettled(ev.Status.Status) {
 				return nil
 			}
-			return err
-		}
-		if !live(*current) {
-			return store.ClearRunLease(cmd.Context(), lease.RunID)
-		}
-		select {
-		case <-cmd.Context().Done():
-			return cmd.Context().Err()
-		case <-ticker.C:
+		case <-stream.Done():
+			streamErr := stream.Err()
+			if streamErr == nil {
+				streamErr = constants.ErrSSEStreamClosed
+			}
+			return fmt.Errorf("run events: %w", streamErr)
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
+}
+
+// settleRunLease reports whether a run's process has released the run: its lease
+// is missing, or it names a process that is no longer alive. A stale lease is
+// cleared, as cancel always has.
+func settleRunLease(ctx context.Context, store *evaluation.Store, live evaluation.LeaseLiveness, runID string) (bool, error) {
+	lease, err := store.LoadRunLease(ctx, runID)
+	switch {
+	case isMissingRecord(err):
+		return true, nil
+	case err != nil:
+		return false, err
+	case live(*lease):
+		return false, nil
+	}
+	if err := store.ClearRunLease(ctx, runID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// runStatusSettled reports whether a run status means its process has finished
+// with the run. The process reports running before it executes, and every other
+// status it reports comes after it has released the lease.
+func runStatusSettled(status models.RunLifecycleStatus) bool {
+	return status != models.RunLifecycleStatusQueued && status != models.RunLifecycleStatusRunning
 }

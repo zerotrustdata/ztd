@@ -709,29 +709,25 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 			}
 		}
 	}
-	attemptPaths := make([]string, 0, len(attemptIDs)*3)
+	attemptIDList := make([]string, 0, len(attemptIDs))
 	for attemptID := range attemptIDs {
-		attemptPaths = append(attemptPaths,
-			path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceAttemptsDirname, attemptID+constants.FileExtJSON),
-			path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceProviderObserverDirname, constants.InferenceProviderObserverWindowsDirname, attemptID+constants.FileExtJSON),
-			path.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceModelProvenanceDirname, constants.InferenceModelProvenanceWindowsDirname, attemptID+constants.FileExtJSON),
-		)
+		attemptIDList = append(attemptIDList, attemptID)
 	}
-	sort.Strings(attemptPaths)
-	for _, runtimePath := range attemptPaths {
-		exists, existsErr := fileSvc.FileExists(ctx, filepath.FromSlash(runtimePath))
-		if existsErr != nil {
-			return compliancereport.GenerationSource{}, nil, existsErr
+	sort.Strings(attemptIDList)
+	// Each scored attempt's sealed provider attempt record, observation window, and
+	// model provenance attestation window sit in the run's evidence directory,
+	// which is collected above. Loading them through the store proves the copy
+	// exists; a missing copy fails the bundle.
+	for _, attemptID := range attemptIDList {
+		if _, err := store.LoadProviderAttemptRecord(ctx, runID, attemptID); err != nil {
+			return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed provider attempt %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)
 		}
-		if !exists {
-			continue
+		if _, err := store.LoadProviderObservationWindow(ctx, runID, attemptID); err != nil {
+			return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed provider observation window %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)
 		}
-		body, readErr := fileSvc.ReadFile(ctx, filepath.FromSlash(runtimePath))
-		if readErr != nil {
-			return compliancereport.GenerationSource{}, nil, readErr
+		if _, err := store.LoadModelProvenanceWindow(ctx, runID, attemptID); err != nil {
+			return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed model provenance window %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)
 		}
-		bodies[filepath.FromSlash(runtimePath)] = append([]byte(nil), body...)
-		artifacts = append(artifacts, compliancereport.SourceArtifact{BundlePath: path.Join(runtimeBundleRoot, runtimePath), Body: body, MediaType: constants.MediaTypeJSON})
 	}
 	policy, err := campaignVerificationPolicyForAdmission(admission, assessmentAsOf)
 	if err != nil {

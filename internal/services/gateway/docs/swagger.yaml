@@ -1344,6 +1344,10 @@ definitions:
         type: integer
       proof_root_sha256:
         type: string
+      proofs:
+        items:
+          $ref: '#/definitions/models.PublicAssignmentAuditProofPublishResponse'
+        type: array
     type: object
   models.PublicAssignmentAuditProofPublishRequest:
     properties:
@@ -1359,11 +1363,8 @@ definitions:
       campaign_id:
         type: string
       campaign_revision:
+        description: CampaignRevision and IndexDigest are required.
         type: string
-      database:
-        items:
-          type: integer
-        type: array
       defer_mirror_push:
         type: boolean
       index_digest:
@@ -1384,16 +1385,14 @@ definitions:
         items:
           type: integer
         type: array
-      vault_key:
-        items:
-          type: integer
-        type: array
     type: object
   models.PublicAssignmentAuditProofPublishResponse:
     properties:
       accepted:
         type: boolean
       agent_trace_sha256:
+        type: string
+      assignment_id:
         type: string
       database_sha256:
         type: string
@@ -1402,8 +1401,6 @@ definitions:
       scenario_gold_sha256:
         type: string
       scenario_input_sha256:
-        type: string
-      vault_key_sha256:
         type: string
     type: object
   models.PublicFeedExportBatchResponse:
@@ -4345,10 +4342,12 @@ paths:
     post:
       consumes:
       - application/json
-      description: Ingests one assignment audit export package into the gateway-owned
-        public proof catalog (mTLS owner CLI only).
+      description: Builds one assignment's audit database from the gateway's stored
+        signed event records and publishes it to the gateway-owned public proof catalog
+        (mTLS owner CLI only). The request names the run and assignment; it carries
+        no database or key.
       parameters:
-      - description: Assignment audit proof package
+      - description: Assignment audit proof request
         in: body
         name: request
         required: true
@@ -4380,8 +4379,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Ingests many assignment audit export packages in one request (mTLS
-        owner CLI only).
+      description: Builds many assignments' audit databases from the gateway's stored
+        signed event records and publishes them in one request (mTLS owner CLI only).
+        The response carries each proof's digests in request order.
       parameters:
       - description: Assignment audit proof batch
         in: body

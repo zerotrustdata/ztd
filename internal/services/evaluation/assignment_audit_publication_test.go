@@ -67,7 +67,7 @@ func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings(t *testing.
 	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
-	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil).
+	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter).
 		WithProofPublisher(proofPublisher)
 
 	runID := "run-audit-1"
@@ -149,7 +149,7 @@ func TestCampaignPublicationCoordinator_FlushesDeferredProofBatch(t *testing.T) 
 	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
-	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil).
+	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter).
 		WithProofPublisher(proofPublisher)
 	coordinator.deferProofMirrorPush = true
 	coordinator.pendingProofInputs = []AssignmentAuditProofInput{
@@ -186,7 +186,7 @@ func TestCampaignPublicationCoordinator_BuildAssignmentAuditBindings_EmptyLiveRe
 	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
-	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil).
+	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter).
 		WithProofPublisher(proofPublisher)
 
 	assignment := &evalv1.EvaluationAssignment{

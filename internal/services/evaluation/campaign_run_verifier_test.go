@@ -19,7 +19,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -367,7 +366,7 @@ func TestCaptureCampaignRunEvidence_DecoupledObservationAndProvenance(t *testing
 	// 2. With real local-only readers, evidence capture succeeds without error.
 	obsReader, err := NewCampaignProviderObservationReader(NewStore(files))
 	require.NoError(t, err)
-	provReader, err := NewCampaignModelProvenanceReader(files)
+	provReader, err := NewCampaignModelProvenanceReader(NewStore(files))
 	require.NoError(t, err)
 
 	assert.NoError(t, CaptureCampaignRunProviderObservationEvidence(ctx, store, req.RunID, obsReader))
@@ -383,15 +382,13 @@ func TestWaitForCampaignRunModelProvenanceEvidence_UsesPersistedScoredAttempts(t
 	result.ResultDigest = digest
 	require.NoError(t, fixture.store.SaveAssignmentResult(t.Context(), result))
 	remote := &stubModelProvenanceRemote{window: testModelProvenanceWindow(t, "attempt-scored")}
-	reader, err := NewCampaignModelProvenanceReaderWithRemote(fixture.store.files, remote)
+	reader, err := NewCampaignModelProvenanceReaderWithRemote(fixture.store, remote)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	require.NoError(t, WaitForCampaignRunModelProvenanceEvidence(ctx, fixture.store, fixture.req.RunID, reader))
 	// Other scheduled assignments have no result and require no windows.
-	windows, err := model_provenance.NewWindowStore(fixture.store.files)
-	require.NoError(t, err)
-	window, err := windows.Load(ctx, "attempt-scored")
+	window, err := fixture.store.LoadModelProvenanceWindow(ctx, fixture.req.RunID, "attempt-scored")
 	require.NoError(t, err)
 	assert.Equal(t, "attempt-scored", window.GetProviderAttemptId())
 }

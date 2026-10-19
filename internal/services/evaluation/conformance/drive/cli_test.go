@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -39,7 +40,7 @@ type fakePoster struct {
 
 func (p *fakePoster) Post(path string, body any) ([]byte, error) {
 	p.paths = append(p.paths, path)
-	req, ok := body.(operator.DispatchRequest)
+	req, ok := body.(models.OperatorCommandRequest)
 	if !ok {
 		return nil, fmt.Errorf("fake poster: unexpected body %T", body)
 	}

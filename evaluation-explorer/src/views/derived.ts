@@ -723,10 +723,9 @@ function verifiedChainValue(assignment: AssignmentResult): ChainValue {
   }
 }
 
-/** True when the assignment publishes both halves of its offline audit slice. */
+/** True when the assignment publishes its offline audit database. */
 export function assignmentHasAuditSlice(assignment: AssignmentResult): boolean {
-  const kinds = new Set((assignment.evidence_bindings ?? []).map((binding) => binding.kind));
-  return kinds.has('assignment_audit_slice') && kinds.has('assignment_audit_vault_key');
+  return (assignment.evidence_bindings ?? []).some((binding) => binding.kind === 'assignment_audit_slice');
 }
 
 /** The assignment's evidence chain in execution order: what was asked, what
@@ -742,7 +741,7 @@ export function assignmentEvidenceChain(assignment: AssignmentResult): EvidenceC
       ? { value: SCENARIO_CATEGORY_COPY[category].label, tone: 'info' }
       : { value: 'Uncatalogued', tone: 'neutral' };
   const audit: ChainValue = assignmentHasAuditSlice(assignment)
-    ? { value: 'Published', tone: 'ok', detail: 'SQLite + vault key' }
+    ? { value: 'Published', tone: 'ok', detail: 'SQLite, segment-signed' }
     : { value: 'Not published', tone: 'neutral' };
   return [
     { key: 'scenario', label: 'Scenario', ...scenarioValue },

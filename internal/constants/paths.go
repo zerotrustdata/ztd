@@ -715,6 +715,8 @@ const (
 	EvaluationProviderObservationsDirname         = "provider-observations"
 	EvaluationProviderWindowRefFilename           = "window-ref.json"
 	EvaluationProviderAttemptRefFilename          = "attempt-ref.json"
+	EvaluationModelProvenanceDirname              = "model-provenance"
+	EvaluationModelProvenanceWindowRefFilename    = "window-ref.json"
 	ConformanceVerifierID                         = "ztd-governance-conformance-verifier"
 	ConformanceVerifierVersion                    = "1.0.0"
 	EvaluationSourceKindConformance               = "governance-conformance"

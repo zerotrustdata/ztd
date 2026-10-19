@@ -119,7 +119,7 @@ func setupRunEnvWithGateway(t *testing.T, operatorSource func() []*operatorv1.Op
 	cmd := cmdtest.SilentCobraCommand()
 	cmd.SetContext(testVersionContext())
 	cmd.Flags().String("project-root", root, "")
-	return &runEnv{root: root, deps: deps, cmd: cmd, control: control}
+	return &runEnv{root: root, deps: deps, cmd: cmd, control: control, stream: newFakeRunStream(), operatorSource: operatorSource}
 }
 
 // scriptedAgentAnswer is the final answer the scripted model gives on its first
@@ -282,9 +282,20 @@ func (e *runEnv) startGatewayFake(t *testing.T, executing bool) {
 	originalBootstrap := gwremote.PublicMirrorBootstrapURL
 	gwremote.PublicMirrorBootstrapURL = mirrorServer.URL
 
-	operators, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: testRunOperators()})
-	require.NoError(t, err)
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if executing {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.SSEStream:
+				e.stream.serve(w, r)
+				return
+			case r.Method == http.MethodPost && r.URL.Path == constants.APIPaths.ObserveProducerStop:
+				e.stream.acceptStop(w, r)
+				return
+			case r.Method == http.MethodPost && r.URL.Path == constants.APIPaths.ObserveProducerRunState:
+				e.stream.acceptRunState(w, r)
+				return
+			}
+		}
 		if executing && writeWitnessPreflightResponse(w, r) {
 			return
 		}
@@ -293,8 +304,15 @@ func (e *runEnv) startGatewayFake(t *testing.T, executing bool) {
 		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.Operators:
+			// Listed per request, so a test that rotates a session mid-run is
+			// served the rotated document.
+			body, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: e.operatorSource()})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(operators)
+			_, _ = w.Write(body)
 		case executing && r.Method == http.MethodPost && r.URL.Path == constants.APIPaths.OperatorsCommands:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"success":true,"transaction_id":"tx-simulated-file"}`))

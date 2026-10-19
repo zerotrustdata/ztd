@@ -85,10 +85,13 @@ func newModelProvenanceRemote(fileSvc fs.RuntimeFileService, cfg *config.Config)
 	return &remoteModelProvenanceClient{client: client, stream: client.NewSSEClient}, nil
 }
 
-func NewCampaignModelProvenanceReader(fileSvc fs.RuntimeFileService, cfg *config.Config) (*evaluation.CampaignModelProvenanceReader, error) {
+// NewCampaignModelProvenanceReader reads the run's sealed attestation windows from
+// store. The Gateway remote, when healthy, is used only to seal windows the run
+// does not hold yet.
+func NewCampaignModelProvenanceReader(fileSvc fs.RuntimeFileService, store *evaluation.Store, cfg *config.Config) (*evaluation.CampaignModelProvenanceReader, error) {
 	remote, err := newModelProvenanceRemote(fileSvc, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return evaluation.NewCampaignModelProvenanceReaderWithRemote(fileSvc, remote)
+	return evaluation.NewCampaignModelProvenanceReaderWithRemote(store, remote)
 }

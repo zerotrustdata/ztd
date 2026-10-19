@@ -50,7 +50,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 				}
 			}
 			exporter := &recordingCampaignFeedExporter{}
-			coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+			coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter)
 			f.controller.WithPublication(coordinator)
 			_, err := coordinator.PublishRunCatchUp(ctx, runID)
 			require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestCampaignPublication_RejectsMalformedReleaseTags(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.files.WriteFile(ctx, f.store.layout.campaignReleaseTagPath("legacy-public"), []byte(`{"campaign_id":"another","release":"v2.2.7"}`), constants.PermFilePrivate))
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter)
 	_, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
 	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Empty(t, exporter.records)

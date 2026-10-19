@@ -124,13 +124,12 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 		return fmt.Errorf("%w: acting_app_id %q does not match the certificate app identity", constants.ErrIdentityBindingFailed, actingAppID)
 	}
 
-	// The auth middleware has already verified the certificate and resolved
-	// replacement CLI sessions by certificate fingerprint. Prefer that
-	// authenticated context when present: a bind/refresh may replace the CLI
-	// session record without reissuing the still-valid certificate, so its URI
-	// SAN legitimately names the predecessor session. All claimed identities
-	// must agree with the server-derived context before this path admits the
-	// envelope; raw request headers are never authoritative here.
+	// The auth middleware has already verified the certificate against the CLI
+	// session it names, and stamped the operator binding from that persisted
+	// session. When the envelope's claims agree with that server-derived context,
+	// admit it without re-deriving them from the URI SAN. All claimed identities
+	// must agree with the context before this path admits the envelope; raw
+	// request headers are never authoritative here.
 	if authenticatedCLISessionID, ok := r.Context().Value(constants.ContextKeyCLISessionID).(string); ok &&
 		authenticatedCLISessionID != "" && cliSessionID == authenticatedCLISessionID {
 		authenticatedOperatorID, _ := r.Context().Value(constants.ContextKeyOperatorID).(string)

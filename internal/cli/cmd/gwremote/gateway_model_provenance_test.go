@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -126,7 +127,7 @@ func TestNewCampaignModelProvenanceReader_WiresRemoteWhenHealthy(t *testing.T) {
 	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
-	reader, err := NewCampaignModelProvenanceReader(fileSvc, cfg)
+	reader, err := NewCampaignModelProvenanceReader(fileSvc, evaluation.NewStore(fileSvc), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, reader)
 }

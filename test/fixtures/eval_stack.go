@@ -37,8 +37,6 @@ type EvalStack struct {
 	DataHost      *OperatorHost
 	InferenceHost *OperatorHost
 	Provider      *ScriptedOllama
-
-	posture constants.Posture
 }
 
 // NewEvalStack builds an isolated Gateway, bootstrap owner, wire witness, and
@@ -88,27 +86,8 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	return &EvalStack{
 		Gateway: gateway, Identity: identity, Owner: owner, Witness: witness,
 		Data: data, Inference: inference, DataHost: dataHost,
-		InferenceHost: inferenceHost, Provider: provider, posture: posture,
+		InferenceHost: inferenceHost, Provider: provider,
 	}
-}
-
-// FollowOwnerCLISession moves the owner's console, and under an L3 posture the
-// CLI transaction approver, onto identity's CLI session and certificate. A CLI
-// session replaced by a bind is deactivated, and the Gateway delivers approval
-// changes only to active CLI sessions with an open stream, so a listener left
-// on the replaced session never hears of later suspensions.
-func (s *EvalStack) FollowOwnerCLISession(t *testing.T, identity *ClientIdentity) {
-	t.Helper()
-	require.NotNil(t, identity)
-	require.NotEmpty(t, identity.CLISessionID)
-	if identity.CLISessionID == s.Owner.CLISessionID {
-		return
-	}
-	owner := AttachOwnerConsole(t, s.Gateway, identity.UserID, identity.CLISessionID, OwnerApprovesEach)
-	if s.posture.RequiresL3() {
-		owner.ApproveTransactionsWithCLI(t, identity)
-	}
-	s.Owner = owner
 }
 
 // RequireOutboundMTLS verifies that the witness observed this Operator's

@@ -17,7 +17,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/uuid"
 )
 
 // handleBind binds the authenticated CLI session to the requested operator
@@ -25,8 +24,11 @@ import (
 // many; every target is validated (active, owned by the caller) before any
 // binding changes, so a bad target rejects the whole request. The first
 // target becomes the primary binding the auth middleware stamps on requests.
-// When the CLI session is already bound to exactly that list, the current
-// binding is returned without issuing a replacement session.
+// The binding is updated in place on the caller's active CLI session: the
+// session keeps its ID and certificate, so the certificate's URI SAN still
+// names it. A missing or inactive session is rejected and never replaced;
+// 'auth refresh' is the recovery path. When the session is already bound to
+// exactly that list, the current binding is returned unchanged.
 //
 // POST /api/v1/auth/cli/bind  (RouteAuthMTLS)
 func (c *CLIRefreshController) handleBind(w http.ResponseWriter, r *http.Request) {
@@ -108,19 +110,11 @@ func (c *CLIRefreshController) handleBind(w http.ResponseWriter, r *http.Request
 	}
 	primary := bound[0]
 
-	var oldSession *models.CLISession
-	if oldCLISessionID != "" {
-		oldSession, err = c.cliSessionSvc.loadCLISession(r.Context(), oldCLISessionID)
-		if err != nil && !errors.Is(err, constants.ErrCLISessionNotFound) {
-			c.logger.Error("CLI bind: failed to load old session",
-				"error", err,
-				"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-			)
-			c.responder.Error(w, http.StatusInternalServerError, "failed to load CLI session")
-			return
-		}
+	oldSession, ok := c.loadCallerCLISession(w, r, "bind", userID, oldCLISessionID)
+	if !ok {
+		return
 	}
-	if oldSession != nil && oldSession.IsActive && sameOperatorSessionIDs(boundSessionIDsOf(oldSession), targetSessionIDs) {
+	if sameOperatorSessionIDs(boundSessionIDsOf(oldSession), targetSessionIDs) {
 		c.responder.JSON(w, http.StatusOK, models.CLIBindResponse{
 			Success:           true,
 			CLISessionID:      oldCLISessionID,
@@ -133,59 +127,79 @@ func (c *CLIRefreshController) handleBind(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var systemFingerprint, certFingerprint, certSerial, loginMethod string
-	if oldSession != nil {
-		systemFingerprint = oldSession.SystemFingerprint
-		certFingerprint = oldSession.CertFingerprint
-		certSerial = oldSession.CertSerial
-		loginMethod = oldSession.LoginMethod
-	}
-
-	newCLISessionID, err := uuid.NewString()
-	if err != nil {
-		c.responder.Error(w, http.StatusInternalServerError, "failed to generate session ID")
-		return
-	}
-	_, err = c.cliSessionSvc.RefreshCLISession(r.Context(),
-		oldCLISessionID,
-		newCLISessionID,
-		CLISessionFields{
-			OperatorSessionID:       primary.OperatorSessionID,
-			BoundOperatorSessionIDs: targetSessionIDs,
-			UserID:                  userID,
-			SystemFingerprint:       systemFingerprint,
-			CertFingerprint:         certFingerprint,
-			CertSerial:              certSerial,
-			LoginMethod:             loginMethod,
-		},
-	)
-	if err != nil {
-		c.logger.Warn("CLI bind: RefreshCLISession failed",
+	if _, err := c.cliSessionSvc.BindOperatorSessions(r.Context(), oldCLISessionID, primary.OperatorSessionID, targetSessionIDs); err != nil {
+		c.logger.Warn("CLI bind: BindOperatorSessions failed",
 			"error", err,
 			"user_id", userID,
-			"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-			"new_cli_session_id_prefix", safeTruncateID(newCLISessionID),
+			"cli_session_id_prefix", safeTruncateID(oldCLISessionID),
 		)
 		c.writeRefreshError(w, err)
 		return
 	}
 
-	c.logger.Info("CLI session bound to operator session(s) via controller",
+	c.logger.Info("CLI session bound to operator session(s) in place via controller",
 		"user_id", userID,
-		"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-		"new_cli_session_id_prefix", safeTruncateID(newCLISessionID),
+		"cli_session_id_prefix", safeTruncateID(oldCLISessionID),
 		"primary_operator_session_id_prefix", safeTruncateID(primary.OperatorSessionID),
 		"operator_count", len(bound),
 	)
 
-	c.responder.JSON(w, http.StatusCreated, models.CLIBindResponse{
+	c.responder.JSON(w, http.StatusOK, models.CLIBindResponse{
 		Success:           true,
-		CLISessionID:      newCLISessionID,
+		CLISessionID:      oldCLISessionID,
 		UserID:            userID,
 		OperatorSessionID: primary.OperatorSessionID,
 		OperatorID:        primary.OperatorID,
 		Bound:             bound,
 	})
+}
+
+// loadCallerCLISession resolves the authenticated caller's CLI session, the
+// one a bind or unbind rebinds in place. It never mints a session: a missing
+// or inactive session is rejected so the caller recovers through
+// 'auth refresh', and a session owned by another user is reported as missing.
+// On failure it writes the response and returns false.
+func (c *CLIRefreshController) loadCallerCLISession(w http.ResponseWriter, r *http.Request, action, userID, cliSessionID string) (*models.CLISession, bool) {
+	if cliSessionID == "" {
+		c.logger.Warn("CLI session operation rejected: no CLI session in the authenticated context", "action", action)
+		c.writeRefreshError(w, constants.ErrCLISessionNotFound)
+		return nil, false
+	}
+	session, err := c.cliSessionSvc.loadCLISession(r.Context(), cliSessionID)
+	if err != nil {
+		if errors.Is(err, constants.ErrCLISessionNotFound) {
+			c.logger.Warn("CLI session operation rejected: caller CLI session not found",
+				"action", action,
+				"cli_session_id_prefix", safeTruncateID(cliSessionID),
+			)
+			c.writeRefreshError(w, constants.ErrCLISessionNotFound)
+			return nil, false
+		}
+		c.logger.Error("CLI session operation failed: load caller CLI session",
+			"action", action,
+			"error", err,
+			"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		)
+		c.responder.Error(w, http.StatusInternalServerError, "failed to load CLI session")
+		return nil, false
+	}
+	if session.UserID != userID {
+		c.logger.Warn("CLI session operation rejected: caller CLI session belongs to another user",
+			"action", action,
+			"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		)
+		c.writeRefreshError(w, constants.ErrCLISessionNotFound)
+		return nil, false
+	}
+	if !session.IsActive {
+		c.logger.Warn("CLI session operation rejected: caller CLI session is inactive",
+			"action", action,
+			"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		)
+		c.writeRefreshError(w, constants.ErrCLISessionAlreadyDeactivated)
+		return nil, false
+	}
+	return session, true
 }
 
 // normalizeOperatorSessionIDs returns the de-duplicated, trimmed target list of
@@ -241,9 +255,9 @@ func sameOperatorSessionIDs(a, b []string) bool {
 	return true
 }
 
-// handleUnbind clears the authenticated CLI session's operator binding.
-// When the session is already unbound, the current session is returned
-// without issuing a replacement.
+// handleUnbind clears the authenticated CLI session's operator binding in
+// place: the session keeps its ID and certificate. A missing or inactive
+// session is rejected, and an already unbound session is returned unchanged.
 //
 // POST /api/v1/auth/cli/unbind  (RouteAuthMTLS)
 func (c *CLIRefreshController) handleUnbind(w http.ResponseWriter, r *http.Request) {
@@ -272,19 +286,11 @@ func (c *CLIRefreshController) handleUnbind(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var oldSession *models.CLISession
-	if oldCLISessionID != "" {
-		oldSession, err = c.cliSessionSvc.loadCLISession(r.Context(), oldCLISessionID)
-		if err != nil && !errors.Is(err, constants.ErrCLISessionNotFound) {
-			c.logger.Error("CLI unbind: failed to load old session",
-				"error", err,
-				"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-			)
-			c.responder.Error(w, http.StatusInternalServerError, "failed to load CLI session")
-			return
-		}
+	oldSession, ok := c.loadCallerCLISession(w, r, "unbind", userID, oldCLISessionID)
+	if !ok {
+		return
 	}
-	if oldSession != nil && oldSession.IsActive && oldSession.OperatorSessionID == "" {
+	if oldSession.OperatorSessionID == "" {
 		c.responder.JSON(w, http.StatusOK, models.CLIUnbindResponse{
 			Success:        true,
 			CLISessionID:   oldCLISessionID,
@@ -294,50 +300,24 @@ func (c *CLIRefreshController) handleUnbind(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var systemFingerprint, certFingerprint, certSerial, loginMethod string
-	if oldSession != nil {
-		systemFingerprint = oldSession.SystemFingerprint
-		certFingerprint = oldSession.CertFingerprint
-		certSerial = oldSession.CertSerial
-		loginMethod = oldSession.LoginMethod
-	}
-
-	newCLISessionID, err := uuid.NewString()
-	if err != nil {
-		c.responder.Error(w, http.StatusInternalServerError, "failed to generate session ID")
-		return
-	}
-	_, err = c.cliSessionSvc.UnbindCLISession(r.Context(),
-		oldCLISessionID,
-		newCLISessionID,
-		CLISessionFields{
-			UserID:            userID,
-			SystemFingerprint: systemFingerprint,
-			CertFingerprint:   certFingerprint,
-			CertSerial:        certSerial,
-			LoginMethod:       loginMethod,
-		},
-	)
-	if err != nil {
-		c.logger.Warn("CLI unbind: UnbindCLISession failed",
+	if _, err := c.cliSessionSvc.UnbindOperatorSessions(r.Context(), oldCLISessionID); err != nil {
+		c.logger.Warn("CLI unbind: UnbindOperatorSessions failed",
 			"error", err,
 			"user_id", userID,
-			"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-			"new_cli_session_id_prefix", safeTruncateID(newCLISessionID),
+			"cli_session_id_prefix", safeTruncateID(oldCLISessionID),
 		)
 		c.writeRefreshError(w, err)
 		return
 	}
 
-	c.logger.Info("CLI session unbound from operator via controller",
+	c.logger.Info("CLI session unbound from operator in place via controller",
 		"user_id", userID,
-		"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-		"new_cli_session_id_prefix", safeTruncateID(newCLISessionID),
+		"cli_session_id_prefix", safeTruncateID(oldCLISessionID),
 	)
 
-	c.responder.JSON(w, http.StatusCreated, models.CLIUnbindResponse{
+	c.responder.JSON(w, http.StatusOK, models.CLIUnbindResponse{
 		Success:      true,
-		CLISessionID: newCLISessionID,
+		CLISessionID: oldCLISessionID,
 		UserID:       userID,
 	})
 }

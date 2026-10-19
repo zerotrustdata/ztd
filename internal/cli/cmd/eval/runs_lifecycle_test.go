@@ -9,15 +9,42 @@ package eval
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
 
 const otherHostPID = 9999
+
+// rejectingRunStateReporter is a Gateway run projection that refuses every update.
+type rejectingRunStateReporter struct {
+	err error
+}
+
+func (r rejectingRunStateReporter) UpdateRunState(context.Context, models.ObserveProducerRunStateRequest) error {
+	return r.err
+}
+
+func TestRunLifecycle_RejectedPostIsReturnedToTheCommand(t *testing.T) {
+	lifecycle := runLifecycle{
+		client:    rejectingRunStateReporter{err: fmt.Errorf("observe producer run-state: %w", constants.ErrHTTPStatusError)},
+		deps:      nativeEvalDeps{now: func() time.Time { return time.Unix(1789657337, 0).UTC() }},
+		runID:     "run-a-1",
+		startedAt: time.Unix(1789657000, 0).UTC(),
+	}
+
+	err := lifecycle.post(context.Background(), models.RunLifecycleStatusRunning, &runRow{Queued: 1}, nil)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.Contains(t, err.Error(), "run-a-1")
+	assert.Contains(t, err.Error(), string(models.RunLifecycleStatusRunning))
+}
 
 // holdRun records a lease on a run for a process that the fake process control
 // reports as alive.
@@ -31,12 +58,4 @@ func (e *runEnv) holdRun(t *testing.T, runID string) {
 	}, nil)
 	require.NoError(t, err)
 	e.control.setAlive(otherHostPID, true)
-}
-
-func waitForCancelRequest(t *testing.T, env *runEnv, runID string) {
-	t.Helper()
-	require.Eventually(t, func() bool {
-		lease, err := env.store(t).LoadRunLease(context.Background(), runID)
-		return err == nil && lease.CancelRequested()
-	}, 5*time.Second, 2*time.Millisecond, "cancel never recorded a request on the lease")
 }

@@ -36,8 +36,9 @@ type processControl interface {
 	Interrupt(pid int) error
 }
 
-// runControlDeps carries the process boundary and polling cadence used by
-// commands that start, watch, or stop a run.
+// runControlDeps carries the process boundary and the watch cadence used by
+// commands that start, watch, or stop a run. Stop requests are event-driven and
+// do not use the cadence.
 type runControlDeps struct {
 	processFactory func(fs.RuntimeFileService) (processControl, error)
 	// notifyInterrupts registers for interrupt signals and returns the channel
@@ -46,7 +47,14 @@ type runControlDeps struct {
 	// onSignalHandled is an optional test hook called after an interrupt signal
 	// is registered by the stop watcher.
 	onSignalHandled func()
-	pollInterval    time.Duration
+	// onStopRequested is an optional test hook called after the stop watcher
+	// records a stop request from the event stream or from the run's lease.
+	onStopRequested func()
+	// onLeaseAcquired is an optional test hook called once a run's lease is held,
+	// before the process subscribes to the run's events.
+	onLeaseAcquired func()
+	// pollInterval is the refresh cadence of ztd eval runs show --watch.
+	pollInterval time.Duration
 }
 
 // notifyProcessInterrupts registers for SIGINT and SIGTERM.
@@ -125,26 +133,27 @@ func leaseLiveness(control processControl) evaluation.LeaseLiveness {
 	}
 }
 
-// runStopWatcher observes the two ways an executing run is asked to stop: a
-// cancel request recorded on its lease and an interrupt signal. The first
-// request lets the current assignment finish. A second signal cancels the
-// running assignment through the context.
+// runStopWatcher observes the two ways an executing run is asked to stop: a stop
+// event on the run's event stream, which the lease reconcile on every connection
+// also feeds, and an interrupt signal. The first request lets the current
+// assignment finish. A second signal cancels the running assignment through the
+// context.
 type runStopWatcher struct {
-	requested atomic.Bool
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
+	requested       atomic.Bool
+	cancel          context.CancelFunc
+	onStopRequested func()
+	wg              sync.WaitGroup
 }
 
-// startRunStopWatcher starts the watcher goroutine. hardCancel is called on a
+// startRunStopWatcher starts the watcher goroutine. It drains events from the
+// run's stream and records a stop event as a request. hardCancel is called on a
 // second interrupt. The caller owns the watcher and must call Stop.
-func startRunStopWatcher(ctx context.Context, store *evaluation.Store, runID string, poll time.Duration, signals <-chan os.Signal, hardCancel context.CancelFunc, onSignalHandled func()) *runStopWatcher {
+func startRunStopWatcher(ctx context.Context, events <-chan runEvent, signals <-chan os.Signal, hardCancel context.CancelFunc, onSignalHandled, onStopRequested func()) *runStopWatcher {
 	watchCtx, cancel := context.WithCancel(ctx)
-	watcher := &runStopWatcher{cancel: cancel}
+	watcher := &runStopWatcher{cancel: cancel, onStopRequested: onStopRequested}
 	watcher.wg.Add(1)
 	go func() {
 		defer watcher.wg.Done()
-		ticker := time.NewTicker(poll)
-		defer ticker.Stop()
 		for {
 			select {
 			case <-watchCtx.Done():
@@ -158,14 +167,23 @@ func startRunStopWatcher(ctx context.Context, store *evaluation.Store, runID str
 					hardCancel()
 					return
 				}
-			case <-ticker.C:
-				if lease, err := store.LoadRunLease(watchCtx, runID); err == nil && lease.CancelRequested() {
-					watcher.requested.Store(true)
+			case ev := <-events:
+				if ev.Stop != nil {
+					watcher.requestStop()
 				}
 			}
 		}
 	}()
 	return watcher
+}
+
+// requestStop records a stop request. It never cancels the running assignment:
+// the assignment finishes, and the run stops before the next one.
+func (w *runStopWatcher) requestStop() {
+	w.requested.Store(true)
+	if w.onStopRequested != nil {
+		w.onStopRequested()
+	}
 }
 
 // Requested reports whether the run was asked to stop.

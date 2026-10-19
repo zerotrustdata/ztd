@@ -384,7 +384,7 @@ func TestRunsExecute_PersistentFollowsDataOperatorSessionRotation(t *testing.T) 
 	operators[1] = rotated
 	bindClient := &fakeBindClient{bound: []string{testDataSession}}
 	env.deps.bindClientFactory = func(*config.Config) evalBindClient { return bindClient }
-	writeGatewayCredentials(t, env)
+	env.withExecuteGateway(t)
 
 	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{
 		RunID:      "run-session-rotation",
@@ -549,6 +549,7 @@ func TestRunsResume_RejectsMissingRunWithoutLeavingALease(t *testing.T) {
 func TestRunsResume_RejectsPreflightWhenGatewayUnhealthy(t *testing.T) {
 	gwremote.WithGatewayHealthCheck(t, false)
 	env := setupRunEnv(t)
+	env.withExecuteGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "resume", "run-a-1", "--no-auto-bind")

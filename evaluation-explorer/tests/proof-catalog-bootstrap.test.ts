@@ -62,7 +62,7 @@ describe('proof catalog bootstrap', () => {
             classification: 'public_safe',
             campaign_id: 'campaign-1',
             generated_at: '2026-09-20T00:00:00Z',
-            verification_command: 'ztd public verify-assignment --db assignment.db --vault-key assignment.vault.key',
+            verification_command: 'ztd public verify-assignment --db assignment.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>',
             immutable_url: `/proofs/${sliceHash}`,
           }],
         }), { status: 200 });

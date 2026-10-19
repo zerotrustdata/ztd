@@ -1845,7 +1845,7 @@
         },
         "/api/v1/public-feed/proofs": {
             "post": {
-                "description": "Ingests one assignment audit export package into the gateway-owned public proof catalog (mTLS owner CLI only).",
+                "description": "Builds one assignment's audit database from the gateway's stored signed event records and publishes it to the gateway-owned public proof catalog (mTLS owner CLI only). The request names the run and assignment; it carries no database or key.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1858,7 +1858,7 @@
                 "summary": "Publish assignment audit proof",
                 "parameters": [
                     {
-                        "description": "Assignment audit proof package",
+                        "description": "Assignment audit proof request",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1897,7 +1897,7 @@
         },
         "/api/v1/public-feed/proofs/batch": {
             "post": {
-                "description": "Ingests many assignment audit export packages in one request (mTLS owner CLI only).",
+                "description": "Builds many assignments' audit databases from the gateway's stored signed event records and publishes them in one request (mTLS owner CLI only). The response carries each proof's digests in request order.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4163,6 +4163,12 @@
                 },
                 "proof_root_sha256": {
                     "type": "string"
+                },
+                "proofs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.PublicAssignmentAuditProofPublishResponse"
+                    }
                 }
             }
         },
@@ -4183,13 +4189,8 @@
                     "type": "string"
                 },
                 "campaign_revision": {
+                    "description": "CampaignRevision and IndexDigest are required.",
                     "type": "string"
-                },
-                "database": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 },
                 "defer_mirror_push": {
                     "type": "boolean"
@@ -4215,12 +4216,6 @@
                     "items": {
                         "type": "integer"
                     }
-                },
-                "vault_key": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 }
             }
         },
@@ -4233,6 +4228,9 @@
                 "agent_trace_sha256": {
                     "type": "string"
                 },
+                "assignment_id": {
+                    "type": "string"
+                },
                 "database_sha256": {
                     "type": "string"
                 },
@@ -4243,9 +4241,6 @@
                     "type": "string"
                 },
                 "scenario_input_sha256": {
-                    "type": "string"
-                },
-                "vault_key_sha256": {
                     "type": "string"
                 }
             }

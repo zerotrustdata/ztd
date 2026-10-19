@@ -69,7 +69,7 @@ func (s *sequenceTrackingCampaignFeedExporter) ExportBatch(_ context.Context, re
 func TestCampaignPublicationCoordinatorExportFeedRecordsBatches(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	exporter := &sequenceTrackingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter)
 	requests := make([]campaignFeedPublishRequest, 0, 3)
 	for index := 0; index < 3; index++ {
 		requests = append(requests, campaignFeedPublishRequest{
@@ -90,7 +90,7 @@ func TestCampaignPublicationCoordinatorIdempotentLifecyclePublish(t *testing.T) 
 	store := NewStore(files)
 	savePublicRunIdentity(t, store, "run-1", "campaign-1")
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId:    "assign-1",
 		RunId:           "run-1",
@@ -109,7 +109,7 @@ func TestCampaignPublicationCoordinatorPublishRunCatchUp(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).WithPublication(coordinator)
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
@@ -139,7 +139,7 @@ func TestCampaignPublicationCoordinatorPublishRunCompletion(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).WithPublication(coordinator)
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
@@ -179,7 +179,7 @@ func TestCampaignPublicationCoordinatorPublishRunVerification(t *testing.T) {
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	publicationState := NewMemoryCampaignPublicationStateStore()
-	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, exporter)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).WithPublication(coordinator)
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
@@ -314,7 +314,7 @@ func TestCampaignPublicationCoordinatorForceRepublish(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).WithPublication(coordinator)
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
@@ -354,7 +354,7 @@ func TestCampaignControllerWithPublicationPublishesQueuedAssignments(t *testing.
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).WithPublication(coordinator)
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
@@ -379,7 +379,7 @@ func TestCampaignPublicationCoordinatorPublishAssignmentLifecycles(t *testing.T)
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
 	runID := "run-batch-lifecycles"
@@ -405,7 +405,7 @@ func TestCampaignPublicationCoordinatorPublishAssignmentLifecycles(t *testing.T)
 	assert.Equal(t, 2, len(exporter.records))
 }
 
-func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesRemoteObservationWindows(t *testing.T) {
+func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesSealedObservationWindows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
@@ -441,11 +441,10 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesRemoteObservat
 	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
+	require.NoError(t, store.SaveProviderAttemptRecord(ctx, run.GetRunId(), attempt))
+	require.NoError(t, store.SaveProviderObservationWindow(ctx, run.GetRunId(), window))
 
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, &stubProviderObservationRemote{
-		window:  window,
-		attempt: attempt,
-	})
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	assignment := &evalv1.EvaluationAssignment{
 		SchemaVersion:   CampaignSchemaVersion,
 		AssignmentId:    "assign-1",
@@ -506,7 +505,7 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultFailedAssignmentWi
 	require.NoError(t, err)
 	exporter := &recordingCampaignFeedExporter{}
 
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	assignment := &evalv1.EvaluationAssignment{
 		SchemaVersion:   CampaignSchemaVersion,
 		AssignmentId:    "assign-failed-1",
@@ -653,7 +652,7 @@ func TestPublishRunAggregatesUsesLeaseStatusWithoutProgressChanges(t *testing.T)
 	require.NoError(t, err)
 	exporter := &recordingCampaignFeedExporter{}
 	alive := true
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).
 		WithLeaseLiveness(func(RunLease) bool { return alive })
 	observed := time.Unix(1_700_000_000, 0).UTC()
 	assertPublished := func(want string) {
@@ -695,7 +694,7 @@ func TestPublishRunCatchUpPreservesBoundVerificationState(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	run := completedTestCampaign(t, store)
 
 	count, err := coordinator.PublishRunCompletion(context.Background(), run.GetRunId(), time.Unix(1_700_000_100, 0).UTC())
@@ -765,7 +764,7 @@ func TestPublishRunAggregatesIgnoresStalePartialVerificationOnInProgressRun(t *t
 	require.True(t, ok)
 
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	_, err = coordinator.PublishRunAggregates(context.Background(), run.GetRunId(), time.Unix(1_700_000_300, 0).UTC())
 	require.NoError(t, err)
 
@@ -781,7 +780,7 @@ func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T)
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	run := completedTestCampaign(t, store)
 
 	report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL)
@@ -801,7 +800,7 @@ func TestPublishRunAggregatesProjectsBoundFailure(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	run := completedTestCampaign(t, store)
 
 	bindPersistedVerificationReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL)
@@ -829,7 +828,7 @@ func TestResetFeedPublicationIdempotencyPreservesAuditProofKeys(t *testing.T) {
 		},
 		LastPublishedSequence: 42,
 	}))
-	coordinator := NewCampaignPublicationCoordinator(nil, nil, publicationState, nil, nil)
+	coordinator := NewCampaignPublicationCoordinator(nil, nil, publicationState, nil)
 	require.NoError(t, coordinator.ResetFeedPublicationIdempotency(context.Background(), runID))
 	loaded, err := publicationState.Load(context.Background(), runID)
 	require.NoError(t, err)
@@ -844,7 +843,7 @@ func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
 	exporter := &recordingCampaignFeedExporter{}
 	proofPublisher := &recordingCampaignProofPublisher{}
 	publicationState := NewMemoryCampaignPublicationStateStore()
-	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, exporter, nil).
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, exporter).
 		WithProofPublisher(proofPublisher)
 	run := completedTestCampaign(t, store)
 	assignments, err := store.ListAssignments(context.Background(), run.GetRunId())
@@ -871,7 +870,7 @@ func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T)
 	store := NewStore(files)
 	proofPublisher := &recordingCampaignProofPublisher{}
 	publicationState := NewMemoryCampaignPublicationStateStore()
-	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}, nil).
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}).
 		WithProofPublisher(proofPublisher)
 	run := completedTestCampaign(t, store)
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
@@ -911,7 +910,7 @@ func TestPublishRunCatchUpRebuildsProofWhenScenarioFixtureIsUnpublished(t *testi
 	store := NewStore(files)
 	proofPublisher := &recordingCampaignProofPublisher{}
 	publicationState := NewMemoryCampaignPublicationStateStore()
-	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}, nil).
+	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}).
 		WithProofPublisher(proofPublisher)
 	run := completedTestCampaign(t, store)
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())

@@ -28,7 +28,7 @@ func TestCampaignMirrorReconciler_ReconcileAllVerifiedRunsFromStorePresenceOnlyR
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
 	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithMirrorProbe(probe)
 	run := completedVerifiedMirrorTestCampaign(t, store)
 
 	reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)

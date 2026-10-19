@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -174,6 +175,10 @@ func (c *capturingGatewayProofPublisherClient) Post(path string, body interface{
 	c.lastPath = path
 	c.lastBody = body
 	resp := models.PublicAssignmentAuditProofPublishResponse{Accepted: true}
+	if request, ok := body.(models.PublicAssignmentAuditProofPublishRequest); ok {
+		resp.AssignmentID = request.AssignmentID
+		resp.DatabaseSHA256 = strings.Repeat("a", 64)
+	}
 	payload, err := json.Marshal(resp)
 	if err != nil {
 		return nil, err
@@ -198,10 +203,6 @@ func TestRemoteGatewayCampaignProofPublisherPostsStructuredRequest(t *testing.T)
 		RunID:            "run-1",
 		AssignmentID:     "assignment-1",
 		IndexDigest:      "digest-1",
-		Artifacts: evaluation.AssignmentAuditSliceArtifacts{
-			Database: []byte("db-bytes"),
-			VaultKey: []byte("vault-key"),
-		},
 	}}, false)
 	require.NoError(t, err)
 	assert.Equal(t, constants.APIPaths.PublicFeedProofs, client.lastPath)
@@ -212,6 +213,4 @@ func TestRemoteGatewayCampaignProofPublisherPostsStructuredRequest(t *testing.T)
 	assert.Equal(t, "run-1", request.RunID)
 	assert.Equal(t, "assignment-1", request.AssignmentID)
 	assert.Equal(t, "digest-1", request.IndexDigest)
-	assert.Equal(t, []byte("db-bytes"), request.Database)
-	assert.Equal(t, []byte("vault-key"), request.VaultKey)
 }

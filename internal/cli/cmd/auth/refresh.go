@@ -52,12 +52,16 @@ func refreshCmdWithConfig(
 	cmd := &cobra.Command{
 		Use:   "refresh",
 		Short: "Refresh an expired CLI session using the still-valid mTLS certificate",
-		Long: `Refresh an expired CLI session by obtaining a new session from the gateway.
+		Long: `Refresh an expired CLI session in place.
 
 This command is the recovery path for an expired CLI session with a still-valid
 mTLS certificate. The gateway derives the user identity from the verified
-certificate and issues a new CLI session bound to the same user. The certificate
-is NOT rotated — the cert is the proof of identity.
+certificate and extends that same CLI session with a new expiry. The session ID
+and the certificate are unchanged, and the certificate is NOT rotated.
+
+A session the gateway no longer has (for example after a gateway volume reset),
+or one that was logged out, cannot be refreshed. Use 'auth enroll user' instead
+to establish a new session.
 
 When the certificate itself has expired, this command cannot help (an expired
 cert cannot authenticate via mTLS). Use 'auth enroll user --headless' instead to
@@ -76,10 +80,8 @@ The gateway must already be running.`,
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 
-			// Load the current credentials to get the old session ID for
-			// the deactivation side of the refresh. If credentials are
-			// missing, proceed — the gateway handles a missing old
-			// session by only persisting the new one.
+			// Load the current credentials: the session ID they hold is the
+			// session the gateway extends.
 			store := auth.NewCredentialStore(fileSvc, cfg)
 			creds, err := store.LoadCredentials(ctx)
 			if err != nil {
@@ -90,7 +92,7 @@ The gateway must already be running.`,
 				cmd.Println("ztd auth enroll user")
 				return nil
 			}
-			cmd.Printf("Refreshing CLI session for user %s (old session %s).\n", creds.UserID, creds.CLISessionID)
+			cmd.Printf("Refreshing CLI session %s for user %s.\n", creds.CLISessionID, creds.UserID)
 
 			client := clientFactory(cfg)
 			refresh, err := client.Refresh(ctx, fileSvc)
@@ -98,10 +100,10 @@ The gateway must already be running.`,
 				return fmt.Errorf("auth refresh: %w", err)
 			}
 
-			// Update the local credentials with the new session ID and the
-			// authoritative operator binding returned by the gateway. This
-			// is also the resync path for stale or missing local operator
-			// bindings.
+			// Update the local credentials with the session ID the gateway
+			// confirmed (unchanged by a refresh) and the authoritative operator
+			// binding it returned. This is also the resync path for stale or
+			// missing local operator bindings.
 			creds.CLISessionID = refresh.CLISessionID
 			creds.OperatorSessionID = refresh.OperatorSessionID
 			creds.OperatorID = refresh.OperatorID
@@ -111,7 +113,7 @@ The gateway must already be running.`,
 
 			cmd.Printf("CLI session refreshed successfully.\n")
 			cmd.Printf("User ID: %s\n", refresh.UserID)
-			cmd.Printf("New CLI Session ID: %s\n", refresh.CLISessionID)
+			cmd.Printf("CLI Session ID: %s\n", refresh.CLISessionID)
 			return nil
 		},
 	}

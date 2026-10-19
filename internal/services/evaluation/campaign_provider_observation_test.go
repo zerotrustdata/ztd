@@ -67,7 +67,7 @@ func TestCampaignProviderObservationReader_BuildPublicBenchmarkObservations(t *t
 	require.NoError(t, err)
 	window.ObservationDigest = digest
 	store := NewStore(fileSvc)
-	require.NoError(t, store.saveProviderObservationWindow(ctx, "run-1", window))
+	require.NoError(t, store.SaveProviderObservationWindow(ctx, "run-1", window))
 
 	reader, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestBuildPublicBenchmarkObservations_AllUnavailableGPUMetrics(t *testing.T)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
 	store := NewStore(fileSvc)
-	require.NoError(t, store.saveProviderObservationWindow(ctx, "run-unavail", window))
+	require.NoError(t, store.SaveProviderObservationWindow(ctx, "run-unavail", window))
 
 	reader, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
@@ -250,39 +250,51 @@ func (s *stubProviderObservationRemote) WatchRecorded(ctx context.Context, conne
 	return nil
 }
 
-func TestCampaignProviderObservationReaderWithRemote_LoadsGatewayEvidenceOnLocalMiss(t *testing.T) {
+type recordingProviderObservationRemote struct {
+	loadCalls []string
+	window    *evalv1.ProviderBoundaryObservationWindow
+	attempt   *operatorv1.InferenceProviderAttemptRecord
+}
+
+func (s *recordingProviderObservationRemote) Load(_ context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, error) {
+	s.loadCalls = append(s.loadCalls, providerAttemptID)
+	if s.window == nil || s.attempt == nil || s.window.GetProviderAttemptId() != providerAttemptID {
+		return nil, nil, constants.ErrNotFound
+	}
+	return s.window, s.attempt, nil
+}
+
+func (s *recordingProviderObservationRemote) WatchRecorded(ctx context.Context, connected func(), _ func(string)) error {
+	connected()
+	<-ctx.Done()
+	return nil
+}
+
+// TestCampaignProviderObservationReader_NeverReadsGatewayOnLocalMiss pins that
+// reads come only from the run's sealed copies: a local miss is unavailable, and
+// the gateway remote is never consulted.
+func TestCampaignProviderObservationReader_NeverReadsGatewayOnLocalMiss(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	attempt := &operatorv1.InferenceProviderAttemptRecord{
-		ProviderAttemptId: "attempt-remote",
-		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
-		StartedAtUnixMs:   time.Unix(1_700_000_000, 0).UnixMilli(),
-		CompletedAtUnixMs: time.Unix(1_700_000_010, 0).UnixMilli(),
+	remote := &recordingProviderObservationRemote{
+		window: &evalv1.ProviderBoundaryObservationWindow{
+			SchemaVersion:       provider_observer.SchemaVersion,
+			ProviderAttemptId:   "attempt-remote",
+			ObserverId:          "observer-test",
+			ObserverClockSource: provider_observer.DefaultObserverClockSource,
+		},
+		attempt: &operatorv1.InferenceProviderAttemptRecord{
+			ProviderAttemptId: "attempt-remote",
+			Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
+		},
 	}
-	window := &evalv1.ProviderBoundaryObservationWindow{
-		SchemaVersion:              provider_observer.SchemaVersion,
-		ProviderAttemptId:          "attempt-remote",
-		ObserverId:                 "observer-test",
-		ObserverClockSource:        provider_observer.DefaultObserverClockSource,
-		WindowStartedAtUnixNanos:   uint64(time.Unix(1_700_000_000, 0).UnixNano()),
-		WindowCompletedAtUnixNanos: uint64(time.Unix(1_700_000_010, 0).UnixNano()),
-		AttemptStartedAtUnixMs:     attempt.GetStartedAtUnixMs(),
-		AttemptCompletedAtUnixMs:   attempt.GetCompletedAtUnixMs(),
-		Samples: []*evalv1.ProviderBoundaryHardwareSample{{
-			ObservedAtUnixNanos:        uint64(time.Unix(1_700_000_001, 0).UnixNano()),
-			GpuUtilizationAvailability: evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED,
-			GpuUtilizationPercent:      10,
-		}},
-	}
-	digest, err := provider_observer.ComputeObservationDigest(window)
+	digest, err := provider_observer.ComputeObservationDigest(remote.window)
 	require.NoError(t, err)
-	window.ObservationDigest = digest
+	remote.window.ObservationDigest = digest
 
-	reader, err := NewCampaignProviderObservationReaderWithRemote(NewStore(fileSvc), &stubProviderObservationRemote{
-		window:  window,
-		attempt: attempt,
-	})
+	store := NewStore(fileSvc)
+	reader, err := NewCampaignProviderObservationReaderWithRemote(store, remote)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
 		RunId: "run-remote",
@@ -292,8 +304,14 @@ func TestCampaignProviderObservationReaderWithRemote_LoadsGatewayEvidenceOnLocal
 		}},
 	}
 	failures, unavailable := reader.VerifyAssignmentProviderObservations(ctx, result, ProviderObservationPolicyStrict)
-	assert.Empty(t, failures)
-	assert.Empty(t, unavailable)
+	assert.NotEmpty(t, failures)
+	assert.Equal(t, []string{"source_not_captured"}, unavailable)
+	assert.Empty(t, remote.loadCalls, "reads must never consult the gateway")
+
+	_, err = store.LoadProviderObservationWindow(ctx, "run-remote", "attempt-remote")
+	assert.ErrorIs(t, err, constants.ErrNotFound)
+	_, err = store.LoadProviderAttemptRecord(ctx, "run-remote", "attempt-remote")
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestCampaignProviderObservationReader_CaptureAssignmentEvidencePersistsGatewayEvidence(t *testing.T) {
@@ -396,7 +414,7 @@ func TestCampaignRunVerifier_WithReaders(t *testing.T) {
 	files := newCampaignMemoryFileService()
 	reader, err := NewCampaignProviderObservationReader(NewStore(files))
 	require.NoError(t, err)
-	provenanceReader, err := NewCampaignModelProvenanceReader(files)
+	provenanceReader, err := NewCampaignModelProvenanceReader(NewStore(files))
 	require.NoError(t, err)
 
 	verifier := NewCampaignRunVerifier(func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }).

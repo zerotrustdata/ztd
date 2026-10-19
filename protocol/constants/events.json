@@ -43,7 +43,7 @@
       "producers": [
         "gateway"
       ],
-      "persistence": "gateway.operator_docs"
+      "persistence": "gateway.sse_store"
     },
     "AiEvalMetricAvailable": {
       "_go_const": "EventAiEvalMetricAvailable",

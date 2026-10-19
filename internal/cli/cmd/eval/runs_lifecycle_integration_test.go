@@ -12,6 +12,7 @@ package eval
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
 
@@ -64,6 +66,7 @@ func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
 
 func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	env.holdRun(t, "run-a-1")
 
@@ -77,13 +80,18 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 		done <- outcome{out, err}
 	}()
 
-	waitForCancelRequest(t, env, "run-a-1")
+	stop := env.stream.awaitStop(t)
+	assert.Equal(t, "run-a-1", stop.RunID)
 	select {
 	case <-done:
 		t.Fatal("cancel returned while the process still held the run")
 	case <-time.After(50 * time.Millisecond):
 	}
+	// The process stops after its current assignment, releases the lease, and
+	// reports the released status. Only that status ends the wait.
+	require.NoError(t, env.store(t).ClearRunLease(context.Background(), "run-a-1"))
 	env.control.setAlive(otherHostPID, false)
+	env.stream.publishRunStatus(t, "run-a-1", models.RunLifecycleStatusCancelled)
 
 	select {
 	case result := <-done:
@@ -91,7 +99,7 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 		assert.Contains(t, result.out, "Waiting for process 9999")
 		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", testModelRoleCells(t)))
 	case <-time.After(5 * time.Second):
-		t.Fatal("cancel did not finish after the process exited")
+		t.Fatal("cancel did not finish after the process released the run")
 	}
 	assert.Equal(t, []int{otherHostPID}, env.control.interrupted())
 	_, err := env.store(t).LoadRunLease(context.Background(), "run-a-1")
@@ -123,6 +131,73 @@ func TestRunsResume_DoesNotResumeAStoppedRun(t *testing.T) {
 	assert.False(t, ok, "cancelled run has no queued assignments to resume")
 	assert.Nil(t, assignment)
 	assert.NoError(t, err)
+}
+
+func TestRunsResume_ReportsItsLifecycleToTheGateway(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	working := env.deps.agentExecutorFactory
+
+	// An execute that errors before its first assignment leaves every assignment
+	// queued. The error is returned, and the run reports waiting, not failed, so the
+	// resume below can post running.
+	env.deps.agentExecutorFactory = func(campaignAgentExecutorInputs) (evaluation.CampaignAssignmentExecutor, error) {
+		return nil, constants.ErrInternal
+	}
+	_, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1, NoAutoBind: true})
+	require.ErrorIs(t, err, constants.ErrInternal)
+	assert.Equal(t, models.RunLifecycleStatusRunning, env.stream.awaitRunState(t).Status)
+	errored := env.stream.awaitRunState(t)
+	assert.Equal(t, models.RunLifecycleStatusWaiting, errored.Status)
+	assert.NotNil(t, errored.EndedAt)
+
+	env.deps.agentExecutorFactory = working
+	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1, NoAutoBind: true})
+	require.NoError(t, err)
+	assert.Equal(t, 1, executed)
+
+	running := env.stream.awaitRunState(t)
+	assert.Equal(t, models.RunLifecycleStatusRunning, running.Status)
+	assert.Equal(t, runID, running.RunID)
+	assert.Equal(t, models.RunKindEval, running.RunKind)
+	assert.Equal(t, "cli-1", running.CLISessionID)
+
+	// A limit that stops with assignments still queued leaves the run waiting for
+	// its next resume. It is not completed.
+	released := env.stream.awaitRunState(t)
+	assert.Equal(t, models.RunLifecycleStatusWaiting, released.Status)
+	assert.NotNil(t, released.EndedAt)
+}
+
+func TestRunsResume_OfAStoppedRunReportsCancelledWithoutRunning(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env.mustRun(t, "runs", "cancel", runID, "--publish=false")
+
+	// Nothing is queued, so the resume executes nothing and its only report is the
+	// released status. A running report from cancelled is a transition the Gateway
+	// refuses.
+	env.mustRun(t, "runs", "resume", runID, "--no-auto-bind")
+	assert.Equal(t, models.RunLifecycleStatusCancelled, env.stream.awaitRunState(t).Status)
+}
+
+func TestRunsResume_FailsClosedWhenTheGatewayRefusesRunning(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env.stream.rejectRunStates(http.StatusConflict)
+
+	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+
+	// The run never started: no assignment executed, and every one is still queued.
+	var show runShowJSON
+	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
+	assert.Equal(t, uint32(testModelRoleCells(t)), show.Queued)
+	assert.Zero(t, show.Terminal)
 }
 
 func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {

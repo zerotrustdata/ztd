@@ -1334,7 +1334,6 @@ ModelInferenceRecord captures one governed scored inference call.
 | privacy_attested | [bool](#bool) |  |  |
 | governed_receipt_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | result_digest | [string](#string) |  |  |
-| provider_boundary_observation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | tools_declared | [string](#string) | repeated | Tool names as sent to the provider for this call, captured at the provider boundary. tools_declared_reported distinguishes &#34;none declared&#34; from &#34;not reported&#34;. |
 | tools_declared_reported | [bool](#bool) |  |  |
 | classification | [EvaluationCallClassification](#ztd-eval-v1-EvaluationCallClassification) |  | Which chain the call belongs to, stated by the producer at the call site. Aggregators select scored calls by this field, never by persona or span. |

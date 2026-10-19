@@ -16,6 +16,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -2309,4 +2310,98 @@ func TestMirror_History_CursorIsOpaqueSequence(t *testing.T) {
 	var page2FirstSeq int64
 	require.NoError(t, json.Unmarshal(page2.Items[0]["sequence"], &page2FirstSeq))
 	assert.Greater(t, page2FirstSeq, page1LastSeq)
+}
+
+// TestPublicMirrorStore_AssignmentAuditIndexFollowsEventRecords checks that the
+// index names each event record's run and assignment, returns them in sequence
+// order, and holds no row for a non-event record.
+func TestPublicMirrorStore_AssignmentAuditIndexFollowsEventRecords(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	records := []models.PublicFeedRecord{
+		liveEventRecord(t, 1, "run-1", "assignment-1", "event-1", 0, 2),
+		env.makeRecord(2, projectionWithInt64Field("sequence", 2)),
+		liveEventRecord(t, 3, "run-1", "assignment-2", "event-3", 0, 1),
+		liveEventRecord(t, 4, "run-1", "assignment-1", "event-4", 1, 2),
+	}
+	_, resp := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
+	require.True(t, resp.Accepted)
+
+	first, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-1")
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+	assert.Equal(t, int64(1), first[0].Sequence)
+	assert.Equal(t, int64(4), first[1].Sequence)
+	assert.Equal(t, records[0].RecordBytes, first[0].RecordBytes)
+	assert.Equal(t, models.PublicFeedRecordTypeEvent, first[0].RecordType)
+
+	second, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-2")
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	assert.Equal(t, int64(3), second[0].Sequence)
+
+	none, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-2", "assignment-1")
+	require.NoError(t, err)
+	assert.Empty(t, none)
+
+	var indexed int
+	require.NoError(t, env.store.db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM assignment_event_records WHERE source_id = ?`, env.sourceID).Scan(&indexed))
+	assert.Equal(t, 3, indexed, "one index row per event record, none for the projection")
+}
+
+// TestPublicMirrorStore_AssignmentAuditIndexPrunesWithRecords checks that the
+// retention prune removes an index row together with its record.
+func TestPublicMirrorStore_AssignmentAuditIndexPrunesWithRecords(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.mirror.SetMaxRetainedBatches(1))
+	first := env.buildBatch([]models.PublicFeedRecord{liveEventRecord(t, 1, "run-1", "assignment-1", "event-1", 0, 2)}, constants.PublicFeedZeroHashHex)
+	_, resp := env.sendIngest(first)
+	require.True(t, resp.Accepted)
+	second := env.buildBatch([]models.PublicFeedRecord{liveEventRecord(t, 2, "run-1", "assignment-1", "event-2", 1, 2)}, first.ContentHash)
+	_, resp = env.sendIngest(second)
+	require.True(t, resp.Accepted)
+
+	retained, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-1")
+	require.NoError(t, err)
+	require.Len(t, retained, 1)
+	assert.Equal(t, int64(2), retained[0].Sequence)
+
+	var indexed int
+	require.NoError(t, env.store.db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM assignment_event_records WHERE source_id = ?`, env.sourceID).Scan(&indexed))
+	assert.Equal(t, 1, indexed, "the pruned record's index row is removed with it")
+}
+
+// TestPublicMirrorStore_AssignmentAuditIndexRejectsUndecodableEvent checks that
+// an event body the canonical decoder cannot read fails the store write, so the
+// batch is not accepted and nothing is stored. The body passes the mirror's
+// protojson validation because its fields are reordered, which the canonical
+// form forbids.
+func TestPublicMirrorStore_AssignmentAuditIndexRejectsUndecodableEvent(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	body := []byte(`{"kind":"stage_updated","schema_version":"1.9.0","dataset_id":"dataset-1","quality_state":"live_in_progress","observed_at":"2026-10-19T00:00:00Z","event_id":"event-1","run_id":"run-1","assignment_id":"assignment-1","lifecycle_status":"running","completed":0,"total":1}`)
+	digest := sha256.Sum256(body)
+	record := models.PublicFeedRecord{Sequence: 1, RecordType: models.PublicFeedRecordTypeEvent, RecordHash: hex.EncodeToString(digest[:]), RecordBytes: string(body)}
+
+	t.Run("ingest is refused with a server error and stores nothing", func(t *testing.T) {
+		status, resp := env.sendIngest(env.buildBatch([]models.PublicFeedRecord{record}, constants.PublicFeedZeroHashHex))
+
+		assert.False(t, resp.Accepted)
+		assert.Equal(t, http.StatusInternalServerError, status, "a store write failure, not a validation rejection")
+		stored, err := env.store.recordsInRange(ctx, env.sourceID, 1, 1)
+		require.NoError(t, err)
+		assert.Empty(t, stored)
+		indexed, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-1")
+		require.NoError(t, err)
+		assert.Empty(t, indexed)
+	})
+
+	t.Run("the index write reports the record schema sentinel", func(t *testing.T) {
+		err := env.store.write(ctx, "test index write", func(tx *sql.Tx) error {
+			return insertAssignmentEventRecords(ctx, tx, env.sourceID, []models.PublicFeedRecord{record})
+		})
+
+		require.ErrorIs(t, err, constants.ErrPublicFeedRecordSchemaInvalid)
+	})
 }

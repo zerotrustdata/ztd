@@ -655,163 +655,147 @@ func TestCLISessionService_ReplaceCLISession_RevocationWriteFailureRollback(t *t
 // RefreshCLISession
 // ---------------------------------------------------------------------------
 
-// persistCLISessionForRefresh creates an active CLI session for the given
-// user and returns the session ID. Used by RefreshCLISession tests to set
-// up the "old session" state.
+// persistCLISessionForRefresh creates an active CLI session for the given user
+// bound to operatorSessionID, with a known certificate grounding.
 func persistCLISessionForRefresh(t *testing.T, svc *CLISessionService, sessionID, userID, operatorSessionID string) {
 	t.Helper()
 	require.NoError(t, svc.PersistCLISession(t.Context(), sessionID, operatorSessionID, userID, "sys-fp", "cert-fp", "serial", "mTLS"))
 }
 
-// TestCLISessionService_RefreshCLISession_OldSessionActive_DeactivatedAndNewPersisted
-// verifies the primary recovery path: the caller's cert is still valid, the
-// old CLI session is active (but server-side expired), and RefreshCLISession
-// deactivates the old session and persists a new active one bound to the
-// same user and operator session.
-func TestCLISessionService_RefreshCLISession_OldSessionActive_DeactivatedAndNewPersisted(t *testing.T) {
+// expireStoredCLISession moves every expiry field of a stored session into the
+// past: the state an expired session is in when refresh is its recovery path.
+func expireStoredCLISession(t *testing.T, svc *CLISessionService, sessionID string) {
+	t.Helper()
+	session := loadStoredCLISession(t, svc, sessionID)
+	past := time.Now().UTC().Add(-time.Hour)
+	session.ExpiresAt = past
+	session.AbsoluteExpiresAt = past
+	session.IdleExpiresAt = past
+	data, err := json.Marshal(session)
+	require.NoError(t, err)
+	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), sessionID, data))
+}
+
+// TestCLISessionService_RefreshCLISession_ExtendsExpiredSessionInPlace verifies
+// the recovery path: an expired but active session keeps its ID and certificate
+// grounding, gets a new expiry window, and takes the caller's operator binding.
+// No session is minted.
+func TestCLISessionService_RefreshCLISession_ExtendsExpiredSessionInPlace(t *testing.T) {
 	infra := setupTestInfrastructure(t, true)
 	svc := infra.CLISessionSvc
 
-	persistCLISessionForRefresh(t, svc, "refresh-old-active", "user-refresh-1", "op-refresh-1")
+	persistCLISessionForRefresh(t, svc, "refresh-inplace-1", "user-refresh-1", "op-refresh-1")
+	before := loadStoredCLISession(t, svc, "refresh-inplace-1")
+	expireStoredCLISession(t, svc, "refresh-inplace-1")
 
-	newSession, err := svc.RefreshCLISession(t.Context(), "refresh-old-active", "refresh-new-1", CLISessionFields{
-		OperatorSessionID: "op-refresh-1",
+	refreshed, err := svc.RefreshCLISession(t.Context(), "refresh-inplace-1", CLISessionRefreshFields{
 		UserID:            "user-refresh-1",
-		SystemFingerprint: "sys-fp-new",
-		CertFingerprint:   "cert-fp-inherited",
-		CertSerial:        "serial-inherited",
-		LoginMethod:       "mTLS",
-	})
-	require.NoError(t, err)
-	require.NotNil(t, newSession)
-	assert.Equal(t, "refresh-new-1", newSession.ID)
-	assert.True(t, newSession.IsActive)
-	assert.Equal(t, "user-refresh-1", newSession.UserID)
-	assert.Equal(t, "op-refresh-1", newSession.OperatorSessionID)
-	assert.Equal(t, "cert-fp-inherited", newSession.CertFingerprint)
-
-	// Old session must be deactivated.
-	oldStored := loadStoredCLISession(t, svc, "refresh-old-active")
-	assert.False(t, oldStored.IsActive, "old session must be deactivated after refresh")
-
-	// New session must be active and persisted.
-	newStored := loadStoredCLISession(t, svc, "refresh-new-1")
-	assert.True(t, newStored.IsActive)
-	assert.Equal(t, "user-refresh-1", newStored.UserID)
-}
-
-// TestCLISessionService_RefreshCLISession_OldSessionAlreadyDeactivated_NewPersisted
-// verifies that an already-deactivated old session is not an error — the
-// caller's cert is the proof of identity, not the old session's state. The
-// new session is still persisted.
-func TestCLISessionService_RefreshCLISession_OldSessionAlreadyDeactivated_NewPersisted(t *testing.T) {
-	infra := setupTestInfrastructure(t, true)
-	svc := infra.CLISessionSvc
-
-	persistCLISessionForRefresh(t, svc, "refresh-old-deact", "user-refresh-2", "op-refresh-2")
-	require.NoError(t, svc.DeactivateCLISession(t.Context(), "refresh-old-deact"))
-
-	newSession, err := svc.RefreshCLISession(t.Context(), "refresh-old-deact", "refresh-new-2", CLISessionFields{
 		OperatorSessionID: "op-refresh-2",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, refreshed)
+	assert.Equal(t, "refresh-inplace-1", refreshed.ID, "refresh keeps the session ID")
+	assert.Equal(t, "cert-fp", refreshed.CertFingerprint, "refresh keeps the certificate fingerprint")
+	assert.Equal(t, "serial", refreshed.CertSerial, "refresh keeps the certificate serial")
+
+	stored := loadStoredCLISession(t, svc, "refresh-inplace-1")
+	assert.True(t, stored.IsActive)
+	assert.Equal(t, before.SystemFingerprint, stored.SystemFingerprint, "refresh keeps the system fingerprint")
+	assert.Equal(t, before.LoginMethod, stored.LoginMethod, "refresh keeps the login method")
+	assert.Equal(t, before.CreatedAt.Unix(), stored.CreatedAt.Unix(), "refresh keeps the creation time")
+	assert.True(t, stored.ExpiresAt.After(time.Now()), "expiry moves into the TTL window")
+	assert.True(t, stored.AbsoluteExpiresAt.After(time.Now()), "absolute expiry moves into the TTL window")
+	assert.True(t, stored.IdleExpiresAt.After(time.Now()), "idle expiry moves into the TTL window")
+	assert.Equal(t, "op-refresh-2", stored.OperatorSessionID, "refresh writes the caller's resolved binding")
+
+	sessions, err := svc.ListUserCLISessions(t.Context(), "user-refresh-1")
+	require.NoError(t, err)
+	assert.Len(t, sessions, 1, "refresh must not mint a session")
+}
+
+// TestCLISessionService_RefreshCLISession_DeactivatedSessionNotRevived verifies
+// that a logged-out session cannot be refreshed: it stays deactivated, its
+// expiry is untouched, and no replacement session is minted.
+func TestCLISessionService_RefreshCLISession_DeactivatedSessionNotRevived(t *testing.T) {
+	infra := setupTestInfrastructure(t, true)
+	svc := infra.CLISessionSvc
+
+	persistCLISessionForRefresh(t, svc, "refresh-deact", "user-refresh-2", "op-refresh-2")
+	require.NoError(t, svc.DeactivateCLISession(t.Context(), "refresh-deact"))
+	before := loadStoredCLISession(t, svc, "refresh-deact")
+
+	_, err := svc.RefreshCLISession(t.Context(), "refresh-deact", CLISessionRefreshFields{
 		UserID:            "user-refresh-2",
-		LoginMethod:       "mTLS",
+		OperatorSessionID: "op-refresh-2",
 	})
+	require.ErrorIs(t, err, constants.ErrCLISessionAlreadyDeactivated)
+
+	stored := loadStoredCLISession(t, svc, "refresh-deact")
+	assert.False(t, stored.IsActive, "a deactivated session must stay deactivated")
+	assert.Equal(t, before.ExpiresAt.Unix(), stored.ExpiresAt.Unix(), "a rejected refresh must not extend the expiry")
+
+	sessions, err := svc.ListUserCLISessions(t.Context(), "user-refresh-2")
 	require.NoError(t, err)
-	require.NotNil(t, newSession)
-	assert.Equal(t, "refresh-new-2", newSession.ID)
-	assert.True(t, newSession.IsActive)
-
-	// Old session remains deactivated.
-	oldStored := loadStoredCLISession(t, svc, "refresh-old-deact")
-	assert.False(t, oldStored.IsActive)
-
-	// New session is active.
-	newStored := loadStoredCLISession(t, svc, "refresh-new-2")
-	assert.True(t, newStored.IsActive)
+	assert.Len(t, sessions, 1, "a rejected refresh must not mint a session")
 }
 
-// TestCLISessionService_RefreshCLISession_OldSessionMissing_NewPersisted
-// verifies the gateway-volume-reset case: the old session ID from the cert
-// URI SAN does not match any persisted session (the gateway volume was
-// wiped). RefreshCLISession still persists a new session — the cert is the
-// proof of identity, not the old session's state.
-func TestCLISessionService_RefreshCLISession_OldSessionMissing_NewPersisted(t *testing.T) {
+// TestCLISessionService_RefreshCLISession_MissingSessionNotCreated verifies that
+// a refresh never creates the session it was asked to extend.
+func TestCLISessionService_RefreshCLISession_MissingSessionNotCreated(t *testing.T) {
 	infra := setupTestInfrastructure(t, true)
 	svc := infra.CLISessionSvc
 
-	// No old session persisted — simulate a volume reset.
-	newSession, err := svc.RefreshCLISession(t.Context(), "refresh-old-missing", "refresh-new-3", CLISessionFields{
-		OperatorSessionID: "op-refresh-3",
+	_, err := svc.RefreshCLISession(t.Context(), "refresh-missing", CLISessionRefreshFields{
 		UserID:            "user-refresh-3",
-		LoginMethod:       "mTLS",
+		OperatorSessionID: "op-refresh-3",
 	})
+	require.ErrorIs(t, err, constants.ErrCLISessionNotFound)
+
+	sessions, err := svc.ListUserCLISessions(t.Context(), "user-refresh-3")
 	require.NoError(t, err)
-	require.NotNil(t, newSession)
-	assert.Equal(t, "refresh-new-3", newSession.ID)
-	assert.True(t, newSession.IsActive)
-	assert.Equal(t, "user-refresh-3", newSession.UserID)
-
-	// New session is persisted.
-	newStored := loadStoredCLISession(t, svc, "refresh-new-3")
-	assert.True(t, newStored.IsActive)
+	assert.Empty(t, sessions, "a refresh must not create a session for a missing ID")
 }
 
-// TestCLISessionService_RefreshCLISession_EmptyOldSessionID_NewPersisted
-// verifies that an empty oldSessionID (the caller's cert has no URI SAN
-// session ID, or the controller passed an empty string) still results in a
-// new session. Only the new session is persisted; there is no old session
-// to deactivate.
-func TestCLISessionService_RefreshCLISession_EmptyOldSessionID_NewPersisted(t *testing.T) {
+// TestCLISessionService_RefreshCLISession_OtherUsersSessionNotFound verifies that
+// a caller cannot extend or rebind a session another user owns: the caller sees
+// the session as missing and the owner's binding is untouched.
+func TestCLISessionService_RefreshCLISession_OtherUsersSessionNotFound(t *testing.T) {
 	infra := setupTestInfrastructure(t, true)
 	svc := infra.CLISessionSvc
 
-	newSession, err := svc.RefreshCLISession(t.Context(), "", "refresh-new-4", CLISessionFields{
-		OperatorSessionID: "op-refresh-4",
-		UserID:            "user-refresh-4",
-		LoginMethod:       "mTLS",
+	persistCLISessionForRefresh(t, svc, "refresh-foreign", "user-owner", "op-owner")
+	before := loadStoredCLISession(t, svc, "refresh-foreign")
+
+	_, err := svc.RefreshCLISession(t.Context(), "refresh-foreign", CLISessionRefreshFields{
+		UserID:            "user-intruder",
+		OperatorSessionID: "op-intruder",
 	})
-	require.NoError(t, err)
-	require.NotNil(t, newSession)
-	assert.Equal(t, "refresh-new-4", newSession.ID)
-	assert.True(t, newSession.IsActive)
+	require.ErrorIs(t, err, constants.ErrCLISessionNotFound)
+
+	stored := loadStoredCLISession(t, svc, "refresh-foreign")
+	assert.Equal(t, "user-owner", stored.UserID)
+	assert.Equal(t, "op-owner", stored.OperatorSessionID, "another user's binding must not be rewritten")
+	assert.Equal(t, before.ExpiresAt.Unix(), stored.ExpiresAt.Unix(), "another user's expiry must not be extended")
 }
 
-// TestCLISessionService_RefreshCLISession_MissingUserBinding_ReturnsError
-// verifies that a missing UserID or OperatorSessionID in the fields is
-// rejected before any session mutation. This is the fail-closed guard
-// against a controller bug that tries to refresh a session without binding
-// it to the authenticated user.
-func TestCLISessionService_RefreshCLISession_MissingUserBinding_ReturnsError(t *testing.T) {
+// TestCLISessionService_RefreshCLISession_MissingIDOrBinding_ReturnsError keeps
+// the fail-closed guards: a refresh needs a session ID, a user, and an operator
+// binding, and a rejected refresh changes nothing.
+func TestCLISessionService_RefreshCLISession_MissingIDOrBinding_ReturnsError(t *testing.T) {
 	infra := setupTestInfrastructure(t, true)
 	svc := infra.CLISessionSvc
 
-	// Missing UserID.
-	_, err := svc.RefreshCLISession(t.Context(), "refresh-old-bind", "refresh-new-bind-1", CLISessionFields{
-		OperatorSessionID: "op-bind",
-		LoginMethod:       "mTLS",
-	})
-	require.Error(t, err)
+	persistCLISessionForRefresh(t, svc, "refresh-guards", "user-guards", "op-guards")
 
-	// Missing OperatorSessionID.
-	_, err = svc.RefreshCLISession(t.Context(), "refresh-old-bind", "refresh-new-bind-2", CLISessionFields{
-		UserID:      "user-bind",
-		LoginMethod: "mTLS",
-	})
-	require.Error(t, err)
-}
+	_, err := svc.RefreshCLISession(t.Context(), "", CLISessionRefreshFields{UserID: "user-guards", OperatorSessionID: "op-guards"})
+	require.ErrorIs(t, err, constants.ErrCLISessionInvalid, "an empty session ID is rejected")
 
-// TestCLISessionService_RefreshCLISession_MissingNewSessionID_ReturnsError
-// verifies that an empty newSessionID is rejected. The caller MUST
-// pre-generate the new session ID so the cert URI SAN can be checked
-// against it by the auth middleware on subsequent requests.
-func TestCLISessionService_RefreshCLISession_MissingNewSessionID_ReturnsError(t *testing.T) {
-	infra := setupTestInfrastructure(t, true)
-	svc := infra.CLISessionSvc
+	_, err = svc.RefreshCLISession(t.Context(), "refresh-guards", CLISessionRefreshFields{OperatorSessionID: "op-guards"})
+	require.Error(t, err, "a refresh without a user is rejected")
 
-	_, err := svc.RefreshCLISession(t.Context(), "refresh-old-noid", "", CLISessionFields{
-		OperatorSessionID: "op-noid",
-		UserID:            "user-noid",
-		LoginMethod:       "mTLS",
-	})
-	require.Error(t, err)
+	_, err = svc.RefreshCLISession(t.Context(), "refresh-guards", CLISessionRefreshFields{UserID: "user-guards"})
+	require.Error(t, err, "a refresh without an operator binding is rejected")
+
+	stored := loadStoredCLISession(t, svc, "refresh-guards")
+	assert.Equal(t, "op-guards", stored.OperatorSessionID, "a rejected refresh changes nothing")
 }

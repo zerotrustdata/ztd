@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -38,11 +39,21 @@ func auditProofInput(id string) evaluation.AssignmentAuditProofInput {
 		RunID:            "run-" + id,
 		AssignmentID:     "assignment-" + id,
 		IndexDigest:      "digest-" + id,
-		Artifacts: evaluation.AssignmentAuditSliceArtifacts{
-			Database: []byte("db-" + id),
-			VaultKey: []byte("key-" + id),
-		},
 	}
+}
+
+// acceptedProofResponse is the gateway's accepted answer for the assignment ids,
+// in order: a single-proof response for one id, a batch response otherwise.
+func acceptedProofResponse(t *testing.T, ids ...string) []byte {
+	t.Helper()
+	if len(ids) == 1 {
+		return mustMarshalJSON(t, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-" + ids[0], DatabaseSHA256: strings.Repeat("a", 64)})
+	}
+	response := models.PublicAssignmentAuditProofBatchPublishResponse{Accepted: true, IngestedProofs: len(ids)}
+	for _, id := range ids {
+		response.Proofs = append(response.Proofs, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-" + id, DatabaseSHA256: strings.Repeat("a", 64)})
+	}
+	return mustMarshalJSON(t, response)
 }
 
 func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *testing.T) {
@@ -64,7 +75,7 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 	})
 
 	t.Run("a single proof carries the deferred-push flag on the single-proof endpoint", func(t *testing.T) {
-		client := &cmdtest.MockAPIClient{PostResp: mustMarshalJSON(t, models.PublicAssignmentAuditProofPublishResponse{Accepted: true})}
+		client := &cmdtest.MockAPIClient{PostResp: acceptedProofResponse(t, "1")}
 		publisher := &remoteGatewayCampaignProofPublisher{client: client}
 
 		require.NoError(t, publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, true))
@@ -77,7 +88,7 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 	})
 
 	t.Run("several proofs are sent once as a batch preserving order and the deferred-push flag", func(t *testing.T) {
-		client := &cmdtest.MockAPIClient{PostResp: mustMarshalJSON(t, models.PublicAssignmentAuditProofBatchPublishResponse{Accepted: true, IngestedProofs: 2})}
+		client := &cmdtest.MockAPIClient{PostResp: acceptedProofResponse(t, "1", "2")}
 		publisher := &remoteGatewayCampaignProofPublisher{client: client}
 
 		err := publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1"), auditProofInput("2")}, true)
@@ -91,8 +102,7 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 		require.Len(t, request.Proofs, 2)
 		assert.Equal(t, "assignment-1", request.Proofs[0].AssignmentID)
 		assert.Equal(t, "assignment-2", request.Proofs[1].AssignmentID)
-		assert.Equal(t, []byte("db-2"), request.Proofs[1].Database)
-		assert.Equal(t, []byte("key-2"), request.Proofs[1].VaultKey)
+		assert.Equal(t, "digest-2", request.Proofs[1].IndexDigest)
 	})
 
 	failures := []struct {
@@ -124,6 +134,30 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 			name:    "batch with an undecodable response",
 			inputs:  []evaluation.AssignmentAuditProofInput{auditProofInput("1"), auditProofInput("2")},
 			client:  &cmdtest.MockAPIClient{PostResp: []byte(`[]`)},
+			wantErr: constants.ErrInvalidJSONResponse,
+		},
+		{
+			name:    "single proof answered for another assignment",
+			inputs:  []evaluation.AssignmentAuditProofInput{auditProofInput("1")},
+			client:  &cmdtest.MockAPIClient{PostResp: mustMarshalJSON(t, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-9", DatabaseSHA256: strings.Repeat("a", 64)})},
+			wantErr: constants.ErrInvalidJSONResponse,
+		},
+		{
+			name:    "single proof answered without a database digest",
+			inputs:  []evaluation.AssignmentAuditProofInput{auditProofInput("1")},
+			client:  &cmdtest.MockAPIClient{PostResp: mustMarshalJSON(t, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-1"})},
+			wantErr: constants.ErrInvalidJSONResponse,
+		},
+		{
+			name:    "batch answered with fewer proofs than requested",
+			inputs:  []evaluation.AssignmentAuditProofInput{auditProofInput("1"), auditProofInput("2")},
+			client:  &cmdtest.MockAPIClient{PostResp: acceptedProofResponse(t, "1")},
+			wantErr: constants.ErrInvalidJSONResponse,
+		},
+		{
+			name:    "batch answered out of request order",
+			inputs:  []evaluation.AssignmentAuditProofInput{auditProofInput("1"), auditProofInput("2")},
+			client:  &cmdtest.MockAPIClient{PostResp: acceptedProofResponse(t, "2", "1")},
 			wantErr: constants.ErrInvalidJSONResponse,
 		},
 		{

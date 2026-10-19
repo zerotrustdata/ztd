@@ -56,9 +56,8 @@ func setupTestCLIRefreshController(t *testing.T) (*CLIRefreshController, *models
 }
 
 // persistCLISessionForController creates an active CLI session document
-// directly in the doc store for the given user, returning the session ID.
-// Used by controller tests to set up the "old session" state that refresh
-// deactivates.
+// directly in the doc store for the given user, bound to operatorSessionID.
+// Used by controller tests to set up the session state that refresh extends.
 func persistCLISessionForController(t *testing.T, c *CLIRefreshController, userID, sessionID, operatorSessionID string) {
 	t.Helper()
 	doc := models.CLISession{
@@ -107,103 +106,106 @@ func parseRefreshResponse(t *testing.T, rr *httptest.ResponseRecorder) models.CL
 // handleRefresh — success path
 // ---------------------------------------------------------------------------
 
-// TestCLIRefreshController_Refresh_Success verifies the primary recovery
-// path: the cert is still valid, the old CLI session exists and is active,
-// and the controller issues a new session bound to the same user. The old
-// session is deactivated; the new session is active and persisted.
+// TestCLIRefreshController_Refresh_Success verifies the primary recovery path
+// on an expired session: the cert is still valid and the session it names is
+// active but past its expiry. The refresh keeps the session ID and certificate
+// grounding, moves the expiry into the TTL window, and writes the binding.
+// No session is minted and the old session is never deactivated.
 func TestCLIRefreshController_Refresh_Success(t *testing.T) {
 	c, user := setupTestCLIRefreshController(t)
-	oldSessionID := "refresh-ctrl-old-1"
+	sessionID := "refresh-ctrl-old-1"
 	require.NoError(t, c.operatorSessionSvc.PersistOperatorSession(t.Context(),
 		"op-ctrl-1", user.ID, "org-1", "op-id-1", "mTLS",
 	))
-	persistCLISessionForController(t, c, user.ID, oldSessionID, "op-ctrl-1")
+	persistCLISessionForController(t, c, user.ID, sessionID, "op-ctrl-1")
+	expireStoredCLISession(t, c.cliSessionSvc, sessionID)
+	before := loadStoredCLISession(t, c.cliSessionSvc, sessionID)
 
-	req := refreshRequestWithContext(t, user.ID, oldSessionID)
+	req := refreshRequestWithContext(t, user.ID, sessionID)
 	rr := httptest.NewRecorder()
 	c.handleRefresh(rr, req)
 
 	resp := parseRefreshResponse(t, rr)
-	assert.NotEmpty(t, resp.CLISessionID)
-	assert.NotEqual(t, oldSessionID, resp.CLISessionID, "refresh must issue a new session ID")
+	assert.Equal(t, sessionID, resp.CLISessionID, "refresh must keep the session ID the certificate names")
 	assert.Equal(t, user.ID, resp.UserID)
 
-	// Old session must be deactivated.
-	oldDoc, err := c.cliSessionSvc.db.DocGet(t.Context(),
-		marshaler.CollectionName(constants.CollectionCLISessions), oldSessionID)
-	require.NoError(t, err)
-	require.NotNil(t, oldDoc)
-	var oldSession models.CLISession
-	dataBytes, err := json.Marshal(oldDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &oldSession))
-	assert.False(t, oldSession.IsActive, "old session must be deactivated after refresh")
+	stored := loadStoredCLISession(t, c.cliSessionSvc, sessionID)
+	assert.True(t, stored.IsActive, "the refreshed session must be active")
+	assert.True(t, stored.ExpiresAt.After(time.Now()), "the refreshed session must have a future expiry")
+	assert.Equal(t, before.CertFingerprint, stored.CertFingerprint, "refresh keeps the certificate fingerprint")
+	assert.Equal(t, before.CertSerial, stored.CertSerial, "refresh keeps the certificate serial")
+	assert.Equal(t, user.ID, stored.UserID)
 
-	// New session must be active and bound to the same user.
-	newDoc, err := c.cliSessionSvc.db.DocGet(t.Context(),
-		marshaler.CollectionName(constants.CollectionCLISessions), resp.CLISessionID)
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
 	require.NoError(t, err)
-	require.NotNil(t, newDoc)
-	var newSession models.CLISession
-	dataBytes, err = json.Marshal(newDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &newSession))
-	assert.True(t, newSession.IsActive, "new session must be active")
-	assert.Equal(t, user.ID, newSession.UserID)
+	assert.Len(t, sessions, 1, "refresh must not mint a replacement session")
 }
 
-// TestCLIRefreshController_Refresh_OldSessionMissing_StillSucceeds verifies
-// the gateway-volume-reset case: the old session ID from the cert URI SAN
-// does not match any persisted session, but the user has an active operator
-// session. The controller inherits the operator binding from the active
-// operator session and issues a new CLI session — the cert is the proof of
-// identity, not the old session's state.
-func TestCLIRefreshController_Refresh_OldSessionMissing_StillSucceeds(t *testing.T) {
+// TestCLIRefreshController_Refresh_DeactivatedSession_ConflictAndNotRevived
+// verifies that a logged-out session cannot be refreshed back to life: the
+// request is refused with 409 and the session stays deactivated.
+func TestCLIRefreshController_Refresh_DeactivatedSession_ConflictAndNotRevived(t *testing.T) {
+	c, user := setupTestCLIRefreshController(t)
+	sessionID := "refresh-ctrl-deactivated"
+	require.NoError(t, c.operatorSessionSvc.PersistOperatorSession(t.Context(),
+		"op-ctrl-deact", user.ID, "org-1", "op-id-deact", "mTLS",
+	))
+	persistCLISessionForController(t, c, user.ID, sessionID, "op-ctrl-deact")
+	require.NoError(t, c.cliSessionSvc.DeactivateCLISession(t.Context(), sessionID))
+
+	req := refreshRequestWithContext(t, user.ID, sessionID)
+	rr := httptest.NewRecorder()
+	c.handleRefresh(rr, req)
+
+	assert.Equal(t, http.StatusConflict, rr.Code, rr.Body.String())
+	stored := loadStoredCLISession(t, c.cliSessionSvc, sessionID)
+	assert.False(t, stored.IsActive, "a deactivated session must not be revived by refresh")
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	assert.Len(t, sessions, 1, "a refused refresh must not mint a session")
+}
+
+// TestCLIRefreshController_Refresh_UnknownSession_Unauthorized verifies that a
+// certificate whose URI SAN names a session the gateway does not have is
+// refused with 401. There is no session to extend, and refresh does not mint
+// one under the certificate's name.
+func TestCLIRefreshController_Refresh_UnknownSession_Unauthorized(t *testing.T) {
 	c, user := setupTestCLIRefreshController(t)
 
-	// Persist an active operator session for the user so the controller can
-	// inherit the operator binding when the old CLI session is missing.
+	// An active operator session exists, so only the missing CLI session can
+	// cause the refusal.
 	require.NoError(t, c.operatorSessionSvc.PersistOperatorSession(t.Context(),
 		"op-refresh-missing", user.ID, "org-1", "op-id-1", "mTLS",
 	))
 
-	// No old CLI session persisted — simulate a volume reset.
 	req := refreshRequestWithContext(t, user.ID, "refresh-ctrl-missing-old")
 	rr := httptest.NewRecorder()
 	c.handleRefresh(rr, req)
 
-	resp := parseRefreshResponse(t, rr)
-	assert.NotEmpty(t, resp.CLISessionID)
-	assert.Equal(t, user.ID, resp.UserID)
-
-	// New session is active and bound to the inherited operator session.
-	newDoc, err := c.cliSessionSvc.db.DocGet(t.Context(),
-		marshaler.CollectionName(constants.CollectionCLISessions), resp.CLISessionID)
+	assert.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
+	assert.Contains(t, rr.Body.String(), constants.ErrCLISessionInvalid.Error())
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
 	require.NoError(t, err)
-	require.NotNil(t, newDoc)
-	var newSession models.CLISession
-	dataBytes, err := json.Marshal(newDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &newSession))
-	assert.True(t, newSession.IsActive)
-	assert.Equal(t, user.ID, newSession.UserID)
-	assert.Equal(t, "op-refresh-missing", newSession.OperatorSessionID, "new session must inherit the active operator session binding")
+	assert.Empty(t, sessions, "refresh must not mint a session for an unknown certificate session")
 }
 
-// TestCLIRefreshController_Refresh_OldSessionMissing_NoOperatorSession_ReturnsClearError
-// verifies the fail-closed case: the old CLI session is missing AND the user
-// has no active operator session. The controller returns a clear, actionable
-// error pointing to re-enrollment rather than a generic 500.
-func TestCLIRefreshController_Refresh_OldSessionMissing_NoOperatorSession_ReturnsClearError(t *testing.T) {
+// TestCLIRefreshController_Refresh_NoOperatorSession_ReturnsClearError verifies
+// the fail-closed case: the CLI session exists but neither it nor the user has
+// an active operator session. The controller returns a clear, actionable 409
+// pointing to re-enrollment rather than a generic 500, and changes nothing.
+func TestCLIRefreshController_Refresh_NoOperatorSession_ReturnsClearError(t *testing.T) {
 	c, user := setupTestCLIRefreshController(t)
+	sessionID := "refresh-ctrl-no-op-sess"
+	persistCLISessionForController(t, c, user.ID, sessionID, "")
 
-	// No old CLI session and no operator session persisted.
-	req := refreshRequestWithContext(t, user.ID, "refresh-ctrl-no-op-sess")
+	req := refreshRequestWithContext(t, user.ID, sessionID)
 	rr := httptest.NewRecorder()
 	c.handleRefresh(rr, req)
 
 	assert.Equal(t, http.StatusConflict, rr.Code)
 	assert.Contains(t, rr.Body.String(), "re-enroll")
+	stored := loadStoredCLISession(t, c.cliSessionSvc, sessionID)
+	assert.Empty(t, stored.OperatorSessionID, "a refused refresh must not write a binding")
 }
 
 // TestCLIRefreshController_Refresh_StaleOperatorSession_FallsBackToActive verifies
@@ -229,22 +231,15 @@ func TestCLIRefreshController_Refresh_StaleOperatorSession_FallsBackToActive(t *
 	c.handleRefresh(rr, req)
 
 	resp := parseRefreshResponse(t, rr)
-	assert.NotEmpty(t, resp.CLISessionID)
+	assert.Equal(t, oldSessionID, resp.CLISessionID, "refresh keeps the session ID")
 	assert.Equal(t, user.ID, resp.UserID)
 
-	// New session must be bound to the active operator session, not the stale one.
-	newDoc, err := c.cliSessionSvc.db.DocGet(t.Context(),
-		marshaler.CollectionName(constants.CollectionCLISessions), resp.CLISessionID)
-	require.NoError(t, err)
-	require.NotNil(t, newDoc)
-	var newSession models.CLISession
-	dataBytes, err := json.Marshal(newDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &newSession))
+	// The refreshed session must be bound to the active operator session, not the stale one.
+	newSession := loadStoredCLISession(t, c.cliSessionSvc, oldSessionID)
 	assert.True(t, newSession.IsActive)
 	assert.Equal(t, user.ID, newSession.UserID)
 	assert.Equal(t, "op-refresh-active", newSession.OperatorSessionID,
-		"new session must bind to the active operator session, not the stale one")
+		"refreshed session must bind to the active operator session, not the stale one")
 }
 
 // TestCLIRefreshController_Refresh_PrefersRegistryActiveDataOperator verifies

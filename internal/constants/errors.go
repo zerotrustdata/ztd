@@ -569,7 +569,7 @@ var (
 	ErrCLISessionAlreadyDeactivated = errors.New("CLI session already deactivated")
 	ErrCLIRefreshFailed             = errors.New("CLI session refresh failed")
 	ErrCLIRefreshCertExpired        = errors.New("CLI certificate expired; use recovery flow instead of refresh")
-	ErrCLISessionRefreshRequired    = errors.New("CLI session expired or invalid; run 'auth refresh' to obtain a new session")
+	ErrCLISessionRefreshRequired    = errors.New("CLI session expired or invalid; run 'auth refresh' to extend it")
 
 	// Passkey credential validation errors
 	ErrPasskeyCredentialInvalidID          = errors.New("passkey credential ID is empty")
@@ -1285,7 +1285,9 @@ var (
 	ErrPublicFeedProofCatalogMismatch         = errors.New("public-feed: proof catalog does not match manifest")
 	ErrPublicFeedProofIngestRejected          = errors.New("public-feed: mirror rejected proof package")
 	ErrPublicFeedProofArtifactsMissing        = errors.New("public-feed: proof manifest lists artifacts the mirror does not hold")
+	ErrPublicAssignmentAuditEventsMissing     = errors.New("public-feed: no retained event records for the assignment")
 	ErrPublicFeedProofIDRequired              = errors.New("public-feed: proof_id is required")
+	ErrPublicAssignmentAuditNotInProof        = errors.New("public-feed: assignment audit database is not an active proof artifact")
 	ErrPublicFeedRecordTypeInvalid            = errors.New("public-feed: invalid record type")
 	ErrPublicFeedRecordSchemaInvalid          = errors.New("public-feed: invalid record schema")
 	ErrPublicFeedKeyGenFailed                 = errors.New("public-feed: failed to generate signing key")

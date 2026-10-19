@@ -48,7 +48,7 @@ func (r *CampaignProviderObservationReader) ObservedProviderEnvironment(ctx cont
 			if attemptID == "" {
 				continue
 			}
-			window, err := r.loadWindow(ctx, result.GetRunId(), attemptID)
+			window, err := r.store.LoadProviderObservationWindow(ctx, result.GetRunId(), attemptID)
 			if err != nil {
 				if isProviderEvidenceNotFound(err) {
 					continue

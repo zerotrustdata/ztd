@@ -209,7 +209,7 @@ func verifyRun(
 		providerPolicy = evaluation.ProviderObservationPolicyStrict
 	}
 	verifier = verifier.WithProviderObservationReader(observationReader, providerPolicy)
-	provenanceReader, err := gwremote.NewCampaignModelProvenanceReader(fileSvc, cfg)
+	provenanceReader, err := gwremote.NewCampaignModelProvenanceReader(fileSvc, store, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
 	}

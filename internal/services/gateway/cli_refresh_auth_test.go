@@ -10,6 +10,7 @@
 package gateway
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -228,17 +229,20 @@ func TestHandleCLIAuth_ExpiredSessionOnNonRefreshEndpoint_FailClosed(t *testing.
 	assert.Contains(t, rr.Body.String(), constants.ErrCLISessionExpired.Error())
 }
 
-func TestHandleCLIAuth_RefreshedSessionValidatesOriginalCertificateFingerprint(t *testing.T) {
+// TestHandleCLIAuth_CertNamingOtherSessionRejected verifies that the fingerprint
+// fallback is gone: a certificate whose URI SAN names one CLI session cannot
+// authenticate another, even when the other session's stored fingerprint
+// matches the certificate.
+func TestHandleCLIAuth_CertNamingOtherSessionRejected(t *testing.T) {
 	certRaw := []byte("refreshed-session-certificate")
 	certHash := sha256.Sum256(certRaw)
 	certFingerprint := hex.EncodeToString(certHash[:])
 	tests := []struct {
 		name              string
 		storedFingerprint string
-		expectedStatus    int
 	}{
-		{name: "matching fingerprint admits original certificate", storedFingerprint: certFingerprint, expectedStatus: http.StatusOK},
-		{name: "different fingerprint rejects original certificate", storedFingerprint: "different-fingerprint", expectedStatus: http.StatusForbidden},
+		{name: "matching fingerprint", storedFingerprint: certFingerprint},
+		{name: "different fingerprint", storedFingerprint: "different-fingerprint"},
 	}
 
 	for _, tt := range tests {
@@ -257,32 +261,31 @@ func TestHandleCLIAuth_RefreshedSessionValidatesOriginalCertificateFingerprint(t
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
 
-			assert.Equal(t, tt.expectedStatus, rr.Code)
+			assert.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
+			assert.Contains(t, rr.Body.String(), constants.ErrMTLSIdentityMismatch.Error())
 		})
 	}
 }
 
-// TestHandleCLIAuth_MissingSessionOnNonRefreshEndpoint_FailClosed verifies
-// that a missing CLI session (no persisted document for the header-provided
-// session ID) on a non-refresh endpoint is rejected with 401
-// ErrCLISessionInvalid. Only the refresh endpoint bypasses the missing-
-// session check; all other endpoints fail closed.
-func TestHandleCLIRefreshAuth_RefreshedSessionValidatesOriginalCertificateFingerprint(t *testing.T) {
+// TestHandleCLIRefreshAuth_CertNamingOtherSessionRejected verifies the same
+// rule on the refresh route: refresh must name the session the certificate
+// names, so a certificate cannot refresh a different session because that
+// session's fingerprint matches.
+func TestHandleCLIRefreshAuth_CertNamingOtherSessionRejected(t *testing.T) {
 	certRaw := []byte("refresh-auth-original-certificate")
 	certHash := sha256.Sum256(certRaw)
 	certFingerprint := hex.EncodeToString(certHash[:])
 	tests := []struct {
 		name              string
 		storedFingerprint string
-		expectedStatus    int
 	}{
-		{name: "matching fingerprint admits refresh", storedFingerprint: certFingerprint, expectedStatus: http.StatusOK},
-		{name: "different fingerprint rejects refresh", storedFingerprint: "different-fingerprint", expectedStatus: http.StatusForbidden},
+		{name: "matching fingerprint", storedFingerprint: certFingerprint},
+		{name: "different fingerprint", storedFingerprint: "different-fingerprint"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, middleware, userID, cliSessionID := setupRefreshAuthTestInfra(t, "refresh-auth-rotated-session", false, tt.storedFingerprint)
+			_, middleware, userID, cliSessionID := setupRefreshAuthTestInfra(t, "refresh-auth-other-session", false, tt.storedFingerprint)
 			wid := protocol.NewWorkloadIdentity()
 			cliURI, err := wid.CLISPIFFEURL(userID, "refresh-auth-original-session")
 			require.NoError(t, err)
@@ -296,11 +299,17 @@ func TestHandleCLIRefreshAuth_RefreshedSessionValidatesOriginalCertificateFinger
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
 
-			assert.Equal(t, tt.expectedStatus, rr.Code)
+			assert.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
+			assert.Contains(t, rr.Body.String(), constants.ErrMTLSIdentityMismatch.Error())
 		})
 	}
 }
 
+// TestHandleCLIAuth_MissingSessionOnNonRefreshEndpoint_FailClosed verifies
+// that a missing CLI session (no persisted document for the header-provided
+// session ID) on a non-refresh endpoint is rejected with 401
+// ErrCLISessionInvalid. Only the refresh endpoint bypasses the missing-
+// session check; all other endpoints fail closed.
 func TestHandleCLIAuth_MissingSessionOnNonRefreshEndpoint_FailClosed(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	auth := infra.Auth
@@ -323,11 +332,11 @@ func TestHandleCLIAuth_MissingSessionOnNonRefreshEndpoint_FailClosed(t *testing.
 }
 
 // TestHandleCLIRefreshAuth_MissingSessionOnRefreshEndpoint_Admitted verifies
-// the gateway-volume-reset case through the middleware: the session ID from
-// the cert URI SAN does not match any persisted session, but the request
-// targets the refresh endpoint, the cert is valid, and the user is active.
-// The middleware admits the request so the controller can issue a new
-// session.
+// that the middleware admits a refresh whose cert names a session the store
+// lacks: the cert is valid and the user is active. Admission does not depend on
+// session state. The refresh handler then refuses the missing session with 401
+// (TestCLIRefresh_UnknownSessionSAN_Unauthorized), because there is nothing to
+// extend in place.
 func TestHandleCLIRefreshAuth_MissingSessionOnRefreshEndpoint_Admitted(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	auth := infra.Auth
@@ -442,4 +451,202 @@ func TestHandleCLIAuth_ServerInvalidSessionStatesOnNonRefreshEndpoint_FailClosed
 			assert.Contains(t, rr.Body.String(), tt.expectedError.Error())
 		})
 	}
+}
+
+// cliRefreshRouteHandler mounts the refresh controller behind the same unified
+// auth middleware the Gateway uses, so a request exercises the certificate path
+// end to end: admission by the middleware, then the refresh handler.
+func cliRefreshRouteHandler(t *testing.T, infra *TestInfrastructure) http.Handler {
+	t.Helper()
+	c := newCLIRefreshController(CLIRefreshControllerDeps{
+		Cfg:                infra.Cfg,
+		Logger:             infra.Logger,
+		CLISessionSvc:      infra.CLISessionSvc,
+		OperatorSessionSvc: infra.OperatorSessionSvc,
+		Reg:                infra.Reg,
+		Auth:               infra.Auth,
+		UserSvc:            infra.UserSvc,
+		Responder:          infra.Responder,
+	})
+	return infra.Auth.Middleware(http.HandlerFunc(c.handleRefresh))
+}
+
+// TestCLIRefresh_UnknownSessionSAN_Unauthorized verifies that the fallback is
+// gone on the refresh route: a certificate whose URI SAN names a session the
+// gateway does not have is refused with 401, and no session is minted for it.
+func TestCLIRefresh_UnknownSessionSAN_Unauthorized(t *testing.T) {
+	infra := setupTestInfrastructure(t, false)
+	user, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+
+	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuthCLIRefresh, "refresh-route-unknown", user.ID)
+	rr := httptest.NewRecorder()
+	cliRefreshRouteHandler(t, infra).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
+	assert.Contains(t, rr.Body.String(), constants.ErrCLISessionInvalid.Error())
+	sessions, err := infra.CLISessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	assert.Empty(t, sessions, "refresh must not mint a session under a certificate's unknown session name")
+}
+
+// TestCLIRefresh_DeactivatedSession_ConflictThroughMiddleware verifies that a
+// logged-out session cannot be refreshed back to life on the real route: the
+// request is refused with 409 and the session stays deactivated.
+func TestCLIRefresh_DeactivatedSession_ConflictThroughMiddleware(t *testing.T) {
+	infra := setupTestInfrastructure(t, false)
+	user, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+
+	sessionID := "refresh-route-deactivated"
+	require.NoError(t, infra.CLISessionSvc.PersistCLISession(t.Context(), sessionID, "op-route-deact", user.ID, "sys-fp", "cert-fp", "serial", "mTLS"))
+	require.NoError(t, infra.CLISessionSvc.DeactivateCLISession(t.Context(), sessionID))
+	before := loadStoredCLISession(t, infra.CLISessionSvc, sessionID)
+
+	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuthCLIRefresh, sessionID, user.ID)
+	rr := httptest.NewRecorder()
+	cliRefreshRouteHandler(t, infra).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusConflict, rr.Code, rr.Body.String())
+	stored := loadStoredCLISession(t, infra.CLISessionSvc, sessionID)
+	assert.False(t, stored.IsActive, "a logged-out session cannot be refreshed back to life")
+	assert.Equal(t, before.ExpiresAt.Unix(), stored.ExpiresAt.Unix(), "a refused refresh must not extend the expiry")
+}
+
+// TestCLIRefresh_ExpiredSession_ExtendedThroughMiddleware verifies the recovery
+// path on the real route: an expired session the certificate names is extended
+// in place, keeping its ID, and the caller gets a usable session back.
+func TestCLIRefresh_ExpiredSession_ExtendedThroughMiddleware(t *testing.T) {
+	infra := setupTestInfrastructure(t, false)
+	user, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+
+	operatorSessionID := "op-route-expired"
+	require.NoError(t, infra.OperatorSessionSvc.PersistOperatorSession(t.Context(), operatorSessionID, user.ID, "org-route", "op-route-id", "mTLS"))
+	sessionID := "refresh-route-expired"
+	require.NoError(t, infra.CLISessionSvc.PersistCLISession(t.Context(), sessionID, operatorSessionID, user.ID, "sys-fp", "cert-fp", "serial", "mTLS"))
+	expireStoredCLISession(t, infra.CLISessionSvc, sessionID)
+
+	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuthCLIRefresh, sessionID, user.ID)
+	rr := httptest.NewRecorder()
+	cliRefreshRouteHandler(t, infra).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	var resp models.CLIRefreshResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, sessionID, resp.CLISessionID, "refresh keeps the session ID the certificate names")
+	assert.Equal(t, operatorSessionID, resp.OperatorSessionID)
+
+	stored := loadStoredCLISession(t, infra.CLISessionSvc, sessionID)
+	assert.True(t, stored.IsActive)
+	assert.True(t, stored.ExpiresAt.After(time.Now()), "the refreshed session must have a future expiry")
+	sessions, err := infra.CLISessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	assert.Len(t, sessions, 1, "refresh must not mint a replacement session")
+}
+
+// operatorCertRequest builds a request authenticated by an Operator certificate
+// whose URI SAN names operatorSessionID. The X-ZTD-CLI-Session-ID header carries
+// cliSessionID, which a client fully controls.
+func operatorCertRequest(t *testing.T, path, orgID, operatorID, operatorSessionID, cliSessionID string, body []byte) *http.Request {
+	t.Helper()
+	wid := protocol.NewWorkloadIdentity()
+	opURI, err := wid.OperatorSPIFFEURL(orgID, operatorID, operatorSessionID)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderCLISessionID, cliSessionID)
+	req.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{
+			{URIs: []*url.URL{opURI}},
+		},
+	}
+	return req
+}
+
+// persistOperatorDocForCert stores an active Operator owned by userID whose
+// operator session is operatorSessionID: the shape an Operator certificate
+// authenticates against.
+func persistOperatorDocForCert(t *testing.T, infra *TestInfrastructure, userID, orgID, operatorID, operatorSessionID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	doc, err := models.MarshalOperatorDocument(&operatorv1.OperatorDocument{
+		Id:                operatorID,
+		UserId:            userID,
+		OrganizationId:    orgID,
+		OperatorSessionId: operatorSessionID,
+		Status:            string(constants.OperatorStatusActive),
+		OperatorType:      string(constants.OperatorTypeRemote),
+		CreatedAt:         timestamppb.New(now),
+		UpdatedAt:         timestamppb.New(now),
+	})
+	require.NoError(t, err)
+	require.NoError(t, infra.DocStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), operatorID, doc))
+}
+
+// TestOperatorCert_CLISessionHeaderNotStamped verifies that a request
+// authenticated by an Operator certificate never takes a CLI session identity
+// from X-ZTD-CLI-Session-ID. The middleware stamps no CLI session, and the
+// CLI-only bind route refuses the request, so a foreign or inactive CLI session
+// named in the header keeps its binding.
+func TestOperatorCert_CLISessionHeaderNotStamped(t *testing.T) {
+	infra := setupTestInfrastructure(t, false)
+	owner, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+	foreignOwner, err := infra.UserSvc.CreateUser(t.Context())
+	require.NoError(t, err)
+
+	const (
+		orgID             = "org-op-cert"
+		operatorID        = "op-cert-operator"
+		operatorSessionID = "op-cert-session"
+		targetOperatorID  = "op-cert-target-operator"
+		targetSessionID   = "op-cert-bind-target"
+	)
+	persistOperatorDocForCert(t, infra, owner.ID, orgID, operatorID, operatorSessionID)
+	persistOperatorDocForCert(t, infra, owner.ID, orgID, targetOperatorID, targetSessionID)
+
+	foreignSessionID := "op-cert-foreign-cli"
+	require.NoError(t, infra.CLISessionSvc.PersistCLISession(t.Context(), foreignSessionID, "op-foreign", foreignOwner.ID, "sys-fp", "cert-fp", "serial", "mTLS"))
+	foreignBefore := loadStoredCLISession(t, infra.CLISessionSvc, foreignSessionID)
+
+	inactiveSessionID := "op-cert-own-inactive-cli"
+	require.NoError(t, infra.CLISessionSvc.PersistCLISession(t.Context(), inactiveSessionID, "op-own", owner.ID, "sys-fp", "cert-fp", "serial", "mTLS"))
+	require.NoError(t, infra.CLISessionSvc.DeactivateCLISession(t.Context(), inactiveSessionID))
+
+	// The middleware must not stamp the header into the request context.
+	probe := infra.Auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stamped, _ := r.Context().Value(constants.ContextKeyCLISessionID).(string)
+		w.Header().Set("X-Stamped-CLI-Session-ID", stamped)
+		w.WriteHeader(http.StatusOK)
+	}))
+	probeRR := httptest.NewRecorder()
+	probe.ServeHTTP(probeRR, operatorCertRequest(t, constants.APIPaths.AuthCLISession, orgID, operatorID, operatorSessionID, foreignSessionID, nil))
+	require.Equal(t, http.StatusOK, probeRR.Code, probeRR.Body.String())
+	assert.Empty(t, probeRR.Header().Get("X-Stamped-CLI-Session-ID"), "an Operator certificate request must not carry a CLI session identity")
+
+	bindController := newCLIRefreshController(CLIRefreshControllerDeps{
+		Cfg:                infra.Cfg,
+		Logger:             infra.Logger,
+		CLISessionSvc:      infra.CLISessionSvc,
+		OperatorSessionSvc: infra.OperatorSessionSvc,
+		Reg:                infra.Reg,
+		Auth:               infra.Auth,
+		UserSvc:            infra.UserSvc,
+		Responder:          infra.Responder,
+	})
+	bindHandler := infra.Auth.Middleware(http.HandlerFunc(bindController.handleBind))
+	body, err := json.Marshal(models.CLIBindRequest{OperatorSessionID: targetSessionID})
+	require.NoError(t, err)
+
+	for _, cliSessionID := range []string{foreignSessionID, inactiveSessionID} {
+		rr := httptest.NewRecorder()
+		bindHandler.ServeHTTP(rr, operatorCertRequest(t, constants.APIPaths.AuthCLIBind, orgID, operatorID, operatorSessionID, cliSessionID, body))
+		assert.Equal(t, http.StatusNotFound, rr.Code, "bind with an Operator certificate must not reach the CLI session the header names: %s", rr.Body.String())
+	}
+
+	foreignAfter := loadStoredCLISession(t, infra.CLISessionSvc, foreignSessionID)
+	assert.Equal(t, foreignBefore.OperatorSessionID, foreignAfter.OperatorSessionID, "a foreign CLI session must keep its operator binding")
+	assert.Empty(t, foreignAfter.BoundOperatorSessionIDs, "a foreign CLI session must not gain bound operators")
 }
