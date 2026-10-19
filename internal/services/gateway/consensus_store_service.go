@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -151,6 +152,8 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 }
 
 // ConsensusAppDeliberator dispatches the GovernanceEnvelope to the bound consensus application's HTTPS endpoint.
+// It accepts and returns the Gateway's canonical protojson envelope wire and exchanges
+// binary protobuf with the application.
 type ConsensusAppDeliberator struct {
 	store      *ConsensusStoreService
 	httpClient *http.Client
@@ -184,7 +187,19 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 		return nil, fmt.Errorf("consensus deliberation endpoint: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(envelopeBytes))
+	// Callers hold the envelope in the Gateway's canonical protojson wire form;
+	// the consensus application speaks protobuf (INV-CON-VOTE-03), so the
+	// transcoding is owned here, in both directions.
+	var outgoing commonv1.GovernanceEnvelope
+	if err := protojson.Unmarshal(envelopeBytes, &outgoing); err != nil {
+		return nil, fmt.Errorf("consensus deliberation: decode envelope: %w: %w", constants.ErrTxInvalidEnvelope, err)
+	}
+	body, err := proto.Marshal(&outgoing)
+	if err != nil {
+		return nil, fmt.Errorf("consensus deliberation: encode envelope: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create consensus deliberation request: %w", err)
 	}
@@ -214,7 +229,11 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 		return nil, constants.ErrTxL2SignatureMissing
 	}
 
-	return respBytes, nil
+	deliberated, err := protojson.Marshal(&updated)
+	if err != nil {
+		return nil, fmt.Errorf("encode deliberated envelope: %w", err)
+	}
+	return deliberated, nil
 }
 
 // AddConsensus adds or updates a ConsensusPolicy in the database.

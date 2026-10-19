@@ -228,7 +228,7 @@ func TestValidateRejectsEffectOnNonExecuted(t *testing.T) {
 
 	t.Run("a2a stub on a suspension", func(t *testing.T) {
 		bad := cloneCases(cs)
-		i := indexOf(t, bad, row(23))
+		i := indexOf(t, bad, row(22))
 		bad[i].Expect[0].Effect = EffectA2AStubCall
 		requireInvalid(t, Validate(bad, gaps, corpus), "want \"none\"")
 	})
@@ -325,14 +325,14 @@ func TestValidateRejectsMissingRow(t *testing.T) {
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
-	// Row 26 is a gap only, so removing its gaps leaves it uncovered.
-	noRow26 := make([]Gap, 0, len(gaps))
+	// Row 25 is a gap only, so removing its gaps leaves it uncovered.
+	noRow25 := make([]Gap, 0, len(gaps))
 	for _, g := range gaps {
-		if g.Row != 26 {
-			noRow26 = append(noRow26, g)
+		if g.Row != 25 {
+			noRow25 = append(noRow25, g)
 		}
 	}
-	requireInvalid(t, Validate(cs, noRow26, corpus), "row 26 has no case and no gap")
+	requireInvalid(t, Validate(cs, noRow25, corpus), "row 25 has no case and no gap")
 
 	// Row 9 is cases only, so removing them leaves it uncovered.
 	noRow9 := slicesDropIf(cloneCases(cs), func(c Case) bool { return c.Row == 9 })
@@ -343,11 +343,11 @@ func TestValidateRejectsCaseOrGapRowOutOfRange(t *testing.T) {
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
-	badGap := append(cloneGaps(gaps), Gap{Row: 27, Ingress: IngressCLI, Fault: FaultL3ViaArguments, Reason: "x"})
-	requireInvalid(t, Validate(cs, badGap, corpus), "outside 1 to 26")
+	badGap := append(cloneGaps(gaps), Gap{Row: 26, Ingress: IngressCLI, Fault: FaultL3ViaArguments, Reason: "x"})
+	requireInvalid(t, Validate(cs, badGap, corpus), "outside 1 to 25")
 
 	badGap = append(cloneGaps(gaps), Gap{Row: 0, Ingress: IngressCLI, Fault: FaultL3ViaArguments, Reason: "x"})
-	requireInvalid(t, Validate(cs, badGap, corpus), "outside 1 to 26")
+	requireInvalid(t, Validate(cs, badGap, corpus), "outside 1 to 25")
 }
 
 func TestValidateRejectsGapWithoutReason(t *testing.T) {

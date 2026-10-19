@@ -101,11 +101,12 @@ type BuildEnvelopeParams struct {
 // before the L3 gate, so a forbidden payload is refused as
 // ErrTxL1ValidationFailed even under ratify and notary.
 //
-// L3 gating: the gateway dispatch path cannot mint L3 human proofs. After
-// L1 passes, when the posture requires L3 proof (ratify, notary) and the
-// action is a mutation, the builder rejects the clean envelope with
-// ErrTxL3ProofUnmintable rather than publishing a mutation that cannot
-// satisfy L3 at the operator.
+// L3 gating: this public builder cannot mint L3 human proofs. After L1
+// passes, when the posture requires L3 proof (ratify, notary) and the action
+// is a mutation, it rejects the clean envelope with ErrTxL3ProofUnmintable
+// rather than build a mutation that cannot satisfy L3 at the operator.
+// DispatchService instead builds the envelope for a DispatchApprovalCoordinator
+// that suspends it and waits for a real human proof.
 func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEnvelope, error) {
 	return buildGovernanceEnvelope(params, false)
 }
@@ -143,9 +144,9 @@ func buildGovernanceEnvelope(params BuildEnvelopeParams, awaitingApproval bool) 
 	}
 	l1Validated := true
 
-	// L3 gate: the gateway dispatch path cannot mint L3 human proofs. Reject
-	// a clean mutation-classified action under postures that require L3
-	// before constructing an envelope that cannot satisfy L3 at the operator.
+	// L3 gate: the Gateway cannot mint L3 human proofs. Reject a clean
+	// mutation-classified action under postures that require L3 unless the
+	// caller owns the human-approval wait that will supply the proof.
 	if governance.L3Required(actionType, params.Posture) && !awaitingApproval {
 		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrTxL3ProofUnmintable)
 	}
@@ -256,9 +257,11 @@ type L2ConsensusDeliberator interface {
 // are required for read-only commands. Where governance.L2Enforced holds for
 // the action (consensus, notary, and not a bootstrap action), the dispatch
 // service deliberates the constructed envelope through l2Deliberator before
-// publish. Mutations under
-// postures that require L3 proof (ratify, notary) are rejected at envelope
-// construction because the gateway dispatch path cannot mint human proofs.
+// publish. Mutations under postures that require L3 proof (ratify, notary)
+// are suspended through the DispatchApprovalCoordinator, which holds the
+// request open for a real human decision. Without a coordinator they are
+// rejected at envelope construction (ErrTxL3ProofUnmintable). The Gateway
+// never mints human proofs.
 type DispatchService struct {
 	approvals         *DispatchApprovalCoordinator
 	embeddedProcessor governance.EnvelopeProcessor
@@ -330,8 +333,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	}
 
 	// 3. Build the GovernanceEnvelope via the shared construction helper.
-	// BuildGovernanceEnvelope runs L1 screening and rejects mutations under
-	// L3-requiring postures (the gateway dispatch path cannot mint L3 proofs).
+	// buildGovernanceEnvelope runs L1 screening and, under L3-requiring
+	// postures, admits the unsigned mutation only when the approval coordinator
+	// owns the wait (the Gateway never mints L3 proofs).
 	env, err := buildGovernanceEnvelope(BuildEnvelopeParams{
 		OperatorID:        operatorID,
 		OperatorSessionID: operatorSessionID,
@@ -1151,6 +1155,9 @@ func newDispatchController(d DispatchControllerDeps) *DispatchController {
 // @Summary		Dispatch governed operator command
 // @Description	Constructs a governed envelope for the target Operator session, waits for the
 // @Description	terminal result and the Operator's verified final receipt, and returns both.
+// @Description	Under ratify or notary posture a mutation is suspended and the request stays open
+// @Description	until a human approves or denies it, up to the approval TTL, in addition to the
+// @Description	dispatch deadline; clients allow both. The Gateway never mints the approval proof.
 // @Tags			operators
 // @Accept			json
 // @Produce		json

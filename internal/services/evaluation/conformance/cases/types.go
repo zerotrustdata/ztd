@@ -103,7 +103,6 @@ const (
 	FaultL3Missing            Fault = "l3_missing"
 	FaultL3Invalid            Fault = "l3_invalid"
 	FaultL3Garbage            Fault = "l3_garbage"
-	FaultNoL3Path             Fault = "no_l3_path"
 	FaultUnattendedMutation   Fault = "unattended_mutation"
 	FaultAttendedApprove      Fault = "attended_approve"
 	FaultAttendedDeny         Fault = "attended_deny"

@@ -68,6 +68,8 @@ func approvalPausedMessage(posture constants.Posture, approvalURL string) string
 
 // L2ConsensusDeliberator sends an envelope to the bound consensus application
 // over HTTPS protobuf and returns the envelope with L2 metadata populated.
+// envelopeBytes is the Gateway's canonical protojson envelope wire and the
+// result uses the same encoding, so callers publish it unchanged.
 // Integration fixtures may inject a test deliberator.
 type L2ConsensusDeliberator interface {
 	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
@@ -86,8 +88,10 @@ type OutboundL3ProofPreparer interface {
 	PrepareOutboundL3Proof(context.Context, string, string, string, *commonv1.L3Proof) (*commonv1.L3Proof, error)
 }
 
+// PendingDispatchResumer hands a human decision to the governed dispatch that is
+// still waiting for it. handedOff is true once that dispatch owns the outcome.
 type PendingDispatchResumer interface {
-	ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, error)
+	ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (receipt *operatorv1.ActionReceipt, handedOff bool, err error)
 }
 
 // GatewayService handles MCP/A2A protocol translation and downstream dispatch.
@@ -1291,8 +1295,13 @@ func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID s
 		return nil, err
 	}
 
-	receipt, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Proof: proof})
+	receipt, handedOff, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Proof: proof})
 	if procErr != nil {
+		if handedOff {
+			// The waiting dispatch owns this outcome and cannot take a second
+			// decision, so the suspension ends with the failure.
+			return receipt, g.retireAfterHandedOffFailure(ctx, txHash, procErr)
+		}
 		// Keep the suspension in place so the user can retry the proof
 		// without re-issuing the upstream MCP call: release the claim.
 		return receipt, g.releaseAfterFailedResume(ctx, txHash, procErr)
@@ -1317,19 +1326,24 @@ func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID s
 // Any signed governance rejection ends the suspension and is returned: a deny that
 // L4 rejected for another reason first (an expired envelope) still cannot execute.
 // A failure that produced no signed rejection releases the claim, so the deny can be
-// retried. A deny that executed is a platform defect and fails closed.
+// retried, unless a waiting dispatch already took the deny. A deny that executed is a
+// platform defect and fails closed.
 func (g *GatewayService) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
 	tx, err := g.claimSuspended(ctx, txHash, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Denied: true})
+	receipt, handedOff, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Denied: true})
 	if procErr == nil {
 		return receipt, fmt.Errorf("gateway: deny transaction %s: %w", txHash, constants.ErrL3DenyNotRejected)
 	}
 	if !governance.IsGovernanceRejectionReceipt(receipt) {
-		return nil, g.releaseAfterFailedResume(ctx, txHash, fmt.Errorf("gateway: deny transaction %s: %w", txHash, procErr))
+		procErr = fmt.Errorf("gateway: deny transaction %s: %w", txHash, procErr)
+		if handedOff {
+			return nil, g.retireAfterHandedOffFailure(ctx, txHash, procErr)
+		}
+		return nil, g.releaseAfterFailedResume(ctx, txHash, procErr)
 	}
 	if err := g.suspendedStore.DeleteSuspendedTransaction(ctx, txHash); err != nil {
 		return receipt, fmt.Errorf("gateway: transaction %s denied but its suspended record was not removed: %w", txHash, err)
@@ -1338,11 +1352,12 @@ func (g *GatewayService) DenySuspendedTransaction(ctx context.Context, txHash, u
 }
 
 // claimSuspended loads a suspended transaction and claims it for one resume or
-// deny. The claim keeps the row in place (L3 verification reads it) but guarantees
-// that a second resume or deny cannot submit the same transaction, and that the
-// expiry sweep never records transaction.expired for a transaction that reached L4,
-// even if the later delete fails. Deleting before submission is not possible: the
-// outbound L3 verifier reads the row during ProcessEnvelope.
+// deny. The claim keeps the row in place so a decision that fails before it is
+// handed to L4 or a waiting dispatch can release the claim and be retried, and it
+// guarantees that a second resume or deny cannot submit the same transaction and
+// that the expiry sweep never records transaction.expired for a transaction that
+// reached L4, even if the later delete fails. Outbound Operators re-verify the
+// human proof carried in the envelope; they read no suspended row.
 func (g *GatewayService) claimSuspended(ctx context.Context, txHash, userID string) (*models.SuspendedTransaction, error) {
 	if g.envProc == nil && g.outboundEnvProc == nil {
 		return nil, constants.ErrGatewayNotReady
@@ -1377,19 +1392,21 @@ func (g *GatewayService) claimSuspended(ctx context.Context, txHash, userID stri
 
 // resubmitSuspended re-submits a claimed suspended envelope with l3 attached. The
 // L3 metadata is outside the transaction hash, so the hashed fields are untouched.
-func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.SuspendedTransaction, l3 *commonv1.L3Metadata) (*operatorv1.ActionReceipt, error) {
+// handedOff reports that a waiting governed dispatch took the decision and owns
+// its outcome; such a suspension can never be decided again.
+func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.SuspendedTransaction, l3 *commonv1.L3Metadata) (receipt *operatorv1.ActionReceipt, handedOff bool, err error) {
 	env := &commonv1.GovernanceEnvelope{}
 	if err := protojson.Unmarshal([]byte(tx.Envelope), env); err != nil {
-		return nil, fmt.Errorf("gateway: decode suspended envelope %s: %w", tx.TransactionHash, err)
+		return nil, false, fmt.Errorf("gateway: decode suspended envelope %s: %w", tx.TransactionHash, err)
 	}
 	pendingDispatch := env.GetGovernance().GetL3().GetPendingDispatch()
 	if env.GetOperatorId() != string(constants.DocIDEmbeddedOperator) && !l3.GetDenied() {
 		if g.outboundProofPreparer == nil {
-			return nil, fmt.Errorf("gateway: prepare outbound approval: %w", constants.ErrTxL3NotaryNotConfigured)
+			return nil, false, fmt.Errorf("gateway: prepare outbound approval: %w", constants.ErrTxL3NotaryNotConfigured)
 		}
 		proof, err := g.outboundProofPreparer.PrepareOutboundL3Proof(ctx, env.GetRequestorUserId(), env.GetTransactionHash(), env.GetCliSessionId(), l3.GetProof())
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		l3 = &commonv1.L3Metadata{Proof: proof}
 	}
@@ -1399,14 +1416,19 @@ func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.Suspe
 	env.Governance.L3 = l3
 	if pendingDispatch {
 		if g.pendingDispatchResumer == nil {
-			return nil, constants.ErrTransactionExpired
+			return nil, false, constants.ErrTransactionExpired
 		}
 		return g.pendingDispatchResumer.ResumePendingDispatch(ctx, env)
 	}
+	receipt, err = g.processSuspended(ctx, tx.TransactionHash, env)
+	return receipt, false, err
+}
 
+// processSuspended submits a decided standalone suspension to its execution target.
+func (g *GatewayService) processSuspended(ctx context.Context, txHash string, env *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, error) {
 	resubmitted, err := (protojson.MarshalOptions{Multiline: false}).Marshal(env)
 	if err != nil {
-		return nil, fmt.Errorf("gateway: encode resubmitted envelope %s: %w", tx.TransactionHash, err)
+		return nil, fmt.Errorf("gateway: encode resubmitted envelope %s: %w", txHash, err)
 	}
 
 	// The suspended envelope is Gateway-built, so it keeps its admission
@@ -1436,6 +1458,17 @@ func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.Suspe
 func (g *GatewayService) releaseAfterFailedResume(ctx context.Context, txHash string, cause error) error {
 	if err := g.suspendedStore.ReleaseSuspendedTransaction(context.WithoutCancel(ctx), txHash); err != nil {
 		return errors.Join(cause, fmt.Errorf("gateway: release suspended transaction %s: %w", txHash, err))
+	}
+	return cause
+}
+
+// retireAfterHandedOffFailure ends a suspension whose decision a waiting dispatch
+// already took. That dispatch returned the failure to its caller and cannot take a
+// second decision, so the row is removed rather than left for the expiry sweep to
+// record as expired. A failed delete is joined to cause.
+func (g *GatewayService) retireAfterHandedOffFailure(ctx context.Context, txHash string, cause error) error {
+	if err := g.suspendedStore.DeleteSuspendedTransaction(context.WithoutCancel(ctx), txHash); err != nil {
+		return errors.Join(cause, fmt.Errorf("gateway: transaction %s was decided but its suspended record was not removed: %w", txHash, err))
 	}
 	return cause
 }

@@ -16,7 +16,6 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -36,6 +35,10 @@ import (
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
+
+// governedInferenceDispatchDeadline bounds one governed inference dispatch: the
+// human approval wait plus the Inference Operator request deadline.
+const governedInferenceDispatchDeadline = mcp.ApprovalRequestTTL + inferdispatch.RequestDeadline
 
 type inferenceAcceptanceResultJSON struct {
 	Case            string `json:"case"`
@@ -122,7 +125,7 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 				}
 				probeReq.ProviderAttemptID = attemptID
 				probeReq.Stream = acceptanceCase.Stream
-				ctx, cancel := context.WithTimeout(cmd.Context(), 6*time.Minute)
+				ctx, cancel := context.WithTimeout(cmd.Context(), governedInferenceDispatchDeadline)
 				response, progress, runErr := inferenceEvalExecuteProbe(ctx, appClient, probeReq)
 				cancel()
 				entry := inferenceAcceptanceResultJSON{
@@ -242,7 +245,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if seed >= 0 {
 				probeReq.Seed = &seed
 			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), 6*time.Minute)
+			ctx, cancel := context.WithTimeout(cmd.Context(), governedInferenceDispatchDeadline)
 			defer cancel()
 			response, progress, err := inferenceEvalExecuteProbe(ctx, appClient, probeReq)
 			if err != nil {
@@ -391,7 +394,7 @@ func (d *governedInferenceDispatcher) DispatchInference(ctx context.Context, req
 	if d == nil || d.client == nil || req == nil {
 		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", constants.ErrMissingRequiredField)
 	}
-	ctx, cancel := context.WithTimeout(ctx, mcp.ApprovalRequestTTL+inferdispatch.RequestDeadline)
+	ctx, cancel := context.WithTimeout(ctx, governedInferenceDispatchDeadline)
 	defer cancel()
 	response, _, err := d.client.DispatchInference(ctx, req)
 	if err != nil {

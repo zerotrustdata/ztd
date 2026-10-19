@@ -8,9 +8,54 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 )
+
+// deadlineRecorder is a RoundTripper that records the request context deadline
+// the http.Client derived from its Timeout.
+type deadlineRecorder struct {
+	deadline time.Time
+	has      bool
+}
+
+func (r *deadlineRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.deadline, r.has = req.Context().Deadline()
+	return &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    req,
+	}, nil
+}
+
+func TestDispatchCommandBody_ClientTimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
+	recorder := &deadlineRecorder{}
+	client, err := New(config.Config{MTLSBaseURL: "http://dispatch.test"})
+	require.NoError(t, err)
+	client.http.Transport = recorder
+
+	start := time.Now()
+	_, err = client.DispatchCommandBody(context.Background(), Persona{ID: "test", CLISessionID: "cli-1"}, []byte(`{}`))
+	require.NoError(t, err)
+
+	require.True(t, recorder.has, "the dispatch client must bound the request")
+	want := mcp.ApprovalRequestTTL + dispatch.RequestDeadline
+	assert.GreaterOrEqual(t, recorder.deadline.Sub(start), want-time.Second, "the timeout must outlast the approval wait plus the dispatch deadline")
+	assert.Less(t, recorder.deadline.Sub(start), want+time.Minute)
+}
 
 type promptArgFixture struct {
 	Arg string `json:"arg"`

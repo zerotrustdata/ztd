@@ -53,14 +53,13 @@ type ZtdoService struct {
 	logger  *slog.Logger
 	fileSvc fs.RuntimeFileService
 
-	secretManager    *gateway.SecretManager
-	execution        *execution.ExecutionService
-	fileEdit         *execution.FileEditService
-	pubSubCommands   *pubsub.OperatorPubSubService
-	pubSubResults    *pubsub.PubSubResultsService
-	tokenStore       storage.TokenStore
-	suspendedTxStore *storage.SuspendedTransactionService
-	gatewayDB        *gateway.CanonicalDBService
+	secretManager  *gateway.SecretManager
+	execution      *execution.ExecutionService
+	fileEdit       *execution.FileEditService
+	pubSubCommands *pubsub.OperatorPubSubService
+	pubSubResults  *pubsub.PubSubResultsService
+	tokenStore     storage.TokenStore
+	gatewayDB      *gateway.CanonicalDBService
 
 	pubSubClientFactory   PubSubClientFactory
 	pubSubClient          pubsub.PubSubClient
@@ -199,10 +198,6 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	// DB (ztd.db) via EncryptedKVAdapter — no separate token_store.db.
 	vs.tokenStore = gateway.NewEncryptedKVAdapter(vs.gatewayDB.GetKVStore(), encryptionVault)
 	vs.logger.Info("Token store initialized (canonical KV store)")
-
-	// The suspended transaction store is owned by the canonical DB (ztd.db).
-	vs.suspendedTxStore = vs.gatewayDB.GetSuspendedStore()
-	vs.logger.Info("Suspended transaction store initialized")
 
 	vs.logger.Info("Initializing Local-First Audit Architecture (LFAA)...")
 

@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -108,12 +109,12 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	require.Equal(t, []string{"ordinary-consensus"}, bound.MemberAppIDs)
 	require.Equal(t, endpoint.URL, bound.EndpointURL)
 	envelope := &commonv1.GovernanceEnvelope{TransactionHash: "ordinary-enrollment-l2", Payload: []byte("full-envelope-payload")}
-	wire, err := proto.Marshal(envelope)
+	wire, err := protojson.Marshal(envelope)
 	require.NoError(t, err)
 	signedWire, err := env.svc.GetConsensusStore().NewConsensusAppDeliberator(endpoint.Client()).Deliberate(t.Context(), wire)
 	require.NoError(t, err)
 	var signed commonv1.GovernanceEnvelope
-	require.NoError(t, proto.Unmarshal(signedWire, &signed))
+	require.NoError(t, protojson.Unmarshal(signedWire, &signed))
 	require.Equal(t, envelope.TransactionHash, signed.GetTransactionHash())
 	require.Equal(t, envelope.Payload, signed.GetPayload())
 	proof := signed.GetGovernance().GetL2()

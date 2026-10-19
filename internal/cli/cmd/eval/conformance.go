@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -30,6 +31,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/run"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/verify"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -56,10 +59,19 @@ func defaultConformanceDeps() conformanceDeps {
 	return conformanceDeps{run: run.Run, listen: drive.StartA2AStub, poster: defaultConformancePoster}
 }
 
+// conformanceDispatchDeadline bounds one CLI-driven dispatch. Under ratify and notary
+// the Gateway holds the request open for the human approval wait and then runs the
+// dispatch, so the client allows both plus a response margin.
+const conformanceDispatchDeadline = mcp.ApprovalRequestTTL + gateway.DispatchTimeout + conformanceDispatchMargin
+
+// conformanceDispatchMargin is the response margin `operator run` also adds to its
+// dispatch timeout.
+const conformanceDispatchMargin = 5 * time.Second
+
 // defaultConformancePoster is the Gateway API client the CLI driver posts through,
 // the same client `operator run` uses. It reads the CLI identity from the Gateway root.
 func defaultConformancePoster(fileSvc fs.RuntimeFileService, cfg *config.Config) (cliop.CommandPoster, error) {
-	client, err := api.NewClientWithOptions(fileSvc, cfg, api.ClientOptions{})
+	client, err := api.NewClientWithOptions(fileSvc, cfg, api.ClientOptions{Timeout: conformanceDispatchDeadline})
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: create gateway API client: %w", err)
 	}
@@ -421,8 +433,9 @@ type conformanceSetup struct {
 
 // conformanceDrivers builds one driver per ingress and the sentinel. The L2 source
 // follows the posture. The bound app deliberates under consensus and notary, and a
-// synthetic proof stands in under doctrine and ratify. Attended runs wrap the MCP
-// and A2A drivers.
+// synthetic proof stands in under doctrine and ratify. Attended runs wrap every
+// driver whose ingress a human approval resumes: MCP, A2A, governed dispatch and
+// the CLI.
 func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingress]cases.Driver, *drive.Sentinel, error) {
 	posture, err := cases.GovernancePosture(s.posture)
 	if err != nil {
@@ -465,9 +478,13 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	if s.attended {
 		mcpIngress = drive.NewAttended(mcpDriver, s.client, s.persona, s.approverUserID)
 	}
+	var dispatchIngress cases.Driver = dispatch
+	if s.attended {
+		dispatchIngress = drive.NewAttended(dispatch, s.client, s.persona, s.approverUserID)
+	}
 	drivers := map[cases.Ingress]cases.Driver{
 		cases.IngressDirect:           direct,
-		cases.IngressDispatchEmbedded: dispatch,
+		cases.IngressDispatchEmbedded: dispatchIngress,
 		cases.IngressMCP:              mcpIngress,
 	}
 	if s.outbound.OperatorSessionID != "" {
@@ -475,8 +492,12 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 		if err != nil {
 			return nil, nil, fmt.Errorf("evaluation: CLI driver: %w", err)
 		}
-		drivers[cases.IngressDispatchOutbound] = dispatch
-		drivers[cases.IngressCLI] = cli
+		var cliIngress cases.Driver = cli
+		if s.attended {
+			cliIngress = drive.NewAttended(cli, s.client, s.persona, s.approverUserID)
+		}
+		drivers[cases.IngressDispatchOutbound] = dispatchIngress
+		drivers[cases.IngressCLI] = cliIngress
 	}
 	if s.stub != nil {
 		var a2aIngress cases.Driver = drive.NewA2A(s.client, s.persona, s.stub)

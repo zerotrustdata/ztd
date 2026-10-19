@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -122,8 +123,10 @@ authenticated user and be active.`,
 			if poolSize < 1 {
 				poolSize = defaultOperatorCommandConcurrency
 			}
+			// Under ratify/notary the Gateway holds the request open for the
+			// human decision before it dispatches.
 			client, err := clientFactory(fileSvc, cfg, api.ClientOptions{
-				Timeout:             time.Duration(timeoutSeconds)*time.Second + 5*time.Second,
+				Timeout:             mcp.ApprovalRequestTTL + time.Duration(timeoutSeconds)*time.Second + 5*time.Second,
 				MaxIdleConnsPerHost: poolSize,
 			})
 			if err != nil {

@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type captureEnvelopeSuspender struct{ envelope *commonv1.GovernanceEnvelope }
@@ -58,8 +59,9 @@ func TestDispatchApprovalCoordinator_CancelledOrExpiredRequestCannotResume(t *te
 				} else {
 					require.ErrorIs(t, err, constants.ErrTransactionExpired)
 				}
-				_, err = coordinator.ResumePendingDispatch(t.Context(), store.envelope)
+				_, handedOff, err := coordinator.ResumePendingDispatch(t.Context(), store.envelope)
 				require.ErrorIs(t, err, constants.ErrTransactionExpired)
+				require.False(t, handedOff)
 				require.Empty(t, coordinator.pending)
 			})
 		})
@@ -81,9 +83,35 @@ func TestDispatchApprovalCoordinator_DecisionMayOnlyChangeL3Metadata(t *testing.
 		synctest.Wait()
 		changed := proto.Clone(store.envelope).(*commonv1.GovernanceEnvelope)
 		changed.StateMerkleRoot = "other-root"
-		_, err = coordinator.ResumePendingDispatch(t.Context(), changed)
+		_, handedOff, err := coordinator.ResumePendingDispatch(t.Context(), changed)
 		require.ErrorIs(t, err, constants.ErrTxInvalidEnvelope)
+		require.False(t, handedOff)
 		cancel()
 		require.ErrorIs(t, <-done, context.Canceled)
+	})
+}
+
+// A delivered decision reports hand-off with the dispatch's verified failure, so
+// the approval path retires the suspension instead of offering a retry.
+func TestDispatchApprovalCoordinator_DeliveredFailureReportsHandOff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := &captureEnvelopeSuspender{}
+		coordinator, err := NewDispatchApprovalCoordinator(store)
+		require.NoError(t, err)
+		failed := &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+		go func() {
+			_, pending, err := coordinator.await(t.Context(), resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t)))
+			if err == nil {
+				coordinator.finish(pending.envelope.Id, pending, failed, constants.ErrDispatchResultTimeout)
+			}
+		}()
+		synctest.Wait()
+		decided := proto.Clone(store.envelope).(*commonv1.GovernanceEnvelope)
+		decided.Governance.L3 = &commonv1.L3Metadata{Denied: true}
+		receipt, handedOff, err := coordinator.ResumePendingDispatch(t.Context(), decided)
+		require.ErrorIs(t, err, constants.ErrDispatchResultTimeout)
+		require.True(t, handedOff)
+		require.Same(t, failed, receipt)
+		require.Empty(t, coordinator.pending)
 	})
 }

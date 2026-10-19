@@ -10,19 +10,25 @@
 package drive
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"encoding/pem"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -112,14 +118,14 @@ func (d approvingDriver) Drive(ctx context.Context, a cases.Attempt) (cases.Driv
 	return driven, nil
 }
 
-// TestAttendedRatifyApprovalResumesMCPCall drives row 24 on MCP under ratify. The
+// TestAttendedRatifyApprovalResumesMCPCall drives row 23 on MCP under ratify. The
 // call suspends, the test approves it with its passkey, and the attended driver
 // returns the resumed signed receipt with the marker written.
 func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
-	row24 := findCase(t, all, 24, cases.IngressMCP, ratify)
+	row24 := findCase(t, all, 23, cases.IngressMCP, ratify)
 
 	g := bootL3Gateway(t, "conformance-attended-mcp", constants.PostureRatify)
 	mcpDriver, err := NewMCP(context.Background(), g.client, g.persona)
@@ -153,6 +159,156 @@ func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
 	assert.Equal(t, a.Marker, string(written), "the approved mutation must write exactly the marker")
+}
+
+// cliPoster posts the CLI driver's requests the way the Gateway API client does: a
+// non-2xx answer is an api.StatusError carrying its body, so RunOnce decodes the
+// typed refusal or signed rejection.
+type cliPoster struct {
+	client  *http.Client
+	baseURL string
+}
+
+func (p cliPoster) Post(path string, body any) ([]byte, error) {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := p.client.Post(p.baseURL+path, constants.HeaderValueApplicationJSON, bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	answer, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, &api.StatusError{StatusCode: resp.StatusCode, Body: string(answer)}
+	}
+	return answer, nil
+}
+
+// awaitPendingApproval waits for the one transaction the blocked call suspended and
+// returns its hash. The approver learns of it the way a human does, from the Gateway's
+// pending approval list.
+func (g *l3Gateway) awaitPendingApproval(t *testing.T, approver *http.Client) string {
+	t.Helper()
+	listURL := network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort()) + constants.APIPaths.ApprovalsCLIList
+	var txHash string
+	require.Eventually(t, func() bool {
+		resp, err := approver.Get(listURL)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		var pending models.SuspendedTransactionsResponse
+		if err := json.Unmarshal(body, &pending); err != nil || len(pending.Transactions) != 1 {
+			return false
+		}
+		txHash = pending.Transactions[0].TransactionHash
+		return true
+	}, 10*time.Second, 25*time.Millisecond, "the blocked call must suspend one transaction for the human")
+	return txHash
+}
+
+// denyWithCLI denies txHash the way `ztd auth approve --deny` does.
+func (g *l3Gateway) denyWithCLI(t *testing.T, approver *http.Client, txHash string) {
+	t.Helper()
+	body, err := json.Marshal(models.ApprovalRespondRequest{ApprovalID: txHash, Approved: false, Reason: "conformance deny"})
+	require.NoError(t, err)
+	resp, err := approver.Post(network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort())+constants.APIPaths.ApprovalsRespond, constants.HeaderValueApplicationJSON, bytes.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	answer, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "deny must return the signed rejection: %s", answer)
+}
+
+// TestAttendedRatifyBlockingIngressesFollowTheHumanDecision drives rows 23 and 24 on
+// governed dispatch and the CLI under ratify against a live Gateway. The request
+// blocks while the transaction is pending, the human decides over the Gateway's
+// approval routes, and the attended driver returns the signed answer the blocked
+// request got: the executed receipt on approve, the L3_DENIED rejection on deny.
+func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+
+	for _, ingress := range []cases.Ingress{cases.IngressDispatchEmbedded, cases.IngressCLI} {
+		for _, row := range []int{23, 24} {
+			c := findCase(t, all, row, ingress, ratify)
+			t.Run(c.ID, func(t *testing.T) {
+				g := bootL3Gateway(t, "conformance-attended-blocking", constants.PostureRatify)
+				approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
+
+				var inner cases.Driver
+				var err error
+				if ingress == cases.IngressCLI {
+					inner, err = NewCLI(cliPoster{client: approver, baseURL: network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort())}, g.target, g.ident.CLISessionID)
+				} else {
+					inner, err = NewDispatch(g.client, g.persona, map[cases.Executor]operator.Target{cases.ExecutorEmbedded: g.target})
+				}
+				require.NoError(t, err)
+				a := g.attempts().attemptFor(t, c)
+
+				type answer struct {
+					driven cases.Driven
+					err    error
+				}
+				answered := make(chan answer, 1)
+				go func() {
+					driven, err := NewAttended(inner, g.client, g.persona, g.ident.UserID).Drive(t.Context(), a)
+					answered <- answer{driven, err}
+				}()
+
+				txHash := g.awaitPendingApproval(t, approver)
+				select {
+				case early := <-answered:
+					t.Fatalf("the call answered before the human decided: %+v, %v", early.driven, early.err)
+				default:
+				}
+				_, statErr := os.Stat(a.TargetAbs)
+				require.True(t, os.IsNotExist(statErr), "nothing may execute while the approval is pending")
+
+				if row == 23 {
+					session := fixtures.ConsoleSignIn(t, g.f, approver, g.ident)
+					status, body := fixtures.ApproveWithPasskey(t, g.f, approver, session, g.ident, txHash)
+					require.Equal(t, http.StatusOK, status, "passkey approval must resume the call: %s", body)
+				} else {
+					g.denyWithCLI(t, approver, txHash)
+				}
+
+				var got answer
+				select {
+				case got = <-answered:
+				case <-time.After(30 * time.Second):
+					t.Fatal("the call never answered after the human decided")
+				}
+				require.NoError(t, got.err)
+				require.Len(t, got.driven.Observations, len(c.Expect))
+				obs := got.driven.Observations[0]
+				assertObservation(t, c.Expect[0], obs)
+
+				if row == 23 {
+					receipt := obs.GetReceipt()
+					assert.Equal(t, txHash, receipt.GetTransactionHash(), "the receipt must be for the suspended transaction")
+					assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status())
+					written, err := os.ReadFile(a.TargetAbs)
+					require.NoError(t, err)
+					assert.Equal(t, a.Marker, string(written), "the approved mutation must write exactly the marker")
+					return
+				}
+				assert.Equal(t, txHash, obs.GetRejection().GetReceipt().GetTransactionHash(), "the rejection must be for the suspended transaction")
+				_, statErr = os.Stat(a.TargetAbs)
+				assert.True(t, os.IsNotExist(statErr), "a denied mutation must leave no file")
+			})
+		}
+	}
 }
 
 // TestL3DirectRowsUnderRatify drives row 20 on DIRECT under ratify: a missing L3

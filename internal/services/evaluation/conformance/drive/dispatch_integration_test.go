@@ -134,6 +134,24 @@ func TestDispatchDriveSendsRequestPerFault(t *testing.T) {
 		assert.Equal(t, a.Marker, edit.GetContent())
 	})
 
+	for _, fault := range []cases.Fault{cases.FaultAttendedApprove, cases.FaultAttendedDeny} {
+		t.Run(string(fault)+" sends the baseline file edit", func(t *testing.T) {
+			fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
+			a := dispatchAttempt(cases.IngressDispatchOutbound, fault, cases.ActionMutation)
+
+			_, err := newTestDispatch(t, c).Drive(context.Background(), a)
+			require.NoError(t, err)
+
+			req := decodeDispatchRequest(t, fake.recorded(t, 0))
+			assert.Equal(t, "outbound-session", req.TargetOperatorSessionID)
+			assert.Equal(t, string(constants.EventOperatorFileEditRequested), req.EventType)
+			edit := &operatorv1.FileEditRequested{}
+			require.NoError(t, proto.Unmarshal(req.Payload, edit))
+			assert.Equal(t, a.TargetAbs, edit.GetFilePath())
+			assert.Equal(t, a.Marker, edit.GetContent())
+		})
+	}
+
 	t.Run("file edit baseline to outbound session", func(t *testing.T) {
 		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
 		a := dispatchAttempt(cases.IngressDispatchOutbound, cases.FaultNone, cases.ActionMutation)

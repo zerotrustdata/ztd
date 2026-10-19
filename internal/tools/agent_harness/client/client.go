@@ -324,10 +324,12 @@ const (
 	ApprovalDecisionDeny
 )
 
-// WaitForApproval prints the human approval banner for txHash, asking for decision,
-// waits on sub for the decision, and returns the signed receipt: the resumed
-// receipt on approve, or the L3_DENIED rejection receipt on deny.
-func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.ActionReceipt, error) {
+// AnnounceApproval prints the human approval banner asking for decision. A
+// non-empty txHash adds the transaction and its direct approval link. An empty
+// txHash announces an approval whose transaction does not exist yet: a governed
+// dispatch holds its request open and the Gateway creates the transaction only
+// when the call is suspended, so the approver finds it pending in the console.
+func (c *Client) AnnounceApproval(txHash string, decision ApprovalDecision) {
 	// The human approver reaches the gateway from the host, which uses different
 	// host/ports than the harness process (container-internal). Prefer the
 	// host-reachable display URL for the printed link; fall back to PublicBaseURL
@@ -337,7 +339,6 @@ func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscrip
 	if displayBase == "" {
 		displayBase = cfg.PublicBaseURL
 	}
-	approvalURL := displayBase + constants.APIPaths.ApprovePagePrefix + txHash
 	consoleURL := displayBase + constants.APIPaths.ConsolePrefix
 
 	fmt.Fprintf(os.Stderr, "\n  ╔════════════════════════════════════════════════════════════╗\n")
@@ -348,10 +349,19 @@ func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscrip
 		fmt.Fprintf(os.Stderr, "  ║  Approve in your console (approval pushed via SSE):        ║\n")
 	}
 	fmt.Fprintf(os.Stderr, "  ║  %s\n", consoleURL)
-	fmt.Fprintf(os.Stderr, "  ║  Or open this direct link as an alternative:                ║\n")
-	fmt.Fprintf(os.Stderr, "  ║  %s\n", approvalURL)
-	fmt.Fprintf(os.Stderr, "  ║  Transaction: %s\n", txHash)
+	if txHash != "" {
+		fmt.Fprintf(os.Stderr, "  ║  Or open this direct link as an alternative:                ║\n")
+		fmt.Fprintf(os.Stderr, "  ║  %s\n", displayBase+constants.APIPaths.ApprovePagePrefix+txHash)
+		fmt.Fprintf(os.Stderr, "  ║  Transaction: %s\n", txHash)
+	}
 	fmt.Fprintf(os.Stderr, "  ╚════════════════════════════════════════════════════════════╝\n\n")
+}
+
+// WaitForApproval prints the human approval banner for txHash, asking for decision,
+// waits on sub for the decision, and returns the signed receipt: the resumed
+// receipt on approve, or the L3_DENIED rejection receipt on deny.
+func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.ActionReceipt, error) {
+	c.AnnounceApproval(txHash, decision)
 
 	receipt, err := sub.Wait(ctx, txHash, userID)
 	if err != nil {

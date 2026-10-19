@@ -34,8 +34,9 @@ func TestResubmitSuspended_OutboundTargetNeverUsesEmbeddedProcessor(t *testing.T
 		Id: "tx-remote", TransactionHash: "tx-remote", OperatorId: "remote-operator", OperatorSessionId: "remote-session",
 	})
 	require.NoError(t, err)
-	receipt, err := g.resubmitSuspended(t.Context(), &models.SuspendedTransaction{TransactionHash: "tx-remote", Envelope: wire}, &commonv1.L3Metadata{Denied: true})
+	receipt, handedOff, err := g.resubmitSuspended(t.Context(), &models.SuspendedTransaction{TransactionHash: "tx-remote", Envelope: wire}, &commonv1.L3Metadata{Denied: true})
 	require.ErrorIs(t, err, constants.ErrGatewayNotReady)
+	require.False(t, handedOff)
 	require.Nil(t, receipt)
 	require.Empty(t, local.gotPayload, "an outbound target must never execute on the Gateway")
 }
@@ -104,8 +105,61 @@ func TestResubmitSuspended_MissingTargetFailsClosed(t *testing.T) {
 	g.outboundEnvProc = outbound
 	wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{Id: "tx-target"})
 	require.NoError(t, err)
-	_, err = g.resubmitSuspended(t.Context(), &models.SuspendedTransaction{TransactionHash: "tx-target", Envelope: wire}, &commonv1.L3Metadata{Denied: true})
+	_, _, err = g.resubmitSuspended(t.Context(), &models.SuspendedTransaction{TransactionHash: "tx-target", Envelope: wire}, &commonv1.L3Metadata{Denied: true})
 	require.ErrorIs(t, err, constants.ErrTxTargetOperatorMismatch)
 	require.Empty(t, local.gotPayload)
 	require.Empty(t, outbound.gotPayload)
+}
+
+type fakePendingDispatchResumer struct {
+	receipt   *operatorv1.ActionReceipt
+	handedOff bool
+	err       error
+}
+
+func (f fakePendingDispatchResumer) ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, bool, error) {
+	return f.receipt, f.handedOff, f.err
+}
+
+// A decision the waiting dispatch took cannot be retried, so a failed outcome
+// retires the suspension instead of leaving it for the expiry sweep. A decision
+// that never reached the dispatch keeps the row for retry.
+func TestPendingDispatchFailure_RetiresOnlyHandedOffDecisions(t *testing.T) {
+	failed := &operatorv1.ActionReceipt{TransactionId: "tx-pending", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	for _, handedOff := range []bool{true, false} {
+		for _, deny := range []bool{true, false} {
+			name := "not handed off"
+			if handedOff {
+				name = "handed off"
+			}
+			if deny {
+				name += " deny"
+			}
+			t.Run(name, func(t *testing.T) {
+				store := &fakeSuspendedStore{}
+				g := newTestGatewayService(t, withSuspendedStore(store))
+				g.outboundEnvProc = &fakeEnvelopeProcessor{}
+				g.outboundProofPreparer = testOutboundProofPreparer{}
+				g.pendingDispatchResumer = fakePendingDispatchResumer{receipt: failed, handedOff: handedOff, err: constants.ErrDispatchResultTimeout}
+				env := &commonv1.GovernanceEnvelope{
+					Id: "tx-pending", TransactionHash: "tx-pending", OperatorId: "remote-operator", OperatorSessionId: "remote-session",
+					RequestorUserId: "user-1", Governance: &commonv1.GovernanceMetadata{L3: &commonv1.L3Metadata{PendingDispatch: true}},
+				}
+				_, err := g.SuspendGovernanceEnvelope(t.Context(), env)
+				require.NoError(t, err)
+				if deny {
+					_, err = g.DenySuspendedTransaction(t.Context(), env.Id, "user-1")
+				} else {
+					_, err = g.ResumeWithL3Proof(t.Context(), env.Id, "user-1", &commonv1.L3Proof{CredentialId: "credential-1"})
+				}
+				require.ErrorIs(t, err, constants.ErrDispatchResultTimeout)
+				if handedOff {
+					require.Empty(t, store.txs, "a handed-off decision must retire its suspension")
+					return
+				}
+				require.Contains(t, store.txs, env.Id)
+				require.Nil(t, store.txs[env.Id].ClaimedAt, "an undelivered decision must release its claim for retry")
+			})
+		}
+	}
 }

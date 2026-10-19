@@ -72,6 +72,12 @@ type fakeApprovals struct {
 	subscribes []client.Persona
 	waits      []waitRecord
 	closes     int
+	announces  []client.ApprovalDecision
+}
+
+func (f *fakeApprovals) Announce(decision client.ApprovalDecision) {
+	f.log.add("announce")
+	f.announces = append(f.announces, decision)
 }
 
 func (f *fakeApprovals) Subscribe(_ context.Context, p client.Persona) (approvalStream, error) {
@@ -108,7 +114,7 @@ func newTestAttended(t *testing.T, inner cases.Driver, fa *fakeApprovals) *Atten
 	return d
 }
 
-// attendedCase is an attended row-24 style attempt with the given fault.
+// attendedCase is an attended row-23 style attempt on MCP with the given fault.
 func attendedCase(fault cases.Fault) cases.Attempt {
 	a := testAttempt(fault, cases.ActionMutation)
 	a.Case.Attended = true
@@ -287,7 +293,89 @@ func TestAttendedStreamOrderAndCloseOnEveryPath(t *testing.T) {
 	}
 }
 
-// TestAttendedApproveReturnsOneReceipt checks row 24: a suspended attended case
+// blockingIngresses are the ingresses that answer only after the human decides.
+var blockingIngresses = []cases.Ingress{cases.IngressDispatchEmbedded, cases.IngressDispatchOutbound, cases.IngressCLI}
+
+// TestAttendedBlockingIngressAnnouncesThenReturnsInnerAnswer checks rows 23 and 24 on
+// governed dispatch and the CLI: the banner is printed before the call, the inner
+// driver's answer (the signed receipt or L3_DENIED rejection the Gateway returns after
+// the human decides) is returned unchanged, and no approval stream is opened or awaited.
+func TestAttendedBlockingIngressAnnouncesThenReturnsInnerAnswer(t *testing.T) {
+	approved := cases.Driven{Observations: []*evalv1.ConformanceObservation{{
+		Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+		Receipt: &operatorv1.ActionReceipt{TransactionHash: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
+	}}}
+	denied := cases.Driven{Observations: []*evalv1.ConformanceObservation{{
+		Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
+		Rejection: &operatorv1.GovernanceRejection{Receipt: &operatorv1.ActionReceipt{
+			TransactionHash: "tx-2",
+			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+		}},
+	}}}
+	tests := []struct {
+		fault        cases.Fault
+		answer       cases.Driven
+		wantDecision client.ApprovalDecision
+	}{
+		{fault: cases.FaultAttendedApprove, answer: approved, wantDecision: client.ApprovalDecisionApprove},
+		{fault: cases.FaultAttendedDeny, answer: denied, wantDecision: client.ApprovalDecisionDeny},
+	}
+	for _, ingress := range blockingIngresses {
+		for _, tt := range tests {
+			t.Run(string(ingress)+"/"+string(tt.fault), func(t *testing.T) {
+				log := &callLog{}
+				inner := &fakeDriver{driven: tt.answer, log: log}
+				fa := &fakeApprovals{log: log}
+				a := attendedCase(tt.fault)
+				a.Case.Ingress = ingress
+
+				driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), a)
+				require.NoError(t, err)
+
+				require.Len(t, driven.Observations, 1)
+				assert.True(t, proto.Equal(tt.answer.Observations[0], driven.Observations[0]), "the inner answer must be returned as given")
+				assert.Equal(t, []string{"announce", "drive"}, log.calls, "the human is asked before the blocking call and nothing else is awaited")
+				assert.Equal(t, []client.ApprovalDecision{tt.wantDecision}, fa.announces)
+				assert.Empty(t, fa.subscribes, "a blocking ingress needs no approval stream")
+				assert.Empty(t, fa.waits)
+			})
+		}
+	}
+}
+
+// TestAttendedBlockingIngressInnerErrorIsWrapped checks that a transport failure of a
+// blocking call is returned with its cause and no observation.
+func TestAttendedBlockingIngressInnerErrorIsWrapped(t *testing.T) {
+	inner := &fakeDriver{err: errInnerDrive}
+	fa := &fakeApprovals{}
+	a := attendedCase(cases.FaultAttendedApprove)
+	a.Case.Ingress = cases.IngressDispatchEmbedded
+
+	driven, err := newTestAttended(t, inner, fa).Drive(context.Background(), a)
+	assert.ErrorIs(t, err, errInnerDrive)
+	assert.Empty(t, driven.Observations)
+	assert.Empty(t, fa.waits)
+}
+
+// TestAttendedSuspendingIngressIsNotAnnouncedBeforeTheCall checks that MCP and A2A keep
+// the stream-then-wait path: the banner comes with the suspended transaction.
+func TestAttendedSuspendingIngressIsNotAnnouncedBeforeTheCall(t *testing.T) {
+	for _, ingress := range []cases.Ingress{cases.IngressMCP, cases.IngressA2A} {
+		t.Run(string(ingress), func(t *testing.T) {
+			inner := &fakeDriver{driven: suspendedDriven()}
+			fa := &fakeApprovals{receipt: &operatorv1.ActionReceipt{TransactionHash: suspendedTxHash}}
+			a := attendedCase(cases.FaultAttendedApprove)
+			a.Case.Ingress = ingress
+
+			_, err := newTestAttended(t, inner, fa).Drive(context.Background(), a)
+			require.NoError(t, err)
+			assert.Empty(t, fa.announces)
+			assert.Len(t, fa.waits, 1)
+		})
+	}
+}
+
+// TestAttendedApproveReturnsOneReceipt checks row 23: a suspended attended case
 // waits on the suspended transaction for the approver, and the resumed receipt
 // replaces the suspension as the single observation.
 func TestAttendedApproveReturnsOneReceipt(t *testing.T) {
@@ -316,10 +404,10 @@ func TestAttendedApproveReturnsOneReceipt(t *testing.T) {
 	require.Len(t, fa.waits, 1)
 	assert.Equal(t, "tx-hash-1", fa.waits[0].txHash, "the wait must watch the suspended transaction")
 	assert.Equal(t, "user-approver", fa.waits[0].userID)
-	assert.Equal(t, client.ApprovalDecisionApprove, fa.waits[0].decision, "row 24 asks the human to approve")
+	assert.Equal(t, client.ApprovalDecisionApprove, fa.waits[0].decision, "row 23 asks the human to approve")
 }
 
-// TestAttendedDenyReturnsSignedRejection checks row 25: the banner asks the human to
+// TestAttendedDenyReturnsSignedRejection checks row 24: the banner asks the human to
 // deny, and the Operator-signed L3_DENIED receipt replaces the suspension as a
 // REJECTION observation.
 func TestAttendedDenyReturnsSignedRejection(t *testing.T) {
@@ -342,7 +430,7 @@ func TestAttendedDenyReturnsSignedRejection(t *testing.T) {
 	assert.Nil(t, obs.GetReceipt(), "a deny is never reported as an executed receipt")
 	assert.True(t, proto.Equal(receipt, obs.GetRejection().GetReceipt()), "the signed deny must be the rejection evidence")
 	require.Len(t, fa.waits, 1)
-	assert.Equal(t, client.ApprovalDecisionDeny, fa.waits[0].decision, "row 25 asks the human to deny")
+	assert.Equal(t, client.ApprovalDecisionDeny, fa.waits[0].decision, "row 24 asks the human to deny")
 }
 
 // TestAttendedWaitErrorIsReturned checks that a failed approval wait is an error,

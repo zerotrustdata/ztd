@@ -18,7 +18,7 @@ import (
 )
 
 // catalogueRows is the number of plan catalogue rows every catalogue must cover.
-const catalogueRows = 26
+const catalogueRows = 25
 
 // doctrineIngresses are the ingresses that must carry every attack category.
 var doctrineIngresses = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI}

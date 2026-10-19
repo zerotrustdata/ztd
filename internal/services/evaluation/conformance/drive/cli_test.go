@@ -172,7 +172,7 @@ func TestCLIDriveCommandPerFault(t *testing.T) {
 		require.Equal(t, []string{a.Case.Command}, poster.commands)
 	})
 
-	for _, fault := range []cases.Fault{cases.FaultNone, cases.FaultNoL3Path} {
+	for _, fault := range []cases.Fault{cases.FaultNone, cases.FaultAttendedApprove, cases.FaultAttendedDeny} {
 		t.Run("mutation "+string(fault)+" sends the marker command", func(t *testing.T) {
 			poster := &fakePoster{body: commandResultDispatchBody(t)}
 			a := dispatchAttempt(cases.IngressCLI, fault, cases.ActionMutation)

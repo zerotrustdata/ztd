@@ -24,7 +24,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -42,16 +41,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
-	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/governance/consensustest"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/uuid"
-	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 // GatewayFixture provides a reusable gateway setup for integration tests.
@@ -283,7 +279,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		if nServiceMembers == 0 {
 			nServiceMembers = 1
 		}
-		cs := SetupConsensus(t, db.GetConsensusStore(), db.GetSignerStore(), consensusID, nMembers, quorum, nServiceMembers)
+		cs := consensustest.SetupConsensus(t, db.GetConsensusStore(), db.GetSignerStore(), consensusID, nMembers, quorum, nServiceMembers)
 		l2Deliberator = cs.Deliberator
 		consensusServer = cs.Server
 	}
@@ -641,169 +637,4 @@ func (rt *cliSessionRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	clone := req.Clone(req.Context())
 	clone.Header.Set(constants.HeaderCLISessionID, rt.sessionID)
 	return rt.base.RoundTrip(clone)
-}
-
-// TestConsensusMember represents a test consensus member holding an Ed25519 key.
-type TestConsensusMember struct {
-	AppID      string
-	PrivateKey ed25519.PrivateKey
-}
-
-// ConsensusSetup holds the result of wiring a test consensus deliberator into a gateway fixture.
-type ConsensusSetup struct {
-	ConsensusID string
-	Members     []TestConsensusMember
-	Deliberator mcp.L2ConsensusDeliberator
-	Server      *httptest.Server
-}
-
-// TestConsensusDeliberator implements mcp.L2ConsensusDeliberator for test fixtures.
-type TestConsensusDeliberator struct {
-	ConsensusID string
-	Members     []TestConsensusMember
-	Doctrine    *govsvc.L1Doctrine
-}
-
-// Deliberate implements mcp.L2ConsensusDeliberator.
-func (d *TestConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
-	var env commonv1.GovernanceEnvelope
-	isJSON := false
-	if err := proto.Unmarshal(envelopeBytes, &env); err != nil {
-		if jsonErr := protojson.Unmarshal(envelopeBytes, &env); jsonErr != nil {
-			return nil, fmt.Errorf("test consensus deliberator: unmarshal envelope: %w", err)
-		}
-		isJSON = true
-	}
-
-	var cmdData string
-	if env.IntentData != nil && len(env.IntentData.AsMap()) > 0 {
-		jsonBytes, err := json.Marshal(env.IntentData.AsMap())
-		if err == nil {
-			cmdData = string(jsonBytes)
-		}
-	}
-	if cmdData == "" {
-		cmdData = string(env.Payload)
-	}
-
-	isSafe := true
-	if d.Doctrine != nil && cmdData != "" {
-		signals := d.Doctrine.AnalyzeCommand(cmdData)
-		for _, sig := range signals {
-			if sig.BlockRecommended {
-				isSafe = false
-				break
-			}
-		}
-	}
-
-	var votes []*commonv1.L2Vote
-	for _, member := range d.Members {
-		if member.PrivateKey == nil {
-			continue
-		}
-		payload := fmt.Sprintf("%s|%v", env.Id, isSafe)
-		sig := ed25519.Sign(member.PrivateKey, []byte(payload))
-		votes = append(votes, &commonv1.L2Vote{
-			SignerKeyId:        member.AppID,
-			ConsensusSignature: hex.EncodeToString(sig),
-			Decision:           isSafe,
-		})
-	}
-	if len(votes) == 0 {
-		return nil, constants.ErrConsensusNoSigningMembers
-	}
-
-	if env.Governance == nil {
-		env.Governance = &commonv1.GovernanceMetadata{}
-	}
-	if env.Governance.L2 == nil {
-		env.Governance.L2 = &commonv1.L2Metadata{}
-	}
-	env.Governance.L2.ConsensusSetId = d.ConsensusID
-	env.Governance.L2.Votes = votes
-
-	if isJSON {
-		return protojson.Marshal(&env)
-	}
-	return proto.Marshal(&env)
-}
-
-// SetupConsensus seeds consensus policy and trusted signers into the stores and
-// returns a ConsensusSetup with a TestConsensusDeliberator.
-func SetupConsensus(t *testing.T, consensusStore *gateway.ConsensusStoreService, signerStore *gateway.SignerStoreService, consensusID string, nMembers, quorum, nServiceMembers int) *ConsensusSetup {
-	t.Helper()
-
-	memberAppIDs := make([]string, nMembers)
-	signingMembers := make([]TestConsensusMember, 0, nServiceMembers)
-
-	for i := 0; i < nMembers; i++ {
-		appID := fmt.Sprintf("%s-member-%d", consensusID, i)
-		memberAppIDs[i] = appID
-
-		pub, priv, err := ed25519.GenerateKey(nil)
-		require.NoError(t, err)
-
-		err = signerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{
-			ID:        appID,
-			PublicKey: hex.EncodeToString(pub),
-			AddedAt:   time.Now().UTC(),
-			Enabled:   true,
-		})
-		require.NoError(t, err)
-
-		if i < nServiceMembers {
-			signingMembers = append(signingMembers, TestConsensusMember{
-				AppID:      appID,
-				PrivateKey: priv,
-			})
-		}
-	}
-
-	policy := models.ConsensusPolicy{
-		ID:              consensusID,
-		MemberAppIDs:    memberAppIDs,
-		Quorum:          quorum,
-		RequireDistinct: true,
-		Enabled:         true,
-	}
-	err := consensusStore.AddConsensus(t.Context(), policy)
-	require.NoError(t, err)
-
-	deliberator := &TestConsensusDeliberator{
-		ConsensusID: consensusID,
-		Members:     signingMembers,
-		Doctrine:    govsvc.NewL1Doctrine(),
-	}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-protobuf" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		wire, err := io.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		signed, err := deliberator.Deliberate(r.Context(), wire)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/x-protobuf")
-		_, _ = w.Write(signed)
-	}))
-	t.Cleanup(server.Close)
-	err = consensusStore.AddConsensus(t.Context(), models.ConsensusPolicy{
-		ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{memberAppIDs[0]},
-		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Enabled: true,
-	})
-	require.NoError(t, err)
-
-	return &ConsensusSetup{
-		ConsensusID: consensusID,
-		Members:     signingMembers,
-		Deliberator: deliberator,
-		Server:      server,
-	}
 }

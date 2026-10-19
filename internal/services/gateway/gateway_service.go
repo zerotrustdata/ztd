@@ -522,8 +522,8 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	// dispatch service is wired with the L1 doctrine (for envelope L1
 	// screening) and the L2 consensus deliberator (for postures that require
 	// L2 signatures). Under postures that require L3 proof (ratify, notary),
-	// mutation dispatches are rejected at envelope construction because the
-	// gateway dispatch path cannot mint human proofs.
+	// mutation dispatches suspend and wait for a real human decision through
+	// the dispatch approval coordinator; the Gateway never mints human proofs.
 	inferenceDispatchSvc := dispatch.NewDispatchService(
 		&gatewayDispatcherAdapter{svc: dispatchSvc},
 		&gatewayOperatorListerAdapter{svc: reg},

@@ -150,7 +150,7 @@
         },
         "/api/v1/approvals/respond": {
             "post": {
-                "description": "Denies a suspended transaction owned by the caller, or approves it with a CLI certificate signature.\nCLI approval requires mTLS and cli_signature over the domain-separated transaction hash using the enrolled P-256 key.\nThe envelope is re-submitted to its executing\nOperator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and\nL5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to\nthe CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must\npresent an mTLS client certificate and a web caller must hold a registered passkey.\nBrowser approval requires a WebAuthn assertion through `/api/v1/approvals/{txHash}/verify`.",
+                "description": "Denies a suspended transaction owned by the caller, or approves it with a CLI certificate signature.\nCLI approval requires mTLS and cli_signature over the domain-separated transaction hash using the enrolled P-256 key.\nThe Gateway takes the certificate and chain hints from the mTLS connection. For an outbound Operator target the\nGateway checks the active user, CLI session and revocation, then forwards the original proof for the Operator to\nre-verify against its pinned Gateway CA. If a governed dispatch is waiting on the transaction, the request returns after\nthat dispatch completes, so clients allow the approval TTL plus the dispatch deadline.\nThe envelope is re-submitted to its executing\nOperator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and\nL5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to\nthe CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must\npresent an mTLS client certificate and a web caller must hold a registered passkey.\nBrowser approval requires a WebAuthn assertion through `/api/v1/approvals/{txHash}/verify`.",
                 "consumes": [
                     "application/json"
                 ],
@@ -174,7 +174,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of the deny",
+                        "description": "Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of a deny, or the executing Operator's signed receipt of an approval",
                         "schema": {
                             "$ref": "#/definitions/operatorv1.ActionReceipt"
                         }
@@ -1512,7 +1512,7 @@
         },
         "/api/v1/operators/commands": {
             "post": {
-                "description": "Constructs a governed envelope for the target Operator session, waits for the\nterminal result and the Operator's verified final receipt, and returns both.",
+                "description": "Constructs a governed envelope for the target Operator session, waits for the\nterminal result and the Operator's verified final receipt, and returns both.\nUnder ratify or notary posture a mutation is suspended and the request stays open\nuntil a human approves or denies it, up to the approval TTL, in addition to the\ndispatch deadline; clients allow both. The Gateway never mints the approval proof.",
                 "consumes": [
                     "application/json"
                 ],

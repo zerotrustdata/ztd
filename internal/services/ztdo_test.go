@@ -102,7 +102,6 @@ func TestNewZtdoService_InitialState(t *testing.T) {
 	assert.Nil(t, service.pubSubResults)
 	assert.Nil(t, service.pubSubClient)
 	assert.Nil(t, service.tokenStore)
-	assert.Nil(t, service.suspendedTxStore)
 	assert.Nil(t, service.evidence)
 }
 

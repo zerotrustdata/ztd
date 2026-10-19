@@ -653,6 +653,15 @@ func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, 
 }
 
 func startFileEditOperatorWithNotary(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string, notary govsvc.L3Notary) ed25519.PublicKey {
+	return startFileEditOperatorWithGovernance(t, infra, operatorID, sessionID, workDir, notary, nil)
+}
+
+// startFileEditOperatorWithGovernance starts an outbound FILE_EDIT Operator whose
+// L4 verifies L3 through notary and L2 votes against infra.SignerStore and the
+// given consensus policy store. The Operator reads its posture per envelope; a
+// nil policy store leaves L2 unverifiable, which only suits postures that do not
+// enforce L2.
+func startFileEditOperatorWithGovernance(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string, notary govsvc.L3Notary, policies govsvc.L2ConsensusPolicyStore) ed25519.PublicKey {
 	t.Helper()
 	remoteCfg := *infra.Cfg
 	remoteCfg.OperatorID = operatorID
@@ -697,7 +706,7 @@ func startFileEditOperatorWithNotary(t *testing.T, infra *TestInfrastructure, op
 		SignerStore:       infra.SignerStore,
 		Doctrine:          govsvc.NewL1Doctrine(),
 		L3Notary:          notary,
-	}})
+	}, ConsensusPolicyStore: policies})
 	require.NoError(t, err)
 	require.NoError(t, operatorSvc.Start(context.Background()))
 	t.Cleanup(func() { require.NoError(t, operatorSvc.Stop()) })

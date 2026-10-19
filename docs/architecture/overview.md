@@ -100,7 +100,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-ARCH-INGR-01 | Client-native tools, direct shell execution, MCP servers reached directly by clients, and unmonitored side channels remain outside the governance boundary. Tools are governed ONLY when invoked through a ztd ingress (Gateway MCP, A2A, Governed HTTP dispatch, CLI `operator run`, or direct envelope) and executed via the L5 Actuator. |
-| INV-ARCH-INGR-02 | Direct envelope submission (`POST /api/v1/governance/envelopes`) and governed HTTP dispatch (`POST /api/v1/operators/commands`) MUST NOT synthesize missing L2 votes or L3 proofs; transactions missing posture-required evidence MUST fail closed at L4 verification. |
+| INV-ARCH-INGR-02 | Direct envelope submission (`POST /api/v1/governance/envelopes`) and governed HTTP dispatch (`POST /api/v1/operators/commands`) MUST NOT synthesize missing L2 votes or L3 proofs; transactions missing posture-required evidence MUST fail closed at L4 verification. Governed HTTP dispatch under `ratify` or `notary` does not execute without proof: it suspends and holds the request until a human supplies the proof ([Layer 3 (L3) Notary: Human Authorization](governance.md#layer-3-l3-notary-human-authorization)). |
 
 ### Identity and Trust Boundaries (`INV-ARCH-TRUST`)
 
@@ -215,7 +215,7 @@ ztd provides five distinct ingress channels:
 
 1. **Model Context Protocol (MCP)**: JSON-RPC 2.0 endpoint at `POST /mcp` and stdio bridge via `ztd mcp stdio`. Translates `tools/call`, `resources/read`, and `prompts/get` into canonical `GovernanceEnvelope` transactions.
 2. **Agent-to-Agent (A2A)**: JSON-RPC endpoint at `POST /api/v1/a2a/call` for cross-agent skill invocation wrapped in `A2A_CALL` envelopes.
-3. **Governed HTTP Dispatch**: Authenticated applications post registered request event types and serialized protobuf payloads to `POST /api/v1/operators/commands`. The Gateway validates session identity, derives `action_type`, attaches posture, and publishes to the Operator command channel. Fails closed if L3 proofs are required.
+3. **Governed HTTP Dispatch**: Authenticated applications post registered request event types and serialized protobuf payloads to `POST /api/v1/operators/commands`. The Gateway validates session identity, derives `action_type`, attaches posture, and publishes to the Operator command channel. When L3 proof is required, the Gateway suspends the envelope and holds the request until a human approves or denies it, or the approval expires.
 4. **Direct Envelope Submission**: Pre-constructed envelopes submitted via `POST /api/v1/governance/envelopes` with pre-gathered L2/L3 proofs. The Gateway does not synthesize missing proofs; unproved transactions fail closed at L4.
 5. **CLI-Directed Execution**: Enrolled operators bound via `ztd operator bind` receive parallel commands dispatched through `ztd operator run`.
 

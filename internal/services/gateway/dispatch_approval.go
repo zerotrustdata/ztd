@@ -91,34 +91,36 @@ func (c *DispatchApprovalCoordinator) await(ctx context.Context, env *commonv1.G
 
 // ResumePendingDispatch never falls back to execution when the original
 // request disappeared, including after cancellation or a Gateway restart.
-func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, error) {
+// handedOff reports that the original request took the decision; from then on
+// that request owns the outcome, so the decision can never be retried.
+func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (receipt *operatorv1.ActionReceipt, handedOff bool, err error) {
 	c.mu.Lock()
 	p := c.pending[env.GetId()]
 	c.mu.Unlock()
 	if p == nil {
-		return nil, constants.ErrTransactionExpired
+		return nil, false, constants.ErrTransactionExpired
 	}
 	expected := proto.Clone(p.envelope).(*commonv1.GovernanceEnvelope)
 	expected.Governance.L3 = env.GetGovernance().GetL3()
 	if !proto.Equal(expected, env) {
-		return nil, constants.ErrTxInvalidEnvelope
+		return nil, false, constants.ErrTxInvalidEnvelope
 	}
 	select {
 	case p.decision <- env:
 	case <-p.done:
-		return nil, constants.ErrTransactionExpired
+		return nil, false, constants.ErrTransactionExpired
 	case <-p.ctx.Done():
-		return nil, p.ctx.Err()
+		return nil, false, p.ctx.Err()
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, false, ctx.Err()
 	}
 	select {
 	case outcome := <-p.outcome:
-		return outcome.receipt, outcome.err
+		return outcome.receipt, true, outcome.err
 	case <-p.ctx.Done():
-		return nil, p.ctx.Err()
+		return nil, true, p.ctx.Err()
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, true, ctx.Err()
 	}
 }
 

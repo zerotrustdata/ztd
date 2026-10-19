@@ -10,11 +10,15 @@ package evaluation
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -62,6 +66,19 @@ func TestCampaignControllerCreateCampaignRejectsADifferentSpecUnderTheSameID(t *
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 }
 
+// newUnfrozenCampaignFixture is newArchiveFixture over an empty runtime tree, so
+// the campaign ID is still free to freeze under a chosen posture.
+func newUnfrozenCampaignFixture(t *testing.T) *archiveFixture {
+	t.Helper()
+	seeded := newArchiveFixture(t)
+	raw, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
+	require.NoError(t, err)
+	files := newVaultedEvidenceFiles(t, raw, keystoretest.NewMemoryKeyring())
+	store := NewStore(files)
+	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return archiveTestNow }, func(prefix string) string { return prefix + "-1" })
+	return &archiveFixture{files: files, store: store, controller: controller, req: seeded.req}
+}
+
 func postureCreateRequest(f *archiveFixture, posture evalv1.EvaluationGovernancePosture) CampaignCreateRequest {
 	return CampaignCreateRequest{
 		GovernancePosture: posture,
@@ -80,12 +97,12 @@ func TestCampaignControllerCreateCampaignFreezesTheRequestedPostureIntoSpecAndDi
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 
-	defaulted := newArchiveFixture(t)
+	defaulted := newUnfrozenCampaignFixture(t)
 	byDefault, err := defaulted.controller.CreateCampaign(ctx, postureCreateRequest(defaulted, unspecified))
 	require.NoError(t, err)
 	assert.Equal(t, doctrine, byDefault.GetGovernancePosture(), "an unspecified request keeps the default posture")
 
-	requested := newArchiveFixture(t)
+	requested := newUnfrozenCampaignFixture(t)
 	frozen, err := requested.controller.CreateCampaign(ctx, postureCreateRequest(requested, ratify))
 	require.NoError(t, err)
 	assert.Equal(t, ratify, frozen.GetGovernancePosture())
@@ -99,7 +116,7 @@ func TestCampaignControllerCreateCampaignFreezesTheRequestedPostureIntoSpecAndDi
 }
 
 func TestCampaignControllerCreateCampaignIsIdempotentForTheSamePosture(t *testing.T) {
-	f := newArchiveFixture(t)
+	f := newUnfrozenCampaignFixture(t)
 	ctx := context.Background()
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 
@@ -112,7 +129,7 @@ func TestCampaignControllerCreateCampaignIsIdempotentForTheSamePosture(t *testin
 }
 
 func TestCampaignControllerCreateCampaignRejectsAChangedPostureUnderTheSameID(t *testing.T) {
-	f := newArchiveFixture(t)
+	f := newUnfrozenCampaignFixture(t)
 	ctx := context.Background()
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 

@@ -191,6 +191,7 @@ func TestConformanceRun_PassesConfiguredDriversAndRootsToRun(t *testing.T) {
 	assert.IsType(t, &drive.Dispatch{}, captured.Drivers[cases.IngressDispatchEmbedded])
 	assert.IsType(t, &drive.Dispatch{}, captured.Drivers[cases.IngressDispatchOutbound])
 	assert.IsType(t, &drive.CLI{}, captured.Drivers[cases.IngressCLI])
+	assert.IsType(t, &drive.Dispatch{}, captured.Drivers[cases.IngressDispatchEmbedded], "unattended dispatch is not wrapped")
 	assert.IsType(t, &drive.MCP{}, captured.Drivers[cases.IngressMCP], "unattended MCP is not wrapped")
 	assert.IsType(t, &drive.A2A{}, captured.Drivers[cases.IngressA2A], "unattended A2A is not wrapped")
 	assert.NotNil(t, captured.Sentinel)
@@ -229,7 +230,7 @@ func TestConformanceRun_OutboundWithoutEnrollmentBoundKeyFailsBeforeAnyCase(t *t
 	assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
 }
 
-func TestConformanceRun_AttendedWrapsMCPAndA2AOnly(t *testing.T) {
+func TestConformanceRun_AttendedWrapsEveryApprovalIngress(t *testing.T) {
 	var captured run.Config
 	rig := newServedConformanceRig(t, rigOptions{run: func(_ context.Context, cfg run.Config) (*evalv1.ConformanceRunRecord, error) {
 		captured = cfg
@@ -242,8 +243,10 @@ func TestConformanceRun_AttendedWrapsMCPAndA2AOnly(t *testing.T) {
 	assert.True(t, captured.Attended)
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressMCP])
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressA2A])
-	assert.IsType(t, &drive.Direct{}, captured.Drivers[cases.IngressDirect], "only MCP and A2A are wrapped")
-	assert.IsType(t, &drive.CLI{}, captured.Drivers[cases.IngressCLI])
+	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressDispatchEmbedded])
+	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressDispatchOutbound])
+	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressCLI])
+	assert.IsType(t, &drive.Direct{}, captured.Drivers[cases.IngressDirect], "DIRECT carries no approval case and is never wrapped")
 }
 
 func TestConformanceRun_PrintsVerdictsFromStoredBytesNotFromMemory(t *testing.T) {

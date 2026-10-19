@@ -10,20 +10,85 @@
 package gateway
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
+
+// TestConsensusDeliberation_SpeaksProtobufToApplicationAndReturnsCallerWire proves
+// the deliberator takes the Gateway's protojson envelope wire, sends binary
+// protobuf to a strict application, and returns the deliberated envelope as
+// protojson so dispatch can publish it unchanged.
+func TestConsensusDeliberation_SpeaksProtobufToApplicationAndReturnsCallerWire(t *testing.T) {
+	infra := setupTestInfrastructure(t, false)
+	publicKey, signingKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	const appID = "strict-consensus-app"
+	require.NoError(t, infra.SignerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{ID: appID, PublicKey: hex.EncodeToString(publicKey), AddedAt: time.Now().UTC(), Enabled: true}))
+	var sawContentType atomic.Value
+	app := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawContentType.Store(r.Header.Get("Content-Type"))
+		wire, err := io.ReadAll(r.Body)
+		var envelope commonv1.GovernanceEnvelope
+		if err != nil || proto.Unmarshal(wire, &envelope) != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		envelope.Governance = &commonv1.GovernanceMetadata{L2: &commonv1.L2Metadata{
+			ConsensusSetId: string(constants.DocIDConsensusBinding),
+			Votes: []*commonv1.L2Vote{{
+				SignerKeyId: appID, Decision: true,
+				ConsensusSignature: hex.EncodeToString(ed25519.Sign(signingKey, []byte(envelope.GetId()+"|true"))),
+			}},
+		}}
+		signed, err := proto.Marshal(&envelope)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(signed)
+	}))
+	t.Cleanup(app.Close)
+	require.NoError(t, infra.ConsensusStore.AddConsensus(t.Context(), models.ConsensusPolicy{
+		ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{appID},
+		Quorum: 1, RequireDistinct: true, EndpointURL: app.URL, Enabled: true,
+	}))
+
+	envelope := &commonv1.GovernanceEnvelope{Id: "transcoded-envelope", TransactionHash: "transcoded-envelope", Payload: []byte("payload")}
+	wire, err := protojson.Marshal(envelope)
+	require.NoError(t, err)
+	deliberated, err := infra.ConsensusStore.NewConsensusAppDeliberator(app.Client()).Deliberate(t.Context(), wire)
+	require.NoError(t, err)
+	require.Equal(t, "application/x-protobuf", sawContentType.Load())
+	var signed commonv1.GovernanceEnvelope
+	require.NoError(t, protojson.Unmarshal(deliberated, &signed), "the caller receives the protojson wire it sent")
+	require.Equal(t, envelope.GetPayload(), signed.GetPayload())
+	require.Len(t, signed.GetGovernance().GetL2().GetVotes(), 1)
+
+	_, err = infra.ConsensusStore.NewConsensusAppDeliberator(app.Client()).Deliberate(t.Context(), []byte("not an envelope"))
+	require.ErrorIs(t, err, constants.ErrTxInvalidEnvelope)
+}
 
 func TestConsensusDeliberation_RejectsPlaintextAndRedirects(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
+	privateEnvelope, err := protojson.Marshal(&commonv1.GovernanceEnvelope{Payload: []byte("private envelope")})
+	require.NoError(t, err)
 	var received atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		received.Add(1)
@@ -43,7 +108,7 @@ func TestConsensusDeliberation_RejectsPlaintextAndRedirects(t *testing.T) {
 				data, err := json.Marshal(models.ConsensusPolicy{Enabled: true, EndpointURL: endpoint})
 				require.NoError(t, err)
 				require.NoError(t, infra.DocStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding), data))
-				_, err = deliberator.Deliberate(t.Context(), []byte("private envelope"))
+				_, err = deliberator.Deliberate(t.Context(), privateEnvelope)
 				require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
 			}
 			require.Equal(t, int32(0), received.Load())

@@ -197,6 +197,10 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 // @Summary		Approve or deny a suspended transaction
 // @Description	Denies a suspended transaction owned by the caller, or approves it with a CLI certificate signature.
 // @Description	CLI approval requires mTLS and cli_signature over the domain-separated transaction hash using the enrolled P-256 key.
+// @Description	The Gateway takes the certificate and chain hints from the mTLS connection. For an outbound Operator target the
+// @Description	Gateway checks the active user, CLI session and revocation, then forwards the original proof for the Operator to
+// @Description	re-verify against its pinned Gateway CA. If a governed dispatch is waiting on the transaction, the request returns after
+// @Description	that dispatch completes, so clients allow the approval TTL plus the dispatch deadline.
 // @Description	The envelope is re-submitted to its executing
 // @Description	Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
 // @Description	L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
@@ -207,7 +211,7 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 // @Accept		json
 // @Produce		json
 // @Param		body	body		models.ApprovalRespondRequest	true	"Approval decision"
-// @Success		200		{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of the deny"
+// @Success		200		{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of a deny, or the executing Operator's signed receipt of an approval"
 // @Failure		400		{string}	string	"Invalid request body"
 // @Failure		401		{string}	string	"Unauthorized"
 // @Failure		403		{string}	string	"Forbidden — approval requested, session not grounded for posture, or transaction belongs to another user"

@@ -3172,6 +3172,10 @@ paths:
       description: |-
         Denies a suspended transaction owned by the caller, or approves it with a CLI certificate signature.
         CLI approval requires mTLS and cli_signature over the domain-separated transaction hash using the enrolled P-256 key.
+        The Gateway takes the certificate and chain hints from the mTLS connection. For an outbound Operator target the
+        Gateway checks the active user, CLI session and revocation, then forwards the original proof for the Operator to
+        re-verify against its pinned Gateway CA. If a governed dispatch is waiting on the transaction, the request returns after
+        that dispatch completes, so clients allow the approval TTL plus the dispatch deadline.
         The envelope is re-submitted to its executing
         Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
         L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
@@ -3190,7 +3194,7 @@ paths:
       responses:
         "200":
           description: 'Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED
-            receipt of the deny'
+            receipt of a deny, or the executing Operator''s signed receipt of an approval'
           schema:
             $ref: '#/definitions/operatorv1.ActionReceipt'
         "400":
@@ -4065,6 +4069,9 @@ paths:
       description: |-
         Constructs a governed envelope for the target Operator session, waits for the
         terminal result and the Operator's verified final receipt, and returns both.
+        Under ratify or notary posture a mutation is suspended and the request stays open
+        until a human approves or denies it, up to the approval TTL, in addition to the
+        dispatch deadline; clients allow both. The Gateway never mints the approval proof.
       parameters:
       - description: Dispatch request (JSON)
         in: body
