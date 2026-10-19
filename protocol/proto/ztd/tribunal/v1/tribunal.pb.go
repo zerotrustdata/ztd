@@ -347,9 +347,12 @@ type TribunalMemberCall struct {
 	// receipt is the Inference Operator's signed final ActionReceipt.
 	Receipt *v1.ActionReceipt `protobuf:"bytes,7,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	// failure is set on a call that did not complete.
-	Failure       *v1.InferenceDispatchFailure `protobuf:"bytes,8,opt,name=failure,proto3" json:"failure,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Failure *v1.InferenceDispatchFailure `protobuf:"bytes,8,opt,name=failure,proto3" json:"failure,omitempty"`
+	// observation_receipts are the observers' signed final receipts for the
+	// call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
+	ObservationReceipts []*v1.ActionReceipt `protobuf:"bytes,9,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *TribunalMemberCall) Reset() {
@@ -434,6 +437,13 @@ func (x *TribunalMemberCall) GetReceipt() *v1.ActionReceipt {
 func (x *TribunalMemberCall) GetFailure() *v1.InferenceDispatchFailure {
 	if x != nil {
 		return x.Failure
+	}
+	return nil
+}
+
+func (x *TribunalMemberCall) GetObservationReceipts() []*v1.ActionReceipt {
+	if x != nil {
+		return x.ObservationReceipts
 	}
 	return nil
 }
@@ -624,7 +634,7 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x10member_inference\x18\r \x01(\v2).ztd.operator.v1.InferenceDispatchRequestR\x0fmemberInference\x126\n" +
 	"\x17provider_attempt_prefix\x18\x0e \x01(\tR\x15providerAttemptPrefix\x122\n" +
 	"\x04tier\x18\x0f \x01(\x0e2\x1e.ztd.eval.v1.ModelCampaignRoleR\x04tier\x12(\n" +
-	"\x10step_start_index\x18\x10 \x01(\rR\x0estepStartIndex\"\x8a\x03\n" +
+	"\x10step_start_index\x18\x10 \x01(\rR\x0estepStartIndex\"\xdd\x03\n" +
 	"\x12TribunalMemberCall\x124\n" +
 	"\x05stage\x18\x01 \x01(\x0e2\x1e.ztd.tribunal.v1.TribunalStageR\x05stage\x12\x18\n" +
 	"\apersona\x18\x02 \x01(\tR\apersona\x12\x14\n" +
@@ -633,7 +643,8 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x05 \x01(\tR\rtransactionId\x128\n" +
 	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x128\n" +
 	"\areceipt\x18\a \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12C\n" +
-	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\"\xb4\x04\n" +
+	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12Q\n" +
+	"\x14observation_receipts\x18\t \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"\xb4\x04\n" +
 	"\x14TribunalIntentResult\x12:\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2 .ztd.tribunal.v1.TribunalOutcomeR\aoutcome\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12,\n" +
@@ -699,17 +710,18 @@ var file_ztd_tribunal_v1_tribunal_proto_depIdxs = []int32{
 	7,  // 3: ztd.tribunal.v1.TribunalMemberCall.result:type_name -> ztd.operator.v1.InferenceResult
 	8,  // 4: ztd.tribunal.v1.TribunalMemberCall.receipt:type_name -> ztd.operator.v1.ActionReceipt
 	9,  // 5: ztd.tribunal.v1.TribunalMemberCall.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
-	1,  // 6: ztd.tribunal.v1.TribunalIntentResult.outcome:type_name -> ztd.tribunal.v1.TribunalOutcome
-	10, // 7: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
-	3,  // 8: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
-	11, // 9: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
-	12, // 10: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
-	13, // 11: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	8,  // 6: ztd.tribunal.v1.TribunalMemberCall.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	1,  // 7: ztd.tribunal.v1.TribunalIntentResult.outcome:type_name -> ztd.tribunal.v1.TribunalOutcome
+	10, // 8: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
+	3,  // 9: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
+	11, // 10: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
+	12, // 11: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
+	13, // 12: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_ztd_tribunal_v1_tribunal_proto_init() }

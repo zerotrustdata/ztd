@@ -5236,7 +5236,8 @@
                 21,
                 22,
                 23,
-                24
+                24,
+                25
             ],
             "x-enum-varnames": [
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED",
@@ -5263,7 +5264,8 @@
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING",
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID",
                 "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN",
-                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED"
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED",
+                "GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH"
             ]
         },
         "operatorv1.GovernedDispatchResult": {
@@ -5545,6 +5547,13 @@
         "operatorv1.InferenceDispatchResponse": {
             "type": "object",
             "properties": {
+                "observation_receipts": {
+                    "description": "The observers' verified final signed receipts for this attempt's\nprovider-boundary and model provenance BEGIN and FINALIZE commands, in\ndispatch order. Each was signed before the response was returned, so a\ntrace bracket closing after the dispatch can claim its commitment.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    }
+                },
                 "receipt": {
                     "description": "The verified final signed ActionReceipt for the transaction.",
                     "allOf": [
@@ -6686,6 +6695,13 @@
                             "$ref": "#/definitions/operatorv1.InferenceDispatchFailure"
                         }
                     ]
+                },
+                "observation_receipts": {
+                    "description": "observation_receipts are the observers' signed final receipts for the\ncall's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    }
                 },
                 "persona": {
                     "type": "string"

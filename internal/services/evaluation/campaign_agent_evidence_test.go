@@ -368,6 +368,38 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedInference(t *testing.
 	requireEvidenceError(t, trace, constants.ErrConformanceUnclaimedExecution)
 }
 
+// A shared runtime that also observes its own provider attempts commits the
+// observer's BEGIN and FINALIZE around each inference. The Gateway waits for
+// those receipts and the model call carries them, so the bracket claims them.
+// A receipt another runtime signed sits on that runtime's ledger and is not
+// claimed here; a non-observation receipt cannot ride in as an observation.
+func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsObservationReceipts(t *testing.T) {
+	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	begin := ledger.executed("tx-observe-begin", string(constants.ActionTypeProviderBoundaryObservation))
+	model := ledger.inference("tx-m1")
+	finalize := ledger.executed("tx-observe-finalize", string(constants.ActionTypeModelProvenanceObservation))
+	tool := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
+	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	observer := newRuntimeLedger(t, oracletest.NewSigner(t), "operator-observer-1", "session-observer-1")
+	foreign := observer.executed("tx-observe-foreign", string(constants.ActionTypeProviderBoundaryObservation))
+	newTrace := func(observations ...*operatorv1.ActionReceipt) *AgentTrace {
+		trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+		call := completedModelCall("tx-m1", model)
+		for _, receipt := range observations {
+			call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
+		}
+		trace.ModelCalls = []AgentModelCall{call}
+		trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
+		trace.Bracket = bracketOf(before, after)
+		return trace
+	}
+
+	require.NoError(t, VerifyAgentTraceEvidence(newTrace(begin, foreign, finalize)))
+	requireEvidenceError(t, newTrace(begin), constants.ErrConformanceUnclaimedExecution)
+	requireEvidenceError(t, newTrace(begin, finalize, tool), constants.ErrEvaluationEvidenceTraceMismatch)
+}
+
 func TestVerifyAgentTraceEvidence_AcceptsRejectedInferenceWithoutCommitment(t *testing.T) {
 	trace, ledger := sharedRuntimeTrace(t)
 	rejected := ledger.rejected("tx-m3", string(constants.ActionTypeInference))

@@ -2069,6 +2069,7 @@ definitions:
     - 22
     - 23
     - 24
+    - 25
     format: int32
     type: integer
     x-enum-varnames:
@@ -2097,6 +2098,7 @@ definitions:
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED
+    - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH
   operatorv1.GovernedDispatchResult:
     properties:
       action_type:
@@ -2328,6 +2330,15 @@ definitions:
     type: object
   operatorv1.InferenceDispatchResponse:
     properties:
+      observation_receipts:
+        description: |-
+          The observers' verified final signed receipts for this attempt's
+          provider-boundary and model provenance BEGIN and FINALIZE commands, in
+          dispatch order. Each was signed before the response was returned, so a
+          trace bracket closing after the dispatch can claim its commitment.
+        items:
+          $ref: '#/definitions/operatorv1.ActionReceipt'
+        type: array
       receipt:
         allOf:
         - $ref: '#/definitions/operatorv1.ActionReceipt'
@@ -3216,6 +3227,13 @@ definitions:
         allOf:
         - $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         description: failure is set on a call that did not complete.
+      observation_receipts:
+        description: |-
+          observation_receipts are the observers' signed final receipts for the
+          call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
+        items:
+          $ref: '#/definitions/operatorv1.ActionReceipt'
+        type: array
       persona:
         type: string
       provider_attempt_id:

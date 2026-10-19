@@ -1443,6 +1443,7 @@ the gateway&#39;s standard typed error envelope with a public-safe code.
 | transaction_id | [string](#string) |  | Transaction ID correlating the dispatch with the audit chain. |
 | result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result whose result_digest is bound into the signed receipt. |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  | The verified final signed ActionReceipt for the transaction. |
+| observation_receipts | [ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated | The observers&#39; verified final signed receipts for this attempt&#39;s provider-boundary and model provenance BEGIN and FINALIZE commands, in dispatch order. Each was signed before the response was returned, so a trace bracket closing after the dispatch can claim its commitment. |
 
 
 

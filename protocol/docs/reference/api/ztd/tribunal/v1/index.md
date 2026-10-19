@@ -98,6 +98,7 @@ Every call the Inference Operator executed carries its signed receipt.
 | result | [ztd.operator.v1.InferenceResult](#ztd-operator-v1-InferenceResult) |  | result is the complete verified InferenceResult of a completed call. |
 | receipt | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  | receipt is the Inference Operator&#39;s signed final ActionReceipt. |
 | failure | [ztd.operator.v1.InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure) |  | failure is set on a call that did not complete. |
+| observation_receipts | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated | observation_receipts are the observers&#39; signed final receipts for the call&#39;s BEGIN and FINALIZE commands (InferenceDispatchResponse field 4). |
 
 
 

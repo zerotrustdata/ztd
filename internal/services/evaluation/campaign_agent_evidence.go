@@ -34,7 +34,8 @@ const agentReceiptSchemaRef = "ztd.operator.v1.ActionReceipt"
 // Data runtime's ledger between the two sentinels holds exactly the executions
 // the trace claims. When one Operator holds both capabilities its ledger also
 // records every inference, so the bracket claims the model calls as well as
-// the tool calls, in ledger order.
+// the tool calls, in ledger order. An observer on the Data runtime commits its
+// BEGIN and FINALIZE there too, and the bracket claims those receipts as well.
 func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if trace == nil {
 		return agentEvidenceError("trace", constants.ErrMissingRequiredField)
@@ -54,7 +55,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if err != nil {
 		return agentEvidenceError("ledger bracket after", err)
 	}
-	var modelClaims, toolClaims []oracle.Outcome
+	var modelClaims, toolClaims, observationClaims []oracle.Outcome
 	for _, call := range trace.ModelCalls {
 		outcome, err := verifyModelCallEvidence(anchors, trace, call)
 		if err != nil {
@@ -63,6 +64,11 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		if trace.SharedRuntime() && outcome.Commitment != nil {
 			modelClaims = append(modelClaims, outcome)
 		}
+		observed, err := verifyObservationEvidence(anchors, trace.Data, call)
+		if err != nil {
+			return agentEvidenceError("model call "+call.ProviderAttemptID+" observation", err)
+		}
+		observationClaims = append(observationClaims, observed...)
 	}
 	if trace.SchemaVersion == agentTraceSchemaVersion {
 		if err := verifyV7EpisodeOutputs(trace); err != nil {
@@ -81,7 +87,8 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 			toolClaims = append(toolClaims, *outcome)
 		}
 	}
-	ordered, err := oracle.OrderLedger(before, after, append(slices.Clone(modelClaims), toolClaims...))
+	claims := append(slices.Clone(modelClaims), toolClaims...)
+	ordered, err := oracle.OrderLedger(before, after, append(claims, observationClaims...))
 	if err == nil {
 		err = oracle.VerifyBracket(before, after, ordered)
 	}
@@ -142,6 +149,39 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		}
 	}
 	return nil
+}
+
+// verifyObservationEvidence returns the ledger claims for the observer receipts
+// a model call carries that the Data runtime signed. An observer on the Data
+// runtime commits its BEGIN and FINALIZE inside the trace bracket, so the
+// bracket must claim them; an observer on any other runtime commits to a ledger
+// the bracket does not cover, so its receipt claims nothing. A claimed receipt
+// must be a verified, executed observation: its signed action type binds it, so
+// no other execution on the Data runtime can be passed off as one.
+func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, call AgentModelCall) ([]oracle.Outcome, error) {
+	var claims []oracle.Outcome
+	for _, receipt := range call.ObservationReceipts {
+		if receipt.ActionReceipt == nil {
+			return nil, constants.ErrMissingRequiredField
+		}
+		if receipt.GetSignerKeyId() != data.Anchor.GetKeyId() {
+			continue
+		}
+		switch action := constants.ActionType(receipt.GetActionType()); action {
+		case constants.ActionTypeProviderBoundaryObservation, constants.ActionTypeModelProvenanceObservation:
+		default:
+			return nil, fmt.Errorf("receipt action %q is not an observation: %w", action, constants.ErrEvaluationEvidenceTraceMismatch)
+		}
+		outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt.ActionReceipt)
+		if err != nil {
+			return nil, err
+		}
+		if outcome.Kind != oracle.OutcomeExecuted || outcome.Commitment == nil {
+			return nil, fmt.Errorf("observation receipt is not an executed commitment: %w", constants.ErrConformanceLedgerGap)
+		}
+		claims = append(claims, outcome)
+	}
+	return claims, nil
 }
 
 // inLedgerOrder reports whether claims appear in ordered in the same relative

@@ -628,14 +628,39 @@ func TestDispatchInference_UndecodableResultFinalizesObservation(t *testing.T) {
 	}
 }
 
-func (s *stubObservationNotifier) NotifyAttemptBegin(_ context.Context, _, _ string, _ int64, _ uint32) error {
+func (s *stubObservationNotifier) NotifyAttemptBegin(_ context.Context, _, _ string, _ int64, _ uint32) (*operatorv1.ActionReceipt, error) {
 	s.beginCalls++
-	return s.beginErr
+	if s.beginErr != nil {
+		return nil, s.beginErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "observe-begin"}, nil
 }
 
-func (s *stubObservationNotifier) NotifyAttemptFinalize(_ context.Context, _, _, _ string, _, _ int64, _ bool, _ uint32) error {
+func (s *stubObservationNotifier) NotifyAttemptFinalize(_ context.Context, _, _, _ string, _, _ int64, _ bool, _ uint32) (*operatorv1.ActionReceipt, error) {
 	s.finalizeCalls++
-	return s.finalizeErr
+	if s.finalizeErr != nil {
+		return nil, s.finalizeErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "observe-finalize"}, nil
+}
+
+// The observers' BEGIN and FINALIZE receipts are returned with the result, in
+// dispatch order, so the caller can claim their ledger commitments.
+func TestDispatchInference_ReturnsObservationReceiptsInDispatchOrder(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	svc.SetProviderObservationNotifier(&stubObservationNotifier{})
+	svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{})
+
+	result, err := svc.DispatchInference(t.Context(), req)
+	require.NoError(t, err)
+	var got []string
+	for _, receipt := range result.Response().GetObservationReceipts() {
+		got = append(got, receipt.GetTransactionId())
+	}
+	assert.Equal(t, []string{"observe-begin", "provenance-begin", "observe-finalize", "provenance-finalize"}, got)
 }
 
 func TestDispatchInference_ObservationBeginFailureFailsClosedBeforeProviderCall(t *testing.T) {

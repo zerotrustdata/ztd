@@ -1877,4 +1877,10 @@ message InferenceDispatchResponse {
 
   // The verified final signed ActionReceipt for the transaction.
   ActionReceipt receipt = 3;
+
+  // The observers' verified final signed receipts for this attempt's
+  // provider-boundary and model provenance BEGIN and FINALIZE commands, in
+  // dispatch order. Each was signed before the response was returned, so a
+  // trace bracket closing after the dispatch can claim its commitment.
+  repeated ActionReceipt observation_receipts = 4;
 }

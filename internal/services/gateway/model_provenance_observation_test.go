@@ -169,7 +169,7 @@ func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCm
 		logger,
 	)
 
-	err = coordinator.NotifyAttemptBegin(
+	_, err = coordinator.NotifyAttemptBegin(
 		context.Background(),
 		"user-1",
 		"attempt-1",

@@ -193,6 +193,7 @@ func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
 	record.TransactionId = response.GetTransactionId()
 	record.Result = response.GetResult()
 	record.Receipt = response.GetReceipt()
+	record.ObservationReceipts = response.GetObservationReceipts()
 	return strings.TrimSpace(models.InferenceResultText(response.GetResult())), nil
 }
 

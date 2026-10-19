@@ -132,9 +132,10 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 		}
 		if err == nil {
 			err = recordInferenceResponse(&call, probe, &operatorv1.InferenceDispatchResponse{
-				TransactionId: member.GetTransactionId(),
-				Result:        member.GetResult(),
-				Receipt:       member.GetReceipt(),
+				TransactionId:       member.GetTransactionId(),
+				Result:              member.GetResult(),
+				Receipt:             member.GetReceipt(),
+				ObservationReceipts: member.GetObservationReceipts(),
 			})
 		}
 		if err != nil {

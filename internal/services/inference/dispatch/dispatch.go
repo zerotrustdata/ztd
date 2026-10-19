@@ -111,18 +111,21 @@ type OperatorLister interface {
 
 // ProviderObservationNotifier coordinates remote provider-boundary observation
 // for scored inference attempts. Implementations use the gateway command
-// transport and must fail closed when observation commands cannot be delivered.
+// transport, wait for the observer's verified final signed receipt, and must
+// fail closed when observation commands cannot be delivered. A nil receipt with
+// a nil error means the attempt was not observed.
 type ProviderObservationNotifier interface {
-	NotifyAttemptBegin(ctx context.Context, requestorUserID, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) error
-	NotifyAttemptFinalize(ctx context.Context, requestorUserID, providerAttemptID, inferenceTransactionID string, startedAtUnixMs, completedAtUnixMs int64, failed bool, retryCount uint32) error
+	NotifyAttemptBegin(ctx context.Context, requestorUserID, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.ActionReceipt, error)
+	NotifyAttemptFinalize(ctx context.Context, requestorUserID, providerAttemptID, inferenceTransactionID string, startedAtUnixMs, completedAtUnixMs int64, failed bool, retryCount uint32) (*operatorv1.ActionReceipt, error)
 }
 
 // ProvenanceObservationNotifier coordinates storage-side model provenance
-// attestation for scored inference attempts. Implementations must fail closed
+// attestation for scored inference attempts. Implementations return the
+// provenance Operator's verified final signed receipt and must fail closed
 // when provenance commands cannot be delivered in campaign mode.
 type ProvenanceObservationNotifier interface {
-	NotifyAttemptBegin(ctx context.Context, requestorUserID, providerAttemptID, servedModelTag, expectedModelDigest, modelRegistryDigest, campaignID string, startedAtUnixMs int64, retryCount uint32) error
-	NotifyAttemptFinalize(ctx context.Context, requestorUserID, providerAttemptID, inferenceTransactionID, servedModelTag, expectedModelDigest, modelRegistryDigest, campaignID string, startedAtUnixMs, completedAtUnixMs int64, failed bool, retryCount uint32) error
+	NotifyAttemptBegin(ctx context.Context, requestorUserID, providerAttemptID, servedModelTag, expectedModelDigest, modelRegistryDigest, campaignID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.ActionReceipt, error)
+	NotifyAttemptFinalize(ctx context.Context, requestorUserID, providerAttemptID, inferenceTransactionID, servedModelTag, expectedModelDigest, modelRegistryDigest, campaignID string, startedAtUnixMs, completedAtUnixMs int64, failed bool, retryCount uint32) (*operatorv1.ActionReceipt, error)
 }
 
 // DispatchService is the platform-internal inference dispatch service on
@@ -253,19 +256,23 @@ func (r DispatchInferenceRequest) hasCampaignAuthority() bool {
 // finish reason. The TransactionID correlates the dispatch with the signed
 // ActionReceipt recorded in the User Gateway's audit chain. Receipt carries
 // the verified final signed ActionReceipt whose result_summary binds the
-// result digest.
+// result digest. ObservationReceipts carries the observers' verified final
+// receipts for the attempt's BEGIN and FINALIZE commands, in dispatch order;
+// each was signed before DispatchInference returned.
 type DispatchInferenceResult struct {
-	TransactionID string
-	Result        *operatorv1.InferenceResult
-	Receipt       *operatorv1.ActionReceipt
+	TransactionID       string
+	Result              *operatorv1.InferenceResult
+	Receipt             *operatorv1.ActionReceipt
+	ObservationReceipts []*operatorv1.ActionReceipt
 }
 
 // Response is the result as its wire InferenceDispatchResponse.
 func (r *DispatchInferenceResult) Response() *operatorv1.InferenceDispatchResponse {
 	return &operatorv1.InferenceDispatchResponse{
-		TransactionId: r.TransactionID,
-		Result:        r.Result,
-		Receipt:       r.Receipt,
+		TransactionId:       r.TransactionID,
+		Result:              r.Result,
+		Receipt:             r.Receipt,
+		ObservationReceipts: r.ObservationReceipts,
 	}
 }
 
@@ -341,15 +348,20 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	}
 
 	attemptStartedAt := time.Now().UTC().UnixMilli()
+	var observationReceipts []*operatorv1.ActionReceipt
 	if s.observationNotifier != nil {
-		if err := s.observationNotifier.NotifyAttemptBegin(ctx, req.RequestorUserID, req.ProviderAttemptID, attemptStartedAt, req.RetryCount); err != nil {
+		receipt, err := s.observationNotifier.NotifyAttemptBegin(ctx, req.RequestorUserID, req.ProviderAttemptID, attemptStartedAt, req.RetryCount)
+		if err != nil {
 			return nil, fmt.Errorf("inference dispatch: %w", err)
 		}
+		observationReceipts = appendObservationReceipt(observationReceipts, receipt)
 	}
 	if s.provenanceNotifier != nil && req.Model != "" && req.ModelDigest != "" {
-		if err := s.provenanceNotifier.NotifyAttemptBegin(ctx, req.RequestorUserID, req.ProviderAttemptID, req.Model, req.ModelDigest, req.ModelRegistryDigest, req.CampaignID, attemptStartedAt, req.RetryCount); err != nil {
+		receipt, err := s.provenanceNotifier.NotifyAttemptBegin(ctx, req.RequestorUserID, req.ProviderAttemptID, req.Model, req.ModelDigest, req.ModelRegistryDigest, req.CampaignID, attemptStartedAt, req.RetryCount)
+		if err != nil {
 			return nil, fmt.Errorf("inference dispatch: %w", err)
 		}
+		observationReceipts = appendObservationReceipt(observationReceipts, receipt)
 	}
 
 	// Dispatch through the gateway's CommandDispatcher. The dispatcher
@@ -406,9 +418,11 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	}
 
 	failed := result.Receipt != nil && result.Receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
-	if err := s.finalizeAttempt(ctx, req, result.TransactionID, attemptStartedAt, failed); err != nil {
+	finalized, err := s.finalizeAttempt(ctx, req, result.TransactionID, attemptStartedAt, failed)
+	if err != nil {
 		return nil, err
 	}
+	observationReceipts = append(observationReceipts, finalized...)
 
 	s.logger.Info("Governed inference dispatch completed",
 		"transaction_id", result.TransactionID,
@@ -417,28 +431,41 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		"completion_tokens", infResult.GetCompletionTokens())
 
 	return &DispatchInferenceResult{
-		TransactionID: result.TransactionID,
-		Result:        infResult,
-		Receipt:       result.Receipt,
+		TransactionID:       result.TransactionID,
+		Result:              infResult,
+		Receipt:             result.Receipt,
+		ObservationReceipts: observationReceipts,
 	}, nil
 }
 
+// appendObservationReceipt appends an observer's receipt; a nil receipt is an
+// unobserved attempt and adds nothing.
+func appendObservationReceipt(receipts []*operatorv1.ActionReceipt, receipt *operatorv1.ActionReceipt) []*operatorv1.ActionReceipt {
+	if receipt == nil {
+		return receipts
+	}
+	return append(receipts, receipt)
+}
+
 // finalizeAttempt reports the attempt outcome to both observation
-// coordinators. Each coordinator is attempted even when the other fails;
-// campaign-bound requests fail closed on an undelivered finalize.
-func (s *DispatchService) finalizeAttempt(ctx context.Context, req DispatchInferenceRequest, inferenceTransactionID string, startedAtUnixMs int64, failed bool) error {
+// coordinators and returns their FINALIZE receipts. Each coordinator is
+// attempted even when the other fails; campaign-bound requests fail closed on
+// an undelivered finalize.
+func (s *DispatchService) finalizeAttempt(ctx context.Context, req DispatchInferenceRequest, inferenceTransactionID string, startedAtUnixMs int64, failed bool) ([]*operatorv1.ActionReceipt, error) {
 	completedAtUnixMs := time.Now().UTC().UnixMilli()
-	return errors.Join(
-		s.notifyObservationFinalize(ctx, req, inferenceTransactionID, startedAtUnixMs, completedAtUnixMs, failed),
-		s.notifyProvenanceFinalize(ctx, req, inferenceTransactionID, startedAtUnixMs, completedAtUnixMs, failed),
-	)
+	observed, observedErr := s.notifyObservationFinalize(ctx, req, inferenceTransactionID, startedAtUnixMs, completedAtUnixMs, failed)
+	provenance, provenanceErr := s.notifyProvenanceFinalize(ctx, req, inferenceTransactionID, startedAtUnixMs, completedAtUnixMs, failed)
+	if err := errors.Join(observedErr, provenanceErr); err != nil {
+		return nil, err
+	}
+	return appendObservationReceipt(appendObservationReceipt(nil, observed), provenance), nil
 }
 
 // finalizeFailedAttempt finalizes an attempt that already failed. The caller
 // returns the original failure, so an undelivered finalize is logged rather
 // than replacing it.
 func (s *DispatchService) finalizeFailedAttempt(ctx context.Context, req DispatchInferenceRequest, inferenceTransactionID string, startedAtUnixMs int64) {
-	if err := s.finalizeAttempt(ctx, req, inferenceTransactionID, startedAtUnixMs, true); err != nil {
+	if _, err := s.finalizeAttempt(ctx, req, inferenceTransactionID, startedAtUnixMs, true); err != nil {
 		s.logger.Warn("inference dispatch: observation finalize undelivered for failed attempt",
 			"provider_attempt_id", req.ProviderAttemptID,
 			"error", err)
@@ -452,11 +479,11 @@ func (s *DispatchService) notifyObservationFinalize(
 	startedAtUnixMs int64,
 	completedAtUnixMs int64,
 	failed bool,
-) error {
+) (*operatorv1.ActionReceipt, error) {
 	if s.observationNotifier == nil {
-		return nil
+		return nil, nil
 	}
-	err := s.observationNotifier.NotifyAttemptFinalize(
+	receipt, err := s.observationNotifier.NotifyAttemptFinalize(
 		ctx,
 		req.RequestorUserID,
 		req.ProviderAttemptID,
@@ -467,15 +494,15 @@ func (s *DispatchService) notifyObservationFinalize(
 		req.RetryCount,
 	)
 	if err == nil {
-		return nil
+		return receipt, nil
 	}
 	if req.hasCampaignAuthority() {
-		return fmt.Errorf("inference dispatch: %w", err)
+		return nil, fmt.Errorf("inference dispatch: %w", err)
 	}
 	s.logger.Warn("inference dispatch: provider-boundary observation finalize undelivered",
 		"provider_attempt_id", req.ProviderAttemptID,
 		"error", err)
-	return nil
+	return nil, nil
 }
 
 func (s *DispatchService) notifyProvenanceFinalize(
@@ -485,11 +512,11 @@ func (s *DispatchService) notifyProvenanceFinalize(
 	startedAtUnixMs int64,
 	completedAtUnixMs int64,
 	failed bool,
-) error {
+) (*operatorv1.ActionReceipt, error) {
 	if s.provenanceNotifier == nil || req.Model == "" || req.ModelDigest == "" {
-		return nil
+		return nil, nil
 	}
-	err := s.provenanceNotifier.NotifyAttemptFinalize(
+	receipt, err := s.provenanceNotifier.NotifyAttemptFinalize(
 		ctx,
 		req.RequestorUserID,
 		req.ProviderAttemptID,
@@ -504,15 +531,15 @@ func (s *DispatchService) notifyProvenanceFinalize(
 		req.RetryCount,
 	)
 	if err == nil {
-		return nil
+		return receipt, nil
 	}
 	if req.hasCampaignAuthority() {
-		return fmt.Errorf("inference dispatch: %w", err)
+		return nil, fmt.Errorf("inference dispatch: %w", err)
 	}
 	s.logger.Warn("inference dispatch: model provenance observation finalize undelivered",
 		"provider_attempt_id", req.ProviderAttemptID,
 		"error", err)
-	return nil
+	return nil, nil
 }
 
 func validateCampaignModelRegistry(req DispatchInferenceRequest) error {

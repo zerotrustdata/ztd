@@ -508,7 +508,8 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 	// receipt for this transaction. Every other non-inference dispatch also
 	// waits for the verified final receipt (COMPLETED, or FAILED at L5), which
 	// the executing Operator publishes on the same channel after its result.
-	// MCP_CALL completes on that receipt alone (see completed below).
+	// MCP_CALL and observation commands complete on that receipt alone (see
+	// completed below).
 	// Inference maps rejections and its final receipt from its own signed
 	// completion instead.
 	rejectedCh := make(chan *operatorv1.ActionReceipt, 1)
@@ -623,9 +624,11 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 	// result envelope and the verified final receipt, in either order. An
 	// MCP_CALL is the exception: its tool result is stamped into the signed
 	// final receipt (ResultSummary) and no result envelope is published, so the
-	// verified final receipt alone is its terminal outcome.
+	// verified final receipt alone is its terminal outcome. Observation commands
+	// are the same: a BEGIN publishes no result, and a FINALIZE's window is
+	// ingested by its coordinator, so their final receipt is the outcome.
 	var terminalResult *commonv1.GovernanceEnvelope
-	receiptIsOutcome := actionType == constants.ActionTypeMcpCall
+	receiptIsOutcome := actionType == constants.ActionTypeMcpCall || isObservationAction(actionType)
 	completed := func() *DispatchResult {
 		if finalReceipt == nil || (terminalResult == nil && !receiptIsOutcome) {
 			return nil
@@ -860,23 +863,6 @@ func (d *DispatchService) verifyBoundReceipt(ctx context.Context, operatorID str
 		return fmt.Errorf("persistence attestation: %w", err)
 	}
 	return nil
-}
-
-// deliverCommand hands a signed command envelope to its target Operator. The
-// embedded Operator has no cmd-channel subscriber: it is processed in-process,
-// so every dispatch path must go through here rather than publishing directly.
-// It returns the number of recipients (zero means nothing received it).
-func (d *DispatchService) deliverCommand(ctx context.Context, op *operatorv1.OperatorDocument, cmdChannel string, wire []byte) (int, error) {
-	if constants.OperatorType(op.OperatorType) != constants.OperatorTypeEmbedded {
-		return d.pubsub.Publish(cmdChannel, wire), nil
-	}
-	if d.embeddedProcessor == nil {
-		return 0, fmt.Errorf("dispatch embedded operator: %w", constants.ErrDispatchNoDelivery)
-	}
-	if _, err := d.embeddedProcessor.ProcessEnvelope(ctx, wire); err != nil {
-		return 0, fmt.Errorf("dispatch embedded operator: %w", err)
-	}
-	return 1, nil
 }
 
 // commandDeliverable reports whether a command for the Operator can currently

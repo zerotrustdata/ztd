@@ -847,6 +847,9 @@ func recordInferenceResponse(call *AgentModelCall, probe InferenceProbeRequest, 
 	if receipt := response.GetReceipt(); receipt != nil {
 		call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 	}
+	for _, receipt := range response.GetObservationReceipts() {
+		call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
+	}
 	call.ResultDigest = result.GetResultDigest()
 	if err := ValidateInferenceProbeResponse(probe, response); err != nil {
 		return err

@@ -86,6 +86,7 @@ export interface AgentTraceModelCall {
   tool_call_count: number;
   error?: string;
   receipt?: AgentTraceProto;
+  observation_receipts?: AgentTraceProto[];
 }
 
 export interface AgentTraceToolCall {
@@ -268,7 +269,7 @@ function parseHeldContext(value: unknown, path: string): AgentTraceHeldContext {
 const MODEL_CALL_FIELDS = [
   'provider_attempt_id', 'transaction_id', 'purpose', 'loop_turn', 'tools_declared', 'result_digest', 'usage_reported',
   'prompt_tokens', 'completion_tokens', 'ttft_nanos', 'generation_duration_nanos', 'finish_reason', 'load_state',
-  'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'receipt',
+  'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'receipt', 'observation_receipts',
   'tool_call_id', 'persona',
 ] as const;
 
@@ -287,6 +288,9 @@ function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceS
   optionalInteger(value, 'ttft_nanos', path);
   optionalInteger(value, 'generation_duration_nanos', path);
   optionalProto(value, 'receipt', path);
+  if (value.observation_receipts !== undefined) {
+    list(value.observation_receipts, `${path}.observation_receipts`).forEach((receipt, index) => proto(receipt, `${path}.observation_receipts[${index}]`));
+  }
   optionalString(value, 'tool_call_id', path);
   optionalString(value, 'persona', path);
   if (schemaVersion === 'agent-trace.v7') {

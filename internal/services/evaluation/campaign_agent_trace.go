@@ -118,6 +118,11 @@ type AgentModelCall struct {
 	// Error is the public failure of a call that did not complete.
 	Error   string             `json:"error,omitempty"`
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
+	// ObservationReceipts are the observers' signed final receipts for this
+	// attempt's BEGIN and FINALIZE commands. The Gateway waits for each before
+	// the dispatch returns, so a shared runtime claims their commitments in the
+	// trace bracket.
+	ObservationReceipts []AgentTraceReceipt `json:"observation_receipts,omitempty"`
 }
 
 // AgentTraceInferenceResult carries a complete inference result as canonical

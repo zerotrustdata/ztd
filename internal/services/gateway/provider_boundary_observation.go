@@ -262,15 +262,16 @@ func (c *ProviderBoundaryObservationCoordinator) PreflightCommandDelivery(ctx co
 	return nil
 }
 
-// NotifyAttemptBegin delivers a BEGIN command to the observer. Delivery uses
-// the same governed PublishCommand transport as other gateway dispatches and
-// fails closed when the observer cmd channel has no subscribers.
-func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.Context, _ string, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) error {
+// NotifyAttemptBegin dispatches a BEGIN command to the observer and returns its
+// verified final signed receipt. It fails closed when the command cannot be
+// delivered or the observer does not sign an outcome. A skipped attempt (no
+// attempt ID) returns a nil receipt.
+func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.Context, _ string, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.ActionReceipt, error) {
 	if providerAttemptID == "" {
-		return nil
+		return nil, nil
 	}
 	if err := c.synchronizeObserverSubscription(ctx); err != nil {
-		return fmt.Errorf("provider-boundary observation begin: %w", err)
+		return nil, fmt.Errorf("provider-boundary observation begin: %w", err)
 	}
 	command := &evalv1.ProviderBoundaryObservationCommand{
 		ProviderAttemptId:      providerAttemptID,
@@ -281,7 +282,8 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.
 	return c.publishCommand(ctx, command)
 }
 
-// NotifyAttemptFinalize delivers a FINALIZE command to the observer.
+// NotifyAttemptFinalize dispatches a FINALIZE command to the observer and
+// returns its verified final signed receipt.
 func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	ctx context.Context,
 	_ string,
@@ -291,12 +293,12 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	completedAtUnixMs int64,
 	failed bool,
 	retryCount uint32,
-) error {
+) (*operatorv1.ActionReceipt, error) {
 	if providerAttemptID == "" {
-		return nil
+		return nil, nil
 	}
 	if err := c.synchronizeObserverSubscription(ctx); err != nil {
-		return fmt.Errorf("provider-boundary observation finalize: %w", err)
+		return nil, fmt.Errorf("provider-boundary observation finalize: %w", err)
 	}
 	status := evalv1.ProviderBoundaryObservationAttemptStatus_PROVIDER_BOUNDARY_OBSERVATION_ATTEMPT_STATUS_COMPLETED
 	if failed {
@@ -314,49 +316,39 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	return c.publishCommand(ctx, command)
 }
 
-func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) error {
-	if err := c.tryPublishCommand(ctx, command); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *ProviderBoundaryObservationCoordinator) tryPublishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) error {
+func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) (*operatorv1.ActionReceipt, error) {
 	c.mu.Lock()
 	observer := c.observer
 	c.mu.Unlock()
 	if observer == nil || c.dispatch == nil {
-		return constants.ErrMissingRequiredField
+		return nil, constants.ErrMissingRequiredField
 	}
-	cmdChannel := pubsub.CmdChannel(observer.OperatorID, observer.OperatorSessionID)
 	payload, err := proto.Marshal(command)
 	if err != nil {
-		c.logger.Warn("Provider-boundary observation command marshal failed", "error", err)
-		return err
+		return nil, fmt.Errorf("provider-boundary observation command marshal: %w", err)
 	}
-	txID, err := c.dispatch.PublishCommand(ctx, PublishCommandRequest{
+	receipt, err := c.dispatch.DispatchObservation(ctx, ObservationDispatchRequest{
 		TargetOperatorSessionID: observer.OperatorSessionID,
 		EventType:               string(constants.Event.Operator.ProviderBoundaryObservation.Requested),
 		Payload:                 payload,
 	})
 	if err != nil {
-		c.logger.Warn("Provider-boundary observation command publish failed",
+		c.logger.Warn("Provider-boundary observation command dispatch failed",
 			"provider_attempt_id", command.GetProviderAttemptId(),
 			"phase", command.GetPhase().String(),
 			"operator_id", observer.OperatorID,
 			"operator_session_id", observer.OperatorSessionID,
-			"cmd_channel", cmdChannel,
 			"error", err)
-		return err
+		return nil, err
 	}
-	c.logger.Info("Provider-boundary observation command published",
-		"transaction_id", txID,
+	c.logger.Info("Provider-boundary observation command executed",
+		"transaction_id", receipt.GetTransactionId(),
+		"status", receipt.GetStatus().String(),
 		"provider_attempt_id", command.GetProviderAttemptId(),
 		"phase", command.GetPhase().String(),
 		"operator_id", observer.OperatorID,
-		"operator_session_id", observer.OperatorSessionID,
-		"cmd_channel", cmdChannel)
-	return nil
+		"operator_session_id", observer.OperatorSessionID)
+	return receipt, nil
 }
 
 func (c *ProviderBoundaryObservationCoordinator) ingestResult(ctx context.Context, observer *providerBoundaryObserverTarget, data []byte) {
@@ -392,8 +384,8 @@ func (c *ProviderBoundaryObservationCoordinator) ingestResult(ctx context.Contex
 	}
 }
 
-// PublishCommandRequest is a fire-and-forget governed command publish.
-type PublishCommandRequest struct {
+// ObservationDispatchRequest is a governed observer BEGIN or FINALIZE command.
+type ObservationDispatchRequest struct {
 	TargetOperatorSessionID string
 	EventType               string
 	Payload                 []byte
@@ -401,16 +393,27 @@ type PublishCommandRequest struct {
 	ActingAppID             string
 }
 
-// PublishCommand builds a governed envelope and publishes it to the target
-// operator cmd channel without waiting for a correlated result.
-func (d *DispatchService) PublishCommand(ctx context.Context, req PublishCommandRequest) (string, error) {
+// DispatchObservation builds a governed observation envelope, delivers it to
+// the observer, and waits for the observer's verified final signed receipt.
+// Waiting puts the observer's ledger commitment ahead of anything the caller
+// does next, so a trace bracket that closes after the inference dispatch can
+// claim it. Only observation action types are accepted: this path admits no
+// L3 approval wait.
+func (d *DispatchService) DispatchObservation(ctx context.Context, req ObservationDispatchRequest) (*operatorv1.ActionReceipt, error) {
+	actionType, err := constants.ValidateGovernedRequest(constants.EventType(req.EventType))
+	if err != nil {
+		return nil, fmt.Errorf("dispatch: observation: %w", err)
+	}
+	if !isObservationAction(actionType) {
+		return nil, fmt.Errorf("dispatch: observation: %w: %s", constants.ErrTxEventActionMismatch, actionType)
+	}
 	op, err := d.auth.ValidateOperatorSession(ctx, req.TargetOperatorSessionID)
 	if err != nil {
-		return "", fmt.Errorf("dispatch: publish command: validate operator session: %w", err)
+		return nil, fmt.Errorf("dispatch: observation: validate operator session: %w", err)
 	}
 	stateRoot, err := d.stateRootProvider.GetCurrentStateRoot(ctx)
 	if err != nil {
-		return "", fmt.Errorf("dispatch: publish command: get state root: %w", err)
+		return nil, fmt.Errorf("dispatch: observation: state root: %w: %w", constants.ErrIngressStateRootUnavailable, err)
 	}
 	env, err := BuildGovernanceEnvelope(BuildEnvelopeParams{
 		OperatorID:        op.Id,
@@ -424,27 +427,38 @@ func (d *DispatchService) PublishCommand(ctx context.Context, req PublishCommand
 		Doctrine:          d.doctrine,
 	})
 	if err != nil {
-		return "", fmt.Errorf("dispatch: publish command: %w", err)
+		return nil, fmt.Errorf("dispatch: observation: %w", err)
 	}
 	wire, err := protojson.Marshal(env)
 	if err != nil {
-		return "", fmt.Errorf("dispatch: publish command: marshal envelope: %w", err)
+		return nil, fmt.Errorf("dispatch: observation: marshal envelope: %w", err)
 	}
-	actionType := constants.ActionType(env.GetActionType())
 	if governance.L2Enforced(actionType, d.posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
-			return "", fmt.Errorf("dispatch: publish command: l2 deliberation: %w", derr)
+			return nil, fmt.Errorf("dispatch: observation: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)
 		}
 		wire = deliberated
 	}
-	cmdChannel := pubsub.CmdChannel(op.Id, op.OperatorSessionId)
-	delivered, err := d.deliverCommand(ctx, op, cmdChannel, wire)
+	result, err := d.dispatchEnvelope(ctx, op, env, wire, DispatchRequest{
+		TargetOperatorSessionID: req.TargetOperatorSessionID,
+		EventType:               req.EventType,
+		RequestorUserID:         req.RequestorUserID,
+		ActingAppID:             req.ActingAppID,
+	})
 	if err != nil {
-		return "", fmt.Errorf("dispatch: publish command: %w", err)
+		return nil, err
 	}
-	if delivered == 0 {
-		return "", fmt.Errorf("dispatch: publish command: %w", constants.ErrDispatchNoDelivery)
+	// An observer whose handler failed did not observe the attempt.
+	if result.Receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return nil, fmt.Errorf("dispatch: observation %s: %w: %s", result.TransactionID, constants.ErrEvaluationObservationUnavailable, result.Receipt.GetResultSummary())
 	}
-	return env.Id, nil
+	return result.Receipt, nil
+}
+
+// isObservationAction reports whether an action is an observer BEGIN/FINALIZE
+// command, whose verified final receipt is its terminal outcome.
+func isObservationAction(actionType constants.ActionType) bool {
+	return actionType == constants.ActionTypeProviderBoundaryObservation ||
+		actionType == constants.ActionTypeModelProvenanceObservation
 }

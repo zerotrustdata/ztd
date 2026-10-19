@@ -24,23 +24,29 @@ type recordingProvenanceNotifier struct {
 	finalizeErr error
 }
 
-func (n *recordingProvenanceNotifier) NotifyAttemptBegin(_ context.Context, _, attemptID, model, digest, registryDigest, campaignID string, startedAt int64, retry uint32) error {
+func (n *recordingProvenanceNotifier) NotifyAttemptBegin(_ context.Context, _, attemptID, model, digest, registryDigest, campaignID string, startedAt int64, retry uint32) (*operatorv1.ActionReceipt, error) {
 	n.commands = append(n.commands, &evalv1.ModelProvenanceObservationCommand{
 		ProviderAttemptId: attemptID, ServedModelTag: model, ExpectedModelDigest: digest,
 		ModelRegistryDigest: registryDigest, CampaignId: campaignID, RetryCount: retry,
 		AttemptStartedAtUnixMs: startedAt, Phase: evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_BEGIN,
 	})
-	return n.beginErr
+	if n.beginErr != nil {
+		return nil, n.beginErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "provenance-begin"}, nil
 }
 
-func (n *recordingProvenanceNotifier) NotifyAttemptFinalize(_ context.Context, _, attemptID, transactionID, model, digest, registryDigest, campaignID string, startedAt, completedAt int64, _ bool, retry uint32) error {
+func (n *recordingProvenanceNotifier) NotifyAttemptFinalize(_ context.Context, _, attemptID, transactionID, model, digest, registryDigest, campaignID string, startedAt, completedAt int64, _ bool, retry uint32) (*operatorv1.ActionReceipt, error) {
 	n.commands = append(n.commands, &evalv1.ModelProvenanceObservationCommand{
 		ProviderAttemptId: attemptID, InferenceTransactionId: transactionID, ServedModelTag: model, ExpectedModelDigest: digest,
 		ModelRegistryDigest: registryDigest, CampaignId: campaignID, RetryCount: retry,
 		AttemptStartedAtUnixMs: startedAt, AttemptCompletedAtUnixMs: completedAt,
 		Phase: evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_FINALIZE,
 	})
-	return n.finalizeErr
+	if n.finalizeErr != nil {
+		return nil, n.finalizeErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "provenance-finalize"}, nil
 }
 
 func TestDispatchInference_PerAttemptProvenanceWithoutPreflight(t *testing.T) {
