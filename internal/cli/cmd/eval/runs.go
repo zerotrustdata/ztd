@@ -186,10 +186,10 @@ func runsShowCmd(deps nativeEvalDeps) *cobra.Command {
 		Long: `Show one run. The status is "running" only while a live process holds the
 run's lease. A run left running with no live process reports "interrupted".
 
-With --watch, follow the run's event stream and report the run each time it
-changes until the run reaches a settled status. The stream needs the CLI identity,
-as runs cancel does. The events carry run status changes and stop requests, so
-assignment progress shows when the run's status next changes.`,
+With --watch, follow the run's event stream and report the run on each run status
+change or stop request until the run reaches a settled status. The stream needs
+the CLI identity, as runs cancel does. Assignment counts refresh only when the
+run's status changes, because no per-assignment event reaches the CLI.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]

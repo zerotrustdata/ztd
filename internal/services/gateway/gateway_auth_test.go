@@ -1400,6 +1400,7 @@ func TestAuthService_CliCertBoundToOperator_SessionExpired(t *testing.T) {
 		ID:                cliSessionID,
 		UserID:            userID,
 		OperatorSessionID: operatorSessionID,
+		IsActive:          true,
 		ExpiresAt:         time.Now().Add(-1 * time.Hour),
 		CreatedAt:         time.Now().Add(-2 * time.Hour),
 		AbsoluteExpiresAt: time.Now().Add(-1 * time.Hour),
@@ -1408,9 +1409,65 @@ func TestAuthService_CliCertBoundToOperator_SessionExpired(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.GetDocStore().DocSet(t.Context(), "cli_sessions", cliSessionID, cliBytes))
 
-	bound, err := auth.cliCertBoundToOperator(t.Context(), nil, cliSessionID, userID, operatorSessionID)
+	// The certificate names the session, so only expiry can refuse the bind.
+	wid := protocol.NewWorkloadIdentity()
+	cliURI, err := wid.CLISPIFFEURL(userID, cliSessionID)
+	require.NoError(t, err)
+
+	bound, err := auth.cliCertBoundToOperator(t.Context(), []*url.URL{cliURI}, cliSessionID, userID, operatorSessionID)
 	require.NoError(t, err)
 	assert.False(t, bound)
+}
+
+// TestAuthService_CliCertBoundToOperator_CLISessionInactive verifies that a CLI
+// session deactivated by logout, rotation, or unbind never binds, even when its
+// certificate names it and it is bound to the presented Operator session. The
+// active pass proves the refusal comes from IsActive alone.
+func TestAuthService_CliCertBoundToOperator_CLISessionInactive(t *testing.T) {
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	userSvc := NewUserService(db.GetDocStore(), logger)
+	personaSvc := NewPersonaService(db.GetDocStore(), logger)
+	res := response.NewWriter(logger)
+	auth := NewAuthService(db.GetDocStore(), nil, logger, userSvc, personaSvc, res, nil, "", "", "")
+
+	cliSessionID := "cli-session-inactive"
+	operatorSessionID := "op-session-inactive"
+	userID := "user-inactive"
+
+	wid := protocol.NewWorkloadIdentity()
+	cliURI, err := wid.CLISPIFFEURL(userID, cliSessionID)
+	require.NoError(t, err)
+
+	cliBytes, err := json.Marshal(&models.CLISession{
+		ID:                cliSessionID,
+		UserID:            userID,
+		OperatorSessionID: operatorSessionID,
+		IsActive:          true,
+		ExpiresAt:         time.Now().Add(1 * time.Hour),
+		AbsoluteExpiresAt: time.Now().Add(1 * time.Hour),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.GetDocStore().DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, cliBytes))
+
+	bound, err := auth.cliCertBoundToOperator(t.Context(), []*url.URL{cliURI}, cliSessionID, userID, operatorSessionID)
+	require.NoError(t, err)
+	require.True(t, bound, "control: an active CLI session bound to the Operator session must bind")
+
+	cliBytes, err = json.Marshal(&models.CLISession{
+		ID:                cliSessionID,
+		UserID:            userID,
+		OperatorSessionID: operatorSessionID,
+		IsActive:          false,
+		ExpiresAt:         time.Now().Add(1 * time.Hour),
+		AbsoluteExpiresAt: time.Now().Add(1 * time.Hour),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.GetDocStore().DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, cliBytes))
+
+	bound, err = auth.cliCertBoundToOperator(t.Context(), []*url.URL{cliURI}, cliSessionID, userID, operatorSessionID)
+	require.NoError(t, err)
+	assert.False(t, bound, "an inactive CLI session must never bind")
 }
 
 // TestAuthService_HandleOperatorAuth_Integration tests the handleOperatorAuth path

@@ -514,12 +514,15 @@ type runLifecycle struct {
 	cliSessionID string
 	runID        string
 	startedAt    time.Time
+	// running is set once RUNNING is attempted. The Gateway's state after an
+	// attempt is unknown, so the release reports even when the attempt failed.
+	running bool
 }
 
 // reportRunning posts RUNNING once the lease is held and the event stream is
-// subscribed. A run with nothing queued or running executes nothing, so resuming
-// it makes no transition and posts no RUNNING; its released status still posts.
-func (l runLifecycle) reportRunning(ctx context.Context) error {
+// subscribed. A run with nothing queued or running executes nothing, so it posts
+// no RUNNING and its release posts nothing either.
+func (l *runLifecycle) reportRunning(ctx context.Context) error {
 	row, err := l.snapshot(ctx)
 	if err != nil {
 		return err
@@ -527,13 +530,20 @@ func (l runLifecycle) reportRunning(ctx context.Context) error {
 	if row.Queued == 0 && row.Running == 0 {
 		return nil
 	}
+	l.running = true
 	return l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
 }
 
 // reportTerminal posts the status a released run ends in. It must run after the
 // lease is released, because a cancel waiting on the Gateway returns on this
-// status and then reads the released run.
-func (l runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) error {
+// status and then reads the released run. A release that executed nothing posts
+// nothing, so a finished run resumed again makes no transition, and a
+// verification verdict recorded after the run settled is not projected. A stop
+// request always posts, because cancel waiters return on its cancelled status.
+func (l *runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) error {
+	if !l.running && !stopRequested {
+		return nil
+	}
 	row, err := l.snapshot(ctx)
 	if err != nil {
 		return err
@@ -570,7 +580,7 @@ func releasedRunStatus(stopRequested bool, row *runRow) models.RunLifecycleStatu
 // snapshot reads the run the way runs show reads it, so the projection and the
 // command agree on what the run is. The lifecycle only runs for live, unarchived
 // runs, so the archived flag is false.
-func (l runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
+func (l *runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
 	row, _, err := summarizeRun(ctx, l.store, false, l.runID, l.live, l.deps.now, adaptNewID(l.deps.newID))
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: run lifecycle: %w", err)
@@ -578,7 +588,7 @@ func (l runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
 	return row, nil
 }
 
-func (l runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time) error {
+func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time) error {
 	startedAt := l.startedAt
 	err := l.client.UpdateRunState(ctx, models.ObserveProducerRunStateRequest{
 		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,

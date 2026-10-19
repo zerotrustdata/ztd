@@ -58,7 +58,6 @@ type CampaignPublicationCoordinator struct {
 	mirrorProbe            CampaignMirrorProbe
 	deferProofMirrorPush   bool
 	pendingProofMirrorPush bool
-	pendingProofInputs     []AssignmentAuditProofInput
 	publicationStateCache  *CampaignPublicationState
 	leaseLiveness          LeaseLiveness
 }
@@ -192,7 +191,7 @@ func (c *CampaignPublicationCoordinator) PublishAssignmentResult(ctx context.Con
 	if err != nil {
 		return err
 	}
-	auditBindings, err := c.BuildAssignmentAuditBindings(ctx, assignment, result, artifacts, liveRequests, true)
+	auditBindings, err := c.ingestAssignmentAuditBindings(ctx, assignment, result, artifacts, liveRequests)
 	if err != nil {
 		return err
 	}
@@ -349,7 +348,6 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 	c.deferProofMirrorPush = true
 	defer func() {
 		c.deferProofMirrorPush = false
-		c.pendingProofInputs = nil
 		c.clearPublicationStateCache()
 	}()
 	run, assignments, results, state, err := c.loadRunAggregateState(ctx, runID)
@@ -386,6 +384,12 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 		if !ok {
 			return 0, fmt.Errorf("evaluation: publish run verification: resolve scenario context: %w", constants.ErrEvidenceScopeMismatch)
 		}
+		// The republish sends each proof's request again before any verified
+		// record is built, so every record binds the digest the Gateway answers.
+		proofs, err := c.republishAuditProofs(ctx, assignments, results, artifacts)
+		if err != nil {
+			return 0, err
+		}
 		for _, assignment := range assignments {
 			result := results[assignment.GetAssignmentId()]
 			if result == nil {
@@ -403,14 +407,7 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 			if err != nil {
 				return 0, err
 			}
-			liveRequests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-			if err != nil {
-				return 0, err
-			}
-			auditBindings, err := c.BuildAssignmentAuditBindings(ctx, assignment, result, artifacts, liveRequests, false)
-			if err != nil {
-				return 0, err
-			}
+			auditBindings := AssignmentAuditEvidenceBindingsFromHashes(proofs[assignment.GetAssignmentId()])
 			key := AssignmentVerifiedResultIdempotencyKey(runID, assignment.GetAssignmentId())
 			transcripts, err := BuildPublicAssignmentTranscripts(ctx, c.store, assignment, result)
 			if err != nil {
@@ -671,18 +668,6 @@ func (c *CampaignPublicationCoordinator) flushProofCatalog(ctx context.Context) 
 	if c == nil || c.proofPublisher == nil {
 		return nil
 	}
-	if len(c.pendingProofInputs) > 0 {
-		pending := c.pendingProofInputs
-		if err := c.proofPublisher.IngestAssignmentAuditSlices(ctx, pending, true); err != nil {
-			return fmt.Errorf("evaluation: flush proof catalog: ingest assignment audit slices: %w", err)
-		}
-		for _, input := range pending {
-			if err := c.recordPublishedProofArtifacts(ctx, input); err != nil {
-				return fmt.Errorf("evaluation: flush proof catalog: record proof artifacts: %w", err)
-			}
-		}
-		c.pendingProofInputs = nil
-	}
 	if !c.pendingProofMirrorPush {
 		return nil
 	}
@@ -699,11 +684,10 @@ func (c *CampaignPublicationCoordinator) clearPublicationStateCache() {
 	}
 }
 
-func (c *CampaignPublicationCoordinator) recordPublishedProofArtifacts(ctx context.Context, input AssignmentAuditProofInput) error {
+// recordPublishedProofArtifacts records the artifacts the Gateway answered for
+// one assignment's audit proof, under the proof's idempotency key.
+func (c *CampaignPublicationCoordinator) recordPublishedProofArtifacts(ctx context.Context, input AssignmentAuditProofInput, artifacts CampaignPublishedProofArtifacts) error {
 	if c == nil || c.publicationState == nil || input.RunID == "" || input.AssignmentID == "" {
-		return nil
-	}
-	if input.Artifacts.DatabaseSHA256 == "" || input.Artifacts.VaultKeySHA256 == "" {
 		return nil
 	}
 	state, err := c.loadPublicationState(ctx, input.RunID)
@@ -718,7 +702,7 @@ func (c *CampaignPublicationCoordinator) recordPublishedProofArtifacts(ctx conte
 	if state.PublishedProofArtifacts == nil {
 		state.PublishedProofArtifacts = map[string]CampaignPublishedProofArtifacts{}
 	}
-	state.PublishedProofArtifacts[input.AssignmentID] = input.Artifacts.PublishedHashes()
+	state.PublishedProofArtifacts[input.AssignmentID] = artifacts
 	return c.savePublicationState(ctx, state)
 }
 
@@ -757,7 +741,6 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 	c.deferProofMirrorPush = true
 	defer func() {
 		c.deferProofMirrorPush = false
-		c.pendingProofInputs = nil
 		c.clearPublicationStateCache()
 	}()
 	resetRequired, err := c.mirrorCatchUpResetRequired(ctx, runID)
@@ -785,6 +768,12 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 	if err != nil {
 		return 0, err
 	}
+	// Every audit proof this catch-up still needs is ingested before any result
+	// record is built, so each record binds the digest the Gateway answered.
+	proofs, err := c.catchUpAuditProofs(ctx, runID, assignments, results, artifacts, publicationState)
+	if err != nil {
+		return 0, err
+	}
 	requests := make([]campaignFeedPublishRequest, 0, len(assignments)*2)
 	for _, assignment := range assignments {
 		category, err := ScenarioCategoryForAssignment(catalog, assignment)
@@ -804,34 +793,6 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 		if publicationState != nil && containsString(publicationState.PublishedIdempotency, resultKey) {
 			continue
 		}
-		proofKey := AssignmentAuditProofIdempotencyKey(runID, assignment.GetAssignmentId())
-		var auditBindings []*evalv1.PublicEvidenceBinding
-		if publicationState != nil && containsString(publicationState.PublishedIdempotency, proofKey) {
-			if stored, ok := publicationState.PublishedProofArtifacts[assignment.GetAssignmentId()]; ok {
-				// Reuse the published package only when it already carries the
-				// current agent trace and scenario fixture; otherwise rebuild so
-				// both are published and bound.
-				_, traceSHA256, err := loadAssignmentAgentTraceArtifact(ctx, c.store, result)
-				if err != nil {
-					return 0, err
-				}
-				fixture := artifacts[assignment.GetScenarioId()]
-				if stored.AgentTraceSHA256 == traceSHA256 && stored.ScenarioInputSHA256 != "" &&
-					stored.ScenarioInputSHA256 == fixture.Input.Reference.GetSha256() && stored.ScenarioGoldSHA256 == fixture.Gold.Reference.GetSha256() {
-					auditBindings = AssignmentAuditEvidenceBindingsFromHashes(stored)
-				}
-			}
-		}
-		if auditBindings == nil {
-			liveRequests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-			if err != nil {
-				return 0, err
-			}
-			auditBindings, err = c.BuildAssignmentAuditBindings(ctx, assignment, result, artifacts, liveRequests, true)
-			if err != nil {
-				return 0, err
-			}
-		}
 		resultRequest, err := c.buildAssignmentResultPublishRequest(
 			ctx,
 			run,
@@ -842,7 +803,7 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 			category,
 			"unverified",
 			AssignmentResultIdempotencyKey(runID, assignment.GetAssignmentId()),
-			auditBindings,
+			AssignmentAuditEvidenceBindingsFromHashes(proofs[assignment.GetAssignmentId()]),
 		)
 		if err != nil {
 			return 0, err

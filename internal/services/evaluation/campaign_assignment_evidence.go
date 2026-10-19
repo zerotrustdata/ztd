@@ -24,7 +24,7 @@ var publicEvidenceKinds = map[string]struct{}{
 	"campaign_profile": {}, "model_registry": {}, "verification_report": {},
 	"evaluation_projection": {}, "comparison_row": {}, "efficiency_observation": {},
 	"statistical_analysis": {}, "source_manifest": {},
-	AssignmentAuditSliceKind: {}, AssignmentAuditVaultKeyKind: {}, AssignmentAgentTraceKind: {},
+	AssignmentAuditSliceKind: {}, AssignmentAgentTraceKind: {},
 	ScenarioInputFixtureKind: {}, ScenarioGoldCriteriaKind: {},
 }
 

@@ -197,7 +197,7 @@ func (c *capturingGatewayProofPublisherClient) Delete(string) ([]byte, error) {
 func TestRemoteGatewayCampaignProofPublisherPostsStructuredRequest(t *testing.T) {
 	client := &capturingGatewayProofPublisherClient{}
 	publisher := &remoteGatewayCampaignProofPublisher{client: client}
-	err := publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{{
+	_, err := publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{{
 		CampaignID:       "campaign-1",
 		CampaignRevision: "rev-1",
 		RunID:            "run-1",

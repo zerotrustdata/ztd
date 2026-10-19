@@ -190,20 +190,3 @@ func readProcessMemory(handle windows.Handle, address uintptr, dst unsafe.Pointe
 	}
 	return nil
 }
-
-// waitPIDTermination waits for the process with the given PID to exit, up to timeout.
-func waitPIDTermination(pid int, timeout time.Duration) (bool, error) {
-	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
-	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = windows.CloseHandle(handle) }()
-	event, err := windows.WaitForSingleObject(handle, uint32(min(timeout.Milliseconds(), int64(windows.INFINITE-1))))
-	if err != nil {
-		return false, err
-	}
-	return event == windows.WAIT_OBJECT_0, nil
-}

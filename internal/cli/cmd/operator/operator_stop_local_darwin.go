@@ -223,16 +223,3 @@ func processCwd(api *libprocAPI, pid int) (string, error) {
 	path := buf[procVnodeInfoSize : procVnodeInfoSize+unix.PathMax]
 	return unix.ByteSliceToString(path), nil
 }
-
-// waitPIDTermination waits for the process with the given PID to exit, up to timeout.
-func waitPIDTermination(pid int, timeout time.Duration) (bool, error) {
-	kq, err := watchExit(pid)
-	if errors.Is(err, unix.ESRCH) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = unix.Close(kq) }()
-	return waitExit(kq, timeout)
-}

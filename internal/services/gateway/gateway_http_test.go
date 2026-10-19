@@ -542,6 +542,7 @@ func TestCLICertBoundToOperator(t *testing.T) {
 		ID:                cliSessionID,
 		UserID:            userID,
 		OperatorSessionID: operatorSessionID,
+		IsActive:          true,
 		ExpiresAt:         time.Now().Add(24 * time.Hour),
 	}
 	b, _ := json.Marshal(cliSess)
@@ -582,6 +583,7 @@ func TestCLICertBoundToOperator(t *testing.T) {
 			ID:                "cli-expired",
 			UserID:            userID,
 			OperatorSessionID: operatorSessionID,
+			IsActive:          true,
 			ExpiresAt:         time.Now().Add(-1 * time.Hour),
 		}
 		eb, _ := json.Marshal(expired)

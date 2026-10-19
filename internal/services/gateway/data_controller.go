@@ -310,7 +310,7 @@ func (c *DataController) extractCallerIdentity(r *http.Request) (string, string,
 		appID = ""
 	}
 	operatorSessionID, _ := r.Context().Value(constants.ContextKeyOperatorSessionID).(string)
-	cliSessionID := r.Header.Get(constants.HeaderCLISessionID)
+	cliSessionID, _ := r.Context().Value(constants.ContextKeyCLISessionID).(string)
 	return userID, appID, operatorSessionID, cliSessionID
 }
 

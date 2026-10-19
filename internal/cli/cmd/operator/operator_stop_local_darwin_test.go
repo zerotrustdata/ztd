@@ -23,6 +23,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
@@ -92,9 +93,9 @@ func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
 	result := stopLocalOperator(cmd, worker, models.StopOperatorResponse{Success: true}, nil, 10*time.Millisecond)
 	require.True(t, result.Success, result.Error)
 	require.Equal(t, "KILL", result.Method)
-	exited, err := waitPIDTermination(child.Process.Pid, time.Second)
-	require.NoError(t, err)
-	require.True(t, exited)
+	exitCtx, cancelExit := context.WithTimeout(context.Background(), time.Second)
+	defer cancelExit()
+	require.NoError(t, platform.WaitForProcessExit(exitCtx, child.Process.Pid))
 }
 
 func TestLocalOperatorDiscoveryUsesWorkerCwd(t *testing.T) {

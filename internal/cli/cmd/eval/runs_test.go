@@ -9,6 +9,7 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -19,8 +20,56 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+// The watch reloads the run on its connect and on each run event. Here the
+// connect and two events arrive in either order, and the third reload settles.
+func TestRunsShow_WatchEmitsOnConnectAndOnStatusAndStopsOnTerminal(t *testing.T) {
+	stream := &runEventStream{done: make(chan struct{})}
+	reconnects := make(chan struct{}, 1)
+	events := make(chan runEvent)
+	states := []*runShowJSON{
+		{runRow: runRow{Status: "running", ExpectedAssignments: 2, Running: 1}},
+		{runRow: runRow{Status: "running", ExpectedAssignments: 2, Terminal: 1, Running: 1}},
+		{runRow: runRow{Status: "cancelled", ExpectedAssignments: 2, Terminal: 2}},
+	}
+	reconnects <- struct{}{}
+	go func() {
+		events <- runEvent{Status: &models.RunStatusUpdatedPayload{RunID: "run-a-1", Status: models.RunLifecycleStatusRunning}}
+		events <- runEvent{Status: &models.RunStatusUpdatedPayload{RunID: "run-a-1", Status: models.RunLifecycleStatusCancelled}}
+	}()
+
+	var reloads int
+	reload := func() (*runShowJSON, error) {
+		show := states[reloads]
+		reloads++
+		return show, nil
+	}
+	var emitted []string
+	emit := func(show *runShowJSON) error {
+		emitted = append(emitted, show.Status)
+		return nil
+	}
+	require.NoError(t, followRun(context.Background(), stream, reconnects, events, reload, emit))
+	assert.Equal(t, []string{"running", "running", "cancelled"}, emitted)
+	assert.Equal(t, 3, reloads)
+}
+
+// A stream that stops on its own ends the watch with the stream's error, after
+// no further reload.
+func TestRunsShow_WatchReturnsTheStreamError(t *testing.T) {
+	streamErr := errors.New("gateway refused the CLI session")
+	stream := &runEventStream{done: make(chan struct{}), err: streamErr}
+	close(stream.done)
+	reload := func() (*runShowJSON, error) {
+		t.Fatal("the watch reloaded after its stream stopped")
+		return nil, nil
+	}
+	err := followRun(context.Background(), stream, make(chan struct{}), make(chan runEvent), reload, func(*runShowJSON) error { return nil })
+	require.ErrorIs(t, err, streamErr)
+}
 
 func markFirstAssignmentRunning(t *testing.T, env *runEnv) {
 	t.Helper()

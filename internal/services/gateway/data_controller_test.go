@@ -753,6 +753,29 @@ func TestDataController_BlobNamespaceAllowlist(t *testing.T) {
 		err := dataController.verifyBlobOwnership(req, "temp")
 		require.Error(t, err, "Request without identity should be rejected")
 	})
+
+	t.Run("blob ownership verification - raw CLI session header is not identity", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/blobs/temp/test.txt", nil)
+		req.Header.Set(constants.HeaderCLISessionID, "cli-header-only")
+
+		err := dataController.verifyBlobOwnership(req, "temp")
+		require.ErrorIs(t, err, constants.ErrUnauthorizedNoIdentity, "A CLI session header alone must not authorize a write")
+	})
+
+	t.Run("blob ownership verification - CLI session identity comes from context", func(t *testing.T) {
+		userID := "user-cli-ctx"
+
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/blobs/user/"+userID+"/test.txt", nil)
+		req.Header.Set(constants.HeaderCLISessionID, "cli-other-session")
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, userID))
+		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyCLISessionID, "cli-ctx-session"))
+
+		err := dataController.verifyBlobOwnership(req, "user/"+userID)
+		require.NoError(t, err, "Authenticated CLI session should write to its own user namespace")
+
+		err = dataController.verifyBlobOwnership(req, "user/other-user")
+		require.ErrorIs(t, err, constants.ErrUnauthorizedUserNamespace, "Authenticated CLI session should not write to another user's namespace")
+	})
 }
 
 func TestDataControllerHandleDataSettings(t *testing.T) {

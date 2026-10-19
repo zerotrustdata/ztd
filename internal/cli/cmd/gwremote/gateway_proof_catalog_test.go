@@ -42,16 +42,23 @@ func auditProofInput(id string) evaluation.AssignmentAuditProofInput {
 	}
 }
 
+// databaseDigestFor is the database digest the stub gateway reports for the
+// assignment id. It differs per assignment, so an answer bound to the wrong
+// request fails the assertions.
+func databaseDigestFor(id string) string {
+	return strings.Repeat(id, 64)
+}
+
 // acceptedProofResponse is the gateway's accepted answer for the assignment ids,
 // in order: a single-proof response for one id, a batch response otherwise.
 func acceptedProofResponse(t *testing.T, ids ...string) []byte {
 	t.Helper()
 	if len(ids) == 1 {
-		return mustMarshalJSON(t, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-" + ids[0], DatabaseSHA256: strings.Repeat("a", 64)})
+		return mustMarshalJSON(t, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-" + ids[0], DatabaseSHA256: databaseDigestFor(ids[0])})
 	}
 	response := models.PublicAssignmentAuditProofBatchPublishResponse{Accepted: true, IngestedProofs: len(ids)}
 	for _, id := range ids {
-		response.Proofs = append(response.Proofs, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-" + id, DatabaseSHA256: strings.Repeat("a", 64)})
+		response.Proofs = append(response.Proofs, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: "assignment-" + id, DatabaseSHA256: databaseDigestFor(id)})
 	}
 	return mustMarshalJSON(t, response)
 }
@@ -59,10 +66,10 @@ func acceptedProofResponse(t *testing.T, ids ...string) []byte {
 func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *testing.T) {
 	t.Run("a nil publisher or client reports a missing required field", func(t *testing.T) {
 		var nilPublisher *remoteGatewayCampaignProofPublisher
-		err := nilPublisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, false)
+		_, err := nilPublisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, false)
 		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 
-		err = (&remoteGatewayCampaignProofPublisher{}).IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, false)
+		_, err = (&remoteGatewayCampaignProofPublisher{}).IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, false)
 		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	})
 
@@ -70,7 +77,9 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 		client := &cmdtest.MockAPIClient{}
 		publisher := &remoteGatewayCampaignProofPublisher{client: client}
 
-		require.NoError(t, publisher.IngestAssignmentAuditSlices(context.Background(), nil, true))
+		responses, err := publisher.IngestAssignmentAuditSlices(context.Background(), nil, true)
+		require.NoError(t, err)
+		assert.Empty(t, responses)
 		assert.Empty(t, client.PostCalls)
 	})
 
@@ -78,7 +87,11 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 		client := &cmdtest.MockAPIClient{PostResp: acceptedProofResponse(t, "1")}
 		publisher := &remoteGatewayCampaignProofPublisher{client: client}
 
-		require.NoError(t, publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, true))
+		responses, err := publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, true)
+		require.NoError(t, err)
+		require.Len(t, responses, 1)
+		assert.Equal(t, "assignment-1", responses[0].AssignmentID)
+		assert.Equal(t, databaseDigestFor("1"), responses[0].DatabaseSHA256)
 
 		require.Len(t, client.PostCalls, 1)
 		assert.Equal(t, constants.APIPaths.PublicFeedProofs, client.PostCalls[0].Path)
@@ -91,8 +104,13 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 		client := &cmdtest.MockAPIClient{PostResp: acceptedProofResponse(t, "1", "2")}
 		publisher := &remoteGatewayCampaignProofPublisher{client: client}
 
-		err := publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1"), auditProofInput("2")}, true)
+		responses, err := publisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1"), auditProofInput("2")}, true)
 		require.NoError(t, err)
+		require.Len(t, responses, 2)
+		assert.Equal(t, "assignment-1", responses[0].AssignmentID)
+		assert.Equal(t, databaseDigestFor("1"), responses[0].DatabaseSHA256)
+		assert.Equal(t, "assignment-2", responses[1].AssignmentID)
+		assert.Equal(t, databaseDigestFor("2"), responses[1].DatabaseSHA256)
 
 		require.Len(t, client.PostCalls, 1)
 		assert.Equal(t, constants.APIPaths.PublicFeedProofsBatch, client.PostCalls[0].Path)
@@ -172,7 +190,7 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			publisher := &remoteGatewayCampaignProofPublisher{client: tt.client}
 
-			err := publisher.IngestAssignmentAuditSlices(context.Background(), tt.inputs, false)
+			_, err := publisher.IngestAssignmentAuditSlices(context.Background(), tt.inputs, false)
 			require.ErrorIs(t, err, tt.wantErr)
 			if tt.wantMsg != "" {
 				assert.Contains(t, err.Error(), tt.wantMsg)

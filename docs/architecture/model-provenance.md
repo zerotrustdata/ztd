@@ -85,7 +85,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Protocol surface | `protocol/proto/ztd/eval/v1/eval.proto` | `ModelProvenanceAttestationWindow` schema |
 | Gateway attestation window persistence | `internal/services/inference/model_provenance/window_store.go` | `WindowStore.Load` and `WindowStore.Save` implementations |
 | Sealed campaign copy | `internal/services/evaluation/campaign_model_provenance.go` | `Store.SaveModelProvenanceWindow` and `Store.LoadModelProvenanceWindow`, run with `./ztd test unit --pkg ./internal/services/evaluation --run ModelProvenance` |
-| Campaign verification | `internal/services/evaluation/campaign_model_provenance.go` | `CampaignModelProvenanceReader.VerifyAssignmentModelProvenance` |
+| Gateway witness capture | `internal/services/evaluation/campaign_witness_capture.go` | `CampaignWitnessCapture`, the only owner that fetches attestation windows from the Gateway, run with `./ztd test unit --pkg ./internal/services/evaluation --run WitnessCapture` |
+| Campaign verification | `internal/services/evaluation/campaign_model_provenance.go` | `CampaignModelProvenanceReader.VerifyAssignmentModelProvenance`, a store-only reader with no Gateway remote |
 | Gateway API controller | `internal/services/gateway/model_provenance_controller.go` | Route classification in `gateway_auth.go` |
 
 ## Operator Topology and Roles
@@ -147,10 +148,10 @@ Each inference attempt triggers governed BEGIN and FINALIZE commands over the Pr
 
 ## Evidence Persistence and Campaign Verification
 
-The Gateway persists attestation windows as canonical protojson files under `.ztd/data/inference/model-provenance/windows/<provider_attempt_id>.json` (`INV-PROV-PERSIST-01`). The eval CLI never reads or writes that store. `ztd eval runs verify` fetches each scored attempt's window from the Gateway and seals it into the run's evidence under `.ztd/data/eval/runs/<run-id>/evidence/`, keyed by `model-provenance/<provider_attempt_id>/window-ref.json`. Verification reads only those sealed copies and never falls back to the Gateway on a local miss:
+The Gateway persists attestation windows as canonical protojson files under `.ztd/data/inference/model-provenance/windows/<provider_attempt_id>.json` (`INV-PROV-PERSIST-01`). The eval CLI never reads or writes that store. `ztd eval runs verify` first seals each scored attempt's window from the Gateway into the run's evidence under `.ztd/data/eval/runs/<run-id>/evidence/`, keyed by `model-provenance/<provider_attempt_id>/window-ref.json`. That capture belongs to `CampaignWitnessCapture` (`internal/services/evaluation/campaign_witness_capture.go`). Verification reads only those sealed copies and never falls back to the Gateway on a local miss. While the Gateway is unreachable nothing is sealed, and the policies below decide from the windows the run already holds:
 
 - **Interim Policy**: Missing windows are logged as incomplete telemetry without disqualifying the assignment.
-- **Strict Policy (`--require-provenance` / `--require-witness`)**: Strict verification requires a valid, verified window where `digest_match = true` for 100% of scored inferences. A missing window fails the run. The verifier waits for each window's attestation-recorded event, reconciling once per SSE (re)connect because ephemeral events are not replayed, for up to five minutes (`INV-PROV-PERSIST-05`).
+- **Strict Policy (`--require-provenance` / `--require-witness`)**: Strict verification requires a valid, verified window where `digest_match = true` for 100% of scored inferences. A missing window fails the run. Before verification, the capture waits for each window's attestation-recorded event, reconciling once per SSE (re)connect because ephemeral events are not replayed, for up to five minutes (`INV-PROV-PERSIST-05`).
 - **Compliance Reports**: Generation requires a sealed copy for every scored attempt. A missing copy fails generation with `ErrEvalRunVerificationFailed`, and offline replay reads the same sealed copies from the bundle.
 
 ## Procedures

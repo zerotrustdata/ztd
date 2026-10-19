@@ -106,6 +106,39 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	assert.True(t, isMissingRecord(err))
 }
 
+// The holder dies after it is asked to stop and never publishes its released
+// status. Cancel returns on the process exit, settles the lease, and reports it.
+func TestRunsCancel_ReturnsWhenTheHolderExitsWithoutReleasing(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	env.prepareRun(t, "eval-a", "run-a-1")
+	env.holdRun(t, "run-a-1")
+
+	type outcome struct {
+		out string
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		out, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
+		done <- outcome{out, err}
+	}()
+
+	env.stream.awaitStop(t)
+	env.control.exit(otherHostPID)
+
+	select {
+	case result := <-done:
+		require.NoError(t, result.err, result.out)
+		assert.Contains(t, result.out, "Process 9999 exited; cleared its lease on run run-a-1")
+		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", testModelRoleCells(t)))
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancel did not return after the holder exited")
+	}
+	_, err := env.store(t).LoadRunLease(context.Background(), "run-a-1")
+	assert.True(t, isMissingRecord(err))
+}
+
 func TestRunsCancel_RejectsMissingAndArchivedRuns(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
@@ -170,17 +203,25 @@ func TestRunsResume_ReportsItsLifecycleToTheGateway(t *testing.T) {
 	assert.NotNil(t, released.EndedAt)
 }
 
-func TestRunsResume_OfAStoppedRunReportsCancelledWithoutRunning(t *testing.T) {
+func TestRunsResume_OfAStoppedRunPostsNothingToTheGateway(t *testing.T) {
 	env := setupRunEnv(t)
 	env.enableWitnessGateway(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "runs", "cancel", runID, "--publish=false")
 
-	// Nothing is queued, so the resume executes nothing and its only report is the
-	// released status. A running report from cancelled is a transition the Gateway
-	// refuses.
-	env.mustRun(t, "runs", "resume", runID, "--no-auto-bind")
-	assert.Equal(t, models.RunLifecycleStatusCancelled, env.stream.awaitRunState(t).Status)
+	// Nothing is queued, so the resume executes nothing and posts nothing: no
+	// running, and no released status, which the Gateway would refuse from cancelled
+	// in any case. A drained queue reads provider residency before the command
+	// returns, and the fake Gateway does not answer that query, so the command ends
+	// with that error. The posts happen before the command returns, so an empty
+	// channel afterwards means none were sent.
+	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
+	require.ErrorContains(t, err, "provider residency")
+	select {
+	case req := <-env.stream.states:
+		t.Fatalf("a release that executed nothing posted %s", req.Status)
+	default:
+	}
 }
 
 func TestRunsResume_FailsClosedWhenTheGatewayRefusesRunning(t *testing.T) {
@@ -211,7 +252,9 @@ func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {
 
 func TestRunsShow_WatchFollowsARunUntilItSettles(t *testing.T) {
 	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
+	env.holdRun(t, "run-a-1")
 
 	done := make(chan string, 1)
 	go func() {
@@ -224,7 +267,14 @@ func TestRunsShow_WatchFollowsARunUntilItSettles(t *testing.T) {
 	case <-time.After(60 * time.Millisecond):
 	}
 
-	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
+	// The holding process settles the run, releases its lease, and reports the
+	// settled status on the stream. The watch reloads on that event.
+	store := env.store(t)
+	_, err := evaluation.NewCampaignController(store, nil, env.deps.now, adaptNewID(env.deps.newID)).CancelRun(context.Background(), "run-a-1")
+	require.NoError(t, err)
+	require.NoError(t, store.ClearRunLease(context.Background(), "run-a-1"))
+	env.control.setAlive(otherHostPID, false)
+	env.stream.publishRunStatus(t, "run-a-1", models.RunLifecycleStatusCancelled)
 	select {
 	case out := <-done:
 		assert.Contains(t, out, "cancelled")

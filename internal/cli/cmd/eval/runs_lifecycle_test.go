@@ -19,6 +19,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 const otherHostPID = 9999
@@ -30,6 +32,33 @@ type rejectingRunStateReporter struct {
 
 func (r rejectingRunStateReporter) UpdateRunState(context.Context, models.ObserveProducerRunStateRequest) error {
 	return r.err
+}
+
+// recordingRunStateReporter is a Gateway run projection that accepts every update
+// and keeps the statuses it was sent.
+type recordingRunStateReporter struct {
+	posts []models.RunLifecycleStatus
+}
+
+func (r *recordingRunStateReporter) UpdateRunState(_ context.Context, req models.ObserveProducerRunStateRequest) error {
+	r.posts = append(r.posts, req.Status)
+	return nil
+}
+
+// A release that executed nothing posts nothing. A drained run whose verification
+// has failed is such a release, and the Gateway would refuse its terminal status
+// after a completed projection. The release reads no run state here, so the
+// lifecycle has no store.
+func TestRunLifecycle_ReleaseOfANoOpRunPostsNothing(t *testing.T) {
+	reporter := &recordingRunStateReporter{}
+	lifecycle := &runLifecycle{
+		client: reporter,
+		deps:   nativeEvalDeps{now: func() time.Time { return time.Unix(1789657337, 0).UTC() }},
+		runID:  "run-a-1",
+	}
+
+	require.NoError(t, lifecycle.reportTerminal(context.Background(), false))
+	assert.Empty(t, reporter.posts)
 }
 
 func TestRunLifecycle_RejectedPostIsReturnedToTheCommand(t *testing.T) {
@@ -58,4 +87,31 @@ func (e *runEnv) holdRun(t *testing.T, runID string) {
 	}, nil)
 	require.NoError(t, err)
 	e.control.setAlive(otherHostPID, true)
+}
+
+// The holder's process exits and no released status ever arrives. The exit
+// settles the lease, and the wait ends on the exit alone.
+func TestRunsCancel_ReturnsWhenTheHolderExitsBeforeAnyReleasedEvent(t *testing.T) {
+	ctx := context.Background()
+	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	store := evaluation.NewStore(files)
+	control := newFakeProcessControl()
+	control.setAlive(otherHostPID, true)
+	_, err = store.AcquireRunLease(ctx, evaluation.RunLease{RunID: "run-a-1", PID: otherHostPID, Host: testHost, StartedAt: time.Now().UTC()}, nil)
+	require.NoError(t, err)
+	live := leaseLiveness(control)
+
+	holderExit := watchHolderExit(ctx, control, otherHostPID)
+	control.exit(otherHostPID)
+	// Nothing is delivered on the released or events channels, and the stream stays
+	// open, so only the holder's exit can end the wait.
+	stream := &runEventStream{done: make(chan struct{})}
+	holderExited, err := awaitRunRelease(ctx, nil, nil, stream, holderExit, func() (bool, error) {
+		return settleRunLease(ctx, store, live, "run-a-1")
+	})
+	require.NoError(t, err)
+	assert.True(t, holderExited)
+	_, err = store.LoadRunLease(ctx, "run-a-1")
+	assert.True(t, isMissingRecord(err))
 }

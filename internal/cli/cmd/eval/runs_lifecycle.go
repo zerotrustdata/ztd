@@ -485,9 +485,12 @@ public mirror, so the explorer stops reporting the run as running.`,
 			switch {
 			case err == nil && live(*lease):
 				result.WasRunning = true
-				if err := awaitRunStop(cmd, deps, cfg, fileSvc, store, control, live, lease, jsonOutput); err != nil {
+				holderExited, err := awaitRunStop(cmd, deps, cfg, fileSvc, store, control, live, lease, jsonOutput)
+				if err != nil {
 					return fmt.Errorf("evaluation: runs cancel: %w", err)
 				}
+				// A holder that exited left its lease stale, and cancel cleared it.
+				result.ClearedStale = holderExited
 			case err == nil:
 				result.ClearedStale = true
 				if err := store.ClearRunLease(cmd.Context(), runID); err != nil {
@@ -534,24 +537,28 @@ public mirror, so the explorer stops reporting the run as running.`,
 // and the release arrives on the same stream. The stream is subscribed first,
 // and its connect reconciles the lease, so a release that happened before the
 // subscription, or while the stream was down, is not missed.
-func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, store *evaluation.Store, control processControl, live evaluation.LeaseLiveness, lease *evaluation.RunLease, jsonOutput bool) error {
+//
+// The holder's exit is watched on the operating system. A process that dies
+// without releasing the run does not leave cancel waiting for an event that never
+// comes: its lease is settled locally, and holderExited reports that.
+func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, store *evaluation.Store, control processControl, live evaluation.LeaseLiveness, lease *evaluation.RunLease, jsonOutput bool) (bool, error) {
 	ctx := cmd.Context()
 	runID := lease.RunID
 	authContext, err := deps.authLoader(fileSvc, cfg)
 	if err != nil {
-		return fmt.Errorf("load CLI identity: %w", err)
+		return false, fmt.Errorf("load CLI identity: %w", err)
 	}
 	appClient, err := inferenceEvalAppClient(ctx, cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
 	if err != nil {
-		return err
+		return false, err
 	}
 	run, err := store.LoadRun(ctx, runID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
 	if err != nil {
-		return fmt.Errorf("build stream client: %w", err)
+		return false, fmt.Errorf("build stream client: %w", err)
 	}
 
 	events := make(chan runEvent)
@@ -570,18 +577,24 @@ func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, f
 		}
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer stream.Close()
 	select {
 	case err := <-released:
 		// The lease was already gone or stale when the stream connected.
-		return err
+		return false, err
 	default:
 	}
 
+	// The exit is watched from before the stop request, so an exit that lands
+	// during the request is still seen.
+	exitCtx, stopExitWatch := context.WithCancel(ctx)
+	defer stopExitWatch()
+	holderExit := watchHolderExit(exitCtx, control, lease.PID)
+
 	if _, err := store.RequestRunCancel(ctx, runID, deps.now()); err != nil {
-		return err
+		return false, err
 	}
 	// Delivery is best effort: the cancel request in the lease reaches a process
 	// that cannot be signalled.
@@ -594,34 +607,63 @@ func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, f
 		StopScope:     models.StopScopeCycle,
 		CLISessionID:  authContext.CLISessionID,
 	}); err != nil {
-		return fmt.Errorf("request stop: %w", err)
+		return false, fmt.Errorf("request stop: %w", err)
 	}
 	if !jsonOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for process %d to finish its current assignment\n", lease.PID)
 	}
+	holderExited, err := awaitRunRelease(ctx, released, events, stream, holderExit, func() (bool, error) {
+		return settleRunLease(ctx, store, live, runID)
+	})
+	if err != nil {
+		return false, err
+	}
+	if holderExited && !jsonOutput {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Process %d exited; cleared its lease on run %s\n", lease.PID, runID)
+	}
+	return holderExited, nil
+}
+
+// awaitRunRelease waits for the holder of a run to release it. It returns when
+// the stream reports a settled status, when released delivers the connect
+// reconcile's outcome, or when the holder's process exits and settle finds its
+// lease gone or stale. The exit case reports holderExited. The wait also ends
+// when the stream stops on its own, with the stream's error, or when ctx ends.
+func awaitRunRelease(ctx context.Context, released <-chan error, events <-chan runEvent, stream *runEventStream, holderExit <-chan error, settle func() (bool, error)) (bool, error) {
 	for {
 		select {
 		case err := <-released:
-			return err
+			return false, err
 		case ev := <-events:
 			if ev.Status != nil && runStatusSettled(ev.Status.Status) {
-				return nil
+				return false, nil
 			}
+		case err := <-holderExit:
+			if err != nil {
+				return false, fmt.Errorf("wait for run holder: %w", err)
+			}
+			done, err := settle()
+			if err != nil {
+				return false, err
+			}
+			if done {
+				return true, nil
+			}
+			// The PID now names another live process, so the lease still looks held.
+			// The stream remains the release signal, and the exit is not awaited again.
+			holderExit = nil
 		case <-stream.Done():
-			streamErr := stream.Err()
-			if streamErr == nil {
-				streamErr = constants.ErrSSEStreamClosed
-			}
-			return fmt.Errorf("run events: %w", streamErr)
+			return false, stream.StoppedError()
 		case <-ctx.Done():
-			return ctx.Err()
+			return false, ctx.Err()
 		}
 	}
 }
 
 // settleRunLease reports whether a run's process has released the run: its lease
 // is missing, or it names a process that is no longer alive. A stale lease is
-// cleared, as cancel always has.
+// cleared, as cancel always has. A lease that a concurrent settle already cleared
+// counts as released.
 func settleRunLease(ctx context.Context, store *evaluation.Store, live evaluation.LeaseLiveness, runID string) (bool, error) {
 	lease, err := store.LoadRunLease(ctx, runID)
 	switch {
@@ -632,7 +674,7 @@ func settleRunLease(ctx context.Context, store *evaluation.Store, live evaluatio
 	case live(*lease):
 		return false, nil
 	}
-	if err := store.ClearRunLease(ctx, runID); err != nil {
+	if err := store.ClearRunLease(ctx, runID); err != nil && !isMissingRecord(err) {
 		return false, err
 	}
 	return true, nil

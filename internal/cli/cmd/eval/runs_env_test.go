@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -55,10 +56,12 @@ type fakeProcessControl struct {
 	host       string
 	alive      map[int]bool
 	interrupts []int
+	// exits holds, per PID, the channel that WaitExit blocks on until exit closes it.
+	exits map[int]chan struct{}
 }
 
 func newFakeProcessControl() *fakeProcessControl {
-	return &fakeProcessControl{pid: testPID, host: testHost, alive: map[int]bool{testPID: true}}
+	return &fakeProcessControl{pid: testPID, host: testHost, alive: map[int]bool{testPID: true}, exits: make(map[int]chan struct{})}
 }
 
 func (f *fakeProcessControl) PID() int { return f.pid }
@@ -90,10 +93,53 @@ func (f *fakeProcessControl) interrupted() []int {
 	return append([]int(nil), f.interrupts...)
 }
 
+// exitChan returns the channel that closes when pid exits. Callers hold f.mu.
+func (f *fakeProcessControl) exitChan(pid int) chan struct{} {
+	ch, ok := f.exits[pid]
+	if !ok {
+		ch = make(chan struct{})
+		f.exits[pid] = ch
+	}
+	return ch
+}
+
+// WaitExit blocks until exit is called for pid, or until ctx ends.
+func (f *fakeProcessControl) WaitExit(ctx context.Context, pid int) error {
+	f.mu.Lock()
+	exited := f.exitChan(pid)
+	f.mu.Unlock()
+	select {
+	case <-exited:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// exit makes pid die: it is no longer alive, and WaitExit returns for it. Nothing
+// is published on the run's stream, which is what a process that dies without
+// releasing its run looks like.
+func (f *fakeProcessControl) exit(pid int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.alive[pid] = false
+	if ch := f.exitChan(pid); !isClosed(ch) {
+		close(ch)
+	}
+}
+
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
 func testRunControl(control *fakeProcessControl) runControlDeps {
 	return runControlDeps{
 		processFactory: func(fs.RuntimeFileService) (processControl, error) { return control, nil },
-		pollInterval:   5 * time.Millisecond,
 	}
 }
 
@@ -133,18 +179,56 @@ func testRunOperators() []*operatorv1.OperatorDocument {
 	}
 }
 
+// writePublicationProofResponse answers the assignment proof endpoints the way
+// the Gateway does: each answer names the assignment it published and carries
+// that assignment's database digest, in request order.
 func writePublicationProofResponse(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
 	switch r.URL.Path {
-	case constants.APIPaths.PublicFeedProofs, constants.APIPaths.PublicFeedProofsBatch, constants.APIPaths.PublicFeedProofsPush:
-		if r.Method != http.MethodPost {
-			return false
+	case constants.APIPaths.PublicFeedProofs:
+		var request models.PublicAssignmentAuditProofPublishRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return true
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"accepted":true}`))
+		writeFakeJSON(w, fakeAssignmentProofAnswer(request.AssignmentID))
+		return true
+	case constants.APIPaths.PublicFeedProofsBatch:
+		var request models.PublicAssignmentAuditProofBatchPublishRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return true
+		}
+		response := models.PublicAssignmentAuditProofBatchPublishResponse{Accepted: true, IngestedProofs: len(request.Proofs), Proofs: []models.PublicAssignmentAuditProofPublishResponse{}}
+		for _, proof := range request.Proofs {
+			response.Proofs = append(response.Proofs, fakeAssignmentProofAnswer(proof.AssignmentID))
+		}
+		writeFakeJSON(w, response)
+		return true
+	case constants.APIPaths.PublicFeedProofsPush:
+		writeFakeJSON(w, models.PublicProofCatalogPushResponse{Accepted: true})
 		return true
 	default:
 		return false
 	}
+}
+
+// fakeAssignmentProofAnswer is the Gateway's accepted answer for one assignment
+// audit proof. The database digest is derived from the assignment so a digest
+// bound to the wrong request is detectable.
+func fakeAssignmentProofAnswer(assignmentID string) models.PublicAssignmentAuditProofPublishResponse {
+	return models.PublicAssignmentAuditProofPublishResponse{
+		Accepted:       true,
+		AssignmentID:   assignmentID,
+		DatabaseSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("fake-assignment-database:"+assignmentID))),
+	}
+}
+
+func writeFakeJSON(w http.ResponseWriter, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 // writeGatewayHealthResponse answers the posture preflight with the doctrine

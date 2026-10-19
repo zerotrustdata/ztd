@@ -1143,7 +1143,11 @@ func (s *AuthService) cliCertBoundToOperator(ctx context.Context, certURIs []*ur
 	if err := json.Unmarshal(b, &cliSession); err != nil {
 		return false, fmt.Errorf("gateway: auth: unmarshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
 	}
-	if !cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(time.Now()) {
+	checkTime := time.Now()
+	if !cliSession.IsActive ||
+		(!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) ||
+		(!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) ||
+		(!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
 		return false, nil
 	}
 	return cliSessionBindsOperator(&cliSession, operatorSessionID), nil

@@ -287,4 +287,3 @@ func TestCampaignRunVerifier_RegradesOnlyCatalogsThisBuildStillCarries(t *testin
 		})
 	}
 }
-

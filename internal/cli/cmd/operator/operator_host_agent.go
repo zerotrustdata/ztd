@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -607,10 +608,14 @@ func stopWorkersFromPIDFiles(destDir, workingDir string, matchesDir func(string)
 				_ = os.Remove(file)
 				return
 			}
-			exited, _ := waitPIDTermination(pid, 2*time.Second)
+			exitCtx, cancelExit := context.WithTimeout(context.Background(), 2*time.Second)
+			exited := platform.WaitForProcessExit(exitCtx, pid) == nil
+			cancelExit()
 			if !exited {
 				_ = p.Kill()
-				_, _ = waitPIDTermination(pid, 2*time.Second)
+				killCtx, cancelKill := context.WithTimeout(context.Background(), 2*time.Second)
+				_ = platform.WaitForProcessExit(killCtx, pid)
+				cancelKill()
 			}
 			_ = os.Remove(file)
 

@@ -364,12 +364,15 @@ type remoteGatewayCampaignProofPublisher struct {
 	client authcmd.APIClient
 }
 
-func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx context.Context, inputs []evaluation.AssignmentAuditProofInput, deferMirrorPush bool) error {
+// IngestAssignmentAuditSlices publishes the assignment audit proofs and returns
+// the Gateway's answer for each one, in request order. Each answer's database
+// digest is the digest of the database the Gateway built or reused.
+func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx context.Context, inputs []evaluation.AssignmentAuditProofInput, deferMirrorPush bool) ([]models.PublicAssignmentAuditProofPublishResponse, error) {
 	if p == nil || p.client == nil {
-		return fmt.Errorf("campaign publication: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
+		return nil, fmt.Errorf("campaign publication: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
 	}
 	if len(inputs) == 0 {
-		return nil
+		return nil, nil
 	}
 	proofs := make([]models.PublicAssignmentAuditProofPublishRequest, len(inputs))
 	for index, input := range inputs {
@@ -402,31 +405,37 @@ func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx co
 		})
 	}
 	if err != nil {
-		return fmt.Errorf("campaign publication: publish assignment audit proof: %w", err)
+		return nil, fmt.Errorf("campaign publication: publish assignment audit proof: %w", err)
 	}
+	var responses []models.PublicAssignmentAuditProofPublishResponse
 	if len(proofs) == 1 {
 		var response models.PublicAssignmentAuditProofPublishResponse
 		if err := json.Unmarshal(responseBody, &response); err != nil {
-			return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+			return nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 		}
 		if !response.Accepted {
-			return constants.ErrPublicFeedProofIngestRejected
+			return nil, constants.ErrPublicFeedProofIngestRejected
 		}
-		return verifyAssignmentAuditProofDigests(proofs, []models.PublicAssignmentAuditProofPublishResponse{response})
+		responses = []models.PublicAssignmentAuditProofPublishResponse{response}
+	} else {
+		var response models.PublicAssignmentAuditProofBatchPublishResponse
+		if err := json.Unmarshal(responseBody, &response); err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+		}
+		if !response.Accepted {
+			return nil, constants.ErrPublicFeedProofIngestRejected
+		}
+		responses = response.Proofs
 	}
-	var response models.PublicAssignmentAuditProofBatchPublishResponse
-	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+	if err := verifyAssignmentAuditProofDigests(proofs, responses); err != nil {
+		return nil, err
 	}
-	if !response.Accepted {
-		return constants.ErrPublicFeedProofIngestRejected
-	}
-	return verifyAssignmentAuditProofDigests(proofs, response.Proofs)
+	return responses, nil
 }
 
 // verifyAssignmentAuditProofDigests checks that the gateway answered every
 // request, in request order, with the assignment it published and a database
-// digest. The digests are validated here and not yet returned to the caller.
+// digest. The caller receives only answers that pass this check.
 func verifyAssignmentAuditProofDigests(proofs []models.PublicAssignmentAuditProofPublishRequest, responses []models.PublicAssignmentAuditProofPublishResponse) error {
 	if len(responses) != len(proofs) {
 		return fmt.Errorf("%w: gateway returned %d assignment audit proofs for %d requests", constants.ErrInvalidJSONResponse, len(responses), len(proofs))

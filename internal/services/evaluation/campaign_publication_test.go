@@ -824,7 +824,7 @@ func TestResetFeedPublicationIdempotencyPreservesAuditProofKeys(t *testing.T) {
 		RunID:                runID,
 		PublishedIdempotency: []string{"run:assignment-1:result", AssignmentAuditProofIdempotencyKey(runID, "assignment-1")},
 		PublishedProofArtifacts: map[string]CampaignPublishedProofArtifacts{
-			"assignment-1": {DatabaseSHA256: strings.Repeat("a", 64), VaultKeySHA256: strings.Repeat("b", 64)},
+			"assignment-1": {DatabaseSHA256: strings.Repeat("a", 64)},
 		},
 		LastPublishedSequence: 42,
 	}))
@@ -964,7 +964,6 @@ func recordedProofArtifacts(t *testing.T, store *Store, run *evalv1.EvaluationRu
 		proofKeys = append(proofKeys, AssignmentAuditProofIdempotencyKey(run.GetRunId(), assignment.GetAssignmentId()))
 		proofArtifacts[assignment.GetAssignmentId()] = CampaignPublishedProofArtifacts{
 			DatabaseSHA256:      fmt.Sprintf("%064x", index*2),
-			VaultKeySHA256:      fmt.Sprintf("%064x", index*2+1),
 			ScenarioInputSHA256: fixture.Input.Reference.GetSha256(),
 			ScenarioGoldSHA256:  fixture.Gold.Reference.GetSha256(),
 		}
