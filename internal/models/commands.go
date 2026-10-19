@@ -8,6 +8,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -30,6 +31,23 @@ type ExecutionRequestPayload struct {
 	Tags              map[string]string `json:"tags,omitempty"`
 	Justification     string            `json:"justification,omitempty"`
 	Intent            string            `json:"intent,omitempty"`
+}
+
+// RunShellCommandRequest is the typed argument contract of the native
+// run_shell_command MCP tool. L1 doctrine decodes it to screen the command
+// line the tool executes.
+type RunShellCommandRequest struct {
+	Command    string   `json:"command"`
+	Args       []string `json:"args,omitempty"`
+	Timeout    int      `json:"timeout,omitempty"`
+	WorkingDir string   `json:"working_dir,omitempty"`
+	Hostnames  []string `json:"hostnames,omitempty"`
+}
+
+// CommandLine returns the command and its arguments as the single
+// space-joined line that safety and doctrine checks screen.
+func (r RunShellCommandRequest) CommandLine() string {
+	return strings.Join(append([]string{r.Command}, r.Args...), " ")
 }
 
 // ExecutionResult is the domain type for command execution results.

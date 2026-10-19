@@ -76,7 +76,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only operators (`provenance`, `observer` without `data`) MUST reject arbitrary command execution via `ValidateWitnessCommand`. Adding `data` permits governed commands in the same process. |
+| INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only operators (`provenance`, `observer` without `data` or `inference`) MUST reject arbitrary command execution via `ValidateWitnessCommand` and governed native MCP tools via `ValidateWitnessNativeTool`, except `audit_receipt_list` and `audit_receipt_get` over their own audit store. The executing Operator enforces both at its boundary; the Gateway refuses the same dispatch up front against `GetOperatorCapabilities` with `ErrWitnessCommandNotCapable` (HTTP 422, `INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE`). Adding `data` permits governed commands in the same process. |
 | INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
 
 ### Coexistence and Fingerprinting (`INV-OP-FPR`)
@@ -180,7 +180,7 @@ Each Operator process declares its functional roles through startup flags:
 ```
 
 Witness constraints:
-- Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand`.
+- Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the audit-receipt reads via `ValidateWitnessNativeTool`.
 - Adding `data` permits governed command execution in the same process.
 - Streamed inference progress is scrubbed at the source before publication. Streams are buffered line-by-line and scrubbed against regex patterns. Private keys are buffered until completion. The terminal `output_hash` binds the concatenated scrubbed progress chunks.
 
@@ -264,6 +264,7 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 
 - **State Directory (`.ztd/`)**: Contains SQLite database `data/ztd.db` (audit records, nonces, suspended transactions), encrypted vault storage (`vault/`), and Git file ledger (`data/ledger/`).
 - **Git File Ledger**: Every governed `FILE_EDIT` or `RESTORE_FILE` action creates an encrypted snapshot in Git before and after modification.
+- **Native Tools**: A verified `MCP_CALL` envelope runs a tool from the shared registry (`RegisterNativeTools`) on the Operator's own host, `mcp.NewOperatorNativeToolHandler`; the Operator never constructs `mcp.GatewayService`. `audit_receipt_list` and `audit_receipt_get` read the Operator's own audit store, so their answers are authoritative for its receipts. Every other tool's result is scrubbed before it enters the signed receipt, and a missing egress scrubber fails the call closed. Witness-only Operators run only the audit-receipt reads (INV-OP-CAP-01). L1 screens `run_shell_command` as the command line it executes, exactly as `EXECUTE_BASH`.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
 - **Unsupported Patches**: File editing rejects the `patch` operation without creating a backup or changing the target. Protobuf field 12 (`patch_content`) remains in the wire contract for compatibility and is not consumed by the file-edit handler.
 - **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
@@ -286,7 +287,7 @@ The `ztd autochthon` command is an isolated, autonomous runtime observer and for
 
 - **Opening Inbound Management Listeners on Operators**: Exposing inbound ports instead of maintaining outbound-only mTLS connections (INV-OP-CONN-01).
 - **Executing Unverified Commands**: Treating Gateway delivery as proof of authorization without running the L4 Warden (INV-OP-CONN-02).
-- **Dispatching Commands to Witness Operators**: Sending mutating commands to Provenance or Observer operators lacking the `data` capability (INV-OP-CAP-01).
+- **Dispatching Commands to Witness Operators**: Sending commands or generic native MCP tools to Provenance or Observer operators lacking the `data` or `inference` capability (INV-OP-CAP-01).
 - **Persisting Private Keys to Disk**: Writing Operator private keys or enrollment certificates to unencrypted files in `.ztd/` (INV-OP-STOR-02).
 - **Dangling Replay Nonce Reservations**: Failing to release a nonce after an ordinary L4 validation failure; explicit human L3 denial is the exception because its nonce remains spent (INV-OP-WARD-01).
 - **Executing Actions Before Initial Receipt Persistence**: Invoking execution handlers before the initial `EXECUTING` receipt and commitment attestation are persisted (INV-OP-ACT-01).

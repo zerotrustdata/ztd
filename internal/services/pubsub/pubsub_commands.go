@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -1034,6 +1035,9 @@ func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg
 	if rs.localNativeTools == nil {
 		return "", fmt.Errorf("mcp call %q: %w", toolName, constants.ErrMCPNativeToolHostMissing)
 	}
+	if err := operatorcapability.ValidateWitnessNativeTool(rs.config.EffectiveOperatorCapabilities(), toolName); err != nil {
+		return "", fmt.Errorf("mcp call: %w", err)
+	}
 	if rs.scrubbing == nil || !rs.scrubbing.IsEnabled() {
 		return "", constants.ErrEgressScrubberUnavailable
 	}
@@ -1045,7 +1049,7 @@ func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg
 		return "", fmt.Errorf("mcp call %q: %w", toolName, err)
 	}
 	summary := mcp.ToolResultSummary(result)
-	if toolName != (&mcp.AuditReceiptListTool{}).Name() {
+	if toolName != constants.MCPToolAuditReceiptList {
 		return rs.scrubbing.ScrubText(ctx, summary), nil
 	}
 	var typedResult mcp.OperatorAuditReceiptListResult
@@ -1066,7 +1070,7 @@ func (rs *OperatorPubSubService) useLocalNativeToolRoute(toolName string, args j
 	if rs == nil || !rs.gatewayMode {
 		return true
 	}
-	if toolName != (&mcp.AuditReceiptListTool{}).Name() {
+	if toolName != constants.MCPToolAuditReceiptList {
 		return false
 	}
 	var request mcp.AuditReceiptListRequest

@@ -21,7 +21,7 @@ func TestBlendedOperatorKeepsEveryCapability(t *testing.T) {
 	cfg := &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver})}
 	op := &operatorv1.OperatorDocument{Id: "blend", OperatorSessionId: "session", OperatorType: string(constants.OperatorTypeRemote), Status: string(constants.OperatorStatusActive), RuntimeConfig: cfg}
 	require.True(t, IsDataOperator(op))
-	require.NoError(t, ValidateWitnessCommand(cfg, "pwd"))
+	require.NoError(t, ValidateWitnessCommand(ResolveOperatorCapabilities(cfg), "pwd"))
 }
 
 func TestEveryOperatorCapabilityCombinationPreservesMembership(t *testing.T) {
@@ -43,12 +43,16 @@ func TestEveryOperatorCapabilityCombinationPreservesMembership(t *testing.T) {
 				}
 				require.Equal(t, effective, GetOperatorCapabilities(op))
 				require.Equal(t, effective.Has(constants.OperatorCapabilityData), IsDataOperator(op))
-				err := ValidateWitnessCommand(cfg, "pwd")
+				commandErr := ValidateWitnessCommand(ResolveOperatorCapabilities(cfg), "pwd")
+				nativeToolErr := ValidateWitnessNativeTool(ResolveOperatorCapabilities(cfg), constants.MCPToolRunShellCommand)
 				if capabilities.Has(constants.OperatorCapabilityData) || capabilities.Has(constants.OperatorCapabilityInference) {
-					require.NoError(t, err)
+					require.NoError(t, commandErr)
+					require.NoError(t, nativeToolErr)
 				} else {
-					require.ErrorIs(t, err, constants.ErrWitnessCommandNotCapable)
+					require.ErrorIs(t, commandErr, constants.ErrWitnessCommandNotCapable)
+					require.ErrorIs(t, nativeToolErr, constants.ErrWitnessCommandNotCapable)
 				}
+				require.NoError(t, ValidateWitnessNativeTool(ResolveOperatorCapabilities(cfg), constants.MCPToolAuditReceiptList))
 			})
 		}
 	}

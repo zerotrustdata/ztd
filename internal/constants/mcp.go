@@ -61,3 +61,18 @@ const (
 	// GooseExtTimeout is the timeout in seconds for the ztd Goose extension entry.
 	GooseExtTimeout = 300
 )
+
+// Native MCP tool names referenced outside the tool's own implementation.
+// RegisterNativeTools remains the inventory (INV-MCP-03).
+const (
+	// MCPToolRunShellCommand executes a command line; L1 screens it as one.
+	MCPToolRunShellCommand = "run_shell_command"
+
+	// MCPToolAuditReceiptList lists signed receipts from the executing
+	// runtime's own audit store.
+	MCPToolAuditReceiptList = "audit_receipt_list"
+
+	// MCPToolAuditReceiptGet reads one signed receipt from the executing
+	// runtime's own audit store.
+	MCPToolAuditReceiptGet = "audit_receipt_get"
+)

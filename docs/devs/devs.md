@@ -233,8 +233,8 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 
 | ID | Rule |
 | :--- | :--- |
-| INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute through the Gateway in-process Operator boundary after governed dispatch. |
-| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`). |
+| INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host: the Gateway's embedded Operator, or an outbound Operator's `mcp.NewOperatorNativeToolHandler`. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
+| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the audit-receipt reads (`INV-OP-CAP-01` in [Operator Architecture](../architecture/operator.md)). |
 | INV-MCP-03 | `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go` is the inventory. Documentation MUST NOT duplicate the tool list. |
 | INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
 

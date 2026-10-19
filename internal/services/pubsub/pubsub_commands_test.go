@@ -28,8 +28,10 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -110,6 +112,61 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 			useLocal := gateway.useLocalNativeToolRoute(tool, json.RawMessage(tt.args))
 			assert.Equal(t, tt.wantLocal, useLocal)
 			assert.True(t, local.useLocalNativeToolRoute(tool, json.RawMessage(tt.args)), "outbound Operators never fall back to a Gateway mirror")
+		})
+	}
+}
+
+// unreachableAuditReceiptQuery satisfies the Operator native tool host's
+// required store; the witness gate refuses or passes before any query runs.
+type unreachableAuditReceiptQuery struct{}
+
+func (unreachableAuditReceiptQuery) ListActionReceipts(models.AuditScope, int, int) ([]*models.ActionReceiptRecord, error) {
+	return nil, errors.ErrUnsupported
+}
+
+func (unreachableAuditReceiptQuery) ListActionReceiptsSince(time.Time, int) ([]*models.ActionReceiptRecord, error) {
+	return nil, errors.ErrUnsupported
+}
+
+func (unreachableAuditReceiptQuery) GetActionReceipt(string) (*models.ActionReceiptRecord, error) {
+	return nil, errors.ErrUnsupported
+}
+
+// The executing Operator is the PEP for witness-only capability: a provenance
+// or observer Operator refuses generic native tools at its own boundary, even
+// when the Gateway pre-check was skipped, but still serves reads of its own
+// signed audit store.
+func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
+	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{})
+	require.NoError(t, err)
+	tests := []struct {
+		name         string
+		capabilities constants.OperatorCapabilities
+		tool         string
+		wantRefused  bool
+	}{
+		{name: "observer refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
+		{name: "provenance refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
+		{name: "observer serves its own audit_receipt_get", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolAuditReceiptGet},
+		{name: "provenance serves its own audit_receipt_list", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolAuditReceiptList},
+		{name: "data runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData}, tool: constants.MCPToolRunShellCommand},
+		{name: "provenance with inference runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance, constants.OperatorCapabilityInference}, tool: constants.MCPToolRunShellCommand},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &OperatorPubSubService{
+				config:           &config.Config{OperatorCapabilities: tt.capabilities},
+				logger:           testutil.NewTestLogger(),
+				localNativeTools: host,
+			}
+			_, err := svc.executeLocalNativeTool(t.Context(), &PubSubCommandMessage{ID: "witness-gate"}, tt.tool, json.RawMessage(`{"command":"pwd"}`))
+			if tt.wantRefused {
+				require.ErrorIs(t, err, constants.ErrWitnessCommandNotCapable)
+				return
+			}
+			// Past the capability gate, the missing egress scrubber is the next
+			// fail-closed check, so the tool itself never runs here.
+			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 		})
 	}
 }

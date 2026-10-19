@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"strings"
 
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
@@ -64,8 +62,8 @@ func OllamaCopyCommand(source, destination string) (string, error) {
 
 // ValidateWitnessCommand rejects generic command execution on read-only witness
 // operators. Their narrowly scoped observation handlers remain available.
-func ValidateWitnessCommand(cfg *operatorv1.OperatorRuntimeConfig, command string) error {
-	if ResolveOperatorCapabilities(cfg).Has(constants.OperatorCapabilityData) || ResolveOperatorCapabilities(cfg).Has(constants.OperatorCapabilityInference) {
+func ValidateWitnessCommand(capabilities constants.OperatorCapabilities, command string) error {
+	if runsGenericWork(capabilities) {
 		return nil
 	}
 	return fmt.Errorf("%w: command %q", constants.ErrWitnessCommandNotCapable, strings.TrimSpace(command))

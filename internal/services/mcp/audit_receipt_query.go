@@ -61,15 +61,15 @@ func withAuditReceiptListAuthority(ctx context.Context, authority auditReceiptLi
 	return context.WithValue(ctx, auditReceiptListAuthorityCtxKey{}, authority)
 }
 
-// AuditReceiptListTool queries signed ActionReceipt records from the operator
-// audit vault under governed MCP tool dispatch. It is the governed
+// AuditReceiptListTool queries signed ActionReceipt records from the executing
+// runtime's local audit store under governed MCP tool dispatch. It is the governed
 // replacement for unauthenticated HTTP audit polling: every invocation
 // traverses the L1–L5 gauntlet and produces its own audit record.
 type AuditReceiptListTool struct{}
 
 // Name returns the tool identifier.
 func (t *AuditReceiptListTool) Name() string {
-	return "audit_receipt_list"
+	return constants.MCPToolAuditReceiptList
 }
 
 // Description returns a human-readable description.
@@ -247,17 +247,18 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 }
 
 // AuditReceiptGetTool retrieves a single signed ActionReceipt by transaction
-// ID from the configured local audit store under governed MCP tool dispatch.
+// ID from the executing runtime's local audit store under governed MCP tool
+// dispatch.
 type AuditReceiptGetTool struct{}
 
 // Name returns the tool identifier.
 func (t *AuditReceiptGetTool) Name() string {
-	return "audit_receipt_get"
+	return constants.MCPToolAuditReceiptGet
 }
 
 // Description returns a human-readable description.
 func (t *AuditReceiptGetTool) Description() string {
-	return "Retrieves a single signed ActionReceipt by transaction_id from the Gateway's local audit store. Remote Operator receipts in this store are best-effort projections, not authoritative evidence."
+	return "Retrieves a single signed ActionReceipt by transaction_id from the executing runtime's local audit store. An Operator's store is authoritative for its own receipts; remote Operator receipts in the Gateway's store are best-effort projections, not authoritative evidence."
 }
 
 // InputSchema returns the JSON Schema for tool validation.

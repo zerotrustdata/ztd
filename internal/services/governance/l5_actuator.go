@@ -594,7 +594,7 @@ func (w *L5Actuator) auditReceiptListSummary(vt *VerifiedTransaction, cmdMsg Com
 		return ""
 	}
 	request := &operatorv1.McpCallRequested{}
-	if err := proto.Unmarshal(vt.Envelope.GetPayload(), request); err != nil || request.GetToolName() != "audit_receipt_list" {
+	if err := proto.Unmarshal(vt.Envelope.GetPayload(), request); err != nil || request.GetToolName() != constants.MCPToolAuditReceiptList {
 		return ""
 	}
 	provider, ok := cmdMsg.(interface {

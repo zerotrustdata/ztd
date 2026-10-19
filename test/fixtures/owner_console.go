@@ -73,9 +73,6 @@ func NewOwnerConsole(t *testing.T, f *GatewayFixture, policy OwnerPolicy) *Owner
 
 	user, err := f.Service.GetUserService().CreateUser(ctx)
 	require.NoError(t, err)
-	ownerID, err := f.Service.GetUserService().FirstUserID(ctx)
-	require.NoError(t, err)
-	require.Equal(t, user.ID, ownerID, "owner console must be the first user")
 
 	sessionID, err := uuid.NewString()
 	require.NoError(t, err)
@@ -94,17 +91,27 @@ func NewOwnerConsole(t *testing.T, f *GatewayFixture, policy OwnerPolicy) *Owner
 	sessionBytes, err := json.Marshal(session)
 	require.NoError(t, err)
 	require.NoError(t, f.Service.GetDocStore().DocSet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), session.ID, sessionBytes))
+	return AttachOwnerConsole(t, f, user.ID, session.ID, policy)
+}
+
+// AttachOwnerConsole opens the stream of an owner who already holds a CLI
+// session, such as the first user BootstrapCLIIdentity enrolls.
+func AttachOwnerConsole(t *testing.T, f *GatewayFixture, ownerID, cliSessionID string, policy OwnerPolicy) *OwnerConsole {
+	t.Helper()
+	firstUserID, err := f.Service.GetUserService().FirstUserID(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, firstUserID, ownerID, "owner console must be the first user")
 
 	c := &OwnerConsole{
-		UserID:       user.ID,
-		CLISessionID: session.ID,
+		UserID:       ownerID,
+		CLISessionID: cliSessionID,
 		gateway:      f,
 		policy:       policy,
 		events:       newEventLog[OwnerEvent](),
 		faults:       newEventLog[error](),
 		requested:    make(map[string]struct{}),
 	}
-	unregister := f.Service.GetGatewayWebSocketHandler().RegisterHandler(pubsub.SSECLIChannel(session.ID), c.receive)
+	unregister := f.Service.GetGatewayWebSocketHandler().RegisterHandler(pubsub.SSECLIChannel(cliSessionID), c.receive)
 
 	t.Cleanup(func() {
 		unregister()

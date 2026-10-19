@@ -79,13 +79,13 @@ func (r *agentRun) runInvestigationContext(ctx context.Context, record AgentTool
 	if err != nil {
 		return AgentToolCall{}, fmt.Errorf("evaluation: encode investigation query: %w", err)
 	}
-	payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_list", ArgumentsJson: string(queryJSON), ExecutionId: record.CallID})
+	payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolAuditReceiptList, ArgumentsJson: string(queryJSON), ExecutionId: record.CallID})
 	if err != nil {
 		return AgentToolCall{}, fmt.Errorf("evaluation: encode investigation MCP call: %w", err)
 	}
 	record.IsOperatorTool = true
 	record.ActionType = string(constants.ActionTypeMcpCall)
-	dispatched, denied, err := r.dispatch(ctx, &record, constants.ActionTypeMcpCall, "audit_receipt_list", payload)
+	dispatched, denied, err := r.dispatch(ctx, &record, constants.ActionTypeMcpCall, constants.MCPToolAuditReceiptList, payload)
 	if err != nil || denied {
 		return record, err
 	}

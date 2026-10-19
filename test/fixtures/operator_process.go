@@ -53,6 +53,13 @@ func NewOperatorHost(t *testing.T) *OperatorHost {
 type OperatorProcessOptions struct {
 	// HeartbeatInterval defaults to one second.
 	HeartbeatInterval time.Duration
+	// Capabilities are the Operator's declared capabilities, as
+	// `ztd operator start --capabilities` passes them. Empty starts a Data
+	// Operator.
+	Capabilities constants.OperatorCapabilities
+	// InferenceOllamaEndpoint is the provider an Operator with the inference
+	// capability calls.
+	InferenceOllamaEndpoint string
 }
 
 // OperatorHeartbeat is one heartbeat the Gateway received from an Operator.
@@ -113,13 +120,15 @@ func (w *OperatorWireWitness) LaunchOperator(t *testing.T, host *OperatorHost, o
 	}
 
 	serveOpts := serve.ServeOperatorOptions{
-		Endpoint:          constants.LocalhostIP,
-		HTTPPort:          w.PlainPort(),
-		HTTPSPort:         w.TLSPort(),
-		WorkingDir:        host.WorkingDir,
-		LaunchDir:         host.WorkingDir,
-		HeartbeatInterval: opts.HeartbeatInterval,
-		Keyring:           host.Keyring,
+		OperatorCapabilities:    opts.Capabilities,
+		Endpoint:                constants.LocalhostIP,
+		HTTPPort:                w.PlainPort(),
+		HTTPSPort:               w.TLSPort(),
+		WorkingDir:              host.WorkingDir,
+		LaunchDir:               host.WorkingDir,
+		HeartbeatInterval:       opts.HeartbeatInterval,
+		Keyring:                 host.Keyring,
+		InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint,
 	}
 	deps := serve.OperatorRuntimeDeps{Logger: testutil.NewTestLogger(), ClientIdentity: identity}
 

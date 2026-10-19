@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/security"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -341,6 +342,9 @@ func (v *L1Doctrine) ValidatePayload(msg proto.Message) []string {
 				}
 			}
 		}
+		if payload.ToolName == constants.MCPToolRunShellCommand {
+			violations = append(violations, v.validateRunShellCommandLine(payload.ArgumentsJson)...)
+		}
 
 	case *operatorv1.A2ACallRequested:
 		// Analyze A2A skill payload for L1 threat patterns
@@ -385,6 +389,23 @@ func (v *L1Doctrine) ValidatePayload(msg proto.Message) []string {
 		}
 	}
 
+	return violations
+}
+
+// validateRunShellCommandLine screens the command line a run_shell_command MCP
+// call executes exactly as EXECUTE_BASH is screened. Per-value argument
+// analysis alone misses a threat split across the command and its args.
+func (v *L1Doctrine) validateRunShellCommandLine(argumentsJSON string) []string {
+	var request models.RunShellCommandRequest
+	if err := json.Unmarshal([]byte(argumentsJSON), &request); err != nil {
+		return []string{fmt.Sprintf("failed to decode %s arguments: %v", constants.MCPToolRunShellCommand, err)}
+	}
+	var violations []string
+	for _, sig := range v.AnalyzeCommand(request.CommandLine()) {
+		if sig.BlockRecommended {
+			violations = append(violations, fmt.Sprintf("command threat detected: %s (category: %s, MITRE: %s)", sig.Indicator, sig.Category, sig.MitreAttack))
+		}
+	}
 	return violations
 }
 

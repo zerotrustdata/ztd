@@ -322,7 +322,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		return nil, fmt.Errorf("dispatch: %w", err)
 	}
 
-	if err := validateWitnessCommandDispatch(op, string(actionType), req.Payload); err != nil {
+	if err := validateWitnessDispatch(op, string(actionType), req.Payload); err != nil {
 		return nil, err
 	}
 
@@ -432,7 +432,7 @@ func (d *DispatchService) ProcessEnvelope(ctx context.Context, wire []byte) (*op
 	if env.GetActionType() != string(actionType) {
 		return nil, fmt.Errorf("dispatch: resume action: %w", constants.ErrTxEventActionMismatch)
 	}
-	if err := validateWitnessCommandDispatch(op, env.GetActionType(), env.GetPayload()); err != nil {
+	if err := validateWitnessDispatch(op, env.GetActionType(), env.GetPayload()); err != nil {
 		return nil, err
 	}
 	txHash, err := govpkg.GenerateMessageID(env)

@@ -182,7 +182,7 @@ Every transaction entering `POST /api/v1/governance/envelopes` or arriving via M
 
 The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`, and `a2a/call`. With a downstream MCP server configured, `tools/list` returns the native tools followed by the downstream's tools, and a native tool wins a name collision (the downstream entry is dropped).
 
-The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains.
+The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains. Gateway MCP calls run on the embedded Operator. An `MCP_CALL` dispatched to an outbound Operator runs the same registry on that Operator's own host after its L4/L5, subject to its witness capability gate (see [Operator Architecture](operator.md#local-state-native-tools-and-git-file-ledger)).
 
 All tools enforce fail-closed input validation: SQL tools reject multi-statement injection; URLs reject private IP ranges (SSRF prevention); filesystem tools reject directory traversal; command tools restrict metacharacters.
 
