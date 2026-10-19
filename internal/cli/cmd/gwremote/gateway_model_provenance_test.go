@@ -20,7 +20,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -105,15 +104,6 @@ func TestRemoteModelProvenanceClient_Load_RejectsInvalidJSON(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestNewModelProvenanceRemote_ReturnsNilWhenGatewayUnhealthy(t *testing.T) {
-	WithGatewayHealthCheck(t, false)
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
-
-	remote, err := newModelProvenanceRemote(fileSvc, cfg)
-	require.NoError(t, err)
-	assert.Nil(t, remote)
-}
-
 func TestNewModelProvenanceRemote_ReturnsClientWhenGatewayHealthy(t *testing.T) {
 	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
@@ -121,13 +111,4 @@ func TestNewModelProvenanceRemote_ReturnsClientWhenGatewayHealthy(t *testing.T) 
 	remote, err := newModelProvenanceRemote(fileSvc, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, remote)
-}
-
-func TestNewCampaignModelProvenanceReader_WiresRemoteWhenHealthy(t *testing.T) {
-	WithGatewayHealthCheck(t, true)
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-
-	reader, err := NewCampaignModelProvenanceReader(fileSvc, evaluation.NewStore(fileSvc), cfg)
-	require.NoError(t, err)
-	require.NotNil(t, reader)
 }

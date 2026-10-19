@@ -121,7 +121,7 @@ type methodologySnapshotRecord struct {
 }
 
 const (
-	explorerViewSchemaVersion = "1.9.0"
+	explorerViewSchemaVersion = "1.10.0"
 	campaignSourceRevision    = "ztd-eval-campaign"
 )
 

@@ -10,14 +10,12 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -228,143 +226,6 @@ func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_
 
 type publicAssignmentRecordEnvelope struct {
 	BenchmarkObservations *PublicBenchmarkObservations `json:"benchmark_observations"`
-}
-
-type stubProviderObservationRemote struct {
-	window  *evalv1.ProviderBoundaryObservationWindow
-	attempt *operatorv1.InferenceProviderAttemptRecord
-}
-
-func (s *stubProviderObservationRemote) Load(_ context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, error) {
-	if s == nil || s.window == nil || s.attempt == nil || s.window.GetProviderAttemptId() != providerAttemptID {
-		return nil, nil, constants.ErrNotFound
-	}
-	return s.window, s.attempt, nil
-}
-
-// WatchRecorded connects once and delivers no recordings: the connect
-// reconcile alone must capture an already-recorded window.
-func (s *stubProviderObservationRemote) WatchRecorded(ctx context.Context, connected func(), _ func(string)) error {
-	connected()
-	<-ctx.Done()
-	return nil
-}
-
-type recordingProviderObservationRemote struct {
-	loadCalls []string
-	window    *evalv1.ProviderBoundaryObservationWindow
-	attempt   *operatorv1.InferenceProviderAttemptRecord
-}
-
-func (s *recordingProviderObservationRemote) Load(_ context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, error) {
-	s.loadCalls = append(s.loadCalls, providerAttemptID)
-	if s.window == nil || s.attempt == nil || s.window.GetProviderAttemptId() != providerAttemptID {
-		return nil, nil, constants.ErrNotFound
-	}
-	return s.window, s.attempt, nil
-}
-
-func (s *recordingProviderObservationRemote) WatchRecorded(ctx context.Context, connected func(), _ func(string)) error {
-	connected()
-	<-ctx.Done()
-	return nil
-}
-
-// TestCampaignProviderObservationReader_NeverReadsGatewayOnLocalMiss pins that
-// reads come only from the run's sealed copies: a local miss is unavailable, and
-// the gateway remote is never consulted.
-func TestCampaignProviderObservationReader_NeverReadsGatewayOnLocalMiss(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	remote := &recordingProviderObservationRemote{
-		window: &evalv1.ProviderBoundaryObservationWindow{
-			SchemaVersion:       provider_observer.SchemaVersion,
-			ProviderAttemptId:   "attempt-remote",
-			ObserverId:          "observer-test",
-			ObserverClockSource: provider_observer.DefaultObserverClockSource,
-		},
-		attempt: &operatorv1.InferenceProviderAttemptRecord{
-			ProviderAttemptId: "attempt-remote",
-			Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
-		},
-	}
-	digest, err := provider_observer.ComputeObservationDigest(remote.window)
-	require.NoError(t, err)
-	remote.window.ObservationDigest = digest
-
-	store := NewStore(fileSvc)
-	reader, err := NewCampaignProviderObservationReaderWithRemote(store, remote)
-	require.NoError(t, err)
-	result := &evalv1.EvaluationAssignmentResult{
-		RunId: "run-remote",
-		ModelInferences: []*evalv1.ModelInferenceRecord{{
-			InferenceRecordId: "inference-1",
-			ProviderAttemptId: "attempt-remote",
-		}},
-	}
-	failures, unavailable := reader.VerifyAssignmentProviderObservations(ctx, result, ProviderObservationPolicyStrict)
-	assert.NotEmpty(t, failures)
-	assert.Equal(t, []string{"source_not_captured"}, unavailable)
-	assert.Empty(t, remote.loadCalls, "reads must never consult the gateway")
-
-	_, err = store.LoadProviderObservationWindow(ctx, "run-remote", "attempt-remote")
-	assert.ErrorIs(t, err, constants.ErrNotFound)
-	_, err = store.LoadProviderAttemptRecord(ctx, "run-remote", "attempt-remote")
-	assert.ErrorIs(t, err, constants.ErrNotFound)
-}
-
-func TestCampaignProviderObservationReader_CaptureAssignmentEvidencePersistsGatewayEvidence(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	attempt := &operatorv1.InferenceProviderAttemptRecord{
-		ProviderAttemptId: "attempt-captured",
-		TransactionId:     "transaction-captured",
-		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
-		StartedAtUnixMs:   time.Unix(1_700_000_000, 0).UnixMilli(),
-		CompletedAtUnixMs: time.Unix(1_700_000_010, 0).UnixMilli(),
-	}
-	window := &evalv1.ProviderBoundaryObservationWindow{
-		SchemaVersion:              provider_observer.SchemaVersion,
-		ProviderAttemptId:          attempt.GetProviderAttemptId(),
-		ObserverId:                 "observer-test",
-		ObserverClockSource:        provider_observer.DefaultObserverClockSource,
-		WindowStartedAtUnixNanos:   uint64(time.Unix(1_700_000_000, 0).UnixNano()),
-		WindowCompletedAtUnixNanos: uint64(time.Unix(1_700_000_010, 0).UnixNano()),
-		AttemptStartedAtUnixMs:     attempt.GetStartedAtUnixMs(),
-		AttemptCompletedAtUnixMs:   attempt.GetCompletedAtUnixMs(),
-		Samples: []*evalv1.ProviderBoundaryHardwareSample{{
-			ObservedAtUnixNanos:        uint64(time.Unix(1_700_000_001, 0).UnixNano()),
-			GpuUtilizationAvailability: evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED,
-			GpuUtilizationPercent:      10,
-		}},
-	}
-	digest, err := provider_observer.ComputeObservationDigest(window)
-	require.NoError(t, err)
-	window.ObservationDigest = digest
-	store := NewStore(fileSvc)
-	reader, err := NewCampaignProviderObservationReaderWithRemote(store, &stubProviderObservationRemote{window: window, attempt: attempt})
-	require.NoError(t, err)
-	result := &evalv1.EvaluationAssignmentResult{
-		RunId:           "run-captured",
-		ModelInferences: []*evalv1.ModelInferenceRecord{{ProviderAttemptId: attempt.GetProviderAttemptId()}},
-	}
-
-	require.NoError(t, reader.CaptureAssignmentEvidence(ctx, result))
-
-	// Capture seals the fetched evidence into the run's evaluation evidence and
-	// never writes the production inference stores.
-	inferenceExists, err := fileSvc.FileExists(ctx, filepath.Join(constants.DataDirname, constants.InferenceDirname))
-	require.NoError(t, err)
-	assert.False(t, inferenceExists, "capture must not write under data/inference")
-
-	// A reader without a gateway remote can only verify from the sealed copy.
-	localReader, err := NewCampaignProviderObservationReader(store)
-	require.NoError(t, err)
-	failures, unavailable := localReader.VerifyAssignmentProviderObservations(ctx, result, ProviderObservationPolicyStrict)
-	assert.Empty(t, failures)
-	assert.Empty(t, unavailable)
 }
 
 func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_StrictMissingWindow(t *testing.T) {

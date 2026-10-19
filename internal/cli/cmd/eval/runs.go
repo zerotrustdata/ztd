@@ -19,9 +19,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -183,11 +186,14 @@ func runsShowCmd(deps nativeEvalDeps) *cobra.Command {
 		Long: `Show one run. The status is "running" only while a live process holds the
 run's lease. A run left running with no live process reports "interrupted".
 
-With --watch, keep reporting progress until the run reaches a settled status.`,
+With --watch, follow the run's event stream and report the run each time it
+changes until the run reaches a settled status. The stream needs the CLI identity,
+as runs cancel does. The events carry run status changes and stop requests, so
+assignment progress shows when the run's status next changes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
-			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
+			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
@@ -215,14 +221,18 @@ With --watch, keep reporting progress until the run reaches a settled status.`,
 			if !watch {
 				return nil
 			}
-			return watchRun(cmd, deps, store, archived, runID, live, show)
+			return watchRun(cmd, deps, cfg, fileSvc, store, archived, runID, live, show)
 		},
 	}
 	cmd.Flags().BoolVar(&watch, "watch", false, "Keep reporting progress until the run settles")
 	return cmd
 }
 
-func watchRun(cmd *cobra.Command, deps nativeEvalDeps, store *evaluation.Store, archived bool, runID string, live evaluation.LeaseLiveness, last *runShowJSON) error {
+// watchRun follows a run until it settles. A run that has already settled is
+// reported once, with no stream. Otherwise the run's event stream is subscribed,
+// and the run is reloaded on each connect and on each run event. The connect
+// reload is the reconcile, so a change made while the stream was down is shown.
+func watchRun(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, store *evaluation.Store, archived bool, runID string, live evaluation.LeaseLiveness, last *runShowJSON) error {
 	emit := func(show *runShowJSON) error {
 		if output.JSONEnabled(cmd) {
 			body, err := json.Marshal(show)
@@ -236,27 +246,64 @@ func watchRun(cmd *cobra.Command, deps nativeEvalDeps, store *evaluation.Store, 
 			deps.now().UTC().Format("15:04:05"), show.Status, show.Terminal, show.ExpectedAssignments, show.Queued, show.Running)
 		return err
 	}
-	if output.JSONEnabled(cmd) {
-		if err := emit(last); err != nil {
-			return err
+	if terminalRunStatus(last.Status) {
+		if output.JSONEnabled(cmd) {
+			return emit(last)
 		}
+		return nil
 	}
-	for !terminalRunStatus(last.Status) {
+
+	authContext, err := deps.authLoader(fileSvc, cfg)
+	if err != nil {
+		return fmt.Errorf("load CLI identity: %w", err)
+	}
+	httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
+	if err != nil {
+		return fmt.Errorf("build stream client: %w", err)
+	}
+	ctx := cmd.Context()
+	events := make(chan runEvent)
+	// reconnects holds one pending reload. A reload reads the run's current state,
+	// so one pending connect covers every connect that lands before it is read.
+	reconnects := make(chan struct{}, 1)
+	stream, err := subscribeRunEvents(ctx, httpClient, cfg.OperatorPublicURL(), authContext.CLISessionID, runID, events, func() {
 		select {
-		case <-cmd.Context().Done():
-			return nil
-		case <-time.After(deps.runControl.interval()):
+		case reconnects <- struct{}{}:
+		default:
 		}
-		show, err := loadRunShow(cmd.Context(), deps, store, archived, runID, live)
+	})
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+	return followRun(ctx, stream, reconnects, events, func() (*runShowJSON, error) {
+		return loadRunShow(ctx, deps, store, archived, runID, live)
+	}, emit)
+}
+
+// followRun reports the run after each reconnect and each run event. It returns
+// when the run settles, when ctx ends, or with the error the stream stopped on.
+func followRun(ctx context.Context, stream *runEventStream, reconnects <-chan struct{}, events <-chan runEvent, reload func() (*runShowJSON, error), emit func(*runShowJSON) error) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-stream.Done():
+			return stream.StoppedError()
+		case <-reconnects:
+		case <-events:
+		}
+		show, err := reload()
 		if err != nil {
 			return fmt.Errorf("evaluation: runs show: %w", err)
 		}
 		if err := emit(show); err != nil {
 			return err
 		}
-		last = show
+		if terminalRunStatus(show.Status) {
+			return nil
+		}
 	}
-	return nil
 }
 
 type runPublishJSON struct {

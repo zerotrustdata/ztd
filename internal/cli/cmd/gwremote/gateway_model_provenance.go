@@ -74,24 +74,13 @@ func (c *remoteModelProvenanceClient) Load(ctx context.Context, providerAttemptI
 	return window, nil
 }
 
+// newModelProvenanceRemote builds the Gateway client that reads model provenance
+// attestation windows. Callers decide whether the Gateway is reachable first; see
+// NewCampaignWitnessCapture.
 func newModelProvenanceRemote(fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.ModelProvenanceRemote, error) {
-	if !IsGatewayHealthy() {
-		return nil, nil
-	}
 	client, err := api.NewClient(fileSvc, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("model provenance: create gateway client: %w", err)
 	}
 	return &remoteModelProvenanceClient{client: client, stream: client.NewSSEClient}, nil
-}
-
-// NewCampaignModelProvenanceReader reads the run's sealed attestation windows from
-// store. The Gateway remote, when healthy, is used only to seal windows the run
-// does not hold yet.
-func NewCampaignModelProvenanceReader(fileSvc fs.RuntimeFileService, store *evaluation.Store, cfg *config.Config) (*evaluation.CampaignModelProvenanceReader, error) {
-	remote, err := newModelProvenanceRemote(fileSvc, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return evaluation.NewCampaignModelProvenanceReaderWithRemote(store, remote)
 }

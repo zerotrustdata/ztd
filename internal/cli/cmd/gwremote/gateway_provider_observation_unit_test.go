@@ -120,15 +120,6 @@ func TestRemoteProviderObservationClient_Load_RejectsInvalidJSON(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestNewProviderObservationRemote_ReturnsNilWhenGatewayUnhealthy(t *testing.T) {
-	WithGatewayHealthCheck(t, false)
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
-
-	remote, err := NewProviderObservationRemote(fileSvc, cfg)
-	require.NoError(t, err)
-	assert.Nil(t, remote)
-}
-
 func TestNewProviderObservationRemote_ReturnsClientWhenGatewayHealthy(t *testing.T) {
 	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
@@ -157,11 +148,20 @@ func TestPreflightProviderObservationDelivery_RequiresReadyStatus(t *testing.T) 
 	assert.Contains(t, err.Error(), "provider observation preflight")
 }
 
-func TestNewCampaignProviderObservationReader_WiresRemoteWhenHealthy(t *testing.T) {
+func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *testing.T) {
+	WithGatewayHealthCheck(t, false)
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+
+	capture, err := NewCampaignWitnessCapture(fileSvc, evaluation.NewStore(fileSvc), cfg)
+	require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
+	assert.Nil(t, capture)
+}
+
+func TestNewCampaignWitnessCapture_WiresRemotesWhenHealthy(t *testing.T) {
 	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
-	reader, err := NewCampaignProviderObservationReader(fileSvc, evaluation.NewStore(fileSvc), cfg)
+	capture, err := NewCampaignWitnessCapture(fileSvc, evaluation.NewStore(fileSvc), cfg)
 	require.NoError(t, err)
-	require.NotNil(t, reader)
+	require.NotNil(t, capture)
 }

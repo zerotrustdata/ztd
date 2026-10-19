@@ -11,6 +11,7 @@ package evaluation
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,8 +26,9 @@ import (
 )
 
 // TestCampaignWitnessEvidence_DecoupledObservationAndProvenance exercises the
-// independent capture and verification paths of provider-boundary observation
-// and storage-side model provenance over a real filesystem-backed evaluation store.
+// Gateway witness capture and the verification that reads its sealed copies, for
+// provider-boundary observation and storage-side model provenance over a real
+// filesystem-backed evaluation store.
 func TestCampaignWitnessEvidence_DecoupledObservationAndProvenance(t *testing.T) {
 	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
@@ -83,7 +85,13 @@ func TestCampaignWitnessEvidence_DecoupledObservationAndProvenance(t *testing.T)
 	require.NoError(t, err)
 	require.NotEmpty(t, assignments)
 
+	// The completed assignment's scored inference names a provider attempt the
+	// Gateway holds a window and record for.
+	const attemptID = "attempt-integ"
 	first := assignments[0]
+	inferences := StubHomogeneousAssignmentModelInferences(first)
+	require.NotEmpty(t, inferences)
+	inferences[0].ProviderAttemptId = attemptID
 	result := &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   CampaignSchemaVersion,
 		AssignmentId:    first.GetAssignmentId(),
@@ -92,39 +100,40 @@ func TestCampaignWitnessEvidence_DecoupledObservationAndProvenance(t *testing.T)
 		Lane:            first.GetLane(),
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		CompletedAt:     timestamppb.Now(),
-		ModelInferences: StubHomogeneousAssignmentModelInferences(first),
+		ModelInferences: inferences,
 	}
 	resultDigest, err := ComputeAssignmentResultDigest(result)
 	require.NoError(t, err)
 	result.ResultDigest = resultDigest
 	require.NoError(t, store.SaveAssignmentResult(context.Background(), result))
 
-	// Create real readers backed by runtime files
-	obsReader, err := NewCampaignProviderObservationReader(store)
-	require.NoError(t, err)
-	provReader, err := NewCampaignModelProvenanceReader(store)
-	require.NoError(t, err)
+	window, attempt := testProviderObservationWindow(t, attemptID)
+	provenanceWindow := testModelProvenanceWindow(t, attemptID)
+	witness := newWitnessCaptureForTest(t, store,
+		&stubProviderObservationRemote{window: window, attempt: attempt},
+		&stubModelProvenanceRemote{window: provenanceWindow})
 
 	ctx := context.Background()
 
-	// Provider observation capture must succeed independently
-	err = CaptureCampaignRunProviderObservationEvidence(ctx, store, req.RunID, obsReader)
+	// Capture seals the Gateway windows into the run's evidence.
+	require.NoError(t, witness.CaptureRunProviderObservationEvidence(ctx, req.RunID))
+	require.NoError(t, witness.CaptureRunModelProvenanceEvidence(ctx, req.RunID))
+	_, err = store.LoadProviderObservationWindow(ctx, req.RunID, attemptID)
 	require.NoError(t, err)
+	_, err = store.LoadModelProvenanceWindow(ctx, req.RunID, attemptID)
+	require.NoError(t, err)
+	inferenceExists, err := fileSvc.FileExists(ctx, filepath.Join(constants.DataDirname, constants.InferenceDirname))
+	require.NoError(t, err)
+	assert.False(t, inferenceExists, "capture must not write under data/inference")
 
-	// Model provenance capture must succeed independently
-	err = CaptureCampaignRunModelProvenanceEvidence(ctx, store, req.RunID, provReader)
+	// Verification reads only the sealed copies.
+	observations, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
-
-	// Nil reader guards: running one with nil reader must not affect the other
-	err = CaptureCampaignRunProviderObservationEvidence(ctx, store, req.RunID, nil)
+	provenance, err := NewCampaignModelProvenanceReader(store)
 	require.NoError(t, err)
-	err = CaptureCampaignRunModelProvenanceEvidence(ctx, store, req.RunID, nil)
-	require.NoError(t, err)
-
-	// Verification using decoupled verifier with real file store
 	verifier := NewCampaignRunVerifier(clock).
-		WithProviderObservationReader(obsReader, ProviderObservationPolicyInterim).
-		WithModelProvenanceReader(provReader, ModelProvenancePolicyInterim)
+		WithProviderObservationReader(observations, ProviderObservationPolicyInterim).
+		WithModelProvenanceReader(provenance, ModelProvenancePolicyInterim)
 
 	report, err := verifier.VerifyRun(ctx, store, req.RunID, req.Catalog, req.ScenarioArtifacts)
 	require.NoError(t, err)

@@ -15,7 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -23,22 +22,22 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
-const (
-	defaultRunPollInterval = 2 * time.Second
-)
-
 // processControl is the process boundary a run lease depends on: who this
-// process is, whether another is alive, and how to ask it to stop.
+// process is, whether another is alive, how to ask it to stop, and how to learn
+// that it has exited.
 type processControl interface {
 	PID() int
 	Hostname() (string, error)
 	Alive(pid int) bool
 	Interrupt(pid int) error
+	// WaitExit blocks until the process with pid has exited, returning nil, or
+	// until ctx ends, returning ctx.Err().
+	WaitExit(ctx context.Context, pid int) error
 }
 
-// runControlDeps carries the process boundary and the watch cadence used by
-// commands that start, watch, or stop a run. Stop requests are event-driven and
-// do not use the cadence.
+// runControlDeps carries the process boundary and the test hooks used by
+// commands that start, follow, or stop a run. Every run event arrives on the
+// Gateway stream, so no hook sets a cadence.
 type runControlDeps struct {
 	processFactory func(fs.RuntimeFileService) (processControl, error)
 	// notifyInterrupts registers for interrupt signals and returns the channel
@@ -53,8 +52,6 @@ type runControlDeps struct {
 	// onLeaseAcquired is an optional test hook called once a run's lease is held,
 	// before the process subscribes to the run's events.
 	onLeaseAcquired func()
-	// pollInterval is the refresh cadence of ztd eval runs show --watch.
-	pollInterval time.Duration
 }
 
 // notifyProcessInterrupts registers for SIGINT and SIGTERM.
@@ -85,13 +82,6 @@ func (d runControlDeps) process(fileSvc fs.RuntimeFileService) (processControl, 
 	return d.processFactory(fileSvc)
 }
 
-func (d runControlDeps) interval() time.Duration {
-	if d.pollInterval > 0 {
-		return d.pollInterval
-	}
-	return defaultRunPollInterval
-}
-
 type osProcessControl struct {
 	manager *platform.ProcessManager
 }
@@ -120,6 +110,11 @@ func (p osProcessControl) Interrupt(pid int) error {
 	return process.Signal(os.Interrupt)
 }
 
+// WaitExit waits on the operating system's exit notification for pid.
+func (p osProcessControl) WaitExit(ctx context.Context, pid int) error {
+	return platform.WaitForProcessExit(ctx, pid)
+}
+
 // leaseLiveness reports a lease as live only when this host holds it and its
 // process is running. A lease from another host, or whose process is gone, is
 // stale.
@@ -131,6 +126,22 @@ func leaseLiveness(control processControl) evaluation.LeaseLiveness {
 		}
 		return control.Alive(lease.PID)
 	}
+}
+
+// watchHolderExit reports on the returned channel when the process holding a
+// run's lease exits: nil on exit, or the error that stopped the wait. The
+// channel receives nothing when ctx ends first, so a caller that cancels ctx
+// after it stops waiting leaves no goroutine behind.
+func watchHolderExit(ctx context.Context, control processControl, pid int) <-chan error {
+	exited := make(chan error, 1)
+	go func() {
+		err := control.WaitExit(ctx, pid)
+		if err != nil && ctx.Err() != nil {
+			return
+		}
+		exited <- err
+	}()
+	return exited
 }
 
 // runStopWatcher observes the two ways an executing run is asked to stop: a stop
