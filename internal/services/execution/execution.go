@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -331,14 +332,32 @@ func (es *ExecutionService) ExecuteCommand(ctx context.Context, request *models.
 	return result, nil
 }
 
+// isTestExecutable reports whether the path appears to be a go test binary.
+func isTestExecutable(path string) bool {
+	base := filepath.Base(path)
+	return strings.HasSuffix(base, ".test") || strings.HasSuffix(base, ".test.exe")
+}
+
 // resolveCommandBinary maps the embedded model client's self-invocation token
 // (the ztd binary image name, exact match, `operator model <verb>` shape only)
 // to this operator's running executable. Resolution happens at the executing
 // operator; the governed command and recorded evidence retain the token text.
+// When running in an in-process test harness where the running executable is a
+// go test runner, it resolves the ztd binary from PATH instead.
 func resolveCommandBinary(parts []string) (string, error) {
 	if len(parts) >= 3 && parts[0] == constants.BinaryImageName &&
 		parts[1] == "operator" && parts[2] == "model" {
-		return os.Executable()
+		exe, err := os.Executable()
+		if err == nil && !isTestExecutable(exe) {
+			return exe, nil
+		}
+		if path, err := exec.LookPath(constants.BinaryImageName); err == nil {
+			return path, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return exe, nil
 	}
 	return exec.LookPath(parts[0])
 }

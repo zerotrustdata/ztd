@@ -30,6 +30,12 @@ func TestResolveCommandBinary(t *testing.T) {
 	t.Parallel()
 	executable, err := os.Executable()
 	require.NoError(t, err)
+	expectedModelBinary := executable
+	if isTestExecutable(executable) {
+		if path, err := exec.LookPath(constants.BinaryImageName); err == nil {
+			expectedModelBinary = path
+		}
+	}
 	for _, command := range []string{
 		"ztd operator model release smollm2:135m",
 		"ztd operator model pull qwen3:0.6b",
@@ -40,7 +46,7 @@ func TestResolveCommandBinary(t *testing.T) {
 		t.Run(command, func(t *testing.T) {
 			binary, err := resolveCommandBinary(strings.Fields(command))
 			require.NoError(t, err)
-			assert.Equal(t, executable, binary)
+			assert.Equal(t, expectedModelBinary, binary)
 		})
 	}
 	// The retired /ztd container path is not a self-invocation token, and
@@ -54,6 +60,16 @@ func TestResolveCommandBinary(t *testing.T) {
 			assert.Equal(t, wantErr, err)
 		})
 	}
+}
+
+func TestIsTestExecutable(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isTestExecutable("foo.test"))
+	assert.True(t, isTestExecutable("/tmp/go-build/b001/eval.test"))
+	assert.True(t, isTestExecutable(`C:\Temp\eval.test.exe`))
+	assert.False(t, isTestExecutable("ztd"))
+	assert.False(t, isTestExecutable("/usr/local/bin/ztd"))
+	assert.False(t, isTestExecutable(`C:\ztd\bin\ztd.exe`))
 }
 
 func TestExecutionService_ExecuteCommand(t *testing.T) {

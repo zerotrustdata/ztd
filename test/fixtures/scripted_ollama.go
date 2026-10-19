@@ -91,7 +91,7 @@ func NewScriptedOllama(t *testing.T, replies []OllamaReply) *ScriptedOllama {
 		}
 	}
 	p := &ScriptedOllama{replies: frozen}
-	p.server = httptest.NewServer(http.HandlerFunc(p.serveHTTP(t)))
+	p.server = httptest.NewServer(p.serveHTTP(t))
 	t.Cleanup(p.server.Close)
 	return p
 }

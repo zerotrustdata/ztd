@@ -126,7 +126,6 @@ func TestRunsExecute_RealStack(t *testing.T) {
 	cmdCtx, cancelCmd := context.WithTimeout(testVersionContext(), 2*time.Minute)
 	t.Cleanup(cancelCmd)
 	require.NoError(t, cmd.ExecuteContext(cmdCtx), out.String())
-	t.Log("OUT:\n", out.String())
 	assert.Contains(t, out.String(), "Executed 1 assignment")
 	assert.Equal(t, 1, stack.Provider.ChatCount())
 
@@ -137,18 +136,9 @@ func TestRunsExecute_RealStack(t *testing.T) {
 	assignments, err := store.ListAssignments(ctx, runIDs[0])
 	require.NoError(t, err)
 	require.Len(t, assignments, 1)
-	res, resErr := store.LoadAssignmentResult(ctx, runIDs[0], assignments[0].GetAssignmentId())
-	t.Logf("assignment[0]: lifecycle=%v, res=%+v, resErr=%v", assignments[0].GetLifecycleStatus(), res, resErr)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, assignments[0].GetLifecycleStatus())
 	trace, err := store.LoadAssignmentAgentTrace(ctx, runIDs[0], assignments[0].GetAssignmentId())
 	require.NoError(t, err)
-	t.Logf("trace: model_calls=%d, final_output=%q", len(trace.ModelCalls), trace.FinalOutput)
-	if len(trace.ModelCalls) > 0 {
-		t.Logf("model_call[0]: %+v", trace.ModelCalls[0])
-		if trace.ModelCalls[0].Receipt != nil {
-			t.Logf("model_call[0].receipt: %+v", trace.ModelCalls[0].Receipt.ActionReceipt)
-		}
-	}
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 	require.Len(t, trace.ModelCalls, 1)
 	assert.Equal(t, "READY", trace.FinalOutput)

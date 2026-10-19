@@ -14,9 +14,12 @@ set -euo pipefail
 check="$(git rev-parse --show-toplevel)/scripts/check-commit-hygiene.sh"
 zero="$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')"
 
+# remote_sha may name a commit this clone has never fetched (the remote moved
+# since the last fetch); a range ending there cannot resolve, so check every
+# commit not already on a remote-tracking ref instead.
 while read -r _local_ref local_sha _remote_ref remote_sha; do
     [[ $local_sha == "$zero" ]] && continue
-    if [[ $remote_sha == "$zero" ]]; then
+    if [[ $remote_sha == "$zero" ]] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
         "$check" --range "$local_sha" --not --remotes
     else
         "$check" --range "$remote_sha..$local_sha"
