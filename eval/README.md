@@ -6,16 +6,16 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 
 | Path | Purpose |
 | --- | --- |
-| `eval/base-model-inventory.json` | **Default genesis program inventory** — 75 init-campaign models (75 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 5,625 cells total) |
+| `eval/base-model-inventory.json` | **Default genesis program inventory** — 94 init-campaign models (41 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 3,854 cells total) |
 | `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); currently 47 entries and does not yet list `gemma4:12b`, `glm-5.3-air`, or `qwen2.5:1b-rlcd` |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
 | `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
 
-The base inventory is the canonical 75-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are a reference provider snapshot; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
+The base inventory is the canonical 94-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are a reference provider snapshot; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
 
 The optional Hugging Face rollout intake (`eval/rollout-intake-hf.json`) also tracks the small text-generation trend candidate Qwen 2.5 1B RLCD. Larger trend entries are intentionally excluded from this 16 GiB-provider intake; classification, image, audio, and image-text-to-text repositories from the same trend snapshot are also not added to the text-generation queue.
 
-The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). Each single-model run is **75** assignments under `default-suite`.
+The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). Each single-model run is **41** assignments under `default-suite`.
 
 ## Runtime files (campaign host)
 
