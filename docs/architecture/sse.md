@@ -153,6 +153,7 @@ Persisted Event             Ephemeral Event
 | `ztd.v1.inference.provider.boundary.observation.recorded` | ephemeral | `evidence_window_publisher.go` | The Gateway stored an Observer Operator provider-boundary window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
 | `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
 | `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
+| `ztd.v1.ai.eval.stop.requested` | ephemeral | `observe_producer.go` | Run-scoped stop request from an app workload; carries `campaign_id` and `run_id`. Sent to the named session's open stream only and never stored |
 | `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
 | `passkey.registered` | persisted | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed passkey registration |
 
@@ -164,7 +165,7 @@ App workloads enrolled through platform enrollment publish telemetry over mTLS t
 - `POST /api/v1/observe/producer/run-state`
 - `POST /api/v1/observe/producer/stop`
 
-The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway stores the event for that session and delivers it live when that session has an open stream. A stop request names one campaign run (`campaign_id` and `run_id`), and the `ai.eval.stop.requested` event it produces carries the same `run_id`.
+The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway emits the event for that session on the path its registry persistence class selects. A persisted event is stored for that session and delivered live when the session has an open stream; an `ephemeral` event is delivered live only. A stop request names one campaign run (`campaign_id` and `run_id`), and the `ai.eval.stop.requested` event it produces carries the same `run_id`. That event is `ephemeral`, so a session without an open stream when the stop is posted never receives it and cannot replay it.
 
 ## Consumer Replay and Reconnection
 

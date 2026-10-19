@@ -10,6 +10,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
@@ -35,6 +37,59 @@ func newObserveProducerLiveTestEnv(t *testing.T) (*ObserveProducerService, *Docu
 	fileSvc := newProducerFileSvc(t)
 	producer := NewObserveProducerService(docStore, sseStore, NewGatewayWebSocketHandler(logger), fileSvc, logger)
 	return producer, docStore, sseStore
+}
+
+// liveStopRequest is one ai.eval.stop.requested event as a live channel
+// delivered it: the push envelope that addressed it and the decoded payload.
+type liveStopRequest struct {
+	push models.SSEPushPayload
+	stop models.EvalStopRequestedPayload
+}
+
+// stopRequestTap records the stop requests an in-process handler receives on
+// one live channel, the way an open SSE stream does. A stop request is
+// ephemeral, so it is never in the SSE store and the live channel is the only
+// place it can be observed.
+type stopRequestTap struct {
+	mu       sync.Mutex
+	requests []liveStopRequest
+}
+
+// tapStopRequests registers the handler on channel and asserts that every stop
+// request it receives is an ephemeral delivery with row id 0.
+func tapStopRequests(t *testing.T, ws *GatewayWebSocketHandler, channel string) *stopRequestTap {
+	t.Helper()
+	tap := &stopRequestTap{}
+	unregister := ws.RegisterHandler(channel, func(_ string, data []byte) {
+		var published models.SSEPublishedEvent
+		var push models.SSEPushPayload
+		var envelope sseEventEnvelope
+		if !assert.NoError(t, json.Unmarshal(data, &published)) ||
+			!assert.NoError(t, json.Unmarshal(published.Payload, &push)) ||
+			!assert.NoError(t, json.Unmarshal(push.Event, &envelope)) {
+			return
+		}
+		if envelope.Type != string(constants.EventAiEvalStopRequested) {
+			return
+		}
+		assert.Zero(t, published.ID, "stop requests are ephemeral")
+		var stop models.EvalStopRequestedPayload
+		if !assert.NoError(t, json.Unmarshal(envelope.Data, &stop)) {
+			return
+		}
+		tap.mu.Lock()
+		defer tap.mu.Unlock()
+		tap.requests = append(tap.requests, liveStopRequest{push: push, stop: stop})
+	})
+	t.Cleanup(unregister)
+	return tap
+}
+
+// received returns the stop requests delivered to the tap so far.
+func (tap *stopRequestTap) received() []liveStopRequest {
+	tap.mu.Lock()
+	defer tap.mu.Unlock()
+	return append([]liveStopRequest(nil), tap.requests...)
 }
 
 // TestStartCycle_PersistsProjectionAndEmitsSSE verifies that StartCycle
@@ -507,6 +562,7 @@ func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	userID := "user-live-stop"
 	route := SSERoute{UserID: userID, WebSessionID: "web-stop"}
+	live := tapStopRequests(t, producer.publisher.pubsub, pubsub.SSEWebChannel("web-stop"))
 
 	err := producer.RequestStop(context.Background(), userID, route, "sup-1", "campaign-i", "run-i", models.StopReasonGraceful, models.StopScopeSupervisor)
 	require.NoError(t, err)
@@ -526,32 +582,28 @@ func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
 	assert.Equal(t, models.StopReasonGraceful, persisted.StopReason)
 	assert.Equal(t, models.CampaignFreshnessIntentionallyStopped, persisted.Freshness)
 
-	// SSE event is emitted.
+	// The stop is ephemeral: the open stream receives it live and no row is stored.
 	rows, err := sseStore.SSEEventsListSince(route, 0, 100)
 	require.NoError(t, err)
-	require.Len(t, rows, 1)
-	assert.Equal(t, string(constants.EventAiEvalStopRequested), rows[0].EventType)
+	assert.Empty(t, rows)
 
-	var pushPayload models.SSEPushPayload
-	require.NoError(t, json.Unmarshal([]byte(rows[0].Payload), &pushPayload))
-	var env sseEventEnvelope
-	require.NoError(t, json.Unmarshal(pushPayload.Event, &env))
-	var payload models.EvalStopRequestedPayload
-	require.NoError(t, json.Unmarshal(env.Data, &payload))
-	assert.Equal(t, "campaign-i", payload.CampaignID)
-	assert.Equal(t, "run-i", payload.RunID)
-	assert.Equal(t, models.StopReasonGraceful, payload.StopReason)
-	assert.Equal(t, models.StopScopeSupervisor, payload.StopScope)
+	got := live.received()
+	require.Len(t, got, 1)
+	assert.Equal(t, "campaign-i", got[0].stop.CampaignID)
+	assert.Equal(t, "run-i", got[0].stop.RunID)
+	assert.Equal(t, models.StopReasonGraceful, got[0].stop.StopReason)
+	assert.Equal(t, models.StopScopeSupervisor, got[0].stop.StopScope)
 }
 
 // TestRequestStop_RequiresRunID verifies that a stop without a run identity is
 // rejected before any projection is persisted or event emitted, so the event
 // can never reach a session without naming the run it stops.
 func TestRequestStop_RequiresRunID(t *testing.T) {
-	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
+	producer, docStore, _ := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-stop-no-run"
 	route := SSERoute{UserID: userID, CLISessionID: "cli-stop-no-run"}
+	live := tapStopRequests(t, producer.publisher.pubsub, pubsub.SSECLIChannel("cli-stop-no-run"))
 
 	err := producer.RequestStop(context.Background(), userID, route, "sup-norun", "campaign-norun", "", models.StopReasonGraceful, models.StopScopeSupervisor)
 	require.Error(t, err)
@@ -562,42 +614,32 @@ func TestRequestStop_RequiresRunID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, doc)
 
-	rows, err := sseStore.SSEEventsListSince(route, 0, 100)
-	require.NoError(t, err)
-	assert.Empty(t, rows)
+	assert.Empty(t, live.received())
 }
 
 // TestRequestStop_CLIRouteCarriesRunID verifies that a stop routed to a CLI
 // session is delivered on that session's route only, and that the delivered
 // event names the run it stops.
 func TestRequestStop_CLIRouteCarriesRunID(t *testing.T) {
-	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
+	producer, _, _ := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-stop-cli"
 	cliRoute := SSERoute{UserID: userID, CLISessionID: "cli-stop-route"}
+	cliLive := tapStopRequests(t, producer.publisher.pubsub, pubsub.SSECLIChannel("cli-stop-route"))
+	webLive := tapStopRequests(t, producer.publisher.pubsub, pubsub.SSEWebChannel("web-none"))
 
 	require.NoError(t, producer.RequestStop(context.Background(), userID, cliRoute, "sup-cli", "campaign-cli", "run-cli", models.StopReasonSafetyDisk, models.StopScopeCycle))
 
-	rows, err := sseStore.SSEEventsListSince(cliRoute, 0, 100)
-	require.NoError(t, err)
-	require.Len(t, rows, 1)
-	assert.Equal(t, string(constants.EventAiEvalStopRequested), rows[0].EventType)
-	assert.Equal(t, "cli-stop-route", rows[0].CLISessionID)
+	got := cliLive.received()
+	require.Len(t, got, 1)
+	assert.Equal(t, userID, got[0].push.UserID)
+	assert.Equal(t, "cli-stop-route", got[0].push.CliSessionID)
+	assert.Equal(t, "run-cli", got[0].stop.RunID)
+	assert.Equal(t, "campaign-cli", got[0].stop.CampaignID)
+	assert.Equal(t, models.StopReasonSafetyDisk, got[0].stop.StopReason)
+	assert.Equal(t, models.StopScopeCycle, got[0].stop.StopScope)
 
-	var pushPayload models.SSEPushPayload
-	require.NoError(t, json.Unmarshal([]byte(rows[0].Payload), &pushPayload))
-	var env sseEventEnvelope
-	require.NoError(t, json.Unmarshal(pushPayload.Event, &env))
-	var payload models.EvalStopRequestedPayload
-	require.NoError(t, json.Unmarshal(env.Data, &payload))
-	assert.Equal(t, "run-cli", payload.RunID)
-	assert.Equal(t, "campaign-cli", payload.CampaignID)
-	assert.Equal(t, models.StopReasonSafetyDisk, payload.StopReason)
-	assert.Equal(t, models.StopScopeCycle, payload.StopScope)
-
-	webRows, err := sseStore.SSEEventsListSince(SSERoute{UserID: userID, WebSessionID: "web-none"}, 0, 100)
-	require.NoError(t, err)
-	assert.Empty(t, webRows)
+	assert.Empty(t, webLive.received())
 }
 
 // TestRequestStop_SafetyStopSetsSafetyStoppedFreshness verifies that a
@@ -995,40 +1037,26 @@ func TestStaleAndStopTransitions(t *testing.T) {
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 
 	// Graceful stop -> intentionally_stopped.
-	producer2, _, sseStore2 := newObserveProducerLiveTestEnv(t)
+	producer2, _, _ := newObserveProducerLiveTestEnv(t)
 	userID := "user-live-stale"
 	route := SSERoute{UserID: userID, WebSessionID: "web-stale"}
+	graceful := tapStopRequests(t, producer2.publisher.pubsub, pubsub.SSEWebChannel("web-stale"))
 	require.NoError(t, producer2.RequestStop(context.Background(), userID, route, "sup-graceful", "campaign-graceful", "run-graceful", models.StopReasonGraceful, models.StopScopeSupervisor))
 
-	rows, err := sseStore2.SSEEventsListSince(route, 0, 100)
-	require.NoError(t, err)
-	require.Len(t, rows, 1)
-
-	var pushPayload models.SSEPushPayload
-	require.NoError(t, json.Unmarshal([]byte(rows[0].Payload), &pushPayload))
-	var env sseEventEnvelope
-	require.NoError(t, json.Unmarshal(pushPayload.Event, &env))
-	var payload models.EvalStopRequestedPayload
-	require.NoError(t, json.Unmarshal(env.Data, &payload))
-	assert.Equal(t, models.StopReasonGraceful, payload.StopReason)
+	gotGraceful := graceful.received()
+	require.Len(t, gotGraceful, 1)
+	assert.Equal(t, models.StopReasonGraceful, gotGraceful[0].stop.StopReason)
 
 	// Safety stop -> safety_stopped.
-	producer3, _, sseStore3 := newObserveProducerLiveTestEnv(t)
+	producer3, _, _ := newObserveProducerLiveTestEnv(t)
 	route3 := SSERoute{UserID: userID, WebSessionID: "web-safety"}
+	safety := tapStopRequests(t, producer3.publisher.pubsub, pubsub.SSEWebChannel("web-safety"))
 	require.NoError(t, producer3.RequestStop(context.Background(), userID, route3, "sup-safety", "campaign-safety", "run-safety", models.StopReasonSafetyVerifier, models.StopScopeCycle))
 
-	rows3, err := sseStore3.SSEEventsListSince(route3, 0, 100)
-	require.NoError(t, err)
-	require.Len(t, rows3, 1)
-
-	var pushPayload3 models.SSEPushPayload
-	require.NoError(t, json.Unmarshal([]byte(rows3[0].Payload), &pushPayload3))
-	var env3 sseEventEnvelope
-	require.NoError(t, json.Unmarshal(pushPayload3.Event, &env3))
-	var payload3 models.EvalStopRequestedPayload
-	require.NoError(t, json.Unmarshal(env3.Data, &payload3))
-	assert.Equal(t, models.StopReasonSafetyVerifier, payload3.StopReason)
-	assert.Equal(t, models.StopScopeCycle, payload3.StopScope)
+	gotSafety := safety.received()
+	require.Len(t, gotSafety, 1)
+	assert.Equal(t, models.StopReasonSafetyVerifier, gotSafety[0].stop.StopReason)
+	assert.Equal(t, models.StopScopeCycle, gotSafety[0].stop.StopScope)
 
 	// Suppress unused variable warning for producer.
 	_ = producer

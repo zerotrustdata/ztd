@@ -2,10 +2,9 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 // SSE stream connection and reconciliation. Opens an absolute configured
-// /api/v1/sse/stream EventSource with credentials, implements polling fallback
-// using serialized stored push envelopes, and reconciles snapshots after
-// initial connection, reconnect gaps, truncated, replay_failed, visibility
-// restoration, unknown transition versions, and dropped live delivery.
+// /api/v1/sse/stream EventSource with credentials, and reconciles snapshots
+// after initial connection, reconnect gaps, truncated, replay_failed,
+// visibility restoration, unknown transition versions, and dropped live delivery.
 //
 // SSE is invalidation/live narrative, not the durable database. The snapshot
 // (from the observe API) is the source of truth; SSE provides incremental

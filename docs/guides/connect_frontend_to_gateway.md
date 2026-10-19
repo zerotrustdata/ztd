@@ -75,7 +75,7 @@ For single-origin local development, the `./ztd gw connect <frontend-origin>` wo
 | Browser credential flows | `internal/services/gateway/passkey_service_http.go` | Register and authenticate challenges, WebAuthn verification |
 | CORS and session cookie behavior | `internal/services/gateway/passkey_service_http.go` | Cookie attributes and headers |
 | Web session routes | `internal/services/gateway/gateway_http_router.go` | Route classification and middleware |
-| SSE endpoints | `internal/services/gateway/gateway_http_router.go` | Stream and polling delivery |
+| SSE endpoints | `internal/services/gateway/gateway_http_router.go` | Live stream and backfill delivery |
 
 ## Procedures
 

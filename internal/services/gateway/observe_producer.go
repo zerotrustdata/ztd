@@ -365,9 +365,20 @@ func (s *ObserveProducerService) UpdateRunState(ctx context.Context, userID stri
 	return nil
 }
 
-// emitSSEEvent appends the event to the SSE event store and publishes it live
-// for the given route, attributed to the observe producer.
+// emitSSEEvent emits eventType for the given route, attributed to the observe
+// producer. The event's registry persistence class selects the delivery path
+// (INV-SSE-EVT-02): an "ephemeral" event is published live only and is never
+// stored, and every other class is appended to the SSE event store before it
+// is published. An event type missing from the registry fails closed before
+// anything is emitted.
 func (s *ObserveProducerService) emitSSEEvent(route SSERoute, eventType string, payload any) error {
+	entry, ok := constants.Registry.Lookup(constants.EventType(eventType))
+	if !ok {
+		return fmt.Errorf("observe producer: emit sse %q: %w", eventType, constants.ErrTxUnknownEventType)
+	}
+	if entry.Persistence == "ephemeral" {
+		return s.publisher.PublishEphemeral(route, eventType, payload)
+	}
 	return s.publisher.Publish(route, eventType, payload, observeProducerID)
 }
 

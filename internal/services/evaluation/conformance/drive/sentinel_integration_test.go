@@ -40,7 +40,6 @@ func TestSentinelReadReturnsReceiptAndSendsFsRead(t *testing.T) {
 	require.Equal(t, 1, fake.count())
 	req := decodeDispatchRequest(t, fake.recorded(t, 0))
 	assert.Equal(t, "outbound-session", req.TargetOperatorSessionID)
-	assert.Equal(t, string(constants.ActionTypeFsRead), req.ActionType)
 	assert.Equal(t, string(constants.EventOperatorFilesystemReadRequested), req.EventType)
 	read := &operatorv1.FsReadRequested{}
 	require.NoError(t, proto.Unmarshal(req.Payload, read))

@@ -71,7 +71,7 @@ func (f *agentExecutorFixture) shellDispatches() []*operatorv1.CommandRequested 
 	f.t.Helper()
 	var commands []*operatorv1.CommandRequested
 	for _, request := range f.client.requests {
-		if request.ActionType != string(constants.ActionTypeExecuteBash) {
+		if request.EventType != string(constants.EventOperatorCommandRequested) {
 			continue
 		}
 		command := &operatorv1.CommandRequested{}

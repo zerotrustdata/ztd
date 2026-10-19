@@ -3,8 +3,8 @@
 
 // Named endpoint allowlist for the audited adapter. Operational code exports
 // only runtime-config reads, public bootstrap status, passkey ceremony POSTs,
-// session restoration, logout, observe GETs, authenticated downloads, SSE
-// stream, and SSE polling. No generic arbitrary-path request helper is exposed
+// session restoration, logout, observe GETs, authenticated downloads, and SSE
+// stream. No generic arbitrary-path request helper is exposed
 // to components.
 
 export type HttpVerb = 'GET' | 'POST';

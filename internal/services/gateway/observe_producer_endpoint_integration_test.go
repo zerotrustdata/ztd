@@ -36,6 +36,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/protocol"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -909,34 +910,30 @@ func TestObserveProducerEndpoint_StopCLIRouteEmitsRunID(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	cliLive := tapStopRequests(t, env.infra.Pubsub, pubsub.SSECLIChannel(cliSessionID))
+	webLive := tapStopRequests(t, env.infra.Pubsub, pubsub.SSEWebChannel("nonexistent-web-stop"))
+
 	rr := postStop(t, env.handler, cert, body)
 	require.Equal(t, http.StatusOK, rr.Code, "body: %s", rr.Body.String())
 
+	// The stop is ephemeral: the CLI session's open stream receives it live and
+	// no row is stored.
 	cliRoute := SSERoute{UserID: userID, CLISessionID: cliSessionID}
 	rows, err := env.infra.SSEStore.SSEEventsListSince(cliRoute, 0, 100)
 	require.NoError(t, err)
-	require.Len(t, rows, 1)
-	assert.Equal(t, string(constants.EventAiEvalStopRequested), rows[0].EventType)
-	assert.Equal(t, cliSessionID, rows[0].CLISessionID)
+	assert.Empty(t, rows)
 
-	var pushPayload models.SSEPushPayload
-	require.NoError(t, json.Unmarshal([]byte(rows[0].Payload), &pushPayload))
-	assert.Equal(t, userID, pushPayload.UserID)
-	assert.Equal(t, cliSessionID, pushPayload.CliSessionID)
-	var stopEnv sseEventEnvelope
-	require.NoError(t, json.Unmarshal(pushPayload.Event, &stopEnv))
-	assert.Equal(t, string(constants.EventAiEvalStopRequested), stopEnv.Type)
-	var stopPayload models.EvalStopRequestedPayload
-	require.NoError(t, json.Unmarshal(stopEnv.Data, &stopPayload))
-	assert.Equal(t, "campaign-stop-ep", stopPayload.CampaignID)
-	assert.Equal(t, "run-stop-ep", stopPayload.RunID)
-	assert.Equal(t, models.StopReasonGraceful, stopPayload.StopReason)
-	assert.Equal(t, models.StopScopeSupervisor, stopPayload.StopScope)
+	got := cliLive.received()
+	require.Len(t, got, 1)
+	assert.Equal(t, userID, got[0].push.UserID)
+	assert.Equal(t, cliSessionID, got[0].push.CliSessionID)
+	assert.Equal(t, "campaign-stop-ep", got[0].stop.CampaignID)
+	assert.Equal(t, "run-stop-ep", got[0].stop.RunID)
+	assert.Equal(t, models.StopReasonGraceful, got[0].stop.StopReason)
+	assert.Equal(t, models.StopScopeSupervisor, got[0].stop.StopScope)
 
 	// No copy lands on a web route for the same user.
-	webRows, err := env.infra.SSEStore.SSEEventsListSince(SSERoute{UserID: userID, WebSessionID: "nonexistent-web-stop"}, 0, 100)
-	require.NoError(t, err)
-	assert.Empty(t, webRows)
+	assert.Empty(t, webLive.received())
 }
 
 // TestObserveProducerEndpoint_StopCLISessionCertRejected verifies that a valid
@@ -959,12 +956,11 @@ func TestObserveProducerEndpoint_StopCLISessionCertRejected(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	live := tapStopRequests(t, env.infra.Pubsub, pubsub.SSECLIChannel(cliSessionID))
 	rr := postStopWithHeader(t, env.handler, cert, constants.HeaderCLISessionID, cliSessionID, body)
 	assert.Equal(t, http.StatusForbidden, rr.Code)
 
-	rows, err := env.infra.SSEStore.SSEEventsListSince(SSERoute{UserID: userID, CLISessionID: cliSessionID}, 0, 100)
-	require.NoError(t, err)
-	assert.Empty(t, rows)
+	assert.Empty(t, live.received())
 }
 
 // TestObserveProducerEndpoint_StopOperatorCertRejected verifies that an
@@ -995,12 +991,11 @@ func TestObserveProducerEndpoint_StopOperatorCertRejected(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	live := tapStopRequests(t, env.infra.Pubsub, pubsub.SSECLIChannel(cliSessionID))
 	rr := postStop(t, env.handler, cert, body)
 	assert.Equal(t, http.StatusForbidden, rr.Code, "body: %s", rr.Body.String())
 
-	rows, err := env.infra.SSEStore.SSEEventsListSince(SSERoute{UserID: userID, CLISessionID: cliSessionID}, 0, 100)
-	require.NoError(t, err)
-	assert.Empty(t, rows)
+	assert.Empty(t, live.received())
 }
 
 // TestObserveProducerEndpoint_UnauthenticatedCallerRejected verifies that a

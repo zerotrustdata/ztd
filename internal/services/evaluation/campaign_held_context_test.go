@@ -70,7 +70,7 @@ func TestCampaignAgentExecutor_HeldRepetitionContinuesThePreviousInvestigation(t
 	require.Len(t, trace.Input.Messages, 1, "Input holds only what this repetition added")
 	sentinel := previous.ScenarioWorkspace().SentinelPath()
 	for _, request := range f.client.requests {
-		if request.ActionType == string(constants.ActionTypeFileEdit) && request.TargetResource != sentinel {
+		if request.EventType == string(constants.EventOperatorFileEditRequested) && request.TargetResource != sentinel {
 			assert.True(t, strings.HasPrefix(request.TargetResource, previous.Workspace.Root+"/"), "fixtures are restored in the held workspace")
 		}
 	}

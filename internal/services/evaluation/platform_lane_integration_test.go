@@ -49,11 +49,13 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 	for i, request := range transport.dispatchRequests {
 		txID := fmt.Sprintf("scope-receipt-%d", i)
 		ts := time.Unix(1_800_000_000+int64(i), 0).UTC()
+		action, err := constants.ValidateGovernedRequest(constants.EventType(request.EventType))
+		require.NoError(t, err)
 		require.NoError(t, store.RecordActionReceipt(&models.ActionReceiptRecord{
 			TransactionID: txID, TransactionHash: txID,
 			OperatorID: target.OperatorID, OperatorSessionID: target.SessionID,
 			InvestigationID: request.InvestigationID,
-			ActionType:      constants.ActionType(request.ActionType),
+			ActionType:      action,
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ExecutedAt:      ts, Timestamp: ts,
 			ActionReceipt: &operatorv1.ActionReceipt{TransactionId: txID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},

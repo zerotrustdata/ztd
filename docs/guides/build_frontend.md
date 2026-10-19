@@ -117,7 +117,7 @@ All paths are relative to the Gateway's base URL. Authenticated routes require `
 | `GET` | `/api/v1/approvals/{txHash}/challenge` | Get WebAuthn approval challenge |
 | `POST` | `/api/v1/approvals/{txHash}/verify` | Verify approval assertion |
 | `GET` | `/api/v1/sse/stream` | SSE stream for live audit events |
-| `GET` | `/api/v1/sse/events?since_id={n}&limit={n}` | Poll SSE events |
+| `GET` | `/api/v1/sse/events?since_id={n}&limit={n}` | Query stored SSE events (backfill) |
 
 ## WebAuthn Flow Requirements
 

@@ -359,7 +359,7 @@ The repository ships the protobuf scored-turn contract (`ScoredTurnRequest`, `Sc
 
 #### Campaign Run Stop Requests
 
-`ai.eval.stop.requested` is run-scoped. The Gateway emits it after an app workload posts a stop to `POST /api/v1/observe/producer/stop` (mTLS app identity only), once the campaign's supervisor state projection is persisted. The payload names both the campaign (`campaign_id`) and the one campaign run to stop (`run_id`), and the event is delivered to exactly one web or CLI session. The consumer that acts on it is the CLI process running the run named by `run_id`; the event does not stop other runs of the same campaign.
+`ai.eval.stop.requested` is run-scoped. The Gateway emits it after an app workload posts a stop to `POST /api/v1/observe/producer/stop` (mTLS app identity only), once the campaign's supervisor state projection is persisted. The payload names both the campaign (`campaign_id`) and the one campaign run to stop (`run_id`), and the event is delivered to exactly one web or CLI session. The consumer that acts on it is the CLI process running the run named by `run_id`; the event does not stop other runs of the same campaign. The event is `ephemeral` in the registry: it is delivered only to that session's open stream and is never stored, so a consumer that is disconnected when the stop is posted does not receive it on reconnect. The persisted supervisor state projection is the record a consumer reconciles against.
 
 ### Scenario Fixtures, Trajectories, and Grading Models
 

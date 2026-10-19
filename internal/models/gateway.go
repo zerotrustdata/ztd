@@ -312,7 +312,7 @@ type SuspendedTxResponse struct {
 }
 
 // ApprovalStatusResponse is the typed response for GET /api/v1/approvals/status/{txHash}.
-// The CLI polls this mTLS-authenticated endpoint after opening the browser approval page.
+// The CLI verifies this mTLS-authenticated endpoint after receiving approval.completed on the SSE stream.
 type ApprovalStatusResponse struct {
 	Status   string `json:"status"`
 	TxHash   string `json:"tx_hash,omitempty"`

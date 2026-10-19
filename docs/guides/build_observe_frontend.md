@@ -71,7 +71,6 @@ The builder output is a browser SPA. Use Node.js 22.22.2+, 24.15+, or 26+ and th
 
 4. Connect the origin to the Gateway with `./ztd gw connect <frontend-origin>`, then open the built SPA in a top-level browser tab.
 5. In live mode, authenticate with WebAuthn, load the typed observe bootstrap snapshot, and start `SseStream`. On `onReconcile`, reload the bootstrap snapshot. On `onUnauthenticated`, redirect to sign-in.
-6. If EventSource is unavailable, fall back to `SsePollingFallback`.
 
 ## Architecture
 
@@ -96,7 +95,6 @@ The `ztd-adapter/` package is the audited integration core. It exposes:
 - `createObserveClient`: Typed client for the 7 observe endpoints (bootstrap, runs, run detail, evals, eval detail, downloads, download detail).
 - `registerPasskey`, `authenticatePasskey`, `enrollPasskey`: WebAuthn ceremonies.
 - `SseStream`: Manages EventSource on `/api/v1/sse/stream` with reconnect backoff and reconciliation signals.
-- `SsePollingFallback`: Polls `/api/v1/sse/events` when streaming is blocked.
 - `normalizeGatewayEvent`: Parses outer envelopes and validates recognized payloads.
 - `adapterReducer`: Pure reducers for auth, projections, narrative, transport, and runtime feature stores.
 
@@ -180,5 +178,5 @@ npm run build                     # build audited adapter
 - [Build a ztd-Compatible Frontend](build_frontend.md) — Comprehensive frontend building reference.
 - [Connect a Lovable App](lovable.md) — Local Lovable setup with `gw connect`.
 - [Public Spectator Operations Guide](public_spectator.md) — Anonymous public mirror.
-- [SSE Architecture](../architecture/sse.md) — Event streaming and polling architecture.
+- [SSE Architecture](../architecture/sse.md) — Event streaming architecture.
 - [Contract Pack README](../../ztd-adapter/contract-pack/README.md) — Deterministic generation reference.
