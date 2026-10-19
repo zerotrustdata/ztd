@@ -22,11 +22,7 @@ import (
 func TestStoreHeterogeneousStackSet_RoundTrip(t *testing.T) {
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
-	stackSet, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
-		CampaignID: "heterogeneous-campaign",
-		Seed:       11,
-		Variants:   testHeterogeneousVariants(),
-	})
+	stackSet, err := testFormationStackSet("heterogeneous-campaign", 11, testFormationCatalogVariants())
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, store.SaveHeterogeneousStackSet(ctx, stackSet.CampaignID, stackSet))

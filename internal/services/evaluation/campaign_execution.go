@@ -24,6 +24,10 @@ type CampaignExecutionBinding struct {
 	Topology            CampaignOperatorTopology
 	ModelRegistryDigest string
 	ModelRegistry       []*operatorv1.InferenceModelVariant
+	// ModelVariants preserves the campaign's typed frozen registry, including
+	// variant IDs used by system-lane formation slots.
+	ModelVariants           []*evalv1.ModelVariant
+	FormationStackSetDigest string
 }
 
 func modelCampaignRoleLabel(role evalv1.ModelCampaignRole) (string, error) {
@@ -61,6 +65,9 @@ type CampaignChatGradingContext struct {
 // AssignmentExecutionRequest carries one resumable controller execution attempt.
 type AssignmentExecutionRequest struct {
 	Assignment *evalv1.EvaluationAssignment
+	// FormationStackSet is the validated, campaign-frozen formation source for
+	// system-lane assignments. It is nil for model-role assignments.
+	FormationStackSet *HeterogeneousStackSet
 	// Investigation is the digest-bound campaign policy for scored history.
 	Investigation    *evalv1.EvaluationInvestigation
 	AttemptID        string

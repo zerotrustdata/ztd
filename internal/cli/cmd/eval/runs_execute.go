@@ -70,7 +70,6 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	switch run.GetLane() {
 	case evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE:
 	case evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM:
-		return 0, fmt.Errorf("evaluation: run execute: %w", constants.ErrEvaluationSystemLaneUnavailable)
 	default:
 		return 0, fmt.Errorf("evaluation: run execute: lane %s: %w", run.GetLane(), constants.ErrEvaluationTargetKindMismatch)
 	}
@@ -162,6 +161,18 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
+	if err := evaluation.ValidateCampaignSpecDigest(spec); err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: campaign spec: %w", err)
+	}
+	if summary.Run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM {
+		stackSet, err := store.LoadHeterogeneousStackSet(cmd.Context(), binding.GetCampaignId())
+		if err != nil {
+			return 0, fmt.Errorf("evaluation: run execute: frozen formations: %w", err)
+		}
+		if err := evaluation.ValidateFormationStackSetBinding(stackSet, binding.GetCampaignId(), spec.GetModelRegistry()); err != nil {
+			return 0, fmt.Errorf("evaluation: run execute: frozen formations: %w", err)
+		}
+	}
 	investigation := spec.GetInvestigation()
 	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign investigation: %w", err)
@@ -222,6 +233,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		Topology:            topology,
 		ModelRegistryDigest: spec.GetModelRegistryDigest(),
 		ModelRegistry:       evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
+		ModelVariants:       spec.GetModelRegistry(),
 	}
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)

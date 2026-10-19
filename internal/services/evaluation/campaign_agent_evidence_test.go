@@ -96,6 +96,15 @@ func (l *evidenceLedger) inference(txID string) *operatorv1.ActionReceipt {
 	return receipt
 }
 
+// inferenceWithResultDigest appends and signs a completed inference receipt
+// with the digest already present in its signed payload.
+func (l *evidenceLedger) inferenceWithResultDigest(txID, resultDigest string) *operatorv1.ActionReceipt {
+	prior, hash := l.advance()
+	opts := l.opts(txID, string(constants.ActionTypeInference))
+	opts.ResultSummary = resultDigest
+	return l.signer.Executed(l.t, opts, prior, hash)
+}
+
 // inferenceFailed appends one inference whose provider failed. The handler
 // ran, so the runtime still commits it.
 func (l *evidenceLedger) inferenceFailed(txID string) *operatorv1.ActionReceipt {
@@ -135,7 +144,8 @@ func bracketOf(before, after *operatorv1.ActionReceipt) *AgentTraceBracket {
 
 func evidenceTrace(inference, data AgentTraceRuntime) *AgentTrace {
 	return &AgentTrace{
-		RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", ScenarioID: "scenario-1",
+		SchemaVersion: agentTraceSchemaVersionV6,
+		RunID:         "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", ScenarioID: "scenario-1",
 		Inference: inference, Data: data, Input: testAgentTraceInput(),
 	}
 }

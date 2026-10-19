@@ -438,6 +438,7 @@ func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.Evalu
 type campaignCreateSpec struct {
 	CampaignID    string
 	Variants      []*evalv1.ModelVariant
+	FormationIDs  []string
 	Repetitions   uint32
 	Investigation *evalv1.EvaluationInvestigation
 	// HoldContext carries each cell's investigation into its next repetition.
@@ -454,8 +455,9 @@ type campaignCreateSpec struct {
 }
 
 type campaignCreateResult struct {
-	Spec    *evalv1.EvaluationCampaignSpec
-	Catalog *evalv1.EvaluationScenarioCatalog
+	Spec     *evalv1.EvaluationCampaignSpec
+	Catalog  *evalv1.EvaluationScenarioCatalog
+	StackSet *evaluation.HeterogeneousStackSet
 }
 
 // createCampaign freezes a model-role campaign: its model registry, scenario
@@ -486,15 +488,33 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 	} else if err != nil && !errors.Is(err, constants.ErrNotFound) {
 		return nil, err
 	}
-	freeze, err := evaluation.MaterializeModelRegistry(spec.CampaignID, spec.Variants)
+	variants := spec.Variants
+	if len(spec.FormationIDs) > 0 {
+		variants, err = evaluation.MaterializeFormationVariants(variants, spec.FormationIDs)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: campaigns create: formation variants: %w", err)
+		}
+	}
+	freeze, err := evaluation.MaterializeModelRegistry(spec.CampaignID, variants)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
 	}
 	if err := evaluation.ValidateModelRegistry(freeze); err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
 	}
-	if len(freeze.Variants) != 1 {
+	if len(spec.FormationIDs) == 0 && len(freeze.Variants) != 1 {
 		return nil, fmt.Errorf("evaluation: campaigns create: %d models selected: %w", len(freeze.Variants), constants.ErrEvaluationCampaignSubjectInvalid)
+	}
+	var stackSet *evaluation.HeterogeneousStackSet
+	if len(spec.FormationIDs) > 0 {
+		stackSet, err = evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
+			CampaignID:   spec.CampaignID,
+			Variants:     freeze.Variants,
+			FormationIDs: spec.FormationIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: campaigns create: formations: %w", err)
+		}
 	}
 	controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
 	campaignSpec, err := controller.CreateCampaign(ctx, evaluation.CampaignCreateRequest{
@@ -506,6 +526,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 		HoldContext:       spec.HoldContext,
 		Platform:          spec.Platform,
 		Investigation:     spec.Investigation,
+		FormationStackSet: stackSet,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
@@ -518,7 +539,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 	}); err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
 	}
-	return &campaignCreateResult{Spec: campaignSpec, Catalog: catalog}, nil
+	return &campaignCreateResult{Spec: campaignSpec, Catalog: catalog, StackSet: stackSet}, nil
 }
 
 type campaignCreateJSON struct {
@@ -533,6 +554,7 @@ type campaignCreateJSON struct {
 	CellsPerRun         uint64 `json:"cells_per_run"`
 	ModelRegistryDigest string `json:"model_registry_digest"`
 	CatalogDigest       string `json:"catalog_digest"`
+	StackCount          int    `json:"stack_count,omitempty"`
 }
 
 func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
@@ -542,10 +564,11 @@ func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var suite string
 	var investigationMode string
 	var dataOperatorID string
+	var formationIDs []string
 	var selector ModelSelector
 	cmd := &cobra.Command{
-		Use:   "create <campaign> <selector>",
-		Short: "Freeze a campaign over one registry model",
+		Use:   "create <campaign> [model-selector]",
+		Short: "Freeze a model-role or formation campaign",
 		Long: `Freeze a campaign: the selected registry models, the suite's scenario catalog,
 and the repetition count. Nothing executes until a run starts (ztd eval runs
 start).
@@ -568,22 +591,36 @@ identity whose authoritative ledger owns that investigation.
 With --reps greater than 1, repetitions run sequentially. Pass --hold-context
 to carry the previous repetition's conversation into the prompt.
 
-A model campaign takes a model selector (positional models, --family,
---max-params, or --all) and scores each model on its own. A model campaign
-freezes exactly one model; the selector must resolve to a single model. Qualify
-several models with ztd eval rollout, which runs one campaign per model.
+A model-role campaign takes a model selector (positional models, --family,
+--max-params, or --all) and freezes exactly one model. A system campaign takes
+one or more catalog formation IDs with --formations and freezes the registered
+models required by those formations. Formation campaigns currently support one
+repetition without held context. The selectors are mutually exclusive.
+
+Qualify several model-role candidates with ztd eval rollout, which runs one
+campaign per model.
 
 Examples:
   ztd eval campaigns create eval-qwen qwen3:4b --reps 3
   ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3 --hold-context
   ztd eval campaigns create eval-gemma gemma4:e4b
   ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
+  ztd eval campaigns create eval-system --formations ultra-efficient-speedster
+  ztd eval campaigns create eval-system-pair --formations qwen-powerhouse,ultra-efficient-speedster
   ztd eval campaigns create eval-repeat qwen3:4b --investigation persistent:checkout-incident --data-operator op-123
   ztd eval campaigns create eval-longitudinal qwen3:4b --condition longitudinal --reps 3 --data-operator op-123`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			campaignID := args[0]
 			selector = *selector.withArgs(args[1:])
+			formationIDs = normalizeFormationIDs(formationIDs)
+			formationsSet := cmd.Flags().Changed("formations")
+			if formationsSet && selector.IsSet() {
+				return fmt.Errorf("evaluation: campaigns create: --formations cannot be combined with model selectors: %w", constants.ErrEvaluationFlagsInvalid)
+			}
+			if formationsSet && len(formationIDs) == 0 {
+				return fmt.Errorf("evaluation: campaigns create: --formations requires at least one catalog ID: %w", constants.ErrEvaluationSelectionEmpty)
+			}
 			condition = strings.ToLower(strings.TrimSpace(condition))
 			switch condition {
 			case "":
@@ -610,7 +647,10 @@ Examples:
 			} else if holdContext && reps <= 1 {
 				return fmt.Errorf("evaluation: campaigns create: --hold-context applies only with --reps greater than 1: %w", constants.ErrEvaluationFlagsInvalid)
 			}
-			if !selector.IsSet() {
+			if formationsSet && (reps != 1 || holdContext) {
+				return fmt.Errorf("evaluation: campaigns create: formation campaigns currently require one repetition without held context: %w", constants.ErrEvaluationFlagsInvalid)
+			}
+			if !formationsSet && !selector.IsSet() {
 				return fmt.Errorf("evaluation: campaigns create: name a model, or pass --family, --max-params, or --all: %w", constants.ErrEvaluationSelectionEmpty)
 			}
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
@@ -625,25 +665,33 @@ Examples:
 				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
 			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation}
-			if create.Variants, err = selector.Resolve(registry); err != nil {
+			if formationsSet {
+				create.FormationIDs = formationIDs
+				create.Variants = registry
+			} else if create.Variants, err = selector.Resolve(registry); err != nil {
 				return fmt.Errorf("evaluation: campaigns create: %w", err)
 			}
 			result, err := createCampaign(cmd.Context(), deps, fileSvc, create)
 			if err != nil {
 				return err
 			}
+			lane, stackCount := campaignLaneModelRole, 0
+			if result.StackSet != nil {
+				lane, stackCount = campaignLaneSystem, len(result.StackSet.Stacks)
+			}
 			payload := campaignCreateJSON{
 				CampaignID:          campaignID,
 				Condition:           evaluation.CampaignCondition(result.Spec),
-				Lane:                campaignLaneModelRole,
+				Lane:                lane,
 				Suite:               result.Spec.GetCatalogRef().GetId() + "@" + result.Spec.GetCatalogRef().GetVersion(),
 				ModelCount:          len(result.Spec.GetModelRegistry()),
 				ScenarioCount:       result.Spec.GetScenarioCount(),
 				RepetitionCount:     result.Spec.GetRepetitionCount(),
 				HoldContext:         result.Spec.GetHoldContext(),
-				CellsPerRun:         campaignCells(result.Catalog, result.Spec, campaignLaneModelRole, 0),
+				CellsPerRun:         campaignCells(result.Catalog, result.Spec, lane, stackCount),
 				ModelRegistryDigest: result.Spec.GetModelRegistryDigest(),
 				CatalogDigest:       result.Spec.GetCatalogDigest(),
+				StackCount:          stackCount,
 			}
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
@@ -651,6 +699,9 @@ Examples:
 			out := cmd.OutOrStdout()
 			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
 				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
+			if stackCount > 0 {
+				_, _ = fmt.Fprintf(out, "Formation stacks: %d\n", stackCount)
+			}
 			_, err = fmt.Fprintf(out, "\nNext, start the run with:\nztd eval runs start %s\n", campaignID)
 			return err
 		},
@@ -661,8 +712,26 @@ Examples:
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
 	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")
 	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")
+	cmd.Flags().StringSliceVar(&formationIDs, "formations", nil, "Create a system-lane campaign from catalog formation IDs (comma-separated or repeat the flag)")
 	selector.bindFlags(cmd)
 	return cmd
+}
+
+func normalizeFormationIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func parseCampaignInvestigation(mode, dataOperatorID string) (*evalv1.EvaluationInvestigation, error) {

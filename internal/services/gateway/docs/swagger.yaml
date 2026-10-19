@@ -668,6 +668,8 @@ definitions:
         type: string
       approved:
         type: boolean
+      cli_signature:
+        type: string
       reason:
         type: string
     type: object
@@ -3168,13 +3170,14 @@ paths:
       consumes:
       - application/json
       description: |-
-        Denies a suspended transaction owned by the caller. The envelope is re-submitted to its executing
+        Denies a suspended transaction owned by the caller, or approves it with a CLI certificate signature.
+        CLI approval requires mTLS and cli_signature over the domain-separated transaction hash using the enrolled P-256 key.
+        The envelope is re-submitted to its executing
         Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
         L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
         the CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must
         present an mTLS client certificate and a web caller must hold a registered passkey.
-        `approved: true` is always rejected with 403: approval requires a WebAuthn assertion through
-        `/api/v1/approvals/{txHash}/verify`.
+        Browser approval requires a WebAuthn assertion through `/api/v1/approvals/{txHash}/verify`.
       parameters:
       - description: Approval decision
         in: body
@@ -3216,7 +3219,7 @@ paths:
             resubmitted
           schema:
             type: string
-      summary: Deny a suspended transaction
+      summary: Approve or deny a suspended transaction
       tags:
       - approvals
   /api/v1/audit/receipts:

@@ -15,6 +15,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/tribunal"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -35,11 +36,19 @@ const (
 // Tribunal inference failure is also recorded as the trace's provider failure,
 // which ends the loop.
 func (r *agentRun) deliberateCommand(ctx context.Context, record AgentToolCall, args agentToolArguments) (string, *agentToolFailure, error) {
+	tribunalRole := r.designated
+	if IsHeterogeneousAssignment(r.req.Assignment) {
+		tribunalRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+	}
+	tribunalModel := r.variants[tribunalRole]
+	if tribunalModel == nil {
+		return "", nil, fmt.Errorf("evaluation: tribunal model binding: %w", constants.ErrFormationRegistryBinding)
+	}
 	cfg := tribunal.Config{
 		Inferer:     tribunalInferer{run: r, toolCallID: record.CallID, turn: record.LoopTurn},
-		Tier:        r.req.Assignment.GetHomogeneous().GetDesignatedRole(),
-		ModelTag:    r.variant.GetServedModelTag(),
-		ModelDigest: r.variant.GetModelDigest(),
+		Tier:        tribunalRole,
+		ModelTag:    tribunalModel.GetServedModelTag(),
+		ModelDigest: tribunalModel.GetModelDigest(),
 	}
 	req := tribunal.Request{
 		Request:          strings.TrimSpace(args.String(agentToolArgRequest)),

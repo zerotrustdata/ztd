@@ -12,10 +12,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -54,12 +56,17 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	}
 	var modelClaims, toolClaims []oracle.Outcome
 	for _, call := range trace.ModelCalls {
-		outcome, err := verifyModelCallEvidence(anchors, trace.Inference.OperatorID, call)
+		outcome, err := verifyModelCallEvidence(anchors, trace, call)
 		if err != nil {
 			return agentEvidenceError("model call "+call.ProviderAttemptID, err)
 		}
 		if trace.SharedRuntime() && outcome.Commitment != nil {
 			modelClaims = append(modelClaims, outcome)
+		}
+	}
+	if trace.SchemaVersion == agentTraceSchemaVersion {
+		if err := verifyV7EpisodeOutputs(trace); err != nil {
+			return agentEvidenceError("episode output", err)
 		}
 	}
 	for _, call := range trace.ToolCalls {
@@ -86,6 +93,52 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	for _, claims := range [][]oracle.Outcome{modelClaims, toolClaims} {
 		if !inLedgerOrder(ordered, claims) {
 			return agentEvidenceError("ledger bracket", fmt.Errorf("trace records claimed executions out of ledger order: %w", constants.ErrConformanceLedgerGap))
+		}
+	}
+	return nil
+}
+
+// The final diagnosis and requested tool arguments are grader inputs too. Bind
+// them to the signed responses rather than trusting the trace's repeated copy.
+func verifyV7EpisodeOutputs(trace *AgentTrace) error {
+	var lastTurn *AgentModelCall
+	turns := make(map[string]*AgentModelCall)
+	seenAttempts := make(map[string]bool)
+	seenTransactions := make(map[string]bool)
+	for i := range trace.ModelCalls {
+		call := &trace.ModelCalls[i]
+		if seenAttempts[call.ProviderAttemptID] || seenTransactions[call.TransactionID] {
+			return fmt.Errorf("model call repeats an inference identity: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+		}
+		seenAttempts[call.ProviderAttemptID] = true
+		seenTransactions[call.TransactionID] = true
+		if call.IsTurn() && call.Completed() && call.InferenceResult != nil {
+			lastTurn = call
+			turns[call.ProviderAttemptID] = call
+		}
+	}
+	if trace.FinalOutput != "" && (lastTurn == nil || lastTurn.Text != trace.FinalOutput) {
+		return fmt.Errorf("final output differs from the last signed model turn: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	for _, tool := range trace.ToolCalls {
+		turn := turns[tool.ModelCallID]
+		if turn == nil {
+			return fmt.Errorf("tool call has no signed agent turn: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+		}
+		_, _, calls := agentResponseParts(turn.InferenceResult.InferenceResult)
+		found := false
+		for _, requested := range calls {
+			arguments, err := canonicalizeToolJSON(requested.GetArgumentsJson())
+			if err != nil {
+				arguments = "{}" // The executor records malformed arguments as an empty object.
+			}
+			if requested.GetCallId() == tool.ProviderCallID && requested.GetName() == tool.ToolName && arguments == tool.ArgumentsJSON {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("tool call differs from the signed model request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 		}
 	}
 	return nil
@@ -140,17 +193,22 @@ func agentTraceAnchorSet(trace *AgentTrace) (*oracle.AnchorSet, error) {
 // result_summary is the call's result digest; a failed call's receipt may be
 // a failed execution, which still holds a ledger commitment, or a governance
 // rejection, which holds none.
-func verifyModelCallEvidence(anchors *oracle.AnchorSet, runtimeID string, call AgentModelCall) (oracle.Outcome, error) {
+func verifyModelCallEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call AgentModelCall) (oracle.Outcome, error) {
 	if call.Receipt == nil || call.Receipt.ActionReceipt == nil {
 		return oracle.Outcome{}, fmt.Errorf("governed inference has no signed receipt: %w", constants.ErrActionReceiptMissing)
 	}
 	receipt := call.Receipt.ActionReceipt
-	outcome, err := verifiedOutcome(anchors, runtimeID, receipt)
+	outcome, err := verifiedOutcome(anchors, trace.Inference.OperatorID, receipt)
 	if err != nil {
 		return oracle.Outcome{}, err
 	}
 	if call.TransactionID == "" || receipt.GetTransactionId() != call.TransactionID {
 		return oracle.Outcome{}, fmt.Errorf("receipt transaction %q is not the call transaction %q: %w", receipt.GetTransactionId(), call.TransactionID, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	if trace.SchemaVersion == agentTraceSchemaVersion {
+		if err := verifyV7ModelCallIdentity(trace, call, outcome); err != nil {
+			return oracle.Outcome{}, err
+		}
 	}
 	switch {
 	case call.Completed():
@@ -165,6 +223,130 @@ func verifyModelCallEvidence(anchors *oracle.AnchorSet, runtimeID string, call A
 		return oracle.Outcome{}, fmt.Errorf("receipt outcome %d is not an inference outcome: %w", outcome.Kind, constants.ErrConformanceReceiptUnclassifiable)
 	}
 	return outcome, nil
+}
+
+// verifyV7ModelCallIdentity proves the per-call transcript and model identity
+// are the ones returned by the signed Inference Operator result. The frozen
+// assignment-to-variant mapping is checked by the campaign verifier that has
+// the run and campaign records; this layer ensures the trace's repeated claim
+// is complete and internally bound to the result and its receipt.
+func verifyV7ModelCallIdentity(trace *AgentTrace, call AgentModelCall, outcome oracle.Outcome) error {
+	fail := func(reason string) error {
+		return fmt.Errorf("%s: %w", reason, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	var result *operatorv1.InferenceResult
+	if call.InferenceResult != nil {
+		result = call.InferenceResult.InferenceResult
+	}
+	if call.ModelVariantID == "" || call.ModelRole == "" || call.ServedModelTag == "" || call.ModelDigest == "" {
+		return fmt.Errorf("v7 inference model identity is incomplete: %w", constants.ErrMissingRequiredField)
+	}
+	if call.ProviderAttemptID == "" {
+		return fmt.Errorf("v7 inference provider attempt is missing: %w", constants.ErrMissingRequiredField)
+	}
+	if trace.CampaignID == "" || trace.RunID == "" || trace.AssignmentID == "" || trace.EvaluationAttemptID == "" || trace.ScenarioID == "" || trace.DesignatedRole == "" || trace.ServedModelTag == "" || trace.ModelDigest == "" || trace.ModelRegistryDigest == "" {
+		return fmt.Errorf("v7 trace model identity is incomplete: %w", constants.ErrMissingRequiredField)
+	}
+	if !models.IsSHA256Hex(trace.ModelDigest) || !models.IsSHA256Hex(trace.ModelRegistryDigest) {
+		return fail("trace model or registry digest is malformed")
+	}
+	if !validInferenceModelRole(call.ModelRole) {
+		return fail("model role is not a recognized inference role")
+	}
+	traceRole, roleKnown := inferenceModelRoleForTraceRole(trace.DesignatedRole)
+	if roleKnown && call.ModelRole == traceRole {
+		if call.ServedModelTag != trace.ServedModelTag || call.ModelDigest != trace.ModelDigest {
+			return fail("per-call designated variant identity differs from the trace identity")
+		}
+	} else if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) || call.ModelRole != operatorv1.ModelRole_MODEL_ROLE_ASSISTANT.String() {
+		// A heterogeneous system assignment can dispatch Tribunal calls to its
+		// assistant slot while the trace-level identity names the designated
+		// primary slot. Exact variant-to-slot binding is checked against the
+		// frozen assignment by the campaign verifier.
+		return fail("model role differs from the designated campaign role")
+	}
+	if result == nil {
+		if call.Completed() || outcome.Kind == oracle.OutcomeExecuted {
+			return fmt.Errorf("completed v7 inference has no complete result: %w", constants.ErrMissingRequiredField)
+		}
+		// Failed providers may have a signed FAILED receipt and no result. The
+		// campaign verifier checks this call's per-role variant against the
+		// frozen assignment even though there is no response to bind.
+		return nil
+	}
+	if call.ProviderAttemptID == "" ||
+		result.GetProviderAttemptId() != call.ProviderAttemptID ||
+		result.GetCampaignId() != trace.CampaignID ||
+		result.GetRunId() != trace.RunID ||
+		result.GetAssignmentId() != trace.AssignmentID ||
+		result.GetEvaluationAttemptId() != trace.EvaluationAttemptID ||
+		result.GetScenarioId() != trace.ScenarioID ||
+		result.GetModelRegistryDigest() != trace.ModelRegistryDigest {
+		return fail("signed inference result identity differs from the trace")
+	}
+	if result.GetRequestedModel() != call.ServedModelTag || result.GetModel() != call.ServedModelTag ||
+		result.GetRequestedModelDigest() != call.ModelDigest || result.GetServedModelDigest() != call.ModelDigest {
+		return fail("signed inference result model differs from the per-call model identity")
+	}
+	resultDigest, err := models.ComputeInferenceResultDigest(result)
+	if err != nil {
+		return fmt.Errorf("compute signed inference result digest: %w", err)
+	}
+	if result.GetResultDigest() == "" || result.GetResultDigest() != resultDigest || call.ResultDigest != resultDigest || call.Receipt.ActionReceipt.GetResultSummary() != resultDigest {
+		return fmt.Errorf("signed inference result digest does not match the call and receipt: %w", constants.ErrInferenceResultDigest)
+	}
+	if err := verifyV7ModelCallTranscript(call, result); err != nil {
+		return err
+	}
+	return nil
+}
+
+func inferenceModelRoleForTraceRole(role string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "primary":
+		return operatorv1.ModelRole_MODEL_ROLE_PRIMARY.String(), true
+	case "assistant":
+		return operatorv1.ModelRole_MODEL_ROLE_ASSISTANT.String(), true
+	case "lite":
+		return operatorv1.ModelRole_MODEL_ROLE_LITE.String(), true
+	default:
+		return "", false
+	}
+}
+
+func validInferenceModelRole(role string) bool {
+	switch role {
+	case operatorv1.ModelRole_MODEL_ROLE_PRIMARY.String(),
+		operatorv1.ModelRole_MODEL_ROLE_ASSISTANT.String(),
+		operatorv1.ModelRole_MODEL_ROLE_LITE.String():
+		return true
+	default:
+		return false
+	}
+}
+
+// verifyV7ModelCallTranscript binds grader-visible output and telemetry to the
+// complete result covered by the signed receipt.
+func verifyV7ModelCallTranscript(call AgentModelCall, result *operatorv1.InferenceResult) error {
+	text, thinking, toolCalls := agentResponseParts(result)
+	if call.Text != text || call.Thinking != thinking || call.ToolCallCount != len(toolCalls) {
+		return fmt.Errorf("model transcript differs from the signed inference result: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	ttft, generation := uint64(0), uint64(0)
+	if result.TimeToFirstTokenNs != nil && *result.TimeToFirstTokenNs > 0 {
+		ttft = uint64(*result.TimeToFirstTokenNs)
+	}
+	if result.GenerationDurationNs != nil && *result.GenerationDurationNs > 0 {
+		generation = uint64(*result.GenerationDurationNs)
+	}
+	if result.GetPromptTokens() < 0 || result.GetCompletionTokens() < 0 ||
+		call.PromptTokens != uint32(result.GetPromptTokens()) || call.CompletionTokens != uint32(result.GetCompletionTokens()) ||
+		call.UsageReported != result.GetUsageReported() || call.FinishReason != result.GetFinishReason() ||
+		call.LoadState != operatorLoadStateToEvaluation(result.GetLoadState()).String() || call.RetryCount != result.GetRetryCount() ||
+		call.TTFTNanos != ttft || call.GenerationDurationNanos != generation {
+		return fmt.Errorf("model telemetry differs from the signed inference result: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	return nil
 }
 
 // verifyToolCallEvidence checks one tool call against its receipt. A call the

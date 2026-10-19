@@ -53,7 +53,7 @@ message L2Metadata {
 
 // Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
 // L3Proof is a union: fields 1-4 are populated for WebAuthn (web sessions),
-// fields 5-6 for CLI/mTLS (operator sessions). Exactly one proof type
+// fields 5-7 for CLI approvals. Exactly one proof type
 // should be populated per instance.
 message L3Proof {
   // WebAuthn: client data JSON from the authenticator assertion
@@ -66,8 +66,10 @@ message L3Proof {
   string credential_id = 4 [json_name = "credentialId"];
   // CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication
   string mtls_cert_fingerprint = 5 [json_name = "mtlsCertFingerprint"];
-  // CLI/mTLS: Ed25519 signature over transaction_hash using the operator private key
+  // CLI approval: ECDSA P-256 signature over the domain-separated transaction hash
   string cli_signature = 6 [json_name = "cliSignature"];
+  // CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain)
+  bytes cli_certificate_der = 7 [json_name = "cliCertificateDer"];
 }
 
 message L3Metadata {

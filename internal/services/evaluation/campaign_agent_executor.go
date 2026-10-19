@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -21,7 +22,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -55,11 +55,9 @@ type AgentToolDispatcher interface {
 	DispatchAgentTool(ctx context.Context, target Target, runID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error)
 }
 
-// CampaignAgentExecutor runs homogeneous model-role assignments: the frozen
-// scenario prompt goes to the designated model through the governed Inference
-// Operator, every tool call the model makes runs as a governed action on the
-// bound Data Operator, and the canonical agent trace is graded with the
-// catalog's content checks and trajectory policies.
+// CampaignAgentExecutor runs model-role and formation assignments through the
+// governed Inference Operator; every tool call runs as a governed action on
+// the bound Data Operator.
 type CampaignAgentExecutor struct {
 	inference  GovernedInferenceDispatcher
 	tools      AgentToolDispatcher
@@ -92,12 +90,13 @@ func NewCampaignAgentExecutor(inference GovernedInferenceDispatcher, tools Agent
 
 // agentRun is the per-assignment state of one tool loop.
 type agentRun struct {
-	executor  *CampaignAgentExecutor
-	req       AssignmentExecutionRequest
-	role      models.InferenceModelRole
-	variant   *evalv1.ModelVariant
-	registry  []*operatorv1.InferenceModelVariant
-	workspace ScenarioWorkspace
+	executor   *CampaignAgentExecutor
+	req        AssignmentExecutionRequest
+	designated evalv1.ModelCampaignRole
+	variants   map[evalv1.ModelCampaignRole]*evalv1.ModelVariant
+	variant    *evalv1.ModelVariant
+	registry   []*operatorv1.InferenceModelVariant
+	workspace  ScenarioWorkspace
 	// held is the previous repetition's conversation when the campaign holds
 	// context; the model receives it ahead of this repetition's input.
 	held []*operatorv1.InferenceMessage
@@ -217,11 +216,18 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if !e.shouldScoreWithJudge(req, trace) || e.inference == nil || req.Assignment == nil {
 		return nil, nil
 	}
-	homogeneous, ok := req.Assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous)
-	if !ok || homogeneous.Homogeneous == nil || homogeneous.Homogeneous.GetCandidateVariant() == nil {
+	resolved, err := ResolveAssignmentModels(req)
+	if err != nil {
 		return nil, nil
 	}
-	variant := homogeneous.Homogeneous.GetCandidateVariant()
+	role := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	if homogeneous := req.Assignment.GetHomogeneous(); homogeneous != nil {
+		role = homogeneous.GetDesignatedRole()
+	}
+	variant := resolved[role]
+	if variant == nil {
+		return nil, nil
+	}
 	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" {
 		return nil, nil
 	}
@@ -332,19 +338,22 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", constants.ErrMissingRequiredField)
 	}
 	assignment := req.Assignment
-	homogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous)
-	if !ok || homogeneous.Homogeneous == nil {
-		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", constants.ErrEvaluationTargetKindMismatch)
-	}
-	roleLabel, err := modelCampaignRoleLabel(homogeneous.Homogeneous.GetDesignatedRole())
+	resolved, err := ResolveAssignmentModels(req)
 	if err != nil {
 		return nil, err
 	}
-	role, err := campaignRoleToInferenceRole(homogeneous.Homogeneous.GetDesignatedRole())
+	designated := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	if homogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous); ok {
+		designated = homogeneous.Homogeneous.GetDesignatedRole()
+	}
+	variant := resolved[designated]
+	if variant == nil {
+		return nil, fmt.Errorf("evaluation: execute assignment: designated model: %w", constants.ErrFormationRegistryBinding)
+	}
+	roleLabel, err := modelCampaignRoleLabel(designated)
 	if err != nil {
 		return nil, err
 	}
-	variant := homogeneous.Homogeneous.GetCandidateVariant()
 	binding := req.Binding
 	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" || req.AttemptID == "" ||
 		binding.ModelRegistryDigest == "" || len(binding.ModelRegistry) == 0 {
@@ -378,15 +387,16 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", err)
 	}
 	return &agentRun{
-		executor:  e,
-		req:       req,
-		role:      role,
-		variant:   variant,
-		registry:  binding.ModelRegistry,
-		workspace: workspace,
-		held:      held,
-		tools:     tools,
-		target:    Target{OperatorID: topology.Data.OperatorID, SessionID: topology.Data.OperatorSessionID},
+		executor:   e,
+		req:        req,
+		designated: designated,
+		variants:   resolved,
+		variant:    variant,
+		registry:   binding.ModelRegistry,
+		workspace:  workspace,
+		held:       held,
+		tools:      tools,
+		target:     Target{OperatorID: topology.Data.OperatorID, SessionID: topology.Data.OperatorSessionID},
 		trace: &AgentTrace{
 			InvestigationID:     investigationID,
 			HeldContext:         heldContext,
@@ -433,9 +443,9 @@ func (r *agentRun) loop(ctx context.Context) error {
 
 		questions, isInterrogation := parseInterrogationQuestions(text)
 		if isInterrogation {
-			// Interrogation hand-off: drop any pending tool calls.
+			// Interrogation hand-off drops pending execution, while the trace
+			// preserves the tool-call count covered by the signed result.
 			toolCalls = nil
-			call.ToolCallCount = 0
 
 			var matchedFollowUp *ScenarioScriptedFollowUp
 			for i := range r.req.ScenarioInput.FollowUps {
@@ -725,16 +735,33 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
 	attemptID := r.executor.newID("agent-inference")
 	purpose, turn := call.Purpose, call.LoopTurn
+	modelRole := r.designated
+	if IsHeterogeneousAssignment(r.req.Assignment) {
+		if strings.HasPrefix(purpose, agentModelCallPurposeTribunalPrefix) {
+			modelRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+		} else {
+			modelRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+		}
+	}
+	variant := r.variants[modelRole]
+	inferenceRole, err := campaignRoleToInferenceRole(modelRole)
+	if err != nil || variant == nil {
+		return nil, call, fmt.Errorf("evaluation: dispatch agent inference: role %s: %w", modelRole, constants.ErrFormationRegistryBinding)
+	}
 	call.ProviderAttemptID = attemptID
+	call.ModelVariantID = variant.GetVariantId()
+	call.ModelRole = inferenceRole.ToProto().String()
+	call.ServedModelTag = variant.GetServedModelTag()
+	call.ModelDigest = variant.GetModelDigest()
 	call.ToolsDeclared = []string{}
 	for _, tool := range tools {
 		call.ToolsDeclared = append(call.ToolsDeclared, tool.GetName())
 	}
 	probe := InferenceProbeRequest{
 		ProviderAttemptID:       attemptID,
-		Role:                    r.role,
-		Model:                   r.variant.GetServedModelTag(),
-		ModelDigest:             r.variant.GetModelDigest(),
+		Role:                    inferenceRole,
+		Model:                   variant.GetServedModelTag(),
+		ModelDigest:             variant.GetModelDigest(),
 		TargetOperatorSessionID: r.trace.Inference.SessionID,
 		Messages:                messages,
 		Tools:                   tools,
@@ -779,6 +806,7 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 	call.FinishReason = result.GetFinishReason()
 	call.LoadState = operatorLoadStateToEvaluation(result.GetLoadState()).String()
 	call.RetryCount = result.GetRetryCount()
+	call.InferenceResult = &AgentTraceInferenceResult{InferenceResult: proto.Clone(result).(*operatorv1.InferenceResult)}
 	if result.TimeToFirstTokenNs != nil && *result.TimeToFirstTokenNs > 0 {
 		call.TTFTNanos = uint64(*result.TimeToFirstTokenNs)
 	}
@@ -1158,7 +1186,10 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	// Verification comes before grading: a trace the Data Operator's signed
 	// evidence does not back is never graded against the model.
 	evidenceErr := VerifyAgentTraceEvidence(trace)
-	modelInferences, scoredSpan := modelInferenceRecordsFromAgentTrace(req.Assignment, trace, newID)
+	if modelErr := verifyAssignmentTraceModels(req, trace); modelErr != nil {
+		evidenceErr = errors.Join(evidenceErr, modelErr)
+	}
+	modelInferences, scoredSpan := modelInferenceRecordsFromAgentTrace(req, trace, newID)
 	assignmentID := req.Assignment.GetAssignmentId()
 	result := &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:            CampaignSchemaVersion,
@@ -1324,8 +1355,9 @@ func agentToolCallOutcome(success bool) evalv1.EvaluationVerdictStatus {
 // a SCORED_CHAIN record: a scored turn of the tool loop, or a Tribunal
 // inference under its persona and stage call site. The scored span is the
 // summed generation time.
-func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment, trace *AgentTrace, newID func(string) string) ([]*evalv1.ModelInferenceRecord, *uint64) {
-	homogeneous := assignment.GetHomogeneous()
+func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, newID func(string) string) ([]*evalv1.ModelInferenceRecord, *uint64) {
+	assignment := req.Assignment
+	resolved, _ := ResolveAssignmentModels(req)
 	records := make([]*evalv1.ModelInferenceRecord, 0, len(trace.ModelCalls))
 	var span uint64
 	for _, call := range trace.ModelCalls {
@@ -1339,16 +1371,25 @@ func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment
 			persona = call.Persona
 			callSite = agentCallSiteTribunalPrefix + strings.TrimPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix)
 		}
+		modelRole := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+		var variant *evalv1.ModelVariant
+		if homogeneous := assignment.GetHomogeneous(); homogeneous != nil {
+			modelRole = homogeneous.GetDesignatedRole()
+			variant = homogeneous.GetCandidateVariant()
+		} else if IsHeterogeneousAssignment(assignment) {
+			modelRole = campaignRoleFromInferenceString(call.ModelRole)
+			variant = resolved[modelRole]
+		}
 		record := &evalv1.ModelInferenceRecord{
 			InferenceRecordId:       newID("inference"),
 			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			ProviderAttemptId:       call.ProviderAttemptID,
 			AssignmentId:            assignment.GetAssignmentId(),
 			EvaluationAttemptId:     trace.EvaluationAttemptID,
-			ModelRole:               homogeneous.GetDesignatedRole(),
+			ModelRole:               modelRole,
 			AgentPersona:            persona,
 			CallSite:                callSite,
-			ModelVariant:            homogeneous.GetCandidateVariant(),
+			ModelVariant:            variant,
 			UsageAvailability:       usage,
 			PromptTokens:            call.PromptTokens,
 			CompletionTokens:        call.CompletionTokens,
@@ -1368,4 +1409,17 @@ func modelInferenceRecordsFromAgentTrace(assignment *evalv1.EvaluationAssignment
 		return records, nil
 	}
 	return records, &span
+}
+
+func campaignRoleFromInferenceString(role string) evalv1.ModelCampaignRole {
+	switch role {
+	case operatorv1.ModelRole_MODEL_ROLE_PRIMARY.String():
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	case operatorv1.ModelRole_MODEL_ROLE_ASSISTANT.String():
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+	case operatorv1.ModelRole_MODEL_ROLE_LITE.String():
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+	default:
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+	}
 }

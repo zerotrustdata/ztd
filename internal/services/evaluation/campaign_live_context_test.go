@@ -23,6 +23,14 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
+func TestCampaignLiveContext_V6StillRequiresCompletedQueryEvidence(t *testing.T) {
+	call := AgentToolCall{
+		ToolName: agentToolInvestigationCtx,
+		Receipt:  &AgentTraceReceipt{ActionReceipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
+	}
+	require.ErrorIs(t, verifyContextRetrieval(&AgentTrace{SchemaVersion: agentTraceSchemaVersionV6}, call), constants.ErrEvaluationEvidenceTraceMismatch)
+}
+
 // liveContextClient is a provider-free transport double. The Operator-route
 // integration tests cover real governance and SQLite; this test checks that
 // the executor asks that route and binds the signed answer to its trace.

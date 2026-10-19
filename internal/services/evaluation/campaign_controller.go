@@ -34,6 +34,7 @@ type CampaignInitRequest struct {
 	DataOperatorSessionID      string
 	Deployment                 *evalv1.EvaluationDeploymentIdentity
 	Lane                       evalv1.EvaluationLane
+	FormationStackSet          *HeterogeneousStackSet
 }
 
 // CampaignRunSummary reports resumable controller state for one run.
@@ -116,8 +117,9 @@ type CampaignCreateRequest struct {
 	// the next. It is frozen only when RepetitionCount > 1.
 	HoldContext bool
 	// Platform is the build that freezes the campaign; its release is digest-bound.
-	Platform      PlatformIdentity
-	Investigation *evalv1.EvaluationInvestigation
+	Platform          PlatformIdentity
+	Investigation     *evalv1.EvaluationInvestigation
+	FormationStackSet *HeterogeneousStackSet
 }
 
 // RunStartRequest binds one new run to an existing campaign.
@@ -147,6 +149,32 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	if err != nil {
 		return nil, err
 	}
+	if req.FormationStackSet != nil {
+		if spec.GetRepetitionCount() != 1 || spec.GetHoldContext() {
+			return nil, fmt.Errorf("evaluation: formation campaigns support one repetition: %w", constants.ErrEvaluationFlagsInvalid)
+		}
+		if err := ValidateFormationStackSetBinding(req.FormationStackSet, req.CampaignID, spec.GetModelRegistry()); err != nil {
+			return nil, err
+		}
+		formationIDs := make([]string, 0, len(req.FormationStackSet.Stacks))
+		for _, stack := range req.FormationStackSet.Stacks {
+			formationIDs = append(formationIDs, stack.GetStackId())
+		}
+		expected, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
+			CampaignID: req.CampaignID, Variants: spec.GetModelRegistry(), Seed: req.FormationStackSet.Seed, FormationIDs: formationIDs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if expected.SetDigest != req.FormationStackSet.SetDigest {
+			return nil, fmt.Errorf("evaluation: create campaign: formation set differs from catalog: %w", constants.ErrFormationStackMismatch)
+		}
+		spec.FormationStackSetDigest = req.FormationStackSet.SetDigest
+		spec.CampaignDigest, err = ComputeCampaignSpecDigest(spec)
+		if err != nil {
+			return nil, err
+		}
+	}
 	existing, err := c.store.LoadCampaignSpec(ctx, req.CampaignID)
 	switch {
 	case err == nil:
@@ -154,6 +182,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 			existing.GetModelRegistryDigest() != spec.GetModelRegistryDigest() ||
 			existing.GetRepetitionCount() != spec.GetRepetitionCount() ||
 			existing.GetHoldContext() != spec.GetHoldContext() ||
+			existing.GetFormationStackSetDigest() != spec.GetFormationStackSetDigest() ||
 			!proto.Equal(existing.GetInvestigation(), spec.GetInvestigation()) ||
 			(existing.GetPlatformRelease() != "" && existing.GetPlatformRelease() != spec.GetPlatformRelease()) {
 			return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, constants.ErrEvaluationCampaignConflict)
@@ -161,17 +190,35 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 		if err := ValidateCampaignSpecDigest(existing); err != nil {
 			return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, err)
 		}
+		if req.FormationStackSet != nil {
+			frozen, err := c.store.LoadHeterogeneousStackSet(ctx, req.CampaignID)
+			if err != nil {
+				return nil, err
+			}
+			if frozen.SetDigest != existing.GetFormationStackSetDigest() {
+				return nil, fmt.Errorf("evaluation: create campaign: persisted formation set differs from spec: %w", constants.ErrFormationStackMismatch)
+			}
+		}
 		return existing, nil
 	case !isNotFound(err):
 		return nil, err
 	}
-	if err := c.store.SaveCampaignSpec(ctx, spec); err != nil {
-		return nil, err
+	if req.FormationStackSet == nil && len(spec.GetModelRegistry()) != 1 {
+		return nil, fmt.Errorf("evaluation: create campaign: multiple models require frozen formations: %w", constants.ErrEvaluationCampaignSubjectInvalid)
 	}
 	if err := c.store.SaveScenarioCatalog(ctx, req.CampaignID, req.Catalog); err != nil {
 		return nil, err
 	}
 	if err := c.store.SaveScenarioArtifacts(ctx, req.CampaignID, req.Catalog, req.ScenarioArtifacts); err != nil {
+		return nil, err
+	}
+	if req.FormationStackSet != nil {
+		if err := c.store.SaveHeterogeneousStackSet(ctx, req.CampaignID, req.FormationStackSet); err != nil {
+			return nil, err
+		}
+	}
+	// Publish the frozen spec only after every artifact it references exists.
+	if err := c.store.SaveCampaignSpec(ctx, spec); err != nil {
 		return nil, err
 	}
 	return spec, nil
@@ -188,6 +235,9 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	spec, err := c.store.LoadCampaignSpec(ctx, req.CampaignID)
 	if err != nil {
 		return nil, err
+	}
+	if err := ValidateCampaignSpecDigest(spec); err != nil {
+		return nil, fmt.Errorf("evaluation: start run: campaign spec: %w", err)
 	}
 	// Campaigns frozen before ztd v2.3.0 recorded no release; their asserted tag
 	// is not a digest-bound fact, so only a recorded release is enforced.
@@ -219,6 +269,20 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	}
 	if lane == evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE && len(spec.GetModelRegistry()) != 1 {
 		return nil, fmt.Errorf("evaluation: start run %q: campaign %q freezes %d models: %w", req.RunID, req.CampaignID, len(spec.GetModelRegistry()), constants.ErrEvaluationCampaignSubjectInvalid)
+	}
+	if lane == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM {
+		if spec.GetRepetitionCount() != 1 || spec.GetHoldContext() {
+			return nil, fmt.Errorf("evaluation: formation campaigns support one repetition: %w", constants.ErrEvaluationFlagsInvalid)
+		}
+		set, err := c.store.LoadHeterogeneousStackSet(ctx, req.CampaignID)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateCampaignFormationDigest(spec, set); err != nil {
+			return nil, err
+		}
+	} else if spec.GetFormationStackSetDigest() != "" {
+		return nil, fmt.Errorf("evaluation: start run: formation campaign requires system lane: %w", constants.ErrEvaluationTargetKindMismatch)
 	}
 	run := &evalv1.EvaluationRun{
 		SchemaVersion: CampaignSchemaVersion,
@@ -257,6 +321,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		RepetitionCount:   req.RepetitionCount,
 		Platform:          req.Platform,
 		Investigation:     req.Investigation,
+		FormationStackSet: req.FormationStackSet,
 	}); err != nil {
 		return nil, err
 	}
@@ -305,9 +370,7 @@ func (c *CampaignController) CancelRun(ctx context.Context, runID string) (int, 
 }
 
 // ScheduleRun materializes and persists the complete assignment matrix of one
-// run before any scored call begins: the model × role-cell × repetition
-// matrix. A system-lane run fails closed until formations run the
-// investigation loop.
+// run before any scored call begins.
 func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int, error) {
 	if c == nil || c.store == nil {
 		return 0, fmt.Errorf("evaluation: schedule run: %w", constants.ErrMissingRequiredField)
@@ -323,6 +386,14 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 	if err := ValidateCampaignSpecPosture(spec); err != nil {
 		return 0, fmt.Errorf("evaluation: schedule run %s: %w", runID, err)
 	}
+	if err := ValidateCampaignSpecDigest(spec); err != nil {
+		return 0, fmt.Errorf("evaluation: schedule run %s: campaign spec: %w", runID, err)
+	}
+	if spec.GetCampaignDigest() != run.GetCampaignBinding().GetCampaignDigest() ||
+		spec.GetModelRegistryDigest() != run.GetCampaignBinding().GetModelRegistryDigest() ||
+		spec.GetCatalogDigest() != run.GetCampaignBinding().GetCatalogDigest() {
+		return 0, fmt.Errorf("evaluation: schedule run %s: frozen campaign does not match run binding: %w", runID, constants.ErrChecksumMismatch)
+	}
 	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
 		return 0, err
@@ -330,7 +401,22 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 	var assignments []*evalv1.EvaluationAssignment
 	switch run.GetLane() {
 	case evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM:
-		return 0, fmt.Errorf("evaluation: schedule run %s: %w", runID, constants.ErrEvaluationSystemLaneUnavailable)
+		stackSet, err := c.store.LoadHeterogeneousStackSet(ctx, spec.GetCampaignId())
+		if err != nil {
+			return 0, fmt.Errorf("evaluation: schedule run %s: frozen formations: %w", runID, err)
+		}
+		if err := validateCampaignFormationDigest(spec, stackSet); err != nil {
+			return 0, fmt.Errorf("evaluation: schedule run %s: frozen formations: %w", runID, err)
+		}
+		assignments, err = BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
+			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, StackSet: stackSet, QueuedAt: c.now().UTC(),
+		})
+		if err != nil {
+			return 0, err
+		}
+		if err := ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments); err != nil {
+			return 0, fmt.Errorf("evaluation: schedule run %s: assignment matrix: %w", runID, err)
+		}
 	case evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE:
 		assignments, err = BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
 			CampaignID:      spec.GetCampaignId(),
@@ -486,8 +572,27 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if err := ValidateCampaignSpecDigest(campaignSpec); err != nil {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: campaign spec: %w", err)
 	}
-	if campaignSpec.GetCampaignDigest() != run.GetCampaignBinding().GetCampaignDigest() {
+	if campaignSpec.GetCampaignDigest() != run.GetCampaignBinding().GetCampaignDigest() ||
+		campaignSpec.GetModelRegistryDigest() != run.GetCampaignBinding().GetModelRegistryDigest() ||
+		campaignSpec.GetCatalogDigest() != run.GetCampaignBinding().GetCatalogDigest() {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: campaign spec does not match run binding: %w", constants.ErrChecksumMismatch)
+	}
+	var formationStackSet *HeterogeneousStackSet
+	if run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM {
+		formationStackSet, err = c.store.LoadHeterogeneousStackSet(ctx, campaignSpec.GetCampaignId())
+		if err != nil {
+			return nil, false, fmt.Errorf("evaluation: execute next assignment: frozen formations: %w", err)
+		}
+		if err := validateCampaignFormationDigest(campaignSpec, formationStackSet); err != nil {
+			return nil, false, fmt.Errorf("evaluation: execute next assignment: frozen formations: %w", err)
+		}
+		stack, err := HeterogeneousStackFromAssignment(assignment)
+		if err != nil {
+			return nil, false, fmt.Errorf("evaluation: execute next assignment: formation assignment: %w", err)
+		}
+		if !formationStackSetContains(formationStackSet, stack) {
+			return nil, false, fmt.Errorf("evaluation: execute next assignment: assignment formation is not in frozen set: %w", constants.ErrFormationStackMismatch)
+		}
 	}
 	if exists, err := c.store.AssignmentResultExists(ctx, runID, assignment.GetAssignmentId()); err != nil {
 		return nil, false, err
@@ -537,16 +642,19 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	}
 	attemptID := c.newID("attempt")
 	execReq := AssignmentExecutionRequest{
-		Assignment:       assignment,
-		Investigation:    campaignSpec.GetInvestigation(),
-		AttemptID:        attemptID,
-		ScenarioInput:    scenarioInput,
-		ScenarioGold:     scenarioGold,
-		ScenarioTools:    scenarioTools,
-		RequiredConcepts: requiredConcepts,
-		GradingMethod:    gradingMethod,
-		Binding:          binding,
+		Assignment:        assignment,
+		FormationStackSet: formationStackSet,
+		Investigation:     campaignSpec.GetInvestigation(),
+		AttemptID:         attemptID,
+		ScenarioInput:     scenarioInput,
+		ScenarioGold:      scenarioGold,
+		ScenarioTools:     scenarioTools,
+		RequiredConcepts:  requiredConcepts,
+		GradingMethod:     gradingMethod,
+		Binding:           binding,
 	}
+	execReq.Binding.ModelVariants = campaignSpec.GetModelRegistry()
+	execReq.Binding.FormationStackSetDigest = campaignSpec.GetFormationStackSetDigest()
 	var result *evalv1.EvaluationAssignmentResult
 	execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
 	if err == nil {

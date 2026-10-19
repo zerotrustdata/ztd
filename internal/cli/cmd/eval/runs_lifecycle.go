@@ -129,10 +129,17 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
-	if laneName == campaignLaneSystem {
-		return nil, fmt.Errorf("evaluation: runs start: campaign %q: %w", opts.CampaignID, constants.ErrEvaluationSystemLaneUnavailable)
-	}
 	runLane := evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE
+	if laneName == campaignLaneSystem {
+		runLane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
+		stackSet, err := store.LoadHeterogeneousStackSet(cmd.Context(), opts.CampaignID)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: frozen formations: %w", err)
+		}
+		if err := evaluation.ValidateFormationStackSetBinding(stackSet, opts.CampaignID, spec.GetModelRegistry()); err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: frozen formations: %w", err)
+		}
+	}
 	catalog, err := store.LoadScenarioCatalog(cmd.Context(), opts.CampaignID)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)

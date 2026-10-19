@@ -102,6 +102,37 @@ function investigationRetrievalToolCall(overrides: Record<string, unknown> = {})
 }
 
 describe('verifyAgentTraceArtifact', () => {
+  const v7Call = () => ({
+    ...(traceTail('agent-trace.v6').model_calls as Record<string, unknown>[])[0],
+    model_variant_id: 'variant-primary', model_role: 'MODEL_ROLE_PRIMARY', served_model_tag: 'qwen3:8b', model_digest: 'a'.repeat(64),
+    inference_result: { requested_model: 'qwen3:8b', served_model_digest: 'a'.repeat(64) },
+  });
+
+  it('decodes v7 signed model identities and Tribunal and episode evidence', async () => {
+    const body = sealedBody('agent-trace.v7', {
+      investigation_id: 'investigation-1',
+      model_calls: [v7Call(), { ...v7Call(), purpose: 'tribunal_generate', tool_call_id: 'call-1', persona: 'axiom', model_role: 'MODEL_ROLE_ASSISTANT' }],
+      tool_calls: [investigationRetrievalToolCall()],
+      terminal_classification: 'final_diagnosis',
+      clarifications: [{ loop_turn: 1, questions: ['Is checkout failing?'], selected_branch: 'yes', user_response: 'Yes' }],
+      steps: [{ step_index: 0, role: 'AGENT_ROLE_CANDIDATE_GENERATOR', generator_output: { command: 'pwd' } }],
+    });
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+    expect(trace.model_calls[1]?.model_role).toBe('MODEL_ROLE_ASSISTANT');
+    expect(trace.model_calls[1]?.persona).toBe('axiom');
+    expect(trace.clarifications?.[0]?.selected_branch).toBe('yes');
+    expect(trace.steps).toHaveLength(1);
+  });
+
+  it('rejects v7 successful calls without their signed result or model identity', async () => {
+    for (const missing of ['inference_result', 'model_variant_id', 'model_role', 'served_model_tag', 'model_digest']) {
+      const call: Record<string, unknown> = v7Call();
+      delete call[missing];
+      const body = sealedBody('agent-trace.v7', { model_calls: [call] });
+      await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toThrow();
+    }
+  });
+
   it('verifies a sealed v4 trace and decodes it', async () => {
     const body = sealedBody();
 

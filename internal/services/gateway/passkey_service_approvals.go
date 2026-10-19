@@ -14,11 +14,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	gov "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // handleApprovalAction dispatches approval sub-actions (challenge, verify) based on
@@ -190,14 +193,15 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 	h.responder.JSON(w, http.StatusOK, receipt)
 }
 
-// @Summary		Deny a suspended transaction
-// @Description	Denies a suspended transaction owned by the caller. The envelope is re-submitted to its executing
+// @Summary		Approve or deny a suspended transaction
+// @Description	Denies a suspended transaction owned by the caller, or approves it with a CLI certificate signature.
+// @Description	CLI approval requires mTLS and cli_signature over the domain-separated transaction hash using the enrolled P-256 key.
+// @Description	The envelope is re-submitted to its executing
 // @Description	Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
 // @Description	L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
 // @Description	the CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must
 // @Description	present an mTLS client certificate and a web caller must hold a registered passkey.
-// @Description	`approved: true` is always rejected with 403: approval requires a WebAuthn assertion through
-// @Description	`/api/v1/approvals/{txHash}/verify`.
+// @Description	Browser approval requires a WebAuthn assertion through `/api/v1/approvals/{txHash}/verify`.
 // @Tags			approvals
 // @Accept		json
 // @Produce		json
@@ -232,11 +236,8 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 		h.responder.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	// L3 approval is a WebAuthn assertion over the transaction hash, verified
-	// by the passkey notary at resume. This route carries no assertion, so it
-	// can only deny; approvals go through the approval page's verify action.
 	if req.Approved {
-		h.responder.Error(w, http.StatusForbidden, constants.ErrPasskeyProofRequired.Error())
+		h.handleSignedCLIApproval(w, r, userID, cliSessionID, req)
 		return
 	}
 
@@ -300,6 +301,62 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 	}
 	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, req.ApprovalID, receiptJSON)
 	h.responder.JSON(w, http.StatusOK, receipt)
+}
+
+// handleSignedCLIApproval takes the signing certificate exclusively from the
+// authenticated mTLS connection. The client supplies only its signature; the
+// Gateway notary checks the enrolled session and fingerprint again at L4.
+func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.Request, userID, cliSessionID string, req models.ApprovalRespondRequest) {
+	if cliSessionID == "" || r.TLS == nil || len(r.TLS.PeerCertificates) == 0 || req.CLISignature == "" {
+		h.responder.Error(w, http.StatusForbidden, constants.ErrCLIL3SignatureRequired.Error())
+		return
+	}
+	proof := &commonv1.L3Proof{
+		CliSignature:        req.CLISignature,
+		MtlsCertFingerprint: models.SHA256Hex(r.TLS.PeerCertificates[0].Raw),
+		CliCertificateDer:   r.TLS.PeerCertificates[0].Raw,
+	}
+	approverSessionID, err := gov.VerifyCLIApproval(userID, req.ApprovalID, proof)
+	if err != nil || approverSessionID != cliSessionID {
+		h.responder.Error(w, http.StatusForbidden, constants.ErrTxL3ProofInvalid.Error())
+		return
+	}
+	tx, found, err := h.orchestrator.GetSuspendedTransaction(r.Context(), req.ApprovalID)
+	if err != nil {
+		h.logger.Error("CLI approval: load suspended transaction failed", "txHash", req.ApprovalID)
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	if !found || tx == nil || !tx.ExpiresAt.After(time.Now()) {
+		h.responder.Error(w, http.StatusNotFound, constants.ErrTransactionExpired.Error())
+		return
+	}
+	if tx.UserID != userID || tx.TransactionHash != req.ApprovalID {
+		h.responder.Error(w, http.StatusForbidden, constants.ErrCLIL3SessionUserMismatch.Error())
+		return
+	}
+	receipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), req.ApprovalID, userID, proof)
+	if err != nil {
+		if errors.Is(err, constants.ErrAuditStoreVaultLocked) {
+			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
+		} else if receipt != nil {
+			h.responder.ProtoJSONCanonical(w, http.StatusForbidden, receipt)
+		} else {
+			h.responder.Error(w, http.StatusForbidden, constants.ErrTxL3ProofInvalid.Error())
+		}
+		return
+	}
+	if receipt == nil || receipt.GetTransactionHash() != tx.TransactionHash || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	body, err := response.MarshalProtoJSONCanonical(receipt)
+	if err != nil {
+		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
+		return
+	}
+	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, tx.TransactionHash, body)
+	h.responder.ProtoJSONCanonical(w, http.StatusOK, receipt)
 }
 
 // handleCLIApprovalStatus is an mTLS-authenticated endpoint that returns the current

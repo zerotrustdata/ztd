@@ -28,14 +28,16 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v6
-// binds scored investigation identity and authoritative context retrievals; v5
+// agentTraceSchemaVersion is the version every new trace is sealed with. v7
+// carries each complete signed inference result and its per-call model identity;
+// v6 binds scored investigation identity and authoritative context retrievals; v5
 // added the held context a repetition continued; v4 added the exact model
 // input, per-turn thinking, and provider tool-call IDs. v4 and v3 traces
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v6"
+	agentTraceSchemaVersion   = "agent-trace.v7"
+	agentTraceSchemaVersionV6 = "agent-trace.v6"
 	agentTraceSchemaVersionV5 = "agent-trace.v5"
 	agentTraceSchemaVersionV4 = "agent-trace.v4"
 	agentTraceSchemaVersionV3 = "agent-trace.v3"
@@ -84,6 +86,15 @@ type AgentModelCall struct {
 	TransactionID     string `json:"transaction_id"`
 	Purpose           string `json:"purpose"`
 	LoopTurn          int    `json:"loop_turn"`
+	// Model identity is repeated per call so a trace can bind each inference
+	// result to its selected frozen variant and role.
+	ModelVariantID string `json:"model_variant_id,omitempty"`
+	ModelRole      string `json:"model_role,omitempty"`
+	ServedModelTag string `json:"served_model_tag,omitempty"`
+	ModelDigest    string `json:"model_digest,omitempty"`
+	// InferenceResult is the complete response covered by ResultDigest and the
+	// signed receipt. Earlier trace versions did not retain it.
+	InferenceResult *AgentTraceInferenceResult `json:"inference_result,omitempty"`
 	// ToolCallID and Persona are set on a Tribunal call: the tool call whose
 	// deliberation dispatched it and the persona that answered.
 	ToolCallID              string   `json:"tool_call_id,omitempty"`
@@ -106,6 +117,28 @@ type AgentModelCall struct {
 	// Error is the public failure of a call that did not complete.
 	Error   string             `json:"error,omitempty"`
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
+}
+
+// AgentTraceInferenceResult carries a complete inference result as canonical
+// protojson, like AgentTraceReceipt.
+type AgentTraceInferenceResult struct{ *operatorv1.InferenceResult }
+
+// MarshalJSON writes the result as canonical protojson.
+func (r AgentTraceInferenceResult) MarshalJSON() ([]byte, error) {
+	if r.InferenceResult == nil {
+		return nil, fmt.Errorf("evaluation: encode agent trace inference result: %w", constants.ErrMissingRequiredField)
+	}
+	return evalv1.MarshalCanonical(r.InferenceResult)
+}
+
+// UnmarshalJSON decodes canonical protojson strictly.
+func (r *AgentTraceInferenceResult) UnmarshalJSON(b []byte) error {
+	result := &operatorv1.InferenceResult{}
+	if err := unmarshalAgentTraceCanonical(b, result); err != nil {
+		return fmt.Errorf("evaluation: decode agent trace inference result: %w", err)
+	}
+	r.InferenceResult = result
+	return nil
 }
 
 // Completed reports whether the call returned a governed result.
@@ -297,7 +330,8 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 		if !call.Completed() {
 			break
 		}
-		if call.ToolCallCount == 0 {
+		_, interrogation := parseInterrogationQuestions(call.Text)
+		if call.ToolCallCount == 0 || interrogation {
 			if call.Text != "" {
 				messages = append(messages, AgentTraceContextMessage{Role: assistantRole, Text: call.Text})
 			}
@@ -646,7 +680,7 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}

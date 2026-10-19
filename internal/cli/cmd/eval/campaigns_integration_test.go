@@ -216,11 +216,12 @@ func TestCampaignsCreate_RejectsConflictingModes(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "the removed formations flag", args: []string{"campaigns", "create", "eval-f", "--formations", "qwen-powerhouse"}, want: "unknown flag: --formations"},
 		{name: "the removed all-formations flag", args: []string{"campaigns", "create", "eval-f", "--all-formations"}, want: "unknown flag: --all-formations"},
 		{name: "the removed lane flag", args: []string{"campaigns", "create", "eval-f", "--all", "--lane", "system"}, want: "unknown flag: --lane"},
 		{name: "the removed seed flag", args: []string{"campaigns", "create", "eval-f", "--all", "--seed", "17"}, want: "unknown flag: --seed"},
 		{name: "positional models with a filter", args: []string{"campaigns", "create", "eval-f", "qwen3:4b", "--family", "qwen"}, want: "cannot be combined"},
+		{name: "formation and model selectors are exclusive", args: []string{"campaigns", "create", "eval-f", "--formations", "qwen-powerhouse", "--all"}, want: "--formations cannot be combined"},
+		{name: "formation repetitions are currently unsupported", args: []string{"campaigns", "create", "eval-f", "--formations", "qwen-powerhouse", "--reps", "2"}, want: "formation campaigns currently require one repetition"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -229,6 +230,74 @@ func TestCampaignsCreate_RejectsConflictingModes(t *testing.T) {
 			assert.Contains(t, err.Error(), test.want)
 		})
 	}
+}
+
+func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
+	env := setupRunEnv(t)
+	variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('a') })
+	writeTestFrozenInventory(t, env.root, variants...)
+
+	var payload campaignCreateJSON
+	require.NoError(t, env.runJSON(t, &payload, "campaigns", "create", "eval-system", "--formations", "ultra-efficient-speedster"))
+	assert.Equal(t, campaignLaneSystem, payload.Lane)
+	assert.Equal(t, 1, payload.StackCount)
+	catalog, _, err := evaluation.LoadScenarioCatalog()
+	require.NoError(t, err)
+	assert.Equal(t, evaluation.FormationMatrixSize(catalog, 1), payload.CellsPerRun)
+	assert.Greater(t, payload.ModelCount, 1)
+
+	spec, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-system")
+	require.NoError(t, err)
+	require.NotEmpty(t, spec.GetFormationStackSetDigest())
+	stackSet, err := env.store(t).LoadHeterogeneousStackSet(context.Background(), "eval-system")
+	require.NoError(t, err)
+	assert.Equal(t, spec.GetFormationStackSetDigest(), stackSet.SetDigest)
+	assert.Equal(t, []string{"ultra-efficient-speedster"}, []string{stackSet.Stacks[0].GetStackId()})
+	assert.NoError(t, evaluation.ValidateCampaignSpecDigest(spec))
+
+	var show campaignShowJSON
+	require.NoError(t, env.runJSON(t, &show, "campaigns", "show", "eval-system"))
+	assert.Equal(t, campaignLaneSystem, show.Lane)
+	assert.Equal(t, 1, show.StackCount)
+	assert.Equal(t, payload.CellsPerRun, show.CellsPer)
+}
+
+func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t *testing.T) {
+	variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('b') })
+	t.Run("same formation set is idempotent and a different set conflicts", func(t *testing.T) {
+		env := setupRunEnv(t)
+		writeTestFrozenInventory(t, env.root, variants...)
+		args := []string{"campaigns", "create", "eval-system", "--formations", "ultra-efficient-speedster,qwen-powerhouse"}
+		_, err := env.run(t, args...)
+		require.NoError(t, err)
+		first, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-system")
+		require.NoError(t, err)
+		_, err = env.run(t, "campaigns", "create", "eval-system", "--formations", "qwen-powerhouse,ultra-efficient-speedster")
+		require.NoError(t, err)
+		same, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-system")
+		require.NoError(t, err)
+		assert.Equal(t, first.GetCampaignDigest(), same.GetCampaignDigest())
+		_, err = env.run(t, "campaigns", "create", "eval-system", "--formations", "qwen-powerhouse")
+		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
+	})
+
+	t.Run("model-role campaign cannot become system lane", func(t *testing.T) {
+		env := setupRunEnv(t)
+		_, err := env.run(t, "campaigns", "create", "eval-collision", "qwen3:4b")
+		require.NoError(t, err)
+		writeTestFrozenInventory(t, env.root, variants...)
+		_, err = env.run(t, "campaigns", "create", "eval-collision", "--formations", "ultra-efficient-speedster")
+		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
+	})
+
+	t.Run("system campaign cannot become model-role lane", func(t *testing.T) {
+		env := setupRunEnv(t)
+		writeTestFrozenInventory(t, env.root, variants...)
+		_, err := env.run(t, "campaigns", "create", "eval-collision", "--formations", "ultra-efficient-speedster")
+		require.NoError(t, err)
+		_, err = env.run(t, "campaigns", "create", "eval-collision", variants[0].GetServedModelTag())
+		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
+	})
 }
 
 func TestCampaignsCreate_InvalidCampaignID(t *testing.T) {
@@ -341,26 +410,44 @@ func TestCampaignsCreate_RejectsMultiModelModelRoleCampaign(t *testing.T) {
 	require.Error(t, err, "a rejected create must not persist the campaign")
 }
 
-// A campaign frozen with a heterogeneous stack set is a system-lane campaign,
-// which has no executor: runs start refuses it before scheduling a run.
-func TestRunsStart_RejectsSystemLaneCampaign(t *testing.T) {
+// A campaign frozen with catalog formations schedules its system-lane
+// assignments from the persisted formation set.
+func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
 	env := setupRunEnv(t)
 	ctx := context.Background()
-	env.createCampaign(t, "eval-system")
+	variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('a') })
+	catalog, artifacts, err := evaluation.LoadScenarioCatalog()
+	require.NoError(t, err)
+	inventory, err := evaluation.MaterializeModelRegistry("eval-system", variants)
+	require.NoError(t, err)
 	stackSet, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
-		CampaignID: "eval-system",
-		Variants: evaluation.FormationCatalogFixtureVariants(func(string) string {
-			return repeatTestHex('a')
-		}),
+		CampaignID:   "eval-system",
+		Variants:     inventory.Variants,
 		FormationIDs: []string{"ultra-efficient-speedster"},
 	})
 	require.NoError(t, err)
-	require.NoError(t, env.store(t).SaveHeterogeneousStackSet(ctx, "eval-system", stackSet))
+	controller := evaluation.NewCampaignController(env.store(t), nil, env.deps.now, adaptNewID(env.deps.newID))
+	_, err = controller.InitializeCampaign(ctx, evaluation.CampaignInitRequest{
+		CampaignID: "eval-system", RunID: "run-system", Catalog: catalog, Inventory: inventory,
+		ScenarioArtifacts: artifacts, RepetitionCount: 1, Platform: testPlatform,
+		Lane: evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM, FormationStackSet: stackSet,
+	})
+	require.NoError(t, err)
+	writeGatewayCredentials(t, env)
 
-	_, err = env.run(t, "runs", "start", "eval-system")
-	require.ErrorIs(t, err, constants.ErrEvaluationSystemLaneUnavailable)
+	_, err = env.run(t, "runs", "start", "eval-system", "--prepare-only", "--publish=false")
+	require.NoError(t, err)
 
 	runIDs, err := env.store(t).ListCampaignRunIDs(ctx, "eval-system")
 	require.NoError(t, err)
-	assert.Empty(t, runIDs, "a refused system-lane start must not persist a run")
+	require.Len(t, runIDs, 2)
+	var scheduled int
+	for _, runID := range runIDs {
+		assignments, err := env.store(t).ListAssignments(ctx, runID)
+		require.NoError(t, err)
+		if len(assignments) > 0 {
+			scheduled = len(assignments)
+		}
+	}
+	assert.Equal(t, int(evaluation.FormationMatrixSize(catalog, 1)), scheduled)
 }

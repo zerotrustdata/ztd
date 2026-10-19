@@ -249,6 +249,11 @@ func (g homogeneousGrader) gradeRoleCriteria(trajPassed, contentPassed bool) []*
 }
 
 func (g homogeneousGrader) gradePipelineCriteria(invoked bool) []*evalv1.DeterministicGrade {
+	if IsHeterogeneousAssignment(g.req.Assignment) {
+		// Formations bind models to executed roles; they have no structural
+		// pipeline grade of their own. Gold.Players grades observed role work.
+		return nil
+	}
 	grades := make([]*evalv1.DeterministicGrade, 0)
 	for _, pipeline := range g.req.ScenarioGold.PipelineCriteria {
 		if pipeline.Lane != homogeneousPipelineLane {

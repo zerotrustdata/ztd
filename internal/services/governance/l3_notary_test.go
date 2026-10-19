@@ -290,7 +290,7 @@ func TestGatewayL3Notary_DispatchesToPasskeyVerifierForWebAuthnProofs(t *testing
 	assert.Equal(t, webauthnProof, passkeyMock.calledProof)
 }
 
-func TestGatewayL3Notary_RejectsMTLSOnlyProofWhenPasskeyRequired(t *testing.T) {
+func TestGatewayL3Notary_RejectsInvalidCLISignatureWithoutPasskeyFallback(t *testing.T) {
 	t.Parallel()
 
 	txHash := "test-tx-hash-mtls-only"
@@ -313,9 +313,8 @@ func TestGatewayL3Notary_RejectsMTLSOnlyProofWhenPasskeyRequired(t *testing.T) {
 	}
 
 	allowed, err := notary.VerifyL3Proof(context.Background(), userID, txHash, "cli-session", mtlsProof)
-	require.Error(t, err)
+	require.NoError(t, err)
 	assert.False(t, allowed)
-	assert.True(t, errors.Is(err, constants.ErrPasskeyProofRequired))
 	assert.False(t, passkeyMock.called)
 }
 
@@ -331,7 +330,6 @@ func TestGatewayL3Notary_DualLayerPasskeyAndMTLS(t *testing.T) {
 		ClientDataJson:      "client-data",
 		AuthenticatorData:   "auth-data",
 		Signature:           "passkey-sig",
-		CliSignature:        "cli-sig",
 		MtlsCertFingerprint: "abc123",
 	}
 

@@ -21,7 +21,7 @@ import (
 )
 
 func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace := v7EvidenceTraceWithToolCalls(t)
 	// <, > and & are escaped by encoding/json inside nested canonical bytes; the
 	// round trip must survive that.
 	trace.ToolCalls[0].Receipt.ResultSummary = "2>&1 <out> & done"
@@ -72,7 +72,7 @@ func TestAgentTrace_ReceiptMarshalRejectsAbsentReceipt(t *testing.T) {
 }
 
 func TestAgentTrace_SealRejectsBracketWithAbsentSentinelReceipt(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace := v7EvidenceTraceWithToolCalls(t)
 	trace.Bracket.Before = AgentTraceReceipt{}
 
 	_, err := SealAgentTrace(trace)
@@ -81,7 +81,7 @@ func TestAgentTrace_SealRejectsBracketWithAbsentSentinelReceipt(t *testing.T) {
 }
 
 func TestAgentTrace_SealedBodyCarriesReceiptsAsCanonicalProtojson(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace := v7EvidenceTraceWithToolCalls(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestAgentTrace_SealedBodyCarriesReceiptsAsCanonicalProtojson(t *testing.T) 
 }
 
 func TestAgentTrace_SealRejectsMissingInput(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace, _ := v7EvidenceTrace(t)
 	trace.Input = nil
 
 	_, err := SealAgentTrace(trace)
@@ -133,7 +133,7 @@ func TestAgentTrace_V3TraceValidatesOnlyWithoutInput(t *testing.T) {
 }
 
 func TestAgentTrace_V4TraceRequiresInput(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace, _ := v7EvidenceTrace(t)
 	_, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	trace.Input = nil
@@ -163,7 +163,7 @@ func TestAgentTrace_V5TraceVerifiesWithoutInvestigationMetadata(t *testing.T) {
 }
 
 func TestDecodeAgentTrace_PublishedBodyDecodesAndVerifies(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace, _ := v7EvidenceTrace(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 
@@ -175,7 +175,7 @@ func TestDecodeAgentTrace_PublishedBodyDecodesAndVerifies(t *testing.T) {
 }
 
 func TestDecodeAgentTrace_RejectsTamperedAndNonCanonicalBodies(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace, _ := v7EvidenceTrace(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 
@@ -192,7 +192,7 @@ func TestDecodeAgentTrace_RejectsTamperedAndNonCanonicalBodies(t *testing.T) {
 // in fixed order with schema_version then evidence_digest first, so the
 // digest preimage is the sealed body with only the digest value emptied.
 func TestAgentTrace_DigestPreimageIsBodyWithDigestEmptied(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
+	trace := v7EvidenceTraceWithToolCalls(t)
 	trace.ToolCalls[0].ResultJSON = `{"stdout":"2>&1 <out> & done  "}`
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)

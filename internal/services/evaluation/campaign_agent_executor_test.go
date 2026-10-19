@@ -89,6 +89,11 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 	registry := []*operatorv1.InferenceModelVariant{{Model: agentTestModelTag, Digest: agentTestModelDigest}}
 	registryDigest, err := models.ComputeInferenceModelRegistryDigest(agentTestCampaignID, registry)
 	require.NoError(t, err)
+	frozenVariant := &evalv1.ModelVariant{
+		VariantId:      "variant-a",
+		ServedModelTag: agentTestModelTag,
+		ModelDigest:    agentTestModelDigest,
+	}
 	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
 	seq := 0
 	newID := func(prefix string) string {
@@ -107,7 +112,7 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 			ScenarioId:   agentTestScenarioID,
 			Target: &evalv1.EvaluationAssignment_Homogeneous{Homogeneous: &evalv1.HomogeneousAssignmentTarget{
 				DesignatedRole:   evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
-				CandidateVariant: &evalv1.ModelVariant{ServedModelTag: agentTestModelTag, ModelDigest: agentTestModelDigest},
+				CandidateVariant: frozenVariant,
 			}},
 		},
 		AttemptID: "attempt-1",
@@ -126,6 +131,7 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 			},
 			ModelRegistryDigest: registryDigest,
 			ModelRegistry:       registry,
+			ModelVariants:       []*evalv1.ModelVariant{proto.Clone(frozenVariant).(*evalv1.ModelVariant)},
 		},
 	}
 	f.workspace, err = NewScenarioWorkspace(agentTestWorkingDirectory, "run-1", "attempt-1")
@@ -221,17 +227,32 @@ func (f *agentInferenceFake) DispatchInference(_ context.Context, req *operatorv
 	if turn == f.failTurn {
 		return nil, governance.WithFailedReceipt(ledger.inferenceFailed(txID), errors.New("agent test inference: provider unreachable"))
 	}
+	result := &operatorv1.InferenceResult{
+		Model:                req.GetModel(),
+		ProviderAttemptId:    req.GetProviderAttemptId(),
+		RequestedModel:       req.GetModel(),
+		RequestedModelDigest: req.GetModelDigest(),
+		ServedModelDigest:    req.GetModelDigest(),
+		CampaignId:           req.GetCampaignId(),
+		RunId:                req.GetRunId(),
+		AssignmentId:         req.GetAssignmentId(),
+		EvaluationAttemptId:  req.GetEvaluationAttemptId(),
+		ScenarioId:           req.GetScenarioId(),
+		ModelRegistryDigest:  req.GetModelRegistryDigest(),
+		FinishReason:         "stop",
+		Parts:                f.turns[turn-1],
+		LoadState:            operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNSPECIFIED,
+		RetryClassification:  operatorv1.InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED,
+	}
+	resultDigest, err := models.ComputeInferenceResultDigest(result)
+	if err != nil {
+		return nil, err
+	}
+	result.ResultDigest = resultDigest
 	return &operatorv1.InferenceDispatchResponse{
 		TransactionId: txID,
-		Result: &operatorv1.InferenceResult{
-			ProviderAttemptId:   req.GetProviderAttemptId(),
-			RequestedModel:      req.GetModel(),
-			CampaignId:          req.GetCampaignId(),
-			ModelRegistryDigest: req.GetModelRegistryDigest(),
-			ResultDigest:        evidenceResultDigest(txID),
-			Parts:               f.turns[turn-1],
-		},
-		Receipt: ledger.inference(txID),
+		Result:        result,
+		Receipt:       ledger.inferenceWithResultDigest(txID, resultDigest),
 	}, nil
 }
 

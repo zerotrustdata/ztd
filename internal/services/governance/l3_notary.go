@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	approvals "github.com/zerotrustdata/ztd/internal/governance"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
@@ -65,10 +66,8 @@ type CLISessionVerifier interface {
 	VerifyCLISession(ctx context.Context, userID, cliSessionID, certFingerprint string) error
 }
 
-// gatewayNotary provides L3 verification for gateway mode. It requires passkey
-// authorization for all proofs (browser and CLI). CLI callers additionally present
-// mTLS fields for transport-layer authentication.
-// This is a layered model: passkey = authorization (human presence), mTLS = transport auth.
+// gatewayNotary provides L3 verification for gateway mode using either a passkey
+// assertion or a signature from an enrolled CLI certificate.
 type gatewayNotary struct {
 	cliVerifier     CLISessionVerifier
 	passkeyVerifier L3Notary
@@ -91,9 +90,8 @@ func NewOutboundL3Notary(suspendedStore storage.SuspendedTransactionStore, logge
 	}
 }
 
-// NewGatewayL3Notary creates a unified L3 notary that requires passkey authorization
-// for all proofs (browser and CLI). CLI callers additionally present mTLS fields for
-// transport-layer authentication. The passkeyVerifier is the passkey-domain primitive
+// NewGatewayL3Notary creates a unified L3 notary accepting passkey assertions and
+// enrolled CLI certificate signatures. The passkeyVerifier is the passkey-domain primitive
 // (e.g. gateway.PasskeyService); it is wrapped in a passkeyL3Notary so it need not
 // implement L3Notary itself.
 func NewGatewayL3Notary(cliVerifier CLISessionVerifier, passkeyVerifier PasskeyVerifier, logger *slog.Logger) L3Notary {
@@ -106,13 +104,30 @@ func NewGatewayL3Notary(cliVerifier CLISessionVerifier, passkeyVerifier PasskeyV
 
 // VerifyL3Proof verifies an L3 proof in gateway mode.
 //
-//  1. Passkey authorization is required — proofs without a credential_id are rejected
-//     with ErrPasskeyProofRequired. The passkey verifier validates the WebAuthn assertion.
-//  2. CLI mTLS session authentication — if the proof includes mtls_cert_fingerprint
-//     (CLI caller), the CLI session is verified as an additional transport-auth layer.
+// Exactly one authorization mechanism is accepted: WebAuthn or an enrolled CLI
+// certificate signature. The CLI certificate's SPIFFE SAN supplies the approving
+// session identity; the envelope submitter session remains independent.
 func (v *gatewayNotary) VerifyL3Proof(ctx context.Context, userID, transactionHash, cliSessionID string, proof *commonv1.L3Proof) (bool, error) {
 	if proof == nil {
 		return false, constants.ErrGatewayL3ProofRequired
+	}
+
+	isCLIApproval := proof.CliSignature != "" || len(proof.CliCertificateDer) != 0
+	if isCLIApproval {
+		if proof.CredentialId != "" || proof.ClientDataJson != "" || proof.AuthenticatorData != "" || proof.Signature != "" {
+			return false, nil
+		}
+		approvingSessionID, err := approvals.VerifyCLIApproval(userID, transactionHash, proof)
+		if err != nil || v.cliVerifier == nil {
+			return false, nil
+		}
+		if err := v.cliVerifier.VerifyCLISession(ctx, userID, approvingSessionID, proof.MtlsCertFingerprint); err != nil {
+			if errors.Is(err, constants.ErrCLISessionDenied) {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
 	}
 
 	if proof.CredentialId == "" {

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -77,21 +78,35 @@ func (f *testEvidenceInferenceFake) DispatchInference(_ context.Context, req *op
 	if turnNum == f.failTurn {
 		return nil, governance.WithFailedReceipt(f.ledger.inferenceFailed(txID), errors.New("test evidence inference: provider unreachable"))
 	}
-	resultDigest := evidenceResultDigest(txID)
+	result := &operatorv1.InferenceResult{
+		ProviderAttemptId:    req.GetProviderAttemptId(),
+		RequestedModel:       req.GetModel(),
+		RequestedModelDigest: req.GetModelDigest(),
+		ServedModelDigest:    req.GetModelDigest(),
+		Model:                req.GetModel(),
+		CampaignId:           req.GetCampaignId(),
+		RunId:                req.GetRunId(),
+		AssignmentId:         req.GetAssignmentId(),
+		EvaluationAttemptId:  req.GetEvaluationAttemptId(),
+		ScenarioId:           req.GetScenarioId(),
+		ModelRegistryDigest:  req.GetModelRegistryDigest(),
+		FinishReason:         "stop",
+		Parts:                f.turns[turnIndex],
+		LoadState:            operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNSPECIFIED,
+		RetryClassification:  operatorv1.InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED,
+	}
+	resultDigest, err := models.ComputeInferenceResultDigest(result)
+	if err != nil {
+		return nil, err
+	}
+	result.ResultDigest = resultDigest
 	if f.digestMismatch {
-		resultDigest = flipFirstHexDigit(resultDigest)
+		result.ResultDigest = flipFirstHexDigit(resultDigest)
 	}
 	return &operatorv1.InferenceDispatchResponse{
 		TransactionId: txID,
-		Result: &operatorv1.InferenceResult{
-			ProviderAttemptId:   req.GetProviderAttemptId(),
-			RequestedModel:      req.GetModel(),
-			CampaignId:          req.GetCampaignId(),
-			ModelRegistryDigest: req.GetModelRegistryDigest(),
-			ResultDigest:        resultDigest,
-			Parts:               f.turns[turnIndex],
-		},
-		Receipt: f.ledger.inference(txID),
+		Result:        result,
+		Receipt:       f.ledger.inferenceWithResultDigest(txID, resultDigest),
 	}, nil
 }
 
@@ -288,7 +303,7 @@ func TestAgentEvidenceIntegration_ProviderFailureAfterExecution(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
-	assert.NotEqual(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, res.GetLifecycleStatus())
+	assert.Empty(t, res.GetInvalidEvidenceDetail())
 
 	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 	require.NoError(t, err)
@@ -329,7 +344,8 @@ func TestAgentEvidenceIntegration_DigestMismatch(t *testing.T) {
 	res, ok, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, res.GetLifecycleStatus())
+	assert.NotEmpty(t, res.GetInvalidEvidenceDetail())
 
 	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 	require.NoError(t, err)
@@ -339,7 +355,7 @@ func TestAgentEvidenceIntegration_DigestMismatch(t *testing.T) {
 	assert.NotNil(t, trace.ModelCalls[0].Receipt)
 
 	err = VerifyAgentTraceEvidence(trace)
-	require.NoError(t, err, "receipt is claimed so bracket verifies despite provider error")
+	assert.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid, "completed receipt without its signed result fails closed")
 }
 
 func TestAgentEvidenceIntegration_AnchorFailClosed(t *testing.T) {

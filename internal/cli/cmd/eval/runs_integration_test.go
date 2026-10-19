@@ -425,6 +425,11 @@ func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
 		NoAutoBind: true,
 		Verify:     true,
 	})
+	if err != nil {
+		if loaded, loadErr := env.store(t).LoadCampaignVerification(context.Background(), "run-a-1"); loadErr == nil {
+			t.Logf("verification status=%s failure_count=%d reasons=%v", loaded.GetStatus(), loaded.GetFailureCount(), loaded.GetFailureReasons())
+		}
+	}
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, 1, result.Executed)

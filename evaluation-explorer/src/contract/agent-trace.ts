@@ -11,7 +11,7 @@
 
 import { ValidationError, assert, assertBoolean, assertInteger, assertObject, assertString, rejectUnknown } from './validators';
 
-export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6'] as const;
+export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
 /** One canonical protojson message (ActionReceipt or ConformanceAnchor). */
@@ -64,6 +64,13 @@ export interface AgentTraceModelCall {
   transaction_id: string;
   purpose: string;
   loop_turn: number;
+  tool_call_id?: string;
+  persona?: string;
+  model_variant_id?: string;
+  model_role?: string;
+  served_model_tag?: string;
+  model_digest?: string;
+  inference_result?: AgentTraceProto;
   tools_declared: string[];
   result_digest: string;
   usage_reported: boolean;
@@ -143,6 +150,9 @@ export interface AgentTrace {
   model_calls: AgentTraceModelCall[];
   tool_calls: AgentTraceToolCall[];
   final_output: string;
+  terminal_classification?: string;
+  clarifications?: { loop_turn: number; questions: string[]; selected_branch?: string; user_response?: string }[];
+  steps?: AgentTraceProto[];
   tool_turn_limit_reached: boolean;
   provider_failure?: string;
   provider_failure_class?: string;
@@ -259,11 +269,13 @@ const MODEL_CALL_FIELDS = [
   'provider_attempt_id', 'transaction_id', 'purpose', 'loop_turn', 'tools_declared', 'result_digest', 'usage_reported',
   'prompt_tokens', 'completion_tokens', 'ttft_nanos', 'generation_duration_nanos', 'finish_reason', 'load_state',
   'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'receipt',
+  'tool_call_id', 'persona',
 ] as const;
 
-function parseModelCall(value: unknown, path: string): AgentTraceModelCall {
+function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion): AgentTraceModelCall {
   assertObject(value, path);
-  rejectUnknown(value, MODEL_CALL_FIELDS, path);
+  const identity = ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest', 'inference_result'];
+  rejectUnknown(value, schemaVersion === 'agent-trace.v7' ? [...MODEL_CALL_FIELDS, ...identity] : MODEL_CALL_FIELDS, path);
   requiredStrings(value, ['provider_attempt_id', 'transaction_id', 'purpose', 'result_digest'], path);
   for (const key of ['loop_turn', 'prompt_tokens', 'completion_tokens', 'retry_count', 'tool_call_count']) {
     assertInteger(value[key], `${path}.${key}`);
@@ -275,6 +287,17 @@ function parseModelCall(value: unknown, path: string): AgentTraceModelCall {
   optionalInteger(value, 'ttft_nanos', path);
   optionalInteger(value, 'generation_duration_nanos', path);
   optionalProto(value, 'receipt', path);
+  optionalString(value, 'tool_call_id', path);
+  optionalString(value, 'persona', path);
+  if (schemaVersion === 'agent-trace.v7') {
+    requiredStrings(value, identity.filter((key) => key !== 'inference_result'), path);
+    for (const key of ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest']) {
+      assert((value[key] as string).length > 0, `${path}.${key}`, 'expected non-empty model identity');
+    }
+    assert(SHA256.test(value.model_digest as string), `${path}.model_digest`, 'expected lowercase SHA-256');
+    optionalProto(value, 'inference_result', path);
+    if (!value.error) proto(value.inference_result, `${path}.inference_result`);
+  }
   return { ...value, tools_declared: declared } as unknown as AgentTraceModelCall;
 }
 
@@ -319,7 +342,7 @@ function parseRetrieval(value: unknown, path: string, investigationId: string | 
 
 function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion, investigationId?: string): AgentTraceToolCall {
   assertObject(value, path);
-  const fields = schemaVersion === 'agent-trace.v6' ? [...TOOL_CALL_FIELDS, 'retrieval'] : TOOL_CALL_FIELDS;
+  const fields = schemaVersion === 'agent-trace.v6' || schemaVersion === 'agent-trace.v7' ? [...TOOL_CALL_FIELDS, 'retrieval'] : TOOL_CALL_FIELDS;
   rejectUnknown(value, fields, path);
   requiredStrings(value, ['call_id', 'model_call_id', 'tool_name', 'arguments_json'], path);
   for (const key of ['provider_call_id', 'command', 'result_json', 'error_type', 'error', 'action_type', 'transaction_id', 'policy_decision']) {
@@ -338,6 +361,7 @@ const TRACE_FIELDS = [
   'schema_version', 'evidence_digest', 'run_id', 'assignment_id', 'evaluation_attempt_id', 'campaign_id', 'scenario_id',
   'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'investigation_id', 'inference', 'data', 'workspace', 'held_context', 'input',
   'model_calls', 'tool_calls', 'final_output', 'tool_turn_limit_reached', 'provider_failure', 'provider_failure_class', 'bracket',
+  'terminal_classification', 'clarifications', 'steps',
 ] as const;
 
 const INVESTIGATION_CONTEXT_TOOL = 'query_investigation_context';
@@ -396,7 +420,8 @@ export function parseAgentTrace(value: unknown): AgentTrace {
   const schemaVersion = value.schema_version as AgentTraceSchemaVersion;
   assertString(value.evidence_digest, `${path}.evidence_digest`);
   assert(SHA256.test(value.evidence_digest), `${path}.evidence_digest`, 'expected lowercase SHA-256');
-  if (schemaVersion === 'agent-trace.v6') {
+  const liveContext = schemaVersion === 'agent-trace.v6' || schemaVersion === 'agent-trace.v7';
+  if (liveContext) {
     optionalString(value, 'investigation_id', path);
     if (value.investigation_id !== undefined) {
       assert((value.investigation_id as string).length > 0, `${path}.investigation_id`, 'expected non-empty investigation ID');
@@ -420,14 +445,27 @@ export function parseAgentTrace(value: unknown): AgentTrace {
     assert(input.messages.length > 0, `${path}.input.messages`, `${value.schema_version} records the exact model input`);
   }
   let heldContext: AgentTraceHeldContext | undefined;
-  if ((schemaVersion === 'agent-trace.v5' || schemaVersion === 'agent-trace.v6') && value.held_context !== undefined) {
+  if ((schemaVersion === 'agent-trace.v5' || liveContext) && value.held_context !== undefined) {
     heldContext = parseHeldContext(value.held_context, `${path}.held_context`);
   } else {
     assert(value.held_context === undefined, `${path}.held_context`, `${schemaVersion} never carries held context`);
   }
-  const modelCalls = list(value.model_calls, `${path}.model_calls`).map((call, index) => parseModelCall(call, `${path}.model_calls[${index}]`));
+  const modelCalls = list(value.model_calls, `${path}.model_calls`).map((call, index) => parseModelCall(call, `${path}.model_calls[${index}]`, schemaVersion));
   const toolCalls = list(value.tool_calls, `${path}.tool_calls`).map((call, index) => parseToolCall(call, `${path}.tool_calls[${index}]`, schemaVersion, value.investigation_id as string | undefined));
-  if (schemaVersion === 'agent-trace.v6') validateV6ContextRetrievals(toolCalls, value.investigation_id as string | undefined);
+  if (liveContext) validateV6ContextRetrievals(toolCalls, value.investigation_id as string | undefined);
+  optionalString(value, 'terminal_classification', path);
+  if (value.steps !== undefined) list(value.steps, `${path}.steps`).forEach((step, index) => proto(step, `${path}.steps[${index}]`));
+  if (value.clarifications !== undefined) {
+    list(value.clarifications, `${path}.clarifications`).forEach((turn, index) => {
+      const turnPath = `${path}.clarifications[${index}]`;
+      assertObject(turn, turnPath);
+      rejectUnknown(turn, ['loop_turn', 'questions', 'selected_branch', 'user_response'], turnPath);
+      assertInteger(turn.loop_turn, `${turnPath}.loop_turn`);
+      list(turn.questions, `${turnPath}.questions`).forEach((question, i) => assertString(question, `${turnPath}.questions[${i}]`));
+      optionalString(turn, 'selected_branch', turnPath);
+      optionalString(turn, 'user_response', turnPath);
+    });
+  }
   assertBoolean(value.tool_turn_limit_reached, `${path}.tool_turn_limit_reached`);
   optionalString(value, 'provider_failure', path);
   optionalString(value, 'provider_failure_class', path);

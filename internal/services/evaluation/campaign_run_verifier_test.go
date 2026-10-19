@@ -66,6 +66,56 @@ func TestCampaignVerificationBinding_BindsExactVerifiedPopulation(t *testing.T) 
 	assert.Empty(t, report.GetVerifierContractVersion())
 }
 
+func TestCampaignRunVerifier_RejectsInputsOutsideFrozenCatalog(t *testing.T) {
+	f := newCompletedRunFixture(t, nil)
+	t.Run("resealed different catalog", func(t *testing.T) {
+		catalog := proto.Clone(f.catalog).(*evalv1.EvaluationScenarioCatalog)
+		catalog.Scenarios[0].PublicDescription = "substituted description"
+		var err error
+		catalog.CatalogDigest, err = ComputeScenarioCatalogDigest(catalog)
+		require.NoError(t, err)
+		_, err = NewCampaignRunVerifier(nil).VerifyRun(t.Context(), f.store, f.req.RunID, catalog, f.req.ScenarioArtifacts)
+		require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	})
+	t.Run("different fixture bytes", func(t *testing.T) {
+		artifacts := make(map[string]ScenarioArtifacts, len(f.req.ScenarioArtifacts))
+		for id, artifact := range f.req.ScenarioArtifacts {
+			artifacts[id] = artifact
+		}
+		id := f.catalog.Scenarios[0].GetScenarioId()
+		artifact := artifacts[id]
+		artifact.Gold.Body = []byte(`{"scenario_id":"forged"}`)
+		artifacts[id] = artifact
+		_, err := NewCampaignRunVerifier(nil).VerifyRun(t.Context(), f.store, f.req.RunID, f.catalog, artifacts)
+		require.Error(t, err)
+	})
+}
+
+func TestCampaignRunVerifier_RejectsHomogeneousTargetInSystemRun(t *testing.T) {
+	f := newArchiveFixture(t)
+	createBoundSystemCampaign(t, f, "system-target-test")
+	_, err := f.controller.StartRun(t.Context(), RunStartRequest{
+		CampaignID: "system-target-test", RunID: "system-target-run", PlatformRelease: testPlatform.Release, Lane: evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
+	})
+	require.NoError(t, err)
+	_, err = f.controller.ScheduleRun(t.Context(), "system-target-run")
+	require.NoError(t, err)
+	assignments, err := f.store.ListAssignments(t.Context(), "system-target-run")
+	require.NoError(t, err)
+	require.NotEmpty(t, assignments)
+	assignment := assignments[0]
+	assignment.Target = &evalv1.EvaluationAssignment_Homogeneous{Homogeneous: &evalv1.HomogeneousAssignmentTarget{
+		DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, CandidateVariant: testModelVariant(),
+	}}
+	assignment.DeterministicIdentity, err = ComputeAssignmentDeterministicIdentity(assignment)
+	require.NoError(t, err)
+	assignment.AssignmentId = assignment.DeterministicIdentity
+	require.NoError(t, f.store.SaveAssignment(t.Context(), assignment))
+	report, err := NewCampaignRunVerifier(nil).VerifyRun(t.Context(), f.store, "system-target-run", f.req.Catalog, f.req.ScenarioArtifacts)
+	require.NoError(t, err)
+	assert.Contains(t, report.GetFailureReasons(), "assignment "+assignment.GetAssignmentId()+" target does not match the frozen run lane")
+}
+
 func mustPopulationDigest(t *testing.T, population *evalv1.EvaluationVerifiedPopulation) string {
 	t.Helper()
 	digest, err := ComputeVerifiedPopulationDigest(population)
@@ -164,6 +214,7 @@ func newCompletedRunFixture(t *testing.T, catalogRef *compliancev1.VersionedRefe
 	agent.req.GradingMethod = evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC
 	agent.req.Binding.ModelRegistryDigest = req.Inventory.RegistryDigest
 	agent.req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(req.Inventory.Variants)
+	agent.req.Binding.ModelVariants = req.Inventory.Variants
 	artifact := req.ScenarioArtifacts[assignment.GetScenarioId()]
 	agent.req.ScenarioInput = ScenarioInputFixture{}
 	require.NoError(t, json.Unmarshal(artifact.Input.Body, &agent.req.ScenarioInput))

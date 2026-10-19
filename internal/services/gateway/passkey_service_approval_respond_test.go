@@ -197,7 +197,7 @@ func TestHandleApprovalRespond(t *testing.T) {
 		assert.Zero(t, mcp.resumeCalls)
 	})
 
-	t.Run("Failure - approve is rejected without a passkey assertion", func(t *testing.T) {
+	t.Run("Failure - approved response is rejected without a signed CLI assertion", func(t *testing.T) {
 		mcp := suspendedFor(userID)
 		mcp.receipt = &operatorv1.ActionReceipt{TransactionId: "transaction-approval-respond-1", TransactionHash: txHash}
 		store := &approvalRespondStore{}
@@ -207,8 +207,8 @@ func TestHandleApprovalRespond(t *testing.T) {
 		h.handleApprovalRespond(rr, approvalRespondRequest(`{"approval_id":"`+txHash+`","approved":true}`, userID))
 
 		assert.Equal(t, http.StatusForbidden, rr.Code)
-		assert.Contains(t, rr.Body.String(), constants.ErrPasskeyProofRequired.Error())
-		assert.Empty(t, store.approvedHash, "approve must not record an approval without a WebAuthn assertion")
+		assert.Contains(t, rr.Body.String(), constants.ErrCLIL3SignatureRequired.Error())
+		assert.Empty(t, store.approvedHash, "approve must not record an approval without a signed CLI assertion")
 		assert.Empty(t, store.deletedHash)
 		assert.Zero(t, mcp.resumeCalls, "approve must not resume the suspended transaction")
 	})

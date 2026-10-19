@@ -192,7 +192,7 @@ Consensus (L2) Governance: a vote from a single L2 consensus member.
 ### L3Proof
 Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
 L3Proof is a union: fields 1-4 are populated for WebAuthn (web sessions),
-fields 5-6 for CLI/mTLS (operator sessions). Exactly one proof type
+fields 5-7 for CLI approvals. Exactly one proof type
 should be populated per instance.
 
 
@@ -203,7 +203,8 @@ should be populated per instance.
 | signature | [string](#string) |  | WebAuthn: signature over the authenticator assertion |
 | credential_id | [string](#string) |  | WebAuthn: credential ID used for the assertion |
 | mtls_cert_fingerprint | [string](#string) |  | CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication |
-| cli_signature | [string](#string) |  | CLI/mTLS: Ed25519 signature over transaction_hash using the operator private key |
+| cli_signature | [string](#string) |  | CLI approval: ECDSA P-256 signature over the domain-separated transaction hash |
+| cli_certificate_der | [bytes](#bytes) |  | CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain) |
 
 
 

@@ -54,9 +54,12 @@ func TestEpisode_InterrogationClarificationFollowUpContinuity(t *testing.T) {
 	res, err := f.execute()
 	require.NoError(t, err)
 	require.NotNil(t, res)
+	assert.Empty(t, res.GetInvalidEvidenceDetail())
 
 	trace := f.storedTrace()
 	require.NotNil(t, trace)
+	require.NoError(t, VerifyAgentTraceEvidence(trace))
+	assert.Equal(t, 1, trace.ModelCalls[0].ToolCallCount, "preserve the signed provider output even when the hand-off drops pending tools")
 
 	// Tool call on turn 1 must have been suppressed/dropped
 	assert.Empty(t, trace.ToolCalls, "interrogation hand-off must drop pending tool calls")

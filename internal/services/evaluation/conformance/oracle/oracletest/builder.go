@@ -37,6 +37,7 @@ type Signer struct {
 // ReceiptOpts names the identity and posture a built receipt carries.
 type ReceiptOpts struct {
 	TransactionID, OperatorID, SessionID, ActionType string
+	ResultSummary                                    string
 	L2                                               operatorv1.L2Status
 	L3                                               operatorv1.L3Status
 }
@@ -133,6 +134,7 @@ func (s Signer) newReceipt(t testing.TB, opts ReceiptOpts, status operatorv1.Exe
 		SignerKeyId:      s.KeyID,
 		ExecutedAtUnixMs: executedAtUnixMs,
 		ActionType:       opts.ActionType,
+		ResultSummary:    opts.ResultSummary,
 		L2Status:         opts.L2,
 		L3Status:         opts.L3,
 	}

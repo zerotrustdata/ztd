@@ -354,7 +354,7 @@ func (x *L2Metadata) GetVotes() []*L2Vote {
 
 // Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
 // L3Proof is a union: fields 1-4 are populated for WebAuthn (web sessions),
-// fields 5-6 for CLI/mTLS (operator sessions). Exactly one proof type
+// fields 5-7 for CLI approvals. Exactly one proof type
 // should be populated per instance.
 type L3Proof struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -368,10 +368,12 @@ type L3Proof struct {
 	CredentialId string `protobuf:"bytes,4,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
 	// CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication
 	MtlsCertFingerprint string `protobuf:"bytes,5,opt,name=mtls_cert_fingerprint,json=mtlsCertFingerprint,proto3" json:"mtls_cert_fingerprint,omitempty"`
-	// CLI/mTLS: Ed25519 signature over transaction_hash using the operator private key
-	CliSignature  string `protobuf:"bytes,6,opt,name=cli_signature,json=cliSignature,proto3" json:"cli_signature,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// CLI approval: ECDSA P-256 signature over the domain-separated transaction hash
+	CliSignature string `protobuf:"bytes,6,opt,name=cli_signature,json=cliSignature,proto3" json:"cli_signature,omitempty"`
+	// CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain)
+	CliCertificateDer []byte `protobuf:"bytes,7,opt,name=cli_certificate_der,json=cliCertificateDer,proto3" json:"cli_certificate_der,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *L3Proof) Reset() {
@@ -444,6 +446,13 @@ func (x *L3Proof) GetCliSignature() string {
 		return x.CliSignature
 	}
 	return ""
+}
+
+func (x *L3Proof) GetCliCertificateDer() []byte {
+	if x != nil {
+		return x.CliCertificateDer
+	}
+	return nil
 }
 
 type L3Metadata struct {
@@ -1430,14 +1439,15 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\n" +
 	"L2Metadata\x12(\n" +
 	"\x10consensus_set_id\x18\x01 \x01(\tR\x0econsensusSetId\x12+\n" +
-	"\x05votes\x18\x02 \x03(\v2\x15.ztd.common.v1.L2VoteR\x05votes\"\xfe\x01\n" +
+	"\x05votes\x18\x02 \x03(\v2\x15.ztd.common.v1.L2VoteR\x05votes\"\xae\x02\n" +
 	"\aL3Proof\x12(\n" +
 	"\x10client_data_json\x18\x01 \x01(\tR\x0eclientDataJSON\x12-\n" +
 	"\x12authenticator_data\x18\x02 \x01(\tR\x11authenticatorData\x12\x1c\n" +
 	"\tsignature\x18\x03 \x01(\tR\tsignature\x12#\n" +
 	"\rcredential_id\x18\x04 \x01(\tR\fcredentialId\x122\n" +
 	"\x15mtls_cert_fingerprint\x18\x05 \x01(\tR\x13mtlsCertFingerprint\x12#\n" +
-	"\rcli_signature\x18\x06 \x01(\tR\fcliSignature\"R\n" +
+	"\rcli_signature\x18\x06 \x01(\tR\fcliSignature\x12.\n" +
+	"\x13cli_certificate_der\x18\a \x01(\fR\x11cliCertificateDer\"R\n" +
 	"\n" +
 	"L3Metadata\x12,\n" +
 	"\x05proof\x18\x01 \x01(\v2\x16.ztd.common.v1.L3ProofR\x05proof\x12\x16\n" +

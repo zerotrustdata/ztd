@@ -495,6 +495,9 @@ message EvaluationCampaignSpec {
   // Investigation identity and its authoritative Data Operator are frozen
   // into campaign_digest. Absent only on legacy specs frozen before this field.
   EvaluationInvestigation investigation = 14;
+  // Nonempty only for a system campaign. Binds the complete frozen catalog
+  // formation set into campaign_digest, independently of later catalog edits.
+  string formation_stack_set_digest = 15;
 }
 
 // EvaluationInvestigation declares the campaign's scored investigation scope.

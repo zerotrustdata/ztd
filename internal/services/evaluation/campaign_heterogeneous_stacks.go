@@ -14,14 +14,6 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-const (
-	// HeterogeneousStackGenerationRule names stack sets that earlier releases
-	// generated from the registry rather than from the formation catalog. New
-	// campaigns never produce one; the rule stays so a persisted set still
-	// validates, resumes, and verifies.
-	HeterogeneousStackGenerationRule = "heterogeneous-v1"
-)
-
 // HeterogeneousCoverageMatrix records which variant-role placements are
 // satisfied by a stack set. Its field names are the persisted JSON keys.
 type HeterogeneousCoverageMatrix struct {
@@ -68,35 +60,72 @@ func ValidateHeterogeneousStackSet(set *HeterogeneousStackSet) error {
 			return err
 		}
 	}
-	if set.GenerationRule == FormationCatalogStackGenerationRule {
-		return validateFormationCatalogStackSet(set)
+	if set.GenerationRule != FormationCatalogStackGenerationRule {
+		return fmt.Errorf("evaluation: validate heterogeneous stack set: generation rule %q: %w", set.GenerationRule, constants.ErrFormationRegistryBinding)
 	}
-	return validateVariantRoleCoverageComplete(set.VariantIDs, set.Stacks)
+	return validateFormationCatalogStackSet(set)
 }
 
-func validateVariantRoleCoverageComplete(variantIDs []string, stacks []*evalv1.HeterogeneousStackDefinition) error {
-	coverage := roleCoverageFromStacks(stacks)
-	for _, stack := range stacks {
-		for _, slot := range []struct {
-			role      evalv1.ModelCampaignRole
-			variantID string
-		}{
-			{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, stack.GetPrimarySlot().GetVariantId()},
-			{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, stack.GetAssistantSlot().GetVariantId()},
-			{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, stack.GetLiteSlot().GetVariantId()},
-		} {
-			if slot.variantID == "" {
-				return fmt.Errorf("evaluation: validate heterogeneous stack set: stack %s missing role binding", stack.GetStackId())
-			}
+// ValidateFormationStackSetBinding verifies that a frozen system-lane stack
+// set belongs to this campaign's frozen registry. Validation uses only the
+// frozen snapshot; later edits to the live formation catalog cannot rebind it.
+func ValidateFormationStackSetBinding(set *HeterogeneousStackSet, campaignID string, variants []*evalv1.ModelVariant) error {
+	if err := ValidateHeterogeneousStackSet(set); err != nil {
+		return err
+	}
+	if campaignID == "" || set.CampaignID != campaignID || len(variants) == 0 {
+		return fmt.Errorf("evaluation: validate formation stack binding: campaign or registry: %w", constants.ErrFormationRegistryBinding)
+	}
+	registry := make(map[string]*evalv1.ModelVariant, len(variants))
+	for _, variant := range variants {
+		if variant == nil || variant.GetVariantId() == "" || variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" {
+			return fmt.Errorf("evaluation: validate formation stack binding: invalid frozen variant: %w", constants.ErrFormationRegistryBinding)
+		}
+		if _, exists := registry[variant.GetVariantId()]; exists {
+			return fmt.Errorf("evaluation: validate formation stack binding: duplicate frozen variant %q: %w", variant.GetVariantId(), constants.ErrFormationRegistryBinding)
+		}
+		registry[variant.GetVariantId()] = variant
+	}
+	for _, variantID := range set.VariantIDs {
+		if _, ok := registry[variantID]; !ok {
+			return fmt.Errorf("evaluation: validate formation stack binding: variant %q not in campaign registry: %w", variantID, constants.ErrFormationRegistryBinding)
 		}
 	}
-	for _, variantID := range variantIDs {
-		roles := coverage[variantID]
-		if len(roles) != 3 {
-			return fmt.Errorf("evaluation: validate heterogeneous stack set: variant %s missing role coverage (%d/3)", variantID, len(roles))
+	used := make(map[string]struct{})
+	for _, stack := range set.Stacks {
+		seen := make(map[string]bool)
+		for i, slot := range []*evalv1.RoleAssignment{stack.GetPrimarySlot(), stack.GetAssistantSlot(), stack.GetLiteSlot()} {
+			roles := []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
+			if slot == nil || slot.GetDesignatedRole() != roles[i] || registry[slot.GetVariantId()] == nil || seen[slot.GetVariantId()] {
+				return fmt.Errorf("evaluation: validate formation stack binding: invalid slot: %w", constants.ErrFormationRegistryBinding)
+			}
+			seen[slot.GetVariantId()] = true
+			used[slot.GetVariantId()] = struct{}{}
 		}
+	}
+	if len(used) != len(set.VariantIDs) {
+		return fmt.Errorf("evaluation: validate formation stack binding: frozen variant coverage: %w", constants.ErrFormationRegistryBinding)
 	}
 	return nil
+}
+
+func validateCampaignFormationDigest(spec *evalv1.EvaluationCampaignSpec, set *HeterogeneousStackSet) error {
+	if spec.GetFormationStackSetDigest() == "" || set == nil || set.SetDigest != spec.GetFormationStackSetDigest() {
+		return fmt.Errorf("evaluation: formation set is not bound by campaign spec: %w", constants.ErrFormationStackMismatch)
+	}
+	return ValidateFormationStackSetBinding(set, spec.GetCampaignId(), spec.GetModelRegistry())
+}
+
+func formationStackSetContains(set *HeterogeneousStackSet, candidate *evalv1.HeterogeneousStackDefinition) bool {
+	if set == nil || candidate == nil || candidate.GetStackId() == "" || candidate.GetStackDigest() == "" {
+		return false
+	}
+	for _, stack := range set.Stacks {
+		if stack.GetStackId() == candidate.GetStackId() && stack.GetStackDigest() == candidate.GetStackDigest() {
+			return true
+		}
+	}
+	return false
 }
 
 func roleCoverageFromStacks(stacks []*evalv1.HeterogeneousStackDefinition) map[string]map[string]struct{} {

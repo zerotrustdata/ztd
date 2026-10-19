@@ -4346,8 +4346,11 @@ type EvaluationCampaignSpec struct {
 	// Investigation identity and its authoritative Data Operator are frozen
 	// into campaign_digest. Absent only on legacy specs frozen before this field.
 	Investigation *EvaluationInvestigation `protobuf:"bytes,14,opt,name=investigation,proto3" json:"investigation,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Nonempty only for a system campaign. Binds the complete frozen catalog
+	// formation set into campaign_digest, independently of later catalog edits.
+	FormationStackSetDigest string `protobuf:"bytes,15,opt,name=formation_stack_set_digest,json=formationStackSetDigest,proto3" json:"formation_stack_set_digest,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *EvaluationCampaignSpec) Reset() {
@@ -4476,6 +4479,13 @@ func (x *EvaluationCampaignSpec) GetInvestigation() *EvaluationInvestigation {
 		return x.Investigation
 	}
 	return nil
+}
+
+func (x *EvaluationCampaignSpec) GetFormationStackSetDigest() string {
+	if x != nil {
+		return x.FormationStackSetDigest
+	}
+	return ""
 }
 
 // EvaluationInvestigation declares the campaign's scored investigation scope.
@@ -13110,7 +13120,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x0ecatalog_digest\x18\x04 \x01(\tR\rcatalogDigest\x122\n" +
 	"\x15model_registry_digest\x18\x05 \x01(\tR\x13modelRegistryDigest\x12A\n" +
 	"\x1dinference_operator_session_id\x18\x06 \x01(\tR\x1ainferenceOperatorSessionId\x127\n" +
-	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\xdc\x05\n" +
+	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\x99\x06\n" +
 	"\x16EvaluationCampaignSpec\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1f\n" +
 	"\vcampaign_id\x18\x02 \x01(\tR\n" +
@@ -13128,7 +13138,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x10platform_release\x18\v \x01(\tR\x0fplatformRelease\x12'\n" +
 	"\x0fsource_revision\x18\f \x01(\tR\x0esourceRevision\x12!\n" +
 	"\fhold_context\x18\r \x01(\bR\vholdContext\x12J\n" +
-	"\rinvestigation\x18\x0e \x01(\v2$.ztd.eval.v1.EvaluationInvestigationR\rinvestigation\"\xac\x01\n" +
+	"\rinvestigation\x18\x0e \x01(\v2$.ztd.eval.v1.EvaluationInvestigationR\rinvestigation\x12;\n" +
+	"\x1aformation_stack_set_digest\x18\x0f \x01(\tR\x17formationStackSetDigest\"\xac\x01\n" +
 	"\x17EvaluationInvestigation\x12<\n" +
 	"\x04mode\x18\x01 \x01(\x0e2(.ztd.eval.v1.EvaluationInvestigationModeR\x04mode\x12)\n" +
 	"\x10investigation_id\x18\x02 \x01(\tR\x0finvestigationId\x12(\n" +

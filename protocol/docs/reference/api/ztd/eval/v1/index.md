@@ -746,6 +746,7 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | source_revision | [string](#string) |  | source_revision is the source commit of the build that froze the campaign. |
 | hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
 | investigation | [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation) |  | Investigation identity and its authoritative Data Operator are frozen into campaign_digest. Absent only on legacy specs frozen before this field. |
+| formation_stack_set_digest | [string](#string) |  | Nonempty only for a system campaign. Binds the complete frozen catalog formation set into campaign_digest, independently of later catalog edits. |
 
 
 

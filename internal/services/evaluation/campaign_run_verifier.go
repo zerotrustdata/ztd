@@ -177,9 +177,50 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 	if v == nil || store == nil || runID == "" || catalog == nil {
 		return nil, fmt.Errorf("evaluation: verify campaign run: %w", constants.ErrMissingRequiredField)
 	}
+	if err := ValidateScenarioCatalog(catalog, artifacts); err != nil {
+		return nil, fmt.Errorf("evaluation: verify frozen scenario inputs: %w", err)
+	}
+	run, err := store.LoadRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	spec, err := store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateCampaignSpecDigest(spec); err != nil {
+		return nil, err
+	}
+	binding := run.GetCampaignBinding()
+	if binding.GetCampaignDigest() != spec.GetCampaignDigest() || binding.GetModelRegistryDigest() != spec.GetModelRegistryDigest() || binding.GetCatalogDigest() != spec.GetCatalogDigest() || catalog.GetCatalogDigest() != spec.GetCatalogDigest() || !sameReference(catalog.GetCatalogRef(), spec.GetCatalogRef()) || !sameReference(binding.GetCatalogRef(), spec.GetCatalogRef()) {
+		return nil, fmt.Errorf("evaluation: verify frozen campaign binding: %w", constants.ErrEvidenceScopeMismatch)
+	}
 	assignments, err := store.ListAssignments(ctx, runID)
 	if err != nil {
 		return nil, err
+	}
+	var formationSet *HeterogeneousStackSet
+	executionBinding := CampaignExecutionBinding{
+		ModelRegistryDigest:     spec.GetModelRegistryDigest(),
+		ModelRegistry:           InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
+		ModelVariants:           spec.GetModelRegistry(),
+		FormationStackSetDigest: spec.GetFormationStackSetDigest(),
+	}
+	switch run.GetLane() {
+	case evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM:
+		formationSet, err = store.LoadHeterogeneousStackSet(ctx, spec.GetCampaignId())
+		if err != nil {
+			return nil, err
+		}
+		if err := validateCampaignFormationDigest(spec, formationSet); err != nil {
+			return nil, err
+		}
+	case evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE:
+		if spec.GetFormationStackSetDigest() != "" {
+			return nil, fmt.Errorf("evaluation: verify formation campaign lane: %w", constants.ErrEvaluationTargetKindMismatch)
+		}
+	default:
+		return nil, fmt.Errorf("evaluation: verify run lane: %w", constants.ErrEvaluationTargetKindMismatch)
 	}
 	report := &evalv1.EvaluationVerificationReport{
 		SchemaVersion: CampaignSchemaVersion,
@@ -191,6 +232,10 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 	verifiedCount := 0
 	for _, assignment := range assignments {
 		if assignment == nil {
+			continue
+		}
+		if assignment.GetLane() != run.GetLane() || assignment.GetRunId() != runID || assignment.GetCampaignId() != spec.GetCampaignId() || (run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM && !IsHeterogeneousAssignment(assignment)) || (run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE && assignment.GetHomogeneous() == nil) {
+			failures = append(failures, fmt.Sprintf("assignment %s target does not match the frozen run lane", assignment.GetAssignmentId()))
 			continue
 		}
 		if !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
@@ -246,6 +291,8 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 			GradingMethod:             gradingMethod,
 			AgentTrace:                agentTrace,
 			CatalogRef:                catalog.GetCatalogRef(),
+			Binding:                   executionBinding,
+			FormationStackSet:         formationSet,
 			ProviderObservationReader: v.providerObservationReader,
 			ProviderObservationPolicy: v.providerObservationPolicy,
 			ModelProvenanceReader:     v.modelProvenanceReader,

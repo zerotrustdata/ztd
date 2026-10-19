@@ -92,7 +92,14 @@ func TestCampaignControllerStartRunBindsANewRunToAnExistingCampaign(t *testing.T
 
 func createMultiModelCampaign(t *testing.T, f *archiveFixture, campaignID string) {
 	t.Helper()
-	inventory, err := MaterializeModelRegistry(campaignID, []*evalv1.ModelVariant{testModelVariant(), secondTestModelVariant()})
+	variants := testFormationCatalogVariants()
+	inventory, err := MaterializeModelRegistry(campaignID, variants)
+	require.NoError(t, err)
+	formationSet, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
+		CampaignID: campaignID,
+		Seed:       17,
+		Variants:   inventory.Variants,
+	})
 	require.NoError(t, err)
 	_, err = f.controller.CreateCampaign(context.Background(), CampaignCreateRequest{
 		Platform:          testPlatform,
@@ -100,6 +107,7 @@ func createMultiModelCampaign(t *testing.T, f *archiveFixture, campaignID string
 		Catalog:           f.req.Catalog,
 		Inventory:         inventory,
 		ScenarioArtifacts: f.req.ScenarioArtifacts,
+		FormationStackSet: formationSet,
 	})
 	require.NoError(t, err)
 }
