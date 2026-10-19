@@ -183,7 +183,7 @@ func TestCampaignCondition(t *testing.T) {
 	assert.Equal(t, CampaignConditionControl, CampaignCondition(fresh))
 }
 
-func TestValidateCampaignSpecPosture_FailsClosedWithoutMintableL3(t *testing.T) {
+func TestValidateCampaignSpecPosture_AcceptsKnownPosturesAndRejectsUnspecified(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		posture evalv1.EvaluationGovernancePosture
@@ -191,8 +191,8 @@ func TestValidateCampaignSpecPosture_FailsClosedWithoutMintableL3(t *testing.T) 
 	}{
 		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true},
 		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, true},
-		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, false},
-		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY, false},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, true},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY, true},
 		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false},
 	}
 	for _, tt := range tests {
@@ -227,6 +227,5 @@ func TestValidateGatewayPosture_RequiresTheFrozenPosture(t *testing.T) {
 	notary := proto.Clone(spec).(*evalv1.EvaluationCampaignSpec)
 	notary.GovernancePosture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY
 	err = ValidateGatewayPosture(notary, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY)
-	require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
-	assert.NotErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+	require.NoError(t, err)
 }

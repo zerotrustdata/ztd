@@ -259,9 +259,16 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	// state for L5 receipt evidence; execution never queries Gateway state.
 	stateRootProvider := vs.gatewayDB.GetStateRootSvc()
 	transactionAudit := auditStore
-	// L3Notary for outbound mode: CLI-based approval via suspended transactions
-	// Mutations requiring L3 are suspended and must be approved via CLI command
-	cliL3Notary := governance.NewOutboundL3Notary(vs.suspendedTxStore, vs.logger)
+	// Human proofs are independently verified against the same pinned CA pool
+	// used for the authenticated Gateway connection, never a local approval row.
+	tlsConfig, err := vs.tlsConfig.GetTLSConfig()
+	if err != nil {
+		return fmt.Errorf("ztdo: L3 trust: %w", err)
+	}
+	cliL3Notary, err := governance.NewOutboundL3Notary(tlsConfig.RootCAs)
+	if err != nil {
+		return fmt.Errorf("ztdo: L3 notary: %w", err)
+	}
 
 	// Load signing keys for Actuator (fail-closed if missing)
 	actuatorPriv, actuatorKeyID, err := vs.secretManager.GetActuatorKey()

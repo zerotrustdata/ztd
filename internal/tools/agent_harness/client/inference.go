@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -197,7 +198,7 @@ func (c *Client) DispatchInferenceStream(ctx context.Context, req *operatorv1.In
 
 func (c *Client) inferenceHTTP() *http.Client {
 	return &http.Client{
-		Timeout:   0,
+		Timeout:   mcp.ApprovalRequestTTL + dispatch.RequestDeadline,
 		Transport: c.http.Transport,
 	}
 }

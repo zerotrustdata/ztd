@@ -11,10 +11,7 @@ package gateway
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -66,88 +63,6 @@ func TestGatewayL3Notary_CLIVerifier_RejectsInactiveUser(t *testing.T) {
 		CredentialId:        "mock-credential",
 		MtlsCertFingerprint: validFingerprint,
 		CliSignature:        "sig",
-	})
-	require.Error(t, err)
-	require.False(t, ok)
-}
-
-func TestOutboundL3Notary_VerifyL3Proof_AcceptsValidSignature(t *testing.T) {
-	logger := testutil.NewTestLogger()
-	suspendedStore := newTestSuspendedStore(t)
-
-	// Generate Ed25519 key pair for signing
-	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-
-	userID := "active-user"
-	validFingerprint := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	txHash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-
-	// Store an approved suspended transaction with the public key
-	sig := ed25519.Sign(privKey, []byte(txHash))
-	approvedAt := time.Now().UTC()
-	suspendedTx := &models.SuspendedTransaction{
-		TransactionHash:         txHash,
-		OperatorSessionID:       "operator-session-1",
-		Envelope:                []byte("{}"),
-		UserID:                  userID,
-		Approved:                true,
-		ApprovedAt:              &approvedAt,
-		ApprovedBy:              userID,
-		ApprovalSignature:       hex.EncodeToString(sig),
-		ExpectedCertFingerprint: validFingerprint,
-		ApprovalPublicKey:       hex.EncodeToString(pubKey),
-		ExpiresAt:               time.Now().UTC().Add(1 * time.Hour),
-	}
-	err = suspendedStore.StoreSuspendedTransaction(context.Background(), suspendedTx)
-	require.NoError(t, err)
-
-	notary := governance.NewOutboundL3Notary(suspendedStore, logger)
-	ok, err := notary.VerifyL3Proof(context.Background(), userID, txHash, "", &commonv1.L3Proof{
-		MtlsCertFingerprint: validFingerprint,
-		CliSignature:        hex.EncodeToString(sig),
-	})
-	require.NoError(t, err)
-	require.True(t, ok)
-}
-
-func TestOutboundL3Notary_VerifyL3Proof_RejectsInvalidSignature(t *testing.T) {
-	logger := testutil.NewTestLogger()
-	suspendedStore := newTestSuspendedStore(t)
-
-	// Generate two key pairs: one for storing, one for signing (mismatch)
-	storePubKey, _, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-	_, signPrivKey, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-
-	userID := "active-user"
-	validFingerprint := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	txHash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-
-	// Store approved transaction with a DIFFERENT public key than the signer
-	badSig := ed25519.Sign(signPrivKey, []byte(txHash))
-	approvedAt := time.Now().UTC()
-	suspendedTx := &models.SuspendedTransaction{
-		TransactionHash:         txHash,
-		OperatorSessionID:       "operator-session-1",
-		Envelope:                []byte("{}"),
-		UserID:                  userID,
-		Approved:                true,
-		ApprovedAt:              &approvedAt,
-		ApprovedBy:              userID,
-		ApprovalSignature:       hex.EncodeToString(badSig),
-		ExpectedCertFingerprint: validFingerprint,
-		ApprovalPublicKey:       hex.EncodeToString(storePubKey),
-		ExpiresAt:               time.Now().UTC().Add(1 * time.Hour),
-	}
-	err = suspendedStore.StoreSuspendedTransaction(context.Background(), suspendedTx)
-	require.NoError(t, err)
-
-	notary := governance.NewOutboundL3Notary(suspendedStore, logger)
-	ok, err := notary.VerifyL3Proof(context.Background(), userID, txHash, "", &commonv1.L3Proof{
-		MtlsCertFingerprint: validFingerprint,
-		CliSignature:        hex.EncodeToString(badSig),
 	})
 	require.Error(t, err)
 	require.False(t, ok)

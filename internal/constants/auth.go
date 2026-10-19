@@ -275,10 +275,7 @@ func (s LogoutScope) Valid() bool {
 }
 
 // L3 notary constants
-const (
-	// L3ApprovalWindow is the maximum time between approval and L3 verification.
-	L3ApprovalWindow = 30 * time.Minute
-)
+const ()
 
 // Auth scheme and default identity constants.
 const (

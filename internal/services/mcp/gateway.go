@@ -80,6 +80,16 @@ type EmbeddedSessionResolver interface {
 	OperatorSessionID(ctx context.Context) (string, error)
 }
 
+// OutboundL3ProofPreparer checks Gateway-owned authorization state and attaches
+// registered passkey context before proof transfer over the command channel.
+type OutboundL3ProofPreparer interface {
+	PrepareOutboundL3Proof(context.Context, string, string, string, *commonv1.L3Proof) (*commonv1.L3Proof, error)
+}
+
+type PendingDispatchResumer interface {
+	ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, error)
+}
+
 // GatewayService handles MCP/A2A protocol translation and downstream dispatch.
 // This service is shared across both gateway mode and outbound mode - the same
 // implementation is used in both contexts (truly polymorphic).
@@ -101,6 +111,9 @@ type GatewayService struct {
 	maxPayloadBytes   int64
 
 	envProc                governance.EnvelopeProcessor
+	outboundEnvProc        governance.EnvelopeProcessor
+	outboundProofPreparer  OutboundL3ProofPreparer
+	pendingDispatchResumer PendingDispatchResumer
 	stateRootProvider      governance.StateRootProvider
 	signingKey             ed25519.PrivateKey
 	keyID                  string
@@ -197,6 +210,12 @@ type Dependencies struct {
 	// factory to verify error handling in NewGatewayService.
 	FieldPathRegistryFactory func(*slog.Logger) (*FieldPathRegistry, error)
 
+	// OutboundEnvProc routes prebuilt suspended envelopes to outbound Operators
+	// and verifies their terminal receipts. Without it, outbound resume fails closed.
+	OutboundEnvProc        governance.EnvelopeProcessor
+	OutboundProofPreparer  OutboundL3ProofPreparer
+	PendingDispatchResumer PendingDispatchResumer
+
 	EnvProc                governance.EnvelopeProcessor
 	StateRootProvider      governance.StateRootProvider
 	SigningKey             ed25519.PrivateKey
@@ -271,6 +290,9 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		cooldownDuration:       1 * time.Minute,
 		maxPayloadBytes:        deps.MaxPayloadBytes,
 		envProc:                deps.EnvProc,
+		outboundEnvProc:        deps.OutboundEnvProc,
+		outboundProofPreparer:  deps.OutboundProofPreparer,
+		pendingDispatchResumer: deps.PendingDispatchResumer,
 		stateRootProvider:      deps.StateRootProvider,
 		signingKey:             deps.SigningKey,
 		keyID:                  deps.KeyID,
@@ -1197,32 +1219,6 @@ func extractCertFingerprint(r *http.Request) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (g *GatewayService) storeSuspendedTransaction(ctx context.Context, tx *models.SuspendedTransaction) error {
-	if g.suspendedStore == nil {
-		return fmt.Errorf("gateway: store suspended transaction %s: %w", tx.TransactionHash, constants.ErrSuspendedStoreRequired)
-	}
-	if err := g.suspendedStore.StoreSuspendedTransaction(ctx, tx); err != nil {
-		return fmt.Errorf("gateway: store suspended transaction %s: %w", tx.TransactionHash, err)
-	}
-
-	// Emit approval.requested to the targeted Operator session's audit chain.
-	// This is the opening bookend for the approval lifecycle.
-	event := &storage.Event{
-		OperatorSessionID: tx.OperatorSessionID,
-		Timestamp:         time.Now().UTC(),
-		Type:              constants.Event.Operator.Notary.ApprovalRequested,
-		ContentText:       fmt.Sprintf("Transaction %s approval requested (tool: %s, expires at: %s)", tx.TransactionHash, tx.ToolName, tx.ExpiresAt.Format(time.RFC3339)),
-	}
-	if _, err := g.auditStore.RecordEvent(event); err != nil {
-		auditErr := fmt.Errorf("gateway: record approval requested for transaction %s on session %s: %w", tx.TransactionHash, tx.OperatorSessionID, err)
-		if delErr := g.suspendedStore.DeleteSuspendedTransaction(ctx, tx.TransactionHash); delErr != nil {
-			return errors.Join(auditErr, fmt.Errorf("gateway: roll back suspended transaction %s: %w", tx.TransactionHash, delErr))
-		}
-		return auditErr
-	}
-	return nil
-}
-
 // StoreSuspendedTransaction stores a transaction awaiting L3 approval and records
 // the approval.requested event on the audit chain of the Operator session the
 // envelope targets. The suspension fails closed: an envelope without an Operator
@@ -1252,58 +1248,13 @@ func (g *GatewayService) StoreSuspendedTransaction(ctx context.Context, txHash s
 		SubmitterCLISessionID:   cliSessionID,
 		ExpectedCertFingerprint: certFingerprint,
 	}
-	return g.storeSuspendedTransaction(ctx, tx)
+	return storeSuspension(ctx, g.suspendedStore, g.auditStore, tx)
 }
 
 // SuspendGovernanceEnvelope suspends a GovernanceEnvelope awaiting L3 human approval
 // and returns the typed suspension metadata including the console approval URL.
 func (g *GatewayService) SuspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.GovernanceEnvelope) (models.PlatformEnrollmentL3SuspensionResponse, error) {
-	if envelope == nil || strings.TrimSpace(envelope.GetTransactionHash()) == "" || strings.TrimSpace(envelope.GetOperatorSessionId()) == "" {
-		return models.PlatformEnrollmentL3SuspensionResponse{}, fmt.Errorf("gateway: suspend governance envelope: %w", constants.ErrMissingRequiredField)
-	}
-	rawEnvelope, err := (protojson.MarshalOptions{Multiline: false}).Marshal(envelope)
-	if err != nil {
-		return models.PlatformEnrollmentL3SuspensionResponse{}, fmt.Errorf("gateway: marshal suspended governance envelope %s: %w", envelope.GetTransactionHash(), err)
-	}
-	userID := strings.TrimSpace(envelope.GetRequestorUserId())
-	if userID == "" {
-		userID, _ = ctx.Value(constants.ContextKeyUserID).(string)
-	}
-	cliSessionID := strings.TrimSpace(envelope.GetCliSessionId())
-	if cliSessionID == "" {
-		cliSessionID, _ = ctx.Value(constants.ContextKeyCLISessionID).(string)
-	}
-	toolName := strings.TrimSpace(envelope.GetTargetResource())
-	if toolName == "" {
-		toolName = strings.TrimSpace(envelope.GetActionType())
-	}
-	now := time.Now().UTC()
-	expiresAt := now.Add(ApprovalRequestTTL)
-	txHash := envelope.GetTransactionHash()
-	tx := &models.SuspendedTransaction{
-		TransactionHash:       txHash,
-		Envelope:              json.RawMessage(rawEnvelope),
-		CreatedAt:             now,
-		ExpiresAt:             expiresAt,
-		ToolName:              toolName,
-		ToolArguments:         json.RawMessage(envelope.GetPayload()),
-		UserID:                userID,
-		OperatorID:            strings.TrimSpace(envelope.GetOperatorId()),
-		OperatorSessionID:     strings.TrimSpace(envelope.GetOperatorSessionId()),
-		SubmitterCLISessionID: cliSessionID,
-	}
-	if err := g.storeSuspendedTransaction(ctx, tx); err != nil {
-		return models.PlatformEnrollmentL3SuspensionResponse{}, err
-	}
-	approvalURL := g.publicBaseURL + constants.APIPaths.ApprovePagePrefix + txHash
-	return models.PlatformEnrollmentL3SuspensionResponse{
-		Status:      models.PlatformEnrollmentStatusL3Required,
-		Posture:     g.posture,
-		TxHash:      txHash,
-		ApprovalURL: approvalURL,
-		ExpiresAt:   expiresAt,
-		Message:     g.posture.HumanApprovalReason(),
-	}, nil
+	return suspendGovernanceEnvelope(ctx, envelope, g.suspendedStore, g.auditStore, g.posture, g.publicBaseURL)
 }
 
 // GetSuspendedTransaction retrieves a suspended transaction by hash.
@@ -1325,12 +1276,11 @@ func (g *GatewayService) DeleteSuspendedTransaction(ctx context.Context, txHash 
 }
 
 // ResumeWithL3Proof re-submits a suspended transaction with an attached L3
-// WebAuthn proof through the ztd Gateway. The proof is verified
-// inside the Gateway's TransactionVerifier - this method does not perform
-// independent passkey validation, it only re-wires the envelope and calls
-// the same fail-closed entry point used for primary submission.
+// approval proof through the ztd Gateway. The executing Operator's L4 verifies
+// the proof; this method attaches it without changing hashed fields and routes
+// to the embedded processor or the outbound dispatcher by envelope target.
 //
-// The signed receipt returned by the Gateway is forwarded to the caller so
+// The signed receipt returned by the executing Operator is forwarded so
 // the OOB approval UI can surface the downstream tool result to the user.
 func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
 	if proof == nil {
@@ -1394,7 +1344,7 @@ func (g *GatewayService) DenySuspendedTransaction(ctx context.Context, txHash, u
 // even if the later delete fails. Deleting before submission is not possible: the
 // outbound L3 verifier reads the row during ProcessEnvelope.
 func (g *GatewayService) claimSuspended(ctx context.Context, txHash, userID string) (*models.SuspendedTransaction, error) {
-	if g.envProc == nil {
+	if g.envProc == nil && g.outboundEnvProc == nil {
 		return nil, constants.ErrGatewayNotReady
 	}
 	if userID == "" {
@@ -1432,10 +1382,27 @@ func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.Suspe
 	if err := protojson.Unmarshal([]byte(tx.Envelope), env); err != nil {
 		return nil, fmt.Errorf("gateway: decode suspended envelope %s: %w", tx.TransactionHash, err)
 	}
+	pendingDispatch := env.GetGovernance().GetL3().GetPendingDispatch()
+	if env.GetOperatorId() != string(constants.DocIDEmbeddedOperator) && !l3.GetDenied() {
+		if g.outboundProofPreparer == nil {
+			return nil, fmt.Errorf("gateway: prepare outbound approval: %w", constants.ErrTxL3NotaryNotConfigured)
+		}
+		proof, err := g.outboundProofPreparer.PrepareOutboundL3Proof(ctx, env.GetRequestorUserId(), env.GetTransactionHash(), env.GetCliSessionId(), l3.GetProof())
+		if err != nil {
+			return nil, err
+		}
+		l3 = &commonv1.L3Metadata{Proof: proof}
+	}
 	if env.Governance == nil {
 		env.Governance = &commonv1.GovernanceMetadata{}
 	}
 	env.Governance.L3 = l3
+	if pendingDispatch {
+		if g.pendingDispatchResumer == nil {
+			return nil, constants.ErrTransactionExpired
+		}
+		return g.pendingDispatchResumer.ResumePendingDispatch(ctx, env)
+	}
 
 	resubmitted, err := (protojson.MarshalOptions{Multiline: false}).Marshal(env)
 	if err != nil {
@@ -1448,7 +1415,19 @@ func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.Suspe
 	if env.StateMerkleRoot != "" {
 		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, env.StateMerkleRoot)
 	}
-	return g.envProc.ProcessEnvelope(ctx, resubmitted)
+	if env.GetOperatorId() == string(constants.DocIDEmbeddedOperator) {
+		if g.envProc == nil {
+			return nil, constants.ErrGatewayNotReady
+		}
+		return g.envProc.ProcessEnvelope(ctx, resubmitted)
+	}
+	if env.GetOperatorId() == "" {
+		return nil, fmt.Errorf("gateway: resume suspended target: %w", constants.ErrTxTargetOperatorMismatch)
+	}
+	if g.outboundEnvProc == nil {
+		return nil, fmt.Errorf("gateway: resume outbound suspended transaction: %w", constants.ErrGatewayNotReady)
+	}
+	return g.outboundEnvProc.ProcessEnvelope(ctx, resubmitted)
 }
 
 // releaseAfterFailedResume clears the execution claim of a transaction that did not run so

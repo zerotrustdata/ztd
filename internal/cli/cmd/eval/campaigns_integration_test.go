@@ -126,6 +126,36 @@ func TestCampaignsCreate_HoldContextFlag(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
+func TestCampaignsCreate_PostureFlagFreezesTheGovernancePosture(t *testing.T) {
+	env := setupRunEnv(t)
+	ctx := context.Background()
+
+	env.mustRun(t, "campaigns", "create", "eval-ratify", "qwen3:4b", "--posture", "ratify")
+	ratified, err := env.store(t).LoadCampaignSpec(ctx, "eval-ratify")
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, ratified.GetGovernancePosture())
+	require.NoError(t, evaluation.ValidateCampaignSpecDigest(ratified))
+
+	env.mustRun(t, "campaigns", "create", "eval-default", "qwen3:4b")
+	defaulted, err := env.store(t).LoadCampaignSpec(ctx, "eval-default")
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, defaulted.GetGovernancePosture())
+	assert.NotEqual(t, defaulted.GetCampaignDigest(), ratified.GetCampaignDigest(), "the posture is part of the campaign digest")
+
+	out, err := env.run(t, "campaigns", "create", "eval-ratify", "qwen3:4b", "--posture", "notary")
+	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict, out)
+}
+
+func TestCampaignsCreate_RejectsAnUnknownPosture(t *testing.T) {
+	env := setupRunEnv(t)
+
+	out, err := env.run(t, "campaigns", "create", "eval-bogus", "qwen3:4b", "--posture", "bogus")
+	require.ErrorIs(t, err, constants.ErrInvalidPosture, out)
+
+	_, err = env.store(t).LoadCampaignSpec(context.Background(), "eval-bogus")
+	require.Error(t, err, "a rejected posture freezes nothing")
+}
+
 func TestCampaignsCreate_FreezesPersistentInvestigationAndDataOperator(t *testing.T) {
 	env := setupRunEnv(t)
 

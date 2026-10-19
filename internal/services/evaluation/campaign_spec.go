@@ -72,17 +72,12 @@ func ValidateCampaignInvestigation(investigation *evalv1.EvaluationInvestigation
 	return nil
 }
 
-// ValidateCampaignSpecPosture fails closed for a frozen posture the eval lane
-// cannot execute. Under ratify and notary every mutation needs an L3 proof
-// that Gateway dispatch cannot mint (ErrTxL3ProofUnmintable), so such a
-// campaign is ErrEvaluationPostureUnsupported before any assignment runs.
+// ValidateCampaignSpecPosture admits only a known frozen posture. Ratify and
+// notary dispatches wait for real human proof; no approval is minted by eval.
 func ValidateCampaignSpecPosture(spec *evalv1.EvaluationCampaignSpec) error {
-	posture, err := cases.GovernancePosture(spec.GetGovernancePosture())
+	_, err := cases.GovernancePosture(spec.GetGovernancePosture())
 	if err != nil {
 		return fmt.Errorf("evaluation: campaign %q posture: %w: %w", spec.GetCampaignId(), constants.ErrEvaluationPostureUnsupported, err)
-	}
-	if posture.RequiresL3() {
-		return fmt.Errorf("evaluation: campaign %q posture %s requires L3 proofs the eval lane cannot mint: %w", spec.GetCampaignId(), posture, constants.ErrEvaluationPostureUnsupported)
 	}
 	return nil
 }

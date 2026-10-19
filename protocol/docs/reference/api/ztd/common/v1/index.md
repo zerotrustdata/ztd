@@ -12,6 +12,7 @@
     - [L2Vote](#ztd-common-v1-L2Vote)
     - [L3Metadata](#ztd-common-v1-L3Metadata)
     - [L3Proof](#ztd-common-v1-L3Proof)
+    - [PasskeyVerificationContext](#ztd-common-v1-PasskeyVerificationContext)
     - [PlatformEnrollmentCompletionTranscript](#ztd-common-v1-PlatformEnrollmentCompletionTranscript)
     - [PlatformEnrollmentDecisionTarget](#ztd-common-v1-PlatformEnrollmentDecisionTarget)
     - [PlatformEnrollmentFingerprints](#ztd-common-v1-PlatformEnrollmentFingerprints)
@@ -181,6 +182,7 @@ Consensus (L2) Governance: a vote from a single L2 consensus member.
 | ----- | ---- | ----- | ----------- |
 | proof | [L3Proof](#ztd-common-v1-L3Proof) |  | WebAuthn or CLI/mTLS proof |
 | denied | [bool](#bool) |  | The human declined the suspended transaction. L4 rejects a denied envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so the deny is an Operator-signed rejection receipt. A deny can only stop execution, so it needs no proof. |
+| pending_dispatch | [bool](#bool) |  | Gateway-owned suspension provenance. A waiting dispatch must receive the decision in-process; after restart/cancellation it must never resume alone. |
 
 
 
@@ -205,6 +207,28 @@ should be populated per instance.
 | mtls_cert_fingerprint | [string](#string) |  | CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication |
 | cli_signature | [string](#string) |  | CLI approval: ECDSA P-256 signature over the domain-separated transaction hash |
 | cli_certificate_der | [bytes](#bytes) |  | CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain) |
+| passkey_context | [PasskeyVerificationContext](#ztd-common-v1-PasskeyVerificationContext) |  | Gateway-sourced registration context for independent outbound verification. Context is trusted only on the authenticated Gateway command channel. |
+| cli_intermediates_der | [bytes](#bytes) | repeated | Untrusted chain-building hints; only the Operator&#39;s pinned CA pool is trusted. |
+
+
+
+
+
+
+<a name="ztd-common-v1-PasskeyVerificationContext"></a>
+
+### PasskeyVerificationContext
+PasskeyVerificationContext transfers registration facts, never an approval.
+The assertion must still verify for this user, credential and transaction.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| user_id | [string](#string) |  |  |
+| credential_id | [string](#string) |  |  |
+| public_key_cose | [bytes](#bytes) |  |  |
+| rp_id | [string](#string) |  |  |
+| allowed_origins | [string](#string) | repeated |  |
 
 
 

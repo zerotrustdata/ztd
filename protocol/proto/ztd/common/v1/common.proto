@@ -70,6 +70,21 @@ message L3Proof {
   string cli_signature = 6 [json_name = "cliSignature"];
   // CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain)
   bytes cli_certificate_der = 7 [json_name = "cliCertificateDer"];
+  // Gateway-sourced registration context for independent outbound verification.
+  // Context is trusted only on the authenticated Gateway command channel.
+  PasskeyVerificationContext passkey_context = 8;
+  // Untrusted chain-building hints; only the Operator's pinned CA pool is trusted.
+  repeated bytes cli_intermediates_der = 9;
+}
+
+// PasskeyVerificationContext transfers registration facts, never an approval.
+// The assertion must still verify for this user, credential and transaction.
+message PasskeyVerificationContext {
+  string user_id = 1;
+  string credential_id = 2;
+  bytes public_key_cose = 3;
+  string rp_id = 4;
+  repeated string allowed_origins = 5;
 }
 
 message L3Metadata {
@@ -79,6 +94,9 @@ message L3Metadata {
   // the deny is an Operator-signed rejection receipt. A deny can only stop
   // execution, so it needs no proof.
   bool denied = 2;
+  // Gateway-owned suspension provenance. A waiting dispatch must receive the
+  // decision in-process; after restart/cancellation it must never resume alone.
+  bool pending_dispatch = 3;
 }
 
 // Unified Governance Metadata

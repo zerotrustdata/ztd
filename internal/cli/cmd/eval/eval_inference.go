@@ -30,6 +30,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	inferdispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -389,6 +391,8 @@ func (d *governedInferenceDispatcher) DispatchInference(ctx context.Context, req
 	if d == nil || d.client == nil || req == nil {
 		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", constants.ErrMissingRequiredField)
 	}
+	ctx, cancel := context.WithTimeout(ctx, mcp.ApprovalRequestTTL+inferdispatch.RequestDeadline)
+	defer cancel()
 	response, _, err := d.client.DispatchInference(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", err)

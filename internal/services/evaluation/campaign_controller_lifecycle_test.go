@@ -62,6 +62,76 @@ func TestCampaignControllerCreateCampaignRejectsADifferentSpecUnderTheSameID(t *
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 }
 
+func postureCreateRequest(f *archiveFixture, posture evalv1.EvaluationGovernancePosture) CampaignCreateRequest {
+	return CampaignCreateRequest{
+		GovernancePosture: posture,
+		Platform:          testPlatform,
+		CampaignID:        f.req.CampaignID,
+		Catalog:           f.req.Catalog,
+		Inventory:         f.req.Inventory,
+		ScenarioArtifacts: f.req.ScenarioArtifacts,
+		RepetitionCount:   f.req.RepetitionCount,
+	}
+}
+
+func TestCampaignControllerCreateCampaignFreezesTheRequestedPostureIntoSpecAndDigest(t *testing.T) {
+	ctx := context.Background()
+	unspecified := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED
+	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+
+	defaulted := newArchiveFixture(t)
+	byDefault, err := defaulted.controller.CreateCampaign(ctx, postureCreateRequest(defaulted, unspecified))
+	require.NoError(t, err)
+	assert.Equal(t, doctrine, byDefault.GetGovernancePosture(), "an unspecified request keeps the default posture")
+
+	requested := newArchiveFixture(t)
+	frozen, err := requested.controller.CreateCampaign(ctx, postureCreateRequest(requested, ratify))
+	require.NoError(t, err)
+	assert.Equal(t, ratify, frozen.GetGovernancePosture())
+	require.NoError(t, ValidateCampaignSpecDigest(frozen))
+	assert.NotEqual(t, byDefault.GetCampaignDigest(), frozen.GetCampaignDigest(), "the posture is part of the campaign digest")
+
+	persisted, err := requested.store.LoadCampaignSpec(ctx, requested.req.CampaignID)
+	require.NoError(t, err)
+	assert.Equal(t, ratify, persisted.GetGovernancePosture())
+	assert.Equal(t, frozen.GetCampaignDigest(), persisted.GetCampaignDigest())
+}
+
+func TestCampaignControllerCreateCampaignIsIdempotentForTheSamePosture(t *testing.T) {
+	f := newArchiveFixture(t)
+	ctx := context.Background()
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+
+	first, err := f.controller.CreateCampaign(ctx, postureCreateRequest(f, ratify))
+	require.NoError(t, err)
+	second, err := f.controller.CreateCampaign(ctx, postureCreateRequest(f, ratify))
+	require.NoError(t, err)
+	assert.Equal(t, first.GetCampaignDigest(), second.GetCampaignDigest())
+	assert.Equal(t, ratify, second.GetGovernancePosture())
+}
+
+func TestCampaignControllerCreateCampaignRejectsAChangedPostureUnderTheSameID(t *testing.T) {
+	f := newArchiveFixture(t)
+	ctx := context.Background()
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+
+	_, err := f.controller.CreateCampaign(ctx, postureCreateRequest(f, ratify))
+	require.NoError(t, err)
+
+	for _, changed := range []evalv1.EvaluationGovernancePosture{
+		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY,
+		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED,
+	} {
+		_, err = f.controller.CreateCampaign(ctx, postureCreateRequest(f, changed))
+		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict, changed.String())
+	}
+
+	frozen, err := f.store.LoadCampaignSpec(ctx, f.req.CampaignID)
+	require.NoError(t, err)
+	assert.Equal(t, ratify, frozen.GetGovernancePosture(), "a rejected recreation leaves the frozen posture untouched")
+}
+
 func TestCampaignControllerCreateCampaignRequiresInputs(t *testing.T) {
 	f := newArchiveFixture(t)
 	_, err := f.controller.CreateCampaign(context.Background(), CampaignCreateRequest{Platform: testPlatform, CampaignID: f.req.CampaignID})

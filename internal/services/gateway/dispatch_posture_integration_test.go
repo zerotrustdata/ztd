@@ -120,7 +120,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			})
 			require.NoError(t, err)
 
-			dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, tc.posture, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+			dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, tc.posture, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
 			result, dispatchErr := dispatchSvc.Dispatch(t.Context(), DispatchRequest{
 				TargetOperatorSessionID: sessionID,
 				EventType:               string(constants.Event.Operator.FileEdit.Requested),

@@ -152,6 +152,7 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 		CredentialId:      req.ID,
 	}
 
+	h.clearApprovalWriteDeadline(w)
 	receipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), txHash, userID, proof)
 	if err != nil {
 		// A locked runtime vault is a Gateway availability fault, not a proof
@@ -271,6 +272,7 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	h.clearApprovalWriteDeadline(w)
 	receipt, err := h.orchestrator.DenySuspendedTransaction(r.Context(), req.ApprovalID, userID)
 	if err != nil {
 		switch {
@@ -316,6 +318,13 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 		MtlsCertFingerprint: models.SHA256Hex(r.TLS.PeerCertificates[0].Raw),
 		CliCertificateDer:   r.TLS.PeerCertificates[0].Raw,
 	}
+	chain := r.TLS.PeerCertificates
+	if len(r.TLS.VerifiedChains) > 0 {
+		chain = r.TLS.VerifiedChains[0]
+	}
+	for _, certificate := range chain[1:] {
+		proof.CliIntermediatesDer = append(proof.CliIntermediatesDer, append([]byte(nil), certificate.Raw...))
+	}
 	approverSessionID, err := gov.VerifyCLIApproval(userID, req.ApprovalID, proof)
 	if err != nil || approverSessionID != cliSessionID {
 		h.responder.Error(w, http.StatusForbidden, constants.ErrTxL3ProofInvalid.Error())
@@ -335,6 +344,7 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 		h.responder.Error(w, http.StatusForbidden, constants.ErrCLIL3SessionUserMismatch.Error())
 		return
 	}
+	h.clearApprovalWriteDeadline(w)
 	receipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), req.ApprovalID, userID, proof)
 	if err != nil {
 		if errors.Is(err, constants.ErrAuditStoreVaultLocked) {
@@ -357,6 +367,12 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 	}
 	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, tx.TransactionHash, body)
 	h.responder.ProtoJSONCanonical(w, http.StatusOK, receipt)
+}
+
+func (h *PasskeyHandler) clearApprovalWriteDeadline(w http.ResponseWriter) {
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		h.logger.Warn("approval: clear response deadline", "error", err)
+	}
 }
 
 // handleCLIApprovalStatus is an mTLS-authenticated endpoint that returns the current

@@ -626,7 +626,7 @@ func TestGatewayService_ResumeWithL3Proof(t *testing.T) {
 	store := &fakeSuspendedStore{}
 
 	txHash := "hash-1"
-	envelope := `{"id":"tx-1","transaction_hash":"hash-1","action_type":"MCP_CALL","payload":"e30=","operator_session_id":"operator-session-1"}`
+	envelope := `{"id":"tx-1","transaction_hash":"hash-1","action_type":"MCP_CALL","payload":"e30=","operator_id":"` + string(constants.DocIDEmbeddedOperator) + `","operator_session_id":"operator-session-1"}`
 
 	g := newTestGatewayService(t,
 		withEnvProc(proc),

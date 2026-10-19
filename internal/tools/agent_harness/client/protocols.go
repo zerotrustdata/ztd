@@ -15,6 +15,8 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -105,7 +107,12 @@ func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request D
 // classifies the answer. It performs no validation: conformance cases use it to
 // send malformed requests.
 func (c *Client) DispatchCommandBody(ctx context.Context, p Persona, body []byte) (*GovernedOutcome, error) {
-	status, raw, err := c.doWithCLI(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body)
+	httpClient := *c.http
+	if c.cliHTTP != nil {
+		httpClient = *c.cliHTTP
+	}
+	httpClient.Timeout = mcp.ApprovalRequestTTL + dispatch.RequestDeadline
+	status, raw, err := c.doWithClient(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body, &httpClient, constants.HeaderValueApplicationJSON)
 	if err != nil {
 		return nil, fmt.Errorf("agent harness: submit dispatch command: %w", err)
 	}

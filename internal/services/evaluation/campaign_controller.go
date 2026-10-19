@@ -108,6 +108,7 @@ func (c *CampaignController) WithPublication(publication *CampaignPublicationCoo
 
 // CampaignCreateRequest carries the inputs that define one frozen campaign.
 type CampaignCreateRequest struct {
+	GovernancePosture evalv1.EvaluationGovernancePosture
 	CampaignID        string
 	Catalog           *evalv1.EvaluationScenarioCatalog
 	Inventory         *ModelInventoryFreeze
@@ -149,6 +150,12 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	if err != nil {
 		return nil, err
 	}
+	if req.GovernancePosture != evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
+		spec.GovernancePosture = req.GovernancePosture
+	}
+	if err := ValidateCampaignSpecPosture(spec); err != nil {
+		return nil, err
+	}
 	if req.FormationStackSet != nil {
 		if spec.GetRepetitionCount() != 1 || spec.GetHoldContext() {
 			return nil, fmt.Errorf("evaluation: formation campaigns support one repetition: %w", constants.ErrEvaluationFlagsInvalid)
@@ -170,15 +177,16 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 			return nil, fmt.Errorf("evaluation: create campaign: formation set differs from catalog: %w", constants.ErrFormationStackMismatch)
 		}
 		spec.FormationStackSetDigest = req.FormationStackSet.SetDigest
-		spec.CampaignDigest, err = ComputeCampaignSpecDigest(spec)
-		if err != nil {
-			return nil, err
-		}
+	}
+	spec.CampaignDigest, err = ComputeCampaignSpecDigest(spec)
+	if err != nil {
+		return nil, err
 	}
 	existing, err := c.store.LoadCampaignSpec(ctx, req.CampaignID)
 	switch {
 	case err == nil:
 		if existing.GetCatalogDigest() != spec.GetCatalogDigest() ||
+			existing.GetGovernancePosture() != spec.GetGovernancePosture() ||
 			existing.GetModelRegistryDigest() != spec.GetModelRegistryDigest() ||
 			existing.GetRepetitionCount() != spec.GetRepetitionCount() ||
 			existing.GetHoldContext() != spec.GetHoldContext() ||

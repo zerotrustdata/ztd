@@ -742,21 +742,10 @@ type complianceScriptedInference struct {
 
 func (f *complianceScriptedInference) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 	txID, receipt := f.ledger.executed(string(constants.ActionTypeInference))
-	resultDigest := "digest-" + txID
-	receipt.ResultSummary = resultDigest
+	result := oracletest.InferenceResult(f.ledger.t, req, []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: complianceScriptedAnswer}}})
+	receipt.ResultSummary = result.GetResultDigest()
 	f.ledger.signer.Resign(f.ledger.t, receipt)
-	return &operatorv1.InferenceDispatchResponse{
-		TransactionId: txID,
-		Result: &operatorv1.InferenceResult{
-			ProviderAttemptId:   req.GetProviderAttemptId(),
-			RequestedModel:      req.GetModel(),
-			CampaignId:          req.GetCampaignId(),
-			ModelRegistryDigest: req.GetModelRegistryDigest(),
-			ResultDigest:        resultDigest,
-			Parts:               []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: complianceScriptedAnswer}}},
-		},
-		Receipt: receipt,
-	}, nil
+	return &operatorv1.InferenceDispatchResponse{TransactionId: txID, Result: result, Receipt: receipt}, nil
 }
 
 // complianceScriptedLaneClient is the Gateway under the command lane: each

@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -436,11 +437,12 @@ func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.Evalu
 
 // campaignCreateSpec is everything that defines one campaign.
 type campaignCreateSpec struct {
-	CampaignID    string
-	Variants      []*evalv1.ModelVariant
-	FormationIDs  []string
-	Repetitions   uint32
-	Investigation *evalv1.EvaluationInvestigation
+	GovernancePosture evalv1.EvaluationGovernancePosture
+	CampaignID        string
+	Variants          []*evalv1.ModelVariant
+	FormationIDs      []string
+	Repetitions       uint32
+	Investigation     *evalv1.EvaluationInvestigation
 	// HoldContext carries each cell's investigation into its next repetition.
 	HoldContext bool
 	// SuiteID names the suite the campaign freezes; empty means the default suite.
@@ -518,6 +520,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 	}
 	controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
 	campaignSpec, err := controller.CreateCampaign(ctx, evaluation.CampaignCreateRequest{
+		GovernancePosture: spec.GovernancePosture,
 		CampaignID:        spec.CampaignID,
 		Catalog:           catalog,
 		Inventory:         freeze,
@@ -565,6 +568,7 @@ func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var investigationMode string
 	var dataOperatorID string
 	var formationIDs []string
+	var postureName string
 	var selector ModelSelector
 	cmd := &cobra.Command{
 		Use:   "create <campaign> [model-selector]",
@@ -611,6 +615,14 @@ Examples:
   ztd eval campaigns create eval-longitudinal qwen3:4b --condition longitudinal --reps 3 --data-operator op-123`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			posture, err := constants.ParsePosture(postureName)
+			if err != nil {
+				return err
+			}
+			wirePosture, err := cases.WirePosture(posture)
+			if err != nil {
+				return err
+			}
 			campaignID := args[0]
 			selector = *selector.withArgs(args[1:])
 			formationIDs = normalizeFormationIDs(formationIDs)
@@ -664,7 +676,7 @@ Examples:
 			if len(registry) == 0 {
 				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
-			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation}
+			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation, GovernancePosture: wirePosture}
 			if formationsSet {
 				create.FormationIDs = formationIDs
 				create.Variants = registry
@@ -707,6 +719,7 @@ Examples:
 		},
 	}
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
+	cmd.Flags().StringVar(&postureName, "posture", string(constants.PostureDoctrine), "Freeze the Gateway governance posture: doctrine, consensus, ratify, or notary; ratify/notary require human approval")
 	cmd.Flags().BoolVar(&holdContext, "hold-context", false, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace (legacy behavior)")
 	cmd.Flags().StringVar(&condition, "condition", "", "Operational condition: longitudinal (persistent sequential runs), control (fresh investigation control), or held-context")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")

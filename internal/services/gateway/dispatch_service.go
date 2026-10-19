@@ -28,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -106,6 +107,12 @@ type BuildEnvelopeParams struct {
 // ErrTxL3ProofUnmintable rather than publishing a mutation that cannot
 // satisfy L3 at the operator.
 func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEnvelope, error) {
+	return buildGovernanceEnvelope(params, false)
+}
+
+// buildGovernanceEnvelope permits an unsigned L3 envelope only when its caller
+// owns the human-approval wait. The public builder retains fail-closed admission.
+func buildGovernanceEnvelope(params BuildEnvelopeParams, awaitingApproval bool) (*commonv1.GovernanceEnvelope, error) {
 	if params.Posture == "" {
 		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrEnvelopePostureMissing)
 	}
@@ -139,7 +146,7 @@ func BuildGovernanceEnvelope(params BuildEnvelopeParams) (*commonv1.GovernanceEn
 	// L3 gate: the gateway dispatch path cannot mint L3 human proofs. Reject
 	// a clean mutation-classified action under postures that require L3
 	// before constructing an envelope that cannot satisfy L3 at the operator.
-	if governance.L3Required(actionType, params.Posture) {
+	if governance.L3Required(actionType, params.Posture) && !awaitingApproval {
 		return nil, fmt.Errorf("gateway: build envelope: %w", constants.ErrTxL3ProofUnmintable)
 	}
 
@@ -253,6 +260,7 @@ type L2ConsensusDeliberator interface {
 // postures that require L3 proof (ratify, notary) are rejected at envelope
 // construction because the gateway dispatch path cannot mint human proofs.
 type DispatchService struct {
+	approvals         *DispatchApprovalCoordinator
 	embeddedProcessor governance.EnvelopeProcessor
 	logger            *slog.Logger
 	pubsub            *GatewayWebSocketHandler
@@ -276,8 +284,9 @@ type DispatchService struct {
 // signerStore resolves the operator's actuator public key for inference
 // completion receipt verification; a nil store fails inference dispatch
 // closed.
-func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHandler, stateRootProvider governance.StateRootProvider, auth operatorSessionValidator, posture constants.Posture, doctrine *governance.L1Doctrine, l2Deliberator L2ConsensusDeliberator, signerStore ReceiptSignerResolver, embeddedProcessor governance.EnvelopeProcessor) *DispatchService {
+func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHandler, stateRootProvider governance.StateRootProvider, auth operatorSessionValidator, posture constants.Posture, doctrine *governance.L1Doctrine, l2Deliberator L2ConsensusDeliberator, signerStore ReceiptSignerResolver, embeddedProcessor governance.EnvelopeProcessor, approvals *DispatchApprovalCoordinator) *DispatchService {
 	return &DispatchService{
+		approvals:         approvals,
 		embeddedProcessor: embeddedProcessor,
 		logger:            logger,
 		pubsub:            pubsubHandler,
@@ -323,7 +332,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	// 3. Build the GovernanceEnvelope via the shared construction helper.
 	// BuildGovernanceEnvelope runs L1 screening and rejects mutations under
 	// L3-requiring postures (the gateway dispatch path cannot mint L3 proofs).
-	env, err := BuildGovernanceEnvelope(BuildEnvelopeParams{
+	env, err := buildGovernanceEnvelope(BuildEnvelopeParams{
 		OperatorID:        operatorID,
 		OperatorSessionID: operatorSessionID,
 		EventType:         req.EventType,
@@ -339,12 +348,10 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		CliSessionID:      req.CliSessionID,
 		Posture:           d.posture,
 		Doctrine:          d.doctrine,
-	})
+	}, d.approvals != nil)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
 	}
-	txHash := env.Id
-
 	// 4. Marshal as protojson (the canonical wire format).
 	wire, err := protojson.Marshal(env)
 	if err != nil {
@@ -364,6 +371,94 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		}
 		wire = deliberated
 	}
+
+	if governance.L3Required(actionType, d.posture) {
+		// L2 deliberation may have attached proofs to wire; suspend those
+		// exact admission facts rather than the earlier pre-deliberation value.
+		if err := protojson.Unmarshal(wire, env); err != nil {
+			return nil, fmt.Errorf("dispatch: decode deliberated envelope: %w", err)
+		}
+		resumed, pending, err := d.approvals.await(ctx, env)
+		if err != nil {
+			return nil, err
+		}
+		wire, err = protojson.Marshal(resumed)
+		if err != nil {
+			d.approvals.finish(env.Id, pending, nil, err)
+			return nil, err
+		}
+		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, resumed.GetStateMerkleRoot())
+		result, err := d.dispatchEnvelope(ctx, op, resumed, wire, req)
+		receipt := governance.FailedReceipt(err)
+		if result != nil {
+			receipt = result.Receipt
+		}
+		d.approvals.finish(env.Id, pending, receipt, err)
+		return result, err
+	}
+	return d.dispatchEnvelope(ctx, op, env, wire, req)
+}
+
+// ProcessEnvelope resumes a prebuilt envelope without rebuilding its identity,
+// state snapshot, nonce, expiry, or proofs. It implements governance.EnvelopeProcessor
+// for outbound suspension routing; delivery and result verification use the same
+// wait loop as Dispatch. The executing Operator still performs L4/L5 verification.
+func (d *DispatchService) ProcessEnvelope(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
+	env := &commonv1.GovernanceEnvelope{}
+	if err := protojson.Unmarshal(wire, env); err != nil {
+		return nil, fmt.Errorf("dispatch: decode resumed envelope: %w: %w", constants.ErrTxInvalidEnvelope, err)
+	}
+	op, err := d.auth.ValidateOperatorSession(ctx, env.GetOperatorSessionId())
+	if err != nil {
+		return nil, fmt.Errorf("dispatch: validate resumed operator session: %w", err)
+	}
+	if env.GetOperatorId() == "" || op.GetId() != env.GetOperatorId() {
+		return nil, fmt.Errorf("dispatch: resume target: %w", constants.ErrTxTargetOperatorMismatch)
+	}
+	if env.GetOperatorSessionId() == "" || op.GetOperatorSessionId() != env.GetOperatorSessionId() {
+		return nil, fmt.Errorf("dispatch: resume target: %w", constants.ErrTxTargetSessionMismatch)
+	}
+	if env.GetPosture() != string(d.posture) {
+		return nil, fmt.Errorf("dispatch: resume posture: %w", constants.ErrGatewayPostureMismatch)
+	}
+	actionType, err := constants.ValidateGovernedRequest(constants.EventType(env.GetEventType()))
+	if err != nil {
+		return nil, fmt.Errorf("dispatch: resume event: %w", err)
+	}
+	if env.GetActionType() != string(actionType) {
+		return nil, fmt.Errorf("dispatch: resume action: %w", constants.ErrTxEventActionMismatch)
+	}
+	if err := validateWitnessCommandDispatch(op, env.GetActionType(), env.GetPayload()); err != nil {
+		return nil, err
+	}
+	txHash, err := govpkg.GenerateMessageID(env)
+	if err != nil {
+		return nil, fmt.Errorf("dispatch: hash resumed envelope: %w", err)
+	}
+	if env.GetId() != txHash {
+		return nil, fmt.Errorf("dispatch: resume identity: %w", constants.ErrTxTransactionIDMismatch)
+	}
+	if env.GetTransactionHash() != txHash {
+		return nil, fmt.Errorf("dispatch: resume identity: %w", constants.ErrTxTransactionHashMismatch)
+	}
+	req := DispatchRequest{EventType: env.GetEventType()}
+	if actionType == constants.ActionTypeInference {
+		req.Timeout = inferencedispatch.RequestDeadline
+	}
+	result, err := d.dispatchEnvelope(ctx, op, env, wire, req)
+	if err != nil {
+		return governance.FailedReceipt(err), err
+	}
+	return result.Receipt, nil
+}
+
+// dispatchEnvelope owns delivery and verified result collection for both new
+// dispatches and resumed envelopes. Its callers supply the already-admitted
+// wire bytes and resolved execution target.
+func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.OperatorDocument, env *commonv1.GovernanceEnvelope, wire []byte, req DispatchRequest) (*DispatchResult, error) {
+	operatorID, operatorSessionID := op.GetId(), op.GetOperatorSessionId()
+	txHash := env.GetId()
+	actionType := constants.ActionType(env.GetActionType())
 
 	// 6. Register an in-process handler on the operator's results channel to
 	//    correlate the result by transaction ID.
@@ -437,6 +532,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    is a terminal transport failure: no operator received the command,
 	//    so no result can ever arrive.
 	cmdChannel := pubsub.CmdChannel(operatorID, operatorSessionID)
+	if timeoutCtx.Err() != nil {
+		return nil, dispatchContextError()
+	}
 	var delivered int
 	var embeddedDone chan embeddedOutcome
 	var finalReceipt *operatorv1.ActionReceipt
@@ -720,7 +818,7 @@ func receiptFromReceiptsMessage(data []byte, operatorID, operatorSessionID strin
 // attestation. Anything else returns transactionReceiptNone, so an unverifiable
 // receipt never ends the wait.
 func (d *DispatchService) verifiedTransactionReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, operatorID, txHash string) (*operatorv1.ActionReceipt, transactionReceiptKind) {
-	if d.signerStore == nil || receipt == nil || receipt.GetTransactionId() != txHash {
+	if d.signerStore == nil || receipt == nil || receipt.GetTransactionId() != txHash || receipt.GetTransactionHash() != txHash {
 		return nil, transactionReceiptNone
 	}
 	var kind transactionReceiptKind
@@ -1087,6 +1185,9 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 	// Extract the requestor's user ID from the mTLS identity context.
 	requestorUserID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
 	actingAppID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		c.logger.Warn("dispatch: clear response deadline", logging.ErrorKind(err))
+	}
 
 	result, err := c.dispatchSvc.Dispatch(r.Context(), DispatchRequest{
 		TargetOperatorSessionID: req.TargetOperatorSessionID,

@@ -241,6 +241,7 @@ func newTestDispatchService(t *testing.T, _ string, op *operatorv1.OperatorDocum
 		nil, // no L2 deliberator under doctrine posture
 		&stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}},
 		nil, // no embedded processor in remote dispatch tests
+		nil,
 	)
 	return svc, broker
 }
@@ -427,6 +428,7 @@ func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
 		&stubOperatorSessionValidator{op: op},
 		"doctrine",
 		governance.NewL1Doctrine(),
+		nil,
 		nil,
 		nil,
 		nil,

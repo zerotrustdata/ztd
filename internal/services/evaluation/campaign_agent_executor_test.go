@@ -227,32 +227,11 @@ func (f *agentInferenceFake) DispatchInference(_ context.Context, req *operatorv
 	if turn == f.failTurn {
 		return nil, governance.WithFailedReceipt(ledger.inferenceFailed(txID), errors.New("agent test inference: provider unreachable"))
 	}
-	result := &operatorv1.InferenceResult{
-		Model:                req.GetModel(),
-		ProviderAttemptId:    req.GetProviderAttemptId(),
-		RequestedModel:       req.GetModel(),
-		RequestedModelDigest: req.GetModelDigest(),
-		ServedModelDigest:    req.GetModelDigest(),
-		CampaignId:           req.GetCampaignId(),
-		RunId:                req.GetRunId(),
-		AssignmentId:         req.GetAssignmentId(),
-		EvaluationAttemptId:  req.GetEvaluationAttemptId(),
-		ScenarioId:           req.GetScenarioId(),
-		ModelRegistryDigest:  req.GetModelRegistryDigest(),
-		FinishReason:         "stop",
-		Parts:                f.turns[turn-1],
-		LoadState:            operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNSPECIFIED,
-		RetryClassification:  operatorv1.InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED,
-	}
-	resultDigest, err := models.ComputeInferenceResultDigest(result)
-	if err != nil {
-		return nil, err
-	}
-	result.ResultDigest = resultDigest
+	result := oracletest.InferenceResult(f.fixture.t, req, f.turns[turn-1])
 	return &operatorv1.InferenceDispatchResponse{
 		TransactionId: txID,
 		Result:        result,
-		Receipt:       ledger.inferenceWithResultDigest(txID, resultDigest),
+		Receipt:       ledger.inferenceWithResultDigest(txID, result.GetResultDigest()),
 	}, nil
 }
 

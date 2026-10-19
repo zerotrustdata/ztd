@@ -21,7 +21,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -78,28 +77,8 @@ func (f *testEvidenceInferenceFake) DispatchInference(_ context.Context, req *op
 	if turnNum == f.failTurn {
 		return nil, governance.WithFailedReceipt(f.ledger.inferenceFailed(txID), errors.New("test evidence inference: provider unreachable"))
 	}
-	result := &operatorv1.InferenceResult{
-		ProviderAttemptId:    req.GetProviderAttemptId(),
-		RequestedModel:       req.GetModel(),
-		RequestedModelDigest: req.GetModelDigest(),
-		ServedModelDigest:    req.GetModelDigest(),
-		Model:                req.GetModel(),
-		CampaignId:           req.GetCampaignId(),
-		RunId:                req.GetRunId(),
-		AssignmentId:         req.GetAssignmentId(),
-		EvaluationAttemptId:  req.GetEvaluationAttemptId(),
-		ScenarioId:           req.GetScenarioId(),
-		ModelRegistryDigest:  req.GetModelRegistryDigest(),
-		FinishReason:         "stop",
-		Parts:                f.turns[turnIndex],
-		LoadState:            operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNSPECIFIED,
-		RetryClassification:  operatorv1.InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED,
-	}
-	resultDigest, err := models.ComputeInferenceResultDigest(result)
-	if err != nil {
-		return nil, err
-	}
-	result.ResultDigest = resultDigest
+	result := oracletest.InferenceResult(f.ledger.t, req, f.turns[turnIndex])
+	resultDigest := result.GetResultDigest()
 	if f.digestMismatch {
 		result.ResultDigest = flipFirstHexDigit(resultDigest)
 	}

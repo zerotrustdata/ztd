@@ -81,7 +81,7 @@ func VerifyCLIApproval(userID, transactionHash string, proof *commonv1.L3Proof) 
 		return "", err
 	}
 	if proof == nil || proof.CliSignature == "" || proof.MtlsCertFingerprint == "" || len(proof.CliCertificateDer) == 0 ||
-		proof.CredentialId != "" || proof.ClientDataJson != "" || proof.AuthenticatorData != "" || proof.Signature != "" {
+		proof.CredentialId != "" || proof.ClientDataJson != "" || proof.AuthenticatorData != "" || proof.Signature != "" || proof.PasskeyContext != nil {
 		return "", constants.ErrTxL3ProofInvalid
 	}
 	cert, err := x509.ParseCertificate(proof.CliCertificateDer)
@@ -115,6 +115,35 @@ func VerifyCLIApproval(userID, transactionHash string, proof *commonv1.L3Proof) 
 		return "", constants.ErrCLIL3SignatureVerificationFailed
 	}
 	return identity.sessionID, nil
+}
+
+// VerifyCLIApprovalWithTrust adds chain verification to the shared signature,
+// certificate validity, fingerprint and canonical CLI SPIFFE identity checks.
+// The supplied intermediates are hints; they never become trusted roots.
+func VerifyCLIApprovalWithTrust(userID, transactionHash string, proof *commonv1.L3Proof, roots *x509.CertPool) (string, error) {
+	if roots == nil {
+		return "", constants.ErrEmptyTrustBundle
+	}
+	sessionID, err := VerifyCLIApproval(userID, transactionHash, proof)
+	if err != nil {
+		return "", err
+	}
+	leaf, err := x509.ParseCertificate(proof.CliCertificateDer)
+	if err != nil {
+		return "", fmt.Errorf("parse CLI leaf: %w: %w", constants.ErrTxL3ProofInvalid, err)
+	}
+	intermediates := x509.NewCertPool()
+	for _, der := range proof.CliIntermediatesDer {
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			return "", fmt.Errorf("parse CLI intermediate: %w: %w", constants.ErrTxL3ProofInvalid, err)
+		}
+		intermediates.AddCert(cert)
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+		return "", fmt.Errorf("verify CLI approval chain: %w: %w", constants.ErrTxL3ProofInvalid, err)
+	}
+	return sessionID, nil
 }
 
 func validateTransactionHash(transactionHash string) error {

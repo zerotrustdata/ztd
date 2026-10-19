@@ -273,6 +273,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 				deliberator,
 				&stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}},
 				nil,
+				nil,
 			)
 
 			// Register an operator handler that publishes a result and its
@@ -327,6 +328,7 @@ func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
 		constants.PostureConsensus,
 		testDoctrine(),
 		failingL2Deliberator{},
+		nil,
 		nil,
 		nil,
 	)
@@ -397,6 +399,7 @@ func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
 					tc.posture,
 					testDoctrine(),
 					deliberator,
+					nil,
 					nil,
 					nil,
 				)
